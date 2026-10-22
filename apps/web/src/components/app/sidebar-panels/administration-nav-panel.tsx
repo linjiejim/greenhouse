@@ -3,8 +3,8 @@
  * Administration surface.
  *
  * Mirrors {@link SettingsNavPanel} but lists the global management modules
- * (Users, Agent Usages, Feature Requests, Evaluation, AI Gateway,
- * MCP Access). Settings is user-scoped; Administration is global.
+ * (Users, Agent Usages, Feature Requests, Frictions, MCP Access, Runtime
+ * Config, Branding). Settings is user-scoped; Administration is global.
  */
 
 import React from 'react';

@@ -14,7 +14,6 @@ describe('trusted-execution kill switches', () => {
   it('defaults every convergence capability on', () => {
     const switches = resolveTrustedExecutionSwitches({});
     expect(switches).toEqual({
-      missionAdapter: true,
       workflowAdapter: true,
       chatAdapter: true,
       runtimeWorker: true,
@@ -26,7 +25,6 @@ describe('trusted-execution kill switches', () => {
       agentGovernance: true,
       invalidEnv: [],
     });
-    expect(runtimeAdapterEnabled('mission', switches)).toBe(true);
     expect(runtimeAdapterEnabled('workflow', switches)).toBe(true);
     expect(runtimeAdapterEnabled('chat', switches)).toBe(true);
     expect(runtimeDriverEnabled('automation', switches)).toBe(true);
@@ -35,7 +33,6 @@ describe('trusted-execution kill switches', () => {
 
   it('accepts explicit booleans and fails closed on a typo', () => {
     const switches = resolveTrustedExecutionSwitches({
-      RUNTIME_MISSION_ADAPTER_ENABLED: '0',
       RUNTIME_WORKFLOW_ADAPTER_ENABLED: 'off',
       RUNTIME_CHAT_ADAPTER_ENABLED: 'yes',
       RUNTIME_WORKER_ENABLED: 'FALSE',
@@ -47,7 +44,6 @@ describe('trusted-execution kill switches', () => {
       AGENT_GOVERNANCE_ENABLED: 'no',
     });
     expect(switches).toMatchObject({
-      missionAdapter: false,
       workflowAdapter: false,
       chatAdapter: true,
       runtimeWorker: false,
@@ -63,7 +59,6 @@ describe('trusted-execution kill switches', () => {
 
   it('derives boot dependencies without widening configured switches', () => {
     const switches = resolveTrustedExecutionSwitches({
-      RUNTIME_MISSION_ADAPTER_ENABLED: '0',
       RUNTIME_WORKFLOW_ADAPTER_ENABLED: '0',
       RUNTIME_CHAT_ADAPTER_ENABLED: '0',
       RUNTIME_WORKER_ENABLED: '0',
@@ -85,7 +80,7 @@ describe('trusted-execution kill switches', () => {
       agentGovernance: true,
     });
     expect(trustedExecutionHealthView(switches)).toEqual({
-      adapters: { mission: false, workflow: false, chat: false },
+      adapters: { workflow: false, chat: false },
       services: {
         runtime_worker: false,
         automation_driver: false,

@@ -14,7 +14,7 @@ import { Button, Spinner } from '../ui';
 import { ArrowUp, Paperclip, Square } from '../../lib/icons';
 import { useTriggerPopup } from './use-trigger-popup';
 import { CommandMenuPopover } from './command-menu-popover';
-import type { SlashSkill, UserPrompt } from './command-menu-popover';
+import type { UserPrompt } from './command-menu-popover';
 import { parseTaskVariables } from '@greenhouse/types/tasks';
 import { MentionPopover } from './mention-popover';
 import { ComposerChips } from './composer-chips';
@@ -22,7 +22,6 @@ import { TaskVariableForm } from './task-variable-form';
 import { AttachmentChips } from '../conversation/attachments';
 import type { PendingAttachment } from '../conversation/attachments';
 import type { Profile } from '../../lib/api';
-import type { MissionRuntimeAvailability } from '../../lib/api/cloud-agent';
 import { AnnotationList } from './annotation-list';
 import type { Annotation } from './annotation-list';
 import { useT } from '../../lib/i18n';
@@ -73,8 +72,8 @@ interface ChatInputProps {
   /** Auto-focus textarea on mount */
   autoFocus?: boolean;
   /**
-   * Disable the send buttons while the composer stays editable (mission run
-   * in flight). Distinct from isStreaming: no stop button, drafts keep
+   * Disable the send buttons while the composer stays editable (e.g. attachments
+   * still uploading). Distinct from isStreaming: no stop button, drafts keep
    * working. Enter still calls onSend so the host can explain the block.
    */
   sendDisabled?: boolean;
@@ -84,7 +83,7 @@ interface ChatInputProps {
    * and the host sends automatically once the uploads settle.
    */
   sendWaiting?: boolean;
-  /** Hide the image-attachment affordance (mission composers use file attachments instead). */
+  /** Hide the image-attachment affordance (read-only composers). */
   attachmentsDisabled?: boolean;
   /** Replace the standard localized placeholder for special composer states. */
   placeholder?: string;
@@ -106,24 +105,13 @@ interface ChatInputProps {
   inputRef?: React.MutableRefObject<HTMLTextAreaElement | null>;
   /** Tasks available from the slash picker. */
   slashPrompts?: UserPrompt[];
-  /** Mission-ready skills for the slash picker (empty when the user can't launch missions). */
-  slashSkills?: SlashSkill[];
-  /** Mission admission posture; omitted when the user lacks the feature. */
-  missionAvailability?: MissionRuntimeAvailability;
   /** Task attached to this draft; its body is expanded only when sending. */
   selectedPrompt?: UserPrompt | null;
-  /** Skill attached to this draft; sending launches a Cloud Agent mission. */
-  selectedSkill?: SlashSkill | null;
-  /** Explicit route for the next send to continue a Mission. */
-  missionInstruction?: boolean;
   /** Values typed into the selected task's `{{variables}}` form. */
   taskValues?: Record<string, string>;
   onTaskValueChange?: (key: string, value: string) => void;
   onSelectPrompt?: (prompt: UserPrompt) => void;
   onRemovePrompt?: () => void;
-  onSelectSkill?: (skill: SlashSkill) => void;
-  onRemoveSkill?: () => void;
-  onRemoveMissionInstruction?: () => void;
   /** Annotations from selection follow-up */
   annotations?: Annotation[];
   /** Update an annotation's note */
@@ -174,18 +162,11 @@ export function ChatInput({
   maxAttachments = 10,
   inputRef,
   slashPrompts = [],
-  slashSkills = [],
-  missionAvailability,
   selectedPrompt,
-  selectedSkill,
-  missionInstruction,
   taskValues,
   onTaskValueChange,
   onSelectPrompt,
   onRemovePrompt,
-  onSelectSkill,
-  onRemoveSkill,
-  onRemoveMissionInstruction,
   annotations = [],
   onUpdateAnnotation,
   onDeleteAnnotation,
@@ -219,9 +200,8 @@ export function ChatInput({
     return () => media.removeEventListener('change', sync);
   }, []);
 
-  // ── / Task + Skill trigger ──
-  const slashEnabled =
-    !isStreaming && (slashPrompts.length > 0 || slashSkills.length > 0 || missionAvailability !== undefined);
+  // ── / Task trigger ──
+  const slashEnabled = !isStreaming && slashPrompts.length > 0;
   const slash = useTriggerPopup({ triggerChar: '/', textareaRef, value: input, enabled: slashEnabled });
 
   // ── @ Agent Profile trigger ──
@@ -270,17 +250,6 @@ export function ChatInput({
       onSelectPrompt?.(prompt);
     },
     [slash, setInput, onSelectPrompt],
-  );
-  // Handle /Skill selections — strip the trigger token and attach the skill
-  // as a chip; the send launches a Cloud Agent mission with the typed brief.
-  const handleSelectSkill = useCallback(
-    (skill: SlashSkill) => {
-      const at = slash.triggerIndex;
-      setInput(slash.insertSelection(''));
-      onSelectSkill?.(skill);
-      refocusAt(at);
-    },
-    [slash, setInput, onSelectSkill, refocusAt],
   );
   // Handle @ Agent selection — strip the `@query` token, switch profile.
   const handleSelectMention = useCallback(
@@ -407,21 +376,17 @@ export function ChatInput({
             </div>
           )}
 
-          {/* Mission file-attachment chips (name + size + upload state) */}
+          {/* File-attachment chips (name + size + upload state) */}
           {onAttachmentSelect && onRemoveAttachment && pendingAttachments.length > 0 && (
             <AttachmentChips attachments={pendingAttachments} onRemove={onRemoveAttachment} className="px-3 pt-3" />
           )}
 
-          {/* Structured @ Agent + / Task + / Skill selections */}
+          {/* Structured @ Agent + / Task selections */}
           <ComposerChips
             profile={profileChip}
             onRemoveProfile={onRemoveProfileChip}
             prompt={selectedPrompt}
             onRemovePrompt={onRemovePrompt}
-            skill={selectedSkill}
-            onRemoveSkill={onRemoveSkill}
-            missionInstruction={missionInstruction}
-            onRemoveMissionInstruction={onRemoveMissionInstruction}
           />
           {selectedPrompt && onTaskValueChange && (
             <TaskVariableForm
@@ -524,7 +489,7 @@ export function ChatInput({
                   <Button
                     onClick={handleSend}
                     data-testid="chat-send"
-                    disabled={(!input.trim() && !selectedPrompt && !selectedSkill) || sendDisabled || sendWaiting}
+                    disabled={(!input.trim() && !selectedPrompt) || sendDisabled || sendWaiting}
                     size="icon"
                     className="h-11 w-11 rounded-full p-0"
                     title={sendWaiting ? t('chat.uploadingImages') : t('common.send')}
@@ -547,8 +512,8 @@ export function ChatInput({
                   onClick={() => attachmentInputRef.current?.click()}
                   disabled={attachmentsUploading || pendingAttachments.length >= maxAttachments}
                   className="h-11 w-11 sm:h-8 sm:w-8 inline-flex items-center justify-center rounded-lg text-fg-muted hover:text-fg-secondary hover:bg-surface-muted disabled:opacity-40 transition-colors"
-                  title={t('cloudAgent.attach', { count: maxAttachments })}
-                  aria-label={t('cloudAgent.attach', { count: maxAttachments })}
+                  title={t('chat.attach', { count: maxAttachments })}
+                  aria-label={t('chat.attach', { count: maxAttachments })}
                 >
                   <Paperclip size={15} />
                 </button>
@@ -586,7 +551,7 @@ export function ChatInput({
                   ) : (
                     <Button
                       onClick={handleSend}
-                      disabled={(!input.trim() && !selectedPrompt && !selectedSkill) || sendDisabled || sendWaiting}
+                      disabled={(!input.trim() && !selectedPrompt) || sendDisabled || sendWaiting}
                       size="icon"
                       className="h-8 w-8 rounded-full p-0"
                       title={sendWaiting ? t('chat.uploadingImages') : t('common.send')}
@@ -601,15 +566,12 @@ export function ChatInput({
           </div>
         </div>
 
-        {/* / Task + Skill menu */}
+        {/* / Task menu */}
         {showSlash && (
           <CommandMenuPopover
             query={slash.query}
             prompts={slashPrompts}
-            skills={slashSkills}
-            missionAvailability={missionAvailability}
             onSelectPrompt={handleSelectPrompt}
-            onSelectSkill={handleSelectSkill}
             onDismiss={slash.dismiss}
             anchorRef={containerRef}
           />

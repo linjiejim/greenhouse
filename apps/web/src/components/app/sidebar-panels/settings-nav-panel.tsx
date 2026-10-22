@@ -9,7 +9,7 @@
  *
  * Automation, Tasks, and My Agents live in the Chat sidebar workspace.
  *
- * Global management (Users, Agent Usages, Evaluation, …) lives on the separate
+ * Global management (Users, Agent Usages, …) lives on the separate
  * super-only Administration surface — see `administration-nav-panel`.
  *
  * Module definitions sourced from unified nav-registry.

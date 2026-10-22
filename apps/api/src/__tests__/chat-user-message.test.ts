@@ -68,7 +68,7 @@ describe('sanitizeUserMessageForPrompt', () => {
     expect(attachments).toEqual([{ id: 'f', name: 'file' }]);
   });
 
-  it('preserves the mission staging handle, which is a key rather than an id', () => {
+  it('preserves a historical mission staging handle, which is a key rather than an id', () => {
     const staged = [{ key: 'cloud-agent/run-7/input.csv', name: 'input.csv' }];
     const { attachments } = splitAttachments(sanitizeUserMessageForPrompt(withFence('run it', staged)));
     expect(attachments).toEqual(staged);

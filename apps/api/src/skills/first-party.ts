@@ -90,8 +90,3 @@ export function resetFirstPartyCache(): void {
 export function _setFirstPartyNamesForTests(names: Set<string>): void {
   cache = { names, groups: new Map() };
 }
-
-/** Tests only: pin both first-party membership and its repository group. */
-export function _setFirstPartyGroupsForTests(groups: Map<string, FirstPartySkillGroup>): void {
-  cache = { names: new Set(groups.keys()), groups };
-}

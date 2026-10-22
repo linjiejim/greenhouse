@@ -4,8 +4,7 @@
  * Two things carry weight here. The file id comes from the MODEL, so the
  * session scope is the only thing standing between a copied id and another
  * conversation's file. And when the tool cannot read something it must say so
- * — that refusal is what routes the work (to a sandbox per spec D1, or back to
- * the user when the sandbox cannot do better either); a tool that quietly
+ * — that refusal is what routes the work back to the user; a tool that quietly
  * returned mojibake, or the empty string a scanned page really does extract to,
  * would let the agent "summarize" a PDF it never read.
  */
@@ -15,7 +14,7 @@ import type { DatabaseProvider } from '@greenhouse/db';
 import { createReadAttachmentTool } from '../read-attachment.js';
 import { encryptedPdf, pdfWithText, pdfWithoutTextLayer } from '../../files/__tests__/pdf-fixtures.js';
 
-const CTX = { userId: 'u1', sessionId: 'sess-A', canDispatchMission: true };
+const CTX = { userId: 'u1', sessionId: 'sess-A' };
 
 interface Row {
   id: string;
@@ -120,7 +119,7 @@ describe('read_attachment', () => {
     expect(String(res.text)).toContain('net 30 days');
   });
 
-  it('refuses a scanned PDF by name, and does not send it to a sandbox that cannot OCR', async () => {
+  it('refuses a scanned PDF by name and points at a route that works', async () => {
     const pdf: Row = { ...csv, id: 'f6', name: 'scan.pdf', content_type: 'application/pdf' };
     stored.set(pdf.storage_key, pdfWithoutTextLayer(2));
     const res = await read(fakeDb([pdf]), { file_id: 'f6' });
@@ -128,47 +127,36 @@ describe('read_attachment', () => {
     // retrying, and it must never come back as empty text.
     expect(String(res.error)).toMatch(/no usable text layer/);
     expect(res.text).toBeUndefined();
-    // The agent-runtime image ships poppler but no OCR engine, so a mission
-    // arrives at this same refusal after burning a container. The route that
-    // works is a file with real text, or the pages as images.
+    // No OCR exists anywhere on the deployment. The route that works is a
+    // file with real text, or the pages as images.
     expect(String(res.error)).toMatch(/analyze_image/);
-    expect(String(res.error)).not.toMatch(/Dispatch a mission/);
+    expect(String(res.error)).not.toMatch(/mission|sandbox/i);
   });
 
-  it('does not send a password-protected PDF to a sandbox that has no password either', async () => {
+  it('asks for an unlocked copy of a password-protected PDF', async () => {
     const pdf: Row = { ...csv, id: 'f9', name: 'locked.pdf', content_type: 'application/pdf' };
     stored.set(pdf.storage_key, encryptedPdf());
     const res = await read(fakeDb([pdf]), { file_id: 'f9' });
     expect(String(res.error)).toMatch(/password-protected/);
     expect(String(res.error)).toMatch(/without password protection/);
-    expect(String(res.error)).not.toMatch(/Dispatch a mission/);
+    expect(String(res.error)).not.toMatch(/mission|sandbox/i);
   });
 
-  it('refuses an unreadable format with a message that points at a mission', async () => {
+  it('refuses an unreadable format and routes the work back to the user', async () => {
     const clip: Row = { ...csv, id: 'f7', name: 'demo.mp4', content_type: 'video/mp4' };
     stored.set(clip.storage_key, Buffer.from([0x00, 0x01]));
     const res = await read(fakeDb([clip]), { file_id: 'f7' });
     expect(String(res.error)).toMatch(/not a format that can be read as text/);
-    expect(String(res.error)).toMatch(/mission/);
+    expect(String(res.error)).toMatch(/exported as CSV/);
+    // Never name an exit the deployment does not have (the sandbox was retired).
+    expect(String(res.error)).not.toMatch(/mission|sandbox/i);
   });
 
   it('refuses something too large to be worth a context window', async () => {
     const big: Row = { ...csv, id: 'f4', name: 'dump.txt', content_type: 'text/plain', size: 40 * 1024 * 1024 };
     const res = await read(fakeDb([big]), { file_id: 'f4' });
     expect(String(res.error)).toMatch(/too large to read here/);
-    expect(String(res.error)).toMatch(/mission/);
-  });
-
-  it('does not name a sandbox the caller cannot reach', async () => {
-    // `mission_dispatch` is behind a feature flag. Telling a user without it to
-    // "dispatch a mission" named a tool the model could not see, leaving it with
-    // a refusal and no route forward — an unreachable exit is worse than none.
-    const clip: Row = { ...csv, id: 'f8', name: 'demo.mp4', content_type: 'video/mp4' };
-    stored.set(clip.storage_key, Buffer.from([0x00, 0x01]));
-    const res = await read(fakeDb([clip]), { file_id: 'f8' }, { ...CTX, canDispatchMission: false });
-    expect(String(res.error)).toMatch(/not a format that can be read as text/);
-    expect(String(res.error)).not.toMatch(/mission/i);
-    expect(String(res.error)).toMatch(/no sandbox available/i);
+    expect(String(res.error)).toMatch(/exported as CSV/);
   });
 
   it('reports missing bytes rather than pretending the file was empty', async () => {

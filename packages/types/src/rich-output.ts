@@ -49,27 +49,16 @@ export interface DataTableData {
   rows: Record<string, unknown>[];
 }
 
-/** A Cloud Agent deliverable exposed through its authenticated download route. */
-export interface MissionArtifactItem {
-  id: number;
-  run_id: string;
-  path: string;
-  size_bytes?: number;
-  content_type?: string;
-}
-
-export type MissionArtifactsData = MissionArtifactItem[];
-
 /**
  * INPUTS — what the user attached to a turn. Two handle kinds coexist:
  *
  *   `id`  — a `chat_files` row (every conversation, the current path)
  *   `key` — a mission staging blob, which has no table, so the storage key IS
- *           the handle (written by the retired `sprouty-mission` preset; read
- *           forever, because historical messages carry it)
+ *           the handle (written by the retired Mission feature; still parsed,
+ *           because historical messages carry it, but no longer downloadable)
  *
- * Exactly one is set. Both download through an authenticated endpoint that
- * re-checks ownership; neither is ever a plain link.
+ * Exactly one is set. An `id` downloads through an authenticated endpoint that
+ * re-checks ownership; it is never a plain link.
  */
 export interface ChatAttachmentItem {
   id?: string;
@@ -138,11 +127,6 @@ export interface DataTablePendingSegment {
   type: 'datatable-pending';
 }
 
-export interface MissionArtifactsSegment {
-  type: 'mission-artifacts';
-  data: MissionArtifactsData;
-}
-
 export interface ChatAttachmentsSegment {
   type: 'attachments';
   data: ChatAttachmentsData;
@@ -154,7 +138,6 @@ export type Segment =
   | ConfirmSegment
   | DataTableSegment
   | DataTablePendingSegment
-  | MissionArtifactsSegment
   | ChatAttachmentsSegment
   | MermaidSegment
   | HtmlPreviewSegment;
@@ -168,7 +151,6 @@ export type KnownFenceBlock =
   | ChartSegment['type']
   | ConfirmSegment['type']
   | DataTableSegment['type']
-  | MissionArtifactsSegment['type']
   | ChatAttachmentsSegment['type']
   | MermaidSegment['type']
   | HtmlPreviewSegment['type']
@@ -187,7 +169,7 @@ export const RICH_OUTPUT_LIMITS = {
   dataTableColumns: 50,
   dataTableRows: 1_000,
   confirmActions: 20,
-  missionFiles: 200,
+  attachmentFiles: 200,
   /** Mermaid source characters. Past this, layout cost stops being worth it and
    * the diagram stops being readable — show the source instead. */
   mermaidChars: 20_000,
@@ -288,25 +270,6 @@ export function isDataTableData(value: unknown): value is DataTableData {
   );
 }
 
-function isMissionArtifact(value: unknown): value is MissionArtifactItem {
-  return (
-    isRecord(value) &&
-    typeof value.id === 'number' &&
-    Number.isInteger(value.id) &&
-    typeof value.run_id === 'string' &&
-    value.run_id.length > 0 &&
-    typeof value.path === 'string' &&
-    value.path.length > 0 &&
-    (value.size_bytes === undefined ||
-      (typeof value.size_bytes === 'number' && Number.isFinite(value.size_bytes) && value.size_bytes >= 0)) &&
-    isOptionalString(value.content_type)
-  );
-}
-
-export function isMissionArtifactsData(value: unknown): value is MissionArtifactsData {
-  return Array.isArray(value) && value.length <= RICH_OUTPUT_LIMITS.missionFiles && value.every(isMissionArtifact);
-}
-
 function isChatAttachment(value: unknown): value is ChatAttachmentItem {
   const handle = (v: unknown) => typeof v === 'string' && v.length > 0;
   return (
@@ -322,7 +285,7 @@ function isChatAttachment(value: unknown): value is ChatAttachmentItem {
 }
 
 export function isChatAttachmentsData(value: unknown): value is ChatAttachmentsData {
-  return Array.isArray(value) && value.length <= RICH_OUTPUT_LIMITS.missionFiles && value.every(isChatAttachment);
+  return Array.isArray(value) && value.length <= RICH_OUTPUT_LIMITS.attachmentFiles && value.every(isChatAttachment);
 }
 
 // ─── Parser ──────────────────────────────────────────────
@@ -335,8 +298,7 @@ export function parseSegments(markdown: string): Segment[] {
   if (!markdown) return [{ type: 'markdown', content: '' }];
 
   const segments: Segment[] = [];
-  const regex =
-    /```(chart|confirm|datatable|mission-artifacts|mission-attachments|attachments|mermaid|html-preview)\s*\n([\s\S]*?)```/g;
+  const regex = /```(chart|confirm|datatable|mission-attachments|attachments|mermaid|html-preview)\s*\n([\s\S]*?)```/g;
 
   let lastIndex = 0;
   let match: RegExpExecArray | null;
@@ -433,14 +395,7 @@ function appendMarkdownSegment(segments: Segment[], content: string): void {
 function parseBlockSegment(
   blockType: KnownFenceBlock,
   rawJson: string,
-):
-  | ChartSegment
-  | ConfirmSegment
-  | DataTableSegment
-  | MissionArtifactsSegment
-  | ChatAttachmentsSegment
-  | MermaidSegment
-  | HtmlPreviewSegment {
+): ChartSegment | ConfirmSegment | DataTableSegment | ChatAttachmentsSegment | MermaidSegment | HtmlPreviewSegment {
   // Mermaid short-circuits every JSON path below: its payload is diagram source.
   if (blockType === 'mermaid') {
     if (!rawJson) throw new Error('mermaid payload is empty');
@@ -459,9 +414,6 @@ function parseBlockSegment(
   // specific trailing duplicate before parsing.
   const sanitized = blockType === 'datatable' ? rawJson.replace(/,\s*"rows"\s*:\s*\[\s*\]\s*(?=\}\s*$)/, '') : rawJson;
   const parsed: unknown = JSON.parse(sanitized);
-  if (blockType === 'mission-artifacts') {
-    return { type: blockType, data: toMissionArtifactsData(parsed) };
-  }
   if (blockType === 'attachments' || blockType === 'mission-attachments') {
     return { type: 'attachments', data: toChatAttachmentsData(parsed) };
   }
@@ -517,23 +469,12 @@ function toConfirmData(payload: Record<string, unknown>): ConfirmData {
   return normalized;
 }
 
-function toMissionArtifactsData(payload: unknown): MissionArtifactsData {
-  if (!Array.isArray(payload)) {
-    throw new Error('mission-artifacts payload must be an array');
-  }
-  const normalized = payload.filter(isMissionArtifact);
-  if (normalized.length > RICH_OUTPUT_LIMITS.missionFiles) {
-    throw new Error('mission-artifacts payload is too large');
-  }
-  return normalized;
-}
-
 function toChatAttachmentsData(payload: unknown): ChatAttachmentsData {
   if (!Array.isArray(payload)) {
     throw new Error('attachments payload must be an array');
   }
   const normalized = payload.filter(isChatAttachment);
-  if (normalized.length > RICH_OUTPUT_LIMITS.missionFiles) {
+  if (normalized.length > RICH_OUTPUT_LIMITS.attachmentFiles) {
     throw new Error('attachments payload is too large');
   }
   return normalized;

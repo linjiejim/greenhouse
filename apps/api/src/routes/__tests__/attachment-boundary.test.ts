@@ -28,16 +28,9 @@ describe('public-read boundary', () => {
     expect(isPublicPath('/api/chat-files/abc-123/content')).toBe(false);
   });
 
-  it('never exempts mission attachment or artifact downloads', () => {
-    expect(isPublicPath('/api/missions/attachments/download')).toBe(false);
-    expect(isPublicPath('/api/missions/runs/car_1/artifacts/2/download')).toBe(false);
-    expect(isPublicPath('/api/cloud-agent/attachments/download')).toBe(false);
-    expect(isPublicPath('/api/cloud-agent/runs/car_1/artifacts/2/download')).toBe(false);
-  });
-
-  it('exempts only the run-bound Mission runner subtree', () => {
-    expect(isPublicPath('/api/missions/internal/runs/car_1/events')).toBe(true);
-    expect(isPublicPath('/api/cloud-agent/internal/runs/car_1/events')).toBe(true);
-    expect(isPublicPath('/api/missions/internal')).toBe(false);
+  it('no longer exempts the retired Mission runner or LLM relay paths', () => {
+    expect(isPublicPath('/api/missions/internal/runs/car_1/events')).toBe(false);
+    expect(isPublicPath('/api/cloud-agent/internal/runs/car_1/events')).toBe(false);
+    expect(isPublicPath('/api/llm/v1/chat/completions')).toBe(false);
   });
 });

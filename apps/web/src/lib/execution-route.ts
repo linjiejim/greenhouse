@@ -14,13 +14,9 @@ export function executionRunHref(run: Pick<RuntimeRun, 'id' | 'kind'>): string {
   return `${EXECUTIONS_ROOT_HASH}/${run.kind}/${encodeURIComponent(run.id)}`;
 }
 
-/** Mission Runtime ids are deterministic (`rtm_<agent_run id>`). */
+/** Mission Runtime ids are deterministic (`rtm_<agent_run id>`); old Mission links resolve through it. */
 export function missionExecutionHref(sourceRunId: string): string {
   return executionRunHref({ kind: 'mission', id: `rtm_${sourceRunId}` });
-}
-
-export function missionSourceRunId(runtimeRunId: string): string {
-  return runtimeRunId.startsWith('rtm_') ? runtimeRunId.slice(4) : runtimeRunId;
 }
 
 export function parseExecutionSubPath(subPath: string): {

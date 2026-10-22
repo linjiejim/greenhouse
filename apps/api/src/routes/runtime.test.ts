@@ -5,10 +5,7 @@ import type { AppEnv } from '../app-env.js';
 
 const mocks = vi.hoisted(() => ({
   getDb: vi.fn(),
-  featureAllowed: vi.fn(),
-  missionController: { cancelRun: vi.fn() },
   workflowEngine: { pauseRun: vi.fn(), resumeRun: vi.fn(), cancelRun: vi.fn(), decideGate: vi.fn() },
-  mirrorMissionRunById: vi.fn(),
   mirrorWorkflowRunById: vi.fn(),
   delegateAutomationRuntimeCancel: vi.fn(),
   settleQueuedAutomationCancellation: vi.fn(),
@@ -27,14 +24,8 @@ vi.mock('@greenhouse/db', () => {
   }
   return { getDb: mocks.getDb, RuntimeKernelError };
 });
-vi.mock('../cloud-agent/index.js', () => ({
-  getMissionRuntimeStatus: () => ({ state: 'ready' }),
-  getCloudAgentController: () => mocks.missionController,
-}));
-vi.mock('../auth/features.js', () => ({ userHasFeature: mocks.featureAllowed }));
 vi.mock('../workflow-engine/index.js', () => ({ getWorkflowEngine: () => mocks.workflowEngine }));
 vi.mock('../runtime/adapters.js', () => ({
-  mirrorMissionRunById: mocks.mirrorMissionRunById,
   mirrorWorkflowRunById: mocks.mirrorWorkflowRunById,
 }));
 vi.mock('../scheduler/runtime-driver.js', () => ({
@@ -120,7 +111,6 @@ function appFor(user: { id: string; role: 'team' | 'super' }) {
 describe('Runtime API authorization and wire', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.featureAllowed.mockResolvedValue(true);
     mocks.settleQueuedAutomationCancellation.mockImplementation(async (_db, run) => run);
     mocks.settleQueuedSubagentCancellation.mockImplementation(async (_db, run) => run);
   });
@@ -166,7 +156,7 @@ describe('Runtime API authorization and wire', () => {
     expect(runtime.listRuns).toHaveBeenCalledWith({ kinds: ['eval'], cursor: undefined, limit: 50 });
   });
 
-  it('returns a full owner detail with orthogonal projection and source-limited capabilities', async () => {
+  it('keeps a historical Mission run readable by its owner with no commands (Missions retired in v1.4)', async () => {
     const run = runRow();
     const interrupt = interruptRow();
     const runtime = {
@@ -203,7 +193,7 @@ describe('Runtime API authorization and wire', () => {
     };
     expect(body.events[0]!.payload.long).toHaveLength(10_000);
     expect(body.projection).toEqual({ lifecycle: 'running', attention: 'approval', transport: 'live' });
-    expect(body.capabilities).toEqual({ commands: ['cancel'], actions: ['cancel', 'approve', 'reject'] });
+    expect(body.capabilities).toEqual({ commands: [], actions: [] });
   });
 
   it('hides another owner run and every Eval run from a team user', async () => {
@@ -258,61 +248,6 @@ describe('Runtime API authorization and wire', () => {
     expect((await app.request('/summary?scope=all')).status).toBe(403);
   });
 
-  it('fails closed across task lists, details, events, interrupts and summary when Mission is disabled', async () => {
-    mocks.featureAllowed.mockResolvedValue(false);
-    const run = runRow();
-    const interrupt = interruptRow();
-    const runtime = {
-      getRun: vi.fn().mockResolvedValue(run),
-      getRunDetail: vi.fn(),
-      listEvents: vi.fn(),
-      listRuns: vi.fn().mockResolvedValue({ items: [], next_cursor: null }),
-      listInterruptsPage: vi.fn().mockResolvedValue({ items: [], next_cursor: null }),
-      summarize: vi.fn().mockResolvedValue({ runs: { total: 0, by_status: {}, by_kind: {} }, pending_interrupts: 0 }),
-      getInterrupt: vi.fn().mockResolvedValue(interrupt),
-      executeRunDomainCommand: vi.fn(),
-    };
-    mocks.getDb.mockReturnValue({ runtime });
-    const app = appFor({ id: 'owner', role: 'team' });
-
-    expect((await app.request('/runs')).status).toBe(200);
-    expect((await app.request('/interrupts')).status).toBe(200);
-    expect((await app.request('/summary')).status).toBe(200);
-    expect(runtime.listRuns).toHaveBeenCalledWith(expect.objectContaining({ kinds: ['automation', 'subagent'] }));
-    expect(runtime.listInterruptsPage).toHaveBeenCalledWith(
-      expect.objectContaining({ kinds: ['automation', 'subagent'] }),
-    );
-    expect(runtime.summarize).toHaveBeenCalledWith(expect.objectContaining({ kinds: ['automation', 'subagent'] }));
-
-    expect((await app.request(`/runs/${run.id}`)).status).toBe(404);
-    expect((await app.request(`/runs/${run.id}/events`)).status).toBe(404);
-    expect(
-      (
-        await app.request(`/runs/${run.id}/commands`, {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ type: 'cancel', expected_version: run.version, idempotency_key: 'denied-run' }),
-        })
-      ).status,
-    ).toBe(404);
-    expect(
-      (
-        await app.request(`/interrupts/${interrupt.id}/commands`, {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({
-            type: 'approve',
-            expected_version: interrupt.version,
-            idempotency_key: 'denied-interrupt',
-          }),
-        })
-      ).status,
-    ).toBe(404);
-    expect(runtime.getRunDetail).not.toHaveBeenCalled();
-    expect(runtime.listEvents).not.toHaveBeenCalled();
-    expect(runtime.executeRunDomainCommand).not.toHaveBeenCalled();
-  });
-
   it('keeps Workflow source rows super-only even when a team user owns the projection', async () => {
     const workflow = runRow({
       id: 'rtw_workflow_1',
@@ -326,118 +261,5 @@ describe('Runtime API authorization and wire', () => {
 
     expect((await appFor({ id: 'owner', role: 'team' }).request(`/runs/${workflow.id}`)).status).toBe(404);
     expect(runtime.getRunDetail).not.toHaveBeenCalled();
-  });
-
-  it('re-checks source authorization while the persistent command fence is held', async () => {
-    const run = runRow();
-    mocks.featureAllowed.mockResolvedValueOnce(true).mockResolvedValueOnce(true).mockResolvedValueOnce(false);
-    const runtime = {
-      getRun: vi.fn().mockResolvedValue(run),
-      executeRunDomainCommand: vi.fn(
-        async (
-          _command: unknown,
-          _actor: unknown,
-          effect: (context: { run: RuntimeRunRow; may_drive: boolean }) => Promise<void>,
-        ) => {
-          await effect({ run, may_drive: true });
-          return { run, idempotent: false };
-        },
-      ),
-    };
-    mocks.getDb.mockReturnValue({ runtime, agentRuns: { getRunById: vi.fn() } });
-
-    const response = await appFor({ id: 'owner', role: 'team' }).request(`/runs/${run.id}/commands`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ type: 'cancel', expected_version: run.version, idempotency_key: 'revoked-command' }),
-    });
-
-    expect(response.status).toBe(404);
-    expect(mocks.missionController.cancelRun).not.toHaveBeenCalled();
-    expect(mocks.mirrorMissionRunById).not.toHaveBeenCalled();
-  });
-
-  it('treats a domain-settled Mission command as a crash-window retry without mutating the read model', async () => {
-    const stale = runRow({ version: 3 });
-    const mirrored = runRow({ status: 'canceled', desired_state: 'cancel', version: 4 });
-    const runtime = {
-      getRun: vi.fn().mockResolvedValue(stale),
-      executeRunDomainCommand: vi.fn(
-        async (
-          _command: unknown,
-          _actor: unknown,
-          effect: (context: { run: RuntimeRunRow; may_drive: boolean }) => Promise<void>,
-        ) => {
-          await effect({ run: stale, may_drive: false });
-          return { run: stale, idempotent: false };
-        },
-      ),
-    };
-    const agentRuns = { getRunById: vi.fn().mockResolvedValue({ id: 'car_1', status: 'canceled' }) };
-    mocks.getDb.mockReturnValue({ runtime, agentRuns });
-    mocks.mirrorMissionRunById.mockResolvedValue(mirrored);
-
-    const response = await appFor({ id: 'owner', role: 'team' }).request(`/runs/${stale.id}/commands`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ type: 'cancel', expected_version: 2, idempotency_key: 'cancel-after-crash' }),
-    });
-
-    expect(response.status).toBe(200);
-    expect((await response.json()) as unknown).toMatchObject({ run: { status: 'canceled', version: 4 } });
-    expect(mocks.missionController.cancelRun).not.toHaveBeenCalled();
-    expect(runtime.executeRunDomainCommand).toHaveBeenCalledWith(
-      expect.objectContaining({ idempotency_key: 'cancel-after-crash' }),
-      'owner',
-      expect.any(Function),
-    );
-  });
-
-  it('records an already-decided approval after deferred mirror without commanding the interrupt read model', async () => {
-    const run = runRow({ version: 4 });
-    const pending = interruptRow({
-      version: 2,
-      payload: JSON.stringify({ source: 'mission_approval', approval_id: 'caa_1' }),
-    });
-    const resolved = interruptRow({
-      version: 3,
-      status: 'resolved',
-      payload: pending.payload,
-      decision: JSON.stringify({ source_status: 'approved' }),
-    });
-    const runtime = {
-      getInterrupt: vi.fn().mockResolvedValueOnce(pending).mockResolvedValue(resolved),
-      getRun: vi.fn().mockResolvedValue(run),
-      getEventByIdempotency: vi.fn().mockResolvedValue(undefined),
-      appendEvent: vi.fn().mockResolvedValue({}),
-      commandInterrupt: vi.fn(),
-    };
-    const agentRuns = {
-      getRunById: vi.fn().mockResolvedValue({ id: 'car_1', user_id: 'owner' }),
-      getApprovalById: vi
-        .fn()
-        .mockResolvedValue({ id: 'caa_1', run_id: 'car_1', user_id: 'owner', status: 'approved' }),
-      decideApproval: vi.fn(),
-    };
-    mocks.getDb.mockReturnValue({ runtime, agentRuns });
-    mocks.mirrorMissionRunById.mockResolvedValue(run);
-
-    const response = await appFor({ id: 'owner', role: 'team' }).request(`/interrupts/${pending.id}/commands`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ type: 'approve', expected_version: 1, idempotency_key: 'approve-after-crash' }),
-    });
-
-    expect(response.status).toBe(200);
-    expect((await response.json()) as unknown).toMatchObject({ interrupt: { status: 'resolved', version: 3 } });
-    expect(agentRuns.decideApproval).not.toHaveBeenCalled();
-    expect(runtime.commandInterrupt).not.toHaveBeenCalled();
-    expect(runtime.appendEvent).toHaveBeenCalledWith(
-      expect.objectContaining({
-        run_id: run.id,
-        type: 'interrupt.domain_commanded',
-        idempotency_key: 'approve-after-crash',
-      }),
-    );
   });
 });

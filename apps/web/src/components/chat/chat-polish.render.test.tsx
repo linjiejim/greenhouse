@@ -80,25 +80,6 @@ describe('chat presentation polish', () => {
     expect(html).not.toContain('Analyzed image');
   });
 
-  it('renders a durable Mission outcome as a continuation inside its dispatch turn', () => {
-    const html = inEnglish(
-      createElement(MessageBubble, {
-        role: 'assistant',
-        content: 'Task ready',
-        missionOutcome: {
-          messageId: 'cloud-agent-outcome:car_1',
-          content: 'Mission done',
-          createdAt: '2026-08-13T07:05:00Z',
-        },
-      }),
-    );
-
-    expect(html).toContain('data-mission-outcome-continuation="true"');
-    expect(html).toContain('Result');
-    expect(html).toContain('Task ready');
-    expect(html).toContain('Mission done');
-  });
-
   it('fails closed on token, timing and cost metrics unless the caller is super', () => {
     const hidden = inEnglish(
       createElement(MessageBubble, {

@@ -17,7 +17,6 @@ import { getSharedMailboxCredentials, sendFromSharedMailbox } from '../email/ser
 import { chatRunRegistry } from '../chat/runs.js';
 import { connectionManager } from '../ws/connection-manager.js';
 import { getScheduler } from '../scheduler/index.js';
-import { getCloudAgentController } from '../cloud-agent/index.js';
 import { getWorkflowEngine } from '../workflow-engine/index.js';
 import { PLATFORM_ORG_ID } from '../platform/runtime.js';
 
@@ -156,8 +155,6 @@ export async function suspendUserRuntime(userId: string): Promise<void> {
   const work: Promise<unknown>[] = [];
   const scheduler = getScheduler();
   if (scheduler) work.push(scheduler.pauseUser(userId));
-  const cloudAgent = getCloudAgentController();
-  if (cloudAgent) work.push(cloudAgent.cancelRunsForUser(userId));
   try {
     work.push(getWorkflowEngine().cancelRunsForUser(userId));
   } catch {

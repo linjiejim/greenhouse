@@ -72,7 +72,6 @@ import { applyWorkspaceEnvOverlay } from './settings/workspace-config.js';
 import uploadRoutes from './routes/upload.js';
 import adminRoutes from './routes/admin.js';
 import costValueRoutes from './routes/cost-value.js';
-import adminGatewayRoutes from './routes/admin-llm-gateway.js';
 import { wecomOAuthRoutes } from './routes/wecom-oauth.js';
 import { feishuOAuthRoutes } from './routes/feishu-oauth.js';
 import { initFeishuBot, stopFeishuBot } from './feishu/bot/client.js';
@@ -86,8 +85,6 @@ import { projectsRegistration } from './platform/projects/application.js';
 import { knowledgeRegistration } from './platform/knowledge/registration.js';
 import { tablesRegistration } from './platform/tables/application.js';
 import { initializePlatformRuntime } from './platform/runtime.js';
-import llmKeyRoutes from './routes/llm-keys.js';
-import { createLlmRelayRoutes } from './routes/llm-relay.js';
 import promptRoutes from './routes/prompts.js';
 import knowledgeRoutes from './routes/knowledge.js';
 import { createSearchRoute } from './routes/search.js';
@@ -112,9 +109,8 @@ import { createEmailRoutes } from './routes/email.js';
 import { createTasksRoute } from './routes/tasks.js';
 import { createWorkflowsRoute } from './routes/workflows.js';
 import { initWorkflowEngine } from './workflow-engine/index.js';
-import { createCloudAgentRoutes, createCloudAgentInternalRoutes } from './routes/cloud-agent.js';
 import runtimeRoutes from './routes/runtime.js';
-import { initMissionRuntime } from './cloud-agent/index.js';
+import { settleRetiredRuntimeRuns } from './runtime/retired-kinds.js';
 import { startRuntimeReconciler } from './runtime/reconciler.js';
 import { startRuntimeWorker } from './runtime/worker.js';
 import { reconcileInterruptedChatRuntimeRuns } from './chat/runtime.js';
@@ -253,11 +249,6 @@ app.get('/', (c) => {
 // Called from main() once the toolRegistry exists (needs the DB).
 
 function mountRoutes(toolRegistry: ToolRegistry) {
-  // Canonical Mission paths and their temporary technical aliases share the
-  // exact same Hono instances. Compatibility must never fork authorization or
-  // validation into a second handler implementation.
-  const missionRoutes = createCloudAgentRoutes();
-  const missionInternalRoutes = createCloudAgentInternalRoutes();
   return (
     app
       // OAuth discovery/protocol and authenticated consent routes. This root
@@ -286,7 +277,6 @@ function mountRoutes(toolRegistry: ToolRegistry) {
       .route('/api/admin/operations', costValueRoutes)
       .route('/api/admin', adminRoutes)
       .route('/api/admin/settings', adminSettingsRoutes)
-      .route('/api/admin/llm-gateway', adminGatewayRoutes)
       .route('/api/admin/feature-requests', featureRequestRoutes)
       .route('/api/admin/frictions', frictionRoutes)
       // Project management — all internal users
@@ -334,9 +324,6 @@ function mountRoutes(toolRegistry: ToolRegistry) {
       .route('/api/session-groups', sessionGroupRoutes)
       // Tool metadata — authenticated internal users
       .route('/api/tools', toolsRoutes)
-      // Team Gateway Key self-service — all internal users
-      .use('/api/auth/llm-keys/*', requireInternal())
-      .route('/api/auth/llm-keys', llmKeyRoutes)
       // WebSocket endpoint — internal users only (auth via query token)
       .route('/api/ws', wsRoutes)
       // Browser client-action results — internal user-bound and part of the typed contract
@@ -365,23 +352,6 @@ function mountRoutes(toolRegistry: ToolRegistry) {
       .use('/api/workflows', requireSuper())
       .use('/api/workflows/*', requireSuper())
       .route('/api/workflows', createWorkflowsRoute())
-      // Sandbox Runner push surface — run-bound task-token auth inside the
-      // route (exempted from central Bearer via isPublicPath). Mounted BEFORE
-      // the user-facing guards so those never intercept /internal/*. The
-      // technical path remains a compatibility alias for older runner images.
-      .route('/api/missions/internal', missionInternalRoutes)
-      .route('/api/cloud-agent/internal', missionInternalRoutes)
-      // Canonical Mission user surface. The technical cloud-agent path below
-      // remains a compatibility alias.
-      .use('/api/missions/*', requireInternal())
-      .use('/api/missions/*', requireFeature('cloud-agent'))
-      .route('/api/missions', missionRoutes)
-      // Legacy user surface — internal users behind the same feature flag.
-      .use('/api/cloud-agent/*', requireInternal())
-      .use('/api/cloud-agent/*', requireFeature('cloud-agent'))
-      .route('/api/cloud-agent', missionRoutes)
-      // LLM gateway relay (independent relay-key auth + rate limiting)
-      .route('/api/llm', createLlmRelayRoutes())
       // Agent tool proxy (login access-token auth, revalidated against the internal user)
       .route('/api/agent', createAgentRoutes(toolRegistry))
       .route('/api/mcp', createMcpRoutes(toolRegistry))
@@ -450,16 +420,20 @@ async function main() {
   const toolRegistry = createToolRegistry(dbProvider);
   await runExtensionBootHooks(dbProvider);
 
-  // Rebuild Mission/Workflow Runtime projections before accepting Execution Center
+  // Rebuild Workflow Runtime projections before accepting Execution Center
   // reads, then keep compensating domain/read-model dual writes in background.
   const runtimeReconciler = trustedExecutionPlan.runtimeReconciler
     ? await startRuntimeReconciler(dbProvider, {
         adapters: {
-          mission: trustedExecutionSwitches.missionAdapter,
           workflow: trustedExecutionSwitches.workflowAdapter,
         },
       })
     : null;
+  // Runs of kinds retired in v1.4 (Eval, Mission) can never progress again;
+  // close any that were still active at upgrade so they render as finished.
+  await settleRetiredRuntimeRuns(dbProvider).catch((error) => {
+    logger.error('[runtime] retired-kind settlement unavailable', { error: String(error) });
+  });
   // Chat is trace-only and cannot safely replay after process death. Always
   // close historical active traces, even when new Chat tracing is killed for
   // rollout; a Runtime outage must not prevent the rest of Chat from booting.
@@ -556,11 +530,6 @@ async function main() {
         },
       })
     : null;
-
-  // Mission control plane + Sandbox Runner initializes after the main platform
-  // is already serving. Missing/hung Docker hardening therefore closes only
-  // Mission admission instead of delaying Chat and health availability.
-  await initMissionRuntime();
 
   // Heartbeat: ping all WS connections every 30s. Never an unhandled rejection:
   // Node would exit the whole API over one failed tick.

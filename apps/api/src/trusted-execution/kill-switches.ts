@@ -3,7 +3,7 @@
  *
  * These are deliberately separate from per-user feature flags: operators can
  * stop a derived read model or automation loop without changing user grants or
- * taking the Mission / Workflow domain engines offline. Every switch defaults
+ * taking the Workflow domain engine offline. Every switch defaults
  * on for backward-compatible rollout, while any non-empty unrecognised value is
  * treated as off (fail closed) and reported by the health endpoint.
  */
@@ -12,7 +12,6 @@ import type { MiddlewareHandler } from 'hono';
 import type { AppEnv } from '../app-env.js';
 
 export const TRUSTED_EXECUTION_SWITCH_ENV = {
-  missionAdapter: 'RUNTIME_MISSION_ADAPTER_ENABLED',
   workflowAdapter: 'RUNTIME_WORKFLOW_ADAPTER_ENABLED',
   chatAdapter: 'RUNTIME_CHAT_ADAPTER_ENABLED',
   runtimeWorker: 'RUNTIME_WORKER_ENABLED',
@@ -25,7 +24,6 @@ export const TRUSTED_EXECUTION_SWITCH_ENV = {
 } as const;
 
 export interface TrustedExecutionSwitches {
-  missionAdapter: boolean;
   workflowAdapter: boolean;
   chatAdapter: boolean;
   runtimeWorker: boolean;
@@ -68,7 +66,6 @@ function defaultOnSwitch(env: Environment, name: string, invalidEnv: string[]): 
 export function resolveTrustedExecutionSwitches(env: Environment = process.env): TrustedExecutionSwitches {
   const invalidEnv: string[] = [];
   return {
-    missionAdapter: defaultOnSwitch(env, TRUSTED_EXECUTION_SWITCH_ENV.missionAdapter, invalidEnv),
     workflowAdapter: defaultOnSwitch(env, TRUSTED_EXECUTION_SWITCH_ENV.workflowAdapter, invalidEnv),
     chatAdapter: defaultOnSwitch(env, TRUSTED_EXECUTION_SWITCH_ENV.chatAdapter, invalidEnv),
     runtimeWorker: defaultOnSwitch(env, TRUSTED_EXECUTION_SWITCH_ENV.runtimeWorker, invalidEnv),
@@ -85,7 +82,7 @@ export function resolveTrustedExecutionSwitches(env: Environment = process.env):
 /** Effective services/surfaces after their explicit dependencies are applied. */
 export function trustedExecutionBootPlan(switches: TrustedExecutionSwitches): TrustedExecutionBootPlan {
   return {
-    runtimeReconciler: switches.missionAdapter || switches.workflowAdapter,
+    runtimeReconciler: switches.workflowAdapter,
     runtimeWorker: switches.runtimeWorker,
     chatAdapter: switches.chatAdapter,
     automationDriver: switches.runtimeWorker && switches.automationDriver,
@@ -98,10 +95,9 @@ export function trustedExecutionBootPlan(switches: TrustedExecutionSwitches): Tr
 }
 
 export function runtimeAdapterEnabled(
-  kind: 'mission' | 'workflow' | 'chat',
+  kind: 'workflow' | 'chat',
   switches: TrustedExecutionSwitches = resolveTrustedExecutionSwitches(),
 ): boolean {
-  if (kind === 'mission') return switches.missionAdapter;
   if (kind === 'workflow') return switches.workflowAdapter;
   return switches.chatAdapter;
 }
@@ -146,7 +142,6 @@ export function trustedExecutionHealthView(switches: TrustedExecutionSwitches) {
   const effective = trustedExecutionBootPlan(switches);
   return {
     adapters: {
-      mission: switches.missionAdapter,
       workflow: switches.workflowAdapter,
       chat: effective.chatAdapter,
     },

@@ -1,7 +1,7 @@
 /**
  * Tables Schema Plan — the model drafts Base/table/field changes in chat.
  *
- * DRAFT-ONLY, exactly like `workflow_plan` and `mission_dispatch`: it creates
+ * DRAFT-ONLY, exactly like `workflow_plan`: it creates
  * nothing and writes no row. It validates the plan and returns a
  * `tables_schema_plan` artifact the web renders as a card; the change is applied
  * only when the user presses Confirm on that card

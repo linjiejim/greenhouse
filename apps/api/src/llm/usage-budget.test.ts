@@ -5,7 +5,6 @@ import {
   createProviderAttemptBudgetHook,
   estimateAgentLoopTokens,
   estimateCompletionTokens,
-  estimateRelayTokens,
   reserveImageUsdBudget,
   reserveUserTokenBudget,
   settleAndRecordBudgetedUsage,
@@ -109,18 +108,11 @@ describe('provider usage-budget guard', () => {
     expect(f.reserveMonthlyUser).not.toHaveBeenCalled();
   });
 
-  it('uses conservative declared upper bounds for loops, retries, and relay defaults', () => {
+  it('uses conservative declared upper bounds for loops and retries', () => {
     expect(estimateAgentLoopTokens({ system: '', messages: [], maxSteps: 2, maxOutputTokens: 100 })).toBeGreaterThan(
       16_000,
     );
     expect(estimateCompletionTokens({ system: '', messages: [], maxOutputTokens: 100, maxRetries: 2 })).toBe(303);
-    expect(estimateRelayTokens({ messages: [] }, 20_000)).toBe(20_015);
-    expect(
-      estimateRelayTokens(
-        { messages: [], tools: [{ function: { parameters: { huge: 'x'.repeat(20_000) } } }] },
-        20_000,
-      ),
-    ).toBeGreaterThan(40_000);
   });
 
   it('reserves every configured billing credential in a registry fallback chain', async () => {

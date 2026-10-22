@@ -2,7 +2,7 @@
 
 系统 Profiles 共 2 个：**一个可选预设** Sprouty + 一个 `hidden` 的系统 profile。
 
-> **四预设已于 2026-08-01 收敛为一个**（见 [附件与预设收敛 spec](../../../../docs/specs/20260731-attachment-and-preset-convergence.md) M3）。quick / deep / K3 三份提示词逐字相同，区别只有模型；`sprouty-workflows` 与 `sprouty-mission` 是把「模式」伪装成「助手」——两个工具（`workflow_plan`、`mission_dispatch`）现在对所有内部会话装配，起草与执行都不再依赖开局选中某个预设。所有退役 id 由 `normalizeProfileId()` 归一到 `sprouty`，**不做数据迁移**。存量 mission 会话继续像 mission 一样工作，靠的是 `channel='mission'` 而不是 profile。
+> **四预设已于 2026-08-01 收敛为一个**（见 [附件与预设收敛 spec](../../../../docs/specs/20260731-attachment-and-preset-convergence.md) M3）。quick / deep / K3 三份提示词逐字相同，区别只有模型；`sprouty-workflows` 与 `sprouty-mission` 是把「模式」伪装成「助手」——`workflow_plan` 现在对所有内部会话装配，起草与执行都不再依赖开局选中某个预设。所有退役 id 由 `normalizeProfileId()` 归一到 `sprouty`，**不做数据迁移**。Missions 在 v1.4 整体删除，存量 `channel='mission'` 会话只读。
 
 **模型改由每轮选择**，所以「这个预设跑不跑得起来」的判断也从 profile 挪到了模型：`GET /api/profiles` 除 profiles 外返回 `models: listChatModels()`，该函数过掉在目录里没有任何可达 provider（`api_key_env` 未配）的模型——没配 `DEEPSEEK_API_KEY` 的部署就看不到 `deepseek-flash`，不会出现"选得到、一发消息就吃 No available providers"的虚假能力。**自定义 Agent 不参与任何过滤**：那是用户自己的数据，从他自己的列表里悄悄消失更像丢数据；它钉的模型不可达时改跑 base preset 的模型。
 
@@ -166,7 +166,7 @@ stateless Agent/MCP 不开放该文件工具。
 - 附件从当前会话的文件取（chat 面独有；stateless 的 proxy 无 session，会明确报错而不是静默跳过）。
 - **两个工具都不在 MCP 上**（2026-08-16 摘除）：`email_mutation` 的安全性全靠有人读那张草稿卡，
   而 MCP 调用方自填 `user_confirmed` 与 `confirm`，两步确认坍缩成一步；`email_query` 一并摘掉——
-  私人收件箱全文不该交给第三方客户端。`/api/agent`（CLI 与 Mission 沙箱）两者照常。
+  私人收件箱全文不该交给第三方客户端。`/api/agent`（CLI）两者照常。
 
 ### Home 工作台工具
 
@@ -215,20 +215,19 @@ stateless Agent/MCP 不开放该文件工具。
 - 目录解析按文档 owner 的树进行：team scope 只看得见 team 目录，personal 只看得见本人私有目录。
   **空目录的过滤结果是「什么都没有」而不是「全库」**——folder 过滤只准收窄。
 
-## Dispatch 工具（`workflow_plan` / `mission_dispatch` / `tables_schema_plan` / `task_capture`）
+## Dispatch 工具（`workflow_plan` / `tables_schema_plan` / `task_capture`）
 
-2026-07-31 起，编排与云端沙箱**不再是必须开局就选中的模式**：默认 Sprouty 会话里模型可以自行判断"该编排了 / 该扔进沙箱跑了"并**起草**，执行永远经用户点卡片上的按钮。方案见
+2026-07-31 起，编排**不再是必须开局就选中的模式**：默认 Sprouty 会话里模型可以自行判断"该编排了"并**起草**，执行永远经用户点卡片上的按钮。方案见
 [20260731-session-modes-tool-unification.md](../../../../docs/specs/20260731-session-modes-tool-unification.md)。
 
 | 工具 | 装配条件 | 起草产物 | 执行入口 |
 | --- | --- | --- | --- |
 | `workflow_plan` | 任意内部用户的**会话**（session-scoped；无 profile 门控、无 flag） | 计划卡（DAG，可编辑） | 卡片 Confirm → `POST /api/workflows/:id/confirm` |
-| `mission_dispatch` | 持 `cloud-agent` flag 用户的**会话** | 任务卡（prompt + 模型 + 工作区复用提示） | 卡片 Launch → `POST /api/missions/runs` |
 | `task_capture` | 任意内部用户的**会话**（`is_global`，session-scoped） | 任务草稿卡（标题/说明/正文/变量，可编辑；工具清单由服务端从会话真实调用派生） | 卡片 Create → `POST /api/prompts` |
 
-- 两者都 **session-scoped**（无状态的 proxy/MCP 面不装配——那里没有可确认的卡片），都在 `NODE_TOOL_DENYLIST` 与 `DISPATCH_TOOL_IDS` 里（workflow 节点、spawn 子会话都拿不到：headless 会话里没人能按按钮）。
+- 它们都 **session-scoped**（无状态的 proxy/MCP 面不装配——那里没有可确认的卡片），都在 `NODE_TOOL_DENYLIST` 与 `DISPATCH_TOOL_IDS` 里（workflow 节点、spawn 子会话都拿不到：headless 会话里没人能按按钮）。
 - **"什么时候值得用"的口径写在工具 description**，不写进 profile prompt——description 随 function definition 下发，覆盖所有装配面；prompt 只覆盖那一个 profile。**完整的 planner 方法论（DESIGN RULES + GATES 语义）也已折进 `workflow_plan` 的 description**，随 `sprouty-workflows` 一并退役——留在某个预设的 prompt 里等于只有选中它的人才拿得到。
-- 两个「模式预设」**均已退役**（2026-08-01）：`sprouty-mission` 唯一不可替代的能力是附件，而 `mission_dispatch` 现在能带走会话里的文件；`sprouty-workflows` 剩下的只是方法论 prompt + 一个模型，前者已进工具 description、后者已成每轮可选。
+- 两个「模式预设」**均已退役**（2026-08-01）：`sprouty-workflows` 剩下的只是方法论 prompt + 一个模型，前者已进工具 description、后者已成每轮可选；`mission_dispatch` 随 Missions 在 v1.4 删除。
 
 ## Agent-Runtime Profile (`desktop`)
 

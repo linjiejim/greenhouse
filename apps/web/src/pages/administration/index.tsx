@@ -3,7 +3,7 @@
  *
  * Split out from Settings: Settings is user-scoped personal config, while
  * Administration holds org-wide management (Users, Agent Usages,
- * Feature Requests, AI Gateway, MCP Access, Runtime Config, Branding).
+ * Feature Requests, MCP Access, Runtime Config, Branding).
  *
  * Routes the active administration sub-module to its panel. The panels
  * themselves are reused verbatim from the old Settings > Administration section.
@@ -24,7 +24,6 @@ import { UsagePanelWithUsers } from './usage';
 import { FeatureRequestsPanel } from './feature-requests';
 import { FrictionsPanel } from './frictions';
 import { UserManagementPanel } from './users';
-import { LlmGatewayAdminPanel } from './llm-gateway';
 import { McpKeysPanel } from './mcp-keys';
 import { RuntimeConfigPanel } from './runtime-config';
 import { BrandingStudioPanel } from './branding-studio';
@@ -60,7 +59,6 @@ export function AdministrationPage({ subPath }: { subPath: string }) {
       {activeModule === 'usage' && <UsagePanelWithUsers />}
       {activeModule === 'feature-requests' && <FeatureRequestsPanel />}
       {activeModule === 'frictions' && <FrictionsPanel />}
-      {activeModule === 'llm-gateway' && <LlmGatewayAdminPanel />}
       {activeModule === 'mcp-keys' && <McpKeysPanel />}
       {activeModule === 'runtime-config' && <RuntimeConfigPanel />}
       {activeModule === 'branding' && <BrandingStudioPanel />}

@@ -1,99 +1,47 @@
 /**
  * CommandMenuPopover — floating dropdown for the `/` picker.
  *
- * Two sections in one keyboard-navigable list (↑↓ walk straight across
- * sections, Enter/Tab select, Esc dismiss):
- *   • Tasks — grouped team-wide then personal; selecting one attaches
- *     structured Task context.
- *   • Skills — mission-ready Skill Center skills (only passed in when the
- *     user can launch Cloud Agent missions); selecting one attaches a skill
- *     chip whose send launches a mission directly.
+ * Tasks in one keyboard-navigable list (↑↓ walk across the team-wide then
+ * personal groups, Enter/Tab select, Esc dismiss); selecting one attaches
+ * structured Task context.
  */
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { Globe, Sparkles, User, Zap } from '../../lib/icons';
+import { Globe, User, Zap } from '../../lib/icons';
 import { PopoverWrapper } from './popover-wrapper';
 import type { UserPrompt } from '@greenhouse/types/api';
 import { useT } from '../../lib/i18n';
-import { Tag } from '../ui';
-import type { MissionRuntimeAvailability } from '../../lib/api/cloud-agent';
-import type { SkillSourceGroup } from '../../lib/api/skills';
 
 export type { UserPrompt };
-
-/** The slice of a Skill Center entry the composer needs. */
-export interface SlashSkill {
-  name: string;
-  display_name: string;
-  description: string;
-  group: SkillSourceGroup;
-}
-
-const SKILL_GROUP_ORDER: SkillSourceGroup[] = ['branding', 'business'];
-
-type MenuEntry = { kind: 'prompt'; prompt: UserPrompt } | { kind: 'skill'; skill: SlashSkill };
 
 interface CommandMenuPopoverProps {
   query: string;
   prompts: UserPrompt[];
-  /** Mission-ready skills; empty when the user lacks the cloud-agent feature. */
-  skills?: SlashSkill[];
-  /** Present for feature-enabled users so a closed runtime is visible, not a missing section. */
-  missionAvailability?: MissionRuntimeAvailability;
   onSelectPrompt: (prompt: UserPrompt) => void;
-  onSelectSkill?: (skill: SlashSkill) => void;
   onDismiss: () => void;
   anchorRef: React.RefObject<HTMLDivElement | null>;
 }
 
-export function CommandMenuPopover({
-  query,
-  prompts,
-  skills = [],
-  missionAvailability,
-  onSelectPrompt,
-  onSelectSkill,
-  onDismiss,
-  anchorRef,
-}: CommandMenuPopoverProps) {
+export function CommandMenuPopover({ query, prompts, onSelectPrompt, onDismiss, anchorRef }: CommandMenuPopoverProps) {
   const t = useT();
   const [selectedIndex, setSelectedIndex] = useState(0);
   const listRef = useRef<HTMLDivElement>(null);
 
   const q = query.toLowerCase();
-  const { filteredPrompts, globalPrompts, personalPrompts, skillGroups, flat } = useMemo(() => {
+  const { filteredPrompts, globalPrompts, personalPrompts, flat } = useMemo(() => {
     const filtered = prompts.filter(
       (p) => !q || p.title.toLowerCase().includes(q) || (p.shortcut?.toLowerCase().includes(q) ?? false),
     );
     const global = filtered.filter((p) => p.is_global);
     const personal = filtered.filter((p) => !p.is_global);
-    const matchingSkills = skills.filter(
-      (s) => !q || s.display_name.toLowerCase().includes(q) || s.name.toLowerCase().includes(q),
-    );
-    const groupedSkills = SKILL_GROUP_ORDER.map((group) => ({
-      group,
-      skills: matchingSkills.filter((skill) => skill.group === group),
-    })).filter((entry) => entry.skills.length > 0);
     return {
       filteredPrompts: filtered,
       globalPrompts: global,
       personalPrompts: personal,
-      skillGroups: groupedSkills,
       // Render order MUST match this for data-idx alignment.
-      flat: [
-        ...[...global, ...personal].map((prompt): MenuEntry => ({ kind: 'prompt', prompt })),
-        ...groupedSkills.flatMap((entry) => entry.skills.map((skill): MenuEntry => ({ kind: 'skill', skill }))),
-      ],
+      flat: [...global, ...personal],
     };
-  }, [prompts, skills, q]);
-
-  const dispatch = useCallback(
-    (entry: MenuEntry) => {
-      if (entry.kind === 'prompt') onSelectPrompt(entry.prompt);
-      else onSelectSkill?.(entry.skill);
-    },
-    [onSelectPrompt, onSelectSkill],
-  );
+  }, [prompts, q]);
 
   // Reset selection when filter changes
   useEffect(() => {
@@ -122,11 +70,11 @@ export function CommandMenuPopover({
         if (flat.length > 0) {
           e.preventDefault();
           e.stopPropagation();
-          dispatch(flat[selectedIndex]);
+          onSelectPrompt(flat[selectedIndex]);
         }
       }
     },
-    [flat, selectedIndex, dispatch, onDismiss],
+    [flat, selectedIndex, onSelectPrompt, onDismiss],
   );
 
   useEffect(() => {
@@ -139,9 +87,7 @@ export function CommandMenuPopover({
     el?.scrollIntoView({ block: 'nearest' });
   }, [selectedIndex]);
 
-  const showMissionStatus = missionAvailability !== undefined && missionAvailability !== 'ready';
-
-  if (flat.length === 0 && !showMissionStatus) {
+  if (flat.length === 0) {
     return (
       <PopoverWrapper anchorRef={anchorRef}>
         <div className="px-3 py-3 text-center">
@@ -205,43 +151,6 @@ export function CommandMenuPopover({
             })}
           </>
         )}
-        {/* Skills — selecting one arms a mission launch, hence the Tag. */}
-        {skillGroups.length > 0 && (
-          <>
-            <SectionHeader icon={<Sparkles size={10} />} label={t('chat.skillsSection')} />
-            {skillGroups.map(({ group, skills: grouped }) => (
-              <React.Fragment key={group}>
-                <SubHeader icon={<Sparkles size={10} />} label={t(`skillHub.group.${group}`)} />
-                {grouped.map((s) => {
-                  const i = idx++;
-                  return (
-                    <SkillRow
-                      key={`s-${s.name}`}
-                      skill={s}
-                      dataIdx={i}
-                      isSelected={i === selectedIndex}
-                      onSelect={(skill) => onSelectSkill?.(skill)}
-                      onHover={() => setSelectedIndex(i)}
-                    />
-                  );
-                })}
-              </React.Fragment>
-            ))}
-          </>
-        )}
-        {showMissionStatus && (
-          <>
-            <SectionHeader icon={<Sparkles size={10} />} label={t('chat.skillsSection')} />
-            <div className="px-3 py-2.5" role="status">
-              <p className="text-xs font-medium text-fg-secondary">
-                {missionAvailability === 'checking'
-                  ? t('chat.missionRuntimeChecking')
-                  : t('chat.missionRuntimeUnavailable')}
-              </p>
-              <p className="mt-0.5 text-[11px] text-fg-faint">{t('chat.missionRuntimeUnavailableHint')}</p>
-            </div>
-          </>
-        )}
       </div>
     </PopoverWrapper>
   );
@@ -301,47 +210,6 @@ function PromptRow({
           /{prompt.shortcut}
         </span>
       )}
-    </button>
-  );
-}
-
-function SkillRow({
-  skill,
-  dataIdx,
-  isSelected,
-  onSelect,
-  onHover,
-}: {
-  skill: SlashSkill;
-  dataIdx: number;
-  isSelected: boolean;
-  onSelect: (s: SlashSkill) => void;
-  onHover: () => void;
-}) {
-  const t = useT();
-  return (
-    <button
-      data-idx={dataIdx}
-      data-selected={isSelected ? 'true' : 'false'}
-      role="option"
-      aria-selected={isSelected}
-      onMouseDown={(e) => {
-        e.preventDefault();
-        onSelect(skill);
-      }}
-      onMouseEnter={onHover}
-      className={`flex w-full items-center gap-2 px-2.5 py-1.5 text-left transition-colors ${
-        isSelected ? 'bg-primary-600 text-white' : 'text-fg hover:bg-surface-muted'
-      }`}
-    >
-      <Sparkles size={12} className={`flex-shrink-0 ${isSelected ? 'text-white' : 'text-primary-fg'}`} />
-      <span className="min-w-0 flex-1 truncate text-sm font-medium" title={skill.display_name}>
-        {skill.display_name}
-      </span>
-      <span className={`flex-shrink-0 font-mono text-[11px] ${isSelected ? 'text-white' : 'text-fg-faint'}`}>
-        /{skill.name}
-      </span>
-      <Tag tone={isSelected ? 'neutral' : 'primary'}>{t('chat.skillMissionTag')}</Tag>
     </button>
   );
 }

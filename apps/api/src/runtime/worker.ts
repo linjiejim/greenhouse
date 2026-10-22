@@ -139,7 +139,7 @@ export async function startRuntimeWorker(options: RuntimeWorkerOptions): Promise
 
   const driveRegisteredKinds = async (): Promise<void> => {
     for (const [kind, driver] of driverEntries) {
-      // A long Eval/Mission execution must not block outbox delivery, stale
+      // A long driver execution must not block outbox delivery, stale
       // recovery or another registered kind. Each driver owns its DB lease and
       // heartbeat. The per-kind cap limits local pressure; the database claim
       // remains authoritative across multiple API processes.

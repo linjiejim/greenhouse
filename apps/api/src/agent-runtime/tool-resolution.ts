@@ -51,24 +51,18 @@ import { createTablesMutationTool } from '../tools/tables-mutation.js';
 import { createTablesSchemaPlanTool } from '../tools/tables-schema-plan.js';
 import { createExportDataTool } from '../tools/export-data.js';
 import { createWorkflowPlanTool } from '../tools/workflow-plan.js';
-import { createMissionDispatchTool } from '../tools/mission-dispatch.js';
 import { createTaskCaptureTool } from '../tools/task-capture.js';
 import { createReadAttachmentTool } from '../tools/read-attachment.js';
 import type { AgentProfile } from '../profiles/profile.js';
 
 /**
  * Draft-only tools whose confirm surface is a card in a HUMAN conversation — a
- * workflow graph, a cloud sandbox mission, a Tables schema change. A headless
- * child session has no user to press Confirm or Launch, so a draft made there
+ * workflow graph, a Tables schema change, a captured task. A headless
+ * child session has no user to press Confirm, so a draft made there
  * would just strand. They are stripped from every derived tool face: workflow
  * nodes (NODE_TOOL_DENYLIST) and spawned sub-sessions (below).
  */
-export const DISPATCH_TOOL_IDS: readonly string[] = [
-  'workflow_plan',
-  'mission_dispatch',
-  'tables_schema_plan',
-  'task_capture',
-];
+export const DISPATCH_TOOL_IDS: readonly string[] = ['workflow_plan', 'tables_schema_plan', 'task_capture'];
 
 /**
  * Tool ids a child session may hold at a given lineage depth. Dispatch tools
@@ -398,12 +392,6 @@ export function buildLazyServerTools(
     if (effectiveTools.includes('workflow_plan')) {
       tools.workflow_plan = createWorkflowPlanTool(db, { userId: uid, sessionId: parentSessionId });
     }
-    // mission_dispatch: same shape as workflow_plan — drafts a task card whose
-    // Launch button is the only way a sandbox run starts. Entitlement is the
-    // `cloud-agent` feature flag, resolved upstream in resolveUserTools.
-    if (effectiveTools.includes('mission_dispatch')) {
-      tools.mission_dispatch = createMissionDispatchTool(db, { userId: uid, sessionId: parentSessionId });
-    }
     // task_capture: session-scoped because the whole point is distilling THIS
     // conversation — including reading back which tools it really used, which
     // no stateless caller could supply.
@@ -414,11 +402,7 @@ export function buildLazyServerTools(
     // authorization — the model supplies the file id, so a copied one must not
     // reach another conversation's attachment.
     if (effectiveTools.includes('read_attachment')) {
-      tools.read_attachment = createReadAttachmentTool(db, {
-        userId: uid,
-        sessionId: parentSessionId,
-        canDispatchMission: effectiveTools.includes('mission_dispatch'),
-      });
+      tools.read_attachment = createReadAttachmentTool(db, { userId: uid, sessionId: parentSessionId });
     }
     if (effectiveTools.includes('call_llm')) {
       tools.call_llm = createCallLlmTool(db, {

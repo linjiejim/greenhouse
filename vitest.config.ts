@@ -33,7 +33,6 @@ export default defineConfig({
       '@greenhouse/types/workflow': resolve(__dirname, 'packages/types/src/workflow.ts'),
       '@greenhouse/types/rich-output': resolve(__dirname, 'packages/types/src/rich-output.ts'),
       '@greenhouse/types/tasks': resolve(__dirname, 'packages/types/src/tasks.ts'),
-      '@greenhouse/types/cloud-agent': resolve(__dirname, 'packages/types/src/cloud-agent.ts'),
       '@greenhouse/types/workspace-settings': resolve(__dirname, 'packages/types/src/workspace-settings.ts'),
       '@greenhouse/types/profile-manifest': resolve(__dirname, 'packages/types/src/profile-manifest.ts'),
       '@greenhouse/types/entity-links': resolve(__dirname, 'packages/types/src/entity-links.ts'),

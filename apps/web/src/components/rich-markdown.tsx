@@ -20,14 +20,12 @@ import type {
   ChartData,
   ConfirmData,
   DataTableData,
-  MissionArtifactsData,
 } from './blocks/index';
 import { ChartBlock } from './blocks/chart-block';
 import { ConfirmBlock } from './blocks/confirm-block';
 import { DataTableBlock, DataTablePendingBlock } from './blocks/datatable-block';
 import { HtmlPreviewBlock } from './blocks/html-preview-block';
 import { MermaidBlock } from './blocks/mermaid-block';
-import { MissionArtifactsBlock } from './blocks/mission-artifacts-block';
 import { ErrorBoundary } from './ui';
 import { useT } from '../lib/i18n';
 import type { MarkdownLinkTarget } from './markdown';
@@ -166,13 +164,6 @@ const MemoSegmentRenderer = React.memo(function SegmentRenderer({
       return (
         <BlockBoundary>
           <HtmlPreviewBlock code={segment.code} title={segment.title} compact={compact} />
-        </BlockBoundary>
-      );
-
-    case 'mission-artifacts':
-      return (
-        <BlockBoundary>
-          <MissionArtifactsBlock data={segment.data as MissionArtifactsData} />
         </BlockBoundary>
       );
 

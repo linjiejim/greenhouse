@@ -298,7 +298,7 @@ const profiles = new Hono<AppEnv>()
     // This MUST use the same resolver the tool picker is built from
     // (GET /api/tools → resolveUserTools). Recomputing it as
     // `global ∪ assigned` omits the tools a feature flag owns — memory, CRM,
-    // Tables, mission_dispatch — so those appeared in the editor and then 403'd
+    // Tables — so those appeared in the editor and then 403'd
     // on save, for every non-super member. Two spellings of "what may this user
     // use" is one too many.
     if (authUser.role !== 'super') {

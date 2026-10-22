@@ -113,7 +113,7 @@ const WORKSPACE_SETTINGS_LITERAL = [
     key: 'llm.model',
     group: 'llm',
     label: 'Default model',
-    description: 'Model id served as the `flash` logical model (chat default, relay default)',
+    description: 'Model id served as the `flash` logical model (chat default)',
     type: 'string',
     env: 'LLM_MODEL',
     placeholder: 'gpt-4o-mini',

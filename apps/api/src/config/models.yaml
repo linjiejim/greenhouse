@@ -1,9 +1,9 @@
 # ─────────────────────────────────────────────────────────────────────────────
 # Model catalog — the single definition of every model this deployment can use.
 #
-# Consumed by BOTH the chat/agent runtime (profiles reference these ids) and the
-# outbound OpenAI-compatible relay at /api/llm. There is no second catalog and
-# no database copy: change a model here, redeploy, done.
+# Consumed by the chat/agent runtime (profiles and the per-turn picker reference
+# these ids). There is no second catalog and no database copy: change a model
+# here, redeploy, done.
 #
 # SECRETS NEVER LIVE HERE. Each provider names the env var holding its key
 # (`api_key_env`); a provider whose env var is unset is silently skipped, so the
@@ -90,17 +90,6 @@ models:
 # send a model.
 chat:
   selectable:
-    - flash
-    - pro
-    - deepseek-flash
-
-# ─── Outbound relay (/api/llm) ────────────────────────────
-# Which of the models above external clients may request, and which one a key
-# with no explicit subset gets by default. A model left out stays reachable
-# only through a key whose `allowed_models` lists it.
-relay:
-  default: flash
-  public:
     - flash
     - pro
     - deepseek-flash

@@ -181,29 +181,4 @@ describe('ChatInput responsive layout', () => {
     expect(html).toContain('aria-label="Remove Task Market research"');
     expect(html.match(/aria-label="Send"/g)).toHaveLength(2);
   });
-
-  it('shows an explicit Mission target inside the reused composer', () => {
-    const html = renderToStaticMarkup(
-      createElement(I18nProvider, {
-        initialLocale: 'en',
-        children: createElement(ChatInput, {
-          input: 'Continue with the comparison',
-          setInput: vi.fn(),
-          isStreaming: false,
-          pendingImages: [],
-          onSend: vi.fn(),
-          onStop: vi.fn(),
-          onImageSelect: vi.fn(),
-          onRemoveImage: vi.fn(),
-          missionInstruction: true,
-          onRemoveMissionInstruction: vi.fn(),
-        }),
-      }),
-    );
-
-    expect(html).toContain('data-mission-instruction="true"');
-    expect(html).toContain('Mission');
-    expect(html).not.toContain('Competitor research');
-    expect(html).toContain('Remove Mission instruction target');
-  });
 });

@@ -2,9 +2,10 @@
  * Drizzle schema — trusted Runtime control plane (PostgreSQL).
  *
  * Runtime is the canonical execution envelope shared by Chat, Automation,
- * Workflow, Mission, Subagent and Eval. Domain tables remain the source of
- * their own graph/workspace/transcript facts while these rows provide one
- * durable lifecycle, lease, interrupt and delivery protocol.
+ * Workflow and Subagent (`mission` / `eval` remain as kinds of historical runs
+ * whose modules were retired in v1.4). Domain tables remain the source of their
+ * own graph/transcript facts while these rows provide one durable lifecycle,
+ * lease, interrupt and delivery protocol.
  *
  * Payload columns deliberately store complete JSON-as-text and have no TTL.
  * Actor/session/source/audit identifiers are logical references so execution
@@ -43,7 +44,7 @@ export const runtimeRuns = pgTable(
     }),
     /** Root runs point root_run_id to their own id; this lineage lookup is logical. */
     root_run_id: text('root_run_id').notNull(),
-    /** Logical link to the domain fact (agent_runs/workflow_runs/etc.). */
+    /** Logical link to the domain fact (workflow_runs, scheduled task, spawned session, …). */
     source_kind: text('source_kind').notNull(),
     source_id: text('source_id').notNull(),
     idempotency_key: text('idempotency_key'),

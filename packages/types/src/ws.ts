@@ -6,7 +6,6 @@
  */
 
 import type { ChatRunStatus } from './api.js';
-import type { AgentRunStatus } from './cloud-agent.js';
 
 // ─── Online User ─────────────────────────────────────────
 
@@ -65,18 +64,6 @@ export type ServerWsEvent =
       sessionId: string;
       runId: string;
       status: ChatRunStatus;
-    }
-  // Cloud Agent mission lifecycle: a sandbox run of the owner's changed state.
-  // Third sibling of chat:run / workflow:progress and deliberately the same
-  // shape — id + status only. Content stays on the run's event replay
-  // (GET /api/missions/runs/:id/events?after=); pushing it here would be a
-  // second, competing delivery path (session-modes spec D7).
-  | {
-      type: 'mission:run';
-      runId: string;
-      /** The conversation the run speaks through, when it has one. */
-      sessionId?: string | null;
-      status: AgentRunStatus;
     }
   // Cross-domain Execution Center invalidation. Payload contents stay on the
   // authenticated Runtime API; WS carries only identity and sequence.

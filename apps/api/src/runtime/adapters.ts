@@ -1,5 +1,5 @@
 /**
- * Runtime read-model adapters for Mission and Workflow.
+ * Runtime read-model adapter for Workflow.
  *
  * Domain rows remain execution truth during convergence. These adapters only
  * mirror immutable inputs, lifecycle snapshots, steps, artifacts and human
@@ -9,8 +9,6 @@
 
 import { createHash } from 'node:crypto';
 import type {
-  AgentRunApprovalRow,
-  AgentRunRow,
   DatabaseProvider,
   RuntimeInterruptRow,
   RuntimeRunRow,
@@ -65,20 +63,12 @@ interface AdvanceRunOptions {
   suppressTerminalNotification?: boolean;
 }
 
-export function missionRuntimeRunId(sourceId: string): string {
-  return `rtm_${sourceId}`;
-}
-
 export function workflowRuntimeRunId(sourceId: string): string {
   return `rtw_${sourceId}`;
 }
 
 function workflowRuntimeStepId(sourceId: number): string {
   return `rtws_${sourceId}`;
-}
-
-function missionRuntimeStepId(sourceId: string): string {
-  return `rtms_${sourceId}`;
 }
 
 function jsonValue(value: unknown): RuntimeJsonValue {
@@ -130,15 +120,6 @@ function findPath<T extends string>(
   }
   return null;
 }
-
-const MISSION_RUN_STATUS: Record<AgentRunRow['status'], RuntimeRunStatus> = {
-  queued: 'queued',
-  starting: 'claimed',
-  running: 'running',
-  completed: 'succeeded',
-  failed: 'failed',
-  canceled: 'canceled',
-};
 
 const WORKFLOW_RUN_STATUS: Record<WorkflowRunRow['status'], RuntimeRunStatus> = {
   running: 'running',
@@ -290,51 +271,6 @@ async function reconcileInterruptStatus(
   );
 }
 
-async function mirrorMissionApproval(
-  db: DatabaseProvider,
-  runtimeRun: RuntimeRunRow,
-  approval: AgentRunApprovalRow,
-): Promise<void> {
-  const id = `rtmi_${approval.id}`;
-  const payload = jsonValue({
-    source: 'mission_approval',
-    approval_id: approval.id,
-    tool_id: approval.tool_id,
-    action: approval.action,
-    input_hash: approval.input_hash,
-    input: parsedJson(approval.input_json, { raw: approval.input_json }),
-  });
-  const interrupt = await db.runtime.createInterrupt({
-    id,
-    run_id: runtimeRun.id,
-    kind: 'mutation_approval',
-    payload,
-    canonical_input_hash: approval.input_hash,
-    risk_level: 'r1',
-    assignee_user_id: approval.user_id,
-    expires_at: approval.expires_at,
-    actor_user_id: approval.user_id,
-    idempotency_key: `adapter:mission:approval:${approval.id}`,
-  });
-  const target: RuntimeInterruptStatus =
-    approval.status === 'pending'
-      ? 'pending'
-      : approval.status === 'denied'
-        ? 'rejected'
-        : approval.status === 'expired'
-          ? 'expired'
-          : 'resolved';
-  if (target !== 'pending') {
-    await reconcileInterruptStatus(
-      db,
-      interrupt,
-      target,
-      approval.decided_by ?? approval.user_id,
-      jsonValue({ status: approval.status, decided_at: approval.decided_at, consumed_at: approval.consumed_at }),
-    );
-  }
-}
-
 async function mirrorWorkflowGate(
   db: DatabaseProvider,
   runtimeRun: RuntimeRunRow,
@@ -369,112 +305,6 @@ async function mirrorWorkflowGate(
       jsonValue({ status: gate.status, note: gate.note, decided_at: gate.decided_at }),
     );
   }
-}
-
-export async function mirrorMissionRun(
-  db: DatabaseProvider,
-  source: AgentRunRow,
-  options: RuntimeMirrorOptions = {},
-): Promise<RuntimeRunRow> {
-  const sourceSnapshot = jsonValue({
-    ...source,
-    input_manifest: parsedJson(source.input_manifest, []),
-  });
-  const targetStatus = MISSION_RUN_STATUS[source.status];
-  let runtimeRun = await db.runtime.createRun({
-    id: missionRuntimeRunId(source.id),
-    kind: 'mission',
-    owner_user_id: source.user_id,
-    initiated_by_user_id: source.user_id,
-    session_id: source.session_id,
-    source_kind: 'agent_run',
-    source_id: source.id,
-    idempotency_key: `mission:${source.id}`,
-    max_attempts: 1,
-    input: jsonValue({
-      title: source.title,
-      original_prompt: source.original_prompt,
-      prompt: source.prompt,
-      input_manifest: parsedJson(source.input_manifest, []),
-      model: source.model,
-      fallback_model: source.fallback_model,
-      workspace_id: source.workspace_id,
-      max_wall_ms: source.max_wall_ms,
-      max_requests: source.max_requests,
-      source_created_at: source.created_at,
-    }),
-    actor_user_id: source.user_id,
-    ...(options.suppressInitialTerminalNotification && isTerminalRunStatus(targetStatus)
-      ? { suppress_initial_terminal_notification: true }
-      : {}),
-  });
-  const suppressTerminalNotification = await creationSuppressesInitialTerminalNotification(db, runtimeRun.id);
-  runtimeRun = await advanceRun(db, runtimeRun, targetStatus, sourceSnapshot, { suppressTerminalNotification });
-  await appendSnapshot(db, runtimeRun.id, null, 'mission.run.snapshot', sourceSnapshot, source.user_id);
-
-  let missionStep = await db.runtime.createStep({
-    id: missionRuntimeStepId(source.id),
-    run_id: runtimeRun.id,
-    step_key: 'sandbox-runner',
-    kind: 'sandbox_runner_session',
-    attempt: 1,
-    input: jsonValue({ source_run_id: source.id, workspace_id: source.workspace_id }),
-    actor_user_id: source.user_id,
-  });
-  missionStep = await advanceStep(
-    db,
-    missionStep,
-    MISSION_RUN_STATUS[source.status] === 'claimed'
-      ? 'claimed'
-      : MISSION_RUN_STATUS[source.status] === 'succeeded'
-        ? 'succeeded'
-        : MISSION_RUN_STATUS[source.status],
-    sourceSnapshot,
-    { tokens: source.input_tokens + source.output_tokens },
-  );
-
-  let after = 0;
-  for (;;) {
-    const events = await db.agentRuns.listEvents(source.id, { after, limit: 1000 });
-    for (const event of events) {
-      await db.runtime.appendEvent({
-        run_id: runtimeRun.id,
-        step_id: missionStep.id,
-        type: `mission.${event.type}`,
-        payload: parsedJson(event.payload, { raw: event.payload }),
-        actor_user_id: source.user_id,
-        idempotency_key: `adapter:mission:event:${event.seq}`,
-      });
-      after = Math.max(after, event.seq);
-    }
-    if (events.length < 1000) break;
-  }
-
-  const [artifacts, approvals] = await Promise.all([
-    db.agentRuns.listArtifacts(source.id),
-    db.agentRuns.listApprovals(source.id, 200),
-  ]);
-  for (const artifact of artifacts) {
-    await db.runtime.createArtifact({
-      id: `rtma_${artifact.id}`,
-      run_id: runtimeRun.id,
-      step_id: missionStep.id,
-      direction: 'output',
-      kind: 'mission_artifact',
-      name: artifact.path.split('/').at(-1) ?? artifact.path,
-      path: artifact.path,
-      content_type: artifact.content_type,
-      size_bytes: artifact.size_bytes,
-      sha256: artifact.sha256,
-      storage_key: artifact.storage_key,
-      status: 'available',
-      source: 'agent_artifacts',
-      actor_user_id: source.user_id,
-      idempotency_key: `adapter:mission:artifact:${artifact.id}`,
-    });
-  }
-  for (const approval of approvals) await mirrorMissionApproval(db, runtimeRun, approval);
-  return runtimeRun;
 }
 
 export async function mirrorWorkflowRun(
@@ -541,16 +371,6 @@ export async function mirrorWorkflowRun(
   return runtimeRun;
 }
 
-export async function mirrorMissionRunById(
-  db: DatabaseProvider,
-  sourceId: string,
-  options: RuntimeMirrorOptions = {},
-): Promise<RuntimeRunRow | null> {
-  if (!runtimeAdapterEnabled('mission')) return null;
-  const source = await db.agentRuns.getRunById(sourceId);
-  return source ? mirrorMissionRun(db, source, options) : null;
-}
-
 export async function mirrorWorkflowRunById(
   db: DatabaseProvider,
   sourceId: string,
@@ -562,12 +382,10 @@ export async function mirrorWorkflowRunById(
 }
 
 /** Read-model failures are observable but never roll back successful domain work. */
-export function mirrorRuntimeRunSoon(kind: 'mission' | 'workflow', sourceId: string): void {
+export function mirrorRuntimeRunSoon(kind: 'workflow', sourceId: string): void {
   if (!runtimeAdapterEnabled(kind)) return;
   void import('@greenhouse/db')
-    .then(({ getDb }) =>
-      kind === 'mission' ? mirrorMissionRunById(getDb(), sourceId) : mirrorWorkflowRunById(getDb(), sourceId),
-    )
+    .then(({ getDb }) => mirrorWorkflowRunById(getDb(), sourceId))
     .catch((error) => {
       logger.error('[runtime-adapter] immediate mirror failed; reconciler will retry', {
         kind,

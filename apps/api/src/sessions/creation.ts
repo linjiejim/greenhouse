@@ -22,9 +22,6 @@ export class SessionCreationError extends Error {
 /**
  * Create an ordinary conversation after applying the same profile pinning and
  * visibility checks used by POST /api/sessions.
- *
- * Mission direct-launch also consumes this helper so it cannot mint a session
- * with a profile that ordinary Chat would reject.
  */
 export async function createOwnedSession(
   actor: SessionActor,

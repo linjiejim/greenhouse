@@ -16,7 +16,7 @@
 import type { Context, Next } from 'hono';
 import { logger } from '@greenhouse/utils/logger';
 import { getDb } from '@greenhouse/db';
-import { getClientIP } from '../auth/api-key.js';
+import { getRequestSourceIp } from '../security/request-ip.js';
 import type { AgentIdentity } from './api-auth.js';
 import { MUTATING_PROXY_ALLOWLIST } from './tool-proxy.js';
 import { mcpToolIdsForGroups } from '../tools/registry.js';
@@ -193,7 +193,7 @@ export async function recordMcpAudit(
       status_code: opts.statusCode,
       duration_ms: opts.durationMs,
       meta: opts.meta,
-      ip_address: getClientIP(c),
+      ip_address: getRequestSourceIp(c),
       error: opts.error,
     });
   } catch (err) {

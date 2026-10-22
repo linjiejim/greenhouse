@@ -69,22 +69,9 @@
 | `workflow_node_runs` | PK `id`；索引 `run_id`、`(run_id, node_id)` | 节点 × 尝试；`attempt` 递增记录回退/重试，`session_id` 指向 channel='workflow' 执行会话，保存解析后 inputs、结构化 outputs、checks_result 与 token/耗时 |
 | `workflow_gates` | PK `id`；索引 run/status | 持久化人工门；`kind=confirm_plan/before_node/after_node/escalation`，`node_id` 对 run 级门为空，决议记录 decided_by/note/decided_at |
 
-### Cloud Agent Runtime
-
-云端 disposable Pi 容器 + 每用户持久工作区（见 [runtime spec](../../../docs/specs/20260731-cloud-agent-runtime.md) 与 [hardening spec](../../../docs/specs/20260806-cloud-agent-hardening.md)）；`agent_runs` 是控制面状态机的 checkpoint（boot sweep 据此对账容器），`agent_run_events` 是 UI 时间线的唯一来源（前端不读沙箱文件系统）。
-
-| 表 | 主键 / 唯一约束 | 关键字段与用途 |
-|---|---|---|
-| `agent_workspaces` | PK `id`；索引 `user_id` | 用户持久工作区元数据；`status=active/archived`（archived = tar 包在 COS，`cos_archive_key`），`disk_bytes` 为 bigint（node_modules 可超 int4） |
-| `agent_runs` | PK `id`(`car_<hex>`)；UK `dispatch_id`；索引 user/status/workspace/session | 一次容器化 agent 任务；`dispatch_id` 让 Mission 卡重复启动幂等，`original_prompt` 保存用户原文、`prompt` 只供 runner、`input_manifest` 冻结输入；`status=queued/starting/running/completed/failed/canceled`，预算/用量、主/降级模型、容器/relay/session checkpoint 齐全；`failure_code` 给 UI 稳定诊断，`journal_storage_key` 指向终态日志，`settled_at` 表示**用户已拿到结果**——终态后产物补收完成且 outcome 消息已投递（前端据它重载转录，所以 journal 归档与 workspace 计量这类诊断/记账失败只记日志、不阻塞它；boot/tick 的 terminal-but-unsettled 恢复因此只重试真正欠用户的那件事）；同 workspace 多 run = mission 多轮续跑 |
-| `agent_run_events` | PK `id`；唯一 `(run_id, seq)`，索引 `run_id` | 步骤级事件时间线；`seq` 由 runner 单调分配，唯一索引使重推幂等（`appendEvents` ON CONFLICT DO NOTHING），web 按 `seq > after` 增量重放 |
-| `agent_artifacts` | PK `id`；索引 `run_id` | 交付产物登记；`path` 相对容器内 `/workspace/artifacts`，`storage_key` 指向 COS/本地上传存储，`sha256` 校验 |
-| `agent_run_approvals` | PK `id`(`caa_<hex>`)；索引 run/status、user/status | Cloud task-token 写工具的一次性审批租约；精确绑定 run/user/tool/canonical input hash，记录完整参数、过期、决议人及 consumed 审计，不能由 runner 的 `confirm` 自证绕过 |
-| `agent_run_outbox` | PK/FK `run_id`；索引 status/created | 每个 run 一条冻结的终态会话回写；`message_id=cloud-agent-outcome:<run_id>` 配合 session 幂等追加，失败记 attempts/last_error 并由 settle/boot/tick 重试 |
-
 ### 统一 Runtime Kernel
 
-Chat、Automation、Workflow、Mission、Subagent 与 Eval 共用的执行控制面（见 [平台收敛 spec](../../../docs/specs/20260812-trusted-execution-platform-convergence.md)）。Run/Step 的竞争迁移走 version CAS，worker 领取走 `FOR UPDATE SKIP LOCKED` + lease；heartbeat、状态迁移、永久 Event 与至少一次 Outbox 在同一事务提交。跨领域 Run command 的 `FOR UPDATE` 锁覆盖来源 side effect，再 CAS 推进 Runtime 并落 Event/Outbox，阻止同版本 pause/cancel 双执行。stale Step 只有 driver 提供安全 checkpoint 后才会把旧 attempt 终态化并排入新的 attempt，避免把不确定外部写静默重放。
+Chat、Automation、Workflow 与 Subagent 共用的执行控制面（`mission` / `eval` 只剩 v1.4 前的历史 Run）（见 [平台收敛 spec](../../../docs/specs/20260812-trusted-execution-platform-convergence.md)）。Run/Step 的竞争迁移走 version CAS，worker 领取走 `FOR UPDATE SKIP LOCKED` + lease；heartbeat、状态迁移、永久 Event 与至少一次 Outbox 在同一事务提交。跨领域 Run command 的 `FOR UPDATE` 锁覆盖来源 side effect，再 CAS 推进 Runtime 并落 Event/Outbox，阻止同版本 pause/cancel 双执行。stale Step 只有 driver 提供安全 checkpoint 后才会把旧 attempt 终态化并排入新的 attempt，避免把不确定外部写静默重放。
 
 Subagent 以 child session 作为唯一 `source_id`，完整请求保存在 Run/Step input；`parent_run_id/root_run_id` 串起 Chat、Automation、Workflow 和嵌套 Subagent。`runtime.admitSubagent()` 以稳定 tool-call identity 派生的 child/message id 为幂等边界，在同一事务写 child session、seq=0 user message、Run 与 Step，失败整笔回滚，因此不需要 boot orphan reconciler。每父 active async child admission 由内部 `createRun` advisory lock + JSON input 的 parent/mode 计数原子裁决，无进程内计数事实。整轮 Agent turn 的 `max_attempts=1`：claim-only 崩溃可在 provider/工具边界前释放 Step lease恢复，`running` stale 终态失败且不自动重放。
 
@@ -166,12 +153,11 @@ Subagent 以 child session 作为唯一 `source_id`，完整请求保存在 Run/
 | `table_dashboards` | PK `id`；UK `(base_id, name)` | Base 自定义仪表盘；revision 乐观并发 |
 | `table_dashboard_widgets` | PK `id` | KPI/Chart/records/text 组件；配置与布局是 JSON 文本，单组件最多绑定一张 Table；revision 乐观并发 |
 
-### 内部集成、LLM Relay 与反馈
+### 内部集成与反馈
 
 | 表 | 主键 / 唯一约束 | 关键字段与用途 |
 |---|---|---|
-| `api_clients` | PK `id`；UK `app_id` | 内部 A2A/Relay 客户端凭证；只存 API key hash，必须 FK 绑定内部 user；`channel=a2a/relay`，含速率/token 限额与 JSON meta |
-| `api_audit_log` | PK `id` | 集成调用审计；app、endpoint、method、user、状态、token、IP、错误与 metadata；新写入 channel 仅 a2a/cli/relay，`api` 只读兼容已移除服务的历史审计 |
+| `api_audit_log` | PK `id` | 集成调用审计（MCP `a2a`、Agent 代理 `cli`）；app、endpoint、method、user、状态、token、IP、错误与 metadata；`api` / `relay` 只是已删除入口的历史行 |
 | `feature_requests` | PK `id` | 内部需求反馈；标题、描述、提交人、状态、优先级、管理员备注与来源会话 |
 
 ### Platform Kernel v2
@@ -208,6 +194,13 @@ Subagent 以 child session 作为唯一 `source_id`，完整请求保存在 Run/
 | `eval_runs` | 评测 | 评测批次 |
 | `eval_results` | 评测 | 单题结果；FK `run_id → eval_runs` CASCADE、`dataset_id → eval_datasets` NO ACTION |
 | `chat_eval_results` | 评测 | 单条回答的 LLM judge 结果；逻辑关联 `messages.id` / `sessions.id` |
+| `agent_workspaces` | Missions | 每用户沙箱工作区；FK `user_id → users` CASCADE |
+| `agent_runs` | Missions | 一次沙箱任务；FK `user_id → users`、`workspace_id → agent_workspaces` CASCADE；逻辑关联 session 与 `relay_client_id` |
+| `agent_run_events` | Missions | 步骤事件时间线；FK `run_id → agent_runs` CASCADE |
+| `agent_artifacts` | Missions | 交付产物登记（字节在上传存储）；FK `run_id → agent_runs` CASCADE |
+| `agent_run_approvals` | Missions | 沙箱写工具审批租约；FK `run_id → agent_runs`、`user_id → users` CASCADE，`decided_by → users` SET NULL |
+| `agent_run_outbox` | Missions | 终态会话回写；PK/FK `run_id → agent_runs` CASCADE |
+| `api_clients` | LLM 中转 | 中转 / 旧 A2A key（只存 hash）；FK `user_id → users` CASCADE。`api_audit_log` 是活表，与它只有逻辑 `app_id` 关联 |
 
 退役列：`custom_profile_versions.eval_refs`（不再写入，默认 `[]`）。
 
@@ -241,14 +234,6 @@ Subagent 以 child session 作为唯一 `source_id`，完整请求保存在 Run/
 | `workflow_runs.user_id` | `users.id` | CASCADE |
 | `workflow_node_runs.run_id` | `workflow_runs.id` | CASCADE |
 | `workflow_gates.run_id` | `workflow_runs.id` | CASCADE |
-| `agent_workspaces.user_id` | `users.id` | CASCADE |
-| `agent_runs.user_id` | `users.id` | CASCADE |
-| `agent_runs.workspace_id` | `agent_workspaces.id` | CASCADE |
-| `agent_run_events.run_id` | `agent_runs.id` | CASCADE |
-| `agent_artifacts.run_id` | `agent_runs.id` | CASCADE |
-| `agent_run_approvals.run_id` / `.user_id` | `agent_runs.id` / `users.id` | CASCADE |
-| `agent_run_approvals.decided_by` | `users.id` | SET NULL |
-| `agent_run_outbox.run_id` | `agent_runs.id` | CASCADE |
 | `runtime_runs.parent_run_id` | `runtime_runs.id` | CASCADE |
 | `runtime_steps.run_id` / `.parent_step_id` | `runtime_runs.id` / `runtime_steps.id` | CASCADE / SET NULL |
 | `runtime_tool_calls.run_id` / `.step_id` | `runtime_runs.id` / `runtime_steps.id` | CASCADE / SET NULL |
@@ -268,7 +253,6 @@ Subagent 以 child session 作为唯一 `source_id`，完整请求保存在 Run/
 | `task_comments.task_id` | `tasks.id` | CASCADE |
 | `project_activities.project_id` | `projects.id` | CASCADE |
 | `project_activities.task_id` | `tasks.id` | SET NULL |
-| `api_clients.user_id` | `users.id` | CASCADE |
 | `platform_roles.org_id` | `platform_organizations.id` | CASCADE |
 | `platform_role_bindings.role_id` | `platform_roles.id` | CASCADE |
 | `platform_role_bindings.user_id` | `users.id` | CASCADE |
@@ -319,7 +303,7 @@ Subagent 以 child session 作为唯一 `source_id`，完整请求保存在 Run/
 | `users.created_by` | `users.id` | 账号创建者；删除创建者不影响账号 |
 | `account_password_links.created_by` | `users.id` | 邀请/重置签发者；刻意无 FK，管理员离职不应销毁目标账号的安全历史 |
 | `sessions.user_id` | `users.id` | 会话必须由中央鉴权绑定真实内部用户；无 FK 以保留历史 |
-| `sessions.app_id` | `api_clients.app_id` | A2A/Relay 等集成来源 |
+| `sessions.app_id` | 集成来源标识 | 历史行可能指向已退役的 `api_clients.app_id` |
 | `sessions.parent_session_id` | `sessions.id` | 派生会话谱系；父会话删除不级联 |
 | `chat_files.created_by` | `users.id` | 生成会话文件的内部用户；元数据随 session 级联，主体关系保持松散 |
 | `chat_artifact_receipts.user_id` | `users.id` | 动作回执的执行人；会话删除级联回执，主体关系保持松散 |
@@ -340,9 +324,6 @@ Subagent 以 child session 作为唯一 `source_id`，完整请求保存在 Run/
 | `workflows.created_from_session_id` | `sessions.id` | 起草计划的聊天会话；会话删除不影响图定义 |
 | `workflow_node_runs.session_id` | `sessions.id` | 节点执行会话（channel='workflow'）；会话删除保留运行记录 |
 | `workflow_gates.decided_by` | `users.id` | 门决议人审计字段 |
-| `agent_runs.relay_client_id` | `api_clients.id` | per-run relay key；run 终态时禁用 client，审计行独立留存 |
-| `agent_runs.session_id` | `sessions.id` | mission 会话（channel='mission'）；删会话保留 run 审计 |
-| `agent_run_outbox.session_id` / `.message_id` | `sessions.id` / `messages.id` | 逻辑投递目标；不设 FK，使 run 审计与重试记录不被会话生命周期反向删除 |
 | `runtime_runs.owner_user_id` / `.initiated_by_user_id` | `users.id` | 执行归属与发起人；无 FK，永久运行历史不随账号删除 |
 | `runtime_runs.session_id` | `sessions.id` | 可选会话来源；删会话不删除 Runtime 时间线 |
 | `runtime_runs.root_run_id` | `runtime_runs.id` | 根谱系查询；父子实际删除所有权由 `parent_run_id` FK CASCADE 表达 |
@@ -370,12 +351,12 @@ Subagent 以 child session 作为唯一 `source_id`，完整请求保存在 Run/
 | `table_views.owner_id` | `users.id` | personal Grid 视图所有者 |
 | Tables 各表的 `created_by/updated_by/added_by/execution_user_id/user_id` | `users.id` | Base 协作、自动化执行与通知主体，跨域松散关联；运行前校验 active internal user |
 | `table_records.values` 中 user/multi_user 值 | `users.id` | 动态用户字段；写入时校验 active internal user |
-| `api_audit_log.app_id` / `user_id` | `api_clients.app_id` / `users.id` | 审计独立于主体生命周期，允许保留已删除客户端/用户的历史 |
+| `api_audit_log.app_id` / `user_id` | `platform_oauth_clients.id`（MCP）或 `agent:<user>`（代理）/ `users.id` | 审计独立于主体生命周期，允许保留已删除客户端/用户的历史 |
 | `feature_requests.submitted_by` / `session_id` | `users.id` / `sessions.id` | 需求提出者与上下文 |
 | `platform_app_releases.created_by` | `users.id` | release 发布者 |
 | `platform_audit_events.org_id` | `platform_organizations.id` | 审计不随组织删除 |
 | `platform_audit_events.actor_id` / `on_behalf_of_user_id` | user/service/client principal | 多态审计主体 |
-| `platform_audit_events.client_id` | `platform_oauth_clients.id` 或 `api_clients.app_id` | 多类客户端逻辑标识 |
+| `platform_audit_events.client_id` | `platform_oauth_clients.id`（历史行可能是 `api_clients.app_id`） | 多类客户端逻辑标识 |
 | `platform_oauth_clients.created_by` | `users.id` | 动态注册时可空 |
 
 ## ER 关系图
@@ -486,8 +467,6 @@ erDiagram
 
 ```mermaid
 erDiagram
-    users ||--o{ api_clients : "FK CASCADE"
-    api_clients ||--o{ api_audit_log : "逻辑 app_id"
     users ||--o{ feature_requests : "逻辑 submitted_by"
     platform_organizations ||--o{ platform_roles : "FK CASCADE"
     platform_roles ||--o{ platform_role_bindings : "FK CASCADE"
@@ -507,15 +486,6 @@ erDiagram
     platform_oauth_grants ||--o{ platform_oauth_authorization_codes : "FK CASCADE"
     platform_oauth_clients ||--o{ platform_oauth_authorization_codes : "FK CASCADE"
     platform_oauth_grants ||--o{ platform_oauth_tokens : "FK CASCADE"
-    users ||--o{ agent_workspaces : "FK CASCADE"
-    users ||--o{ agent_runs : "FK CASCADE"
-    agent_workspaces ||--o{ agent_runs : "FK CASCADE"
-    agent_runs ||--o{ agent_run_events : "FK CASCADE"
-    agent_runs ||--o{ agent_artifacts : "FK CASCADE"
-    agent_runs ||--o{ agent_run_approvals : "FK CASCADE"
-    users ||--o{ agent_run_approvals : "FK CASCADE"
-    agent_runs ||--o| agent_run_outbox : "PK/FK CASCADE"
-    api_clients ||--o{ agent_runs : "逻辑 relay_client_id"
 ```
 
 ## 全文搜索与数据流

@@ -81,8 +81,7 @@ const sessions = new Hono<AppEnv>()
     // face. Every other channel is server-assigned, so any other value is ignored.
     const channel = body.channel === BROWSER_SESSION_CHANNEL ? BROWSER_SESSION_CHANNEL : undefined;
     try {
-      // `channel='mission'` is no longer minted: Mission direct-launch creates
-      // the same ordinary conversation through this shared helper.
+      // `channel='mission'` is never minted (Missions were retired in v1.4).
       const session = await createOwnedSession(authUser, { title: body.title, profileId: body.profile_id, channel });
       return c.json(session, 201);
     } catch (err) {

@@ -74,10 +74,7 @@ export function TaskRunDetail({ runId, backHref = '#/executions' }: { runId: str
   useEffect(
     () =>
       wsClient.onEvent((event) => {
-        if (
-          (event.type === 'mission:run' && event.runId === runId) ||
-          (event.type === 'workflow:progress' && event.runId === runId)
-        ) {
+        if (event.type === 'workflow:progress' && event.runId === runId) {
           void load(true);
         }
       }),

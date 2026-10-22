@@ -36,12 +36,8 @@ export interface SkillSummary {
   scan_reviewed_by: string | null;
   scan_reviewed_at: string | null;
   scan_note: string | null;
-  /** Launchable as a Cloud Agent mission (server-derived; sandbox-sync predicate). */
-  mission_ready: boolean;
   /** Trusted first-party repository group; null for user/team skills. */
   source_group: SkillSourceGroup | null;
-  /** Selectable in Chat's slash picker and accepted by direct launch. */
-  slash_selectable: boolean;
   created_at: string;
   updated_at: string;
 }

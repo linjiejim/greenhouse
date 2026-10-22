@@ -1,10 +1,9 @@
 /**
  * File-name hygiene for anything a user or an agent names.
  *
- * Shared by the Cloud Agent surface (artifact paths out, attachment names in)
- * and chat attachments, because they are the same problem and a second copy
- * would drift — the ASCII-only version of this regex is exactly what silently
- * 400'd every CJK-named deliverable on 2026-07-31.
+ * Used for chat attachment names; reuse it rather than writing a second copy —
+ * the ASCII-only version of this regex is exactly what silently 400'd every
+ * CJK-named deliverable on 2026-07-31.
  */
 
 /**
@@ -12,7 +11,7 @@
  * collapse to `_`; null only when nothing usable survives.
  *
  * ⚠️ Do not narrow this back to ASCII. It used to be
- * `/^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/`, which refused a 29-minute mission's
+ * `/^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/`, which refused a 29-minute task's
  * `ECT说明书_..._审校报告.html` over its name alone while its ASCII-named
  * sibling went through — the agent had written the file and truthfully
  * reported success, the user just never got a card. In a product whose

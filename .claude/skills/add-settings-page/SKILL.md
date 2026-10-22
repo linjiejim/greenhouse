@@ -24,7 +24,7 @@ description: >-
 现有 Settings：Preferences、Groups、Agent Connections、Connections（企微 / 飞书绑定）、
 Email Accounts、Memory（Labs，`requireFeature: 'memory'`）。
 现有 Administration：Users、Agent Usages、Feature Requests、Frictions、
-AI Gateway、MCP Access、Runtime Config、Branding Studio。
+MCP Access、Runtime Config、Branding Studio。
 
 注意 Automation、Prompt Tasks、My Agents 是**独立页面**（`#/automations`、`#/tasks`、`#/agents`），
 不是 Settings 子页；持久执行统一在 `#/executions` 执行中心。

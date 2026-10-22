@@ -64,14 +64,7 @@ export const FEATURE_FLAGS = [
     // still disable it per user in the permissions modal.
     defaultEnabled: true,
   },
-  {
-    key: 'cloud-agent',
-    label: 'Missions',
-    description: 'Long-running missions in disposable sandboxes with a persistent workspace',
-    // Baseline capability (2026-08-14) — same posture as `tables`. Runtime
-    // admission (MISSION_ENABLED + sandbox prechecks) still gates execution.
-    defaultEnabled: true,
-  },
+  // `cloud-agent` (Missions) was retired in v1.4; its stored user_features rows are ignored.
 ] as const satisfies readonly FeatureFlag[];
 
 /** Union of the core feature keys, e.g. 'memory' | 'tables'. Extension keys are plain strings. */

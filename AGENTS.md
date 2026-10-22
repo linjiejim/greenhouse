@@ -4,12 +4,12 @@
 
 Greenhouse is an open-source, AI-native enterprise agent workbench. The AI agent is the core
 of the product, not an add-on: chat, the knowledge base, projects, tables, automations,
-missions, workflows and email all share one tool layer and one permission model. The same
+workflows and email all share one tool layer and one permission model. The same
 tools members use in chat are exposed to external agents over the `/api/agent` proxy and the
 `/api/mcp` MCP server.
 
 The product serves an internal team only: members use the `team` role, admins the `super`
-role. Web, `/api/chat`, MCP and the LLM relay all bind to a real internal account — there is
+role. Web, `/api/chat`, the `/api/agent` proxy and MCP all bind to a real internal account — there is
 no anonymous / guest login and no public customer-facing agent. (Historical `external` rows
 only survive for data compatibility: the migration disables them and auth rejects their
 tokens.)
@@ -48,12 +48,6 @@ what exists." These rules are as binding as the "add" rules:
 - **Check for an existing implementation first.** Before adding a "second" retrieval / chart /
   editor / etc., register in the relevant AGENTS.md why the existing one can't be reused or
   extended. Parallel implementations without a recorded reason are not accepted.
-  - Registered: **the Mission sandbox runner loop uses a third-party harness (Pi) instead of
-    extending `@greenhouse/agent-core`** — chat-engine is turn-based (string messages,
-    `maxSteps ≤ 30`, 15-minute total timeout, no checkpoint/resume), incompatible with
-    "run for tens of minutes, survive a container swap". Pi only enters the sandbox image,
-    never the server's dependencies; replaceability is guaranteed by the runner boundary
-    (the control plane only speaks our own event protocol).
   - Registered: **the Home workbench does not reuse the `table_dashboard_widgets` storage** —
     that table is Base-scoped with a single-table data source; the workbench is user-scoped
     and spans every tool. It reuses the *components and query semantics* (`ChartBlock`,
@@ -151,11 +145,6 @@ For local dev you can start only Postgres from the same file: `docker compose up
 instead of building from source — the pull-based upgrade path for self-hosters. Keep the two
 compose files' service topology in sync.
 
-Missions additionally need the sandbox runner image (`bash scripts/build-agent-runtime.sh` →
-`greenhouse/agent-runtime`), Docker with gVisor (`runsc`), and the hardened bridge network
-(`scripts/cloud-agent-net.sh`); they stay disabled until `MISSION_ENABLED=1` and every
-preflight passes.
-
 ### Example dataset (`pnpm seed`)
 
 `data/examples/` holds a de-identified reference dataset (fictional company "Greenhouse") —
@@ -167,7 +156,7 @@ dataset populates, update the matching `data/examples/<table>.json` and its
 [`README.md`](data/examples/README.md), and add the table to `LOAD_ORDER` (FK-safe order).
 Custom agents load through `db.customProfiles.create()` so they get their immutable draft v1.
 Auth secrets are never baked in: `users.json` carries a plaintext `password` hashed at load;
-`api_clients` / `email_accounts` (instance-secret-encrypted) are not seeded.
+`email_accounts` (instance-secret-encrypted) are not seeded.
 
 ## Releasing & versioning
 
@@ -202,11 +191,6 @@ Full runbook: **[RELEASING.md](./RELEASING.md)**. The conventions an agent must 
   named itself (`<prefix>_YYYYmmdd_HHMMSS.sql.gz`, newest 7 + 8 Sundays). Every deployment's cron
   runs this script (`PG_CONTAINER` / `PG_DB` / `PG_USER` / `BACKUP_PREFIX`), never an ad-hoc
   `pg_dump | gzip` line — that is how an instance once shipped 20-byte dumps for two months.
-- **Mission egress on a blue/green host.** `scripts/cloud-agent-net.sh` takes `API_PORT=3109,3110`
-  so both API slots stay reachable from the sandbox network while everything else private stays
-  rejected. `--check` demands every listed port and tolerates extra allow rows for other ports on
-  the same gateways (the API checks with its own port; the host applied both), but nothing
-  broader may precede the deny block. Keep the host's watchdog/oneshot units on the same script.
 - **Artifacts.** API+web = the container image (primary). Browser = versioned zip
   (`pnpm -F @greenhouse/browser package`). Mobile = fingerprint CD
   (`.github/workflows/mobile.yml`, `EXPO_TOKEN`-gated): JS-only change → EAS OTA update;
@@ -225,7 +209,7 @@ greenhouse/
 │   │       ├── knowledge/    # knowledge base domain: access, search, folders, sections, export, notify, backfill
 │   │       ├── sessions/     # session access rules + creation
 │   │       ├── drive/        # drive access + upload policy
-│   │       ├── auth/         # token, middleware, password, api-key, crypto, features, public paths
+│   │       ├── auth/         # token, middleware, password, crypto, features, public paths
 │   │       ├── security/     # headers / CORS / rate limit, network egress policy, account lockout, request ip
 │   │       ├── extensions/   # the extension seam: define + index (compiled list) + boot glue + example/
 │   │       ├── settings/     # workspace-config: DB→env resolution, env overlay, validation
@@ -234,12 +218,11 @@ greenhouse/
 │   │       ├── agent-runtime/# tool proxy, MCP auth, lazy tool resolution, run-agent
 │   │       ├── platform/     # platform kernel host: manifests, applications, feature points,
 │   │       │                 #   bootstrap, OAuth server
-│   │       ├── llm/          # completion / title / memory / relay / usage budgets / media provider
+│   │       ├── llm/          # completion / title / memory / usage budgets / media provider
 │   │       ├── profiles/     # agent profile loader + access rules, the YAML presets, agent-profiles.md
 │   │       ├── scheduler/    # cron scheduler + executor (automations)
 │   │       ├── runtime/      # unified runtime kernel: runs, steps, interrupts, outbox, read models
 │   │       ├── workflow-engine/ # multi-agent task-graph engine
-│   │       ├── cloud-agent/  # Missions control plane (queue, sandbox runner lifecycle)
 │   │       ├── trusted-execution/ # deployment kill switches for the runtime layers
 │   │       ├── notifications/# notification center + durable delivery
 │   │       ├── email/        # IMAP/SMTP client, shared mailbox, security
@@ -250,8 +233,6 @@ greenhouse/
 │   │       └── cli/          # `pnpm cli` console: index.ts dispatcher + commands/*
 │   ├── web/              # React SPA — pages (administration/, settings/, executions/, …), components,
 │   │                     #   lib, stores, platform catalog, extensions/ (web half of the seam)
-│   ├── agent-runner/     # Mission sandbox runner (@greenhouse/sandbox-runner); image only,
-│   │                     #   the API never imports it
 │   ├── browser/          # Chrome extension (MV3) — side panel + options; see its src/AGENTS.md
 │   ├── desktop/          # Tauri shell — apps/web as a macOS/Windows app + native capture; features live in web, see apps/desktop/AGENTS.md
 │   └── mobile/           # Expo (React Native) app — NOT a workspace member; see its AGENTS.md
@@ -267,7 +248,7 @@ greenhouse/
 │   └── contract/         # typed API contract — re-exports apps/api's AppType + hc (web client)
 ├── skillhub/             # first-party skill packs (synced into the Skill Center on boot)
 ├── drizzle/              # migration files (single source of truth for the schema)
-├── scripts/              # gen-secrets, backup-db, run-dev, e2e-ci, build-agent-runtime, …
+├── scripts/              # gen-secrets, backup-db, run-dev, e2e-ci, capture-screens, …
 ├── tests/                # unit / db / e2e (API, HTTP) / e2e-ui (Playwright)
 ├── pnpm-workspace.yaml
 └── tsconfig.base.json    # shared TypeScript base config
@@ -288,7 +269,6 @@ greenhouse/
 | `@greenhouse/contract` | `packages/contract/` | Typed API contract (AppType + hc; **type-only import of `@greenhouse/api`**) |
 | `@greenhouse/api` | `apps/api/` | Backend app |
 | `@greenhouse/web` | `apps/web/` | Frontend app |
-| `@greenhouse/sandbox-runner` | `apps/agent-runner/` | Mission sandbox runner — built into the `greenhouse/agent-runtime` image; server code must not import it |
 | `@greenhouse/browser` | `apps/browser/` | Chrome extension (MV3) — consumes `@greenhouse/ui` |
 | `@greenhouse/desktop` | `apps/desktop/` | Tauri desktop shell (Rust + `tauri.conf.json`; the web side is `apps/web/src/lib/desktop/`). Configured per deployment through `GREENHOUSE_DESKTOP_*` build-time variables, never by editing the crate |
 | `@greenhouse/mobile` | `apps/mobile/` | Expo mobile app — **not** a workspace member (own lockfile, `pnpm mobile:install`); vendors its types |
@@ -358,14 +338,14 @@ Detailed rules live next to the code:
 | Domain | File | Scope |
 |---|---|---|
 | Database | [packages/db/src/AGENTS.md](./packages/db/src/AGENTS.md) | Service pattern, PostgreSQL, Drizzle, migrations, test isolation |
-| Backend API | [apps/api/src/AGENTS.md](./apps/api/src/AGENTS.md) | Routes, auth, security, tool system, proxy/MCP, runtime, missions, integrations |
+| Backend API | [apps/api/src/AGENTS.md](./apps/api/src/AGENTS.md) | Routes, auth, security, tool system, proxy/MCP, runtime, integrations |
 | Frontend | [apps/web/src/AGENTS.md](./apps/web/src/AGENTS.md) | Design system, components, styling, i18n, platform navigation |
 | Settings pages | [apps/web/src/pages/settings/AGENTS.md](./apps/web/src/pages/settings/AGENTS.md) | Settings / Administration modules, CRUD page conventions |
 | Browser extension | [apps/browser/src/AGENTS.md](./apps/browser/src/AGENTS.md) | MV3 lifecycle, stations, token refresh |
 | Desktop shell | [apps/desktop/AGENTS.md](./apps/desktop/AGENTS.md) | Tauri shell: hot updates (two version lines), deployment variables, native capabilities, signing |
 | Mobile | [apps/mobile/AGENTS.md](./apps/mobile/AGENTS.md) | Expo app — workspace isolation, vendored types, theme/i18n rules |
 | Agent profiles | [apps/api/src/profiles/agent-profiles.md](./apps/api/src/profiles/agent-profiles.md) | Profiles, model switching, tool scoping |
-| LLM / Agent kernel | `packages/agent-core/` + `apps/api/src/llm/` | Kernel (model factory/registry, chat-engine) in the package; completion/title/memory/relay/budget consumers in api |
+| LLM / Agent kernel | `packages/agent-core/` + `apps/api/src/llm/` | Kernel (model factory/registry, chat-engine) in the package; completion/title/memory/budget consumers in api |
 | Skill packs | [skillhub/README.md](./skillhub/README.md) | Pack layout, skills vs. MCP tools, publishing |
 
 ## Shared helpers (`packages/utils/`)
@@ -392,7 +372,7 @@ Always import these — don't reimplement:
 
 - Roles: `super` > `team` (the retired `external` role is disabled on migration and rejected
   by auth).
-- Auth module: `apps/api/src/auth/` (token, middleware, password, api-key, crypto, features).
+- Auth module: `apps/api/src/auth/` (token, middleware, password, crypto, features).
 - Route guards: `requireSuper()`, `requireInternal()` (team + super), `requireRole(...)`,
   `requireFeature(key)` (per-user flag).
 - Middleware injects `AuthUser` via `c.set('user', ...)` / `getAuthUser(c)`.
@@ -410,8 +390,8 @@ Fine-grained gating beyond roles: open a module/feature to specific internal use
 per-user by a super in Settings → Users → (user) → Permissions.
 
 - **Registry (single source)**: `FEATURE_FLAGS` in `packages/types/src/features.ts`
-  (`{ key, label, description, defaultEnabled? }`). Today: `memory`, `tables`, `cloud-agent`
-  (all `defaultEnabled: true` = opt-out).
+  (`{ key, label, description, defaultEnabled? }`). Today: `memory`, `tables` (both
+  `defaultEnabled: true` = opt-out). Stored rows of retired flags (`cloud-agent`) are ignored.
 - **Storage**: `user_features` table (`user_id × feature`, `enabled` boolean).
 - **Resolution** (`resolveUserFeatures` in `apps/api/src/auth/features.ts`): `super → all on`;
   explicit row → `row.enabled`; no row → `flag.defaultEnabled`.
@@ -426,7 +406,7 @@ tab/route/nav in `canUseFeature`.
 
 `FEATURE_POINTS` (`apps/api/src/platform/feature-points.ts`) is the server-side registry that
 maps the three mechanisms onto "what a user can do": `app` points (Knowledge / Projects /
-Tables, tied to a manifest and a capability prefix), `flag` points (Missions / Memory) and
+Tables, tied to a manifest and a capability prefix), `flag` points (Memory) and
 `toolset` points (the remaining `is_global:false` opt-in tools). Each point declares the tool
 ids it owns, so one switch controls app + REST + MCP + chat (`resolveUserTools` merges
 flag-owned tools from this map — flag-owned tools cannot be assigned directly).
@@ -479,8 +459,8 @@ are configurable from the admin UI without code or restart.
 
 ### Model catalog
 
-`apps/api/src/config/models.yaml` is the single definition of every model (chat picker and
-the `/api/llm` relay read the same catalog; there is no database copy). A provider entry
+`apps/api/src/config/models.yaml` is the single definition of every model (the chat picker and
+every agent run read it; there is no database copy). A provider entry
 names the env var holding its key (`api_key_env`) and may resolve its model id / endpoint from
 env (`model_env` / `base_url_env`) — the built-in `flash` / `pro` ids follow `LLM_*`, the native
 `deepseek-flash` (DeepSeek V4.1 Flash) entry appears once `DEEPSEEK_API_KEY` is set. The only
@@ -490,7 +470,7 @@ in 2026-09). `options` belong to the model (sampling / reasoning), never to an a
 instead of routing them through `analyze_image`; `vision_env` lets a deployment override it
 (`flash` declares `vision: true` + `vision_env: LLM_VISION`, because the default model is
 whatever `LLM_MODEL` names). A requested model the deployment can no longer reach — retired from
-the catalog or its key unset — never fails a turn: Chat, Mission launch and custom Agents fall
+the catalog or its key unset — never fails a turn: Chat and custom Agents fall
 back to the agent / deployment default.
 `@greenhouse/agent-core` keeps an env-derived fallback registry for tests and for consumers
 that boot without the file. A `flash` / `pro` entry whose `LLM_MODEL` / `LLM_BASE_URL` point at

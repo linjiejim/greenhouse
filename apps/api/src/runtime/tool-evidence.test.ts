@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { instrumentRuntimeTools, settleOpenRuntimeToolCalls } from './tool-evidence.js';
+import { hashToolInput, instrumentRuntimeTools, settleOpenRuntimeToolCalls } from './tool-evidence.js';
 
 function deferred() {
   let resolve!: () => void;
@@ -284,5 +284,14 @@ describe('Runtime live ToolCall evidence', () => {
         error_code: 'tool_outcome_unknown',
       }),
     );
+  });
+});
+
+describe('hashToolInput', () => {
+  it('binds semantically identical object input to one canonical hash', () => {
+    const left = { action: 'update', data: { z: 2, a: 1 }, ids: ['b', 'a'] };
+    const right = { ids: ['b', 'a'], data: { a: 1, z: 2 }, action: 'update' };
+    expect(hashToolInput(left)).toBe(hashToolInput(right));
+    expect(hashToolInput({ ...left, ids: ['a', 'b'] })).not.toBe(hashToolInput(left));
   });
 });

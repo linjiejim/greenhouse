@@ -2,9 +2,9 @@
  * Model catalog loader — reads `config/models.yaml` and installs it into
  * agent-core's registry at boot.
  *
- * One catalog, two consumers: the chat/agent runtime (profiles reference model
- * ids) and the outbound relay at /api/llm. Keys stay in env — the config only
- * names the variable, so nothing secret is committed or served.
+ * One catalog for the chat/agent runtime (profiles and the per-turn picker
+ * reference model ids). Keys stay in env — the config only names the variable,
+ * so nothing secret is committed or served.
  *
  * Fail-fast on a malformed file: booting with a silently-empty catalog would
  * surface much later as "no provider available" on a user's first message.
@@ -18,13 +18,6 @@ import { logger } from '@greenhouse/utils/logger';
 
 const CONFIG_PATH = resolve(import.meta.dirname, 'models.yaml');
 
-export interface RelayCatalogConfig {
-  /** Model id served when a relay key declares no subset. */
-  default: string;
-  /** Model ids external clients may request. */
-  public: string[];
-}
-
 export interface ChatCatalogConfig {
   /** Model ids a user may switch between in Chat, in picker order. */
   selectable: string[];
@@ -33,7 +26,6 @@ export interface ChatCatalogConfig {
 export interface ModelCatalog {
   models: Record<string, ModelEntry>;
   chat: ChatCatalogConfig;
-  relay: RelayCatalogConfig;
 }
 
 let catalog: ModelCatalog | null = null;
@@ -153,16 +145,7 @@ export function parseModelCatalog(source: string): ModelCatalog {
     if (!models[id]) throw new Error(`models.yaml: chat.selectable references unknown model "${id}"`);
   }
 
-  const rawRelay = doc?.relay as Record<string, unknown> | undefined;
-  const relay: RelayCatalogConfig = {
-    default: typeof rawRelay?.default === 'string' ? rawRelay.default : Object.keys(models)[0]!,
-    public: (Array.isArray(rawRelay?.public) ? (rawRelay.public as unknown[]) : Object.keys(models)).map(String),
-  };
-  for (const id of [relay.default, ...relay.public]) {
-    if (!models[id]) throw new Error(`models.yaml: relay references unknown model "${id}"`);
-  }
-
-  return { models, chat, relay };
+  return { models, chat };
 }
 
 /** Load + install the catalog. Idempotent; call once from main(). */

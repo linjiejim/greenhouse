@@ -23,7 +23,6 @@ export const ADMIN_REDIRECTS: Record<string, string> = {
   usage: 'usage',
   'feature-requests': 'feature-requests',
   frictions: 'frictions',
-  'llm-gateway': 'llm-gateway',
   'mcp-keys': 'mcp-keys',
   'runtime-config': 'runtime-config',
   branding: 'branding',

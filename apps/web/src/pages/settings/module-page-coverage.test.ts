@@ -19,7 +19,6 @@ const MODULE_PAGES: ModulePageContract[] = [
   { file: '../administration/usage.tsx', moduleId: 'admin.usage', layout: 'list' },
   { file: '../administration/feature-requests.tsx', moduleId: 'admin.feature-requests', layout: 'list' },
   { file: '../administration/frictions.tsx', moduleId: 'admin.frictions', layout: 'list' },
-  { file: '../administration/llm-gateway.tsx', moduleId: 'admin.llm-gateway', layout: 'list' },
   { file: '../administration/mcp-keys.tsx', moduleId: 'admin.mcp-keys', layout: 'list' },
   { file: '../administration/runtime-config.tsx', moduleId: 'admin.runtime-config', layout: 'form' },
   { file: '../administration/branding-studio.tsx', moduleId: 'admin.branding', layout: 'canvas' },

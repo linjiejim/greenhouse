@@ -10,11 +10,31 @@
  * tool result is released back to the model.
  */
 
+import { createHash } from 'node:crypto';
 import type { DatabaseProvider, RuntimeToolCallRow } from '@greenhouse/db';
 import type { RuntimeActionRisk, RuntimePayload, RuntimeToolCallStatus } from '@greenhouse/types/runtime';
 import { toErrorMessage } from '@greenhouse/utils/error';
 import type { ToolRegistry } from '../agent.js';
-import { hashAgentToolInput } from '../cloud-agent/approval.js';
+
+/** Key-order-independent JSON form of a tool input, so equal inputs hash equally. */
+function canonicalize(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(canonicalize);
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .filter(([, child]) => child !== undefined)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([key, child]) => [key, canonicalize(child)]),
+    );
+  }
+  return value;
+}
+
+export function hashToolInput(input: unknown): string {
+  return createHash('sha256')
+    .update(JSON.stringify(canonicalize(input ?? {})))
+    .digest('hex');
+}
 
 export interface RuntimeToolEvidenceScope {
   db: DatabaseProvider;
@@ -76,7 +96,7 @@ async function beginToolCall(
     step_id: scope.stepId,
     tool_name: input.toolName,
     input: exactPayload(input.args),
-    canonical_input_hash: hashAgentToolInput(input.args),
+    canonical_input_hash: hashToolInput(input.args),
     risk_level: risk,
     idempotency_key: key,
     actor_user_id: scope.actorUserId,

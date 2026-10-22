@@ -24,14 +24,13 @@ interface SessionDraft {
   input: string;
   annotations: Array<{ id: string; quote: string; note: string }>;
   prompt: api.UserPrompt | null;
-  skill?: SlashSkill | null;
 }
 const sessionDrafts = new Map<string, SessionDraft>();
 const DRAFT_KEY_NEW = '__new_session__';
 /** Stable empty tool-call array so the streaming overlay deps don't change every render. */
 const EMPTY_TOOL_CALLS: StreamingToolCall[] = [];
 import { safeParse } from '../../lib/utils';
-import { AlertTriangle, Image, Paperclip, Share2, Eye, X, ChevronDown, GitFork } from '../../lib/icons';
+import { AlertTriangle, Image, Share2, Eye, X, ChevronDown, GitFork } from '../../lib/icons';
 import type { LucideIcon } from '../../lib/icons';
 import * as api from '../../lib/api';
 import { ShareDialog } from '../chat/share-dialog';
@@ -41,22 +40,8 @@ import { MAX_IMAGES } from '../../lib/constants';
 import { TaskDock } from './task-dock';
 import { WorkbenchPanel } from '../workbench/workbench-panel';
 import { DEFAULT_AGENT_ID, LEGACY_AGENT_IDS } from '../../lib/agent-constants';
-import { canUseFeature } from '../../lib/features';
-import {
-  CloudAgentDisabledError,
-  createCloudAgentRun,
-  getMissionRuntimeAvailability,
-  type CloudAgentAttachmentRef,
-  type CloudAgentRun,
-  type MissionRuntimeAvailability,
-} from '../../lib/api/cloud-agent';
-import { acceptCloudAttachments, uploadPendingCloudAttachments } from '../cloud-agent/attachments';
 import { acceptAttachments, uploadPendingAttachments, MAX_ATTACHMENTS, type PendingAttachment } from './attachments';
 import { uploadChatFile, type ChatFileRef } from '../../lib/api/chat-files';
-import { listSkills } from '../../lib/api/skills';
-import type { SlashSkill } from '../chat/command-menu-popover';
-import { useMissionSession } from './use-mission-run';
-import { refreshOpenMissionPreview } from './refresh-mission-preview';
 import { ForkConfirmationDialog } from './fork-confirmation-dialog';
 import { useLocalized, useT } from '../../lib/i18n';
 import type { AssistantLaunchRequest } from '@greenhouse/types/agent-context';
@@ -66,8 +51,6 @@ import { pageActionScopeId } from '../../lib/page-action-scope';
 import type { AgentAttachment } from '../../lib/desktop/attach';
 import { CONVERSATION_SURFACE_POLICIES, type ConversationSurface } from './surface-policy';
 import { onComposerDraft } from '../../lib/composer-draft';
-import { MissionProgressMessages } from './mission-progress-messages';
-import { groupMissionOutcomes } from './mission-outcome-grouping';
 
 export type { ConversationSurface } from './surface-policy';
 
@@ -200,16 +183,6 @@ export function ConversationPane({
   // /slash command state
   const [slashPrompts, setSlashPrompts] = useState<api.UserPrompt[]>([]);
   const [selectedPrompt, setSelectedPrompt] = useState<api.UserPrompt | null>(null);
-  // Mission-ready skills for the `/` picker; empty without the cloud-agent feature.
-  const [slashSkills, setSlashSkills] = useState<SlashSkill[]>([]);
-  const [missionAvailability, setMissionAvailability] = useState<MissionRuntimeAvailability>('checking');
-  // Skill attached to this draft — sending launches a Cloud Agent mission
-  // directly (picking the skill + pressing send IS the human confirmation).
-  const [selectedSkill, setSelectedSkill] = useState<SlashSkill | null>(null);
-  // Explicitly set by Task Dock's "Add instruction" action. While present,
-  // the shared composer routes its next turn straight to this Mission's
-  // workspace instead of the ordinary chat agent.
-  const [missionInstructionTarget, setMissionInstructionTarget] = useState<CloudAgentRun | null>(null);
   /**
    * Values typed into the selected Task's `{{variable}}` form.
    *
@@ -267,24 +240,21 @@ export function ConversationPane({
     const prevKey = prevSessionIdRef.current || newDraftKey;
     if (prevKey !== draftKey) {
       // Save previous session's draft
-      sessionDrafts.set(prevKey, { input, annotations, prompt: selectedPrompt, skill: selectedSkill });
+      sessionDrafts.set(prevKey, { input, annotations, prompt: selectedPrompt });
       // Restore new session's draft (or defaults)
       const draft = sessionDrafts.get(draftKey);
       if (draft) {
         setInput(draft.input);
         setAnnotations(draft.annotations);
         setSelectedPrompt(draft.prompt);
-        setSelectedSkill(draft.skill ?? null);
         setTaskValues({});
       } else {
         setInput('');
         setAnnotations([]);
         setSelectedPrompt(null);
-        setSelectedSkill(null);
         setTaskValues({});
       }
       // Composer @-mention is per-draft — reset on switch.
-      setMissionInstructionTarget(null);
       setMentionedProfileId(null);
       profileBeforeMentionRef.current = null;
       modelBeforeMentionRef.current = null;
@@ -302,13 +272,9 @@ export function ConversationPane({
   // spinner and the turn goes out as soon as the uploads settle.
   const [imageUploadWaiting, setImageUploadWaiting] = useState(false);
   const imageWaitGuardRef = useRef(false);
-  // Mission file attachments (any type, chips above the composer; uploaded on send)
-  // One pending list for both paths — the ref kind differs (mission stages a
-  // blob by key, an ordinary chat writes a chat_files row by id) but the chips
-  // and the picking rules do not.
-  const [pendingAttachments, setPendingAttachments] = useState<
-    Array<PendingAttachment<CloudAgentAttachmentRef | ChatFileRef>>
-  >([]);
+  // File attachments (any type, chips above the composer; uploaded on send as
+  // session-owned chat_files rows).
+  const [pendingAttachments, setPendingAttachments] = useState<Array<PendingAttachment<ChatFileRef>>>([]);
   const attachmentsUploading = pendingAttachments.some((a) => a.uploading);
   // Drag-drop overlay state
   const [isDragging, setIsDragging] = useState(false);
@@ -484,58 +450,6 @@ export function ConversationPane({
       .then(setSlashPrompts)
       .catch((err) => console.warn('Failed to load prompts:', err));
   }, []);
-
-  // Check admission before exposing launchable skills. A feature-enabled user
-  // should see an explicit unavailable row instead of selecting a skill and
-  // learning about the closed runtime only after POST returns 503.
-  const canLaunchMissions = canUseFeature(currentUser, 'cloud-agent');
-  useEffect(() => {
-    if (!canLaunchMissions) {
-      setSlashSkills([]);
-      return;
-    }
-    let disposed = false;
-    setMissionAvailability('checking');
-    setSlashSkills([]);
-    void (async () => {
-      try {
-        const availability = await getMissionRuntimeAvailability();
-        if (disposed) return;
-        setMissionAvailability(availability);
-        if (availability !== 'ready') return;
-
-        // Paged to the full catalog — a truncated list would hide launchable
-        // skills while the sandbox happily mounts them.
-        const PAGE = 100;
-        const all = [];
-        for (let offset = 0; ; offset += PAGE) {
-          const { skills, total } = await listSkills({ status: 'active', limit: PAGE, offset });
-          all.push(...skills);
-          if (all.length >= total || skills.length === 0) break;
-        }
-        if (disposed) return;
-        setSlashSkills(
-          all
-            .filter((s) => s.slash_selectable && s.source_group)
-            .map((s) => ({
-              name: s.name,
-              display_name: s.display_name,
-              description: s.description,
-              group: s.source_group!,
-            })),
-        );
-      } catch (err) {
-        if (!disposed) {
-          setMissionAvailability('unavailable');
-          setSlashSkills([]);
-        }
-        console.warn('Failed to load skills:', err);
-      }
-    })();
-    return () => {
-      disposed = true;
-    };
-  }, [canLaunchMissions]);
 
   // Track current viewing session for unread logic
   // Sync session info to global UI store (for TopBar display)
@@ -800,16 +714,13 @@ export function ConversationPane({
     };
   }, [activeSession?.status, activeSession?.error, sessionId, clearSession, bumpSessionListVersion]);
 
-  // ── Mission conversations (the retired `sprouty-mission` preset) ─────────
-  // Judged by CHANNEL, not profile: the channel is the durable fact the server
-  // stamped, and the profile id is now normalized away. No new ones are
-  // created — a mission is dispatched from any conversation — but the ones
-  // that exist keep working: sends route to POST /api/cloud-agent/runs and
-  // both turns stay server-written (integration spec D1/D2).
+  // Missions were retired in v1.4. Judged by CHANNEL, not profile: the channel
+  // is the durable fact the server stamped. Their conversations still open, but
+  // read-only — the server refuses to continue them.
   const isMissionConversation = sessionChannel === 'mission';
 
-  // A background task (mission or workflow) reached a terminal state, so the
-  // server has written its outcome message — reload the transcript to show it.
+  // A background workflow reached a terminal state, so the server has written
+  // its outcome message — reload the transcript to show it.
   const reloadSettledTranscript = useCallback(() => {
     if (!sessionId) return;
     void api
@@ -823,39 +734,6 @@ export function ConversationPane({
         // Keep the current view; the next session load recovers the message.
       });
   }, [sessionId, bumpSessionListVersion]);
-
-  // A MISSION run specifically settled: reload the transcript AND, if the side
-  // pane is showing an HTML artifact this run rewrote, swap in the fresh bytes.
-  // That is what makes "edit the deck by chatting" show up in the open preview
-  // without the user hunting for the new artifact card (workflow settles reuse
-  // reloadSettledTranscript directly — they have no HTML preview to refresh).
-  const handleMissionRunSettled = useCallback(
-    (settledRunId: string) => {
-      reloadSettledTranscript();
-      void refreshOpenMissionPreview(settledRunId);
-    },
-    [reloadSettledTranscript],
-  );
-
-  // Mission runs are no longer exclusive to the mission preset: `mission_dispatch`
-  // can launch one from an ordinary chat, so the run lineage is observed for ANY
-  // conversation of a cloud-agent user. The preset-specific behaviors below
-  // (composer lockout, routing sends to /api/cloud-agent) stay keyed on
-  // `isMissionConversation` — in an ordinary chat the composer keeps talking to
-  // the chat agent while a mission runs in the background (session-modes D8).
-  const mission = useMissionSession({
-    sessionId,
-    enabled: !!sessionId && canUseFeature(currentUser, 'cloud-agent'),
-    onRunSettled: handleMissionRunSettled,
-  });
-  const {
-    runs: missionRuns,
-    activeRun: missionActiveRun,
-    latestRun: missionLatestRun,
-    loaded: missionLoaded,
-    trackRun: trackMissionRun,
-  } = mission;
-  const groupedMissionOutcomes = useMemo(() => groupMissionOutcomes(messages, missionRuns), [messages, missionRuns]);
 
   // ─── Scroll position tracking ─────────
   // Show a "jump to latest" button when the user has scrolled up away from the bottom.
@@ -911,11 +789,6 @@ export function ConversationPane({
     }
   }, [effectiveIsStreaming, effectiveStreamText, effectiveStreamToolCalls, scrollToBottom]);
 
-  // Follow the mission progress card as its timeline grows (at-bottom guarded).
-  useEffect(() => {
-    if (mission.activeRun) scrollToBottom();
-  }, [mission.activeRun, mission.events, scrollToBottom]);
-
   // Force scroll to bottom instantly on session switch.
   // Double rAF waits for the freshly-loaded messages to lay out before jumping,
   // replacing a hard-coded timeout.
@@ -937,49 +810,7 @@ export function ConversationPane({
       const isComposerSend = overrideMessage === undefined;
       const composerMessage = composePromptMessage(input, selectedPrompt, taskValues);
       const rawMsg = (isComposerSend ? composerMessage : (overrideMessage ?? '')).trim();
-      // A skill chip sends with an empty brief — the skill's own SKILL.md is
-      // the task then (only composer sends carry the chip).
-      const skillLaunch = isComposerSend && selectedSkill ? selectedSkill : null;
-      const missionInstruction = isComposerSend ? missionInstructionTarget : null;
-      if ((!rawMsg && !skillLaunch) || effectiveRunActive) return;
-
-      if ((skillLaunch || missionInstruction) && missionAvailability !== 'ready') {
-        setError(t('cloudAgent.runtimeDisabled'));
-        return;
-      }
-
-      // Missions have no inline-image path — images staged before the skill
-      // was picked would be silently dropped; make the user decide.
-      if ((skillLaunch || missionInstruction) && !isMissionConversation && pendingImages.length > 0) {
-        toast(t('chat.skillMissionImagesHint'), 'info');
-        return;
-      }
-
-      // One active run per user is enforced server-side; surface a hint
-      // instead of letting the send race the in-flight mission turn.
-      if (isMissionConversation && (missionActiveRun || (sessionId && !missionLoaded))) {
-        toast(t('chat.missionRunActiveHint'), 'info');
-        return;
-      }
-
-      // Upload pending mission attachments BEFORE touching the draft: a failed
-      // upload keeps the input and chips intact (failed chips carry the error;
-      // a retried send re-uploads only those, uploaded ones reuse their ref).
-      let missionAttachments: CloudAgentAttachmentRef[] | undefined;
-      if (isMissionConversation && pendingAttachments.length > 0) {
-        if (attachmentsUploading) return;
-        const refs = await uploadPendingCloudAttachments(
-          pendingAttachments as Array<PendingAttachment<CloudAgentAttachmentRef>>,
-          setPendingAttachments as React.Dispatch<
-            React.SetStateAction<Array<PendingAttachment<CloudAgentAttachmentRef>>>
-          >,
-        );
-        if (!refs) {
-          toast(t('cloudAgent.attachmentUploadFailed'), 'error');
-          return;
-        }
-        missionAttachments = refs;
-      }
+      if (!rawMsg || effectiveRunActive || isMissionConversation) return;
 
       // Images upload as soon as they are picked, and this send used to keep
       // only the ones already done (`filter(img => img.uploaded)`) — a send
@@ -1025,223 +856,9 @@ export function ConversationPane({
         : rawMsg;
       const msg = annotationPrefix + workbenchAwareMessage;
 
-      // Direct `/Skill` launch from an ordinary Chat is one admission request.
-      // New conversations are created by that request, after every launch
-      // validation has passed, so a rejected Mission cannot leave an empty
-      // "Untitled" session behind. Keep the draft and chips untouched until
-      // the server accepts the run.
-      if (skillLaunch && !isMissionConversation) {
-        let stagedAttachments: CloudAgentAttachmentRef[] | undefined;
-        let chatFileIds: string[] | undefined;
-        let optimisticContent = msg;
-
-        if (pendingAttachments.length > 0) {
-          if (attachmentsUploading) return;
-          if (sessionId) {
-            const refs = await uploadPendingAttachments(pendingAttachments, setPendingAttachments, (file) =>
-              uploadChatFile(sessionId, file),
-            );
-            if (!refs) {
-              toast(t('cloudAgent.attachmentUploadFailed'), 'error');
-              return;
-            }
-            const chips = refs.map((item) => {
-              const ref = item as ChatFileRef;
-              return { id: ref.id, name: ref.name, size_bytes: ref.size };
-            });
-            chatFileIds = chips.map((chip) => chip.id);
-            const fence = `\`\`\`attachments\n${JSON.stringify(chips)}\n\`\`\``;
-            optimisticContent = [msg, fence].filter(Boolean).join('\n\n');
-          } else {
-            const refs = await uploadPendingCloudAttachments(
-              pendingAttachments as Array<PendingAttachment<CloudAgentAttachmentRef>>,
-              setPendingAttachments as React.Dispatch<
-                React.SetStateAction<Array<PendingAttachment<CloudAgentAttachmentRef>>>
-              >,
-            );
-            if (!refs) {
-              toast(t('cloudAgent.attachmentUploadFailed'), 'error');
-              return;
-            }
-            stagedAttachments = refs;
-          }
-        }
-
-        const pendingId = `pending-${Date.now()}`;
-        if (optimisticContent.trim()) {
-          setMessages((prev) => [
-            ...prev,
-            {
-              clientKey: pendingId,
-              id: pendingId,
-              role: 'user',
-              content: optimisticContent,
-              reasoning: null,
-              pipeline: [],
-              references: [],
-              images: [],
-              input_tokens: null,
-              output_tokens: null,
-              cached_tokens: null,
-              reasoning_tokens: null,
-              duration_ms: null,
-              model: null,
-              created_at: new Date().toISOString(),
-            },
-          ]);
-        }
-        setError(null);
-
-        try {
-          const run = await createCloudAgentRun({
-            prompt: msg,
-            skill: skillLaunch.name,
-            write_user_turn: true,
-            ...(sessionId ? { session_id: sessionId } : { create_session_profile_id: selectedProfileId }),
-            ...(stagedAttachments?.length ? { attachments: stagedAttachments } : {}),
-            ...(chatFileIds?.length ? { chat_file_ids: chatFileIds } : {}),
-            ...(offeredModelId ? { model: offeredModelId } : {}),
-          });
-          const acceptedSessionId = run.session_id;
-          if (!acceptedSessionId) throw new Error(t('cloudAgent.createFailed'));
-
-          setInput('');
-          setSelectedPrompt(null);
-          setSelectedSkill(null);
-          setTaskValues({});
-          setAnnotations([]);
-          sessionDrafts.delete(draftKey);
-          setPendingImages([]);
-          setPendingAttachments([]);
-
-          if (!sessionId) {
-            skipNextSessionLoadRef.current = true;
-            setSessionId(acceptedSessionId);
-            setSessionProfileId(selectedProfileId);
-            if (policy.publishGlobalChatUi) {
-              window.history.replaceState(null, '', `#/chat?session=${acceptedSessionId}`);
-            }
-          }
-          trackMissionRun(run);
-          try {
-            const data = await api.getSession(acceptedSessionId);
-            setSessionTitle(data.session.title || '');
-            setMessages((prev) => reconcileMessages(prev, data.messages.map(parseMessage)));
-          } catch {
-            // The optimistic row stands in until the next session load.
-          }
-          bumpSessionListVersion();
-        } catch (err) {
-          setMessages((prev) => prev.filter((message) => message.clientKey !== pendingId));
-          if (err instanceof CloudAgentDisabledError) {
-            setMissionAvailability('unavailable');
-            setSlashSkills([]);
-            setError(t('cloudAgent.runtimeDisabled'));
-          } else {
-            setError(err instanceof Error ? err.message : t('cloudAgent.createFailed'));
-          }
-        }
-        return;
-      }
-
-      // Task Dock's "Add instruction" reuses the real composer, but the chip
-      // makes its routing explicit: this turn goes straight to the Mission
-      // workspace and is persisted as the user's next transcript message. It
-      // may queue behind an active run; the controller owns that ordering.
-      if (missionInstruction && !isMissionConversation) {
-        if (!sessionId) {
-          setMissionInstructionTarget(null);
-          setError(t('cloudAgent.createFailed'));
-          return;
-        }
-
-        let chatFileIds: string[] | undefined;
-        let optimisticContent = msg;
-        if (pendingAttachments.length > 0) {
-          if (attachmentsUploading) return;
-          const refs = await uploadPendingAttachments(pendingAttachments, setPendingAttachments, (file) =>
-            uploadChatFile(sessionId, file),
-          );
-          if (!refs) {
-            toast(t('cloudAgent.attachmentUploadFailed'), 'error');
-            return;
-          }
-          const chips = refs.map((item) => {
-            const ref = item as ChatFileRef;
-            return { id: ref.id, name: ref.name, size_bytes: ref.size };
-          });
-          chatFileIds = chips.map((chip) => chip.id);
-          const fence = `\`\`\`attachments\n${JSON.stringify(chips)}\n\`\`\``;
-          optimisticContent = [msg, fence].filter(Boolean).join('\n\n');
-        }
-
-        const pendingId = `pending-${Date.now()}`;
-        setMessages((prev) => [
-          ...prev,
-          {
-            clientKey: pendingId,
-            id: pendingId,
-            role: 'user',
-            content: optimisticContent,
-            reasoning: null,
-            pipeline: [],
-            references: [],
-            images: [],
-            input_tokens: null,
-            output_tokens: null,
-            cached_tokens: null,
-            reasoning_tokens: null,
-            duration_ms: null,
-            model: null,
-            created_at: new Date().toISOString(),
-          },
-        ]);
-        setError(null);
-
-        try {
-          const run = await createCloudAgentRun({
-            prompt: msg,
-            session_id: sessionId,
-            workspace_id: missionInstruction.workspace_id,
-            model: missionInstruction.model,
-            write_user_turn: true,
-            ...(chatFileIds?.length ? { chat_file_ids: chatFileIds } : {}),
-          });
-
-          setInput('');
-          setSelectedPrompt(null);
-          setSelectedSkill(null);
-          setMissionInstructionTarget(null);
-          setTaskValues({});
-          setAnnotations([]);
-          sessionDrafts.delete(draftKey);
-          setPendingImages([]);
-          setPendingAttachments([]);
-          trackMissionRun(run);
-          try {
-            const data = await api.getSession(sessionId);
-            setMessages((prev) => reconcileMessages(prev, data.messages.map(parseMessage)));
-          } catch {
-            // The optimistic row stands in until the next session load.
-          }
-          bumpSessionListVersion();
-        } catch (err) {
-          setMessages((prev) => prev.filter((message) => message.clientKey !== pendingId));
-          if (err instanceof CloudAgentDisabledError) {
-            setMissionAvailability('unavailable');
-            setSlashSkills([]);
-            setError(t('cloudAgent.runtimeDisabled'));
-          } else {
-            setError(err instanceof Error ? err.message : t('cloudAgent.createFailed'));
-          }
-        }
-        return;
-      }
-
       if (isComposerSend) {
         setInput('');
         setSelectedPrompt(null);
-        setSelectedSkill(null);
         setTaskValues({});
       }
       setAnnotations([]);
@@ -1273,7 +890,6 @@ export function ConversationPane({
           if (isComposerSend) {
             setInput(input);
             setSelectedPrompt(selectedPrompt);
-            setSelectedSkill(selectedSkill);
           }
           setError('Failed to create session');
           return;
@@ -1281,32 +897,27 @@ export function ConversationPane({
       }
 
       // Chat attachments upload only once the session exists — a chat_files row
-      // is session-owned, unlike a mission staging blob (which is user-owned and
-      // could go earlier). The refs ride into the turn as an ```attachments
+      // is session-owned. The refs ride into the turn as an ```attachments
       // fence: it renders as chips, and it is also how the model learns the ids
       // it can pass to read_attachment.
       let msgWithAttachments = msg;
-      if (!isMissionConversation && pendingAttachments.length > 0) {
+      if (pendingAttachments.length > 0) {
         if (attachmentsUploading) return;
         const refs = await uploadPendingAttachments(pendingAttachments, setPendingAttachments, (file) =>
           uploadChatFile(sid!, file),
         );
         if (!refs) {
-          toast(t('cloudAgent.attachmentUploadFailed'), 'error');
+          toast(t('chat.attachmentUploadFailed'), 'error');
           return;
         }
-        const chips = refs.map((item) => {
-          const ref = item as ChatFileRef;
-          return { id: ref.id, name: ref.name, size_bytes: ref.size };
-        });
+        const chips = refs.map((ref) => ({ id: ref.id, name: ref.name, size_bytes: ref.size }));
         msgWithAttachments = msg
           ? `${msg}\n\n\`\`\`attachments\n${JSON.stringify(chips)}\n\`\`\``
           : `\`\`\`attachments\n${JSON.stringify(chips)}\n\`\`\``;
         setPendingAttachments([]);
       }
 
-      // Show user message immediately (an empty-brief skill launch has nothing
-      // to show — the server writes no user turn for it either)
+      // Show user message immediately
       const pendingId = 'pending-' + Date.now();
       if (msgWithAttachments.trim()) {
         const userMsg: ParsedMessage = {
@@ -1329,42 +940,6 @@ export function ConversationPane({
         setMessages((prev) => [...prev, userMsg]);
       }
 
-      // Mission conversations enqueue a Cloud Agent run instead of streaming
-      // through /api/chat. The server writes the user turn on enqueue and the
-      // assistant outcome on the run's terminal state — reload, never persist.
-      if (isMissionConversation) {
-        try {
-          const run = await createCloudAgentRun({
-            prompt: msg,
-            ...(skillLaunch ? { skill: skillLaunch.name } : {}),
-            session_id: sid!,
-            ...(missionAttachments && missionAttachments.length > 0 ? { attachments: missionAttachments } : {}),
-            // Follow-up turns reuse the session's workspace (and its model) so
-            // the agent keeps the previous rounds' context and artifacts.
-            ...(missionLatestRun ? { workspace_id: missionLatestRun.workspace_id, model: missionLatestRun.model } : {}),
-          });
-          setPendingAttachments([]);
-          trackMissionRun(run);
-          try {
-            const data = await api.getSession(sid!);
-            setMessages((prev) => reconcileMessages(prev, data.messages.map(parseMessage)));
-          } catch {
-            // The optimistic row stands in until the next session load.
-          }
-          bumpSessionListVersion();
-        } catch (err) {
-          setMessages((prev) => prev.filter((m) => m.clientKey !== pendingId));
-          if (isComposerSend) {
-            setInput(input);
-            setSelectedPrompt(selectedPrompt);
-            setSelectedSkill(selectedSkill);
-          }
-          if (err instanceof CloudAgentDisabledError) setError(t('cloudAgent.runtimeDisabled'));
-          else setError(err instanceof Error ? err.message : t('cloudAgent.createFailed'));
-        }
-        return;
-      }
-
       // Stream via the SessionManager (above the router) so the turn keeps
       // running when the user switches sessions. Browser Client Actions are
       // handled by the manager and completion is materialized above.
@@ -1376,17 +951,10 @@ export function ConversationPane({
     [
       input,
       selectedPrompt,
-      selectedSkill,
-      missionInstructionTarget,
       taskValues,
       offeredModelId,
       effectiveRunActive,
       isMissionConversation,
-      missionActiveRun,
-      missionLatestRun,
-      missionLoaded,
-      trackMissionRun,
-      missionAvailability,
       sessionId,
       pendingImages,
       pendingAttachments,
@@ -1465,7 +1033,7 @@ export function ConversationPane({
   // ── Image upload handlers ──
   const handleImageSelect = useCallback(
     async (files: FileList | File[]) => {
-      // Mission prompts are text-only — drop drag/paste images silently.
+      // Retired Mission conversations are read-only — ignore drag/paste.
       if (isMissionConversation) return;
       const fileArray = Array.from(files).filter((f) => f.type.startsWith('image/'));
       if (fileArray.length === 0) return;
@@ -1556,45 +1124,32 @@ export function ConversationPane({
     });
   }, []);
 
-  // ── Mission attachment handlers (any file type, cap 10, ≤100 MB each) ──
+  // ── File attachment handlers (any file type, cap 10, ≤100 MB each) ──
   /**
    * The single file entry point for picker, paste and drop. It routes by file
-   * KIND, not by conversation type: an image stays on the inline path (the
-   * model sees it directly), everything else becomes an attachment. A mission
-   * composer has no inline-image path, so everything goes to attachments there.
+   * KIND: an image stays on the inline path (the model sees it directly),
+   * everything else becomes an attachment.
    */
   const handleFileSelect = useCallback(
     (files: FileList | File[]) => {
+      if (isMissionConversation) return;
       const picked = Array.from(files);
-      // Skill launches and explicit Mission instructions have no inline-image
-      // path: every picked file becomes a sandbox input attachment.
-      const images =
-        isMissionConversation || selectedSkill || missionInstructionTarget
-          ? []
-          : picked.filter((f) => f.type.startsWith('image/'));
+      const images = picked.filter((f) => f.type.startsWith('image/'));
       const others = picked.filter((f) => !images.includes(f));
       if (images.length > 0) void handleImageSelect(images);
       if (others.length === 0) return;
 
-      const { next, tooLarge, overflow } = isMissionConversation
-        ? acceptCloudAttachments(pendingAttachments as never, others)
-        : acceptAttachments(pendingAttachments, others);
-      if (tooLarge.length > 0) toast(t('cloudAgent.attachmentTooLarge', { name: tooLarge[0].name }), 'error');
-      if (overflow > 0) toast(t('cloudAgent.attachmentLimitReached', { count: MAX_ATTACHMENTS }), 'info');
+      const { next, tooLarge, overflow } = acceptAttachments(pendingAttachments, others);
+      if (tooLarge.length > 0) toast(t('chat.attachmentTooLarge', { name: tooLarge[0].name }), 'error');
+      if (overflow > 0) toast(t('chat.attachmentLimitReached', { count: MAX_ATTACHMENTS }), 'info');
       if (next !== pendingAttachments) setPendingAttachments(next);
     },
-    [handleImageSelect, isMissionConversation, missionInstructionTarget, selectedSkill, pendingAttachments, t],
+    [handleImageSelect, isMissionConversation, pendingAttachments, t],
   );
 
   const handleRemoveAttachment = useCallback((index: number) => {
     setPendingAttachments((prev) => prev.filter((_, i) => i !== index));
   }, []);
-
-  // The two paths stage their bytes differently, so an unsent draft's chips
-  // cannot survive a switch between them (a mission key is not a chat_files id).
-  useEffect(() => {
-    setPendingAttachments([]);
-  }, [isMissionConversation]);
 
   // Drag-drop handlers
   const handleDragEnter = useCallback((e: React.DragEvent) => {
@@ -1701,24 +1256,12 @@ export function ConversationPane({
         onDrop={handleDropOnChat}
       >
         {/* Drag-drop overlay */}
-        {isDragging && (
+        {isDragging && !isMissionConversation && (
           <div className="absolute inset-0 z-50 bg-primary-subtle/80 border-2 border-dashed border-primary-400 rounded-lg flex items-center justify-center pointer-events-none">
             <div className="text-center">
-              {isMissionConversation ? (
-                <>
-                  <Paperclip size={36} className="mx-auto mb-2 text-primary-fg-strong" />
-                  <p className="text-sm font-medium text-primary-fg-strong">{t('cloudAgent.dropFiles')}</p>
-                  <p className="text-xs text-primary-500 mt-1">
-                    {t('cloudAgent.dropFilesHint', { count: MAX_ATTACHMENTS })}
-                  </p>
-                </>
-              ) : (
-                <>
-                  <Image size={36} className="mx-auto mb-2 text-primary-fg-strong" />
-                  <p className="text-sm font-medium text-primary-fg-strong">{t('chat.dropImages')}</p>
-                  <p className="text-xs text-primary-500 mt-1">{t('chat.imageLimit', { count: MAX_IMAGES })}</p>
-                </>
-              )}
+              <Image size={36} className="mx-auto mb-2 text-primary-fg-strong" />
+              <p className="text-sm font-medium text-primary-fg-strong">{t('chat.dropImages')}</p>
+              <p className="text-xs text-primary-500 mt-1">{t('chat.imageLimit', { count: MAX_IMAGES })}</p>
             </div>
           </div>
         )}
@@ -1802,8 +1345,6 @@ export function ConversationPane({
 
             {!isLoadingSession &&
               messages.map((msg, idx) => {
-                if (groupedMissionOutcomes.groupedOutcomeMessageIds.has(msg.id)) return null;
-                const missionOutcome = groupedMissionOutcomes.byOriginMessageId.get(msg.id);
                 const isLastUser = msg.role === 'user' && !messages.slice(idx + 1).some((m) => m.role === 'user');
                 // Detect if this assistant message has an ask_user tool and the next message is the user's response
                 const followUpUserMessage =
@@ -1864,7 +1405,6 @@ export function ConversationPane({
                     submittedUserMessage={submittedUserMessage}
                     confirmedActionValue={followUpUserMessage}
                     previousUserMessage={previousUserMsg}
-                    missionOutcome={missionOutcome}
                     onFork={
                       policy.showProfileManagement && sessionId && sessionChannel === 'web'
                         ? requestForkSession
@@ -1882,11 +1422,6 @@ export function ConversationPane({
                 isStreaming={effectiveIsStreaming}
               />
             )}
-
-            {/* The Dock owns compact operational progress. Readable sandbox
-                assistant updates temporarily live here while the run is active;
-                the durable outcome message replaces them after settlement. */}
-            {!isLoadingSession && <MissionProgressMessages events={mission.events} active={!!mission.activeRun} />}
 
             <div ref={messagesEndRef} />
 
@@ -1918,9 +1453,11 @@ export function ConversationPane({
         )}
 
         {/* Input — read-only for workflow node sessions (engine-produced audit
-            records) and for non-owners of shared sessions */}
+            records), retired Mission conversations and non-owners of shared sessions */}
         {sessionId && sessionChannel === 'workflow' ? (
           <WorkflowNodeSessionBar parentSessionId={parentSessionId} />
+        ) : sessionId && isMissionConversation ? (
+          <ReadOnlySessionBar message={t('chat.missionSessionReadOnly')} />
         ) : sessionId && !isOwner ? (
           <ChatInput
             input={input}
@@ -1973,48 +1510,24 @@ export function ConversationPane({
             maxImages={MAX_IMAGES}
             sendWaiting={imageUploadWaiting}
             autoFocus={typeof window !== 'undefined' && window.innerWidth >= 768}
-            sendDisabled={
-              effectiveIsStopping ||
-              attachmentsUploading ||
-              (isMissionConversation && (!!mission.activeRun || (!!sessionId && !mission.loaded)))
-            }
-            // Missions have no inline-image path; every other conversation keeps
-            // images inline AND accepts files.
-            attachmentsDisabled={isMissionConversation}
+            sendDisabled={effectiveIsStopping || attachmentsUploading}
             pendingAttachments={pendingAttachments}
             onAttachmentSelect={handleFileSelect}
             onRemoveAttachment={handleRemoveAttachment}
             maxAttachments={MAX_ATTACHMENTS}
             inputRef={chatInputRef}
-            placeholder={
-              missionInstructionTarget
-                ? t('cloudAgent.dockFollowUpPlaceholder')
-                : workbenchConversationMode
-                  ? t('home.chatEditPlaceholder')
-                  : undefined
-            }
+            placeholder={workbenchConversationMode ? t('home.chatEditPlaceholder') : undefined}
             aboveSlot={
               sessionId ? (
                 <TaskDock
                   sessionId={sessionId}
-                  mission={mission}
                   workflowEnabled={currentUser?.role === 'super'}
                   onTaskSettled={reloadSettledTranscript}
-                  onAddMissionInstruction={(run) => {
-                    setSelectedSkill(null);
-                    setMissionInstructionTarget(run);
-                    setError(null);
-                    requestAnimationFrame(() => chatInputRef.current?.focus());
-                  }}
                 />
               ) : null
             }
             slashPrompts={slashPrompts}
-            slashSkills={slashSkills}
-            missionAvailability={canLaunchMissions ? missionAvailability : undefined}
             selectedPrompt={selectedPrompt}
-            selectedSkill={selectedSkill}
-            missionInstruction={!!missionInstructionTarget}
             taskValues={taskValues}
             onTaskValueChange={(key, value) => setTaskValues((prev) => ({ ...prev, [key]: value }))}
             onSelectPrompt={(prompt) => {
@@ -2027,27 +1540,6 @@ export function ConversationPane({
               setSelectedPrompt(null);
               setTaskValues({});
             }}
-            onSelectSkill={(skill) => {
-              setMissionInstructionTarget(null);
-              setSelectedSkill(skill);
-            }}
-            onRemoveSkill={() => {
-              setSelectedSkill(null);
-              // A failed new-chat Mission may already have staged user-owned
-              // blob keys. Ordinary Chat needs session-owned chat_file ids, so
-              // keep the visible files but drop only those incompatible refs;
-              // the next send re-uploads them through the correct endpoint.
-              if (!sessionId) {
-                setPendingAttachments((prev) =>
-                  prev.map((attachment) =>
-                    attachment.uploaded && 'key' in attachment.uploaded
-                      ? { file: attachment.file, uploading: false }
-                      : attachment,
-                  ),
-                );
-              }
-            }}
-            onRemoveMissionInstruction={() => setMissionInstructionTarget(null)}
             profiles={displayProfiles}
             selectedProfileId={sessionId ? sessionProfileId : selectedProfileId}
             mentionEnabled={!sessionId && displayProfiles.length > 1}
@@ -2204,6 +1696,18 @@ function ProfileEmptyState({ profile, onCustomize }: { profile?: api.Profile; on
           {t('home.customizeEntry')}
         </button>
       )}
+    </div>
+  );
+}
+
+/** Composer replacement for a conversation that can be read but not continued. */
+function ReadOnlySessionBar({ message }: { message: string }) {
+  return (
+    <div className="flex-shrink-0 border-t border-edge bg-surface-muted px-3 py-3 md:px-4">
+      <div className="mx-auto flex w-full max-w-5xl flex-wrap items-center justify-center gap-2 py-1 text-sm text-fg-muted">
+        <Eye size={14} />
+        <span>{message}</span>
+      </div>
     </div>
   );
 }

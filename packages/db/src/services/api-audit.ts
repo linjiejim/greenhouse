@@ -1,18 +1,19 @@
-/** Shared audit persistence for MCP, Agent proxy, and LLM Relay traffic. */
+/** Shared audit persistence for MCP and Agent proxy traffic. */
 
 import { eq, and, sql, desc } from 'drizzle-orm';
 import { nowIso } from '@greenhouse/utils/date';
 
 import type { Db } from '../client.js';
 import { apiAuditLog } from '../schema/index.js';
-import type { ApiAuditLogRow, ApiAuditChannel } from '../schema/api-client.js';
+import type { ApiAuditLogRow, ApiAuditChannel } from '../schema/api-audit.js';
 
 export interface ApiAuditLogInput {
   app_id: string;
   endpoint: string;
   method: string;
   user_id?: string;
-  channel: Exclude<ApiAuditChannel, 'api'>;
+  /** `api` and `relay` are read-only history from removed surfaces. */
+  channel: Exclude<ApiAuditChannel, 'api' | 'relay'>;
   status_code?: number;
   duration_ms?: number;
   input_tokens?: number;
@@ -76,18 +77,6 @@ export function createApiAuditService(db: Db) {
       }
       const row = (await query)[0];
       return Number(row?.cnt ?? 0);
-    },
-
-    /** Get daily token usage for an API client. */
-    async getDailyTokenUsage(appId: string): Promise<number> {
-      const todayStart = new Date();
-      todayStart.setHours(0, 0, 0, 0);
-      const result = await db.execute(sql`
-        SELECT COALESCE(SUM(COALESCE(input_tokens, 0) + COALESCE(output_tokens, 0)), 0) as total
-        FROM api_audit_log
-        WHERE app_id = ${appId} AND created_at >= ${todayStart.toISOString()}
-      `);
-      return Number((result as any[])[0]?.total ?? 0);
     },
   };
   return service;

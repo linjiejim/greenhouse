@@ -2,10 +2,8 @@ import { isRuntimeRunActive, type RuntimeRun } from '@greenhouse/types/runtime';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Button, Card, EmptyState, Select, SkeletonCard, Tabs } from '../../components/ui';
 import { ModulePage } from '../../components/app/module-page';
-import { CheckCircle2, ClipboardList, ListTodo, Plus, RefreshCw, ShieldAlert } from '../../lib/icons';
+import { CheckCircle2, ClipboardList, ListTodo, RefreshCw, ShieldAlert } from '../../lib/icons';
 import { useT } from '../../lib/i18n';
-import { canUseFeature } from '../../lib/features';
-import { missionExecutionHref } from '../../lib/execution-route';
 import {
   getRuntimeSummary,
   listRuntimeInterrupts,
@@ -26,7 +24,6 @@ import {
   type TaskCenterTab,
 } from './model';
 import { TaskRunList } from './task-list';
-import { NewRunDialog } from '../../components/cloud-agent/new-run-dialog';
 
 const FALLBACK_REFRESH_MS = 15_000;
 
@@ -83,8 +80,6 @@ export function TaskCenter({
   const [loadingMoreInterrupts, setLoadingMoreInterrupts] = useState(false);
   const [error, setError] = useState('');
   const [approvalUnavailable, setApprovalUnavailable] = useState('');
-  const [createMissionOpen, setCreateMissionOpen] = useState(false);
-  const canCreateMission = canUseFeature(currentUser, 'cloud-agent');
 
   const kinds = useMemo(() => taskCenterKinds(kind), [kind]);
   const load = useCallback(
@@ -132,7 +127,7 @@ export function TaskCenter({
   useEffect(
     () =>
       wsClient.onEvent((event) => {
-        if (event.type === 'mission:run' || event.type === 'workflow:progress') {
+        if (event.type === 'workflow:progress') {
           void load(true);
         }
       }),
@@ -220,12 +215,6 @@ export function TaskCenter({
       layout="list"
       actions={
         <>
-          {canCreateMission && (
-            <Button variant="outline" size="sm" onClick={() => setCreateMissionOpen(true)}>
-              <Plus size={13} className="mr-1.5" aria-hidden="true" />
-              {t('taskCenter.newMission')}
-            </Button>
-          )}
           <Button variant="outline" size="sm" onClick={() => void load()} disabled={loading}>
             <RefreshCw size={13} className="mr-1.5" aria-hidden="true" />
             {t('common.refresh')}
@@ -315,14 +304,6 @@ export function TaskCenter({
           </Button>
         </div>
       )}
-      <NewRunDialog
-        open={createMissionOpen}
-        onClose={() => setCreateMissionOpen(false)}
-        onCreated={(runId) => {
-          setCreateMissionOpen(false);
-          window.location.hash = missionExecutionHref(runId);
-        }}
-      />
     </ModulePage>
   );
 }

@@ -44,10 +44,6 @@
       "import": "./src/session.ts",
       "types": "./src/session.ts"
     },
-    "./cloud-agent": {
-      "import": "./src/cloud-agent.ts",
-      "types": "./src/cloud-agent.ts"
-    },
     "./agent-context": {
       "import": "./src/agent-context.ts",
       "types": "./src/agent-context.ts"

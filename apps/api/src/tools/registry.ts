@@ -28,7 +28,6 @@ import { computeTool } from './compute/tool.js';
 import { sessionQueryTool } from './session-query.js';
 import { spawnSessionTool } from './spawn-session.js';
 import { workflowPlanTool } from './workflow-plan.js';
-import { missionDispatchTool } from './mission-dispatch.js';
 import { taskCaptureTool } from './task-capture.js';
 import { readAttachmentTool } from './read-attachment.js';
 import { callLlmTool } from './call-llm.js';
@@ -63,7 +62,6 @@ const CORE_TOOL_MODULES: ToolModule[] = [
   sessionQueryTool,
   spawnSessionTool,
   workflowPlanTool,
-  missionDispatchTool,
   taskCaptureTool,
   readAttachmentTool,
   callLlmTool,

@@ -25,8 +25,6 @@ import {
   executeProxyTool,
   assertWorkspaceAllowed,
   ProxyToolError,
-  isMutatingProxyTool,
-  prepareProxyToolCall,
 } from '../agent-runtime/tool-proxy.js';
 import {
   agentBearerAuthMiddleware,
@@ -36,13 +34,6 @@ import {
 } from '../agent-runtime/api-auth.js';
 import type { AppEnv } from '../app-env.js';
 import { pinProfileIdForUser, ProfileAccessError } from '../profiles/access.js';
-import {
-  agentToolAction,
-  canonicalAgentToolInput,
-  cloudMutationNeedsApproval,
-  hashAgentToolInput,
-} from '../cloud-agent/approval.js';
-import { connectionManager } from '../ws/connection-manager.js';
 
 /**
  * Profile used when a request omits `profile_id`. This route is internal-only
@@ -52,8 +43,7 @@ import { connectionManager } from '../ws/connection-manager.js';
 const DEFAULT_AGENT_PROFILE_ID = 'desktop';
 /**
  * Tool inputs are schema-validated after JSON parsing, so the transport must
- * bound the raw body first. Mission task tokens can reach this route directly
- * from the sandbox network without an upstream reverse-proxy limit.
+ * bound the raw body first.
  */
 export const MAX_AGENT_TOOL_BODY_BYTES = 2 * 1024 * 1024;
 
@@ -148,18 +138,6 @@ export function createAgentRoutes(toolRegistry: ToolRegistry) {
       // Auth chain: app/CLI access token → per-user rate limit.
       .use('*', agentBearerAuthMiddleware)
       .use('*', agentRateLimitMiddleware)
-      // ── GET /approvals/:approvalId (task token only) ──
-      .get('/approvals/:approvalId', async (c) => {
-        const identity = getAgentIdentity(c);
-        if (identity.credential !== 'task' || !identity.runId) {
-          return c.json({ error: { message: 'Run-bound task token required', type: 'auth_error' } }, 403);
-        }
-        const approval = await getDb().agentRuns.getApprovalById(c.req.param('approvalId'));
-        if (!approval || approval.run_id !== identity.runId || approval.user_id !== identity.userId) {
-          return c.json({ error: { message: 'Approval not found', type: 'auth_error' } }, 404);
-        }
-        return c.json({ approval });
-      })
       // ── GET /runtime-manifest ──
       .get('/runtime-manifest', async (c) => {
         const start = Date.now();
@@ -208,7 +186,6 @@ export function createAgentRoutes(toolRegistry: ToolRegistry) {
             profile_id?: string;
             workspace_id?: string;
             confirm?: boolean;
-            approval_id?: string;
           };
           try {
             body = (await c.req.json()) as typeof body;
@@ -231,78 +208,8 @@ export function createAgentRoutes(toolRegistry: ToolRegistry) {
           }
 
           try {
-            const identity = getAgentIdentity(c);
-            let confirmed = body.confirm;
-            const prepared =
-              identity.credential === 'task'
-                ? prepareProxyToolCall(ctx.registry, toolId, ctx.toolIds, body.input)
-                : null;
-            const actualToolId = prepared?.toolId ?? toolId;
-            const exactInput = prepared?.input ?? body.input;
-            if (identity.credential === 'task' && isMutatingProxyTool(actualToolId)) {
-              if (!identity.runId) throw new ProxyToolError('Run-bound task token required', 403);
-              if (cloudMutationNeedsApproval(actualToolId, exactInput)) {
-                const inputHash = hashAgentToolInput(exactInput);
-                if (!body.approval_id) {
-                  const approval = await getDb().agentRuns.requestApproval({
-                    run_id: identity.runId,
-                    user_id: identity.userId,
-                    tool_id: actualToolId,
-                    action: agentToolAction(exactInput),
-                    input_hash: inputHash,
-                    input_json: canonicalAgentToolInput(exactInput),
-                    ttl_ms: 15 * 60_000,
-                  });
-                  await recordAgentAudit(c, {
-                    endpoint: '/api/agent/tools/:toolId/call',
-                    statusCode: 428,
-                    durationMs: Date.now() - start,
-                    meta: { tool: toolId, approval_id: approval.id, run_id: identity.runId },
-                  });
-                  const run = await getDb().agentRuns.getRunById(identity.runId);
-                  if (run) {
-                    connectionManager.sendToUser(identity.userId, {
-                      type: 'mission:run',
-                      runId: run.id,
-                      sessionId: run.session_id,
-                      status: run.status,
-                    });
-                  }
-                  return c.json(
-                    {
-                      error: { message: 'User approval required', type: 'approval_required' },
-                      approval: {
-                        id: approval.id,
-                        run_id: approval.run_id,
-                        tool_id: approval.tool_id,
-                        action: approval.action,
-                        status: approval.status,
-                        expires_at: approval.expires_at,
-                      },
-                    },
-                    428,
-                  );
-                }
-                const consumed = await getDb().agentRuns.consumeApproval({
-                  id: body.approval_id,
-                  run_id: identity.runId,
-                  user_id: identity.userId,
-                  tool_id: actualToolId,
-                  input_hash: inputHash,
-                });
-                if (!consumed) {
-                  throw new ProxyToolError(
-                    'Approval is invalid, expired, denied, already used, or bound to other input',
-                    403,
-                  );
-                }
-              }
-              // A draft exception or a consumed lease is the only way a task
-              // token reaches the existing mutation confirmation boundary.
-              confirmed = true;
-            }
             const output = await executeProxyTool(ctx.registry, toolId, ctx.toolIds, body.input, {
-              confirm: confirmed,
+              confirm: body.confirm,
             });
             await recordAgentAudit(c, {
               endpoint: '/api/agent/tools/:toolId/call',

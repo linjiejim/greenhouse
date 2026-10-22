@@ -1,25 +1,12 @@
-import { EXECUTIONS_ROOT_HASH, executionRunHref, missionSourceRunId } from '../../lib/execution-route';
-import { CloudAgentRunDetail } from '../cloud-agent/run-detail';
+import { EXECUTIONS_ROOT_HASH } from '../../lib/execution-route';
 import { parseExecutionSubPath } from './model';
 import { TaskCenter } from './task-center';
 import { TaskRunDetail } from './task-detail';
 
 export function ExecutionsPage({ subPath, params }: { subPath: string; params: URLSearchParams }) {
-  const { kind, runId } = parseExecutionSubPath(subPath);
-  if (kind === 'mission' && runId && params.get('view') !== 'runtime') {
-    const canonicalHref = executionRunHref({ kind, id: runId });
-    return (
-      <CloudAgentRunDetail
-        runId={missionSourceRunId(runId)}
-        backHref={EXECUTIONS_ROOT_HASH}
-        runtimeDetailsHref={`${canonicalHref}?view=runtime`}
-      />
-    );
-  }
-  if (runId) {
-    const backHref = kind === 'mission' ? executionRunHref({ kind, id: runId }) : EXECUTIONS_ROOT_HASH;
-    return <TaskRunDetail runId={runId} backHref={backHref} />;
-  }
+  const { runId } = parseExecutionSubPath(subPath);
+  // Historical Mission runs (retired in v1.4) open in the generic Runtime detail.
+  if (runId) return <TaskRunDetail runId={runId} backHref={EXECUTIONS_ROOT_HASH} />;
   const requestedKind = params.get('kind');
   const requestedTab = params.get('tab');
   return (

@@ -22,7 +22,6 @@ function eventResult(payload: RuntimeJsonValue): Record<string, RuntimeJsonValue
 }
 
 function runLabel(run: RuntimeRunRow): string {
-  if (run.kind === 'mission') return 'Mission';
   if (run.kind === 'workflow') return 'Workflow';
   if (run.kind === 'automation') return 'Automation';
   if (run.kind === 'subagent') return 'Subagent';
@@ -119,7 +118,7 @@ export function createRuntimeNotificationProjector(db: DatabaseProvider) {
     if (!run) return;
     // Ordinary Chat is intentionally absent from Execution Center. Its turn result
     // is already visible in the conversation, so a notification per assistant
-    // reply would drown out Missions, automations and real attention items.
+    // reply would drown out automations and real attention items.
     if (run.kind === 'chat') return;
     // Automation's domain projector owns one richer permanent fact (task name,
     // result summary and session link) and atomically fills its optional

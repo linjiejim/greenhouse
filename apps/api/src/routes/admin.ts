@@ -575,7 +575,7 @@ const admin = new Hono<AppEnv>()
       return c.json({ error: `Unknown tools: ${invalid.join(', ')}` }, 400);
     }
 
-    // Feature-owned tools (CRM/Knowledge/Projects/Cloud Agent) ride with their feature
+    // Feature-owned tools (Knowledge/Projects/Tables/Memory) ride with their feature
     // point's main toggle, and always-on tools need no grant at all — neither is
     // assignable individually, or the assignment would bypass (or fake) the feature.
     const featureOwned = body.tools.filter((t) => FEATURE_OWNED_TOOL_IDS.has(t));

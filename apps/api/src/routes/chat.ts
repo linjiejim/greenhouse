@@ -141,13 +141,6 @@ export function createChatRoute(toolRegistry: ToolRegistry) {
           throw err;
         }
 
-        // Sprouty (mission) is a cloud-agent profile, not a chat-engine one: its
-        // execution path is POST /api/missions/runs (disposable sandbox). The
-        // web client routes by profile; this guard catches direct/legacy callers.
-        if (profileId === 'sprouty-mission') {
-          return c.json({ error: 'sprouty-mission runs via /api/missions/runs, not /api/chat' }, 400);
-        }
-
         // ── Profile access control (MUST run before quota check) ──
         let earlyProfile: AgentProfile;
         try {
@@ -207,15 +200,17 @@ export function createChatRoute(toolRegistry: ToolRegistry) {
             if (!canWriteSession(authUser, session)) {
               return c.json({ error: 'Session not found' }, 404);
             }
+            // Missions were retired in v1.4; their conversations stay readable
+            // but can no longer be continued.
+            if (session.channel === 'mission') {
+              return c.json({ error: 'Mission conversations are read-only' }, 409);
+            }
 
             try {
               profileId = await pinProfileIdForUser(authUser, session.profile_id);
             } catch (err) {
               if (err instanceof ProfileAccessError) return c.json({ error: err.message }, err.status);
               throw err;
-            }
-            if (profileId === 'sprouty-mission') {
-              return c.json({ error: 'sprouty-mission runs via /api/missions/runs, not /api/chat' }, 400);
             }
             let sessionProfile: AgentProfile;
             try {

@@ -28,11 +28,7 @@ import { getObjectAtKey, presignGetUrl, putObjectAtKey } from '../storage/upload
 import { sanitizeUploadName } from '../storage/filename.js';
 import type { AppEnv } from '../app-env.js';
 
-/**
- * Same ceiling as a mission input, deliberately: a chat attachment must stay
- * promotable into a sandbox run (spec D6), so a lower limit here would only
- * produce files that can be uploaded but never dispatched.
- */
+/** Per-file ceiling for a chat attachment (mirrored by the composer, see MAX_ATTACHMENT_BYTES). */
 export const MAX_CHAT_FILE_BYTES = 100 * 1024 * 1024;
 const MAX_CHAT_FILE_BODY_BYTES = MAX_CHAT_FILE_BYTES + 1024 * 1024;
 

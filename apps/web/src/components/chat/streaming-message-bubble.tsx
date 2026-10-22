@@ -79,7 +79,7 @@ export function StreamingMessageBubble({ text, reasoning, toolCalls, isStreaming
   // Split tool calls into trace-block rows vs. body artifacts (generated
   // images, page diffs, the ask_user form). ask_user submission is handled by the
   // completed bubble once streaming ends, so no submit handler is wired here.
-  // Confirm-gate cards (mission dispatch) go below the prose, like the committed bubble.
+  // Confirm-gate cards go below the prose, like the committed bubble.
   const { trace: traceCalls, artifacts: artifactCalls } = partitionCalls(
     toolCalls.map((tc) => ({ name: tc.name, input: tc.input, output: tc.output, status: tc.status })),
   );

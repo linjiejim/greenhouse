@@ -52,8 +52,8 @@ shared demo password.
   importer stringifies them for the underlying `text` columns. Custom agents (`custom_profiles.json`) are loaded through the service so each one also gets its immutable draft v1 version row.
 - **Secrets are never baked in.** `users.json` rows carry a plaintext `password`
   (not `password_hash`); the importer scrypt-hashes it at load. Tables whose
-  values are encrypted/hashed with the instance secret (`api_clients`,
-  `email_accounts`) are intentionally **not** seeded.
+  values are encrypted/hashed with the instance secret (`email_accounts`) are
+  intentionally **not** seeded.
 - **Knowledge docs** are authored as canonical Markdown in `content` only; the
   importer derives `content_json` (Tiptap state) exactly like the runtime
   `knowledge_mutation` tool.
@@ -83,6 +83,6 @@ immutable draft v1), and per-user feature flags.
 ## Not seeded (and why)
 
 - `refresh_tokens` — ephemeral, minted at login.
-- `api_clients`, `email_accounts` — values are hashed/encrypted
-  with the instance secret; create these via their CLIs / admin UI.
+- `email_accounts` — values are encrypted with the instance secret;
+  bind mailboxes in Settings → Email.
 - `llm_calls`, `llm_usage`, `api_audit_log` — telemetry, produced by real usage.

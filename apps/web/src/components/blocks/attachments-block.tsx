@@ -2,13 +2,12 @@
  * AttachmentsBlock — pill chips for the files a user attached to a turn (the
  * ```attachments fence, or its historical ```mission-attachments name).
  *
- * Deliberately lighter than MissionArtifactsBlock's full cards: inputs are
- * context for what the user asked, deliverables are the result. Chips sit
- * inside the user bubble just above its timestamp.
+ * Chips sit inside the user bubble just above its timestamp.
  *
- * Two handle kinds resolve to two authenticated endpoints — a `chat_files`
- * row by id, or a mission staging blob by storage key. Either way a plain
- * <a href> carries no Bearer, so bytes are always fetched, never linked.
+ * A `chat_files` row (by id) downloads through its authenticated endpoint; a
+ * plain <a href> carries no Bearer, so bytes are always fetched, never linked.
+ * Historical Mission staging blobs (by storage key) have no endpoint since
+ * Missions were retired in v1.4 — they render as a passive chip.
  */
 
 import React, { useState } from 'react';
@@ -16,7 +15,6 @@ import { Download, FileText, Image as ImageIcon } from '../../lib/icons';
 import { Spinner, toast } from '../ui';
 import { useT } from '../../lib/i18n';
 import { formatFileSize, downloadAuthenticatedFile, fetchAuthenticatedBlob } from '../../lib/file-download';
-import { cloudAgentAttachmentDownloadUrl } from '../../lib/api/cloud-agent';
 import { chatFileDownloadUrl } from '../../lib/api/chat-files';
 import type { ChatAttachmentItem, ChatAttachmentsData } from './index';
 
@@ -47,9 +45,9 @@ export function isSafeAttachmentPreview(kind: 'image' | 'pdf', contentType: stri
   return kind === 'pdf' ? normalized === 'application/pdf' : SAFE_IMAGE_MIME.has(normalized);
 }
 
-/** id → chat_files route; key → the mission staging download. */
-function downloadUrlOf(item: ChatAttachmentItem): string {
-  return item.id ? chatFileDownloadUrl(item.id) : cloudAgentAttachmentDownloadUrl(item.key!);
+/** id → chat_files route; a retired Mission staging key has none. */
+function downloadUrlOf(item: ChatAttachmentItem): string | null {
+  return item.id ? chatFileDownloadUrl(item.id) : null;
 }
 
 export function AttachmentsBlock({ data }: { data: ChatAttachmentsData }) {
@@ -64,11 +62,24 @@ export function AttachmentsBlock({ data }: { data: ChatAttachmentsData }) {
   );
 }
 
-function AttachmentPill({ name, size, url }: { name: string; size?: number; url: string }) {
+function AttachmentPill({ name, size, url }: { name: string; size?: number; url: string | null }) {
   const t = useT();
   const [busy, setBusy] = useState(false);
   const preview = previewKindOf(name);
   const Icon = preview === 'image' ? ImageIcon : FileText;
+
+  if (!url) {
+    return (
+      <span
+        title={t('chat.attachmentUnavailable', { name })}
+        className="inline-flex max-w-[260px] items-center gap-1.5 rounded-full border border-edge bg-surface-raised px-2.5 py-1 text-xs text-fg-faint"
+      >
+        <Icon size={12} className="flex-shrink-0" />
+        <span className="min-w-0 truncate">{name}</span>
+        {size != null && <span className="flex-shrink-0">{formatFileSize(size)}</span>}
+      </span>
+    );
+  }
 
   const run = async (action: 'preview' | 'download') => {
     if (busy) return;
@@ -88,7 +99,7 @@ function AttachmentPill({ name, size, url }: { name: string; size?: number; url:
         await downloadAuthenticatedFile(url, name);
       }
     } catch {
-      toast(t('cloudAgent.downloadFailed'), 'error');
+      toast(t('common.downloadFailed'), 'error');
     } finally {
       setBusy(false);
     }
@@ -100,7 +111,7 @@ function AttachmentPill({ name, size, url }: { name: string; size?: number; url:
         type="button"
         onClick={() => void run(preview ? 'preview' : 'download')}
         disabled={busy}
-        title={preview ? t('cloudAgent.previewAttachment', { name }) : t('cloudAgent.downloadAttachment', { name })}
+        title={preview ? t('chat.previewAttachment', { name }) : t('chat.downloadAttachment', { name })}
         className="flex min-w-0 items-center gap-1.5 rounded-full hover:text-fg disabled:opacity-50"
       >
         {busy ? (
@@ -115,8 +126,8 @@ function AttachmentPill({ name, size, url }: { name: string; size?: number; url:
         type="button"
         onClick={() => void run('download')}
         disabled={busy}
-        title={t('cloudAgent.downloadAttachment', { name })}
-        aria-label={t('cloudAgent.downloadAttachment', { name })}
+        title={t('chat.downloadAttachment', { name })}
+        aria-label={t('chat.downloadAttachment', { name })}
         className="flex-shrink-0 rounded-full p-1 text-fg-muted transition-colors hover:bg-surface-muted hover:text-fg disabled:opacity-50"
       >
         <Download size={12} />

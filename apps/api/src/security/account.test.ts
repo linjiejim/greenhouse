@@ -12,7 +12,6 @@ vi.mock('../email/service.js', () => ({
 vi.mock('../chat/runs.js', () => ({ chatRunRegistry: { stopForUser: vi.fn() } }));
 vi.mock('../ws/connection-manager.js', () => ({ connectionManager: { disconnectUser: vi.fn() } }));
 vi.mock('../scheduler/index.js', () => ({ getScheduler: () => null }));
-vi.mock('../cloud-agent/index.js', () => ({ getCloudAgentController: () => null }));
 vi.mock('../workflow-engine/index.js', () => ({ getWorkflowEngine: () => ({ cancelRunsForUser: vi.fn() }) }));
 vi.mock('../platform/runtime.js', () => ({ PLATFORM_ORG_ID: 'default' }));
 

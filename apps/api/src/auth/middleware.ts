@@ -74,17 +74,9 @@ export function isPublicPath(path: string): boolean {
   // unguessable (timestamp + uuid). POST /api/upload (no trailing slash) is NOT
   // matched here, so uploads still require auth via authFetch.
   if (path.startsWith('/api/upload/')) return true;
-  // LLM gateway relay uses its own relay-key (API Key) auth, not internal Bearer tokens
-  if (path.startsWith('/api/llm/')) return true;
   // Agent tool proxy validates app/CLI bearer tokens itself and applies its own audit/rate limit.
   if (path.startsWith('/api/agent/')) return true;
-  // Mission runner push surface authenticates with run-bound task tokens
-  // (auth/task-token.ts); the guard re-reads user + run per request. Only the
-  // /internal/ subtree is exempt — user-facing Mission routes stay behind the
-  // central Bearer middleware. The cloud-agent path is a compatibility alias.
-  if (path.startsWith('/api/missions/internal/')) return true;
-  if (path.startsWith('/api/cloud-agent/internal/')) return true;
-  // MCP server uses its own API-key auth (key bound to an internal user) + audit/rate limit.
+  // MCP server uses its own OAuth token auth (bound to an internal user) + audit/rate limit.
   if (path.startsWith('/api/mcp')) return true;
   // OAuth 2.1 protocol endpoints use client credentials / PKCE rather than the
   // app's login bearer. The consent API under /api/oauth stays authenticated.

@@ -39,8 +39,8 @@ describe('feishuConversationKey', () => {
 });
 
 describe('filterFeishuToolIds', () => {
-  it('挡掉编排类工具 —— IM 里没有 Launch 卡那道减速带', () => {
-    const out = filterFeishuToolIds(['knowledge_query', 'mission_dispatch', 'crm_query', 'workflow_plan']);
+  it('挡掉编排类工具 —— IM 里没有确认卡那道减速带', () => {
+    const out = filterFeishuToolIds(['knowledge_query', 'tables_schema_plan', 'crm_query', 'workflow_plan']);
     expect(out).toEqual(['knowledge_query', 'crm_query']);
   });
 
@@ -52,7 +52,6 @@ describe('filterFeishuToolIds', () => {
   it('禁用集合钉死 —— 增删都应该是有意识的改动', () => {
     expect([...FEISHU_DENIED_TOOL_IDS].sort()).toEqual([
       'call_llm',
-      'mission_dispatch',
       'spawn_session',
       'tables_schema_plan',
       'task_capture',

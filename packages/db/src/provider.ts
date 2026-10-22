@@ -22,7 +22,6 @@ import { createRefreshTokenService } from './services/refresh-tokens.js';
 import { createAccountPasswordLinkService } from './services/account-password-links.js';
 import { createFeatureRequestService } from './services/feature-requests.js';
 import { createProjectService } from './services/projects.js';
-import { createApiClientService } from './services/api-clients.js';
 import { createApiAuditService } from './services/api-audit.js';
 import { createUserPromptService } from './services/user-prompts.js';
 import { createSessionShareService } from './services/session-shares.js';
@@ -47,7 +46,6 @@ import { createPlatformOAuthService } from './services/platform-oauth.js';
 import { createTablesService } from './services/tables.js';
 import { createWorkflowService } from './services/workflows.js';
 import { createChatFileService } from './services/chat-files.js';
-import { createAgentRunService } from './services/agent-runs.js';
 import { createChatArtifactReceiptService } from './services/chat-artifact-receipts.js';
 import { createRuntimeService } from './services/runtime.js';
 import { createNotificationService } from './services/notifications.js';
@@ -71,7 +69,6 @@ function createDatabaseProvider(db: Db, client: DbClient['client'] | null) {
     accountPasswordLinks: createAccountPasswordLinkService(db),
     featureRequests: createFeatureRequestService(db),
     projects: createProjectService(db),
-    apiClients: createApiClientService(db),
     apiAudit: createApiAuditService(db),
     userPrompts: createUserPromptService(db),
     sessionShares: createSessionShareService(db),
@@ -96,7 +93,6 @@ function createDatabaseProvider(db: Db, client: DbClient['client'] | null) {
     tables: createTablesService(db),
     workflows: createWorkflowService(db),
     chatFiles: createChatFileService(db),
-    agentRuns: createAgentRunService(db),
     chatArtifactReceipts: createChatArtifactReceiptService(db),
     runtime: createRuntimeService(db),
     notifications: createNotificationService(db),

@@ -56,7 +56,7 @@ export function SettingsPage({ subPath }: { subPath: string }) {
     return null;
   }
 
-  // Parse activeModule from subPath (e.g. "eval/runs/123" -> "eval", detail="runs/123")
+  // Parse activeModule from subPath (e.g. "memory/123" -> "memory", detail="123")
   const segments = subPath.split('/').filter(Boolean);
   const moduleKey = segments[0] || DEFAULT_MODULE;
 

@@ -149,9 +149,9 @@ async function resolveImage(ctx: AnalyzeImageContext, imageId: string): Promise<
   // cannot see it.
   //
   // Falling through to that lookup is what spans the SECOND store. Images
-  // usually skip `chat_files` — but a composer with a skill or mission selected
-  // routes every picked file there, images included, so the id the model was
-  // handed never existed in the upload space at all.
+  // usually skip `chat_files` — but older composers routed every picked file
+  // there while a skill or Mission was selected, images included, so the id the
+  // model was handed never existed in the upload space at all.
   if (!ctx.sessionId) return { kind: 'missing' };
   const resolved = await resolveConversationFiles(ctx.db, ctx.sessionId, [imageId]);
   if (!resolved.ok) return { kind: 'missing' };

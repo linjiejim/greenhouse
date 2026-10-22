@@ -643,7 +643,7 @@ describe('downloadSkill — quarantine gating', () => {
   });
 
   it('suspicious is refused for members and unattended callers, allowed for owner and super', async () => {
-    // No actor = the cloud-agent sandbox sync → strictest bucket (fail-closed).
+    // No actor = an unattended caller → strictest bucket (fail-closed).
     expect(await downloadSkill(db, 'evil-skill', undefined, { meter: false })).toMatchObject({
       ok: false,
       code: 'forbidden',

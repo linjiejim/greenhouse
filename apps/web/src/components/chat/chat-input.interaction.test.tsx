@@ -8,7 +8,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { UserPrompt } from '@greenhouse/types/api';
 import { I18nProvider } from '../../lib/i18n';
 import { ChatInput } from './chat-input';
-import { CommandMenuPopover, type SlashSkill } from './command-menu-popover';
+import { CommandMenuPopover } from './command-menu-popover';
 import { MentionPopover } from './mention-popover';
 import type { Profile } from '../../lib/api';
 
@@ -169,126 +169,6 @@ describe('ChatInput Task keyboard flow', () => {
     });
     expect(onSelectPrompt).toHaveBeenCalledOnce();
     expect(onSelectPrompt).toHaveBeenCalledWith(secondTask);
-  });
-
-  it('lists Skills as a second section and walks the keyboard straight across both', async () => {
-    const container = document.createElement('div');
-    document.body.append(container);
-    const root = createRoot(container);
-    mounted.push({ root, container });
-    const onSelectPrompt = vi.fn();
-    const onSelectSkill = vi.fn();
-    const skill: SlashSkill = {
-      name: 'pdf-report',
-      display_name: 'PDF Report',
-      description: 'Render branded PDFs',
-      group: 'branding',
-    };
-
-    await act(async () => {
-      root.render(
-        createElement(I18nProvider, {
-          initialLocale: 'en',
-          children: createElement(CommandMenuPopover, {
-            query: '',
-            prompts: [task],
-            skills: [skill],
-            onSelectPrompt,
-            onSelectSkill,
-            onDismiss: vi.fn(),
-            anchorRef: createRef<HTMLDivElement>(),
-          }),
-        }),
-      );
-    });
-
-    // One flat keyboard index across both sections; the skill row keeps the
-    // compact shape (title + /name + Mission tag, no description).
-    const rows = Array.from(container.querySelectorAll<HTMLButtonElement>('[role="option"]'));
-    expect(rows).toHaveLength(2);
-    expect(container.textContent).toContain('Skills');
-    expect(rows[1]?.textContent).toBe('PDF Report/pdf-reportMission');
-    expect(container.textContent).not.toContain(skill.description);
-
-    await act(async () => {
-      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }));
-    });
-    expect(rows[1]?.getAttribute('aria-selected')).toBe('true');
-
-    await act(async () => {
-      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
-    });
-    expect(onSelectSkill).toHaveBeenCalledWith(skill);
-    expect(onSelectPrompt).not.toHaveBeenCalled();
-  });
-
-  it('filters both sections by the query — a skills-only match keeps Enter on the skill', async () => {
-    const container = document.createElement('div');
-    document.body.append(container);
-    const root = createRoot(container);
-    mounted.push({ root, container });
-    const onSelectSkill = vi.fn();
-    const skills: SlashSkill[] = [
-      { name: 'pdf-report', display_name: 'PDF Report', description: '', group: 'branding' },
-      { name: 'excel-audit', display_name: 'Excel Audit', description: '', group: 'business' },
-    ];
-
-    await act(async () => {
-      root.render(
-        createElement(I18nProvider, {
-          initialLocale: 'en',
-          children: createElement(CommandMenuPopover, {
-            query: 'pdf',
-            prompts: [task, secondTask],
-            skills,
-            onSelectPrompt: vi.fn(),
-            onSelectSkill,
-            onDismiss: vi.fn(),
-            anchorRef: createRef<HTMLDivElement>(),
-          }),
-        }),
-      );
-    });
-
-    const rows = Array.from(container.querySelectorAll<HTMLButtonElement>('[role="option"]'));
-    expect(rows).toHaveLength(1);
-    expect(rows[0]?.textContent).toContain('PDF Report');
-    expect(rows[0]?.getAttribute('aria-selected')).toBe('true');
-
-    await act(async () => {
-      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
-    });
-    expect(onSelectSkill).toHaveBeenCalledWith(skills[0]);
-  });
-
-  it('shows closed Mission admission as status instead of a selectable Skill row', async () => {
-    const container = document.createElement('div');
-    document.body.append(container);
-    const root = createRoot(container);
-    mounted.push({ root, container });
-
-    await act(async () => {
-      root.render(
-        createElement(I18nProvider, {
-          initialLocale: 'en',
-          children: createElement(CommandMenuPopover, {
-            query: '',
-            prompts: [],
-            skills: [],
-            missionAvailability: 'unavailable',
-            onSelectPrompt: vi.fn(),
-            onSelectSkill: vi.fn(),
-            onDismiss: vi.fn(),
-            anchorRef: createRef<HTMLDivElement>(),
-          }),
-        }),
-      );
-    });
-
-    expect(container.textContent).toContain('Mission skills are unavailable in this environment');
-    expect(container.querySelector('[role="status"]')).not.toBeNull();
-    expect(container.querySelectorAll('[role="option"]')).toHaveLength(0);
-    expect(container.textContent).not.toContain('No matching Tasks');
   });
 });
 

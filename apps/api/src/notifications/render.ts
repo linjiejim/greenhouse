@@ -43,7 +43,6 @@ import { getProductName } from '@greenhouse/utils/brand';
 const NOTE_DIAGRAM = '（图示无法在邮件中显示，请打开会话查看）';
 const NOTE_PREVIEW = '（网页预览无法在邮件中显示，请打开会话查看）';
 const NOTE_CONFIRM = '（需要确认的操作，请打开会话处理）';
-const HEADING_ARTIFACTS = '产物文件';
 const HEADING_ATTACHMENTS = '附件';
 
 // ─── Markdown flattening ─────────────────────────────────
@@ -77,11 +76,6 @@ function flattenSegment(segment: Segment): string {
       return `> ${NOTE_DIAGRAM}`;
     case 'html-preview':
       return `> ${segment.title ? `${segment.title} ${NOTE_PREVIEW}` : NOTE_PREVIEW}`;
-    case 'mission-artifacts':
-      return fileList(
-        HEADING_ARTIFACTS,
-        segment.data.map((item) => ({ name: item.path, sizeBytes: item.size_bytes })),
-      );
     case 'attachments':
       return fileList(
         HEADING_ATTACHMENTS,

@@ -12,7 +12,7 @@ import { BodyArtifacts, partitionCalls, splitArtifactsByPlacement } from '../too
 import { PipelineStageChart } from './pipeline-stage-chart';
 import type { PipelineStep } from '@greenhouse/types/session';
 import { dedupe } from './annotations';
-import { BookOpen, Pencil, Clock, Globe, ChevronDown, Cloud } from '../../lib/icons';
+import { BookOpen, Pencil, Clock, Globe, ChevronDown } from '../../lib/icons';
 import { marked } from 'marked';
 import { useTextSelection } from './use-text-selection';
 import { SelectionPopover } from './selection-popover';
@@ -84,8 +84,6 @@ interface MessageProps {
   canViewMetrics?: boolean;
   /** False for shared/read-only transcripts: action artifacts stay reviewable but inert. */
   canActOnArtifacts?: boolean;
-  /** Durable Mission outcome rendered as a continuation of its dispatch turn. */
-  missionOutcome?: { messageId: string; content: string; createdAt: string };
 }
 
 // ─── Message Bubble (completed message) ──────────────────
@@ -129,7 +127,6 @@ function MessageBubbleImpl(props: MessageProps) {
     onFork,
     canViewMetrics = false,
     canActOnArtifacts = true,
-    missionOutcome,
   } = props;
 
   const [showReasoning, setShowReasoning] = useState(false);
@@ -165,8 +162,8 @@ function MessageBubbleImpl(props: MessageProps) {
   // Normalize pipeline steps into the shared ToolCall shape, then split into
   // trace-block rows vs. body artifacts (the ask_user form, page-update
   // diffs, generated images). Generated-image dedup against embedded markdown lives
-  // in <BodyArtifacts> (it receives `content`). Confirm-gate cards (mission
-  // dispatch) render below the prose that introduces them.
+  // in <BodyArtifacts> (it receives `content`). Confirm-gate cards (workflow
+  // plan, schema plan, task capture) render below the prose that introduces them.
   const {
     trace: traceCalls,
     artifactsAbove,
@@ -208,16 +205,15 @@ function MessageBubbleImpl(props: MessageProps) {
   }, [pipeline]);
 
   // Rendered HTML for copy-as-HTML
-  const actionContent = missionOutcome ? `${content}\n\n${missionOutcome.content}` : content;
   const renderedHtml = useMemo(() => {
     try {
-      const result = marked.parse(actionContent);
+      const result = marked.parse(content);
       // Copied as text/html: same allowlist as the screen, never raw model HTML.
       return typeof result === 'string' ? sanitizeExportHtml(result) : '';
     } catch (_err) {
       return '';
     }
-  }, [actionContent]);
+  }, [content]);
   const [showReferences, setShowReferences] = useState(false);
 
   useEffect(() => {
@@ -227,8 +223,8 @@ function MessageBubbleImpl(props: MessageProps) {
     input.style.height = `${Math.min(input.scrollHeight, 240)}px`;
   }, [isEditing, editText]);
 
-  // Mission turns carry their inputs as a server-written fence; lift it out so
-  // the bubble shows the prompt as text and the files as chips.
+  // A turn carries its inputs as an ```attachments fence; lift it out so the
+  // bubble shows the prompt as text and the files as chips.
   const { text: userText, attachments } = useMemo(() => splitAttachments(content), [content]);
 
   if (role === 'user') {
@@ -295,7 +291,7 @@ function MessageBubbleImpl(props: MessageProps) {
             ) : (
               <UserMessageContent content={userText} />
             )}
-            {/* Mission inputs: pills between the text and the timestamp row. */}
+            {/* Attachments: pills between the text and the timestamp row. */}
             {attachments.length > 0 && !isEditing && (
               <div className="mt-2">
                 <AttachmentsBlock data={attachments} />
@@ -416,7 +412,7 @@ function MessageBubbleImpl(props: MessageProps) {
           )}
         </div>
 
-        {/* Confirm-gate cards (mission dispatch) — the prose above introduces them,
+        {/* Confirm-gate cards — the prose above introduces them,
             so review-then-launch reads top to bottom. */}
         {artifactsBelow.length > 0 && (
           <BodyArtifacts
@@ -435,16 +431,6 @@ function MessageBubbleImpl(props: MessageProps) {
               },
             }}
           />
-        )}
-
-        {missionOutcome && (
-          <div className="mt-3 border-t border-edge/60 pt-3" data-mission-outcome-continuation>
-            <div className="mb-2 flex items-center gap-1.5 text-[10px] font-medium text-fg-muted">
-              <Cloud size={12} className="text-primary-fg" />
-              <span>{t('cloudAgent.resultLabel')}</span>
-            </div>
-            <RichMarkdown content={missionOutcome.content} compact linkTarget="new-window" />
-          </div>
         )}
 
         {/* References (clickable) — single-line, collapsible */}
@@ -543,7 +529,7 @@ function MessageBubbleImpl(props: MessageProps) {
           </div>
           <div className="ml-auto flex items-center">
             <MessageActions
-              content={actionContent}
+              content={content}
               renderedHtml={renderedHtml}
               onTranslate={!compact && onTranslate && messageId ? (lang) => onTranslate(messageId, lang) : undefined}
               onRegenerate={onRegenerate && messageId ? () => onRegenerate(messageId) : undefined}
@@ -613,7 +599,7 @@ function MessageBubbleImpl(props: MessageProps) {
           noPadding
         >
           <div className="px-6 pb-6">
-            <RichMarkdown content={actionContent} linkTarget="new-window" />
+            <RichMarkdown content={content} linkTarget="new-window" />
           </div>
         </Dialog>
       )}

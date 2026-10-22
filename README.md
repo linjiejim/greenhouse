@@ -16,7 +16,7 @@ agents over [MCP](https://modelcontextprotocol.io/). Admins author tools in code
 auto-expose over chat, `/api/agent`, and `/api/mcp` — add a tool by writing one file.
 
 Greenhouse is built around the idea that the agent *is* the product, not a feature bolted on
-the side. Chat, the knowledge base, projects, tables, automations, missions and email all share
+the side. Chat, the knowledge base, projects, tables, automations, workflows and email all share
 one tool layer and one permission model; the same tools your team uses in chat are the ones you
 expose to Claude, Cursor, or any MCP client.
 
@@ -55,7 +55,7 @@ expose to Claude, Cursor, or any MCP client.
     </td>
     <td width="50%" valign="top">
       <img src="docs/assets/screens/execution-center.webp" alt="Execution center listing runs" />
-      <b>Execution center</b> — automations, missions, workflows and sub-agents in one place, with an approval inbox.
+      <b>Execution center</b> — automations, workflows and sub-agents in one place, with an approval inbox.
     </td>
   </tr>
   <tr>
@@ -93,11 +93,8 @@ same script doubles as an end-to-end smoke tour (see [Development](#development)
   rule automations, and conversational schema planning (the agent drafts a base, you confirm).
 - **Home workbench** — a personal dashboard of live cards backed by the same tools (recipes and
   templates), editable by drag-and-drop or by asking the agent.
-- **Execution center** — one surface for every durable run: automations (cron), missions,
-  workflows and sub-agents, with an approval inbox for steps that need a human.
-- **Missions** *(optional)* — long-running tasks in disposable sandboxes (Docker + gVisor): the
-  agent gets a real shell, files and a document toolchain, reports progress live and hands back
-  artifacts.
+- **Execution center** — one surface for every durable run: automations (cron), workflows
+  and sub-agents, with an approval inbox for steps that need a human.
 - **Workflows** — a multi-agent task-graph engine (database state machine, human gates,
   pause / retry per node) that the agent can plan from a conversation.
 - **Memory** — per-user memories with titles, pinning and lifecycle, plus the friction signals
@@ -113,8 +110,7 @@ same script doubles as an end-to-end smoke tour (see [Development](#development)
 - **MCP server + agent tool-proxy** — OAuth 2.1 (PKCE for people, client credentials for
   machines) with scopes per resource group; the same tools over the structured `/api/agent`
   proxy.
-- **LLM relay + usage budgets** — an OpenAI-compatible relay for internal users, plus monthly
-  token and image budgets per user, organization and provider.
+- **Usage budgets** — monthly token and image budgets per user, organization and provider.
 - **Platform kernel** — applications declare a manifest (modules, entities, fields, actions);
   roles, capabilities and record / field policies are enforced once for HTTP, chat tools, the
   proxy and MCP. One permissions dialog per user.
@@ -130,7 +126,7 @@ stored secrets need `PROVIDER_TOKEN_ENCRYPTION_KEY`.
 ## Architecture
 
 A pnpm monorepo. The Hono API also serves the built React SPA, so production is a single
-process / single container (plus an optional sandbox-runner image for Missions).
+process / single container.
 
 ```
 greenhouse/
@@ -138,8 +134,6 @@ greenhouse/
 │   ├── api/                  # Hono backend — routes, agent runtime, platform kernel, auth,
 │   │                         #   scheduler, runtime kernel, CLI; also serves the web SPA at `/`
 │   ├── web/                  # React + Vite single-page app (hash router)
-│   ├── agent-runner/         # Mission sandbox runner — built into the greenhouse/agent-runtime
-│   │                         #   image; the API never imports it
 │   ├── browser/              # Chrome extension (MV3) — side-panel companion; connects to your
 │   │                         #   instances via saved multi-server "stations"
 │   └── mobile/               # Expo (React Native) app — chat, knowledge, projects, settings;
@@ -242,10 +236,6 @@ pulls `ghcr.io/linjiejim/greenhouse` (no Node/pnpm toolchain needed):
 docker compose -f docker-compose.ghcr.yml up -d    # tracks :latest; pin via GREENHOUSE_IMAGE in .env
 ```
 
-Missions need one more piece on the host: Docker with the gVisor runtime, a dedicated bridge
-network, and the sandbox image (`bash scripts/build-agent-runtime.sh`). They stay off until
-`MISSION_ENABLED=1` and every preflight passes — see `.env.example`.
-
 ## Releases & stability
 
 **Use a tagged release in production.** Two channels, and they are not equally
@@ -333,8 +323,8 @@ its payload. Set `LLM_VISION=false` when `LLM_MODEL` is text-only, and images go
 
 Optional: media (vision `analyze_image` + `generate_image` through `MEDIA_*`, falling back to
 the LLM endpoint; `IMAGE_BASE_URL` + `IMAGE_API_KEY` move generation alone to an image
-provider), external web search, email mailboxes, WeCom / Feishu, missions, usage
-budgets, and object storage. Uploads default to local disk (`data/uploads`), Skill Center
+provider), external web search, email mailboxes, WeCom / Feishu, usage budgets, and
+object storage. Uploads default to local disk (`data/uploads`), Skill Center
 bundles to `data/skills` — set `SKILLS_S3_*` to keep bundles in S3-compatible storage.
 
 **Admin-configurable at runtime**: the LLM / media / search credentials and the product name

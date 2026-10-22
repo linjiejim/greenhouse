@@ -74,15 +74,6 @@ function hmac(data: string, purpose: string): string {
   return createHmac('sha256', `${getSigningKey()}:${purpose}`).update(data).digest('hex');
 }
 
-/**
- * Purpose-scoped HMAC over the shared signing key, for sibling token modules
- * (e.g. auth/task-token.ts). Distinct purposes make token families mutually
- * unverifiable — a cloud-agent task token can never pass as an access token.
- */
-export function hmacSign(data: string, purpose: string): string {
-  return hmac(data, purpose);
-}
-
 // ─── Access Token ────────────────────────────────────────
 
 /**

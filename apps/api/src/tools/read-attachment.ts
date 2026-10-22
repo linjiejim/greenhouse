@@ -5,13 +5,10 @@
  * This is the other half of "attachments are a capability, not a routing
  * signal" (convergence spec D1): the agent TRIES here, and when it cannot —
  * an archive, something too big to be worth streaming through a context window
- * — it says so plainly, and that refusal is what prompts it to draft a
- * `mission_dispatch` instead. Nothing about the file's type decides where the
- * work happens; only whether this tool could do the job.
+ * — it says so plainly instead of guessing at the contents.
  *
- * The refusal has to name a route the deployment really has, though, so where
- * it points depends on WHY extraction failed — see `fallbackHint`. A scan is
- * unreadable in the sandbox too.
+ * The refusal has to name a route the deployment really has, so what it
+ * suggests depends on WHY extraction failed — see `fallbackHint`.
  *
  * Extraction is deliberately lazy rather than eager-at-upload (D5): eager
  * extraction does work nobody asked for on videos and archives, and forces an
@@ -38,39 +35,20 @@ import { normalizeFileRef } from '../files/conversation-files.js';
 import { defineTool, type ToolMeta } from './define.js';
 
 /**
- * Where the work goes when the sandbox genuinely could do better than this
- * host — a huge CSV, an archive, a format nothing here parses. Which depends on
- * whether this conversation actually has a sandbox to send it to:
- * `mission_dispatch` is behind the `cloud-agent` feature flag, so pointing at it
- * unconditionally told users without that flag to use a tool the model could not
- * see; the model then had a refusal and no way forward. An honest dead end beats
- * a false exit.
+ * What the model should do when this tool cannot read a file. There is no
+ * other place on this deployment that reads files better (the Mission sandbox
+ * was retired in v1.4), so the advice always routes back to the user: an honest
+ * dead end beats a false exit. A scan and a locked file get their own advice,
+ * because the pages as images or an unlocked copy are routes that really work.
  */
-function sandboxHint(canDispatchMission: boolean): string {
-  return canDispatchMission
-    ? 'Dispatch a mission with this file attached to work on it in the sandbox.'
-    : 'There is no sandbox available here — tell the user what failed and what would let you continue (for example the same data exported as CSV).';
-}
-
-/**
- * The same rule one level down: a scan and a locked file are dead ends
- * everywhere on this deployment, not only here. The sandbox image ships poppler
- * and ImageMagick but **no OCR engine** (see the agent-runtime Dockerfile and
- * cloud-agent spec D12), and nothing there can supply a password it was never
- * given — so `pdftoppm` renders pages nobody can then read. Sending those two to
- * a mission spends a container, a workspace slot and several minutes to arrive
- * at this same refusal, which is exactly the false exit `sandboxHint` exists to
- * avoid. What does work is a file that has text, or the pages as images, which
- * `analyze_image` (and vision-capable chat models) can read directly.
- */
-function fallbackHint(reason: ExtractFailureReason, canDispatchMission: boolean): string {
+function fallbackHint(reason?: ExtractFailureReason): string {
   if (reason === 'no_text_layer') {
-    return 'No OCR is available here or in the sandbox, so a mission cannot read it either. Tell the user the file is a scan, and ask for a version that carries real text — the original document, a text export, or the pages sent as images, which analyze_image can read.';
+    return 'No OCR is available here. Tell the user the file is a scan, and ask for a version that carries real text — the original document, a text export, or the pages sent as images, which analyze_image can read.';
   }
   if (reason === 'encrypted') {
-    return 'A mission cannot open it either — the sandbox has no password for it. Ask the user for a copy without password protection.';
+    return 'Ask the user for a copy without password protection.';
   }
-  return sandboxHint(canDispatchMission);
+  return 'Tell the user what failed and what would let you continue (for example the same data exported as CSV).';
 }
 
 const meta: ToolMeta = {
@@ -83,7 +61,7 @@ Use it whenever the user's question refers to something they attached — do not
 
 Readable here: plain text, Markdown, CSV/TSV, JSON, XML/HTML, source code, Excel workbooks (.xlsx, converted to CSV per sheet), Word documents (.docx), and PDFs with a text layer.
 
-NOT readable here: scanned or password-protected PDFs, legacy .doc/.xls, images, audio/video, archives, and anything over 10 MB. For those the tool returns an explicit error naming the reason, and says where the work can go instead — follow what the error says rather than assuming a sandbox exists. Never claim you read a file this tool refused.
+NOT readable here: scanned or password-protected PDFs, legacy .doc/.xls, images, audio/video, archives, and anything over 10 MB. For those the tool returns an explicit error naming the reason, and says what would let you continue — follow what the error says. Never claim you read a file this tool refused.
 
 Large files come back with \`truncated: true\`; raise \`max_chars\` only if you need more.`,
   category: 'core',
@@ -107,8 +85,6 @@ const inputSchema = z.object({
 export interface ReadAttachmentContext {
   userId: string;
   sessionId: string;
-  /** Whether `mission_dispatch` is in this caller's tool set — see `fallbackHint`. */
-  canDispatchMission: boolean;
 }
 
 export function createReadAttachmentTool(db: DatabaseProvider, ctx: ReadAttachmentContext) {
@@ -136,7 +112,7 @@ export function createReadAttachmentTool(db: DatabaseProvider, ctx: ReadAttachme
 
         if (file.size > MAX_READABLE_BYTES) {
           return {
-            error: `${file.name} is ${Math.round(file.size / 1024 / 1024)} MB — too large to read here. ${sandboxHint(ctx.canDispatchMission)}`,
+            error: `${file.name} is ${Math.round(file.size / 1024 / 1024)} MB — too large to read here. ${fallbackHint()}`,
           };
         }
 
@@ -144,8 +120,7 @@ export function createReadAttachmentTool(db: DatabaseProvider, ctx: ReadAttachme
         if (!object) return { error: 'attachment content is missing from storage' };
 
         const extracted = await extractText(object.buffer, file.name, file.content_type);
-        if (!extracted.ok)
-          return { error: `${extracted.message} ${fallbackHint(extracted.reason, ctx.canDispatchMission)}` };
+        if (!extracted.ok) return { error: `${extracted.message} ${fallbackHint(extracted.reason)}` };
 
         const limit = input.max_chars ?? DEFAULT_MAX_CHARS;
         return {

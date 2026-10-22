@@ -8,9 +8,8 @@
  * the routes can map codes to HTTP statuses and the tools can return the
  * message to the model as-is.
  *
- * `downloadSkill` is one function serving four consumers — the HTTP route, the
- * skill_query agent tool (chat / proxy / MCP), the cloud-agent sandbox sync and
- * the web Guide preview. That is why quarantine enforcement lives here and
+ * `downloadSkill` is one function serving three consumers — the HTTP route, the
+ * skill_query agent tool (chat / proxy / MCP) and the web Guide preview. That is why quarantine enforcement lives here and
  * nowhere else: gating this one call covers every surface at once
  * (docs/specs/20260805-skillhub-web-upload-and-scan.md).
  */
@@ -29,7 +28,6 @@ import {
   type SkillFile,
 } from './bundle.js';
 import { firstPartySkillGroup, isFirstPartySkill, type FirstPartySkillGroup } from './first-party.js';
-import { isMissionReadySkill, isSlashSelectableSkill } from './mission-ready.js';
 import { notifySuspiciousSkill } from './notify.js';
 import { highFindings, scanBundle, type ScanFinding } from './scanner.js';
 import { getSkillStore, storageKeyFor } from './store.js';
@@ -60,12 +58,8 @@ export interface SkillSummary {
   scan_reviewed_by: string | null;
   scan_reviewed_at: string | null;
   scan_note: string | null;
-  /** Launchable as a Cloud Agent mission (the sandbox-sync predicate). */
-  mission_ready: boolean;
   /** Trusted first-party repository group; null for user/team skills. */
   source_group: FirstPartySkillGroup | null;
-  /** May be selected in Chat's slash picker and launched directly. */
-  slash_selectable: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -97,9 +91,7 @@ export function toSkillSummary(row: SkillRow): SkillSummary {
     scan_reviewed_by: row.scan_reviewed_by,
     scan_reviewed_at: row.scan_reviewed_at,
     scan_note: row.scan_note,
-    mission_ready: isMissionReadySkill(row),
     source_group: firstPartySkillGroup(row.name),
-    slash_selectable: isSlashSelectableSkill(row),
     created_at: row.created_at,
     updated_at: row.updated_at,
   };
@@ -408,12 +400,12 @@ export type DownloadResult =
 /**
  * Who may pull a quarantined skill's bytes.
  *
- * fail-closed by default: a caller that passes no actor (the cloud-agent sandbox
- * sync) is treated as an ordinary member, which is the strictest bucket and
- * exactly what we want for an unattended consumer.
+ * fail-closed by default: a caller that passes no actor is treated as an
+ * ordinary member, which is the strictest bucket and exactly what we want for
+ * an unattended consumer.
  *
  * Clean third-party content still requires an explicit super review before it
- * may reach other users or unattended sandboxes. The regex scanner is a useful
+ * may reach other users. The regex scanner is a useful
  * signal, not a proof that natural-language instructions are safe.
  */
 function quarantineError(scan: SkillScanStatus, skill: SkillRow, actor?: Actor): SkillError | null {

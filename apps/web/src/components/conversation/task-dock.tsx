@@ -4,27 +4,19 @@
  * A background task lives for many minutes while the transcript keeps growing,
  * so its state does not belong to a message: one collapsed line per task
  * (type icon, name, status, elapsed), expandable into the full instrument.
- * Delivery stays in the message flow — a workflow's deliverable and a mission's
- * outcome are both written there as assistant messages, because a deliverable
- * is something you read, not a gauge (workflow v2 D13, session-modes D6).
- *
- * Generalized from the workflow-only dock: both execution bases render here so
- * the user has ONE place to look at "what is running for me in this
- * conversation", regardless of which one is doing the work.
+ * Delivery stays in the message flow — a workflow's deliverable is written
+ * there as an assistant message, because a deliverable is something you read,
+ * not a gauge (workflow v2 D13, session-modes D6).
  */
 
 import React, { useEffect, useState } from 'react';
-import { ChevronDown, ChevronUp, Cloud, Workflow as WorkflowIcon } from '../../lib/icons';
+import { ChevronDown, ChevronUp, Workflow as WorkflowIcon } from '../../lib/icons';
 import type { WorkflowRunView } from '@greenhouse/types/workflow';
-import { Button, Spinner } from '../ui';
+import { Spinner } from '../ui';
 import { useT } from '../../lib/i18n';
 import { ACTIVE_RUN_STATUSES } from '../../lib/workflow-constants';
 import { useWorkflowRun } from '../workflow/use-workflow-run';
 import { WorkflowRunBody } from '../workflow/run-view';
-import { RunTimeline, formatRunDuration } from '../cloud-agent';
-import type { CloudAgentEvent, CloudAgentRun } from '../../lib/api/cloud-agent';
-import { safeParse } from '../../lib/utils';
-import type { MissionSessionState } from './use-mission-run';
 
 const OPEN_KEY_PREFIX = 'task-dock-open:';
 
@@ -44,55 +36,28 @@ function workflowElapsed(run: WorkflowRunView): string | null {
   return secs < 60 ? `${secs}s` : `${Math.floor(secs / 60)}m${String(secs % 60).padStart(2, '0')}s`;
 }
 
-/** Count observed tool steps and identify the one still running, if any. */
-export function missionDockProgress(events: CloudAgentEvent[]): { stepCount: number; currentTool: string | null } {
-  const openTools: string[] = [];
-  let stepCount = 0;
-  for (const event of events) {
-    if (event.type !== 'tool.started' && event.type !== 'tool.completed') continue;
-    const payload = safeParse<Record<string, unknown>>(event.payload, {});
-    const tool = typeof payload.tool === 'string' && payload.tool ? payload.tool : 'tool';
-    if (event.type === 'tool.started') {
-      stepCount += 1;
-      openTools.push(tool);
-      continue;
-    }
-    const index = openTools.indexOf(tool);
-    if (index >= 0) openTools.splice(index, 1);
-  }
-  return { stepCount, currentTool: openTools.at(-1) ?? null };
-}
-
 export function TaskDock({
   sessionId,
-  mission,
   workflowEnabled,
   onTaskSettled,
-  onAddMissionInstruction,
 }: {
   sessionId: string;
-  mission: MissionSessionState;
   workflowEnabled: boolean;
   /** A workflow run just finished — the caller reloads the transcript to show
-   *  the outcome message the engine wrote beside that transition. (Missions
-   *  already report this through the shared mission hook.) */
+   *  the outcome message the engine wrote beside that transition. */
   onTaskSettled?: () => void;
-  /** Route the next composer send directly to this Mission workspace. */
-  onAddMissionInstruction?: (run: CloudAgentRun) => void;
 }) {
   const { run: workflowRun, refresh: refreshWorkflow } = useWorkflowRun({
     sessionId,
     enabled: workflowEnabled,
     onSettled: onTaskSettled,
   });
-  const missionRun = mission.latestRun;
 
-  if (!workflowRun && !missionRun) return null;
+  if (!workflowRun) return null;
 
   return (
     <div className="relative z-0 -mb-1 translate-y-0.5 space-y-2" data-testid="task-dock">
       {workflowEnabled && workflowRun && <WorkflowRow run={workflowRun} onChanged={refreshWorkflow} />}
-      {missionRun && <MissionRow run={missionRun} mission={mission} onAddInstruction={onAddMissionInstruction} />}
     </div>
   );
 }
@@ -218,77 +183,6 @@ function WorkflowRow({ run, onChanged }: { run: WorkflowRunView; onChanged: () =
       toggleLabel={t('workflow.dockToggle')}
     >
       <WorkflowRunBody run={run} workflowName={run.name} onChanged={() => void onChanged()} />
-    </DockRow>
-  );
-}
-
-// ─── Mission row ─────────────────────────────────────────
-
-function MissionRow({
-  run,
-  mission,
-  onAddInstruction,
-}: {
-  run: CloudAgentRun;
-  mission: MissionSessionState;
-  onAddInstruction?: (run: CloudAgentRun) => void;
-}) {
-  const t = useT();
-  const active = !!mission.activeRun;
-  const progress = missionDockProgress(mission.events);
-  const [, setTick] = useState(0);
-  useEffect(() => {
-    if (!active) return;
-    const id = setInterval(() => setTick((n) => n + 1), 1000);
-    return () => clearInterval(id);
-  }, [active]);
-
-  const tone = run.status === 'failed' ? 'bg-danger-subtle/35' : 'bg-surface-sunken/95';
-
-  return (
-    <DockRow
-      kind="mission"
-      testId="mission-dock"
-      icon={<Cloud size={13} className="flex-shrink-0 text-fg-muted" />}
-      spinning={active}
-      name={t('cloudAgent.dispatchTitle')}
-      meta={
-        <span className="min-w-0 truncate text-[10px] tabular-nums text-fg-faint">
-          {progress.stepCount > 0 ? (
-            <>
-              {progress.currentTool
-                ? t('cloudAgent.dockCurrentStep', {
-                    step: progress.currentTool,
-                    count: progress.stepCount,
-                  })
-                : t('cloudAgent.dockSteps', { count: progress.stepCount })}{' '}
-              ·{' '}
-            </>
-          ) : null}
-          {formatRunDuration(run)}
-        </span>
-      }
-      tone={tone}
-      toggleLabel={t('cloudAgent.dispatchTitle')}
-    >
-      <div className="space-y-2.5">
-        {mission.events.length === 0 ? (
-          <div className="flex items-center gap-2 py-1 text-xs text-fg-faint">
-            {active && <Spinner className="h-3.5 w-3.5" />}
-            <span>{active ? t('cloudAgent.timelineWaiting') : t('cloudAgent.timelineEmpty')}</span>
-          </div>
-        ) : (
-          <RunTimeline events={mission.events} variant="summary" />
-        )}
-        {onAddInstruction && (
-          <div className="flex flex-wrap items-center gap-2 border-t border-edge pt-2.5">
-            <p className="min-w-0 flex-1 text-[10px] text-fg-faint">{t('cloudAgent.dockFollowUpHint')}</p>
-            <Button type="button" variant="outline" size="sm" onClick={() => onAddInstruction(run)}>
-              {t('cloudAgent.dockFollowUp')}
-            </Button>
-          </div>
-        )}
-      </div>
     </DockRow>
   );
 }

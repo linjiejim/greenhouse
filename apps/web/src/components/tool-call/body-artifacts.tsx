@@ -24,7 +24,6 @@ import { useT } from '../../lib/i18n';
 import { AskUserCard, type AskUserData } from '../chat/ask-user-card';
 import { WorkflowCard } from '../workflow/workflow-card';
 import type { WorkflowPlanArtifact } from '@greenhouse/types/workflow';
-import { MissionDispatchCard, type MissionDispatchArtifact } from '../cloud-agent/mission-dispatch-card';
 import { SchemaPlanCard, type TablesSchemaPlanArtifact } from '../tables/schema-plan-card';
 import { TaskCaptureCard, type TaskCaptureData } from '../chat/task-capture-card';
 import { FileAttachmentCard } from '../files/file-attachment-card';
@@ -59,14 +58,13 @@ export interface ArtifactCtx {
   /** The producing turn is still streaming. The interactive ask_user form is then
    *  skipped entirely (deferred to the committed bubble): the streaming overlay is torn
    *  down + remounted as the committed MessageBubble when the turn ends, which would wipe
-   *  any selection made mid-stream. Non-interactive artifacts (eval/image/diff) still show. */
+   *  any selection made mid-stream. Non-interactive artifacts (image/diff) still show. */
   streaming?: boolean;
   /** Message body text — used to skip a generated image already embedded in the markdown. */
   content?: string;
   /** Open a session by id (spawn_session card → jump to the spawned child). */
   onOpenSession?: (sessionId: string) => void;
-  /** The conversation this message belongs to — the mission dispatch card
-   *  launches into it and re-discovers its run from its run lineage. */
+  /** The conversation this message belongs to — action cards act on it. */
   sessionId?: string | null;
   messageId?: string;
   /** Whether this transcript may mutate through its action cards. Shared/read-only
@@ -117,10 +115,6 @@ export function isArtifactCall(call: { name: string; output?: unknown }): boolea
       // Only a persisted plan renders the confirm/run card; validation errors
       // fall back to the trace block so the planner's retry stays readable.
       return out?.type === 'workflow_plan';
-    case 'mission_dispatch':
-      // Same rule: a validated draft becomes the Launch card, a refusal
-      // (runtime off, unknown model) stays a readable trace row.
-      return out?.type === 'mission_dispatch';
     case 'tables_schema_plan':
       // Same rule again: only a validated plan becomes the Confirm card. A
       // rejected draft (bad ref, missing builder role) stays a trace row so the
@@ -166,7 +160,7 @@ export function partitionCalls<T extends { name: string; output?: unknown }>(
 
 /** Confirm-gate cards the message text introduces — reading order is prose first,
  *  then the card with its action button. */
-const BELOW_PROSE_TOOLS = new Set(['workflow_plan', 'mission_dispatch', 'tables_schema_plan', 'task_capture']);
+const BELOW_PROSE_TOOLS = new Set(['workflow_plan', 'tables_schema_plan', 'task_capture']);
 
 /** Split body artifacts by where they sit relative to the prose. */
 export function splitArtifactsByPlacement<T extends { name: string }>(calls: T[]): { above: T[]; below: T[] } {
@@ -273,11 +267,6 @@ function BodyArtifactItem({ call, ctx }: { call: ArtifactCall; ctx: ArtifactCtx 
 
     case 'workflow_plan':
       return out?.type === 'workflow_plan' ? <WorkflowCard artifact={out as unknown as WorkflowPlanArtifact} /> : null;
-
-    case 'mission_dispatch':
-      return out?.type === 'mission_dispatch' ? (
-        <MissionDispatchCard artifact={out as unknown as MissionDispatchArtifact} sessionId={writableSessionId} />
-      ) : null;
 
     case 'tables_schema_plan':
       return out?.type === 'tables_schema_plan' ? (

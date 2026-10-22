@@ -38,7 +38,6 @@ const STAT_TABLES = [
   'tasks',
   'knowledge_base',
   'custom_profiles',
-  'api_clients',
   'scheduled_tasks',
   'feature_requests',
 ];

@@ -119,21 +119,6 @@ describe('buildLazyServerTools — session-scoped orchestration tools', () => {
     });
     expect(Object.keys(tools)).not.toContain('workflow_plan');
   });
-
-  it('assembles mission_dispatch in a session that holds it', () => {
-    const tools = buildLazyServerTools(STUB_DB, ['mission_dispatch'], {
-      userId: 'u1',
-      userRole: 'team',
-      sessionId: 's1',
-      profileId: 'sprouty-quick',
-    });
-    expect(Object.keys(tools)).toContain('mission_dispatch');
-  });
-
-  it('omits mission_dispatch on the stateless proxy/MCP surface', () => {
-    const tools = buildLazyServerTools(STUB_DB, ['mission_dispatch'], { userId: 'u1', userRole: 'team' });
-    expect(Object.keys(tools)).not.toContain('mission_dispatch');
-  });
 });
 
 describe('buildLazyServerTools — workbench cards can only bind what the user can read', () => {
@@ -159,13 +144,13 @@ describe('buildLazyServerTools — workbench cards can only bind what the user c
 });
 
 describe('childSpawnToolIds — headless children fail closed to replay-safe reads', () => {
-  const parentTools = ['workflow_plan', 'mission_dispatch', 'spawn_session', 'call_llm', 'knowledge_query'];
+  const parentTools = ['workflow_plan', 'tables_schema_plan', 'spawn_session', 'call_llm', 'knowledge_query'];
 
   it('strips both dispatch tools at every depth', () => {
     for (const depth of [0, 1, MAX_SPAWN_DEPTH]) {
       const ids = childSpawnToolIds(parentTools, depth);
       expect(ids, `depth ${depth}`).not.toContain('workflow_plan');
-      expect(ids, `depth ${depth}`).not.toContain('mission_dispatch');
+      expect(ids, `depth ${depth}`).not.toContain('tables_schema_plan');
     }
   });
 

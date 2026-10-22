@@ -1,12 +1,10 @@
 /**
  * Composer attachment state — picking, chips, and upload-on-send.
  *
- * Every conversation can attach any file type now, not just missions
- * (attachment convergence spec): the picking rules and the chip row are the
- * same everywhere, so they live here once and the **uploader is injected**.
- * That is the only part that differs — an ordinary chat uploads to
- * `/api/chat-files` (authenticated, session-scoped row), while the mission
- * preset still stages blobs under its own key prefix until that preset retires.
+ * Every conversation can attach any file type (attachment convergence spec):
+ * the picking rules and the chip row live here once and the **uploader is
+ * injected** — the conversation uploads to `/api/chat-files` (authenticated,
+ * session-scoped row).
  *
  * Images are NOT handled here; they keep their own path because `<img src>`
  * cannot send a bearer token (see ChatInput's pendingImages).

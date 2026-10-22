@@ -1,7 +1,7 @@
 /**
- * Mission input chips: the server writes a ```mission-attachments fence into
- * the user turn, and the bubble must show the prompt as text with the files as
- * pills — never the raw JSON.
+ * Attachment chips: a turn carries its files as an ```attachments fence (or the
+ * historical ```mission-attachments name), and the bubble must show the prompt
+ * as text with the files as pills — never the raw JSON.
  *
  * Rendering is asserted through renderToStaticMarkup (no DOM), so behaviour
  * that needs clicks is covered at the split/parse level instead.
@@ -16,7 +16,7 @@ import { AttachmentsBlock, isSafeAttachmentPreview } from './attachments-block.j
 const KEY = 'cloud-agent/attachments/u-1/abc/ECT说明书.pdf';
 const fence = (payload: unknown) => '```mission-attachments\n' + JSON.stringify(payload) + '\n```';
 
-describe('splitMissionAttachments', () => {
+describe('splitAttachments', () => {
   it('lifts the fence out of the user text', () => {
     const { text, attachments } = splitAttachments(
       '按 skill 审校这份说明书\n\n' + fence([{ key: KEY, name: 'ECT说明书.pdf', size_bytes: 2_700_000 }]),
@@ -43,7 +43,7 @@ describe('splitMissionAttachments', () => {
   });
 });
 
-describe('MissionAttachmentsBlock', () => {
+describe('AttachmentsBlock', () => {
   it('renders one pill per file with its name and size', () => {
     const html = renderToStaticMarkup(
       createElement(AttachmentsBlock, {
@@ -58,6 +58,18 @@ describe('MissionAttachmentsBlock', () => {
     expect(html).toContain('notes.txt');
     expect(html).toContain('512 B');
     expect(html).toContain('rounded-full');
+  });
+
+  it('offers a download only for chat files; a retired Mission staging key stays a passive chip', () => {
+    const chatFile = renderToStaticMarkup(
+      createElement(AttachmentsBlock, { data: [{ id: 'file-1', name: 'report.pdf', size_bytes: 1024 }] }),
+    );
+    expect(chatFile).toContain('<button');
+    const legacy = renderToStaticMarkup(
+      createElement(AttachmentsBlock, { data: [{ key: KEY, name: 'ECT说明书.pdf', size_bytes: 1024 }] }),
+    );
+    expect(legacy).toContain('ECT说明书.pdf');
+    expect(legacy).not.toContain('<button');
   });
 
   it('renders nothing when there are no attachments', () => {

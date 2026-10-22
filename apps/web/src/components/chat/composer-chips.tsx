@@ -9,14 +9,12 @@
  */
 
 import React from 'react';
-import { Cloud, Sparkles, X, Zap } from '../../lib/icons';
+import { X, Zap } from '../../lib/icons';
 import type { Profile } from '../../lib/api';
 import type { UserPrompt } from '@greenhouse/types/api';
-import type { SlashSkill } from './command-menu-popover';
 import { SproutyAvatar } from '../sprouty/index.js';
 import { profileToSprouty } from './profile-selector';
 import { useLocalized, useT } from '../../lib/i18n';
-import { Tag } from '../ui';
 
 interface ComposerChipsProps {
   /** Active profile pill (only shown when the user explicitly @-mentioned one). */
@@ -25,27 +23,12 @@ interface ComposerChipsProps {
   /** Quick prompt attached to this turn without expanding its body into the textarea. */
   prompt?: UserPrompt | null;
   onRemovePrompt?: () => void;
-  /** Skill attached to this draft — sending launches a Cloud Agent mission. */
-  skill?: SlashSkill | null;
-  onRemoveSkill?: () => void;
-  /** Explicit route for the next composer send to continue a Mission. */
-  missionInstruction?: boolean;
-  onRemoveMissionInstruction?: () => void;
 }
 
-export function ComposerChips({
-  profile,
-  onRemoveProfile,
-  prompt,
-  onRemovePrompt,
-  skill,
-  onRemoveSkill,
-  missionInstruction,
-  onRemoveMissionInstruction,
-}: ComposerChipsProps) {
+export function ComposerChips({ profile, onRemoveProfile, prompt, onRemovePrompt }: ComposerChipsProps) {
   const t = useT();
   const localized = useLocalized();
-  if (!profile && !prompt && !skill && !missionInstruction) return null;
+  if (!profile && !prompt) return null;
   const profileLabel = profile ? localized(profile.name_i18n, profile.name) : '';
 
   return (
@@ -86,54 +69,6 @@ export function ComposerChips({
           >
             <span className="mb-1 block font-medium text-fg">{prompt.title}</span>
             {prompt.content}
-          </span>
-        </span>
-      )}
-      {skill && (
-        <span className="group relative block min-w-0" tabIndex={0} data-selected-skill>
-          <span className="flex w-full items-center gap-2 rounded-lg border border-edge bg-surface-muted px-2.5 py-2 text-left text-xs font-medium text-fg-secondary">
-            <Sparkles size={12} className="flex-shrink-0 text-primary-fg" />
-            <span className="min-w-0 flex-1 truncate" title={skill.display_name}>
-              {skill.display_name}
-            </span>
-            <Tag tone="primary">{t('chat.skillMissionTag')}</Tag>
-            {onRemoveSkill && (
-              <button
-                type="button"
-                onClick={onRemoveSkill}
-                className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full text-fg-muted transition-colors hover:bg-surface-raised hover:text-fg"
-                aria-label={t('chat.removeSkill', { name: skill.display_name })}
-              >
-                <X size={12} />
-              </button>
-            )}
-          </span>
-          {skill.description && (
-            <span
-              role="tooltip"
-              className="pointer-events-none absolute bottom-full left-0 z-40 mb-2 hidden max-h-40 w-max min-w-56 max-w-[min(28rem,calc(100vw-2rem))] overflow-y-auto whitespace-pre-wrap rounded-lg border border-edge bg-surface-raised px-3 py-2 text-left text-xs font-normal leading-relaxed text-fg-secondary shadow-lg group-hover:block group-focus-within:block"
-            >
-              <span className="mb-1 block font-medium text-fg">{skill.display_name}</span>
-              {skill.description}
-            </span>
-          )}
-        </span>
-      )}
-      {missionInstruction && (
-        <span className="block min-w-0" data-mission-instruction>
-          <span className="inline-flex items-center gap-1.5 rounded-full border border-primary-edge bg-primary-subtle px-2 py-1 text-xs font-medium text-primary-fg-strong">
-            <Cloud size={12} className="flex-shrink-0" />
-            <span>{t('chat.skillMissionTag')}</span>
-            {onRemoveMissionInstruction && (
-              <button
-                type="button"
-                onClick={onRemoveMissionInstruction}
-                className="flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full text-primary-fg transition-colors hover:bg-primary-edge/40 hover:text-primary-fg-strong"
-                aria-label={t('cloudAgent.removeMissionInstruction')}
-              >
-                <X size={11} />
-              </button>
-            )}
           </span>
         </span>
       )}

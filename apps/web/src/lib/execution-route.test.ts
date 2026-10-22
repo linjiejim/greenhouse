@@ -6,7 +6,6 @@ import {
   executionRunHref,
   legacyExecutionRedirect,
   missionExecutionHref,
-  missionSourceRunId,
   parseExecutionSubPath,
 } from './execution-route.js';
 
@@ -15,7 +14,6 @@ describe('Execution Center routes', () => {
     expect(EXECUTIONS_ROOT_HASH).toBe('#/executions');
     expect(executionRunHref({ kind: 'workflow', id: 'run/42' })).toBe('#/executions/workflow/run%2F42');
     expect(missionExecutionHref('car_42')).toBe('#/executions/mission/rtm_car_42');
-    expect(missionSourceRunId('rtm_car_42')).toBe('car_42');
   });
 
   it('parses canonical kind/id detail routes', () => {

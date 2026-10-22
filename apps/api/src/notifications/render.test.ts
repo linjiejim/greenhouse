@@ -73,19 +73,6 @@ describe('flattenRichOutput', () => {
     expect(flattenRichOutput('```html-preview\n<h1>hi</h1>\n```')).toContain('网页预览无法在邮件中显示');
   });
 
-  it('lists mission artifacts by name and size', () => {
-    const out = flattenRichOutput(
-      [
-        '```mission-artifacts',
-        JSON.stringify([{ id: 1, run_id: 'r', path: '报告.pdf', size_bytes: 2048 }]),
-        '```',
-      ].join('\n'),
-    );
-
-    expect(out).toContain('**产物文件**');
-    expect(out).toContain('- 报告.pdf (2 KB)');
-  });
-
   it('drops a datatable that was cut off mid-stream', () => {
     // An interrupted turn leaves an open fence; there are no rows to show and
     // announcing a table that never arrived would be worse than silence.

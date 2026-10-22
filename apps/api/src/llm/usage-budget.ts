@@ -533,15 +533,3 @@ export function estimateCompletionTokens(input: {
     positiveSafeInteger(input.maxOutputTokens ?? DEFAULT_OUTPUT_TOKENS);
   return positiveSafeInteger(oneAttempt * (Math.max(0, Math.ceil(input.maxRetries ?? 3)) + 1));
 }
-
-/**
- * Conservative bound for one exact relay request. Every forwarded field is
- * counted, including tool schemas and response formats. UTF-8 byte length is
- * a safe upper bound on tokenizer pieces and avoids an untrusted client hiding
- * a huge schema behind a tiny `messages` array.
- */
-export function estimateRelayTokens(forwardedBody: Record<string, unknown>, maxOutputTokens: number): number {
-  return positiveSafeInteger(
-    Buffer.byteLength(JSON.stringify(forwardedBody), 'utf8') + positiveSafeInteger(maxOutputTokens),
-  );
-}

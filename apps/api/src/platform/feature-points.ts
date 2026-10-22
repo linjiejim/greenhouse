@@ -5,7 +5,7 @@
  * way an admin thinks (Knowledge / Projects / Tables / Memory / …) rather than by the
  * three underlying mechanisms it may land on:
  *
- *   • feature flag        (user_features)        — rollout gate      (memory, tables, cloud-agent)
+ *   • feature flag        (user_features)        — rollout gate      (memory, tables)
  *   • platform capability (platform_* overrides) — action authz      (knowledge.*, projects.*)
  *   • tool grant          (user_tools)           — chat/proxy tool   (admin opt-in tools)
  *
@@ -45,7 +45,7 @@ export interface FeaturePointDef {
   group: FeaturePointGroup;
   /** kind 'app': the manifest application this point maps to. */
   appId?: string;
-  /** Main toggle lands on this feature flag (memory/tables/cloud-agent, or an extension flag). */
+  /** Main toggle lands on this feature flag (memory/tables, or an extension flag). */
   flag?: string;
   /** kind 'app' without a flag: main toggle writes a deny/inherit override on this pattern. */
   capabilityPrefix?: string;
@@ -72,17 +72,6 @@ const CORE_FEATURE_POINTS: readonly FeaturePointDef[] = [
     // tables_schema_plan rides the flag but declares no proxy/MCP surface —
     // schema editing is chat-only, where a human can press Confirm (spec D3).
     toolIds: ['tables_query', 'tables_mutation', 'tables_schema_plan'],
-  },
-  {
-    key: 'cloud-agent',
-    title: 'Missions',
-    description:
-      'Long-running missions in disposable sandboxes, including the Missions page and the mission_dispatch chat tool.',
-    icon: 'Cloud',
-    kind: 'flag',
-    group: 'basic',
-    flag: 'cloud-agent',
-    toolIds: ['mission_dispatch'],
   },
   {
     key: 'memory',
@@ -154,7 +143,6 @@ export function appFeatureFlag(appId: string): string | undefined {
 
 export const TABLES_FEATURE_TOOL_IDS: readonly string[] = pointToolIds('tables');
 export const MEMORY_FEATURE_TOOL_IDS: readonly string[] = pointToolIds('memory');
-export const CLOUD_AGENT_FEATURE_TOOL_IDS: readonly string[] = pointToolIds('cloud-agent');
 
 /** Workflow tool ids — temporarily visible and executable by super users only. */
 export const WORKFLOWS_SUPER_ONLY_TOOL_IDS: readonly string[] = ['workflow_plan'];

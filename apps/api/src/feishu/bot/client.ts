@@ -62,7 +62,7 @@ export function parseFeishuText(rawContent: string): string {
 /**
  * 启动长连接。未配置或未启用时**静默跳过**——不是错误，是没开这个功能。
  *
- * 任何失败只记 warn：机器人连不上不该拖垮主 API（与 Mission 预检失败同款姿态）。
+ * 任何失败只记 warn：机器人连不上不该拖垮主 API。
  */
 export async function initFeishuBot(toolRegistry: ToolRegistry): Promise<void> {
   const config = getFeishuConfig();

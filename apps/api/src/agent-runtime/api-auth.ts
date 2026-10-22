@@ -12,11 +12,9 @@ import { logger } from '@greenhouse/utils/logger';
 import { getDb } from '@greenhouse/db';
 import type { UserRole } from '@greenhouse/db';
 import { validateAccessToken } from '../auth/token.js';
-import { validateTaskToken } from '../auth/task-token.js';
-import { getClientIP } from '../auth/api-key.js';
+import { getRequestSourceIp } from '../security/request-ip.js';
 import { InMemoryRateLimiter } from '../security/security.js';
 import { MUTATING_PROXY_ALLOWLIST } from './tool-proxy.js';
-import { getMissionRuntimeStatus } from '../cloud-agent/index.js';
 
 const AGENT_RPM_LIMIT = 30;
 const AGENT_RPD_LIMIT = 1000;
@@ -39,9 +37,6 @@ export interface AgentIdentity {
   allowedWriteTools: string[];
   /** Extra workspace narrowing. Empty means no additional narrowing beyond tool/user permissions. */
   allowedWorkspaces: string[];
-  /** Task tokens are run-bound and use approval leases for mutations. */
-  credential?: 'user' | 'task';
-  runId?: string | null;
 }
 
 function tokenFromHeader(c: Context): string | null {
@@ -55,20 +50,14 @@ function setAgentIdentity(c: Context, identity: AgentIdentity): void {
   c.set('user', { id: identity.userId, role: identity.userRole });
 }
 
-function identityFor(
-  userId: string,
-  userRole: InternalUserRole,
-  opts: { credential?: AgentIdentity['credential']; runId?: string | null } = {},
-): AgentIdentity {
+function identityFor(userId: string, userRole: InternalUserRole): AgentIdentity {
   return {
     userId,
     userRole,
-    // CLI / sandbox tokens act as the user: no extra read narrowing.
+    // CLI tokens act as the user: no extra read narrowing.
     allowedTools: undefined,
     allowedWriteTools: [...MUTATING_PROXY_ALLOWLIST],
     allowedWorkspaces: [],
-    credential: opts.credential ?? 'user',
-    runId: opts.runId ?? null,
   };
 }
 
@@ -94,53 +83,6 @@ export async function agentBearerAuthMiddleware(c: Context, next: Next) {
       },
       401,
     );
-  }
-
-  // Cloud-agent sandboxes authenticate with their run-bound task token
-  // (auth/task-token.ts). The mission acts AS its owner — same tool face as
-  // the user's own CLI token (integration spec follow-up, 2026-07-31:
-  // "用户拥有的工具权限"; narrowing via allowedTools is the later P2 step) —
-  // but only while its run is actually alive.
-  if (token.startsWith('lpct_')) {
-    if (getMissionRuntimeStatus().state !== 'ready') {
-      return c.json(
-        {
-          error: {
-            message: 'Missions are not available in this environment',
-            type: 'server_error',
-            code: 'mission_runtime_unavailable',
-          },
-        },
-        503,
-      );
-    }
-    const task = validateTaskToken(token);
-    if (!task) {
-      return c.json({ error: { message: 'Invalid or expired task token', type: 'auth_error' } }, 401);
-    }
-    let owner;
-    let run;
-    try {
-      owner = await getDb().users.getById(task.uid);
-      run = await getDb().agentRuns.getRunById(task.runId);
-    } catch (err) {
-      logger.error('[agent-auth] task-token lookup failed:', err);
-      return c.json({ error: { message: 'Internal server error', type: 'server_error' } }, 500);
-    }
-    if (!owner || owner.status !== 'active' || (owner.role !== 'super' && owner.role !== 'team')) {
-      return c.json({ error: { message: 'Task owner is not an active internal user', type: 'auth_error' } }, 403);
-    }
-    if (!run || run.user_id !== task.uid) {
-      return c.json({ error: { message: 'Run not found', type: 'auth_error' } }, 403);
-    }
-    if (run.status !== 'starting' && run.status !== 'running') {
-      return c.json(
-        { error: { message: `Run is ${run.status}; sandbox tool access is closed`, type: 'auth_error' } },
-        403,
-      );
-    }
-    setAgentIdentity(c, identityFor(owner.id, owner.role, { credential: 'task', runId: run.id }));
-    return next();
   }
 
   const payload = validateAccessToken(token);
@@ -214,7 +156,7 @@ export async function recordAgentAudit(
       status_code: opts.statusCode,
       duration_ms: opts.durationMs,
       meta: opts.meta,
-      ip_address: getClientIP(c),
+      ip_address: getRequestSourceIp(c),
       error: opts.error,
     });
   } catch (err) {

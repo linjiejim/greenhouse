@@ -244,12 +244,12 @@ describe('E2E: Tool Assignment & Enforcement', () => {
 
 // ─── App tools follow their feature flag (Phase 2) ───────
 
-describe('E2E: Missions tools follow the cloud-agent feature flag', () => {
-  async function setMissions(enabled: boolean) {
+describe('E2E: Tables tools follow the tables feature flag', () => {
+  async function setTables(enabled: boolean) {
     const res = await fetch(`${BASE_URL}/api/admin/users/${memberId}/features`, {
       method: 'PUT',
       headers: authHeaders(superToken),
-      body: JSON.stringify({ feature: 'cloud-agent', enabled }),
+      body: JSON.stringify({ feature: 'tables', enabled }),
     });
     expect(res.status).toBe(200);
   }
@@ -261,35 +261,39 @@ describe('E2E: Missions tools follow the cloud-agent feature flag', () => {
     return data.tools.map((t: { id: string }) => t.id);
   }
 
-  it('member without the flag has no mission tool (not a separate assignment)', async () => {
-    await setMissions(false);
-    const toolIds = await memberToolIds();
-    expect(toolIds).not.toContain('mission_dispatch');
+  afterAll(async () => {
+    await setTables(true);
   });
 
-  it('enabling the flag grants the mission tool in chat', async () => {
-    await setMissions(true);
+  it('member without the flag has no tables tool (not a separate assignment)', async () => {
+    await setTables(false);
     const toolIds = await memberToolIds();
-    expect(toolIds).toContain('mission_dispatch');
+    expect(toolIds).not.toContain('tables_query');
   });
 
-  it('disabling the flag removes the mission tool again', async () => {
-    await setMissions(false);
+  it('enabling the flag grants the tables tools in chat', async () => {
+    await setTables(true);
     const toolIds = await memberToolIds();
-    expect(toolIds).not.toContain('mission_dispatch');
+    expect(toolIds).toContain('tables_query');
+  });
+
+  it('disabling the flag removes the tables tools again', async () => {
+    await setTables(false);
+    const toolIds = await memberToolIds();
+    expect(toolIds).not.toContain('tables_query');
   });
 
   it('flag-owned tools cannot be assigned directly (they ride the feature, not the bucket)', async () => {
-    await setMissions(false);
+    await setTables(false);
     const res = await fetch(`${BASE_URL}/api/admin/users/${memberId}/tools`, {
       method: 'PUT',
       headers: authHeaders(superToken),
-      body: JSON.stringify({ tools: ['mission_dispatch'] }),
+      body: JSON.stringify({ tools: ['tables_query'] }),
     });
     expect(res.status).toBe(400);
     // And it stays absent — no assignment path around the flag.
     const toolIds = await memberToolIds();
-    expect(toolIds).not.toContain('mission_dispatch');
+    expect(toolIds).not.toContain('tables_query');
   });
 });
 

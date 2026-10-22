@@ -13,7 +13,7 @@
  * scanned page would let the agent "summarize" a document it never read.
  *
  * The routing sentence itself is NOT written here: what to do instead depends
- * on the surface (a chat attachment can go straight into a mission; a file in a
+ * on the surface (a chat attachment can be re-sent in another format; a file in a
  * customer's cabinet has to be downloaded first). Callers append their own.
  */
 
@@ -21,7 +21,7 @@ import { unzipSync } from 'fflate';
 import { toErrorMessage } from '@greenhouse/utils/error';
 import type { Workbook as ExcelWorkbook } from 'exceljs';
 
-/** Beyond this we do not even fetch the bytes — a sandbox is the right tool. */
+/** Beyond this we do not even fetch the bytes — it would not fit a context window anyway. */
 export const MAX_READABLE_BYTES = 10 * 1024 * 1024;
 export const DEFAULT_MAX_CHARS = 20_000;
 export const HARD_MAX_CHARS = 100_000;
@@ -378,7 +378,7 @@ export async function extractText(buffer: Buffer, name: string, contentType: str
     if (isTextLike(contentType, name)) return { ok: true, text: decodeTextBuffer(buffer) };
     if (isLegacyOfficeBinary(contentType, name)) {
       // The fix is one "Save As" away, so name it — an unqualified refusal here
-      // sends the model looking for a sandbox it may not even have.
+      // sends the model looking for some other way to read it.
       return {
         ok: false,
         reason: 'unsupported',

@@ -3,7 +3,7 @@
  * run-dev 引擎 —— 一键拉起本地验收环境（方案见 docs/specs/20260730-run-dev-and-local-sandbox.md）
  *
  * 用法（供 /run-dev 技能驱动，也可手动跑）：
- *   node scripts/run-dev.mjs up [all|web|api] [--fresh] [--sandbox] [--mission] [--db <name>]
+ *   node scripts/run-dev.mjs up [all|web|api] [--fresh] [--sandbox] [--db <name>]
  *   node scripts/run-dev.mjs stop [--wipe]
  *   node scripts/run-dev.mjs status
  *
@@ -37,7 +37,6 @@ const DEFAULT_DB_URL = 'postgresql://greenhouse:greenhouse@localhost:5432/greenh
 
 /** 沙箱库前缀 —— `--wipe` 的 DROP 白名单就是它，别改成会命中主库的前缀。 */
 const SANDBOX_DB_PREFIX = 'greenhouse_wt_';
-const MISSION_NETWORK_LABEL = 'greenhouse.run-dev.root';
 
 // 本地种子账号：仅当目标库里**一个 super 都没有**时才建（真实账密不入库，
 // 见 AGENTS.md「测试」；已有账号的库只提醒、不改密）。可用 env 覆盖。
@@ -131,125 +130,6 @@ function readEnvFile(file) {
     out[key] = value;
   }
   return out;
-}
-
-// ============================================================================
-// 可选 Mission 本地执行面（显式 --mission；不改变默认启动语义）
-// ============================================================================
-function missionNetworkName() {
-  return `greenhouse-mission-${worktreeSlug().replaceAll('_', '-')}`.slice(0, 63);
-}
-
-function inspectDockerNetwork(name) {
-  const r = sh('docker', ['network', 'inspect', name, '--format', '{{json .}}']);
-  if (r.code !== 0) return null;
-  try {
-    return JSON.parse(r.out);
-  } catch {
-    throw new Error(`Docker network ${name} 返回了不可读的 inspect 数据`);
-  }
-}
-
-/**
- * Local Mission deliberately uses a per-tree bridge rather than mutating the
- * deployment network (`cloud-agent`). The label is the ownership proof used by
- * stop; an existing same-name network without it is refused, never adopted.
- */
-function ensureMissionInfra(state, image) {
-  if (sh('docker', ['info']).code !== 0) throw new Error('Mission --mission 需要可用的本地 Docker daemon');
-  if (sh('docker', ['image', 'inspect', image]).code !== 0) {
-    throw new Error(`缺少 Mission 镜像 ${image}；先运行 bash scripts/build-agent-runtime.sh`);
-  }
-
-  const network = missionNetworkName();
-  let inspected = inspectDockerNetwork(network);
-  if (!inspected) {
-    info(`创建本树 Mission 网络 ${network}（ICC=false, IPv6=false）…`);
-    const created = sh('docker', [
-      'network',
-      'create',
-      '--driver',
-      'bridge',
-      '--opt',
-      'com.docker.network.bridge.enable_icc=false',
-      '--label',
-      `${MISSION_NETWORK_LABEL}=${ROOT}`,
-      network,
-    ]);
-    if (created.code !== 0) throw new Error(`创建 Mission 网络失败：${created.err}`);
-    inspected = inspectDockerNetwork(network);
-  }
-
-  if (inspected?.Labels?.[MISSION_NETWORK_LABEL] !== ROOT) {
-    throw new Error(`Mission 网络 ${network} 不属于本树，拒绝复用；请人工确认后处理同名网络`);
-  }
-  if (inspected.EnableIPv6 !== false || inspected.Options?.['com.docker.network.bridge.enable_icc'] !== 'false') {
-    throw new Error(`Mission 网络 ${network} 不安全（要求 IPv6=false 且 enable_icc=false）`);
-  }
-
-  state.mission = {
-    requested: true,
-    image,
-    network,
-    dataRoot: path.join(RUN_DIR, 'mission-data'),
-  };
-  writeState(state);
-}
-
-async function readHealth(port) {
-  const res = await fetch(`http://127.0.0.1:${port}/health`, { signal: AbortSignal.timeout(3000) });
-  if (!res.ok) throw new Error(`health 返回 ${res.status}`);
-  return res.json();
-}
-
-async function assertMissionReady(state, port) {
-  const deadline = Date.now() + 30_000;
-  let lastState = 'unknown';
-  while (Date.now() < deadline) {
-    const health = await readHealth(port);
-    lastState = health?.mission?.state ?? 'unknown';
-    if (lastState === 'ready') {
-      state.mission.health = health.mission;
-      writeState(state);
-      info('Mission admission ready ✓（本地 runc + monitor-only quota）');
-      return;
-    }
-    // Mission initializes asynchronously after the HTTP listener starts. Its
-    // initial public state is `disabled`, so one immediate read is a race, not
-    // a verdict. `unavailable` is also polled to the same deadline: containment
-    // may still be settling and the final log carries the actionable reason.
-    await sleep(500);
-  }
-  throw new Error(`Mission 30 秒内未就绪（state=${lastState}），查 .run-dev/logs/api.log`);
-}
-
-function stopMissionInfra(state) {
-  const mission = state?.mission;
-  if (!mission?.network) return;
-
-  const listed = sh('docker', [
-    'ps',
-    '-aq',
-    '--filter',
-    `network=${mission.network}`,
-    '--filter',
-    'label=greenhouse.cloud-agent.run',
-  ]);
-  for (const id of listed.out.split('\n').filter(Boolean)) {
-    const removed = sh('docker', ['rm', '-f', id]);
-    if (removed.code === 0) info(`停 Mission sandbox ${id.slice(0, 12)}`);
-    else warn(`Mission sandbox ${id.slice(0, 12)} 回收失败：${removed.err.split('\n')[0]}`);
-  }
-
-  const inspected = inspectDockerNetwork(mission.network);
-  if (!inspected) return;
-  if (inspected.Labels?.[MISSION_NETWORK_LABEL] !== ROOT) {
-    warn(`Mission 网络 ${mission.network} 所有权标签不匹配，保留`);
-    return;
-  }
-  const removed = sh('docker', ['network', 'rm', mission.network]);
-  if (removed.code === 0) info(`已删本树 Mission 网络 ${mission.network}`);
-  else warn(`Mission 网络 ${mission.network} 未删：${removed.err.split('\n')[0]}`);
 }
 
 // ============================================================================
@@ -641,16 +521,6 @@ async function cmdUp(argv) {
   state.ports = ports;
   writeState(state);
 
-  if (flags.has('--mission')) {
-    const image =
-      process.env.SANDBOX_RUNNER_IMAGE ||
-      process.env.CLOUD_AGENT_IMAGE ||
-      fileEnv.SANDBOX_RUNNER_IMAGE ||
-      fileEnv.CLOUD_AGENT_IMAGE ||
-      'greenhouse/agent-runtime:latest';
-    ensureMissionInfra(state, image);
-  }
-
   // 3. api 先行（web 的 Vite 代理指向它）
   const apiEnv = {
     API_PORT: String(ports.api),
@@ -658,27 +528,14 @@ async function cmdUp(argv) {
     // Account setup/reset links must return to the actual dynamically allocated
     // local web origin, not a stale port copied from .env.
     ...(ports.web ? { PUBLIC_BASE_URL: `http://localhost:${ports.web}` } : {}),
-    // run-dev is always a local development process. This also selects the
-    // monitor-only workspace quota posture instead of production attestation.
+    // run-dev is always a local development process.
     NODE_ENV: 'development',
-    ...(state.mission
-      ? {
-          MISSION_ENABLED: '1',
-          SANDBOX_RUNNER_ALLOW_UNHARDENED: '1',
-          SANDBOX_RUNNER_DOCKER_RUNTIME: 'runc',
-          SANDBOX_RUNNER_IMAGE: state.mission.image,
-          SANDBOX_RUNNER_NETWORK: state.mission.network,
-          SANDBOX_RUNNER_API_BASE: `http://host.docker.internal:${ports.api}`,
-          SANDBOX_RUNNER_DATA_ROOT: state.mission.dataRoot,
-        }
-      : {}),
   };
   launch(state, 'api', 'pnpm', ['api'], apiEnv, ports.api);
   if (!(await waitHealthy('api', ports.api))) {
     throw new Error('api 健康检查超时，查 .run-dev/logs/api.log');
   }
   info('api 健康 ✓');
-  if (state.mission) await assertMissionReady(state, ports.api);
 
   // 4. 账号确保（api 起来了说明库是通的）
   const account = ensureAccount(dbUrl);
@@ -742,7 +599,6 @@ async function cmdStop(argv) {
         }
       }
     }
-    stopMissionInfra(state);
   }
 
   // Postgres 容器不关：主树、别的 worktree、别的项目都连着它（本地库是共用基建）。
@@ -813,20 +669,6 @@ function printSummary(state) {
     },
   ]);
 
-  if (state.mission) {
-    console.log('');
-    info('Mission：');
-    table([
-      {
-        admission: state.mission.health?.state ?? 'pending',
-        runtime: state.mission.health?.isolation?.runtime ?? 'runc（本地）',
-        quota: state.mission.health?.isolation?.workspace_quota?.mode ?? 'monitor-only',
-        network: state.mission.network,
-        image: state.mission.image,
-      },
-    ]);
-  }
-
   console.log('');
   if (state.account?.seeded) {
     info(`登录账号（新种）：${C.c}${SEED_EMAIL} / ${SEED_PASSWORD}${C.x}`);
@@ -869,7 +711,7 @@ try {
   else if (cmd === 'status') cmdStatus();
   else {
     console.log(
-      '用法: node scripts/run-dev.mjs {up [all|web|api] [--sandbox|--fresh|--mission|--db=<name>] | stop [--wipe] | status}',
+      '用法: node scripts/run-dev.mjs {up [all|web|api] [--sandbox|--fresh|--db=<name>] | stop [--wipe] | status}',
     );
     process.exit(cmd ? 1 : 0);
   }

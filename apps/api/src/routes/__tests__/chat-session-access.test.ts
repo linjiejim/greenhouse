@@ -162,6 +162,17 @@ describe('POST /api/chat session authorization', () => {
     expect(mocks.sessions.buildChatMessages).not.toHaveBeenCalled();
   });
 
+  it('refuses to continue a retired Mission conversation without touching it', async () => {
+    mocks.sessions.getById.mockResolvedValue({ ...makeSession(), channel: 'mission' });
+
+    const response = await continueSession(createApp(), { id: 'owner', role: 'team' });
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toEqual({ error: 'Mission conversations are read-only' });
+    expect(mocks.sessions.addMessage).not.toHaveBeenCalled();
+    expect(mocks.sessions.buildChatMessages).not.toHaveBeenCalled();
+  });
+
   it.each([
     ['another team user', { id: 'other', role: 'team' as const }],
     ['a read-only share recipient', { id: 'shared-reader', role: 'team' as const }],

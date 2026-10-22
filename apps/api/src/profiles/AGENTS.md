@@ -23,7 +23,7 @@
   （`PRESET_PROFILE_IDS`、`DEFAULT_PROFILE_ID`、`CUSTOM_BASE_PROFILE_IDS`）。
   只加 YAML 不进常量 = 一个没人能选到的 Agent；只改常量不加 YAML = 启动即报 `Profile not found`。
 - **custom profile 的 `base_profile_id` 只能是预设之一**（`CUSTOM_BASE_PROFILE_IDS = PRESET_PROFILE_IDS`，
-  由 `isValidCustomBaseProfileId()` 强制）。`mission`、`eval-judge`、`desktop` 与所有旧 id 都不是合法 base；
+  由 `isValidCustomBaseProfileId()` 强制）。`eval-judge`、`desktop` 与所有旧 id 都不是合法 base；
   存量的 `team` 等值先经 `normalizeProfileId()` 归一再校验。base **只**提供 `access.rich_output` 与 model
   fallback——custom agent 自带 `custom_profiles.model_id`，预设换模型不会改掉已 fork 出去的 Agent。
 - **custom Agent 是稳定资产 + 不可变版本**：`custom_profiles` 只保存身份、owner 与发布指针；可执行 manifest
@@ -55,9 +55,10 @@
   `model_id` 不可达（已从目录下线或 key 未配）时，`resolveProfileAsync` 回落 base preset 的模型。
 - **面向用户的文案可 i18n**（`name`/`description`）：写纯字符串或 `{ zh, en }`
   映射，源语言 `zh`，写错 locale key 或给空串**直接抛错**导致 profile 加载失败。`system_prompt` 不做 i18n。
-- **`sprouty-mission` / `sprouty-workflows` 已退役**（2026-08-01）——`workflow_plan` 与 `mission_dispatch`
-  都对所有内部会话装配，两个「模式预设」因此没有存在理由；planner 方法论已折进 `workflow_plan` 的
-  description（随 function definition 下发，覆盖所有装配面）。mission 部分：mission 由任意会话的 `mission_dispatch` 起草 + Launch 执行。`POST /api/sessions` 不再生成 `channel='mission'` 的会话；存量 mission 会话靠 **channel**（不是 profile）继续走 `/api/missions/runs` 的发送路径，`/api/chat` 对该 id 的 400 守卫再留一个版本。
+- **`sprouty-mission` / `sprouty-workflows` 已退役**（2026-08-01）——`workflow_plan` 对所有内部会话装配，
+  「模式预设」因此没有存在理由；planner 方法论已折进 `workflow_plan` 的 description（随 function
+  definition 下发，覆盖所有装配面）。Missions 整体在 v1.4 删除：存量 `channel='mission'` 会话只读，
+  `/api/chat` 对它们返回 409。
 - **旧 id 只映射、不迁移**（`normalizeProfileId()`）：`team`/`default`/`researcher`/`writer`/`project-assistant`/
   `cs-quality`/`ops-analyst`/`cc-analyzer`/`crm`/`workflow-planner`/`sprouty-agents`/`sprouty-quick`/
   `sprouty-deep`/`sprouty-k3`/`sprouty-workflows`/`sprouty-mission`/`eval-judge`（v1.4 随评测系统退役）→ `sprouty`；`local-dev`/`local-pi` →

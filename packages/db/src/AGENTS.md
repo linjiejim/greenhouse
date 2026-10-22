@@ -55,8 +55,8 @@
 - `users.auth_version` 是账号凭证代数，`refresh_tokens.auth_version` 记录签发代数。密码重置必须通过 `users.resetPasswordAndRevokeSessions()` 在同一事务内更新密码、递增代数并删除全部 refresh token；access/refresh/WebSocket 使用时都要与当前用户代数比对，禁止退回“只删 refresh token”的非原子实现。
 - 邮件设密不是 Magic Link：`account_password_links` 只存 32-byte 随机 token 的 SHA-256 hash。签发、重发、撤销、消费与账号禁用统一先锁 `users` 再锁链接；消费必须在同一事务内校验用途/状态/过期/代数并完成写密码、激活、代数递增、Refresh Token 撤销。重置签发本身就把账号置为 `reset_required`、密码改为不可登录哨兵并撤销旧会话；撤销链接不得恢复旧密码。
 - 会话、定时任务和自定义 Profile 的内置基础 Profile 统一为 `team`；数据库默认值不得再写入已退役的外部服务 Profile id。
-- MCP、LLM Relay 与其他内部集成必须最终绑定真实内部用户。审计表可用松散关联保留历史，但新写入的主体不能是匿名/访客身份。
-- `api_audit_log.channel='api'` 仅用于读取迁移前历史审计；新写入类型必须显式排除它，只允许内部 `a2a` / `cli` / `relay`。
+- MCP、Agent 代理与其他内部集成必须最终绑定真实内部用户。审计表可用松散关联保留历史，但新写入的主体不能是匿名/访客身份。
+- `api_audit_log` 是活表（MCP `recordMcpAudit` 写 `a2a`、Agent 代理写 `cli`，机器客户端 Activity 读它）。`channel='api'` / `'relay'` 只是已删除入口留下的历史行；新写入类型必须排除它们，只允许 `a2a` / `cli`。
 - 已移除模块对应的表不得以兼容、占位或“未来可能使用”为由重新加入；确有新消费者时按根 AGENTS.md 的复用门禁重新设计。
 
 ### 退役表（`schema/retired.ts`）
@@ -64,7 +64,7 @@
 - v1.4 删除模块时**不删表**：表定义原样挪进 `schema/retired.ts`（从 schema index 导出，Drizzle snapshot 不变、不产生迁移），service 与 provider 入口一并删除。留表只为蓝绿回滚到 v1.3.x 时旧代码还能读写；v1.4 之后的下一个版本用迁移把它们 DROP 掉，再删 `retired.ts` 里对应定义。
 - 应用代码不得 import `retired.ts` 的任何导出；`resetSchema()` 的 TRUNCATE 清单保留这些表名（表还在）。
 - 退役列（表还活着、列不再读写）就地留在原 schema，注释写明退役版本，与退役表同一版本 DROP。
-- 当前退役：评测 `eval_datasets` / `eval_runs` / `eval_results` / `chat_eval_results`；列 `custom_profile_versions.eval_refs`。
+- 当前退役：评测 `eval_datasets` / `eval_runs` / `eval_results` / `chat_eval_results`；Missions `agent_workspaces` / `agent_runs` / `agent_run_events` / `agent_artifacts` / `agent_run_approvals` / `agent_run_outbox`；LLM 中转 key `api_clients`（`api_audit_log` 仍是活表，与它只有逻辑关联、没有 FK）；列 `custom_profile_versions.eval_refs`。
 
 ### Schema 迁移
 
@@ -223,7 +223,7 @@
 ### Platform OAuth 2.1
 
 - schema：`schema/platform-oauth.ts`；service：`services/platform-oauth.ts`；provider 入口：`db.platformOAuth`。
-- OAuth client/grant/code/token 独立于 `api_clients` 的内部 A2A/Relay API Key；两类凭证不得塞进同一行或共用生命周期。
+- OAuth client/grant/code/token 是唯一的机器凭证；已退役的 `api_clients`（旧 A2A/Relay API Key）不得复活，也不得把 OAuth 凭证塞进去。
 - authorization code、access token、refresh token 原文一律不落库，只保存 SHA-256 hash；scope/resource/expiry/revocation 必须持久化并逐请求校验。
 - **scope 列存的是"实际授予了什么"，读出来绝不加工**（迁移链 起）。动作 scope（`mcp:read`/`mcp:write`）之外还有资源组 scope（`mcp:knowledge` 等，每个 MCP 资源组一个），可达工具由两者相乘得出。存量行已被 0063 显式回填全部资源组（grants / 未过期未撤销 token / 未消费 code / 机器客户端 allowed_scopes 四张表），因此服务端解析器**没有**"缺资源组视为全部"的兼容分支——加回那个分支等于把每个存量 grant 提权成全权限。写入方向的展开只发生在请求解析（`normalizeOAuthScopes`），不在存储解析。
 - `platform_oauth_grants.user_id` 对 users 使用 CASCADE；撤销 grant、禁用 client 或改变 grant scopes 必须在同一事务同步撤销既有 token（scope 变化同时作废未使用 code）。token 签发必须锁定并复核当前 grant，避免降权并发窗口；`platform_audit_events` 仍保持无 FK 独立留存。
@@ -249,7 +249,7 @@
 
 ### 统一 Runtime Kernel
 
-- schema：`schema/runtime.ts`；service：`services/runtime.ts`；provider 入口：`db.runtime`。它只统一执行 envelope、lease/CAS、Interrupt、Event/Outbox，不取代 Mission workspace、Workflow graph 或 Chat transcript 等领域事实。`kind=eval` 只剩 v1.4 前的历史 Run。
+- schema：`schema/runtime.ts`；service：`services/runtime.ts`；provider 入口：`db.runtime`。它只统一执行 envelope、lease/CAS、Interrupt、Event/Outbox，不取代 Workflow graph 或 Chat transcript 等领域事实。`kind=eval` / `kind=mission` 只剩 v1.4 前的历史 Run（API boot 时 `settleRetiredRuntimeRuns` 收口遗留的活动 Run）。
 - Run/Step/ToolCall/Artifact/Interrupt 的完整 input/output/payload/decision 与 Event payload 永久保留，不自动截断、不过期、无生产 delete Service；大文件字节仍在对象存储，Artifact 保存 provenance/hash。`runtime_events` append-only，Outbox delivery state 只能写 `runtime_outbox`，禁止回写或改造 Event。
 - 每个状态/heartbeat/claim/stale-recovery 变更必须在同一事务追加 Event + Outbox；Event `seq` 通过锁定对应 Run 后分配。重复命令先查 `(run_id,idempotency_key)` 并校验完整 fingerprint，不能重新执行副作用。
 - 真实工具执行前只走 `runtime.beginToolCallWithAuthority()`：同一事务按 Run→Step 加行锁，durable driver 必须证明 Run/Step 都仍 running、`desired_state=run`、owner 匹配、worker 同时持有两条未过期 lease；unleased 例外只允许 running 的 `kind=chat/source_kind=chat_turn` projection。事务内一次完成 ToolCall create + pending→running 及两条 Event/Outbox，任一失败都禁止调用真实工具。已存在同幂等 key 永远不二次 admission。`running` worker 丢失统一转 `uncertain`（即使 Run 已请求 cancel），因为 DB 只能证明 admission 已提交，不能证明外部结果；pending 才能安全收为 canceled。

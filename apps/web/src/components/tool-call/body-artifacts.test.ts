@@ -68,7 +68,6 @@ describe('splitArtifactsByPlacement', () => {
   it('sends the confirm-gate cards below the prose, everything else above', () => {
     const calls = [
       { name: 'spawn_session' },
-      { name: 'mission_dispatch' },
       { name: 'generate_image' },
       { name: 'workflow_plan' },
       { name: 'tables_schema_plan' },
@@ -77,7 +76,7 @@ describe('splitArtifactsByPlacement', () => {
     expect(above.map((c) => c.name)).toEqual(['spawn_session', 'generate_image']);
     // These are cards the prose introduces ("here is what I'd change — confirm?"),
     // so the button follows the explanation instead of preceding it.
-    expect(below.map((c) => c.name)).toEqual(['mission_dispatch', 'workflow_plan', 'tables_schema_plan']);
+    expect(below.map((c) => c.name)).toEqual(['workflow_plan', 'tables_schema_plan']);
   });
 });
 

@@ -6,7 +6,7 @@
  * GET  /runs/:id/events                   — 永久事件的游标回放
  * POST /runs/:id/commands                 — 委派领域 driver 支持的 run 命令
  * GET  /interrupts                        — 待我处理；super 可 scope=all
- * POST /interrupts/:id/commands           — 委派 Mission approval / Workflow gate 决策
+ * POST /interrupts/:id/commands           — 委派 Workflow gate 决策
  * GET  /summary                           — 执行中心与导航 badge 聚合
  */
 
@@ -28,11 +28,9 @@ import {
 } from '@greenhouse/types/runtime';
 import { toErrorMessage } from '@greenhouse/utils/error';
 import type { AppEnv } from '../app-env.js';
-import { userHasFeature } from '../auth/features.js';
 import { getAuthUser, type AuthUser } from '../auth/middleware.js';
-import { getMissionRuntimeStatus, getCloudAgentController } from '../cloud-agent/index.js';
 import { getWorkflowEngine } from '../workflow-engine/index.js';
-import { mirrorMissionRunById, mirrorWorkflowRunById } from '../runtime/adapters.js';
+import { mirrorWorkflowRunById } from '../runtime/adapters.js';
 import { delegateAutomationRuntimeCancel, settleQueuedAutomationCancellation } from '../scheduler/runtime-driver.js';
 import { delegateSubagentRuntimeCancel, settleQueuedSubagentCancellation } from '../runtime/subagent-driver.js';
 import {
@@ -89,7 +87,6 @@ function decodeCursor(raw: string | undefined): Cursor | undefined {
 }
 
 function supportedActions(run: RuntimeRunRow): RuntimeUserAction[] {
-  if (run.source_kind === 'agent_run') return ['cancel', 'approve', 'reject'];
   if (run.source_kind === 'workflow_run') return ['pause', 'resume', 'cancel', 'approve', 'reject'];
   if (run.kind === 'automation' && run.source_kind.startsWith('scheduled_task:')) return ['cancel'];
   if (run.kind === 'subagent' && run.source_kind === 'spawned_session') return ['cancel'];
@@ -119,11 +116,7 @@ function requestedKinds(raw: string | undefined, isSuper: boolean): RuntimeRunKi
 async function authorizedKinds(user: AuthUser, raw: string | undefined): Promise<RuntimeRunKind[]> {
   const requested = requestedKinds(raw, user.role === 'super');
   if (user.role === 'super') return requested;
-  const missionAllowed = requested.includes('mission')
-    ? await userHasFeature(user.id, user.role, 'cloud-agent')
-    : false;
   return requested.filter((kind) => {
-    if (kind === 'mission') return missionAllowed;
     if (kind === 'workflow' || kind === 'chat' || kind === 'eval') return false;
     return true;
   });
@@ -134,11 +127,10 @@ async function canAccessRunSource(user: AuthUser, run: RuntimeRunRow): Promise<b
   if (run.kind === 'workflow' || run.source_kind === 'workflow_run' || run.kind === 'chat' || run.kind === 'eval') {
     return false;
   }
+  // Missions were retired in v1.4: their historical runs stay readable by the
+  // owner. The adapter always emitted this exact pair; anything else is denied.
   if (run.kind === 'mission' || run.source_kind === 'agent_run') {
-    // Official adapters always emit this exact pair. A malformed cross-kind
-    // projection is denied instead of inheriting the more permissive kind.
-    if (run.kind !== 'mission' || run.source_kind !== 'agent_run') return false;
-    return userHasFeature(user.id, user.role, 'cloud-agent');
+    return run.kind === 'mission' && run.source_kind === 'agent_run';
   }
   if (run.kind === 'automation') return run.source_kind.startsWith('scheduled_task:');
   if (run.kind === 'subagent') return run.source_kind === 'spawned_session';
@@ -172,19 +164,13 @@ function runtimeError(c: Context<AppEnv>, error: unknown) {
           : 400;
     return c.json({ error: error.message, code: error.code }, status);
   }
-  if (/Mission runtime is unavailable/.test(toErrorMessage(error))) {
-    return c.json({ error: 'Mission runtime is unavailable', code: 'mission_runtime_unavailable' }, 503);
-  }
-  if (/Runtime (Mission|Workflow) adapter is disabled/.test(toErrorMessage(error))) {
+  if (/Runtime Workflow adapter is disabled/.test(toErrorMessage(error))) {
     return c.json({ error: toErrorMessage(error), code: 'runtime_adapter_disabled' }, 503);
   }
   return c.json({ error: toErrorMessage(error) }, 400);
 }
 
 function assertSourceAdapterEnabled(run: RuntimeRunRow): void {
-  if (run.source_kind === 'agent_run' && !runtimeAdapterEnabled('mission')) {
-    throw new Error('Runtime Mission adapter is disabled');
-  }
   if (run.source_kind === 'workflow_run' && !runtimeAdapterEnabled('workflow')) {
     throw new Error('Runtime Workflow adapter is disabled');
   }
@@ -241,26 +227,6 @@ async function recordDomainCommand(input: {
 }
 
 async function delegateRunCommand(run: RuntimeRunRow, type: RuntimeRunCommandType, mayDrive: boolean): Promise<void> {
-  if (run.source_kind === 'agent_run') {
-    if (type !== 'cancel')
-      throw new RuntimeKernelError('runtime_invalid_transition', `Mission does not support ${type}`);
-    const source = await getDb().agentRuns.getRunById(run.source_id);
-    if (!source) throw new RuntimeKernelError('runtime_not_found', 'Mission source run is missing');
-    if (source.status === 'canceled') return;
-    if (!mayDrive) {
-      throw new RuntimeKernelError('runtime_version_conflict', `Runtime run ${run.id} changed concurrently`);
-    }
-    if (source.status === 'completed' || source.status === 'failed') {
-      throw new RuntimeKernelError('runtime_invalid_transition', `Mission is already ${source.status}`);
-    }
-    const controller = getCloudAgentController();
-    if (!controller || getMissionRuntimeStatus().state !== 'ready') {
-      throw new Error('Mission runtime is unavailable');
-    }
-    const result = await controller.cancelRun(run.source_id);
-    if (!result) throw new RuntimeKernelError('runtime_invalid_transition', 'Mission can no longer be canceled');
-    return;
-  }
   if (run.source_kind === 'workflow_run') {
     const source = await getDb().workflows.getRun(run.source_id);
     if (!source) throw new RuntimeKernelError('runtime_not_found', 'Workflow source run is missing');
@@ -400,11 +366,9 @@ export const runtimeRoutes = new Hono<AppEnv>()
         commandedRun = await settleQueuedSubagentCancellation(getDb(), commandedRun, user.id);
       }
       const mirrored =
-        commandedRun.source_kind === 'agent_run'
-          ? await mirrorMissionRunById(getDb(), commandedRun.source_id)
-          : commandedRun.source_kind === 'workflow_run'
-            ? await mirrorWorkflowRunById(getDb(), commandedRun.source_id)
-            : commandedRun;
+        commandedRun.source_kind === 'workflow_run'
+          ? await mirrorWorkflowRunById(getDb(), commandedRun.source_id)
+          : commandedRun;
       if (!mirrored) throw new RuntimeKernelError('runtime_not_found', 'Runtime domain source is missing');
       return c.json({ run: runView(mirrored), ...(fenced.idempotent ? { idempotent: true } : {}) });
     } catch (error) {
@@ -491,43 +455,7 @@ export const runtimeRoutes = new Hono<AppEnv>()
       if (!payload || Array.isArray(payload) || typeof payload !== 'object') {
         throw new RuntimeKernelError('runtime_invalid_transition', 'Interrupt has no domain decision driver');
       }
-      if (payload.source === 'mission_approval' && run.source_kind === 'agent_run') {
-        const sourceRun = await getDb().agentRuns.getRunById(run.source_id);
-        if (!sourceRun || typeof payload.approval_id !== 'string') {
-          throw new RuntimeKernelError('runtime_not_found', 'Mission approval source is missing');
-        }
-        const target = body.type === 'approve' ? 'approved' : 'denied';
-        let approval = await getDb().agentRuns.getApprovalById(payload.approval_id);
-        if (!approval || approval.run_id !== sourceRun.id || approval.user_id !== sourceRun.user_id) {
-          throw new RuntimeKernelError('runtime_not_found', 'Mission approval source is missing');
-        }
-        if (approval.status !== target) {
-          if (interrupt.version !== command.expected_version) {
-            throw new RuntimeKernelError(
-              'runtime_version_conflict',
-              `Runtime interrupt ${interrupt.id} changed concurrently`,
-            );
-          }
-          if (approval.status !== 'pending') {
-            throw new RuntimeKernelError(
-              'runtime_invalid_transition',
-              `Mission approval is already ${approval.status}`,
-            );
-          }
-          if (getMissionRuntimeStatus().state !== 'ready') throw new Error('Mission runtime is unavailable');
-          approval =
-            (await getDb().agentRuns.decideApproval(
-              payload.approval_id,
-              sourceRun.id,
-              sourceRun.user_id,
-              body.type === 'approve' ? 'approve' : 'deny',
-              user.id,
-            )) ?? (await getDb().agentRuns.getApprovalById(payload.approval_id));
-          if (approval?.status !== target) {
-            throw new RuntimeKernelError('runtime_invalid_transition', 'Mission approval is no longer pending');
-          }
-        }
-      } else if (payload.source === 'workflow_gate' && run.source_kind === 'workflow_run') {
+      if (payload.source === 'workflow_gate' && run.source_kind === 'workflow_run') {
         const gateId = Number(payload.gate_id);
         if (!Number.isSafeInteger(gateId)) {
           throw new RuntimeKernelError('runtime_not_found', 'Workflow gate source is missing');
@@ -565,12 +493,7 @@ export const runtimeRoutes = new Hono<AppEnv>()
       } else {
         throw new RuntimeKernelError('runtime_invalid_transition', 'Interrupt has no domain decision driver');
       }
-      const mirrored =
-        run.source_kind === 'agent_run'
-          ? await mirrorMissionRunById(getDb(), run.source_id)
-          : run.source_kind === 'workflow_run'
-            ? await mirrorWorkflowRunById(getDb(), run.source_id)
-            : null;
+      const mirrored = run.source_kind === 'workflow_run' ? await mirrorWorkflowRunById(getDb(), run.source_id) : null;
       if (!mirrored) throw new RuntimeKernelError('runtime_not_found', 'Runtime domain source is missing');
       const mirroredInterrupt = await getDb().runtime.getInterrupt(interrupt.id);
       if (!mirroredInterrupt) {
