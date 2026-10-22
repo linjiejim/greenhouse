@@ -48,15 +48,17 @@ export async function assertCustomProfileAccess(
  *
  * An unpinned reference (`custom:7`) always pins the Agent's CURRENT version —
  * for the owner and for everyone the Agent is shared with alike; there is no
- * separate published channel any more. An already-pinned reference
- * (`custom:7@2`, carried by an existing session or Automation) keeps resolving
- * its own immutable version as long as the caller may still use the Agent.
- * This is the sole path for new sessions/tasks.
+ * separate published channel any more. A version a non-owner names themselves
+ * must be the current one: older versions may never have been shared. Only a
+ * pin that already exists (`existingPin`: a session's, a parent session's or
+ * an Automation's own) keeps resolving its own immutable version as long as
+ * the caller may still use the Agent. This is the sole path for new sessions/tasks.
  */
 export async function pinProfileIdForUser(
   user: ProfileActor,
   rawProfileId?: string | null,
   database: DatabaseProvider = getDb(),
+  options: { existingPin?: boolean } = {},
 ): Promise<string> {
   const profileId = normalizeProfileId(rawProfileId) ?? DEFAULT_PROFILE_ID;
   if (!profileId.startsWith('custom:')) return profileId;
@@ -70,6 +72,10 @@ export async function pinProfileIdForUser(
   }
 
   const version = reference.version ?? row.current_version;
+  const isOwner = user.role === 'super' || row.user_id === user.id;
+  if (!isOwner && !options.existingPin && version !== row.current_version) {
+    throw new ProfileAccessError('Only the current version of a shared Agent can be selected', 403);
+  }
   const manifest = await database.customProfiles.getVersion(reference.profileId, version);
   if (!manifest) throw new ProfileAccessError('Custom profile version not found', 404);
   return `custom:${reference.profileId}@${version}`;

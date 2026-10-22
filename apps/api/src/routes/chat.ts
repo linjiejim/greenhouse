@@ -189,7 +189,7 @@ export function createChatRoute(toolRegistry: ToolRegistry) {
             }
 
             try {
-              profileId = await pinProfileIdForUser(authUser, session.profile_id);
+              profileId = await pinProfileIdForUser(authUser, session.profile_id, undefined, { existingPin: true });
             } catch (err) {
               if (err instanceof ProfileAccessError) return c.json({ error: err.message }, err.status);
               throw err;

@@ -291,7 +291,8 @@ export function AgentsPage() {
                         <th className="text-left px-4 py-2 font-medium">{t('agents.version')}</th>
                         <th className="text-center px-4 py-2 font-medium">{t('agents.tools')}</th>
                         <th className="text-center px-4 py-2 font-medium hidden lg:table-cell">{t('agents.calls')}</th>
-                        <th className="text-center px-4 py-2 font-medium hidden md:table-cell">{t('agents.shared')}</th>
+                        {/* Visible on phones: it is the only place to share or unshare an Agent. */}
+                        <th className="text-center px-4 py-2 font-medium">{t('agents.shared')}</th>
                         <th className="text-center px-4 py-2 font-medium w-20">{t('agents.actions')}</th>
                       </tr>
                     </thead>
@@ -337,7 +338,7 @@ export function AgentsPage() {
                           <td className="px-4 py-2.5 text-center text-fg-faint hidden lg:table-cell">
                             {p.usage?.total_calls || '—'}
                           </td>
-                          <td className="px-4 py-2.5 text-center hidden md:table-cell">
+                          <td className="px-4 py-2.5 text-center">
                             {isSuper
                               ? shareToggle(p)
                               : p.is_shared && (

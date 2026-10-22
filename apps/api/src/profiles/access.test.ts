@@ -64,10 +64,22 @@ describe('custom profile access policy', () => {
 
   it('keeps an existing pin resolving after the Agent moved on, but not a version that never existed', async () => {
     mocks.getById.mockResolvedValue({ id: 7, user_id: 'owner', is_shared: true, current_version: 3 });
-    await expect(pinProfileIdForUser(other, 'custom:7@2')).resolves.toBe('custom:7@2');
+    await expect(pinProfileIdForUser(other, 'custom:7@2', undefined, { existingPin: true })).resolves.toBe(
+      'custom:7@2',
+    );
 
     mocks.getVersion.mockResolvedValueOnce(undefined);
-    await expect(pinProfileIdForUser(other, 'custom:7@9')).rejects.toMatchObject({ status: 404 });
+    await expect(pinProfileIdForUser(other, 'custom:7@9', undefined, { existingPin: true })).rejects.toMatchObject({
+      status: 404,
+    });
+  });
+
+  it('never lets a non-owner pick an older version themselves (it may never have been shared)', async () => {
+    mocks.getById.mockResolvedValue({ id: 7, user_id: 'owner', is_shared: true, current_version: 3 });
+    await expect(pinProfileIdForUser(other, 'custom:7@1')).rejects.toMatchObject({ status: 403 });
+    await expect(pinProfileIdForUser(other, 'custom:7@3')).resolves.toBe('custom:7@3');
+    // The owner may still pin any of their own versions.
+    await expect(pinProfileIdForUser(owner, 'custom:7@1')).resolves.toBe('custom:7@1');
   });
 
   it('ignores the retired review lifecycle entirely', async () => {

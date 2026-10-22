@@ -157,6 +157,8 @@ export function createSpawnSessionTool(db: DatabaseProvider, ctx: SpawnSessionCo
             { id: ctx.userId, role: ctx.userRole },
             input.profile_id ?? ctx.parentProfileId ?? undefined,
             db,
+            // The parent conversation's own pin may be an older version.
+            { existingPin: !input.profile_id || input.profile_id === ctx.parentProfileId },
           );
           profile = await resolveProfileAsync(profileId, db);
         } catch (err) {

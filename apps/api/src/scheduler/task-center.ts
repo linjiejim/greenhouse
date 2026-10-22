@@ -262,10 +262,13 @@ async function resolveTaskProfile(
   rawProfileId: string | undefined,
   actor: TaskActor,
   database: DatabaseProvider,
+  existingPin = false,
 ): Promise<{ profileId: string } | TaskError> {
   try {
     if (actor.role !== 'team' && actor.role !== 'super') return err('forbidden', 'Internal account required');
-    const profileId = await pinProfileIdForUser({ id: actor.userId, role: actor.role }, rawProfileId, database);
+    const profileId = await pinProfileIdForUser({ id: actor.userId, role: actor.role }, rawProfileId, database, {
+      existingPin,
+    });
     const accessError = await checkProfileAccess(profileId, database);
     if (accessError) return err('forbidden', accessError);
     return { profileId };
@@ -490,7 +493,13 @@ export async function updateTask(
   }
 
   if (input.profile_id !== undefined) {
-    const profileResult = await resolveTaskProfile(input.profile_id, actor, db);
+    // Saving an Automation without changing its Agent keeps its own pin.
+    const profileResult = await resolveTaskProfile(
+      input.profile_id,
+      actor,
+      db,
+      input.profile_id === existing.profile_id,
+    );
     if ('ok' in profileResult) return profileResult;
     updates.profile_id = profileResult.profileId;
   }
