@@ -25,12 +25,13 @@ import type { ToolRegistry } from '../agent.js';
 import type { RuntimeDriver, RuntimeDriverContext } from '../runtime/worker.js';
 import { settleOpenRuntimeToolCalls } from '../runtime/tool-evidence.js';
 import { sanitizeForPrompt } from '../security/security.js';
-import { buildTaskPrompt, buildTaskSessionTitle } from './prompt-builder.js';
+import { buildTaskPrompt, buildTaskSessionTitle, isNoUpdateAnswer, NO_UPDATE_SUMMARY } from './prompt-builder.js';
 import {
   executeTaskInSession,
   prepareTask,
   recordCanceledTaskSession,
   recordFailedTaskSession,
+  recordInterruptedTaskSession,
   validateTaskExecution,
 } from './executor.js';
 
@@ -270,7 +271,9 @@ export async function enqueueAutomationRun(input: EnqueueAutomationInput): Promi
     trigger,
     scheduled_for: scheduledFor,
     session_id: sessionId,
-    prepared_prompt: buildTaskPrompt(sanitizeForPrompt(task.task_prompt), task.timezone, reference),
+    prepared_prompt: buildTaskPrompt(sanitizeForPrompt(task.task_prompt), task.timezone, reference, {
+      quietWhenEmpty: task.quiet_when_empty === true,
+    }),
     session_title: buildTaskSessionTitle(task.name, task.timezone, reference),
   };
   let run: RuntimeRunRow;
@@ -290,6 +293,7 @@ export async function enqueueAutomationRun(input: EnqueueAutomationInput): Promi
         notify_email: task.notify_email,
         notify_wecom: task.notify_wecom,
         notify_feishu: task.notify_feishu,
+        quiet_when_empty: task.quiet_when_empty,
         unattended_tools: task.unattended_tools,
       },
       run: {
@@ -662,6 +666,11 @@ export function createAutomationRuntimeDriver(
       }
 
       const tokensUsed = (result.usage?.inputTokens ?? 0) + (result.usage?.outputTokens ?? 0);
+      // Quiet automation with nothing new: still a succeeded run (history,
+      // run_count), but the summary says so and `no_update` tells the outcome
+      // projector to skip every notification channel.
+      const noUpdate = isNoUpdateAnswer(snapshot.task.quiet_when_empty, result.text);
+      const summary = noUpdate ? NO_UPDATE_SUMMARY : (result.text ?? '');
       await transitionStepTerminal({
         db,
         stepId: step.id,
@@ -674,7 +683,8 @@ export function createAutomationRuntimeDriver(
         leaseMs: context.leaseMs,
         output: asPayload({
           session_id: snapshot.session_id,
-          summary: result.text ?? '',
+          summary,
+          ...(noUpdate ? { no_update: true } : {}),
           tool_evidence: result.toolEvidence,
         }),
       });
@@ -687,7 +697,8 @@ export function createAutomationRuntimeDriver(
         status: 'succeeded',
         output: asPayload({
           session_id: snapshot.session_id,
-          summary: result.text ?? '',
+          summary,
+          ...(noUpdate ? { no_update: true } : {}),
           tokens_used: tokensUsed,
           tool_evidence: result.toolEvidence,
         }),
@@ -905,6 +916,15 @@ export async function reconcileReclaimedAutomationRun(db: DatabaseProvider, run:
       const message = run.error_message ?? 'Automation worker stopped before the run could be safely completed';
       await settleActiveAutomationSteps({ db, runId: run.id, mode: 'interrupted', error: message });
       await recordFailedTaskSession(input.session_id, message, false, db);
+    } else if (run.status === 'interrupted') {
+      // The worker died mid-turn. Every write still open is settled
+      // `uncertain` (never retried), so the outcome notification can list
+      // exactly what the owner has to check.
+      await settleOpenRuntimeToolCalls(db, run.id, 'uncertain', run.owner_user_id);
+      const input = parseInput(run);
+      const message = run.error_message ?? 'The worker stopped while the run was executing; its outcome is unknown';
+      await settleActiveAutomationSteps({ db, runId: run.id, mode: 'interrupted', error: message });
+      await recordInterruptedTaskSession(input.session_id, db);
     }
   } catch (error) {
     logger.error('[automation-runtime] could not reconcile a stale run', {

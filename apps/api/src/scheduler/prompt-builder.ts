@@ -6,10 +6,38 @@
  */
 
 /**
- * Build the final prompt for a scheduled task execution.
- * Prepends date/time/timezone context to the raw task prompt.
+ * The exact answer a quiet automation (`quiet_when_empty`) gives when a run has
+ * nothing new to report. Compared after trimming, case-sensitive: anything else
+ * — including a sentence that merely mentions it — is a normal answer.
  */
-export function buildTaskPrompt(taskPrompt: string, timezone: string, reference = new Date()): string {
+export const NO_UPDATE_SENTINEL = 'NO_UPDATE';
+
+/** Summary stored on a quiet run that reported nothing new. */
+export const NO_UPDATE_SUMMARY = 'No update — nothing new to report.';
+
+const QUIET_WHEN_EMPTY_INSTRUCTION =
+  `\n\n[若本次没有任何新的、值得报告的内容，只回复 ${NO_UPDATE_SENTINEL}（不要加任何其他文字）。` +
+  ` If there is nothing new worth reporting this time, reply with exactly ${NO_UPDATE_SENTINEL} and nothing else.]`;
+
+/** True when a quiet automation's final answer is the no-update sentinel. */
+export function isNoUpdateAnswer(
+  quietWhenEmpty: boolean | null | undefined,
+  answer: string | null | undefined,
+): boolean {
+  return quietWhenEmpty === true && (answer ?? '').trim() === NO_UPDATE_SENTINEL;
+}
+
+/**
+ * Build the final prompt for a scheduled task execution.
+ * Prepends date/time/timezone context to the raw task prompt; a quiet
+ * automation also gets the no-update instruction appended.
+ */
+export function buildTaskPrompt(
+  taskPrompt: string,
+  timezone: string,
+  reference = new Date(),
+  options: { quietWhenEmpty?: boolean } = {},
+): string {
   const now = reference;
 
   // Format date in user's timezone
@@ -36,7 +64,7 @@ export function buildTaskPrompt(taskPrompt: string, timezone: string, reference 
 
   const contextPrefix = `[当前时间: ${dateStr} | 日期: ${isoDate} | 时区: ${timezone}]\n\n`;
 
-  return contextPrefix + taskPrompt;
+  return contextPrefix + taskPrompt + (options.quietWhenEmpty ? QUIET_WHEN_EMPTY_INSTRUCTION : '');
 }
 
 /**

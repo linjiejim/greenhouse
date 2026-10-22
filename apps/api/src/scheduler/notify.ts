@@ -58,8 +58,13 @@ function deliveryBody(summary: string, limit = MAX_SUMMARY_CHARS): string {
 }
 
 export interface TaskNotification {
-  status: 'completed' | 'failed';
-  /** The assistant's answer (completed) or the error message (failed). */
+  /**
+   * `interrupted`: the worker died while the run was executing, so whether its
+   * in-flight writes happened is unknown. The run is never re-executed; this
+   * one notification is how the owner learns to check.
+   */
+  status: 'completed' | 'failed' | 'interrupted';
+  /** The assistant's answer (completed) or the error / interruption message. */
   summary: string;
   sessionId: string;
 }
@@ -104,8 +109,26 @@ async function collectWrites(db: DatabaseProvider, runId: string | undefined): P
  * Render the receipt for a delivery body. Pure, and shared by every channel —
  * the payload stores the facts, this decides how they look.
  */
-export function formatWriteReceipt(writes: readonly AutomationWriteRecord[] | undefined): string {
-  if (!writes || writes.length === 0) return '';
+export function formatWriteReceipt(
+  writes: readonly AutomationWriteRecord[] | undefined,
+  runStatus?: TaskNotification['status'],
+): string {
+  const all = writes ?? [];
+  if (runStatus === 'interrupted') {
+    // A write still open when the worker died ends `uncertain`: it may or may
+    // not have happened. Those are the ones the owner has to check by hand.
+    const inFlight = all.filter((write) => write.status === 'uncertain');
+    const settled = all.filter((write) => write.status !== 'uncertain');
+    const inFlightSection = inFlight.length
+      ? `\n\n**中断时正在进行的写入（结果未知，请核对）**\n${listWrites(inFlight).join('\n')}`
+      : '\n\n中断时没有正在进行的写入。';
+    return `${inFlightSection}${settled.length ? `\n\n**本次写入**\n${listWrites(settled).join('\n')}` : ''}`;
+  }
+  if (all.length === 0) return '';
+  return `\n\n**本次写入**\n${listWrites(all).join('\n')}`;
+}
+
+function listWrites(writes: readonly AutomationWriteRecord[]): string[] {
   const lines = writes.slice(0, MAX_LISTED_WRITES).map((write) => {
     const action = write.action ? ` (${write.action})` : '';
     const status = write.status && write.status !== 'succeeded' ? ` · ${write.status}` : '';
@@ -113,7 +136,7 @@ export function formatWriteReceipt(writes: readonly AutomationWriteRecord[] | un
   });
   const omitted = writes.length - lines.length;
   if (omitted > 0) lines.push(`- …还有 ${omitted} 次未列出`);
-  return `\n\n**本次写入**\n${lines.join('\n')}`;
+  return lines;
 }
 
 /** Most mutation tools dispatch on a top-level `action`; show it when present. */
@@ -222,7 +245,7 @@ export function parseAutomationResultNotificationPayload(value: unknown): Automa
     !payload.task_name.trim() ||
     typeof payload.session_id !== 'string' ||
     !payload.session_id.trim() ||
-    (payload.status !== 'completed' && payload.status !== 'failed') ||
+    (payload.status !== 'completed' && payload.status !== 'failed' && payload.status !== 'interrupted') ||
     typeof payload.summary !== 'string'
   ) {
     return null;
@@ -251,18 +274,24 @@ function sessionLink(sessionId: string): string | null {
   return base ? `${base}/#/chat?session=${encodeURIComponent(sessionId)}` : null;
 }
 
+function taskHeading(task: Pick<ScheduledTaskRow, 'name'>, outcome: TaskNotification): string {
+  if (outcome.status === 'completed') return `✅ ${task.name}`;
+  if (outcome.status === 'interrupted') return `⚠️ ${task.name} · 运行中断，结果未知`;
+  return `⚠️ ${task.name}`;
+}
+
 export function buildTaskNotification(
   task: Pick<ScheduledTaskRow, 'name'>,
   outcome: TaskNotification,
   writes?: readonly AutomationWriteRecord[],
 ): string {
-  const heading = outcome.status === 'completed' ? `✅ ${task.name}` : `⚠️ ${task.name}`;
+  const heading = taskHeading(task, outcome);
   const url = sessionLink(outcome.sessionId);
   const link = url ? `\n\n[打开会话](${url})` : '';
   // The receipt is appended AFTER truncation: it is the one part the owner
   // cannot reconstruct from the conversation title, so a long answer must not
   // push it out.
-  return `**${heading}**\n\n${deliveryBody(outcome.summary)}${formatWriteReceipt(writes)}${link}`;
+  return `**${heading}**\n\n${deliveryBody(outcome.summary)}${formatWriteReceipt(writes, outcome.status)}${link}`;
 }
 
 /** Plain-text and HTML bodies for the email channel. */
@@ -271,9 +300,8 @@ export function buildTaskEmail(
   outcome: TaskNotification,
   writes?: readonly AutomationWriteRecord[],
 ): { subject: string; body_text: string; body_html: string } {
-  const mark = outcome.status === 'completed' ? '✅' : '⚠️';
-  const heading = `${mark} ${task.name}`;
-  const body = `${deliveryBody(outcome.summary, MAX_EMAIL_BODY_CHARS)}${formatWriteReceipt(writes)}`;
+  const heading = taskHeading(task, outcome);
+  const body = `${deliveryBody(outcome.summary, MAX_EMAIL_BODY_CHARS)}${formatWriteReceipt(writes, outcome.status)}`;
   const url = sessionLink(outcome.sessionId);
 
   return {
@@ -306,12 +334,17 @@ export async function notifyTaskResult(
     ...(provenance.runId ? { runtime_kind: 'automation', runtime_run_id: provenance.runId } : {}),
     ...(writes.length ? { writes } : {}),
   };
-  const failed = outcome.status === 'failed';
+  const failed = outcome.status !== 'completed';
   const result = await db.notifications.createWithStatus({
     user_id: task.user_id,
     kind: failed ? 'runtime_failed' : 'runtime_completed',
-    title: failed ? `${task.name} needs review` : `${task.name} completed`,
-    body: `${deliveryBody(outcome.summary)}${formatWriteReceipt(writes)}`,
+    title:
+      outcome.status === 'interrupted'
+        ? `${task.name} was interrupted — outcome unknown`
+        : failed
+          ? `${task.name} needs review`
+          : `${task.name} completed`,
+    body: `${deliveryBody(outcome.summary)}${formatWriteReceipt(writes, outcome.status)}`,
     payload,
     run_id: provenance.runId ?? null,
     event_id: provenance.eventId ?? null,

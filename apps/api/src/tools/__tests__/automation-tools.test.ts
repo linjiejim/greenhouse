@@ -188,17 +188,30 @@ describe('automation_mutation — create', () => {
     expect(scheduler.reloadTask).toHaveBeenCalledTimes(1);
   });
 
-  it('enforces the 1-hour floor (the cost ceiling for unattended runs)', async () => {
+  it('enforces the 15-minute floor (the cost ceiling for unattended runs)', async () => {
     const { db, store } = fakeDb([]);
     const result = await asTool(createAutomationMutationTool(db, OWNER)).execute({
       action: 'create',
       name: 'Too eager',
       task_prompt: 'Check everything again and again.',
-      schedule: '*/5 * * * *',
+      schedule: '*/10 * * * *',
     });
 
-    expect(result).toMatchObject({ error: 'Minimum interval is 1 hour' });
+    expect(result).toMatchObject({ error: 'Minimum interval is 15 minutes' });
     expect(store.size).toBe(0);
+  });
+
+  it('accepts a schedule that fires exactly every 15 minutes', async () => {
+    const { db, store } = fakeDb([]);
+    const result = await asTool(createAutomationMutationTool(db, OWNER)).execute({
+      action: 'create',
+      name: 'Quarter-hourly',
+      task_prompt: 'Check the support queue for new urgent tickets.',
+      schedule: '*/15 * * * *',
+    });
+
+    expect(result).toMatchObject({ status: 'created' });
+    expect(store.size).toBe(1);
   });
 
   it('enforces the per-user quota', async () => {

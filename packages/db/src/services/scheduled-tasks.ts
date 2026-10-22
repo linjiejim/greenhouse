@@ -24,6 +24,7 @@ export interface ScheduledTaskInput {
   notify_email?: boolean;
   notify_wecom?: boolean;
   notify_feishu?: boolean;
+  quiet_when_empty?: boolean;
   /** JSON string array — see the column comment in schema/scheduled-task.ts. */
   unattended_tools?: string;
 }
@@ -40,6 +41,7 @@ export interface ScheduledTaskUpdateInput {
   notify_email?: boolean;
   notify_wecom?: boolean;
   notify_feishu?: boolean;
+  quiet_when_empty?: boolean;
   unattended_tools?: string;
 }
 
@@ -73,6 +75,7 @@ export interface ScheduledTaskRuntimeAdmissionInput {
     | 'notify_email'
     | 'notify_wecom'
     | 'notify_feishu'
+    | 'quiet_when_empty'
     | 'unattended_tools'
   >;
   run: RuntimeRunCreateInput;
@@ -91,7 +94,7 @@ export interface ProjectScheduledTaskRuntimeOutcomeInput {
   task_id: number;
   owner_user_id: string;
   source_kind: string;
-  status: 'succeeded' | 'failed' | 'canceled';
+  status: 'succeeded' | 'failed' | 'canceled' | 'interrupted';
   scheduled_for: string;
   run_created_at: string;
 }
@@ -115,6 +118,7 @@ export function createScheduledTaskService(db: Db) {
           notify_email: input.notify_email ?? false,
           notify_wecom: input.notify_wecom ?? false,
           notify_feishu: input.notify_feishu ?? false,
+          quiet_when_empty: input.quiet_when_empty ?? false,
           unattended_tools: input.unattended_tools ?? '[]',
           created_at: now,
           updated_at: now,
@@ -160,6 +164,7 @@ export function createScheduledTaskService(db: Db) {
       if (updates.notify_email !== undefined) set.notify_email = updates.notify_email;
       if (updates.notify_wecom !== undefined) set.notify_wecom = updates.notify_wecom;
       if (updates.notify_feishu !== undefined) set.notify_feishu = updates.notify_feishu;
+      if (updates.quiet_when_empty !== undefined) set.quiet_when_empty = updates.quiet_when_empty;
       if (updates.unattended_tools !== undefined) set.unattended_tools = updates.unattended_tools;
       if (updates.enabled === false) set.next_run_at = null;
 
@@ -313,6 +318,7 @@ export function createScheduledTaskService(db: Db) {
           task.notify_email !== input.expected_definition.notify_email ||
           task.notify_wecom !== input.expected_definition.notify_wecom ||
           task.notify_feishu !== input.expected_definition.notify_feishu ||
+          task.quiet_when_empty !== input.expected_definition.quiet_when_empty ||
           // The granted tool set is part of the definition being executed: an
           // occurrence admitted against an older grant must not run with a
           // newer one (in either direction).

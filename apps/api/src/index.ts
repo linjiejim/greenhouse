@@ -504,6 +504,10 @@ async function main() {
           ...(trustedExecutionPlan.subagentDriver ? { subagent: createSubagentRuntimeDriver({ toolRegistry }) } : {}),
         },
         driverConcurrency: { automation: 3, subagent: 5 },
+        // An Automation whose worker died mid-turn may have written something:
+        // it ends interrupted / outcome unknown and the owner is told which
+        // writes were in flight. It is never re-executed.
+        outcomeUnknownKinds: ['automation'],
         onRunReclaimed: async (run) => {
           if (run.kind === 'subagent') await reconcileReclaimedSubagentRun(dbProvider, run);
         },

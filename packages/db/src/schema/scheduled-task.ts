@@ -57,7 +57,7 @@ export const scheduledTasks = pgTable(
     // premise is that a person ticked the box.
     unattended_tools: text('unattended_tools').notNull().default('[]'),
     last_run_at: timestamp('last_run_at', { withTimezone: true, mode: 'string' }),
-    last_status: text('last_status'), // 'completed' | 'failed' | 'running'
+    last_status: text('last_status'), // 'completed' | 'failed' | 'canceled' | 'interrupted' | 'running' | 'missed'
     next_run_at: timestamp('next_run_at', { withTimezone: true, mode: 'string' }),
     run_count: integer('run_count').notNull().default(0),
     created_at: timestamp('created_at', { withTimezone: true, mode: 'string' }).notNull(),
@@ -81,7 +81,9 @@ export const scheduledTaskRuntimeOccurrences = pgTable(
     runtime_run_id: text('runtime_run_id').primaryKey(),
     task_id: integer('task_id').notNull(),
     owner_user_id: text('owner_user_id').notNull(),
-    status: text('status', { enum: ['succeeded', 'failed', 'canceled'] }).notNull(),
+    // 'interrupted' (v1.4): the worker died after the run entered `running`, so
+    // its outcome is unknown. Text column, no CHECK — widening is TS-only.
+    status: text('status', { enum: ['succeeded', 'failed', 'canceled', 'interrupted'] }).notNull(),
     runtime_version: integer('runtime_version').notNull(),
     scheduled_for: timestamp('scheduled_for', { withTimezone: true, mode: 'string' }).notNull(),
     run_created_at: timestamp('run_created_at', { withTimezone: true, mode: 'string' }).notNull(),

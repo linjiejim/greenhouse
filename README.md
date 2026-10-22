@@ -93,8 +93,10 @@ same script doubles as an end-to-end smoke tour (see [Development](#development)
   rule automations, and conversational schema planning (the agent drafts a base, you confirm).
 - **Home workbench** — a personal dashboard of live cards backed by the same tools (recipes and
   templates), editable by drag-and-drop or by asking the agent.
-- **Execution center** — one surface for every durable run: automations (cron) and
-  sub-agents, with full step, tool-call and event evidence.
+- **Execution center** — one surface for every durable run: automations (cron, at most every
+  15 minutes, optionally quiet when a run finds nothing new) and sub-agents, with full step,
+  tool-call and event evidence. A run cut off mid-way is never re-run on its own: it ends
+  "outcome unknown" and its owner is told which writes were in flight.
 - **Memory** — per-user memories with titles, pinning and lifecycle, plus the friction signals
   the agent logs when tooling gets in its way.
 - **Skill Center** — an org-wide library of agent skills (SKILL.md bundles) with immutable

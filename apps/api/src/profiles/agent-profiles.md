@@ -137,7 +137,7 @@ stateless Agent/MCP 不开放该文件工具。
 
 - **owner-scoped 且 super 不例外**：工具构造时钉死 `scope: 'own'`，跨用户管理只存在于 `/api/tasks`
   控制台。模型拿到一个别人的 id 只会得到 `Not authorized`。
-- **校验与配额不在工具里**：cron/时区合法性、每人 10 条上限、最小间隔 1 小时、prompt 长度、
+- **校验与配额不在工具里**：cron/时区合法性、每人 10 条上限、最小间隔 15 分钟、prompt 长度、
   hidden profile 门（create 与 update 同一道，防 create-then-switch）全部在
   `scheduler/task-center.ts`，与 HTTP 路由共用同一份实现。
 - **无人值守上下文禁用写工具**：定时任务执行与 spawn 子会话都过

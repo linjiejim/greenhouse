@@ -1733,8 +1733,22 @@ export function createRuntimeService(db: Db) {
       });
     },
 
-    async reclaimStaleRuns(at: string | Date = new Date(), limit = 50): Promise<RuntimeRunRow[]> {
+    /**
+     * Reap Runs whose worker lease expired.
+     *
+     * `outcomeUnknownKinds`: a Run of one of these kinds that lost its lease
+     * AFTER entering `running` with its attempts exhausted ends `interrupted`
+     * with `runtime_outcome_unknown` instead of `failed` — the worker may have
+     * died mid-way through a side effect, so the honest fact is "outcome
+     * unknown". Either way it is terminal and never replayed.
+     */
+    async reclaimStaleRuns(
+      at: string | Date = new Date(),
+      limit = 50,
+      options: { outcomeUnknownKinds?: readonly string[] } = {},
+    ): Promise<RuntimeRunRow[]> {
       const now = asIso(at);
+      const outcomeUnknownKinds = new Set(options.outcomeUnknownKinds ?? []);
       const reclaimed: RuntimeRunRow[] = [];
       for (let index = 0; index < Math.min(Math.max(limit, 1), 200); index += 1) {
         const row = await db.transaction(async (rawTx) => {
@@ -1758,8 +1772,22 @@ export function createRuntimeService(db: Db) {
           // side-effectful Automation/Subagent Runs set max=1 and therefore
           // still fail immediately after a stale running lease.
           const exhausted = stale.attempt >= stale.max_attempts;
-          const nextStatus = cancelRequested ? 'canceled' : safeToReclaim ? 'queued' : exhausted ? 'failed' : 'queued';
-          const terminal = nextStatus === 'failed' || nextStatus === 'canceled';
+          const outcomeUnknown =
+            !cancelRequested &&
+            !safeToReclaim &&
+            exhausted &&
+            stale.status === 'running' &&
+            outcomeUnknownKinds.has(stale.kind);
+          const nextStatus = cancelRequested
+            ? 'canceled'
+            : safeToReclaim
+              ? 'queued'
+              : outcomeUnknown
+                ? 'interrupted'
+                : exhausted
+                  ? 'failed'
+                  : 'queued';
+          const terminal = nextStatus === 'failed' || nextStatus === 'canceled' || nextStatus === 'interrupted';
           const [updated] = await tx
             .update(runtimeRuns)
             .set({
@@ -1768,16 +1796,20 @@ export function createRuntimeService(db: Db) {
                 ? 'runtime_cancel_requested'
                 : safeToReclaim
                   ? SAFE_CLAIM_RECOVERY_CODE
-                  : exhausted
-                    ? 'runtime_attempts_exhausted'
-                    : stale.error_code,
+                  : outcomeUnknown
+                    ? 'runtime_outcome_unknown'
+                    : exhausted
+                      ? 'runtime_attempts_exhausted'
+                      : stale.error_code,
               error_message: cancelRequested
                 ? 'Runtime cancellation was finalized after its worker lease expired'
                 : safeToReclaim
                   ? 'Runtime worker lease expired before execution entered the running phase'
-                  : exhausted
-                    ? 'Runtime lease expired after execution entered the running phase'
-                    : stale.error_message,
+                  : outcomeUnknown
+                    ? 'The worker stopped while the run was executing; its outcome is unknown and it will not be retried'
+                    : exhausted
+                      ? 'Runtime lease expired after execution entered the running phase'
+                      : stale.error_message,
               ended_at: terminal ? now : null,
               lease_owner: null,
               lease_expires_at: null,

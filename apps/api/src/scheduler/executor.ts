@@ -26,7 +26,7 @@ import {
 } from '../agent-runtime/tool-resolution.js';
 import { assertPinnedProfileExecutionAccess, resolveProfileAsync } from '../profiles/profile.js';
 import { sanitizeForPrompt } from '../security/security.js';
-import { buildTaskPrompt, buildTaskSessionTitle } from './prompt-builder.js';
+import { buildTaskPrompt, buildTaskSessionTitle, isNoUpdateAnswer } from './prompt-builder.js';
 import { notifyTaskResult } from './notify.js';
 import { logger } from '@greenhouse/utils/logger';
 import type { ScheduledTaskRow } from '@greenhouse/db';
@@ -182,7 +182,10 @@ export async function prepareTask(
 
   // 4. Build the task prompt with time context and add user message
   const prompt =
-    options.preparedPrompt ?? buildTaskPrompt(sanitizeForPrompt(task.task_prompt), task.timezone, reference);
+    options.preparedPrompt ??
+    buildTaskPrompt(sanitizeForPrompt(task.task_prompt), task.timezone, reference, {
+      quietWhenEmpty: task.quiet_when_empty === true,
+    });
   await db.sessions.addMessageOnce(`automation-prompt:${session.id}`, {
     session_id: session.id,
     role: 'user',
@@ -301,7 +304,10 @@ export async function completeTaskExecution(
   notify = true,
 ): Promise<void> {
   await db.scheduledTasks.updateRunStatus(task.id, 'completed', calculateNextRun(task.schedule, task.timezone));
-  if (notify) await notifyTaskResult(db, task, { status: 'completed', summary, sessionId });
+  // A quiet automation that found nothing new stays silent on every channel.
+  if (notify && !isNoUpdateAnswer(task.quiet_when_empty, summary)) {
+    await notifyTaskResult(db, task, { status: 'completed', summary, sessionId });
+  }
 }
 
 export async function notifyCompletedTaskExecution(
@@ -310,6 +316,7 @@ export async function notifyCompletedTaskExecution(
   summary: string,
   db: DatabaseProvider = getDb(),
 ): Promise<void> {
+  if (isNoUpdateAnswer(task.quiet_when_empty, summary)) return;
   await notifyTaskResult(db, task, { status: 'completed', summary, sessionId });
 }
 
@@ -336,6 +343,18 @@ export async function recordFailedTaskSession(
     session_id: sessionId,
     role: 'assistant',
     content: `⚠️ 任务执行失败: ${errorMessage}\n\n请检查任务配置或稍后重试。`,
+  });
+  await db.sessions.touch(sessionId);
+}
+
+/** Transcript receipt for a run whose worker died mid-turn (outcome unknown). */
+export async function recordInterruptedTaskSession(sessionId: string, db: DatabaseProvider = getDb()): Promise<void> {
+  await db.sessions.addMessageOnce(`automation-interrupted:${sessionId}`, {
+    session_id: sessionId,
+    role: 'assistant',
+    content:
+      '⚠️ 任务运行中断，结果未知：执行这次任务的进程在运行中停止。系统不会自动重跑；' +
+      '请核对中断前可能已经发生的写入，需要时再手动运行一次。',
   });
   await db.sessions.touch(sessionId);
 }
