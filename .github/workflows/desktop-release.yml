@@ -21,10 +21,14 @@
 #            APPLE_API_KEY, APPLE_API_KEY_P8 — Developer ID signing + notarization.
 #            Without them the macOS build is ad-hoc signed: it runs, but Gatekeeper
 #            warns on first open. Windows installers are not Authenticode-signed.
+#
+# release/v1.3 maintenance line: tags do NOT run this. The v1.3.x shells read
+# docs/updates/desktop/<channel>/, which GitHub Pages serves from main, so
+# publishing commits to main; a v1 patch tag must not do that on its own. To
+# ship one deliberately, dispatch this workflow on release/v1.3 with the tag
+# and channel stable.
 name: Desktop release
 on:
-  push:
-    tags: ['v*']
   workflow_dispatch:
     inputs:
       tag:
