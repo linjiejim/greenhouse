@@ -121,7 +121,8 @@ function PendingCard({
             {t('agentAccess.approve')}
           </Button>
           {!irreversible && (
-            <div className="inline-flex items-center gap-1.5">
+            // Phones: Approve / Reject stay on one line, the standing-grant pair wraps below.
+            <div className="order-last flex basis-full items-center gap-1.5 sm:order-none sm:basis-auto">
               <Button
                 size="sm"
                 variant="secondary"
@@ -134,6 +135,7 @@ function PendingCard({
               </Button>
               <Select
                 size="sm"
+                inline
                 value={String(days)}
                 onChange={(event) => setDays(Number(event.target.value) as AgentWriteGrantDayOption)}
                 aria-label={t('agentAccess.grantDays')}
