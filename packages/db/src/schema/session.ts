@@ -26,6 +26,14 @@ export const sessions = pgTable(
     comment: text('comment'),
     feedback: text('feedback'),
     metadata: text('metadata').notNull().default('{}'),
+    /**
+     * Rolling digest of the transcript up to `digest_upto_seq` (inclusive): a
+     * structured summary that replaces those messages in the prompt once the
+     * history outgrows its budget. NULL until the first fold.
+     */
+    digest: text('digest'),
+    digest_upto_seq: integer('digest_upto_seq'),
+    digest_updated_at: timestamp('digest_updated_at', { withTimezone: true, mode: 'string' }),
     created_at: timestamp('created_at', { withTimezone: true, mode: 'string' }).notNull(),
     updated_at: timestamp('updated_at', { withTimezone: true, mode: 'string' }).notNull(),
   },

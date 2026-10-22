@@ -59,6 +59,7 @@ function task(overrides: Partial<ScheduledTaskRow> = {}): ScheduledTaskRow {
     notify_email: false,
     notify_wecom: false,
     notify_feishu: false,
+    quiet_when_empty: false,
     unattended_tools: '[]',
     last_run_at: null,
     last_status: null,

@@ -59,6 +59,10 @@
 - `api_audit_log` 是活表（MCP `recordMcpAudit` 写 `a2a`、Agent 代理写 `cli`，机器客户端 Activity 读它）。`channel='api'` / `'relay'` 只是已删除入口留下的历史行；新写入类型必须排除它们，只允许 `a2a` / `cli`。
 - 已移除模块对应的表不得以兼容、占位或“未来可能使用”为由重新加入；确有新消费者时按根 AGENTS.md 的复用门禁重新设计。
 
+- `agent_write_grants` 只能放行 r2 写入；r3（不可逆或对外）写入永远要逐次审批，服务层与 API 都要拒绝建 r3 的常驻授权。
+- `usage_counters` 只存计数：不加用户、参数或内容列。新增计数点用 `usage.increment(kind, key, client)`，不要另建统计表。
+- `custom_profiles` 在 v1.4 去掉审核生命周期：团队可见只看 `is_shared`；`lifecycle_status` / `lifecycle_note` / `reviewed_*` / `next_review_at` / `published_version` 成为退役列（迁移 0008 把未审核却 `is_shared` 的行改回私有，保持可见性不变）。
+
 ### 退役表（`schema/retired.ts`）
 
 - v1.4 删除模块时**不删表**：表定义原样挪进 `schema/retired.ts`（从 schema index 导出，Drizzle snapshot 不变、不产生迁移），service 与 provider 入口一并删除。留表只为蓝绿回滚到 v1.3.x 时旧代码还能读写；v1.4 之后的下一个版本用迁移把它们 DROP 掉，再删 `retired.ts` 里对应定义。

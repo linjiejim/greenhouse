@@ -139,6 +139,10 @@ function createDatabaseProvider(db: Db, client: DbClient['client'] | null) {
       const tables = [
         ...extensionResetTables(),
         'workspace_settings',
+        'usage_counters',
+        'agent_write_grants',
+        'rate_limit_buckets',
+        'oauth_login_states',
         'notification_delivery_attempts',
         'notifications',
         'runtime_outbox',

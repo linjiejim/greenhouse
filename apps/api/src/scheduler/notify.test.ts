@@ -21,6 +21,7 @@ function task(): ScheduledTaskRow {
     notify_email: true,
     notify_wecom: true,
     notify_feishu: false,
+    quiet_when_empty: false,
     unattended_tools: '[]',
     last_run_at: null,
     last_status: null,

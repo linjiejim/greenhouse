@@ -43,7 +43,7 @@
 
 | 表 | 主键 / 唯一约束 | 关键字段与用途 |
 |---|---|---|
-| `sessions` | PK `id` | 会话；`profile_id` 默认 `team`，记录 user/app/channel、父会话谱系、评分、反馈与 JSON metadata |
+| `sessions` | PK `id` | 会话；`profile_id` 默认 `team`，记录 user/app/channel、父会话谱系、评分、反馈与 JSON metadata；`digest` / `digest_upto_seq` / `digest_updated_at`（v1.4）是滚动摘要：`seq ≤ digest_upto_seq` 的消息在 prompt 里由摘要代替，转录本身不变 |
 | `messages` | PK `id`；UK `(session_id, seq)`；索引 `session_id` | 会话消息；含 role/content、引用、pipeline、reasoning、图片、置信度、token 与耗时；`seq` 为会话内唯一顺序；普通回复以 tail revision CAS 追加，编辑与截断为原子事务；重新生成在成功后以同一 `seq` 原子替换末尾 assistant，失败保留旧回复。`model` 记产出该轮的 registry 模型 id（`flash`/`pro`/…，模型改为每轮可选后新增）——user 轮、服务端写的终态消息与历史消息均为 null |
 | `chat_files` | PK `id`；UK `storage_key`；索引 session/creator | Chat 会话的私有文件 handle（两个方向）；字节在对象存储，记录 session、文件名/MIME/size、服务端 storage key 与创建人。`source`：`agent`=工具产物（如 `export_data`，存量行的默认值）/ `user`=用户上传的附件。**图片不进这张表**——`<img src>` 带不了 Bearer，图片走 `/api/upload` 的扁平 id + 公开读 |
 | `chat_artifact_receipts` | PK `id`；索引 session/user | 聊天动作卡的持久回执；稳定 action id 原子 claim，绑定 session/user/kind/request hash，保存 processing/succeeded/failed 与原始结果。用于 Schema Plan 与 Task Capture 的刷新恢复和 exactly-once 执行，不替代业务表 |
@@ -55,7 +55,7 @@
 | `session_group_members` | PK `id`；UK `(user_id, group_id, session_id)`；部分 UK `(user_id, session_id) WHERE kind='custom'` | 每用户的会话归档；同一会话最多进入一个 custom 文件夹，但可同时 pinned |
 | `llm_calls` | PK `id`；索引 `session_id` | `call_llm` 子调用审计；保存输入、输出、模型、状态、token 与耗时 |
 | `llm_usage` | PK `id`；索引 profile/caller/user/created_at/budget key | LLM 用量统计；按 profile、caller、session、user、model 记录 token 与耗时；`budget_idempotency_key` 关联统一预算预留，NULL 表示迁移前或尚未接入预算的 legacy 调用 |
-| `scheduled_tasks` | PK `id` | 用户定时 Agent 任务；profile 默认 `team`，保存 cron、时区、执行状态与计数；`notify_webhook`（可选企微/飞书**群**机器人地址，host 白名单二选一、按 host 分派 payload 格式）、`notify_email`（布尔，发到 owner 账号邮箱）、`notify_wecom`（布尔，以企微应用消息发给 owner 本人，收件人取自其 `user_provider_tokens(provider='wecom')` 绑定）与 `notify_feishu`（布尔，以飞书卡片 DM 发给 owner 本人，收件人取自 `provider='feishu'` 绑定，迁移 0064）四条送达通道，均由 scheduler（非 Agent）在跑完后推送摘要——布尔通道**没有任何可供瞄准的收件人字段**，这正是它们免确认的原因；`unattended_tools`（JSON 字符串数组，迁移 0065）是 owner 逐任务勾选的额外工具，目录在 `@greenhouse/types/automation-tools`——它是**过滤器不是授权**（运行时取 `勾选 ∩ 目录 ∩ owner 当前 effectiveTools`），且只有用户自己的控制台请求能写，`automation_mutation` 一律拒绝 |
+| `scheduled_tasks` | PK `id` | 用户定时 Agent 任务；profile 默认 `team`，保存 cron、时区、执行状态与计数；`notify_webhook`（可选企微/飞书**群**机器人地址，host 白名单二选一、按 host 分派 payload 格式）、`notify_email`（布尔，发到 owner 账号邮箱）、`notify_wecom`（布尔，以企微应用消息发给 owner 本人，收件人取自其 `user_provider_tokens(provider='wecom')` 绑定）与 `notify_feishu`（布尔，以飞书卡片 DM 发给 owner 本人，收件人取自 `provider='feishu'` 绑定，迁移 0064）四条送达通道，均由 scheduler（非 Agent）在跑完后推送摘要——布尔通道**没有任何可供瞄准的收件人字段**，这正是它们免确认的原因；`unattended_tools`（JSON 字符串数组，迁移 0065）是 owner 逐任务勾选的额外工具，目录在 `@greenhouse/types/automation-tools`——它是**过滤器不是授权**（运行时取 `勾选 ∩ 目录 ∩ owner 当前 effectiveTools`），且只有用户自己的控制台请求能写，`automation_mutation` 一律拒绝；`quiet_when_empty`（v1.4）为真时，回答 `NO_UPDATE` 的运行照常记历史但不推送任何渠道 |
 | `scheduled_task_runtime_occurrences` | PK `runtime_run_id`；task/owner 索引 | Automation Runtime 终态的永久幂等投影水位；冻结 task/owner/status/version/planned time，保证成功计数只增一次、旧 occurrence 不覆盖新状态；外部通知按渠道由 `notification_delivery_attempts` 独立持久化与重试 |
 
 ### 统一 Runtime Kernel
@@ -148,6 +148,15 @@ Subagent 以 child session 作为唯一 `source_id`，完整请求保存在 Run/
 |---|---|---|
 | `api_audit_log` | PK `id` | 集成调用审计（MCP `a2a`、Agent 代理 `cli`）；app、endpoint、method、user、状态、token、IP、错误与 metadata；`api` / `relay` 只是已删除入口的历史行 |
 | `feature_requests` | PK `id` | 内部需求反馈；标题、描述、提交人、状态、优先级、管理员备注与来源会话 |
+
+### Agent 接入与平台治理（v1.4）
+
+| 表 | 主键 / 唯一约束 | 关键字段与用途 |
+|---|---|---|
+| `agent_write_grants` | PK `id`；索引 `(user_id, tool_id)`；FK `user_id` / `client_id` CASCADE | 成员给自己的外部 Agent（MCP / Agent API）预先授权的 r2 写入：`client_id` NULL=该成员任一客户端，`action` NULL=该工具全部 r2 动作；`expires_at` 必填、`revoked_at` 撤销、`use_count` / `last_used_at` 计数。r3 写入永不被覆盖 |
+| `usage_counters` | 复合 PK `(day, kind, key, client)` | 每日用量计数：`tool_call`（key=工具 id）/ `page_open`（key=模块 id）× 客户端（mcp / agent_api / web_chat / automation / subagent / feishu / browser / web）；只有计数，没有内容和用户 |
+| `rate_limit_buckets` | PK `key` | 固定窗口限流计数（`<规则>:<主体>:<窗口起点>`），过期即清；进程重启或多实例不再重置限流 |
+| `oauth_login_states` | PK `id`（state/code 的 SHA-256） | 飞书 / 企微登录的 pending state 与一次性登录码；原值不入库，`consumed_at` 保证一次性，过期即清 |
 
 ### Platform Kernel v2
 

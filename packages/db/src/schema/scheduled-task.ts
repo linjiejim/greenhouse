@@ -33,6 +33,10 @@ export const scheduledTasks = pgTable(
     // this channel can never be aimed anywhere, matching notify_webhook's
     // "system decides where it goes" property.
     notify_email: boolean('notify_email').notNull().default(false),
+    // Quiet run: when the run reports nothing new (it answers with the
+    // NO_UPDATE sentinel) the history still records it but no channel is
+    // notified.
+    quiet_when_empty: boolean('quiet_when_empty').notNull().default(false),
     // Deliver the same run summary as a WeCom app message to the OWNER.
     // A boolean for the same reason as notify_email: `touser` is derived from
     // the owner's stored WeCom binding, so there is no recipient field for
