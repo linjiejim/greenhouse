@@ -22,15 +22,15 @@ export interface WriteClassification {
   /**
    * What the write targets (tool + action + record identifiers), when it names
    * one. A newer pending request for the same target supersedes the older one.
-   * Creates have no target.
+   * Creates and batch writes have no target: they never replace one another.
    */
   targetKey: string | null;
 }
 
 const DESTRUCTIVE_VERB = /^(delete|remove|purge|destroy|drop)(_|$)/;
 
-/** Identifier-like fields, in the order they best name a target. */
-const TARGET_FIELDS = [
+/** Fields that name one existing thing, in the order they best name it. */
+const RECORD_FIELDS = [
   'doc_id',
   'record_id',
   'record_ids',
@@ -39,9 +39,11 @@ const TARGET_FIELDS = [
   'company_id',
   'id',
   'name',
-  'table_id',
-  'base_id',
 ] as const;
+/** Containers: part of a target's name, never a target on their own. */
+const CONTAINER_FIELDS = ['table_id', 'base_id'] as const;
+/** Writes that add new things (or many at once) never replace one another. */
+const ADDITIVE_VERB = /^(create|add|insert|append|import|upload|batch|bulk|upsert)(_|$)/;
 
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
@@ -52,9 +54,9 @@ function verbOf(action: string): string {
   return dot >= 0 ? action.slice(dot + 1) : action;
 }
 
-function targetOf(toolId: string, action: string | null, input: Record<string, unknown>): string | null {
+function fieldParts(input: Record<string, unknown>, fields: readonly string[]): string[] {
   const parts: string[] = [];
-  for (const field of TARGET_FIELDS) {
+  for (const field of fields) {
     const value = input[field];
     if (typeof value === 'string' && value.length > 0) parts.push(`${field}=${value}`);
     else if (typeof value === 'number') parts.push(`${field}=${value}`);
@@ -62,7 +64,14 @@ function targetOf(toolId: string, action: string | null, input: Record<string, u
       parts.push(`${field}=${[...(value as string[])].sort().join(',')}`);
     }
   }
-  return parts.length > 0 ? [toolId, action ?? '-', ...parts].join('|') : null;
+  return parts;
+}
+
+function targetOf(toolId: string, action: string | null, input: Record<string, unknown>): string | null {
+  if (action && ADDITIVE_VERB.test(verbOf(action))) return null;
+  const record = fieldParts(input, RECORD_FIELDS);
+  if (record.length === 0) return null;
+  return [toolId, action ?? '-', ...fieldParts(input, CONTAINER_FIELDS), ...record].join('|');
 }
 
 /**

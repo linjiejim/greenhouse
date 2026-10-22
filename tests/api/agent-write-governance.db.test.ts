@@ -341,4 +341,69 @@ describe('governed external-agent writes', () => {
     expect(after?.error_code).toBe('agent_write_outcome_unknown');
     expect(calls).toHaveLength(0);
   });
+
+  it('runs a write once when the same member approves twice at the same moment', async () => {
+    const result = await govern({ action: 'records.update', record_id: 'rec_20', values: { a: 1 } });
+    const interruptId = await pendingInterruptId(result.view.request_id);
+    const approve = () =>
+      decideAgentWrite({
+        db,
+        interruptId,
+        actor: { id: member.id, role: 'team' },
+        decision: 'approve',
+        resolveContext: okContext,
+      });
+    const outcomes = await Promise.allSettled([approve(), approve()]);
+    const won = outcomes.filter((outcome) => outcome.status === 'fulfilled');
+    const lost = outcomes.filter((outcome) => outcome.status === 'rejected');
+    expect(won).toHaveLength(1);
+    expect(lost).toHaveLength(1);
+    expect((lost[0] as PromiseRejectedResult).reason).toBeInstanceOf(AgentWriteError);
+    expect(calls).toHaveLength(1);
+    expect((await agentWriteStatus(db, result.view.request_id, caller)).status).toBe('executed');
+  });
+
+  it('reports outcome unknown, not failed, when the write ran but its result was not recorded', async () => {
+    const transition = db.runtime.transitionToolCall.bind(db.runtime);
+    db.runtime.transitionToolCall = (async (input: Parameters<typeof transition>[0]) => {
+      if (input.to_status === 'succeeded') throw new Error('database went away');
+      return transition(input);
+    }) as typeof transition;
+    try {
+      const result = await govern({ action: 'records.update', record_id: 'rec_21', values: {} }, { legacy: true });
+      expect(calls).toHaveLength(1);
+      expect(result.view.status).toBe('outcome_unknown');
+    } finally {
+      db.runtime.transitionToolCall = transition;
+    }
+  });
+
+  it('keeps an approved request non-terminal for pollers until the write lands', async () => {
+    const result = await govern({ action: 'records.update', record_id: 'rec_22', values: {} });
+    const [interrupt] = await db.runtime.listInterrupts(result.view.request_id);
+    // The approval has resolved the interrupt; the run has not moved yet.
+    await db.runtime.commandInterrupt(
+      {
+        type: 'resolve',
+        interrupt_id: interrupt!.id,
+        expected_version: interrupt!.version,
+        idempotency_key: unique('resolve'),
+        decision: { decision: 'approve' },
+      },
+      member.id,
+    );
+    expect((await agentWriteStatus(db, result.view.request_id, caller)).status).toBe('running');
+    // A recent approval is in flight: the sweep leaves it alone, and a withdraw loses.
+    await sweepExpiredAgentWrites(db);
+    expect((await agentWriteStatus(db, result.view.request_id, caller)).status).toBe('running');
+    await expect(withdrawAgentWrite(db, result.view.request_id, caller)).rejects.toBeInstanceOf(AgentWriteError);
+    expect(calls).toHaveLength(0);
+  });
+
+  it('lets two new records in one table wait side by side', async () => {
+    const first = await govern({ action: 'records.create', table_id: 'tbl_1', values: { a: 1 } });
+    const second = await govern({ action: 'records.create', table_id: 'tbl_1', values: { a: 2 } });
+    expect(second.view.request_id).not.toBe(first.view.request_id);
+    expect((await agentWriteStatus(db, first.view.request_id, caller)).status).toBe('pending');
+  });
 });

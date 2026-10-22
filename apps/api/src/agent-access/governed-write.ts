@@ -19,7 +19,13 @@
  */
 
 import { randomUUID } from 'node:crypto';
-import type { DatabaseProvider, RuntimeInterruptRow, RuntimeRunRow, RuntimeStepRow } from '@greenhouse/db';
+import {
+  RuntimeKernelError,
+  type DatabaseProvider,
+  type RuntimeInterruptRow,
+  type RuntimeRunRow,
+  type RuntimeStepRow,
+} from '@greenhouse/db';
 import {
   canTransitionRuntimeRun,
   canTransitionRuntimeStep,
@@ -198,7 +204,14 @@ function toolError(output: unknown): string | null {
 }
 
 function statusOf(run: RuntimeRunRow, interrupt: RuntimeInterruptRow | undefined): AgentWriteStatus {
-  if (run.status === 'waiting') return interrupt && interrupt.status !== 'pending' ? 'expired' : 'pending';
+  if (run.status === 'waiting') {
+    // The interrupt settles a moment before the run moves: report where the
+    // request is going, and keep pollers polling until the run lands.
+    if (!interrupt || interrupt.status === 'pending') return 'pending';
+    if (interrupt.status === 'rejected') return 'rejected';
+    if (interrupt.status === 'expired') return 'expired';
+    return 'running';
+  }
   if (run.status === 'succeeded') return 'executed';
   if (run.status === 'failed') return 'failed';
   if (run.status === 'interrupted') return 'outcome_unknown';
@@ -207,6 +220,7 @@ function statusOf(run: RuntimeRunRow, interrupt: RuntimeInterruptRow | undefined
     if (code === 'agent_write_rejected') return 'rejected';
     if (code === 'agent_write_superseded') return 'superseded';
     if (code === 'agent_write_withdrawn') return 'withdrawn';
+    if (code === 'agent_write_approval_lost') return 'failed';
     return 'expired';
   }
   return 'running';
@@ -303,6 +317,24 @@ async function executeOnRun(
     return advanceRun(db, run, 'succeeded', run.owner_user_id, { output });
   } catch (error) {
     const message = toErrorMessage(error);
+    const calls = await db.runtime.listToolCalls(run.id);
+    // Another executor holds the call: it settles the run, not us.
+    if (calls.some((call) => call.status === 'running' || call.status === 'pending')) {
+      return (await db.runtime.getRun(run.id)) ?? run;
+    }
+    // The tool may have changed data but its outcome was not recorded: say so,
+    // never "failed", so the agent does not blindly retry.
+    if (calls.some((call) => call.status === 'uncertain')) {
+      await advanceStep(db, step, 'interrupted', run.owner_user_id, {
+        errorCode: 'agent_write_outcome_unknown',
+        errorMessage: message,
+      });
+      return advanceRun(db, run, 'interrupted', run.owner_user_id, {
+        output: { basis, result: null },
+        errorCode: 'agent_write_outcome_unknown',
+        errorMessage: 'The write ran but its result could not be recorded; check the target before retrying',
+      });
+    }
     await advanceStep(db, step, 'failed', run.owner_user_id, {
       errorCode: 'agent_write_failed',
       errorMessage: message,
@@ -312,6 +344,40 @@ async function executeOnRun(
       errorCode: 'agent_write_failed',
       errorMessage: message,
     });
+  }
+}
+
+/**
+ * Settle one approval interrupt. Every call carries its own idempotency key, so
+ * a concurrent duplicate fails on the version instead of replaying the
+ * winner's result and entering execution a second time.
+ */
+async function settleInterrupt(
+  db: DatabaseProvider,
+  interrupt: RuntimeInterruptRow,
+  type: 'resolve' | 'reject' | 'cancel',
+  decision: Record<string, unknown>,
+  actorUserId: string,
+): Promise<void> {
+  try {
+    await db.runtime.commandInterrupt(
+      {
+        type,
+        interrupt_id: interrupt.id,
+        expected_version: interrupt.version,
+        idempotency_key: `agent-write:${interrupt.id}:${type}:${randomUUID()}`,
+        decision: decision as never,
+      },
+      actorUserId,
+    );
+  } catch (error) {
+    if (
+      error instanceof RuntimeKernelError &&
+      (error.code === 'runtime_version_conflict' || error.code === 'runtime_invalid_transition')
+    ) {
+      throw new AgentWriteError('not_pending', 'This request has already been decided or has expired');
+    }
+    throw error;
   }
 }
 
@@ -393,7 +459,10 @@ export async function governProxyWrite(opts: GovernWriteOptions): Promise<Govern
       for (const candidate of waiting.items) {
         const candidateInput = parseInput(candidate);
         if (candidateInput.client_id === caller.clientId && candidateInput.target_key === cls.targetKey) {
-          await closeWaiting(db, candidate, 'superseded', caller.userId);
+          // An older request approved meanwhile stands; the new one waits on its own.
+          await closeWaiting(db, candidate, 'superseded', caller.userId).catch((error: unknown) => {
+            if (!(error instanceof AgentWriteError)) throw error;
+          });
         }
       }
     }
@@ -464,25 +533,22 @@ async function closeWaiting(
   actorUserId: string,
 ): Promise<RuntimeRunRow> {
   const interrupts = await db.runtime.listInterrupts(run.id);
+  const now = Date.now();
   for (const interrupt of interrupts) {
     if (interrupt.status !== 'pending') continue;
-    try {
-      await db.runtime.commandInterrupt(
-        {
-          type: reason === 'rejected' ? 'reject' : 'cancel',
-          interrupt_id: interrupt.id,
-          expected_version: interrupt.version,
-          idempotency_key: `agent-write:${interrupt.id}:${reason}`,
-          decision: { decision: reason },
-        },
-        actorUserId,
-      );
-    } catch (error) {
-      logger.warn('[agent-access] could not close approval interrupt', {
-        interrupt: interrupt.id,
-        error: toErrorMessage(error),
-      });
-    }
+    // Past its expiry the kernel refuses every command; it can no longer be approved either.
+    if (interrupt.expires_at && Date.parse(interrupt.expires_at) <= now) continue;
+    // Losing this race to an approval must not cancel the run under it.
+    await settleInterrupt(
+      db,
+      interrupt,
+      reason === 'rejected' ? 'reject' : 'cancel',
+      { decision: reason },
+      actorUserId,
+    );
+  }
+  if (interrupts.some((interrupt) => interrupt.status === 'resolved')) {
+    throw new AgentWriteError('not_pending', 'This request was already approved');
   }
   const step = await stepOf(db, run.id);
   const message =
@@ -531,16 +597,7 @@ export async function decideAgentWrite(opts: DecideOptions): Promise<AgentWriteV
   const input = parseInput(run);
 
   if (opts.decision === 'reject') {
-    await db.runtime.commandInterrupt(
-      {
-        type: 'reject',
-        interrupt_id: interrupt.id,
-        expected_version: interrupt.version,
-        idempotency_key: `agent-write:${interrupt.id}:decide`,
-        decision: { decision: 'reject' },
-      },
-      opts.actor.id,
-    );
+    // closeWaiting rejects the pending interrupt itself (one CAS, one winner).
     const closed = await closeWaiting(db, run, 'rejected', opts.actor.id);
     return agentWriteView(db, closed);
   }
@@ -548,15 +605,12 @@ export async function decideAgentWrite(opts: DecideOptions): Promise<AgentWriteV
   if (opts.grantDays !== undefined && input.risk !== 'r2') {
     throw new AgentWriteError('invalid', 'Only shared-data (r2) writes can be allowed in advance');
   }
-  // One winner: a second approver fails here on the interrupt version.
-  await db.runtime.commandInterrupt(
-    {
-      type: 'resolve',
-      interrupt_id: interrupt.id,
-      expected_version: interrupt.version,
-      idempotency_key: `agent-write:${interrupt.id}:decide`,
-      decision: { decision: 'approve', ...(opts.grantDays ? { grant_days: opts.grantDays } : {}) },
-    },
+  // One winner: a second approver (even the same member, twice) fails here.
+  await settleInterrupt(
+    db,
+    interrupt,
+    'resolve',
+    { decision: 'approve', ...(opts.grantDays ? { grant_days: opts.grantDays } : {}) },
     opts.actor.id,
   );
   let current = await advanceRun(db, run, 'running', opts.actor.id);
@@ -635,11 +689,22 @@ export async function withdrawAgentWrite(
 // ─── Sweeps ──────────────────────────────────────────────
 
 /** Close waiting requests whose approval expired. Safe to run often. */
+async function* allRuns(db: DatabaseProvider, statuses: RuntimeRunStatus[]): AsyncGenerator<RuntimeRunRow> {
+  let cursor: { created_at: string; id: string } | undefined;
+  for (;;) {
+    const page = await db.runtime.listRuns({ kinds: ['agent_write'], statuses, limit: 100, cursor });
+    yield* page.items;
+    if (!page.next_cursor) return;
+    cursor = page.next_cursor;
+  }
+}
+
+const APPROVAL_IN_FLIGHT_MS = 10 * 60_000;
+
 export async function sweepExpiredAgentWrites(db: DatabaseProvider): Promise<number> {
-  const waiting = await db.runtime.listRuns({ kinds: ['agent_write'], statuses: ['waiting'], limit: 100 });
   let closed = 0;
   const now = Date.now();
-  for (const run of waiting.items) {
+  for await (const run of allRuns(db, ['waiting'])) {
     const interrupts = await db.runtime.listInterrupts(run.id);
     const live = interrupts.find(
       (interrupt) =>
@@ -647,7 +712,23 @@ export async function sweepExpiredAgentWrites(db: DatabaseProvider): Promise<num
     );
     if (live) continue;
     try {
-      await closeWaiting(db, run, 'expired', run.owner_user_id);
+      const approved = interrupts.find((interrupt) => interrupt.status === 'resolved');
+      if (approved) {
+        // Approved but never started: an approval in flight, or one whose process
+        // stopped before the write began. Give it time, then close it unrun.
+        if (now - Date.parse(approved.updated_at) < APPROVAL_IN_FLIGHT_MS) continue;
+        const message = 'Approved, but the server stopped before the write started; it was not run';
+        await advanceStep(db, await stepOf(db, run.id), 'canceled', run.owner_user_id, {
+          errorCode: 'agent_write_approval_lost',
+          errorMessage: message,
+        });
+        await advanceRun(db, run, 'canceled', run.owner_user_id, {
+          errorCode: 'agent_write_approval_lost',
+          errorMessage: message,
+        });
+      } else {
+        await closeWaiting(db, run, 'expired', run.owner_user_id);
+      }
       closed++;
     } catch (error) {
       logger.warn('[agent-access] could not expire agent write', { run: run.id, error: toErrorMessage(error) });
@@ -661,13 +742,8 @@ export async function sweepExpiredAgentWrites(db: DatabaseProvider): Promise<num
  * not have taken effect. Close it as outcome unknown and never run it again.
  */
 export async function reconcileInterruptedAgentWrites(db: DatabaseProvider): Promise<number> {
-  const active = await db.runtime.listRuns({
-    kinds: ['agent_write'],
-    statuses: ['queued', 'claimed', 'running'],
-    limit: 100,
-  });
   let closed = 0;
-  for (const run of active.items) {
+  for await (const run of allRuns(db, ['queued', 'claimed', 'running'])) {
     try {
       for (const call of await db.runtime.listToolCalls(run.id)) {
         if (call.status !== 'running' && call.status !== 'pending') continue;

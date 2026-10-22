@@ -34,4 +34,22 @@ describe('classifyWrite', () => {
     expect(a.targetKey).toBe(b.targetKey);
     expect(classifyWrite('project_mutation', { action: 'project.create', title: 'x' }).targetKey).toBeNull();
   });
+
+  it('never gives creates or batches inside one container the same target', () => {
+    // Two different new records in one table must not supersede each other.
+    expect(
+      classifyWrite('tables_mutation', { action: 'records.create', table_id: 't', values: { a: 1 } }).targetKey,
+    ).toBeNull();
+    expect(
+      classifyWrite('tables_mutation', { action: 'records.batch_upsert', table_id: 't', items: [] }).targetKey,
+    ).toBeNull();
+    expect(
+      classifyWrite('project_mutation', { action: 'task.create', project_id: 'p', title: 'x' }).targetKey,
+    ).toBeNull();
+    // A container alone is not a target; a record inside it is, and the container scopes it.
+    expect(classifyWrite('tables_mutation', { action: 'table.rename', table_id: 't' }).targetKey).toBeNull();
+    expect(
+      classifyWrite('tables_mutation', { action: 'records.update', table_id: 't', record_id: 'r' }).targetKey,
+    ).toBe('tables_mutation|records.update|table_id=t|record_id=r');
+  });
 });
