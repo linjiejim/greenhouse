@@ -131,6 +131,7 @@ import * as _ws from 'ws';
 const WsServer = _ws.WebSocketServer ?? (_ws as any).default?.WebSocketServer;
 import wsRoutes from './ws/index.js';
 import { connectionManager } from './ws/connection-manager.js';
+import { startKnowledgeLiveUpdates } from './knowledge/live.js';
 import { chatRunRegistry } from './chat/runs.js';
 import { startUsageBudgetSweeper } from './llm/usage-budget-sweeper.js';
 
@@ -379,6 +380,8 @@ async function main() {
   // refuse to start (silently falling back to disk would strand new bundles).
   const skillStore = getSkillStore();
   dbProvider = await initDatabase({ type: 'pg', pgConnectionString: DATABASE_URL });
+  // Announce knowledge writes over WS (`knowledge.changed`) from the service's single write path.
+  startKnowledgeLiveUpdates(dbProvider);
   // Extension-owned tables live in their own migration lane (core DDL stays in
   // drizzle/*.sql, applied before boot). Pending files are applied here, under
   // an advisory lock, before anything can want the tables.

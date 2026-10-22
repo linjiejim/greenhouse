@@ -66,6 +66,8 @@
 - `sessions.digest` / `digest_upto_seq` 只经 `sessions.advanceDigest()` 写入（锁会话行的比较后写：只前进、且最后一条被折叠的消息未变）；任何改动 `seq ≤ digest_upto_seq` 消息的 service 方法必须在同一事务里调 `resetDigestIfFolded`。列表查询用 `sessionListColumns`，不带摘要正文。
 - `custom_profiles` 在 v1.4 去掉审核生命周期：团队可见只看 `is_shared`；`lifecycle_status` / `lifecycle_note` / `reviewed_*` / `next_review_at` / `published_version` 成为退役列（迁移 0008 把未审核却 `is_shared` 的行改回私有，保持可见性不变）。
 
+- `knowledgeBase.create/update` 写完会同步调用 `onKnowledgeDocChange` 的监听（API 用它推 WS `knowledge.changed`）。新增会改文档内容、可见性或状态的 service 方法，要么走 `update`，要么自己 emit；监听必须不抛、不阻塞（异步活放进 detached promise）。
+
 ### 退役表（`schema/retired.ts`）
 
 - v1.4 删除模块时**不删表**：表定义原样挪进 `schema/retired.ts`（从 schema index 导出，Drizzle snapshot 不变、不产生迁移），service 与 provider 入口一并删除。留表只为蓝绿回滚到 v1.3.x 时旧代码还能读写；v1.4 之后的下一个版本用迁移把它们 DROP 掉，再删 `retired.ts` 里对应定义。

@@ -8,6 +8,7 @@
 
 import { eq, and, sql, isNull, ilike, like, or, desc, asc, gt, inArray } from 'drizzle-orm';
 import { nowIso } from '@greenhouse/utils/date';
+import type { KnowledgeDocChangeKind } from '@greenhouse/types/ws';
 
 import type { Db } from '../client.js';
 import { knowledgeBase, knowledgeBaseVersions, kbLinks } from '../schema/index.js';
@@ -147,6 +148,46 @@ function folderFilter(folderIds: number[] | undefined, prefix: '' | 'kb.') {
   )})`}`;
 }
 
+// ─── Change notifications ───────────────────────────────
+
+export interface KnowledgeDocChange {
+  kind: KnowledgeDocChangeKind;
+  doc: KnowledgeDocRow;
+  /** Audience before an update — a doc made private must still reach whoever could see it a moment ago. */
+  previous?: Pick<KnowledgeDocRow, 'visibility' | 'owner_user_id'>;
+}
+
+type KnowledgeDocChangeListener = (change: KnowledgeDocChange) => void;
+const changeListeners = new Set<KnowledgeDocChangeListener>();
+
+/**
+ * Subscribe to document writes. `create` and `update` (and so `archive` and
+ * `restoreVersion`, which go through `update`) are the one place every doc
+ * write passes — web route, chat tool, MCP and approved agent writes alike — so
+ * the live-update fan-out hangs here rather than at each caller. Listeners run
+ * synchronously after the write and must not throw or block; do async work in a
+ * detached promise. Returns an unsubscribe function.
+ *
+ * Not emitted: `upsert` (CLI bulk ingest, a separate process with no sockets),
+ * `updateEnrichment` (derived fields only), `delete`. A write inside a
+ * transaction that later rolls back still emits — listeners send ids only and
+ * receivers refetch, so a stray event costs one read.
+ */
+export function onKnowledgeDocChange(listener: KnowledgeDocChangeListener): () => void {
+  changeListeners.add(listener);
+  return () => changeListeners.delete(listener);
+}
+
+function emitKnowledgeDocChange(change: KnowledgeDocChange): void {
+  for (const listener of changeListeners) {
+    try {
+      listener(change);
+    } catch {
+      // A listener's failure is never the writer's failure.
+    }
+  }
+}
+
 export function createKnowledgeBaseService(db: Db) {
   const service = {
     async upsert(doc: KnowledgeDocInput): Promise<void> {
@@ -252,6 +293,7 @@ export function createKnowledgeBaseService(db: Db) {
 
       const row = inserted[0]!;
       await service.createVersion(row, doc.created_by ?? doc.updated_by ?? null, 'Created document');
+      emitKnowledgeDocChange({ kind: 'created', doc: row });
       return row;
     },
 
@@ -314,7 +356,14 @@ export function createKnowledgeBaseService(db: Db) {
 
       const rows = await db.update(knowledgeBase).set(setValues).where(eq(knowledgeBase.id, id)).returning();
       const updated = rows[0];
-      if (updated) await service.createVersion(updated, changedBy ?? null, reason);
+      if (updated) {
+        await service.createVersion(updated, changedBy ?? null, reason);
+        emitKnowledgeDocChange({
+          kind: updated.status === 'archived' && current.status !== 'archived' ? 'archived' : 'updated',
+          doc: updated,
+          previous: { visibility: current.visibility, owner_user_id: current.owner_user_id },
+        });
+      }
       return updated;
     },
 

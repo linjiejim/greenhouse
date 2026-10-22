@@ -126,6 +126,13 @@ function decodeSeg(s: string): string {
  */
 interface EditorState {
   id?: number;
+  /**
+   * `updated_at` of the doc when the editor opened — the save's conflict
+   * baseline. Taken from the editor, not the live doc: the open doc refetches
+   * when someone else saves (`knowledge.changed`), and comparing against that
+   * fresh value would hide exactly the conflict the check exists to catch.
+   */
+  baseUpdatedAt?: string;
   title: string;
   slug: string;
   visibility: 'team' | 'private';
@@ -148,6 +155,7 @@ const emptyEditor = (visibility: 'team' | 'private' = 'team'): EditorState => ({
 function docToEditor(doc: KnowledgeDoc): EditorState {
   return {
     id: doc.id,
+    baseUpdatedAt: doc.updated_at ?? undefined,
     title: doc.title,
     slug: doc.slug,
     visibility: doc.visibility,
@@ -344,9 +352,10 @@ function DocsScopeView({
       .finally(() => setArchivedLoading(false));
   }, [scope, isShared, t]);
 
+  // Also on `kbVersion`: a doc archived or restored elsewhere moves in or out of this list.
   useEffect(() => {
     if (showArchived) loadArchived();
-  }, [showArchived, loadArchived]);
+  }, [showArchived, loadArchived, kbVersion]);
 
   useEffect(() => {
     if (!cleanSlug) {
@@ -402,8 +411,7 @@ function DocsScopeView({
         tags: parseTags(editor.tagsText),
         summary: editor.summary,
         change_reason: editor.id ? 'Updated from knowledge editor' : undefined,
-        base_updated_at:
-          editor.id && selectedDoc?.id === editor.id ? (selectedDoc?.updated_at ?? undefined) : undefined,
+        base_updated_at: editor.id ? editor.baseUpdatedAt : undefined,
       };
       const result = editor.id ? await updateKnowledgeDoc(editor.id, payload) : await createKnowledgeDoc(payload);
       const saved = 'doc' in result ? result.doc : result;

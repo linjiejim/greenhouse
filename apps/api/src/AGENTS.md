@@ -324,6 +324,12 @@ v1 只接 DeepSeek 与 OpenAI 兼容服务，它们**自动**缓存 prompt 前�
   并置 `_enriched_at`；内容变更时不传就清空。**刻意没有批量富化管线**（spec D3）——`sources` 那条 enricher 服务的是
   无头单轮的对外 RAG，team KB 的消费者是会换关键词重试、有目录可浏览的交互式模型，对称不是需求。
 
+### 知识库实时更新（`knowledge/live.ts` + WS `knowledge.changed`）
+- 文档被创建、编辑、归档时，看得见它的人收到 `{type:'knowledge.changed', docId, change:'created'|'updated'|'archived'}`，只带 id，接收端经鉴权 API 重拉。
+- **挂在 service 的唯一写路径上**：`db.knowledgeBase.create/update`（`archive`、`restoreVersion` 都走 `update`）调 `onKnowledgeDocChange` 的监听；网页路由、聊天 `knowledge_mutation`、MCP、审批后执行的 agent 写入都经过这里。**别在路由或工具里再发一遍**。不发：`upsert`（CLI 批量导入，另一个进程）、`updateEnrichment`（派生字段）、`delete`。
+- 受众 = 变更前**或**后能看到它的人：team 文档（含刚从 team 改成 private 的）广播给所有在线连接（WS 只接内部账号）；private 文档发给 owner（新旧都发）+ 直接共享与组共享的成员（`knowledgeShares.userIdsWithAccess`）。监听里的异步错误只记 warn，绝不回到写入方。
+- 网页：`ws-store` 收到后调 `useKnowledgeStore.remoteChanged()`（400ms 合并一批）→ `version` +1 → 侧栏树、打开的文档、已归档列表各自重拉。编辑器的冲突基线是**打开编辑器时**的 `updated_at`（`EditorState.baseUpdatedAt`），不能取会被实时刷新的 `selectedDoc.updated_at`，否则别人的保存会把冲突检测抹掉。
+
 ### 知识库侧栏树的排序与整库导出
 
 方案与决策见 [spec](../../../docs/specs/20260811-kb-tree-order-and-export.md)。

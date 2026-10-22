@@ -18,6 +18,8 @@ export interface OnlineUser {
 
 // ─── Server → Client Events ─────────────────────────────
 
+export type KnowledgeDocChangeKind = 'created' | 'updated' | 'archived';
+
 export type ServerWsEvent =
   | { type: 'connected'; userId: string }
   | { type: 'ping' }
@@ -56,6 +58,10 @@ export type ServerWsEvent =
       runId: string;
       status: ChatRunStatus;
     }
+  // A knowledge document the recipient can see was created, edited or archived
+  // (web, chat tool, MCP or an approved agent write). Ids only: clients refetch
+  // over the authenticated API.
+  | { type: 'knowledge.changed'; docId: number; change: KnowledgeDocChangeKind }
   // Cross-domain Execution Center invalidation. Payload contents stay on the
   // authenticated Runtime API; WS carries only identity and sequence.
   | {

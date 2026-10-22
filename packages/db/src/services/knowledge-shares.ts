@@ -80,6 +80,19 @@ export function createKnowledgeShareService(db: Db) {
       return rows[0]?.role ?? null;
     },
 
+    /** Every user a doc is shared with, directly or through a group (for live-update fan-out). */
+    async userIdsWithAccess(docId: number): Promise<string[]> {
+      const rows = (await db.execute(sql`
+        SELECT shared_with AS user_id FROM knowledge_base_shares
+        WHERE doc_id = ${docId} AND shared_with NOT LIKE 'group:%'
+        UNION
+        SELECT gm.user_id FROM knowledge_base_shares s
+        JOIN group_members gm ON s.shared_with = 'group:' || gm.group_id
+        WHERE s.doc_id = ${docId}
+      `)) as unknown as Array<{ user_id: string }>;
+      return rows.map((row) => String(row.user_id));
+    },
+
     /** Distinct doc ids shared with the user (directly or via a group). */
     async listDocIdsForUser(userId: string): Promise<number[]> {
       const rows = (await db.execute(sql`
