@@ -23,7 +23,7 @@
 
 import COS from 'cos-nodejs-sdk-v5';
 import { logger } from '@greenhouse/utils/logger';
-import { readFileSync, writeFileSync, existsSync, mkdirSync, unlinkSync, statSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, mkdirSync, unlinkSync, statSync, readdirSync } from 'node:fs';
 import { resolve, extname, dirname } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { UPLOADS_DIR } from '../paths.js';
@@ -279,6 +279,47 @@ export function chatFileKeyFor(filename: string): string {
   const ext = extname(filename).toLowerCase();
   if (ext !== '.csv' && ext !== '.xlsx') throw new Error('Unsupported chat file extension');
   return `${DRIVE_PREFIX}chat/${randomUUID()}${ext}`;
+}
+
+/**
+ * Prefix for oversized MCP tool replies (`agent-runtime/tool-output-store.ts`).
+ * They are private, expiring blobs keyed by owner, never chat files: nothing but
+ * that module builds or reads a key under it, and no download route serves it.
+ */
+export function toolOutputKeyPrefix(): string {
+  return `${DRIVE_PREFIX}mcp-output/`;
+}
+
+/**
+ * Every object key under a server-owned drive prefix (COS: paginated list; local:
+ * recursive walk). Used by expiry sweeps; the prefix must sit inside the drive
+ * namespace, so a sweep can never enumerate chat uploads or another bucket area.
+ */
+export async function listObjectKeys(prefix: string): Promise<string[]> {
+  if (!prefix.startsWith(DRIVE_PREFIX) || prefix.includes('..')) throw new Error('Invalid drive prefix');
+  const cfg = getCosConfig();
+  if (cfg) {
+    const cos = getClient(cfg);
+    const keys: string[] = [];
+    let marker: string | undefined;
+    for (;;) {
+      const page = await new Promise<COS.GetBucketResult>((res, rej) =>
+        cos.getBucket(
+          { Bucket: cfg.bucket, Region: cfg.region, Prefix: prefix, Marker: marker, MaxKeys: 1000 },
+          (err, d) => (err ? rej(err) : res(d)),
+        ),
+      );
+      for (const item of page.Contents ?? []) keys.push(item.Key);
+      if (page.IsTruncated !== 'true' || !page.NextMarker) break;
+      marker = page.NextMarker;
+    }
+    return keys;
+  }
+  const dir = driveLocalPath(prefix);
+  if (!existsSync(dir)) return [];
+  return (readdirSync(dir, { recursive: true }) as string[])
+    .filter((relative) => statSync(resolve(dir, relative)).isFile())
+    .map((relative) => `${prefix}${relative.split('\\').join('/')}`);
 }
 
 /** Local-disk path for a drive key, guarded to stay within UPLOADS_DIR. */

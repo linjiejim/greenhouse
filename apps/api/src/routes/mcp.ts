@@ -20,7 +20,9 @@
  * self-contained request is answerable without session state.
  *
  * Exposed surface: knowledge + project + tables (split read/write) + chat history
- * + skills.
+ * + skills, plus two protocol-level tools: agent_write_status (governed writes)
+ * and tool_output_read (pages through a reply too long to return at once — see
+ * agent-runtime/tool-output-store.ts).
  * Each tool must also be in the proxy READ/WRITE allowlists to be reachable.
  */
 
@@ -66,6 +68,14 @@ import {
 import { baseWriteRisk, legacyConfirmEnabled, resolveWriteCaller } from '../agent-access/context.js';
 import type { AgentIdentity } from '../agent-runtime/api-auth.js';
 import { mcpCredentialMiddleware, recordMcpAudit } from '../agent-runtime/mcp-auth.js';
+import {
+  TOOL_OUTPUT_READ_TOOL,
+  ToolOutputNotFoundError,
+  boundReplyText,
+  readToolOutput,
+  toolOutputReadToolDef,
+  type ToolOutputCaller,
+} from '../agent-runtime/tool-output-store.js';
 import type { AppEnv } from '../app-env.js';
 import { delegatedAgentActor } from '../platform/actor.js';
 import { getPlatformRuntime } from '../platform/runtime.js';
@@ -90,7 +100,9 @@ const SERVER_INSTRUCTIONS =
   'governed by the member you act for: a write may run at once, or come back as ' +
   '{"status":"needs_approval","request_id":…} — then tell the user, do not resend it, and call ' +
   'agent_write_status with the request_id (wait_seconds up to 30) to get the result. Deletes always ' +
-  'need approval. For reusable output skills (decks, reports, reviews…) use skill_query skills.find ' +
+  'need approval. A result too long for one reply comes back as {"truncated":true,"output_id":…} plus a preview; ' +
+  `page through the rest with ${TOOL_OUTPUT_READ_TOOL} only as far as you need. ` +
+  'For reusable output skills (decks, reports, reviews…) use skill_query skills.find ' +
   'to search and skills.download to install them locally.';
 
 /** Protocol-level tool every write-capable agent gets; not a catalog tool. */
@@ -279,6 +291,7 @@ export function buildMcpServer(c: Context, ctx: McpContext): Server {
       inputSchema: toMcpInputSchema(entry, { legacyConfirm }),
     }));
     if (entries.some((entry) => entry.mutating)) tools.push(agentWriteStatusToolDef());
+    if (entries.length > 0) tools.push(toolOutputReadToolDef());
     return { tools };
   });
 
@@ -286,20 +299,48 @@ export function buildMcpServer(c: Context, ctx: McpContext): Server {
     const start = Date.now();
     const name = req.params.name;
     const rawArgs = (req.params.arguments ?? {}) as Record<string, unknown>;
+    // Oversized replies are stored per member AND client: only this pair reads them back.
+    const outputCaller: ToolOutputCaller = { userId: identity.userId, clientId: oauthClientId ?? 'unknown' };
 
     try {
+      if (name === TOOL_OUTPUT_READ_TOOL) {
+        if (ctx.toolIds.length === 0) {
+          throw new ProxyToolError(`Tool "${name}" is not available for this credential`, 403);
+        }
+        const range = await handleToolOutputRead(outputCaller, rawArgs);
+        await recordMcpAudit(c, {
+          endpoint: 'mcp:tools/call',
+          statusCode: 200,
+          durationMs: Date.now() - start,
+          meta: { tool: name, output_id: range.output_id, offset: range.offset, returned: range.returned_chars },
+        });
+        const { text, ...position } = range;
+        return {
+          content: [
+            { type: 'text', text: JSON.stringify(position) },
+            { type: 'text', text },
+          ],
+        };
+      }
+
       if (name === AGENT_WRITE_STATUS_TOOL) {
         if (!ctx.toolIds.some((id) => isMutatingProxyTool(id))) {
           throw new ProxyToolError(`Tool "${name}" is not available for this credential`, 403);
         }
         const result = await handleAgentWriteStatus(c, identity.userId, rawArgs);
+        const bounded = await boundReplyText(JSON.stringify(agentFacingView(result)), outputCaller);
         await recordMcpAudit(c, {
           endpoint: 'mcp:tools/call',
           statusCode: 200,
           durationMs: Date.now() - start,
-          meta: { tool: name, request_id: result.request_id, write_status: result.status },
+          meta: {
+            tool: name,
+            request_id: result.request_id,
+            write_status: result.status,
+            ...(bounded.outputId ? { output_id: bounded.outputId } : {}),
+          },
         });
-        return { content: [{ type: 'text', text: JSON.stringify(agentFacingView(result)) }] };
+        return { content: bounded.content };
       }
 
       if (isMutatingProxyTool(name)) {
@@ -321,6 +362,10 @@ export function buildMcpServer(c: Context, ctx: McpContext): Server {
           baseRisk: baseWriteRisk(name),
           legacyConfirm: legacy,
         });
+        const bounded =
+          governed.status === 'executed'
+            ? await boundReplyText(JSON.stringify(governed.view.output), outputCaller)
+            : null;
         await recordMcpAudit(c, {
           endpoint: 'mcp:tools/call',
           statusCode: governed.status === 'failed' ? 422 : governed.status === 'needs_approval' ? 202 : 200,
@@ -332,12 +377,13 @@ export function buildMcpServer(c: Context, ctx: McpContext): Server {
             write_status: governed.view.status,
             risk: governed.view.risk,
             basis: governed.view.basis,
+            ...(bounded?.outputId ? { output_id: bounded.outputId } : {}),
           },
         });
         if (governed.status === 'executed') {
           return {
             content: [
-              { type: 'text', text: JSON.stringify(governed.view.output) },
+              ...(bounded?.content ?? []),
               {
                 type: 'text',
                 text: `Recorded as Greenhouse request ${governed.view.request_id} (${governed.view.basis}).`,
@@ -361,18 +407,20 @@ export function buildMcpServer(c: Context, ctx: McpContext): Server {
       }
 
       const output = await executeProxyTool(ctx.registry, name, ctx.toolIds, rawArgs, { usageClient: 'mcp' });
+      const bounded = await boundReplyText(JSON.stringify(output), outputCaller);
       await recordMcpAudit(c, {
         endpoint: 'mcp:tools/call',
         statusCode: 200,
         durationMs: Date.now() - start,
-        meta: { tool: name },
+        meta: { tool: name, ...(bounded.outputId ? { output_id: bounded.outputId } : {}) },
       });
-      return { content: [{ type: 'text', text: JSON.stringify(output) }] };
+      return { content: bounded.content };
     } catch (err) {
-      const status = err instanceof ProxyToolError ? err.status : err instanceof AgentWriteError ? 404 : 500;
-      const message =
-        err instanceof ProxyToolError || err instanceof AgentWriteError ? err.message : 'Tool execution failed';
-      if (!(err instanceof ProxyToolError) && !(err instanceof AgentWriteError)) {
+      const known =
+        err instanceof ProxyToolError || err instanceof AgentWriteError || err instanceof ToolOutputNotFoundError;
+      const status = err instanceof ProxyToolError ? err.status : known ? 404 : 500;
+      const message = known ? err.message : 'Tool execution failed';
+      if (!known) {
         logger.error(`[mcp] tool "${name}" failed:`, err);
       }
       await recordMcpAudit(c, {
@@ -486,6 +534,13 @@ async function handleAgentWriteStatus(c: Context, userId: string, args: Record<s
   if (args.action === 'withdraw') return withdrawAgentWrite(getDb(), requestId, caller);
   const wait = typeof args.wait_seconds === 'number' && Number.isFinite(args.wait_seconds) ? args.wait_seconds : 0;
   return agentWriteStatus(getDb(), requestId, caller, wait);
+}
+
+async function handleToolOutputRead(caller: ToolOutputCaller, args: Record<string, unknown>) {
+  const outputId = typeof args.output_id === 'string' ? args.output_id.trim() : '';
+  if (!outputId) throw new ProxyToolError('output_id is required', 400);
+  const number = (value: unknown) => (typeof value === 'number' && Number.isFinite(value) ? value : undefined);
+  return readToolOutput(caller, { outputId, offset: number(args.offset), limit: number(args.limit) });
 }
 
 /** What the calling agent sees: enough to act on, without internal ids it cannot use. */

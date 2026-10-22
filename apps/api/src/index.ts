@@ -114,6 +114,7 @@ import { settleRetiredRuntimeRuns } from './runtime/retired-kinds.js';
 import { startRuntimeWorker } from './runtime/worker.js';
 import { reconcileInterruptedChatRuntimeRuns } from './chat/runtime.js';
 import { reconcileInterruptedAgentWrites, sweepExpiredAgentWrites } from './agent-access/governed-write.js';
+import { sweepExpiredToolOutputs } from './agent-runtime/tool-output-store.js';
 import { createAutomationRuntimeDriver } from './scheduler/runtime-driver.js';
 import { createSubagentRuntimeDriver, reconcileReclaimedSubagentRun } from './runtime/subagent-driver.js';
 import { createRuntimeNotificationProjector } from './notifications/runtime-projector.js';
@@ -524,15 +525,20 @@ async function main() {
       })
     : null;
 
-  // Approval requests nobody decided in time: close them so the agent's status
-  // call gets a final answer. Cheap (only waiting agent writes are read).
-  setInterval(
-    () =>
-      void sweepExpiredAgentWrites(dbProvider).catch((error) =>
-        logger.warn('[agent-access] expiry sweep failed', { error: toErrorMessage(error) }),
-      ),
-    5 * 60_000,
-  );
+  // Five-minute expiry sweeps, each failing on its own (one bad sweep never
+  // skips the others, and never becomes an unhandled rejection):
+  //  - approval requests nobody decided in time, so the agent's status call gets
+  //    a final answer (cheap: only waiting agent writes are read);
+  //  - oversized MCP replies past their 24-hour life (agent-runtime/tool-output-store.ts).
+  const expirySweeps: Array<[string, () => Promise<unknown>]> = [
+    ['agent-access expiry', () => sweepExpiredAgentWrites(dbProvider)],
+    ['MCP tool output', () => sweepExpiredToolOutputs()],
+  ];
+  setInterval(() => {
+    for (const [label, sweep] of expirySweeps) {
+      void sweep().catch((error) => logger.warn(`[upkeep] ${label} sweep failed`, { error: toErrorMessage(error) }));
+    }
+  }, 5 * 60_000);
 
   // Heartbeat: ping all WS connections every 30s. Never an unhandled rejection:
   // Node would exit the whole API over one failed tick.
