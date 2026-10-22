@@ -486,6 +486,7 @@ export async function executeSubagentRuntimeRun(
       toolChoice: profile.tool_choice,
       ...(options.generate ? { generate: options.generate } : {}),
       abortSignal: abort.signal,
+      toolCallClient: 'subagent',
       usageContext: { profileId: profile.id, userId: owner.id, caller: 'spawn_session' },
       runtimeToolEvidence: {
         runId: run.id,

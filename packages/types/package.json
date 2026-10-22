@@ -87,6 +87,10 @@
     "./workspace-settings": {
       "import": "./src/workspace-settings.ts",
       "types": "./src/workspace-settings.ts"
+    },
+    "./usage": {
+      "import": "./src/usage.ts",
+      "types": "./src/usage.ts"
     }
   },
   "scripts": {

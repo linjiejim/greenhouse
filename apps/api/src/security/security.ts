@@ -111,7 +111,10 @@ export async function corsMiddleware(c: Context, next: Next) {
   if (allowed) {
     c.header('Access-Control-Allow-Origin', origin);
     c.header('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
-    c.header('Access-Control-Allow-Headers', 'Authorization, Content-Type, X-Workspace-Id, X-Requested-With');
+    c.header(
+      'Access-Control-Allow-Headers',
+      'Authorization, Content-Type, X-Workspace-Id, X-Requested-With, X-Greenhouse-Client',
+    );
     c.header('Access-Control-Expose-Headers', 'X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset');
     c.header('Access-Control-Max-Age', '86400');
   }
@@ -148,6 +151,9 @@ const RATE_LIMITS: Record<string, RateLimitConfig> = {
   // Publishing is now a user-facing action (SkillHub Upload), and every call
   // writes an object to the skill store — bound it per user/IP.
   '/api/skills/publish': { windowMs: 60_000, max: 10 },
+  // One write per page view; a generous ceiling keeps a looping client from
+  // turning the counter table into a write hotspot.
+  '/api/usage': { windowMs: 60_000, max: 240 },
   // Other authenticated or independently guarded endpoints are intentionally unthrottled here.
 };
 

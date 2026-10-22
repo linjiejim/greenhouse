@@ -408,6 +408,17 @@ Automation、Tasks、Agents 的 `Mine / Shared / Team` 口径见 [personal asset
 - 管理 UI：Settings › Administration › MCP Access（`apps/web/src/pages/administration/mcp-keys.tsx`，super-only）：建/轮换/禁用/删 key、复制客户端配置（折叠的 "How to connect"）、per-key Activity（读 `/:id/audit` 看最近调用）。
 - 纯逻辑（`toMcpInputSchema` 的 schema 归一化 + confirm 注入、协议往返）已单测：`routes/__tests__/mcp.test.ts`（用 SDK `InMemoryTransport`+`Client`，不连 DB）。
 
+### 模块用量计数（`usage/counters.ts` + `/api/usage` + `usage_counters`）
+
+- 只计数：每日 `(day, kind, key, client)` 合计，不记用户、参数或内容。v1.4 起计数，用来判断冻结模块（会话标签/分组、桌面端、浏览器扩展、移动端）的去留。
+- **计数永不失败、永不拖慢**：一律走 `countUsage()`（不 await，写失败只 `logger.warn`，`getDb()` 同步抛错也吞掉）。新计数点别直接 `await db.usageCounters.increment()`。
+- 工具调用只在真实执行边界计一次：`countToolCalls(tools, client)` 克隆 per-turn 工具表包 `execute`（不改共享 registry）；MCP / Agent API 在 `executeProxyTool({ usageClient })` 里所有检查通过后按规范 id 计（旧别名记成 `knowledge_query` 等，被拒的调用不计）。workbench 刷新不传 `usageClient`，不计。
+- client：Chat 按会话 channel（`browser` / `feishu`），否则看 `X-Greenhouse-Client` 头（`mobile` / `browser`），否则 `web_chat`；`runAgentInSession` 的 `toolCallClient` **必填**（`automation` / `subagent` / `feishu`），与 `usageContext` 同理，免得新 headless 调用方悄悄漏计；Agent API 默认 `agent_api`，浏览器扩展/移动端带头时记成该 app。
+- Chat 的计数包在 Runtime 证据包装**里面**（只有真正进入工具才计），并且只包目录工具：Client Action 的名字由浏览器声明，**绝不能**成为计数 key。
+- `X-Greenhouse-Client` 只是标签，永远不是鉴权输入（CORS 已放行该头）。
+- `POST /api/usage/page-open {module}`（内部用户，限流 240/分）：module 必须是 `PAGE_MODULE_IDS` 或当前启用扩展的 `ext.<id>`（`isPageModuleId`），否则 400；client 取头（`desktop` / `mobile` / `browser`），缺省 `web`；写失败仍回 202。
+- 读侧 `GET /api/admin/usage/modules?days=7|30|90`（super）：工具调用与页面打开（按 key × client）+ `llm_usage` 按模型的缓存命中率 `sum(cached_tokens)/sum(input_tokens)`；其它天数 400。
+
 ### 生图 (`generate_image` 工具)
 - `tools/generate-image.ts` 的 `generate_image`（surface `proxy:'read' + mcp:'image'`，`is_global`）是唯一生图入口。**它在 MCP 上独占一个资源组**：挂 read tier（不需要 confirm）但每次调用花真金白银，和其它只读工具捆在一起，用户就没法在给出读权限的同时拒绝付费调用。：gpt-image-2 → `storage/uploads.ts` 落 COS/本地，产物经公开的 `GET /api/upload/:id` 取用。chat 同步内联渲染（`presentation:'artifact'`）；/api/agent 与 /api/mcp 经代理暴露为只读工具，生图技能即调它生图（不再 curl REST）。
 - 生图预算按真实 `usd_micros` 计，不再拿图像 token 冒充文本预算：provider I/O 前一次性原子预留 user + organization + `media` provider 三个 UTC 月账户，成功按该尺寸 low 档实际美元成本结算；结果未知由 TTL 以预估美元结算。provider 返回的 input/output token 仍写 `llm_usage`，并以同一 budget key 关联统计事实。默认硬限额与运营覆盖可通过 `USAGE_BUDGET_*_IMAGE_USD_MICROS` 调整。

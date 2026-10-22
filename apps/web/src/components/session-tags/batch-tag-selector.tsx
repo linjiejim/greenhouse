@@ -17,6 +17,7 @@ import { TagBadge } from './tag-badge';
 import { TAG_COLORS } from './colors';
 import type { SessionTag } from '@greenhouse/types/api';
 import * as api from '../../lib/api';
+import { useModuleOpen } from '../../lib/usage/use-module-open';
 
 interface BatchTagSelectorProps {
   /** Sessions the picked tags will be applied to (drives the count label). */
@@ -41,6 +42,7 @@ export function BatchTagSelector({
   x,
   y,
 }: BatchTagSelectorProps) {
+  useModuleOpen('session-tags');
   const t = useT();
   const ref = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);

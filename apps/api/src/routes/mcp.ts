@@ -272,7 +272,7 @@ export function buildMcpServer(c: Context, ctx: McpContext): Server {
     }
 
     try {
-      const output = await executeProxyTool(ctx.registry, name, ctx.toolIds, input, { confirm });
+      const output = await executeProxyTool(ctx.registry, name, ctx.toolIds, input, { confirm, usageClient: 'mcp' });
       await recordMcpAudit(c, {
         endpoint: 'mcp:tools/call',
         statusCode: 200,

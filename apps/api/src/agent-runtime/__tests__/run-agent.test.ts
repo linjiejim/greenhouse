@@ -181,6 +181,7 @@ describe('runAgentInSession transcript persistence', () => {
       modelConfig: {} as never,
       maxSteps: 2,
       generate: fixture.generate,
+      toolCallClient: 'subagent',
       usageContext,
     });
 
@@ -207,6 +208,7 @@ describe('runAgentInSession transcript persistence', () => {
       modelConfig: { id: 'flash', model: 'deepseek-v4-flash' } as never,
       maxSteps: 2,
       generate: fixture.generate,
+      toolCallClient: 'subagent',
       usageContext,
     });
 
@@ -238,6 +240,7 @@ describe('runAgentInSession transcript persistence', () => {
       modelConfig: {} as never,
       maxSteps: 2,
       generate: fixture.generate,
+      toolCallClient: 'subagent',
       usageContext,
     });
 
@@ -258,6 +261,7 @@ describe('runAgentInSession transcript persistence', () => {
         modelConfig: {} as never,
         maxSteps: 2,
         generate: fixture.generate,
+        toolCallClient: 'subagent',
         usageContext,
       }),
     ).rejects.toMatchObject({ code: 'usage_budget_unavailable', status: 503 });
@@ -276,6 +280,7 @@ describe('runAgentInSession transcript persistence', () => {
         modelConfig: {} as never,
         maxSteps: 2,
         generate: fixture.generate,
+        toolCallClient: 'subagent',
         usageContext,
       }),
     ).rejects.toMatchObject({ name: 'SessionTranscriptChangedError' });
@@ -294,10 +299,43 @@ describe('runAgentInSession transcript persistence', () => {
         modelConfig: {} as never,
         maxSteps: 2,
         generate: fixture.generate,
+        toolCallClient: 'subagent',
         usageContext,
       }),
     ).rejects.toThrow('Session transcript changed before agent generation');
     expect(fixture.generate).not.toHaveBeenCalled();
     expect(fixture.appendAssistantIfTail).not.toHaveBeenCalled();
+  });
+
+  it('counts every executed tool under its client and never fails the run on a lost count', async () => {
+    const fixture = createRunnerFixture();
+    const increment = vi.fn().mockRejectedValueOnce(new Error('counter table locked')).mockResolvedValue(undefined);
+    (fixture.db as Record<string, unknown>).usageCounters = { increment };
+    const toolExecute = vi.fn().mockResolvedValue({ docs: 1 });
+    fixture.generate.mockImplementation(
+      async (args: { tools?: Record<string, { execute: (input: unknown, options: unknown) => Promise<unknown> }> }) => {
+        await args.tools!.knowledge_query.execute({ action: 'tree' }, { toolCallId: 'c1', messages: [] });
+        await args.tools!.knowledge_query.execute({ action: 'tree' }, { toolCallId: 'c2', messages: [] });
+        return { text: 'Generated answer', usage: { inputTokens: 4, outputTokens: 2 }, steps: [] };
+      },
+    );
+
+    const result = await runAgentInSession({
+      db: fixture.db as never,
+      sessionId: 'session-1',
+      system: 'System',
+      prompt: 'Current prompt',
+      modelConfig: {} as never,
+      tools: { knowledge_query: { execute: toolExecute } },
+      maxSteps: 2,
+      generate: fixture.generate,
+      toolCallClient: 'automation',
+      usageContext,
+    });
+
+    expect(result.persisted).toBe(true);
+    expect(toolExecute).toHaveBeenCalledTimes(2);
+    expect(increment).toHaveBeenCalledTimes(2);
+    expect(increment).toHaveBeenCalledWith('tool_call', 'knowledge_query', 'automation');
   });
 });

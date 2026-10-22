@@ -18,6 +18,7 @@
  * === 用量查看（super only） ===
  * GET    /api/admin/users/:id/usage        — 查看指定用户用量
  * GET    /api/admin/usage/summary          — 全部用户用量汇总
+ * GET    /api/admin/usage/modules?days=7|30|90 — 模块用量：工具调用（工具×client）、页面打开（模块×client）、按模型的缓存命中率
  */
 
 import { randomUUID } from 'node:crypto';
@@ -34,6 +35,8 @@ import { getAuthUser } from '../auth/middleware.js';
 import { getAllToolIds } from '../tools/registry.js';
 import { FEATURE_OWNED_TOOL_IDS, buildUserAccessView } from '../platform/feature-points.js';
 import type { AppEnv } from '../app-env.js';
+import { USAGE_RANGE_DAYS, type ModuleUsageReport, type UsageRangeDays } from '@greenhouse/types/usage';
+import { usageDayRange } from '../usage/counters.js';
 import {
   deliverAccountPasswordLink,
   getPasswordLinkCapability,
@@ -669,6 +672,28 @@ const admin = new Hono<AppEnv>()
     } catch {
       return c.json({ by_user: [] });
     }
+  })
+  /** GET /api/admin/usage/modules — module usage counts + prompt-cache hit rate per model */
+  .get('/usage/modules', async (c) => {
+    const days = Number(c.req.query('days') ?? '30');
+    if (!(USAGE_RANGE_DAYS as readonly number[]).includes(days)) {
+      return c.json({ error: `days must be one of ${USAGE_RANGE_DAYS.join(', ')}` }, 400);
+    }
+    const range = usageDayRange(days as UsageRangeDays);
+    const db = getDb();
+    const [toolCalls, pageOpens, cacheByModel] = await Promise.all([
+      db.usageCounters.summarize('tool_call', range),
+      db.usageCounters.summarize('page_open', range),
+      db.usage.getCacheHitByModel({ since: `${range.from}T00:00:00.000Z` }),
+    ]);
+    const report: ModuleUsageReport = {
+      days: days as UsageRangeDays,
+      ...range,
+      tool_calls: toolCalls,
+      page_opens: pageOpens,
+      cache_by_model: cacheByModel,
+    };
+    return c.json(report);
   })
   // ─── Feature Gate Management (super only) ────────────────
 

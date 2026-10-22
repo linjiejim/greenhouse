@@ -8,6 +8,7 @@ import React from 'react';
 import type { SessionTag } from '@greenhouse/types/api';
 import { FilterPills } from '../ui';
 import { useT } from '../../lib/i18n';
+import { reportPageOpen } from '../../lib/api/usage';
 
 interface TagFilterProps {
   tags: SessionTag[];
@@ -25,7 +26,11 @@ export function TagFilter({ tags, activeTagId, onSelect, collapseInSidebar = fal
       toggle
       items={tags.map((tag) => ({ key: String(tag.id), label: tag.name, color: tag.color }))}
       activeKey={activeTagId == null ? null : String(activeTagId)}
-      onChange={(key) => onSelect(key == null ? null : Number(key))}
+      onChange={(key) => {
+        // Filtering by a tag is using tags; clearing the filter is not.
+        if (key != null) reportPageOpen('session-tags');
+        onSelect(key == null ? null : Number(key));
+      }}
       collapseInSidebar={collapseInSidebar}
       selectLabel={t('sessionGroups.filterByTag')}
     />

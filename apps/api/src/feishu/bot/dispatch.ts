@@ -204,6 +204,7 @@ export async function dispatchFeishuMessage(message: FeishuIncomingMessage, deps
     tools,
     maxSteps: profile.max_steps ?? 12,
     ...(profile.tool_choice ? { toolChoice: profile.tool_choice } : {}),
+    toolCallClient: 'feishu',
     usageContext: { profileId: profile.id, userId: owner.id, caller: 'feishu-bot' },
     ...(deps.generate ? { generate: deps.generate } : {}),
   });

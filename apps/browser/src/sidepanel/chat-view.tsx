@@ -32,6 +32,7 @@ import { StationMenu } from './station-menu';
 import { useAuth } from '../lib/use-auth';
 import { readPageContext, readFullPageText, type PageContext } from '../lib/page-context';
 import { listSessions, fetchProfiles, type BrowserSession, type ProfileOption } from '../lib/sessions';
+import { reportPanelOpen } from '../lib/usage';
 
 const PROFILE_KEY = 'preferred-profile';
 
@@ -47,6 +48,11 @@ export function ChatView() {
   const [historyOpen, setHistoryOpen] = useState(false);
   const [history, setHistory] = useState<BrowserSession[] | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // One panel open (per signed-in station) = one page view of chat.
+  useEffect(() => {
+    reportPanelOpen();
+  }, []);
 
   const refreshCtx = useCallback(() => {
     readPageContext().then(setPageCtx);

@@ -10,6 +10,7 @@ import { TAG_COLORS } from '../session-tags/colors';
 import { useT } from '../../lib/i18n';
 import type { SessionGroup } from '@greenhouse/types/api';
 import * as api from '../../lib/api';
+import { useModuleOpen } from '../../lib/usage/use-module-open';
 
 interface GroupSelectorProps {
   /** Target session (single-session mode). Optional when `onPick` is provided. */
@@ -43,6 +44,7 @@ export function GroupSelector({
   y,
   onPick,
 }: GroupSelectorProps) {
+  useModuleOpen('session-groups');
   const t = useT();
   const ref = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);

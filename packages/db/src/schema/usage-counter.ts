@@ -7,7 +7,9 @@
  * Counts only: no content, no arguments, no per-user rows. One row per
  * (day, kind, key, client); writers upsert `count = count + 1`.
  *   kind   'tool_call' (key = tool id) | 'page_open' (key = module id)
- *   client 'mcp' | 'agent_api' | 'web_chat' | 'automation' | 'subagent' | 'feishu' | 'browser' | 'web'
+ *   client tool_call: 'mcp' | 'agent_api' | 'web_chat' | 'browser' | 'mobile' | 'feishu' | 'automation' | 'subagent'
+ *          page_open: 'web' | 'desktop' | 'mobile' | 'browser'
+ * The vocabulary (and the closed list of page module ids) lives in @greenhouse/types/usage.
  */
 
 import { pgTable, text, integer, timestamp, primaryKey, index } from 'drizzle-orm/pg-core';

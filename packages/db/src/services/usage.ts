@@ -4,6 +4,7 @@
 
 import { sql } from 'drizzle-orm';
 import { nowIso } from '@greenhouse/utils/date';
+import type { ModelCacheHitRow } from '@greenhouse/types/usage';
 
 import type { Db } from '../client.js';
 import { llmUsage } from '../schema/index.js';
@@ -709,6 +710,33 @@ export function createUsageService(db: Db) {
         recent_runs: recentRuns,
         budgets,
       };
+    },
+
+    /**
+     * Prompt-cache hit rate per model since an instant:
+     * `sum(cached_tokens) / sum(input_tokens)`, null for a model with no input.
+     */
+    async getCacheHitByModel(opts: { since: string }): Promise<ModelCacheHitRow[]> {
+      const rows = resultRows<{ model: string; calls: string; input_tokens: string; cached_tokens: string }>(
+        await db.execute(sql`
+          SELECT model, COUNT(*) AS calls,
+            COALESCE(SUM(input_tokens), 0) AS input_tokens,
+            COALESCE(SUM(cached_tokens), 0) AS cached_tokens
+          FROM llm_usage WHERE created_at >= ${opts.since}
+          GROUP BY model ORDER BY SUM(input_tokens) DESC NULLS LAST, model
+        `),
+      );
+      return rows.map((r) => {
+        const input = Number(r.input_tokens);
+        const cached = Number(r.cached_tokens);
+        return {
+          model: r.model,
+          calls: Number(r.calls),
+          input_tokens: input,
+          cached_tokens: cached,
+          hit_rate: input > 0 ? cached / input : null,
+        };
+      });
     },
 
     /** Sum this month's token usage (for monthly quota). */

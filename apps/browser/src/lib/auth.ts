@@ -8,6 +8,7 @@
  */
 
 import { getAuth, removeStation, updateStationAuth, type Station, type StationAuth } from './storage';
+import { APP_CLIENT_HEADER } from '@greenhouse/types/usage';
 
 // ─── Instance probing ────────────────────────────────────
 // (URL normalization lives in ./storage next to the registry it feeds.)
@@ -105,10 +106,11 @@ export async function authFetch(path: string, init: RequestInit = {}): Promise<R
   const auth = await getAuth();
   if (!auth) throw new Error('not_connected');
 
+  // The client header only labels module usage counts on the server.
   const doFetch = (token: string) =>
     fetch(`${auth.baseUrl}${path}`, {
       ...init,
-      headers: { ...(init.headers ?? {}), Authorization: `Bearer ${token}` },
+      headers: { ...(init.headers ?? {}), Authorization: `Bearer ${token}`, [APP_CLIENT_HEADER]: 'browser' },
     });
 
   const first = await doFetch(auth.accessToken);

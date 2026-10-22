@@ -49,6 +49,7 @@ export * from './services/sessions.js';
 export * from './services/llm-calls.js';
 export * from './services/usage.js';
 export * from './services/usage-budget.js';
+export * from './services/usage-counters.js';
 export * from './services/users.js';
 export * from './services/user-tools.js';
 export * from './services/refresh-tokens.js';

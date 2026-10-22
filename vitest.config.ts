@@ -40,6 +40,7 @@ export default defineConfig({
       '@greenhouse/types/email': resolve(__dirname, 'packages/types/src/email.ts'),
       '@greenhouse/types/runtime': resolve(__dirname, 'packages/types/src/runtime.ts'),
       '@greenhouse/types/workbench': resolve(__dirname, 'packages/types/src/workbench.ts'),
+      '@greenhouse/types/usage': resolve(__dirname, 'packages/types/src/usage.ts'),
       '@greenhouse/types': resolve(__dirname, 'packages/types/src/index.ts'),
       '@greenhouse/utils/date': resolve(__dirname, 'packages/utils/src/date.ts'),
       '@greenhouse/utils/brand': resolve(__dirname, 'packages/utils/src/brand.ts'),
