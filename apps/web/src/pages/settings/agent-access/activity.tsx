@@ -54,7 +54,7 @@ export function AgentActivity() {
             label: t('agentAccess.colOperation'),
             type: 'custom',
             render: (row) => {
-              const target = writeTarget(row.input);
+              const target = row.target_label ?? writeTarget(row.input);
               return (
                 <div className="min-w-0">
                   <OperationLabel view={row} />

@@ -226,6 +226,29 @@ function statusOf(run: RuntimeRunRow, interrupt: RuntimeInterruptRow | undefined
   return 'running';
 }
 
+/** Timestamps leave as ISO 8601 whatever text form the database returned. */
+function iso(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const time = Date.parse(value);
+  return Number.isNaN(time) ? value : new Date(time).toISOString();
+}
+
+/** Name the existing thing a write touches, so the approver need not decode an id. */
+async function targetLabel(db: DatabaseProvider, toolId: string, input: unknown): Promise<string | null> {
+  const args = input && typeof input === 'object' && !Array.isArray(input) ? (input as Record<string, unknown>) : {};
+  try {
+    if (toolId.startsWith('knowledge_') && typeof args.doc_id === 'string' && args.doc_id) {
+      return (await db.knowledgeBase.get(args.doc_id, 'shared'))?.title ?? null;
+    }
+    if (toolId.startsWith('project_') && typeof args.task_id === 'number') {
+      return (await db.projects.getTaskById(args.task_id))?.title ?? null;
+    }
+  } catch {
+    // A label is a convenience; the input itself is always shown.
+  }
+  return null;
+}
+
 export async function agentWriteView(db: DatabaseProvider, run: RuntimeRunRow): Promise<AgentWriteView> {
   const input = parseInput(run);
   const interrupts = await db.runtime.listInterrupts(run.id);
@@ -244,12 +267,13 @@ export async function agentWriteView(db: DatabaseProvider, run: RuntimeRunRow): 
     client_id: input.client_id,
     client_name: input.client_name,
     basis,
+    target_label: await targetLabel(db, input.tool_id, input.input),
     input: input.input,
     output: output && typeof output === 'object' && !Array.isArray(output) ? (output.result ?? null) : null,
     error: run.error_message,
-    created_at: run.created_at,
-    settled_at: run.settled_at,
-    expires_at: interrupt?.expires_at ?? null,
+    created_at: iso(run.created_at) ?? run.created_at,
+    settled_at: iso(run.settled_at),
+    expires_at: iso(interrupt?.expires_at),
     interrupt_id: interrupt?.id ?? null,
     decided_by_user_id: interrupt?.decided_by_user_id ?? null,
   };
@@ -283,8 +307,15 @@ async function executeOnRun(
   }
   // Counted where it actually runs: a held request counts once, when approved.
   countUsage('tool_call', prepared.toolId, 'mcp', () => db);
+  // Set once admission let THIS executor into the tool: from then on a failure
+  // is ours to settle, never "someone else's running call".
+  let entered = false;
+  const execute: typeof prepared.execute = (...args) => {
+    entered = true;
+    return prepared.execute(...args);
+  };
   const tools = instrumentRuntimeTools(
-    { [prepared.toolId]: { ...registry[prepared.toolId], execute: prepared.execute } } as ToolRegistry,
+    { [prepared.toolId]: { ...registry[prepared.toolId], execute } } as ToolRegistry,
     {
       db,
       runId: run.id,
@@ -318,13 +349,16 @@ async function executeOnRun(
   } catch (error) {
     const message = toErrorMessage(error);
     const calls = await db.runtime.listToolCalls(run.id);
-    // Another executor holds the call: it settles the run, not us.
-    if (calls.some((call) => call.status === 'running' || call.status === 'pending')) {
+    // Refused at admission while another executor holds the call: it settles the run, not us.
+    if (!entered && calls.some((call) => call.status === 'running' || call.status === 'pending')) {
       return (await db.runtime.getRun(run.id)) ?? run;
     }
-    // The tool may have changed data but its outcome was not recorded: say so,
-    // never "failed", so the agent does not blindly retry.
-    if (calls.some((call) => call.status === 'uncertain')) {
+    // Our tool ran but its outcome was not recorded (the call is left uncertain,
+    // or still running when even that write failed): say so, never "failed",
+    // so the agent does not blindly retry.
+    const unrecorded = (call: { status: string }) =>
+      call.status === 'uncertain' || (entered && (call.status === 'running' || call.status === 'pending'));
+    if (calls.some(unrecorded)) {
       await advanceStep(db, step, 'interrupted', run.owner_user_id, {
         errorCode: 'agent_write_outcome_unknown',
         errorMessage: message,

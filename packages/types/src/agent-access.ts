@@ -32,6 +32,8 @@ export interface AgentWriteView {
   client_id: string;
   client_name: string;
   basis: AgentWriteBasis | null;
+  /** What the write targets, named for a person (the document or task title), when known. */
+  target_label: string | null;
   input: RuntimePayload;
   output: RuntimePayload | null;
   error: string | null;

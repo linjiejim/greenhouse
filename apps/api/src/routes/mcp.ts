@@ -53,9 +53,11 @@ import {
   buildProxyManifest,
   executeProxyTool,
   isMutatingProxyTool,
+  canonicalProxyToolId,
   ProxyToolError,
   type ProxyToolManifestEntry,
 } from '../agent-runtime/tool-proxy.js';
+import { getOAuthWebUrl } from '../platform/oauth.js';
 import { getAgentIdentity } from '../agent-runtime/api-auth.js';
 import {
   AGENT_WRITE_MAX_WAIT_SECONDS,
@@ -412,7 +414,7 @@ export function buildMcpServer(c: Context, ctx: McpContext): Server {
       }
 
       const output = await executeProxyTool(ctx.registry, name, ctx.toolIds, rawArgs, { usageClient: 'mcp' });
-      const bounded = await boundReplyText(JSON.stringify(output), outputCaller, name);
+      const bounded = await boundReplyText(JSON.stringify(output), outputCaller, canonicalProxyToolId(name));
       await recordMcpAudit(c, {
         endpoint: 'mcp:tools/call',
         statusCode: 200,
@@ -554,7 +556,8 @@ async function handleToolOutputRead(
 
 /** What the calling agent sees: enough to act on, without internal ids it cannot use. */
 function agentFacingView(view: AgentWriteView, reused = false) {
-  const base = (process.env.PUBLIC_BASE_URL || '').replace(/\/$/, '');
+  // Always absolute: the agent hands this link to a person outside the browser.
+  const base = (process.env.PUBLIC_BASE_URL?.trim() || getOAuthWebUrl()).replace(/\/$/, '');
   const pending = view.status === 'pending';
   return {
     status: pending ? 'needs_approval' : view.status,

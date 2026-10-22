@@ -109,7 +109,9 @@ export function createChatRoute(toolRegistry: ToolRegistry) {
         const userRole = authUser.role;
 
         try {
-          profileId = await pinProfileIdForUser(authUser, profileId);
+          // In session mode the session's own pin replaces this value once the
+          // session is authorized below, so an older pinned version is fine here.
+          profileId = await pinProfileIdForUser(authUser, profileId, undefined, { existingPin: Boolean(sessionId) });
         } catch (err) {
           if (err instanceof ProfileAccessError) return c.json({ error: err.message }, err.status);
           throw err;

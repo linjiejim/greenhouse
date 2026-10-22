@@ -344,7 +344,12 @@ const sessions = new Hono<AppEnv>()
 
     let profileId: string;
     try {
-      profileId = await pinProfileIdForUser(authUser, source.profile_id);
+      // Your own conversation keeps its pinned version; a conversation shared
+      // with you forks onto the Agent's current version (an older one may never
+      // have been shared with you).
+      const ownSource = source.user_id === authUser.id;
+      const reference = ownSource ? source.profile_id : source.profile_id?.replace(/^(custom:\d+)@\d+$/, '$1');
+      profileId = await pinProfileIdForUser(authUser, reference, undefined, { existingPin: ownSource });
     } catch (err) {
       if (err instanceof ProfileAccessError) return c.json({ error: err.message }, err.status);
       throw err;

@@ -44,7 +44,7 @@ function PendingCard({
   const [days, setDays] = useState<AgentWriteGrantDayOption>(7);
   const ref = useRef<HTMLDivElement>(null);
   const irreversible = request.risk === 'r3';
-  const target = writeTarget(request.input);
+  const target = request.target_label ?? writeTarget(request.input);
 
   useEffect(() => {
     if (highlighted) ref.current?.scrollIntoView({ block: 'center', behavior: 'smooth' });

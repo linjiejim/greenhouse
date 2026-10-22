@@ -378,6 +378,22 @@ describe('governed external-agent writes', () => {
     }
   });
 
+  it('still settles as outcome unknown when even the uncertain marker cannot be written', async () => {
+    const transition = db.runtime.transitionToolCall.bind(db.runtime);
+    db.runtime.transitionToolCall = (async (input: Parameters<typeof transition>[0]) => {
+      if (input.to_status === 'succeeded' || input.to_status === 'uncertain') throw new Error('database went away');
+      return transition(input);
+    }) as typeof transition;
+    try {
+      const result = await govern({ action: 'records.update', record_id: 'rec_23', values: {} }, { legacy: true });
+      expect(calls).toHaveLength(1);
+      // Never left running: no sweep would ever pick it up again.
+      expect(result.view.status).toBe('outcome_unknown');
+    } finally {
+      db.runtime.transitionToolCall = transition;
+    }
+  });
+
   it('keeps an approved request non-terminal for pollers until the write lands', async () => {
     const result = await govern({ action: 'records.update', record_id: 'rec_22', values: {} });
     const [interrupt] = await db.runtime.listInterrupts(result.view.request_id);

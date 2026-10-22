@@ -559,8 +559,9 @@ export function resolveSubModule(
     const match = ALL_MODULES.find((m) => m.path === tryPath);
     if (match) {
       const localized = localizeNavModule(match, t);
-      // For detail pages (e.g. settings/groups/123), append the detail ID
-      if (i < segments.length && segments[i]) {
+      // For detail pages (e.g. settings/groups/123), append the detail ID. Other
+      // trailing segments are a module's own tabs or deep links, not an identity.
+      if (i < segments.length && /^\d+$/.test(segments[i] ?? '')) {
         return { primary, secondary: `${localized.label} › #${segments[i]}` };
       }
       return { primary, secondary: localized.label, description: localized.description };

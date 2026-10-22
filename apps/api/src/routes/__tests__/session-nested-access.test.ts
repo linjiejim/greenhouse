@@ -13,6 +13,15 @@ const mocks = vi.hoisted(() => ({
     getSharedSessionIds: vi.fn(),
     deleteOne: vi.fn(),
   },
+  customProfiles: {
+    getById: vi.fn(),
+    getVersion: vi.fn(),
+  },
+}));
+
+vi.mock('../../profiles/profile.js', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  resolveProfileAsync: vi.fn(async (id: string) => ({ id, access: { level: 'full' } })),
 }));
 
 vi.mock('@greenhouse/db', () => ({
@@ -125,5 +134,25 @@ describe('session nested-resource authorization', () => {
 
     expect(response.status).toBe(400);
     expect(mocks.sessions.fork).not.toHaveBeenCalled();
+  });
+
+  it('keeps your own pinned Agent version when you fork, and checks a shared one against the current version', async () => {
+    mocks.customProfiles.getById.mockResolvedValue({
+      id: 7,
+      user_id: 'agent-owner',
+      is_shared: true,
+      current_version: 3,
+    });
+    mocks.customProfiles.getVersion.mockImplementation(async (_id: number, version: number) => ({ version }));
+    mocks.sessions.getById.mockResolvedValue({ ...makeSession(), profile_id: 'custom:7@1' });
+
+    const own = await createApp('owner').request('/api/sessions/session-a/fork', { method: 'POST' });
+    expect(own.status).toBe(201);
+    expect(mocks.customProfiles.getVersion).toHaveBeenLastCalledWith(7, 1);
+
+    mocks.sessionShares.getSharedSessionIds.mockResolvedValue(['session-a']);
+    const shared = await createApp('reader').request('/api/sessions/session-a/fork', { method: 'POST' });
+    expect(shared.status).toBe(201);
+    expect(mocks.customProfiles.getVersion).toHaveBeenLastCalledWith(7, 3);
   });
 });

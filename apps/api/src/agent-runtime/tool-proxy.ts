@@ -230,6 +230,11 @@ export async function executeProxyTool(
   return prepared.execute(prepared.input, { toolCallId: `agent-proxy-${actualToolId}`, messages: [] });
 }
 
+/** The tool a (possibly legacy) name actually runs as. */
+export function canonicalProxyToolId(toolId: string): string {
+  return normalizeLegacyToolCall(toolId, {}).toolId;
+}
+
 function normalizeLegacyToolCall(toolId: string, input: unknown): { toolId: string; input: unknown } {
   const inputObj = typeof input === 'object' && input !== null && !Array.isArray(input) ? input : {};
   switch (toolId) {
