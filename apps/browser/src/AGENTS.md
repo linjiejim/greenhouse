@@ -52,6 +52,10 @@ page `<title>`s — keep in sync). Re-render icons with
   header's status dot is the station switcher (`sidepanel/station-menu.tsx`);
   `ChatView` is keyed by station id so switching remounts chat state. Removing
   a station best-effort revokes its origin permission (`forgetStation`).
+- **Module usage**: `authFetch()` sends `X-Greenhouse-Client: browser` on every
+  call, so the server counts this extension's chat tool calls and Agent API
+  calls as `browser`; `ChatView` reports one `page_open` of `chat` per panel
+  open (`src/lib/usage.ts`). Counts only — the header is a label, never auth.
 - **Client stations config** (`src/config.ts`): the `clients.stations` section
   of the repository's `greenhouse.config.ts` is bundled at build time —
   `mode: 'multi' | 'single'`, `defaults: [{id, name, url}]` (OSS default:

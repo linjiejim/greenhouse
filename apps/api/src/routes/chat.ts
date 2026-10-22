@@ -63,6 +63,7 @@ import {
 } from '../chat/runtime.js';
 import { runtimeAdapterEnabled } from '../trusted-execution/kill-switches.js';
 import { instrumentRuntimeTools } from '../runtime/tool-evidence.js';
+import { chatToolCallClient, countToolCalls, requestAppClient } from '../usage/counters.js';
 
 /**
  * The language model receives upload IDs rather than image bytes. Resolve them
@@ -445,24 +446,28 @@ export function createChatRoute(toolRegistry: ToolRegistry) {
           const executionTools =
             sessionChannel === BROWSER_SESSION_CHANNEL ? filterBrowserSessionToolIds(effectiveTools) : effectiveTools;
 
-          const tools = selectTools(
-            toolRegistry,
-            executionTools.filter((t) => !LAZY_TOOL_IDS.has(t)),
-          );
-
-          // Inject per-request lazy server tools (feature_request, knowledge_query,
-          // session_query, …) — shared logic.
-          Object.assign(
-            tools,
-            buildLazyServerTools(getDb(), executionTools, {
-              userId,
-              userRole,
-              sessionId,
-              workspaceId: body.workspace_id,
-              profileId: profile.id,
-              runtimeRunId: runtimeTrace?.runId ?? null,
-              toolRegistry,
-            }),
+          // Catalog tools (static + per-request lazy: feature_request,
+          // knowledge_query, session_query, …) count one `tool_call` per
+          // execution under the client that ran the turn. Client actions are
+          // added after this and stay uncounted — their names come from the
+          // browser, so they must never become counter keys.
+          const tools = countToolCalls(
+            {
+              ...selectTools(
+                toolRegistry,
+                executionTools.filter((t) => !LAZY_TOOL_IDS.has(t)),
+              ),
+              ...buildLazyServerTools(getDb(), executionTools, {
+                userId,
+                userRole,
+                sessionId,
+                workspaceId: body.workspace_id,
+                profileId: profile.id,
+                runtimeRunId: runtimeTrace?.runId ?? null,
+                toolRegistry,
+              }),
+            },
+            chatToolCallClient(sessionChannel, requestAppClient(c)),
           );
 
           // ── Client actions: wire a bridge so execution round-trips to the client ──

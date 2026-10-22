@@ -17,9 +17,19 @@ import { KeyboardProvider } from '../src/lib/keyboard-controller-compat';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { useAuth } from '../src/store/auth';
 import { usePrefs } from '../src/store/prefs';
-import { setOnUnauthorized } from '../src/api/client';
+import { reportPageOpen, setOnUnauthorized } from '../src/api/client';
 import { clearWidgetSnapshot, refreshWidgetSnapshot } from '../src/lib/widget-snapshot';
 import { useTheme } from '../src/theme';
+
+/** First route segment → usage module id (see PAGE_MODULE_IDS in @greenhouse/types/usage). */
+const MOBILE_USAGE_MODULES: Record<string, string> = {
+  '(drawer)': 'chat',
+  chat: 'chat',
+  history: 'chat',
+  projects: 'projects',
+  knowledge: 'knowledge',
+  table: 'tables',
+};
 
 export default function RootLayout() {
   const { colors: c, isDark } = useTheme();
@@ -48,6 +58,14 @@ export default function RootLayout() {
       router.replace('/');
     }
   }, [loading, user, segments, router]);
+
+  // Module usage: one page open per module per screen visit (history → a chat
+  // stays one open of `chat`). Ids match the server's closed list.
+  const firstSegment = segments[0] as string | undefined;
+  const usageModule = user && firstSegment ? MOBILE_USAGE_MODULES[firstSegment] : undefined;
+  useEffect(() => {
+    if (usageModule) reportPageOpen(usageModule);
+  }, [usageModule]);
 
   // Home-screen widget snapshot: publish after login resolves and on every
   // background transition; clear on logout so the widget degrades to launcher.

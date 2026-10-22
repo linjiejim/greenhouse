@@ -172,6 +172,14 @@ stores/
 - 只有拥有专用 Web 页面且已显式登记 host route 的应用生成浏览器链接；其余应用显示为 Agent/MCP-only。
 - 直接访问应用 URL 时也要等待 Catalog 并 fail closed；后端 Registry/Entity Policy 仍是安全边界。
 
+### 模块用量上报（`lib/usage/` + `lib/api/usage.ts`）
+
+- `AppShell` 每次进入一个新模块报一次 `page_open`（`pageModuleForRoute`：顶层页用路由名，Settings / Administration 用导航模块 id，扩展的所有页面记 `ext.<扩展 id>`）；同模块内跳转不重复计。桌面壳内请求带 `X-Greenhouse-Client: desktop`。
+- 没有独立页面的会话标签 / 分组用 `useModuleOpen('session-tags' | 'session-groups', open)`：管理弹窗打开、选择器挂载、按标签筛选时各计一次。
+- 上报一律 fire-and-forget（`reportPageOpen`），失败不提示用户。
+- 服务端只收 `@greenhouse/types/usage` 的 `PAGE_MODULE_IDS` 封闭清单；`lib/usage/page-module.test.ts` 双向钉住它与导航注册表——新增 Settings / Administration 模块或顶层页时两边一起改，否则测试红。
+- Administration › Usage › By Modules（`pages/administration/module-usage.tsx`）读 `/api/admin/usage/modules`：7 / 30 / 90 天、按客户端汇总、按工具 / 模块的计数与合计、按模型的 Prompt 缓存命中率，并注明计数从 v1.4 开始。
+
 ### 构建与开发模式（Vite，2026-06 起）
 
 - **构建工具 = Vite**（`apps/web/vite.config.ts`）：`@vitejs/plugin-react`（Fast Refresh）+ `@tailwindcss/vite`。入口 HTML 是 `apps/web/index.html`（Vite root），`<script src="/src/app.tsx">`；CSS 由 `app.tsx` 里 `import './app.css'` 引入，**不要**在 index.html 写 `<link>`。

@@ -40,7 +40,9 @@ const DesktopPreferencesDialog = lazy(() =>
   import('./pages/desktop/preferences').then((m) => ({ default: m.DesktopPreferencesDialog })),
 );
 import { AgentProvider } from './components/agent-context';
-import { compiledExtensionRouteAliases, compiledExtensionRoutes } from './extensions';
+import { compiledExtensionRouteAliases, compiledExtensionRoutes, findExtensionPage } from './extensions';
+import { reportPageOpen } from './lib/api/usage';
+import { pageModuleForRoute } from './lib/usage/page-module';
 import { ExtensionPageHost, ExtensionSidebarPanel } from './extensions/host';
 import { useExtensionsStore } from './stores/extensions-store';
 import { AssistantPanel } from './components/agent-panel';
@@ -562,6 +564,17 @@ function AppShell({ route, subPath, params, extensionRoute }: AppShellProps) {
   useEffect(() => {
     setChatWorkspaceView('conversation');
   }, [route, setChatWorkspaceView]);
+
+  // Module usage: one page_open per module per page view. Moving within a
+  // module (doc → doc, settings tab → same tab) is not a new open.
+  const usageModule = pageModuleForRoute({
+    route,
+    subPath,
+    extensionId: route === 'extension' && extensionRoute ? findExtensionPage(extensionRoute)?.extension.id : null,
+  });
+  useEffect(() => {
+    if (usageModule) reportPageOpen(usageModule);
+  }, [usageModule]);
 
   // Session ID from store (synced by ChatPage internally)
   const currentSessionId = currentChatSessionId;

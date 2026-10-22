@@ -1,11 +1,12 @@
 /**
- * Enhanced Usage Panel — unified LLM Usage Dashboard with sub-tabs:
- * By Users, By Profiles, By Caller.
+ * Enhanced Usage Panel — unified usage dashboard with sub-tabs:
+ * By Users, By Profiles, By Caller (LLM usage) and By Modules (module usage
+ * counts + prompt-cache hit rate, module-usage.tsx).
  */
 
 import { useState, useEffect } from 'react';
 import { Card, EmptyState, Spinner, SkeletonCard, Tag } from '../../components/ui';
-import { BarChart3, Users, Bot, Wrench, type LucideIcon } from '../../lib/icons';
+import { BarChart3, Users, Bot, Wrench, LayoutGrid, type LucideIcon } from '../../lib/icons';
 import { fetchUsageSummary, fetchUserUsageSummary, formatTokens, formatDuration } from '../../lib/api';
 import type { UsageSummary, UserUsageSummary } from '../../lib/api';
 import { ROLE_TONE, type TagTone } from '../../lib/utils';
@@ -19,6 +20,8 @@ import {
 } from '../../components/usage/usage-widgets';
 import { useT, type TranslationKey } from '../../lib/i18n';
 import { ModulePage } from '../../components/app/module-page';
+import { USAGE_RANGE_DAYS, type UsageRangeDays } from '@greenhouse/types/usage';
+import { ModuleUsageTab } from './module-usage';
 
 const CALLER_TONE: Record<string, TagTone> = {
   chat: 'info',
@@ -28,12 +31,13 @@ const CALLER_TONE: Record<string, TagTone> = {
 
 // ─── Sub-tab Definitions ─────────────────────────────────
 
-type SubTab = 'users' | 'profiles' | 'callers';
+type SubTab = 'users' | 'profiles' | 'callers' | 'modules';
 
 const SUB_TABS: Array<{ key: SubTab; labelKey: TranslationKey; icon: LucideIcon }> = [
   { key: 'users', labelKey: 'usage.byUsers', icon: Users },
   { key: 'profiles', labelKey: 'usage.byProfiles', icon: Bot },
   { key: 'callers', labelKey: 'usage.byCallers', icon: Wrench },
+  { key: 'modules', labelKey: 'usage.byModules', icon: LayoutGrid },
 ];
 
 // ─── By Users Tab ────────────────────────────────────────
@@ -290,6 +294,7 @@ export function UsagePanelWithUsers() {
   const [loading, setLoading] = useState(true);
   const [period, setPeriod] = useState('');
   const [activeTab, setActiveTab] = useState<SubTab>('users');
+  const [moduleDays, setModuleDays] = useState<UsageRangeDays>(30);
 
   useEffect(() => {
     setLoading(true);
@@ -329,25 +334,41 @@ export function UsagePanelWithUsers() {
             })}
           </div>
           <div className="flex max-w-full gap-1 overflow-x-auto scrollbar-hide bg-surface-muted p-0.5 rounded-lg">
-            {PERIODS.map((p) => (
-              <button
-                key={p.value}
-                onClick={() => setPeriod(p.value)}
-                className={`flex-shrink-0 px-3 py-1 text-xs rounded-md transition-colors ${
-                  period === p.value
-                    ? 'bg-surface-raised text-primary-fg-strong font-medium shadow-sm'
-                    : 'text-fg-muted hover:text-fg-secondary'
-                }`}
-              >
-                {t(p.labelKey)}
-              </button>
-            ))}
+            {activeTab === 'modules'
+              ? USAGE_RANGE_DAYS.map((days) => (
+                  <button
+                    key={days}
+                    onClick={() => setModuleDays(days)}
+                    className={`flex-shrink-0 px-3 py-1 text-xs rounded-md transition-colors ${
+                      moduleDays === days
+                        ? 'bg-surface-raised text-primary-fg-strong font-medium shadow-sm'
+                        : 'text-fg-muted hover:text-fg-secondary'
+                    }`}
+                  >
+                    {t('usage.lastDays', { days })}
+                  </button>
+                ))
+              : PERIODS.map((p) => (
+                  <button
+                    key={p.value}
+                    onClick={() => setPeriod(p.value)}
+                    className={`flex-shrink-0 px-3 py-1 text-xs rounded-md transition-colors ${
+                      period === p.value
+                        ? 'bg-surface-raised text-primary-fg-strong font-medium shadow-sm'
+                        : 'text-fg-muted hover:text-fg-secondary'
+                    }`}
+                  >
+                    {t(p.labelKey)}
+                  </button>
+                ))}
           </div>
         </div>
       }
     >
       {/* Tab content */}
-      {loading && !summary ? (
+      {activeTab === 'modules' ? (
+        <ModuleUsageTab days={moduleDays} />
+      ) : loading && !summary ? (
         <div className="flex justify-center py-20">
           <Spinner className="text-primary-500" />
         </div>

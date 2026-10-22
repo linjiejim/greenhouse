@@ -20,6 +20,7 @@ Expo SDK 56 / React Native 0.85 / React 19 应用，从 letpot-greenhouse（本�
   - `EXPO_PUBLIC_API_BASE_URL`（可选）：默认工作站的 origin，设了就是 `STATIONS.defaults` 的唯一一项，首启种进注册表（未登录）——它只是**首启种子**、不硬编码 API 地址。不设 → 通用商店构建，首启为空列表、由用户自己添加服务器（`__DEV__` 下仍种 `http://localhost:3000`；Android 模拟器用 `10.0.2.2:3000`，真机用 Mac 的 LAN IP）。
   - `EXPO_PUBLIC_STATION_NAME`（可选）：默认工作站的显示名，缺省为 host。
   - `EXPO_PUBLIC_STATIONS_MODE`：`multi`（默认，用户可添加/切换）或 `single`（**锁定**到默认工作站：`hydrate()` 每次把注册表收敛为只剩它——同 origin 的旧条目保留 id 与 token，其余连 token 一起清掉；`add`/`switchTo`/`remove` 忽略；StationSheet 只显示它、隐藏添加表单与删除，登录页/设置/抽屉的入口照常打开 sheet 看当前服务器）。`single` 而没设 URL、或 mode 值未知，会在 import 时抛错（fail closed）。
+- **模块用量**：`api()` 与流式 chat 都带 `X-Greenhouse-Client: mobile`（服务端据此把移动端对话的工具调用记为 `mobile`；只是计数标签，不是鉴权）。根布局按首段路由（`MOBILE_USAGE_MODULES`）每进一个模块报一次 `reportPageOpen`，标签 sheet 打开记 `session-tags`；模块 id 必须在服务端封闭清单 `PAGE_MODULE_IDS`（`packages/types/src/usage.ts`）里，否则 400。
 - **Expo web 开发要给 API 配 CORS**：API 的 CORS 是白名单制（`CORS_ALLOWED_ORIGINS` env）。本地跑 `pnpm mobile:web`（8081 端口）时启动 API 要带 `CORS_ALLOWED_ORIGINS=http://localhost:8081`。原生 app 无 Origin 头，不受影响。
 
 ## 约定

@@ -17,6 +17,21 @@ import {
   clearTokens,
 } from './token-storage';
 
+/**
+ * Labels this app's requests for the server's module usage counts (tool calls
+ * from mobile chats, page opens). Never an authorization input.
+ */
+export const APP_CLIENT_HEADER = 'X-Greenhouse-Client';
+
+/** Count one open of a screen's module (`chat`, `knowledge`, …). Fire-and-forget. */
+export function reportPageOpen(module: string): void {
+  void api('/api/usage/page-open', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ module }),
+  }).catch(() => undefined);
+}
+
 let onUnauthorized: (() => void) | null = null;
 export function setOnUnauthorized(cb: () => void): void {
   onUnauthorized = cb;
@@ -62,6 +77,7 @@ export async function api(path: string, init: RequestInit = {}): Promise<Respons
   const token = getAccessToken();
   const headers = new Headers(init.headers);
   if (token) headers.set('Authorization', `Bearer ${token}`);
+  headers.set(APP_CLIENT_HEADER, 'mobile');
 
   let res = await fetch(url, { ...init, headers });
 
@@ -71,6 +87,7 @@ export async function api(path: string, init: RequestInit = {}): Promise<Respons
       const retryHeaders = new Headers(init.headers);
       const newToken = getAccessToken();
       if (newToken) retryHeaders.set('Authorization', `Bearer ${newToken}`);
+      retryHeaders.set(APP_CLIENT_HEADER, 'mobile');
       res = await fetch(url, { ...init, headers: retryHeaders });
       if (res.status === 401) {
         clearTokens();

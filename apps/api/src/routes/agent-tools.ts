@@ -34,6 +34,7 @@ import {
 } from '../agent-runtime/api-auth.js';
 import type { AppEnv } from '../app-env.js';
 import { pinProfileIdForUser, ProfileAccessError } from '../profiles/access.js';
+import { agentApiToolCallClient, requestAppClient } from '../usage/counters.js';
 
 /**
  * Profile used when a request omits `profile_id`. This route is internal-only
@@ -210,6 +211,7 @@ export function createAgentRoutes(toolRegistry: ToolRegistry) {
           try {
             const output = await executeProxyTool(ctx.registry, toolId, ctx.toolIds, body.input, {
               confirm: body.confirm,
+              usageClient: agentApiToolCallClient(requestAppClient(c)),
             });
             await recordAgentAudit(c, {
               endpoint: '/api/agent/tools/:toolId/call',

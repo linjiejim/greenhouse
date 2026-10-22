@@ -11,6 +11,7 @@ import { TAG_COLORS } from './colors';
 import type { SessionTag } from '@greenhouse/types/api';
 import * as api from '../../lib/api';
 import { useT } from '../../lib/i18n';
+import { useModuleOpen } from '../../lib/usage/use-module-open';
 
 interface TagSelectorProps {
   sessionId: string;
@@ -27,6 +28,7 @@ interface TagSelectorProps {
 }
 
 export function TagSelector({ sessionId, sessionTags, allTags, onChanged, onClose, x, y }: TagSelectorProps) {
+  useModuleOpen('session-tags');
   const t = useT();
   const ref = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);

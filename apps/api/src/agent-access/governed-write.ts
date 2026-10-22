@@ -37,6 +37,7 @@ import { toErrorMessage } from '@greenhouse/utils/error';
 import type { ToolRegistry } from '../agent.js';
 import { prepareProxyToolCall } from '../agent-runtime/tool-proxy.js';
 import { hashToolInput, instrumentRuntimeTools } from '../runtime/tool-evidence.js';
+import { countUsage } from '../usage/counters.js';
 import { classifyWrite, type WriteClassification } from './risk.js';
 
 export type { AgentWriteStatus, AgentWriteView, WriteBasis };
@@ -266,6 +267,8 @@ async function executeOnRun(
       errorMessage: message,
     });
   }
+  // Counted where it actually runs: a held request counts once, when approved.
+  countUsage('tool_call', prepared.toolId, 'mcp', () => db);
   const tools = instrumentRuntimeTools(
     { [prepared.toolId]: { ...registry[prepared.toolId], execute: prepared.execute } } as ToolRegistry,
     {

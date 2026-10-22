@@ -109,6 +109,11 @@ same script doubles as an end-to-end smoke tour (see [Development](#development)
   machines) with scopes per resource group; the same tools over the structured `/api/agent`
   proxy.
 - **Usage budgets** — monthly token and image budgets per user, organization and provider.
+- **Module usage** — Administration → Usage → By Modules shows tool calls by tool and client
+  (MCP, Agent API, web chat, browser extension, mobile, Feishu, automations, sub-agents), page
+  opens by module and app (web, desktop, mobile, browser extension) and the prompt-cache hit
+  rate per model over 7 / 30 / 90 days. Only daily totals are stored — no users, arguments or
+  content — and counting started with v1.4.
 - **Platform kernel** — applications declare a manifest (modules, entities, fields, actions);
   roles, capabilities and record / field policies are enforced once for HTTP, chat tools, the
   proxy and MCP. One permissions dialog per user.

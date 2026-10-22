@@ -12,6 +12,7 @@ import type { SessionTag } from '@greenhouse/types/api';
 import * as api from '../../lib/api';
 import { useT } from '../../lib/i18n';
 import { useListReorder } from '../../hooks/use-list-reorder';
+import { useModuleOpen } from '../../lib/usage/use-module-open';
 
 interface TagManagerDialogProps {
   open: boolean;
@@ -20,6 +21,7 @@ interface TagManagerDialogProps {
 }
 
 export function TagManagerDialog({ open, onClose, onTagsChanged }: TagManagerDialogProps) {
+  useModuleOpen('session-tags', open);
   const t = useT();
   const [tags, setTags] = useState<SessionTag[]>([]);
   const [loading, setLoading] = useState(true);

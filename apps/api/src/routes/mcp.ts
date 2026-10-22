@@ -360,7 +360,7 @@ export function buildMcpServer(c: Context, ctx: McpContext): Server {
         };
       }
 
-      const output = await executeProxyTool(ctx.registry, name, ctx.toolIds, rawArgs);
+      const output = await executeProxyTool(ctx.registry, name, ctx.toolIds, rawArgs, { usageClient: 'mcp' });
       await recordMcpAudit(c, {
         endpoint: 'mcp:tools/call',
         statusCode: 200,

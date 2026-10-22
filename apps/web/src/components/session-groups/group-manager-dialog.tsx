@@ -12,6 +12,7 @@ import { useT } from '../../lib/i18n';
 import { useListReorder } from '../../hooks/use-list-reorder';
 import type { SessionGroup } from '@greenhouse/types/api';
 import * as api from '../../lib/api';
+import { useModuleOpen } from '../../lib/usage/use-module-open';
 
 interface GroupManagerDialogProps {
   open: boolean;
@@ -20,6 +21,7 @@ interface GroupManagerDialogProps {
 }
 
 export function GroupManagerDialog({ open, onClose, onGroupsChanged }: GroupManagerDialogProps) {
+  useModuleOpen('session-groups', open);
   const t = useT();
   const [groups, setGroups] = useState<SessionGroup[]>([]);
   const [loading, setLoading] = useState(true);

@@ -267,6 +267,7 @@ export async function executeTaskInSession(
       tools,
       maxSteps,
       toolChoice: profile.tool_choice,
+      toolCallClient: 'automation',
       usageContext: { profileId: profile.id, userId: owner.id, caller: 'scheduled-task' },
       ...(options.runtimeToolEvidence ? { runtimeToolEvidence: options.runtimeToolEvidence } : {}),
       ...(options.abortSignal ? { abortSignal: options.abortSignal } : {}),

@@ -15,7 +15,7 @@ import type { StreamingEvent } from '../shared/greenhouse-types';
 import { t } from '../lib/i18n';
 import { getApiBase } from '../store/stations';
 import { getAccessToken } from './token-storage';
-import { refreshTokens } from './client';
+import { APP_CLIENT_HEADER, refreshTokens } from './client';
 
 interface StreamChatArgs {
   sessionId: string;
@@ -27,7 +27,7 @@ interface StreamChatArgs {
 }
 
 async function openStream(args: StreamChatArgs, token: string | null) {
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  const headers: Record<string, string> = { 'Content-Type': 'application/json', [APP_CLIENT_HEADER]: 'mobile' };
   if (token) headers.Authorization = `Bearer ${token}`;
 
   const body: Record<string, unknown> = {

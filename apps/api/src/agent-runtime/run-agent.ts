@@ -25,6 +25,8 @@ import type { PipelineStep, Reference } from '@greenhouse/types/session';
 import { logger } from '@greenhouse/utils/logger';
 import type { ToolRegistry } from '../agent.js';
 import { instrumentRuntimeTools, type RuntimeToolEvidenceScope } from '../runtime/tool-evidence.js';
+import { countToolCalls } from '../usage/counters.js';
+import type { ToolCallClient } from '@greenhouse/types/usage';
 import {
   createProviderAttemptBudgetHook,
   estimateAgentLoopTokens,
@@ -139,6 +141,12 @@ export interface RunAgentInSessionArgs {
    */
   runtimeToolEvidence?: Omit<RuntimeToolEvidenceScope, 'db'>;
   /**
+   * Module usage attribution — REQUIRED like `usageContext`: every tool the
+   * run executes counts one `tool_call` under this client (`automation`,
+   * `subagent`, `feishu`). Counting is fire-and-forget and never fails the run.
+   */
+  toolCallClient: ToolCallClient;
+  /**
    * llm_usage attribution — REQUIRED so no headless caller can silently skip
    * usage accounting (and the owner's monthly quota) again. `userId` is the
    * account whose quota this run burns; `caller` labels the surface
@@ -229,9 +237,12 @@ export async function runAgentInSession(args: RunAgentInSessionArgs): Promise<Ru
     });
     injectedBudget.markProviderIoStarted();
   }
+  // Count inside the Runtime evidence fence: a call refused at admission never
+  // reaches the counting wrapper, so the count means "the tool really ran".
+  const countedTools = args.tools ? countToolCalls(args.tools, args.toolCallClient, () => db) : undefined;
   const executionTools = args.runtimeToolEvidence
-    ? instrumentRuntimeTools(args.tools, { db, ...args.runtimeToolEvidence })
-    : args.tools;
+    ? instrumentRuntimeTools(countedTools, { db, ...args.runtimeToolEvidence })
+    : countedTools;
   const result: AgentGenerateResult = await generate({
     modelConfig: args.modelConfig,
     system: args.system,

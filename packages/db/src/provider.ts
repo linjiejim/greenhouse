@@ -16,6 +16,7 @@ import { createSessionService } from './services/sessions.js';
 import { createLlmCallService } from './services/llm-calls.js';
 import { createUsageService } from './services/usage.js';
 import { createUsageBudgetService } from './services/usage-budget.js';
+import { createUsageCounterService } from './services/usage-counters.js';
 import { createUserService } from './services/users.js';
 import { createUserToolService } from './services/user-tools.js';
 import { createRefreshTokenService } from './services/refresh-tokens.js';
@@ -63,6 +64,7 @@ function createDatabaseProvider(db: Db, client: DbClient['client'] | null) {
     llmCalls: createLlmCallService(db),
     usage: createUsageService(db),
     usageBudget: createUsageBudgetService(db),
+    usageCounters: createUsageCounterService(db),
     users: createUserService(db),
     userTools: createUserToolService(db),
     refreshTokens: createRefreshTokenService(db),

@@ -19,8 +19,10 @@
 
 import { z } from 'zod';
 import { logger } from '@greenhouse/utils/logger';
+import type { ToolCallClient } from '@greenhouse/types/usage';
 import type { ToolRegistry } from '../agent.js';
 import { getToolMeta } from '../tools/registry.js';
+import { countUsage } from '../usage/counters.js';
 
 import { READONLY_PROXY_ALLOWLIST, MUTATING_PROXY_ALLOWLIST } from '../tools/registry.js';
 
@@ -198,13 +200,17 @@ export function prepareProxyToolCall(
  * @throws ProxyToolError(403) if the tool is not in the allowed set
  * @throws ProxyToolError(400) if a mutating tool is called without confirm:true, or input fails validation
  * @throws ProxyToolError(404) if the tool has no executable implementation
+ *
+ * `usageClient` counts one `tool_call` (fire-and-forget) once every check has
+ * passed, keyed by the canonical tool id; omit it for internal evaluations
+ * (workbench refresh) that are not a client calling a tool.
  */
 export async function executeProxyTool(
   registry: ToolRegistry,
   toolId: string,
   allowedToolIds: string[],
   input: unknown,
-  opts: { confirm?: boolean } = {},
+  opts: { confirm?: boolean; usageClient?: ToolCallClient } = {},
 ): Promise<unknown> {
   const normalized = normalizeLegacyToolCall(toolId, input);
   const actualToolId = normalized.toolId;
@@ -220,6 +226,7 @@ export async function executeProxyTool(
   }
 
   const prepared = prepareProxyToolCall(registry, toolId, allowedToolIds, actualInput);
+  if (opts.usageClient) countUsage('tool_call', prepared.toolId, opts.usageClient);
   return prepared.execute(prepared.input, { toolCallId: `agent-proxy-${actualToolId}`, messages: [] });
 }
 

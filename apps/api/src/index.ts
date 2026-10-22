@@ -94,6 +94,7 @@ import shareRoutes from './routes/shares.js';
 import { createNotificationRoutes } from './routes/notifications.js';
 import sessionTagRoutes from './routes/session-tags.js';
 import sessionGroupRoutes from './routes/session-groups.js';
+import usageRoutes from './routes/usage.js';
 import toolsRoutes from './routes/tools.js';
 import driveRoutes from './routes/drive.js';
 import chatFileRoutes from './routes/chat-files.js';
@@ -321,6 +322,9 @@ function mountRoutes(toolRegistry: ToolRegistry) {
       // Session groups (folders) + Pinned — all internal users
       .use('/api/session-groups/*', requireInternal())
       .route('/api/session-groups', sessionGroupRoutes)
+      // Module usage counts (page opens) — all internal users; counts only
+      .use('/api/usage/*', requireInternal())
+      .route('/api/usage', usageRoutes)
       // Tool metadata — authenticated internal users
       .route('/api/tools', toolsRoutes)
       // WebSocket endpoint — internal users only (auth via query token)

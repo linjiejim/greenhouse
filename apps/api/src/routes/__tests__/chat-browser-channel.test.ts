@@ -42,6 +42,9 @@ const mocks = vi.hoisted(() => ({
     buildChatMessages: vi.fn(),
     updateTitle: vi.fn(),
   },
+  usageCounters: {
+    increment: vi.fn(),
+  },
 }));
 
 vi.mock('@greenhouse/db', () => ({
@@ -49,6 +52,7 @@ vi.mock('@greenhouse/db', () => ({
     users: mocks.users,
     userFeatures: mocks.userFeatures,
     sessions: mocks.sessions,
+    usageCounters: mocks.usageCounters,
   }),
 }));
 
@@ -323,5 +327,63 @@ describe('POST /api/chat on the browser-extension channel', () => {
     const { tool_ids } = await sendTurn({ session_id: 'session-1', messages: [{ role: 'user', content: 'Save it' }] });
 
     expect(tool_ids).toEqual(['knowledge_query', 'export_data']);
+  });
+});
+
+describe('module usage counting on chat turns', () => {
+  beforeEach(() => {
+    mocks.sessions.buildChatMessages.mockResolvedValue([{ role: 'user', content: 'Hello' }]);
+    mocks.usageCounters.increment.mockResolvedValue(undefined);
+    async function* fullStream() {
+      yield { type: 'finish', finishReason: 'stop', totalUsage: { inputTokens: 1, outputTokens: 1 } };
+    }
+    mocks.createChatStreamAsync.mockResolvedValue({
+      streamResult: { fullStream: fullStream() },
+      dsmlRecoveries: [],
+      startTime: Date.now(),
+      modelId: 'test-model',
+    });
+  });
+
+  /** Run one turn and execute `knowledge_query` from the registry the engine received. */
+  async function countedClientFor(channel: string, headers: Record<string, string> = {}) {
+    mocks.sessions.getById.mockResolvedValue(sessionOn(channel));
+    const execute = vi.fn().mockResolvedValue({ ok: true });
+    mocks.selectTools.mockImplementation((_registry: unknown, ids: string[]) =>
+      Object.fromEntries(ids.map((id) => [id, { execute }])),
+    );
+    const response = await createApp().request('/api/chat', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...headers },
+      body: JSON.stringify({ session_id: 'session-1', messages: [{ role: 'user', content: 'Hello' }] }),
+    });
+    expect(response.status).toBe(200);
+    await response.text();
+    const tools = mocks.createChatStreamAsync.mock.calls[0]![0].tools as ToolRegistry;
+    await tools.knowledge_query.execute({}, { toolCallId: 'call-1', messages: [] });
+    expect(execute).toHaveBeenCalledTimes(1);
+    expect(mocks.usageCounters.increment).toHaveBeenCalledTimes(1);
+    return mocks.usageCounters.increment.mock.calls[0];
+  }
+
+  beforeEach(() => {
+    // Without a Runtime trace the engine receives the counted registry itself.
+    mocks.startChatRuntimeTrace.mockResolvedValue(null);
+  });
+
+  it('counts a web session turn as web_chat', async () => {
+    expect(await countedClientFor('web')).toEqual(['tool_call', 'knowledge_query', 'web_chat']);
+  });
+
+  it('counts a browser-channel turn as browser', async () => {
+    expect(await countedClientFor('browser')).toEqual(['tool_call', 'knowledge_query', 'browser']);
+  });
+
+  it('counts a turn sent by the mobile app as mobile', async () => {
+    expect(await countedClientFor('web', { 'X-Greenhouse-Client': 'mobile' })).toEqual([
+      'tool_call',
+      'knowledge_query',
+      'mobile',
+    ]);
   });
 });
