@@ -79,7 +79,7 @@ describe('Execution Center view model', () => {
   });
 
   it('keeps all durable user task kinds in the shared filter', () => {
-    expect(taskCenterKinds('all')).toEqual(['mission', 'workflow', 'automation', 'subagent']);
+    expect(taskCenterKinds('all')).toEqual(['mission', 'workflow', 'automation', 'subagent', 'agent_write']);
     expect(taskCenterKinds('automation')).toEqual(['automation']);
   });
 
