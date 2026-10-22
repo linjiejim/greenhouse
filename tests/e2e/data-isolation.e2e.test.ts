@@ -72,7 +72,15 @@ afterAll(async () => {
 describe('E2E: Removed Profile Compatibility', () => {
   it('legacy profile IDs resolve to the preset that replaced them', async () => {
     // Stored sessions still carry `default` / `team`; they are mapped, not migrated.
-    for (const legacy of ['default', 'team', 'sprouty-quick', 'sprouty-deep', 'sprouty-k3', 'sprouty-workflows', 'sprouty-mission']) {
+    for (const legacy of [
+      'default',
+      'team',
+      'sprouty-quick',
+      'sprouty-deep',
+      'sprouty-k3',
+      'sprouty-workflows',
+      'sprouty-mission',
+    ]) {
       const sessionId = await createSession(legacy);
       const detailRes = await fetch(`${BASE_URL}/api/sessions/${sessionId}`, { headers: headers() });
       const detail = await detailRes.json();
@@ -118,6 +126,19 @@ describe('E2E: Session Data Isolation', () => {
 
   it('session preserves its profile_id', async () => {
     const sessionId = await createSession('team');
+    // The only other system profile (`desktop`) is hidden, so the override target
+    // is a custom Agent the caller owns — a profile they could legitimately pick.
+    const agentRes = await fetch(`${BASE_URL}/api/profiles/custom`, {
+      method: 'POST',
+      headers: headers(),
+      body: JSON.stringify({
+        name: `E2E override target ${Date.now()}`,
+        system_prompt: 'You are a test agent.',
+        tools: [],
+      }),
+    });
+    expect(agentRes.status).toBe(201);
+    const agent = (await agentRes.json()) as { id: string };
 
     // Try to chat with different profile — session mode should use stored profile
     const res = await fetch(`${BASE_URL}/api/chat`, {
@@ -126,7 +147,7 @@ describe('E2E: Session Data Isolation', () => {
       body: JSON.stringify({
         session_id: sessionId,
         messages: [{ role: 'user', content: 'hello' }],
-        profile_id: 'desktop', // attempt to override with a different valid profile
+        profile_id: agent.id, // attempt to override with a different valid profile
       }),
     });
     // 200 = success, 429 = rate limited

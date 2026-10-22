@@ -47,8 +47,8 @@ export DEEPSEEK_API_KEY=""
 export MEDIA_API_KEY=""
 export IMAGE_BASE_URL=""
 export IMAGE_API_KEY=""
-# The example extension is the seam's reference fixture; it also supplies the only
-# individually assignable (opt-in) tool the tool-assignment suite can grant.
+# The example extension is the seam's reference fixture; its feature-owned tool
+# lets the tool-visibility and assignment suites check extension tools too.
 export GREENHOUSE_EXTENSIONS="${GREENHOUSE_EXTENSIONS:-example}"
 export LOG_LEVEL="${LOG_LEVEL:-error}"
 export NODE_ENV="${NODE_ENV:-test}"

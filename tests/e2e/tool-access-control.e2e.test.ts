@@ -91,7 +91,7 @@ describe('E2E: Tool Visibility by Role', () => {
     expect(toolIds).toContain('ask_user');
     expect(toolIds).toContain('external_search');
     expect(toolIds).toContain('knowledge_mutation');
-    // The opt-in bucket comes from extensions; scripts/e2e-ci.sh boots the example one.
+    // Extension tools ride their feature point; scripts/e2e-ci.sh boots the example one.
     expect(toolIds).toContain('example_notes_query');
 
     // Risk labels in the Agent editor consume the registry's authoritative
@@ -128,16 +128,31 @@ describe('E2E: Tool Visibility by Role', () => {
 // ─── Tool Assignment Flow ────────────────────────────────
 
 describe('E2E: Tool Assignment & Enforcement', () => {
-  it('admin assigns tools → member can see them', async () => {
-    // Assign the example extension's opt-in tool to the member
+  it('admin replaces the assignment set → stored and reflected for the member', async () => {
+    // v1.4 core ships no individually assignable tool: every non-global tool rides a
+    // feature point. The bucket stays for extensions, so the round trip is exercised
+    // with the empty set and a feature-owned tool is refused.
     const assignRes = await fetch(`${BASE_URL}/api/admin/users/${memberId}/tools`, {
+      method: 'PUT',
+      headers: authHeaders(superToken),
+      body: JSON.stringify({ tools: [] }),
+    });
+    expect(assignRes.status).toBe(200);
+
+    const storedRes = await fetch(`${BASE_URL}/api/admin/users/${memberId}/tools`, {
+      headers: authHeaders(superToken),
+    });
+    expect(storedRes.status).toBe(200);
+    expect((await storedRes.json()).assigned).toEqual([]);
+
+    const featureOwnedRes = await fetch(`${BASE_URL}/api/admin/users/${memberId}/tools`, {
       method: 'PUT',
       headers: authHeaders(superToken),
       body: JSON.stringify({ tools: ['example_notes_query'] }),
     });
-    expect(assignRes.status).toBe(200);
+    expect(featureOwnedRes.status).toBe(400);
+    expect((await featureOwnedRes.json()).error).toContain('example_notes_query');
 
-    // Now member should see global + assigned tools
     const toolsRes = await fetch(`${BASE_URL}/api/tools`, {
       headers: authHeaders(memberToken),
     });
@@ -145,13 +160,11 @@ describe('E2E: Tool Assignment & Enforcement', () => {
     const data = await toolsRes.json();
     const toolIds = data.tools.map((t: { id: string }) => t.id);
 
-    // Global tools still present
+    // Global tools still present; the refused tool never leaks in
     expect(toolIds).toContain('knowledge_query');
     expect(toolIds).toContain('analyze_image');
     expect(toolIds).toContain('ask_user');
-
-    // Assigned tool now visible
-    expect(toolIds).toContain('example_notes_query');
+    expect(toolIds).not.toContain('example_notes_query');
   });
 
   it('removing tools takes effect immediately', async () => {
@@ -229,9 +242,7 @@ describe('E2E: Tool Assignment & Enforcement', () => {
       .filter(Boolean);
 
     // If any tool calls happened, they should NOT be unassigned tools
-    const toolCalls = events.filter(
-      (e: any) => e.type === 'tool-call' && e.toolName === 'example_notes_query',
-    );
+    const toolCalls = events.filter((e: any) => e.type === 'tool-call' && e.toolName === 'example_notes_query');
     expect(toolCalls).toHaveLength(0);
 
     // Cleanup

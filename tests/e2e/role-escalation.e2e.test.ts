@@ -120,8 +120,8 @@ describe('E2E: Admin Endpoint Protection', () => {
     expect(res.status).toBe(200);
   });
 
-  it('team member cannot access the super-only eval management surface', async () => {
-    const res = await fetch(`${BASE_URL}/api/eval/datasets`, {
+  it('team member cannot use the super-only knowledge export inside the internal surface', async () => {
+    const res = await fetch(`${BASE_URL}/api/knowledge/export`, {
       headers: authHeaders(memberToken),
     });
     expect(res.status).toBe(403);

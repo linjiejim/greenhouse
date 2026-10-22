@@ -22,7 +22,7 @@ const EFFECTIVE = [
   'generate_image',
   'email_mutation',
   'automation_mutation',
-  'mission_dispatch',
+  'tables_schema_plan',
 ];
 
 describe('scheduledToolBase', () => {
@@ -48,10 +48,10 @@ describe('scheduledToolBase', () => {
   });
 
   it('cannot reach a denylisted or draft-only tool even when stored', () => {
-    const base = scheduledToolBase(EFFECTIVE, ['email_mutation', 'automation_mutation', 'mission_dispatch']);
+    const base = scheduledToolBase(EFFECTIVE, ['email_mutation', 'automation_mutation', 'tables_schema_plan']);
     expect(base).not.toContain('email_mutation');
     expect(base).not.toContain('automation_mutation');
-    expect(base).not.toContain('mission_dispatch');
+    expect(base).not.toContain('tables_schema_plan');
   });
 
   it('ignores a corrupt or unknown grant instead of failing the run', () => {
