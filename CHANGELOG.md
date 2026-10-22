@@ -5,6 +5,20 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.3](https://github.com/linjiejim/greenhouse/compare/v1.3.2...v1.3.3) (2026-10-22)
+
+
+### Fixed
+
+* **agent-core:** catch the `<｜｜DSML｜｜ calls>` leak variant ([0051bfa](https://github.com/linjiejim/greenhouse/commit/0051bfa7505b5d5faf8a58b7c0f25e22dd05722e))
+* **api:** guard search-result page fetches against SSRF ([5110c2b](https://github.com/linjiejim/greenhouse/commit/5110c2b05589f5f9db6ea6d97f2b7088b7f5915b))
+* **api:** keep the API up when a database blip hits a WebSocket connect ([aff78b5](https://github.com/linjiejim/greenhouse/commit/aff78b5bc02999bcb280116311401485ccdfe69c))
+* **api:** session reads escape the login rate limit ([5d0e652](https://github.com/linjiejim/greenhouse/commit/5d0e652b5a74d452a9819c012feaae26c81c4ad9))
+* **feishu:** a reply in the chain carries the conversation to the model ([cb5a400](https://github.com/linjiejim/greenhouse/commit/cb5a4005aad17e1731b2b7df0fee76d0d1538498))
+* **web:** the OAuth consent screen no longer re-renders forever ([ad56e27](https://github.com/linjiejim/greenhouse/commit/ad56e27dda57301b0a81521e596a0b8db6a5bfde))
+* **web:** the MCP Access page no longer re-renders forever ([5a9c818](https://github.com/linjiejim/greenhouse/commit/5a9c818f44a257717e8297b82e08d4ee3274269d))
+* **web:** sanitize exported answers and sandbox the PDF print frame ([#44](https://github.com/linjiejim/greenhouse/issues/44)) ([567cb83](https://github.com/linjiejim/greenhouse/commit/567cb83b8145cf5aedf90e442a3cbfa3daecde31))
+
 ## [1.3.2](https://github.com/linjiejim/greenhouse/compare/v1.3.1...v1.3.2) (2026-09-24)
 
 
