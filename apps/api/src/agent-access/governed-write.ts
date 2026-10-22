@@ -30,6 +30,7 @@ import {
   type RuntimeRunStatus,
   type RuntimeStepStatus,
 } from '@greenhouse/types/runtime';
+import type { AgentWriteBasis as WriteBasis, AgentWriteStatus, AgentWriteView } from '@greenhouse/types/agent-access';
 import { logger } from '@greenhouse/utils/logger';
 import { toErrorMessage } from '@greenhouse/utils/error';
 
@@ -38,14 +39,14 @@ import { prepareProxyToolCall } from '../agent-runtime/tool-proxy.js';
 import { hashToolInput, instrumentRuntimeTools } from '../runtime/tool-evidence.js';
 import { classifyWrite, type WriteClassification } from './risk.js';
 
+export type { AgentWriteStatus, AgentWriteView, WriteBasis };
+
 export const AGENT_WRITE_SOURCE_KIND = 'proxy_call';
 const STEP_KEY = 'proxy_call';
 /** How long a request waits for the member before it expires. */
 export const AGENT_WRITE_APPROVAL_TTL_MS = 24 * 60 * 60 * 1000;
 /** Longest an agent may block on `agent_write_status` in one call. */
 export const AGENT_WRITE_MAX_WAIT_SECONDS = 30;
-
-export type WriteBasis = 'own_reversible' | 'standing_grant' | 'legacy_confirm' | 'approved';
 
 export interface WriteCaller {
   /** The member the credential is bound to; owner of the run. */
@@ -70,36 +71,6 @@ export interface AgentWriteRunInput {
   target_key: string | null;
   input_hash: string;
   input: RuntimePayload;
-}
-
-export type AgentWriteStatus =
-  | 'pending'
-  | 'running'
-  | 'executed'
-  | 'failed'
-  | 'rejected'
-  | 'expired'
-  | 'withdrawn'
-  | 'superseded'
-  | 'outcome_unknown';
-
-export interface AgentWriteView {
-  request_id: string;
-  status: AgentWriteStatus;
-  tool_id: string;
-  action: string | null;
-  risk: WriteClassification['risk'];
-  client_id: string;
-  client_name: string;
-  basis: WriteBasis | null;
-  input: RuntimePayload;
-  output: RuntimePayload | null;
-  error: string | null;
-  created_at: string;
-  settled_at: string | null;
-  expires_at: string | null;
-  interrupt_id: string | null;
-  decided_by_user_id: string | null;
 }
 
 export type GovernedWriteResult =

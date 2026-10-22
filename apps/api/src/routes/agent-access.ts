@@ -25,12 +25,8 @@ import { getAuthUser } from '../auth/middleware.js';
 import { MUTATING_PROXY_ALLOWLIST, getToolMeta, MCP_EXPOSED_TOOL_IDS } from '../tools/registry.js';
 import { getMcpResourceUrl } from '../platform/oauth.js';
 import { RuntimeKernelError } from '@greenhouse/db';
-import {
-  AgentWriteError,
-  agentWriteView,
-  decideAgentWrite,
-  type AgentWriteView,
-} from '../agent-access/governed-write.js';
+import { AgentWriteError, agentWriteView, decideAgentWrite } from '../agent-access/governed-write.js';
+import type { AgentWritePendingView } from '@greenhouse/types/agent-access';
 import { legacyConfirmEnabled, resolveApprovedWriteContext } from '../agent-access/context.js';
 
 const decisionSchema = z.object({
@@ -50,12 +46,6 @@ function writeErrorStatus(error: AgentWriteError): 400 | 403 | 404 | 409 {
   if (error.code === 'forbidden') return 403;
   if (error.code === 'not_pending') return 409;
   return 400;
-}
-
-/** Pending view row: the request plus who is waiting on whom. */
-interface PendingRow extends AgentWriteView {
-  owner_user_id: string;
-  owner_nickname: string | null;
 }
 
 export function createAgentAccessRoutes(toolRegistry: ToolRegistry) {
@@ -82,7 +72,7 @@ export function createAgentAccessRoutes(toolRegistry: ToolRegistry) {
       const view = c.req.query('view') === 'recent' ? 'recent' : 'pending';
       if (view === 'pending') {
         const interrupts = await db.runtime.listPendingInterrupts(user.id, 200);
-        const rows: PendingRow[] = [];
+        const rows: AgentWritePendingView[] = [];
         for (const interrupt of interrupts) {
           const run = await db.runtime.getRun(interrupt.run_id);
           if (!run || run.kind !== 'agent_write' || run.status !== 'waiting') continue;

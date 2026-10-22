@@ -40,7 +40,7 @@ function agentWriteCopy(interrupt: RuntimeInterruptRow): { title: string; body: 
   const risk = interrupt.risk_level === 'r3' ? ' (cannot be undone)' : '';
   return {
     title: `${client} wants to run ${what}${risk}`,
-    body: 'Approve or reject it in Settings → Agent access. It expires in 24 hours.',
+    body: 'Approve or reject it in Settings → Agent connections. It expires in 24 hours.',
   };
 }
 

@@ -60,6 +60,10 @@
       "import": "./src/tasks.ts",
       "types": "./src/tasks.ts"
     },
+    "./agent-access": {
+      "import": "./src/agent-access.ts",
+      "types": "./src/agent-access.ts"
+    },
     "./runtime": {
       "import": "./src/runtime.ts",
       "types": "./src/runtime.ts"

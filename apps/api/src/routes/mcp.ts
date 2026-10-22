@@ -502,9 +502,9 @@ function agentFacingView(view: AgentWriteView, reused = false) {
       ? {
           message:
             (reused ? 'This same write is already waiting for approval. ' : '') +
-            "This write needs the member's approval in Greenhouse (Settings → Agent access). Tell the user, do " +
+            "This write needs the member's approval in Greenhouse (Settings → Agent connections). Tell the user, do " +
             `not resend it, and call ${AGENT_WRITE_STATUS_TOOL} with this request_id to get the result.`,
-          approve_url: `${base}/#/settings/agent-access?request=${encodeURIComponent(view.request_id)}`,
+          approve_url: `${base}/#/settings/agent-connections/requests/${encodeURIComponent(view.request_id)}`,
           expires_at: view.expires_at,
         }
       : {}),
