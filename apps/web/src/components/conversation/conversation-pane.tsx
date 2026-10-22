@@ -35,7 +35,7 @@ import type { LucideIcon } from '../../lib/icons';
 import * as api from '../../lib/api';
 import { ShareDialog } from '../chat/share-dialog';
 import { ProfileEditorDrawer } from '../chat/profile-editor';
-import { Button, Skeleton, toast } from '../ui';
+import { Button, ErrorBoundary, Skeleton, toast } from '../ui';
 import { MAX_IMAGES } from '../../lib/constants';
 import { WorkbenchPanel } from '../workbench/workbench-panel';
 import { DEFAULT_AGENT_ID, LEGACY_AGENT_IDS } from '../../lib/agent-constants';
@@ -1345,55 +1345,64 @@ export function ConversationPane({
                     ? [...messages.slice(0, idx)].reverse().find((m) => m.role === 'user')?.content
                     : undefined;
                 return (
-                  <MessageBubble
+                  // One malformed stored message must not take the whole conversation down.
+                  <ErrorBoundary
                     key={msg.clientKey}
-                    role={msg.role}
-                    content={msg.content}
-                    messageId={msg.id}
-                    sessionId={sessionId}
-                    reasoning={msg.reasoning}
-                    pipeline={msg.pipeline}
-                    references={msg.references}
-                    images={msg.images}
-                    inputTokens={msg.input_tokens}
-                    outputTokens={msg.output_tokens}
-                    cachedTokens={msg.cached_tokens}
-                    reasoningTokens={msg.reasoning_tokens}
-                    durationMs={msg.duration_ms}
-                    model={msg.model}
-                    canViewMetrics={currentUser?.role === 'super'}
-                    canActOnArtifacts={isOwner}
-                    createdAt={msg.created_at}
-                    isLastUser={isLastUser}
-                    compact={policy.compactMessages}
-                    onEdit={isLastUser && !effectiveRunActive && !isRetiredChannel ? handleEditMessage : undefined}
-                    onTranslate={
-                      policy.allowTranslate && !isRetiredChannel && msg.role === 'assistant'
-                        ? handleTranslate
-                        : undefined
+                    fallback={
+                      <div className="mx-auto my-2 max-w-3xl rounded-lg border border-dashed border-edge px-3 py-2 text-xs text-fg-muted">
+                        {t('common.messageRenderFailed')}
+                      </div>
                     }
-                    onRegenerate={msg.role === 'assistant' && !isRetiredChannel ? handleRegenerate : undefined}
-                    onQuote={policy.allowQuote && msg.role === 'assistant' ? handleQuote : undefined}
-                    isStreaming={effectiveIsStreaming}
-                    onAskUserSubmit={
-                      msg.role === 'assistant' &&
-                      msg.pipeline?.some((s) => s.tool === 'ask_user' || (s.output as any)?.type === 'ask_user')
-                        ? isOwner
-                          ? handleSend
+                  >
+                    <MessageBubble
+                      role={msg.role}
+                      content={msg.content}
+                      messageId={msg.id}
+                      sessionId={sessionId}
+                      reasoning={msg.reasoning}
+                      pipeline={msg.pipeline}
+                      references={msg.references}
+                      images={msg.images}
+                      inputTokens={msg.input_tokens}
+                      outputTokens={msg.output_tokens}
+                      cachedTokens={msg.cached_tokens}
+                      reasoningTokens={msg.reasoning_tokens}
+                      durationMs={msg.duration_ms}
+                      model={msg.model}
+                      canViewMetrics={currentUser?.role === 'super'}
+                      canActOnArtifacts={isOwner}
+                      createdAt={msg.created_at}
+                      isLastUser={isLastUser}
+                      compact={policy.compactMessages}
+                      onEdit={isLastUser && !effectiveRunActive && !isRetiredChannel ? handleEditMessage : undefined}
+                      onTranslate={
+                        policy.allowTranslate && !isRetiredChannel && msg.role === 'assistant'
+                          ? handleTranslate
                           : undefined
-                        : undefined
-                    }
-                    onConfirmAction={msg.role === 'assistant' && isOwner ? handleSend : undefined}
-                    hasFollowUpUserMessage={hasFollowUpUserMessage}
-                    submittedUserMessage={submittedUserMessage}
-                    confirmedActionValue={followUpUserMessage}
-                    previousUserMessage={previousUserMsg}
-                    onFork={
-                      policy.showProfileManagement && sessionId && sessionChannel === 'web'
-                        ? requestForkSession
-                        : undefined
-                    }
-                  />
+                      }
+                      onRegenerate={msg.role === 'assistant' && !isRetiredChannel ? handleRegenerate : undefined}
+                      onQuote={policy.allowQuote && msg.role === 'assistant' ? handleQuote : undefined}
+                      isStreaming={effectiveIsStreaming}
+                      onAskUserSubmit={
+                        msg.role === 'assistant' &&
+                        msg.pipeline?.some((s) => s.tool === 'ask_user' || (s.output as any)?.type === 'ask_user')
+                          ? isOwner
+                            ? handleSend
+                            : undefined
+                          : undefined
+                      }
+                      onConfirmAction={msg.role === 'assistant' && isOwner ? handleSend : undefined}
+                      hasFollowUpUserMessage={hasFollowUpUserMessage}
+                      submittedUserMessage={submittedUserMessage}
+                      confirmedActionValue={followUpUserMessage}
+                      previousUserMessage={previousUserMsg}
+                      onFork={
+                        policy.showProfileManagement && sessionId && sessionChannel === 'web'
+                          ? requestForkSession
+                          : undefined
+                      }
+                    />
+                  </ErrorBoundary>
                 );
               })}
 
@@ -1458,7 +1467,10 @@ export function ConversationPane({
             aboveSlot={
               <div className="mb-2 flex items-center justify-center gap-2 text-xs text-fg-muted">
                 <Eye size={13} />
-                <span>{t('chat.sharedBy', { name: shareInfo?.shared_by_nickname ?? '' })}</span>
+                <span>
+                  {/* A super can open any conversation without a share row: no sharer to name. */}
+                  {shareInfo ? t('chat.sharedBy', { name: shareInfo.shared_by_nickname }) : t('chat.readOnlyOriginal')}
+                </span>
               </div>
             }
             rightSlot={

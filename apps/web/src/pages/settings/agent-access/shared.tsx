@@ -95,3 +95,53 @@ export function Collapsible({
     </div>
   );
 }
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
+}
+
+/** What the write is about, for the card header: a title, name or record id when the input names one. */
+export function writeTarget(input: unknown): string | null {
+  const record = asRecord(input);
+  if (!record) return null;
+  for (const key of ['title', 'name', 'doc_id', 'record_id', 'task_id', 'project_id', 'id']) {
+    const value = record[key];
+    if (typeof value === 'string' && value.trim()) return value.trim();
+    if (typeof value === 'number') return String(value);
+  }
+  const ids = record.record_ids;
+  if (Array.isArray(ids) && ids.length > 0) return ids.length === 1 ? String(ids[0]) : `${ids.length} records`;
+  return null;
+}
+
+/**
+ * A write's input as labeled fields: strings keep their line breaks (a doc body
+ * reads as text, not as one escaped JSON line); nested values stay JSON.
+ */
+export function InputFields({ value }: { value: unknown }) {
+  const record = asRecord(value);
+  if (!record) return <JsonBlock value={value} />;
+  const entries = Object.entries(record).filter(([, v]) => v !== undefined && v !== null && v !== '');
+  return (
+    <dl className="rounded-lg bg-surface-sunken p-2.5 space-y-1.5 text-[11px] leading-relaxed">
+      {entries.map(([key, v]) => (
+        <div key={key} className="grid grid-cols-[7rem_minmax(0,1fr)] gap-2">
+          <dt className="font-mono text-fg-faint truncate" title={key}>
+            {key}
+          </dt>
+          <dd className="min-w-0 text-fg-secondary">
+            {typeof v === 'string' ? (
+              <span className="whitespace-pre-wrap break-words">{v}</span>
+            ) : typeof v === 'number' || typeof v === 'boolean' ? (
+              <span className="font-mono">{String(v)}</span>
+            ) : (
+              <pre className="font-mono whitespace-pre-wrap break-all max-h-48 overflow-auto">
+                {JSON.stringify(v, null, 2)}
+              </pre>
+            )}
+          </dd>
+        </div>
+      ))}
+    </dl>
+  );
+}

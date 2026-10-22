@@ -98,10 +98,16 @@ export interface GanttDateRange {
   startDate: Date;
   endDate: Date;
   totalDays: number;
+  /** Where the timeline opens: today when it falls inside the work, else the first dated work. */
+  focusDate: Date;
 }
 
-/** Pad the min/max of the given dates by -7/+14 days (≥30 days total). Shared by both Gantt views. */
-export function computeGanttRange(dates: Date[]): GanttDateRange {
+/**
+ * Pad the min/max of the work dates (and today) by -7/+14 days (≥30 days total).
+ * Shared by both Gantt views.
+ */
+export function computeGanttRange(workDates: Date[], today: Date = new Date()): GanttDateRange {
+  const dates = [today, ...workDates];
   let start = new Date(Math.min(...dates.map((d) => d.getTime())));
   let end = new Date(Math.max(...dates.map((d) => d.getTime())));
 
@@ -109,7 +115,14 @@ export function computeGanttRange(dates: Date[]): GanttDateRange {
   end = new Date(end.getTime() + 14 * 86400000);
 
   const totalDays = Math.max(Math.ceil((end.getTime() - start.getTime()) / 86400000), 30);
-  return { startDate: start, endDate: end, totalDays };
+
+  let focusDate = today;
+  if (workDates.length > 0) {
+    const first = Math.min(...workDates.map((d) => d.getTime()));
+    const last = Math.max(...workDates.map((d) => d.getTime()));
+    if (today.getTime() < first || today.getTime() > last + 86400000) focusDate = new Date(first);
+  }
+  return { startDate: start, endDate: end, totalDays, focusDate };
 }
 
 // ─── Shared task action handlers ─────────────────────────

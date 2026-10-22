@@ -293,13 +293,17 @@ export function GanttCore<TData, GData>({
     return Math.floor((today.getTime() - startDate.getTime()) / 86400000) * DAY_WIDTH;
   }, [startDate, DAY_WIDTH]);
 
-  // Scroll to today on mount / zoom change
+  // Open on today when it falls inside the work, else on the first dated work
+  // (a finished project would otherwise open on an empty stretch of days).
+  const focusOffset = useMemo(
+    () => Math.floor((range.focusDate.getTime() - startDate.getTime()) / 86400000) * DAY_WIDTH,
+    [range.focusDate, startDate, DAY_WIDTH],
+  );
   useEffect(() => {
     if (timelineRef.current) {
-      const scrollLeft = Math.max(0, todayOffset - 300);
-      timelineRef.current.scrollLeft = scrollLeft;
+      timelineRef.current.scrollLeft = Math.max(0, focusOffset - 300);
     }
-  }, [todayOffset]);
+  }, [focusOffset]);
 
   // ── Timeline Headers ───────────────────────────────────
 

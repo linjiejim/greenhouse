@@ -148,8 +148,6 @@ export function GanttView({
 
   const range = useMemo(() => {
     const dates: Date[] = [];
-    const today = new Date();
-    dates.push(today);
 
     if (project.start_date) dates.push(new Date(project.start_date));
     if (project.end_date) dates.push(new Date(project.end_date));

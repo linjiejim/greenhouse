@@ -5,7 +5,6 @@ import { LayoutDashboard, MoreHorizontal, Pencil, Plus, Table2, Trash2 } from '.
 import { BaseDialog } from '../../tables/base-dialog';
 import { ResourceDialog, type TableResource } from '../../tables/resource-dialog';
 import { DeleteDialog, type DeletionTarget } from '../../tables/delete-dialog';
-import { SidebarPrimaryAction } from '../sidebar-primary-action';
 import { ContextMenu, useContextMenu, type ContextMenuItem } from '../context-menu';
 import { IconButton, Spinner } from '../../ui';
 import { useT, type TranslationKey } from '../../../lib/i18n';
@@ -142,15 +141,20 @@ export function TablesNavPanel({ subPath }: TablesNavPanelProps) {
   return (
     <div className="flex h-full min-h-0 flex-col">
       <section className="flex max-h-[40%] min-h-0 flex-col border-b border-edge pb-2">
-        <div className="flex-shrink-0 px-3 pb-2">
-          <SidebarPrimaryAction icon={Plus} onClick={() => setBaseDialog(true)}>
-            {t('tables.sidebar.newBase')}
-          </SidebarPrimaryAction>
-        </div>
+        {/* The sidebar keeps one primary action (New Chat); module creates are a small "+". */}
         <div className="flex items-center px-3 pb-1">
-          <span className="text-[10px] font-semibold uppercase tracking-wider text-fg-faint">
+          <span className="flex-1 text-[10px] font-semibold uppercase tracking-wider text-fg-faint">
             {t('tables.sidebar.bases')}
           </span>
+          <IconButton
+            label={t('tables.sidebar.newBase')}
+            tooltip="top"
+            tooltipMode="portal"
+            className="h-6 w-6 sm:h-6 sm:w-6"
+            onClick={() => setBaseDialog(true)}
+          >
+            <Plus size={13} />
+          </IconButton>
         </div>
         <div className="min-h-0 overflow-y-auto">
           {loadingBases && bases.length === 0 ? (

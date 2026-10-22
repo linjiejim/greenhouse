@@ -279,7 +279,7 @@ export function GlobalGanttView({
   // ── Date Range ──────────────────────────────────────────
 
   const range = useMemo(() => {
-    const dates: Date[] = [new Date()];
+    const dates: Date[] = [];
     for (const p of projects) {
       if (p.start_date) dates.push(new Date(p.start_date));
       if (p.end_date) dates.push(new Date(p.end_date));

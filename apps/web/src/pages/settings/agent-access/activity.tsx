@@ -10,7 +10,7 @@ import { History } from '../../../lib/icons';
 import { formatDate } from '../../../lib/utils';
 import { useT } from '../../../lib/i18n';
 import { fetchRecentAgentWrites } from '../../../lib/api/agent-access';
-import { BasisLabel, JsonBlock, OperationLabel, RiskTag, StatusTag } from './shared';
+import { BasisLabel, InputFields, JsonBlock, OperationLabel, RiskTag, StatusTag, writeTarget } from './shared';
 
 type ActivityRow = AgentWriteView & { id: string };
 
@@ -53,7 +53,15 @@ export function AgentActivity() {
             key: 'tool_id',
             label: t('agentAccess.colOperation'),
             type: 'custom',
-            render: (row) => <OperationLabel view={row} />,
+            render: (row) => {
+              const target = writeTarget(row.input);
+              return (
+                <div className="min-w-0">
+                  <OperationLabel view={row} />
+                  {target && <div className="text-xs text-fg truncate">{target}</div>}
+                </div>
+              );
+            },
           },
           {
             key: 'risk',
@@ -83,7 +91,7 @@ export function AgentActivity() {
             <div className="grid gap-3 md:grid-cols-2 py-1">
               <div>
                 <div className="text-[11px] font-medium text-fg-muted mb-1">{t('agentAccess.input')}</div>
-                <JsonBlock value={row.input} />
+                <InputFields value={row.input} />
               </div>
               <div>
                 <div className="text-[11px] font-medium text-fg-muted mb-1">

@@ -15,7 +15,7 @@ import { Bot, Inbox, ShieldAlert } from '../../../lib/icons';
 import { useI18n, useT } from '../../../lib/i18n';
 import { timeAgo } from '../../../lib/utils';
 import { decideAgentWrite } from '../../../lib/api/agent-access';
-import { Collapsible, JsonBlock, OperationLabel, RiskTag, useStatusLabel } from './shared';
+import { Collapsible, InputFields, OperationLabel, RiskTag, useStatusLabel, writeTarget } from './shared';
 
 function useRelativeFuture() {
   const { locale } = useI18n();
@@ -44,6 +44,7 @@ function PendingCard({
   const [days, setDays] = useState<AgentWriteGrantDayOption>(7);
   const ref = useRef<HTMLDivElement>(null);
   const irreversible = request.risk === 'r3';
+  const target = writeTarget(request.input);
 
   useEffect(() => {
     if (highlighted) ref.current?.scrollIntoView({ block: 'center', behavior: 'smooth' });
@@ -90,6 +91,7 @@ function PendingCard({
               <span className="font-medium">{t('agentAccess.wantsTo', { client: request.client_name })}</span>
               <OperationLabel view={request} />
             </div>
+            {target && <div className="text-sm font-medium text-fg break-words">“{target}”</div>}
             <div className="text-[11px] text-fg-faint">
               {timeAgo(request.created_at)} · {t('agentAccess.expiresIn', { time: relativeFuture(request.expires_at) })}
               {request.owner_nickname ? ` · ${t('agentAccess.forMember', { name: request.owner_nickname })}` : ''}
@@ -103,7 +105,7 @@ function PendingCard({
           closedLabel={t('agentAccess.showInput')}
           defaultOpen={highlighted || JSON.stringify(request.input ?? null).length < 400}
         >
-          <JsonBlock value={request.input} />
+          <InputFields value={request.input} />
         </Collapsible>
 
         {irreversible && (
@@ -120,7 +122,13 @@ function PendingCard({
           </Button>
           {!irreversible && (
             <div className="inline-flex items-center gap-1.5">
-              <Button size="sm" variant="secondary" onClick={() => void decide('grant')} disabled={busy !== null}>
+              <Button
+                size="sm"
+                variant="secondary"
+                className="whitespace-nowrap"
+                onClick={() => void decide('grant')}
+                disabled={busy !== null}
+              >
                 {busy === 'grant' ? <Spinner className="h-3.5 w-3.5" /> : null}
                 {t('agentAccess.approveAndAllow')}
               </Button>

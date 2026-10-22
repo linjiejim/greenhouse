@@ -190,12 +190,14 @@ function MessageBubbleImpl(props: MessageProps) {
     const seen = new Set<string>();
     for (const step of pipeline) {
       if (step.tool === 'external_search' && step.output) {
-        const output = step.output as { results?: Array<{ title: string; url: string }> };
-        if (output.results) {
-          for (const r of output.results) {
+        // Stored outputs are untrusted shapes (older rows, truncated replies): only a list counts.
+        const results = (step.output as { results?: unknown }).results;
+        if (Array.isArray(results)) {
+          for (const r of results as Array<{ title?: string; url?: string }>) {
+            if (!r?.url || typeof r.url !== 'string') continue;
             if (!seen.has(r.url)) {
               seen.add(r.url);
-              sources.push({ title: r.title, url: r.url });
+              sources.push({ title: r.title || r.url, url: r.url });
             }
           }
         }

@@ -11,26 +11,18 @@ function render(ui: ReactNode) {
 }
 
 describe('SidebarPrimaryAction', () => {
-  it('provides the shared centered primary style used by New Chat and New Base', () => {
+  it('provides the centered primary style used by New Chat', () => {
     const newChat = renderToStaticMarkup(
       <SidebarPrimaryAction icon={Plus} onClick={vi.fn()}>
         New Chat
       </SidebarPrimaryAction>,
     );
-    const newBase = renderToStaticMarkup(
-      <SidebarPrimaryAction icon={Plus} onClick={vi.fn()}>
-        New Base
-      </SidebarPrimaryAction>,
-    );
 
-    for (const html of [newChat, newBase]) {
-      expect(html).toContain('justify-center');
-      expect(html).toContain('rounded-lg');
-      expect(html).toContain('bg-primary-500');
-      expect(html).toContain('hover:bg-primary-600');
-    }
+    expect(newChat).toContain('justify-center');
+    expect(newChat).toContain('rounded-lg');
+    expect(newChat).toContain('bg-primary-500');
+    expect(newChat).toContain('hover:bg-primary-600');
     expect(newChat).toContain('New Chat');
-    expect(newBase).toContain('New Base');
   });
 
   it('keeps global actions by the brand and exposes a separate bottom-row collapse control', () => {
