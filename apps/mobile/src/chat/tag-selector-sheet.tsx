@@ -10,6 +10,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Alert, Text, View } from 'react-native';
 import type { SessionTag } from '../shared/greenhouse-types';
 import { useTags } from '../store/tags';
+import { reportPageOpen } from '../api/client';
 import { addTagToSession, removeTagFromSession, MAX_TAGS_PER_SESSION } from '../api/session-tags';
 import { randomTagColor } from '../lib/tag-colors';
 import { useT } from '../lib/i18n';
@@ -47,6 +48,11 @@ export function TagSelectorSheet({
     if (visible) void load();
     else setQ('');
   }, [visible, load]);
+
+  // Module usage: each time the sheet opens counts as one use of session tags.
+  useEffect(() => {
+    if (visible) reportPageOpen('session-tags');
+  }, [visible]);
 
   const has = (id: number) => sessionTags.some((x) => x.id === id);
   const query = q.trim();

@@ -9,6 +9,7 @@ import React, { useEffect, useState } from 'react';
 import { Alert, Text, View } from 'react-native';
 import type { SessionTag } from '../shared/greenhouse-types';
 import { useTags } from '../store/tags';
+import { reportPageOpen } from '../api/client';
 import { TAG_COLORS } from '../lib/tag-colors';
 import { useT } from '../lib/i18n';
 import { font, makeStyles, radius, useTheme } from '../theme';
@@ -63,6 +64,11 @@ export function TagManagerSheet({ visible, onClose }: { visible: boolean; onClos
       setNewColor(TAG_COLORS[0]);
     }
   }, [visible, load]);
+
+  // Module usage: each time the sheet opens counts as one use of session tags.
+  useEffect(() => {
+    if (visible) reportPageOpen('session-tags');
+  }, [visible]);
 
   function startEdit(tag: SessionTag) {
     setEditingId(tag.id);
