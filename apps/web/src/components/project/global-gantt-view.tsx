@@ -718,7 +718,7 @@ export function GlobalGanttView({
       renderBatchExtra={(run) =>
         projects.length > 1 && (
           <>
-            <span className="text-fg-faint">|</span>
+            <span className="h-4 w-px bg-edge" aria-hidden="true" />
             <span className="text-fg-muted">{t('common.moveTo')}</span>
             <Select
               onChange={(e) => {

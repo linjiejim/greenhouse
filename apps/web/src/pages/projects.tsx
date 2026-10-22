@@ -417,7 +417,7 @@ export function ProjectsPage() {
                   </button>
                 ))}
               </div>
-              <span className="hidden sm:inline text-fg-faint">|</span>
+              <span className="hidden sm:block h-4 w-px bg-edge" aria-hidden="true" />
               <Select
                 value={ganttFilter.projectStatus || ''}
                 onChange={(e) => setGanttFilter({ ...ganttFilter, projectStatus: e.target.value || undefined })}

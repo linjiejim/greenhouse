@@ -63,7 +63,9 @@ export function ModulePage({
         // page header jump sideways on every switch.
         'mr-auto flex w-full flex-col',
         CONTENT_WIDTH[layout],
-        isCanvas ? 'h-full min-h-0 px-3 py-3 md:px-4' : 'px-3 py-3 sm:px-5 md:px-6 md:py-4 lg:px-8',
+        // One padding for every layout, so the header sits in the same place on every page.
+        'px-3 py-3 sm:px-5 md:px-6 md:py-4 lg:px-8',
+        isCanvas && 'h-full min-h-0',
         className,
       )}
     >

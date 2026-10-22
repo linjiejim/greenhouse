@@ -768,7 +768,7 @@ export function GanttCore<TData, GData>({
           <span className="font-medium text-primary-fg-strong">
             {t('common.selected', { count: String(selectedIds.size) })}
           </span>
-          <span className="text-fg-faint">|</span>
+          <span className="h-4 w-px bg-edge" aria-hidden="true" />
           <span className="text-fg-muted">{t('common.batchUpdateStatus')}</span>
           {Object.entries(statusConfig).map(([key, cfg]) => (
             <button
@@ -781,7 +781,7 @@ export function GanttCore<TData, GData>({
           ))}
           {users && users.length > 0 && (
             <>
-              <span className="text-fg-faint">|</span>
+              <span className="h-4 w-px bg-edge" aria-hidden="true" />
               <span className="text-fg-muted">{t('common.assign')}</span>
               <Select
                 onChange={(e) => {

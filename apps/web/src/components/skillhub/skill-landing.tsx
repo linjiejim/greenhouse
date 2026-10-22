@@ -61,7 +61,8 @@ export function SkillHubLanding({ showHeader = true }: { showHeader?: boolean })
   }, [skills, currentUser?.id]);
 
   return (
-    <div className={`mx-auto max-w-3xl space-y-6 ${showHeader ? 'py-6' : 'py-1'}`}>
+    // Inside ModulePage the column is left-aligned with the page header.
+    <div className={`max-w-3xl space-y-6 ${showHeader ? 'mx-auto py-6' : 'py-1'}`}>
       {showHeader && (
         <div className="flex items-start gap-3">
           <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-surface-muted flex items-center justify-center">
