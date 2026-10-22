@@ -529,10 +529,12 @@ async function main() {
   // skips the others, and never becomes an unhandled rejection):
   //  - approval requests nobody decided in time, so the agent's status call gets
   //    a final answer (cheap: only waiting agent writes are read);
-  //  - oversized MCP replies past their 24-hour life (agent-runtime/tool-output-store.ts).
+  //  - oversized MCP replies past their 24-hour life (agent-runtime/tool-output-store.ts);
+  //  - rate-limit buckets whose window has ended (security/security.ts).
   const expirySweeps: Array<[string, () => Promise<unknown>]> = [
     ['agent-access expiry', () => sweepExpiredAgentWrites(dbProvider)],
     ['MCP tool output', () => sweepExpiredToolOutputs()],
+    ['rate-limit bucket', () => dbProvider.rateLimits.sweepExpired()],
   ];
   setInterval(() => {
     for (const [label, sweep] of expirySweeps) {

@@ -31,7 +31,7 @@ import { toErrorMessage } from '@greenhouse/utils/error';
 import { getAuthUser, requireInternal } from '../auth/middleware.js';
 import { buildAuthorizeUrl, getFeishuConfig, resolveUserByCode } from '../feishu/client.js';
 import { issueUserSession } from './auth.js';
-import { InMemoryRateLimiter } from '../security/security.js';
+import { checkRateLimit } from '../security/security.js';
 import { getRequestSourceIp } from '../security/request-ip.js';
 import type { AppEnv } from '../app-env.js';
 import type { UserRow } from '@greenhouse/db';
@@ -64,8 +64,6 @@ setInterval(() => {
   for (const [state, entry] of pending) if (now >= entry.expiresAt) pending.delete(state);
   for (const [code, entry] of loginCodes) if (now >= entry.expiresAt) loginCodes.delete(code);
 }, 60_000).unref();
-
-const exchangeLimiter = new InMemoryRateLimiter();
 
 function baseUrl(reqUrl: string): string {
   return (process.env.PUBLIC_BASE_URL || new URL(reqUrl).origin).replace(/\/$/, '');
@@ -211,7 +209,7 @@ export const feishuOAuthRoutes = new Hono<AppEnv>()
   .post('/oauth/exchange', async (c) => {
     // Public endpoint: rate-limit by source IP so the 60s code window cannot be
     // brute-forced (the code itself is 256 bits, this is defence in depth).
-    const limit = exchangeLimiter.check(`feishu-exchange:${getRequestSourceIp(c)}`, 60_000, 10);
+    const limit = await checkRateLimit(`feishu-exchange:${getRequestSourceIp(c)}`, 60_000, 10);
     if (!limit.allowed) return c.json({ error: 'Too many attempts. Please try again later.' }, 429);
 
     const body = (await c.req.json().catch(() => ({}))) as { code?: unknown };

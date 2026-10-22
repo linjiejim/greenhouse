@@ -23,6 +23,10 @@ async function main(): Promise<void> {
   const db = createDatabase(connectionString);
   try {
     if (command === 'seed') {
+      // Rate-limit counters live in the database and outlive the server, so a
+      // rerun within a window would inherit the last run's budget. Start each
+      // run the way a fresh in-memory limiter used to: empty.
+      await db.rateLimits.sweepExpired('infinity');
       const suffix = `${Date.now()}-${process.pid}`;
       const user = await db.users.create({
         email: `${EMAIL_PREFIX}${suffix}@test.local`,

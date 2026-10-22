@@ -51,7 +51,8 @@ Automation、Tasks、Agents 的 `Mine / Shared / Team` 口径见 [personal asset
 ### 安全 (`security/security.ts`)
 - 用户输入在传给 LLM 前**必须**经过 `sanitizeForPrompt()` 处理
 - 使用 `checkPromptInjection()` 检测和记录注入攻击
-- 限流使用共享的 `InMemoryRateLimiter` 类——不要单独实现
+- 限流一律走 `checkRateLimit(key, windowMs, max)`——不要单独实现。计数在 `rate_limit_buckets`（固定窗口、按 epoch 对齐，桶 key = `<key>:<窗口起点 ms>`，一次原子 upsert-increment），所以重启不清零、多实例共享；限额与 `X-RateLimit-Limit/Remaining/Reset` 响应头不变。过期桶由 `index.ts` 的五分钟 upkeep 清扫。
+- **限流故意 fail-open**：计数表调用失败时放行，并每分钟最多记一条 warn（带期间放行数）。限流是防滥用的刹车，不是鉴权：后面的路由照样查库鉴权，库挂了本就过不去；而计数表一次抖动若 fail-closed，就是对全员 429。别把它改成 fail-closed，也别在路由里再包一层 try/catch。
 - 限流/审计来源 IP 必须走 `security/request-ip.ts`：默认使用 socket peer；只有 loopback 或 `TRUSTED_PROXY_IPS` 明确登记的反代才可提供 `X-Forwarded-For/X-Real-IP`，禁止直接信任请求头。
 - 文件上传：通过 `validateMagicBytes()` 校验 MIME 类型
 - Agent 工具下载公网图片必须走 `security/network.ts` 的 `fetchPublicImage()`：只准 public HTTPS，连接时 DNS 校验、每跳重定向复核、响应大小上限和图片魔数缺一不可；禁止对模型输入 URL 直接 `fetch()`。

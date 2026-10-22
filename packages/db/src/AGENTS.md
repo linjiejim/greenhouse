@@ -60,6 +60,7 @@
 - 已移除模块对应的表不得以兼容、占位或“未来可能使用”为由重新加入；确有新消费者时按根 AGENTS.md 的复用门禁重新设计。
 
 - `agent_write_grants` 只能放行 r2 写入；r3（不可逆或对外）写入永远要逐次审批，服务层与 API 都要拒绝建 r3 的常驻授权。
+- `rate_limit_buckets` 只经 `rateLimits.hit(key, expiresAt)` 写：单条 `INSERT … ON CONFLICT DO UPDATE SET count = count + 1 RETURNING count`，不要先读后写（两实例并发就会少计）。窗口起点放进 key，`expires_at` 只在建桶时写；`sweepExpired()` 删窗口已结束的桶。跨连接并发与「重启不清零」由 `tests/db/security-state.db-commit.test.ts` 钉住。
 - `usage_counters` 只存计数：不加用户、参数或内容列。新增计数点用 `usageCounters.increment(kind, key, client)`（API 侧走 fire-and-forget 的 `countUsage()`，见 api AGENTS「模块用量计数」），不要另建统计表。按 UTC 日单条 upsert `count = count + 1`；读侧 `summarize(kind, {from, to})` 按 key × client 求和。词表（client、页面模块 id 的封闭清单）在 `@greenhouse/types/usage`。
 - `sessions.digest` / `digest_upto_seq` 只经 `sessions.advanceDigest()` 写入（锁会话行的比较后写：只前进、且最后一条被折叠的消息未变）；任何改动 `seq ≤ digest_upto_seq` 消息的 service 方法必须在同一事务里调 `resetDigestIfFolded`。列表查询用 `sessionListColumns`，不带摘要正文。
 - `custom_profiles` 在 v1.4 去掉审核生命周期：团队可见只看 `is_shared`；`lifecycle_status` / `lifecycle_note` / `reviewed_*` / `next_review_at` / `published_version` 成为退役列（迁移 0008 把未审核却 `is_shared` 的行改回私有，保持可见性不变）。

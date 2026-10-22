@@ -8,7 +8,6 @@ import {
   checkPromptInjection,
   sanitizeForPrompt,
   validateMagicBytes,
-  InMemoryRateLimiter,
   redactQueryForLog,
 } from '../../apps/api/src/security/security.js';
 
@@ -201,63 +200,5 @@ describe('validateMagicBytes', () => {
   });
 });
 
-// ─── Rate Limiter ────────────────────────────────────────
-
-describe('InMemoryRateLimiter', () => {
-  it('allows requests within limit', () => {
-    const rl = new InMemoryRateLimiter();
-    const result = rl.check('test-ip', 60000, 5);
-    expect(result.allowed).toBe(true);
-    expect(result.remaining).toBe(4);
-    rl.destroy();
-  });
-
-  it('blocks requests exceeding limit', () => {
-    const rl = new InMemoryRateLimiter();
-    for (let i = 0; i < 5; i++) {
-      rl.check('test-ip-2', 60000, 5);
-    }
-    const result = rl.check('test-ip-2', 60000, 5);
-    expect(result.allowed).toBe(false);
-    expect(result.remaining).toBe(0);
-    rl.destroy();
-  });
-
-  it('isolates different keys', () => {
-    const rl = new InMemoryRateLimiter();
-    for (let i = 0; i < 5; i++) {
-      rl.check('ip-a', 60000, 5);
-    }
-    const resultA = rl.check('ip-a', 60000, 5);
-    const resultB = rl.check('ip-b', 60000, 5);
-
-    expect(resultA.allowed).toBe(false);
-    expect(resultB.allowed).toBe(true);
-    rl.destroy();
-  });
-
-  it('resets after window expires', async () => {
-    const rl = new InMemoryRateLimiter();
-    // Window of 100ms
-    for (let i = 0; i < 3; i++) {
-      rl.check('test-expire', 100, 3);
-    }
-    expect(rl.check('test-expire', 100, 3).allowed).toBe(false);
-
-    // Wait for window to expire
-    await new Promise((r) => setTimeout(r, 150));
-    expect(rl.check('test-expire', 100, 3).allowed).toBe(true);
-    rl.destroy();
-  });
-
-  it('returns correct resetAt timestamp', () => {
-    const rl = new InMemoryRateLimiter();
-    const before = Date.now();
-    const result = rl.check('test-reset', 60000, 10);
-    const after = Date.now();
-
-    expect(result.resetAt).toBeGreaterThanOrEqual(before + 60000);
-    expect(result.resetAt).toBeLessThanOrEqual(after + 60000);
-    rl.destroy();
-  });
-});
+// Rate limits are DB-backed: see apps/api/src/security/rate-limit.db.test.ts
+// and rate-limit-fail-open.test.ts.
