@@ -103,7 +103,7 @@ MCP 的 group 就是用户实际同意的东西（OAuth 授权带 `mcp:<group>` 
 - **非全局工具必须恰好属于一个 feature point**（注册表在
   [apps/api/src/platform/feature-points.ts](../../../apps/api/src/platform/feature-points.ts)，
   用户面是 Administration → Users → 权限弹框）。不属于任何点的工具没人分配得到
-- 无人值守上下文（定时任务 / workflow 节点 / headless 子会话）另有 fail-closed 白名单与
+- 无人值守上下文（定时任务 / headless 子会话）另有 fail-closed 白名单与
   denylist，见 `agent-runtime/tool-resolution.ts`；需要真人按确认的工具不要指望在那里可用
 
 ## 步骤 5：工具描述与错误文案的写法

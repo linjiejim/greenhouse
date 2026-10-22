@@ -22,15 +22,12 @@ import { AlertTriangle, GitBranch, Image } from '../../lib/icons';
 import { Skeleton, Spinner } from '../ui';
 import { useT } from '../../lib/i18n';
 import { AskUserCard, type AskUserData } from '../chat/ask-user-card';
-import { WorkflowCard } from '../workflow/workflow-card';
-import type { WorkflowPlanArtifact } from '@greenhouse/types/workflow';
 import { SchemaPlanCard, type TablesSchemaPlanArtifact } from '../tables/schema-plan-card';
 import { TaskCaptureCard, type TaskCaptureData } from '../chat/task-capture-card';
 import { FileAttachmentCard } from '../files/file-attachment-card';
 import { downloadAuthenticatedFile } from '../../lib/file-download';
 import { toast } from '../ui';
 import { MediaPreviewDialog } from '../media-preview-dialog';
-import { useAuthStore } from '../../stores';
 
 // ─── Types ───────────────────────────────────────────────
 
@@ -111,12 +108,8 @@ export function isArtifactCall(call: { name: string; output?: unknown }): boolea
       // failed/timed-out child, so its error is openable). Pre-creation
       // rejections (depth/confirm/profile — error but no child) fall to trace.
       return !out || !!out.child_session_id;
-    case 'workflow_plan':
-      // Only a persisted plan renders the confirm/run card; validation errors
-      // fall back to the trace block so the planner's retry stays readable.
-      return out?.type === 'workflow_plan';
     case 'tables_schema_plan':
-      // Same rule again: only a validated plan becomes the Confirm card. A
+      // Only a validated plan becomes the Confirm card. A
       // rejected draft (bad ref, missing builder role) stays a trace row so the
       // model's next attempt reads as one conversation, not a broken card.
       return out?.type === 'tables_schema_plan';
@@ -160,7 +153,7 @@ export function partitionCalls<T extends { name: string; output?: unknown }>(
 
 /** Confirm-gate cards the message text introduces — reading order is prose first,
  *  then the card with its action button. */
-const BELOW_PROSE_TOOLS = new Set(['workflow_plan', 'tables_schema_plan', 'task_capture']);
+const BELOW_PROSE_TOOLS = new Set(['tables_schema_plan', 'task_capture']);
 
 /** Split body artifacts by where they sit relative to the prose. */
 export function splitArtifactsByPlacement<T extends { name: string }>(calls: T[]): { above: T[]; below: T[] } {
@@ -185,10 +178,8 @@ export function BodyArtifacts({
   /** Which side of the prose this group sits on — controls the outer margin only. */
   position?: 'above' | 'below';
 }) {
-  const canUseWorkflow = useAuthStore((state) => state.currentUser?.role === 'super');
   const artifacts = calls.filter((c) => {
     if (!isArtifactCall(c)) return false;
-    if (c.name === 'workflow_plan' && !canUseWorkflow) return false;
     // Defer the interactive ask_user form until the turn is committed (see `streaming`).
     if (ctx.streaming && (c.output as Record<string, unknown> | undefined)?.type === 'ask_user') {
       return false;
@@ -264,9 +255,6 @@ function BodyArtifactItem({ call, ctx }: { call: ArtifactCall; ctx: ArtifactCtx 
 
     case 'spawn_session':
       return <SpawnSessionCard call={call} ctx={ctx} />;
-
-    case 'workflow_plan':
-      return out?.type === 'workflow_plan' ? <WorkflowCard artifact={out as unknown as WorkflowPlanArtifact} /> : null;
 
     case 'tables_schema_plan':
       return out?.type === 'tables_schema_plan' ? (

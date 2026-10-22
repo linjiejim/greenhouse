@@ -117,16 +117,15 @@ export const DEFAULT_PROFILE_ID = 'sprouty';
 const LEGACY_TEAM_PROFILE_IDS = new Set([
   // Collapsed into the single `sprouty` preset (2026-08-01). quick/deep/K3
   // differed only by model; `sprouty-workflows` only by model + a planner
-  // prompt whose content now lives in the workflow_plan tool description.
+  // prompt (workflows themselves were retired in v1.4).
   'sprouty-quick',
   'sprouty-deep',
   'sprouty-k3',
   'sprouty-workflows',
   'workflow-planner',
   'sprouty-agents',
-  // Retired 2026-08-01: missions are dispatched from any conversation now.
-  // Historical sessions keep this id; their `channel='mission'` is what still
-  // drives their behavior, not the profile.
+  // Retired 2026-08-01; Missions themselves were retired in v1.4. Historical
+  // sessions keep this id; their `channel='mission'` makes them read-only.
   'sprouty-mission',
   // Retired in v1.4 with the evaluation system; old eval sessions/automations
   // still carry it.

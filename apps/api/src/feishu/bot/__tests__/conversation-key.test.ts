@@ -40,7 +40,7 @@ describe('feishuConversationKey', () => {
 
 describe('filterFeishuToolIds', () => {
   it('挡掉编排类工具 —— IM 里没有确认卡那道减速带', () => {
-    const out = filterFeishuToolIds(['knowledge_query', 'tables_schema_plan', 'crm_query', 'workflow_plan']);
+    const out = filterFeishuToolIds(['knowledge_query', 'tables_schema_plan', 'crm_query', 'task_capture']);
     expect(out).toEqual(['knowledge_query', 'crm_query']);
   });
 
@@ -55,7 +55,6 @@ describe('filterFeishuToolIds', () => {
       'spawn_session',
       'tables_schema_plan',
       'task_capture',
-      'workflow_plan',
     ]);
   });
 });

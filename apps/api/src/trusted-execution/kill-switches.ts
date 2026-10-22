@@ -2,17 +2,16 @@
  * Deployment-level kill switches for the trusted-execution convergence layer.
  *
  * These are deliberately separate from per-user feature flags: operators can
- * stop a derived read model or automation loop without changing user grants or
- * taking the Workflow domain engine offline. Every switch defaults
- * on for backward-compatible rollout, while any non-empty unrecognised value is
- * treated as off (fail closed) and reported by the health endpoint.
+ * stop a derived read model or automation loop without changing user grants.
+ * Every switch defaults on for backward-compatible rollout, while any non-empty
+ * unrecognised value is treated as off (fail closed) and reported by the health
+ * endpoint.
  */
 
 import type { MiddlewareHandler } from 'hono';
 import type { AppEnv } from '../app-env.js';
 
 export const TRUSTED_EXECUTION_SWITCH_ENV = {
-  workflowAdapter: 'RUNTIME_WORKFLOW_ADAPTER_ENABLED',
   chatAdapter: 'RUNTIME_CHAT_ADAPTER_ENABLED',
   runtimeWorker: 'RUNTIME_WORKER_ENABLED',
   automationDriver: 'RUNTIME_AUTOMATION_DRIVER_ENABLED',
@@ -24,7 +23,6 @@ export const TRUSTED_EXECUTION_SWITCH_ENV = {
 } as const;
 
 export interface TrustedExecutionSwitches {
-  workflowAdapter: boolean;
   chatAdapter: boolean;
   runtimeWorker: boolean;
   automationDriver: boolean;
@@ -38,7 +36,6 @@ export interface TrustedExecutionSwitches {
 }
 
 export interface TrustedExecutionBootPlan {
-  runtimeReconciler: boolean;
   runtimeWorker: boolean;
   chatAdapter: boolean;
   automationDriver: boolean;
@@ -66,7 +63,6 @@ function defaultOnSwitch(env: Environment, name: string, invalidEnv: string[]): 
 export function resolveTrustedExecutionSwitches(env: Environment = process.env): TrustedExecutionSwitches {
   const invalidEnv: string[] = [];
   return {
-    workflowAdapter: defaultOnSwitch(env, TRUSTED_EXECUTION_SWITCH_ENV.workflowAdapter, invalidEnv),
     chatAdapter: defaultOnSwitch(env, TRUSTED_EXECUTION_SWITCH_ENV.chatAdapter, invalidEnv),
     runtimeWorker: defaultOnSwitch(env, TRUSTED_EXECUTION_SWITCH_ENV.runtimeWorker, invalidEnv),
     automationDriver: defaultOnSwitch(env, TRUSTED_EXECUTION_SWITCH_ENV.automationDriver, invalidEnv),
@@ -82,7 +78,6 @@ export function resolveTrustedExecutionSwitches(env: Environment = process.env):
 /** Effective services/surfaces after their explicit dependencies are applied. */
 export function trustedExecutionBootPlan(switches: TrustedExecutionSwitches): TrustedExecutionBootPlan {
   return {
-    runtimeReconciler: switches.workflowAdapter,
     runtimeWorker: switches.runtimeWorker,
     chatAdapter: switches.chatAdapter,
     automationDriver: switches.runtimeWorker && switches.automationDriver,
@@ -95,11 +90,10 @@ export function trustedExecutionBootPlan(switches: TrustedExecutionSwitches): Tr
 }
 
 export function runtimeAdapterEnabled(
-  kind: 'workflow' | 'chat',
+  kind: 'chat',
   switches: TrustedExecutionSwitches = resolveTrustedExecutionSwitches(),
 ): boolean {
-  if (kind === 'workflow') return switches.workflowAdapter;
-  return switches.chatAdapter;
+  return kind === 'chat' && switches.chatAdapter;
 }
 
 export function runtimeDriverEnabled(
@@ -142,7 +136,6 @@ export function trustedExecutionHealthView(switches: TrustedExecutionSwitches) {
   const effective = trustedExecutionBootPlan(switches);
   return {
     adapters: {
-      workflow: switches.workflowAdapter,
       chat: effective.chatAdapter,
     },
     services: {

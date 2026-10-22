@@ -1,5 +1,5 @@
 /**
- * Runs of kinds retired in v1.4 (Eval, Mission) can never be driven again, so
+ * Runs of kinds retired in v1.4 (Eval, Mission, Workflow) can never be driven again, so
  * the boot settlement closes any that were still active — with their open steps
  * and pending interrupts — while leaving live kinds untouched.
  */
@@ -77,6 +77,14 @@ describe('settleRetiredRuntimeRuns', () => {
       source_id: unique('eval'),
       input: {},
     });
+    const workflowRun = await db.runtime.createRun({
+      kind: 'workflow',
+      owner_user_id: user.id,
+      initiated_by_user_id: user.id,
+      source_kind: 'workflow_run',
+      source_id: unique('workflow'),
+      input: {},
+    });
     const live = await db.runtime.createRun({
       kind: 'subagent',
       owner_user_id: user.id,
@@ -86,7 +94,7 @@ describe('settleRetiredRuntimeRuns', () => {
       input: {},
     });
 
-    expect(await settleRetiredRuntimeRuns(db)).toBeGreaterThanOrEqual(2);
+    expect(await settleRetiredRuntimeRuns(db)).toBeGreaterThanOrEqual(3);
 
     const settledMission = await db.runtime.getRun(mission.id);
     expect(settledMission).toMatchObject({ status: 'canceled', error_code: 'runtime_kind_retired' });
@@ -94,6 +102,7 @@ describe('settleRetiredRuntimeRuns', () => {
     expect((await db.runtime.listSteps(mission.id)).find((s) => s.id === step.id)?.status).toBe('canceled');
     expect((await db.runtime.getInterrupt(interrupt.id))?.status).toBe('canceled');
     expect((await db.runtime.getRun(evalRun.id))?.status).toBe('canceled');
+    expect((await db.runtime.getRun(workflowRun.id))?.status).toBe('canceled');
     expect((await db.runtime.getRun(live.id))?.status).toBe('queued');
 
     // Old runs never page their owner on the way out.

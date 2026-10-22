@@ -20,9 +20,9 @@
  *   • email_mutation      — the only irreversible outbound channel, and all of
  *                           its safety is a human reading the draft card.
  *   • automation_mutation — an automation that creates automations.
- *   • skill_mutation      — skills are materialised into the Mission execution
- *                           surface; writing one rewrites every agent's behaviour.
- *   • workflow_plan / mission_dispatch / tables_schema_plan / task_capture,
+ *   • skill_mutation      — skills are shared org-wide; writing one rewrites
+ *                           every agent that installs it.
+ *   • tables_schema_plan / task_capture,
  *     ask_user            — they only produce a card nobody will press, or a
  *                           question nobody will answer.
  *

@@ -13,7 +13,7 @@
 - `tags`、`meta`、`config`、`scopes` 等 JSON 数据目前以 `TEXT NOT NULL` 保存，默认值为 `[]` 或 `{}`。
 - `table_records.values/computed_values` 是动态字段检索的真实数据库路径查询需求，按列例外使用 `JSONB NOT NULL DEFAULT '{}'`；Tables 的 field/view/widget 配置使用 JSON 文本，Form/Automation 配置使用类型化 JSONB。
 - 所有时间点使用 `TIMESTAMPTZ`；仅业务日期（如 `due_date`、`deal_date`）使用 `TEXT` 保存 `YYYY-MM-DD`。
-- `messages.seq` 由写入事务锁定对应 `sessions` 行后分配，并以 UK `(session_id, seq)` 兜底；游标分页因此不会因跨端并发写入出现重复序号或漏读。普通 assistant 写入还会在同一锁内比较生成前的 tail `id + content`（流式聊天与 Scheduler/workflow/subagent headless runner 一致）；用户消息编辑与后续 turn 截断同样是单事务，避免持久化基于旧 prompt 的回复。
+- `messages.seq` 由写入事务锁定对应 `sessions` 行后分配，并以 UK `(session_id, seq)` 兜底；游标分页因此不会因跨端并发写入出现重复序号或漏读。普通 assistant 写入还会在同一锁内比较生成前的 tail `id + content`（流式聊天与 Scheduler/subagent headless runner 一致）；用户消息编辑与后续 turn 截断同样是单事务，避免持久化基于旧 prompt 的回复。
 - Runtime Kernel 的 Run/Step/ToolCall/Artifact/Interrupt/Event/Outbox 保存完整参数与结果，生产 Service 不提供删除方法，也没有 TTL、截断或定时清理；显式删除 Runtime 根 Run（仅测试 fixture/未来明确的用户删除语义）才按域内 FK 级联。
 - Usage Budget 的账户、预留和账本都永久保留，不设自动过期删除；TTL 只结束“占用中”状态，结果未知的 stale 预留按估算量记入 spent，只有明确未开始 provider I/O 的调用才可 release。
 
@@ -58,22 +58,11 @@
 | `scheduled_tasks` | PK `id` | 用户定时 Agent 任务；profile 默认 `team`，保存 cron、时区、执行状态与计数；`notify_webhook`（可选企微/飞书**群**机器人地址，host 白名单二选一、按 host 分派 payload 格式）、`notify_email`（布尔，发到 owner 账号邮箱）、`notify_wecom`（布尔，以企微应用消息发给 owner 本人，收件人取自其 `user_provider_tokens(provider='wecom')` 绑定）与 `notify_feishu`（布尔，以飞书卡片 DM 发给 owner 本人，收件人取自 `provider='feishu'` 绑定，迁移 0064）四条送达通道，均由 scheduler（非 Agent）在跑完后推送摘要——布尔通道**没有任何可供瞄准的收件人字段**，这正是它们免确认的原因；`unattended_tools`（JSON 字符串数组，迁移 0065）是 owner 逐任务勾选的额外工具，目录在 `@greenhouse/types/automation-tools`——它是**过滤器不是授权**（运行时取 `勾选 ∩ 目录 ∩ owner 当前 effectiveTools`），且只有用户自己的控制台请求能写，`automation_mutation` 一律拒绝 |
 | `scheduled_task_runtime_occurrences` | PK `runtime_run_id`；task/owner 索引 | Automation Runtime 终态的永久幂等投影水位；冻结 task/owner/status/version/planned time，保证成功计数只增一次、旧 occurrence 不覆盖新状态；外部通知按渠道由 `notification_delivery_attempts` 独立持久化与重试 |
 
-### Workflow 图编排
-
-多 Agent 任务图引擎（见 [spec](../../../docs/specs/20260728-workflow-graph-engine.md)）；行状态即引擎 checkpoint，boot sweep 据此恢复。
-
-| 表 | 主键 / 唯一约束 | 关键字段与用途 |
-|---|---|---|
-| `workflows` | PK `id`；索引 `user_id` | 图定义；`graph` 为 WorkflowGraph JSON，`version` 每次结构修订 +1，`status=draft/confirmed/archived`，`created_from_session_id` 记录起草会话 |
-| `workflow_runs` | PK `id`(uuid)；索引 workflow/user/status | 一次执行；冻结 `workflow_version`、`graph`（确认时的图快照，定义后续被改写也不影响已跑的 run；仅 0035 之前的行为 null）与 `budget` JSON，含 `task_input`、进度计数（total/completed/tokens_used）、summary/error 与起止时间 |
-| `workflow_node_runs` | PK `id`；索引 `run_id`、`(run_id, node_id)` | 节点 × 尝试；`attempt` 递增记录回退/重试，`session_id` 指向 channel='workflow' 执行会话，保存解析后 inputs、结构化 outputs、checks_result 与 token/耗时 |
-| `workflow_gates` | PK `id`；索引 run/status | 持久化人工门；`kind=confirm_plan/before_node/after_node/escalation`，`node_id` 对 run 级门为空，决议记录 decided_by/note/decided_at |
-
 ### 统一 Runtime Kernel
 
-Chat、Automation、Workflow 与 Subagent 共用的执行控制面（`mission` / `eval` 只剩 v1.4 前的历史 Run）（见 [平台收敛 spec](../../../docs/specs/20260812-trusted-execution-platform-convergence.md)）。Run/Step 的竞争迁移走 version CAS，worker 领取走 `FOR UPDATE SKIP LOCKED` + lease；heartbeat、状态迁移、永久 Event 与至少一次 Outbox 在同一事务提交。跨领域 Run command 的 `FOR UPDATE` 锁覆盖来源 side effect，再 CAS 推进 Runtime 并落 Event/Outbox，阻止同版本 pause/cancel 双执行。stale Step 只有 driver 提供安全 checkpoint 后才会把旧 attempt 终态化并排入新的 attempt，避免把不确定外部写静默重放。
+Chat、Automation 与 Subagent 共用的执行控制面（`workflow` / `mission` / `eval` 只剩 v1.4 前的历史 Run）（见 [平台收敛 spec](../../../docs/specs/20260812-trusted-execution-platform-convergence.md)）。Run/Step 的竞争迁移走 version CAS，worker 领取走 `FOR UPDATE SKIP LOCKED` + lease；heartbeat、状态迁移、永久 Event 与至少一次 Outbox 在同一事务提交。跨领域 Run command 的 `FOR UPDATE` 锁覆盖来源 side effect，再 CAS 推进 Runtime 并落 Event/Outbox，阻止同版本 pause/cancel 双执行。stale Step 只有 driver 提供安全 checkpoint 后才会把旧 attempt 终态化并排入新的 attempt，避免把不确定外部写静默重放。
 
-Subagent 以 child session 作为唯一 `source_id`，完整请求保存在 Run/Step input；`parent_run_id/root_run_id` 串起 Chat、Automation、Workflow 和嵌套 Subagent。`runtime.admitSubagent()` 以稳定 tool-call identity 派生的 child/message id 为幂等边界，在同一事务写 child session、seq=0 user message、Run 与 Step，失败整笔回滚，因此不需要 boot orphan reconciler。每父 active async child admission 由内部 `createRun` advisory lock + JSON input 的 parent/mode 计数原子裁决，无进程内计数事实。整轮 Agent turn 的 `max_attempts=1`：claim-only 崩溃可在 provider/工具边界前释放 Step lease恢复，`running` stale 终态失败且不自动重放。
+Subagent 以 child session 作为唯一 `source_id`，完整请求保存在 Run/Step input；`parent_run_id/root_run_id` 串起 Chat、Automation 和嵌套 Subagent。`runtime.admitSubagent()` 以稳定 tool-call identity 派生的 child/message id 为幂等边界，在同一事务写 child session、seq=0 user message、Run 与 Step，失败整笔回滚，因此不需要 boot orphan reconciler。每父 active async child admission 由内部 `createRun` advisory lock + JSON input 的 parent/mode 计数原子裁决，无进程内计数事实。整轮 Agent turn 的 `max_attempts=1`：claim-only 崩溃可在 provider/工具边界前释放 Step lease恢复，`running` stale 终态失败且不自动重放。
 
 | 表 | 主键 / 唯一约束 | 关键字段与用途 |
 |---|---|---|
@@ -200,6 +189,10 @@ Subagent 以 child session 作为唯一 `source_id`，完整请求保存在 Run/
 | `agent_artifacts` | Missions | 交付产物登记（字节在上传存储）；FK `run_id → agent_runs` CASCADE |
 | `agent_run_approvals` | Missions | 沙箱写工具审批租约；FK `run_id → agent_runs`、`user_id → users` CASCADE，`decided_by → users` SET NULL |
 | `agent_run_outbox` | Missions | 终态会话回写；PK/FK `run_id → agent_runs` CASCADE |
+| `workflows` | Workflows | 图定义；FK `user_id → users` CASCADE；逻辑关联起草会话 |
+| `workflow_runs` | Workflows | 一次执行（冻结图快照）；FK `workflow_id → workflows`、`user_id → users` CASCADE |
+| `workflow_node_runs` | Workflows | 节点 × 尝试；FK `run_id → workflow_runs` CASCADE；逻辑关联 channel='workflow' 节点会话 |
+| `workflow_gates` | Workflows | 人工门；FK `run_id → workflow_runs` CASCADE |
 | `api_clients` | LLM 中转 | 中转 / 旧 A2A key（只存 hash）；FK `user_id → users` CASCADE。`api_audit_log` 是活表，与它只有逻辑 `app_id` 关联 |
 
 退役列：`custom_profile_versions.eval_refs`（不再写入，默认 `[]`）。
@@ -229,11 +222,6 @@ Subagent 以 child session 作为唯一 `source_id`，完整请求保存在 Run/
 | `session_group_members.session_id` | `sessions.id` | CASCADE |
 | `llm_calls.session_id` | `sessions.id` | CASCADE |
 | `scheduled_tasks.user_id` | `users.id` | CASCADE |
-| `workflows.user_id` | `users.id` | CASCADE |
-| `workflow_runs.workflow_id` | `workflows.id` | CASCADE |
-| `workflow_runs.user_id` | `users.id` | CASCADE |
-| `workflow_node_runs.run_id` | `workflow_runs.id` | CASCADE |
-| `workflow_gates.run_id` | `workflow_runs.id` | CASCADE |
 | `runtime_runs.parent_run_id` | `runtime_runs.id` | CASCADE |
 | `runtime_steps.run_id` / `.parent_step_id` | `runtime_runs.id` / `runtime_steps.id` | CASCADE / SET NULL |
 | `runtime_tool_calls.run_id` / `.step_id` | `runtime_runs.id` / `runtime_steps.id` | CASCADE / SET NULL |
@@ -321,9 +309,6 @@ Subagent 以 child session 作为唯一 `source_id`，完整请求保存在 Run/
 | `user_prompts.artifact_action_id` | `chat_artifact_receipts.id` | 聊天固化 Task 的 exactly-once 恢复键；唯一但无 FK，Task 比会话回执活得久 |
 | `user_memories.superseded_by` | `user_memories.id` | FK SET NULL（自引用）——consolidation 合并后指向取代者 |
 | `tool_frictions.sample_sessions` | `sessions.id` | JSON 数组，最多 5 个可回溯会话（运维遥测，刻意无 FK） |
-| `workflows.created_from_session_id` | `sessions.id` | 起草计划的聊天会话；会话删除不影响图定义 |
-| `workflow_node_runs.session_id` | `sessions.id` | 节点执行会话（channel='workflow'）；会话删除保留运行记录 |
-| `workflow_gates.decided_by` | `users.id` | 门决议人审计字段 |
 | `runtime_runs.owner_user_id` / `.initiated_by_user_id` | `users.id` | 执行归属与发起人；无 FK，永久运行历史不随账号删除 |
 | `runtime_runs.session_id` | `sessions.id` | 可选会话来源；删会话不删除 Runtime 时间线 |
 | `runtime_runs.root_run_id` | `runtime_runs.id` | 根谱系查询；父子实际删除所有权由 `parent_run_id` FK CASCADE 表达 |

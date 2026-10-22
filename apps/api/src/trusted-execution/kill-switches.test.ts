@@ -14,7 +14,6 @@ describe('trusted-execution kill switches', () => {
   it('defaults every convergence capability on', () => {
     const switches = resolveTrustedExecutionSwitches({});
     expect(switches).toEqual({
-      workflowAdapter: true,
       chatAdapter: true,
       runtimeWorker: true,
       automationDriver: true,
@@ -25,7 +24,6 @@ describe('trusted-execution kill switches', () => {
       agentGovernance: true,
       invalidEnv: [],
     });
-    expect(runtimeAdapterEnabled('workflow', switches)).toBe(true);
     expect(runtimeAdapterEnabled('chat', switches)).toBe(true);
     expect(runtimeDriverEnabled('automation', switches)).toBe(true);
     expect(runtimeDriverEnabled('subagent', switches)).toBe(true);
@@ -33,7 +31,6 @@ describe('trusted-execution kill switches', () => {
 
   it('accepts explicit booleans and fails closed on a typo', () => {
     const switches = resolveTrustedExecutionSwitches({
-      RUNTIME_WORKFLOW_ADAPTER_ENABLED: 'off',
       RUNTIME_CHAT_ADAPTER_ENABLED: 'yes',
       RUNTIME_WORKER_ENABLED: 'FALSE',
       RUNTIME_AUTOMATION_DRIVER_ENABLED: 'no',
@@ -44,7 +41,6 @@ describe('trusted-execution kill switches', () => {
       AGENT_GOVERNANCE_ENABLED: 'no',
     });
     expect(switches).toMatchObject({
-      workflowAdapter: false,
       chatAdapter: true,
       runtimeWorker: false,
       automationDriver: false,
@@ -59,7 +55,6 @@ describe('trusted-execution kill switches', () => {
 
   it('derives boot dependencies without widening configured switches', () => {
     const switches = resolveTrustedExecutionSwitches({
-      RUNTIME_WORKFLOW_ADAPTER_ENABLED: '0',
       RUNTIME_CHAT_ADAPTER_ENABLED: '0',
       RUNTIME_WORKER_ENABLED: '0',
       RUNTIME_AUTOMATION_DRIVER_ENABLED: '1',
@@ -69,7 +64,6 @@ describe('trusted-execution kill switches', () => {
       RUNTIME_APPROVAL_INBOX_ENABLED: '1',
     });
     expect(trustedExecutionBootPlan(switches)).toEqual({
-      runtimeReconciler: false,
       runtimeWorker: false,
       chatAdapter: false,
       automationDriver: false,
@@ -80,7 +74,7 @@ describe('trusted-execution kill switches', () => {
       agentGovernance: true,
     });
     expect(trustedExecutionHealthView(switches)).toEqual({
-      adapters: { workflow: false, chat: false },
+      adapters: { chat: false },
       services: {
         runtime_worker: false,
         automation_driver: false,

@@ -2,8 +2,8 @@
 # A team assistant: Q&A over the team and personal knowledge bases, projects,
 # deep web research and long-form writing. Model choice is a per-turn setting
 # beside the composer, not part of the agent's identity — `model.id` below is
-# only the default that headless paths (scheduled tasks, eval runs, workflow
-# nodes, spawned sub-sessions) fall back to.
+# only the default that headless paths (scheduled tasks, spawned sub-sessions)
+# fall back to.
 #
 # Tools that are assembled per user permission (knowledge_mutation, tables_*,
 # memory, …) carry their own usage rules in their descriptions (shipped with

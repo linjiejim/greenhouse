@@ -55,9 +55,8 @@
   `model_id` 不可达（已从目录下线或 key 未配）时，`resolveProfileAsync` 回落 base preset 的模型。
 - **面向用户的文案可 i18n**（`name`/`description`）：写纯字符串或 `{ zh, en }`
   映射，源语言 `zh`，写错 locale key 或给空串**直接抛错**导致 profile 加载失败。`system_prompt` 不做 i18n。
-- **`sprouty-mission` / `sprouty-workflows` 已退役**（2026-08-01）——`workflow_plan` 对所有内部会话装配，
-  「模式预设」因此没有存在理由；planner 方法论已折进 `workflow_plan` 的 description（随 function
-  definition 下发，覆盖所有装配面）。Missions 整体在 v1.4 删除：存量 `channel='mission'` 会话只读，
+- **`sprouty-mission` / `sprouty-workflows` 已退役**（2026-08-01）——「模式预设」没有存在理由。
+  Missions 与 Workflows 整体在 v1.4 删除：存量 `channel='mission'` / `'workflow'` 会话只读，
   `/api/chat` 对它们返回 409。
 - **旧 id 只映射、不迁移**（`normalizeProfileId()`）：`team`/`default`/`researcher`/`writer`/`project-assistant`/
   `cs-quality`/`ops-analyst`/`cc-analyzer`/`crm`/`workflow-planner`/`sprouty-agents`/`sprouty-quick`/

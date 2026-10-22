@@ -162,8 +162,8 @@ function MessageBubbleImpl(props: MessageProps) {
   // Normalize pipeline steps into the shared ToolCall shape, then split into
   // trace-block rows vs. body artifacts (the ask_user form, page-update
   // diffs, generated images). Generated-image dedup against embedded markdown lives
-  // in <BodyArtifacts> (it receives `content`). Confirm-gate cards (workflow
-  // plan, schema plan, task capture) render below the prose that introduces them.
+  // in <BodyArtifacts> (it receives `content`). Confirm-gate cards (schema plan,
+  // task capture) render below the prose that introduces them.
   const {
     trace: traceCalls,
     artifactsAbove,

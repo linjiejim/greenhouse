@@ -1,7 +1,6 @@
-import type { RuntimeInterrupt, RuntimeUserAction } from '@greenhouse/types/runtime';
+import type { RuntimeInterrupt } from '@greenhouse/types/runtime';
 import { DetailSection } from '../../components/detail';
-import { Button, Card, Tag } from '../../components/ui';
-import { Check, X } from '../../lib/icons';
+import { Card, Tag } from '../../components/ui';
 import { useT, type TranslationKey } from '../../lib/i18n';
 import { formatDate } from '../../lib/utils';
 import { RuntimePayloadPanel } from './payload-panel';
@@ -18,28 +17,18 @@ const INTERRUPT_KEYS: Record<RuntimeInterrupt['kind'], TranslationKey> = {
   manual_pause: 'taskCenter.interrupt.manualPause',
 };
 
-export function RuntimeInterruptsSection({
-  interrupts,
-  actions,
-  busyId,
-  onDecision,
-}: {
-  interrupts: readonly RuntimeInterrupt[];
-  actions: readonly RuntimeUserAction[];
-  busyId: string | null;
-  onDecision: (interrupt: RuntimeInterrupt, decision: 'approve' | 'reject') => void;
-}) {
+/**
+ * Read-only: no source domain has an interrupt decision driver since Workflows
+ * (gates) and Missions (approvals) were retired in v1.4, so historical
+ * interrupts are shown, never decided here.
+ */
+export function RuntimeInterruptsSection({ interrupts }: { interrupts: readonly RuntimeInterrupt[] }) {
   const t = useT();
   if (interrupts.length === 0) return null;
-  const canApprove = actions.includes('approve');
-  const canReject = actions.includes('reject');
   return (
     <DetailSection title={t('taskCenter.interrupts')} className="mt-6">
       <div className="space-y-3">
         {interrupts.map((interrupt) => {
-          const decisionSupported =
-            interrupt.status === 'pending' &&
-            (interrupt.kind === 'mutation_approval' || interrupt.kind === 'workflow_gate');
           return (
             <Card key={interrupt.id} className="p-3 sm:p-4">
               <div className="flex flex-wrap items-start gap-2">
@@ -55,31 +44,6 @@ export function RuntimeInterruptsSection({
                     {t('taskCenter.requestedAt', { time: formatDate(interrupt.created_at) })}
                   </p>
                 </div>
-                {decisionSupported && (canApprove || canReject) && (
-                  <div className="flex flex-wrap gap-2">
-                    {canReject && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        disabled={busyId === interrupt.id}
-                        onClick={() => onDecision(interrupt, 'reject')}
-                      >
-                        <X size={13} className="mr-1" aria-hidden="true" />
-                        {t('taskCenter.reject')}
-                      </Button>
-                    )}
-                    {canApprove && (
-                      <Button
-                        size="sm"
-                        disabled={busyId === interrupt.id}
-                        onClick={() => onDecision(interrupt, 'approve')}
-                      >
-                        <Check size={13} className="mr-1" aria-hidden="true" />
-                        {t('taskCenter.approve')}
-                      </Button>
-                    )}
-                  </div>
-                )}
               </div>
               <div className="mt-3 space-y-2">
                 <RuntimePayloadPanel title={t('taskCenter.requestPayload')} value={interrupt.payload} open />

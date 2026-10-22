@@ -10,7 +10,7 @@ import { logger } from '@greenhouse/utils/logger';
 import type { AgentProfile } from './profiles/profile.js';
 import { enrichSystemPrompt, registerKnownTools } from './profiles/profile.js';
 import { getGlobalToolIds, getAllToolIds, STATIC_TOOL_MODULES } from './tools/registry.js';
-import { FEATURE_POINTS, WORKFLOWS_SUPER_ONLY_TOOL_IDS } from './platform/feature-points.js';
+import { FEATURE_POINTS } from './platform/feature-points.js';
 import { resolveUserFeatures } from './auth/features.js';
 import { getDb } from '@greenhouse/db';
 
@@ -63,12 +63,7 @@ export async function resolveUserTools(userId: string, userRole: string): Promis
       resolveUserFeatures(userId, 'team'),
     ]);
     const flagOwnedTools = FEATURE_POINTS.flatMap((point) => (point.flag && features[point.flag] ? point.toolIds : []));
-    const superOnlyTools = new Set(WORKFLOWS_SUPER_ONLY_TOOL_IDS);
-    // Workflow is temporarily in a super-only rollout. Filter explicit legacy
-    // assignments too, so an old user_tools row cannot bypass the role gate.
-    allowedTools = [...new Set([...globalToolIds, ...assignedTools, ...flagOwnedTools])].filter(
-      (toolId) => !superOnlyTools.has(toolId),
-    );
+    allowedTools = [...new Set([...globalToolIds, ...assignedTools, ...flagOwnedTools])];
   } else {
     allowedTools = [];
   }

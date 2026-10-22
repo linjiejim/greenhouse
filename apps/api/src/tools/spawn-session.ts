@@ -58,7 +58,7 @@ export interface SpawnSessionContext {
   /** The spawning session. Required — spawn_session is session-scoped. */
   parentSessionId: string;
   parentProfileId?: string | null;
-  /** Current durable execution envelope, when Chat/Automation/Workflow has one. */
+  /** Current durable execution envelope, when Chat/Automation has one. */
   parentRuntimeRunId?: string | null;
   workspaceId?: string | null;
   /**

@@ -63,7 +63,7 @@ interface ChatInputProps {
   maxImages?: number;
   /** Slot rendered at the start of the left toolbar (thinking mode, etc.) */
   topSlot?: React.ReactNode;
-  /** Slot rendered ABOVE the composer box (workflow run dock, etc.) */
+  /** Slot rendered ABOVE the composer box (e.g. the shared-session banner) */
   aboveSlot?: React.ReactNode;
   /** Slot rendered after the attachment control in the left toolbar */
   feedbackSlot?: React.ReactNode;
@@ -325,7 +325,7 @@ export function ChatInput({
   return (
     <div className="mobile-keyboard-lift px-3 md:px-4 pt-2 pb-[max(0.75rem,env(safe-area-inset-bottom))] md:pb-4 bg-gradient-to-t from-surface-canvas via-surface-canvas/95 to-surface-canvas/0 flex-shrink-0">
       <div ref={containerRef} className="relative mx-auto w-full max-w-5xl">
-        {/* Above-composer slot (workflow run dock) */}
+        {/* Above-composer slot */}
         {aboveSlot}
 
         {/* Annotation list */}

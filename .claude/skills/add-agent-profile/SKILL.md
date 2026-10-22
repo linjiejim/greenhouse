@@ -86,7 +86,7 @@ system_prompt: |
 - **YAML 不写 `options`**：`temperature` / `reasoning_effort` 等写
   [config/models.yaml](../../../apps/api/src/config/models.yaml)，由 `resolveModelConfig()` 合并
 - **`model.id` 只是起点不是承诺**：模型是每轮的选择，落库进 `messages.model`；
-  这个默认值服务的是 headless 路径（定时任务、workflow 节点、子会话）
+  这个默认值服务的是 headless 路径（定时任务、子会话）
 - **没有 `extends`**——它只为"同一个 Agent、换个模型"而生，已随四预设一并删除
 - **`rich_output` 的块格式说明只有一份**：`RICH_OUTPUT_GUIDE`（`packages/utils/src/prompts.ts`），
   由 `enrichSystemPrompt()` 追加，不要在 YAML 里另写

@@ -1,7 +1,7 @@
 import type { RuntimeInterrupt, RuntimeRun, RuntimeToolCall } from '@greenhouse/types/runtime';
 import { createElement, type ReactNode } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { I18nProvider } from '../../lib/i18n';
 import { RuntimeInterruptsSection } from './interrupts-section';
 import { RuntimeToolCallsSection } from './runtime-detail-sections';
@@ -76,25 +76,12 @@ describe('Execution Center UI', () => {
     expect(html).toContain('title="Connection: Live"');
   });
 
-  it('shows approval actions only when the server capability list includes them', () => {
-    const withoutActions = render(
-      <RuntimeInterruptsSection interrupts={[INTERRUPT]} actions={[]} busyId={null} onDecision={vi.fn()} />,
-    );
-    expect(withoutActions).not.toContain('>Approve<');
-    expect(withoutActions).not.toContain('>Reject<');
-
-    const withActions = render(
-      <RuntimeInterruptsSection
-        interrupts={[INTERRUPT]}
-        actions={['approve', 'reject']}
-        busyId={null}
-        onDecision={vi.fn()}
-      />,
-    );
-    expect(withActions).toContain('>Approve<');
-    expect(withActions).toContain('>Reject<');
-    expect(withActions).toContain('ceo@example.com');
-    expect(withActions).toContain('abc123');
+  it('shows historical interrupts read-only, with their full payload and no decision buttons', () => {
+    const html = render(<RuntimeInterruptsSection interrupts={[INTERRUPT]} />);
+    expect(html).not.toContain('>Approve<');
+    expect(html).not.toContain('>Reject<');
+    expect(html).toContain('ceo@example.com');
+    expect(html).toContain('abc123');
   });
 
   it('keeps attention cards focused on the execution title instead of raw payload content', () => {

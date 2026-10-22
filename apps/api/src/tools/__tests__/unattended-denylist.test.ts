@@ -2,7 +2,7 @@
  * Unattended-context denylist.
  *
  * `automation_mutation` schedules unattended agent runs. Handing it to a context
- * that is ITSELF unattended — a scheduled-task run or a workflow node — removes
+ * that is ITSELF unattended — a scheduled-task run or a spawned sub-session — removes
  * the only real gate (a user agreeing to the schedule) and lets a task schedule
  * more tasks, draining the quota and the model budget with nobody watching.
  *
@@ -13,9 +13,8 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { filterUnattendedToolIds, UNATTENDED_TOOL_DENYLIST } from '../../agent-runtime/tool-resolution.js';
+import { filterUnattendedToolIds } from '../../agent-runtime/tool-resolution.js';
 import { scheduledToolBase } from '../../scheduler/executor.js';
-import { NODE_TOOL_DENYLIST } from '../../workflow-engine/index.js';
 
 describe('unattended-context tool denylist', () => {
   it('drops automation_mutation from a scheduled run even when the owner holds it', () => {
@@ -42,16 +41,5 @@ describe('unattended-context tool denylist', () => {
     expect(filterUnattendedToolIds(['generate_image', 'analyze_image', 'external_search', 'knowledge_query'])).toEqual([
       'knowledge_query',
     ]);
-  });
-
-  it('drops automation_mutation from workflow nodes too', () => {
-    expect(NODE_TOOL_DENYLIST.has('automation_mutation')).toBe(true);
-    expect(NODE_TOOL_DENYLIST.has('automation_query')).toBe(false);
-  });
-
-  it('keeps the node denylist a superset of the shared unattended set', () => {
-    for (const id of UNATTENDED_TOOL_DENYLIST) {
-      expect(NODE_TOOL_DENYLIST.has(id), `${id} is denied for scheduled runs but not for workflow nodes`).toBe(true);
-    }
   });
 });

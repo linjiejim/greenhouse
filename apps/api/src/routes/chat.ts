@@ -200,10 +200,14 @@ export function createChatRoute(toolRegistry: ToolRegistry) {
             if (!canWriteSession(authUser, session)) {
               return c.json({ error: 'Session not found' }, 404);
             }
-            // Missions were retired in v1.4; their conversations stay readable
-            // but can no longer be continued.
+            // Missions and Workflows were retired in v1.4; their conversations
+            // (mission chats, workflow node transcripts) stay readable but can
+            // no longer be continued.
             if (session.channel === 'mission') {
               return c.json({ error: 'Mission conversations are read-only' }, 409);
+            }
+            if (session.channel === 'workflow') {
+              return c.json({ error: 'Workflow node sessions are read-only' }, 409);
             }
 
             try {

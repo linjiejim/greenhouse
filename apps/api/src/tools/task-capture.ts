@@ -1,7 +1,7 @@
 /**
  * Task Capture — the model drafts a reusable Task from THIS conversation.
  *
- * Session-scoped and DRAFT-ONLY, the same shape as `workflow_plan`: it writes
+ * Session-scoped and DRAFT-ONLY, the same shape as `tables_schema_plan`: it writes
  * no row. It returns a `task_capture` artifact the web renders as an editable card, and the Task exists only once the user
  * presses Create (POST /api/prompts) — spec D2.
  *

@@ -6,13 +6,12 @@
  * GET  /runs/:id/events                   — 永久事件的游标回放
  * POST /runs/:id/commands                 — 委派领域 driver 支持的 run 命令
  * GET  /interrupts                        — 待我处理；super 可 scope=all
- * POST /interrupts/:id/commands           — 委派 Workflow gate 决策
  * GET  /summary                           — 执行中心与导航 badge 聚合
  */
 
 import { Buffer } from 'node:buffer';
 import { Hono, type Context } from 'hono';
-import { getDb, RuntimeKernelError, type RuntimeEventRow, type RuntimeRunRow } from '@greenhouse/db';
+import { getDb, RuntimeKernelError, type RuntimeRunRow } from '@greenhouse/db';
 import {
   availableRuntimeUserActions,
   projectRuntimeForUser,
@@ -20,7 +19,6 @@ import {
   RUNTIME_RUN_COMMAND_TYPES,
   RUNTIME_RUN_KINDS,
   type RuntimeInterruptStatus,
-  type RuntimeJsonValue,
   type RuntimeRunCommand,
   type RuntimeRunCommandType,
   type RuntimeRunKind,
@@ -29,21 +27,17 @@ import {
 import { toErrorMessage } from '@greenhouse/utils/error';
 import type { AppEnv } from '../app-env.js';
 import { getAuthUser, type AuthUser } from '../auth/middleware.js';
-import { getWorkflowEngine } from '../workflow-engine/index.js';
-import { mirrorWorkflowRunById } from '../runtime/adapters.js';
 import { delegateAutomationRuntimeCancel, settleQueuedAutomationCancellation } from '../scheduler/runtime-driver.js';
 import { delegateSubagentRuntimeCancel, settleQueuedSubagentCancellation } from '../runtime/subagent-driver.js';
 import {
   requireTrustedExecutionSurface,
   resolveTrustedExecutionSwitches,
-  runtimeAdapterEnabled,
   trustedExecutionBootPlan,
 } from '../trusted-execution/kill-switches.js';
 import {
   runtimeArtifactView as artifactView,
   runtimeEventView as eventView,
   runtimeInterruptView as interruptView,
-  runtimePayloadView as parsePayload,
   runtimeRunView as runView,
   runtimeStepView as stepView,
   runtimeToolCallView as toolCallView,
@@ -87,7 +81,6 @@ function decodeCursor(raw: string | undefined): Cursor | undefined {
 }
 
 function supportedActions(run: RuntimeRunRow): RuntimeUserAction[] {
-  if (run.source_kind === 'workflow_run') return ['pause', 'resume', 'cancel', 'approve', 'reject'];
   if (run.kind === 'automation' && run.source_kind.startsWith('scheduled_task:')) return ['cancel'];
   if (run.kind === 'subagent' && run.source_kind === 'spawned_session') return ['cancel'];
   return [];
@@ -164,16 +157,7 @@ function runtimeError(c: Context<AppEnv>, error: unknown) {
           : 400;
     return c.json({ error: error.message, code: error.code }, status);
   }
-  if (/Runtime Workflow adapter is disabled/.test(toErrorMessage(error))) {
-    return c.json({ error: toErrorMessage(error), code: 'runtime_adapter_disabled' }, 503);
-  }
   return c.json({ error: toErrorMessage(error) }, 400);
-}
-
-function assertSourceAdapterEnabled(run: RuntimeRunRow): void {
-  if (run.source_kind === 'workflow_run' && !runtimeAdapterEnabled('workflow')) {
-    throw new Error('Runtime Workflow adapter is disabled');
-  }
 }
 
 async function ownedRun(c: Context<AppEnv>, id: string) {
@@ -185,63 +169,7 @@ async function ownedRun(c: Context<AppEnv>, id: string) {
   return run;
 }
 
-function sameCommand(left: unknown, right: unknown): boolean {
-  return JSON.stringify(left) === JSON.stringify(right);
-}
-
-function assertCommandReplay(
-  event: RuntimeEventRow,
-  eventType: 'run.domain_commanded' | 'interrupt.domain_commanded',
-  command: RuntimeJsonValue,
-): void {
-  const payload = parsePayload(event.payload);
-  if (
-    event.type !== eventType ||
-    !payload ||
-    Array.isArray(payload) ||
-    typeof payload !== 'object' ||
-    !sameCommand(payload.command, command)
-  ) {
-    throw new RuntimeKernelError(
-      'runtime_idempotency_conflict',
-      'Runtime command idempotency key was reused with different input',
-    );
-  }
-}
-
-async function recordDomainCommand(input: {
-  run: RuntimeRunRow;
-  type: 'run.domain_commanded' | 'interrupt.domain_commanded';
-  command: RuntimeJsonValue;
-  idempotencyKey: string;
-  actorUserId: string;
-  result: RuntimeJsonValue;
-}): Promise<void> {
-  await getDb().runtime.appendEvent({
-    run_id: input.run.id,
-    type: input.type,
-    payload: { command: input.command, result: input.result },
-    actor_user_id: input.actorUserId,
-    idempotency_key: input.idempotencyKey,
-  });
-}
-
 async function delegateRunCommand(run: RuntimeRunRow, type: RuntimeRunCommandType, mayDrive: boolean): Promise<void> {
-  if (run.source_kind === 'workflow_run') {
-    const source = await getDb().workflows.getRun(run.source_id);
-    if (!source) throw new RuntimeKernelError('runtime_not_found', 'Workflow source run is missing');
-    const target = type === 'pause' ? 'paused' : type === 'resume' ? 'running' : type === 'cancel' ? 'canceled' : null;
-    if (!target) throw new RuntimeKernelError('runtime_invalid_transition', `Workflow does not support ${type}`);
-    if (source.status === target) return;
-    if (!mayDrive) {
-      throw new RuntimeKernelError('runtime_version_conflict', `Runtime run ${run.id} changed concurrently`);
-    }
-    const engine = getWorkflowEngine();
-    if (type === 'pause') await engine.pauseRun(run.source_id);
-    else if (type === 'resume') await engine.resumeRun(run.source_id);
-    else if (type === 'cancel') await engine.cancelRun(run.source_id);
-    return;
-  }
   if (run.kind === 'automation' && run.source_kind.startsWith('scheduled_task:')) {
     await delegateAutomationRuntimeCancel(getDb(), run, type, mayDrive);
     return;
@@ -340,7 +268,6 @@ export const runtimeRoutes = new Hono<AppEnv>()
       idempotency_key: body.idempotency_key,
     };
     try {
-      assertSourceAdapterEnabled(run);
       // Re-check after parsing, including the idempotent-replay path where the
       // fenced callback is intentionally not re-run.
       if (!(await canAccessRunSource(user, run))) {
@@ -365,12 +292,7 @@ export const runtimeRoutes = new Hono<AppEnv>()
       } else if (command.type === 'cancel' && commandedRun.kind === 'subagent') {
         commandedRun = await settleQueuedSubagentCancellation(getDb(), commandedRun, user.id);
       }
-      const mirrored =
-        commandedRun.source_kind === 'workflow_run'
-          ? await mirrorWorkflowRunById(getDb(), commandedRun.source_id)
-          : commandedRun;
-      if (!mirrored) throw new RuntimeKernelError('runtime_not_found', 'Runtime domain source is missing');
-      return c.json({ run: runView(mirrored), ...(fenced.idempotent ? { idempotent: true } : {}) });
+      return c.json({ run: runView(commandedRun), ...(fenced.idempotent ? { idempotent: true } : {}) });
     } catch (error) {
       return runtimeError(c, error);
     }
@@ -398,123 +320,6 @@ export const runtimeRoutes = new Hono<AppEnv>()
     } catch (error) {
       const message = toErrorMessage(error);
       return c.json({ error: message }, /requires super|available to super/.test(message) ? 403 : 400);
-    }
-  })
-  .post('/interrupts/:id/commands', async (c) => {
-    const user = getAuthUser(c);
-    const interrupt = await getDb().runtime.getInterrupt(c.req.param('id'));
-    if (!interrupt) return c.json({ error: 'Interrupt not found' }, 404);
-    const run = await getDb().runtime.getRun(interrupt.run_id);
-    if (
-      !run ||
-      (interrupt.assignee_user_id !== user.id && user.role !== 'super') ||
-      !(await canAccessRunSource(user, run))
-    ) {
-      return c.json({ error: 'Interrupt not found' }, 404);
-    }
-    const body = (await c.req.json().catch(() => ({}))) as {
-      type?: unknown;
-      expected_version?: unknown;
-      idempotency_key?: unknown;
-      decision?: unknown;
-    };
-    if (body.type !== 'approve' && body.type !== 'reject') {
-      return c.json({ error: "type must be 'approve' or 'reject'" }, 400);
-    }
-    if (!Number.isSafeInteger(body.expected_version) || Number(body.expected_version) < 1) {
-      return c.json({ error: 'expected_version must be a positive integer' }, 400);
-    }
-    if (typeof body.idempotency_key !== 'string' || !IDEMPOTENCY_KEY_RE.test(body.idempotency_key)) {
-      return c.json({ error: 'idempotency_key is malformed' }, 400);
-    }
-    const command = {
-      type: body.type,
-      interrupt_id: interrupt.id,
-      expected_version: Number(body.expected_version),
-      idempotency_key: body.idempotency_key,
-      decision: body.decision ?? null,
-    };
-    try {
-      assertSourceAdapterEnabled(run);
-      // Re-check immediately before source mutation so a feature revocation
-      // between the initial read and command parsing fails closed.
-      if (!(await canAccessRunSource(user, run))) {
-        throw new RuntimeKernelError('runtime_not_found', 'Runtime interrupt is not available');
-      }
-      const commandPayload = JSON.parse(JSON.stringify(command)) as RuntimeJsonValue;
-      const replayed = await getDb().runtime.getEventByIdempotency(run.id, command.idempotency_key);
-      if (replayed) {
-        assertCommandReplay(replayed, 'interrupt.domain_commanded', commandPayload);
-        return c.json({
-          interrupt: interruptView((await getDb().runtime.getInterrupt(interrupt.id)) ?? interrupt),
-          run: runView((await getDb().runtime.getRun(run.id)) ?? run),
-          idempotent: true,
-        });
-      }
-      const payload = parsePayload(interrupt.payload);
-      if (!payload || Array.isArray(payload) || typeof payload !== 'object') {
-        throw new RuntimeKernelError('runtime_invalid_transition', 'Interrupt has no domain decision driver');
-      }
-      if (payload.source === 'workflow_gate' && run.source_kind === 'workflow_run') {
-        const gateId = Number(payload.gate_id);
-        if (!Number.isSafeInteger(gateId)) {
-          throw new RuntimeKernelError('runtime_not_found', 'Workflow gate source is missing');
-        }
-        const target = body.type === 'approve' ? 'approved' : 'rejected';
-        let gate = await getDb().workflows.getGate(gateId);
-        if (!gate || gate.run_id !== run.source_id) {
-          throw new RuntimeKernelError('runtime_not_found', 'Workflow gate source is missing');
-        }
-        const note =
-          body.decision && typeof body.decision === 'object' && !Array.isArray(body.decision)
-            ? String((body.decision as Record<string, unknown>).note ?? '').slice(0, 2000) || undefined
-            : undefined;
-        if (gate.status !== target) {
-          if (interrupt.version !== command.expected_version) {
-            throw new RuntimeKernelError(
-              'runtime_version_conflict',
-              `Runtime interrupt ${interrupt.id} changed concurrently`,
-            );
-          }
-          if (gate.status !== 'pending') {
-            throw new RuntimeKernelError('runtime_invalid_transition', `Workflow gate is already ${gate.status}`);
-          }
-          try {
-            await getWorkflowEngine().decideGate(gateId, {
-              status: target,
-              decided_by: user.id,
-              note,
-            });
-          } catch (error) {
-            gate = await getDb().workflows.getGate(gateId);
-            if (gate?.status !== target) throw error;
-          }
-        }
-      } else {
-        throw new RuntimeKernelError('runtime_invalid_transition', 'Interrupt has no domain decision driver');
-      }
-      const mirrored = run.source_kind === 'workflow_run' ? await mirrorWorkflowRunById(getDb(), run.source_id) : null;
-      if (!mirrored) throw new RuntimeKernelError('runtime_not_found', 'Runtime domain source is missing');
-      const mirroredInterrupt = await getDb().runtime.getInterrupt(interrupt.id);
-      if (!mirroredInterrupt) {
-        throw new RuntimeKernelError('runtime_not_found', 'Runtime interrupt mirror is missing');
-      }
-      await recordDomainCommand({
-        run: mirrored,
-        type: 'interrupt.domain_commanded',
-        command: commandPayload,
-        idempotencyKey: command.idempotency_key,
-        actorUserId: user.id,
-        result: JSON.parse(
-          JSON.stringify({ interrupt: interruptView(mirroredInterrupt), run: runView(mirrored) }),
-        ) as RuntimeJsonValue,
-      });
-      return c.json({
-        interrupt: interruptView(mirroredInterrupt),
-        run: runView(mirrored),
-      });
-    } catch (error) {
-      return runtimeError(c, error);
     }
   })
   .get('/summary', async (c) => {

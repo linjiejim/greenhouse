@@ -50,19 +50,17 @@ import { createTablesQueryTool } from '../tools/tables-query.js';
 import { createTablesMutationTool } from '../tools/tables-mutation.js';
 import { createTablesSchemaPlanTool } from '../tools/tables-schema-plan.js';
 import { createExportDataTool } from '../tools/export-data.js';
-import { createWorkflowPlanTool } from '../tools/workflow-plan.js';
 import { createTaskCaptureTool } from '../tools/task-capture.js';
 import { createReadAttachmentTool } from '../tools/read-attachment.js';
 import type { AgentProfile } from '../profiles/profile.js';
 
 /**
  * Draft-only tools whose confirm surface is a card in a HUMAN conversation — a
- * workflow graph, a Tables schema change, a captured task. A headless
- * child session has no user to press Confirm, so a draft made there
- * would just strand. They are stripped from every derived tool face: workflow
- * nodes (NODE_TOOL_DENYLIST) and spawned sub-sessions (below).
+ * Tables schema change, a captured task. A headless child session has no user
+ * to press Confirm, so a draft made there would just strand. They are stripped
+ * from every unattended tool face (scheduled runs, spawned sub-sessions).
  */
-export const DISPATCH_TOOL_IDS: readonly string[] = ['workflow_plan', 'tables_schema_plan', 'task_capture'];
+export const DISPATCH_TOOL_IDS: readonly string[] = ['tables_schema_plan', 'task_capture'];
 
 /**
  * Tool ids a child session may hold at a given lineage depth. Dispatch tools
@@ -141,7 +139,7 @@ export interface LazyServerToolContext {
   toolRegistry?: ToolRegistry;
   /**
    * No human is present for the rest of the turn — scheduled-task runs and
-   * workflow nodes. Tools that stay available here may still need to narrow what
+   * spawned sub-sessions. Tools that stay available here may still need to narrow what
    * they will do. Dropping a tool outright is UNATTENDED_TOOL_DENYLIST's job instead.
    */
   unattended?: boolean;
@@ -157,15 +155,14 @@ export interface LazyServerToolContext {
  * include browser client actions (route-specific).
  */
 /**
- * Tools denied in every UNATTENDED context — scheduled-task runs and workflow
- * nodes, where no human is present for the rest of the turn.
+ * Tools denied in every UNATTENDED context — scheduled-task runs and spawned
+ * sub-sessions, where no human is present for the rest of the turn.
  *
  * Today that is the automation writer: its real gate is the user agreeing to a
  * schedule, and nobody is there to give it. Worse, a scheduled run able to
  * create scheduled runs multiplies on its own — quota and model budget both
- * drain without anyone watching. Workflow nodes deny more on top of this (see
- * NODE_TOOL_DENYLIST in workflow-engine); the read-only automation_query is
- * harmless and stays available so an unattended run can still report state.
+ * drain without anyone watching. The read-only automation_query is harmless and
+ * stays available so an unattended run can still report state.
  *
  * email_mutation joins it for the same reason and one more: its safety rests
  * entirely on a human reading the draft card and agreeing. Unattended there is
@@ -197,10 +194,10 @@ function isAutomaticUnattendedTool(toolId: string): boolean {
  * `optInToolIds` is the automation OWNER's explicit per-task grant (see
  * docs/specs/20260824-automation-optin-tools.md). It is an EXPLICIT parameter
  * rather than a default or an ambient context on purpose: this function has
- * three consumers — the scheduler executor, `childSpawnToolIds` (spawned
- * sub-sessions) and the workflow node tool face — and only the first one has a
- * human who ticked a box at configuration time. A default value here would leak
- * the grant into the other two silently.
+ * two consumers — the scheduler executor and `childSpawnToolIds` (spawned
+ * sub-sessions) — and only the first one has a human who ticked a box at
+ * configuration time. A default value here would leak the grant into the other
+ * silently.
  *
  * The two branches are a UNION, and the automatic branch is untouched: an
  * opt-in can only ever ADD from the published catalog, never relax the
@@ -383,14 +380,6 @@ export function buildLazyServerTools(
     const parentSessionId = sessionId;
     if (effectiveTools.includes('export_data')) {
       tools.export_data = createExportDataTool(db, { userId: uid, sessionId: parentSessionId });
-    }
-    // workflow_plan: any session, not just the Sprouty (workflows) preset. The
-    // plan card and the dock are keyed by session, so the confirm surface exists
-    // wherever the tool runs — and the model can only DRAFT, never execute, so
-    // an ordinary chat can escalate into an orchestration without the user
-    // having to pick the mode up front (session-modes spec L3).
-    if (effectiveTools.includes('workflow_plan')) {
-      tools.workflow_plan = createWorkflowPlanTool(db, { userId: uid, sessionId: parentSessionId });
     }
     // task_capture: session-scoped because the whole point is distilling THIS
     // conversation — including reading back which tools it really used, which

@@ -207,7 +207,7 @@
         </button>
         <button type="button" class="tour-tab shrink-0 rounded-xl border bg-white px-4 py-3 text-left transition hover:bg-brand-50/60 lg:w-full" role="tab" aria-selected="false" data-tour-tab="executions">
           <span class="tour-tab-title block text-sm font-semibold text-ink" data-i18n="tour.t6">Execution center</span>
-          <span class="mt-0.5 hidden text-[12.5px] leading-snug text-ink-mut lg:block" data-i18n="tour.d6">Scheduled jobs, sub-agents and workflows, in one place.</span>
+          <span class="mt-0.5 hidden text-[12.5px] leading-snug text-ink-mut lg:block" data-i18n="tour.d6">Scheduled jobs and sub-agents, in one place.</span>
         </button>
         <button type="button" class="tour-tab shrink-0 rounded-xl border bg-white px-4 py-3 text-left transition hover:bg-brand-50/60 lg:w-full" role="tab" aria-selected="false" data-tour-tab="skills">
           <span class="tour-tab-title block text-sm font-semibold text-ink" data-i18n="tour.t7">Skill Center</span>
@@ -262,8 +262,8 @@
             <img src="./assets/screens/execution-center.webp" alt="Execution center listing completed automation runs" width="1440" height="900" class="block w-full" loading="lazy" />
           </div>
           <figcaption class="mt-3 text-sm leading-relaxed text-ink-mut" data-i18n="tour.c6">
-        Everything running in the background on one screen — scheduled jobs, sub-agents, workflows —
-              with an inbox for the steps that need a person to say yes.
+        Everything running in the background on one screen — scheduled jobs and sub-agents —
+              with every step, tool call and event on record.
       </figcaption>
         </figure>
         <figure class="tour-panel" data-tour-panel="skills" hidden>
@@ -513,7 +513,7 @@
     <div class="group rounded-2xl border border-edge bg-white p-6 soft-shadow transition hover:border-brand-300">
       <div class="mb-4 grid h-10 w-10 place-items-center rounded-xl bg-brand-50 text-brand-600"><svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
       <h3 class="text-base font-semibold text-ink" data-i18n="feat.execT">Execution center + automations</h3>
-      <p class="mt-1.5 text-sm leading-relaxed text-ink-mut" data-i18n="feat.execB">Cron-scheduled agent runs, workflows and sub-agents in one surface, with an approval inbox for steps that need a human.</p>
+      <p class="mt-1.5 text-sm leading-relaxed text-ink-mut" data-i18n="feat.execB">Cron-scheduled agent runs and sub-agents in one surface, with every step and tool call on record.</p>
     </div>
     <div class="group rounded-2xl border border-edge bg-white p-6 soft-shadow transition hover:border-brand-300">
       <div class="mb-4 grid h-10 w-10 place-items-center rounded-xl bg-brand-50 text-brand-600"><svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a7 7 0 0 0-7 7c0 3 2 4 2 7h10c0-3 2-4 2-7a7 7 0 0 0-7-7zM9 21h6" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
@@ -852,7 +852,7 @@ docker compose exec api pnpm admin:create
     'tour.t5': '项目',
     'tour.d5': '组合时间线、看板与任务树。',
     'tour.t6': '执行中心',
-    'tour.d6': '定时任务、子 Agent 和工作流，都在一个地方。',
+    'tour.d6': '定时任务和子 Agent，都在一个地方。',
     'tour.t7': '技能中心',
     'tour.d7': '全组织共享的带版本 Agent 技能库。',
     'tour.t8': '我的 Agent',
@@ -862,7 +862,7 @@ docker compose exec api pnpm admin:create
     'tour.c3': '像样的编辑器、文件夹、页面互链、版本历史，还有认得中文的搜索——Agent 在对话里引用的就是这里。',
     'tour.c4': '像表格一样的多维表：真正的字段类型、视图、表单、记录关联。在对话里说清楚要什么，Agent 先起个草给你确认。',
     'tour.c5': '组合时间线、看板与任务树，带成员、评论和活动日志——Agent 还能直接从对话里创建任务。',
-    'tour.c6': '所有在后台跑的东西都在一屏里——定时任务、子 Agent、工作流——需要人点头的步骤会进收件箱。',
+    'tour.c6': '所有在后台跑的东西都在一屏里——定时任务和子 Agent——每一步、每次工具调用和事件都有记录。',
     'tour.c7': '可复用的经验，Agent 随手就能拿来用；版本化保存，更新不会改写历史。项目自带一套入门包。',
     'tour.c8': '一个档案 = 一段系统提示词 + 一组挑选好的工具 + 一张脸。可以私有使用，评审后发布给团队，复刻别人的，或者定时运行。',
 
@@ -919,7 +919,7 @@ docker compose exec api pnpm admin:create
     'feat.wbT': '首页工作台',
     'feat.wbB': '由同一套工具驱动的个人实时仪表盘——配方与模板，拖拽即可编辑，或者直接让 Agent 来改。',
     'feat.execT': '执行中心 + 自动化',
-    'feat.execB': 'cron 定时的 Agent 运行、工作流与子 Agent 汇集在一个界面，需要人拍板的步骤进入审批收件箱。',
+    'feat.execB': 'cron 定时的 Agent 运行与子 Agent 汇集在一个界面，每一步和每次工具调用都有记录。',
     'feat.memT': '记忆',
     'feat.memB': 'Agent 记住每个人让它记的事，也会记下工具在哪里绊住了它。',
     'feat.skillT': '技能中心',

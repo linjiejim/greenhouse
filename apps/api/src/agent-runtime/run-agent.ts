@@ -119,7 +119,7 @@ export interface RunAgentInSessionArgs {
   /**
    * Earlier turns of this conversation, oldest first, sent before `prompt`.
    * Only callers whose session really IS an ongoing conversation pass this
-   * (the Feishu bot); scheduled tasks, spawn_session and workflow nodes are
+   * (the Feishu bot); scheduled tasks and spawn_session are
    * single-prompt by design. The caller owns windowing — use the same
    * `resolveHistoryBudget` / `windowMessagesByBudget` budget as chat.
    */
@@ -142,7 +142,7 @@ export interface RunAgentInSessionArgs {
    * llm_usage attribution — REQUIRED so no headless caller can silently skip
    * usage accounting (and the owner's monthly quota) again. `userId` is the
    * account whose quota this run burns; `caller` labels the surface
-   * ('scheduled-task' | 'spawn_session' | 'workflow' | 'workflow-review' | …).
+   * ('scheduled-task' | 'spawn_session' | 'feishu-bot' | …).
    */
   usageContext: { profileId: string; userId: string; caller: string };
 }

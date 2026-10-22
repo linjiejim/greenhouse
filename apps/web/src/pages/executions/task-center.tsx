@@ -13,7 +13,6 @@ import {
   type RuntimeSummary,
 } from '../../lib/api/runtime';
 import { onRuntimeInvalidated } from '../../lib/runtime-invalidation';
-import { wsClient } from '../../lib/ws';
 import { useAuthStore, useWsStore } from '../../stores';
 import { ApprovalInbox } from './approval-inbox';
 import {
@@ -124,15 +123,6 @@ export function TaskCenter({
     return () => window.clearInterval(timer);
   }, [hasActive, load]);
 
-  useEffect(
-    () =>
-      wsClient.onEvent((event) => {
-        if (event.type === 'workflow:progress') {
-          void load(true);
-        }
-      }),
-    [load],
-  );
   useEffect(() => onRuntimeInvalidated(() => void load(true)), [load]);
 
   const counts = taskCenterCounts(summary);

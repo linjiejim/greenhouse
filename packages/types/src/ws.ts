@@ -47,15 +47,6 @@ export type ServerWsEvent =
   // A session was created server-side for this user (e.g. spawn_session) so the
   // client can refresh its history list without a manual reload.
   | { type: 'session:created'; sessionId: string; parentSessionId: string; title: string }
-  // Workflow engine progress: run/node status transitions, pushed to the owner
-  // so the run card updates without polling.
-  | {
-      type: 'workflow:progress';
-      runId: string;
-      runStatus: string;
-      nodeId?: string;
-      nodeStatus?: string;
-    }
   // Chat generation lifecycle: a turn started/ended for one of the owner's
   // sessions. Carries no content — clients attach to the run's NDJSON stream
   // (GET /api/chat/runs/:sessionId/stream) or refetch messages on end.

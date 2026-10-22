@@ -164,7 +164,7 @@ export interface Session {
   feedback: string | null;
   profile_id: string;
   channel?: string;
-  /** Set when the session was spawned by another one (spawn_session, workflow nodes). */
+  /** Set when the session was spawned by another one (spawn_session; historically workflow nodes). */
   parent_session_id?: string | null;
   metadata: string;
   created_at: string;
@@ -566,7 +566,7 @@ export interface ChatRequestBody {
   profile_id?: string;
   /**
    * Per-turn model choice. The agent's `model.id` is the default; headless
-   * callers (scheduled tasks, eval runs, workflow nodes, spawned sub-sessions)
+   * callers (scheduled tasks, spawned sub-sessions)
    * never send this and keep that default.
    */
   model?: string;

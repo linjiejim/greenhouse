@@ -107,11 +107,8 @@ import { backfillKnowledgeTokens } from './knowledge/backfill.js';
 import { initScheduler } from './scheduler/index.js';
 import { createEmailRoutes } from './routes/email.js';
 import { createTasksRoute } from './routes/tasks.js';
-import { createWorkflowsRoute } from './routes/workflows.js';
-import { initWorkflowEngine } from './workflow-engine/index.js';
 import runtimeRoutes from './routes/runtime.js';
 import { settleRetiredRuntimeRuns } from './runtime/retired-kinds.js';
-import { startRuntimeReconciler } from './runtime/reconciler.js';
 import { startRuntimeWorker } from './runtime/worker.js';
 import { reconcileInterruptedChatRuntimeRuns } from './chat/runtime.js';
 import { createAutomationRuntimeDriver } from './scheduler/runtime-driver.js';
@@ -347,11 +344,6 @@ function mountRoutes(toolRegistry: ToolRegistry) {
       .use('/api/runtime', requireTrustedExecutionSurface(trustedExecutionPlan.taskCenter, 'task-center'))
       .use('/api/runtime/*', requireTrustedExecutionSurface(trustedExecutionPlan.taskCenter, 'task-center'))
       .route('/api/runtime', runtimeRoutes)
-      // Workflow graph engine — temporarily restricted to super while the
-      // feature is being validated. Guard both the collection root and children.
-      .use('/api/workflows', requireSuper())
-      .use('/api/workflows/*', requireSuper())
-      .route('/api/workflows', createWorkflowsRoute())
       // Agent tool proxy (login access-token auth, revalidated against the internal user)
       .route('/api/agent', createAgentRoutes(toolRegistry))
       .route('/api/mcp', createMcpRoutes(toolRegistry))
@@ -420,16 +412,7 @@ async function main() {
   const toolRegistry = createToolRegistry(dbProvider);
   await runExtensionBootHooks(dbProvider);
 
-  // Rebuild Workflow Runtime projections before accepting Execution Center
-  // reads, then keep compensating domain/read-model dual writes in background.
-  const runtimeReconciler = trustedExecutionPlan.runtimeReconciler
-    ? await startRuntimeReconciler(dbProvider, {
-        adapters: {
-          workflow: trustedExecutionSwitches.workflowAdapter,
-        },
-      })
-    : null;
-  // Runs of kinds retired in v1.4 (Eval, Mission) can never progress again;
+  // Runs of kinds retired in v1.4 (Eval, Mission, Workflow) can never progress again;
   // close any that were still active at upgrade so they render as finished.
   await settleRetiredRuntimeRuns(dbProvider).catch((error) => {
     logger.error('[runtime] retired-kind settlement unavailable', { error: String(error) });
@@ -462,16 +445,12 @@ async function main() {
   const scheduler = initScheduler(toolRegistry, { runtimeEnabled: trustedExecutionPlan.automationDriver });
   await scheduler.start();
 
-  // Workflow graph engine — boot sweep resumes unfinished runs in the background
-  initWorkflowEngine(toolRegistry);
-
   // Abort in-flight chat runs BEFORE closing the DB: the interruption
   // persistence path then writes safe partial answers, so a deploy/restart
   // doesn't erase whole in-progress turns.
   const shutdown = async () => {
     scheduler.stop();
     usageBudgetSweeper.stop();
-    runtimeReconciler?.stop();
     runtimeWorker?.stop();
     notificationDeliveryWorker?.stop();
     agentGovernanceWorker?.stop();

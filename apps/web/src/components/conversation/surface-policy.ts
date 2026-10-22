@@ -19,7 +19,7 @@ export interface ConversationSurfacePolicy {
 
 /**
  * Surface policy only controls peripheral presentation and management affordances.
- * Sending, attachments, tools, confirmations, workflow UI, editing, regeneration,
+ * Sending, attachments, tools, confirmations, editing, regeneration,
  * streaming recovery and session persistence are intentionally not configurable.
  */
 export const CONVERSATION_SURFACE_POLICIES: Record<ConversationSurface, ConversationSurfacePolicy> = {

@@ -35,7 +35,7 @@ describe('BUILTIN_AGENT_TOOL_IDS', () => {
 
   it('holds no domain data, outbound channel or orchestration tool', () => {
     // "What may this Agent see and do" is the author's design decision. CRM,
-    // knowledge, Tables, email and mission/workflow dispatch stay opt-in.
+    // knowledge, Tables, email and schema dispatch stay opt-in.
     const forbidden = [
       'knowledge_query',
       'knowledge_mutation',
@@ -45,8 +45,7 @@ describe('BUILTIN_AGENT_TOOL_IDS', () => {
       'generate_image',
       'external_search',
       'spawn_session',
-      'mission_dispatch',
-      'workflow_plan',
+      'tables_schema_plan',
     ];
     for (const id of forbidden) expect(BUILTIN_AGENT_TOOL_IDS.has(id)).toBe(false);
   });

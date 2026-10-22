@@ -164,7 +164,6 @@ describe('surface-derived exposure sets', () => {
         'tables_query',
         'tables_mutation',
         'tables_schema_plan',
-        'workflow_plan',
         'task_capture',
         'read_attachment',
         'export_data',

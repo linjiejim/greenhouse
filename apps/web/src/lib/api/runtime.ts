@@ -1,10 +1,9 @@
-/** Typed Runtime control-plane client for Execution Center and Approval Inbox. */
+/** Typed Runtime control-plane client for Execution Center and its Approval Inbox read model. */
 
 import type {
   RuntimeArtifact,
   RuntimeEvent,
   RuntimeInterrupt,
-  RuntimePayload,
   RuntimeRun,
   RuntimeRunCommandType,
   RuntimeRunKind,
@@ -124,24 +123,4 @@ export async function commandRuntimeRun(
     }),
   });
   return body.run;
-}
-
-export async function commandRuntimeInterrupt(
-  interrupt: Pick<RuntimeInterrupt, 'id' | 'version'>,
-  type: 'approve' | 'reject',
-  decision: RuntimePayload | null = null,
-): Promise<{ interrupt: RuntimeInterrupt; run: RuntimeRun }> {
-  return fetchJson<{ interrupt: RuntimeInterrupt; run: RuntimeRun }>(
-    `/api/runtime/interrupts/${encodeURIComponent(interrupt.id)}/commands`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        type,
-        expected_version: interrupt.version,
-        idempotency_key: commandKey(interrupt.id, type),
-        decision,
-      }),
-    },
-  );
 }

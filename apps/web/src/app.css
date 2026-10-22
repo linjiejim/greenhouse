@@ -1112,21 +1112,6 @@ textarea,
   animation: fade-in 0.2s ease-out;
 }
 
-/* Workflow DAG: dashes flowing along an edge that feeds a running node */
-@keyframes workflow-flow {
-  to {
-    stroke-dashoffset: -18;
-  }
-}
-.animate-workflow-flow {
-  animation: workflow-flow 0.9s linear infinite;
-}
-@media (prefers-reduced-motion: reduce) {
-  .animate-workflow-flow {
-    animation: none;
-  }
-}
-
 /* Typewriter animation for AI-generated session titles */
 @keyframes typewriter-reveal {
   from {

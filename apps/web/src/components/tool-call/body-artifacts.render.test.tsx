@@ -7,47 +7,25 @@
  *   - <ToolCallRenderer> filters those out (a card-only run shows no trace block).
  */
 
-import { afterEach, describe, it, expect } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { BodyArtifacts } from './body-artifacts';
 import { ToolCallRenderer } from './index';
 import { I18nProvider } from '../../lib/i18n';
-import { useAuthStore } from '../../stores';
-
-afterEach(() => useAuthStore.getState().setCurrentUser(null));
 
 function renderInLocale(element: ReturnType<typeof createElement>, locale: 'en' | 'zh'): string {
   return renderToStaticMarkup(createElement(I18nProvider, { initialLocale: locale, children: element }));
 }
 
-const workflowCall = {
-  name: 'workflow_plan',
-  input: {},
-  output: {
-    type: 'workflow_plan',
-    workflow_id: 1,
-    version: 1,
-    name: 'Private rollout workflow',
-    task_input: 'Test the workflow',
-    graph: { nodes: [], deliverable_node: '' },
-    budget: { max_nodes: 8, concurrency: 2, max_tokens: 10_000 },
-  },
-};
-
-describe('workflow super-only visibility', () => {
-  it('hides historical workflow cards when there is no eligible super user', () => {
-    useAuthStore.getState().setCurrentUser({
-      id: 'team-1',
-      email: 'team@example.com',
-      nickname: 'Team',
-      role: 'team',
-    });
-    expect(renderToStaticMarkup(createElement(BodyArtifacts, { calls: [workflowCall], ctx: {} }))).toBe('');
-  });
-});
-
 describe('retired tools in old transcripts', () => {
+  it.each(['mission_dispatch', 'workflow_plan'])('renders a historical %s card call as a plain trace row', (name) => {
+    const legacy = { name, input: {}, output: { type: name } };
+    expect(renderToStaticMarkup(createElement(BodyArtifacts, { calls: [legacy], ctx: {} }))).toBe('');
+    const trace = renderToStaticMarkup(createElement(ToolCallRenderer, { calls: [legacy], variant: 'full' as const }));
+    expect(trace).toContain('Tool calls');
+  });
+
   it('renders an eval_message call (tool removed in v1.4) as a plain trace row', () => {
     const legacy = { name: 'eval_message', input: {}, output: { score_final: 8.5, scores: {} } };
     expect(renderToStaticMarkup(createElement(BodyArtifacts, { calls: [legacy], ctx: {} }))).toBe('');

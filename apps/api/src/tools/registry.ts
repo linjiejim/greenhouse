@@ -27,7 +27,6 @@ import { projectMutationTool } from './project-mutation.js';
 import { computeTool } from './compute/tool.js';
 import { sessionQueryTool } from './session-query.js';
 import { spawnSessionTool } from './spawn-session.js';
-import { workflowPlanTool } from './workflow-plan.js';
 import { taskCaptureTool } from './task-capture.js';
 import { readAttachmentTool } from './read-attachment.js';
 import { callLlmTool } from './call-llm.js';
@@ -61,7 +60,6 @@ const CORE_TOOL_MODULES: ToolModule[] = [
   computeTool,
   sessionQueryTool,
   spawnSessionTool,
-  workflowPlanTool,
   taskCaptureTool,
   readAttachmentTool,
   callLlmTool,

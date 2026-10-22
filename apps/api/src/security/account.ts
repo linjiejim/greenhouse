@@ -17,7 +17,6 @@ import { getSharedMailboxCredentials, sendFromSharedMailbox } from '../email/ser
 import { chatRunRegistry } from '../chat/runs.js';
 import { connectionManager } from '../ws/connection-manager.js';
 import { getScheduler } from '../scheduler/index.js';
-import { getWorkflowEngine } from '../workflow-engine/index.js';
 import { PLATFORM_ORG_ID } from '../platform/runtime.js';
 
 export type PasswordLinkAvailabilityReason =
@@ -155,11 +154,6 @@ export async function suspendUserRuntime(userId: string): Promise<void> {
   const work: Promise<unknown>[] = [];
   const scheduler = getScheduler();
   if (scheduler) work.push(scheduler.pauseUser(userId));
-  try {
-    work.push(getWorkflowEngine().cancelRunsForUser(userId));
-  } catch {
-    // Engine is not initialized in small route tests and early boot only.
-  }
 
   const results = await Promise.allSettled(work);
   for (const result of results) {

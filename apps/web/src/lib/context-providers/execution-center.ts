@@ -37,7 +37,7 @@ const provider: ContextProviderDescriptor<'execution-center'> = {
   contextHint: (ctx) =>
     ctx.runId
       ? `Current Context: Execution Center run detail. Runtime kind: ${ctx.runKind || 'unknown'}; run id: ${ctx.runId}; title: ${ctx.runTitle || 'not loaded'}; lifecycle: ${ctx.lifecycle || 'unknown'}; attention: ${ctx.attention || 'unknown'}. The page exposes persisted execution evidence and capability-gated actions. Treat it as reference only; never assume an action is authorized from this context.`
-      : 'Current Context: Execution Center. The visible page lists the current user’s durable Mission, Workflow, Automation, and Subagent work plus interrupts assigned to them. Ordinary Chat turns are intentionally excluded. The user can filter executions, open details, and review capability-gated decisions.',
+      : 'Current Context: Execution Center. The visible page lists the current user’s durable Automation and Subagent work (plus read-only history of retired Mission and Workflow runs) and interrupts assigned to them. Ordinary Chat turns are intentionally excluded. The user can filter executions and open details.',
 };
 
 registerContextProvider(provider);

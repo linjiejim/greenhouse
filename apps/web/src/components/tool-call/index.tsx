@@ -16,7 +16,6 @@ import { CheckCircle, ChevronDown } from '../../lib/icons';
 import { ToolCallCard, summarizeToolInput, toolDisplayName } from './tool-call-card';
 import { replacesTraceRow } from './body-artifacts';
 import { useT } from '../../lib/i18n';
-import { useAuthStore } from '../../stores';
 
 // ─── Types ───────────────────────────────────────────────
 
@@ -40,15 +39,12 @@ interface ToolCallRendererProps {
 
 export function ToolCallRenderer({ calls, variant, defaultCollapsed }: ToolCallRendererProps) {
   const t = useT();
-  const canUseWorkflow = useAuthStore((state) => state.currentUser?.role === 'super');
   const [collapsed, setCollapsed] = useState(defaultCollapsed ?? false);
 
   // Artifact calls whose card restates the whole call render in the message body via
   // <BodyArtifacts> only; keep them out of the trace block so they aren't shown twice
   // (and so a body-only artifact doesn't leave an empty "0 tool calls" header here).
-  const traceCalls = calls
-    .filter((c) => c.name !== 'workflow_plan' || canUseWorkflow)
-    .filter((c) => !replacesTraceRow(c));
+  const traceCalls = calls.filter((c) => !replacesTraceRow(c));
   if (!traceCalls.length) return null;
 
   const doneCount = traceCalls.filter((c) => c.output || c.status === 'done').length;

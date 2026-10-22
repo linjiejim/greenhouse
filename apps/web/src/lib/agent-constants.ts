@@ -2,9 +2,9 @@
  * The one built-in agent — mirrors `apps/api/src/profiles/sprouty.yaml`.
  *
  * quick / deep / K3 / workflows collapsed into it on 2026-08-01: they differed
- * only by model (and, for workflows, a planner prompt that now lives in the
- * workflow_plan tool description). The model is a per-turn choice next to the
- * composer, not an agent's identity.
+ * only by model (and, for workflows, a planner prompt — Workflows themselves were
+ * retired in v1.4). The model is a per-turn choice next to the composer, not an
+ * agent's identity.
  */
 
 export const DEFAULT_AGENT_ID = 'sprouty';

@@ -16,7 +16,7 @@ agents over [MCP](https://modelcontextprotocol.io/). Admins author tools in code
 auto-expose over chat, `/api/agent`, and `/api/mcp` — add a tool by writing one file.
 
 Greenhouse is built around the idea that the agent *is* the product, not a feature bolted on
-the side. Chat, the knowledge base, projects, tables, automations, workflows and email all share
+the side. Chat, the knowledge base, projects, tables, automations and email all share
 one tool layer and one permission model; the same tools your team uses in chat are the ones you
 expose to Claude, Cursor, or any MCP client.
 
@@ -55,7 +55,7 @@ expose to Claude, Cursor, or any MCP client.
     </td>
     <td width="50%" valign="top">
       <img src="docs/assets/screens/execution-center.webp" alt="Execution center listing runs" />
-      <b>Execution center</b> — automations, workflows and sub-agents in one place, with an approval inbox.
+      <b>Execution center</b> — automations and sub-agents in one place.
     </td>
   </tr>
   <tr>
@@ -93,10 +93,8 @@ same script doubles as an end-to-end smoke tour (see [Development](#development)
   rule automations, and conversational schema planning (the agent drafts a base, you confirm).
 - **Home workbench** — a personal dashboard of live cards backed by the same tools (recipes and
   templates), editable by drag-and-drop or by asking the agent.
-- **Execution center** — one surface for every durable run: automations (cron), workflows
-  and sub-agents, with an approval inbox for steps that need a human.
-- **Workflows** — a multi-agent task-graph engine (database state machine, human gates,
-  pause / retry per node) that the agent can plan from a conversation.
+- **Execution center** — one surface for every durable run: automations (cron) and
+  sub-agents, with full step, tool-call and event evidence.
 - **Memory** — per-user memories with titles, pinning and lifecycle, plus the friction signals
   the agent logs when tooling gets in its way.
 - **Skill Center** — an org-wide library of agent skills (SKILL.md bundles) with immutable
@@ -291,6 +289,15 @@ git pull && docker compose up -d --build
 # Bare-metal source checkout:
 git pull && pnpm install && pnpm drizzle-kit migrate   # then restart the API
 ```
+
+> **Upgrading to 1.4** — Evaluation, Missions (the cloud-agent sandbox), the team LLM relay
+> (`/api/llm`, relay keys, AI Gateway admin page) and Workflows are removed. There is no
+> migration: their tables stay untouched so a rollback to 1.3.x keeps working, and are
+> dropped in the following release. Old Mission / Workflow conversations stay readable but
+> can no longer be continued, historical Eval / Mission / Workflow runs stay readable in the
+> Execution center (runs still active at upgrade are closed on first boot), and the
+> sandbox host setup (`runsc`, the agent-runtime image, `MISSION_*` / `SANDBOX_RUNNER_*`
+> env) can be decommissioned. MCP machine clients and their audit log are unaffected.
 
 > **Upgrading from 0.6.x** — this line removes the public/guest surface (`/api/v1`, the
 > `default` profile, external accounts) and the database-managed LLM gateway upstreams in

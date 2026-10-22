@@ -60,8 +60,8 @@ export interface SessionListOpts {
   excludeUserId?: string;
   channel?: string; // filter by channel (a SessionChannel, e.g. 'web' | 'task' | 'browser')
   /**
-   * Channels to hide. Engine-internal sessions (channel 'workflow') are not
-   * user-facing objects, so list consumers exclude them by default.
+   * Channels to hide. Workflow node transcripts (channel 'workflow', retired
+   * in v1.4) are not user-facing objects, so list consumers exclude them by default.
    */
   excludeChannels?: string[];
   taskId?: number; // filter by scheduled task (via metadata)

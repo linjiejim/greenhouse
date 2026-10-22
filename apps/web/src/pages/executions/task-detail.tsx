@@ -1,18 +1,12 @@
-import type { RuntimeInterrupt, RuntimeRunCommandType } from '@greenhouse/types/runtime';
+import type { RuntimeRunCommandType } from '@greenhouse/types/runtime';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { DetailHeader, DetailSection, Field, FieldGrid } from '../../components/detail';
 import { Button, ConfirmDialog, EmptyState, Spinner, toast } from '../../components/ui';
 import { ClipboardList, Pause, Play, RefreshCw, RotateCcw, Square } from '../../lib/icons';
 import { useT } from '../../lib/i18n';
-import {
-  commandRuntimeInterrupt,
-  commandRuntimeRun,
-  getRuntimeRun,
-  type RuntimeRunDetail,
-} from '../../lib/api/runtime';
+import { commandRuntimeRun, getRuntimeRun, type RuntimeRunDetail } from '../../lib/api/runtime';
 import { notifyRuntimeInvalidated, onRuntimeInvalidated } from '../../lib/runtime-invalidation';
 import { formatDate } from '../../lib/utils';
-import { wsClient } from '../../lib/ws';
 import { useAgentContext } from '../../components/agent-context';
 import { RuntimeInterruptsSection } from './interrupts-section';
 import { runtimeRunTitle, runtimeTransport } from './model';
@@ -73,15 +67,6 @@ export function TaskRunDetail({ runId, backHref = '#/executions' }: { runId: str
   }, [detail, enrichPageContext]);
   useEffect(
     () =>
-      wsClient.onEvent((event) => {
-        if (event.type === 'workflow:progress' && event.runId === runId) {
-          void load(true);
-        }
-      }),
-    [load, runId],
-  );
-  useEffect(
-    () =>
       onRuntimeInvalidated((invalidatedRunId) => (!invalidatedRunId || invalidatedRunId === runId) && void load(true)),
     [load, runId],
   );
@@ -102,22 +87,6 @@ export function TaskRunDetail({ runId, backHref = '#/executions' }: { runId: str
       }
     },
     [detail, t],
-  );
-
-  const decide = useCallback(
-    async (interrupt: RuntimeInterrupt, decision: 'approve' | 'reject') => {
-      setBusy(interrupt.id);
-      try {
-        await commandRuntimeInterrupt(interrupt, decision);
-        notifyRuntimeInvalidated(interrupt.run_id);
-        toast(decision === 'approve' ? t('taskCenter.approved') : t('taskCenter.rejected'), 'success');
-      } catch (cause) {
-        toast(cause instanceof Error ? cause.message : t('taskCenter.decisionFailed'), 'error');
-      } finally {
-        setBusy(null);
-      }
-    },
-    [t],
   );
 
   const commandButtons = useMemo(() => {
@@ -262,12 +231,7 @@ export function TaskRunDetail({ runId, backHref = '#/executions' }: { runId: str
           </div>
         </DetailSection>
 
-        <RuntimeInterruptsSection
-          interrupts={detail.interrupts}
-          actions={detail.capabilities.actions}
-          busyId={busy}
-          onDecision={decide}
-        />
+        <RuntimeInterruptsSection interrupts={detail.interrupts} />
         <RuntimeStepsSection steps={detail.steps} />
         <RuntimeToolCallsSection calls={detail.tool_calls} />
         <RuntimeArtifactsSection artifacts={detail.artifacts} />

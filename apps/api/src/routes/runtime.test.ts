@@ -5,8 +5,6 @@ import type { AppEnv } from '../app-env.js';
 
 const mocks = vi.hoisted(() => ({
   getDb: vi.fn(),
-  workflowEngine: { pauseRun: vi.fn(), resumeRun: vi.fn(), cancelRun: vi.fn(), decideGate: vi.fn() },
-  mirrorWorkflowRunById: vi.fn(),
   delegateAutomationRuntimeCancel: vi.fn(),
   settleQueuedAutomationCancellation: vi.fn(),
   delegateSubagentRuntimeCancel: vi.fn(),
@@ -24,10 +22,6 @@ vi.mock('@greenhouse/db', () => {
   }
   return { getDb: mocks.getDb, RuntimeKernelError };
 });
-vi.mock('../workflow-engine/index.js', () => ({ getWorkflowEngine: () => mocks.workflowEngine }));
-vi.mock('../runtime/adapters.js', () => ({
-  mirrorWorkflowRunById: mocks.mirrorWorkflowRunById,
-}));
 vi.mock('../scheduler/runtime-driver.js', () => ({
   delegateAutomationRuntimeCancel: mocks.delegateAutomationRuntimeCancel,
   settleQueuedAutomationCancellation: mocks.settleQueuedAutomationCancellation,
@@ -248,7 +242,7 @@ describe('Runtime API authorization and wire', () => {
     expect((await app.request('/summary?scope=all')).status).toBe(403);
   });
 
-  it('keeps Workflow source rows super-only even when a team user owns the projection', async () => {
+  it('keeps historical Workflow source rows super-only even when a team user owns the projection', async () => {
     const workflow = runRow({
       id: 'rtw_workflow_1',
       kind: 'workflow',

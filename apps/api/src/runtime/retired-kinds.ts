@@ -1,5 +1,6 @@
 /**
- * Runtime runs whose producing module was removed in v1.4 (Evaluation, Missions).
+ * Runtime runs whose producing module was removed in v1.4 (Evaluation, Missions,
+ * Workflows).
  *
  * Nothing will ever drive these runs again, so a run that was still active at
  * upgrade time is closed once at boot: its pending interrupts are canceled, its
@@ -14,16 +15,12 @@ import { toErrorMessage } from '@greenhouse/utils/error';
 import { logger } from '@greenhouse/utils/logger';
 import { nowIso } from '@greenhouse/utils/date';
 
-export const RETIRED_RUNTIME_KINDS = ['eval', 'mission'] as const satisfies readonly RuntimeRunKind[];
+export const RETIRED_RUNTIME_KINDS = ['eval', 'mission', 'workflow'] as const satisfies readonly RuntimeRunKind[];
 
 const ACTIVE_RUN_STATUSES: readonly RuntimeRunStatus[] = ['queued', 'claimed', 'running', 'waiting', 'paused'];
 const OPEN_STEP_STATUSES: readonly RuntimeStepStatus[] = ['queued', 'claimed', 'running', 'waiting', 'paused'];
 const REASON = 'runtime_kind_retired';
 const MESSAGE = 'This kind of run was retired; it can no longer make progress.';
-
-export function isRetiredRuntimeKind(kind: RuntimeRunKind): boolean {
-  return (RETIRED_RUNTIME_KINDS as readonly RuntimeRunKind[]).includes(kind);
-}
 
 async function settleRun(db: DatabaseProvider, run: RuntimeRunRow): Promise<void> {
   for (const interrupt of await db.runtime.listInterrupts(run.id)) {

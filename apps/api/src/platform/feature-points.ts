@@ -144,21 +144,12 @@ export function appFeatureFlag(appId: string): string | undefined {
 export const TABLES_FEATURE_TOOL_IDS: readonly string[] = pointToolIds('tables');
 export const MEMORY_FEATURE_TOOL_IDS: readonly string[] = pointToolIds('memory');
 
-/** Workflow tool ids — temporarily visible and executable by super users only. */
-export const WORKFLOWS_SUPER_ONLY_TOOL_IDS: readonly string[] = ['workflow_plan'];
-
 /**
- * Tool ids that are NOT individually assignable: they either ride with a feature
- * point's main toggle (app or flag) or have a separate role gate.
- *
- * Both cases must stay out of the opt-in "Advanced tools" bucket. A direct
- * assignment for a feature-owned tool would bypass its flag; a toggle for an
- * role-gated tool would be a no-op that lies to the admin about what it does.
+ * Tool ids that are NOT individually assignable: they ride with a feature
+ * point's main toggle (app or flag). They must stay out of the opt-in "Advanced
+ * tools" bucket — a direct assignment for a feature-owned tool would bypass its flag.
  */
-export const FEATURE_OWNED_TOOL_IDS = new Set<string>([
-  ...FEATURE_POINTS.flatMap((p) => p.toolIds),
-  ...WORKFLOWS_SUPER_ONLY_TOOL_IDS,
-]);
+export const FEATURE_OWNED_TOOL_IDS = new Set<string>(FEATURE_POINTS.flatMap((p) => p.toolIds));
 
 /**
  * The "Advanced tools" bucket = every non-global tool not owned by a feature

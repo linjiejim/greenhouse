@@ -37,7 +37,6 @@ import { ShareDialog } from '../chat/share-dialog';
 import { ProfileEditorDrawer } from '../chat/profile-editor';
 import { Button, Skeleton, toast } from '../ui';
 import { MAX_IMAGES } from '../../lib/constants';
-import { TaskDock } from './task-dock';
 import { WorkbenchPanel } from '../workbench/workbench-panel';
 import { DEFAULT_AGENT_ID, LEGACY_AGENT_IDS } from '../../lib/agent-constants';
 import { acceptAttachments, uploadPendingAttachments, MAX_ATTACHMENTS, type PendingAttachment } from './attachments';
@@ -174,8 +173,8 @@ export function ConversationPane({
   const [sessionRating, setSessionRating] = useState<number | null>(null);
   const [sessionComment, setSessionComment] = useState<string | null>(null);
   const [sessionTags, setSessionTags] = useState<Array<{ id: number; name: string; color: string }>>([]);
-  // Workflow node/reviewer sessions (channel 'workflow') are engine-produced
-  // audit records: read-only, with a link back to the orchestrating session.
+  // Retired channels (Mission conversations, Workflow node transcripts) open
+  // read-only; workflow nodes keep a link back to the orchestrating session.
   const [sessionChannel, setSessionChannel] = useState<string>('web');
   const [parentSessionId, setParentSessionId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -714,26 +713,10 @@ export function ConversationPane({
     };
   }, [activeSession?.status, activeSession?.error, sessionId, clearSession, bumpSessionListVersion]);
 
-  // Missions were retired in v1.4. Judged by CHANNEL, not profile: the channel
-  // is the durable fact the server stamped. Their conversations still open, but
-  // read-only — the server refuses to continue them.
-  const isMissionConversation = sessionChannel === 'mission';
-
-  // A background workflow reached a terminal state, so the server has written
-  // its outcome message — reload the transcript to show it.
-  const reloadSettledTranscript = useCallback(() => {
-    if (!sessionId) return;
-    void api
-      .getSession(sessionId)
-      .then((data) => {
-        setSessionTitle(data.session.title || '');
-        setMessages((prev) => reconcileMessages(prev, data.messages.map(parseMessage)));
-        bumpSessionListVersion();
-      })
-      .catch(() => {
-        // Keep the current view; the next session load recovers the message.
-      });
-  }, [sessionId, bumpSessionListVersion]);
+  // Missions and Workflows were retired in v1.4. Judged by CHANNEL, not
+  // profile: the channel is the durable fact the server stamped. Their
+  // conversations still open, but read-only — the server refuses to continue them.
+  const isRetiredChannel = sessionChannel === 'mission' || sessionChannel === 'workflow';
 
   // ─── Scroll position tracking ─────────
   // Show a "jump to latest" button when the user has scrolled up away from the bottom.
@@ -810,7 +793,7 @@ export function ConversationPane({
       const isComposerSend = overrideMessage === undefined;
       const composerMessage = composePromptMessage(input, selectedPrompt, taskValues);
       const rawMsg = (isComposerSend ? composerMessage : (overrideMessage ?? '')).trim();
-      if (!rawMsg || effectiveRunActive || isMissionConversation) return;
+      if (!rawMsg || effectiveRunActive || isRetiredChannel) return;
 
       // Images upload as soon as they are picked, and this send used to keep
       // only the ones already done (`filter(img => img.uploaded)`) — a send
@@ -954,7 +937,7 @@ export function ConversationPane({
       taskValues,
       offeredModelId,
       effectiveRunActive,
-      isMissionConversation,
+      isRetiredChannel,
       sessionId,
       pendingImages,
       pendingAttachments,
@@ -1034,7 +1017,7 @@ export function ConversationPane({
   const handleImageSelect = useCallback(
     async (files: FileList | File[]) => {
       // Retired Mission conversations are read-only — ignore drag/paste.
-      if (isMissionConversation) return;
+      if (isRetiredChannel) return;
       const fileArray = Array.from(files).filter((f) => f.type.startsWith('image/'));
       if (fileArray.length === 0) return;
 
@@ -1064,7 +1047,7 @@ export function ConversationPane({
         }
       }
     },
-    [isMissionConversation, pendingImages.length],
+    [isRetiredChannel, pendingImages.length],
   );
 
   /**
@@ -1132,7 +1115,7 @@ export function ConversationPane({
    */
   const handleFileSelect = useCallback(
     (files: FileList | File[]) => {
-      if (isMissionConversation) return;
+      if (isRetiredChannel) return;
       const picked = Array.from(files);
       const images = picked.filter((f) => f.type.startsWith('image/'));
       const others = picked.filter((f) => !images.includes(f));
@@ -1144,7 +1127,7 @@ export function ConversationPane({
       if (overflow > 0) toast(t('chat.attachmentLimitReached', { count: MAX_ATTACHMENTS }), 'info');
       if (next !== pendingAttachments) setPendingAttachments(next);
     },
-    [handleImageSelect, isMissionConversation, pendingAttachments, t],
+    [handleImageSelect, isRetiredChannel, pendingAttachments, t],
   );
 
   const handleRemoveAttachment = useCallback((index: number) => {
@@ -1256,7 +1239,7 @@ export function ConversationPane({
         onDrop={handleDropOnChat}
       >
         {/* Drag-drop overlay */}
-        {isDragging && !isMissionConversation && (
+        {isDragging && !isRetiredChannel && (
           <div className="absolute inset-0 z-50 bg-primary-subtle/80 border-2 border-dashed border-primary-400 rounded-lg flex items-center justify-center pointer-events-none">
             <div className="text-center">
               <Image size={36} className="mx-auto mb-2 text-primary-fg-strong" />
@@ -1383,13 +1366,13 @@ export function ConversationPane({
                     createdAt={msg.created_at}
                     isLastUser={isLastUser}
                     compact={policy.compactMessages}
-                    onEdit={isLastUser && !effectiveRunActive && !isMissionConversation ? handleEditMessage : undefined}
+                    onEdit={isLastUser && !effectiveRunActive && !isRetiredChannel ? handleEditMessage : undefined}
                     onTranslate={
-                      policy.allowTranslate && !isMissionConversation && msg.role === 'assistant'
+                      policy.allowTranslate && !isRetiredChannel && msg.role === 'assistant'
                         ? handleTranslate
                         : undefined
                     }
-                    onRegenerate={msg.role === 'assistant' && !isMissionConversation ? handleRegenerate : undefined}
+                    onRegenerate={msg.role === 'assistant' && !isRetiredChannel ? handleRegenerate : undefined}
                     onQuote={policy.allowQuote && msg.role === 'assistant' ? handleQuote : undefined}
                     isStreaming={effectiveIsStreaming}
                     onAskUserSubmit={
@@ -1452,12 +1435,13 @@ export function ConversationPane({
           </div>
         )}
 
-        {/* Input — read-only for workflow node sessions (engine-produced audit
-            records), retired Mission conversations and non-owners of shared sessions */}
-        {sessionId && sessionChannel === 'workflow' ? (
-          <WorkflowNodeSessionBar parentSessionId={parentSessionId} />
-        ) : sessionId && isMissionConversation ? (
-          <ReadOnlySessionBar message={t('chat.missionSessionReadOnly')} />
+        {/* Input — read-only for retired channels (Mission conversations, Workflow
+            node transcripts) and for non-owners of shared sessions */}
+        {sessionId && isRetiredChannel ? (
+          <ReadOnlySessionBar
+            message={t(sessionChannel === 'workflow' ? 'chat.workflowSessionReadOnly' : 'chat.missionSessionReadOnly')}
+            backToSessionId={sessionChannel === 'workflow' ? parentSessionId : null}
+          />
         ) : sessionId && !isOwner ? (
           <ChatInput
             input={input}
@@ -1517,15 +1501,6 @@ export function ConversationPane({
             maxAttachments={MAX_ATTACHMENTS}
             inputRef={chatInputRef}
             placeholder={workbenchConversationMode ? t('home.chatEditPlaceholder') : undefined}
-            aboveSlot={
-              sessionId ? (
-                <TaskDock
-                  sessionId={sessionId}
-                  workflowEnabled={currentUser?.role === 'super'}
-                  onTaskSettled={reloadSettledTranscript}
-                />
-              ) : null
-            }
             slashPrompts={slashPrompts}
             selectedPrompt={selectedPrompt}
             taskValues={taskValues}
@@ -1700,38 +1675,26 @@ function ProfileEmptyState({ profile, onCustomize }: { profile?: api.Profile; on
   );
 }
 
-/** Composer replacement for a conversation that can be read but not continued. */
-function ReadOnlySessionBar({ message }: { message: string }) {
-  return (
-    <div className="flex-shrink-0 border-t border-edge bg-surface-muted px-3 py-3 md:px-4">
-      <div className="mx-auto flex w-full max-w-5xl flex-wrap items-center justify-center gap-2 py-1 text-sm text-fg-muted">
-        <Eye size={14} />
-        <span>{message}</span>
-      </div>
-    </div>
-  );
-}
-
 /**
- * Composer replacement for workflow node/reviewer sessions: these transcripts
- * are produced by the engine and read as an audit trail, so typing into them
- * would corrupt the record. The back link returns to the orchestrating chat.
+ * Composer replacement for a conversation that can be read but not continued
+ * (a retired Mission conversation or Workflow node transcript). A workflow node
+ * links back to the conversation that orchestrated it.
  */
-function WorkflowNodeSessionBar({ parentSessionId }: { parentSessionId: string | null }) {
+function ReadOnlySessionBar({ message, backToSessionId }: { message: string; backToSessionId?: string | null }) {
   const t = useT();
   return (
     <div className="flex-shrink-0 border-t border-edge bg-surface-muted px-3 py-3 md:px-4">
       <div className="mx-auto flex w-full max-w-5xl flex-wrap items-center justify-center gap-2 py-1 text-sm text-fg-muted">
         <Eye size={14} />
-        <span>{t('workflow.nodeSessionReadOnly')}</span>
-        {parentSessionId && (
+        <span>{message}</span>
+        {backToSessionId && (
           <button
             onClick={() => {
-              window.location.hash = `#/chat?session=${parentSessionId}`;
+              window.location.hash = `#/chat?session=${backToSessionId}`;
             }}
             className="rounded-md border border-edge bg-surface-raised px-2 py-1 text-xs text-fg-secondary transition-colors hover:bg-surface-muted hover:text-fg"
           >
-            ← {t('workflow.backToWorkflow')}
+            ← {t('chat.backToConversation')}
           </button>
         )}
       </div>

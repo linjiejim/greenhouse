@@ -221,8 +221,8 @@ import { TOOL_DEFINITIONS } from '../registry.js';
 const TOTAL_DESCRIPTION_BUDGET = 36_100;
 
 /**
- * Per-tool ceiling. Current worst offender sits just under it (workflow_plan
- * ~3.5k) — new tools should stay far below.
+ * Per-tool ceiling (set when workflow_plan, retired in v1.4, sat at ~3.5k) —
+ * new tools should stay far below.
  */
 const PER_TOOL_DESCRIPTION_BUDGET = 4_000;
 

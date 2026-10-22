@@ -7,8 +7,7 @@
  * model alongside the clean original.
  *
  * Self-drawn SVG rather than a canvas library (spec D1): the vocabulary is five
- * static marks, and konva/fabric would be 100KB+ and a new idiom for that. Same
- * call the workflow DAG made.
+ * static marks, and konva/fabric would be 100KB+ and a new idiom for that.
  */
 
 import React, { useCallback, useMemo, useRef, useState } from 'react';

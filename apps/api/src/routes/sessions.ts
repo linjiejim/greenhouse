@@ -125,9 +125,9 @@ const sessions = new Hono<AppEnv>()
       return c.json({ error: 'Forbidden' }, 403);
     }
 
-    // Workflow node/reviewer sessions are engine internals reachable only from a
-    // run's Trace link — they never belong in a user-facing session list.
-    // `?channel=workflow` is the explicit debug back door.
+    // Workflow node/reviewer sessions (Workflows were retired in v1.4) were
+    // engine internals — they never belong in a user-facing session list. They
+    // still open by id (read-only); `?channel=workflow` is the explicit back door.
     const listOpts = {
       status,
       limit: includePageMeta ? limit + 1 : limit,

@@ -32,7 +32,7 @@ export function feishuConversationKey(refs: FeishuThreadRefs): string {
  * 飞书面拿不到的工具。
  *
  * 两类，理由不同：
- *  - **编排类**（workflow/schema-plan/task-capture）：它们的确认门是 Web
+ *  - **编排类**（schema-plan/task-capture）：它们的确认门是 Web
  *    专属的富卡片。IM 里没有确认按钮那道天然减速带，一句话就能起一个几十
  *    分钟、烧模型额度的任务（spec D4，Jim 拍板禁用）。
  *  - **会话编排**（spawn/call_llm）：本就 session-scoped 且只在带 sessionId 的
@@ -43,7 +43,6 @@ export function feishuConversationKey(refs: FeishuThreadRefs): string {
  * 「这个交互形态承载不了」。
  */
 export const FEISHU_DENIED_TOOL_IDS: readonly string[] = [
-  'workflow_plan',
   'tables_schema_plan',
   'task_capture',
   'spawn_session',

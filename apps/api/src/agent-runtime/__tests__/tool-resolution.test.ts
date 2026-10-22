@@ -85,29 +85,19 @@ describe('resolveEffectiveTools — profile narrowing', () => {
 const STUB_DB = {} as DatabaseProvider;
 
 describe('buildLazyServerTools — session-scoped orchestration tools', () => {
-  it('assembles workflow_plan in an ordinary chat session (no profile gate)', () => {
-    const tools = buildLazyServerTools(STUB_DB, ['workflow_plan'], {
+  it('assembles task_capture in an ordinary chat session (no profile gate)', () => {
+    const tools = buildLazyServerTools(STUB_DB, ['task_capture'], {
       userId: 'u1',
       userRole: 'team',
       sessionId: 's1',
       profileId: 'sprouty-quick',
     });
-    expect(Object.keys(tools)).toContain('workflow_plan');
-  });
-
-  it('still assembles workflow_plan for the workflows preset', () => {
-    const tools = buildLazyServerTools(STUB_DB, ['workflow_plan'], {
-      userId: 'u1',
-      userRole: 'team',
-      sessionId: 's1',
-      profileId: 'sprouty-workflows',
-    });
-    expect(Object.keys(tools)).toContain('workflow_plan');
+    expect(Object.keys(tools)).toContain('task_capture');
   });
 
   it('omits it on the stateless proxy/MCP surface (no sessionId → no confirm surface)', () => {
-    const tools = buildLazyServerTools(STUB_DB, ['workflow_plan'], { userId: 'u1', userRole: 'team' });
-    expect(Object.keys(tools)).not.toContain('workflow_plan');
+    const tools = buildLazyServerTools(STUB_DB, ['task_capture'], { userId: 'u1', userRole: 'team' });
+    expect(Object.keys(tools)).not.toContain('task_capture');
   });
 
   it('omits it when the user is not allowed the tool', () => {
@@ -117,7 +107,7 @@ describe('buildLazyServerTools — session-scoped orchestration tools', () => {
       sessionId: 's1',
       profileId: 'sprouty-quick',
     });
-    expect(Object.keys(tools)).not.toContain('workflow_plan');
+    expect(Object.keys(tools)).not.toContain('task_capture');
   });
 });
 
@@ -144,12 +134,12 @@ describe('buildLazyServerTools — workbench cards can only bind what the user c
 });
 
 describe('childSpawnToolIds — headless children fail closed to replay-safe reads', () => {
-  const parentTools = ['workflow_plan', 'tables_schema_plan', 'spawn_session', 'call_llm', 'knowledge_query'];
+  const parentTools = ['task_capture', 'tables_schema_plan', 'spawn_session', 'call_llm', 'knowledge_query'];
 
   it('strips both dispatch tools at every depth', () => {
     for (const depth of [0, 1, MAX_SPAWN_DEPTH]) {
       const ids = childSpawnToolIds(parentTools, depth);
-      expect(ids, `depth ${depth}`).not.toContain('workflow_plan');
+      expect(ids, `depth ${depth}`).not.toContain('task_capture');
       expect(ids, `depth ${depth}`).not.toContain('tables_schema_plan');
     }
   });

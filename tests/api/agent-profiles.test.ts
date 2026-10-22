@@ -22,7 +22,6 @@ const KNOWN_TOOLS = [
   'project_query',
   'project_mutation',
   'session_query',
-  'workflow_plan',
 ];
 
 /**

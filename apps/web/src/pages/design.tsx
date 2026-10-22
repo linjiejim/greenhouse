@@ -69,8 +69,6 @@ import {
   ChevronRight,
   Pencil,
   ClipboardList,
-  GitBranch,
-  Cloud,
   Columns3,
   Bookmark,
 } from '../lib/icons';
@@ -1794,7 +1792,7 @@ function ChatArtifactCardsSection() {
     <Section
       id="chat-artifact-cards"
       title="Chat Artifact Cards"
-      description="Shared anatomy and lifecycle for Ask User, Workflow, Mission, Schema Plan and Task Capture cards. Business bodies vary; header density, state, footer actions and resolved receipts stay consistent."
+      description="Shared anatomy and lifecycle for Ask User, Schema Plan and Task Capture cards. Business bodies vary; header density, state, footer actions and resolved receipts stay consistent."
     >
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
         <SubSection title="Ask User · awaiting input">
@@ -1818,45 +1816,6 @@ function ChatArtifactCardsSection() {
                 2. Who is the recipient?
               </div>
             </div>
-          </ArtifactCard>
-        </SubSection>
-
-        <SubSection title="Workflow · running">
-          <ArtifactCard
-            icon={<GitBranch size={14} />}
-            title="Review product documentation"
-            meta="4 nodes · v2"
-            status={{ label: 'Running', tone: 'info', busy: true }}
-          >
-            <div className="grid grid-cols-4 gap-2 text-center text-[10px] text-fg-muted">
-              {['Extract', 'Review', 'Verify', 'Deliver'].map((label, index) => (
-                <div key={label} className="rounded-md border border-edge bg-surface-raised px-2 py-3">
-                  <StatusDot color={index === 0 ? 'success' : index === 1 ? 'primary' : 'muted'} />
-                  <div className="mt-1">{label}</div>
-                </div>
-              ))}
-            </div>
-          </ArtifactCard>
-        </SubSection>
-
-        <SubSection title="Mission · review and launch">
-          <ArtifactCard
-            icon={<Cloud size={14} />}
-            title="Audit supplier report"
-            meta="Default model"
-            status={{ label: 'Review', tone: 'primary' }}
-            footer={
-              <ArtifactCardActions hint="Nothing runs until Launch.">
-                <Button size="sm" variant="ghost">
-                  Not now
-                </Button>
-                <Button size="sm">Launch</Button>
-              </ArtifactCardActions>
-            }
-          >
-            <p className="text-xs leading-relaxed text-fg-secondary">
-              Check the supplied report against the source files and return a concise exception list with evidence.
-            </p>
           </ArtifactCard>
         </SubSection>
 

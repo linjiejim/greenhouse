@@ -52,10 +52,6 @@
       "import": "./src/ws.ts",
       "types": "./src/ws.ts"
     },
-    "./workflow": {
-      "import": "./src/workflow.ts",
-      "types": "./src/workflow.ts"
-    },
     "./rich-output": {
       "import": "./src/rich-output.ts",
       "types": "./src/rich-output.ts"

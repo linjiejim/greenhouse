@@ -2,7 +2,7 @@
 
 系统 Profiles 共 2 个：**一个可选预设** Sprouty + 一个 `hidden` 的系统 profile。
 
-> **四预设已于 2026-08-01 收敛为一个**（见 [附件与预设收敛 spec](../../../../docs/specs/20260731-attachment-and-preset-convergence.md) M3）。quick / deep / K3 三份提示词逐字相同，区别只有模型；`sprouty-workflows` 与 `sprouty-mission` 是把「模式」伪装成「助手」——`workflow_plan` 现在对所有内部会话装配，起草与执行都不再依赖开局选中某个预设。所有退役 id 由 `normalizeProfileId()` 归一到 `sprouty`，**不做数据迁移**。Missions 在 v1.4 整体删除，存量 `channel='mission'` 会话只读。
+> **四预设已于 2026-08-01 收敛为一个**（见 [附件与预设收敛 spec](../../../../docs/specs/20260731-attachment-and-preset-convergence.md) M3）。quick / deep / K3 三份提示词逐字相同，区别只有模型；`sprouty-workflows` 与 `sprouty-mission` 是把「模式」伪装成「助手」。所有退役 id 由 `normalizeProfileId()` 归一到 `sprouty`，**不做数据迁移**。Missions 与 Workflows 在 v1.4 整体删除，存量 `channel='mission'` / `'workflow'` 会话只读。
 
 **模型改由每轮选择**，所以「这个预设跑不跑得起来」的判断也从 profile 挪到了模型：`GET /api/profiles` 除 profiles 外返回 `models: listChatModels()`，该函数过掉在目录里没有任何可达 provider（`api_key_env` 未配）的模型——没配 `DEEPSEEK_API_KEY` 的部署就看不到 `deepseek-flash`，不会出现"选得到、一发消息就吃 No available providers"的虚假能力。**自定义 Agent 不参与任何过滤**：那是用户自己的数据，从他自己的列表里悄悄消失更像丢数据；它钉的模型不可达时改跑 base preset 的模型。
 
@@ -140,7 +140,7 @@ stateless Agent/MCP 不开放该文件工具。
 - **校验与配额不在工具里**：cron/时区合法性、每人 10 条上限、最小间隔 1 小时、prompt 长度、
   hidden profile 门（create 与 update 同一道，防 create-then-switch）全部在
   `scheduler/task-center.ts`，与 HTTP 路由共用同一份实现。
-- **无人值守上下文禁用写工具**：定时任务执行与 workflow 节点都过
+- **无人值守上下文禁用写工具**：定时任务执行与 spawn 子会话都过
   `UNATTENDED_TOOL_DENYLIST`——那里没人能确认排期，且定时任务能创建定时任务会自我增殖。
   只读的 `automation_query` 保留。
 - 确认策略（先复述完整配置再落库）写在 `automation_mutation` 的 description 里，随 function
@@ -215,19 +215,18 @@ stateless Agent/MCP 不开放该文件工具。
 - 目录解析按文档 owner 的树进行：team scope 只看得见 team 目录，personal 只看得见本人私有目录。
   **空目录的过滤结果是「什么都没有」而不是「全库」**——folder 过滤只准收窄。
 
-## Dispatch 工具（`workflow_plan` / `tables_schema_plan` / `task_capture`）
+## Dispatch 工具（`tables_schema_plan` / `task_capture`）
 
-2026-07-31 起，编排**不再是必须开局就选中的模式**：默认 Sprouty 会话里模型可以自行判断"该编排了"并**起草**，执行永远经用户点卡片上的按钮。方案见
+草稿类工具在默认 Sprouty 会话里由模型自行判断何时**起草**，执行永远经用户点卡片上的按钮。方案见
 [20260731-session-modes-tool-unification.md](../../../../docs/specs/20260731-session-modes-tool-unification.md)。
 
 | 工具 | 装配条件 | 起草产物 | 执行入口 |
 | --- | --- | --- | --- |
-| `workflow_plan` | 任意内部用户的**会话**（session-scoped；无 profile 门控、无 flag） | 计划卡（DAG，可编辑） | 卡片 Confirm → `POST /api/workflows/:id/confirm` |
 | `task_capture` | 任意内部用户的**会话**（`is_global`，session-scoped） | 任务草稿卡（标题/说明/正文/变量，可编辑；工具清单由服务端从会话真实调用派生） | 卡片 Create → `POST /api/prompts` |
 
-- 它们都 **session-scoped**（无状态的 proxy/MCP 面不装配——那里没有可确认的卡片），都在 `NODE_TOOL_DENYLIST` 与 `DISPATCH_TOOL_IDS` 里（workflow 节点、spawn 子会话都拿不到：headless 会话里没人能按按钮）。
-- **"什么时候值得用"的口径写在工具 description**，不写进 profile prompt——description 随 function definition 下发，覆盖所有装配面；prompt 只覆盖那一个 profile。**完整的 planner 方法论（DESIGN RULES + GATES 语义）也已折进 `workflow_plan` 的 description**，随 `sprouty-workflows` 一并退役——留在某个预设的 prompt 里等于只有选中它的人才拿得到。
-- 两个「模式预设」**均已退役**（2026-08-01）：`sprouty-workflows` 剩下的只是方法论 prompt + 一个模型，前者已进工具 description、后者已成每轮可选；`mission_dispatch` 随 Missions 在 v1.4 删除。
+- 它们都 **session-scoped**（无状态的 proxy/MCP 面不装配——那里没有可确认的卡片），都在 `DISPATCH_TOOL_IDS` 里（定时任务与 spawn 子会话都拿不到：headless 会话里没人能按按钮）。`tables_schema_plan` 的 Confirm 走 `POST /api/tables/schema-plan/apply`。
+- **"什么时候值得用"的口径写在工具 description**，不写进 profile prompt——description 随 function definition 下发，覆盖所有装配面；prompt 只覆盖那一个 profile——留在某个预设的 prompt 里等于只有选中它的人才拿得到。
+- 两个「模式预设」**均已退役**（2026-08-01）；`workflow_plan` 与 `mission_dispatch` 随 Workflows / Missions 在 v1.4 删除。
 
 ## Agent-Runtime Profile (`desktop`)
 
@@ -261,7 +260,7 @@ stateless Agent/MCP 不开放该文件工具。
 
 兼容规则（`normalizeProfileId()`）：
 
-- `team` / `default` / `workflow-planner` / `sprouty-agents` 与四个退役预设等旧 preset ID 一律映射为 `sprouty`，用于历史 session / eval run / 定时任务 / custom profile base 的解析。
+- `team` / `default` / `workflow-planner` / `sprouty-agents` 与四个退役预设等旧 preset ID 一律映射为 `sprouty`，用于历史 session / 定时任务 / custom profile base 的解析。
 - `local-dev` / `local-pi` 映射为 `desktop`（agent-runtime profile）。
 - custom profile 的 `base_profile_id` 只能是预设之一（`CUSTOM_BASE_PROFILE_IDS = PRESET_PROFILE_IDS`）；存量旧值先归一再校验，归一后仍不合法的回落 `sprouty`。
 
@@ -269,5 +268,5 @@ stateless Agent/MCP 不开放该文件工具。
 
 - **系统 profile 的 YAML `tools:` 运行时不读**——系统 Agent 跑的是用户完整 allow-set（所以上表 sprouty 那行写「工具由用户权限/分配控制」）。它只在 fork 时被读过一次，且读错了：见 api AGENTS.md 的 fork 修复条目。
 - **自建 Agent 的 `tools` 是交集过滤器**，另有 10 个 `builtin: true` 的工具无条件并入该过滤器（`BUILTIN_AGENT_TOOL_IDS`），使作者不必知道它们存在也能得到一个会追问、会读附件、会定时的 Agent。判据、清单与「必须并进过滤集而非结果集」的理由写在 api AGENTS.md「内置 Agent 工具」一节。
-- 内置只影响自建 Agent；系统 profile 本就拿全量 allow-set，不受影响。无人值守面（定时任务 / workflow 节点 / spawn 子会话）另有 fail-closed 白名单 `filterUnattendedToolIds` 收窄，内置不给它新增任何工具。
+- 内置只影响自建 Agent；系统 profile 本就拿全量 allow-set，不受影响。无人值守面（定时任务 / spawn 子会话）另有 fail-closed 白名单 `filterUnattendedToolIds` 收窄，内置不给它新增任何工具。
 

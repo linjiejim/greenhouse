@@ -64,7 +64,7 @@
 - v1.4 删除模块时**不删表**：表定义原样挪进 `schema/retired.ts`（从 schema index 导出，Drizzle snapshot 不变、不产生迁移），service 与 provider 入口一并删除。留表只为蓝绿回滚到 v1.3.x 时旧代码还能读写；v1.4 之后的下一个版本用迁移把它们 DROP 掉，再删 `retired.ts` 里对应定义。
 - 应用代码不得 import `retired.ts` 的任何导出；`resetSchema()` 的 TRUNCATE 清单保留这些表名（表还在）。
 - 退役列（表还活着、列不再读写）就地留在原 schema，注释写明退役版本，与退役表同一版本 DROP。
-- 当前退役：评测 `eval_datasets` / `eval_runs` / `eval_results` / `chat_eval_results`；Missions `agent_workspaces` / `agent_runs` / `agent_run_events` / `agent_artifacts` / `agent_run_approvals` / `agent_run_outbox`；LLM 中转 key `api_clients`（`api_audit_log` 仍是活表，与它只有逻辑关联、没有 FK）；列 `custom_profile_versions.eval_refs`。
+- 当前退役：评测 `eval_datasets` / `eval_runs` / `eval_results` / `chat_eval_results`；Missions `agent_workspaces` / `agent_runs` / `agent_run_events` / `agent_artifacts` / `agent_run_approvals` / `agent_run_outbox`；Workflows `workflows` / `workflow_runs` / `workflow_node_runs` / `workflow_gates`；LLM 中转 key `api_clients`（`api_audit_log` 仍是活表，与它只有逻辑关联、没有 FK）；列 `custom_profile_versions.eval_refs`。
 
 ### Schema 迁移
 
@@ -249,7 +249,7 @@
 
 ### 统一 Runtime Kernel
 
-- schema：`schema/runtime.ts`；service：`services/runtime.ts`；provider 入口：`db.runtime`。它只统一执行 envelope、lease/CAS、Interrupt、Event/Outbox，不取代 Workflow graph 或 Chat transcript 等领域事实。`kind=eval` / `kind=mission` 只剩 v1.4 前的历史 Run（API boot 时 `settleRetiredRuntimeRuns` 收口遗留的活动 Run）。
+- schema：`schema/runtime.ts`；service：`services/runtime.ts`；provider 入口：`db.runtime`。它只统一执行 envelope、lease/CAS、Interrupt、Event/Outbox，不取代 Chat transcript 等领域事实。`kind=eval` / `kind=mission` / `kind=workflow` 只剩 v1.4 前的历史 Run（API boot 时 `settleRetiredRuntimeRuns` 收口遗留的活动 Run）。
 - Run/Step/ToolCall/Artifact/Interrupt 的完整 input/output/payload/decision 与 Event payload 永久保留，不自动截断、不过期、无生产 delete Service；大文件字节仍在对象存储，Artifact 保存 provenance/hash。`runtime_events` append-only，Outbox delivery state 只能写 `runtime_outbox`，禁止回写或改造 Event。
 - 每个状态/heartbeat/claim/stale-recovery 变更必须在同一事务追加 Event + Outbox；Event `seq` 通过锁定对应 Run 后分配。重复命令先查 `(run_id,idempotency_key)` 并校验完整 fingerprint，不能重新执行副作用。
 - 真实工具执行前只走 `runtime.beginToolCallWithAuthority()`：同一事务按 Run→Step 加行锁，durable driver 必须证明 Run/Step 都仍 running、`desired_state=run`、owner 匹配、worker 同时持有两条未过期 lease；unleased 例外只允许 running 的 `kind=chat/source_kind=chat_turn` projection。事务内一次完成 ToolCall create + pending→running 及两条 Event/Outbox，任一失败都禁止调用真实工具。已存在同幂等 key 永远不二次 admission。`running` worker 丢失统一转 `uncertain`（即使 Run 已请求 cancel），因为 DB 只能证明 admission 已提交，不能证明外部结果；pending 才能安全收为 canceled。

@@ -3,8 +3,8 @@
 ## Project intro
 
 Greenhouse is an open-source, AI-native enterprise agent workbench. The AI agent is the core
-of the product, not an add-on: chat, the knowledge base, projects, tables, automations,
-workflows and email all share one tool layer and one permission model. The same
+of the product, not an add-on: chat, the knowledge base, projects, tables, automations
+and email all share one tool layer and one permission model. The same
 tools members use in chat are exposed to external agents over the `/api/agent` proxy and the
 `/api/mcp` MCP server.
 
@@ -55,10 +55,11 @@ what exists." These rules are as binding as the "add" rules:
     `platform_user_workbench_preferences` (zero migrations). Conversely the drag grid
     `components/workbench/widget-grid.tsx` is shared by Home and Tables dashboards — the
     recorded reason for `react-grid-layout`.
-  - Registered: **mermaid in chat uses the third-party `mermaid` instead of extending the
-    workflow SVG DAG** — the DAG is an interactive run-time visualization (node selection,
-    status colouring, inspector, ≤ 15 nodes); chat mermaid is read-only rendering of arbitrary
-    diagram types. Lazy-loaded on the first mermaid fence; zero main-bundle cost.
+  - Registered: **mermaid in chat uses the third-party `mermaid` library rather than a
+    hand-drawn SVG renderer** — chat mermaid is read-only rendering of arbitrary diagram types,
+    which no in-house drawing code could match (the interactive workflow SVG DAG it was once
+    weighed against was retired with Workflows in v1.4). Lazy-loaded on the first mermaid fence;
+    zero main-bundle cost.
   - Registered: **workbench evaluation has one implementation** (`apps/api/src/workbench/evaluate.ts`)
     shared by the batch evaluate endpoint and the `workbench_*` tools, so "what the model
     previews" and "what the user refreshes" are the same thing. The bindable set is derived
@@ -222,7 +223,6 @@ greenhouse/
 │   │       ├── profiles/     # agent profile loader + access rules, the YAML presets, agent-profiles.md
 │   │       ├── scheduler/    # cron scheduler + executor (automations)
 │   │       ├── runtime/      # unified runtime kernel: runs, steps, interrupts, outbox, read models
-│   │       ├── workflow-engine/ # multi-agent task-graph engine
 │   │       ├── trusted-execution/ # deployment kill switches for the runtime layers
 │   │       ├── notifications/# notification center + durable delivery
 │   │       ├── email/        # IMAP/SMTP client, shared mailbox, security
