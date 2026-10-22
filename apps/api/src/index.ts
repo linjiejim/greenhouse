@@ -530,11 +530,13 @@ async function main() {
   //  - approval requests nobody decided in time, so the agent's status call gets
   //    a final answer (cheap: only waiting agent writes are read);
   //  - oversized MCP replies past their 24-hour life (agent-runtime/tool-output-store.ts);
-  //  - rate-limit buckets whose window has ended (security/security.ts).
+  //  - rate-limit buckets whose window has ended (security/security.ts);
+  //  - Feishu / WeCom login states and one-time login codes past their TTL.
   const expirySweeps: Array<[string, () => Promise<unknown>]> = [
     ['agent-access expiry', () => sweepExpiredAgentWrites(dbProvider)],
     ['MCP tool output', () => sweepExpiredToolOutputs()],
     ['rate-limit bucket', () => dbProvider.rateLimits.sweepExpired()],
+    ['OAuth login state', () => dbProvider.oauthLoginStates.sweepExpired()],
   ];
   setInterval(() => {
     for (const [label, sweep] of expirySweeps) {

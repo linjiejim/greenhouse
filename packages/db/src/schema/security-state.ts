@@ -38,3 +38,6 @@ export const oauthLoginStates = pgTable(
   },
   (table) => [index('idx_oauth_login_states_expires').on(table.expires_at)],
 );
+
+export type RateLimitBucketRow = typeof rateLimitBuckets.$inferSelect;
+export type OAuthLoginStateRow = typeof oauthLoginStates.$inferSelect;

@@ -1,5 +1,5 @@
 /**
- * Shared security state across connections (rate-limit counters).
+ * Shared security state across connections (rate-limit counters, OAuth login state).
  *
  * @db-commit-reason "Shared" means visible to a second instance and surviving a
  * restart: the cases below use two independent providers (two connection pools)
@@ -7,7 +7,7 @@
  */
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { randomUUID } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { createDatabase } from '@greenhouse/db';
 import type { DatabaseProvider } from '@greenhouse/db';
 import { TEST_DATABASE_URL } from '@greenhouse/db/test-config';
@@ -46,5 +46,22 @@ describe('security state shared between instances', () => {
     } finally {
       await restarted.close();
     }
+  });
+
+  it('lets exactly one of two instances consume a login state', async () => {
+    const state = randomBytes(32).toString('base64url');
+    await instanceA.oauthLoginStates.issue({
+      value: state,
+      provider: 'feishu',
+      kind: 'pending',
+      payload: { intent: 'login' },
+      expiresAt: expiresAt(),
+    });
+    const results = await Promise.all(
+      Array.from({ length: 6 }, (_, i) =>
+        (i % 2 ? instanceA : instanceB).oauthLoginStates.consume({ value: state, provider: 'feishu', kind: 'pending' }),
+      ),
+    );
+    expect(results.filter(Boolean)).toEqual([{ intent: 'login' }]);
   });
 });

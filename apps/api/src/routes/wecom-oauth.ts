@@ -16,7 +16,8 @@
  *    只有这一跳知道；它因此返回 JSON 而不是 302（整页跳转发不出 header）。
  *  - `/callback` 是企微**重定向浏览器**过来的，没有任何 header。凭证就是 `state`：
  *    服务端生成、单次消费、10 分钟过期、绑死 userId。它进 `isPublicPath`，
- *    **永不调 `getAuthUser`**。
+ *    **永不调 `getAuthUser`**。state 存在 `oauth_login_states`（只存 SHA-256，
+ *    单条条件 UPDATE 消费），重启不丢、多实例共享。
  */
 
 import { Hono } from 'hono';
@@ -32,24 +33,11 @@ export const WECOM_PROVIDER = 'wecom';
 
 // ─── Pending authorization state ─────────────────────────
 //
-// Only meaningful for one round-trip (tens of seconds), so it lives in process
-// memory rather than a table. A restart invalidates in-flight authorizations —
-// the user clicks again. Multi-instance deployment would need shared storage
-// (same known limitation as dashboard-oauth.ts).
+// Stored in `oauth_login_states` (hashed, single use), so a restart or a second
+// instance does not lose an in-flight binding. Expired rows are swept by the
+// five-minute upkeep tick in index.ts.
 
 const STATE_TTL_MS = 10 * 60 * 1000;
-
-interface PendingAuth {
-  userId: string;
-  expiresAt: number;
-}
-
-const pending = new Map<string, PendingAuth>();
-
-setInterval(() => {
-  const now = Date.now();
-  for (const [state, entry] of pending) if (now >= entry.expiresAt) pending.delete(state);
-}, 60_000).unref();
 
 function settingsRedirect(reqUrl: string, params: Record<string, string>): string {
   const base = (process.env.PUBLIC_BASE_URL || new URL(reqUrl).origin).replace(/\/$/, '');
@@ -80,7 +68,13 @@ export const wecomOAuthRoutes = new Hono<AppEnv>()
 
     const user = getAuthUser(c);
     const state = crypto.randomBytes(32).toString('base64url');
-    pending.set(state, { userId: user.id, expiresAt: Date.now() + STATE_TTL_MS });
+    await getDb().oauthLoginStates.issue({
+      value: state,
+      provider: WECOM_PROVIDER,
+      kind: 'pending',
+      payload: { userId: user.id },
+      expiresAt: new Date(Date.now() + STATE_TTL_MS).toISOString(),
+    });
 
     // The QR variant works both inside the WeCom client and in an ordinary
     // browser, so one entry point covers both without sniffing the UA.
@@ -103,9 +97,19 @@ export const wecomOAuthRoutes = new Hono<AppEnv>()
     if (!code || !state) return c.redirect(settingsRedirect(c.req.url, { wecom: 'error', reason: 'missing_params' }));
 
     // Single consumption: a replayed state must not bind a second time.
-    const entry = pending.get(state);
-    pending.delete(state);
-    if (!entry || Date.now() >= entry.expiresAt) {
+    let entry: { userId: string } | null;
+    try {
+      const consumed = await getDb().oauthLoginStates.consume({
+        value: state,
+        provider: WECOM_PROVIDER,
+        kind: 'pending',
+      });
+      entry = typeof consumed?.userId === 'string' ? { userId: consumed.userId } : null;
+    } catch (err) {
+      logger.error(`[WeCom] state lookup failed: ${toErrorMessage(err)}`);
+      return c.redirect(settingsRedirect(c.req.url, { wecom: 'error', reason: 'server_error' }));
+    }
+    if (!entry) {
       return c.redirect(settingsRedirect(c.req.url, { wecom: 'error', reason: 'state_expired' }));
     }
 

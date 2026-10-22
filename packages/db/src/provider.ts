@@ -51,7 +51,7 @@ import { createRuntimeService } from './services/runtime.js';
 import { createNotificationService } from './services/notifications.js';
 import { createWorkspaceSettingService } from './services/workspace-settings.js';
 import { createAgentWriteGrantService } from './services/agent-write-grants.js';
-import { createRateLimitService } from './services/security-state.js';
+import { createOAuthLoginStateService, createRateLimitService } from './services/security-state.js';
 
 function createDatabaseProvider(db: Db, client: DbClient['client'] | null) {
   return {
@@ -101,6 +101,7 @@ function createDatabaseProvider(db: Db, client: DbClient['client'] | null) {
     workspaceSettings: createWorkspaceSettingService(db),
     agentWriteGrants: createAgentWriteGrantService(db),
     rateLimits: createRateLimitService(db),
+    oauthLoginStates: createOAuthLoginStateService(db),
 
     /** Health check — verifies DB connection is alive. */
     async healthCheck(): Promise<{ ok: boolean; latencyMs: number }> {

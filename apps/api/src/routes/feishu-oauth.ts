@@ -21,6 +21,9 @@
  * 飞书重定向浏览器过来的、没有 header，凭证就是 state（服务端生成、单次消费、
  * 10 分钟、bind 时绑死 userId），它进 `isPublicPath`，**永不调 `getAuthUser`**。
  * 登录回跳用 60s 单次消费的兑换码，长期凭证不进 URL（spec D6）。
+ *
+ * state 与兑换码都存在 `oauth_login_states`（只存 SHA-256，`consume` 是一条带
+ * 条件的 UPDATE，并发下也只有一个赢家），所以重启不丢、多实例共享。
  */
 
 import { Hono } from 'hono';
@@ -40,10 +43,9 @@ export const FEISHU_PROVIDER = 'feishu';
 
 // ─── Pending authorization state ─────────────────────────
 //
-// Only meaningful for one round-trip (tens of seconds), so it lives in process
-// memory rather than a table. A restart invalidates in-flight authorizations —
-// the user clicks again. Multi-instance deployment would need shared storage
-// (same known limitation as wecom-oauth.ts / dashboard-oauth.ts).
+// Stored in `oauth_login_states` (hashed, single use), so a restart or a second
+// instance does not lose an in-flight login. Expired rows are swept by the
+// five-minute upkeep tick in index.ts.
 
 const STATE_TTL_MS = 10 * 60 * 1000;
 /** Login exchange codes are consumed within one page load; keep them short. */
@@ -53,17 +55,13 @@ interface PendingAuth {
   intent: 'bind' | 'login';
   /** Present only for bind states — the login flow does not know the user yet. */
   userId?: string;
-  expiresAt: number;
 }
 
-const pending = new Map<string, PendingAuth>();
-const loginCodes = new Map<string, { userId: string; expiresAt: number }>();
-
-setInterval(() => {
-  const now = Date.now();
-  for (const [state, entry] of pending) if (now >= entry.expiresAt) pending.delete(state);
-  for (const [code, entry] of loginCodes) if (now >= entry.expiresAt) loginCodes.delete(code);
-}, 60_000).unref();
+function asPendingAuth(payload: Record<string, unknown> | null): PendingAuth | null {
+  if (!payload || (payload.intent !== 'bind' && payload.intent !== 'login')) return null;
+  if (payload.intent === 'bind' && typeof payload.userId !== 'string') return null;
+  return { intent: payload.intent, ...(typeof payload.userId === 'string' ? { userId: payload.userId } : {}) };
+}
 
 function baseUrl(reqUrl: string): string {
   return (process.env.PUBLIC_BASE_URL || new URL(reqUrl).origin).replace(/\/$/, '');
@@ -92,9 +90,15 @@ function isLoginEligible(user: UserRow): boolean {
   return user.status === 'active' && (user.role === 'team' || user.role === 'super');
 }
 
-function issueState(entry: Omit<PendingAuth, 'expiresAt'>): string {
+async function issueState(entry: PendingAuth): Promise<string> {
   const state = crypto.randomBytes(32).toString('base64url');
-  pending.set(state, { ...entry, expiresAt: Date.now() + STATE_TTL_MS });
+  await getDb().oauthLoginStates.issue({
+    value: state,
+    provider: FEISHU_PROVIDER,
+    kind: 'pending',
+    payload: { ...entry },
+    expiresAt: new Date(Date.now() + STATE_TTL_MS).toISOString(),
+  });
   return state;
 }
 
@@ -110,7 +114,7 @@ export const feishuOAuthRoutes = new Hono<AppEnv>()
     if (!config) return c.json({ error: 'Feishu is not configured on this deployment' }, 503);
 
     const user = getAuthUser(c);
-    const state = issueState({ intent: 'bind', userId: user.id });
+    const state = await issueState({ intent: 'bind', userId: user.id });
     return c.json({ authorize_url: buildAuthorizeUrl(config, callbackUrl(c.req.url), state) });
   })
 
@@ -129,7 +133,7 @@ export const feishuOAuthRoutes = new Hono<AppEnv>()
     const config = getFeishuConfig();
     if (!config) return c.json({ error: 'Feishu login is not configured on this deployment' }, 503);
 
-    const state = issueState({ intent: 'login' });
+    const state = await issueState({ intent: 'login' });
     return c.json({ authorize_url: buildAuthorizeUrl(config, callbackUrl(c.req.url), state) });
   })
 
@@ -141,9 +145,16 @@ export const feishuOAuthRoutes = new Hono<AppEnv>()
     if (!code || !state) return c.redirect(settingsRedirect(c.req.url, { feishu: 'error', reason: 'missing_params' }));
 
     // Single consumption: a replayed state must not bind or log in a second time.
-    const entry = pending.get(state);
-    pending.delete(state);
-    if (!entry || Date.now() >= entry.expiresAt) {
+    let entry: PendingAuth | null;
+    try {
+      entry = asPendingAuth(
+        await getDb().oauthLoginStates.consume({ value: state, provider: FEISHU_PROVIDER, kind: 'pending' }),
+      );
+    } catch (err) {
+      logger.error(`[Feishu] state lookup failed: ${toErrorMessage(err)}`);
+      return c.redirect(settingsRedirect(c.req.url, { feishu: 'error', reason: 'server_error' }));
+    }
+    if (!entry) {
       return c.redirect(settingsRedirect(c.req.url, { feishu: 'error', reason: 'state_expired' }));
     }
 
@@ -198,7 +209,13 @@ export const feishuOAuthRoutes = new Hono<AppEnv>()
       if (!user || !isLoginEligible(user)) return fail('account_inactive');
 
       const exchangeCode = crypto.randomBytes(32).toString('base64url');
-      loginCodes.set(exchangeCode, { userId: user.id, expiresAt: Date.now() + LOGIN_CODE_TTL_MS });
+      await db.oauthLoginStates.issue({
+        value: exchangeCode,
+        provider: FEISHU_PROVIDER,
+        kind: 'login_code',
+        payload: { userId: user.id },
+        expiresAt: new Date(Date.now() + LOGIN_CODE_TTL_MS).toISOString(),
+      });
       return c.redirect(loginRedirect(c.req.url, { feishu_code: exchangeCode }));
     } catch (err) {
       logger.error(`[Feishu] callback failed: ${toErrorMessage(err)}`);
@@ -216,9 +233,10 @@ export const feishuOAuthRoutes = new Hono<AppEnv>()
     const code = typeof body.code === 'string' ? body.code : '';
     // Single consumption before any other check, so a failed attempt cannot be
     // replayed either.
-    const entry = code ? loginCodes.get(code) : undefined;
-    if (code) loginCodes.delete(code);
-    if (!entry || Date.now() >= entry.expiresAt) {
+    const entry = code
+      ? await getDb().oauthLoginStates.consume({ value: code, provider: FEISHU_PROVIDER, kind: 'login_code' })
+      : null;
+    if (!entry || typeof entry.userId !== 'string') {
       return c.json({ error: 'Login code is invalid or expired. Please scan again.' }, 401);
     }
 

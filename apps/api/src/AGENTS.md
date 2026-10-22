@@ -162,7 +162,7 @@ v1 只接 DeepSeek 与 OpenAI 兼容服务，它们**自动**缓存 prompt 前�
 - **一个企微身份只能绑一个账号**（`findByProviderUserId` 查重）：否则两个人都能绑同一位同事，然后都收到他的通知。
 - **个人推送的收件人只从绑定派生**：`scheduled_tasks.notify_wecom` 是**布尔**，与 `notify_email` 同构——通道里没有任何可供瞄准的收件人字段，这正是它能免确认的原因。知识库 @提及是在群通道之外**叠加**一条个人消息，两条腿各自独立（群未配置不影响 DM，未绑定的收件人只是收不到）。
 - **绑定存 `user_provider_tokens(provider='wecom')`，且 `access_token` 为 NULL**：企微应用 token 是 corp 全局的、由 client 缓存，per-user 行没有凭证可存。为此把该列改成可空而不是塞空串——后者会让列注释「AES-256-GCM encrypted」变成假话。
-- 已知限制：企微 markdown **应用消息只在企业微信客户端内可见**（微信侧不显示）；state 与 token 缓存都在进程内存，多实例部署需换共享存储。
+- 已知限制：企微 markdown **应用消息只在企业微信客户端内可见**（微信侧不显示）；应用 token 缓存在进程内存，多实例部署需换共享存储；绑定 `state` 已在 `oauth_login_states`（见下方飞书一节）。
 
 ### 飞书（`feishu/` + `/api/feishu` + `notify_feishu` + 扫码登录）
 
@@ -171,7 +171,7 @@ v1 只接 DeepSeek 与 OpenAI 兼容服务，它们**自动**缓存 prompt 前�
 - **绑定走 OAuth 而非邮箱匹配**（Greenhouse 邮箱与飞书邮箱不一致），存的是 `open_id`；user access token 换完 user_info 即弃，任何飞书凭证都不落库。
 - **绑定与登录共用一个 callback**（`/api/feishu/oauth/callback`），按 state 里的 `intent` 分流——飞书后台每条重定向 URL 都要登记，单 callback 少登记一条。bind state 绑死 userId；login state 不绑，命中绑定后发 **60s 单次消费的兑换码**回 `#/login?feishu_code=...`，前端 `POST /oauth/exchange`（公开 + IP 限流）换正常会话——**复用 `routes/auth.ts` 导出的 `issueUserSession`**，不长第二条签发路径；长期凭证永不进 URL。未绑定 → `not_bound` 引导先密码登录再绑定；**不自动建号**。
 - **三条公开路径**（`isPublicPath`）：`/oauth/callback`（浏览器重定向，state 是凭证）、`/oauth/start-login` 与 `/oauth/exchange`（登录页没有 Bearer 可带）。`/oauth/start` 与 `/binding` 仍要 Bearer，守卫写在路由文件内。护栏 `routes/__tests__/feishu-oauth.test.ts` 直接断言五个路径的 `isPublicPath` 取值。
-- 已知限制与企微同款：state / 兑换码 / tenant token 缓存都在进程内存，多实例部署需换共享存储。DM 需应用开通「机器人」能力且收件人在应用可见范围内（`230002 user not visible to app` 就是范围没放开）。
+- **state 与兑换码在 `oauth_login_states`**（v1.4）：只存 SHA-256，`consume` 是单条条件 UPDATE（并发只有一个赢家），TTL 不变（state 10 分钟、兑换码 60 秒），过期行由五分钟 upkeep 清扫；重启不丢、多实例共享。回调里查 state 失败（库不可用）照样 302 回设置页（`reason=server_error`），不吐 JSON。tenant token 缓存仍在进程内存，多实例部署需换共享存储。DM 需应用开通「机器人」能力且收件人在应用可见范围内（`230002 user not visible to app` 就是范围没放开）。
 
 ### 飞书机器人对话（`feishu/bot/` + 长连接）
 
