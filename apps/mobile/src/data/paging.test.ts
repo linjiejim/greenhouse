@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { collectPages } from './paging';
+import { appendUnique, collectPages, nextOffset } from './paging';
 
 const docs = (from: number, count: number) => Array.from({ length: count }, (_, i) => ({ id: from + i }));
 /** A shelf of `total` documents served `limit` at a time from `offset`. */
@@ -50,5 +50,18 @@ describe('reading every page of a shelf', () => {
     const result = await collectPages(fetchPage, { pageSize: 100, stillCurrent: () => current });
     expect(result).toMatchObject({ ok: false, code: 'identity_changed' });
     expect(fetchPage).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('appending pages of a list', () => {
+  it('keeps each id once', () => {
+    expect(appendUnique([{ id: 'a' }, { id: 'b' }], [{ id: 'b' }, { id: 'c' }, { id: 'c' }]).map((x) => x.id)).toEqual(['a', 'b', 'c']);
+  });
+
+  it('finds the next offset from the page meta, or from a full page', () => {
+    expect(nextOffset({ has_more: true, next_offset: 50 }, 50, 50, 0)).toBe(50);
+    expect(nextOffset({ has_more: false, next_offset: 50 }, 50, 50, 0)).toBeNull();
+    expect(nextOffset(undefined, 50, 50, 100)).toBe(150);
+    expect(nextOffset(undefined, 12, 50, 100)).toBeNull();
   });
 });

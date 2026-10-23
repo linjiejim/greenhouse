@@ -28,3 +28,16 @@ export async function collectPages<T extends { id: number }>(
   if (!stillCurrent()) return { ok: false, status: 0, code: 'identity_changed', message: '' };
   return { ok: true, data: items };
 }
+
+/** A later page appended to what is listed, each id once (a row that moved up is not shown twice). */
+export function appendUnique<T extends { id: string | number }>(listed: readonly T[], page: readonly T[]): T[] {
+  const seen = new Set(listed.map((item) => item.id));
+  return [...listed, ...page.filter((item) => !seen.has(item.id) && !!seen.add(item.id))];
+}
+
+/** The offset of the next page from a `page_meta` answer, or null when there is none. */
+export function nextOffset(page: { has_more: boolean; next_offset: number } | undefined, received: number, pageSize: number, offset: number): number | null {
+  if (page) return page.has_more ? page.next_offset : null;
+  // an older server without page_meta: a full page may have more after it
+  return received >= pageSize ? offset + received : null;
+}

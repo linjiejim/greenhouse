@@ -1,13 +1,15 @@
 /**
- * Assistant (助手): my conversations with the in-app assistant, newest first, and a compose button
- * for a new one. Light by design — the full chat with agents and tools lives on the web.
+ * Assistant (助手): my conversations with the in-app assistant, newest first and a page at a time
+ * as the list scrolls (each page bound to the identity that asked), and a compose button for a
+ * new one. Light by design — the full chat with agents and tools lives on the web.
  */
 
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { FlatList, View } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
-import { createSession, listSessions } from '../../src/api/assistant';
+import { createSession, listSessions, SESSION_PAGE } from '../../src/api/assistant';
 import { captureIdentity } from '../../src/data/identity';
+import { appendUnique, nextOffset } from '../../src/data/paging';
 import { useResource } from '../../src/data/use-resource';
 import { useT } from '../../src/lib/i18n';
 import { relativeTimeNow } from '../../src/lib/time-words';
@@ -24,11 +26,46 @@ export default function Assistant() {
   const { colors: c } = useTheme();
   const styles = useStyles(c);
   const load = useCallback(async () => {
-    const result = await listSessions();
-    return result.ok ? { ok: true as const, data: result.data.sessions } : result;
+    const result = await listSessions(0);
+    return result.ok
+      ? {
+          ok: true as const,
+          data: {
+            sessions: result.data.sessions,
+            next: nextOffset(result.data.page, result.data.sessions.length, SESSION_PAGE, 0),
+          },
+        }
+      : result;
   }, []);
   const resource = useResource(load);
-  const sessions = resource.data ?? [];
+  const first = resource.data;
+
+  // later pages, cleared whenever the first page is read again
+  const [more, setMore] = useState<{ first: typeof first; sessions: ChatSession[]; next: number | null }>({
+    first: null,
+    sessions: [],
+    next: null,
+  });
+  const extra = useMemo(
+    () => (more.first === first ? more : { first, sessions: [] as ChatSession[], next: first?.next ?? null }),
+    [more, first],
+  );
+  const loadingMore = useRef(false);
+  const loadMore = useCallback(async () => {
+    if (!first || extra.next == null || loadingMore.current) return;
+    loadingMore.current = true;
+    const current = captureIdentity();
+    const offset = extra.next;
+    const page = await listSessions(offset);
+    loadingMore.current = false;
+    if (!current() || !page.ok) return;
+    setMore({
+      first,
+      sessions: [...extra.sessions, ...page.data.sessions],
+      next: nextOffset(page.data.page, page.data.sessions.length, SESSION_PAGE, offset),
+    });
+  }, [first, extra]);
+  const sessions = useMemo(() => appendUnique(first?.sessions ?? [], extra.sessions), [first, extra.sessions]);
   const [starting, setStarting] = useState(false);
 
   const start = async () => {
@@ -65,6 +102,8 @@ export default function Assistant() {
         keyExtractor={(session) => session.id}
         refreshing={resource.loading && !!resource.data}
         onRefresh={() => void resource.refresh()}
+        onEndReached={() => void loadMore()}
+        onEndReachedThreshold={0.5}
         renderItem={({ item, index }) => (
           <ListRow
             title={item.title?.trim() || t('assistant.untitled')}
@@ -76,7 +115,7 @@ export default function Assistant() {
           />
         )}
         ListEmptyComponent={
-          !resource.data ? (
+          !first ? (
             resource.loading ? (
               <LoadingState style={styles.state} />
             ) : (
