@@ -5,9 +5,9 @@
  * The plan is measured, not counted: text is wrapped with the embedded
  * font's real advance widths and line height (font.ts) at the deck's sizes
  * (DECK, which the PDF renderer lays out with), so a slide holds what fits
- * on its page. Prose and lists fill slides block by block; a paragraph
- * taller than a slide is cut at line boundaries and continues on the next.
- * Tables are cut by row
+ * on its page. Prose and lists fill slides block by block; a paragraph or a
+ * single bullet taller than a slide is cut at line boundaries and continues
+ * on the next (a continued bullet has no marker). Tables are cut by row
  * height — column width × wrapped lines — with the header repeated, and a
  * row taller than a slide is itself cut into pieces. Figures go four to a
  * slide. Continuation slides number themselves ("Risks (2/3)").
@@ -237,6 +237,16 @@ function splitTallBlock(block: MdBlock, budget: number): MdBlock[] {
   return [block];
 }
 
+/** A list's items, with any item taller than a slide cut into continued pieces. */
+function splitTallItems(items: MdListItem[], budget: number): MdListItem[] {
+  const maxLines = Math.max(1, Math.floor((budget - LIST_GAP - ITEM_GAP) / bodyLine()));
+  return items.flatMap((item) =>
+    splitRunsByLines(item.runs, CONTENT_WIDTH - markerWidth(item.depth), DECK.bodySize, maxLines).map((runs, index) =>
+      index === 0 ? { ...item, runs } : { ...item, runs, continued: true },
+    ),
+  );
+}
+
 /** Text blocks packed into slide-sized pages; lists split between items. */
 function packText(blocks: MdBlock[], budget: number): MdBlock[][] {
   const pages: MdBlock[][] = [];
@@ -257,7 +267,7 @@ function packText(blocks: MdBlock[], budget: number): MdBlock[][] {
     if (block.type === 'list') {
       let chunk: MdListItem[] = [];
       let chunkHeight = LIST_GAP;
-      for (const item of block.items) {
+      for (const item of splitTallItems(block.items, budget)) {
         const height = itemHeight(item);
         if (used + chunkHeight + height > budget) {
           if (chunk.length) add({ ...block, items: chunk });

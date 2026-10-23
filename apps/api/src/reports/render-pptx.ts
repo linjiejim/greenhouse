@@ -81,10 +81,13 @@ function textBlocks(blocks: MdBlock[], brand: ReportBrand): TextProp[] {
         break;
       case 'list':
         for (const item of block.items) {
-          const runs = item.ordered ? [{ text: `${item.number}. ` }, ...item.runs] : item.runs;
+          const runs = item.ordered && !item.continued ? [{ text: `${item.number}. ` }, ...item.runs] : item.runs;
           out.push(
             ...paragraph(runProps(runs, brand), {
-              ...(item.ordered ? { indentLevel: item.depth } : { bullet: { indent: 18 }, indentLevel: item.depth }),
+              // A continued piece of a long item (slides.ts) carries no bullet of its own.
+              ...(item.ordered || item.continued
+                ? { indentLevel: item.depth }
+                : { bullet: { indent: 18 }, indentLevel: item.depth }),
               paraSpaceAfter: 6,
             }),
           );

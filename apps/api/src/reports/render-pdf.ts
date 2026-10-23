@@ -120,7 +120,8 @@ function blockNode(block: MdBlock, brand: ReportBrand, sizes: { h2: number; h3: 
           columns: [
             {
               width: 14 + item.depth * 14,
-              text: item.ordered ? `${item.number}.` : item.depth ? '◦' : '•',
+              // A continued piece of a long item (slides.ts) carries no marker of its own.
+              text: item.continued ? '' : item.ordered ? `${item.number}.` : item.depth ? '◦' : '•',
               alignment: 'right',
               color: item.ordered ? TEXT : brand.color,
             },

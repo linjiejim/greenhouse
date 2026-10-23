@@ -36,6 +36,8 @@ export interface MdListItem {
   ordered: boolean;
   /** 1-based number for ordered items. */
   number: number;
+  /** The rest of an item too long for one slide: drawn without its bullet or number. */
+  continued?: boolean;
 }
 
 type Style = Omit<InlineRun, 'text'>;

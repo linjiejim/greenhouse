@@ -273,6 +273,36 @@ describe('slides', () => {
     }
   });
 
+  it('cuts a single bullet longer than a slide, so planned slides equal rendered pages', async () => {
+    const long = cell('报告模板按团队要求的格式渲染成文件并存入档案库。', 780);
+    const { slides, pdfPages, pptxSlides } = await planAndRender('要点', {
+      kind: 'bullets',
+      items: ['第一条', long, '最后一条'],
+    });
+    expect(pdfPages).toBe(slides.length + 1);
+    expect(pptxSlides).toBe(slides.length + 1);
+    expectNumbered(
+      slides.map((slide) => slide.title),
+      '要点',
+    );
+    const items = slides.flatMap((slide) =>
+      slide.body.type === 'text' ? slide.body.blocks.flatMap((b) => (b.type === 'list' ? b.items : [])) : [],
+    );
+    // The long bullet became one bulleted piece and continued, unmarked pieces — nothing lost.
+    const pieces = items.filter(
+      (item) =>
+        item.runs
+          .map((r) => r.text)
+          .join('')
+          .startsWith('报') || item.continued,
+    );
+    expect(pieces.length).toBeGreaterThan(1);
+    expect(pieces[0]!.continued).toBeFalsy();
+    expect(pieces.slice(1).every((item) => item.continued)).toBe(true);
+    expect(pieces.map((item) => item.runs.map((r) => r.text).join('')).join('')).toBe(long);
+    expect(items.map((item) => item.runs.map((r) => r.text).join('')).at(-1)).toBe('最后一条');
+  });
+
   it('plans prose, a Markdown table and short lists to the page the PDF renders', async () => {
     const markdown = [
       cell('报告正文内容测试', 1500),
