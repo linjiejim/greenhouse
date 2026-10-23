@@ -163,6 +163,16 @@ scripts/desktop/make-app-release.mjs`, then `node scripts/desktop/merge-app-rele
 
 ### Mobile → fingerprint CD (OTA update / store build → TestFlight)
 
+> **Freeze on this line until the 3.0 release.** apps/mobile on `v1` is the new
+> team-hub app (Expo SDK 57). It shares the EAS project, bundle id and update URL with
+> the store app that currently ships from the v2 line (`main`). Until 3.0 makes this
+> line the product: never run `eas build`, `eas update` or `eas submit` from `v1` (or a
+> branch cut from it), and never point `mobile.yml` at `v1` — an update published to a
+> shared channel could reach v2 binaries, and a build would take over the next
+> TestFlight number. Verify on local dev-client builds on dedicated simulators. The
+> app reads the server's `mobile_api` level from `/api/bootstrap` and refuses servers
+> below what it needs (`MOBILE_API` in apps/mobile/src/api/compat.ts).
+
 `.github/workflows/mobile.yml` continuously deploys the Expo app on every `main`
 push that touches `apps/mobile/` — decoupled from the product **tag** (app-store
 cadence), though the app **version** is synced to the product version by

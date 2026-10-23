@@ -141,7 +141,8 @@ greenhouse/
 │   ├── web/                  # React + Vite single-page app (hash router)
 │   ├── browser/              # Chrome extension (MV3) — side-panel companion; connects to your
 │   │                         #   instances via saved multi-server "stations"
-│   └── mobile/               # Expo (React Native) app — chat, knowledge, projects, settings;
+│   └── mobile/               # Expo (React Native) team-hub app — notifications + push, stations,
+│                             #   settings (knowledge, files, projects, tables follow);
 │                             #   isolated install (pnpm mobile:install, then pnpm mobile)
 ├── packages/
 │   ├── agent-core/           # Agent kernel — streamText loop, OpenAI-compatible model factory
@@ -259,7 +260,8 @@ The **browser extension** is attached to each Release as
 `greenhouse-bridge-vX.Y.Z.zip` (unzip → Chrome → "Load unpacked", or submit to the
 Web Store). The **mobile app** ships on its own cadence via EAS: JS-only changes
 roll out as over-the-air updates; native changes auto-build and upload to
-TestFlight. Maintainer runbook: **[RELEASING.md](./RELEASING.md)**.
+TestFlight. On the 1.x line the new team-hub app is not published before 3.0 (the
+store app still ships from the v2 line). Maintainer runbook: **[RELEASING.md](./RELEASING.md)**.
 
 The **desktop app** (a Tauri shell for macOS on Apple Silicon and Windows x64) is
 attached to each Release as well; installed copies update themselves from the project

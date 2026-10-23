@@ -196,7 +196,8 @@ Full runbook: **[RELEASING.md](./RELEASING.md)**. The conventions an agent must 
   (`pnpm -F @greenhouse/browser package`). Mobile = fingerprint CD
   (`.github/workflows/mobile.yml`, `EXPO_TOKEN`-gated): JS-only change → EAS OTA update;
   native change → EAS build `--auto-submit`. The mobile `version` follows the product version
-  (release-please `extra-files`).
+  (release-please `extra-files`). **On this line nothing mobile publishes before 3.0** (the store
+  app still ships from v2): no `eas build` / `update` / `submit`, no `mobile.yml` trigger on `v1`.
 
 ## Project structure (pnpm monorepo)
 
@@ -271,7 +272,7 @@ greenhouse/
 | `@greenhouse/web` | `apps/web/` | Frontend app |
 | `@greenhouse/browser` | `apps/browser/` | Chrome extension (MV3) — consumes `@greenhouse/ui` |
 | `@greenhouse/desktop` | `apps/desktop/` | Tauri desktop shell (Rust + `tauri.conf.json`; the web side is `apps/web/src/lib/desktop/`). Configured per deployment through `GREENHOUSE_DESKTOP_*` build-time variables, never by editing the crate |
-| `@greenhouse/mobile` | `apps/mobile/` | Expo mobile app — **not** a workspace member (own lockfile, `pnpm mobile:install`); vendors its types |
+| `@greenhouse/mobile` | `apps/mobile/` | Expo team-hub app (SDK 57) — **not** a workspace member (own lockfile, `pnpm mobile:install`); vendors its types (`src/shared/push.ts` is parity-tested against `@greenhouse/types/push`) |
 
 ### Import conventions
 
@@ -343,7 +344,7 @@ Detailed rules live next to the code:
 | Settings pages | [apps/web/src/pages/settings/AGENTS.md](./apps/web/src/pages/settings/AGENTS.md) | Settings / Administration modules, CRUD page conventions |
 | Browser extension | [apps/browser/src/AGENTS.md](./apps/browser/src/AGENTS.md) | MV3 lifecycle, stations, token refresh |
 | Desktop shell | [apps/desktop/AGENTS.md](./apps/desktop/AGENTS.md) | Tauri shell: hot updates (two version lines), deployment variables, native capabilities, signing |
-| Mobile | [apps/mobile/AGENTS.md](./apps/mobile/AGENTS.md) | Expo app — workspace isolation, vendored types, theme/i18n rules |
+| Mobile | [apps/mobile/AGENTS.md](./apps/mobile/AGENTS.md) | Expo team-hub app — workspace isolation, vendored types, API level, push, cache-first data, theme/i18n rules |
 | Agent profiles | [apps/api/src/profiles/agent-profiles.md](./apps/api/src/profiles/agent-profiles.md) | Profiles, model switching, tool scoping |
 | LLM / Agent kernel | `packages/agent-core/` + `apps/api/src/llm/` | Kernel (model factory/registry, chat-engine) in the package; completion/title/memory/budget consumers in api |
 | Skill packs | [skillhub/README.md](./skillhub/README.md) | Pack layout, skills vs. MCP tools, publishing |
