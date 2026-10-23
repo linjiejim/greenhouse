@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { classifyWrite, writeToolCanDelete } from './risk.js';
+import { classifyWrite, writeToolCanDelete, writeToolIsAdditiveOnly } from './risk.js';
 
 describe('classifyWrite', () => {
   it('treats delete-like actions as r3 for every tool, extension tools included', () => {
@@ -38,5 +38,18 @@ describe('classifyWrite', () => {
     expect(writeToolCanDelete(schema(['knowledge.create_doc', 'knowledge.archive_doc']))).toBe(false);
     expect(writeToolCanDelete({ type: 'object', properties: {} }, 'r3')).toBe(true);
     expect(writeToolCanDelete(undefined)).toBe(false);
+  });
+
+  it('calls a write tool additive only when every action just adds something', () => {
+    const schema = (actions: string[]) => ({
+      type: 'object',
+      properties: { action: { type: 'string', enum: actions } },
+    });
+    expect(writeToolIsAdditiveOnly(schema(['knowledge.create_doc', 'knowledge.append_doc', 'comment.add']))).toBe(true);
+    // An edit or an archive overwrites; that is not additive (MCP destructiveHint).
+    expect(writeToolIsAdditiveOnly(schema(['knowledge.create_doc', 'knowledge.update_doc']))).toBe(false);
+    expect(writeToolIsAdditiveOnly(schema(['knowledge.archive_doc']))).toBe(false);
+    expect(writeToolIsAdditiveOnly({ type: 'object', properties: {} })).toBe(false);
+    expect(writeToolIsAdditiveOnly(schema(['records.create']), 'r3')).toBe(false);
   });
 });

@@ -103,7 +103,8 @@ describe('E2E: recorded MCP writes', () => {
     const read = tools.find((tool) => tool.name === 'knowledge_query')!;
     expect(read.annotations).toMatchObject({ readOnlyHint: true });
     const knowledgeWrite = tools.find((tool) => tool.name === 'knowledge_mutation')!;
-    expect(knowledgeWrite.annotations).toMatchObject({ readOnlyHint: false, destructiveHint: false });
+    // Updates and archives overwrite, so it is destructive in MCP's sense; it still cannot delete.
+    expect(knowledgeWrite.annotations).toMatchObject({ readOnlyHint: false, destructiveHint: true });
     expect(knowledgeWrite.inputSchema.properties.confirm).toBeUndefined();
     expect(knowledgeWrite.description).toMatch(/recorded in their name/);
     const tablesWrite = tools.find((tool) => tool.name === 'tables_mutation')!;

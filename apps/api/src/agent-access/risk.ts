@@ -58,12 +58,30 @@ export function classifyWrite(toolId: string, input: unknown, baseRisk: RuntimeA
 
 /**
  * Whether a write tool can delete at all: its catalog risk is r3, or its
- * `action` enum offers a delete-like verb. Drives the MCP `destructiveHint`
- * annotation and whether the tool advertises the `confirm` flag.
+ * `action` enum offers a delete-like verb. Decides whether the tool advertises
+ * the `confirm` flag (the delete preview round trip).
  */
 export function writeToolCanDelete(inputSchema: unknown, baseRisk: RuntimeActionRisk = 'r2'): boolean {
   if (baseRisk === 'r3') return true;
   const properties = asRecord(asRecord(inputSchema).properties);
   const actions = asRecord(properties.action).enum;
   return Array.isArray(actions) && actions.some((value) => typeof value === 'string' && isDeleteLikeAction(value));
+}
+
+const ADDITIVE_VERB = /^(create|add|append|insert|comment)(_|$)/;
+
+/**
+ * Whether every action a write tool offers only adds something (MCP's
+ * `destructiveHint: false` means "only additive updates"). A tool without an
+ * `action` enum, or with any update / archive / delete action, is not.
+ */
+export function writeToolIsAdditiveOnly(inputSchema: unknown, baseRisk: RuntimeActionRisk = 'r2'): boolean {
+  if (baseRisk === 'r3') return false;
+  const properties = asRecord(asRecord(inputSchema).properties);
+  const actions = asRecord(properties.action).enum;
+  return (
+    Array.isArray(actions) &&
+    actions.length > 0 &&
+    actions.every((value) => typeof value === 'string' && ADDITIVE_VERB.test(verbOf(value)))
+  );
 }

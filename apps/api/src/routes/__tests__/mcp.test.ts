@@ -132,7 +132,8 @@ describe('MCP server — tools/list', () => {
     expect(tools.map((t) => t.name).sort()).toEqual(['project_mutation', 'project_query', 'tool_output_read']);
 
     const write = tools.find((t) => t.name === 'project_mutation')!;
-    expect(write.annotations).toMatchObject({ readOnlyHint: false, destructiveHint: false, openWorldHint: false });
+    // No action enum to prove it only adds things: destructive, so clients ask.
+    expect(write.annotations).toMatchObject({ readOnlyHint: false, destructiveHint: true, openWorldHint: false });
     expect(write.description).toMatch(/recorded in their name/);
     // This write cannot delete, so it has no confirm flag at all.
     expect((write.inputSchema as { properties: Record<string, unknown> }).properties.confirm).toBeUndefined();
@@ -321,7 +322,12 @@ describe('toMcpInputSchema', () => {
     expect((schema.properties as Record<string, { type?: string }>).confirm.type).toBe('boolean');
     expect(schema.required).toEqual(['action']);
     expect(mcpToolAnnotations(deleting)).toMatchObject({ readOnlyHint: false, destructiveHint: true });
-    expect(mcpToolAnnotations(plain)).toMatchObject({ readOnlyHint: false, destructiveHint: false });
+    expect(mcpToolAnnotations(plain)).toMatchObject({ readOnlyHint: false, destructiveHint: true });
+    const additive = base({
+      mutating: true,
+      inputSchema: { type: 'object', properties: { action: { type: 'string', enum: ['comment.add'] } } },
+    });
+    expect(mcpToolAnnotations(additive)).toMatchObject({ readOnlyHint: false, destructiveHint: false });
     expect(mcpToolAnnotations(base({}))).toEqual({ readOnlyHint: true, openWorldHint: false });
   });
 });
