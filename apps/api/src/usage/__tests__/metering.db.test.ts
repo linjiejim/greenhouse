@@ -285,6 +285,31 @@ describe('spend reads', () => {
 });
 
 describe('admin limits', () => {
+  it('caps a service without its own limit at the team limit, and alerts admins once for the team', async () => {
+    await db.metering.setLimit({ scope_type: 'organization', scope_id: orgScope, limit_units: 10_000 });
+    const overview = await buildMeteringOverview(db);
+    expect(overview.budgets.services.find((budget) => budget.scope_id === 'web_search')).toMatchObject({
+      limit_usd_micros: 10_000,
+      source: 'default',
+    });
+    const lease = await reserve(8_500);
+    lease.markProviderIoStarted();
+    await settleServiceFact(db, lease, { provider: 'tavily', units: 1, unitKind: 'call', costUsdMicros: 8_500 });
+    expect((await balances()).service.limit_units).toBe(10_000);
+    // One team alert, not a second one for the service that only mirrors it.
+    expect((await budgetNotifications(admin)).map((n) => JSON.parse(n.payload).scope_type)).toEqual(['organization']);
+
+    // With its own cap the service is alerted on separately.
+    await db.metering.setLimit({ scope_type: 'service', scope_id: 'web_search', limit_units: 9_000 });
+    const next = await reserve(1);
+    next.markProviderIoStarted();
+    await settleServiceFact(db, next, { provider: 'tavily', units: 1, unitKind: 'call', costUsdMicros: 1 });
+    expect((await budgetNotifications(admin)).map((n) => JSON.parse(n.payload).scope_type).sort()).toEqual([
+      'organization',
+      'service',
+    ]);
+  });
+
   it('upserts one row per scope and falls back once removed', async () => {
     await db.metering.setLimit({ scope_type: 'user', scope_id: MEMBER_DEFAULT_SCOPE_ID, limit_units: 7_000_000 });
     await db.metering.setLimit({ scope_type: 'user', scope_id: member.id, limit_units: 1_000_000, actor_id: admin.id });

@@ -145,8 +145,11 @@ export function resolveMeteringClient(explicit: MeteringClient | undefined, call
 export const DEFAULT_MEMBER_MONTHLY_USD_MICROS = 50_000_000;
 /** $2,000 for the whole team. */
 export const DEFAULT_ORG_MONTHLY_USD_MICROS = 2_000_000_000;
-/** A service is capped only by the organization unless an admin sets its own limit. */
-export const DEFAULT_SERVICE_MONTHLY_USD_MICROS = DEFAULT_ORG_MONTHLY_USD_MICROS;
+/*
+ * A service has no default of its own: without an admin row or
+ * USAGE_BUDGET_SERVICE_MONTHLY_USD_MICROS it follows the organization's
+ * resolved limit, so it is capped only by the team (see resolveLimitsFromRows).
+ */
 
 const DEFAULT_ORG_SCOPE_ID = 'default';
 
@@ -192,13 +195,18 @@ export function resolveLimitsFromRows(
   const memberDefault: ResolvedLimit = defaultRow
     ? { limit: defaultRow.limit_units, source: 'override' }
     : fromEnvOrDefault('USAGE_BUDGET_MEMBER_MONTHLY_USD_MICROS', DEFAULT_MEMBER_MONTHLY_USD_MICROS);
+  const organization: ResolvedLimit = orgRow
+    ? { limit: orgRow.limit_units, source: 'override' }
+    : fromEnvOrDefault('USAGE_BUDGET_ORG_MONTHLY_USD_MICROS', DEFAULT_ORG_MONTHLY_USD_MICROS);
+  const serviceEnv = envLimit('USAGE_BUDGET_SERVICE_MONTHLY_USD_MICROS');
   return {
-    organization: orgRow
-      ? { limit: orgRow.limit_units, source: 'override' }
-      : fromEnvOrDefault('USAGE_BUDGET_ORG_MONTHLY_USD_MICROS', DEFAULT_ORG_MONTHLY_USD_MICROS),
+    organization,
+    // No service row and no service env: the service follows the team's limit, wherever that came from.
     service: serviceRow
       ? { limit: serviceRow.limit_units, source: 'override' }
-      : fromEnvOrDefault('USAGE_BUDGET_SERVICE_MONTHLY_USD_MICROS', DEFAULT_SERVICE_MONTHLY_USD_MICROS),
+      : serviceEnv !== undefined
+        ? { limit: serviceEnv, source: 'env' }
+        : { limit: organization.limit, source: 'default' },
     memberDefault,
     // A member without an override follows the member default, wherever that came from.
     member: memberRow ? { limit: memberRow.limit_units, source: 'override' } : { ...memberDefault, source: 'default' },
@@ -267,8 +275,11 @@ async function ensureSpendAccounts(
   return { levels, ids: accounts.map((account) => account.id) };
 }
 
-/** Most specific first: a member reads about their own budget before the team's. */
-const LEVEL_ORDER: BudgetLevel[] = ['member', 'service', 'organization'];
+/**
+ * A member reads about their own budget first; then the team's, which a
+ * service without its own limit merely mirrors; a service cap last.
+ */
+const LEVEL_ORDER: BudgetLevel[] = ['member', 'organization', 'service'];
 
 function refusalFor(levels: Map<string, BudgetLevel>, accountIds: readonly string[], service: MeteredService) {
   const exceeded = new Set(accountIds.map((id) => levels.get(id)).filter((level): level is BudgetLevel => !!level));
@@ -756,6 +767,11 @@ export async function publishBudgetAlerts(db: DatabaseProvider, accountIds: read
         const member = await db.users.getById(account.scope_id);
         recipients = member && member.status === 'active' ? [member] : [];
       } else if (account.scope_type === 'service' || account.scope_type === 'organization') {
+        // A service without its own limit mirrors the team's: the team alert already says it.
+        if (account.scope_type === 'service') {
+          const limits = await resolveLimits(db, { service: account.scope_id });
+          if (limits.service.source === 'default') continue;
+        }
         admins ??= (await db.users.list()).filter((user) => user.role === 'super' && user.status === 'active');
         recipients = admins;
       } else {

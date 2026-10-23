@@ -57,6 +57,8 @@ const limitRow = (scope_type: 'organization' | 'service' | 'user', scope_id: str
 
 afterEach(() => {
   delete process.env.USAGE_BUDGET_MEMBER_MONTHLY_USD_MICROS;
+  delete process.env.USAGE_BUDGET_ORG_MONTHLY_USD_MICROS;
+  delete process.env.USAGE_BUDGET_SERVICE_MONTHLY_USD_MICROS;
 });
 
 describe('limit resolution', () => {
@@ -70,6 +72,26 @@ describe('limit resolution', () => {
     const rows = [limitRow('user', '*', 9_000_000), limitRow('user', 'u2', 1_000_000)];
     expect(resolveLimitsFromRows(rows, { userId: 'u1' }).member).toEqual({ limit: 9_000_000, source: 'default' });
     expect(resolveLimitsFromRows(rows, { userId: 'u2' }).member).toEqual({ limit: 1_000_000, source: 'override' });
+  });
+
+  it('lets a service without its own limit follow the resolved team limit', () => {
+    // Admin team row → the service follows it, not the built-in $2,000.
+    expect(
+      resolveLimitsFromRows([limitRow('organization', 'default', 500_000_000)], { service: 'llm' }).service,
+    ).toEqual({
+      limit: 500_000_000,
+      source: 'default',
+    });
+    // Team from env → the service follows the env.
+    process.env.USAGE_BUDGET_ORG_MONTHLY_USD_MICROS = '300000000';
+    expect(resolveLimitsFromRows([], { service: 'llm' }).service).toEqual({ limit: 300_000_000, source: 'default' });
+    // A service env or row still wins.
+    process.env.USAGE_BUDGET_SERVICE_MONTHLY_USD_MICROS = '7';
+    expect(resolveLimitsFromRows([], { service: 'llm' }).service).toEqual({ limit: 7, source: 'env' });
+    expect(resolveLimitsFromRows([limitRow('service', 'llm', 9)], { service: 'llm' }).service).toEqual({
+      limit: 9,
+      source: 'override',
+    });
   });
 
   it('reads per-service and organization rows', () => {
