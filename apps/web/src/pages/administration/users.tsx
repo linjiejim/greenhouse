@@ -46,7 +46,7 @@ function hasFailedDelivery(value: unknown): boolean {
 
 // ─── Main Component ──────────────────────────────────────
 
-export function UserManagementPanel() {
+export function UserManagementPanel({ tabs }: { tabs?: React.ReactNode }) {
   const t = useT();
   const [users, setUsers] = useState<ManagedUser[]>([]);
   const [passwordLinkCapability, setPasswordLinkCapability] = useState<PasswordLinkCapability | null>(null);
@@ -335,7 +335,7 @@ export function UserManagementPanel() {
 
   if (loading)
     return (
-      <ModulePage moduleId="admin.users" layout="list">
+      <ModulePage moduleId="admin.users" layout="list" tabs={tabs}>
         <div className="overflow-hidden rounded-xl border border-edge bg-surface-raised">
           <table className="w-full">
             <tbody>
@@ -352,6 +352,7 @@ export function UserManagementPanel() {
     <ModulePage
       moduleId="admin.users"
       layout="list"
+      tabs={tabs}
       actions={
         <Button
           size="sm"

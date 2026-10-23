@@ -1,10 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  normalizeWorkbenchPreferences,
-  platformApplicationHref,
-  selectPrimaryNavigationApplications,
-  type PlatformApplication,
-} from './catalog.js';
+import { normalizeWorkbenchPreferences, platformApplicationHref, type PlatformApplication } from './catalog.js';
 
 function application(id: string, path = `/${id}`): PlatformApplication {
   return {
@@ -50,23 +45,5 @@ describe('Platform web catalog', () => {
     expect(platformApplicationHref(application('tables'))).toBe('#/tables');
     expect(platformApplicationHref(application('pulse'))).toBeNull();
     expect(platformApplicationHref(application('analytics', 'https://example.test'))).toBeNull();
-  });
-
-  it('keeps only authorized permanent tabs in their fixed shell order', () => {
-    const applications = [application('tables'), application('projects'), application('knowledge')];
-
-    // Fixed shell order is PRIMARY_NAV_APPLICATION_IDS: knowledge → projects → tables.
-    expect(selectPrimaryNavigationApplications(applications).map((item) => item.id)).toEqual([
-      'knowledge',
-      'projects',
-      'tables',
-    ]);
-  });
-
-  it('excludes permanent tabs the user is not authorized for', () => {
-    // Only authorized (server-filtered) apps reach this function — a missing app drops its tab.
-    const applications = [application('knowledge'), application('tables')];
-
-    expect(selectPrimaryNavigationApplications(applications).map((item) => item.id)).toEqual(['knowledge', 'tables']);
   });
 });

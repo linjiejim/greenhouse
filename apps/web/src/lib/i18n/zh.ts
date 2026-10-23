@@ -739,8 +739,8 @@ const zh: Messages = {
     apiTargetUnsaved: '请先保存或丢弃当前修改，再切换 API 环境。',
     apiTargetUnavailable: '{target} API 当前不可用，环境没有切换。',
     labs: '实验功能',
-    users: '用户',
-    usersDesc: 'App 用户管理',
+    users: '用户与小组',
+    usersDesc: '账号、权限、用量限制，以及用于共享的小组',
     products: '产品',
     preferences: '偏好设置',
     preferencesDesc: '主题、语言与个人备注',
@@ -756,7 +756,7 @@ const zh: Messages = {
     desktopDesc: '桌面应用下载、快捷键、权限与更新',
     memory: '记忆',
     memoryDesc: '查看和管理 AI 对你的记忆',
-    agentUsages: 'Agent 用量',
+    agentUsages: '用量',
     agentUsagesDesc: 'Token 消耗与成本追踪',
     runtimeConfig: '运行时配置',
     runtimeConfigDesc: '模型、媒体与搜索凭据——保存在工作区，回落到环境变量',
@@ -781,6 +781,14 @@ const zh: Messages = {
     activityLogAdminDesc: '成员、成员的 Agent、定时任务与管理员的改动',
     issues: '问题与需求',
     issuesDesc: '成员及其 Agent 提交的功能需求与使用中遇到的问题',
+  },
+
+  usersAndGroups: {
+    tabsLabel: '用户与小组',
+    tab: {
+      users: '用户',
+      groups: '小组',
+    },
   },
 
   issues: {

@@ -35,7 +35,12 @@ const dataSource: CrudDataSource<UserGroup> = {
   remove: (id) => deleteGroup(Number(id)),
 };
 
-export function GroupsPanel() {
+/**
+ * Members manage their own groups under Settings; a super also reaches every
+ * group from Administration › Users & groups (`admin`), the same page under
+ * that module's header and tabs.
+ */
+export function GroupsPanel({ admin }: { admin?: { tabs: React.ReactNode } } = {}) {
   const t = useT();
 
   const schema = useMemo(
@@ -95,7 +100,11 @@ export function GroupsPanel() {
     [t],
   );
 
-  return (
+  return admin ? (
+    <ModulePage moduleId="admin.users" layout="list" tabs={admin.tabs}>
+      <CrudPage schema={schema} />
+    </ModulePage>
+  ) : (
     <ModulePage moduleId="settings.groups" layout="list">
       <CrudPage schema={schema} />
     </ModulePage>

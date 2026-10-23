@@ -25,13 +25,13 @@ describe('ModulePage', () => {
     const english = renderPage();
     const chinese = renderPage('zh');
 
-    expect(english).toContain('App user management');
-    expect(chinese).toContain('App 用户管理');
+    expect(english).toContain('Accounts, permissions, limits, and the groups used for sharing');
+    expect(chinese).toContain('账号、权限、用量限制，以及用于共享的小组');
     expect(english).toContain('data-module-page="admin.users"');
     expect(english).toContain('data-module-page-layout="list"');
     expect(english).toContain('truncate text-base');
     expect(english).toContain('truncate text-xs');
-    expect(english).toContain('title="App user management"');
+    expect(english).toContain('title="Users &amp; groups"');
   });
 
   it('renders stable page slots in the intended order', () => {

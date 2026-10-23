@@ -742,8 +742,8 @@ export default {
     apiTargetUnsaved: 'Save or discard your changes before switching API environments.',
     apiTargetUnavailable: '{target} API is unavailable. The environment was not changed.',
     labs: 'Labs',
-    users: 'Users',
-    usersDesc: 'App user management',
+    users: 'Users & groups',
+    usersDesc: 'Accounts, permissions, limits, and the groups used for sharing',
     products: 'Products',
     preferences: 'Preferences',
     preferencesDesc: 'Theme, language, and personal notes',
@@ -759,7 +759,7 @@ export default {
     desktopDesc: 'Desktop app download, shortcuts, permissions, and updates',
     memory: 'Memory',
     memoryDesc: 'View and manage what the AI remembers about you',
-    agentUsages: 'Agent Usages',
+    agentUsages: 'Usage',
     agentUsagesDesc: 'Token consumption and cost tracking',
     runtimeConfig: 'Runtime Config',
     runtimeConfigDesc: 'LLM, media and search credentials — saved in the workspace, env fallback',
@@ -784,6 +784,14 @@ export default {
     activityLogAdminDesc: 'Changes by people, their agents, automations and admins',
     issues: 'Issues & requests',
     issuesDesc: 'Feature requests and frictions reported by members and their agents',
+  },
+
+  usersAndGroups: {
+    tabsLabel: 'Users and groups',
+    tab: {
+      users: 'Users',
+      groups: 'Groups',
+    },
   },
 
   issues: {

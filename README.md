@@ -91,12 +91,18 @@ same script doubles as an end-to-end smoke tour (see [Development](#development)
 - **Projects** — projects, tasks (board / gantt / tree views), members, comments, activity log.
 - **Tables** — multidimensional bases: typed fields, views, forms, record links, dashboards,
   rule automations, and conversational schema planning (the agent drafts a base, you confirm).
-- **Home workbench** — a personal dashboard of live cards backed by the same tools (recipes and
-  templates), editable by drag-and-drop or by asking the agent.
-- **Execution center** — one surface for every durable run: automations (cron, at most every
-  15 minutes, optionally quiet when a run finds nothing new) and sub-agents, with full step,
-  tool-call and event evidence. A run cut off mid-way is never re-run on its own: it ends
-  "outcome unknown" and its owner is told which writes were in flight.
+- **Files** — the team's file cabinet and your own: folders, upload, preview (images, PDF,
+  text), rename / move / delete and name search; members' agents reach it over MCP too.
+- **Home** — the team's recent changes (knowledge edits, project and table changes, new files,
+  and which agent made them) above a personal dashboard of live cards backed by the same tools
+  (recipes and templates), editable by drag-and-drop or by asking the agent.
+- **Activity log** — who changed what: members in the app, their own agents over MCP (with the
+  client's name), automations and admin setting changes, filterable and exportable as CSV.
+  Each automation run and agent write keeps its full step, tool-call and event evidence; a run
+  cut off mid-way is never re-run on its own: it ends "outcome unknown" and its owner is told
+  which writes were in flight.
+- **Issues & requests** — feature requests and frictions in one admin queue; members' agents
+  can file both over MCP.
 - **Memory** — per-user memories with titles, pinning and lifecycle, plus the friction signals
   the agent logs when tooling gets in its way.
 - **Skill Center** — an org-wide library of agent skills (SKILL.md bundles) with immutable

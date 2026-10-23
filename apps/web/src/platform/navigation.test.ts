@@ -14,13 +14,10 @@ function application(id: string): PlatformApplication {
   };
 }
 
-const baseLabels = {
-  chatLabel: 'Chat',
-  skillhubLabel: 'SkillHub',
-};
+const labels = { home: 'Home', files: 'Files', skillhub: 'SkillHub', automations: 'Automation', chat: 'Chat' };
 
 describe('Primary navigation', () => {
-  it('keeps the fixed shell order and drops apps without a registered host UI', () => {
+  it('orders the workspace by goal and puts the assistant last', () => {
     const { primary, overflow } = buildPrimaryNavigation({
       applications: [
         application('analytics'),
@@ -28,33 +25,34 @@ describe('Primary navigation', () => {
         application('knowledge'),
         application('projects'),
       ],
-      ...baseLabels,
+      labels,
     });
 
-    expect(primary.map((item) => item.key)).toEqual(['chat', 'knowledge', 'projects', 'tables']);
+    expect(primary.map((item) => item.key)).toEqual([
+      'home',
+      'knowledge',
+      'files',
+      'tables',
+      'projects',
+      'skillhub',
+      'automations',
+      'chat',
+    ]);
+    expect(primary.map((item) => item.href)).toContain('#/files');
     // Agent/MCP-only catalog entries have no browser route, so they never
     // surface as a tab — not even in More.
-    expect(overflow.map((item) => item.key)).toEqual(['skillhub']);
+    expect(overflow).toEqual([]);
   });
 
-  it('omits unauthorized apps from the primary tabs', () => {
-    const { primary } = buildPrimaryNavigation({
-      applications: [application('knowledge')],
-      ...baseLabels,
-    });
-
-    expect(primary.map((item) => item.key)).toEqual(['chat', 'knowledge']);
+  it('omits unauthorized apps but keeps the fixed destinations', () => {
+    const { primary } = buildPrimaryNavigation({ applications: [application('knowledge')], labels });
+    expect(primary.map((item) => item.key)).toEqual(['home', 'knowledge', 'files', 'skillhub', 'automations', 'chat']);
   });
 
-  it('leads with Chat — the workbench lives in its empty state, not a Home tab', () => {
-    const { primary } = buildPrimaryNavigation({ applications: [application('knowledge')], ...baseLabels });
-    expect(primary[0].key).toBe('chat');
-    expect(primary.map((item) => item.key)).not.toContain('home');
-  });
-
-  it('keeps durable executions out of More because they have one fixed utility entry', () => {
-    const navigation = buildPrimaryNavigation({ applications: [], ...baseLabels });
-    expect(navigation.overflow.map((item) => item.key)).toEqual(['skillhub']);
-    expect(navigation.overflow.map((item) => item.href)).not.toContain('#/missions');
+  it('leads with Home and keeps the Activity log out of the primary list (it has a fixed entry)', () => {
+    const navigation = buildPrimaryNavigation({ applications: [], labels });
+    expect(navigation.primary[0]).toMatchObject({ key: 'home', href: '#/home' });
+    expect(navigation.primary.map((item) => item.href)).not.toContain('#/activity');
+    expect(navigation.primary.at(-1)?.key).toBe('chat');
   });
 });

@@ -634,8 +634,13 @@ function AppShell({ route, subPath, params, extensionRoute }: AppShellProps) {
   // mobile drawer. Presentation differs, visibility and ordering do not.
   const primaryNavigation = buildPrimaryNavigation({
     applications: orderedApplications,
-    chatLabel: t('app.chat'),
-    skillhubLabel: t('app.skillhub'),
+    labels: {
+      home: t('navigation.home'),
+      files: t('navigation.files'),
+      skillhub: t('app.skillhub'),
+      automations: t('navigation.automation'),
+      chat: t('app.chat'),
+    },
   });
   return (
     <>

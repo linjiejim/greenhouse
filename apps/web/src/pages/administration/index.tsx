@@ -23,7 +23,7 @@ import { useT } from '../../lib/i18n';
 import { UsagePanelWithUsers } from './usage';
 import { IssuesPanel } from './issues';
 import { resolveAdministrationRedirect } from '../settings/redirects';
-import { UserManagementPanel } from './users';
+import { UsersAndGroupsPanel } from './users-and-groups';
 import { McpKeysPanel } from './mcp-keys';
 import { RuntimeConfigPanel } from './runtime-config';
 import { BrandingStudioPanel } from './branding-studio';
@@ -63,7 +63,7 @@ export function AdministrationPage({ subPath }: { subPath: string }) {
   const extensionModule = extensionModuleComponent('administration', activeModule);
   return (
     <ModulePageShell activeKey={activeModule} mobileItems={visibleModules} contentClassName="bg-surface-canvas">
-      {activeModule === 'users' && <UserManagementPanel />}
+      {activeModule === 'users' && <UsersAndGroupsPanel subPath={subPath} />}
       {activeModule === 'usage' && <UsagePanelWithUsers />}
       {activeModule === 'issues' && <IssuesPanel subPath={subPath} />}
       {activeModule === 'activity' && <ActivityLogPage moduleId="admin.activity" />}

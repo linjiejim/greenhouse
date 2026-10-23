@@ -25,7 +25,9 @@ interface SidebarGlobalNavigationProps {
   className?: string;
 }
 
-const MORE_UTILITY_ITEMS = (['prompts', 'automations', 'agents'] as const).map((id) => {
+// Automations moved into the primary list (v1.5); what remains here are the
+// personal utilities without a goal of their own.
+const MORE_UTILITY_ITEMS = (['prompts', 'agents'] as const).map((id) => {
   const item = CHAT_WORKSPACE_ITEMS.find((candidate) => candidate.id === id)!;
   return {
     ...item,
@@ -114,6 +116,7 @@ export function SidebarGlobalNavigation({
   );
   const extensionMoreActive = route === 'extension' && extensionItems.some((item) => item.route === extensionRoute);
   const moreActive = utilityMoreActive || overflowActive || extensionMoreActive;
+  const hasMore = MORE_UTILITY_ITEMS.length > 0 || navigation.overflow.length > 0 || extensionItems.length > 0;
 
   useEffect(() => {
     if (!moreOpen) return;
@@ -154,151 +157,153 @@ export function SidebarGlobalNavigation({
         />
       ))}
 
-      <div
-        ref={moreRef}
-        className={`relative ${compact ? '' : 'w-full'}`}
-        onMouseEnter={hoverEnabled ? openMore : undefined}
-        onMouseLeave={hoverEnabled ? closeMoreSoon : undefined}
-      >
-        <button
-          type="button"
-          onClick={() => setMoreOpen((open) => !open)}
-          className={directItemClasses(moreActive, compact)}
-          aria-haspopup="menu"
-          aria-expanded={moreOpen}
-          aria-current={moreActive ? 'page' : undefined}
-          title={t('navigation.more')}
+      {hasMore && (
+        <div
+          ref={moreRef}
+          className={`relative ${compact ? '' : 'w-full'}`}
+          onMouseEnter={hoverEnabled ? openMore : undefined}
+          onMouseLeave={hoverEnabled ? closeMoreSoon : undefined}
         >
-          <MoreHorizontal size={compact ? 16 : 14} className="flex-shrink-0" aria-hidden="true" />
-          {!compact && (
-            <>
-              <span className="min-w-0 flex-1 truncate">{t('navigation.more')}</span>
-              {morePlacement === 'flyout' ? (
-                <ChevronRight size={13} className="flex-shrink-0" aria-hidden="true" />
-              ) : (
-                <ChevronDown
-                  size={13}
-                  className={`flex-shrink-0 transition-transform ${moreOpen ? 'rotate-180' : ''}`}
-                  aria-hidden="true"
-                />
-              )}
-            </>
-          )}
-        </button>
-
-        {moreOpen && (
-          <div
-            role="menu"
-            className={
-              morePlacement === 'flyout'
-                ? 'absolute left-full top-0 z-40 pl-1 animate-fade-in'
-                : 'ml-4 mt-1 border-l border-edge pl-2'
-            }
+          <button
+            type="button"
+            onClick={() => setMoreOpen((open) => !open)}
+            className={directItemClasses(moreActive, compact)}
+            aria-haspopup="menu"
+            aria-expanded={moreOpen}
+            aria-current={moreActive ? 'page' : undefined}
+            title={t('navigation.more')}
           >
+            <MoreHorizontal size={compact ? 16 : 14} className="flex-shrink-0" aria-hidden="true" />
+            {!compact && (
+              <>
+                <span className="min-w-0 flex-1 truncate">{t('navigation.more')}</span>
+                {morePlacement === 'flyout' ? (
+                  <ChevronRight size={13} className="flex-shrink-0" aria-hidden="true" />
+                ) : (
+                  <ChevronDown
+                    size={13}
+                    className={`flex-shrink-0 transition-transform ${moreOpen ? 'rotate-180' : ''}`}
+                    aria-hidden="true"
+                  />
+                )}
+              </>
+            )}
+          </button>
+
+          {moreOpen && (
             <div
+              role="menu"
               className={
                 morePlacement === 'flyout'
-                  ? 'w-48 max-w-[calc(100vw-2rem)] overflow-hidden rounded-lg border border-edge bg-surface-raised py-1 shadow-lg'
-                  : ''
+                  ? 'absolute left-full top-0 z-40 pl-1 animate-fade-in'
+                  : 'ml-4 mt-1 border-l border-edge pl-2'
               }
             >
-              {MORE_UTILITY_ITEMS.map((item) => {
-                const Icon = item.icon;
-                const active = route === item.route;
-                return (
-                  <a
-                    key={item.id}
-                    href={item.href}
-                    role="menuitem"
-                    onClick={() => {
-                      setMoreOpen(false);
-                      onNavigate?.();
-                    }}
-                    aria-current={active ? 'page' : undefined}
-                    className={`flex min-h-11 w-full items-center gap-2.5 px-3 py-1.5 text-left text-sm transition-colors md:min-h-9 ${
-                      active ? 'sidebar-active-item font-semibold' : 'text-fg-secondary hover:bg-surface-muted'
-                    }`}
-                  >
-                    <Icon
-                      size={15}
-                      className={`flex-shrink-0 ${active ? 'text-primary-fg' : 'text-fg-faint'}`}
-                      aria-hidden="true"
-                    />
-                    <span className="truncate">{t(item.labelKey)}</span>
-                  </a>
-                );
-              })}
+              <div
+                className={
+                  morePlacement === 'flyout'
+                    ? 'w-48 max-w-[calc(100vw-2rem)] overflow-hidden rounded-lg border border-edge bg-surface-raised py-1 shadow-lg'
+                    : ''
+                }
+              >
+                {MORE_UTILITY_ITEMS.map((item) => {
+                  const Icon = item.icon;
+                  const active = route === item.route;
+                  return (
+                    <a
+                      key={item.id}
+                      href={item.href}
+                      role="menuitem"
+                      onClick={() => {
+                        setMoreOpen(false);
+                        onNavigate?.();
+                      }}
+                      aria-current={active ? 'page' : undefined}
+                      className={`flex min-h-11 w-full items-center gap-2.5 px-3 py-1.5 text-left text-sm transition-colors md:min-h-9 ${
+                        active ? 'sidebar-active-item font-semibold' : 'text-fg-secondary hover:bg-surface-muted'
+                      }`}
+                    >
+                      <Icon
+                        size={15}
+                        className={`flex-shrink-0 ${active ? 'text-primary-fg' : 'text-fg-faint'}`}
+                        aria-hidden="true"
+                      />
+                      <span className="truncate">{t(item.labelKey)}</span>
+                    </a>
+                  );
+                })}
 
-              {MORE_UTILITY_ITEMS.length > 0 && navigation.overflow.length > 0 && (
-                <div className="mx-2 my-1 border-t border-edge" />
-              )}
+                {MORE_UTILITY_ITEMS.length > 0 && navigation.overflow.length > 0 && (
+                  <div className="mx-2 my-1 border-t border-edge" />
+                )}
 
-              {extensionItems.length > 0 && (MORE_UTILITY_ITEMS.length > 0 || navigation.overflow.length > 0) && (
-                <div className="mx-2 my-1 border-t border-edge" />
-              )}
+                {extensionItems.length > 0 && (MORE_UTILITY_ITEMS.length > 0 || navigation.overflow.length > 0) && (
+                  <div className="mx-2 my-1 border-t border-edge" />
+                )}
 
-              {extensionItems.map((item) => {
-                const Icon = item.icon;
-                const active = route === 'extension' && item.route === extensionRoute;
-                return (
-                  <a
-                    key={`ext-${item.id}`}
-                    href={item.href}
-                    role="menuitem"
-                    aria-current={active ? 'page' : undefined}
-                    onClick={() => {
-                      setMoreOpen(false);
-                      onNavigate?.();
-                    }}
-                    className={`flex min-h-11 items-center gap-2.5 px-3 py-1.5 text-sm transition-colors md:min-h-9 ${
-                      active ? 'sidebar-active-item font-semibold' : 'text-fg-secondary hover:bg-surface-muted'
-                    }`}
-                  >
-                    <Icon
-                      size={15}
-                      className={`flex-shrink-0 ${active ? 'text-primary-fg' : 'text-fg-faint'}`}
-                      aria-hidden="true"
-                    />
-                    <span className="truncate">{t(item.labelKey)}</span>
-                  </a>
-                );
-              })}
+                {extensionItems.map((item) => {
+                  const Icon = item.icon;
+                  const active = route === 'extension' && item.route === extensionRoute;
+                  return (
+                    <a
+                      key={`ext-${item.id}`}
+                      href={item.href}
+                      role="menuitem"
+                      aria-current={active ? 'page' : undefined}
+                      onClick={() => {
+                        setMoreOpen(false);
+                        onNavigate?.();
+                      }}
+                      className={`flex min-h-11 items-center gap-2.5 px-3 py-1.5 text-sm transition-colors md:min-h-9 ${
+                        active ? 'sidebar-active-item font-semibold' : 'text-fg-secondary hover:bg-surface-muted'
+                      }`}
+                    >
+                      <Icon
+                        size={15}
+                        className={`flex-shrink-0 ${active ? 'text-primary-fg' : 'text-fg-faint'}`}
+                        aria-hidden="true"
+                      />
+                      <span className="truncate">{t(item.labelKey)}</span>
+                    </a>
+                  );
+                })}
 
-              {navigation.overflow.map((item) => {
-                const Icon = item.icon;
-                const active = route === item.key;
-                return (
-                  <a
-                    key={item.key}
-                    href={item.href}
-                    role="menuitem"
-                    aria-current={active ? 'page' : undefined}
-                    onClick={() => {
-                      setMoreOpen(false);
-                      onNavigate?.();
-                    }}
-                    className={`flex min-h-11 items-center gap-2.5 px-3 py-1.5 text-sm transition-colors md:min-h-9 ${
-                      active ? 'sidebar-active-item font-semibold' : 'text-fg-secondary hover:bg-surface-muted'
-                    }`}
-                  >
-                    <Icon
-                      size={15}
-                      className={`flex-shrink-0 ${active ? 'text-primary-fg' : 'text-fg-faint'}`}
-                      aria-hidden="true"
-                    />
-                    <span className="truncate">{item.label}</span>
-                    {!!item.badge && (
-                      <span className="ml-auto inline-flex min-w-4 items-center justify-center rounded-full bg-warning-subtle px-1 text-[9px] font-semibold text-warning">
-                        {item.badge > 99 ? '99+' : item.badge}
-                      </span>
-                    )}
-                  </a>
-                );
-              })}
+                {navigation.overflow.map((item) => {
+                  const Icon = item.icon;
+                  const active = route === item.key;
+                  return (
+                    <a
+                      key={item.key}
+                      href={item.href}
+                      role="menuitem"
+                      aria-current={active ? 'page' : undefined}
+                      onClick={() => {
+                        setMoreOpen(false);
+                        onNavigate?.();
+                      }}
+                      className={`flex min-h-11 items-center gap-2.5 px-3 py-1.5 text-sm transition-colors md:min-h-9 ${
+                        active ? 'sidebar-active-item font-semibold' : 'text-fg-secondary hover:bg-surface-muted'
+                      }`}
+                    >
+                      <Icon
+                        size={15}
+                        className={`flex-shrink-0 ${active ? 'text-primary-fg' : 'text-fg-faint'}`}
+                        aria-hidden="true"
+                      />
+                      <span className="truncate">{item.label}</span>
+                      {!!item.badge && (
+                        <span className="ml-auto inline-flex min-w-4 items-center justify-center rounded-full bg-warning-subtle px-1 text-[9px] font-semibold text-warning">
+                          {item.badge > 99 ? '99+' : item.badge}
+                        </span>
+                      )}
+                    </a>
+                  );
+                })}
+              </div>
             </div>
-          </div>
-        )}
-      </div>
+          )}
+        </div>
+      )}
     </nav>
   );
 }
