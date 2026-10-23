@@ -11,6 +11,7 @@ import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { listDocs, listKbFolders, searchDocs, type KbShelf } from '../../src/api/knowledge';
 import type { ApiResult } from '../../src/api/client';
 import { captureIdentity } from '../../src/data/identity';
+import { shelfRows, positioned, type KbRow } from '../../src/data/kb-rows';
 import { levelOf, pathTo } from '../../src/data/kb-tree';
 import type { RecentDoc } from '../../src/data/recent-docs';
 import { useResource } from '../../src/data/use-resource';
@@ -22,20 +23,10 @@ import { recentDocs } from '../../src/store/knowledge';
 import { makeStyles, space, useTheme } from '../../src/theme';
 import { DirectorySearch, useDirectoryFilter } from '../../src/ui/directory-search';
 import { EmptyState, LoadingState } from '../../src/ui/empty';
-import { ListRow, ListSectionHeader, type RowPosition } from '../../src/ui/list';
+import { ListRow, ListSectionHeader } from '../../src/ui/list';
 import { Segmented } from '../../src/ui/segmented';
 
 type Shelf = KbShelf | 'shared';
-type Row =
-  | { key: string; type: 'header'; title: string }
-  | { key: string; type: 'folder'; folder: DriveFolder; position: RowPosition }
-  | { key: string; type: 'doc'; id: number; title: string; subtitle?: string; position: RowPosition };
-
-function positioned<T>(items: T[], make: (item: T, position: RowPosition) => Row): Row[] {
-  return items.map((item, index) =>
-    make(item, items.length === 1 ? 'only' : index === 0 ? 'first' : index === items.length - 1 ? 'last' : 'middle'),
-  );
-}
 
 export default function Knowledge() {
   const params = useLocalSearchParams<{ shelf?: string; folder?: string }>();
@@ -85,7 +76,7 @@ export default function Knowledge() {
   const path = useMemo(() => pathTo(resource.data?.folders ?? [], folderId), [resource.data, folderId]);
   const title = path.length ? path[path.length - 1]!.name : t('nav.knowledge');
 
-  const rows = useMemo((): Row[] => {
+  const rows = useMemo((): KbRow[] => {
     if (hits) {
       return positioned(hits, (hit, position) => ({
         key: `hit-${hit.id}`,
@@ -96,37 +87,15 @@ export default function Knowledge() {
         position,
       }));
     }
-    if (!resource.data) return [];
-    const level = levelOf(resource.data.folders, resource.data.docs, folderId);
-    const out: Row[] = [];
-    if (folderId == null && recent.length) {
-      out.push({ key: 'h-recent', type: 'header', title: t('knowledge.recent') });
-      out.push(
-        ...positioned(recent.slice(0, 5), (entry, position) => ({
-          key: `recent-${entry.id}`,
-          type: 'doc',
-          id: entry.id,
-          title: entry.title,
-          position,
-        })),
-      );
-      out.push({ key: 'h-shelf', type: 'header', title: t(`knowledge.shelf.${shelf}`) });
-    }
-    out.push(
-      ...positioned(level.folders, (folder, position) => ({ key: `f-${folder.id}`, type: 'folder', folder, position })),
-    );
-    out.push(
-      ...positioned(level.docs, (doc, position) => ({
-        key: `d-${doc.id}`,
-        type: 'doc',
-        id: doc.id,
-        title: doc.title,
-        subtitle: relativeTimeNow(doc.updated_at),
-        position,
-      })),
-    );
-    return out;
-  }, [hits, resource.data, folderId, recent, shelf, t]);
+    return shelfRows({
+      atTop: folderId == null,
+      recent,
+      level: resource.data ? levelOf(resource.data.folders, resource.data.docs, folderId) : null,
+      loading: resource.loading,
+      titles: { recent: t('knowledge.recent'), shelf: t(`knowledge.shelf.${shelf}`) },
+      docSubtitle: (doc) => relativeTimeNow(doc.updated_at),
+    });
+  }, [hits, resource.data, resource.loading, folderId, recent, shelf, t]);
 
   const header =
     folderId == null && !hits ? (
@@ -161,7 +130,7 @@ export default function Knowledge() {
     <View style={styles.root}>
       <Stack.Screen options={{ title }} />
       <DirectorySearch filter={filter} />
-      <FlatList<Row>
+      <FlatList<KbRow>
         contentInsetAdjustmentBehavior="automatic"
         data={rows}
         keyExtractor={(row) => row.key}
@@ -170,6 +139,17 @@ export default function Knowledge() {
         onRefresh={() => void resource.refresh()}
         renderItem={({ item }) => {
           if (item.type === 'header') return <ListSectionHeader title={item.title} />;
+          if (item.type === 'loading') return <LoadingState style={styles.inline} />;
+          if (item.type === 'failed')
+            return (
+              <EmptyState
+                icon="alert"
+                title={t('knowledge.loadFailed')}
+                message={t('knowledge.offlineRecent')}
+                onRetry={() => void resource.refresh()}
+                style={styles.inline}
+              />
+            );
           if (item.type === 'folder')
             return (
               <ListRow
@@ -205,4 +185,5 @@ const useStyles = makeStyles((c) => ({
   content: { paddingBottom: space.xxxl },
   segmented: { marginHorizontal: space.margin, marginVertical: space.md },
   state: { paddingTop: space.xxxl },
+  inline: { paddingTop: space.xl },
 }));
