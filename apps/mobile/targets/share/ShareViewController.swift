@@ -26,15 +26,22 @@ final class ShareViewController: UIViewController {
 final class ShareViewModel: ObservableObject {
   enum Phase: Equatable {
     case choosing
-    case uploading(done: Int, total: Int)
+    case uploading
     case finished(Int)
+    /// An upload stopped; `progress` says which files are already saved.
     case failed(String)
   }
 
   let session = ShareSession.load()
   @Published var shelf: Shelf = .team
   @Published var phase: Phase = .choosing
-  @Published var files: [SharedFile]? = nil
+  @Published var files: [SharedFile]? = nil {
+    didSet { progress = UploadProgress(total: files?.count ?? 0) }
+  }
+  /// Survives a failure: a retry uploads only the files not saved yet.
+  @Published private(set) var progress = UploadProgress(total: 0)
+  /// Where the last attempt went, for "retry the rest".
+  private(set) var lastFolder: Int?
   private let items: [NSExtensionItem]
   let finish: (Bool) -> Void
 
@@ -47,15 +54,14 @@ final class ShareViewModel: ObservableObject {
   var api: ShareAPI? { session.map(ShareAPI.init) }
 
   func save(to folder: Int?) {
-    guard let api, let files, !files.isEmpty else { return }
-    phase = .uploading(done: 0, total: files.count)
+    guard let api, let files, !files.isEmpty, !progress.pending.isEmpty else { return }
+    lastFolder = folder
+    phase = .uploading
     Task {
-      var done = 0
-      for file in files {
+      for index in progress.pending {
         do {
-          try await api.upload(file, shelf: shelf, folder: folder)
-          done += 1
-          phase = .uploading(done: done, total: files.count)
+          try await api.upload(files[index], shelf: shelf, folder: folder)
+          progress.markSaved(index)
         } catch ShareError.signedOut {
           phase = .failed(L.t("Your sign-in expired. Open Greenhouse, then share again.", "登录已过期。请打开 Greenhouse 后再分享。"))
           return
@@ -67,10 +73,15 @@ final class ShareViewModel: ObservableObject {
           return
         }
       }
-      phase = .finished(done)
+      phase = .finished(progress.savedCount)
       try? await Task.sleep(nanoseconds: 900_000_000)
       finish(true)
     }
+  }
+
+  /// Upload the files not saved yet to the same place.
+  func retry() {
+    save(to: lastFolder)
   }
 }
 
@@ -84,10 +95,12 @@ struct ShareRootView: View {
           switch model.phase {
           case .choosing:
             FolderList(model: model, parent: nil, title: nil)
-          case .uploading(let done, let total):
+          case .uploading:
+            let total = model.progress.total
+            let current = min(model.progress.savedCount + 1, total)
             VStack(spacing: 16) {
-              ProgressView(value: Double(done), total: Double(max(total, 1)))
-              Text(L.t("Uploading \(done + 1 > total ? total : done + 1) of \(total)…", "正在上传第 \(done + 1 > total ? total : done + 1) 个，共 \(total) 个…"))
+              ProgressView(value: Double(model.progress.savedCount), total: Double(max(total, 1)))
+              Text(L.t("Uploading \(current) of \(total)…", "正在上传第 \(current) 个，共 \(total) 个…"))
                 .foregroundStyle(.secondary)
             }
             .padding(32)
@@ -97,10 +110,25 @@ struct ShareRootView: View {
               Text(L.t("Saved \(count) to Files", "已存入档案库 \(count) 个"))
             }
           case .failed(let words):
+            let saved = model.progress.savedCount
+            let left = model.progress.pending.count
             VStack(spacing: 12) {
               Image(systemName: "exclamationmark.triangle").font(.system(size: 40)).foregroundStyle(.orange)
               Text(words).multilineTextAlignment(.center)
-              Button(L.t("Try Again", "重试")) { model.phase = .choosing }
+              if saved > 0 {
+                Text(L.t("\(saved) of \(model.progress.total) already saved — they won’t be sent again.", "已保存 \(saved) 个（共 \(model.progress.total) 个），不会重复上传。"))
+                  .font(.footnote)
+                  .foregroundStyle(.secondary)
+                  .multilineTextAlignment(.center)
+              }
+              Button(left == model.progress.total ? L.t("Try Again", "重试") : L.t("Retry the Remaining \(left)", "重试剩下的 \(left) 个")) {
+                model.retry()
+              }
+              .buttonStyle(.borderedProminent)
+              Button(L.t("Choose Another Folder", "换个文件夹")) { model.phase = .choosing }
+              if saved > 0 {
+                Button(L.t("Done", "完成")) { model.finish(true) }
+              }
             }
             .padding(32)
           }
@@ -174,7 +202,7 @@ struct FolderList: View {
         Text(saveLabel).frame(maxWidth: .infinity).padding(.vertical, 6)
       }
       .buttonStyle(.borderedProminent)
-      .disabled((model.files ?? []).isEmpty)
+      .disabled(model.progress.pending.isEmpty)
       .padding()
       .background(.bar)
     }
@@ -190,7 +218,7 @@ struct FolderList: View {
   }
 
   private var saveLabel: String {
-    let count = model.files?.count ?? 0
+    let count = model.progress.pending.count
     return L.t("Save \(count) Here", "存 \(count) 个到这里")
   }
 }
