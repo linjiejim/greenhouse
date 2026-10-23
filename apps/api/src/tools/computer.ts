@@ -174,7 +174,7 @@ const execMeta: ToolMeta = {
   category: 'team',
   is_global: true,
   icon: 'Terminal',
-  surface: { proxy: 'write', mcp: 'computer', openWorld: true },
+  surface: { proxy: 'write', mcp: 'computer', openWorld: true, externalOnly: true },
   sort_order: 15,
 };
 
@@ -230,7 +230,7 @@ const filesMeta: ToolMeta = {
   category: 'team',
   is_global: true,
   icon: 'FolderOpen',
-  surface: { proxy: 'read', mcp: 'computer', openWorld: true },
+  surface: { proxy: 'read', mcp: 'computer', openWorld: true, externalOnly: true },
   sort_order: 16,
 };
 
@@ -301,7 +301,7 @@ const transferMeta: ToolMeta = {
   category: 'team',
   is_global: true,
   icon: 'ArrowLeftRight',
-  surface: { proxy: 'write', mcp: 'computer', openWorld: true },
+  surface: { proxy: 'write', mcp: 'computer', openWorld: true, externalOnly: true },
   sort_order: 17,
 };
 
@@ -351,12 +351,12 @@ const stopMeta: ToolMeta = {
   name: 'Cloud Computer: Stop',
   brief: 'Stop your cloud computer',
   description:
-    'Stop your cloud computer now, so billing stops. Everything in it is deleted — save what you need to Files ' +
-    'first. The next computer_exec starts a fresh one.',
+    'Stop your cloud computer now, so billing stops. Everything in it is deleted — save what you need into Files ' +
+    'with computer_transfer (computer.save_to_files) first. The next computer_exec starts a fresh one.',
   category: 'team',
   is_global: true,
   icon: 'Power',
-  surface: { proxy: 'write', mcp: 'computer', openWorld: true },
+  surface: { proxy: 'write', mcp: 'computer', openWorld: true, externalOnly: true },
   sort_order: 18,
 };
 

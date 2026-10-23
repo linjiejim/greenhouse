@@ -79,6 +79,14 @@ export interface ToolMeta {
      * Tools with an action enum are judged by their verbs (agent-access/risk.ts).
      */
     additiveOnly?: boolean;
+    /**
+     * Built only on the external surfaces (`/api/mcp`, `/api/agent`, see
+     * agent-runtime/service-tools.ts); Chat never has it. Kept out of every
+     * in-app catalog — the tool picker (`GET /api/tools`), the permissions
+     * dialog, the Agent editor and per-user assignment — so nothing in the app
+     * offers a tool the in-app assistant cannot call.
+     */
+    externalOnly?: boolean;
   };
   /**
    * Part of every Agent's native ability, rather than something the author picks.

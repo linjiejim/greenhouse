@@ -260,3 +260,23 @@ export function getAllToolIds(): string[] {
 export function getAllToolMetas(): ToolMeta[] {
   return [...TOOL_DEFINITIONS].sort((a, b) => a.sort_order - b.sort_order);
 }
+
+/** Tools only members' agents get, over MCP and the Agent API (`surface.externalOnly`). */
+export const EXTERNAL_ONLY_TOOL_IDS: ReadonlySet<string> = new Set(
+  TOOL_DEFINITIONS.filter((m) => m.surface?.externalOnly === true).map((m) => m.id),
+);
+
+/** Whether the in-app surfaces (Chat, its tool picker, permissions, the Agent editor) may show this tool. */
+export function isInAppTool(id: string): boolean {
+  return !EXTERNAL_ONLY_TOOL_IDS.has(id);
+}
+
+/** Tool metadata for the in-app catalogs, sorted by sort_order. */
+export function getInAppToolMetas(): ToolMeta[] {
+  return getAllToolMetas().filter((m) => isInAppTool(m.id));
+}
+
+/** Tool ids an in-app Agent or a per-user assignment may name. */
+export function getInAppToolIds(): string[] {
+  return getAllToolIds().filter(isInAppTool);
+}

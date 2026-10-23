@@ -21,7 +21,7 @@ import { fromExtensions } from '../extensions/index.js';
 import type { DatabaseProvider, UserRow } from '@greenhouse/db';
 import { getPlatformRuntime, PLATFORM_ORG_ID } from './runtime.js';
 import { humanActor } from './actor.js';
-import { TOOL_DEFINITIONS, getToolMeta, getGlobalToolIds } from '../tools/registry.js';
+import { TOOL_DEFINITIONS, getToolMeta, getGlobalToolIds, isInAppTool } from '../tools/registry.js';
 
 // ─── Registry ────────────────────────────────────────────
 
@@ -156,7 +156,7 @@ export const FEATURE_OWNED_TOOL_IDS = new Set<string>(FEATURE_POINTS.flatMap((p)
  * point, sorted by the catalog's sort_order. Derived — no hand-maintained list.
  */
 export function toolsetToolIds(): string[] {
-  return TOOL_DEFINITIONS.filter((m) => !m.is_global && !FEATURE_OWNED_TOOL_IDS.has(m.id))
+  return TOOL_DEFINITIONS.filter((m) => !m.is_global && !FEATURE_OWNED_TOOL_IDS.has(m.id) && isInAppTool(m.id))
     .sort((a, b) => a.sort_order - b.sort_order)
     .map((m) => m.id);
 }
@@ -370,7 +370,9 @@ export async function buildUserAccessView(db: DatabaseProvider, user: UserRow): 
     });
   }
 
+  // External-only tools (MCP / Agent API) are not part of what the dialog grants in the app.
   const globalTools = getGlobalToolIds()
+    .filter(isInAppTool)
     .map((id) => toAccessTool(id, true))
     .filter((t): t is AccessTool => t !== null)
     .sort((a, b) => a.name.localeCompare(b.name));

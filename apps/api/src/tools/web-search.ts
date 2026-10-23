@@ -47,7 +47,7 @@ const webSearchMeta: ToolMeta = {
   category: 'team',
   is_global: true,
   icon: 'Globe',
-  surface: { proxy: 'read', mcp: 'services', openWorld: true },
+  surface: { proxy: 'read', mcp: 'services', openWorld: true, externalOnly: true },
   sort_order: 13,
 };
 
@@ -63,7 +63,7 @@ const readUrlMeta: ToolMeta = {
   category: 'team',
   is_global: true,
   icon: 'FileText',
-  surface: { proxy: 'read', mcp: 'services', openWorld: true },
+  surface: { proxy: 'read', mcp: 'services', openWorld: true, externalOnly: true },
   sort_order: 14,
 };
 

@@ -1075,7 +1075,9 @@ export default {
     notConfigured: 'The cloud computer is not set up yet',
     notConfiguredHint: 'An administrator needs to add an E2B API key in Runtime Config.',
     intro:
-      'Your own Linux computer in the cloud for your agents: they run commands in it and move files between it and Files. It starts when first used and stops after {minutes} idle minutes; everything in it is deleted when it stops.',
+      'Your own Linux computer in the cloud for your agents: they run commands in it and move files between it and Files. It starts when first used and stops after {minutes} idle minutes.',
+    filesLost:
+      'Stopping it — by hand or after {minutes} idle minutes — deletes everything in it. Have your agent save what you want to keep into Files first (computer_transfer).',
     price: '{price} per minute while it runs',
     unpriced: 'No price set yet',
     status: 'Status',

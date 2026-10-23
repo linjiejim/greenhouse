@@ -86,6 +86,7 @@ describe('Settings › Cloud computer', () => {
     expect(status?.textContent).toContain('Running');
     expect(status?.textContent).toContain('42');
     expect(buttons()).toContain('Stop');
+    expect(container?.querySelector('[data-testid="computer-files-lost"]')?.textContent).toContain('computer_transfer');
 
     api.stopMyComputer.mockResolvedValue(undefined);
     const stop = [...(container?.querySelectorAll('button') ?? [])].find((button) => button.textContent === 'Stop');

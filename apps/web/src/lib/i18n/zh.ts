@@ -1058,7 +1058,9 @@ const zh: Messages = {
     notConfigured: '云电脑还没有配置好',
     notConfiguredHint: '需要管理员在「运行配置」里填写 E2B API key。',
     intro:
-      '给你的 Agent 用的一台云端 Linux 电脑：在里面运行命令，在它和档案库之间传文件。第一次使用时启动，空闲 {minutes} 分钟后自动停止；停止后里面的文件都会删除。',
+      '给你的 Agent 用的一台云端 Linux 电脑：在里面运行命令，在它和档案库之间传文件。第一次使用时启动，空闲 {minutes} 分钟后自动停止。',
+    filesLost:
+      '停止时（手动停止或空闲 {minutes} 分钟后）里面的文件会全部删除。要保留的内容，先让 Agent 存进档案库（computer_transfer）。',
     price: '运行期间每分钟 {price}',
     unpriced: '尚未定价',
     status: '状态',

@@ -106,6 +106,9 @@ export function ComputerPanel() {
               )
             }
           >
+            <p className="mb-3 text-xs text-warning" data-testid="computer-files-lost">
+              {t('computer.filesLost', { minutes: report.idle_minutes })}
+            </p>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-3" data-testid="computer-status">
               <KpiCard title={t('computer.status')}>
                 <Tag tone={running ? 'success' : computer ? 'warning' : 'neutral'}>
