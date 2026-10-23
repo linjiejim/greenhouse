@@ -1,7 +1,7 @@
 /**
  * Keeps the share extension's session (./payload.ts) in the App Group keychain in step with the
  * app: written when someone is signed in on the active station (and on every token refresh,
- * so the extension's token stays fresh), removed on sign-out or when the active station has
+ * so the extension's token stays fresh, and on a language change), removed on sign-out or when the active station has
  * nobody signed in. Imported once by the root layout.
  */
 
@@ -9,6 +9,7 @@ import { Platform } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 import { getAccessToken, onTokensChanged } from '../api/token-storage';
 import { useAuth } from '../store/auth';
+import { usePrefs } from '../store/prefs';
 import { getActiveStation, useStations } from '../store/stations';
 import { SHARE_ACCESS_GROUP, SHARE_KEYCHAIN_SERVICE, SHARE_SESSION_KEY, sharePayload } from './payload';
 
@@ -26,6 +27,7 @@ function publish(): void {
     station: getActiveStation(),
     accessToken: getAccessToken(),
     memberName: useAuth.getState().user?.nickname ?? null,
+    lang: usePrefs.getState().lang,
   });
   const next = payload ? JSON.stringify(payload) : '';
   if (next === last) return;
@@ -41,3 +43,4 @@ function publish(): void {
 onTokensChanged(publish);
 useAuth.subscribe(publish);
 useStations.subscribe(publish);
+usePrefs.subscribe(publish);

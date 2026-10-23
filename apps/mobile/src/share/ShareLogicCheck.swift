@@ -37,6 +37,15 @@ struct ShareLogicCheck {
     // Nothing shared, nothing to do.
     expect(UploadProgress(total: 0).pending.isEmpty, "no files, no work")
 
+    // The extension speaks the app's language, else the phone's.
+    expect(shareUsesChinese(appLanguage: "zh", preferred: ["en-US"]), "the app's Chinese wins over an English phone")
+    expect(!shareUsesChinese(appLanguage: "en", preferred: ["zh-Hans-CN"]), "the app's English wins over a Chinese phone")
+    expect(shareUsesChinese(appLanguage: nil, preferred: ["zh-Hans-CN", "en"]), "an older session follows a Chinese phone")
+    expect(!shareUsesChinese(appLanguage: nil, preferred: []), "no preference reads English")
+
+    // The brand colours, printed for the vitest side to compare with src/theme/palette.ts.
+    print(String(format: "brand %06X %06X %06X %06X", Brand.accentLight, Brand.accentDark, Brand.onAccentLight, Brand.onAccentDark))
+
     if failures > 0 {
       print("\(failures) check(s) failed")
       exit(1)

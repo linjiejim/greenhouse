@@ -19,6 +19,8 @@ export interface ShareSession {
   memberName: string;
   /** Epoch seconds the token expires at (from its `exp`), when readable. */
   expiresAt: number | null;
+  /** The app's language, so the extension speaks it too (it falls back to the phone's). */
+  lang: 'zh' | 'en';
 }
 
 /** The `exp` of a JWT, or null. */
@@ -38,6 +40,7 @@ export function sharePayload(input: {
   station: { id: string; name: string; baseUrl: string } | null;
   accessToken: string | null;
   memberName: string | null;
+  lang: 'zh' | 'en';
 }): ShareSession | null {
   if (!input.station || !input.accessToken || !input.memberName) return null;
   if (!/^https?:\/\//.test(input.station.baseUrl)) return null;
@@ -49,5 +52,6 @@ export function sharePayload(input: {
     accessToken: input.accessToken,
     memberName: input.memberName,
     expiresAt: tokenExpiry(input.accessToken),
+    lang: input.lang,
   };
 }

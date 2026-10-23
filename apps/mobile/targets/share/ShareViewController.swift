@@ -85,6 +85,35 @@ final class ShareViewModel: ObservableObject {
   }
 }
 
+extension Color {
+  /// The V1 green, light and dark (ShareLogic.swift `Brand`).
+  static let greenhouse = Color(dynamic: Brand.accentLight, Brand.accentDark)
+  /// Text and glyphs on the green.
+  static let onGreenhouse = Color(dynamic: Brand.onAccentLight, Brand.onAccentDark)
+
+  init(dynamic light: Int, _ dark: Int) {
+    func ui(_ rgb: Int) -> UIColor {
+      UIColor(
+        red: CGFloat((rgb >> 16) & 0xFF) / 255, green: CGFloat((rgb >> 8) & 0xFF) / 255, blue: CGFloat(rgb & 0xFF) / 255,
+        alpha: 1)
+    }
+    self.init(UIColor { $0.userInterfaceStyle == .dark ? ui(dark) : ui(light) })
+  }
+}
+
+/// The filled green button the extension's main action uses.
+struct PrimaryButtonStyle: ButtonStyle {
+  @Environment(\.isEnabled) private var isEnabled
+
+  func makeBody(configuration: Configuration) -> some View {
+    configuration.label
+      .font(.body.weight(.semibold))
+      .foregroundStyle(Color.onGreenhouse)
+      .frame(maxWidth: .infinity, minHeight: 50)
+      .background(Color.greenhouse.opacity(isEnabled ? (configuration.isPressed ? 0.8 : 1) : 0.4), in: Capsule())
+  }
+}
+
 struct ShareRootView: View {
   @ObservedObject var model: ShareViewModel
 
@@ -106,7 +135,7 @@ struct ShareRootView: View {
             .padding(32)
           case .finished(let count):
             VStack(spacing: 12) {
-              Image(systemName: "checkmark.circle.fill").font(.system(size: 48)).foregroundStyle(Color.accentColor)
+              Image(systemName: "checkmark.circle.fill").font(.system(size: 48)).foregroundStyle(Color.greenhouse)
               Text(L.t("Saved \(count) to Files", "已存入档案库 \(count) 个"))
             }
           case .failed(let words):
@@ -124,7 +153,7 @@ struct ShareRootView: View {
               Button(left == model.progress.total ? L.t("Try Again", "重试") : L.t("Retry the Remaining \(left)", "重试剩下的 \(left) 个")) {
                 model.retry()
               }
-              .buttonStyle(.borderedProminent)
+              .buttonStyle(PrimaryButtonStyle())
               Button(L.t("Choose Another Folder", "换个文件夹")) { model.phase = .choosing }
               if saved > 0 {
                 Button(L.t("Done", "完成")) { model.finish(true) }
@@ -149,6 +178,7 @@ struct ShareRootView: View {
         }
       }
     }
+    .tint(Color.greenhouse)
   }
 }
 
@@ -196,13 +226,16 @@ struct FolderList: View {
       FolderList(model: model, parent: folder.id, title: folder.name)
     }
     .safeAreaInset(edge: .bottom) {
-      Button {
-        model.save(to: parent)
-      } label: {
-        Text(saveLabel).frame(maxWidth: .infinity).padding(.vertical, 6)
+      VStack(spacing: 8) {
+        if let countLabel {
+          Text(countLabel).font(.footnote).foregroundStyle(.secondary)
+        }
+        Button(L.t("Save Here", "保存到这里")) {
+          model.save(to: parent)
+        }
+        .buttonStyle(PrimaryButtonStyle())
+        .disabled(model.progress.pending.isEmpty)
       }
-      .buttonStyle(.borderedProminent)
-      .disabled(model.progress.pending.isEmpty)
       .padding()
       .background(.bar)
     }
@@ -217,8 +250,11 @@ struct FolderList: View {
     }
   }
 
-  private var saveLabel: String {
-    let count = model.progress.pending.count
-    return L.t("Save \(count) Here", "存 \(count) 个到这里")
+  /// How many files the button saves, said beside it: all of them, or the ones left after a failure.
+  private var countLabel: String? {
+    let left = model.progress.pending.count
+    guard left > 0 else { return nil }
+    if model.progress.savedCount > 0 { return L.t("\(left) left to save", "还剩 \(left) 个") }
+    return L.t(left == 1 ? "1 item" : "\(left) items", "\(left) 个文件")
   }
 }

@@ -7,7 +7,7 @@ const station = { id: 'st-a', name: 'Acme', baseUrl: 'https://acme.example/' };
 
 describe('the share extension’s session', () => {
   it('carries the active station and its access token, never more', () => {
-    const payload = sharePayload({ station, accessToken: jwt, memberName: 'Maya' });
+    const payload = sharePayload({ station, accessToken: jwt, memberName: 'Maya', lang: 'zh' });
     expect(payload).toEqual({
       v: 1,
       stationId: 'st-a',
@@ -16,15 +16,16 @@ describe('the share extension’s session', () => {
       accessToken: jwt,
       memberName: 'Maya',
       expiresAt: 1_800_000_000,
+      lang: 'zh',
     });
     expect(JSON.stringify(payload)).not.toContain('refresh');
   });
 
   it('is cleared when nobody is signed in on the active station', () => {
-    expect(sharePayload({ station, accessToken: null, memberName: 'Maya' })).toBeNull();
-    expect(sharePayload({ station: null, accessToken: jwt, memberName: 'Maya' })).toBeNull();
-    expect(sharePayload({ station, accessToken: jwt, memberName: null })).toBeNull();
-    expect(sharePayload({ station: { ...station, baseUrl: 'javascript:x' }, accessToken: jwt, memberName: 'M' })).toBeNull();
+    expect(sharePayload({ station, accessToken: null, memberName: 'Maya', lang: 'en' })).toBeNull();
+    expect(sharePayload({ station: null, accessToken: jwt, memberName: 'Maya', lang: 'en' })).toBeNull();
+    expect(sharePayload({ station, accessToken: jwt, memberName: null, lang: 'en' })).toBeNull();
+    expect(sharePayload({ station: { ...station, baseUrl: 'javascript:x' }, accessToken: jwt, memberName: 'M', lang: 'en' })).toBeNull();
   });
 
   it('reads a token’s expiry, or none', () => {

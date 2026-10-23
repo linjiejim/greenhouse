@@ -11,6 +11,8 @@ struct ShareSession: Decodable {
   let accessToken: String
   let memberName: String
   let expiresAt: Double?
+  /// The app's language ("zh" / "en"); absent from sessions written by older builds.
+  let lang: String?
 
   var expired: Bool {
     guard let expiresAt else { return false }
@@ -168,8 +170,8 @@ private func copy(_ provider: NSItemProvider, type: UTType) async -> SharedFile?
   }
 }
 
-/// The extension's words, in the phone's language (Chinese or English).
+/// The extension's words, in the app's language (else the phone's): Chinese or English.
 enum L {
-  static let zh = Locale.preferredLanguages.first?.hasPrefix("zh") ?? false
+  static let zh = shareUsesChinese(appLanguage: ShareSession.load()?.lang, preferred: Locale.preferredLanguages)
   static func t(_ en: String, _ zhText: String) -> String { zh ? zhText : en }
 }
