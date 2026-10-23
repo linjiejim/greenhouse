@@ -16,6 +16,12 @@ const DEVICE = {
   last_seen_at: '2026-10-23T00:00:00.000Z',
 };
 
+/** Who is active now: every API call records it, so a call that reached the wrong station shows. */
+const env = { activeId: 'st-a', userId: 'u1' };
+const STATIONS = [
+  { id: 'st-a', baseUrl: 'https://a.example', name: 'A' },
+  { id: 'st-b', baseUrl: 'https://b.example', name: 'B' },
+];
 const prefs = new Map<string, string>();
 const calls: string[] = [];
 let releasePut: (() => void) | null = null;
@@ -39,15 +45,19 @@ vi.mock('zustand', () => ({
     return Object.assign(() => state, { getState: get, setState: set });
   },
 }));
-vi.mock('../store/auth', () => ({ useAuth: { getState: () => ({ user: { id: 'u1' }, loading: false, mismatch: null }) } }));
-vi.mock('../store/stations', () => ({ useStations: { getState: () => ({ activeId: 'st-a', stations: [] }) } }));
+vi.mock('../store/auth', () => ({
+  useAuth: { getState: () => ({ user: { id: env.userId }, loading: false, mismatch: null }) },
+}));
+vi.mock('../store/stations', () => ({
+  useStations: { getState: () => ({ activeId: env.activeId, stations: STATIONS }) },
+}));
 vi.mock('../api/token-storage', () => ({
   loadPref: async (key: string) => prefs.get(key) ?? null,
   savePref: async (key: string, value: string | null) => {
     if (value === null) prefs.delete(key);
     else prefs.set(key, value);
   },
-  readStationTokens: async () => ({ access: null, refresh: null }),
+  readStationTokens: async (sid: string) => ({ access: `token-${sid}`, refresh: null }),
 }));
 vi.mock('../api/push', () => ({
   PUSH_DEVICES_PATH: '/api/auth/me/push-devices',
@@ -61,8 +71,9 @@ vi.mock('../api/push', () => ({
       };
     });
   },
+  // api(): always the station active at call time
   unregisterPushDevice: async (id: string) => {
-    calls.push(`DELETE ${id}`);
+    calls.push(`DELETE ${id} @${env.activeId}`);
     return unregisterOk ? { ok: true, data: { ok: true } } : { ok: false, status: 0, code: 'network', message: '' };
   },
   updatePushPrefs: async () => ({ ok: true, data: { device: DEVICE } }),
@@ -78,6 +89,12 @@ async function untilPut() {
 }
 
 beforeEach(async () => {
+  env.activeId = 'st-a';
+  env.userId = 'u1';
+  vi.stubGlobal('fetch', async (url: string, init: { method: string; headers: Record<string, string> }) => {
+    calls.push(`${init.method} ${url} as ${init.headers.Authorization}`);
+    return new Response('{"ok":true}', { status: 200 });
+  });
   // a fresh module per test: the switch's run state is module state
   vi.resetModules();
   ({ setPushOff, syncPush, usePush } = await import('./register'));
@@ -96,8 +113,8 @@ describe('switching pushes off during a registration', () => {
     releasePut!();
     await sync;
     expect(await off).toBe(true);
-    expect(calls).toContain('DELETE pdv_1');
-    expect(calls.indexOf('DELETE pdv_1')).toBeGreaterThan(calls.indexOf('PUT done'));
+    expect(calls).toContain('DELETE pdv_1 @st-a');
+    expect(calls.indexOf('DELETE pdv_1 @st-a')).toBeGreaterThan(calls.indexOf('PUT done'));
     expect(usePush.getState()).toMatchObject({ off: true, device: null });
   });
 
@@ -108,8 +125,35 @@ describe('switching pushes off during a registration', () => {
     await sync;
     expect(usePush.getState().device?.id).toBe('pdv_1');
     expect(await setPushOff(true)).toBe(true);
-    expect(calls).toEqual(['PUT', 'PUT done', 'DELETE pdv_1']);
+    expect(calls).toEqual(['PUT', 'PUT done', 'DELETE pdv_1 @st-a']);
     expect(usePush.getState()).toMatchObject({ off: true, device: null });
+  });
+
+  it('takes back a late registration on its own station after the user switched stations', async () => {
+    const sync = syncPush();
+    await untilPut();
+    const off = setPushOff(true);
+    env.activeId = 'st-b'; // switched to station B while A's PUT was in flight
+    releasePut!();
+    await sync;
+    await off;
+    // the clean-up reaches A with A's session — never B through api()
+    expect(calls.filter((c) => c.includes('@st-b'))).toEqual([]);
+    expect(calls).toContain('DELETE https://a.example/api/auth/me/push-devices/pdv_1 as Bearer token-st-a');
+    // and B's view of this phone is untouched
+    expect(usePush.getState().off).toBe(true);
+  });
+
+  it('still unregisters when a concurrent sync clears the device it captured', async () => {
+    const sync = syncPush();
+    await untilPut();
+    releasePut!();
+    await sync;
+    const off = setPushOff(true);
+    // a sync that read off:true empties the view before the switch reaches its DELETE
+    usePush.setState({ device: null });
+    expect(await off).toBe(true);
+    expect(calls).toContain('DELETE pdv_1 @st-a');
   });
 
   it('puts the switch back on when the station cannot be told', async () => {

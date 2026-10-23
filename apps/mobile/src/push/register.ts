@@ -174,6 +174,29 @@ export function onDeviceTokenReported(token: Notifications.DevicePushToken): voi
   if (!first) void syncPush();
 }
 
+/**
+ * Unregister a device on the station it was registered with — never the active one by accident.
+ * While that station + account are still active, through `api()`; otherwise (the user switched
+ * meanwhile) with that station's own stored session, so a stale clean-up can never reach another
+ * station. True when the station confirmed.
+ */
+async function unregisterOn(stationId: string, userId: string, deviceId: string): Promise<boolean> {
+  if (sameIdentity(stationId, userId)) return (await unregisterPushDevice(deviceId)).ok;
+  const station = useStations.getState().stations.find((entry) => entry.id === stationId);
+  if (!station) return false;
+  const { access } = await readStationTokens(stationId);
+  if (!access) return false;
+  try {
+    const res = await fetch(`${station.baseUrl}${PUSH_DEVICES_PATH}/${encodeURIComponent(deviceId)}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${access}` },
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
 async function syncOnce(): Promise<void> {
   const generation = ++syncGeneration;
   const { user, loading, mismatch } = useAuth.getState();
@@ -212,8 +235,9 @@ async function syncOnce(): Promise<void> {
   const registered = await registerPushDevice({ token, platform: PLATFORM, project_id: project, client_ref: stationId });
   if (!registered.ok) return;
   if (registered.data.device && switchedOff.has(stationId)) {
-    // switched off while this PUT was in flight: the server just re-enabled the phone — undo it
-    await unregisterPushDevice(registered.data.device.id);
+    // switched off while this PUT was in flight: the server just re-enabled the phone — undo it,
+    // on that station (the user may have switched stations meanwhile)
+    await unregisterOn(stationId, user.id, registered.data.device.id);
     return;
   }
   if (!current()) return;
@@ -246,27 +270,34 @@ export async function requestPushPermission(): Promise<PushPermission> {
 /** The member's per-station switch (Settings → 通知): off unregisters this phone there, on registers it again. */
 export async function setPushOff(off: boolean): Promise<boolean> {
   const stationId = useStations.getState().activeId;
-  if (!stationId) return false;
+  const userId = useAuth.getState().user?.id;
+  if (!stationId || !userId) return false;
+  /** Only this station + account's own view may be touched by what follows. */
+  const mine = () => sameIdentity(stationId, userId);
   if (off) {
-    // first, synchronously: any registration still in flight takes itself back when it lands
+    // first, synchronously: any registration still in flight takes itself back when it lands,
+    // and the device registered now is the clean-up target whatever a concurrent sync does next
     switchedOff.add(stationId);
+    const captured = usePush.getState().device;
     usePush.setState({ off: true });
     await patchStationPush(stationId, { off: true });
-    // let a running sync settle, so the device it may just have registered is known below
+    // let a running sync settle; a device it registered before the switch is then known too
     if (syncing) await syncing.catch(() => undefined);
-    const device = usePush.getState().device;
-    usePush.setState({ device: null });
-    if (device && !(await unregisterPushDevice(device.id)).ok) {
+    const stored = (await loadStationPush())[stationId]?.deviceId;
+    const target = captured?.id ?? (mine() ? usePush.getState().device?.id : undefined) ?? stored;
+    if (mine()) usePush.setState({ device: null });
+    if (target && !(await unregisterOn(stationId, userId, target))) {
       // the station still pushes to this phone: the switch goes back on, and says so
       switchedOff.delete(stationId);
       await patchStationPush(stationId, { off: false });
-      usePush.setState({ off: false, device });
+      if (mine()) usePush.setState({ off: false, device: captured });
       return false;
     }
     return true;
   }
   switchedOff.delete(stationId);
   await patchStationPush(stationId, { off: false });
+  if (!mine()) return true;
   usePush.setState({ off: false });
   const permission = usePush.getState().permission;
   if (permission === 'undetermined') await requestPushPermission();
