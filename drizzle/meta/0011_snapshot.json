@@ -1,5 +1,5 @@
 {
-  "id": "9febd2c9-0ba9-4e0d-adb5-3f37ff3bef1e",
+  "id": "485724ce-7a7f-40e4-abdc-7ddb7d8afbfb",
   "prevId": "f4b2d1ed-f2e1-4c61-af9e-5183169086f2",
   "version": "7",
   "dialect": "postgresql",
@@ -839,6 +839,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "gateway_key_id": {
+          "name": "gateway_key_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -852,6 +858,27 @@
           "columns": [
             {
               "expression": "profile_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "idx_llm_usage_gateway_key": {
+          "name": "idx_llm_usage_gateway_key",
+          "columns": [
+            {
+              "expression": "gateway_key_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
               "isExpression": false,
               "asc": true,
               "nulls": "last"

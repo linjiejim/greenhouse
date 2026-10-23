@@ -8,11 +8,11 @@
  */
 
 import { createHash, randomBytes } from 'node:crypto';
-import { and, desc, eq, isNull, lt, or, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, isNotNull, isNull, lt, or, sql } from 'drizzle-orm';
 import { nowIso } from '@greenhouse/utils/date';
 
 import type { Db } from '../client.js';
-import { gatewayKeys, users } from '../schema/index.js';
+import { gatewayKeys, llmUsage, users } from '../schema/index.js';
 import type { GatewayKeyRow } from '../schema/gateway-key.js';
 
 /** Visible head of a secret: enough to tell keys apart, far too little to use. */
@@ -57,6 +57,12 @@ export function gatewayKeyAllowedModels(row: Pick<GatewayKeyRow, 'allowed_models
   } catch {
     return [];
   }
+}
+
+/** One key's settled spend in a window (llm_usage facts carrying its id). */
+export interface GatewayKeySpend {
+  cost_usd_micros: number;
+  calls: number;
 }
 
 export interface GatewayKeyWithOwner extends GatewayKeyRow {
@@ -164,6 +170,34 @@ export function createGatewayKeyService(db: Db) {
         .where(and(eq(gatewayKeys.id, input.id), owner))
         .limit(1);
       return existing[0] ? { row: existing[0], changed: false } : null;
+    },
+
+    /**
+     * Settled spend per key in `[since, until)`, optionally one member's keys
+     * only. Unpriced calls count as zero; reservations still open are not spend.
+     */
+    async spendByKey(input: { since: string; until: string; user_id?: string }): Promise<Map<string, GatewayKeySpend>> {
+      const rows = await db
+        .select({
+          key: llmUsage.gateway_key_id,
+          cost: sql<number>`COALESCE(SUM(${llmUsage.cost_usd_micros}), 0)::bigint`,
+          calls: sql<number>`count(*)::int`,
+        })
+        .from(llmUsage)
+        .where(
+          and(
+            isNotNull(llmUsage.gateway_key_id),
+            gte(llmUsage.created_at, input.since),
+            lt(llmUsage.created_at, input.until),
+            input.user_id ? eq(llmUsage.user_id, input.user_id) : undefined,
+          ),
+        )
+        .groupBy(llmUsage.gateway_key_id);
+      return new Map(
+        rows
+          .filter((row): row is typeof row & { key: string } => row.key !== null)
+          .map((row) => [row.key, { cost_usd_micros: Number(row.cost), calls: Number(row.calls) }]),
+      );
     },
 
     /** Stamp a use; skipped when the last stamp is under a minute old. */
