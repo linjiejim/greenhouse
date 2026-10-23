@@ -3,8 +3,9 @@
  * messages newest first (`/api/sessions/:id/messages`, each page in transcript order with
  * `next_before_seq` for the page before it): the latest page opens the conversation, older pages
  * come in as the member scrolls up, and a reload after a reply merges into what is loaded instead
- * of replacing it — earlier history never disappears. A reply streamed on screen is replaced by
- * the saved transcript only once that transcript holds it (`holdsReplyAfter`).
+ * of replacing it — earlier history never disappears, while the latest page is authoritative for
+ * its own range (`withLatest`). A reply streamed on screen is replaced by the saved transcript only
+ * once that transcript holds it (`holdsNewReply`).
  */
 
 export interface TranscriptMessage {
@@ -34,19 +35,21 @@ function merged<M extends TranscriptMessage>(a: readonly M[], b: readonly M[]): 
 }
 
 /**
- * The latest page merged into what is loaded: newer messages are added, saved versions replace the
- * same seq, and older history already loaded stays — so does the cursor to load even older.
+ * The latest page is authoritative for the range it covers: it replaces every loaded message from
+ * its first seq on, so a message edited or a tail cut off on the web (edit and re-run) goes
+ * away here too, while older history loaded before that range stays — and so does the cursor to
+ * load even older. A page that is the whole conversation (`has_more` false) replaces everything.
  */
 export function withLatest<M extends TranscriptMessage>(current: Transcript<M> | null, page: MessagePage<M>): Transcript<M> {
-  if (!current) return { messages: merged([], page.messages), before: page.has_more ? page.next_before_seq : null };
-  const newestLoaded = current.messages.at(-1)?.seq;
-  // the page overlaps what is loaded (or is the whole conversation): no gap in between
-  const reachesBack = !page.has_more || newestLoaded === undefined || (page.messages[0]?.seq ?? Infinity) <= newestLoaded;
-  return {
-    messages: merged(current.messages, page.messages),
-    // a latest page that does not reach what is loaded leaves a gap: page back from its start (repeats merge away)
-    before: reachesBack ? current.before : page.has_more ? page.next_before_seq : null,
-  };
+  const fresh = merged([], page.messages);
+  const cursor = page.has_more ? page.next_before_seq : null;
+  if (!current || !page.has_more) return { messages: fresh, before: cursor };
+  const first = fresh[0]?.seq ?? Infinity;
+  const older = current.messages.filter((message) => message.seq < first);
+  // the page overlaps what is loaded and older history sits right before it: keep paging from there;
+  // otherwise page back from the page's own start (a gap, or nothing older loaded yet)
+  const overlaps = current.messages.some((message) => message.seq >= first);
+  return { messages: [...older, ...fresh], before: overlaps && older.length ? current.before : cursor };
 }
 
 /** An older page put in front of what is loaded. */
@@ -54,15 +57,16 @@ export function withOlder<M extends TranscriptMessage>(current: Transcript<M>, p
   return { messages: merged(page.messages, current.messages), before: page.has_more ? page.next_before_seq : null };
 }
 
-/** The highest seq loaded, or -1. */
-export function lastSeq(transcript: Transcript | null): number {
-  return transcript?.messages.at(-1)?.seq ?? -1;
+/** The ids of the messages loaded, to recognise a reply among them later. */
+export function knownIds(transcript: Transcript | null): Set<string> {
+  return new Set((transcript?.messages ?? []).map((message) => message.id));
 }
 
 /**
- * Whether a saved page holds the reply to a message sent when the transcript ended at `sinceSeq`:
- * an assistant message after it. Until then the streamed reply stays on screen.
+ * Whether a saved page holds the reply to a message sent when the transcript held `known`: an
+ * assistant message that was not there — after the last one, or in place of one (same seq, new
+ * id, when the conversation was edited and re-run). Until then the streamed reply stays on screen.
  */
-export function holdsReplyAfter(page: MessagePage, sinceSeq: number): boolean {
-  return page.messages.some((message) => message.role === 'assistant' && message.seq > sinceSeq);
+export function holdsNewReply(page: MessagePage, known: ReadonlySet<string>): boolean {
+  return page.messages.some((message) => message.role === 'assistant' && !known.has(message.id));
 }

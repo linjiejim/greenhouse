@@ -178,4 +178,22 @@ describe('an open conversation', () => {
     expect(c.state.reply?.text).toBe('');
     expect(seqs(c)).toEqual([3, 4]);
   });
+
+  it('takes a regenerated reply under the same seq as the saved reply', async () => {
+    const s = station();
+    const c = new Conversation(s.deps);
+    await c.open();
+    s.deps.send = async (_text, onEvent) => {
+      // the station re-ran the last turn: seq 4 now holds a new reply with a new id
+      s.deps.saved.splice(3, 1, { id: 'msg_4_again', role: 'assistant', content: 'Again', seq: 4 });
+      onEvent({ type: 'text-delta', text: 'Again' });
+      onEvent({ type: 'finish' });
+      return { ok: true, finished: true };
+    };
+    await c.send('Regenerate');
+    expect(c.state.unreconciled).toBe(false);
+    expect(c.state.reply).toBeNull();
+    expect(c.state.transcript?.messages.at(-1)?.id).toBe('msg_4_again');
+  });
+
 });

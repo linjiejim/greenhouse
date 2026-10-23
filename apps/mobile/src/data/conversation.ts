@@ -15,7 +15,7 @@
 
 import type { ApiMiss, ApiResult } from '../api/client';
 import { applyEvent, EMPTY_REPLY, type ChatEvent, type LiveReply } from './chat-stream';
-import { holdsReplyAfter, lastSeq, withLatest, withOlder, type MessagePage, type Transcript, type TranscriptMessage } from './transcript';
+import { holdsNewReply, knownIds, withLatest, withOlder, type MessagePage, type Transcript, type TranscriptMessage } from './transcript';
 
 export type StreamOutcome = { ok: true; finished: boolean } | ApiMiss;
 
@@ -72,7 +72,8 @@ export class Conversation<M extends TranscriptMessage = TranscriptMessage> {
   state: ConversationState<M> = CLOSED_CONVERSATION;
   private listeners = new Set<() => void>();
   private abort = new AbortController();
-  private since = -1;
+  /** The message ids loaded when the exchange on screen began. */
+  private known: ReadonlySet<string> = new Set();
   private disposed = false;
 
   constructor(private deps: ConversationDeps<M>) {}
@@ -143,7 +144,7 @@ export class Conversation<M extends TranscriptMessage = TranscriptMessage> {
   async send(text: string): Promise<SendResult> {
     const message = text.trim();
     if (!message || this.state.busy) return { sent: false, restore: text, notice: 'busy', message: '' };
-    this.since = lastSeq(this.state.transcript);
+    this.known = knownIds(this.state.transcript);
     this.set({ pending: message, reply: EMPTY_REPLY, busy: true, unreconciled: false });
     const outcome = await this.deps.send(message, this.onEvent, this.abort.signal);
     if (!this.live()) return { sent: true };
@@ -167,7 +168,7 @@ export class Conversation<M extends TranscriptMessage = TranscriptMessage> {
     this.set({ busy: true });
     const page = await this.deps.latestPage();
     if (!this.live()) return;
-    if (page.ok && holdsReplyAfter(page.data, this.since)) {
+    if (page.ok && holdsNewReply(page.data, this.known)) {
       this.set({
         transcript: withLatest(this.state.transcript, page.data),
         pending: null,
@@ -185,7 +186,7 @@ export class Conversation<M extends TranscriptMessage = TranscriptMessage> {
   private async followActive(): Promise<void> {
     const run = await this.deps.runActive();
     if (!this.live() || !run.ok || !run.data.active || this.state.busy) return;
-    this.since = lastSeq(this.state.transcript);
+    this.known = knownIds(this.state.transcript);
     this.set({ reply: EMPTY_REPLY, busy: true, unreconciled: false });
     const outcome = await this.deps.follow(this.onEvent, this.abort.signal);
     if (!this.live()) return;
