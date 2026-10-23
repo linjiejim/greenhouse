@@ -88,9 +88,10 @@ export default function Files() {
     if (!openFileId || opened.current || !resource.data) return;
     opened.current = true;
     const file = resource.data.files.find((entry) => entry.id === openFileId);
+    if (file) void rememberFile(file, shelf);
     if (split) setSelected({ id: openFileId, name: file?.name ?? '' });
     else router.push({ pathname: '/file-preview', params: { id: String(openFileId), name: file?.name ?? '' } });
-  }, [openFileId, resource.data, router, split]);
+  }, [openFileId, resource.data, router, split, shelf]);
 
   const [hits, setHits] = useState<Row[] | null>(null);
   useEffect(() => {
