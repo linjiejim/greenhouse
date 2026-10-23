@@ -68,7 +68,7 @@ vi.mock('ai', async (importOriginal) => {
 });
 
 import { generateMonthlyRetro, retroDocId } from '../generate.js';
-import { collectRetroAggregates, monthKey, retroMonth } from '../aggregate.js';
+import { allActiveFrictions, collectRetroAggregates, monthKey, retroMonth } from '../aggregate.js';
 import { RETRO_CALLER } from '../suggest.js';
 
 let db: DatabaseProvider;
@@ -330,6 +330,43 @@ describe('monthly retro', () => {
       frictions: 501,
       occurrences: 1002,
     });
+  });
+
+  it('reads every friction exactly once even when one is recorded again between pages', async () => {
+    const tool = unique('paged_tool');
+    const fingerprints = Array.from({ length: 5 }, (_, index) => `${tool}-${index}`);
+    for (const fingerprint of fingerprints) {
+      await db.toolFrictions.record({ fingerprint, tool_id: tool, kind: 'tool_error', summary: 'not found' });
+    }
+    const window = {
+      from: new Date(Date.now() - 86_400_000).toISOString(),
+      to: new Date(Date.now() + 86_400_000).toISOString(),
+    };
+    const original = db.toolFrictions.listActiveBetween.bind(db.toolFrictions);
+    let pages = 0;
+    const spy = vi.spyOn(db.toolFrictions, 'listActiveBetween').mockImplementation(async (input) => {
+      const page = await original(input);
+      // Between the first and second page the first friction happens again: under the old
+      // occurrence/last-seen order with OFFSET it would jump pages and be read twice or not at all.
+      if (pages++ === 0) {
+        for (let i = 0; i < 3; i++) {
+          await db.toolFrictions.record({
+            fingerprint: fingerprints[0]!,
+            tool_id: tool,
+            kind: 'tool_error',
+            summary: 'not found',
+          });
+        }
+      }
+      return page;
+    });
+    try {
+      const rows = (await allActiveFrictions(db, window, 2)).filter((row) => row.tool_id === tool);
+      expect(rows.map((row) => row.fingerprint).sort()).toEqual([...fingerprints].sort());
+      expect(pages).toBeGreaterThan(1);
+    } finally {
+      spy.mockRestore();
+    }
   });
 
   it('refuses a month that is malformed or has not started', async () => {

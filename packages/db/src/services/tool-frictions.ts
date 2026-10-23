@@ -6,7 +6,7 @@
  * priority signal a reviewer sorts by. Nothing here is injected into a prompt.
  */
 
-import { eq, and, asc, desc, sql, inArray, gte, lt } from 'drizzle-orm';
+import { eq, and, asc, desc, sql, inArray, gt, gte, lt } from 'drizzle-orm';
 import { nowIso } from '@greenhouse/utils/date';
 
 import type { Db } from '../client.js';
@@ -148,27 +148,36 @@ export function createToolFrictionService(db: Db) {
     },
 
     /**
-     * Frictions active during a window, most frequent first. A row keeps only
+     * Frictions active during a window, in id order (callers rank them). A row keeps only
      * its first and last sighting (no per-occurrence history), so "active" is
      * the overlap `first_seen_at < to AND last_seen_at >= from`: a friction seen
      * in October and again on 1 November still counts for October. It can
      * over-include a friction seen before and after the window but not inside
      * it; `occurrence_count` is cumulative, never per window.
+     *
+     * Paged by keyset on the immutable `id` (`afterId` = the last id of the
+     * previous page): frictions are recorded while a reader pages, and an order
+     * on `occurrence_count` / `last_seen_at` with OFFSET would then skip or
+     * repeat rows.
      */
     async listActiveBetween(input: {
       from: string;
       to: string;
       limit?: number;
-      offset?: number;
+      afterId?: number;
     }): Promise<ToolFrictionRow[]> {
       return await db
         .select()
         .from(toolFrictions)
-        .where(and(lt(toolFrictions.first_seen_at, input.to), gte(toolFrictions.last_seen_at, input.from)))
-        // `id` last: a total order, so paging with offset never skips or repeats a row.
-        .orderBy(desc(toolFrictions.occurrence_count), desc(toolFrictions.last_seen_at), asc(toolFrictions.id))
-        .limit(input.limit ?? 10)
-        .offset(input.offset ?? 0);
+        .where(
+          and(
+            lt(toolFrictions.first_seen_at, input.to),
+            gte(toolFrictions.last_seen_at, input.from),
+            ...(input.afterId !== undefined ? [gt(toolFrictions.id, input.afterId)] : []),
+          ),
+        )
+        .orderBy(asc(toolFrictions.id))
+        .limit(input.limit ?? 10);
     },
 
     /** How many frictions were active in a window (see listActiveBetween) and how many first appeared in it. */

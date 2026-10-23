@@ -135,12 +135,19 @@ function clip(text: string, max: number): string {
 }
 
 /** Every friction active in the window, page by page — grouping a slice would undercount. */
-async function allActiveFrictions(db: DatabaseProvider, window: { from: string; to: string }) {
+export async function allActiveFrictions(
+  db: DatabaseProvider,
+  window: { from: string; to: string },
+  pageSize: number = FRICTION_PAGE,
+) {
   const rows: Awaited<ReturnType<DatabaseProvider['toolFrictions']['listActiveBetween']>> = [];
-  for (let offset = 0; ; offset += FRICTION_PAGE) {
-    const page = await db.toolFrictions.listActiveBetween({ ...window, limit: FRICTION_PAGE, offset });
+  let afterId: number | undefined;
+  for (;;) {
+    // Keyset on the immutable id: a friction recorded between pages is still read exactly once.
+    const page = await db.toolFrictions.listActiveBetween({ ...window, limit: pageSize, afterId });
     rows.push(...page);
-    if (page.length < FRICTION_PAGE) return rows;
+    if (page.length < pageSize) return rows;
+    afterId = page[page.length - 1]!.id;
   }
 }
 
