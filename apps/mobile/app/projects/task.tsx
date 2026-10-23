@@ -63,21 +63,32 @@ export default function TaskScreen() {
   }, [taskId]);
 
   // one save in flight per task; the member's last choice is what the server ends on
-  const choices = useRef<{ taskId: number; choice: LatestChoice<TaskStatus, ProjectTask> } | null>(null);
+  const choices = useRef<{
+    taskId: number;
+    current: () => boolean;
+    choice: LatestChoice<TaskStatus, ProjectTask>;
+  } | null>(null);
   const changeStatus = useCallback(
     async (status: TaskStatus) => {
       if (!task || status === task.status) return;
-      if (choices.current?.taskId !== task.id) {
+      if (choices.current?.taskId !== task.id || !choices.current.current()) {
         const id = task.id;
+        // every save of this task's queue belongs to the station and account choosing now
+        const owner = captureIdentity();
         choices.current = {
           taskId: id,
-          choice: new LatestChoice<TaskStatus, ProjectTask>(task.status, async (value) => {
-            const result = await updateTaskStatus(id, value);
-            return result.ok ? { ok: true, data: result.data.task } : { ok: false, message: result.message };
-          }),
+          current: owner,
+          choice: new LatestChoice<TaskStatus, ProjectTask>(
+            task.status,
+            async (value) => {
+              const result = await updateTaskStatus(id, value);
+              return result.ok ? { ok: true, data: result.data.task } : { ok: false, message: result.message };
+            },
+            owner,
+          ),
         };
       }
-      const current = captureIdentity();
+      const current = choices.current.current;
       selectionTick();
       setData((detail) => (detail ? { ...detail, tasks: withTaskPatched(detail.tasks, task.id, { status }) } : detail));
       const outcome = await choices.current.choice.choose(status);

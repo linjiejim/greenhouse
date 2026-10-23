@@ -4,7 +4,8 @@
  * queues the new choice (replacing any queued before it), and it is sent once the current save
  * settles — so the server ends on the member's last choice, in order. Only the last choice gets an
  * outcome: saved (with the server's answer), or failed with the value to roll back to — the last
- * one the server confirmed, even if a superseded save confirmed it.
+ * one the server confirmed, even if a superseded save confirmed it. Every save checks that the
+ * station and account that chose are still active; after a switch the queue is dropped.
  */
 
 export type ChoiceOutcome<T, R> = { ok: true; value: T; data: R } | { ok: false; rollbackTo: T; message: string };
@@ -19,7 +20,10 @@ export class LatestChoice<T, R> {
     /** What the server holds now. */
     private confirmed: T,
     private save: Save<T, R>,
+    /** Whether the station and account that made the first choice are still the active ones. */
+    private stillCurrent: () => boolean = () => true,
   ) {}
+
 
   /** Choose a value; answers its outcome, or null once a later choice superseded it. */
   choose(value: T): Promise<ChoiceOutcome<T, R> | null> {
@@ -35,6 +39,12 @@ export class LatestChoice<T, R> {
     while (this.queued) {
       const job = this.queued;
       this.queued = null;
+      // checked right before each save: after a station or account switch nothing more is written,
+      // and the choice is dropped rather than sent to the station that became active
+      if (!this.stillCurrent()) {
+        job.resolve(null);
+        continue;
+      }
       const result = await this.save(job.value);
       if (result.ok) this.confirmed = job.value;
       if (this.queued) {

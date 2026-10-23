@@ -70,4 +70,22 @@ describe('a menu choice saved one change at a time', () => {
     expect(await two).toMatchObject({ ok: true, value: 'todo' });
     expect(s.sent).toEqual(['done', 'todo']);
   });
+
+  it('drops queued saves after a station or account switch and writes nothing more', async () => {
+    const s = server();
+    let current = true;
+    const choice = new LatestChoice('todo', s.save, () => current);
+    const first = choice.choose('in_progress');
+    const queued = choice.choose('done');
+    current = false; // switched while the first save was in flight
+    await s.settle();
+    await s.settle();
+    expect(s.sent).toEqual(['in_progress']);
+    expect(await first).toBeNull();
+    expect(await queued).toBeNull();
+    const later = choice.choose('cancelled');
+    expect(await later).toBeNull();
+    expect(s.sent).toEqual(['in_progress']);
+  });
+
 });
