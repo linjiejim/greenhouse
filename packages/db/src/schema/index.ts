@@ -33,6 +33,7 @@ export * from './tables.js';
 export * from './runtime.js';
 export * from './notification.js';
 export * from './push-device.js';
+export * from './member-computer.js';
 export * from './workspace-setting.js';
 export * from './usage-counter.js';
 export * from './security-state.js';

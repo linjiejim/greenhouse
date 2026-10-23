@@ -78,6 +78,13 @@
       "when": 1792771350015,
       "tag": "0010_usd_metering",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1792776636581,
+      "tag": "0012_member_computers",
+      "breakpoints": true
     }
   ]
 }

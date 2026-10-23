@@ -85,6 +85,7 @@ Chat 与 Automation 共用的执行控制面（`workflow` / `mission` / `eval` �
 | `notifications` | PK `id`；UK `(user_id, dedupe_key)`；user/read/created 与 provenance 索引 | 用户站内收件箱；保存 kind、完整正文/payload、Run/Interrupt/Event/Agent 逻辑来源与 read_at。除已读状态外为永久事实，无生产删除 Service |
 | `notification_delivery_attempts` | PK `id`；UK `(notification_id, channel, recipient)`；claim 索引 | 可选外部渠道的 durable lease/attempt/retry/dead-letter/suppressed；FK 到 notification CASCADE 只服务显式根事实删除语义，常规生产没有删除入口 |
 | `push_devices` | PK `id`（`pdv_`）；UK `token`；`user_id` 部分索引（未停用） | 手机推送设备（迁移 0009）：Expo token、平台、Expo project、站点 `client_ref`、偏好 JSON（needs_you/done/other/preview）、注册时的 `auth_version`、`last_seen_at`；只停用（`disabled_at` + reason）不删除 |
+| `member_computers` | PK `id`（`cmp_`）；部分 UK `user_id`（status ∈ starting/running/stopping）；`status`、`(user_id, started_at)` 索引 | 成员的云电脑（迁移 0012，v1.6）：E2B 沙箱 id、状态（starting/running/stopping/stopped/failed/lost）、started/last_used/stopped 时间、停止原因、已结算分钟数、当前计费块的预留键与起点、发起方 client / OAuth client id；只改状态不删行 |
 
 ### 统一 Usage Budget
 
@@ -334,6 +335,7 @@ Chat 与 Automation 共用的执行控制面（`workflow` / `mission` / `eval` �
 | `notification_delivery_attempts.notification_id` | `notifications.id` | FK CASCADE；送达状态独立于业务结果，只随显式通知根删除 |
 | `notification_delivery_attempts.recipient`（`mobile_push`） | `push_devices.id` | 逻辑引用；设备停用后投递在复核时 suppressed |
 | `push_devices.user_id` | `users.id` | FK CASCADE；账号删除即删除其设备 |
+| `member_computers.user_id` | `users.id` | FK CASCADE；账号删除即删除其云电脑记录 |
 | `runtime_events.actor_user_id` | `users.id` | Event actor 审计；账号删除后 Event 仍保留 |
 | `runtime_interrupts.assignee_user_id` / `.decided_by_user_id` | `users.id` | 决策负责人和决定人；完整决议独立保留 |
 | `custom_profiles.forked_from` | 系统或自定义 profile id | profile 谱系，不是数据库 FK |
