@@ -52,6 +52,16 @@ private func loadSnapshot() -> WidgetSnapshot? {
   return snap
 }
 
+// MARK: - Brand
+
+/// The V1 green, light and dark (src/theme/palette.ts `accent`). Named colorsets do not reach
+/// `Color.accentColor` in an extension, so it is spelled out here.
+private let brand = Color(UIColor { traits in
+  traits.userInterfaceStyle == .dark
+    ? UIColor(red: 0x76 / 255, green: 0xC9 / 255, blue: 0x7D / 255, alpha: 1)
+    : UIColor(red: 0x2E / 255, green: 0x8B / 255, blue: 0x3D / 255, alpha: 1)
+})
+
 // MARK: - Words
 
 private struct Words {
@@ -72,6 +82,13 @@ private struct Words {
   var noDocs: String { t("Open a document in the app", "在 App 里打开一篇文档") }
   var overdue: String { t("Overdue", "已逾期") }
   var today: String { t("Today", "今天") }
+
+  func opened(_ doc: WidgetDoc) -> String {
+    let formatter = RelativeDateTimeFormatter()
+    formatter.locale = Locale(identifier: zh ? "zh_Hans_CN" : "en_US")
+    formatter.unitsStyle = .short
+    return formatter.localizedString(for: Date(timeIntervalSince1970: doc.openedAt), relativeTo: Date())
+  }
 
   func dueLabel(_ task: WidgetTask) -> String? {
     switch task.bucket {
@@ -124,7 +141,7 @@ private struct Header: View {
 
   var body: some View {
     HStack(spacing: 6) {
-      Image(systemName: symbol).font(.caption.weight(.semibold)).foregroundStyle(Color.accentColor)
+      Image(systemName: symbol).font(.caption.weight(.semibold)).foregroundStyle(brand)
       Text(title).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
       Spacer(minLength: 0)
     }
@@ -175,12 +192,17 @@ private struct TaskRow: View {
 
 private struct DocRow: View {
   let doc: WidgetDoc
+  let words: Words
+  let showOpened: Bool
 
   var body: some View {
     HStack(spacing: 6) {
-      Image(systemName: "doc.text").font(.caption).foregroundStyle(Color.accentColor)
+      Image(systemName: "doc.text").font(.caption).foregroundStyle(brand)
       Text(doc.title).font(.subheadline.weight(.medium)).lineLimit(1)
       Spacer(minLength: 0)
+      if showOpened {
+        Text(words.opened(doc)).font(.caption).foregroundStyle(.secondary)
+      }
     }
     .accessibilityElement(children: .combine)
   }
@@ -246,9 +268,9 @@ struct DocsView: View {
       } else {
         ForEach(Array(docs.prefix(3).enumerated()), id: \.offset) { _, doc in
           if family == .systemSmall {
-            DocRow(doc: doc)
+            DocRow(doc: doc, words: words, showOpened: false)
           } else if let url = URL(string: doc.url) {
-            Link(destination: url) { DocRow(doc: doc) }
+            Link(destination: url) { DocRow(doc: doc, words: words, showOpened: true) }
           }
         }
         Spacer(minLength: 0)
