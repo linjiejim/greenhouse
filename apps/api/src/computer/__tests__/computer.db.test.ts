@@ -264,20 +264,23 @@ describe('cloud computer: switched off', () => {
 describe('cloud computer: over MCP', () => {
   it('lists the computer tools with their tiers and annotations', async () => {
     const reader = await connect(['mcp:read', 'mcp:computer']);
-    expect((await reader.listTools()).tools.map((tool) => tool.name).sort()).toEqual([
-      'computer_files',
-      'tool_output_read',
-    ]);
+    // team_context / data_catalog are protocol tools every grant lists.
+    const notContextTool = (name: string) => name !== 'team_context' && name !== 'data_catalog';
+    expect(
+      (await reader.listTools()).tools
+        .map((tool) => tool.name)
+        .filter(notContextTool)
+        .sort(),
+    ).toEqual(['computer_files', 'tool_output_read']);
 
     const writer = await connect(['mcp:read', 'mcp:write', 'mcp:computer']);
     const listed = (await writer.listTools()).tools;
-    expect(listed.map((tool) => tool.name).sort()).toEqual([
-      'computer_exec',
-      'computer_files',
-      'computer_stop',
-      'computer_transfer',
-      'tool_output_read',
-    ]);
+    expect(
+      listed
+        .map((tool) => tool.name)
+        .filter(notContextTool)
+        .sort(),
+    ).toEqual(['computer_exec', 'computer_files', 'computer_stop', 'computer_transfer', 'tool_output_read']);
     const annotations = Object.fromEntries(listed.map((tool) => [tool.name, tool.annotations]));
     expect(annotations.computer_files).toEqual({ readOnlyHint: true, openWorldHint: true });
     expect(annotations.computer_exec).toMatchObject({

@@ -8,6 +8,8 @@
  *
  * - 04:00 CST daily  — mine tool errors out of message pipelines into frictions
  * - 05:00 CST Sunday — memory consolidation: demote stale, merge duplicates
+ * - 09:00 on the 1st, workspace time — the monthly retro of the month that ended
+ *   (retro/generate.ts; the zone is `team_context.timezone`, rescheduled on change)
  */
 
 import { Cron } from 'croner';
@@ -16,6 +18,7 @@ import { extensionJobs } from '../extensions/boot.js';
 import { DEFAULT_TIMEZONE } from './task-limits.js';
 
 let frictionJob: Cron | null = null;
+let retroJob: Cron | null = null;
 let consolidationJob: Cron | null = null;
 let extensionJobHandles: Cron[] = [];
 
@@ -56,6 +59,42 @@ export function startMemoryConsolidationJob(): void {
   );
 }
 
+/** 09:00 on the 1st of every month. */
+export const MONTHLY_RETRO_CRON = '0 9 1 * *';
+
+/**
+ * (Re)schedule the monthly retro in the workspace zone. Called at boot and
+ * whenever an admin changes the zone. Never throws: a retro that cannot be
+ * scheduled must not keep the API from starting.
+ */
+export async function startMonthlyRetroJob(): Promise<Cron | null> {
+  try {
+    const { workspaceTimeZone } = await import('../hub-context/settings.js');
+    const timeZone = await workspaceTimeZone();
+    retroJob?.stop();
+    retroJob = new Cron(MONTHLY_RETRO_CRON, { timezone: timeZone }, async () => {
+      try {
+        const { generateMonthlyRetro } = await import('../retro/generate.js');
+        const { previousMonthIn } = await import('../retro/aggregate.js');
+        const { getDb } = await import('@greenhouse/db');
+        await generateMonthlyRetro({ db: getDb(), month: previousMonthIn(new Date(), timeZone) });
+      } catch (err) {
+        logger.error('[RetroJob] Failed:', err);
+      }
+    });
+    logger.info(`[RetroJob] Scheduled monthly retro (${timeZone}) → next: ${retroJob.nextRun()?.toISOString()}`);
+    return retroJob;
+  } catch (err) {
+    logger.error('[RetroJob] Could not schedule the monthly retro:', err);
+    return null;
+  }
+}
+
+/** When the monthly retro runs next, or null when it is not scheduled. */
+export function monthlyRetroNextRun(): Date | null {
+  return retroJob?.nextRun() ?? null;
+}
+
 /** Periodic jobs declared by active extensions (see extensions/define.ts → `jobs`). */
 export function startExtensionJobs(): void {
   for (const job of extensionJobs()) {
@@ -74,6 +113,8 @@ export function startExtensionJobs(): void {
 export function stopUpkeepJobs(): void {
   frictionJob?.stop();
   frictionJob = null;
+  retroJob?.stop();
+  retroJob = null;
   consolidationJob?.stop();
   consolidationJob = null;
   for (const handle of extensionJobHandles) handle.stop();

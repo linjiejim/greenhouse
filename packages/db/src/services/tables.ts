@@ -1832,6 +1832,30 @@ export function createTablesService(db: Db) {
         .orderBy(asc(tableTables.position), asc(tableTables.id));
     },
 
+    /**
+     * Live row count and latest record change per table — counts only, never
+     * a record value (the data catalog). Tables without records are absent.
+     */
+    async recordStats(
+      tableIds: readonly number[],
+    ): Promise<Array<{ table_id: number; row_count: number; last_changed_at: string | null }>> {
+      if (tableIds.length === 0) return [];
+      const rows = await db
+        .select({
+          table_id: tableRecords.table_id,
+          row_count: sql<string>`count(*)`,
+          last_changed_at: sql<string | null>`max(${tableRecords.updated_at})`,
+        })
+        .from(tableRecords)
+        .where(and(inArray(tableRecords.table_id, [...tableIds]), isNull(tableRecords.deleted_at)))
+        .groupBy(tableRecords.table_id);
+      return rows.map((row) => ({
+        table_id: row.table_id,
+        row_count: Number(row.row_count),
+        last_changed_at: row.last_changed_at ? new Date(row.last_changed_at).toISOString() : null,
+      }));
+    },
+
     async createTable(input: CreateTableDefinitionInput): Promise<TableSchemaResult> {
       const now = nowIso();
       return db.transaction(async (tx) => {

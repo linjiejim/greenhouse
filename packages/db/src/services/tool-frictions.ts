@@ -6,7 +6,7 @@
  * priority signal a reviewer sorts by. Nothing here is injected into a prompt.
  */
 
-import { eq, and, desc, sql, inArray } from 'drizzle-orm';
+import { eq, and, desc, sql, inArray, gte, lt } from 'drizzle-orm';
 import { nowIso } from '@greenhouse/utils/date';
 
 import type { Db } from '../client.js';
@@ -145,6 +145,27 @@ export function createToolFrictionService(db: Db) {
         .from(toolFrictions)
         .where(filters.length > 0 ? and(...filters) : undefined);
       return Number(rows[0]?.count ?? 0);
+    },
+
+    /** Frictions that happened in a window (last seen inside it), most frequent first. */
+    async listSeenBetween(input: { from: string; to: string; limit?: number }): Promise<ToolFrictionRow[]> {
+      return await db
+        .select()
+        .from(toolFrictions)
+        .where(and(gte(toolFrictions.last_seen_at, input.from), lt(toolFrictions.last_seen_at, input.to)))
+        .orderBy(desc(toolFrictions.occurrence_count), desc(toolFrictions.last_seen_at))
+        .limit(input.limit ?? 10);
+    },
+
+    /** How many frictions were seen / first seen in a window. */
+    async countBetween(input: { from: string; to: string }): Promise<{ seen: number; new: number }> {
+      const rows = await db
+        .select({
+          seen: sql<string>`count(*) FILTER (WHERE ${toolFrictions.last_seen_at} >= ${input.from}::timestamptz AND ${toolFrictions.last_seen_at} < ${input.to}::timestamptz)`,
+          fresh: sql<string>`count(*) FILTER (WHERE ${toolFrictions.first_seen_at} >= ${input.from}::timestamptz AND ${toolFrictions.first_seen_at} < ${input.to}::timestamptz)`,
+        })
+        .from(toolFrictions);
+      return { seen: Number(rows[0]?.seen ?? 0), new: Number(rows[0]?.fresh ?? 0) };
     },
 
     async getById(id: number): Promise<ToolFrictionRow | undefined> {

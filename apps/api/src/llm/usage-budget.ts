@@ -245,6 +245,95 @@ export function createProviderAttemptBudgetHook(context: ProviderAttemptBudgetCo
   };
 }
 
+export interface OrganizationAttemptBudgetContext {
+  db: DatabaseProvider;
+  caller: string;
+  profileId: string;
+  metadata?: Readonly<Record<string, unknown>>;
+}
+
+/**
+ * Hard admission for a model call the organization pays for — there is no
+ * member behind it (the monthly retro). USD only, against the `llm` service and
+ * organization accounts with client `system`; the llm_usage fact carries no
+ * user. Same outcome rules as the member hook: a refusal throws before I/O, a
+ * call whose outcome is unknown stays reserved for the sweeper.
+ */
+export function createOrganizationAttemptBudgetHook(context: OrganizationAttemptBudgetContext): ProviderAttemptHook {
+  return async ({ descriptor, options }) => {
+    const startedAt = Date.now();
+    const estimatedTokens = providerAttemptEstimate(options);
+    const maxOutputTokens = options.maxOutputTokens ?? DEFAULT_OUTPUT_TOKENS;
+    await syncPriceOverrides(context.db);
+    const applied = () => effectiveModelPrice(descriptor.modelId, descriptor.logicalModelId);
+    const price = applied()?.price;
+    const spend = await reserveSpend({
+      db: context.db,
+      service: 'llm',
+      provider: descriptor.scopeId,
+      model: descriptor.modelId,
+      caller: context.caller,
+      estimatedUsdMicros: price
+        ? estimateTokenCostMicros(price, {
+            inputTokens: Math.max(1, estimatedTokens - maxOutputTokens),
+            outputTokens: maxOutputTokens,
+          })
+        : null,
+      client: 'system',
+      organizationOnly: true,
+      ttlMs: MODEL_BUDGET_TTL_MS,
+      metadata: {
+        ...(context.metadata ?? {}),
+        profile_id: context.profileId,
+        provider: descriptor.provider,
+        provider_scope: descriptor.scopeId,
+        logical_model: descriptor.logicalModelId ?? null,
+      },
+    });
+    return {
+      markProviderIoStarted: () => spend.markProviderIoStarted(),
+      settle: async (usage) => {
+        const hasProviderUsage = usage.inputTokens !== undefined || usage.outputTokens !== undefined;
+        const inputTokens = Math.max(0, usage.inputTokens ?? 0);
+        const outputTokens = Math.max(0, usage.outputTokens ?? 0);
+        const cachedTokens = Math.max(0, usage.cachedInputTokens ?? 0);
+        await syncPriceOverrides(context.db);
+        const appliedNow = applied();
+        // A response without usage is not free: charge the reservation.
+        const cost = hasProviderUsage
+          ? tokenCostMicros(appliedNow?.price, { inputTokens, outputTokens, cachedInputTokens: cachedTokens })
+          : spend.reserved
+            ? spend.estimatedUsdMicros
+            : null;
+        await spend.settle(cost, { input_tokens: inputTokens, output_tokens: outputTokens });
+        await context.db.usage.record({
+          profile_id: context.profileId,
+          caller: context.caller,
+          model: descriptor.modelId,
+          input_tokens: hasProviderUsage ? inputTokens : 0,
+          output_tokens: hasProviderUsage ? outputTokens : 0,
+          cached_tokens: hasProviderUsage ? cachedTokens : 0,
+          reasoning_tokens: Math.max(0, usage.reasoningTokens ?? 0),
+          duration_ms: Date.now() - startedAt,
+          ...(spend.ledgerKey ? { budget_idempotency_key: spend.ledgerKey } : {}),
+          cost_usd_micros: cost,
+          client: 'system',
+          oauth_client_id: null,
+          service: 'llm',
+          price_applied:
+            cost !== null && appliedNow
+              ? tokenPriceSnapshot(
+                  appliedNow.price,
+                  appliedNow.source,
+                  appliedNow.model ? { model: appliedNow.model } : {},
+                )
+              : null,
+        });
+      },
+    };
+  };
+}
+
 function buildTokenSharedAccounts(input: ReserveUserTokenBudgetInput): UsageBudgetAccountInput[] {
   const period = getUtcMonthPeriod();
   const orgScope = process.env.USAGE_BUDGET_ORG_SCOPE_ID?.trim() || DEFAULT_ORG_SCOPE_ID;
