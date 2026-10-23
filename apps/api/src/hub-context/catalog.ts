@@ -3,9 +3,10 @@
  * and how that member's agent reaches each source.
  *
  * Two kinds of source, both read through the owner's existing permission rules:
- *   • Tables bases: listed by the Tables application's own `listBases` dispatch
- *     (base roles and entity policies apply), with per-table row counts and last
- *     change — counts only, never a record value.
+ *   • Tables bases: listed by the Tables application's own `listBases` and
+ *     `listTables` dispatches (base roles and entity policies apply). Row counts
+ *     and record activity appear only where the member may read records (a
+ *     guarded `aggregateRecords` probe per base); counts only, never a value.
  *   • Extension data: every active extension that registers search sources,
  *     export sources or MCP tools, listed only when the member reaches at least
  *     one of its MCP tools (its feature flag / platform capabilities decide).
@@ -15,7 +16,7 @@
  * own permissions allow for the web page. Nothing here widens either.
  */
 
-import type { DatabaseProvider, UserRow } from '@greenhouse/db';
+import type { DatabaseProvider, TableDefinitionRow, UserRow } from '@greenhouse/db';
 import type { ActorContext } from '@greenhouse/platform-kernel';
 import type { TableBaseRole } from '@greenhouse/types/tables';
 import type {
@@ -100,17 +101,47 @@ async function tablesBases(input: CatalogInput): Promise<{ bases: DataCatalogBas
     }
   ).bases;
   const picked = all.slice(0, MAX_BASES);
+  const runtime = getPlatformRuntime();
+  // Tables through the guarded listing (table entity policy, `tables.structure.read`),
+  // never straight from the service.
   const tablesByBase = new Map(
     await Promise.all(
-      picked.map(
-        async (base) => [base.id, (await input.db.tables.listTables(base.id)).slice(0, MAX_TABLES_PER_BASE)] as const,
-      ),
+      picked.map(async (base) => {
+        const result = await runtime.dispatch({
+          actor: input.actor,
+          appId: 'tables',
+          actionId: 'listTables',
+          payload: { baseId: base.id },
+        });
+        const tables = result.ok ? (result.data as { tables: TableDefinitionRow[] }).tables : [];
+        return [base.id, tables.slice(0, MAX_TABLES_PER_BASE)] as const;
+      }),
     ),
   );
-  const tableIds = [...tablesByBase.values()].flat().map((table) => table.id);
-  const stats = new Map(
-    (input.counts === false ? [] : await input.db.tables.recordStats(tableIds)).map((row) => [row.table_id, row]),
-  );
+  // Row counts and record activity only where the member may read records:
+  // record access is decided per base (base role + `tables.data.read` + the
+  // record entity policy), so one guarded count on a table of the base answers
+  // it for every table in that base. Elsewhere counts are left out, not zeroed.
+  const recordsReadable = new Set<number>();
+  if (input.counts !== false) {
+    await Promise.all(
+      picked.map(async (base) => {
+        const probe = tablesByBase.get(base.id)?.[0];
+        if (!probe) return;
+        const result = await runtime.dispatch({
+          actor: input.actor,
+          appId: 'tables',
+          actionId: 'aggregateRecords',
+          payload: { tableId: probe.id, input: { operation: 'count' } },
+        });
+        if (result.ok) recordsReadable.add(base.id);
+      }),
+    );
+  }
+  const tableIds = picked
+    .filter((base) => recordsReadable.has(base.id))
+    .flatMap((base) => (tablesByBase.get(base.id) ?? []).map((table) => table.id));
+  const stats = new Map((await input.db.tables.recordStats(tableIds)).map((row) => [row.table_id, row]));
   const ownerIds = [...new Set(picked.map((base) => base.owner_id))];
   const owners = new Map(
     (await Promise.all(ownerIds.map((id) => input.db.users.getById(id)))).flatMap((user) =>
@@ -120,13 +151,14 @@ async function tablesBases(input: CatalogInput): Promise<{ bases: DataCatalogBas
   const canWrite = input.reachable.has('tables_mutation');
 
   const bases = picked.map((base): DataCatalogBase => {
+    const readable = recordsReadable.has(base.id);
     const tables = (tablesByBase.get(base.id) ?? []).map((table) => {
       const stat = stats.get(table.id);
       return {
         id: table.id,
         name: table.name,
-        row_count: stat?.row_count ?? 0,
-        last_changed_at: latest(stat?.last_changed_at, table.updated_at),
+        row_count: readable ? (stat?.row_count ?? 0) : null,
+        last_changed_at: latest(readable ? stat?.last_changed_at : null, table.updated_at),
       };
     });
     const reach = [

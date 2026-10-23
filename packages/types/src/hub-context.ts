@@ -78,8 +78,9 @@ export interface DataCatalogReach {
 export interface DataCatalogTable {
   id: number;
   name: string;
-  row_count: number;
-  /** Latest record change, or the table's own update when it has no records. */
+  /** Live records; null when the member may not read this base's records (counts are then left out). */
+  row_count: number | null;
+  /** Latest record change (only when records are readable), else the table's own update. */
   last_changed_at: string | null;
 }
 

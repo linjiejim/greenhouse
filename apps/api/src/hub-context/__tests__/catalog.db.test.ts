@@ -129,6 +129,24 @@ describe('data catalog: Tables bases', () => {
     expect(own.reach.map((entry) => entry.tool)).toEqual(['tables_query', 'tables_mutation']);
   });
 
+  it('leaves row counts and record activity out where the member may not read records', async () => {
+    await db.platform.setUserCapabilityOverride({
+      org_id: 'default',
+      user_id: member.id,
+      capability: 'tables.data.read',
+      effect: 'deny',
+      reason: 'catalog record policy test',
+    });
+    for (const catalog of [await webCatalog(member), await mcpCatalog(member, ['mcp:read', 'mcp:tables'])]) {
+      const team = catalog.bases.find((entry) => entry.id === teamBaseId)!;
+      // Structure is still listed through the guarded listing…
+      expect(team.tables).toHaveLength(1);
+      expect(team.tables[0]!.name).toEqual(expect.any(String));
+      // …but how many records it holds is not this member's to know.
+      expect(team.tables[0]!.row_count).toBeNull();
+    }
+  });
+
   it('lists no bases for a member whose Tables access is switched off', async () => {
     await db.userFeatures.upsert({ user_id: member.id, feature: 'tables', enabled: false });
     expect((await webCatalog(member)).bases).toEqual([]);

@@ -117,9 +117,11 @@ export function DataCatalogPage() {
                             >
                               {table.name}
                             </a>
-                            <span className="whitespace-nowrap text-fg-muted">
-                              {t('dataCatalog.rows', { count: table.row_count })}
-                            </span>
+                            {table.row_count !== null && (
+                              <span className="whitespace-nowrap text-fg-muted">
+                                {t('dataCatalog.rows', { count: table.row_count })}
+                              </span>
+                            )}
                           </li>
                         ))}
                       </ul>
