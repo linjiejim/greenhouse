@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { MyTask } from '../data/tasks';
-import { buildSnapshot, myTasksRefreshAction, widgetLinkPath } from './model';
+import { buildSnapshot, myTasksRefreshAction, widgetLinkPath, widgetStationGate } from './model';
 
 const task = (id: number, due: string | null): MyTask =>
   ({
@@ -76,18 +76,45 @@ describe('a widget link opening the app', () => {
     expect(widgetLinkPath('/knowledge/doc?id=7&station=local-3993', 'local-3993')).toBe('/knowledge/doc?id=7');
   });
 
-  it('goes home for another station or anything that is not a widget item', () => {
-    expect(widgetLinkPath('greenhouse://knowledge/doc?id=7&station=other', 'local-3993')).toBe('/');
+  it('keeps the station on an item from another station, so the item says it is not here', () => {
+    expect(widgetLinkPath('greenhouse://knowledge/doc?id=7&station=other', 'local-3993')).toBe('/knowledge/doc?id=7&station=other');
+  });
+
+  it('goes home for anything with a station that is not a widget item', () => {
     expect(widgetLinkPath('greenhouse://settings?station=local-3993', 'local-3993')).toBe('/');
   });
 
-  it('opens the item on a cold start, before the active station is read', () => {
-    expect(widgetLinkPath('greenhouse://knowledge/doc?id=7&station=local-3993', null)).toBe('/knowledge/doc?id=7');
+  it('keeps the station on a cold start, before the active station is read', () => {
+    expect(widgetLinkPath('greenhouse://knowledge/doc?id=7&station=local-3993', null)).toBe('/knowledge/doc?id=7&station=local-3993');
+    expect(widgetLinkPath('greenhouse://projects/task?project=2&task=1&station=other', null)).toBe(
+      '/projects/task?project=2&task=1&station=other',
+    );
   });
 
   it('leaves other links alone', () => {
     expect(widgetLinkPath('/tables/record?table=1&id=2', 'local-3993')).toBe('/tables/record?table=1&id=2');
     expect(widgetLinkPath('greenhouse://auth/feishu?feishu_code=x', 'local-3993')).toBe('greenhouse://auth/feishu?feishu_code=x');
+  });
+});
+
+describe('a screen opened from a widget link', () => {
+  it('waits until the stations are read', () => {
+    expect(widgetStationGate('local-3993', { hydrated: false, activeId: null })).toBe('wait');
+    expect(widgetStationGate('local-3993', { hydrated: false, activeId: 'local-3993' })).toBe('wait');
+  });
+
+  it('opens on the station the link came from', () => {
+    expect(widgetStationGate('local-3993', { hydrated: true, activeId: 'local-3993' })).toBe('open');
+  });
+
+  it('never opens on another station, or with none', () => {
+    expect(widgetStationGate('other', { hydrated: true, activeId: 'local-3993' })).toBe('elsewhere');
+    expect(widgetStationGate('other', { hydrated: true, activeId: null })).toBe('elsewhere');
+  });
+
+  it('opens links that name no station as before', () => {
+    expect(widgetStationGate(undefined, { hydrated: false, activeId: null })).toBe('open');
+    expect(widgetStationGate('', { hydrated: true, activeId: 'x' })).toBe('open');
   });
 });
 

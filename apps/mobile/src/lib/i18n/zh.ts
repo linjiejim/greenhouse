@@ -22,6 +22,9 @@ export const zh: Catalog = {
     savedCopy: '离线中——显示的是这台手机上保存的副本。',
     search: '搜索',
     noMatches: '没有匹配的结果',
+    otherStation: '在这个工作站上不可用',
+    otherStationHint: '这一项来自工作站“{name}”。切换到那个工作站后再打开。',
+    otherStationUnknown: '这一项来自另一个工作站。',
   },
   login: {
     station: '工作站',

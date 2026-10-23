@@ -51,7 +51,7 @@
 ## Widgets and iPad
 
 - targets/widget holds the 我的任务 and 最近文档 widgets; they read only the App Group snapshot src/widget/publish.ts writes through modules/widget-bridge (shape: src/widget/model.ts, a parity test checks the Swift decoder). Never put a token or private body text in it.
-- Widget links carry `station=`; app/+native-intent.tsx opens them only on that station.
+- Widget links carry `station=`; it stays on the route until checked, and the item's screen (src/widget/station-gate.tsx) waits for the stations to load, then opens only on that station.
 - Colorsets do not reach Color.accentColor in an extension: spell the V1 green out in Swift.
 - iPad at regular width splits list and detail (src/ui/split.tsx, rules in src/data/split-layout.ts); detail screens are views (src/<area>/*-view.tsx) used by both the route and the pane, and render their title and actions through ScreenChrome.
 

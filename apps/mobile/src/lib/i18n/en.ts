@@ -24,6 +24,9 @@ export const en = {
     savedCopy: 'Offline — showing the copy saved on this phone.',
     search: 'Search',
     noMatches: 'No matches',
+    otherStation: 'Not available on this station',
+    otherStationHint: 'This item is from “{name}”. Switch to that station to open it.',
+    otherStationUnknown: 'This item is from another station.',
   },
   login: {
     station: 'Station',
