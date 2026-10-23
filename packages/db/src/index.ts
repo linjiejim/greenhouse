@@ -86,6 +86,7 @@ export * from './services/chat-files.js';
 export * from './services/chat-artifact-receipts.js';
 export * from './services/runtime.js';
 export * from './services/notifications.js';
+export * from './services/push-devices.js';
 export * from './services/workspace-settings.js';
 
 // ─── Configuration ───────────────────────────────────────
