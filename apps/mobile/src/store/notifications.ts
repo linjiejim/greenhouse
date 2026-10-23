@@ -63,6 +63,12 @@ const INITIAL = {
   loadingMore: false,
 };
 
+/**
+ * Bumped whenever the list is replaced wholesale (a refresh, an identity change): a page requested
+ * against the previous list belongs to its continuation, so it is dropped instead of appended.
+ */
+let listEpoch = 0;
+
 function identity(): { station: string; member: string } | null {
   const station = useStations.getState().activeId;
   const member = useAuth.getState().user?.id;
@@ -99,9 +105,11 @@ export const useNotifications = create<NotificationsState>((set, get) => {
         page: page.data.notifications,
         pageCursor: page.data.next_cursor,
       });
+      listEpoch += 1;
       set({
         items,
         nextCursor,
+        loadingMore: false,
         unread: summary.ok ? summary.data.unread : get().unread,
         status: 'ready',
         error: null,
@@ -113,9 +121,11 @@ export const useNotifications = create<NotificationsState>((set, get) => {
       const { nextCursor, loadingMore } = get();
       if (!nextCursor || loadingMore) return;
       const current = captureIdentity();
+      const epoch = listEpoch;
       set({ loadingMore: true });
       const page = await listNotifications({ cursor: nextCursor });
-      if (!current()) return;
+      // the list was replaced meanwhile: this page continues the old one, not the new
+      if (!current() || epoch !== listEpoch) return;
       if (!page.ok) {
         set({ loadingMore: false });
         return;
@@ -206,6 +216,7 @@ function followIdentity(): void {
   const next = who ? `${who.station}:${who.member}` : '';
   if (next === owner) return;
   owner = next;
+  listEpoch += 1;
   useNotifications.setState({ ...INITIAL });
   void hydrateFromCache();
 }
