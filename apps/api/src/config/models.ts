@@ -58,12 +58,55 @@ function parseProvider(raw: unknown, modelId: string, index: number): ProviderEn
   const baseUrlEnv = typeof p?.base_url_env === 'string' ? p.base_url_env : undefined;
   const baseUrl =
     typeof p?.base_url === 'string' ? p.base_url : baseUrlEnv ? process.env[baseUrlEnv]?.trim() : undefined;
+  const anthropicBaseUrl = parseAnthropicBaseUrl(p, `models.yaml: models.${modelId}.providers[${index}]`);
   return {
     provider,
     model,
     apiKeyEnv,
     ...(baseUrl ? { baseUrl } : {}),
+    ...(anthropicBaseUrl ? { anthropicBaseUrl } : {}),
   };
+}
+
+function isHttpUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return url.protocol === 'http:' || url.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * `anthropic_base_url` (literal) or `anthropic_base_url_env` (the NAME of an env
+ * var): the provider's Anthropic Messages endpoint, without `/v1`, for the model
+ * gateway's Anthropic surface. A bad literal fails the boot; a bad env value
+ * only warns and is ignored — the catalog is re-read whenever an admin saves
+ * Runtime Config, and a typo in an env var must not take that (or the boot) down.
+ */
+function parseAnthropicBaseUrl(p: Record<string, unknown> | undefined, where: string): string | undefined {
+  const literal = p?.anthropic_base_url;
+  const envName = p?.anthropic_base_url_env;
+  if (literal !== undefined && envName !== undefined) {
+    throw new Error(`${where}: set anthropic_base_url or anthropic_base_url_env, not both`);
+  }
+  if (literal !== undefined) {
+    if (typeof literal !== 'string' || !isHttpUrl(literal.trim())) {
+      throw new Error(`${where}.anthropic_base_url must be an http(s) URL`);
+    }
+    return literal.trim().replace(/\/+$/, '');
+  }
+  if (envName === undefined) return undefined;
+  if (typeof envName !== 'string' || !envName.trim()) {
+    throw new Error(`${where}.anthropic_base_url_env must name an env var`);
+  }
+  const value = process.env[envName]?.trim();
+  if (!value) return undefined;
+  if (!isHttpUrl(value)) {
+    logger.warn(`[models] ${envName} is not an http(s) URL — ${where} gets no Anthropic endpoint`);
+    return undefined;
+  }
+  return value.replace(/\/+$/, '');
 }
 
 const ENV_TRUE = new Set(['true', '1', 'yes', 'on']);

@@ -17,6 +17,13 @@
 # `options` are the MODEL's sampling/reasoning behavior, not an agent's — every
 # consumer of a model gets them.
 #
+# `anthropic_base_url` / `anthropic_base_url_env` (optional, per provider) name
+# the same credential's Anthropic Messages endpoint, without `/v1` — e.g.
+# DeepSeek's `https://api.deepseek.com/anthropic`. Only the model gateway's
+# Anthropic surface (`/api/gateway/anthropic`, what Claude Code talks to) uses
+# it, with the provider's `model` and key; a model without one is simply not
+# offered there.
+#
 # `vision: true` means the model reads images natively: Chat inlines attached
 # images into the payload instead of routing them through analyze_image.
 # `vision_env` names an env var that overrides it per deployment — the default
@@ -61,6 +68,7 @@ models:
         model_env: LLM_MODEL
         api_key_env: LLM_API_KEY
         base_url_env: LLM_BASE_URL
+        anthropic_base_url_env: LLM_ANTHROPIC_BASE_URL
 
   # An optional stronger model on the same endpoint (LLM_MODEL_PRO). Hidden from
   # the picker until the variable is set.
@@ -75,6 +83,7 @@ models:
         model_env: LLM_MODEL_PRO
         api_key_env: LLM_API_KEY
         base_url_env: LLM_BASE_URL
+        anthropic_base_url_env: LLM_ANTHROPIC_BASE_URL
 
   # DeepSeek V4.1 Flash on DeepSeek's own API (natively multimodal). Optional:
   # invisible until DEEPSEEK_API_KEY is configured. Deployments whose LLM_*
@@ -91,6 +100,7 @@ models:
       - provider: deepseek
         model: deepseek-flash
         api_key_env: DEEPSEEK_API_KEY
+        anthropic_base_url: https://api.deepseek.com/anthropic
 
 # ─── Chat model picker ────────────────────────────────────
 # Which models a user may switch between in Chat, in the order the picker shows
