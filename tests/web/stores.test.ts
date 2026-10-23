@@ -50,7 +50,6 @@ describe('useUIStore', () => {
       preferencesOpen: false,
       currentSessionTitle: '',
       currentSessionProfileId: 'team',
-      currentSessionTags: [],
       currentChatSessionId: null,
       sessionListVersion: 0,
     });
@@ -80,25 +79,11 @@ describe('useUIStore', () => {
     expect(state.preferencesOpen).toBe(false);
   });
 
-  it('setCurrentSessionInfo sets title, profileId and tags', () => {
-    const tags = [{ id: 1, name: 'bug', color: '#e53e3e' }];
-    useUIStore.getState().setCurrentSessionInfo('My Chat', 'team', tags);
+  it('setCurrentSessionInfo sets title and profileId', () => {
+    useUIStore.getState().setCurrentSessionInfo('My Chat', 'team');
     const state = useUIStore.getState();
     expect(state.currentSessionTitle).toBe('My Chat');
     expect(state.currentSessionProfileId).toBe('team');
-    expect(state.currentSessionTags).toEqual(tags);
-  });
-
-  it('setCurrentSessionInfo defaults tags to empty array', () => {
-    useUIStore.getState().setCurrentSessionInfo('Title', 'team');
-    expect(useUIStore.getState().currentSessionTags).toEqual([]);
-  });
-
-  it('setCurrentSessionInfo replaces previous tags', () => {
-    useUIStore.getState().setCurrentSessionInfo('T', 'team', [{ id: 1, name: 'a', color: '#000' }]);
-    expect(useUIStore.getState().currentSessionTags).toHaveLength(1);
-    useUIStore.getState().setCurrentSessionInfo('T', 'team', []);
-    expect(useUIStore.getState().currentSessionTags).toEqual([]);
   });
 
   it('bumpSessionListVersion increments monotonically', () => {

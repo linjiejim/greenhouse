@@ -279,7 +279,10 @@ git pull && pnpm install && pnpm drizzle-kit migrate   # then restart the API
 > agents over MCP, and the in-app agent is an assistant. The desktop app (Tauri shell) is
 > removed — use the web app in a browser; installed shells stop receiving updates. The browser
 > extension (Greenhouse Bridge) is removed and no longer attached to releases; conversations it
-> started stay readable and keep their read-only tool face.
+> started stay readable and keep their read-only tool face. Session tags and custom session
+> folders are removed from the web and mobile apps (`/api/session-tags`, `/api/session-groups`
+> are gone; pinning stays). There is no migration: the tables stay untouched in 1.5 and are
+> dropped in the next release.
 
 > **Upgrading to 1.4** — Evaluation, Missions (the cloud-agent sandbox), the team LLM relay
 > (`/api/llm`, relay keys, AI Gateway admin page) and Workflows are removed. There is no

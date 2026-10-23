@@ -50,21 +50,8 @@ export interface Session {
   shared?: boolean;
   /** Share count — how many people/team can see this session. -1 = team-wide. */
   share_count?: number;
-  group_id?: number | null;
-  group_sort?: number;
   pinned?: boolean;
   pin_sort?: number;
-  /** Inline session tags returned by the list endpoint. */
-  tags?: SessionTag[];
-}
-
-export interface SessionTag {
-  id: number;
-  name: string;
-  /** Hex color (DB default #6B7280). Always present on API responses. */
-  color: string;
-  /** Ordering within the tag library; present on the full row, omitted on the inline session copy. */
-  sort_order?: number;
 }
 
 export interface Message {

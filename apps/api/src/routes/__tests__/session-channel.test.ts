@@ -24,12 +24,9 @@ const mocks = vi.hoisted(() => ({
   sessionShares: {
     getSharedSessionIds: vi.fn(),
   },
-  sessionGroups: {
-    getOrganizedSessionIds: vi.fn(),
-    getMembershipsForUser: vi.fn(),
-  },
-  sessionTags: {
-    getTagsBySessionIds: vi.fn(),
+  sessionPins: {
+    getPinnedSessionIds: vi.fn(),
+    getPinSortsForUser: vi.fn(),
   },
 }));
 
@@ -92,9 +89,8 @@ beforeEach(() => {
   mocks.sessions.list.mockResolvedValue([]);
   mocks.sessions.listSharedWith.mockResolvedValue([]);
   mocks.sessionShares.getSharedSessionIds.mockResolvedValue([]);
-  mocks.sessionGroups.getOrganizedSessionIds.mockResolvedValue(['pinned-web-session']);
-  mocks.sessionGroups.getMembershipsForUser.mockResolvedValue(new Map());
-  mocks.sessionTags.getTagsBySessionIds.mockResolvedValue(new Map());
+  mocks.sessionPins.getPinnedSessionIds.mockResolvedValue(['pinned-web-session']);
+  mocks.sessionPins.getPinSortsForUser.mockResolvedValue(new Map());
   mocks.sessions.getById.mockResolvedValue(makeSession('pinned-web-session'));
 });
 
@@ -126,16 +122,16 @@ describe('GET /api/sessions channel-filtered list', () => {
 
     expect(response.status).toBe(200);
     expect(mocks.sessions.list).toHaveBeenCalledWith(expect.objectContaining({ channel: 'browser', userId: 'owner' }));
-    expect(mocks.sessionGroups.getOrganizedSessionIds).not.toHaveBeenCalled();
+    expect(mocks.sessionPins.getPinnedSessionIds).not.toHaveBeenCalled();
     const body = (await response.json()) as { sessions: Array<{ id: string }> };
     expect(body.sessions.map((s) => s.id)).toEqual(['browser-session']);
   });
 
-  it('still backfills filed sessions into the unfiltered sidebar list', async () => {
+  it('still backfills pinned sessions into the unfiltered sidebar list', async () => {
     const response = await createApp().request('/api/sessions?scope=mine');
 
     expect(response.status).toBe(200);
-    expect(mocks.sessionGroups.getOrganizedSessionIds).toHaveBeenCalledWith('owner');
+    expect(mocks.sessionPins.getPinnedSessionIds).toHaveBeenCalledWith('owner');
     const body = (await response.json()) as { sessions: Array<{ id: string }> };
     expect(body.sessions.map((s) => s.id)).toEqual(['pinned-web-session']);
   });

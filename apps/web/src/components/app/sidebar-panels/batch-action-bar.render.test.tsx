@@ -9,8 +9,6 @@ function render(props: Partial<React.ComponentProps<typeof BatchActionBar>> = {}
       <BatchActionBar
         count={3}
         busy={false}
-        onTag={vi.fn()}
-        onMove={vi.fn()}
         onArchive={vi.fn()}
         onDelete={vi.fn()}
         onDone={vi.fn()}
@@ -29,10 +27,13 @@ describe('BatchActionBar', () => {
     expect(render({ count: 5 })).toContain('5 selected');
   });
 
-  it('renders all four batch actions plus Done', () => {
+  it('renders the batch actions plus Done', () => {
     const html = render();
-    for (const label of ['Tag', 'Move', 'Archive', 'Delete', 'Done']) {
+    for (const label of ['Archive', 'Delete', 'Done']) {
       expect(html).toContain(label);
+    }
+    for (const retired of ['Tag', 'Move']) {
+      expect(html).not.toContain(`>${retired}<`);
     }
   });
 
@@ -41,14 +42,14 @@ describe('BatchActionBar', () => {
   });
 
   it('disables all controls while a batch is running', () => {
-    // 4 actions + Done + Select all + Clear.
-    expect(disabledCount(render({ busy: true }))).toBe(7);
+    // 2 actions + Done + Select all + Clear.
+    expect(disabledCount(render({ busy: true }))).toBe(5);
   });
 
   it('disables the actions when nothing is selected, but Done and Select all stay usable', () => {
     const html = render({ count: 0, busy: false });
-    // 4 actions + Clear (count===0). Done and Select all remain enabled.
-    expect(disabledCount(html)).toBe(5);
+    // 2 actions + Clear (count===0). Done and Select all remain enabled.
+    expect(disabledCount(html)).toBe(3);
     expect(html).toContain('0 selected');
     expect(html).toContain('Done');
   });

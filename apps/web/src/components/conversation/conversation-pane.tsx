@@ -163,7 +163,6 @@ export function ConversationPane({
   const [sessionProfileId, setSessionProfileId] = useState(DEFAULT_AGENT_ID);
   const [sessionRating, setSessionRating] = useState<number | null>(null);
   const [sessionComment, setSessionComment] = useState<string | null>(null);
-  const [sessionTags, setSessionTags] = useState<Array<{ id: number; name: string; color: string }>>([]);
   // Retired channels (Mission conversations, Workflow node transcripts) open
   // read-only; workflow nodes keep a link back to the orchestrating session.
   const [sessionChannel, setSessionChannel] = useState<string>('web');
@@ -457,19 +456,10 @@ export function ConversationPane({
       if (!sessionId || !isOwner || sessionChannel !== 'web' || !title || title === sessionTitle) return;
       await api.updateSession(sessionId, { title });
       setSessionTitle(title);
-      setCurrentSessionInfo(title, sessionProfileId, sessionTags);
+      setCurrentSessionInfo(title, sessionProfileId);
       bumpSessionListVersion();
     },
-    [
-      bumpSessionListVersion,
-      isOwner,
-      sessionChannel,
-      sessionId,
-      sessionProfileId,
-      sessionTags,
-      sessionTitle,
-      setCurrentSessionInfo,
-    ],
+    [bumpSessionListVersion, isOwner, sessionChannel, sessionId, sessionProfileId, sessionTitle, setCurrentSessionInfo],
   );
   useEffect(() => {
     if (!policy.publishGlobalChatUi) return;
@@ -478,7 +468,6 @@ export function ConversationPane({
       // Keep the global snapshot complete for non-TopBar consumers even though
       // the title bar itself no longer repeats the active Agent.
       sessionId ? sessionProfileId : selectedProfileId,
-      sessionTags,
     );
   }, [
     isLoadingSession,
@@ -486,7 +475,6 @@ export function ConversationPane({
     sessionTitle,
     sessionProfileId,
     selectedProfileId,
-    sessionTags,
     setCurrentSessionInfo,
     t,
     policy.publishGlobalChatUi,
@@ -594,7 +582,6 @@ export function ConversationPane({
           setSessionProfileId(pid);
           setSessionRating(data.session.rating ?? null);
           setSessionComment(data.session.comment ?? null);
-          setSessionTags((data.session as any).tags || []);
           setSessionChannel(data.session.channel ?? 'web');
           setParentSessionId(data.session.parent_session_id ?? null);
           setMessages(data.messages.map(parseMessage));
@@ -617,7 +604,6 @@ export function ConversationPane({
       setSessionProfileId(DEFAULT_AGENT_ID);
       setSessionRating(null);
       setSessionComment(null);
-      setSessionTags([]);
       setSessionChannel('web');
       setParentSessionId(null);
       setIsOwner(true);

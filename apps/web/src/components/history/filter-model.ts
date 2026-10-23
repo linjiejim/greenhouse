@@ -5,14 +5,9 @@
  * together) can be pinned by tests instead of by clicking through a modal.
  */
 
-import type { Session, SessionTag } from '@greenhouse/types/api';
+import type { Session } from '@greenhouse/types/api';
 
-/**
- * The list endpoint enriches every session with its tags; `Session` itself doesn't
- * declare them, and the enrichment only carries the three display fields.
- */
-export type HistorySessionTag = Pick<SessionTag, 'id' | 'name' | 'color'>;
-export type HistorySession = Session & { tags?: HistorySessionTag[] };
+export type HistorySession = Session;
 
 export type FeedbackFilter = 'all' | 'good' | 'bad' | 'starred';
 /**
@@ -27,12 +22,11 @@ export interface HistoryFilters {
   status: string;
   feedback: FeedbackFilter;
   owner: OwnerFilter;
-  /** 'all' | 'pinned' | 'ungrouped' | `g:<id>` */
+  /** 'all' | 'pinned' */
   group: string;
   /** Profile id, or 'all'. Sessions without one count as 'team'. */
   profile: string;
   rating: number | null;
-  tagId: number | null;
   search: string;
 }
 
@@ -45,7 +39,6 @@ export const DEFAULT_HISTORY_FILTERS: HistoryFilters = {
   group: 'all',
   profile: 'all',
   rating: null,
-  tagId: null,
   search: '',
 };
 
@@ -62,7 +55,6 @@ export function countHiddenFilters(filters: HistoryFilters): number {
   if (filters.group !== d.group) n++;
   if (filters.profile !== d.profile) n++;
   if (filters.rating !== d.rating) n++;
-  if (filters.tagId !== d.tagId) n++;
   return n;
 }
 
@@ -99,16 +91,8 @@ export function filterSessions(sessions: HistorySession[], filters: HistoryFilte
   if (filters.rating != null) {
     result = result.filter((s) => s.rating === filters.rating);
   }
-  if (filters.tagId != null) {
-    result = result.filter((s) => s.tags?.some((tag) => tag.id === filters.tagId));
-  }
   if (filters.group === 'pinned') {
     result = result.filter((s) => s.pinned === true);
-  } else if (filters.group === 'ungrouped') {
-    result = result.filter((s) => s.group_id == null);
-  } else if (filters.group.startsWith('g:')) {
-    const groupId = parseInt(filters.group.slice(2), 10);
-    result = result.filter((s) => s.group_id === groupId);
   }
   if (filters.search) {
     const q = filters.search.toLowerCase();

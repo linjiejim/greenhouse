@@ -10,11 +10,6 @@ import { I18nProvider } from '../../lib/i18n';
 import { useSidePaneStore } from '../../stores/side-pane-store';
 import { ChatTopBarSessionActions, EditableChatTitle, TopBar } from './top-bar';
 
-vi.mock('../../lib/api', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('../../lib/api')>()),
-  listSessionTags: vi.fn().mockResolvedValue([]),
-}));
-
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 function renderTopBar(route: 'chat' | 'projects' | 'executions' | 'tasks') {

@@ -171,31 +171,10 @@ export interface Session {
   owner_nickname?: string;
   /** Share count — how many people/team can see this session. -1 = team-wide. */
   share_count?: number;
-  /** The current user's custom folder for this session (per-user; null = unfiled). */
-  group_id?: number | null;
-  /** Sort order within that folder. */
-  group_sort?: number;
   /** Whether the current user has pinned this session. */
   pinned?: boolean;
   /** Sort order within the current user's Pinned group. */
   pin_sort?: number;
-}
-
-/**
- * Session group (folder) as returned by the API. The built-in Pinned group
- * has kind='pinned'; user folders have kind='custom'.
- */
-export interface SessionGroup {
-  id: number;
-  name: string;
-  color: string;
-  icon: string | null;
-  kind: string;
-  sort_order: number;
-  created_at: string;
-  updated_at: string;
-  /** Number of sessions filed in this group (when the API includes counts). */
-  member_count?: number;
 }
 
 /**
@@ -470,17 +449,6 @@ export interface ShareInfo {
   message: string | null;
   created_at: string;
   total_viewers: number; // -1 = team-wide
-}
-
-// ─── Session Tag Types ───────────────────────────────────
-
-export interface SessionTag {
-  id: number;
-  name: string;
-  color: string;
-  sort_order: number;
-  created_at: string;
-  updated_at: string;
 }
 
 // ─── Auth Types ──────────────────────────────────────────

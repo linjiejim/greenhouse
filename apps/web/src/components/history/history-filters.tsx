@@ -5,15 +5,13 @@
  * The two axes that decide *which* conversations exist for you — status and
  * ownership — stay in the primary row. Everything behind "More" is a refinement
  * within that set, and is grouped by what it refines: how the conversation is
- * filed (Organize) vs what someone thought of it (Review). A flat run of four
+ * organised (Organize) vs what someone thought of it (Review). A flat run of four
  * Selects and a star widget gave no clue which was which.
  */
 
 import React from 'react';
 import { FilterPills, SearchInput, Select, StarRating } from '../ui';
-import { Filter, RotateCcw, Tag } from '../../lib/icons';
-import { TagFilter } from '../session-tags';
-import type { SessionGroup, SessionTag } from '@greenhouse/types/api';
+import { Filter, RotateCcw } from '../../lib/icons';
 import type { Profile } from '../../lib/api';
 import {
   DEFAULT_HISTORY_FILTERS,
@@ -37,9 +35,6 @@ interface HistoryFiltersBarProps {
   statusCounts: Record<string, number>;
   feedbackCounts: Record<string, number>;
   profiles: Profile[];
-  groups: SessionGroup[];
-  tags: SessionTag[];
-  onManageTags: () => void;
   searchPlaceholder: string;
 }
 
@@ -49,9 +44,6 @@ export function HistoryFiltersBar({
   statusCounts,
   feedbackCounts,
   profiles,
-  groups,
-  tags,
-  onManageTags,
   searchPlaceholder,
 }: HistoryFiltersBarProps) {
   const t = useT();
@@ -78,7 +70,6 @@ export function HistoryFiltersBar({
       group: DEFAULT_HISTORY_FILTERS.group,
       profile: DEFAULT_HISTORY_FILTERS.profile,
       rating: DEFAULT_HISTORY_FILTERS.rating,
-      tagId: DEFAULT_HISTORY_FILTERS.tagId,
     });
 
   return (
@@ -145,14 +136,6 @@ export function HistoryFiltersBar({
             >
               <option value="all">{t('history.allGroups')}</option>
               <option value="pinned">📌 {t('history.pinned')}</option>
-              <option value="ungrouped">{t('history.ungrouped')}</option>
-              {groups
-                .filter((g) => g.kind !== 'pinned')
-                .map((g) => (
-                  <option key={g.id} value={`g:${g.id}`}>
-                    {g.name}
-                  </option>
-                ))}
             </Select>
 
             {profiles.length > 1 && (
@@ -170,20 +153,6 @@ export function HistoryFiltersBar({
                   </option>
                 ))}
               </Select>
-            )}
-
-            {tags.length > 0 && (
-              <span className="flex min-w-0 items-center gap-1.5">
-                <TagFilter tags={tags} activeTagId={filters.tagId} onSelect={(tagId) => onChange({ tagId })} />
-                <button
-                  type="button"
-                  onClick={onManageTags}
-                  className="flex-shrink-0 rounded p-1 text-fg-faint transition-colors hover:text-fg-secondary"
-                  title={t('sessionTags.manage')}
-                >
-                  <Tag size={12} />
-                </button>
-              </span>
             )}
           </FilterSection>
 

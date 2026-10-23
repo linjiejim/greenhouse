@@ -46,9 +46,9 @@ export function parseAppClient(value: string | null | undefined): 'mobile' | nul
 
 /**
  * Core page modules. Top-level pages use their route name; Settings and
- * Administration use their navigation module id. `session-tags` /
- * `session-groups` are the chat-sidebar organizers (counted when their picker,
- * filter or manager opens), because they have no page of their own.
+ * Administration use their navigation module id. Retired modules (the session
+ * tags / groups organizers, removed in 1.5) are no longer accepted; counts
+ * already recorded under them still read back in Administration › Usage.
  */
 export const PAGE_MODULE_IDS = [
   'chat',
@@ -60,8 +60,6 @@ export const PAGE_MODULE_IDS = [
   'agents',
   'skillhub',
   'executions',
-  'session-tags',
-  'session-groups',
   'settings.preferences',
   'settings.groups',
   'settings.agent-connections',

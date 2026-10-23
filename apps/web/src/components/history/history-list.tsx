@@ -9,7 +9,6 @@ import { Badge, EmptyState, Pagination, Spinner } from '../ui';
 import { Archive, Inbox, Pencil, RotateCcw, Share2, Star, ThumbsDown, ThumbsUp, Trash2 } from '../../lib/icons';
 import type { LucideIcon } from '../../lib/icons';
 import { SessionTypeIcon } from '../chat/session-type-icon';
-import { TagBadge } from '../session-tags';
 import type { HistorySession } from './filter-model';
 import { useT } from '../../lib/i18n';
 import { formatDate } from '../../lib/utils';
@@ -165,13 +164,6 @@ function SessionRow({
         {session.comment && (
           <span className="text-fg-muted truncate min-w-0 flex items-center gap-0.5">
             <Pencil size={9} /> {session.comment}
-          </span>
-        )}
-        {session.tags && session.tags.length > 0 && (
-          <span className="flex items-center gap-1 flex-shrink-0">
-            {session.tags.map((tag) => (
-              <TagBadge key={tag.id} name={tag.name} color={tag.color} />
-            ))}
           </span>
         )}
       </div>

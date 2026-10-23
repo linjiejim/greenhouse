@@ -369,7 +369,7 @@ v1 只接 DeepSeek 与 OpenAI 兼容服务，它们**自动**缓存 prompt 前�
 - **不是原子的，也不该是**：跨 action 事务必须绕开 `runtime.dispatch` 自己拼 SQL = 复制第二份权限判定。改为逐项尽力执行 + 逐项如实回报（`applied`/`failed`/`skipped`），依赖失败 ref 的后续项传递性 skip。
 - **刷新按稳定 action id 恢复，绝不重新武装**：schema 操作不幂等（再确认一次会建出第二套同名字段），所以前端以 assistant message id + pipeline 位置派生 action id；apply 在第一项执行前原子 claim `chat_artifact_receipts`，把完整成功/部分失败结果写成持久回执。重复请求只返回原结果，processing/failed 也不猜测重试；必须让用户起一张新草稿，避免在不确定的副作用后重复建表。
 - **两个会咬人的运行时行为**（工具 description 里已写明，改动时别弄丢）：`createBase` **必然**连带建一张表（所以计划用 `defaultTableRef`/`defaultTableName` 命名并复用它，否则留下空的 "Table 1"）；`createTable` **必然**带一个必填主字段 `Name` 和一个 `Grid` 视图（所以模型不该再加自己的"名称"字段）。
-- **唯一键冲突曾整条漏成 500**：`platform/tables/application.ts` 的 `wrap()` 只查了 `err.code`，而 drizzle 把 pg code 包在 `err.cause.code` —— Tables 的 `CONFLICT` 分支因此一直是死代码，重名的 Base/表/字段对用户表现为 "Internal Server Error"。判定统一收敛到 `@greenhouse/utils/error` 的 `isUniqueViolation()`（同时查两层 + 消息兜底），`session-groups`/`session-tags` 里原先手抄的四份也已换成它。**再需要判重名时用这个函数，不要抄第五份**。
+- **唯一键冲突曾整条漏成 500**：`platform/tables/application.ts` 的 `wrap()` 只查了 `err.code`，而 drizzle 把 pg code 包在 `err.cause.code` —— Tables 的 `CONFLICT` 分支因此一直是死代码，重名的 Base/表/字段对用户表现为 "Internal Server Error"。判定统一收敛到 `@greenhouse/utils/error` 的 `isUniqueViolation()`（同时查两层 + 消息兜底）。**再需要判重名时用这个函数，不要抄第五份**。
 
 ### Tables 的删除与恢复口径（生命周期）
 

@@ -74,7 +74,7 @@ log.
 **Chat** — 6 sessions across the `web` and `subagent` channels, showing
 tool pipelines (`knowledge_query`, `external_search`, `project_query`,
 `analyze_image`, `spawn_session`), KB citations, reasoning, ratings, a
-parent→child sub-agent lineage, folders, tags, and a shared session.
+parent→child sub-agent lineage, and a shared session.
 
 **Power features** — quick prompts (global + personal), user memories, scheduled
 automations (cron), feature requests (all statuses), one custom agent (loaded as an

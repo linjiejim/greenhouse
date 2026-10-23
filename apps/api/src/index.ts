@@ -92,8 +92,6 @@ import { createSearchRoute } from './routes/search.js';
 import groupRoutes from './routes/groups.js';
 import shareRoutes from './routes/shares.js';
 import { createNotificationRoutes } from './routes/notifications.js';
-import sessionTagRoutes from './routes/session-tags.js';
-import sessionGroupRoutes from './routes/session-groups.js';
 import usageRoutes from './routes/usage.js';
 import toolsRoutes from './routes/tools.js';
 import driveRoutes from './routes/drive.js';
@@ -317,12 +315,6 @@ function mountRoutes(toolRegistry: ToolRegistry) {
       // Skill Center — all internal users (writes owner/super-gated in skills/center.ts)
       .use('/api/skills/*', requireInternal())
       .route('/api/skills', skillRoutes)
-      // Session tags — all internal users
-      .use('/api/session-tags/*', requireInternal())
-      .route('/api/session-tags', sessionTagRoutes)
-      // Session groups (folders) + Pinned — all internal users
-      .use('/api/session-groups/*', requireInternal())
-      .route('/api/session-groups', sessionGroupRoutes)
       // Module usage counts (page opens) — all internal users; counts only
       .use('/api/usage/*', requireInternal())
       .route('/api/usage', usageRoutes)

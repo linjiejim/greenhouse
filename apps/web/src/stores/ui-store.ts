@@ -49,11 +49,10 @@ interface UIStore {
   // Current session info (for TopBar display)
   currentSessionTitle: string;
   currentSessionProfileId: string;
-  currentSessionTags: Array<{ id: number; name: string; color: string }>;
   // Current chat session ID (synced from ChatPage for sidebar highlight)
   currentChatSessionId: string | null;
   // Share affordance synced from ChatPage so the TopBar can render the Share
-  // button next to the session tags (null = not shareable / hidden).
+  // button next to the session title (null = not shareable / hidden).
   chatShare: { shareCount: number; onOpen: () => void } | null;
   // Session-level response feedback belongs with the other conversation
   // actions in the TopBar, not in the composer chrome.
@@ -85,11 +84,7 @@ interface UIStore {
 
   setSidebarCollapsed: (collapsed: boolean) => void;
   setSidebarWidth: (width: number) => void;
-  setCurrentSessionInfo: (
-    title: string,
-    profileId: string,
-    tags?: Array<{ id: number; name: string; color: string }>,
-  ) => void;
+  setCurrentSessionInfo: (title: string, profileId: string) => void;
   setCurrentChatSessionId: (id: string | null) => void;
   setChatShare: (v: { shareCount: number; onOpen: () => void } | null) => void;
   setChatFeedback: (v: UIStore['chatFeedback']) => void;
@@ -110,7 +105,6 @@ export const useUIStore = create<UIStore>((set) => ({
 
   currentSessionTitle: '',
   currentSessionProfileId: 'team',
-  currentSessionTags: [],
   currentChatSessionId: null,
   chatShare: null,
   chatFeedback: null,
@@ -135,8 +129,8 @@ export const useUIStore = create<UIStore>((set) => ({
     localStorage.setItem('sidebar-width', String(clamped));
     set({ sidebarWidth: clamped });
   },
-  setCurrentSessionInfo: (currentSessionTitle, currentSessionProfileId, currentSessionTags) =>
-    set({ currentSessionTitle, currentSessionProfileId, currentSessionTags: currentSessionTags || [] }),
+  setCurrentSessionInfo: (currentSessionTitle, currentSessionProfileId) =>
+    set({ currentSessionTitle, currentSessionProfileId }),
   setCurrentChatSessionId: (currentChatSessionId) => set({ currentChatSessionId }),
   setChatShare: (chatShare) => set({ chatShare }),
   setChatFeedback: (chatFeedback) => set({ chatFeedback }),

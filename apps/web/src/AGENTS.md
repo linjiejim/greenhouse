@@ -175,7 +175,6 @@ stores/
 ### 模块用量上报（`lib/usage/` + `lib/api/usage.ts`）
 
 - `AppShell` 每次进入一个新模块报一次 `page_open`（`pageModuleForRoute`：顶层页用路由名，Settings / Administration 用导航模块 id，扩展的所有页面记 `ext.<扩展 id>`）；同模块内跳转不重复计。
-- 没有独立页面的会话标签 / 分组用 `useModuleOpen('session-tags' | 'session-groups', open)`：管理弹窗打开、选择器挂载、按标签筛选时各计一次。
 - 上报一律 fire-and-forget（`reportPageOpen`），失败不提示用户。
 - 服务端只收 `@greenhouse/types/usage` 的 `PAGE_MODULE_IDS` 封闭清单；`lib/usage/page-module.test.ts` 双向钉住它与导航注册表——新增 Settings / Administration 模块或顶层页时两边一起改，否则测试红。
 - Administration › Usage › By Modules（`pages/administration/module-usage.tsx`）读 `/api/admin/usage/modules`：7 / 30 / 90 天、按客户端汇总、按工具 / 模块的计数与合计、按模型的 Prompt 缓存命中率，并注明计数从 v1.4 开始。
@@ -320,7 +319,7 @@ stores/
 - **历史弹框的筛选按「决定集合」与「在集合内细化」分层**：主行放 status（segment）+ 归属 + 搜索——这两个轴决定「有哪些对话存在」；`More` 里按 `<FilterSection>` 分成 **Organize**（分组 / Agent / 标签，怎么归档的）与 **Review**（好评差评 / 星级，别人怎么评价的）两条带标题的带，外加只在有生效筛选时出现的「清除筛选」。**别退回一行平铺四个 Select 加一个星级控件**——那样没有任何线索说明哪个是哪类。星级筛选点同一颗星要能清空，否则唯一的退出口是清除按钮。
 - **历史列表行是只读的**：评分与好评差评在这里只显示不可写（`★ N` 文本 + 徽章）。会话 TopBar 的唯一评价入口是 Star，点开同一 Dialog 后选 1–5 星和备注（不再平铺赞/踩）；Tag/Star/Share/右侧 Pane 全部与 TopBar 其他动作一样用等大 icon-only + tooltip。会话标题左侧保持单行，有写权时由 Pencil 原位切换为 Input（Enter/失焦保存，Escape 取消）。侧栏的重要标记另写 `feedback:'starred'`。历史行保留的三个独有动作是 Admin Comment、归档/恢复、删除。
 - History 行不重复显示当前 status，也不把普通 `profile_id` 做成标签；status 已由顶部互斥筛选表达，普通 Agent Profile 对浏览历史没有额外辨识价值。历史 Cloud Mission / Workflow 会话只复用侧栏的 `SessionTypeIcon`（按退役 profile id 识别，名单封闭），确保两处符号语义一致。顶部不再重复显示 results 数量，唯一总数留在分页 footer。
-- Chat 历史支持**多选批量操作**（打标签/移动分组/归档/删除）：入口三选——`SidebarToolbar` 的 `Select` 切换、行长按（touch，450ms）、`Ctrl/Cmd+Click`；进入后单击=勾选、`Shift`=可见区间、`Cmd/Ctrl`=追加单行，`Escape`/空白处/底部「完成」退出。可见渲染顺序（pinned→folders→date buckets、排除折叠段）是区间选择的单一真源，抽在 `sidebar-panels/selection.ts`（纯函数 + 单测），底部栏在 `sidebar-panels/batch-action-bar.tsx`。批量动作对现有 per-session API（`updateSession`/`setSessionGroup`/`addTagToSession`）经 `runWithConcurrency(_,5,_)` 逐条调用 + 乐观更新，失败统一 `loadSessions()` 回滚并 toast 失败数——**不新增批量后端端点**。**登记（防第二套实现）**：批量标签用薄组件 `session-tags/batch-tag-selector.tsx`（复用 `TagBadge`/`TAG_COLORS`/`createSessionTag`），不改造单会话 `TagSelector` 成双模态——单会话 popover 立即 mutation 的语义与批量「先收集、再对 N 条应用」不同；批量分组则**扩展** `GroupSelector` 的可选 `onPick`（不平行造第二套）。
+- Chat 历史支持**多选批量操作**（归档/删除）：入口三选——`SidebarToolbar` 的 `Select` 切换、行长按（touch，450ms）、`Ctrl/Cmd+Click`；进入后单击=勾选、`Shift`=可见区间、`Cmd/Ctrl`=追加单行，`Escape`/空白处/底部「完成」退出。可见渲染顺序（pinned→date buckets、排除折叠段）是区间选择的单一真源，抽在 `sidebar-panels/selection.ts`（纯函数 + 单测），底部栏在 `sidebar-panels/batch-action-bar.tsx`。批量动作对现有 per-session API（`updateSession`）经 `runWithConcurrency(_,5,_)` 逐条调用 + 乐观更新，失败统一 `loadSessions()` 回滚并 toast 失败数——**不新增批量后端端点**。会话标签与文件夹已于 1.5 移除；置顶保留（`POST/DELETE /api/sessions/:id/pin`，置顶区内拖拽排序走 `POST /api/sessions/pins/reorder`，把日期区的行拖进置顶区即置顶）。
 - 移动端替代 → 横向可滚动标签栏（`md:hidden overflow-x-auto scrollbar-hide`）或由按钮触发的 `<Drawer>`
 - 移动导航 Drawer 的导航区独立滚动，账号区始终固定在抽屉底部。Chat 路由在一级导航下直接复用 `ChatHistoryPanel`，选中会话后关闭 Drawer；Global Agent 只留在桌面品牌行，不占移动首行空间。
 - 参考：Settings（`pages/settings/index.tsx`）、Knowledge（`pages/knowledge.tsx`）、聊天历史（`components/app/sidebar-panels/chat-history-panel.tsx`）
