@@ -64,7 +64,7 @@ describe('retro document', () => {
       by_client: [{ client: 'Codex', writes: 4, executed: 2, failed: 1, outcome_unknown: 1 }],
     },
     frictions: {
-      seen: 1,
+      active: 1,
       new: 1,
       top: [{ tool: 'tables_query', kind: 'tool_error', error_class: 'not_found', frictions: 2, occurrences: 3 }],
     },

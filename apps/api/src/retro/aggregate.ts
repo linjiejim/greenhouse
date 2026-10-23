@@ -61,7 +61,8 @@ export interface RetroAggregates {
     by_client: Array<{ client: string; writes: number; executed: number; failed: number; outcome_unknown: number }>;
   };
   frictions: {
-    seen: number;
+    /** Active during the month: first seen before its end, last seen after its start. */
+    active: number;
     new: number;
     /** Grouped by tool × kind × error class — no free text. */
     top: Array<{
@@ -183,7 +184,7 @@ export async function collectRetroAggregates(db: DatabaseProvider, month: RetroM
     db.usageCounters.summarize('tool_call', days),
     db.activity.agentWriteTotals(window),
     db.activity.agentWriteMembers(window),
-    db.toolFrictions.listSeenBetween({ ...window, limit: FRICTION_ROWS }),
+    db.toolFrictions.listActiveBetween({ ...window, limit: FRICTION_ROWS }),
     db.toolFrictions.countBetween(window),
     db.featureRequests.listCreatedBetween({ ...window, limit: TOP }),
     db.featureRequests.countCreatedBetweenByStatus(window),
@@ -221,7 +222,7 @@ export async function collectRetroAggregates(db: DatabaseProvider, month: RetroM
       by_client: [...agentClients.values()].sort((a, b) => b.writes - a.writes || a.client.localeCompare(b.client)),
     },
     frictions: {
-      seen: frictionCounts.seen,
+      active: frictionCounts.active,
       new: frictionCounts.new,
       top: groupFrictions(frictions).slice(0, TOP),
     },

@@ -132,7 +132,9 @@ export function renderRetroMarkdown(input: {
     '',
     '## 三、问题与需求',
     '',
-    `### 踩坑（本月出现 ${a.frictions.seen} 条，其中新增 ${a.frictions.new} 条）`,
+    `### 踩坑（本月活跃 ${a.frictions.active} 条，其中新增 ${a.frictions.new} 条）`,
+    '',
+    '> 「活跃」= 首次出现在月底前、最近一次出现在月初后；累计次数是从首次出现起的总数，不是本月次数。',
     '',
     ...table(
       ['工具', '类型', '错误类别', '条数', '累计次数'],

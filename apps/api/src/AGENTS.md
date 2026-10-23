@@ -496,7 +496,9 @@ v1 只接 DeepSeek 与 OpenAI 兼容服务，它们**自动**缓存 prompt 前�
 
 - 每月 1 日 09:00（工作区时区，`scheduler/upkeep-jobs.ts` 的 `startMonthlyRetroJob`）写刚结束那个月；Issues & requests 的「生成本月复盘」（super）写当月。统计区间是 UTC 自然月，与计价、用量计数同口径。
 - 文档 id 按月固定 `team-retro-YYYY-MM`，标题「YYYY-MM 复盘」，首次写进团队根目录文件夹「复盘」（没有就建）；再次生成更新同一篇（多一个版本），被移动的保持原位、被归档的重新发布。作者是点按钮的 super，定时任务取最早的在职 super。
-- **只放汇总**（`retro/aggregate.ts`）：页面打开 / 工具调用按模块与客户端、Agent 写入按客户端（成功 / 失败 / 结果未知 = `interrupted`）、本月出现的踩坑（归一化摘要）与本月提交的需求标题、花费按服务与客户端。绝不放消息内容、成员姓名、私有文档标题。
+- **只放汇总**（`retro/aggregate.ts`）：页面打开 / 工具调用按模块与客户端、Agent 写入按客户端（成功 / 失败 / 结果未知 = `interrupted`）、本月活跃的踩坑、本月提交的需求标题、花费按服务与客户端。绝不放消息内容、成员姓名、私有文档标题。
+- 踩坑的 `summary` 是自由文本（可能带文档名、人名），**只在 `frictionErrorClass` 里读**，出去的只有「工具 × 类型 × 错误类别（封闭清单）× 条数 / 累计次数」，文档和模型提示词里都没有原文。
+- 踩坑行只存首次 / 最近一次出现，没有逐次记录，所以「本月活跃」= `first_seen_at < 月末 AND last_seen_at >= 月初`（`listActiveBetween`）：10 月出现、11 月 1 日又出现的仍算 10 月；代价是首尾跨过本月但本月没出现的也会算进来。累计次数不是本月次数，文中写明。要精确就得加逐次表（迁移），目前不做。
 - 「下月建议」由模型根据同一份汇总写（`retro/suggest.ts`），走 `createOrganizationAttemptBudgetHook`：只预留 `llm` 服务 + 组织 USD 账户（`reserveSpend({ organizationOnly: true })`，不报「漏设 scope」），client `system`，`llm_usage.user_id` 为空。超额 / 没配模型 / 调用失败都只跳过这一节并在文中写明原因，复盘照常落库。
 - 写完给每位在职 super 发 `system` 通知（payload `url` = 文档深链，网页收件箱点开直达；dedupe 按「月份 + 文档 updated_at」，每次生成一条），随后 `queueMobilePush`。
 

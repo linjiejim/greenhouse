@@ -68,7 +68,7 @@ vi.mock('ai', async (importOriginal) => {
 });
 
 import { generateMonthlyRetro, retroDocId } from '../generate.js';
-import { monthKey } from '../aggregate.js';
+import { collectRetroAggregates, monthKey, retroMonth } from '../aggregate.js';
 import { RETRO_CALLER } from '../suggest.js';
 
 let db: DatabaseProvider;
@@ -279,6 +279,38 @@ describe('monthly retro', () => {
     expect(notice).toBeDefined();
     expect(JSON.parse(notice!.payload)).toMatchObject({ url: result.url, retro_month: month });
     expect((await db.notifications.listForUser({ user_id: member.id })).items).toEqual([]);
+  });
+
+  it('keeps a friction in the month it was active, even after it recurs the next month', async () => {
+    const recurring = await db.toolFrictions.record({
+      fingerprint: unique('fp'),
+      tool_id: 'files_query',
+      kind: 'tool_error',
+      summary: 'permission denied',
+    });
+    const earlier = await db.toolFrictions.record({
+      fingerprint: unique('fp'),
+      tool_id: 'project_query',
+      kind: 'tool_error',
+      summary: 'timed out',
+    });
+    // Seen in September, then again just after September closed.
+    await db.executeRaw(
+      sql`UPDATE tool_frictions SET first_seen_at = '2026-09-10T08:00:00Z', last_seen_at = '2026-10-01T00:30:00Z'
+          WHERE id = ${recurring.id}`,
+    );
+    // Over before September began.
+    await db.executeRaw(
+      sql`UPDATE tool_frictions SET first_seen_at = '2026-08-01T08:00:00Z', last_seen_at = '2026-08-20T08:00:00Z'
+          WHERE id = ${earlier.id}`,
+    );
+    const september = await collectRetroAggregates(db, retroMonth('2026-09')!);
+    const tools = september.frictions.top.map((row) => row.tool);
+    expect(tools).toContain('files_query');
+    expect(tools).not.toContain('project_query');
+    expect(september.frictions.new).toBeGreaterThanOrEqual(1);
+    const october = await collectRetroAggregates(db, retroMonth('2026-10')!);
+    expect(october.frictions.top.map((row) => row.tool)).toContain('files_query');
   });
 
   it('refuses a month that is malformed or has not started', async () => {
