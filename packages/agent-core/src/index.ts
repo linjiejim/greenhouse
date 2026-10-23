@@ -50,7 +50,7 @@ export {
   findModelIdByProviderModel,
   modelSupportsVision,
 } from './registry.js';
-export type { ProviderEntry, ModelEntry } from './registry.js';
+export type { ProviderEntry, ModelEntry, TokenPrice } from './registry.js';
 
 // DSML interception (DeepSeek tool-call leak recovery)
 export { createDsmlInterceptor } from './dsml-interceptor.js';

@@ -13,7 +13,13 @@
 import { readFileSync, existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { parse as parseYaml } from 'yaml';
-import { setModelRegistry, getAvailableProviders, type ModelEntry, type ProviderEntry } from '@greenhouse/agent-core';
+import {
+  setModelRegistry,
+  getAvailableProviders,
+  type ModelEntry,
+  type ProviderEntry,
+  type TokenPrice,
+} from '@greenhouse/agent-core';
 import { logger } from '@greenhouse/utils/logger';
 
 const CONFIG_PATH = resolve(import.meta.dirname, 'models.yaml');
@@ -79,6 +85,37 @@ function resolveVision(modelId: string, declared: boolean | undefined, visionEnv
   return declared;
 }
 
+const TOKEN_PRICE_KEYS = new Set(['input', 'output', 'cached_input']);
+
+/**
+ * `price` / `token_price` — USD per 1M tokens: `{ input, output, cached_input? }`.
+ * Shared with the service price list (services.yaml). A malformed price fails
+ * the boot: a typo here would otherwise silently make a model free.
+ */
+export function parseTokenPrice(raw: unknown, where: string): TokenPrice {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    throw new Error(`${where} must be { input, output, cached_input? } (USD per 1M tokens)`);
+  }
+  const entry = raw as Record<string, unknown>;
+  for (const key of Object.keys(entry)) {
+    if (!TOKEN_PRICE_KEYS.has(key)) throw new Error(`${where}.${key} is not a price field (input/output/cached_input)`);
+  }
+  const read = (key: string, required: boolean): number | undefined => {
+    const value = entry[key];
+    if (value === undefined && !required) return undefined;
+    if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
+      throw new Error(`${where}.${key} must be a non-negative number (USD per 1M tokens)`);
+    }
+    return value;
+  };
+  const cachedInput = read('cached_input', false);
+  return {
+    input: read('input', true)!,
+    output: read('output', true)!,
+    ...(cachedInput !== undefined ? { cachedInput } : {}),
+  };
+}
+
 export function parseModelCatalog(source: string): ModelCatalog {
   const doc = parseYaml(source) as Record<string, unknown> | null;
   const rawModels = doc?.models as Record<string, unknown> | undefined;
@@ -123,6 +160,8 @@ export function parseModelCatalog(source: string): ModelCatalog {
       throw new Error(`models.yaml: models.${id}.vision_env must name an env var`);
     }
     const vision = resolveVision(id, declaredVision, visionEnv);
+    const price =
+      entry?.price === undefined ? undefined : parseTokenPrice(entry.price, `models.yaml: models.${id}.price`);
 
     models[id] = {
       name: typeof entry?.name === 'string' ? entry.name : id,
@@ -133,6 +172,7 @@ export function parseModelCatalog(source: string): ModelCatalog {
       ...(contextWindow !== undefined ? { contextWindow: contextWindow as number } : {}),
       ...(compactionThreshold !== undefined ? { compactionThreshold } : {}),
       ...(vision !== undefined ? { vision } : {}),
+      ...(price ? { price } : {}),
       providers: providers.map((p, i) => parseProvider(p, id, i)).filter((p): p is ProviderEntry => p !== null),
     };
   }

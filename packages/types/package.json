@@ -8,6 +8,10 @@
       "import": "./src/index.ts",
       "types": "./src/index.ts"
     },
+    "./metering": {
+      "import": "./src/metering.ts",
+      "types": "./src/metering.ts"
+    },
     "./push": {
       "import": "./src/push.ts",
       "types": "./src/push.ts"

@@ -48,6 +48,35 @@ models:
     expect(catalog.models.flash!.providers[0]!.apiKeyEnv).toBe('LLM_API_KEY');
   });
 
+  it('parses an optional price (USD per 1M tokens)', () => {
+    const catalog = parseModelCatalog(`
+models:
+  flash:
+    price: { input: 0.28, output: 0.42, cached_input: 0.028 }
+    providers:
+      - { provider: deepseek, model: m-flash, api_key_env: LLM_API_KEY }
+  pro:
+    price: { input: 1, output: 2 }
+    providers:
+      - { provider: deepseek, model: m-pro, api_key_env: LLM_API_KEY }
+  free:
+    providers:
+      - { provider: deepseek, model: m-free, api_key_env: LLM_API_KEY }
+`);
+    expect(catalog.models.flash!.price).toEqual({ input: 0.28, output: 0.42, cachedInput: 0.028 });
+    expect(catalog.models.pro!.price).toEqual({ input: 1, output: 2 });
+    expect(catalog.models.free!.price).toBeUndefined();
+  });
+
+  it('rejects a malformed price instead of making the model free', () => {
+    const withPrice = (price: string) =>
+      `models:\n  flash:\n    price: ${price}\n    providers:\n      - { provider: deepseek, model: m, api_key_env: K }\n`;
+    expect(() => parseModelCatalog(withPrice('{ input: 1 }'))).toThrow(/price.output/);
+    expect(() => parseModelCatalog(withPrice('{ input: -1, output: 1 }'))).toThrow(/non-negative/);
+    expect(() => parseModelCatalog(withPrice('{ input: 1, output: 1, cache: 1 }'))).toThrow(/not a price field/);
+    expect(() => parseModelCatalog(withPrice('0.5'))).toThrow(/USD per 1M tokens/);
+  });
+
   it('rejects an empty catalog', () => {
     expect(() => parseModelCatalog('models: {}')).toThrow(/at least one model/);
   });

@@ -1,0 +1,81 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Service price list — what every paid call that is NOT a chat model costs.
+#
+# Models are priced next to their definition (models.yaml `price`). Everything
+# else an agent can spend the team's money on is priced here: web search, page
+# reads, image generation, image understanding and (later) cloud computers.
+#
+# All prices are USD and are the operator's contract, not ours: check them
+# against your vendor's bill. A provider without a price is "unpriced": its calls
+# are still recorded and counted against nothing, and Administration › Services
+# & pricing flags them as 未定价 — an unpriced call is never refused for that.
+#
+# Per provider:
+#   api_key_env    env var(s) whose presence means "configured" (any one is enough)
+#   price          USD per unit of the service (`unit`: call / image / minute)
+#   price_by_size  image only: USD per image by quality → size
+#   token_price    USD per 1M tokens: { input, output, cached_input? } — used
+#                  for `unit: token` services, and for images when the provider
+#                  reports token usage
+#
+# Service and provider ids are a closed list (the code calls them by name), so
+# a typo fails the boot instead of silently leaving a provider unpriced.
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+  web_search:
+    name: Web search
+    unit: call
+    providers:
+      # Basic search = 1 credit; pay-as-you-go credits.
+      tavily:
+        api_key_env: TAVILY_API_KEY
+        price: 0.008
+      # Credit price depends on the plan — set it from your invoice.
+      firecrawl:
+        api_key_env: FIRECRAWL_API_KEY
+      brave:
+        api_key_env: BRAVE_SEARCH_API_KEY
+        price: 0.005
+
+  page_read:
+    name: Page read
+    unit: call
+    providers:
+      # Keyless Jina Reader (rate-limited free tier).
+      jina:
+        price: 0
+      # Fetched by this server itself.
+      local:
+        price: 0
+
+  image_generation:
+    name: Image generation
+    unit: image
+    providers:
+      media:
+        api_key_env: [IMAGE_API_KEY, MEDIA_API_KEY, LLM_API_KEY]
+        # generate_image always asks for `low`.
+        price_by_size:
+          low:
+            1024x1024: 0.006
+            1536x1024: 0.005
+            1024x1536: 0.005
+
+  vision:
+    name: Image understanding
+    unit: token
+    providers:
+      # analyze_image on the media endpoint. Set token_price for the vision
+      # model you run (VISION_MODEL), e.g. { input: 0.15, output: 0.6 }.
+      media:
+        api_key_env: [MEDIA_API_KEY, LLM_API_KEY]
+
+  # Reserved for the cloud-computer lane (per minute, hosted sandbox).
+  computer:
+    name: Cloud computer
+    unit: minute
+    enabled: false
+    providers:
+      e2b:
+        api_key_env: E2B_API_KEY

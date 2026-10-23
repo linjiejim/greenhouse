@@ -31,6 +31,19 @@
 # and defaults to 0.5; keep it ≤0.9 so system prompt + tools + reasoning +
 # output always have room. Models without `context_window` fall back to a
 # conservative 80k-token budget.
+#
+# `price` is what the model costs, USD per 1M tokens, and feeds USD metering and
+# budgets (Administration › Services & pricing):
+#
+#   price:
+#     input: 0.28          # uncached input
+#     output: 0.42         # output, reasoning included
+#     cached_input: 0.028  # cache hits; defaults to `input`
+#
+# A model without `price` is unpriced: its usage is still recorded, its cost
+# counts as zero and the admin page flags it 未定价. `flash` / `pro` follow
+# LLM_MODEL / LLM_MODEL_PRO, so only the deployment knows their price — set it
+# here for the model your env points at.
 
 models:
   # The deployment's default fast model — whatever LLM_MODEL points at.

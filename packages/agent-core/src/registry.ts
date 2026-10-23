@@ -26,9 +26,23 @@ export interface ProviderEntry {
   baseUrl?: string;
 }
 
+/**
+ * What a model costs, in USD per 1M tokens. Optional: an unpriced model is
+ * still metered (its usage is recorded) but its cost is unknown and counts as
+ * zero against USD budgets. `cachedInput` defaults to `input` when the provider
+ * does not discount cache hits.
+ */
+export interface TokenPrice {
+  input: number;
+  output: number;
+  cachedInput?: number;
+}
+
 export interface ModelEntry {
   /** Human-readable model name */
   name: string;
+  /** USD per 1M tokens (models.yaml `price`); absent = unpriced. */
+  price?: TokenPrice;
   /**
    * Sampling / reasoning behavior belonging to THE MODEL — every consumer gets
    * it. Kept here rather than on each agent because it describes the engine
