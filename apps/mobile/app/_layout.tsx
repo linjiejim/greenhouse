@@ -28,6 +28,7 @@ import { clearHandoffs } from '../src/lib/handoff';
  */
 
 import 'react-native-gesture-handler';
+import '../src/share/session';
 import React, { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { Keyboard, Platform, View } from 'react-native';
 import { useFonts } from 'expo-font';
