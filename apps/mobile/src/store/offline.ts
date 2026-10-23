@@ -16,6 +16,7 @@ import {
 } from '../data/recent-items';
 import type { DriveFile } from '../shared/greenhouse-types';
 import { useAuth } from './auth';
+import { notifyOfflineChanged } from './offline-events';
 import { useStations } from './stations';
 
 function who(): { station: string; member: string } | null {
@@ -31,12 +32,16 @@ export async function readOffline(kind: string): Promise<unknown> {
 
 export function writeOffline(kind: string, value: unknown): void {
   const id = who();
-  if (id) writeCache(id.station, id.member, kind, value);
+  if (!id) return;
+  writeCache(id.station, id.member, kind, value);
+  notifyOfflineChanged(kind);
 }
 
 export function removeOffline(kind: string): void {
   const id = who();
-  if (id) removeCache(id.station, id.member, kind);
+  if (!id) return;
+  removeCache(id.station, id.member, kind);
+  notifyOfflineChanged(kind);
 }
 
 // ─── recently opened files (their details) and records ───
