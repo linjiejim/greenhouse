@@ -3,6 +3,10 @@
  *
  * Tables: session_groups, session_group_members
  *
+ * Custom folders were removed in 1.5 (their rows stay untouched); the tables
+ * still back session pins (`kind = 'pinned'`, services/session-pins.ts), so
+ * dropping them needs the pins moved first.
+ *
  * A per-user, folder-like organization layer over the shared `sessions` table.
  * Each user privately groups any session they can SEE (own OR shared-with-me),
  * so two users grouping the same shared session keep fully independent rows.

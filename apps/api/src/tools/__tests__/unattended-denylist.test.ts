@@ -32,7 +32,6 @@ describe('unattended-context tool denylist', () => {
         'project_mutation',
         'tables_mutation',
         'memory',
-        'spawn_session',
       ]),
     ).toEqual(['knowledge_query', 'project_query']);
   });

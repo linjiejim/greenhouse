@@ -168,14 +168,16 @@ stores/
 - `platform/catalog.ts` 只放类型、排序/筛选和显式 host route/icon 映射，不发请求、不持有 React 状态。
 - 桌面侧栏、移动导航抽屉和首页工作台的导航卡必须消费 `usePlatformCatalog()`；服务端 Catalog 仍是应用可见性的唯一真源。
 - 左侧栏 Logo 行依次承载全局搜索、Global Agent 与折叠控制；折叠控制必须使用明确的侧栏开/关图标，禁止使用会被误认成页面返回的裸 Chevron。普通应用不再显示冗余 Back，直接用常驻 `Chat`/`New Chat` 返回；Settings / Administration 作为专用覆盖工作区，仍保留返回进入前页面的语义。移动导航抽屉同步遵循这一规则。
-- 常驻主导航位于侧栏 `New Chat` 下方，顺序 `Chat → Knowledge → Projects → Tables → More`，桌面/移动端统一由 `platform/navigation.ts` + `components/app/sidebar-global-navigation.tsx` 构建。Automation、`My Prompts`、`My Agents`、SkillHub 与超出常驻集的应用收进 `More`：桌面悬浮或点击后向右展开，移动端点击后原位展开。Automation、Prompt Tasks、My Agents 分别使用独立地址 `#/automations`、`#/tasks`、`#/agents`；历史 `#/chat?view=...` 只作重定向兼容。账户浮层中紧跟 Inbox 的「执行中心」是唯一持久执行入口，使用 `#/executions` / `#/executions/:kind/:id` 聚合 Automation / Subagent（以及 v1.4 退役前的历史 Mission / Workflow / Eval Run，只读），并默认展示进行中。旧 `#/missions`、`#/cloud-agent`、`#/task-center` 和 Runtime `#/tasks/:kind/:id` 只作重定向兼容，历史 Mission 详情走通用 Runtime 详情。**没有 Home tab**——首页就是 Chat 新会话空态（个人工作台在那里渲染），`#/workbench` 与 `#/home` 都重写到 `#/chat`。右侧不再渲染独立一级 Tab 条，只保留页面/会话上下文 `TopBar`。
+- 常驻主导航位于侧栏 `New Chat` 下方，**按目标排序**（v1.5）：`Home（团队动态）→ Knowledge → Files（档案库）→ Tables → Projects → SkillHub → Automations → Chat`，Chat（应用内助手）刻意放最后——成员主要经自己的 Agent 用 Greenhouse。桌面/移动端统一由 `platform/navigation.ts`（`PRIMARY_NAV_ORDER`）+ `components/app/sidebar-global-navigation.tsx` 构建；Knowledge/Tables/Projects 仍只在服务端 Catalog 授权时出现。`More` 只放超出常驻集的应用与扩展页，空了就不渲染。自 1.5 起「我的提示词」（Prompt Tasks）是 SkillHub 的第二个 tab（`#/skillhub?tab=prompts`，tab 放 query 是因为路径段是技能名），「我的 Agent」是 Automation 的第二个 tab「执行配置 / Run profiles」（`#/automations?tab=profiles`，`pages/run-profiles.tsx`）。旧 `#/tasks`、`#/prompts`、`#/agents` 与历史 `#/chat?view=...` 只作重定向兼容，统一在 `lib/workspace-routes.ts`。
+- **首页是 `#/home`（团队动态）**，也是落地页（空 hash 进这里，`#/workbench` 重定向过来）：上面是「最近的改动」（`/api/activity/recent`，只含查看者读得到的对象），下面是个人工作台卡片（`WorkbenchPanel`，扩展注册的 workbench recipes 照常可用，Customize 放在页面 actions；卡片只在这里，不再出现在 Chat 空态）。
+- 账户浮层中紧跟 Inbox 的「操作记录」（`#/activity`，super 另在 Administration › Activity log 看全员）是改动记录的唯一入口；运行详情 `#/activity/:kind/:id`。旧 `#/executions`、`#/missions`、`#/cloud-agent`、`#/task-center` 和 Runtime `#/tasks/:kind/:id` 只作重定向兼容，历史 Mission 详情走通用 Runtime 详情。右侧不再渲染独立一级 Tab 条，只保留页面/会话上下文 `TopBar`。
+- **档案库 `#/files`**：知识库目录的文件面（drive scope `kb`：团队架 + 我的文件架），复用 `DriveBrowser`（受控文件夹模式 + 预览 + 改名/移动），架、文件夹、要预览的文件都在 URL 里（`@greenhouse/types/files` 的 `filesPageHref` / `parseFilesLocation` 是唯一构造/解析处，`files_*` 工具返回的 `url` 也用它）。
 - 只有拥有专用 Web 页面且已显式登记 host route 的应用生成浏览器链接；其余应用显示为 Agent/MCP-only。
 - 直接访问应用 URL 时也要等待 Catalog 并 fail closed；后端 Registry/Entity Policy 仍是安全边界。
 
 ### 模块用量上报（`lib/usage/` + `lib/api/usage.ts`）
 
-- `AppShell` 每次进入一个新模块报一次 `page_open`（`pageModuleForRoute`：顶层页用路由名，Settings / Administration 用导航模块 id，扩展的所有页面记 `ext.<扩展 id>`）；同模块内跳转不重复计。桌面壳内请求带 `X-Greenhouse-Client: desktop`。
-- 没有独立页面的会话标签 / 分组用 `useModuleOpen('session-tags' | 'session-groups', open)`：管理弹窗打开、选择器挂载、按标签筛选时各计一次。
+- `AppShell` 每次进入一个新模块报一次 `page_open`（`pageModuleForRoute`：顶层页用路由名，Settings / Administration 用导航模块 id，扩展的所有页面记 `ext.<扩展 id>`）；同模块内跳转不重复计。
 - 上报一律 fire-and-forget（`reportPageOpen`），失败不提示用户。
 - 服务端只收 `@greenhouse/types/usage` 的 `PAGE_MODULE_IDS` 封闭清单；`lib/usage/page-module.test.ts` 双向钉住它与导航注册表——新增 Settings / Administration 模块或顶层页时两边一起改，否则测试红。
 - Administration › Usage › By Modules（`pages/administration/module-usage.tsx`）读 `/api/admin/usage/modules`：7 / 30 / 90 天、按客户端汇总、按工具 / 模块的计数与合计、按模型的 Prompt 缓存命中率，并注明计数从 v1.4 开始。
@@ -224,12 +226,12 @@ stores/
 - 每个 Provider 定义：`label`、`emptyMessage`、`quickActions`、`contextHint`
 - `contextHint` 只描述当前页事实与能力，不猜测用户动机、不写强制动作；发送时封装为逐轮 `ambient_context`，Context chip 移除后该轮不发送。
 - 后端没有页面类型 provider；只验证通用 envelope、限制长度，并用固定文案把它标为“可能无关/过期的参考，不是用户指令或权限”。
-- `/api/chat` 请求体按 `@greenhouse/types/api` 的 `ChatRequestBody` 组（`lib/api/chat.ts`），Client Action 结果发到共享的 `CLIENT_ACTION_RESULT_PATH`——浏览器扩展用的是同一份定义，别在任一端手写字段或路径。Envelope 字段上限见 `AMBIENT_CONTEXT_LIMITS`。
+- `/api/chat` 请求体按 `@greenhouse/types/api` 的 `ChatRequestBody` 组（`lib/api/chat.ts`），Client Action 结果发到共享的 `CLIENT_ACTION_RESULT_PATH`，别手写字段或路径。Envelope 字段上限见 `AMBIENT_CONTEXT_LIMITS`。
 - Client Actions 必须按 `scope_id` 注册、快照与执行；**页面**动作在页面实例变化后 fail closed，真实数据 mutation 仍走服务端确认工具。
 - **scope 的 route key 只取路径，不含 query string**：Chat 在一轮对话进行中就会 `replaceState` 写 `#/chat?session=<id>`，把它算成另一个 route 会让本轮快照下来的 scope 当场失配、且**重试永远不恢复**（`sequence` 只增不减，导航回原路径拿到的也是新 id）。query 标注的是同一个页面实例，那些 handler 一个都没变。
 - **全局动作（`GLOBAL_CLIENT_ACTION_SCOPE`）不随页面过期**：全局客户端动作的生命周期与任何 route 无关，过期它们只会打断跨页面的长任务，安全边界另在 `safety:'confirm'` + `ActionConfirmDialog`（`components/app/action-confirm-dialog.tsx`，挂在 app 根；它是 `confirm-gate` 唯一的回答者，没挂上 `safety:'confirm'` 的动作会永远等待）。这条必须与 `snapshotClientActions`「从任何 scope 都广播全局动作」保持一致——两边不一致就是**广播了再拒绝**，即根 AGENTS「能力声明必须真实」要禁的形状（dev frictions 60/62–65 即此）。`executeClientAction` 因此先 `resolveClientAction()` 再按 `origin` 判定；**来源取自查表结果而不是名字**，页面可以注册同名影子动作，那个影子是页面绑定的。见 [round-4 spec D1/D2](../../../docs/specs/20260818-chat-friction-round-4.md)。
-- **没有 `getTurnEnvironment` 的 host 也要广播全局 Client Actions**：`ConversationPane` 在宿主没传环境时自行取 `snapshotClientActions(pageActionScopeId())`，只是不附 ambient context。桌面原生能力和浏览器自动化注册在 `GLOBAL_CLIENT_ACTION_SCOPE`，曾经因为只有 Assistant overlay 传这个 prop 而在主 Chat 页完全不可见。服务端只在**存在** ambient context 时才要求两个 scope 一致，所以纯 client-actions 的环境是合法的。
-- **工作台对话式修改复用普通 Chat turn 与既有 `workbench_query` / `workbench_mutation`**：Customize 里激活后，`ConversationPane` 保持 `WorkbenchPanel` 为 sticky live preview，composer 只补工作台意图前缀、不另建写 API；`SessionManager` 在 `workbench_mutation` tool result 后广播失效事件，面板重读服务端偏好并重新求值。面板挂载、window focus/pageshow 与重新可见时也必须重读，不能把 Zustand projection 当长期事实。
+- **没有 `getTurnEnvironment` 的 host 也要广播全局 Client Actions**：`ConversationPane` 在宿主没传环境时自行取 `snapshotClientActions(pageActionScopeId())`，只是不附 ambient context。注册在 `GLOBAL_CLIENT_ACTION_SCOPE` 的动作曾经因为只有 Assistant overlay 传这个 prop 而在主 Chat 页完全不可见。服务端只在**存在** ambient context 时才要求两个 scope 一致，所以纯 client-actions 的环境是合法的。
+- **工作台卡片只在 Home**（v1.5 起 Chat 新会话空态只显示助手本身，`ConversationPane` 不再挂 `WorkbenchPanel`、也没有对话式编辑模式）。让助手改卡片仍然可以：Chat 里的 `workbench_query` / `workbench_mutation` 照常工作，`SessionManager` 在 `workbench_mutation` 结果后广播失效事件，Home 上的面板重读服务端偏好并重新求值；面板挂载、window focus/pageshow 与重新可见时也必须重读，不能把 Zustand projection 当长期事实。
 - 新页面在 `lib/context-providers/` 添加 provider 文件并在 `index.ts` 中导入
 - 页面组件使用 `enrichPageContext()` 添加 URL 之外的数据（如 title、email）
 
@@ -288,7 +290,6 @@ stores/
 - `Cmd+P` / `Ctrl+P`——全局搜索（判定与文案在 `components/search/shortcut.ts`，注册在 `agent-context.tsx` 的全局处理器里，与其它全局快捷键同处；**刻意不抢 `Cmd+K`**）
 - `Cmd+N` / `Ctrl+N`——新建聊天
 - `Cmd+Escape`——关闭 Assistant 浮层
-- `Cmd/Ctrl` + `+` / `-` / `0`——**仅桌面端**页面缩放（`lib/desktop/zoom.ts`；浏览器里这三个键归浏览器自己，不拦截）
 - `Escape`（无修饰键，输入框外）——关闭 Assistant 浮层（如已打开）
 - 弹窗：Escape 关闭（由共享 `useOverlayBehavior` 统一处理）
 - Popover（@提及/斜杠命令）：`↑↓` 导航、`Enter/Tab` 选中、`Escape` 关闭
@@ -321,7 +322,7 @@ stores/
 - **历史弹框的筛选按「决定集合」与「在集合内细化」分层**：主行放 status（segment）+ 归属 + 搜索——这两个轴决定「有哪些对话存在」；`More` 里按 `<FilterSection>` 分成 **Organize**（分组 / Agent / 标签，怎么归档的）与 **Review**（好评差评 / 星级，别人怎么评价的）两条带标题的带，外加只在有生效筛选时出现的「清除筛选」。**别退回一行平铺四个 Select 加一个星级控件**——那样没有任何线索说明哪个是哪类。星级筛选点同一颗星要能清空，否则唯一的退出口是清除按钮。
 - **历史列表行是只读的**：评分与好评差评在这里只显示不可写（`★ N` 文本 + 徽章）。会话 TopBar 的唯一评价入口是 Star，点开同一 Dialog 后选 1–5 星和备注（不再平铺赞/踩）；Tag/Star/Share/右侧 Pane 全部与 TopBar 其他动作一样用等大 icon-only + tooltip。会话标题左侧保持单行，有写权时由 Pencil 原位切换为 Input（Enter/失焦保存，Escape 取消）。侧栏的重要标记另写 `feedback:'starred'`。历史行保留的三个独有动作是 Admin Comment、归档/恢复、删除。
 - History 行不重复显示当前 status，也不把普通 `profile_id` 做成标签；status 已由顶部互斥筛选表达，普通 Agent Profile 对浏览历史没有额外辨识价值。历史 Cloud Mission / Workflow 会话只复用侧栏的 `SessionTypeIcon`（按退役 profile id 识别，名单封闭），确保两处符号语义一致。顶部不再重复显示 results 数量，唯一总数留在分页 footer。
-- Chat 历史支持**多选批量操作**（打标签/移动分组/归档/删除）：入口三选——`SidebarToolbar` 的 `Select` 切换、行长按（touch，450ms）、`Ctrl/Cmd+Click`；进入后单击=勾选、`Shift`=可见区间、`Cmd/Ctrl`=追加单行，`Escape`/空白处/底部「完成」退出。可见渲染顺序（pinned→folders→date buckets、排除折叠段）是区间选择的单一真源，抽在 `sidebar-panels/selection.ts`（纯函数 + 单测），底部栏在 `sidebar-panels/batch-action-bar.tsx`。批量动作对现有 per-session API（`updateSession`/`setSessionGroup`/`addTagToSession`）经 `runWithConcurrency(_,5,_)` 逐条调用 + 乐观更新，失败统一 `loadSessions()` 回滚并 toast 失败数——**不新增批量后端端点**。**登记（防第二套实现）**：批量标签用薄组件 `session-tags/batch-tag-selector.tsx`（复用 `TagBadge`/`TAG_COLORS`/`createSessionTag`），不改造单会话 `TagSelector` 成双模态——单会话 popover 立即 mutation 的语义与批量「先收集、再对 N 条应用」不同；批量分组则**扩展** `GroupSelector` 的可选 `onPick`（不平行造第二套）。
+- Chat 历史支持**多选批量操作**（归档/删除）：入口三选——`SidebarToolbar` 的 `Select` 切换、行长按（touch，450ms）、`Ctrl/Cmd+Click`；进入后单击=勾选、`Shift`=可见区间、`Cmd/Ctrl`=追加单行，`Escape`/空白处/底部「完成」退出。可见渲染顺序（pinned→date buckets、排除折叠段）是区间选择的单一真源，抽在 `sidebar-panels/selection.ts`（纯函数 + 单测），底部栏在 `sidebar-panels/batch-action-bar.tsx`。批量动作对现有 per-session API（`updateSession`）经 `runWithConcurrency(_,5,_)` 逐条调用 + 乐观更新，失败统一 `loadSessions()` 回滚并 toast 失败数——**不新增批量后端端点**。会话标签与文件夹已于 1.5 移除；置顶保留（`POST/DELETE /api/sessions/:id/pin`，置顶区内拖拽排序走 `POST /api/sessions/pins/reorder`，把日期区的行拖进置顶区即置顶）。
 - 移动端替代 → 横向可滚动标签栏（`md:hidden overflow-x-auto scrollbar-hide`）或由按钮触发的 `<Drawer>`
 - 移动导航 Drawer 的导航区独立滚动，账号区始终固定在抽屉底部。Chat 路由在一级导航下直接复用 `ChatHistoryPanel`，选中会话后关闭 Drawer；Global Agent 只留在桌面品牌行，不占移动首行空间。
 - 参考：Settings（`pages/settings/index.tsx`）、Knowledge（`pages/knowledge.tsx`）、聊天历史（`components/app/sidebar-panels/chat-history-panel.tsx`）

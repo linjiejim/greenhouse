@@ -1,7 +1,7 @@
 /**
- * The Client Action result route answers at the one shared path both clients
- * import (CLIENT_ACTION_RESULT_PATH): the web app and the browser extension.
- * The extension once posted to a renamed path for months with every result lost.
+ * The Client Action result route answers at the one shared path clients import
+ * (CLIENT_ACTION_RESULT_PATH). A client once posted to a renamed path for months
+ * with every result lost.
  */
 
 import { Hono } from 'hono';

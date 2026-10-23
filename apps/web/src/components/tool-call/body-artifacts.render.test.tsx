@@ -117,7 +117,7 @@ describe('ask_user form placement', () => {
     expect(committed).toContain('Submit answers');
   });
 
-  it('still renders non-interactive artifacts (a spawned session) while the turn streams', () => {
+  it('still renders non-interactive artifacts (a generated image) while the turn streams', () => {
     const askCall = {
       name: 'ask_user',
       input: {},
@@ -128,66 +128,16 @@ describe('ask_user form placement', () => {
         questions: [{ id: 'q1', label: 'Your name?', type: 'text' }],
       },
     };
-    const spawnCall = {
-      name: 'spawn_session',
+    const imageCall = {
+      name: 'generate_image',
       input: {},
-      output: { status: 'completed', child_session_id: 'child-1', title: 'Streaming child', depth: 1 },
+      output: { success: true, url: '/api/upload/streamed-image.png', prompt: 'a plant' },
     };
     const html = renderToStaticMarkup(
-      createElement(BodyArtifacts, { calls: [spawnCall, askCall], ctx: { streaming: true } }),
+      createElement(BodyArtifacts, { calls: [imageCall, askCall], ctx: { streaming: true } }),
     );
-    expect(html).toContain('Streaming child'); // the spawn card streams in
+    expect(html).toContain('streamed-image.png'); // the image card streams in
     expect(html).not.toContain('A few questions'); // ask_user is deferred
-  });
-});
-
-describe('spawn_session card placement', () => {
-  const spawnCall = {
-    name: 'spawn_session',
-    input: {},
-    output: { status: 'completed', child_session_id: 'child-123', title: '[spawn-session] research X', depth: 1 },
-  };
-
-  it('BodyArtifacts renders the spawned sub-session card with its title in the body', () => {
-    const html = renderToStaticMarkup(createElement(BodyArtifacts, { calls: [spawnCall], ctx: {} }));
-    expect(html).toContain('[spawn-session] research X'); // the child title (data)
-    expect(html).toContain('lucide-git-branch'); // the card's icon
-  });
-
-  it('renders an Open button only when an onOpenSession handler is provided', () => {
-    // (i18n labels resolve to keys in SSR without a provider, so assert on structure.)
-    const withHandler = renderToStaticMarkup(
-      createElement(BodyArtifacts, { calls: [spawnCall], ctx: { onOpenSession: () => {} } }),
-    );
-    expect(withHandler).toContain('<button');
-    const without = renderToStaticMarkup(createElement(BodyArtifacts, { calls: [spawnCall], ctx: {} }));
-    expect(without).not.toContain('<button');
-  });
-
-  it('ToolCallRenderer keeps the spawn card out of the trace block', () => {
-    const html = renderToStaticMarkup(
-      createElement(ToolCallRenderer, { calls: [spawnCall], variant: 'full' as const }),
-    );
-    expect(html).toBe('');
-  });
-
-  it('an errored spawn (no child created) falls back to the trace block (no card)', () => {
-    const errored = { name: 'spawn_session', input: {}, output: { error: 'Max spawn depth reached' } };
-    const html = renderToStaticMarkup(createElement(BodyArtifacts, { calls: [errored], ctx: {} }));
-    expect(html).toBe('');
-  });
-
-  it('renders an in-flight progress card (title from input + elapsed timer) before the child returns', () => {
-    const inflight = {
-      name: 'spawn_session',
-      input: { title: 'AeroGarden 深度调研', prompt: 'research it' },
-      output: undefined,
-      status: 'calling' as const,
-    };
-    const html = renderToStaticMarkup(createElement(BodyArtifacts, { calls: [inflight], ctx: { streaming: true } }));
-    expect(html).toContain('AeroGarden 深度调研'); // title pulled from the streaming input
-    expect(html).toContain('0:00'); // the elapsed-time counter (SSR initial value)
-    expect(html).not.toContain('<button'); // no child id yet → no Open button
   });
 });
 

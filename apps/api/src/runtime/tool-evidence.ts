@@ -72,8 +72,8 @@ function exactPayload(value: unknown): RuntimePayload {
 
 /** Catalog metadata is the single risk source; unknown client-only tools are R1. */
 async function catalogRisk(toolName: string): Promise<RuntimeActionRisk> {
-  // Dynamic import avoids registry -> spawn_session -> subagent driver -> this
-  // module becoming a module-initialization cycle.
+  // Dynamic import keeps the tool registry (and everything it imports) out of
+  // this module's initialization, avoiding an import cycle.
   const { getToolMeta } = await import('../tools/registry.js');
   const meta = getToolMeta(toolName);
   if (!meta) return 'r1';

@@ -1,6 +1,6 @@
 /**
  * Chat Engine — the single streaming agent loop for every host
- * (/api/chat NDJSON, evaluation, scheduled tasks, and spawned sessions).
+ * (/api/chat NDJSON and scheduled tasks).
  *
  * Encapsulates: model creation, DSML interceptor, streamText(), tool loop,
  * pipeline/reference collection, usage accounting.

@@ -3,26 +3,24 @@ import type { RuntimeRunRow } from '@greenhouse/db';
 
 const mocks = vi.hoisted(() => ({
   automation: vi.fn(),
-  subagent: vi.fn(),
   notify: vi.fn(),
 }));
 
 vi.mock('../scheduler/runtime-driver.js', () => ({ reconcileReclaimedAutomationRun: mocks.automation }));
 vi.mock('../scheduler/notify.js', () => ({ notifyTaskResult: mocks.notify }));
-vi.mock('./subagent-driver.js', () => ({ reconcileReclaimedSubagentRun: mocks.subagent }));
 
 import { createRuntimeDomainProjector } from './domain-projector.js';
 
 function run(overrides: Partial<RuntimeRunRow> = {}): RuntimeRunRow {
   return {
     id: 'runtime-1',
-    kind: 'subagent',
+    kind: 'automation',
     owner_user_id: 'owner',
     initiated_by_user_id: 'owner',
     session_id: null,
     parent_run_id: null,
     root_run_id: 'runtime-1',
-    source_kind: 'spawned_session',
+    source_kind: 'scheduled_task:42',
     source_id: 'session-1',
     idempotency_key: 'session-1',
     status: 'failed',
@@ -69,12 +67,12 @@ describe('Runtime durable domain projector', () => {
   it('projects a matching terminal recovery and lets failure reject for Outbox retry', async () => {
     const current = run();
     const db = { runtime: { getRun: vi.fn().mockResolvedValue(current) } };
-    mocks.subagent.mockRejectedValueOnce(new Error('temporary source outage'));
+    mocks.automation.mockRejectedValueOnce(new Error('temporary source outage'));
 
     await expect(createRuntimeDomainProjector(db as never)(event(current, 'run.lease_expired'))).rejects.toThrow(
       'temporary source outage',
     );
-    expect(mocks.subagent).toHaveBeenCalledWith(db, current);
+    expect(mocks.automation).toHaveBeenCalledWith(db, current);
   });
 
   it('ignores an old recovery event after a newer successful retry', async () => {
@@ -84,7 +82,7 @@ describe('Runtime durable domain projector', () => {
 
     await createRuntimeDomainProjector(db as never)(event(stale));
 
-    expect(mocks.subagent).not.toHaveBeenCalled();
+    expect(mocks.automation).not.toHaveBeenCalled();
   });
 
   it('projects an Automation outcome and enqueues one deep-linked durable notification', async () => {

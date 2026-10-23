@@ -14,9 +14,6 @@ const mocks = vi.hoisted(() => ({
     getSharedSessionIds: vi.fn(),
     getSharesForSession: vi.fn(),
   },
-  sessionTags: {
-    getSessionTags: vi.fn(),
-  },
   users: {
     getById: vi.fn(),
   },
@@ -95,7 +92,6 @@ beforeEach(() => {
   mocks.sessions.getUsage.mockResolvedValue({ input: 0, output: 0, cached: 0, reasoning: 0 });
   mocks.sessionShares.getSharedSessionIds.mockResolvedValue([]);
   mocks.sessionShares.getSharesForSession.mockResolvedValue([]);
-  mocks.sessionTags.getSessionTags.mockResolvedValue([]);
 });
 
 describe('GET /api/sessions/:id metadata mode', () => {

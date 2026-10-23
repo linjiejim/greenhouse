@@ -1,5 +1,6 @@
 /**
- * Drizzle schema — User-defined session tags.
+ * Drizzle schema — User-defined session tags (feature removed in 1.5).
+ * Kept until 1.6 drops the table.
  *
  * Tables: session_tags, session_tag_links
  */

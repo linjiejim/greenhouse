@@ -1,6 +1,6 @@
 /**
- * Feature Requests Panel — table-based layout.
- * super 用户查看、过滤、编辑用户提交的需求。
+ * Feature requests — the「需求」tab of Administration › Issues & requests.
+ * super 用户查看、过滤、编辑成员（或成员的 Agent）提交的需求。
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
@@ -29,7 +29,7 @@ const PRIORITY_STYLES: Record<string, { color: string; labelKey: TranslationKey 
 
 // ─── Main Component ──────────────────────────────────────
 
-export function FeatureRequestsPanel() {
+export function FeatureRequestsPanel({ tabs }: { tabs?: React.ReactNode }) {
   const t = useT();
   const [requests, setRequests] = useState<FeatureRequest[]>([]);
   const [total, setTotal] = useState(0);
@@ -92,8 +92,9 @@ export function FeatureRequestsPanel() {
 
   return (
     <ModulePage
-      moduleId="admin.feature-requests"
+      moduleId="admin.issues"
       layout="list"
+      tabs={tabs}
       toolbar={
         <div className="flex items-center gap-3">
           <Select

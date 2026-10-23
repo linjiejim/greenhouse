@@ -10,8 +10,6 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { ConfirmDialog, Dialog, toast } from './ui';
 import * as api from '../lib/api';
 import { useT } from '../lib/i18n';
-import { TagManagerDialog } from './session-tags';
-import type { SessionTag, SessionGroup } from '@greenhouse/types/api';
 import { usePersistedPageSize } from '../hooks/use-persisted-page-size';
 import {
   DEFAULT_HISTORY_FILTERS,
@@ -37,8 +35,6 @@ export function FullHistoryModal({
   const t = useT();
   const [allSessions, setAllSessions] = useState<HistorySession[]>([]);
   const [profiles, setProfiles] = useState<api.Profile[]>([]);
-  const [allTags, setAllTags] = useState<SessionTag[]>([]);
-  const [groups, setGroups] = useState<SessionGroup[]>([]);
   const [loading, setLoading] = useState(true);
 
   const [filters, setFilters] = useState<HistoryFilters>(DEFAULT_HISTORY_FILTERS);
@@ -47,21 +43,13 @@ export function FullHistoryModal({
 
   const [editSession, setEditSession] = useState<HistorySession | null>(null);
   const [pendingDeleteSession, setPendingDeleteSession] = useState<HistorySession | null>(null);
-  const [showTagManager, setShowTagManager] = useState(false);
 
   const loadSessions = useCallback(async () => {
     setLoading(true);
     try {
-      const [data, profileData, tagsData, groupsData] = await Promise.all([
-        api.listSessions(),
-        api.fetchProfiles(),
-        api.listSessionTags(),
-        api.listSessionGroups(),
-      ]);
+      const [data, profileData] = await Promise.all([api.listSessions(), api.fetchProfiles()]);
       setAllSessions(data);
       setProfiles(profileData);
-      setAllTags(tagsData);
-      setGroups(groupsData);
     } catch (err) {
       console.error('Failed to load sessions:', err);
     }
@@ -130,9 +118,6 @@ export function FullHistoryModal({
           statusCounts={statusCounts}
           feedbackCounts={feedbackCounts}
           profiles={profiles}
-          groups={groups}
-          tags={allTags}
-          onManageTags={() => setShowTagManager(true)}
           searchPlaceholder={t('chat.searchConversations')}
         />
 
@@ -178,12 +163,6 @@ export function FullHistoryModal({
         description={t('chat.deleteCannotUndo')}
         confirmLabel={t('common.delete')}
         confirmVariant="destructive"
-      />
-
-      <TagManagerDialog
-        open={showTagManager}
-        onClose={() => setShowTagManager(false)}
-        onTagsChanged={() => loadSessions()}
       />
     </>
   );

@@ -12,7 +12,6 @@ import {
   DEFAULT_WORKBENCH_PREFERENCES,
   normalizeWorkbenchPreferences,
   orderPlatformApplications,
-  selectPrimaryNavigationApplications,
   type PlatformApplication,
   type WorkbenchPreferences,
 } from '../platform/catalog';
@@ -126,15 +125,10 @@ export function usePlatformCatalog() {
     () => orderPlatformApplications(state.applications, state.preferences),
     [state.applications, state.preferences],
   );
-  const primaryApplications = useMemo(
-    () => selectPrimaryNavigationApplications(state.applications),
-    [state.applications],
-  );
   const hasApplication = (appId: string) => state.applications.some((application) => application.id === appId);
   return {
     ...state,
     orderedApplications,
-    primaryApplications,
     hasApplication,
   };
 }

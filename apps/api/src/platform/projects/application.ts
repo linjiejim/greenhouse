@@ -54,7 +54,42 @@ async function isActiveInternalUser(context: PlatformHandlerContext, userId: str
   return !!user && user.status === 'active' && (user.role === 'team' || user.role === 'super');
 }
 
+/**
+ * Lookups one request may repeat while authorizing many records — the actor's
+ * user row, their entity policies, each project and its members. Handlers
+ * that check one record pass none; a caller authorizing a batch passes one
+ * memo so the same rule runs with each lookup made once.
+ */
+export interface ProjectAccessMemo {
+  user?: ReturnType<PlatformHandlerContext['db']['users']['getById']>;
+  policies: Map<string, Promise<EntityPolicy>>;
+  projects: Map<number, ReturnType<PlatformHandlerContext['db']['projects']['getProjectById']>>;
+  members: Map<number, ReturnType<PlatformHandlerContext['db']['projects']['getMembers']>>;
+}
+
+export function createProjectAccessMemo(): ProjectAccessMemo {
+  return { policies: new Map(), projects: new Map(), members: new Map() };
+}
+
+function memoized<K, V>(map: Map<K, V> | undefined, key: K, load: () => V): V {
+  if (!map) return load();
+  const hit = map.get(key);
+  if (hit !== undefined) return hit;
+  const value = load();
+  map.set(key, value);
+  return value;
+}
+
 async function entityPolicy(
+  context: PlatformHandlerContext,
+  actor: ActorContext,
+  entityId: string,
+  memo?: ProjectAccessMemo,
+): Promise<EntityPolicy> {
+  return memoized(memo?.policies, entityId, () => loadEntityPolicy(context, actor, entityId));
+}
+
+async function loadEntityPolicy(
   context: PlatformHandlerContext,
   actor: ActorContext,
   entityId: string,
@@ -72,12 +107,13 @@ async function projectAccess(
   context: PlatformHandlerContext,
   actor: ActorContext,
   project: ProjectRow,
+  memo?: ProjectAccessMemo,
 ): Promise<{ readable: boolean; writable: boolean; manageable: boolean; collaboratorIds: string[] }> {
   const userId = effectiveUserId(actor);
   const [user, members, policy] = await Promise.all([
-    context.db.users.getById(userId),
-    context.db.projects.getMembers(project.id),
-    entityPolicy(context, actor, 'project'),
+    memo ? (memo.user ??= context.db.users.getById(userId)) : context.db.users.getById(userId),
+    memoized(memo?.members, project.id, () => context.db.projects.getMembers(project.id)),
+    entityPolicy(context, actor, 'project', memo),
   ]);
   if (!user || user.status !== 'active') {
     return { readable: false, writable: false, manageable: false, collaboratorIds: [] };
@@ -134,12 +170,15 @@ async function canAccessTask(
     assignee_id: string | null;
   },
   mode: 'read' | 'write',
+  memo?: ProjectAccessMemo,
 ): Promise<boolean> {
-  const project = await context.db.projects.getProjectById(task.project_id);
+  const project = await memoized(memo?.projects, task.project_id, () =>
+    context.db.projects.getProjectById(task.project_id),
+  );
   if (!project) return false;
-  const access = await projectAccess(context, actor, project);
+  const access = await projectAccess(context, actor, project, memo);
   if (mode === 'read' ? !access.readable : !access.writable) return false;
-  const policy = await entityPolicy(context, actor, 'task');
+  const policy = await entityPolicy(context, actor, 'task', memo);
   return canAccessRecord(
     actor,
     {
@@ -149,6 +188,18 @@ async function canAccessTask(
     },
     policy,
   );
+}
+
+/**
+ * The task read rule (project readability + task entity policy — what listTasks
+ * applies to each task) for checking several tasks in one request, with every
+ * shared lookup made once. The caller still checks the action capability
+ * (`projects.execution.read`), as the kernel does before a handler runs.
+ */
+export function taskReadAuthorizer(context: PlatformHandlerContext, actor: ActorContext) {
+  const memo = createProjectAccessMemo();
+  return (task: { project_id: number; created_by: string; assignee_id: string | null }) =>
+    canAccessTask(context, actor, task, 'read', memo);
 }
 
 function numberPayload(payload: Record<string, unknown>, key: string): number | undefined {

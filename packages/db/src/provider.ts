@@ -30,8 +30,7 @@ import { createScheduledTaskService } from './services/scheduled-tasks.js';
 import { createFeishuBotService } from './services/feishu-bot.js';
 import { createProviderTokenService } from './services/provider-tokens.js';
 import { createCustomProfileService } from './services/custom-profiles.js';
-import { createSessionTagService } from './services/session-tags.js';
-import { createSessionGroupService } from './services/session-groups.js';
+import { createSessionPinService } from './services/session-pins.js';
 import { createKnowledgeBaseService } from './services/knowledge-base.js';
 import { createKnowledgeShareService } from './services/knowledge-shares.js';
 import { createKbCommentService } from './services/kb-comments.js';
@@ -40,6 +39,7 @@ import { createUserFeatureService } from './services/user-features.js';
 import { createUserMemoryService } from './services/user-memories.js';
 import { createToolFrictionService } from './services/tool-frictions.js';
 import { createDriveService } from './services/drive.js';
+import { createActivityService } from './services/activity.js';
 import { createEmailService } from './services/email.js';
 import { createSkillService } from './services/skills.js';
 import { createPlatformService } from './services/platform.js';
@@ -79,8 +79,7 @@ function createDatabaseProvider(db: Db, client: DbClient['client'] | null) {
     providerTokens: createProviderTokenService(db),
     feishuBot: createFeishuBotService(db),
     customProfiles: createCustomProfileService(db),
-    sessionTags: createSessionTagService(db),
-    sessionGroups: createSessionGroupService(db),
+    sessionPins: createSessionPinService(db),
     knowledgeBase: createKnowledgeBaseService(db),
     knowledgeShares: createKnowledgeShareService(db),
     kbComments: createKbCommentService(db),
@@ -89,6 +88,7 @@ function createDatabaseProvider(db: Db, client: DbClient['client'] | null) {
     userMemories: createUserMemoryService(db),
     toolFrictions: createToolFrictionService(db),
     drive: createDriveService(db),
+    activity: createActivityService(db),
     email: createEmailService(db),
     skills: createSkillService(db),
     platform: createPlatformService(db),

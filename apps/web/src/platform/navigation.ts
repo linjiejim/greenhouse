@@ -1,12 +1,7 @@
 /** Shared desktop/mobile primary navigation composition. */
 
-import { MessageCircle, Package, type LucideIcon } from '../lib/icons';
-import {
-  PRIMARY_NAV_APPLICATION_IDS,
-  platformApplicationHref,
-  platformApplicationIcon,
-  type PlatformApplication,
-} from './catalog';
+import { FolderOpen, House, MessageCircle, Package, Zap, type LucideIcon } from '../lib/icons';
+import { platformApplicationHref, platformApplicationIcon, type PlatformApplication } from './catalog';
 
 export interface PrimaryNavigationItem {
   key: string;
@@ -27,17 +22,43 @@ export interface PrimaryNavigation {
   overflow: PrimaryNavigationItem[];
 }
 
-interface BuildPrimaryNavigationArgs {
-  applications: readonly PlatformApplication[];
-  chatLabel: string;
-  skillhubLabel: string;
+export interface PrimaryNavigationLabels {
+  home: string;
+  files: string;
+  skillhub: string;
+  automations: string;
+  chat: string;
 }
 
-export function buildPrimaryNavigation({
-  applications,
-  chatLabel,
-  skillhubLabel,
-}: BuildPrimaryNavigationArgs): PrimaryNavigation {
+interface BuildPrimaryNavigationArgs {
+  applications: readonly PlatformApplication[];
+  labels: PrimaryNavigationLabels;
+}
+
+/**
+ * The workspace, ordered by what the team comes for (v1.5, "navigation by
+ * goal"): Home (team activity) · Knowledge · Files · Tables · Projects ·
+ * SkillHub · Automations · Chat. The in-app assistant comes last on purpose —
+ * members mostly reach Greenhouse through their own agents; Chat is a helper,
+ * not the front door.
+ *
+ * Knowledge, Tables and Projects are applications: each appears only when the
+ * server-filtered catalog authorizes it and it has a host route.
+ */
+export const PRIMARY_NAV_ORDER = [
+  'home',
+  'knowledge',
+  'files',
+  'tables',
+  'projects',
+  'skillhub',
+  'automations',
+  'chat',
+] as const;
+
+const APPLICATION_SLOTS = new Set<string>(['knowledge', 'tables', 'projects']);
+
+export function buildPrimaryNavigation({ applications, labels }: BuildPrimaryNavigationArgs): PrimaryNavigation {
   const applicationItems = applications.flatMap((application) => {
     const href = platformApplicationHref(application);
     return href
@@ -51,40 +72,23 @@ export function buildPrimaryNavigation({
         ]
       : [];
   });
-  const primaryApplicationIds = new Set<string>(PRIMARY_NAV_APPLICATION_IDS);
   const applicationItemById = new Map(applicationItems.map((item) => [item.key, item]));
-  const primaryApplicationItems = PRIMARY_NAV_APPLICATION_IDS.flatMap((applicationId) => {
-    const item = applicationItemById.get(applicationId);
+
+  const fixed: Record<string, PrimaryNavigationItem> = {
+    home: { key: 'home', label: labels.home, icon: House, href: '#/home' },
+    files: { key: 'files', label: labels.files, icon: FolderOpen, href: '#/files' },
+    skillhub: { key: 'skillhub', label: labels.skillhub, icon: Package, href: '#/skillhub' },
+    automations: { key: 'automations', label: labels.automations, icon: Zap, href: '#/automations' },
+    chat: { key: 'chat', label: labels.chat, icon: MessageCircle, href: '#/chat' },
+  };
+
+  const primary = PRIMARY_NAV_ORDER.flatMap((key) => {
+    const item = APPLICATION_SLOTS.has(key) ? applicationItemById.get(key) : fixed[key];
     return item ? [item] : [];
   });
-  const overflowApplicationItems = applicationItems.filter((item) => !primaryApplicationIds.has(item.key));
 
-  // Visible sidebar order: Chat, then the authorized primary apps (Knowledge,
-  // Projects, CRM). SkillHub and secondary destinations collapse into "More".
-  // Chat leads because it is also the home page — a new conversation opens onto
-  // the user's workbench.
-  const primary: PrimaryNavigationItem[] = [
-    {
-      key: 'chat',
-      label: chatLabel,
-      icon: MessageCircle,
-      href: '#/chat',
-    },
-    ...primaryApplicationItems,
-  ];
-
-  // Secondary destinations live under "More" on both desktop and mobile. Durable
-  // work has one separate fixed Execution Center entry near the account row, so
-  // Mission no longer competes in this menu.
-  const overflow: PrimaryNavigationItem[] = [
-    ...overflowApplicationItems,
-    {
-      key: 'skillhub',
-      label: skillhubLabel,
-      icon: Package,
-      href: '#/skillhub',
-    },
-  ];
+  // Applications with a host route but no slot of their own wait under "More".
+  const overflow = applicationItems.filter((item) => !APPLICATION_SLOTS.has(item.key));
 
   return { primary, overflow };
 }

@@ -147,6 +147,70 @@ describe('MCP server — tools/list', () => {
   });
 });
 
+describe('MCP server — Files tools', () => {
+  it('lists files_query read-only and files_mutation as a deleting write with a confirm flag', async () => {
+    const { createFilesQueryTool } = await import('../../tools/files-query.js');
+    const { createFilesMutationTool } = await import('../../tools/files-mutation.js');
+    const db = {} as never;
+    const ctx = {
+      toolIds: ['files_query', 'files_mutation'],
+      registry: {
+        files_query: createFilesQueryTool(db, { userId: 'mcp-test-user' }),
+        files_mutation: createFilesMutationTool(db, { userId: 'mcp-test-user' }),
+      } as unknown as ToolRegistry,
+    };
+    const { client, server } = await connect(ctx);
+    const { tools } = await client.listTools();
+
+    const read = tools.find((t) => t.name === 'files_query')!;
+    expect(read.annotations).toMatchObject({ readOnlyHint: true, openWorldHint: false });
+    expect((read.inputSchema as { properties: Record<string, unknown> }).properties.confirm).toBeUndefined();
+
+    const write = tools.find((t) => t.name === 'files_mutation')!;
+    expect(write.annotations).toMatchObject({ readOnlyHint: false, destructiveHint: true, openWorldHint: false });
+    expect(write.description).toMatch(/recorded in their name/);
+    // files.delete / folders.delete are delete-like, so the preview round trip applies.
+    expect((write.inputSchema as { properties: Record<string, { type?: string }> }).properties.confirm.type).toBe(
+      'boolean',
+    );
+
+    await client.close();
+    await server.close();
+  });
+});
+
+describe('MCP server — Issues & requests tools', () => {
+  it('lists feedback_query read-only and the two filing tools as writes without a delete preview', async () => {
+    const { createFeedbackQueryTool } = await import('../../tools/feedback-query.js');
+    const { createFeatureRequestTool } = await import('../../tools/feature-request.js');
+    const { createLogFrictionTool } = await import('../../tools/log-friction.js');
+    const db = {} as never;
+    const ctx = {
+      toolIds: ['feedback_query', 'feature_request', 'log_friction'],
+      registry: {
+        feedback_query: createFeedbackQueryTool(db, { userId: 'mcp-test-user', userRole: 'team' }),
+        feature_request: createFeatureRequestTool(db, { userId: 'mcp-test-user', userRole: 'team' }),
+        log_friction: createLogFrictionTool(db, {}),
+      } as unknown as ToolRegistry,
+    };
+    const { client, server } = await connect(ctx);
+    const { tools } = await client.listTools();
+    expect(tools.find((t) => t.name === 'feedback_query')!.annotations).toMatchObject({ readOnlyHint: true });
+    // Neither only adds: a repeated friction replaces its detail and reopens a
+    // resolved entry; a super can update a request through feature_request.
+    expect(tools.find((t) => t.name === 'log_friction')!.annotations).toMatchObject({ destructiveHint: true });
+    expect(tools.find((t) => t.name === 'feature_request')!.annotations).toMatchObject({ destructiveHint: true });
+    for (const name of ['feature_request', 'log_friction']) {
+      const write = tools.find((t) => t.name === name)!;
+      expect(write.annotations).toMatchObject({ readOnlyHint: false });
+      expect(write.description).toMatch(/recorded in their name/);
+      expect((write.inputSchema as { properties: Record<string, unknown> }).properties.confirm).toBeUndefined();
+    }
+    await client.close();
+    await server.close();
+  });
+});
+
 describe('MCP server — tools/call', () => {
   it('runs a read tool and returns its output as JSON text', async () => {
     const { client, server } = await connect(makeCtx());

@@ -9,8 +9,7 @@
 import { describe, it, expect } from 'vitest';
 import type { DatabaseProvider } from '@greenhouse/db';
 import { parseWorkbenchConfig } from '@greenhouse/types/workbench';
-import { resolveEffectiveTools, buildLazyServerTools, childSpawnToolIds } from '../tool-resolution.js';
-import { MAX_SPAWN_DEPTH } from '../../tools/spawn-session.js';
+import { resolveEffectiveTools, buildLazyServerTools } from '../tool-resolution.js';
 import { BUILTIN_AGENT_TOOL_IDS, RETIRED_TOOL_ALIASES, getAllToolIds } from '../../tools/registry.js';
 import type { AgentProfile } from '../../profiles/profile.js';
 
@@ -130,23 +129,6 @@ describe('buildLazyServerTools — workbench cards can only bind what the user c
       bindable_tool_ids: string[];
     };
     expect(result.bindable_tool_ids).toEqual(['project_query']);
-  });
-});
-
-describe('childSpawnToolIds — headless children fail closed to replay-safe reads', () => {
-  const parentTools = ['task_capture', 'tables_schema_plan', 'spawn_session', 'call_llm', 'knowledge_query'];
-
-  it('strips both dispatch tools at every depth', () => {
-    for (const depth of [0, 1, MAX_SPAWN_DEPTH]) {
-      const ids = childSpawnToolIds(parentTools, depth);
-      expect(ids, `depth ${depth}`).not.toContain('task_capture');
-      expect(ids, `depth ${depth}`).not.toContain('tables_schema_plan');
-    }
-  });
-
-  it('keeps only catalogued proxy reads explicitly declared replay-safe', () => {
-    expect(childSpawnToolIds(parentTools, 0)).toEqual(['knowledge_query']);
-    expect(childSpawnToolIds(parentTools, MAX_SPAWN_DEPTH)).toEqual(['knowledge_query']);
   });
 });
 

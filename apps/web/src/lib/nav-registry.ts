@@ -15,7 +15,6 @@ import {
   MessageSquareWarning,
   Mail,
   Users,
-  ClipboardList,
   Key,
   Cloud,
   Package,
@@ -24,10 +23,11 @@ import {
   BarChart3,
   Brain,
   Zap,
-  Bot,
   Table2,
   FolderKanban,
-  Monitor,
+  FolderOpen,
+  History,
+  House,
 } from './icons';
 import type { LucideIcon } from './icons';
 import type { FeatureKey } from '@greenhouse/types/features';
@@ -52,11 +52,6 @@ export interface NavModule {
   requireRole?: 'super'[];
   /** Optional per-user feature flag gate (a core FeatureKey or an extension flag). */
   requireFeature?: FeatureKey | (string & {});
-  /**
-   * Only show inside the desktop app. Used for pages whose every control drives a
-   * native command — in a browser they would render nothing but errors.
-   */
-  requireDesktop?: boolean;
   /** Set for modules an extension contributed; the module only shows while that extension is active. */
   extensionId?: string;
   /** Translation keys for extension modules (core modules use NAV_COPY). */
@@ -81,7 +76,6 @@ export interface NavModule {
 //   • Preferences + Cloud (one flat block, no header) — Preferences, Groups,
 //     Agent Connections, Connections
 //   • Labs (feature-gated) — Memory
-//   • Desktop — the desktop app (download in a browser, native controls in the shell)
 //
 // Automation, Tasks, and My Agents live in the Chat workspace and are not
 // Settings modules.
@@ -154,27 +148,11 @@ const SETTINGS_LABS: NavModule[] = [
   },
 ];
 
-// The Desktop entry is visible everywhere: inside the shell it manages native
-// controls, in a browser it offers the installer download (desktop-download.tsx).
-// Nothing here sets `requireDesktop` today; the flag stays for pages whose every
-// control would be a native command.
-const SETTINGS_DESKTOP: NavModule[] = [
-  {
-    id: 'settings.desktop',
-    label: 'Desktop',
-    icon: Monitor,
-    path: '#/settings/desktop',
-    parent: 'settings',
-    description: 'Desktop app download, shortcuts, permissions, and updates',
-  },
-];
-
 const SETTINGS_EXTENSIONS: NavModule[] = [];
 
 export const settingsSections: SettingsNavSection[] = [
   { key: 'top', items: SETTINGS_TOP },
   { key: 'labs', label: 'Labs', labelKey: 'navigation.labs', items: SETTINGS_LABS },
-  { key: 'desktop', items: SETTINGS_DESKTOP },
   { key: 'extensions', label: 'Extensions', labelKey: 'navigation.extensions', items: SETTINGS_EXTENSIONS },
 ];
 
@@ -188,22 +166,42 @@ const SETTINGS_ALL: NavModule[] = settingsSections.flatMap((section) => section.
 // role-gated; the parent route (#/administration) is itself super-only.
 
 const ADMINISTRATION_MODULES: NavModule[] = [
+  // v1.5 order: people, what they use, what they changed, what they report,
+  // then workspace configuration and agent access.
   {
     id: 'admin.users',
-    label: 'Users',
+    label: 'Users & groups',
     icon: Users,
     path: '#/administration/users',
     parent: 'administration',
-    description: 'Manage users, permissions, features, and limits',
+    description: 'Accounts, permissions, limits, and the groups used for sharing',
     requireRole: ['super'],
   },
   {
-    id: 'admin.runtime-config',
-    label: 'Runtime Config',
-    icon: SlidersHorizontal,
-    path: '#/administration/runtime-config',
+    id: 'admin.usage',
+    label: 'Usage',
+    icon: BarChart3,
+    path: '#/administration/usage',
     parent: 'administration',
-    description: 'LLM / media / search credentials — DB-backed, env fallback',
+    description: 'Token consumption and cost tracking',
+    requireRole: ['super'],
+  },
+  {
+    id: 'admin.activity',
+    label: 'Activity log',
+    icon: History,
+    path: '#/administration/activity',
+    parent: 'administration',
+    description: 'Changes by people, their agents, automations and admins',
+    requireRole: ['super'],
+  },
+  {
+    id: 'admin.issues',
+    label: 'Issues & requests',
+    icon: MessageSquareWarning,
+    path: '#/administration/issues',
+    parent: 'administration',
+    description: 'Feature requests and frictions reported by members and their agents',
     requireRole: ['super'],
   },
   {
@@ -216,30 +214,12 @@ const ADMINISTRATION_MODULES: NavModule[] = [
     requireRole: ['super'],
   },
   {
-    id: 'admin.usage',
-    label: 'Agent Usages',
-    icon: BarChart3,
-    path: '#/administration/usage',
+    id: 'admin.runtime-config',
+    label: 'Runtime Config',
+    icon: SlidersHorizontal,
+    path: '#/administration/runtime-config',
     parent: 'administration',
-    description: 'Token consumption and cost tracking',
-    requireRole: ['super'],
-  },
-  {
-    id: 'admin.feature-requests',
-    label: 'Feature Requests',
-    icon: ClipboardList,
-    path: '#/administration/feature-requests',
-    parent: 'administration',
-    description: 'User-submitted requests',
-    requireRole: ['super'],
-  },
-  {
-    id: 'admin.frictions',
-    label: 'Frictions',
-    icon: MessageSquareWarning,
-    path: '#/administration/frictions',
-    parent: 'administration',
-    description: 'Where the agent stumbled — tool errors and detours to fix',
+    description: 'LLM / media / search credentials — DB-backed, env fallback',
     requireRole: ['super'],
   },
   {
@@ -270,12 +250,21 @@ const KNOWLEDGE_MODULES: NavModule[] = [];
 // here lets them share ModulePage without creating a second header registry.
 const STANDALONE_MODULES: NavModule[] = [
   {
-    id: 'workspace.tasks',
-    label: 'Tasks',
-    icon: ClipboardList,
-    path: '#/tasks',
+    id: 'workspace.home',
+    label: 'Home',
+    icon: House,
+    path: '#/home',
     parent: 'standalone',
-    description: 'Reusable instructions available from the Chat composer',
+    description: 'What changed across the team, and your own cards',
+    pinnable: false,
+  },
+  {
+    id: 'workspace.files',
+    label: 'Files',
+    icon: FolderOpen,
+    path: '#/files',
+    parent: 'standalone',
+    description: 'The team’s files and your own — folders, uploads and previews',
     pinnable: false,
   },
   {
@@ -285,15 +274,6 @@ const STANDALONE_MODULES: NavModule[] = [
     path: '#/automations',
     parent: 'standalone',
     description: 'Schedule recurring work for Agents',
-    pinnable: false,
-  },
-  {
-    id: 'workspace.agents',
-    label: 'My Agents',
-    icon: Bot,
-    path: '#/agents',
-    parent: 'standalone',
-    description: 'Create and manage reusable Agent configurations',
     pinnable: false,
   },
   {
@@ -315,12 +295,12 @@ const STANDALONE_MODULES: NavModule[] = [
     pinnable: false,
   },
   {
-    id: 'workspace.executions',
-    label: 'Execution Center',
-    icon: ClipboardList,
-    path: '#/executions',
+    id: 'workspace.activity',
+    label: 'Activity log',
+    icon: History,
+    path: '#/activity',
     parent: 'standalone',
-    description: 'Background work, decisions, progress, and outcomes in one place',
+    description: 'What you, your agents and your automations changed',
     pinnable: false,
   },
   {
@@ -361,23 +341,19 @@ const NAV_COPY: Record<string, { label: TranslationKey; description?: Translatio
     description: 'navigation.emailAccountsDesc',
   },
   'settings.memory': { label: 'navigation.memory', description: 'navigation.memoryDesc' },
-  'settings.desktop': { label: 'navigation.desktop', description: 'navigation.desktopDesc' },
   'admin.users': { label: 'navigation.users', description: 'navigation.usersDesc' },
   'admin.runtime-config': { label: 'navigation.runtimeConfig', description: 'navigation.runtimeConfigDesc' },
   'admin.branding': { label: 'navigation.branding', description: 'navigation.brandingDesc' },
   'admin.usage': { label: 'navigation.agentUsages', description: 'navigation.agentUsagesDesc' },
-  'admin.feature-requests': {
-    label: 'navigation.featureRequests',
-    description: 'navigation.featureRequestsDesc',
-  },
-  'admin.frictions': { label: 'navigation.frictions', description: 'navigation.frictionsDesc' },
+  'admin.issues': { label: 'navigation.issues', description: 'navigation.issuesDesc' },
+  'admin.activity': { label: 'navigation.activityLog', description: 'navigation.activityLogAdminDesc' },
   'admin.mcp-keys': { label: 'navigation.mcpAccess', description: 'navigation.mcpAccessDesc' },
-  'workspace.tasks': { label: 'navigation.myPrompts', description: 'navigation.tasksDesc' },
+  'workspace.home': { label: 'navigation.home', description: 'navigation.homeDesc' },
+  'workspace.files': { label: 'navigation.files', description: 'navigation.filesDesc' },
   'workspace.automations': { label: 'navigation.automation', description: 'navigation.automationDesc' },
-  'workspace.agents': { label: 'navigation.myAgents', description: 'navigation.myAgentsDesc' },
   'workspace.tables': { label: 'navigation.tables', description: 'navigation.tablesDesc' },
   'workspace.projects': { label: 'projects.title', description: 'navigation.projectsDesc' },
-  'workspace.executions': { label: 'taskCenter.title', description: 'taskCenter.description' },
+  'workspace.activity': { label: 'navigation.activityLog', description: 'navigation.activityLogDesc' },
   'workspace.skillhub': { label: 'skillHub.title', description: 'navigation.skillHubDesc' },
 };
 

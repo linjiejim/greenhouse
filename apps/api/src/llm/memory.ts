@@ -111,7 +111,7 @@ export async function buildMemoryIndexBlock(userId: string): Promise<string | nu
  * The memory section for a system prompt: feature gate, index, heading.
  *
  * The single entry point for every prompt-assembly site (chat, scheduled tasks,
- * spawned subagents). Returns null when the feature is off, the user is unknown,
+ * the Feishu bot). Returns null when the feature is off, the user is unknown,
  * or anything at all fails — memory must never be the reason a turn breaks.
  */
 export async function resolveMemoryContext(userId: string, role?: UserRole): Promise<string | null> {

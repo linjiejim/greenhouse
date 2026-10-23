@@ -21,7 +21,7 @@ Then log in at the app with any seeded user and the shared demo password:
 | Login | Role | Try |
 |---|---|---|
 | `maya@greenhouse.example` | super admin | admin, all settings, everything |
-| `leo@greenhouse.example` | team | engineering docs, SOC 2 project, sub-agents |
+| `leo@greenhouse.example` | team | engineering docs, SOC 2 project |
 | `priya@greenhouse.example` | team | roadmap, projects, launch |
 | `sam@greenhouse.example` | team | brand voice, blog drafts, custom profile |
 
@@ -71,10 +71,9 @@ with a user and a group.
 14 tasks with subtasks / dependencies / mixed status, comments, and an activity
 log.
 
-**Chat** — 6 sessions across the `web` and `subagent` channels, showing
-tool pipelines (`knowledge_query`, `external_search`, `project_query`,
-`analyze_image`, `spawn_session`), KB citations, reasoning, ratings, a
-parent→child sub-agent lineage, folders, tags, and a shared session.
+**Chat** — 5 sessions on the `web` channel, showing tool pipelines
+(`knowledge_query`, `external_search`, `project_query`, `analyze_image`), KB
+citations, reasoning, ratings, and a shared session.
 
 **Power features** — quick prompts (global + personal), user memories, scheduled
 automations (cron), feature requests (all statuses), one custom agent (loaded as an

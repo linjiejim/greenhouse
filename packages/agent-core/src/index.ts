@@ -3,7 +3,7 @@
  *
  * One streamText loop, one model registry/resolution path, DSML interception
  * as provider middleware, stream collectors and usage accounting. Every host
- * (API chat route, evaluation, scheduler, and spawned sessions) drives this
+ * (API chat route and scheduler) drives this
  * engine and only adapts protocol/persistence around it.
  *
  * Deliberately database-free: persistence is host-side (see the api's

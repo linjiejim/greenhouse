@@ -1,16 +1,15 @@
 name: Release
 
 # Builds & publishes the distributable artifacts. Two triggers:
-#   • tag `v*`  → STABLE release: GHCR image `:X.Y.Z` `:X.Y` and the browser
-#                 extension zip attached to the GitHub Release. This is the
+#   • tag `v*`  → STABLE release: GHCR image `:X.Y.Z` `:X.Y`. This is the
 #                 v1 line (branch `v1`, 1.x tags): its tags never move `:latest`,
 #                 which belongs to the newest v2 release.
 #   • push main → EDGE build: GHCR image `:edge` + `:main-<sha>` only. Never
 #                 `:latest`, never a Release asset — main is explicitly unstable.
 # The stable/edge split is the machine-readable half of the promise in the README
 # "Releases & stability" section. See RELEASING.md.
-# Fork-safe: both jobs only run in this repository — a fork's main never publishes
-# images or Release assets from here (its own CD lives in `fork-*.yml`).
+# Fork-safe: the job only runs in this repository — a fork's main never publishes
+# images from here (its own CD lives in `fork-*.yml`).
 on:
   push:
     branches: [main]
@@ -79,25 +78,3 @@ jobs:
             APP_REVISION=${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-
-  # ── Browser extension → versioned zip attached to the Release (stable only) ──
-  browser:
-    if: github.repository == 'linjiejim/greenhouse' && startsWith(github.ref, 'refs/tags/v')
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write # upload the asset to the GitHub Release
-    steps:
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/setup
-
-      # `package` runs `vite build` then stamps manifest.version from APP_VERSION
-      # and zips dist/ → greenhouse-bridge-vX.Y.Z.zip.
-      - name: Build & package extension
-        run: pnpm --filter @greenhouse/browser package
-        env:
-          APP_VERSION: ${{ github.ref_name }}
-
-      - name: Attach zip to the Release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release upload "${{ github.ref_name }}" apps/browser/greenhouse-bridge-*.zip --clobber

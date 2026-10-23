@@ -39,7 +39,10 @@ setup('create account + authenticate', async ({ page }) => {
   await page.getByTestId('login-password').fill(TEST_ACCOUNT.password);
   await page.getByTestId('login-submit').click();
 
-  // 3. Wait for the authenticated app shell, then persist storage state.
+  // 3. Wait for the authenticated app shell, then persist storage state. The
+  //    landing page is Home (team activity), so open Chat to see the composer.
+  await expect(page.getByTestId('login-submit')).toBeHidden({ timeout: 20_000 });
+  await page.goto('/#/chat');
   await expect(page.getByTestId('chat-input')).toBeVisible({ timeout: 20_000 });
 
   fs.mkdirSync(path.dirname(AUTH_STATE), { recursive: true });

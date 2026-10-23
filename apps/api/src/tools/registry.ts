@@ -26,7 +26,6 @@ import { projectQueryTool } from './project-query.js';
 import { projectMutationTool } from './project-mutation.js';
 import { computeTool } from './compute/tool.js';
 import { sessionQueryTool } from './session-query.js';
-import { spawnSessionTool } from './spawn-session.js';
 import { taskCaptureTool } from './task-capture.js';
 import { readAttachmentTool } from './read-attachment.js';
 import { callLlmTool } from './call-llm.js';
@@ -45,6 +44,9 @@ import { emailMutationTool } from './email-mutation.js';
 import { memoryTool } from './memory.js';
 import { logFrictionTool } from './log-friction.js';
 import { workbenchQueryTool, workbenchMutationTool } from './workbench.js';
+import { filesQueryTool } from './files-query.js';
+import { filesMutationTool } from './files-mutation.js';
+import { feedbackQueryTool } from './feedback-query.js';
 
 // ─── Catalog ─────────────────────────────────────────────
 
@@ -59,7 +61,6 @@ const CORE_TOOL_MODULES: ToolModule[] = [
   projectMutationTool,
   computeTool,
   sessionQueryTool,
-  spawnSessionTool,
   taskCaptureTool,
   readAttachmentTool,
   callLlmTool,
@@ -79,6 +80,9 @@ const CORE_TOOL_MODULES: ToolModule[] = [
   logFrictionTool,
   workbenchQueryTool,
   workbenchMutationTool,
+  filesQueryTool,
+  filesMutationTool,
+  feedbackQueryTool,
 ];
 
 /** Static tools (constructed once from the shared db) — drives createToolRegistry. */

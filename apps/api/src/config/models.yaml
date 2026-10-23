@@ -86,7 +86,7 @@ models:
 #
 # There is no `default` here: the default is the agent's own `model.id`
 # (profiles/sprouty.yaml), which is also what every headless path uses —
-# scheduled tasks and spawned sub-sessions never send a model.
+# scheduled tasks never send a model.
 chat:
   selectable:
     - flash

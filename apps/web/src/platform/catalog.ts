@@ -112,25 +112,3 @@ export function platformApplicationIcon(application: PlatformApplication): Lucid
   const firstModule = Object.values(application.modules)[0];
   return (firstModule?.icon && ICONS[firstModule.icon]) || LayoutGrid;
 }
-
-export const PRIMARY_NAV_APPLICATION_IDS = ['knowledge', 'projects', 'tables'] as const;
-
-/**
- * Stable shell tabs are deliberately separate from personal workbench order,
- * pins, and hidden cards. Authorization still comes exclusively from the
- * server-filtered catalog; this function only chooses which authorized apps
- * receive a permanent top-level tab.
- */
-export function selectPrimaryNavigationApplications(
-  applications: readonly PlatformApplication[],
-): PlatformApplication[] {
-  const byId = new Map(
-    applications
-      .filter((application) => platformApplicationHref(application))
-      .map((application) => [application.id, application]),
-  );
-  return PRIMARY_NAV_APPLICATION_IDS.flatMap((appId) => {
-    const application = byId.get(appId);
-    return application ? [application] : [];
-  });
-}

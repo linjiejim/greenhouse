@@ -28,7 +28,6 @@ import { toErrorMessage } from '@greenhouse/utils/error';
 import type { AppEnv } from '../app-env.js';
 import { getAuthUser, type AuthUser } from '../auth/middleware.js';
 import { delegateAutomationRuntimeCancel, settleQueuedAutomationCancellation } from '../scheduler/runtime-driver.js';
-import { delegateSubagentRuntimeCancel, settleQueuedSubagentCancellation } from '../runtime/subagent-driver.js';
 import {
   requireTrustedExecutionSurface,
   resolveTrustedExecutionSwitches,
@@ -83,7 +82,6 @@ function decodeCursor(raw: string | undefined): Cursor | undefined {
 
 function supportedActions(run: RuntimeRunRow): RuntimeUserAction[] {
   if (run.kind === 'automation' && run.source_kind.startsWith('scheduled_task:')) return ['cancel'];
-  if (run.kind === 'subagent' && run.source_kind === 'spawned_session') return ['cancel'];
   return [];
 }
 
@@ -127,6 +125,7 @@ async function canAccessRunSource(user: AuthUser, run: RuntimeRunRow): Promise<b
     return run.kind === 'mission' && run.source_kind === 'agent_run';
   }
   if (run.kind === 'automation') return run.source_kind.startsWith('scheduled_task:');
+  // Sub-sessions were retired in 1.5; their historical runs stay readable by the owner.
   if (run.kind === 'subagent') return run.source_kind === 'spawned_session';
   // An external agent's write belongs to the member it acted for.
   if (run.kind === 'agent_write') return run.source_kind === 'proxy_call';
@@ -175,10 +174,6 @@ async function ownedRun(c: Context<AppEnv>, id: string) {
 async function delegateRunCommand(run: RuntimeRunRow, type: RuntimeRunCommandType, mayDrive: boolean): Promise<void> {
   if (run.kind === 'automation' && run.source_kind.startsWith('scheduled_task:')) {
     await delegateAutomationRuntimeCancel(getDb(), run, type, mayDrive);
-    return;
-  }
-  if (run.kind === 'subagent' && run.source_kind === 'spawned_session') {
-    await delegateSubagentRuntimeCancel(getDb(), run, type, mayDrive);
     return;
   }
   throw new RuntimeKernelError('runtime_invalid_transition', `Runtime source ${run.source_kind} has no command driver`);
@@ -292,8 +287,6 @@ export const runtimeRoutes = new Hono<AppEnv>()
       let commandedRun = fenced.run;
       if (command.type === 'cancel' && commandedRun.kind === 'automation') {
         commandedRun = await settleQueuedAutomationCancellation(getDb(), commandedRun, user.id);
-      } else if (command.type === 'cancel' && commandedRun.kind === 'subagent') {
-        commandedRun = await settleQueuedSubagentCancellation(getDb(), commandedRun, user.id);
       }
       return c.json({ run: runView(commandedRun), ...(fenced.idempotent ? { idempotent: true } : {}) });
     } catch (error) {

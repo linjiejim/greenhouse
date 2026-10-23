@@ -41,6 +41,7 @@ const CLIENT_LABELS: Record<string, TranslationKey> = {
 };
 
 const MODULE_LABELS: Record<string, TranslationKey> = {
+  home: 'usage.modules.moduleNames.home',
   chat: 'usage.modules.moduleNames.chat',
   knowledge: 'usage.modules.moduleNames.knowledge',
   projects: 'usage.modules.moduleNames.projects',
@@ -49,7 +50,10 @@ const MODULE_LABELS: Record<string, TranslationKey> = {
   tasks: 'usage.modules.moduleNames.tasks',
   agents: 'usage.modules.moduleNames.agents',
   skillhub: 'usage.modules.moduleNames.skillhub',
+  activity: 'usage.modules.moduleNames.activity',
+  // Retired in 1.5 (became the Activity log); recorded counts still read back.
   executions: 'usage.modules.moduleNames.executions',
+  files: 'usage.modules.moduleNames.files',
   'session-tags': 'usage.modules.moduleNames.sessionTags',
   'session-groups': 'usage.modules.moduleNames.sessionGroups',
 };

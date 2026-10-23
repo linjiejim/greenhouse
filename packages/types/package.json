@@ -99,6 +99,14 @@
     "./usage": {
       "import": "./src/usage.ts",
       "types": "./src/usage.ts"
+    },
+    "./files": {
+      "import": "./src/files.ts",
+      "types": "./src/files.ts"
+    },
+    "./activity": {
+      "import": "./src/activity.ts",
+      "types": "./src/activity.ts"
     }
   },
   "scripts": {

@@ -1,6 +1,7 @@
 import type { RuntimeJsonValue, RuntimeRun, RuntimeRunKind } from '@greenhouse/types/runtime';
 
-export const EXECUTIONS_ROOT_HASH = '#/executions';
+/** The Activity log (操作记录) — what the Execution Center became in v1.5. Run details live below it. */
+export const ACTIVITY_ROOT_HASH = '#/activity';
 
 export type ExecutionRouteKind = Exclude<RuntimeRunKind, 'chat'>;
 
@@ -16,7 +17,7 @@ export function isExecutionRouteKind(value: unknown): value is ExecutionRouteKin
 }
 
 export function executionRunHref(run: Pick<RuntimeRun, 'id' | 'kind'>): string {
-  return `${EXECUTIONS_ROOT_HASH}/${run.kind}/${encodeURIComponent(run.id)}`;
+  return `${ACTIVITY_ROOT_HASH}/${run.kind}/${encodeURIComponent(run.id)}`;
 }
 
 /** Mission Runtime ids are deterministic (`rtm_<agent_run id>`); old Mission links resolve through it. */
@@ -59,7 +60,7 @@ export function executionNotificationHref(runId: string, payload: RuntimeJsonVal
     isExecutionRouteKind(payload.runtime_kind)
       ? payload.runtime_kind
       : null;
-  return kind ? executionRunHref({ id: runId, kind }) : `${EXECUTIONS_ROOT_HASH}/${encodeURIComponent(runId)}`;
+  return kind ? executionRunHref({ id: runId, kind }) : `${ACTIVITY_ROOT_HASH}/${encodeURIComponent(runId)}`;
 }
 
 function decodeSegment(segment: string | undefined): string | null {
@@ -87,15 +88,16 @@ export function legacyExecutionRedirect(hash: string): string | null {
   const segments = path.split('/').filter(Boolean);
   const root = segments[0];
 
-  if (root === 'task-center') {
+  // v1.5: the Execution Center became the Activity log; list and run details keep working.
+  if (root === 'executions' || root === 'task-center') {
     const tail = segments.slice(1).join('/');
-    return withQuery(`${EXECUTIONS_ROOT_HASH}${tail ? `/${tail}` : ''}`, query);
+    return withQuery(`${ACTIVITY_ROOT_HASH}${tail ? `/${tail}` : ''}`, query);
   }
 
   // Runtime details briefly lived below #/tasks before that URL returned to
-  // personal Prompt Tasks.
+  // personal Prompt Tasks (now the SkillHub › My prompts tab).
   if (root === 'tasks' && isExecutionRouteKind(segments[1]) && segments[2]) {
-    return withQuery(`${EXECUTIONS_ROOT_HASH}/${segments.slice(1).join('/')}`, query);
+    return withQuery(`${ACTIVITY_ROOT_HASH}/${segments.slice(1).join('/')}`, query);
   }
 
   if (root !== 'missions' && root !== 'cloud-agent') return null;
@@ -107,5 +109,5 @@ export function legacyExecutionRedirect(hash: string): string | null {
 
   const params = new URLSearchParams(query);
   params.set('kind', 'mission');
-  return `${EXECUTIONS_ROOT_HASH}?${params.toString()}`;
+  return `${ACTIVITY_ROOT_HASH}?${params.toString()}`;
 }

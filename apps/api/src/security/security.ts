@@ -82,20 +82,15 @@ const DEFAULT_CORS_ORIGINS = [
   // Local dev
   'http://localhost:3000',
   'http://127.0.0.1:3000',
-  // Vite dev server. A browser at :3100 reaches the API through Vite's proxy and is
-  // same-origin, but `tauri dev` loads that same URL while pointing at a *remote*
-  // API base, which makes those calls genuinely cross-origin.
+  // Vite dev server. A browser at :3100 normally reaches the API through Vite's
+  // proxy (same-origin); a build with GREENHOUSE_API_BASE_URL pointed elsewhere
+  // makes those calls genuinely cross-origin.
   'http://localhost:3100',
   'http://127.0.0.1:3100',
   // Expo Web mobile client uses a fixed dev port. Keep both loopback spellings
   // explicit so nearby ports and non-loopback hosts remain denied.
   'http://localhost:8090',
   'http://127.0.0.1:8090',
-  // Desktop shell (apps/desktop). It serves the web bundle from a custom scheme so
-  // that hot updates keep a stable origin, which makes every API call cross-origin.
-  // These two are fixed, non-web-reachable origins — the allowlist stays closed.
-  'greenhouse://localhost', // macOS / Linux
-  'http://greenhouse.localhost', // Windows maps custom schemes onto http://<scheme>.localhost
 ];
 
 function getAllowedCorsOrigins(): Set<string> {

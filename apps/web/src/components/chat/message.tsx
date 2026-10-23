@@ -370,9 +370,6 @@ function MessageBubbleImpl(props: MessageProps) {
               onAskUserSubmit,
               askUserSubmitted: hasFollowUpUserMessage,
               askUserSubmittedMessage: submittedUserMessage,
-              onOpenSession: (id) => {
-                window.location.hash = `#/chat?session=${id}`;
-              },
             }}
           />
         )}
@@ -428,9 +425,6 @@ function MessageBubbleImpl(props: MessageProps) {
               onAskUserSubmit,
               askUserSubmitted: hasFollowUpUserMessage,
               askUserSubmittedMessage: submittedUserMessage,
-              onOpenSession: (id) => {
-                window.location.hash = `#/chat?session=${id}`;
-              },
             }}
           />
         )}

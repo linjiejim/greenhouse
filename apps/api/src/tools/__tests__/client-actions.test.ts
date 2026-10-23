@@ -57,9 +57,8 @@ describe('sanitizeClientActions', () => {
   });
 
   it('warns when the cap drops actions, naming what was lost', async () => {
-    // The desktop's native capabilities plus the browser bridge already claim 20 of
-    // the 32 slots, so hitting the cap silently means screenshot/selection/clipboard
-    // can disappear from the model's tool list with nothing to explain it.
+    // Hitting the cap silently would make actions disappear from the model's tool
+    // list with nothing to explain it.
     const { logger } = await import('@greenhouse/utils/logger');
     const warn = vi.spyOn(logger, 'warn').mockImplementation(() => {});
     try {

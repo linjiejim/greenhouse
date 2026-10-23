@@ -7,7 +7,7 @@
  * scheduler/task-center.ts, shared with the HTTP routes. Reachable over the
  * cloud proxy mutating allowlist (confirm:true per call) and MCP.
  *
- * Denied in unattended contexts (scheduled runs, spawned sub-sessions): nobody is
+ * Denied in unattended contexts (scheduled runs): nobody is
  * there to confirm, and an automation that can create automations multiplies.
  */
 

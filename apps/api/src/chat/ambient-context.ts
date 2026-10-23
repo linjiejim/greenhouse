@@ -8,8 +8,8 @@
 import { AMBIENT_CONTEXT_LIMITS, type AmbientContextEnvelope } from '@greenhouse/types/agent-context';
 import { sanitizeForPrompt } from '../security/security.js';
 
-// Shared with the clients that build the envelope (web context providers, the
-// browser extension), so they can size page content instead of being cut here.
+// Shared with the clients that build the envelope (web context providers), so
+// they can size page content instead of being cut here.
 const MAX_SCOPE_LENGTH = AMBIENT_CONTEXT_LIMITS.scopeId;
 const MAX_LABEL_LENGTH = AMBIENT_CONTEXT_LIMITS.label;
 const MAX_ROUTE_LENGTH = AMBIENT_CONTEXT_LIMITS.route;

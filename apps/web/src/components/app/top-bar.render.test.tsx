@@ -10,14 +10,9 @@ import { I18nProvider } from '../../lib/i18n';
 import { useSidePaneStore } from '../../stores/side-pane-store';
 import { ChatTopBarSessionActions, EditableChatTitle, TopBar } from './top-bar';
 
-vi.mock('../../lib/api', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('../../lib/api')>()),
-  listSessionTags: vi.fn().mockResolvedValue([]),
-}));
-
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-function renderTopBar(route: 'chat' | 'projects' | 'executions' | 'tasks') {
+function renderTopBar(route: 'chat' | 'projects' | 'activity' | 'skillhub') {
   return renderToStaticMarkup(
     createElement(I18nProvider, {
       initialLocale: 'en',
@@ -48,14 +43,14 @@ describe('TopBar mobile chat actions', () => {
     expect(html).not.toContain('aria-label="Session history"');
   });
 
-  it('names the durable work page Execution Center rather than the prompt library', () => {
-    const html = renderTopBar('executions');
-    expect(html).toContain('>Execution Center<');
+  it('names the change record Activity log rather than the prompt library', () => {
+    const html = renderTopBar('activity');
+    expect(html).toContain('>Activity log<');
     expect(html).not.toContain('>Prompts<');
   });
 
-  it('names the independent prompt library Tasks', () => {
-    expect(renderTopBar('tasks')).toContain('>Tasks<');
+  it('names SkillHub, which now also hosts the prompt library', () => {
+    expect(renderTopBar('skillhub')).toContain('>SkillHub<');
   });
 
   it('renders sharing as an icon-only conversation action', () => {

@@ -1,14 +1,12 @@
 /**
  * Confirmation gate for agent-initiated actions.
  *
- * Two callers share it: `safety: 'confirm'` client actions, and browser
- * automation writes that the desktop's policy decided to ask about. Both are
- * "the agent wants to do something to the user's stuff" and both must look the
- * same, so there is one queue and one dialog.
+ * `safety: 'confirm'` client actions ask here before they run: one queue and one
+ * dialog (`ActionConfirmDialog`), so a burst of actions can't bury one prompt
+ * under another.
  *
  * A module-level store rather than React state because `executeClientAction`
- * and the bridge listener both run outside the component tree — same shape as
- * `desktop/capabilities.ts`.
+ * runs outside the component tree.
  */
 
 export interface ConfirmationPrompt {
@@ -17,31 +15,11 @@ export interface ConfirmationPrompt {
   description?: string;
   /** Why this needs confirming, e.g. 'will submit a form'. Rendered as a list. */
   reasons?: string[];
-  /**
-   * Host to offer a "don't ask again for this site" grant for. That grant is
-   * conversation-scoped and never persisted — see the bridge listener.
-   */
-  siteLabel?: string;
-  /**
-   * Whether to also offer permanent trust for `siteLabel`. Only the browser
-   * bridge sets this: a generic client action has no host to trust.
-   */
-  offerPermanentTrust?: boolean;
   confirmLabel?: string;
 }
 
 export interface ConfirmationOutcome {
   allowed: boolean;
-  /** True when the user chose the "allow for this site" affordance. */
-  rememberSite: boolean;
-  /**
-   * True when the user chose to trust the site permanently (the YOLO list).
-   *
-   * Distinct from `rememberSite`, which lapses with the connection. Permanently
-   * disarming the gate for a host is a decision worth its own answer rather than
-   * a stronger version of "yes".
-   */
-  trustSiteAlways?: boolean;
 }
 
 interface QueuedPrompt {
@@ -86,7 +64,7 @@ export function resolveConfirmation(id: string, outcome: ConfirmationOutcome): v
  */
 export function declineAllConfirmations(): void {
   const pending = queue.splice(0, queue.length);
-  pending.forEach((entry) => entry.resolve({ allowed: false, rememberSite: false, trustSiteAlways: false }));
+  pending.forEach((entry) => entry.resolve({ allowed: false }));
   notify();
 }
 

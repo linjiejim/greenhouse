@@ -59,10 +59,12 @@ Write in English, but quote identifiers, field names, values and error strings E
   builtin: true,
   icon: 'MessageSquareWarning',
   runtime_risk: 'r1',
-  // No `surface` for now: a write into a team-wide table from a stateless
-  // caller, with nothing for the per-call confirm gate to mean. Chat, scheduled
-  // tasks and subagents can log; /api/agent and /api/mcp cannot (revisit if the
-  // sandbox's frictions turn out to be the ones worth having).
+  // v1.5: members' agents report their stumbles too. Over MCP each note is a
+  // recorded write naming the member and the agent's client; the row itself
+  // stays team-wide (no user column), and there is still no read action.
+  surface: { proxy: 'write', mcp: 'feedback' },
+  // Not additive in MCP's sense: logging an obstacle seen before replaces the
+  // stored detail and reopens a resolved entry, so it stays destructiveHint:true.
   sort_order: 38,
 };
 

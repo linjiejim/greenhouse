@@ -77,7 +77,7 @@ describe('page-scoped client action registry', () => {
   });
 
   it('advertises global capabilities through the active page scope', () => {
-    const globalAction = { ...action, name: 'desktop_read_selection' };
+    const globalAction = { ...action, name: 'app_read_selection' };
     const unregister = registerClientAction(GLOBAL_CLIENT_ACTION_SCOPE, globalAction);
 
     expect(snapshotClientActions('page:chat')).toContainEqual({

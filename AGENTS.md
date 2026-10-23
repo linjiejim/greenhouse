@@ -192,8 +192,7 @@ Full runbook: **[RELEASING.md](./RELEASING.md)**. The conventions an agent must 
   named itself (`<prefix>_YYYYmmdd_HHMMSS.sql.gz`, newest 7 + 8 Sundays). Every deployment's cron
   runs this script (`PG_CONTAINER` / `PG_DB` / `PG_USER` / `BACKUP_PREFIX`), never an ad-hoc
   `pg_dump | gzip` line — that is how an instance once shipped 20-byte dumps for two months.
-- **Artifacts.** API+web = the container image (primary). Browser = versioned zip
-  (`pnpm -F @greenhouse/browser package`). Mobile = fingerprint CD
+- **Artifacts.** API+web = the container image (primary). Mobile = fingerprint CD
   (`.github/workflows/mobile.yml`, `EXPO_TOKEN`-gated): JS-only change → EAS OTA update;
   native change → EAS build `--auto-submit`. The mobile `version` follows the product version
   (release-please `extra-files`). **On this line nothing mobile publishes before 3.0** (the store
@@ -234,8 +233,6 @@ greenhouse/
 │   │       └── cli/          # `pnpm cli` console: index.ts dispatcher + commands/*
 │   ├── web/              # React SPA — pages (administration/, settings/, executions/, …), components,
 │   │                     #   lib, stores, platform catalog, extensions/ (web half of the seam)
-│   ├── browser/          # Chrome extension (MV3) — side panel + options; see its src/AGENTS.md
-│   ├── desktop/          # Tauri shell — apps/web as a macOS/Windows app + native capture; features live in web, see apps/desktop/AGENTS.md
 │   └── mobile/           # Expo (React Native) app — NOT a workspace member; see its AGENTS.md
 ├── packages/
 │   ├── agent-core/       # Agent kernel — streamText loop, model factory/registry, provider quirks
@@ -245,7 +242,6 @@ greenhouse/
 │   ├── db/               # database layer — Drizzle schema + domain services (types inferred)
 │   ├── knowledge-editor/ # Tiptap schema + server Markdown↔Tiptap JSON
 │   ├── crud/             # low-code CRUD framework (defineCrud + CrudPage / createCrudRoutes)
-│   ├── ui/               # shared presentational UI kit (React) — used by the browser extension
 │   └── contract/         # typed API contract — re-exports apps/api's AppType + hc (web client)
 ├── skillhub/             # first-party skill packs (synced into the Skill Center on boot)
 ├── drizzle/              # migration files (single source of truth for the schema)
@@ -266,12 +262,9 @@ greenhouse/
 | `@greenhouse/db` | `packages/db/` | Database layer |
 | `@greenhouse/knowledge-editor` | `packages/knowledge-editor/` | KB editor: Tiptap schema + Markdown↔Tiptap JSON. Markdown is canonical; `content_json='{}'` is legal |
 | `@greenhouse/crud` | `packages/crud/` | Low-code CRUD — `defineCrud` + `CrudPage` client, `createCrudRoutes` server, shared wire protocol |
-| `@greenhouse/ui` | `packages/ui/` | Shared UI kit (React, presentational only — no stores/router) |
 | `@greenhouse/contract` | `packages/contract/` | Typed API contract (AppType + hc; **type-only import of `@greenhouse/api`**) |
 | `@greenhouse/api` | `apps/api/` | Backend app |
 | `@greenhouse/web` | `apps/web/` | Frontend app |
-| `@greenhouse/browser` | `apps/browser/` | Chrome extension (MV3) — consumes `@greenhouse/ui` |
-| `@greenhouse/desktop` | `apps/desktop/` | Tauri desktop shell (Rust + `tauri.conf.json`; the web side is `apps/web/src/lib/desktop/`). Configured per deployment through `GREENHOUSE_DESKTOP_*` build-time variables, never by editing the crate |
 | `@greenhouse/mobile` | `apps/mobile/` | Expo team-hub app (SDK 57) — **not** a workspace member (own lockfile, `pnpm mobile:install`); vendors its types (`src/shared/push.ts` is parity-tested against `@greenhouse/types/push`) |
 
 ### Import conventions
@@ -328,9 +321,10 @@ greenhouse/
   - A database no server has booted against (a fresh test database) gets the core chain from
     `drizzle-kit migrate` and the extension lane from
     `DATABASE_URL=… pnpm tsx scripts/apply-ext-migrations.mjs`.
-- **Client stations**: `clients.stations` (`multi` | `single` + `defaults`) is read by the browser
-  extension at build time; the mobile app mirrors it through `EXPO_PUBLIC_STATIONS_MODE` /
-  `EXPO_PUBLIC_API_BASE_URL` (see `apps/mobile/AGENTS.md`).
+- **Client stations**: `clients.stations` (`multi` | `single` + `defaults`) describes how client
+  builds treat servers. Since the browser extension (its build-time reader) was removed in 1.5,
+  no code reads it; the mobile app mirrors it through `EXPO_PUBLIC_STATIONS_MODE` /
+  `EXPO_PUBLIC_API_BASE_URL` (see `apps/mobile/AGENTS.md`). Kept so deployment configs stay valid.
 
 ## Domain rules
 
@@ -342,8 +336,6 @@ Detailed rules live next to the code:
 | Backend API | [apps/api/src/AGENTS.md](./apps/api/src/AGENTS.md) | Routes, auth, security, tool system, proxy/MCP, runtime, integrations |
 | Frontend | [apps/web/src/AGENTS.md](./apps/web/src/AGENTS.md) | Design system, components, styling, i18n, platform navigation |
 | Settings pages | [apps/web/src/pages/settings/AGENTS.md](./apps/web/src/pages/settings/AGENTS.md) | Settings / Administration modules, CRUD page conventions |
-| Browser extension | [apps/browser/src/AGENTS.md](./apps/browser/src/AGENTS.md) | MV3 lifecycle, stations, token refresh |
-| Desktop shell | [apps/desktop/AGENTS.md](./apps/desktop/AGENTS.md) | Tauri shell: hot updates (two version lines), deployment variables, native capabilities, signing |
 | Mobile | [apps/mobile/AGENTS.md](./apps/mobile/AGENTS.md) | Expo team-hub app — workspace isolation, vendored types, API level, push, cache-first data, theme/i18n rules |
 | Agent profiles | [apps/api/src/profiles/agent-profiles.md](./apps/api/src/profiles/agent-profiles.md) | Profiles, model switching, tool scoping |
 | LLM / Agent kernel | `packages/agent-core/` + `apps/api/src/llm/` | Kernel (model factory/registry, chat-engine) in the package; completion/title/memory/budget consumers in api |
@@ -437,8 +429,10 @@ dialog (`apps/web/src/pages/administration/user-permissions-modal.tsx`) renders 
 - Projects, Knowledge and Tables are registered applications. New applications start from
   `pnpm cli platform create-app <id> --title "..."`; an app without a web UI may stay
   Agent/MCP-only. The web catalog and the fixed shell navigation
-  (`Chat → Knowledge → Projects → Tables → More`) derive from the user's authorized catalog;
-  durable execution tracking lives in the execution center (`#/executions`).
+  (by goal: `Home → Knowledge → Files → Tables → Projects → SkillHub → Automations → Chat`, see
+  apps/web/src/AGENTS.md) derive from the user's authorized catalog;
+  who changed what (people, their agents, automations, admins) lives in the Activity log (`#/activity`,
+  formerly the execution center; `#/executions` redirects).
 
 ### Workspace settings (DB-backed, admin-editable deployment config)
 

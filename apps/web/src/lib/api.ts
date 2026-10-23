@@ -29,8 +29,6 @@ export type {
   ShareInfo,
   ScheduledTask,
   ScheduledTaskInput,
-  SessionTag,
-  SessionGroup,
 } from '@greenhouse/types/api';
 
 export { formatTokens, formatDuration } from '@greenhouse/types/api';
@@ -51,24 +49,3 @@ export * from './api/prompts';
 export * from './api/email';
 export * from './api/chat'; // streaming + Client Action result surface — raw authFetch
 export * from './api/upload'; // FormData — raw authFetch
-
-// Session tag API functions (hc-typed)
-export {
-  listSessionTags,
-  createSessionTag,
-  updateSessionTag,
-  deleteSessionTag,
-  reorderSessionTags,
-  addTagToSession,
-  removeTagFromSession,
-} from './api/session-tags';
-
-// Session group (folder) API functions (hc-typed)
-export {
-  listSessionGroups,
-  createSessionGroup,
-  updateSessionGroup,
-  deleteSessionGroup,
-  reorderSessionGroups,
-  reorderGroupMembers,
-} from './api/session-groups';

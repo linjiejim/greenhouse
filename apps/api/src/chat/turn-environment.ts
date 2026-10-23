@@ -2,10 +2,8 @@
  * The optional browser environment of one chat turn — the ambient page context
  * and the Client Actions a POST /api/chat body advertises — admitted here.
  *
- * Kept out of the route so the browser-extension contract test runs the exact
- * rule a real turn does (tests/browser/chat-contract.test.ts). A client that
- * stops meeting it loses its actions without any error, which is how the
- * extension went months without its browser tools.
+ * Kept out of the route so it can be tested on its own. A client that stops
+ * meeting it loses its actions without any error.
  */
 
 import { AMBIENT_CONTEXT_LIMITS, type AmbientContextEnvelope } from '@greenhouse/types/agent-context';

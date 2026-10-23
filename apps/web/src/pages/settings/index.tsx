@@ -8,7 +8,6 @@
  * - Preferences + Cloud (one flat block): Preferences, Groups, Agent Connections,
  *   Connections, Email Accounts
  * - Labs (feature-gated): Memory
- * - Desktop: installer download in a browser, native controls inside the shell
  *
  * Personal Chat utilities (Automation, Tasks, My Agents) render inside
  * the Chat workspace and are intentionally absent from Settings.
@@ -21,7 +20,6 @@ import { isNavModuleActive, settingsAllModules } from '../../lib/nav-registry';
 import { extensionModuleComponent } from '../../extensions';
 import { useExtensionsStore } from '../../stores/extensions-store';
 import { canUseFeature } from '../../lib/features';
-import { isDesktop } from '../../lib/desktop';
 import type { NavModule } from '../../lib/nav-registry';
 
 // Sub-panels
@@ -31,7 +29,6 @@ import { EmailAccountsPanel } from './email-accounts';
 import { MemoryPanel } from './memory';
 import { GroupsPanel } from './groups';
 import { AgentAccessPanel } from './agent-access';
-import { DesktopPanel } from './desktop';
 import { DEFAULT_MODULE, resolveSettingsRedirect } from './redirects';
 
 // ─── Sub-module helpers ─────────────────────────────────
@@ -66,8 +63,7 @@ export function SettingsPage({ subPath }: { subPath: string }) {
   const canViewModule = (mod: NavModule) => {
     const roleAllowed = !mod.requireRole || (mod.requireRole.includes('super') && currentUser?.role === 'super');
     const featureAllowed = !mod.requireFeature || canUseFeature(currentUser, mod.requireFeature);
-    const desktopAllowed = !mod.requireDesktop || isDesktop();
-    return roleAllowed && featureAllowed && desktopAllowed;
+    return roleAllowed && featureAllowed;
   };
   const visibleModules = ALL_MODULES.filter((mod) => canViewModule(mod) && isNavModuleActive(mod, activeExtensions));
   const extensionModule = extensionModuleComponent('settings', moduleKey);
@@ -87,7 +83,6 @@ export function SettingsPage({ subPath }: { subPath: string }) {
       {effectiveModule === 'email-accounts' && <EmailAccountsPanel />}
       {effectiveModule === 'groups' && <GroupsPanel />}
       {effectiveModule === 'memory' && <MemoryPanel />}
-      {effectiveModule === 'desktop' && <DesktopPanel />}
       {extensionModule && effectiveModule === moduleKey && <extensionModule.component />}
     </ModulePageShell>
   );

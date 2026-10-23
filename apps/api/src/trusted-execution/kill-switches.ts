@@ -15,7 +15,6 @@ export const TRUSTED_EXECUTION_SWITCH_ENV = {
   chatAdapter: 'RUNTIME_CHAT_ADAPTER_ENABLED',
   runtimeWorker: 'RUNTIME_WORKER_ENABLED',
   automationDriver: 'RUNTIME_AUTOMATION_DRIVER_ENABLED',
-  subagentDriver: 'RUNTIME_SUBAGENT_DRIVER_ENABLED',
   notificationProjector: 'RUNTIME_NOTIFICATION_PROJECTOR_ENABLED',
   taskCenter: 'TASK_CENTER_ENABLED',
   approvalInbox: 'RUNTIME_APPROVAL_INBOX_ENABLED',
@@ -25,7 +24,6 @@ export interface TrustedExecutionSwitches {
   chatAdapter: boolean;
   runtimeWorker: boolean;
   automationDriver: boolean;
-  subagentDriver: boolean;
   notificationProjector: boolean;
   taskCenter: boolean;
   approvalInbox: boolean;
@@ -37,7 +35,6 @@ export interface TrustedExecutionBootPlan {
   runtimeWorker: boolean;
   chatAdapter: boolean;
   automationDriver: boolean;
-  subagentDriver: boolean;
   notificationProjector: boolean;
   taskCenter: boolean;
   approvalInbox: boolean;
@@ -68,7 +65,6 @@ export function resolveTrustedExecutionSwitches(env: Environment = process.env):
     chatAdapter: defaultOnSwitch(env, TRUSTED_EXECUTION_SWITCH_ENV.chatAdapter, invalidEnv),
     runtimeWorker: defaultOnSwitch(env, TRUSTED_EXECUTION_SWITCH_ENV.runtimeWorker, invalidEnv),
     automationDriver: defaultOnSwitch(env, TRUSTED_EXECUTION_SWITCH_ENV.automationDriver, invalidEnv),
-    subagentDriver: defaultOnSwitch(env, TRUSTED_EXECUTION_SWITCH_ENV.subagentDriver, invalidEnv),
     notificationProjector: defaultOnSwitch(env, TRUSTED_EXECUTION_SWITCH_ENV.notificationProjector, invalidEnv),
     taskCenter: defaultOnSwitch(env, TRUSTED_EXECUTION_SWITCH_ENV.taskCenter, invalidEnv),
     approvalInbox: defaultOnSwitch(env, TRUSTED_EXECUTION_SWITCH_ENV.approvalInbox, invalidEnv),
@@ -82,7 +78,6 @@ export function trustedExecutionBootPlan(switches: TrustedExecutionSwitches): Tr
     runtimeWorker: switches.runtimeWorker,
     chatAdapter: switches.chatAdapter,
     automationDriver: switches.runtimeWorker && switches.automationDriver,
-    subagentDriver: switches.runtimeWorker && switches.subagentDriver,
     notificationProjector: switches.runtimeWorker && switches.notificationProjector,
     taskCenter: switches.taskCenter,
     approvalInbox: switches.taskCenter && switches.approvalInbox,
@@ -94,15 +89,6 @@ export function runtimeAdapterEnabled(
   switches: TrustedExecutionSwitches = resolveTrustedExecutionSwitches(),
 ): boolean {
   return kind === 'chat' && switches.chatAdapter;
-}
-
-export function runtimeDriverEnabled(
-  kind: 'automation' | 'subagent',
-  switches: TrustedExecutionSwitches = resolveTrustedExecutionSwitches(),
-): boolean {
-  const plan = trustedExecutionBootPlan(switches);
-  if (kind === 'automation') return plan.automationDriver;
-  return plan.subagentDriver;
 }
 
 type GuardedSurface = 'task-center' | 'approval-inbox';
@@ -141,7 +127,6 @@ export function trustedExecutionHealthView(switches: TrustedExecutionSwitches) {
     services: {
       runtime_worker: effective.runtimeWorker,
       automation_driver: effective.automationDriver,
-      subagent_driver: effective.subagentDriver,
       notification_projector: effective.notificationProjector,
       notification_delivery: effective.notificationProjector,
     },

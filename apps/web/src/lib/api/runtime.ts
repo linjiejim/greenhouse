@@ -1,4 +1,4 @@
-/** Typed Runtime control-plane client for Execution Center and its Approval Inbox read model. */
+/** Runtime run detail client — the page behind an agent write or an automation in the Activity log. */
 
 import type {
   RuntimeArtifact,
@@ -6,39 +6,12 @@ import type {
   RuntimeInterrupt,
   RuntimeRun,
   RuntimeRunCommandType,
-  RuntimeRunKind,
   RuntimeStep,
   RuntimeToolCall,
   RuntimeUserAction,
   RuntimeUserProjection,
 } from '@greenhouse/types/runtime';
-import { fetchJson, qs } from '../http';
-
-export type RuntimeScope = 'own' | 'all';
-
-export interface RuntimeRunListPage {
-  runs: RuntimeRun[];
-  next_cursor: string | null;
-}
-
-export interface RuntimeInterruptListItem {
-  interrupt: RuntimeInterrupt;
-  run: RuntimeRun;
-}
-
-export interface RuntimeInterruptListPage {
-  items: RuntimeInterruptListItem[];
-  next_cursor: string | null;
-}
-
-export interface RuntimeSummary {
-  runs: {
-    total: number;
-    by_status: Record<string, number>;
-    by_kind: Record<string, number>;
-  };
-  pending_interrupts: number;
-}
+import { fetchJson } from '../http';
 
 export interface RuntimeRunDetail {
   run: RuntimeRun;
@@ -54,59 +27,16 @@ export interface RuntimeRunDetail {
   };
 }
 
-interface RuntimeListOptions {
-  scope?: RuntimeScope;
-  kinds?: readonly RuntimeRunKind[];
-  cursor?: string | null;
-  limit?: number;
-}
-
-function runtimeKinds(kinds: readonly RuntimeRunKind[] | undefined): string | undefined {
-  return kinds?.join(',');
-}
-
 function commandKey(subject: string, action: string): string {
   const nonce = globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
   return `web:${subject}:${action}:${nonce}`;
 }
 
-export async function listRuntimeRuns(options: RuntimeListOptions = {}): Promise<RuntimeRunListPage> {
-  const query = qs({
-    scope: options.scope ?? 'own',
-    kinds: runtimeKinds(options.kinds),
-    cursor: options.cursor ?? undefined,
-    limit: options.limit === undefined ? undefined : String(options.limit),
-  });
-  // This single route branch makes hc instantiate the entire deeply chained
-  // Runtime contract and exceeds TypeScript's recursion limit. Keep the shared
-  // wire types explicit here and use the repository HTTP helper until Hono can
-  // infer this branch without TS2589; authentication/error handling is unchanged.
-  return fetchJson<RuntimeRunListPage>(`/api/runtime/runs${query}`);
-}
-
+// The Runtime branch makes hc instantiate the entire deeply chained contract and
+// exceeds TypeScript's recursion limit (TS2589), so these stay on the repository
+// HTTP helper with the shared wire types; authentication and errors are unchanged.
 export async function getRuntimeRun(runId: string): Promise<RuntimeRunDetail> {
   return fetchJson<RuntimeRunDetail>(`/api/runtime/runs/${encodeURIComponent(runId)}`);
-}
-
-export async function listRuntimeInterrupts(
-  options: RuntimeListOptions & { status?: RuntimeInterrupt['status'] } = {},
-): Promise<RuntimeInterruptListPage> {
-  const query = qs({
-    scope: options.scope ?? 'own',
-    kinds: runtimeKinds(options.kinds),
-    status: options.status ?? 'pending',
-    cursor: options.cursor ?? undefined,
-    limit: options.limit === undefined ? undefined : String(options.limit),
-  });
-  return fetchJson<RuntimeInterruptListPage>(`/api/runtime/interrupts${query}`);
-}
-
-export async function getRuntimeSummary(options: RuntimeListOptions = {}): Promise<RuntimeSummary> {
-  const query = qs({
-    scope: options.scope ?? 'own',
-    kinds: runtimeKinds(options.kinds),
-  });
-  return fetchJson<RuntimeSummary>(`/api/runtime/summary${query}`);
 }
 
 export async function commandRuntimeRun(

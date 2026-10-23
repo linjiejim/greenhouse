@@ -52,9 +52,9 @@ export default defineConfig({
 - **`packs`** — content, not code: skill packs, profile YAMLs and a seed dataset that live outside
   the repository (a fork's `packs/` folder, a mounted volume). Paths are absolute or relative to
   the repository root.
-- **`clients.stations`** — how the browser extension and the mobile app treat servers. `multi`
-  (default) lets users add and switch stations; `single` locks a client build to the one station in
-  `defaults`. See `apps/browser/src/AGENTS.md` and `apps/mobile/AGENTS.md` for the build wiring.
+- **`clients.stations`** — how client builds treat servers. `multi` (default) lets users add and
+  switch stations; `single` locks a client build to the one station in `defaults`. The mobile app
+  mirrors it at build time; see `apps/mobile/AGENTS.md` for the wiring.
 
 ## Extensions
 
@@ -221,12 +221,11 @@ git remote add upstream https://github.com/linjiejim/greenhouse.git && git fetch
 node scripts/check-extension-overlay.mjs upstream/main
 ```
 
-Upstream's workflows (`ci.yml`, `release.yml`, `release-please.yml`, `mobile.yml`, `deploy.yml`,
-`desktop-release.yml`) are gated to `linjiejim/greenhouse` and stay inert in a fork — `ci.yml`
-included, because it neither migrates a fork's extension tables nor carries an organisation's
-gitleaks licence, so on a fork it could only fail. A fork puts its own gates and deployment in
-`.github/workflows/fork-*.yml`, which the overlay guard allows; `desktop-check.yml` (Rust checks
-of the shell, nothing deployment-specific) is the one upstream workflow that still runs there.
+Upstream's workflows (`ci.yml`, `release.yml`, `release-please.yml`, `mobile.yml`, `deploy.yml`)
+are gated to `linjiejim/greenhouse` and stay inert in a fork — `ci.yml` included, because it
+neither migrates a fork's extension tables nor carries an organisation's gitleaks licence, so on
+a fork it could only fail. A fork puts its own gates and deployment in
+`.github/workflows/fork-*.yml`, which the overlay guard allows.
 
 The rule of thumb: **code that could exist without your business goes upstream; content,
 credentials and business-specific modules stay in the overlay.**

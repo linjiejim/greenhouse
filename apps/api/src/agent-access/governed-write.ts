@@ -204,7 +204,7 @@ function iso(value: string | null | undefined): string | null {
  * when the member may read it: a record must never reveal the title of a
  * document its owner cannot see. Other targets show their id.
  */
-async function targetLabel(
+export async function targetLabel(
   db: DatabaseProvider,
   ownerUserId: string,
   toolId: string,

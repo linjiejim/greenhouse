@@ -24,7 +24,6 @@ function eventResult(payload: RuntimeJsonValue): Record<string, RuntimeJsonValue
 
 function runLabel(run: RuntimeRunRow): string {
   if (run.kind === 'automation') return 'Automation';
-  if (run.kind === 'subagent') return 'Subagent';
   if (run.kind === 'agent_write') return 'Agent write';
   return 'Run';
 }

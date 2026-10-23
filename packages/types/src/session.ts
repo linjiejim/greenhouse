@@ -19,10 +19,10 @@ export type SessionChannel =
   | 'browser';
 
 /**
- * Conversations started from the browser extension side panel. The only
- * channel a client may ask for on POST /api/sessions (every other value is
- * server-assigned), and the one the chat route keys its read-only tool face on
- * (`filterBrowserSessionToolIds` in apps/api/src/agent-runtime/tool-resolution.ts).
+ * Conversations started from the browser extension side panel (removed in 1.5).
+ * Existing rows keep the read-only tool face the chat route keys on this channel
+ * (`filterBrowserSessionToolIds` in apps/api/src/agent-runtime/tool-resolution.ts):
+ * their history still carries untrusted page text.
  */
 export const BROWSER_SESSION_CHANNEL = 'browser' satisfies SessionChannel;
 
@@ -37,7 +37,7 @@ export interface SessionRow {
   user_id: string | null;
   app_id: string | null;
   channel: SessionChannel;
-  /** Set when this session was spawned by another session (spawn_session tool). */
+  /** Set when this session was spawned by another session (historical: the spawn_session tool, retired in 1.5). */
   parent_session_id: string | null;
   metadata: string;
   created_at: string;

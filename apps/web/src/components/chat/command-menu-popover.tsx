@@ -11,6 +11,7 @@ import { Globe, User, Zap } from '../../lib/icons';
 import { PopoverWrapper } from './popover-wrapper';
 import type { UserPrompt } from '@greenhouse/types/api';
 import { useT } from '../../lib/i18n';
+import { SKILLHUB_PROMPTS_HASH } from '../../lib/workspace-routes';
 
 export type { UserPrompt };
 
@@ -99,7 +100,7 @@ export function CommandMenuPopover({ query, prompts, onSelectPrompt, onDismiss, 
               onMouseDown={(event) => {
                 event.preventDefault();
                 event.stopPropagation();
-                window.location.hash = '#/tasks';
+                window.location.hash = SKILLHUB_PROMPTS_HASH;
                 onDismiss();
               }}
             >

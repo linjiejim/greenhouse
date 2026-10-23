@@ -1,11 +1,12 @@
 /**
- * Runtime runs whose producing module was removed in v1.4 (Evaluation, Missions,
- * Workflows).
+ * Runtime runs whose producing module was removed: Evaluation, Missions and
+ * Workflows in v1.4, sub-sessions (`spawn_session` → `subagent`) in 1.5.
  *
  * Nothing will ever drive these runs again, so a run that was still active at
  * upgrade time is closed once at boot: its pending interrupts are canceled, its
- * open steps and the run itself become `canceled` with `runtime_kind_retired`,
- * and no notification is sent. The history stays readable (read-only) in the
+ * open tool calls are closed (a call already running is marked `uncertain`, never
+ * replayed), open steps and the run itself become `canceled` with
+ * `runtime_kind_retired`, and no notification is sent. The history stays readable (read-only) in the
  * Execution center; the run kinds themselves stay in the Runtime contract.
  */
 
@@ -14,8 +15,14 @@ import type { RuntimeRunKind, RuntimeRunStatus, RuntimeStepStatus } from '@green
 import { toErrorMessage } from '@greenhouse/utils/error';
 import { logger } from '@greenhouse/utils/logger';
 import { nowIso } from '@greenhouse/utils/date';
+import { settleOpenRuntimeToolCalls } from './tool-evidence.js';
 
-export const RETIRED_RUNTIME_KINDS = ['eval', 'mission', 'workflow'] as const satisfies readonly RuntimeRunKind[];
+export const RETIRED_RUNTIME_KINDS = [
+  'eval',
+  'mission',
+  'workflow',
+  'subagent',
+] as const satisfies readonly RuntimeRunKind[];
 
 const ACTIVE_RUN_STATUSES: readonly RuntimeRunStatus[] = ['queued', 'claimed', 'running', 'waiting', 'paused'];
 const OPEN_STEP_STATUSES: readonly RuntimeStepStatus[] = ['queued', 'claimed', 'running', 'waiting', 'paused'];
@@ -38,6 +45,7 @@ async function settleRun(db: DatabaseProvider, run: RuntimeRunRow): Promise<void
       run.owner_user_id,
     );
   }
+  await settleOpenRuntimeToolCalls(db, run.id, 'canceled', run.owner_user_id);
   for (const step of await db.runtime.listSteps(run.id)) {
     if (!OPEN_STEP_STATUSES.includes(step.status)) continue;
     await db.runtime.transitionStep({

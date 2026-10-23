@@ -47,7 +47,7 @@ describe('partitionCalls', () => {
   it('splits a mixed run into trace rows and body artifacts, preserving order within each', () => {
     const calls = [
       { name: 'knowledge_query', output: { found: 2 } },
-      { name: 'spawn_session', output: { child_session_id: 'abc' } },
+      { name: 'ask_user', output: { type: 'ask_user', questions: [{ id: 'q', label: 'L', type: 'text' }] } },
       { name: 'external_search', output: { results: [] } },
       { name: 'generate_image', output: { success: true, url: 'http://x/y.png' } },
     ];
@@ -56,7 +56,7 @@ describe('partitionCalls', () => {
     // nothing when the URL is already in the prose), so the trace row is the sole
     // record that the call happened — and the only place its cost/duration shows.
     expect(trace.map((c) => c.name)).toEqual(['knowledge_query', 'external_search', 'generate_image']);
-    expect(artifacts.map((c) => c.name)).toEqual(['spawn_session', 'generate_image']);
+    expect(artifacts.map((c) => c.name)).toEqual(['ask_user', 'generate_image']);
   });
 
   it('returns empty arrays for an empty run', () => {
@@ -66,9 +66,9 @@ describe('partitionCalls', () => {
 
 describe('splitArtifactsByPlacement', () => {
   it('sends the confirm-gate cards below the prose, everything else above', () => {
-    const calls = [{ name: 'spawn_session' }, { name: 'generate_image' }, { name: 'tables_schema_plan' }];
+    const calls = [{ name: 'ask_user' }, { name: 'generate_image' }, { name: 'tables_schema_plan' }];
     const { above, below } = splitArtifactsByPlacement(calls);
-    expect(above.map((c) => c.name)).toEqual(['spawn_session', 'generate_image']);
+    expect(above.map((c) => c.name)).toEqual(['ask_user', 'generate_image']);
     // These are cards the prose introduces ("here is what I'd change — confirm?"),
     // so the button follows the explanation instead of preceding it.
     expect(below.map((c) => c.name)).toEqual(['tables_schema_plan']);
@@ -76,12 +76,12 @@ describe('splitArtifactsByPlacement', () => {
 });
 
 describe('replacesTraceRow', () => {
-  it.each([
-    ['spawn_session', { child_session_id: 'abc' }],
-    ['ask_user', { type: 'ask_user', questions: [{ id: 'q', label: 'L', type: 'text' }] }],
-  ])('drops the %s row — its card restates the whole call', (name, output) => {
-    expect(replacesTraceRow({ name, output })).toBe(true);
-  });
+  it.each([['ask_user', { type: 'ask_user', questions: [{ id: 'q', label: 'L', type: 'text' }] }]])(
+    'drops the %s row — its card restates the whole call',
+    (name, output) => {
+      expect(replacesTraceRow({ name, output })).toBe(true);
+    },
+  );
 
   it('keeps the generate_image row, completed or in flight', () => {
     expect(replacesTraceRow({ name: 'generate_image', output: { success: true, url: '/api/upload/a.png' } })).toBe(

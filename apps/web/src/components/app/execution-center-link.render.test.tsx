@@ -1,34 +1,30 @@
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { I18nProvider } from '../../lib/i18n';
 import { ExecutionCenterLink } from './execution-center-link';
 
-vi.mock('../../hooks/use-runtime-attention-count', () => ({
-  useRuntimeAttentionCount: () => 3,
-}));
-
-function render(compact = false, active = false) {
+function render(compact = false, active = false, locale: 'en' | 'zh' = 'en') {
   return renderToStaticMarkup(
     createElement(I18nProvider, {
-      initialLocale: 'en',
+      initialLocale: locale,
       children: createElement(ExecutionCenterLink, { compact, active }),
     }),
   );
 }
 
-describe('ExecutionCenterLink', () => {
-  it('deep-links a visible attention count into the canonical execution URL', () => {
+describe('ExecutionCenterLink (Activity log entry)', () => {
+  it('opens the Activity log', () => {
     const html = render();
-    expect(html).toContain('href="#/executions?tab=attention"');
-    expect(html).toContain('>Execution Center<');
-    expect(html).toContain('>3<');
+    expect(html).toContain('href="#/activity"');
+    expect(html).toContain('>Activity log<');
+    expect(render(false, false, 'zh')).toContain('>操作记录<');
   });
 
   it('keeps the fixed destination usable in the collapsed sidebar', () => {
     const html = render(true, true);
     expect(html).toContain('aria-current="page"');
-    expect(html).toContain('aria-label="Execution Center"');
+    expect(html).toContain('aria-label="Activity log"');
   });
 
   it('renders as an account-flyout menu item when requested', () => {
@@ -39,6 +35,6 @@ describe('ExecutionCenterLink', () => {
       }),
     );
     expect(html).toContain('role="menuitem"');
-    expect(html).toContain('>Execution Center<');
+    expect(html).toContain('>Activity log<');
   });
 });

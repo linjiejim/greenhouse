@@ -9,7 +9,7 @@
  * Owner-scoped by construction — every action resolves through the requesting
  * user's id, so a model can never read or touch another person's memories, super
  * included. Lazy and not session-scoped: memories belong to a user, not to a
- * conversation, so scheduled runs and subagents reach it too.
+ * conversation, so scheduled runs reach it too.
  */
 
 import { tool } from 'ai';
@@ -76,8 +76,8 @@ Write memories in ENGLISH whatever language you are speaking, with one exception
   runtime_risk: 'r1',
   // Deliberately no `surface`: this tool mixes reads and writes, so it fits
   // neither proxy tier — declaring it 'read' would let a stateless caller write
-  // memories with no confirm gate. Chat, scheduled tasks and spawned subagents
-  // all reach it as a lazy tool; /api/agent and /api/mcp do not.
+  // memories with no confirm gate. Chat and scheduled tasks both reach it as a
+  // lazy tool; /api/agent and /api/mcp do not.
   sort_order: 37,
 };
 

@@ -10,8 +10,6 @@ import { PAGE_MODULE_IDS, isPageModuleId } from '@greenhouse/types/usage';
 import { administrationModules, settingsAllModules } from '../nav-registry';
 import { COUNTED_TOP_LEVEL_ROUTES, pageModuleForRoute } from './page-module';
 
-const SIDEBAR_ORGANIZERS = ['session-tags', 'session-groups'];
-
 describe('pageModuleForRoute', () => {
   it('reports every core Settings and Administration module under an id the API accepts', () => {
     for (const mod of [...settingsAllModules, ...administrationModules].filter((m) => !m.extensionId)) {
@@ -34,7 +32,6 @@ describe('pageModuleForRoute', () => {
   it('has no API module id the web never reports', () => {
     const reported = new Set<string>([
       ...COUNTED_TOP_LEVEL_ROUTES,
-      ...SIDEBAR_ORGANIZERS,
       ...[...settingsAllModules, ...administrationModules].filter((m) => !m.extensionId).map((m) => m.id),
     ]);
     expect([...PAGE_MODULE_IDS].sort()).toEqual([...reported].sort());

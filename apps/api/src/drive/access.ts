@@ -107,3 +107,21 @@ export const canReadDrive = (access: DriveAccess): boolean => access !== null;
 
 /** Mutate (upload / move / rename / delete). */
 export const canWriteDrive = (access: DriveAccess): boolean => access === 'owner' || access === 'editor';
+
+/**
+ * Whether two nodes live in the same cabinet — same scope and the same owner
+ * keys. A move may never cross cabinets (kb team ↔ personal, one Base's files ↔
+ * another's): a writable source would otherwise lift a node into a foreign tree.
+ */
+export function sameDriveCabinet(
+  a: Pick<DriveAccessNode, 'scope' | 'visibility' | 'owner_user_id' | 'base_id' | 'owner_key'>,
+  b: Pick<DriveAccessNode, 'scope' | 'visibility' | 'owner_user_id' | 'base_id' | 'owner_key'>,
+): boolean {
+  return (
+    a.scope === b.scope &&
+    (a.visibility ?? null) === (b.visibility ?? null) &&
+    (a.owner_user_id ?? null) === (b.owner_user_id ?? null) &&
+    (a.base_id ?? null) === (b.base_id ?? null) &&
+    (a.owner_key ?? null) === (b.owner_key ?? null)
+  );
+}

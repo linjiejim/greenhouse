@@ -1,27 +1,37 @@
 /**
- * SkillHub — top-level page for the org-wide agent skill library.
+ * SkillHub — top-level page for the org-wide agent skill library, plus the
+ * user's prompt (Task) library as a second tab.
  *
- * Master-detail: the grouped, searchable skill list lives in the global sidebar
- * rail (SkillHubNavPanel); this page renders the right pane. Selection is
- * URL-driven — `#/skillhub/<name>` shows that skill's detail, bare `#/skillhub`
- * shows the onboarding landing.
+ * Skills tab, master-detail: the grouped, searchable skill list lives in the
+ * global sidebar rail (SkillHubNavPanel); this page renders the right pane.
+ * Selection is URL-driven — `#/skillhub/<name>` shows that skill's detail, bare
+ * `#/skillhub` shows the onboarding landing.
  *
  * Mobile has no rail, so the page itself carries the list: no selection → the
  * full-width grouped list; a selection → the detail with a back link. Both reuse
  * the same shared components (components/skillhub) — one implementation.
+ *
+ * My prompts tab: `#/skillhub?tab=prompts` (the retired `#/tasks` page redirects
+ * here). The tab lives in the query, not the path, because the path segment is
+ * a skill name.
  */
 
 import React, { useState } from 'react';
 import { SkillDetail, SkillHubLanding, SkillHubList, SkillUploadDialog } from '../../components/skillhub';
 import { ModulePage } from '../../components/app/module-page';
-import { Button } from '../../components/ui';
+import { Button, Tabs } from '../../components/ui';
 import { Upload } from '../../lib/icons';
 import { useT } from '../../lib/i18n';
+import { SKILLHUB_PROMPTS_HASH } from '../../lib/workspace-routes';
+import { PromptsPanel } from './prompts';
 
-export function SkillHubPage({ subPath }: { subPath: string }) {
+type SkillHubTab = 'skills' | 'prompts';
+
+export function SkillHubPage({ subPath, params }: { subPath: string; params?: URLSearchParams }) {
   const t = useT();
   const name = subPath.split('/').filter(Boolean)[0] || '';
   const [uploadOpen, setUploadOpen] = useState(false);
+  const tab: SkillHubTab = params?.get('tab') === 'prompts' ? 'prompts' : 'skills';
 
   if (name) {
     return (
@@ -31,10 +41,33 @@ export function SkillHubPage({ subPath }: { subPath: string }) {
     );
   }
 
+  const tabs = (
+    <Tabs
+      tabs={[
+        { key: 'skills', label: t('skillHub.tabs.skills') },
+        { key: 'prompts', label: t('skillHub.tabs.prompts') },
+      ]}
+      active={tab}
+      onChange={(key) => {
+        window.location.hash = key === 'prompts' ? SKILLHUB_PROMPTS_HASH : '#/skillhub';
+      }}
+      ariaLabel={t('skillHub.tabs.label')}
+    />
+  );
+
+  if (tab === 'prompts') {
+    return (
+      <ModulePage moduleId="workspace.skillhub" layout="list" tabs={tabs}>
+        <PromptsPanel />
+      </ModulePage>
+    );
+  }
+
   return (
     <ModulePage
       moduleId="workspace.skillhub"
       layout="canvas"
+      tabs={tabs}
       actions={
         <Button size="sm" onClick={() => setUploadOpen(true)}>
           <Upload size={14} />

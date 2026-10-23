@@ -1,7 +1,7 @@
 /**
  * BatchActionBar — sticky footer shown while the chat-history panel is in
  * multi-select mode. Left: selection count + select-all / clear shortcuts.
- * Right: the four batch actions (Tag / Move / Archive / Delete) + Done.
+ * Right: the batch actions (Archive / Delete) + Done.
  *
  * Pure presentation: all state lives in the parent panel. Operation buttons
  * disable while `busy` (prevents double-submit) or when nothing is selected;
@@ -9,14 +9,12 @@
  */
 
 import React from 'react';
-import { Archive, FolderOpen, Tag, Trash2, X } from '../../../lib/icons';
+import { Archive, Trash2, X } from '../../../lib/icons';
 import { useT } from '../../../lib/i18n';
 
 interface BatchActionBarProps {
   count: number;
   busy: boolean;
-  onTag: (e: React.MouseEvent) => void;
-  onMove: (e: React.MouseEvent) => void;
   onArchive: () => void;
   onDelete: () => void;
   onDone: () => void;
@@ -27,8 +25,6 @@ interface BatchActionBarProps {
 export function BatchActionBar({
   count,
   busy,
-  onTag,
-  onMove,
   onArchive,
   onDelete,
   onDone,
@@ -71,26 +67,6 @@ export function BatchActionBar({
 
       {/* Actions */}
       <div className="flex items-stretch gap-1 px-2 pb-1 pt-1">
-        <button
-          type="button"
-          onClick={onTag}
-          disabled={actionsDisabled}
-          className={actionClass}
-          title={t('sessionGroups.batchTag')}
-        >
-          <Tag size={15} />
-          {t('sessionGroups.batchTag')}
-        </button>
-        <button
-          type="button"
-          onClick={onMove}
-          disabled={actionsDisabled}
-          className={actionClass}
-          title={t('sessionGroups.moveToGroup')}
-        >
-          <FolderOpen size={15} />
-          {t('sessionGroups.batchMove')}
-        </button>
         <button
           type="button"
           onClick={onArchive}

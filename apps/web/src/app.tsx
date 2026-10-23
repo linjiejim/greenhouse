@@ -8,7 +8,6 @@
 
 import './app.css';
 import React, { useState, useEffect, useMemo, useCallback, useRef, Suspense, lazy } from 'react';
-import type { AssistantLaunchRequest } from '@greenhouse/types/agent-context';
 import { createRoot } from 'react-dom/client';
 import { ChatPage } from './pages/chat';
 
@@ -21,23 +20,15 @@ const AdministrationPage = lazy(() =>
 );
 const DesignPage = lazy(() => import('./pages/design').then((m) => ({ default: m.DesignPage })));
 const KnowledgePage = lazy(() => import('./pages/knowledge').then((m) => ({ default: m.KnowledgePage })));
-const AgentsPage = lazy(() => import('./pages/agents').then((m) => ({ default: m.AgentsPage })));
-const AutomationsPage = lazy(() => import('./pages/automations').then((m) => ({ default: m.AutomationsPanel })));
-const PersonalTasksPage = lazy(() => import('./pages/tasks').then((m) => ({ default: m.PromptsPage })));
+const AutomationsPage = lazy(() => import('./pages/automations').then((m) => ({ default: m.AutomationsPage })));
 const SkillHubPage = lazy(() => import('./pages/skillhub').then((m) => ({ default: m.SkillHubPage })));
-const ExecutionCenterPage = lazy(() => import('./pages/executions').then((m) => ({ default: m.ExecutionsPage })));
+const ActivityPage = lazy(() => import('./pages/activity').then((m) => ({ default: m.ActivityPage })));
 const TablesPage = lazy(() => import('./pages/tables').then((m) => ({ default: m.TablesPage })));
+const FilesPage = lazy(() => import('./pages/files').then((m) => ({ default: m.FilesPage })));
+const HomePage = lazy(() => import('./pages/home').then((m) => ({ default: m.HomePage })));
 const OAuthConsentPage = lazy(() => import('./pages/oauth-consent').then((m) => ({ default: m.OAuthConsentPage })));
 const AccountPasswordPage = lazy(() =>
   import('./pages/account-password').then((m) => ({ default: m.AccountPasswordPage })),
-);
-// Desktop satellite windows. Lazy so a browser session never downloads them.
-const DesktopQuickPage = lazy(() => import('./pages/desktop/quick').then((m) => ({ default: m.DesktopQuickPage })));
-const DesktopSelectionBarPage = lazy(() =>
-  import('./pages/desktop/selection-bar').then((m) => ({ default: m.DesktopSelectionBarPage })),
-);
-const DesktopPreferencesDialog = lazy(() =>
-  import('./pages/desktop/preferences').then((m) => ({ default: m.DesktopPreferencesDialog })),
 );
 import { AgentProvider } from './components/agent-context';
 import { compiledExtensionRouteAliases, compiledExtensionRoutes, findExtensionPage } from './extensions';
@@ -53,16 +44,8 @@ import { ConfirmDialog, Drawer, AppLogo, ToastContainer, ErrorBoundary, Spinner,
 import { Plus, X } from './lib/icons';
 import { authFetch, clearToken, setOnUnauthorized, validateSession } from './lib/auth';
 import { navigationBlocked } from './lib/navigation-guard';
-import {
-  LoginScreen,
-  AppSidebar,
-  DesktopTrayMenuSync,
-  SidebarAccountMenu,
-  SidebarBackButton,
-  TopBar,
-} from './components/app';
+import { LoginScreen, AppSidebar, SidebarAccountMenu, SidebarBackButton, TopBar } from './components/app';
 import { ActionConfirmDialog } from './components/app/action-confirm-dialog';
-import { DesktopKnowledgeSearchBridge } from './components/app/desktop-knowledge-search-bridge';
 import {
   ChatHistoryPanel,
   KnowledgeNavPanel,
@@ -78,30 +61,13 @@ import { useWsStore } from './stores/ws-store';
 import { initTheme } from './lib/theme';
 import { initWorkspaceBranding } from './lib/workspace-branding';
 import { initScrollActivity } from './lib/scroll-activity';
-import { initDesktop, isDesktop, reportDesktopBootOk } from './lib/desktop';
-import { loadReleaseNotes } from './lib/desktop/updates';
-import { onAttachment } from './lib/desktop/attach';
 import { I18nProvider, useT, getStoredLocale } from './lib/i18n';
 import type { Locale } from './lib/i18n';
 import { buildPrimaryNavigation } from './platform/navigation';
 import { usePlatformCatalog, usePlatformStore } from './stores/platform-store';
 import { useMobileKeyboardViewport } from './hooks/use-mobile-keyboard-viewport';
 import { legacyExecutionRedirect } from './lib/execution-route';
-
-/**
- * `#/desktop/*` is the desktop shell's satellite-window surface (quick capture,
- * selection bar). Core-owned like `CORE_ROUTES` below, but not a page: `App`
- * renders it chrome-less when the Tauri bridge exists and lets it fall through to
- * Chat in a browser, so it must never resolve as an extension alias or route.
- * Declared before the module-scope check below, which runs at evaluation time.
- */
-const DESKTOP_SATELLITE_ROUTE = 'desktop';
-
-// Satellite windows are native transparent overlays. Mark their document before
-// React mounts so the normal opaque app canvas never flashes through the shell.
-if (isDesktop() && window.location.hash.startsWith(`#/${DESKTOP_SATELLITE_ROUTE}/`)) {
-  document.documentElement.classList.add('desktop-satellite-surface');
-}
+import { retiredWorkspaceRedirect } from './lib/workspace-routes';
 
 // Initialize theme from localStorage on app load
 initTheme();
@@ -111,19 +77,19 @@ initScrollActivity();
 // ─── Router ──────────────────────────────────────────────
 
 type Route =
+  | 'home'
   | 'chat'
   | 'extension'
   | 'automations'
-  | 'agents'
   | 'settings'
   | 'administration'
   | 'projects'
   | 'design'
   | 'knowledge'
   | 'tables'
+  | 'files'
   | 'skillhub'
-  | 'tasks'
-  | 'executions';
+  | 'activity';
 
 interface ParsedRoute {
   route: Route;
@@ -143,11 +109,11 @@ interface ParsedRoute {
  * `hashchange` that matches what we are already rendering, and is ignored).
  */
 function useHashRouter(): { hash: string; pending: string | null; confirmLeave: () => void; cancelLeave: () => void } {
-  const [hash, setHash] = useState(window.location.hash || '#/chat');
+  const [hash, setHash] = useState(window.location.hash || '#/home');
   const [pending, setPending] = useState<string | null>(null);
   useEffect(() => {
     const handler = () => {
-      const next = window.location.hash || '#/chat';
+      const next = window.location.hash || '#/home';
       if (next === hash) {
         setPending(null);
         return;
@@ -206,20 +172,20 @@ function LeaveConfirmDialog({
   );
 }
 
-/** Top-level hashes core owns (plus `DESKTOP_SATELLITE_ROUTE`); an extension alias can never take one over. */
+/** Top-level hashes core owns; an extension alias can never take one over. */
 const CORE_ROUTES: ReadonlySet<string> = new Set([
+  'home',
   'chat',
   'automations',
-  'agents',
   'settings',
   'administration',
   'projects',
   'design',
   'knowledge',
   'tables',
+  'files',
   'skillhub',
-  'tasks',
-  'executions',
+  'activity',
 ]);
 
 function parseRoute(hash: string): ParsedRoute {
@@ -232,31 +198,17 @@ function parseRoute(hash: string): ParsedRoute {
   const cleaned = hash.replace(/^#\/?/, '');
   const [path, query] = cleaned.split('?');
   const segments = path.split('/');
-  const topLevel = segments[0] || 'chat';
+  // Home (team activity) is the landing page.
+  const topLevel = segments[0] || 'home';
 
-  // Chat utilities used to be in-memory workspace switches. Keep those links
-  // working, but canonicalize them to real pages so refresh/back/deep-links all
-  // describe the screen the user is actually looking at.
-  if (topLevel === 'chat') {
-    const legacyView = new URLSearchParams(query || '').get('view');
-    const destination =
-      legacyView === 'automations'
-        ? '#/automations'
-        : legacyView === 'prompts'
-          ? '#/tasks'
-          : legacyView === 'agents'
-            ? '#/agents'
-            : null;
-    if (destination) {
-      window.location.hash = destination;
-      return parseRoute(destination);
-    }
-  }
-
-  // Redirect the retired prompt alias into its canonical independent page.
-  if (topLevel === 'prompts') {
-    window.location.hash = '#/tasks';
-    return { route: 'tasks', subPath: '', params: new URLSearchParams() };
+  // Retired workspace pages (My prompts → SkillHub tab, My Agents → Automations
+  // tab) and the legacy
+  // `#/chat?view=…` switches land on their canonical pages, so refresh/back/
+  // deep-links all describe the screen the user is actually looking at.
+  const workspaceRedirect = retiredWorkspaceRedirect(topLevel, new URLSearchParams(query || '').get('view'));
+  if (workspaceRedirect) {
+    window.location.hash = workspaceRedirect;
+    return parseRoute(workspaceRedirect);
   }
 
   if (topLevel === 'history') {
@@ -264,12 +216,10 @@ function parseRoute(hash: string): ParsedRoute {
     return { route: 'chat', subPath: '', params: new URLSearchParams() };
   }
 
-  // The workbench is the Chat empty state now, so both the retired Apps page and
-  // the short-lived standalone Home page redirect there. Old bookmarks keep
-  // working; they just land on the screen that owns the cards.
-  if (topLevel === 'workbench' || topLevel === 'home') {
-    window.location.hash = '#/chat';
-    return { route: 'chat', subPath: '', params: new URLSearchParams() };
+  // The retired Apps page lands on Home, which shows the workbench cards.
+  if (topLevel === 'workbench') {
+    window.location.hash = '#/home';
+    return { route: 'home', subPath: '', params: new URLSearchParams() };
   }
 
   // The old full-page inbox duplicated the account-menu dialog. Preserve old
@@ -289,7 +239,7 @@ function parseRoute(hash: string): ParsedRoute {
   // Legacy hashes an extension claims (`pages[].aliases`) redirect into the
   // extension, tail and query intact, so bookmarks and chat links that predate
   // it keep landing somewhere real. A core route can never be aliased away.
-  const coreOwned = CORE_ROUTES.has(topLevel) || topLevel === DESKTOP_SATELLITE_ROUTE;
+  const coreOwned = CORE_ROUTES.has(topLevel);
   const alias = coreOwned ? undefined : compiledExtensionRouteAliases().get(topLevel);
   if (alias) {
     const tail = segments.slice(1).filter(Boolean).join('/');
@@ -316,34 +266,6 @@ function parseRoute(hash: string): ParsedRoute {
 
 // ─── App ─────────────────────────────────────────────────
 
-/**
- * Desktop satellite windows (`#/desktop/*`) render chrome-less and outside the auth
- * gate: they're frameless overlays a few hundred pixels tall. They may read the
- * authenticated Profile catalog, but all session creation and streaming remains
- * owned by the main window. Matched on the raw hash before routing/session setup,
- * so the normal application shell does not mount twice.
- */
-function DesktopSatellite({ hash }: { hash: string }) {
-  const route = hash.replace(/^#\/?/, '');
-  return (
-    <Suspense fallback={null}>
-      <ErrorBoundary>
-        {route === 'desktop/quick' ? <DesktopQuickPage /> : null}
-        {route === 'desktop/selection-bar' ? <DesktopSelectionBarPage /> : null}
-      </ErrorBoundary>
-    </Suspense>
-  );
-}
-
-function DesktopPreferencesLayer() {
-  if (!isDesktop()) return null;
-  return (
-    <Suspense fallback={null}>
-      <DesktopPreferencesDialog />
-    </Suspense>
-  );
-}
-
 function App() {
   // One viewport coordinator covers login, route pages and every shared
   // overlay. Call it above the auth branches so no mobile input falls back to
@@ -353,10 +275,6 @@ function App() {
   const [userLocale, setUserLocale] = useState<Locale>(getStoredLocale());
   const { hash, pending: pendingLeave, confirmLeave, cancelLeave } = useHashRouter();
   const { route, subPath, params, extensionRoute } = useMemo(() => parseRoute(hash), [hash]);
-  // A browser can be handed an arbitrary hash. Treat desktop routes as satellite
-  // windows only when the Tauri bridge actually exists; otherwise normal routing
-  // falls back to Chat without importing or invoking any native capability.
-  const isSatellite = isDesktop() && hash.startsWith(`#/${DESKTOP_SATELLITE_ROUTE}/`);
   const passwordLinkRoute = hash.split('?')[0] === '#/activate';
   const passwordLinkToken = passwordLinkRoute
     ? new URLSearchParams(hash.includes('?') ? hash.slice(hash.indexOf('?') + 1) : '').get('token')
@@ -383,24 +301,11 @@ function App() {
     useProfileStore.getState().clear();
   }, [logout]);
 
-  // Tell the desktop shell we mounted, so it keeps (rather than rolls back) the web
-  // bundle it booted, then wire up the native capabilities. Both no-op in a browser.
-  // Satellites are excluded: they must not claim the boot handshake or re-register
-  // the agent's client actions on behalf of the main window.
-  useEffect(() => {
-    if (isSatellite) return;
-    // Release notes ship only inside desktop web bundles; a browser fetch just
-    // 404s and logs two console errors on every page load.
-    if (isDesktop()) void loadReleaseNotes();
-    reportDesktopBootOk();
-    initDesktop();
-  }, [isSatellite]);
-
   useEffect(() => {
     // The one-time link page owns its unauthenticated session lifecycle. A
     // stale access-token validation must not race a successful completion and
     // clear the freshly issued session.
-    if (isSatellite || passwordLinkRoute) return;
+    if (passwordLinkRoute) return;
     setOnUnauthorized(handleUnauthorized);
 
     (async () => {
@@ -416,7 +321,7 @@ function App() {
         useAuthStore.getState().setAuthState('needs-login');
       }
     })();
-  }, [handleUnauthorized, login, isSatellite, passwordLinkRoute]);
+  }, [handleUnauthorized, login, passwordLinkRoute]);
 
   // ── WebSocket lifecycle: connect on login, disconnect on logout ──
   useEffect(() => {
@@ -435,14 +340,6 @@ function App() {
     return unsub;
   }, []);
 
-  if (isSatellite) {
-    return (
-      <I18nProvider initialLocale={userLocale} onLocaleChange={handleLocaleChange}>
-        <DesktopSatellite hash={hash} />
-      </I18nProvider>
-    );
-  }
-
   if (passwordLinkRoute) {
     return (
       <I18nProvider initialLocale={userLocale} onLocaleChange={handleLocaleChange}>
@@ -458,7 +355,6 @@ function App() {
             }}
           />
         </Suspense>
-        <DesktopPreferencesLayer />
         <ToastContainer />
       </I18nProvider>
     );
@@ -484,7 +380,6 @@ function App() {
             useAuthStore.getState().setAuthState('authenticated');
           }}
         />
-        <DesktopPreferencesLayer />
         <ToastContainer />
       </I18nProvider>
     );
@@ -496,7 +391,6 @@ function App() {
         <Suspense fallback={<LoadingScreen />}>
           <OAuthConsentPage />
         </Suspense>
-        <DesktopPreferencesLayer />
         <ToastContainer />
       </I18nProvider>
     );
@@ -507,9 +401,6 @@ function App() {
       <AgentProvider>
         <SessionManagerProvider>
           <AppShell route={route} subPath={subPath} params={params} extensionRoute={extensionRoute} />
-          {isDesktop() && <DesktopTrayMenuSync />}
-          {isDesktop() && <DesktopKnowledgeSearchBridge />}
-          <DesktopPreferencesLayer />
           <ActionConfirmDialog />
           <LeaveConfirmDialog open={pendingLeave !== null} onConfirm={confirmLeave} onCancel={cancelLeave} />
           <ToastContainer />
@@ -536,27 +427,10 @@ function AppShell({ route, subPath, params, extensionRoute }: AppShellProps) {
 
   const { orderedApplications, hasApplication, loading: catalogLoading } = usePlatformCatalog();
   const loadPlatformCatalog = usePlatformStore((state) => state.load);
-  const [chatLaunchRequest, setChatLaunchRequest] = useState<AssistantLaunchRequest | null>(null);
-  const chatLaunchIdRef = useRef(0);
 
   useEffect(() => {
     void loadPlatformCatalog(true);
   }, [loadPlatformCatalog]);
-
-  // Desktop hand-offs aimed at the full Chat page (quick capture, selection bar,
-  // tray). Files stay with the Assistant overlay path; here only drafts/sessions.
-  useEffect(
-    () =>
-      onAttachment((attachment) => {
-        chatLaunchIdRef.current += 1;
-        const launchId = chatLaunchIdRef.current;
-        const { draft, autoSend, profileId, newConversation, sessionId } = attachment;
-        setChatLaunchRequest({ id: launchId, draft, autoSend, profileId, newConversation, sessionId });
-        setChatWorkspaceView('conversation');
-        window.location.hash = sessionId ? `#/chat?session=${sessionId}` : `#/chat?new=${launchId}`;
-      }, 'chat'),
-    [setChatWorkspaceView],
-  );
 
   const loadExtensions = useExtensionsStore((state) => state.load);
   useEffect(() => {
@@ -629,8 +503,13 @@ function AppShell({ route, subPath, params, extensionRoute }: AppShellProps) {
   // mobile drawer. Presentation differs, visibility and ordering do not.
   const primaryNavigation = buildPrimaryNavigation({
     applications: orderedApplications,
-    chatLabel: t('app.chat'),
-    skillhubLabel: t('app.skillhub'),
+    labels: {
+      home: t('navigation.home'),
+      files: t('navigation.files'),
+      skillhub: t('app.skillhub'),
+      automations: t('navigation.automation'),
+      chat: t('app.chat'),
+    },
   });
   return (
     <>
@@ -738,7 +617,7 @@ function AppShell({ route, subPath, params, extensionRoute }: AppShellProps) {
                     <div className="flex min-h-0 flex-1 flex-col pt-1">
                       <KnowledgeNavPanel activeModule={subPath} onNavigate={() => setNavOpen(false)} />
                     </div>
-                  ) : route === 'executions' ? (
+                  ) : route === 'activity' ? (
                     <div className="min-h-0 flex-1" />
                   ) : route === 'extension' ? (
                     <div className="min-h-0 flex-1 overflow-y-auto">
@@ -765,7 +644,7 @@ function AppShell({ route, subPath, params, extensionRoute }: AppShellProps) {
                     user={currentUser}
                     showSettingsIcon
                     settingsActive={route === 'settings'}
-                    executionCenterActive={route === 'executions'}
+                    executionCenterActive={route === 'activity'}
                     onNavigate={() => setNavOpen(false)}
                   />
                 </div>
@@ -792,16 +671,10 @@ function AppShell({ route, subPath, params, extensionRoute }: AppShellProps) {
                   <ChatPage
                     key={params.get('session') || params.get('new') || 'new'}
                     initialSessionId={params.get('session') || undefined}
-                    launchRequest={chatLaunchRequest}
-                    onLaunchConsumed={(id) => {
-                      setChatLaunchRequest((request) => (request?.id === id ? null : request));
-                    }}
                   />
                 )}
-                {route === 'automations' && <AutomationsPage />}
-                {route === 'tasks' && <PersonalTasksPage />}
-                {route === 'agents' && <AgentsPage />}
-                {route === 'skillhub' && <SkillHubPage subPath={subPath} />}
+                {route === 'automations' && <AutomationsPage params={params} />}
+                {route === 'skillhub' && <SkillHubPage subPath={subPath} params={params} />}
                 {route === 'settings' && <SettingsPage subPath={subPath} />}
                 {route === 'administration' && <AdministrationPage subPath={subPath} />}
                 {route === 'projects' &&
@@ -812,7 +685,9 @@ function AppShell({ route, subPath, params, extensionRoute }: AppShellProps) {
                   <KnowledgePage subPath={subPath} basePath="#/knowledge" />
                 )}
                 {route === 'tables' && hasApplication('tables') && <TablesPage subPath={subPath} />}
-                {route === 'executions' && <ExecutionCenterPage subPath={subPath} params={params} />}
+                {route === 'files' && <FilesPage params={params} />}
+                {route === 'home' && <HomePage />}
+                {route === 'activity' && <ActivityPage subPath={subPath} />}
                 {route === 'extension' && (
                   <ExtensionPageHost route={extensionRoute ?? ''} subPath={subPath} params={params} />
                 )}
@@ -842,7 +717,7 @@ function AppShell({ route, subPath, params, extensionRoute }: AppShellProps) {
 function LoadingScreen() {
   const t = useT();
   return (
-    <div className="app-viewport flex items-center justify-center bg-surface-sunken" data-tauri-drag-region>
+    <div className="app-viewport flex items-center justify-center bg-surface-sunken">
       <div className="text-center">
         <div className="mx-auto flex justify-center">
           <AppLogo size="xl" logoOnly />

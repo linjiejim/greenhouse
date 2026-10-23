@@ -1,15 +1,14 @@
 /**
- * Home workbench — the personal, permission-aware dashboard that fills the Chat
- * empty state.
+ * Home workbench — the personal, permission-aware dashboard on Home (#/home).
  *
  * Cards store a saved query, never its answer, so this panel re-evaluates
  * everything on mount as the current user: revoking a tool greys the card
  * instead of leaking yesterday's rows. See docs/specs/20260805-home-workbench.md.
  *
- * It renders no composer and no page chrome — the conversation it sits in owns
- * both. Its edit control lives in the TopBar (registered through the
- * ui-store while this panel is mounted), because the empty state's vertical
- * space belongs to the cards.
+ * It renders no page chrome — Home owns it. Its edit control is registered
+ * through the ui-store while this panel is mounted and drawn in Home's page
+ * actions. The agent can still edit the cards from Chat (workbench_* tools);
+ * the panel re-reads the stored config whenever those writes land.
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -26,7 +25,7 @@ import {
 } from '@greenhouse/types/workbench';
 import { Button, ConfirmDialog, ErrorBoundary, Tabs, toast } from '../ui';
 import { WidgetGrid, type WidgetGridItem } from './widget-grid';
-import { AlertTriangle, LayoutDashboard, MessageSquare, Plus, Trash2 } from '../../lib/icons';
+import { AlertTriangle, LayoutDashboard, Plus, Trash2 } from '../../lib/icons';
 import { useT } from '../../lib/i18n';
 import { evaluateWorkbench } from '../../lib/api/workbench';
 import { fetchTools } from '../../lib/api/tools';
@@ -42,23 +41,7 @@ function newId(prefix: string): string {
   return `${prefix}_${Math.random().toString(36).slice(2, 10)}`;
 }
 
-interface WorkbenchPanelProps {
-  /**
-   * Rendered instead of the grid when the user has no cards yet. The empty
-   * state's job there is to introduce the assistant, not to show an empty
-   * dashboard frame, so the host supplies it.
-   */
-  emptyFallback?: React.ReactNode;
-  /** Keep the workbench mounted as a live preview while the composer drives an Agent conversation. */
-  conversationMode?: boolean;
-  onConversationModeChange?: (enabled: boolean) => void;
-}
-
-export function WorkbenchPanel({
-  emptyFallback,
-  conversationMode = false,
-  onConversationModeChange,
-}: WorkbenchPanelProps) {
+export function WorkbenchPanel() {
   const t = useT();
   const { applications, preferences, savePreferences, refresh: refreshCatalog, loading } = usePlatformCatalog();
   const setHomeWorkbench = useUIStore((state) => state.setHomeWorkbench);
@@ -183,18 +166,9 @@ export function WorkbenchPanel({
   // take them back on unmount — in conversational edit mode the live preview
   // remains mounted after sending, so Done can close that mode from the TopBar.
   useEffect(() => {
-    setHomeWorkbench({
-      editing: editing || conversationMode,
-      onToggleEdit: () => {
-        if (conversationMode) {
-          onConversationModeChange?.(false);
-          return;
-        }
-        setEditing((value) => !value);
-      },
-    });
+    setHomeWorkbench({ editing, onToggleEdit: () => setEditing((value) => !value) });
     return () => setHomeWorkbench(null);
-  }, [conversationMode, editing, onConversationModeChange, setHomeWorkbench]);
+  }, [editing, setHomeWorkbench]);
 
   const persist = useCallback(
     async (nextWidgets: WorkbenchWidget[], nextTabs = preferences.tabs): Promise<boolean> => {
@@ -299,20 +273,16 @@ export function WorkbenchPanel({
 
   const widgetsById = useMemo(() => new Map(widgets.map((widget) => [widget.id, widget])), [widgets]);
 
-  if (loading && widgets.length === 0) {
-    return <>{emptyFallback ?? null}</>;
-  }
+  if (loading && widgets.length === 0) return null;
 
-  // No cards and not editing: the host's introduction owns the screen. The Add
-  // card entry point is still reachable through the TopBar's Customize toggle,
-  // which is why this checks `editing` rather than card count alone.
-  if (widgets.length === 0 && !editing && !conversationMode) {
-    return <>{emptyFallback ?? null}</>;
-  }
+  // No cards and not editing: nothing to show. The Add card entry point is
+  // still reachable through Customize, which is why this checks `editing`
+  // rather than card count alone.
+  if (widgets.length === 0 && !editing) return null;
 
   return (
     <div className="animate-fade-in">
-      {(tabs.length > 1 || editing || conversationMode) && (
+      {(tabs.length > 1 || editing) && (
         <div className="mb-3 flex flex-wrap items-center gap-2">
           {editing && (
             <>
@@ -332,26 +302,7 @@ export function WorkbenchPanel({
                   {t('home.templates')}
                 </Button>
               )}
-              {onConversationModeChange && (
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  onClick={() => {
-                    setEditing(false);
-                    onConversationModeChange(true);
-                  }}
-                >
-                  <MessageSquare size={14} />
-                  {t('home.editByChat')}
-                </Button>
-              )}
             </>
-          )}
-          {conversationMode && (
-            <div className="flex min-w-0 flex-1 items-center gap-2 rounded-lg border border-primary-edge bg-primary-subtle px-3 py-2 text-xs text-primary-fg-strong">
-              <MessageSquare size={14} className="flex-shrink-0" />
-              <span>{t('home.chatEditActive')}</span>
-            </div>
           )}
           {tabs.length > 1 && (
             <Tabs

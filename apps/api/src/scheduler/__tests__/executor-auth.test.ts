@@ -186,9 +186,10 @@ describe('scheduled task executor authorization', () => {
   });
 
   it('never lets writes or human-gated tools into the scheduled tool base', () => {
-    expect(
-      scheduledToolBase(['knowledge_query', 'knowledge_query', 'knowledge_mutation', 'spawn_session', 'call_llm']),
-    ).toEqual(['knowledge_query', 'knowledge_query']);
+    expect(scheduledToolBase(['knowledge_query', 'knowledge_query', 'knowledge_mutation', 'call_llm'])).toEqual([
+      'knowledge_query',
+      'knowledge_query',
+    ]);
   });
 
   it('checks owner status again immediately before invoking the model', async () => {

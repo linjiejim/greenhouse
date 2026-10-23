@@ -28,7 +28,7 @@ const COMMAND_ICONS = {
   retry: RotateCcw,
 } satisfies Record<RuntimeRunCommandType, typeof Play>;
 
-export function TaskRunDetail({ runId, backHref = '#/executions' }: { runId: string; backHref?: string }) {
+export function TaskRunDetail({ runId, backHref = '#/activity' }: { runId: string; backHref?: string }) {
   const t = useT();
   const { enrichPageContext } = useAgentContext();
   const connection = useWsStore((state) => state.status);

@@ -55,7 +55,7 @@ expose to Claude, Cursor, or any MCP client.
     </td>
     <td width="50%" valign="top">
       <img src="docs/assets/screens/execution-center.webp" alt="Execution center listing runs" />
-      <b>Execution center</b> — automations and sub-agents in one place.
+      <b>Execution center</b> — automations and your agents’ writes in one place.
     </td>
   </tr>
   <tr>
@@ -91,16 +91,23 @@ same script doubles as an end-to-end smoke tour (see [Development](#development)
 - **Projects** — projects, tasks (board / gantt / tree views), members, comments, activity log.
 - **Tables** — multidimensional bases: typed fields, views, forms, record links, dashboards,
   rule automations, and conversational schema planning (the agent drafts a base, you confirm).
-- **Home workbench** — a personal dashboard of live cards backed by the same tools (recipes and
-  templates), editable by drag-and-drop or by asking the agent.
-- **Execution center** — one surface for every durable run: automations (cron, at most every
-  15 minutes, optionally quiet when a run finds nothing new) and sub-agents, with full step,
-  tool-call and event evidence. A run cut off mid-way is never re-run on its own: it ends
-  "outcome unknown" and its owner is told which writes were in flight.
+- **Files** — the team's file cabinet and your own: folders, upload, preview (images, PDF,
+  text), rename / move / delete and name search; members' agents reach it over MCP too.
+- **Home** — the team's recent changes (knowledge edits, project and table changes, new files,
+  and which agent made them) above a personal dashboard of live cards backed by the same tools
+  (recipes and templates), editable by drag-and-drop or by asking the agent.
+- **Activity log** — who changed what: members in the app, their own agents over MCP (with the
+  client's name), automations and admin setting changes, filterable and exportable as CSV.
+  Each automation run and agent write keeps its full step, tool-call and event evidence; a run
+  cut off mid-way is never re-run on its own: it ends "outcome unknown" and its owner is told
+  which writes were in flight.
+- **Issues & requests** — feature requests and frictions in one admin queue; members' agents
+  can file both over MCP.
 - **Memory** — per-user memories with titles, pinning and lifecycle, plus the friction signals
   the agent logs when tooling gets in its way.
 - **Skill Center** — an org-wide library of agent skills (SKILL.md bundles) with immutable
-  versions, changelogs, security scanning, and first-party packs shipped from `skillhub/`.
+  versions, changelogs, security scanning, and first-party packs shipped from `skillhub/`. Its
+  *My prompts* tab holds your reusable prompts (Tasks), called from the chat composer with `/`.
 - **Email** *(optional)* — personal IMAP/SMTP mailboxes and a shared team mailbox; search,
   read, draft and send with a server-side draft confirmation.
 - **Notifications** — an in-app notification center with durable delivery to email, WeCom and
@@ -112,8 +119,8 @@ same script doubles as an end-to-end smoke tour (see [Development](#development)
   proxy.
 - **Usage budgets** — monthly token and image budgets per user, organization and provider.
 - **Module usage** — Administration → Usage → By Modules shows tool calls by tool and client
-  (MCP, Agent API, web chat, browser extension, mobile, Feishu, automations, sub-agents), page
-  opens by module and app (web, desktop, mobile, browser extension) and the prompt-cache hit
+  (MCP, Agent API, web chat, mobile, Feishu, automations), page
+  opens by module and app (web, mobile) and the prompt-cache hit
   rate per model over 7 / 30 / 90 days. Only daily totals are stored — no users, arguments or
   content — and counting started with v1.4.
 - **Platform kernel** — applications declare a manifest (modules, entities, fields, actions);
@@ -139,8 +146,6 @@ greenhouse/
 │   ├── api/                  # Hono backend — routes, agent runtime, platform kernel, auth,
 │   │                         #   scheduler, runtime kernel, CLI; also serves the web SPA at `/`
 │   ├── web/                  # React + Vite single-page app (hash router)
-│   ├── browser/              # Chrome extension (MV3) — side-panel companion; connects to your
-│   │                         #   instances via saved multi-server "stations"
 │   └── mobile/               # Expo (React Native) team-hub app — notifications + push, stations,
 │                             #   settings (knowledge, files, projects, tables follow);
 │                             #   isolated install (pnpm mobile:install, then pnpm mobile)
@@ -153,7 +158,6 @@ greenhouse/
 │   ├── db/                   # Database layer — Drizzle schema + domain services
 │   ├── knowledge-editor/     # Tiptap schema + server-side Markdown ↔ Tiptap JSON
 │   ├── crud/                 # Low-code CRUD framework (one schema → list / form / detail)
-│   ├── ui/                   # Shared React UI kit (atoms, markdown, tool-call cards, tokens)
 │   └── contract/             # Typed API contract — re-exports the API's AppType + hc
 ├── skillhub/                 # First-party skill packs (synced into the Skill Center on boot)
 ├── drizzle/                  # Migration files (the single source of truth for the schema)
@@ -256,29 +260,10 @@ stable:
 Every release is stamped: `GET /health` returns the `version` + commit `revision`
 the running build was cut from, so a bug report can be matched to exact code.
 
-The **browser extension** is attached to each Release as
-`greenhouse-bridge-vX.Y.Z.zip` (unzip → Chrome → "Load unpacked", or submit to the
-Web Store). The **mobile app** ships on its own cadence via EAS: JS-only changes
+The **mobile app** ships on its own cadence via EAS: JS-only changes
 roll out as over-the-air updates; native changes auto-build and upload to
 TestFlight. On the 1.x line the new team-hub app is not published before 3.0 (the
 store app still ships from the v2 line). Maintainer runbook: **[RELEASING.md](./RELEASING.md)**.
-
-The **desktop app** (a Tauri shell for macOS on Apple Silicon and Windows x64) is
-attached to each Release as well; installed copies update themselves from the project
-site. The macOS build is ad-hoc signed — no Developer ID — so a `.dmg` that came through
-a browser carries the quarantine flag and Gatekeeper reports it as *damaged* instead of
-warning. Install from the terminal instead: `curl` and `tar` set no quarantine flag, and
-the app opens like any other.
-
-```bash
-curl -fsSL https://github.com/linjiejim/greenhouse/releases/latest/download/Greenhouse-macos-aarch64.app.tar.gz | tar xz -C /Applications
-```
-
-(Already have the `.dmg`? `xattr -dr com.apple.quarantine /Applications/Greenhouse.app` gets
-you to the same place.) Windows:
-[`Greenhouse-windows-x86_64-setup.exe`](https://github.com/linjiejim/greenhouse/releases/latest/download/Greenhouse-windows-x86_64-setup.exe)
-— unsigned, so SmartScreen asks once (*More info → Run anyway*). Later versions arrive
-through the built-in updater, signature-checked, without any prompt.
 
 ### Upgrading
 
@@ -298,6 +283,21 @@ git pull && docker compose up -d --build
 # Bare-metal source checkout:
 git pull && pnpm install && pnpm drizzle-kit migrate   # then restart the API
 ```
+
+> **Upgrading to 1.5** — Greenhouse narrows to a team agent hub: members bring their own
+> agents over MCP, and the in-app agent is an assistant. The desktop app (Tauri shell) is
+> removed — use the web app in a browser; installed shells stop receiving updates. The browser
+> extension (Greenhouse Bridge) is removed and no longer attached to releases; conversations it
+> started stay readable and keep their read-only tool face. Session tags and custom session
+> folders are removed from the web and mobile apps (`/api/session-tags`, `/api/session-groups`
+> are gone; pinning stays). There is no migration: the tables stay untouched in 1.5 and are
+> dropped in the next release. Sub-sessions (the `spawn_session` tool and its background
+> Subagent runs) are removed: Subagent runs still active at upgrade are closed on first boot,
+> historical ones stay readable in the Execution center, and `RUNTIME_SUBAGENT_DRIVER_ENABLED`
+> can be removed from `.env`. *My prompts* (formerly the standalone Tasks page, `#/tasks`) moved
+> into SkillHub as its second tab, and *My Agents* (`#/agents`) into Automations as the
+> *Run profiles* tab; old links redirect. Custom agents, the chat agent picker and
+> automations that run as `custom:<id>@<v>` are unchanged.
 
 > **Upgrading to 1.4** — Evaluation, Missions (the cloud-agent sandbox), the team LLM relay
 > (`/api/llm`, relay keys, AI Gateway admin page) and Workflows are removed. There is no
@@ -356,7 +356,7 @@ values saved there are stored in the database (secrets encrypted with
 
 **Structure lives in code**: [`greenhouse.config.ts`](./greenhouse.config.ts) (typed, validated
 at boot) declares which extensions are switched on, where content packs live (skill packs,
-agent profiles, a seed dataset) and how the browser extension / mobile app treat server
+agent profiles, a seed dataset) and how client builds (the mobile app) treat server
 stations. `GREENHOUSE_EXTENSIONS=crm,example` overrides the extension list per deployment.
 
 ## MCP & agent access

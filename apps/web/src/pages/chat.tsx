@@ -12,28 +12,20 @@
  */
 
 import React from 'react';
-import type { AssistantLaunchRequest } from '@greenhouse/types/agent-context';
 import { ConversationPane } from '../components/conversation/conversation-pane';
 import { ChatSidePane, useSidePaneHost } from '../components/side-pane/chat-side-pane';
 
 interface ChatPageProps {
   initialSessionId?: string;
-  launchRequest?: AssistantLaunchRequest | null;
-  onLaunchConsumed?: (id: number) => void;
 }
 
-export function ChatPage({ initialSessionId, launchRequest, onLaunchConsumed }: ChatPageProps) {
+export function ChatPage({ initialSessionId }: ChatPageProps) {
   useSidePaneHost(initialSessionId ?? '__new__');
 
   return (
     <div className="flex h-full min-h-0 w-full">
       <div className="min-w-0 flex-1">
-        <ConversationPane
-          surface="full"
-          initialSessionId={initialSessionId}
-          launchRequest={launchRequest}
-          onLaunchConsumed={onLaunchConsumed}
-        />
+        <ConversationPane surface="full" initialSessionId={initialSessionId} />
       </div>
       <ChatSidePane />
     </div>
