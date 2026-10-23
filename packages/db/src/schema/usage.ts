@@ -10,6 +10,7 @@ import {
   bigint,
   bigserial,
   check,
+  doublePrecision,
   pgTable,
   text,
   serial,
@@ -46,6 +47,8 @@ export const llmUsage = pgTable(
     oauth_client_id: text('oauth_client_id'),
     /** Metered service: `llm` for chat models, `vision` for analyze_image. */
     service: text('service'),
+    /** JSON snapshot of the price applied at settlement (source + rates); null = unpriced / older row. */
+    price_applied: text('price_applied'),
     created_at: timestamp('created_at', { withTimezone: true, mode: 'string' }).notNull(),
   },
   (table) => [
@@ -85,6 +88,8 @@ export const serviceUsage = pgTable(
     run_id: text('run_id'),
     session_id: text('session_id'),
     budget_idempotency_key: text('budget_idempotency_key'),
+    /** JSON snapshot of the price applied at settlement (source + rate); null = unpriced. */
+    price_applied: text('price_applied'),
     metadata: text('metadata').notNull().default('{}'),
     created_at: timestamp('created_at', { withTimezone: true, mode: 'string' }).notNull(),
   },
@@ -250,7 +255,42 @@ export const usageBudgetLimits = pgTable(
   ],
 );
 
+/**
+ * Prices a super set on Services & pricing, overriding models.yaml /
+ * services.yaml (the files stay the defaults). One row per model, or per
+ * service × provider. Token rates are USD per 1M tokens; `unit_price` is USD
+ * per call / image / minute. A change applies to calls settled after it; each
+ * usage fact keeps the price it was settled at (`price_applied`).
+ */
+export const usagePriceOverrides = pgTable(
+  'usage_price_overrides',
+  {
+    /** `upo_<hash>` — deterministic per kind + target + provider. */
+    id: text('id').primaryKey(),
+    kind: text('kind', { enum: ['model', 'service'] }).notNull(),
+    /** Catalog model id, or a metered service id. */
+    target: text('target').notNull(),
+    /** Service provider; '' for a model. */
+    provider: text('provider').notNull().default(''),
+    input_per_mtok: doublePrecision('input_per_mtok'),
+    output_per_mtok: doublePrecision('output_per_mtok'),
+    cached_input_per_mtok: doublePrecision('cached_input_per_mtok'),
+    unit_price: doublePrecision('unit_price'),
+    updated_by: text('updated_by'),
+    created_at: timestamp('created_at', { withTimezone: true, mode: 'string' }).notNull(),
+    updated_at: timestamp('updated_at', { withTimezone: true, mode: 'string' }).notNull(),
+  },
+  (table) => [
+    uniqueIndex('uq_usage_price_overrides_target').on(table.kind, table.target, table.provider),
+    check(
+      'chk_usage_price_overrides_nonnegative',
+      sql`COALESCE(${table.input_per_mtok}, 0) >= 0 AND COALESCE(${table.output_per_mtok}, 0) >= 0 AND COALESCE(${table.cached_input_per_mtok}, 0) >= 0 AND COALESCE(${table.unit_price}, 0) >= 0`,
+    ),
+  ],
+);
+
 export type UsageRow = typeof llmUsage.$inferSelect;
+export type UsagePriceOverrideRow = typeof usagePriceOverrides.$inferSelect;
 export type ServiceUsageRow = typeof serviceUsage.$inferSelect;
 export type UsageBudgetLimitRow = typeof usageBudgetLimits.$inferSelect;
 export type UsageBudgetLimitScopeType = UsageBudgetLimitRow['scope_type'];

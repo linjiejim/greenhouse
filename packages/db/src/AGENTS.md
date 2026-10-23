@@ -290,7 +290,7 @@
 
 ### 计价（`services/metering.ts`，迁移 0010）
 
-- `db.metering` 拥有 `service_usage`（非模型付费调用的事实）与 `usage_budget_limits`（管理员 USD 上限：organization / service / `user` + `*` 成员默认 / `user` + 用户 id），并把 `llm_usage ∪ service_usage` 按单月区间聚合（`spendBy` / `spendTotals`）。`cost_usd_micros` 为 NULL 表示未定价，聚合按 0 计并单独数 `unpriced_calls`。
+- `db.metering` 拥有 `service_usage`（非模型付费调用的事实）、`usage_price_overrides`（super 定的价，覆盖 yaml）与 `usage_budget_limits`（管理员 USD 上限：organization / service / `user` + `*` 成员默认 / `user` + 用户 id），并把 `llm_usage ∪ service_usage` 按单月区间聚合（`spendBy` / `spendTotals`）。`cost_usd_micros` 为 NULL 表示未定价，聚合按 0 计并单独数 `unpriced_calls`。
 - 读必须带 `[since, until)`：两张表都有 `(user_id, created_at)` 索引，`service_usage` 另有 `(service, created_at)`。别写不带区间的全表聚合。
 
 ### 新增表流程

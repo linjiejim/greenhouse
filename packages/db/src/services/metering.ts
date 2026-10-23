@@ -14,12 +14,13 @@ import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import { nowIso } from '@greenhouse/utils/date';
 
 import type { Db } from '../client.js';
-import { serviceUsage, usageBudgetAccounts, usageBudgetLimits } from '../schema/index.js';
+import { serviceUsage, usageBudgetAccounts, usageBudgetLimits, usagePriceOverrides } from '../schema/index.js';
 import type {
   ServiceUsageRow,
   UsageBudgetAccountRow,
   UsageBudgetLimitRow,
   UsageBudgetLimitScopeType,
+  UsagePriceOverrideRow,
 } from '../schema/usage.js';
 
 export interface ServiceUsageInput {
@@ -37,8 +38,33 @@ export interface ServiceUsageInput {
   run_id?: string | null;
   session_id?: string | null;
   budget_idempotency_key?: string | null;
+  /** The price this call was settled at (source + rate), JSON-serializable. */
+  price_applied?: Readonly<Record<string, unknown>> | null;
   metadata?: Readonly<Record<string, unknown>>;
   created_at?: string;
+}
+
+export interface UsagePriceOverrideInput {
+  kind: UsagePriceOverrideRow['kind'];
+  target: string;
+  /** Service provider; omitted / '' for a model. */
+  provider?: string;
+  input_per_mtok?: number | null;
+  output_per_mtok?: number | null;
+  cached_input_per_mtok?: number | null;
+  unit_price?: number | null;
+  actor_id?: string | null;
+}
+
+export function usagePriceOverrideId(kind: UsagePriceOverrideRow['kind'], target: string, provider = ''): string {
+  const digest = createHash('sha256').update(`${kind}\u0000${target}\u0000${provider}`).digest('hex');
+  return `upo_${digest.slice(0, 32)}`;
+}
+
+function assertRate(value: number | null | undefined, label: string): number | null {
+  if (value === undefined || value === null) return null;
+  if (!Number.isFinite(value) || value < 0) throw new Error(`${label} must be a non-negative number`);
+  return value;
 }
 
 export type SpendDimension = 'member' | 'service' | 'client' | 'agent_client';
@@ -148,6 +174,7 @@ export function createMeteringService(db: Db) {
           run_id: input.run_id ?? null,
           session_id: input.session_id ?? null,
           budget_idempotency_key: input.budget_idempotency_key ?? null,
+          price_applied: input.price_applied ? JSON.stringify(input.price_applied) : null,
           metadata: JSON.stringify(input.metadata ?? {}),
           created_at: input.created_at ?? nowIso(),
         })
@@ -212,6 +239,55 @@ export function createMeteringService(db: Db) {
         .delete(usageBudgetLimits)
         .where(eq(usageBudgetLimits.id, usageBudgetLimitId(scopeType, scopeId.trim())))
         .returning({ id: usageBudgetLimits.id });
+      return rows.length > 0;
+    },
+
+    // ─── Price overrides ───────────────────────────────────
+
+    async listPriceOverrides(): Promise<UsagePriceOverrideRow[]> {
+      return db
+        .select()
+        .from(usagePriceOverrides)
+        .orderBy(asc(usagePriceOverrides.kind), asc(usagePriceOverrides.target), asc(usagePriceOverrides.provider));
+    },
+
+    /** Replace the whole override for one model or service × provider (fields left out become null). */
+    async setPriceOverride(input: UsagePriceOverrideInput): Promise<UsagePriceOverrideRow> {
+      const target = input.target.trim();
+      const provider = (input.provider ?? '').trim();
+      if (!target || target.length > 200 || provider.length > 200) throw new Error('target/provider is invalid');
+      const values = {
+        input_per_mtok: assertRate(input.input_per_mtok, 'input_per_mtok'),
+        output_per_mtok: assertRate(input.output_per_mtok, 'output_per_mtok'),
+        cached_input_per_mtok: assertRate(input.cached_input_per_mtok, 'cached_input_per_mtok'),
+        unit_price: assertRate(input.unit_price, 'unit_price'),
+      };
+      const at = nowIso();
+      const [row] = await db
+        .insert(usagePriceOverrides)
+        .values({
+          id: usagePriceOverrideId(input.kind, target, provider),
+          kind: input.kind,
+          target,
+          provider,
+          ...values,
+          updated_by: input.actor_id ?? null,
+          created_at: at,
+          updated_at: at,
+        })
+        .onConflictDoUpdate({
+          target: usagePriceOverrides.id,
+          set: { ...values, updated_by: input.actor_id ?? null, updated_at: at },
+        })
+        .returning();
+      return row!;
+    },
+
+    async deletePriceOverride(kind: UsagePriceOverrideRow['kind'], target: string, provider = ''): Promise<boolean> {
+      const rows = await db
+        .delete(usagePriceOverrides)
+        .where(eq(usagePriceOverrides.id, usagePriceOverrideId(kind, target.trim(), provider.trim())))
+        .returning({ id: usagePriceOverrides.id });
       return rows.length > 0;
     },
 

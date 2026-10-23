@@ -30,6 +30,8 @@ export interface UsageRecord {
   oauth_client_id?: string | null;
   /** Metered service: `llm` / `vision`. */
   service?: string | null;
+  /** The price this call was settled at (source + rates); null = unpriced. */
+  price_applied?: Readonly<Record<string, unknown>> | null;
 }
 
 export interface UsageStats {
@@ -220,6 +222,7 @@ export function createUsageService(db: Db) {
         client: usage.client ?? null,
         oauth_client_id: usage.oauth_client_id ?? null,
         service: usage.service ?? null,
+        price_applied: usage.price_applied ? JSON.stringify(usage.price_applied) : null,
         created_at: nowIso(),
       });
     },

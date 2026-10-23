@@ -163,6 +163,7 @@ function createDatabaseProvider(db: Db, client: DbClient['client'] | null) {
         'runtime_runs',
         'service_usage',
         'usage_budget_limits',
+        'usage_price_overrides',
         'usage_budget_ledger',
         'usage_budget_reservations',
         'usage_budget_accounts',
