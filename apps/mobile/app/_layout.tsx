@@ -177,6 +177,9 @@ export default function RootLayout() {
                 <Stack.Screen name="knowledge/doc" options={detailScreen(c)} />
                 <Stack.Screen name="files" options={pageScreen(c, { grouped: true })} />
                 <Stack.Screen name="file-preview" options={{ ...detailScreen(c), presentation: 'modal' }} />
+                <Stack.Screen name="projects/index" options={pageScreen(c, { grouped: true })} />
+                <Stack.Screen name="projects/detail" options={pageScreen(c, { grouped: true })} />
+                <Stack.Screen name="projects/task" options={detailScreen(c, { grouped: true })} />
 
                 {/* ── sheets ── */}
                 <Stack.Screen name="sheets/stations" options={sheetScreen([0.6, 1], { header: true })} />

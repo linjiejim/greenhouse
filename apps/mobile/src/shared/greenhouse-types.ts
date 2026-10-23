@@ -169,3 +169,86 @@ export interface DriveUploadInit {
   upload_url: string;
   complete_url?: string;
 }
+
+// ─── projects (/api/projects, routes/projects.ts) ───────────────────
+
+export type ProjectStatus = 'planning' | 'active' | 'on_hold' | 'completed' | 'archived';
+export type TaskStatus = 'todo' | 'in_progress' | 'in_review' | 'done' | 'cancelled';
+export type TaskPriority = 'low' | 'normal' | 'high' | 'urgent';
+
+export interface TaskStats {
+  total: number;
+  todo: number;
+  in_progress: number;
+  in_review: number;
+  done: number;
+  cancelled: number;
+}
+
+export interface Project {
+  id: number;
+  title: string;
+  description: string | null;
+  status: ProjectStatus;
+  priority: TaskPriority;
+  owner_id: string;
+  owner_nickname?: string | null;
+  start_date: string | null;
+  end_date: string | null;
+  color: string | null;
+  visibility?: 'public' | 'private';
+  created_at: string;
+  updated_at: string;
+  stats?: TaskStats;
+  progress?: number;
+}
+
+/** A task as the project routes answer it; `tags` / `dependencies` may be raw JSON strings. */
+export interface ProjectTask {
+  id: number;
+  project_id: number;
+  parent_id: number | null;
+  title: string;
+  description: string | null;
+  status: TaskStatus;
+  priority: TaskPriority;
+  task_type?: string;
+  assignee_id: string | null;
+  assignee_nickname?: string | null;
+  start_date: string | null;
+  due_date: string | null;
+  completed_at: string | null;
+  sort_order: number;
+  estimated_hours: number | null;
+  tags?: string[] | string | null;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+  children?: ProjectTask[];
+}
+
+export interface ProjectMember {
+  id: number;
+  project_id: number;
+  user_id: string;
+  role: 'owner' | 'member';
+  nickname: string | null;
+}
+
+/** `GET /api/projects/:id`. */
+export interface ProjectDetail {
+  project: Project;
+  tasks: ProjectTask[];
+  stats: TaskStats;
+  progress: number;
+  members: ProjectMember[];
+}
+
+export interface TaskComment {
+  id: number;
+  task_id: number;
+  user_id: string;
+  content: string;
+  created_at: string;
+  user_nickname?: string | null;
+}
