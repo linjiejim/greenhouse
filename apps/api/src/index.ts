@@ -71,6 +71,8 @@ import {
   runExtensionShutdownHooks,
 } from './extensions/boot.js';
 import adminSettingsRoutes from './routes/admin-settings.js';
+import { adminRetroRoutes, adminTeamContextRoutes } from './routes/admin-team-context.js';
+import dataCatalogRoutes from './routes/data-catalog.js';
 import { applyWorkspaceEnvOverlay } from './settings/workspace-config.js';
 import uploadRoutes from './routes/upload.js';
 import adminRoutes from './routes/admin.js';
@@ -288,6 +290,8 @@ function mountRoutes(toolRegistry: ToolRegistry) {
       .route('/api/admin/computers', adminComputerRoutes)
       .route('/api/admin', adminRoutes)
       .route('/api/admin/settings', adminSettingsRoutes)
+      .route('/api/admin/team-context', adminTeamContextRoutes)
+      .route('/api/admin/retro', adminRetroRoutes)
       .route('/api/admin/feature-requests', featureRequestRoutes)
       .route('/api/admin/frictions', frictionRoutes)
       // Project management — all internal users
@@ -339,6 +343,8 @@ function mountRoutes(toolRegistry: ToolRegistry) {
       .use('/api/report-templates/*', requireInternal())
       .route('/api/report-templates', reportTemplateRoutes)
       // Module usage counts (page opens) — all internal users; counts only
+      .use('/api/data-catalog', requireInternal())
+      .route('/api/data-catalog', dataCatalogRoutes)
       .use('/api/usage/*', requireInternal())
       .route('/api/usage', usageRoutes)
       .use('/api/computer/*', requireInternal())

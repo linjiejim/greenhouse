@@ -2,7 +2,7 @@
  * Feature request service — feature request CRUD (PostgreSQL).
  */
 
-import { and, eq, sql, desc } from 'drizzle-orm';
+import { and, eq, gte, lt, sql, desc } from 'drizzle-orm';
 import { nowIso } from '@greenhouse/utils/date';
 
 import type { Db } from '../client.js';
@@ -79,6 +79,31 @@ export function createFeatureRequestService(db: Db) {
 
       await db.update(featureRequests).set(set).where(eq(featureRequests.id, id));
       return service.getById(id);
+    },
+
+    /** Requests submitted in a window, newest first. */
+    async listCreatedBetween(input: { from: string; to: string; limit?: number }): Promise<FeatureRequestRow[]> {
+      return await db
+        .select()
+        .from(featureRequests)
+        .where(and(gte(featureRequests.created_at, input.from), lt(featureRequests.created_at, input.to)))
+        .orderBy(desc(featureRequests.created_at))
+        .limit(input.limit ?? 10);
+    },
+
+    /** Requests submitted in a window, counted by their current status. */
+    async countCreatedBetweenByStatus(input: {
+      from: string;
+      to: string;
+    }): Promise<Record<FeatureRequestStatus, number>> {
+      const rows = await db
+        .select({ status: featureRequests.status, cnt: sql<string>`count(*)` })
+        .from(featureRequests)
+        .where(and(gte(featureRequests.created_at, input.from), lt(featureRequests.created_at, input.to)))
+        .groupBy(featureRequests.status);
+      const out: Record<FeatureRequestStatus, number> = { pending: 0, accepted: 0, rejected: 0, done: 0 };
+      for (const row of rows) out[row.status] = Number(row.cnt);
+      return out;
     },
 
     async count(status?: FeatureRequestStatus): Promise<number> {

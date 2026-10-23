@@ -738,6 +738,10 @@ export default {
     brandingDesc: 'Product name, logo and theme tokens for this workspace',
     mcpAccess: 'MCP Access',
     mcpAccessDesc: 'OAuth clients for external agents (MCP server)',
+    teamContext: 'Team context',
+    teamContextDesc: "What members' agents receive: conventions, glossary, and when the monthly retro runs",
+    dataCatalog: 'Data catalog',
+    dataCatalogDesc: 'The data you can read, and how your agent reaches each source',
     internalKnowledge: 'Internal Knowledge',
     internalKnowledgeDesc: 'Internal team documents',
     personalKnowledge: 'Personal Knowledge',
@@ -770,6 +774,73 @@ export default {
       requests: 'Feature requests',
       frictions: 'Frictions',
     },
+  },
+
+  teamContext: {
+    intro:
+      "Members' agents receive this over MCP when they start a task (the team_context tool and the greenhouse://context/* resources), along with the SkillHub skills and saved prompts each member can use. Only team documents can be picked; one that is later made private or archived stops being served.",
+    conventionsTitle: 'Team conventions',
+    conventionsDesc:
+      'Documents that say how the team works. Every member’s agent follows them. Up to {count} documents.',
+    noConventions: 'No conventions picked yet.',
+    pickDocument: 'Choose a team document',
+    addConvention: 'Add',
+    remove: 'Remove {title}',
+    glossaryTitle: 'Glossary',
+    glossaryDesc: 'One document with the team’s terms, so agents read your words the way you mean them.',
+    glossaryNone: 'No glossary',
+    timezoneTitle: 'Workspace time zone',
+    timezoneDesc: 'The monthly retro is written into the knowledge base at 09:00 on the 1st, in this zone.',
+    timezoneLabel: 'IANA time zone',
+    timezoneDefault: 'In effect: {zone}. Leave empty for the default.',
+    nextRetro: 'Next retro: {date}',
+    problemHint: 'Not served to agents until this is fixed',
+    problem: {
+      missing: 'Deleted',
+      not_team: 'Not team-visible',
+      archived: 'Archived',
+    },
+    saved: 'Team context saved',
+    saveFailed: 'Could not save the team context',
+    loadFailed: 'Could not load the team context',
+  },
+
+  retro: {
+    generate: 'Generate this month’s retro',
+    generating: 'Generating…',
+    done: '{month} retro written to the knowledge base',
+    open: 'Open {month} retro',
+    failed: 'Could not generate the retro',
+    skipped: {
+      over_budget: '{month} retro written without suggestions: the team’s model budget is used up',
+      no_model: '{month} retro written without suggestions: no model is configured',
+      failed: '{month} retro written without suggestions: the model call failed',
+    },
+  },
+
+  dataCatalog: {
+    open: 'Data catalog',
+    intro:
+      'The data you can read, and how your own agent reaches each source over MCP. Counts only — open a base to see its records.',
+    basesTitle: 'Tables bases',
+    extensionsTitle: 'Other data sources',
+    truncated: 'Showing the first {count} bases.',
+    tablesTruncated: 'Showing {shown} of {total} tables — open the base for the rest.',
+    owner: 'Owner: {name}',
+    lastChange: 'Last change {date}',
+    rows: '{count} rows',
+    reach: 'How your agent reaches it',
+    access: {
+      read: 'read',
+      write: 'write',
+    },
+    scope: 'scope mcp:{group}',
+    inAppOnly: 'in Greenhouse chat only',
+    recordKinds: 'Searchable records: {kinds}',
+    export: 'Export {type}',
+    emptyTitle: 'No data sources you can read yet',
+    emptyDescription: 'Tables bases shared with you and data your administrator connects will appear here.',
+    loadFailed: 'Could not load the data catalog',
   },
 
   activity: {
@@ -1772,8 +1843,45 @@ export default {
     connectClaude: 'Claude Code',
     connectCursor: 'Cursor (~/.cursor/mcp.json)',
     connectOther: 'Clients that only speak stdio',
-    connectAfter:
-      'After adding it, run the login step (Codex) or open /mcp (Claude Code) and approve the scopes in the browser. Give write scopes only to agents you want to change data.',
+    wizard: {
+      pickTitle: 'Pick your agent',
+      pickFirst: 'Pick the agent you use to see its setup.',
+      client: {
+        codex: 'Codex',
+        'claude-code': 'Claude Code',
+        cursor: 'Cursor',
+        other: 'Other MCP client',
+      },
+      setupTitle: 'Add Greenhouse to it',
+      oauthCodex:
+        'The login step opens your browser: sign in to Greenhouse and approve what the agent may reach. Codex keeps the token and refreshes it.',
+      oauthClaude:
+        'Then open /mcp in Claude Code, choose greenhouse and authenticate: your browser opens, you sign in to Greenhouse and approve what the agent may reach.',
+      oauthCursor:
+        'Save the file; Cursor › Settings › MCP shows greenhouse with a sign-in prompt that opens your browser to approve what the agent may reach.',
+      otherHttp:
+        'A client that speaks Streamable HTTP with OAuth just needs the MCP server URL above: it finds the sign-in itself. For one that only speaks stdio, run it through mcp-remote:',
+      oauthOther:
+        'Either way, the first call opens your browser to sign in to Greenhouse and approve what the agent may reach.',
+      scopes:
+        'On the approval page, pick the data the agent may reach (knowledge, files, tables, …) and whether it may write. Give write access only to agents you want to change data; you can revoke a connection under Connected agents.',
+      checkTitle: 'Check the connection',
+      checkIntro: 'Ask your agent to do something with Greenhouse (for example “call team_context”), then check here.',
+      check: 'Check connection',
+      checking: 'Checking…',
+      checkOk: '{name} reached Greenhouse {ago}. You are connected.',
+      checkStale: '{name} last reached Greenhouse {ago}. Ask your agent to call a Greenhouse tool, then check again.',
+      checkNeverCalled:
+        '{name} is signed in but has not called Greenhouse yet. Ask it to call team_context, then check again.',
+      checkNone: 'No connection from this agent yet. Finish the sign-in in step 2, then check again.',
+      checkFailed: 'Could not check the connection',
+      tipsTitle: 'Get the most out of it',
+      tipTeamContext:
+        'Start a new task by asking your agent to call team_context: it returns the team’s conventions, glossary, skills and data sources.',
+      tipPrompts:
+        'Team skills and your saved prompts are offered as MCP prompts (skill-…, prompt-…); in Claude Code they appear as /mcp__greenhouse__ commands.',
+      tipCatalog: 'data_catalog lists the data you can query and which tool reaches each source.',
+    },
     howWritesWork: 'How writes work',
     howWrites1: 'Reads and changes you are allowed to make run at once; nothing waits in Greenhouse.',
     howWrites2:

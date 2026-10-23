@@ -131,7 +131,15 @@ describe('MCP server — tools/list', () => {
     const { client, server } = await connect(makeCtx());
     const { tools } = await client.listTools();
 
-    expect(tools.map((t) => t.name).sort()).toEqual(['project_mutation', 'project_query', 'tool_output_read']);
+    // team_context and data_catalog are protocol tools every grant lists (content cut to the grant).
+    expect(tools.map((t) => t.name).sort()).toEqual([
+      'data_catalog',
+      'project_mutation',
+      'project_query',
+      'team_context',
+      'tool_output_read',
+    ]);
+    expect(tools.find((t) => t.name === 'team_context')!.annotations).toMatchObject({ readOnlyHint: true });
 
     const write = tools.find((t) => t.name === 'project_mutation')!;
     // No action enum to prove it only adds things: destructive, so clients ask.

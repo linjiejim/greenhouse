@@ -29,7 +29,7 @@ const PRIORITY_STYLES: Record<string, { color: string; labelKey: TranslationKey 
 
 // ─── Main Component ──────────────────────────────────────
 
-export function FeatureRequestsPanel({ tabs }: { tabs?: React.ReactNode }) {
+export function FeatureRequestsPanel({ tabs, actions }: { tabs?: React.ReactNode; actions?: React.ReactNode }) {
   const t = useT();
   const [requests, setRequests] = useState<FeatureRequest[]>([]);
   const [total, setTotal] = useState(0);
@@ -91,7 +91,7 @@ export function FeatureRequestsPanel({ tabs }: { tabs?: React.ReactNode }) {
   };
 
   return (
-    <ModulePage moduleId="admin.issues" layout="list" tabs={tabs}>
+    <ModulePage moduleId="admin.issues" layout="list" tabs={tabs} actions={actions}>
       <div className="space-y-4">
         {/* The toolbar opens the content, as in the sibling Frictions tab (a
             CRUD list), so switching tabs moves nothing. */}

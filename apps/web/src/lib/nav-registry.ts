@@ -13,6 +13,8 @@
 import type { WebExtensionModule, WebExtensionPageModule } from '../extensions/define';
 import {
   MessageSquareWarning,
+  BookOpen,
+  Database,
   Mail,
   Users,
   Key,
@@ -234,6 +236,15 @@ const ADMINISTRATION_MODULES: NavModule[] = [
     requireRole: ['super'],
   },
   {
+    id: 'admin.team-context',
+    label: 'Team context',
+    icon: BookOpen,
+    path: '#/administration/team-context',
+    parent: 'administration',
+    description: "What members' agents receive: conventions, glossary, and when the monthly retro runs",
+    requireRole: ['super'],
+  },
+  {
     id: 'admin.branding',
     label: 'Branding Studio',
     icon: Palette,
@@ -315,6 +326,15 @@ const STANDALONE_MODULES: NavModule[] = [
     pinnable: false,
   },
   {
+    id: 'workspace.data-catalog',
+    label: 'Data catalog',
+    icon: Database,
+    path: '#/tables/catalog',
+    parent: 'standalone',
+    description: 'The data you can read, and how your agent reaches each source',
+    pinnable: false,
+  },
+  {
     id: 'workspace.projects',
     label: 'Projects',
     icon: FolderKanban,
@@ -380,6 +400,8 @@ const NAV_COPY: Record<string, { label: TranslationKey; description?: Translatio
   'admin.issues': { label: 'navigation.issues', description: 'navigation.issuesDesc' },
   'admin.activity': { label: 'navigation.activityLog', description: 'navigation.activityLogAdminDesc' },
   'admin.mcp-keys': { label: 'navigation.mcpAccess', description: 'navigation.mcpAccessDesc' },
+  'admin.team-context': { label: 'navigation.teamContext', description: 'navigation.teamContextDesc' },
+  'workspace.data-catalog': { label: 'navigation.dataCatalog', description: 'navigation.dataCatalogDesc' },
   'workspace.home': { label: 'navigation.home', description: 'navigation.homeDesc' },
   'workspace.files': { label: 'navigation.files', description: 'navigation.filesDesc' },
   'workspace.automations': { label: 'navigation.automation', description: 'navigation.automationDesc' },

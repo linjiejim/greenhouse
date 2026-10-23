@@ -76,6 +76,10 @@
       "import": "./src/agent-access.ts",
       "types": "./src/agent-access.ts"
     },
+    "./hub-context": {
+      "import": "./src/hub-context.ts",
+      "types": "./src/hub-context.ts"
+    },
     "./runtime": {
       "import": "./src/runtime.ts",
       "types": "./src/runtime.ts"

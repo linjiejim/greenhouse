@@ -23,6 +23,12 @@ function notificationHref(item: PlatformNotification): string | null {
     return executionNotificationHref(item.run_id, item.payload);
   }
   if (item.agent_id) return AUTOMATIONS_PROFILES_HASH;
+  // A system notice may name an in-app page to open (the monthly retro links its doc).
+  const payload = item.payload;
+  if (payload && typeof payload === 'object' && !Array.isArray(payload)) {
+    const url = (payload as Record<string, unknown>).url;
+    if (typeof url === 'string' && url.startsWith('#/')) return url;
+  }
   return null;
 }
 

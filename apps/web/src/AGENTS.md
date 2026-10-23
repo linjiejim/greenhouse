@@ -183,6 +183,14 @@ stores/
 - 服务端只收 `@greenhouse/types/usage` 的 `PAGE_MODULE_IDS` 封闭清单；`lib/usage/page-module.test.ts` 双向钉住它与导航注册表——新增 Settings / Administration 模块或顶层页时两边一起改，否则测试红。
 - Administration › Usage › By Modules（`pages/administration/module-usage.tsx`）读 `/api/admin/usage/modules`：7 / 30 / 90 天、按客户端汇总、按工具 / 模块的计数与合计、按模型的 Prompt 缓存命中率，并注明计数从 v1.4 开始。
 
+### 团队上下文、复盘与数据目录（v1.7）
+
+- Administration › Team context（`pages/administration/team-context.tsx`）选团队约定与术语表（只列团队文档，失效的选项打标签说明原因）和工作区时区；读写 `/api/admin/team-context`，Runtime Config 不渲染 `team_context.*`。
+- Issues & requests 页头的「生成本月复盘」（`retro-button.tsx`，两个 tab 共用 `actions`）调 `POST /api/admin/retro`，成功后给出文档链接，跳过建议时用 warning toast 说明原因。
+- 数据目录是 Tables 下的 `#/tables/catalog`（`pages/tables/data-catalog.tsx`，模块 `workspace.data-catalog`，用量仍计 `tables`），入口在 Tables 首页 actions；内容与 MCP `data_catalog` 同源，只读。
+- 接入指南（`settings/agent-access/connect.tsx`）是按客户端的四步向导：选客户端 → 该客户端的配置（MCP 地址、OAuth 登录方式、该客户端能用的模型网关部分）→ 检查连接（`/api/agent-access/connections`，10 分钟内有调用算连上）→ 提示（先调 team_context）。新增客户端加进 `CLIENTS` 与 `agentAccess.wizard.client.*`，服务端 `agentClientKind` 同步。
+- 收件箱：通知 payload 带 `url`（`#/` 开头）时点击直达该页（复盘通知用它链到文档）。
+
 ### 构建与开发模式（Vite，2026-06 起）
 
 - **构建工具 = Vite**（`apps/web/vite.config.ts`）：`@vitejs/plugin-react`（Fast Refresh）+ `@tailwindcss/vite`。入口 HTML 是 `apps/web/index.html`（Vite root），`<script src="/src/app.tsx">`；CSS 由 `app.tsx` 里 `import './app.css'` 引入，**不要**在 index.html 写 `<link>`。

@@ -7,7 +7,7 @@
  */
 
 import { randomUUID } from 'node:crypto';
-import { and, desc, eq, gt, inArray, isNull } from 'drizzle-orm';
+import { and, desc, eq, gt, inArray, isNull, sql } from 'drizzle-orm';
 import { nowIso } from '@greenhouse/utils/date';
 import { safeJsonParse } from '@greenhouse/utils/json';
 
@@ -313,6 +313,42 @@ export function createPlatformOAuthService(db: Db) {
         .innerJoin(platformOAuthClients, eq(platformOAuthClients.id, platformOAuthGrants.client_id))
         .where(eq(platformOAuthGrants.user_id, userId))
         .orderBy(desc(platformOAuthGrants.updated_at));
+    },
+
+    /**
+     * The member's active grants with the last time any of their access tokens
+     * reached the MCP server (`touchAccessToken` runs on every request) — what
+     * the connect wizard's "check connection" reads.
+     */
+    async listUserGrantActivity(
+      userId: string,
+    ): Promise<Array<{ client_id: string; client_name: string; connected_at: string; last_used_at: string | null }>> {
+      const rows = await db
+        .select({
+          client_id: platformOAuthClients.id,
+          client_name: platformOAuthClients.client_name,
+          connected_at: platformOAuthGrants.created_at,
+          last_used_at: sql<string | null>`max(${platformOAuthTokens.last_used_at})`,
+        })
+        .from(platformOAuthGrants)
+        .innerJoin(platformOAuthClients, eq(platformOAuthClients.id, platformOAuthGrants.client_id))
+        .leftJoin(
+          platformOAuthTokens,
+          and(eq(platformOAuthTokens.grant_id, platformOAuthGrants.id), eq(platformOAuthTokens.token_type, 'access')),
+        )
+        .where(
+          and(
+            eq(platformOAuthGrants.user_id, userId),
+            eq(platformOAuthGrants.status, 'active'),
+            eq(platformOAuthClients.status, 'active'),
+          ),
+        )
+        .groupBy(platformOAuthClients.id, platformOAuthClients.client_name, platformOAuthGrants.created_at);
+      return rows.map((row) => ({
+        ...row,
+        connected_at: new Date(row.connected_at).toISOString(),
+        last_used_at: row.last_used_at ? new Date(row.last_used_at).toISOString() : null,
+      }));
     },
 
     async revokeGrant(id: string, userId?: string): Promise<boolean> {

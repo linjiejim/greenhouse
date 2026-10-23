@@ -41,6 +41,8 @@ import {
   ListResourcesRequestSchema,
   ListResourceTemplatesRequestSchema,
   ReadResourceRequestSchema,
+  ListPromptsRequestSchema,
+  GetPromptRequestSchema,
   ErrorCode,
   McpError,
 } from '@modelcontextprotocol/sdk/types.js';
@@ -81,17 +83,24 @@ import {
 } from '../agent-runtime/tool-output-store.js';
 import type { AppEnv } from '../app-env.js';
 import { delegatedAgentActor } from '../platform/actor.js';
-import { getPlatformRuntime } from '../platform/runtime.js';
-import { projectsManifest } from '../platform/manifests/projects.js';
-import { knowledgeManifest } from '../platform/manifests/knowledge.js';
-import { extensionPlatformToolCapabilities } from '../extensions/boot.js';
-import { tablesManifest } from '../platform/manifests/tables.js';
+import { filterMcpToolIdsByPlatform, MCP_PROFILE_ID } from '../agent-runtime/mcp-tool-visibility.js';
 import { dispatchKnowledgeOperation } from '../platform/knowledge/adapter.js';
 import {
   KNOWLEDGE_RESOURCE_URI_TEMPLATE,
   listKnowledgeResources,
   readKnowledgeResource,
 } from '../platform/knowledge/resources.js';
+import { DATA_CATALOG_TOOL, TEAM_CONTEXT_TOOL } from '@greenhouse/types/hub-context';
+import { countUsage } from '../usage/counters.js';
+import {
+  buildTeamContextBundle,
+  isContextResourceUri,
+  listContextResources,
+  readContextResource,
+  type TeamContextCaller,
+} from '../hub-context/team-context.js';
+import { buildDataCatalog } from '../hub-context/catalog.js';
+import { getTeamPrompt, listTeamPrompts } from '../hub-context/prompts.js';
 
 const SERVER_NAME = 'greenhouse';
 const SERVER_VERSION = '0.1.0';
@@ -107,14 +116,30 @@ const SERVER_INSTRUCTIONS =
   'A result too long for one reply comes back as {"truncated":true,"output_id":…} plus a preview; ' +
   `page through the rest with ${TOOL_OUTPUT_READ_TOOL} only as far as you need. ` +
   'For reusable output skills (decks, reports, reviews…) use skill_query skills.find ' +
-  'to search and skills.download to install them locally.';
+  'to search and skills.download to install them locally. ' +
+  `Call ${TEAM_CONTEXT_TOOL} first in a new task: it returns the team's conventions, glossary, ` +
+  `skills and data sources (also readable as greenhouse://context/* resources and MCP prompts); ` +
+  `${DATA_CATALOG_TOOL} lists every data source you can query and the tool to use.`;
 
-/**
- * Profile used to resolve the bound user's tool set. Internal-only surface, so we
- * use the canonical agent-runtime `desktop` profile (full internal tool set),
- * then narrow by the proxy allowlists and the MCP phase set below.
- */
-const MCP_PROFILE_ID = 'desktop';
+/** Protocol-level tools: listed for every grant, their content cut to it. */
+const TEAM_CONTEXT_TOOL_DEF = {
+  name: TEAM_CONTEXT_TOOL,
+  description:
+    "Call this first in a new task. Returns the team's context in one reply: what this connection can reach, " +
+    "the team's conventions and glossary (documents an administrator picked), the SkillHub skills and saved " +
+    'prompts you can use, and a summary of the data sources. Read-only; takes no arguments.',
+  inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+  annotations: { readOnlyHint: true, openWorldHint: false },
+};
+
+const DATA_CATALOG_TOOL_DEF = {
+  name: DATA_CATALOG_TOOL,
+  description:
+    'List the data your user can reach through this connection: Tables bases (tables, row counts, owner, last ' +
+    'change) and extension data sources, each with the tool and action to query it. Read-only; takes no arguments.',
+  inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+  annotations: { readOnlyHint: true, openWorldHint: false },
+};
 
 // Tools exposed over MCP — derived from each tool's `meta.surface.mcp` in the
 // catalog (tools/registry.ts). A tool must ALSO carry a proxy tier to be
@@ -127,53 +152,9 @@ interface McpContext {
   registry: ToolRegistry;
 }
 
-function capabilitiesByActionKind(
-  manifest: typeof projectsManifest | typeof knowledgeManifest | typeof tablesManifest,
-  kind: 'query' | 'command',
-): string[] {
-  return [
-    ...new Set(
-      Object.values(manifest.actions)
-        .filter((action) => action.mcp && action.kind === kind)
-        .map((action) => action.capability),
-    ),
-  ];
-}
-
-const PLATFORM_TOOL_CAPABILITIES: Readonly<Record<string, readonly string[]>> = {
-  project_query: capabilitiesByActionKind(projectsManifest, 'query'),
-  project_mutation: capabilitiesByActionKind(projectsManifest, 'command'),
-  knowledge_query: capabilitiesByActionKind(knowledgeManifest, 'query'),
-  knowledge_mutation: capabilitiesByActionKind(knowledgeManifest, 'command'),
-  tables_query: capabilitiesByActionKind(tablesManifest, 'query'),
-  tables_mutation: capabilitiesByActionKind(tablesManifest, 'command'),
-  // Application-backed tools an extension owns follow the same rule.
-  ...extensionPlatformToolCapabilities(capabilitiesByActionKind),
-};
-
-/**
- * Registry-migrated tools disappear when none of their actions are authorized.
- * Legacy tools remain governed by their existing feature/tool gates until their
- * M4 migration. This check is intentionally uncached so revocation affects the
- * very next tools/list request.
- */
-export async function filterMcpToolIdsByPlatform(
-  identity: ReturnType<typeof getAgentIdentity>,
-  toolIds: readonly string[],
-): Promise<string[]> {
-  const actor = delegatedAgentActor({ userId: identity.userId, authMethod: 'oauth' });
-  const visibility = await Promise.all(
-    toolIds.map(async (toolId) => {
-      const capabilities = PLATFORM_TOOL_CAPABILITIES[toolId];
-      if (!capabilities) return { toolId, visible: true };
-      const decisions = await Promise.all(
-        capabilities.map((capability) => getPlatformRuntime().authorize(actor, capability)),
-      );
-      return { toolId, visible: decisions.some((decision) => decision.allowed) };
-    }),
-  );
-  return visibility.filter((entry) => entry.visible).map((entry) => entry.toolId);
-}
+// The per-request platform visibility rule lives in agent-runtime so other
+// surfaces describing the MCP server (the data catalog) ask the same question.
+export { filterMcpToolIdsByPlatform };
 
 /**
  * Short-TTL cache of the built context (lazy-tool registry + narrowed tool ids).
@@ -294,7 +275,7 @@ export function mcpToolAnnotations(entry: ProxyToolManifestEntry) {
 export function buildMcpServer(c: Context, ctx: McpContext): Server {
   const server = new Server(
     { name: SERVER_NAME, version: SERVER_VERSION },
-    { capabilities: { tools: {}, resources: {} }, instructions: SERVER_INSTRUCTIONS },
+    { capabilities: { tools: {}, resources: {}, prompts: {} }, instructions: SERVER_INSTRUCTIONS },
   );
   const identity = getAgentIdentity(c);
   const oauthClientId = c.get('oauthClientId') as string | undefined;
@@ -317,7 +298,18 @@ export function buildMcpServer(c: Context, ctx: McpContext): Server {
     if (entries.length > 0) {
       tools.push({ ...toolOutputReadToolDef(), annotations: { readOnlyHint: true, openWorldHint: false } });
     }
+    tools.push(TEAM_CONTEXT_TOOL_DEF, DATA_CATALOG_TOOL_DEF);
     return { tools: tools as never };
+  });
+
+  // Team context, prompts and the data catalog: cut to what this grant reaches.
+  const reachable: ReadonlySet<string> = new Set(ctx.toolIds);
+  const contextCaller = (): TeamContextCaller => ({
+    db: getDb(),
+    userId: identity.userId,
+    role: identity.userRole,
+    reachable,
+    actor,
   });
 
   // Metering: every paid call a tool makes is charged to the member and
@@ -354,6 +346,22 @@ export function buildMcpServer(c: Context, ctx: McpContext): Server {
             { type: 'text', text },
           ],
         };
+      }
+
+      if (name === TEAM_CONTEXT_TOOL || name === DATA_CATALOG_TOOL) {
+        const output =
+          name === TEAM_CONTEXT_TOOL
+            ? await buildTeamContextBundle(contextCaller())
+            : await buildDataCatalog({ db: getDb(), actor, reachable });
+        countUsage('tool_call', name, 'mcp');
+        const bounded = await boundReplyText(JSON.stringify(output), outputCaller, name);
+        await recordMcpAudit(c, {
+          endpoint: 'mcp:tools/call',
+          statusCode: 200,
+          durationMs: Date.now() - start,
+          meta: { tool: name, ...(bounded.outputId ? { output_id: bounded.outputId } : {}) },
+        });
+        return { content: bounded.content };
       }
 
       // A tool this grant reaches but the workspace has switched off (the cloud
@@ -477,6 +485,13 @@ export function buildMcpServer(c: Context, ctx: McpContext): Server {
 
   server.setRequestHandler(ListResourcesRequestSchema, async () => {
     const start = Date.now();
+    const context = await listContextResources(contextCaller());
+    // Knowledge documents only for a grant that reaches the knowledge tools:
+    // resources follow the same resource-group scopes as tools.
+    if (!reachable.has('knowledge_query')) {
+      await recordMcpAudit(c, { endpoint: 'mcp:resources/list', statusCode: 200, durationMs: Date.now() - start });
+      return { resources: context };
+    }
     const result = await dispatchKnowledgeOperation(
       actor,
       'listDocuments',
@@ -494,10 +509,11 @@ export function buildMcpServer(c: Context, ctx: McpContext): Server {
       durationMs: Date.now() - start,
       error: result.ok ? undefined : result.message,
     });
-    return result.ok ? result.data : { resources: [] };
+    return { resources: [...context, ...(result.ok ? result.data.resources : [])] };
   });
 
   server.setRequestHandler(ListResourceTemplatesRequestSchema, async () => {
+    if (!reachable.has('knowledge_query')) return { resourceTemplates: [] };
     const result = await dispatchKnowledgeOperation(
       actor,
       'listDocuments',
@@ -522,6 +538,27 @@ export function buildMcpServer(c: Context, ctx: McpContext): Server {
 
   server.setRequestHandler(ReadResourceRequestSchema, async (req) => {
     const start = Date.now();
+    if (isContextResourceUri(req.params.uri)) {
+      const content = await readContextResource(contextCaller(), req.params.uri);
+      await recordMcpAudit(c, {
+        endpoint: 'mcp:resources/read',
+        statusCode: content ? 200 : 404,
+        durationMs: Date.now() - start,
+        meta: { uri: req.params.uri },
+      });
+      if (!content) throw new McpError(ErrorCode.InvalidParams, 'Resource not found');
+      return { contents: [content] };
+    }
+    if (!reachable.has('knowledge_query')) {
+      await recordMcpAudit(c, {
+        endpoint: 'mcp:resources/read',
+        statusCode: 404,
+        durationMs: Date.now() - start,
+        error: 'knowledge not granted',
+        meta: { uri: req.params.uri },
+      });
+      throw new McpError(ErrorCode.InvalidParams, 'Resource not found');
+    }
     const result = await dispatchKnowledgeOperation(
       actor,
       'readDocument',
@@ -542,6 +579,38 @@ export function buildMcpServer(c: Context, ctx: McpContext): Server {
     });
     if (!result.ok) throw new McpError(ErrorCode.InvalidParams, 'Resource not found');
     return result.data;
+  });
+
+  // Prompts: SkillHub skills and the member's saved prompts (hub-context/prompts.ts).
+  server.setRequestHandler(ListPromptsRequestSchema, async () => {
+    const start = Date.now();
+    const prompts = await listTeamPrompts(getDb(), { userId: identity.userId, role: identity.userRole }, reachable);
+    await recordMcpAudit(c, {
+      endpoint: 'mcp:prompts/list',
+      statusCode: 200,
+      durationMs: Date.now() - start,
+      meta: { count: prompts.length },
+    });
+    return { prompts };
+  });
+
+  server.setRequestHandler(GetPromptRequestSchema, async (req) => {
+    const start = Date.now();
+    const prompt = await getTeamPrompt(
+      getDb(),
+      { userId: identity.userId, role: identity.userRole },
+      reachable,
+      req.params.name,
+      req.params.arguments ?? {},
+    );
+    await recordMcpAudit(c, {
+      endpoint: 'mcp:prompts/get',
+      statusCode: prompt ? 200 : 404,
+      durationMs: Date.now() - start,
+      meta: { prompt: req.params.name },
+    });
+    if (!prompt) throw new McpError(ErrorCode.InvalidParams, `Prompt not found: ${req.params.name}`);
+    return { description: prompt.description, messages: prompt.messages };
   });
 
   return server;

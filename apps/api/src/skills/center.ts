@@ -434,6 +434,15 @@ function quarantineError(scan: SkillScanStatus, skill: SkillRow, actor?: Actor):
 }
 
 /**
+ * Whether `actor` may pull this skill's bytes — the same quarantine rule
+ * `downloadSkill` enforces, for surfaces that list skills before fetching one
+ * (MCP prompts). Not a second judgement: both read `quarantineError`.
+ */
+export function skillUsableBy(skill: SkillRow, actor: Actor): boolean {
+  return quarantineError(skill.scan_status, skill, actor) === null;
+}
+
+/**
  * Fetch a version's files (latest by default). Archived skills stay downloadable — pinned installs must not break.
  *
  * `opts.meter === false` skips the download counter — used by the web browse UI,

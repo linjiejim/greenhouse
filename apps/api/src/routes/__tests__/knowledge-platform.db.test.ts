@@ -158,7 +158,13 @@ async function executeTool(tool: unknown, input: unknown): Promise<unknown> {
   return executable.execute(input, { toolCallId: 'knowledge-platform-test', messages: [] });
 }
 
-async function connectResources(user: UserRow) {
+/** Knowledge resource URIs only — the server also lists the team-context resources. */
+function knowledgeUris(resources: Array<{ uri: string }>): string[] {
+  return resources.map((resource) => resource.uri).filter((uri) => uri.startsWith('greenhouse://knowledge/'));
+}
+
+// The grant reaches the knowledge tools (resources follow the same scopes as tools).
+async function connectResources(user: UserRow, toolIds: string[] = ['knowledge_query']) {
   const fakeContext = {
     get: (key: string) =>
       key === 'agentIdentity'
@@ -172,7 +178,7 @@ async function connectResources(user: UserRow) {
         : undefined,
     req: { method: 'POST', header: () => undefined },
   } as unknown as Context;
-  const server = buildMcpServer(fakeContext, { toolIds: [], registry: {} });
+  const server = buildMcpServer(fakeContext, { toolIds, registry: {} });
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   await server.connect(serverTransport);
   const client = new Client({ name: 'knowledge-resource-test', version: '1.0.0' });
@@ -256,9 +262,7 @@ describe('Knowledge Platform migration', () => {
 
     const { client, server } = await connectResources(outsider);
     const resources = await client.listResources();
-    expect(resources.resources.map((resource) => resource.uri)).toEqual([
-      `greenhouse://knowledge/doc/${teamDoc.doc_id}`,
-    ]);
+    expect(knowledgeUris(resources.resources)).toEqual([`greenhouse://knowledge/doc/${teamDoc.doc_id}`]);
     await expect(client.readResource({ uri: `greenhouse://knowledge/doc/${directDoc.doc_id}` })).rejects.toThrow(
       /Resource not found/,
     );
@@ -301,7 +305,7 @@ describe('Knowledge Platform migration', () => {
     ).toEqual(['session_query']);
 
     const { client, server } = await connectResources(directReader);
-    expect((await client.listResources()).resources).toEqual([]);
+    expect(knowledgeUris((await client.listResources()).resources)).toEqual([]);
     await client.close();
     await server.close();
 

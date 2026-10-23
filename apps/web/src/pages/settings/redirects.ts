@@ -31,6 +31,7 @@ export const ADMIN_REDIRECTS: Record<string, string> = {
   activity: 'activity',
   'mcp-keys': 'mcp-keys',
   'runtime-config': 'runtime-config',
+  'team-context': 'team-context',
   branding: 'branding',
   permissions: 'users',
 };

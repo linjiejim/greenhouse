@@ -28,7 +28,7 @@
 // ─── Registry ────────────────────────────────────────────
 
 /** Core groups render as fixed sections of Runtime Config; an extension uses its own id as the group. */
-export type WorkspaceSettingGroup = 'branding' | 'llm' | 'media' | 'search' | 'gateway' | 'computer';
+export type WorkspaceSettingGroup = 'branding' | 'llm' | 'media' | 'search' | 'gateway' | 'computer' | 'team_context';
 
 /**
  * Value shape stored in the `value` jsonb column:
@@ -279,6 +279,37 @@ const WORKSPACE_SETTINGS_LITERAL = [
     type: 'string',
     env: 'COMPUTER_MAX_RUNNING',
     placeholder: '5',
+  },
+  // ── Team context for members' agents + the monthly retro (v1.7) ──
+  // Edited on Administration › Team context (team visibility is checked there
+  // and again on every read); not rendered by Runtime Config.
+  {
+    key: 'team_context.conventions',
+    group: 'team_context',
+    label: 'Team conventions',
+    description:
+      "Team-visible knowledge documents (ids) members' agents receive as the team's conventions over MCP (`greenhouse://context/conventions`, `team_context`)",
+    type: 'json',
+    maxLength: 2000,
+  },
+  {
+    key: 'team_context.glossary',
+    group: 'team_context',
+    label: 'Glossary',
+    description: "One team-visible knowledge document (id) members' agents receive as the team glossary over MCP",
+    type: 'string',
+    maxLength: 200,
+  },
+  {
+    key: 'team_context.timezone',
+    group: 'team_context',
+    label: 'Workspace time zone',
+    description:
+      'IANA zone for workspace time: the monthly retro is written at 09:00 on the 1st here (default Asia/Shanghai)',
+    type: 'string',
+    env: 'WORKSPACE_TIMEZONE',
+    maxLength: 64,
+    placeholder: 'Asia/Shanghai',
   },
 ] as const satisfies readonly WorkspaceSettingDef[];
 

@@ -149,14 +149,23 @@ async function agentWrites() {
 describe('MCP report tools: listing', () => {
   it('lists report_templates with read scope and report_render only with mcp:write, annotated', async () => {
     const reader = await connect(['mcp:read', 'mcp:reports']);
-    expect((await reader.listTools()).tools.map((tool) => tool.name).sort()).toEqual([
-      'report_templates',
-      'tool_output_read',
-    ]);
+    // team_context / data_catalog are protocol tools every grant lists (v1.7 hub context).
+    const notContextTool = (name: string) => name !== 'team_context' && name !== 'data_catalog';
+    expect(
+      (await reader.listTools()).tools
+        .map((tool) => tool.name)
+        .filter(notContextTool)
+        .sort(),
+    ).toEqual(['report_templates', 'tool_output_read']);
 
     const writer = await connect(ALL);
     const tools = (await writer.listTools()).tools;
-    expect(tools.map((tool) => tool.name).sort()).toEqual(['report_render', 'report_templates', 'tool_output_read']);
+    expect(
+      tools
+        .map((tool) => tool.name)
+        .filter(notContextTool)
+        .sort(),
+    ).toEqual(['report_render', 'report_templates', 'tool_output_read']);
     const annotations = Object.fromEntries(tools.map((tool) => [tool.name, tool.annotations]));
     expect(annotations.report_templates).toEqual({ readOnlyHint: true, openWorldHint: false });
     expect(annotations.report_render).toEqual({

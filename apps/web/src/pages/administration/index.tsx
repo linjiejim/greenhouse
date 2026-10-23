@@ -3,7 +3,7 @@
  *
  * Split out from Settings: Settings is user-scoped personal config, while
  * Administration holds org-wide management (Users, Usage, Services & pricing, Activity log,
- * Issues & requests, Branding, Runtime Config, MCP Access).
+ * Issues & requests, Team context, Branding, Runtime Config, MCP Access).
  *
  * Routes the active administration sub-module to its panel. The panels
  * themselves are reused verbatim from the old Settings > Administration section.
@@ -28,6 +28,7 @@ import { UsersAndGroupsPanel } from './users-and-groups';
 import { McpKeysPanel } from './mcp-keys';
 import { RuntimeConfigPanel } from './runtime-config';
 import { BrandingStudioPanel } from './branding-studio';
+import { TeamContextPanel } from './team-context';
 import { ActivityLogPage } from '../activity/activity-log';
 
 const ALL_MODULES = administrationModules;
@@ -71,6 +72,7 @@ export function AdministrationPage({ subPath }: { subPath: string }) {
       {activeModule === 'activity' && <ActivityLogPage moduleId="admin.activity" />}
       {activeModule === 'mcp-keys' && <McpKeysPanel />}
       {activeModule === 'runtime-config' && <RuntimeConfigPanel />}
+      {activeModule === 'team-context' && <TeamContextPanel />}
       {activeModule === 'branding' && <BrandingStudioPanel />}
       {extensionModule && <extensionModule.component />}
     </ModulePageShell>

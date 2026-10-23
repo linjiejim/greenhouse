@@ -14,6 +14,7 @@ import { Button, Dialog, EmptyState, IconButton, SearchInput, Select, Spinner, T
 import {
   ArrowLeft,
   BarChart3,
+  Database,
   History,
   Inbox,
   LayoutDashboard,
@@ -33,6 +34,7 @@ import { TablesAuditDialog } from './audit-dialog';
 import { TablesAutomationDialog } from './automation-dialog';
 import { TablesFormPage } from './form-page';
 import { TablesNotificationsDialog } from './notifications-dialog';
+import { DataCatalogPage } from './data-catalog';
 import { useT, type TranslationKey } from '../../lib/i18n';
 import { ModulePage } from '../../components/app/module-page';
 
@@ -95,10 +97,16 @@ function TablesHome() {
       moduleId="workspace.tables"
       layout="list"
       actions={
-        <Button onClick={() => setDialog(true)} size="sm">
-          <Plus size={14} />
-          {t('tables.base.create')}
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button size="sm" variant="outline" onClick={() => (window.location.hash = '#/tables/catalog')}>
+            <Database size={14} />
+            {t('dataCatalog.open')}
+          </Button>
+          <Button onClick={() => setDialog(true)} size="sm">
+            <Plus size={14} />
+            {t('tables.base.create')}
+          </Button>
+        </div>
       }
       notice={
         error ? (
@@ -561,6 +569,7 @@ export function TablesPage({ subPath = '' }: TablesPageProps) {
   const t = useT();
   const segments = subPath.split('/').filter(Boolean);
   if (segments.length === 0) return <TablesHome />;
+  if (segments[0] === 'catalog') return <DataCatalogPage />;
   if (segments[0] === 'form') {
     const formId = Number(segments[1]);
     return Number.isInteger(formId) && formId > 0 ? (

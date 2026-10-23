@@ -450,12 +450,18 @@ export interface ReserveSpendInput {
   metadata?: Readonly<Record<string, unknown>>;
   /** The caller already verified the member is an active internal account. */
   ownerVerified?: boolean;
+  /**
+   * The organization pays on purpose (no member: the monthly retro). Charged to
+   * the service and organization accounts like any memberless call, without
+   * the "forgot to set a scope" warning.
+   */
+  organizationOnly?: boolean;
 }
 
 /** Reserve one call's USD against the member, the service and the organization. */
 export async function reserveSpend(input: ReserveSpendInput): Promise<SpendLease> {
   const scope = input.scope ?? currentMeteringScope();
-  const userId = input.userId ?? scope?.userId;
+  const userId = input.organizationOnly ? undefined : (input.userId ?? scope?.userId);
   const attribution: SpendAttribution = {
     userId: userId ?? null,
     service: input.service,
@@ -467,7 +473,7 @@ export async function reserveSpend(input: ReserveSpendInput): Promise<SpendLease
     sessionId: input.sessionId ?? scope?.sessionId ?? null,
     runId: input.runId ?? scope?.runId ?? input.sessionId ?? scope?.sessionId ?? null,
   };
-  if (!userId) {
+  if (!userId && !input.organizationOnly) {
     // Every entry point sets a scope; reaching here means a new one forgot to.
     // Still charge the service and the team rather than make the call free.
     logger.warn('[metering] call without a member in scope — charged to service and organization only', {

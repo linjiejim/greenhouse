@@ -185,21 +185,26 @@ afterEach(async () => {
   _resetProvider();
 });
 
+/** team_context / data_catalog: protocol tools every grant lists; not what these cases are about. */
+const notContextTool = (name: string) => name !== 'team_context' && name !== 'data_catalog';
+
 describe('MCP service tools: listing', () => {
   it('lists the read services with read-only scope, and generate_image only with mcp:write', async () => {
     const readOnly = await connect(['mcp:read', 'mcp:services']);
-    const names = (await readOnly.listTools()).tools.map((tool) => tool.name).sort();
+    const names = (await readOnly.listTools()).tools
+      .map((tool) => tool.name)
+      .filter(notContextTool)
+      .sort();
     expect(names).toEqual(['analyze_image', 'read_url', 'tool_output_read', 'web_search']);
 
     const writer = await connect(ALL);
     const tools = (await writer.listTools()).tools;
-    expect(tools.map((tool) => tool.name).sort()).toEqual([
-      'analyze_image',
-      'generate_image',
-      'read_url',
-      'tool_output_read',
-      'web_search',
-    ]);
+    expect(
+      tools
+        .map((tool) => tool.name)
+        .filter(notContextTool)
+        .sort(),
+    ).toEqual(['analyze_image', 'generate_image', 'read_url', 'tool_output_read', 'web_search']);
     const annotations = Object.fromEntries(tools.map((tool) => [tool.name, tool.annotations]));
     expect(annotations.web_search).toEqual({ readOnlyHint: true, openWorldHint: true });
     expect(annotations.read_url).toEqual({ readOnlyHint: true, openWorldHint: true });
@@ -217,7 +222,10 @@ describe('MCP service tools: listing', () => {
 
   it('keeps generate_image, and only that, for a grant that still carries the retired image group', async () => {
     const legacy = await connect(['mcp:read', 'mcp:write', 'mcp:image']);
-    const names = (await legacy.listTools()).tools.map((tool) => tool.name).sort();
+    const names = (await legacy.listTools()).tools
+      .map((tool) => tool.name)
+      .filter(notContextTool)
+      .sort();
     expect(names).toEqual(['generate_image', 'tool_output_read']);
   });
 

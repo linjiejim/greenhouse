@@ -6,7 +6,7 @@
  * priority signal a reviewer sorts by. Nothing here is injected into a prompt.
  */
 
-import { eq, and, desc, sql, inArray } from 'drizzle-orm';
+import { eq, and, asc, desc, sql, inArray, gte, lt } from 'drizzle-orm';
 import { nowIso } from '@greenhouse/utils/date';
 
 import type { Db } from '../client.js';
@@ -145,6 +145,41 @@ export function createToolFrictionService(db: Db) {
         .from(toolFrictions)
         .where(filters.length > 0 ? and(...filters) : undefined);
       return Number(rows[0]?.count ?? 0);
+    },
+
+    /**
+     * Frictions active during a window, most frequent first. A row keeps only
+     * its first and last sighting (no per-occurrence history), so "active" is
+     * the overlap `first_seen_at < to AND last_seen_at >= from`: a friction seen
+     * in October and again on 1 November still counts for October. It can
+     * over-include a friction seen before and after the window but not inside
+     * it; `occurrence_count` is cumulative, never per window.
+     */
+    async listActiveBetween(input: {
+      from: string;
+      to: string;
+      limit?: number;
+      offset?: number;
+    }): Promise<ToolFrictionRow[]> {
+      return await db
+        .select()
+        .from(toolFrictions)
+        .where(and(lt(toolFrictions.first_seen_at, input.to), gte(toolFrictions.last_seen_at, input.from)))
+        // `id` last: a total order, so paging with offset never skips or repeats a row.
+        .orderBy(desc(toolFrictions.occurrence_count), desc(toolFrictions.last_seen_at), asc(toolFrictions.id))
+        .limit(input.limit ?? 10)
+        .offset(input.offset ?? 0);
+    },
+
+    /** How many frictions were active in a window (see listActiveBetween) and how many first appeared in it. */
+    async countBetween(input: { from: string; to: string }): Promise<{ active: number; new: number }> {
+      const rows = await db
+        .select({
+          active: sql<string>`count(*) FILTER (WHERE ${toolFrictions.first_seen_at} < ${input.to}::timestamptz AND ${toolFrictions.last_seen_at} >= ${input.from}::timestamptz)`,
+          fresh: sql<string>`count(*) FILTER (WHERE ${toolFrictions.first_seen_at} >= ${input.from}::timestamptz AND ${toolFrictions.first_seen_at} < ${input.to}::timestamptz)`,
+        })
+        .from(toolFrictions);
+      return { active: Number(rows[0]?.active ?? 0), new: Number(rows[0]?.fresh ?? 0) };
     },
 
     async getById(id: number): Promise<ToolFrictionRow | undefined> {

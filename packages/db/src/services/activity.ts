@@ -289,6 +289,42 @@ export function createActivityService(db: Db) {
       return rows as unknown as RecentTableChangeRow[];
     },
 
+    /**
+     * Members' agent writes in a window, counted per client and outcome — no
+     * member, tool input or output (the monthly retro). `interrupted` is the
+     * recorded "outcome unknown".
+     */
+    async agentWriteTotals(input: {
+      from: string;
+      to: string;
+    }): Promise<Array<{ client_name: string | null; status: string; writes: number; members: number }>> {
+      const rows = await db.execute(sql`
+        SELECT (r.input::jsonb ->> 'client_name') AS client_name, r.status,
+               count(*)::int AS writes, count(DISTINCT r.owner_user_id)::int AS members
+        FROM runtime_runs r
+        WHERE r.kind = 'agent_write'
+          AND r.created_at >= ${input.from}::timestamptz
+          AND r.created_at < ${input.to}::timestamptz
+        GROUP BY 1, 2
+        ORDER BY 3 DESC
+      `);
+      return (
+        rows as unknown as Array<{ client_name: string | null; status: string; writes: number; members: number }>
+      ).map((row) => ({ ...row, writes: Number(row.writes), members: Number(row.members) }));
+    },
+
+    /** Distinct members whose agents wrote in a window. */
+    async agentWriteMembers(input: { from: string; to: string }): Promise<number> {
+      const rows = await db.execute(sql`
+        SELECT count(DISTINCT r.owner_user_id)::int AS members
+        FROM runtime_runs r
+        WHERE r.kind = 'agent_write'
+          AND r.created_at >= ${input.from}::timestamptz
+          AND r.created_at < ${input.to}::timestamptz
+      `);
+      return Number((rows as unknown as Array<{ members: number }>)[0]?.members ?? 0);
+    },
+
     /** Settled agent writes of these members in a window, to say which agent made a change. */
     async agentWritesOf(input: {
       ownerIds: readonly string[];

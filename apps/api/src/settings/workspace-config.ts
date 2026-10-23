@@ -37,6 +37,7 @@ import {
   type WorkspaceFlagView,
   type ThemeTokens,
 } from '@greenhouse/types/workspace-settings';
+import { MAX_CONVENTION_DOCS } from '@greenhouse/types/hub-context';
 import { getDb, isDbInitialized } from '@greenhouse/db';
 import { logger } from '@greenhouse/utils/logger';
 import { toErrorMessage } from '@greenhouse/utils/error';
@@ -185,6 +186,17 @@ export async function refreshWorkspaceConfig(): Promise<void> {
 export type ValidationResult = { ok: true; value: unknown } | { ok: false; error: string };
 
 const DATA_URL_RE = /^data:([a-z0-9.+/-]+);base64,[A-Za-z0-9+/=]+$/i;
+/** A knowledge document id (`knowledge_base.doc_id`): no whitespace or slashes (legacy ids may be non-ASCII). */
+const DOC_ID_RE = /^[^\s/]{1,200}$/u;
+
+export function isValidTimeZone(zone: string): boolean {
+  try {
+    new Intl.DateTimeFormat('en', { timeZone: zone });
+    return zone.length > 0;
+  } catch {
+    return false;
+  }
+}
 
 /**
  * Validate + canonicalize one value against its registry def. `null` /
@@ -219,6 +231,12 @@ export function validateWorkspaceValue(def: WorkspaceSettingDef, raw: unknown): 
     if (def.key === 'computer.template' && !COMPUTER_TEMPLATE_RE.test(value)) {
       return { ok: false, error: 'computer.template must be a template name or id' };
     }
+    if (def.key === 'team_context.timezone' && !isValidTimeZone(value)) {
+      return { ok: false, error: 'team_context.timezone must be an IANA time zone such as Asia/Shanghai' };
+    }
+    if (def.key === 'team_context.glossary' && !DOC_ID_RE.test(value)) {
+      return { ok: false, error: 'team_context.glossary must be a knowledge document id' };
+    }
     if (def.key.endsWith('base_url')) {
       try {
         const url = new URL(value);
@@ -239,6 +257,17 @@ export function validateWorkspaceValue(def: WorkspaceSettingDef, raw: unknown): 
     const tokens = sanitizeThemeTokens(raw);
     if (!tokens) return { ok: false, error: 'branding.theme_tokens has no valid token entries' };
     return { ok: true, value: tokens };
+  }
+  if (def.key === 'team_context.conventions') {
+    const ids = Array.isArray(raw) ? raw : null;
+    if (!ids || ids.some((id) => typeof id !== 'string' || !DOC_ID_RE.test(id.trim()))) {
+      return { ok: false, error: 'team_context.conventions must be a list of knowledge document ids' };
+    }
+    const unique = [...new Set(ids.map((id) => (id as string).trim()))];
+    if (unique.length > MAX_CONVENTION_DOCS) {
+      return { ok: false, error: `team_context.conventions takes at most ${MAX_CONVENTION_DOCS} documents` };
+    }
+    return { ok: true, value: unique };
   }
   if (!raw || typeof raw !== 'object') return { ok: false, error: `${def.key} must be a JSON object` };
   return { ok: true, value: raw };

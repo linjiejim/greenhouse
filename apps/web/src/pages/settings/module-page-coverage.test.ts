@@ -20,11 +20,13 @@ const MODULE_PAGES: ModulePageContract[] = [
   { file: '../administration/frictions.tsx', moduleId: 'admin.issues', layout: 'list' },
   { file: '../administration/mcp-keys.tsx', moduleId: 'admin.mcp-keys', layout: 'list' },
   { file: '../administration/runtime-config.tsx', moduleId: 'admin.runtime-config', layout: 'form' },
+  { file: '../administration/team-context.tsx', moduleId: 'admin.team-context', layout: 'form' },
   { file: '../administration/branding-studio.tsx', moduleId: 'admin.branding', layout: 'canvas' },
   { file: '../automations.tsx', moduleId: 'workspace.automations', layout: 'list' },
   // Run profiles (custom agents) is the second Automations tab.
   { file: '../run-profiles.tsx', moduleId: 'workspace.automations', layout: 'list' },
   { file: '../tables/index.tsx', moduleId: 'workspace.tables', layout: 'list' },
+  { file: '../tables/data-catalog.tsx', moduleId: 'workspace.data-catalog', layout: 'list' },
   { file: '../projects.tsx', moduleId: 'workspace.projects', layout: 'canvas' },
   { file: '../files.tsx', moduleId: 'workspace.files', layout: 'list' },
   { file: '../home.tsx', moduleId: 'workspace.home', layout: 'list' },
