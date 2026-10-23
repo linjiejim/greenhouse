@@ -309,6 +309,7 @@ export const zh: Catalog = {
     keyMonth: '本月 {amount} · {n} 次调用',
     gatewayOff: '这个工作站没有开启模型网关。',
     loadFailed: '加载失败',
+    partFailed: '这部分没有加载出来',
     notFound: '最近的写入里没有这一条',
   },
   assistant: {

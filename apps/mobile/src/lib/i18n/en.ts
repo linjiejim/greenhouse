@@ -315,6 +315,7 @@ export const en = {
     keyMonth: '{amount} · {n} calls this month',
     gatewayOff: 'The model gateway is off on this station.',
     loadFailed: 'Couldn’t load your agents',
+    partFailed: 'Couldn’t load this part',
     notFound: 'This write isn’t in your recent list',
   },
   assistant: {

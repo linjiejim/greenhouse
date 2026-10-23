@@ -1,7 +1,8 @@
 /**
  * My Agents (我的 Agent): this month's spend against my budget, the recent writes of the agents I
  * connected (tap one for its details), and my model-gateway keys — read-only; keys are created
- * and revoked on the web. Each part loads on its own, so one failing does not hide the others.
+ * and revoked on the web. Each part loads on its own and shows its own failure with a retry
+ * (src/data/load-view.ts), so one failing neither hides nor blocks the others.
  */
 
 import React, { useCallback } from 'react';
@@ -10,13 +11,14 @@ import { Stack, useRouter } from 'expo-router';
 import { gatewayOverview, listAgentWrites, mySpend } from '../../src/api/agent';
 import { WRITE_TONE } from '../../src/agent/look';
 import { noAccess } from '../../src/data/access';
+import { loadView } from '../../src/data/load-view';
 import { budgetLeft, budgetShare, formatUsd } from '../../src/data/money';
 import { useResource } from '../../src/data/use-resource';
 import { useT, type TranslationKey } from '../../src/lib/i18n';
 import { relativeTimeNow } from '../../src/lib/time-words';
 import { makeStyles, radius, space, squircle, typo, useTheme, weight } from '../../src/theme';
 import { EmptyState, LoadingState } from '../../src/ui/empty';
-import { Badge, ListRow, ListSection, ListSectionFooter } from '../../src/ui/list';
+import { Badge, ListRow, ListSection, ListSectionFooter, ListSectionHeader } from '../../src/ui/list';
 
 const SERVICES = new Set(['llm', 'vision', 'web_search', 'page_read', 'image_generation', 'computer']);
 
@@ -80,9 +82,11 @@ export default function MyAgents() {
               </>
             ) : null}
           </View>
-        ) : spend.loading ? (
+        ) : loadView(spend) === 'failed' ? (
+          <SectionFailed title={t('agent.spend')} onRetry={() => void spend.refresh()} />
+        ) : (
           <LoadingState style={styles.state} />
-        ) : null}
+        )}
         {services.length ? (
           <ListSection header={t('agent.byService')}>
             {services.map((row) => (
@@ -115,8 +119,8 @@ export default function MyAgents() {
           ) : (
             <EmptyState icon="sparkle" title={t('agent.writesEmpty')} message={t('agent.writesHint')} />
           )
-        ) : writes.error && !writes.loading ? (
-          <EmptyState icon="alert" title={t('agent.loadFailed')} onRetry={() => void writes.refresh()} />
+        ) : loadView(writes) === 'failed' ? (
+          <SectionFailed title={t('agent.writes')} onRetry={() => void writes.refresh()} />
         ) : null}
 
         {/* ── gateway keys ── */}
@@ -149,8 +153,21 @@ export default function MyAgents() {
             </ListSection>
             <ListSectionFooter text={gateway.data.enabled ? t('agent.keysHint') : t('agent.gatewayOff')} />
           </>
+        ) : loadView(gateway) === 'failed' ? (
+          <SectionFailed title={t('agent.keys')} onRetry={() => void gateway.refresh()} />
         ) : null}
       </ScrollView>
+    </View>
+  );
+}
+
+/** One part that failed to load: its name, and a retry for that part alone. */
+function SectionFailed({ title, onRetry }: { title: string; onRetry: () => void }) {
+  const t = useT();
+  return (
+    <View>
+      <ListSectionHeader title={title} />
+      <EmptyState icon="alert" title={t('agent.partFailed')} onRetry={onRetry} style={{ paddingVertical: space.md }} />
     </View>
   );
 }
