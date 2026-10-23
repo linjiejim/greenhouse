@@ -26,7 +26,8 @@ for people who want to test the tip and understand it can break.
 
 - Branch `v1` carries 1.x; `main` carries v2. release-please runs on pushes to `v1` with `target-branch: v1`.
 - v1 tags publish `:X.Y.Z` and `:X.Y` only; `:latest` stays with the newest v2 release (`latest=false` in release.yml).
-- The next version is pinned with `release-as` in `release-please-config.json`: the 1.4 commits carry `!` breaking markers that would otherwise compute 2.0.0 and collide with v2. Update or drop the pin after each 1.x release.
+- No `release-as` pin since 1.4.0. A `!` commit on v1 computes 2.0.0 and collides with v2: don't use `!` on this line, or pin `release-as` in `release-please-config.json` before merging the Release PR and drop it after.
+- A new GitHub Release becomes the repository's Latest by default, and the README's desktop install command reads `releases/latest`. After every v1 release, release-please.yml hands Latest back to the newest v2+ release.
 - Desktop shells do not publish from tags on this line; dispatch desktop-release.yml by hand if a v1 desktop build is ever needed.
 
 ## Version strategy

@@ -34,8 +34,23 @@ jobs:
       # the tag manually (RELEASING.md → "Publishing stable artifacts"). Add the PAT
       # to make releases fully hands-off.
       - uses: googleapis/release-please-action@v4
+        id: release
         with:
           token: ${{ secrets.RELEASE_PLEASE_TOKEN || secrets.GITHUB_TOKEN }}
           target-branch: v1
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
+
+      # A new GitHub Release becomes the repository's "Latest" by default, and the
+      # README's desktop install command downloads from releases/latest. Latest
+      # belongs to the newest v2+ release, so hand it back after every v1 release.
+      - name: Keep Latest on the newest v2+ release
+        if: steps.release.outputs.release_created == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN || secrets.GITHUB_TOKEN }}
+        run: |
+          TAG=$(gh release list --repo "$GITHUB_REPOSITORY" --exclude-drafts --exclude-pre-releases --limit 100 --json tagName \
+            --jq '[.[].tagName | select(test("^v[0-9]+\\.[0-9]+\\.[0-9]+$")) | select((ltrimstr("v") | split(".")[0] | tonumber) >= 2)] | sort_by(ltrimstr("v") | split(".") | map(tonumber)) | last')
+          if [ -n "$TAG" ] && [ "$TAG" != "null" ]; then
+            gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --latest
+          fi

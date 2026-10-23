@@ -19,7 +19,6 @@
   "packages": {
     ".": {
       "package-name": "greenhouse",
-      "release-as": "1.4.0",
       "changelog-path": "CHANGELOG.md",
       "extra-files": [
         { "type": "json", "path": "apps/mobile/package.json", "jsonpath": "$.version" },
