@@ -1,0 +1,209 @@
+/**
+ * One open conversation with the assistant. React-free (./conversation.test.ts); the screen
+ * (app/assistant/chat.tsx) renders `state` and calls the methods, the network arrives through
+ * `ConversationDeps`.
+ *
+ * - It opens on the latest page of messages and pages older history in front on demand
+ *   (./transcript.ts); a reload merges and never drops what is loaded.
+ * - A sent message shows at once, its reply streams in, and both stay on screen until the saved
+ *   transcript holds the reply. When that read fails, or the reply is not saved yet, the exchange
+ *   stays with a retry (`unreconciled`) instead of being replaced by a shorter transcript.
+ * - A reply still being written when the conversation opens (or comes back into view, or when a
+ *   send is refused with 409 because one is running) is followed until it ends, then reconciled.
+ * - Everything stops quietly once `stillCurrent` says the station or account changed.
+ */
+
+import type { ApiMiss, ApiResult } from '../api/client';
+import { applyEvent, EMPTY_REPLY, type ChatEvent, type LiveReply } from './chat-stream';
+import { holdsReplyAfter, lastSeq, withLatest, withOlder, type MessagePage, type Transcript, type TranscriptMessage } from './transcript';
+
+export type StreamOutcome = { ok: true; finished: boolean } | ApiMiss;
+
+export interface ConversationDeps<M extends TranscriptMessage = TranscriptMessage> {
+  /** The session's title, or a miss (404 when it is gone or not mine). */
+  title(): Promise<ApiResult<{ title: string | null }>>;
+  latestPage(): Promise<ApiResult<MessagePage<M>>>;
+  olderPage(before: number): Promise<ApiResult<MessagePage<M>>>;
+  send(text: string, onEvent: (event: ChatEvent) => void, signal: AbortSignal): Promise<StreamOutcome>;
+  /** Whether a reply is being written now. */
+  runActive(): Promise<ApiResult<{ active: boolean }>>;
+  /** Attach to the reply being written (replayed from its start). */
+  follow(onEvent: (event: ChatEvent) => void, signal: AbortSignal): Promise<StreamOutcome>;
+  stillCurrent(): boolean;
+  wait(ms: number): Promise<void>;
+}
+
+export interface ConversationState<M extends TranscriptMessage = TranscriptMessage> {
+  transcript: Transcript<M> | null;
+  title: string | null;
+  missing: boolean;
+  loadFailed: boolean;
+  /** My message on its way, shown until the saved transcript holds its reply. */
+  pending: string | null;
+  /** The reply as it streams in. */
+  reply: LiveReply | null;
+  /** Sending, or following a reply being written. */
+  busy: boolean;
+  /** The exchange on screen is not confirmed by the saved transcript yet; offer a retry. */
+  unreconciled: boolean;
+  loadingOlder: boolean;
+}
+
+/** What the composer should do after a send. */
+export type SendResult = { sent: true } | { sent: false; restore: string; notice: 'busy' | 'failed'; message: string };
+
+/** The state before a conversation opens. */
+export const CLOSED_CONVERSATION: ConversationState<never> = {
+  transcript: null,
+  title: null,
+  missing: false,
+  loadFailed: false,
+  pending: null,
+  reply: null,
+  busy: false,
+  unreconciled: false,
+  loadingOlder: false,
+};
+
+const RUN_POLLS = 40;
+const RUN_POLL_MS = 1500;
+
+export class Conversation<M extends TranscriptMessage = TranscriptMessage> {
+  state: ConversationState<M> = CLOSED_CONVERSATION;
+  private listeners = new Set<() => void>();
+  private abort = new AbortController();
+  private since = -1;
+  private disposed = false;
+
+  constructor(private deps: ConversationDeps<M>) {}
+
+  subscribe = (listener: () => void) => {
+    this.listeners.add(listener);
+    return () => {
+      this.listeners.delete(listener);
+    };
+  };
+
+  getState = () => this.state;
+
+  private live() {
+    return !this.disposed && this.deps.stillCurrent();
+  }
+
+  private set(patch: Partial<ConversationState<M>>) {
+    this.state = { ...this.state, ...patch };
+    for (const listener of this.listeners) listener();
+  }
+
+  private onEvent = (event: ChatEvent) => {
+    if (!this.live()) return;
+    const reply = applyEvent(this.state.reply ?? EMPTY_REPLY, event);
+    this.set({ reply, ...(reply.title ? { title: reply.title } : {}) });
+  };
+
+  /** Read the title and the latest page, then follow a reply that is being written. */
+  async open(): Promise<void> {
+    const [title, page] = await Promise.all([this.deps.title(), this.deps.latestPage()]);
+    if (!this.live()) return;
+    if ((!title.ok && (title.status === 404 || title.status === 403)) || (!page.ok && page.status === 404)) {
+      this.set({ missing: true });
+      return;
+    }
+    if (title.ok) this.set({ title: title.data.title });
+    if (page.ok) this.set({ transcript: withLatest(this.state.transcript, page.data), loadFailed: false });
+    else if (!this.state.transcript) this.set({ loadFailed: true });
+    await this.followActive();
+  }
+
+  /** Back in view: catch up with a reply written meanwhile. */
+  async refocus(): Promise<void> {
+    if (this.state.busy || this.state.missing) return;
+    if (this.state.unreconciled) {
+      await this.reconcile();
+      return;
+    }
+    const page = await this.deps.latestPage();
+    if (!this.live()) return;
+    if (page.ok) this.set({ transcript: withLatest(this.state.transcript, page.data), loadFailed: false });
+    await this.followActive();
+  }
+
+  async loadOlder(): Promise<void> {
+    const before = this.state.transcript?.before;
+    if (before == null || this.state.loadingOlder) return;
+    this.set({ loadingOlder: true });
+    const page = await this.deps.olderPage(before);
+    if (!this.live()) return;
+    this.set({
+      loadingOlder: false,
+      ...(page.ok && this.state.transcript ? { transcript: withOlder(this.state.transcript, page.data) } : {}),
+    });
+  }
+
+  async send(text: string): Promise<SendResult> {
+    const message = text.trim();
+    if (!message || this.state.busy) return { sent: false, restore: text, notice: 'busy', message: '' };
+    this.since = lastSeq(this.state.transcript);
+    this.set({ pending: message, reply: EMPTY_REPLY, busy: true, unreconciled: false });
+    const outcome = await this.deps.send(message, this.onEvent, this.abort.signal);
+    if (!this.live()) return { sent: true };
+    if (!outcome.ok) {
+      this.set({ pending: null, reply: null, busy: false });
+      if (outcome.status === 409) {
+        // a reply is still being written: keep my words and follow that reply
+        void this.followActive();
+        return { sent: false, restore: text, notice: 'busy', message: outcome.message };
+      }
+      return { sent: false, restore: text, notice: 'failed', message: outcome.message };
+    }
+    if (!outcome.finished) await this.waitForRun();
+    await this.reconcile();
+    return { sent: true };
+  }
+
+  /** Read the saved transcript again for the exchange on screen. */
+  async reconcile(): Promise<void> {
+    if (!this.live()) return;
+    this.set({ busy: true });
+    const page = await this.deps.latestPage();
+    if (!this.live()) return;
+    if (page.ok && holdsReplyAfter(page.data, this.since)) {
+      this.set({
+        transcript: withLatest(this.state.transcript, page.data),
+        pending: null,
+        reply: null,
+        busy: false,
+        unreconciled: false,
+        loadFailed: false,
+      });
+      return;
+    }
+    // the read failed or the reply is not saved yet: the exchange stays, with a retry
+    this.set({ busy: false, unreconciled: this.state.pending !== null || this.state.reply !== null });
+  }
+
+  private async followActive(): Promise<void> {
+    const run = await this.deps.runActive();
+    if (!this.live() || !run.ok || !run.data.active || this.state.busy) return;
+    this.since = lastSeq(this.state.transcript);
+    this.set({ reply: EMPTY_REPLY, busy: true, unreconciled: false });
+    const outcome = await this.deps.follow(this.onEvent, this.abort.signal);
+    if (!this.live()) return;
+    if (!outcome.ok || !outcome.finished) await this.waitForRun();
+    await this.reconcile();
+  }
+
+  private async waitForRun(): Promise<void> {
+    for (let i = 0; i < RUN_POLLS; i += 1) {
+      const run = await this.deps.runActive();
+      if (!this.live() || !run.ok || !run.data.active) return;
+      await this.deps.wait(RUN_POLL_MS);
+    }
+  }
+
+  dispose(): void {
+    this.disposed = true;
+    this.abort.abort();
+    this.listeners.clear();
+  }
+}

@@ -1,15 +1,17 @@
 /**
- * Send one message to the assistant and follow the reply as it is written. `POST /api/chat`
- * answers NDJSON (src/data/chat-stream.ts); Expo's fetch exposes the body as a stream, so each
- * event reaches `onEvent` as it arrives. Where the body cannot be streamed it is read whole at
- * the end. Answers how the turn ended; the caller re-reads the saved messages afterwards.
+ * Send one message to the assistant, or attach to a reply already being written, and follow it
+ * as it streams. `POST /api/chat` and `GET /api/chat/runs/:id/stream` answer NDJSON
+ * (src/data/chat-stream.ts); Expo's fetch exposes the body as a stream, so each event reaches
+ * `onEvent` as it arrives. Where the body cannot be streamed it is read whole at the end. Both
+ * answer how the stream ended; src/data/conversation.ts re-reads the saved messages afterwards.
  */
 
 import { fetch as expoFetch } from 'expo/fetch';
-import { api, toResult, type ApiMiss } from '../api/client';
+import { api, seg, toResult } from '../api/client';
 import { NdjsonLines, type ChatEvent } from '../data/chat-stream';
+import type { StreamOutcome } from '../data/conversation';
 
-export type SendOutcome = { ok: true; finished: boolean } | ApiMiss;
+export type SendOutcome = StreamOutcome;
 
 export async function sendMessage(
   sessionId: string,
@@ -17,18 +19,27 @@ export async function sendMessage(
   onEvent: (event: ChatEvent) => void,
   signal?: AbortSignal,
 ): Promise<SendOutcome> {
+  return stream(
+    '/api/chat',
+    {
+      method: 'POST',
+      signal,
+      headers: { 'Content-Type': 'application/json', Accept: 'application/x-ndjson' },
+      body: JSON.stringify({ session_id: sessionId, messages: [{ role: 'user', content }] }),
+    },
+    onEvent,
+  );
+}
+
+/** Attach to the reply being written for a session, replayed from its start. */
+export function followRun(sessionId: string, onEvent: (event: ChatEvent) => void, signal?: AbortSignal): Promise<SendOutcome> {
+  return stream(`/api/chat/runs/${seg(sessionId)}/stream`, { signal, headers: { Accept: 'application/x-ndjson' } }, onEvent);
+}
+
+async function stream(path: string, init: RequestInit, onEvent: (event: ChatEvent) => void): Promise<SendOutcome> {
   let res: Response;
   try {
-    res = await api(
-      '/api/chat',
-      {
-        method: 'POST',
-        signal,
-        headers: { 'Content-Type': 'application/json', Accept: 'application/x-ndjson' },
-        body: JSON.stringify({ session_id: sessionId, messages: [{ role: 'user', content }] }),
-      },
-      expoFetch as unknown as typeof fetch,
-    );
+    res = await api(path, init, expoFetch as unknown as typeof fetch);
   } catch (error) {
     return { ok: false, status: 0, code: 'network', message: error instanceof Error ? error.message : String(error) };
   }

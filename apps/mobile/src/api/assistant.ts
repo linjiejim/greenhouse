@@ -31,9 +31,6 @@ export const getSessionInfo = (id: string) =>
 export const getMessages = (id: string, beforeSeq?: number) =>
   get<MessagePage<ChatMessage>>(`/api/sessions/${seg(id)}/messages`, { limit: 50, before_seq: beforeSeq });
 
-export const getSession = (id: string) =>
-  get<{ session: ChatSession; messages: ChatMessage[] }>(`/api/sessions/${seg(id)}`);
-
 /** Whether the session has a reply being written (generation outlives the request). */
 export const chatRun = (sessionId: string) =>
   get<{ active: boolean; run?: { status: 'running' | 'completed' | 'error' } }>(`/api/chat/runs/${seg(sessionId)}`);

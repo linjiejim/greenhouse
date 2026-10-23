@@ -1,24 +1,27 @@
 /**
- * One conversation with the assistant (`/assistant/chat?session=`): the saved messages, then the
- * reply as it streams in (src/assistant/send.ts → src/data/chat-stream.ts), with "Thinking…" or
- * the tool in use until words arrive. Whatever happens to the stream, the saved messages are read
- * again at the end — while the server still writes the reply, the screen waits for that run.
- * Everything belongs to the station and account that opened the conversation.
+ * One conversation with the assistant (`/assistant/chat?session=`). The behaviour lives in
+ * src/data/conversation.ts: the latest messages first and older ones as you scroll up, my message
+ * and the streaming reply until the saved transcript holds them (with a retry when it does not
+ * yet), following a reply that is still being written when the conversation opens or comes back
+ * into view, and my words back in the box when a send is refused. Everything belongs to the
+ * station and account that opened the conversation.
  */
 
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { FlatList, Pressable, Text, TextInput, View } from 'react-native';
-import { Stack, useLocalSearchParams } from 'expo-router';
+import { Stack, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { KeyboardStickyView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { chatRun, getSession } from '../../src/api/assistant';
-import { sendMessage } from '../../src/assistant/send';
-import { applyEvent, EMPTY_REPLY, visibleMessages, type LiveReply } from '../../src/data/chat-stream';
+import { chatRun, getMessages, getSessionInfo } from '../../src/api/assistant';
+import { followRun, sendMessage } from '../../src/assistant/send';
+import { visibleMessages, type LiveReply } from '../../src/data/chat-stream';
+import { CLOSED_CONVERSATION, Conversation, type ConversationState } from '../../src/data/conversation';
 import { captureIdentity } from '../../src/data/identity';
 import { useT } from '../../src/lib/i18n';
 import { Markdown } from '../../src/markdown';
 import type { ChatMessage } from '../../src/shared/greenhouse-types';
 import { HIT, makeStyles, radius, space, squircle, typo, useTheme } from '../../src/theme';
+import { NativeButton } from '../../src/ui/button';
 import { Icon, Spinner } from '../../src/ui/core';
 import { alertError } from '../../src/ui/dialogs';
 import { EmptyState, LoadingState } from '../../src/ui/empty';
@@ -31,7 +34,8 @@ type Item =
 /** The navigation bar's height under the status bar (iOS 44, Android 56); the list's top inset. */
 const NAV_BAR = 56;
 
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+const noSubscription = () => () => {};
+const closed = (): ConversationState<ChatMessage> => CLOSED_CONVERSATION;
 
 export default function Chat() {
   const { session: sessionId } = useLocalSearchParams<{ session?: string }>();
@@ -39,94 +43,71 @@ export default function Chat() {
   const { colors: c } = useTheme();
   const styles = useStyles(c);
   const insets = useSafeAreaInsets();
-  const [title, setTitle] = useState<string | null>(null);
-  const [messages, setMessages] = useState<ChatMessage[] | null>(null);
-  const [missing, setMissing] = useState(false);
-  const [failed, setFailed] = useState(false);
-  const [pending, setPending] = useState<string | null>(null);
-  const [reply, setReply] = useState<LiveReply | null>(null);
   const [draft, setDraft] = useState('');
-  const [sending, setSending] = useState(false);
   const list = useRef<FlatList<Item>>(null);
   // follow the reply only once the conversation is taller than the screen (a short one stays
   // where the header inset puts it)
   const viewport = useRef(0);
-  const alive = useRef(true);
-  const abort = useRef<AbortController | null>(null);
 
-  useEffect(() => {
-    alive.current = true;
-    return () => {
-      alive.current = false;
-      abort.current?.abort();
-    };
-  }, []);
-
-  const reload = useCallback(async (current: () => boolean) => {
-    if (!sessionId) return;
-    const result = await getSession(sessionId);
-    if (!alive.current || !current()) return;
-    if (result.ok) {
-      setMessages(visibleMessages(result.data.messages));
-      setTitle(result.data.session.title);
-      setFailed(false);
-    } else if (result.status === 404 || result.status === 403) setMissing(true);
-    else setFailed(true);
+  const conversation = useMemo(() => {
+    if (!sessionId) return null;
+    return new Conversation<ChatMessage>({
+      title: async () => {
+        const result = await getSessionInfo(sessionId);
+        return result.ok ? { ok: true, data: { title: result.data.session.title } } : result;
+      },
+      latestPage: () => getMessages(sessionId),
+      olderPage: (before) => getMessages(sessionId, before),
+      send: (text, onEvent, signal) => sendMessage(sessionId, text.slice(0, 20_000), onEvent, signal),
+      runActive: async () => {
+        const result = await chatRun(sessionId);
+        return result.ok ? { ok: true, data: { active: result.data.active } } : result;
+      },
+      follow: (onEvent, signal) => followRun(sessionId, onEvent, signal),
+      stillCurrent: captureIdentity(),
+      wait: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+    });
   }, [sessionId]);
+  const state = useSyncExternalStore(conversation?.subscribe ?? noSubscription, conversation?.getState ?? closed);
 
   useEffect(() => {
-    void reload(captureIdentity());
-  }, [reload]);
+    if (!conversation) return;
+    void conversation.open();
+    return () => conversation.dispose();
+  }, [conversation]);
+
+  // back in view (not the first focus): catch up with a reply written meanwhile
+  const focusedOnce = useRef(false);
+  useFocusEffect(
+    useCallback(() => {
+      if (!focusedOnce.current) {
+        focusedOnce.current = true;
+        return;
+      }
+      void conversation?.refocus();
+    }, [conversation]),
+  );
 
   const send = async () => {
-    const text = draft.trim();
-    if (!sessionId || !text || sending) return;
-    const current = captureIdentity();
-    const controller = new AbortController();
-    abort.current = controller;
+    const text = draft;
+    if (!conversation || !text.trim() || state.busy) return;
     setDraft('');
-    setPending(text);
-    setReply(EMPTY_REPLY);
-    setSending(true);
-    const outcome = await sendMessage(
-      sessionId,
-      text.slice(0, 20_000),
-      (event) => {
-        if (alive.current && current()) setReply((before) => applyEvent(before ?? EMPTY_REPLY, event));
-      },
-      controller.signal,
-    );
-    if (!alive.current || !current()) return;
-    if (!outcome.ok) {
-      setPending(null);
-      setReply(null);
-      setSending(false);
-      if (outcome.status !== 409) setDraft(text);
-      alertError(outcome.status === 409 ? t('assistant.busy') : t('assistant.sendFailed'), outcome.message || undefined);
-      return;
-    }
-    if (!outcome.finished) {
-      // the stream broke off: wait for the server's run to end (at most a minute), then read what it saved
-      for (let i = 0; i < 40; i += 1) {
-        const run = await chatRun(sessionId);
-        if (!alive.current || !current() || !run.ok || !run.data.active) break;
-        await sleep(1500);
-      }
-    }
-    await reload(current);
-    if (!alive.current || !current()) return;
-    setPending(null);
-    setReply(null);
-    setSending(false);
+    const result = await conversation.send(text);
+    if (result.sent) return;
+    // my words come back to the box whatever refused them
+    setDraft((now) => now || result.restore);
+    alertError(result.notice === 'busy' ? t('assistant.busy') : t('assistant.sendFailed'), result.message || undefined);
   };
 
   const items: Item[] = [
-    ...(messages ?? []).map((message): Item => ({ key: `m-${message.id}`, kind: 'message', message })),
-    ...(pending ? [{ key: 'pending', kind: 'pending', text: pending } as Item] : []),
-    ...(reply ? [{ key: 'reply', kind: 'reply', reply } as Item] : []),
+    ...visibleMessages(state.transcript?.messages ?? []).map(
+      (message): Item => ({ key: `m-${message.seq}`, kind: 'message', message }),
+    ),
+    ...(state.pending ? [{ key: 'pending', kind: 'pending', text: state.pending } as Item] : []),
+    ...(state.reply ? [{ key: 'reply', kind: 'reply', reply: state.reply } as Item] : []),
   ];
 
-  if (!sessionId || missing) {
+  if (!sessionId || state.missing) {
     return (
       <View style={styles.root}>
         <Stack.Screen options={{ title: t('nav.assistant') }} />
@@ -142,17 +123,24 @@ export default function Chat() {
         viewport.current = e.nativeEvent.layout.height;
       }}
     >
-      <Stack.Screen options={{ title: reply?.title || title || t('assistant.untitled') }} />
+      <Stack.Screen options={{ title: state.title || t('assistant.untitled') }} />
       <FlatList<Item>
         ref={list}
         contentInsetAdjustmentBehavior="automatic"
         data={items}
         keyExtractor={(item) => item.key}
         keyboardDismissMode="interactive"
+        // older history comes in at the top without moving what is on screen
+        maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
+        onStartReached={() => void conversation?.loadOlder()}
+        onStartReachedThreshold={0.5}
         onContentSizeChange={(_, height) => {
           // the visible part is the screen under the bar (status bar + navigation bar)
-          if (height > viewport.current - insets.top - NAV_BAR) list.current?.scrollToEnd({ animated: true });
+          if (!state.loadingOlder && height > viewport.current - insets.top - NAV_BAR) {
+            list.current?.scrollToEnd({ animated: true });
+          }
         }}
+        ListHeaderComponent={state.loadingOlder ? <Spinner style={styles.older} /> : null}
         renderItem={({ item }) => {
           if (item.kind === 'message' && item.message.role === 'assistant') {
             return (
@@ -166,15 +154,25 @@ export default function Chat() {
             return (
               <View style={styles.assistant}>
                 {live.text ? <Markdown source={live.text} /> : null}
-                {!live.text || live.tool ? (
+                {state.busy && (!live.text || live.tool) ? (
                   <View style={styles.typing} accessibilityLiveRegion="polite">
                     <Spinner size="small" />
-                    <Text style={styles.typingText}>
+                    <Text style={styles.note}>
                       {live.tool ? t('assistant.usingTool', { tool: live.tool }) : t('assistant.thinking')}
                     </Text>
                   </View>
                 ) : null}
                 {live.error ? <Text style={styles.error}>{live.error}</Text> : null}
+                {state.unreconciled ? (
+                  <View style={styles.unsynced}>
+                    <Text style={styles.note}>{t('assistant.unreconciled')}</Text>
+                    <NativeButton
+                      label={t('common.retry')}
+                      icon="refresh"
+                      onPress={() => void conversation?.reconcile()}
+                    />
+                  </View>
+                ) : null}
               </View>
             );
           }
@@ -190,10 +188,15 @@ export default function Chat() {
           );
         }}
         ListEmptyComponent={
-          messages ? (
+          state.transcript ? (
             <Text style={styles.hint}>{t('assistant.startHint')}</Text>
-          ) : failed ? (
-            <EmptyState icon="alert" title={t('assistant.loadFailed')} onRetry={() => void reload(captureIdentity())} style={styles.state} />
+          ) : state.loadFailed ? (
+            <EmptyState
+              icon="alert"
+              title={t('assistant.loadFailed')}
+              onRetry={() => void conversation?.refocus()}
+              style={styles.state}
+            />
           ) : (
             <LoadingState style={styles.state} />
           )
@@ -214,13 +217,17 @@ export default function Chat() {
           />
           <Pressable
             onPress={() => void send()}
-            disabled={!draft.trim() || sending}
+            disabled={!draft.trim() || state.busy}
             accessibilityRole="button"
             accessibilityLabel={t('assistant.send')}
-            accessibilityState={{ disabled: !draft.trim() || sending }}
-            style={({ pressed }) => [styles.send, (!draft.trim() || sending) && styles.sendOff, pressed && { opacity: 0.7 }]}
+            accessibilityState={{ disabled: !draft.trim() || state.busy }}
+            style={({ pressed }) => [
+              styles.send,
+              (!draft.trim() || state.busy) && styles.sendOff,
+              pressed && { opacity: 0.7 },
+            ]}
           >
-            {sending ? <Spinner size="small" color={c.onAccent} /> : <Icon name="up" size={18} color={c.onAccent} />}
+            {state.busy ? <Spinner size="small" color={c.onAccent} /> : <Icon name="up" size={18} color={c.onAccent} />}
           </Pressable>
         </View>
       </KeyboardStickyView>
@@ -232,6 +239,7 @@ const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.background },
   content: { paddingHorizontal: space.margin, paddingTop: space.md, gap: space.md },
   state: { paddingTop: space.xxxl },
+  older: { paddingVertical: space.md },
   assistant: { alignSelf: 'stretch' },
   userRow: { alignItems: 'flex-end' },
   user: {
@@ -244,7 +252,8 @@ const useStyles = makeStyles((c) => ({
   },
   userText: { ...typo.body, color: c.label },
   typing: { flexDirection: 'row', alignItems: 'center', gap: space.sm, paddingVertical: space.xs },
-  typingText: { ...typo.subheadline, color: c.secondaryLabel },
+  note: { ...typo.subheadline, color: c.secondaryLabel },
+  unsynced: { marginTop: space.sm, gap: space.sm, alignItems: 'flex-start' },
   error: { ...typo.footnote, color: c.red, marginTop: space.xs },
   hint: { ...typo.subheadline, color: c.secondaryLabel, textAlign: 'center', marginTop: space.xxxl },
   composerWrap: { position: 'absolute', left: 0, right: 0, bottom: 0 },
