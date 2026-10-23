@@ -363,8 +363,13 @@ export class SpendLease {
   }
 
   /**
-   * Settle the actual cost (null = unknown → the estimate stands), then tell
-   * the owners of any account that crossed a threshold. Alerts never fail the call.
+   * Settle a call that SUCCEEDED at its actual cost, then tell the owners of any
+   * account that crossed a threshold. Alerts never fail the call.
+   *
+   * `null` = the call succeeded but its provider is unpriced (e.g. the search
+   * fell through to an unpriced provider after reserving at a priced one's
+   * rate): it settles at 0 and the fact keeps a NULL cost. A call whose outcome
+   * is unknown never comes here — its reservation stays for the TTL sweeper.
    *
    * A lease with no reservation (the call was unpriced when it started) that
    * settles at a positive cost — an admin priced it mid-call, the provider
@@ -374,7 +379,7 @@ export class SpendLease {
   async settle(actualUsdMicros: number | null, metadata?: Readonly<Record<string, unknown>>): Promise<void> {
     let debited = 0;
     if (this.reserved) {
-      debited = Math.max(0, Math.ceil(actualUsdMicros ?? this.estimatedUsdMicros));
+      debited = Math.max(0, Math.ceil(actualUsdMicros ?? 0));
       await this.db.usageBudget.settle({
         idempotency_key: this.idempotencyKey,
         actual_units: debited,

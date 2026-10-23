@@ -151,6 +151,33 @@ describe('meterServiceCall', () => {
     );
   });
 
+  it('settles an unpriced success at zero instead of charging the reservation', async () => {
+    const f = fakeDb();
+    await runWithMeteringScope({ userId: 'u1', client: 'web' }, () =>
+      meterServiceCall(
+        {
+          db: f.db as never,
+          service: 'web_search',
+          caller: 'external_search',
+          unitKind: 'call',
+          candidateProviders: ['tavily', 'firecrawl'],
+        },
+        async (io) => {
+          io.markProviderIoStarted();
+          // Tavily failed over to Firecrawl, which has no price.
+          return { value: 'results', provider: 'firecrawl' };
+        },
+      ),
+    );
+    expect(f.reserve).toHaveBeenCalledWith(expect.objectContaining({ estimated_units: 8_000 }));
+    expect(f.db.usageBudget.settle).toHaveBeenCalledWith(
+      expect.objectContaining({ actual_units: 0, metadata: expect.objectContaining({ cost_known: false }) }),
+    );
+    expect(f.metering.recordService).toHaveBeenCalledWith(
+      expect.objectContaining({ provider: 'firecrawl', cost_usd_micros: null, price_applied: null }),
+    );
+  });
+
   it('releases a call that failed before provider I/O and keeps one that failed after', async () => {
     const f = fakeDb();
     const call = (startIo: boolean) =>
