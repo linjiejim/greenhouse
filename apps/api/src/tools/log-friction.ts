@@ -63,6 +63,9 @@ Write in English, but quote identifiers, field names, values and error strings E
   // recorded write naming the member and the agent's client; the row itself
   // stays team-wide (no user column), and there is still no read action.
   surface: { proxy: 'write', mcp: 'feedback' },
+  // Every call appends a note (or bumps the count of an identical one); it
+  // never edits or removes anything, so MCP clients see it as additive.
+  mcp_additive: true,
   sort_order: 38,
 };
 

@@ -13,6 +13,11 @@ export function baseWriteRisk(toolId: string): RuntimeActionRisk {
   return getToolMeta(toolId)?.runtime_risk ?? 'r2';
 }
 
+/** The tool declares that every call only adds (`meta.mcp_additive`). */
+export function declaredAdditive(toolId: string): boolean {
+  return getToolMeta(toolId)?.mcp_additive === true;
+}
+
 /** Who a write belongs to (the member the credential is bound to) and which agent made it. */
 export async function resolveWriteCaller(
   db: DatabaseProvider,

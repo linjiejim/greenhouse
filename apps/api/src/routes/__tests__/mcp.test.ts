@@ -21,7 +21,8 @@ vi.mock('@greenhouse/db', async (importOriginal) => {
 // tests/api/agent-write-governance.db.test.ts); here the route's own job is
 // asserted: strip confirm and pass it on, and shape each outcome for the agent.
 const governance = vi.hoisted(() => ({ govern: vi.fn() }));
-vi.mock('../../agent-access/context.js', () => ({
+vi.mock('../../agent-access/context.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../agent-access/context.js')>()),
   baseWriteRisk: () => 'r2',
   resolveWriteCaller: async (_db: unknown, input: { userId: string; clientId: string; authMethod: string }) => ({
     ...input,
@@ -196,6 +197,9 @@ describe('MCP server — Issues & requests tools', () => {
     const { client, server } = await connect(ctx);
     const { tools } = await client.listTools();
     expect(tools.find((t) => t.name === 'feedback_query')!.annotations).toMatchObject({ readOnlyHint: true });
+    // log_friction only ever adds a note; feature_request can also update a request (super).
+    expect(tools.find((t) => t.name === 'log_friction')!.annotations).toMatchObject({ destructiveHint: false });
+    expect(tools.find((t) => t.name === 'feature_request')!.annotations).toMatchObject({ destructiveHint: true });
     for (const name of ['feature_request', 'log_friction']) {
       const write = tools.find((t) => t.name === name)!;
       expect(write.annotations).toMatchObject({ readOnlyHint: false });

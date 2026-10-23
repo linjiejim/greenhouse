@@ -158,6 +158,14 @@ describe('surface-derived exposure sets', () => {
     }
   });
 
+  it('only additive write tools declare mcp_additive (it turns off the destructive hint)', () => {
+    const declared = TOOL_DEFINITIONS.filter((m) => m.mcp_additive === true).map((m) => m.id);
+    expect(declared.filter((id) => CORE_TOOL_IDS.has(id)).sort()).toEqual(['log_friction']);
+    for (const id of declared) {
+      expect(MUTATING_PROXY_ALLOWLIST.has(id), `${id} declares mcp_additive but is not a write tool`).toBe(true);
+    }
+  });
+
   it('proxy tiers are disjoint (a tool is read XOR write)', () => {
     for (const id of READONLY_PROXY_ALLOWLIST) {
       expect(MUTATING_PROXY_ALLOWLIST.has(id), `${id} is in both proxy tiers`).toBe(false);

@@ -97,6 +97,14 @@ export interface ToolMeta {
    * the transport surface (for example memory or image generation).
    */
   runtime_risk?: RuntimeActionRisk;
+  /**
+   * For a write tool with no `action` enum to read it from: every call only
+   * adds something (a new note, a new row) and never edits or removes. MCP then
+   * annotates it `destructiveHint: false`. Leave unset when any call can change
+   * or remove existing data — the annotation is what clients use to decide
+   * whether to ask their user first.
+   */
+  mcp_additive?: boolean;
   sort_order: number;
   /**
    * How this tool's result is surfaced in the chat UI:
