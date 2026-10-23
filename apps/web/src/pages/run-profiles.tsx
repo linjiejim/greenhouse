@@ -152,16 +152,6 @@ export function RunProfilesPanel({ sectionTabs }: { sectionTabs?: React.ReactNod
     />
   );
 
-  if (loading) {
-    return (
-      <ModulePage moduleId="workspace.automations" layout="list" tabs={sectionTabs}>
-        <div className="flex items-center justify-center py-12">
-          <Spinner />
-        </div>
-      </ModulePage>
-    );
-  }
-
   const myProfiles = profiles.filter((p) => p.user_id === currentUser?.id);
   // Super receives every member's agents (that is where team availability is
   // switched); everyone else receives their own plus the team-shared ones.
@@ -175,54 +165,54 @@ export function RunProfilesPanel({ sectionTabs }: { sectionTabs?: React.ReactNod
   const showUsage = isSuper && view === 'usage';
 
   return (
-    <ModulePage
-      moduleId="workspace.automations"
-      layout="list"
-      tabs={sectionTabs}
-      toolbar={
-        showUsage ? (
-          <div className="flex flex-wrap items-center gap-2">
-            <Button variant="ghost" size="sm" onClick={() => setView('profiles')}>
-              <ArrowLeft size={14} />
-              {t('agents.backToProfiles')}
+    <ModulePage moduleId="workspace.automations" layout="list" tabs={sectionTabs} contentClassName="space-y-4">
+      {/* The toolbar opens the content, as in the sibling Automations tab, so
+          switching tabs moves nothing. */}
+      {showUsage ? (
+        <div className="flex flex-wrap items-center gap-2">
+          <Button variant="ghost" size="sm" onClick={() => setView('profiles')}>
+            <ArrowLeft size={14} />
+            {t('agents.backToProfiles')}
+          </Button>
+        </div>
+      ) : (
+        <div className="flex flex-wrap items-center gap-2">
+          <FilterPills
+            items={assetScopeItems(isSuper, {
+              mine: t('history.scopeMine'),
+              shared: t('history.scopeShared'),
+              team: t('history.scopeTeam'),
+            })}
+            activeKey={scope}
+            onChange={(key) => setScope((key ?? 'mine') as AssetScope)}
+            variant="segment"
+            fill
+            className="w-full sm:w-auto sm:min-w-80"
+          />
+          <div className="flex-1" />
+          <span className="text-xs text-fg-muted whitespace-nowrap">
+            {t('agents.count', { count: scopedProfiles.length })}
+          </span>
+          {isSuper && (
+            <Button variant="outline" size="sm" onClick={() => setView('usage')}>
+              <BarChart3 size={14} />
+              {t('agents.usageDetails')}
             </Button>
-          </div>
-        ) : (
-          <div className="flex flex-wrap items-center gap-2">
-            <FilterPills
-              items={assetScopeItems(isSuper, {
-                mine: t('history.scopeMine'),
-                shared: t('history.scopeShared'),
-                team: t('history.scopeTeam'),
-              })}
-              activeKey={scope}
-              onChange={(key) => setScope((key ?? 'mine') as AssetScope)}
-              variant="segment"
-              fill
-              className="w-full sm:w-auto sm:min-w-80"
-            />
-            <div className="flex-1" />
-            <span className="text-xs text-fg-muted whitespace-nowrap">
-              {t('agents.count', { count: scopedProfiles.length })}
-            </span>
-            {isSuper && (
-              <Button variant="outline" size="sm" onClick={() => setView('usage')}>
-                <BarChart3 size={14} />
-                {t('agents.usageDetails')}
-              </Button>
-            )}
-            {scope === 'mine' && (
-              <Button onClick={openCreate} size="sm">
-                <Plus size={14} />
-                {t('agents.create')}
-              </Button>
-            )}
-          </div>
-        )
-      }
-    >
+          )}
+          {scope === 'mine' && (
+            <Button onClick={openCreate} size="sm">
+              <Plus size={14} />
+              {t('agents.create')}
+            </Button>
+          )}
+        </div>
+      )}
       {showUsage ? (
         <CostValuePanel />
+      ) : loading ? (
+        <div className="flex items-center justify-center py-12">
+          <Spinner />
+        </div>
       ) : (
         <>
           {/* Fork from System Profile */}

@@ -863,6 +863,7 @@ export default {
   },
 
   files: {
+    shelvesLabel: 'Shelves',
     teamShelf: 'Team files',
     personalShelf: 'My files',
     searchPlaceholder: 'Search files by name',

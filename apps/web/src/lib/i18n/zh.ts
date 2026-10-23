@@ -859,6 +859,7 @@ const zh: Messages = {
   },
 
   files: {
+    shelvesLabel: '文件架',
     teamShelf: '团队文件',
     personalShelf: '我的文件',
     searchPlaceholder: '按文件名搜索',
