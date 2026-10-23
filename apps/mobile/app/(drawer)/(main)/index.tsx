@@ -18,7 +18,7 @@ import { useT } from '../../../src/lib/i18n';
 import { plainText } from '../../../src/lib/plain-text';
 import { relativeTimeNow } from '../../../src/lib/time-words';
 import { softAskWhenSettled } from '../../../src/push/soft-ask';
-import { clearReadBanners } from '../../../src/push/handler';
+import { clearAllStationBanners } from '../../../src/push/handler';
 import type { PlatformNotification } from '../../../src/shared/greenhouse-types';
 import { openNotification } from '../../../src/shell/nav';
 import { useStartupContent } from '../../../src/startup/context';
@@ -83,7 +83,7 @@ export default function Home() {
   const markAll = useCallback(async () => {
     selectionTick();
     if (!(await useNotifications.getState().markAllRead())) alertError(t('notifications.markFailed'));
-    else void clearReadBanners({ all: true });
+    else void clearAllStationBanners();
   }, [t]);
 
   const open = useCallback(
