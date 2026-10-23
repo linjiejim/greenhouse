@@ -54,7 +54,8 @@
 | `session_groups` | PK `id`；UK `(user_id, name)` | `kind=pinned` 为每用户的置顶系统组（`services/session-pins.ts` 唯一读写方）；`kind=custom` 文件夹功能 1.5 移除，存量行不读不改 |
 | `session_group_members` | PK `id`；UK `(user_id, group_id, session_id)`；部分 UK `(user_id, session_id) WHERE kind='custom'` | 每用户的置顶成员（`sort_order` 为置顶区顺序）；`kind=custom` 的存量文件夹归档行 1.5 起无读写方 |
 | `llm_calls` | PK `id`；索引 `session_id` | `call_llm` 子调用审计；保存输入、输出、模型、状态、token 与耗时 |
-| `llm_usage` | PK `id`；索引 profile/caller/user/created_at/budget key | LLM 用量统计；按 profile、caller、session、user、model 记录 token 与耗时；`budget_idempotency_key` 关联统一预算预留，NULL 表示迁移前或尚未接入预算的 legacy 调用 |
+| `llm_usage` | PK `id`；索引 profile/caller/user/created_at/budget key/(user_id, created_at) | LLM 用量统计；按 profile、caller、session、user、model 记录 token 与耗时；`budget_idempotency_key` 关联统一预算预留，NULL 表示迁移前或尚未接入预算的 legacy 调用。计价列（迁移 0010，全部可空，旧行照常有效）：`cost_usd_micros`（NULL = 未定价或计价前写入，按 0 计）、`client`（web/mobile/mcp/agent_api/automation/feishu/gateway/system）、`oauth_client_id`（成员的 Agent 经 MCP 调用时的 OAuth client）、`service`（`llm` / `vision`；NULL 的旧行按 caller 推断） |
+| `service_usage` | PK `id`（`svu_<hex>`）；索引 (user_id, created_at)/(service, created_at)/created_at/budget key | 非模型付费调用的事实（迁移 0010）：网页搜索、网页读取、生图，日后云电脑分钟。`service`/`provider`/`model`、`units` + `unit_kind`（call/image/minute/token）、`cost_usd_micros`（NULL = 未定价）、`client`、`oauth_client_id`、`caller`、`run_id`/`session_id`、`budget_idempotency_key`、`metadata`。append-only，主体均为逻辑引用 |
 | `scheduled_tasks` | PK `id` | 用户定时 Agent 任务；profile 默认 `team`，保存 cron、时区、执行状态与计数；`notify_webhook`（可选企微/飞书**群**机器人地址，host 白名单二选一、按 host 分派 payload 格式）、`notify_email`（布尔，发到 owner 账号邮箱）、`notify_wecom`（布尔，以企微应用消息发给 owner 本人，收件人取自其 `user_provider_tokens(provider='wecom')` 绑定）与 `notify_feishu`（布尔，以飞书卡片 DM 发给 owner 本人，收件人取自 `provider='feishu'` 绑定，迁移 0064）四条送达通道，均由 scheduler（非 Agent）在跑完后推送摘要——布尔通道**没有任何可供瞄准的收件人字段**，这正是它们免确认的原因；`unattended_tools`（JSON 字符串数组，迁移 0065）是 owner 逐任务勾选的额外工具，目录在 `@greenhouse/types/automation-tools`——它是**过滤器不是授权**（运行时取 `勾选 ∩ 目录 ∩ owner 当前 effectiveTools`），且只有用户自己的控制台请求能写，`automation_mutation` 一律拒绝；`quiet_when_empty`（v1.4）为真时，回答 `NO_UPDATE` 的运行照常记历史但不推送任何渠道 |
 | `scheduled_task_runtime_occurrences` | PK `runtime_run_id`；task/owner 索引 | Automation Runtime 终态的永久幂等投影水位；冻结 task/owner/status/version/planned time，保证成功计数只增一次、旧 occurrence 不覆盖新状态；外部通知按渠道由 `notification_delivery_attempts` 独立持久化与重试 |
 
@@ -90,11 +91,12 @@ Chat 与 Automation 共用的执行控制面（`workflow` / `mission` / `eval` �
 
 | 表 | 主键 / 唯一约束 | 关键字段与用途 |
 |---|---|---|
-| `usage_budget_accounts` | PK `id`；UK `(scope_type, scope_id, unit, period_start, period_end)` | `user/organization/agent/run/eval/provider` 多态额度账户；支持 `tokens/requests/usd_micros`，period 为 `[start,end)`；保存 hard limit、reserved/spent 和 legacy usage 投影。scope 是逻辑关联、无 FK，账户永久保留 |
+| `usage_budget_accounts` | PK `id`；UK `(scope_type, scope_id, unit, period_start, period_end)` | `user/organization/agent/run/eval/provider/service` 多态额度账户（`service` 为 1.6 USD 计价的服务级账户，scope_id = 服务 id）；支持 `tokens/requests/usd_micros`，period 为 `[start,end)`；保存 hard limit、reserved/spent 和 legacy usage 投影。scope 是逻辑关联、无 FK，账户永久保留 |
 | `usage_budget_reservations` | PK `id`；UK `(account_id, idempotency_key)`；索引 key/status+expiry/user/run | 一次模型调用对每个账户一行；同 key 组成原子预留组，`request_hash` 防参数漂移。状态 `reserved/settled/released/expired`；`expired` 表示 provider 结果未知并已按估算量计费，不是免费释放 |
 | `usage_budget_ledger` | BIGSERIAL PK `id`；UK `(account_id, operation_key)`；索引 account+created/reservation | 永久 append-only 账本；记录 bootstrap/reconcile/reserve/settle/release/expire/adjustment/status 的 reserved/spent delta 与变更后余额。账户、预留、主体都为逻辑关联，避免审计随业务记录删除 |
+| `usage_budget_limits` | PK `id`（`ubl_<hash>`，按 scope 确定）；UK `(scope_type, scope_id, unit)`；CHECK limit ≥ 0 | 管理员设的跨周期 USD 月度上限（迁移 0010）：`organization`、`service`（服务 id）、`user` + `scope_id='*'`（成员默认）、`user` + 用户 id（成员覆盖）。每次计价调用按「本表 → env → 内置默认」解析并写入当月账户；删行即回落 |
 
-月度账户以 **UTC 自然月**为周期；文本模型一次原子预留 user + organization（Eval/Judge 走隔离的 `organization:eval` 池）+ provider 三层 token 账户，生图则原子预留三层 `usd_micros` 账户。首次建账与后续预留只投影 `llm_usage.budget_idempotency_key IS NULL` 的 legacy 行到 `legacy_spent_units`，budget-aware 调用只由 reservation/ledger 结算，防止双计。一个 reservation group 内账户必须使用同一 unit；不同 unit 使用各自的幂等子键。显式 `release` 仅用于确认 provider I/O 尚未开始的失败；一旦结果未知，TTL sweep 把 estimated 从 reserved 转 spent，迟到的真实 usage 再只结算差额。
+月度账户以 **UTC 自然月**为周期；文本模型一次原子预留 user + organization（Eval/Judge 走隔离的 `organization:eval` 池）+ provider 三层 token 账户（1.6 起与 USD 并行保留一版），并另起一组 `<key>:usd` 原子预留 member（`user`）+ `service` + `organization` 三层 `usd_micros` 账户（USD 是主限额）；生图、搜索、读网页只走这三层 USD 账户。未定价调用不预留，只做准入检查（账户已用完即拒绝）。首次建账与后续预留只投影 `llm_usage.budget_idempotency_key IS NULL` 的 legacy 行到 `legacy_spent_units`，budget-aware 调用只由 reservation/ledger 结算，防止双计。一个 reservation group 内账户必须使用同一 unit；不同 unit 使用各自的幂等子键。显式 `release` 仅用于确认 provider I/O 尚未开始的失败；一旦结果未知，TTL sweep 把 estimated 从 reserved 转 spent，迟到的真实 usage 再只结算差额。
 
 ### 知识库、云盘与技能
 
@@ -313,6 +315,10 @@ Chat 与 Automation 共用的执行控制面（`workflow` / `mission` / `eval` �
 | `usage_budget_reservations.account_id` | `usage_budget_accounts.id` | 逻辑归属；预留审计不随账户或主体生命周期删除 |
 | `usage_budget_reservations.user_id/run_id/provider_id` | `users.id` / runtime run id / provider id | 调用上下文逻辑引用 |
 | `usage_budget_ledger.account_id/reservation_id` | `usage_budget_accounts.id` / `usage_budget_reservations.id` | append-only 永久账本逻辑引用 |
+| `llm_usage.oauth_client_id` / `service_usage.oauth_client_id` | `platform_oauth_clients.id` | 成员 Agent 的 OAuth client；计价事实独立保留 |
+| `service_usage.user_id/session_id/run_id` | `users.id` / `sessions.id` / runtime run id | 非模型计价事实的逻辑归属 |
+| `service_usage.budget_idempotency_key` | `usage_budget_reservations.idempotency_key` | USD 预留组的逻辑结算键；未定价调用为 NULL |
+| `usage_budget_limits.(scope_type, scope_id)` | organization scope / 服务 id / `users.id`（`*` = 成员默认） | 管理员上限；无 FK |
 | `user_memories.source_session_id` | `sessions.id` | 记忆来源会话 |
 | `user_prompts.source_session_id` | `sessions.id` | 任务固化的来源会话；无 FK，任务比会话活得久 |
 | `user_prompts.artifact_action_id` | `chat_artifact_receipts.id` | 聊天固化 Task 的 exactly-once 恢复键；唯一但无 FK，Task 比会话回执活得久 |
@@ -397,6 +403,10 @@ erDiagram
     usage_budget_accounts ||--o{ usage_budget_ledger : "逻辑 account_id"
     usage_budget_reservations ||--o{ usage_budget_ledger : "逻辑 reservation_id"
     usage_budget_reservations ||--o{ llm_usage : "逻辑 idempotency_key"
+    usage_budget_reservations ||--o{ service_usage : "逻辑 idempotency_key"
+    users ||--o{ service_usage : "逻辑 user_id"
+    platform_oauth_clients ||--o{ service_usage : "逻辑 oauth_client_id"
+    users ||--o{ usage_budget_limits : "逻辑 scope_id"
     users ||--o{ runtime_runs : "逻辑 owner / initiated_by"
     sessions ||--o{ runtime_runs : "逻辑 session_id"
     runtime_runs ||--o{ runtime_runs : "FK CASCADE parent"

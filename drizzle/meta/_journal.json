@@ -71,6 +71,13 @@
       "when": 1792746832372,
       "tag": "0009_push_devices",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1792767903377,
+      "tag": "0010_usd_metering",
+      "breakpoints": true
     }
   ]
 }

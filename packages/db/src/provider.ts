@@ -17,6 +17,7 @@ import { createLlmCallService } from './services/llm-calls.js';
 import { createUsageService } from './services/usage.js';
 import { createUsageBudgetService } from './services/usage-budget.js';
 import { createUsageCounterService } from './services/usage-counters.js';
+import { createMeteringService } from './services/metering.js';
 import { createUserService } from './services/users.js';
 import { createUserToolService } from './services/user-tools.js';
 import { createRefreshTokenService } from './services/refresh-tokens.js';
@@ -66,6 +67,7 @@ function createDatabaseProvider(db: Db, client: DbClient['client'] | null) {
     usage: createUsageService(db),
     usageBudget: createUsageBudgetService(db),
     usageCounters: createUsageCounterService(db),
+    metering: createMeteringService(db),
     users: createUserService(db),
     userTools: createUserToolService(db),
     refreshTokens: createRefreshTokenService(db),
@@ -159,6 +161,8 @@ function createDatabaseProvider(db: Db, client: DbClient['client'] | null) {
         'runtime_tool_calls',
         'runtime_steps',
         'runtime_runs',
+        'service_usage',
+        'usage_budget_limits',
         'usage_budget_ledger',
         'usage_budget_reservations',
         'usage_budget_accounts',

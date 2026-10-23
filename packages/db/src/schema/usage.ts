@@ -1,8 +1,8 @@
 /**
- * Drizzle schema — LLM Usage tracking table (PostgreSQL).
+ * Drizzle schema — usage facts and budgets (PostgreSQL).
  *
- * Tables: llm_usage, usage_budget_accounts, usage_budget_reservations,
- * usage_budget_ledger
+ * Tables: llm_usage, service_usage, usage_budget_accounts,
+ * usage_budget_reservations, usage_budget_ledger, usage_budget_limits
  */
 
 import { sql } from 'drizzle-orm';
@@ -35,6 +35,17 @@ export const llmUsage = pgTable(
     duration_ms: integer('duration_ms'),
     /** Logical link to the budget reservation; null means legacy/unbudgeted usage. */
     budget_idempotency_key: text('budget_idempotency_key'),
+    /**
+     * Metering (v1.6). All nullable so rows written by older code stay valid:
+     * cost null = unpriced or recorded before prices existed (counted as zero).
+     */
+    cost_usd_micros: bigint('cost_usd_micros', { mode: 'number' }),
+    /** `@greenhouse/types/metering` METERING_CLIENTS: web / mobile / mcp / automation / … */
+    client: text('client'),
+    /** OAuth client of the member's agent when the call came over MCP. */
+    oauth_client_id: text('oauth_client_id'),
+    /** Metered service: `llm` for chat models, `vision` for analyze_image. */
+    service: text('service'),
     created_at: timestamp('created_at', { withTimezone: true, mode: 'string' }).notNull(),
   },
   (table) => [
@@ -43,6 +54,45 @@ export const llmUsage = pgTable(
     index('idx_llm_usage_caller').on(table.caller),
     index('idx_llm_usage_user').on(table.user_id),
     index('idx_llm_usage_budget_key').on(table.budget_idempotency_key),
+    index('idx_llm_usage_user_created').on(table.user_id, table.created_at),
+  ],
+);
+
+/**
+ * One fact per metered call to a paid service that is not a chat model (web
+ * search, page read, image generation, later cloud-computer minutes). The
+ * model counterpart is llm_usage. Append-only; user / run / session / OAuth
+ * client are logical references so the fact outlives every subject.
+ */
+export const serviceUsage = pgTable(
+  'service_usage',
+  {
+    /** `svu_<hex>` — system-assigned. */
+    id: text('id').primaryKey(),
+    /** Member the call was made for; null only for a call with no member in scope. */
+    user_id: text('user_id'),
+    /** `@greenhouse/types/metering` METERED_SERVICES. */
+    service: text('service').notNull(),
+    provider: text('provider').notNull(),
+    model: text('model'),
+    units: bigint('units', { mode: 'number' }).notNull().default(1),
+    unit_kind: text('unit_kind', { enum: ['call', 'image', 'minute', 'token'] }).notNull(),
+    /** Null = unpriced (未定价): counted as zero. */
+    cost_usd_micros: bigint('cost_usd_micros', { mode: 'number' }),
+    client: text('client'),
+    oauth_client_id: text('oauth_client_id'),
+    caller: text('caller').notNull().default(''),
+    run_id: text('run_id'),
+    session_id: text('session_id'),
+    budget_idempotency_key: text('budget_idempotency_key'),
+    metadata: text('metadata').notNull().default('{}'),
+    created_at: timestamp('created_at', { withTimezone: true, mode: 'string' }).notNull(),
+  },
+  (table) => [
+    index('idx_service_usage_user_created').on(table.user_id, table.created_at),
+    index('idx_service_usage_service_created').on(table.service, table.created_at),
+    index('idx_service_usage_created').on(table.created_at),
+    index('idx_service_usage_budget_key').on(table.budget_idempotency_key),
   ],
 );
 
@@ -60,7 +110,7 @@ export const usageBudgetAccounts = pgTable(
   {
     id: text('id').primaryKey(),
     scope_type: text('scope_type', {
-      enum: ['user', 'organization', 'agent', 'run', 'eval', 'provider'],
+      enum: ['user', 'organization', 'agent', 'run', 'eval', 'provider', 'service'],
     }).notNull(),
     scope_id: text('scope_id').notNull(),
     unit: text('unit', { enum: ['tokens', 'requests', 'usd_micros'] })
@@ -173,7 +223,37 @@ export const usageBudgetLedger = pgTable(
   ],
 );
 
+/**
+ * Administrative USD limits that outlive a period: the organization, each
+ * service, the default for every member (`scope_type='user'`, `scope_id='*'`)
+ * and per-member overrides. Accounts are materialized per month from these; a
+ * missing row falls back to the deployment env, then the built-in default.
+ */
+export const usageBudgetLimits = pgTable(
+  'usage_budget_limits',
+  {
+    /** `ubl_<hash>` — deterministic per scope + unit. */
+    id: text('id').primaryKey(),
+    scope_type: text('scope_type', { enum: ['organization', 'service', 'user'] }).notNull(),
+    scope_id: text('scope_id').notNull(),
+    unit: text('unit', { enum: ['usd_micros'] })
+      .notNull()
+      .default('usd_micros'),
+    limit_units: bigint('limit_units', { mode: 'number' }).notNull(),
+    updated_by: text('updated_by'),
+    created_at: timestamp('created_at', { withTimezone: true, mode: 'string' }).notNull(),
+    updated_at: timestamp('updated_at', { withTimezone: true, mode: 'string' }).notNull(),
+  },
+  (table) => [
+    uniqueIndex('uq_usage_budget_limits_scope').on(table.scope_type, table.scope_id, table.unit),
+    check('chk_usage_budget_limits_nonnegative', sql`${table.limit_units} >= 0`),
+  ],
+);
+
 export type UsageRow = typeof llmUsage.$inferSelect;
+export type ServiceUsageRow = typeof serviceUsage.$inferSelect;
+export type UsageBudgetLimitRow = typeof usageBudgetLimits.$inferSelect;
+export type UsageBudgetLimitScopeType = UsageBudgetLimitRow['scope_type'];
 export type UsageBudgetAccountRow = typeof usageBudgetAccounts.$inferSelect;
 export type UsageBudgetScopeType = UsageBudgetAccountRow['scope_type'];
 export type UsageBudgetUnit = UsageBudgetAccountRow['unit'];

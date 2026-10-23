@@ -22,6 +22,14 @@ export interface UsageRecord {
   duration_ms?: number;
   /** Links budget-aware calls to their reservation; null/omitted = legacy usage. */
   budget_idempotency_key?: string;
+  /** USD micros; null/omitted = unpriced (counted as zero). */
+  cost_usd_micros?: number | null;
+  /** Metering client (`@greenhouse/types/metering`). */
+  client?: string | null;
+  /** OAuth client of the member's agent when the call came over MCP. */
+  oauth_client_id?: string | null;
+  /** Metered service: `llm` / `vision`. */
+  service?: string | null;
 }
 
 export interface UsageStats {
@@ -208,6 +216,10 @@ export function createUsageService(db: Db) {
         reasoning_tokens: usage.reasoning_tokens ?? 0,
         duration_ms: usage.duration_ms ?? null,
         budget_idempotency_key: usage.budget_idempotency_key ?? null,
+        cost_usd_micros: usage.cost_usd_micros ?? null,
+        client: usage.client ?? null,
+        oauth_client_id: usage.oauth_client_id ?? null,
+        service: usage.service ?? null,
         created_at: nowIso(),
       });
     },
