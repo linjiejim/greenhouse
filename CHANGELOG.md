@@ -5,6 +5,60 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0](https://github.com/linjiejim/greenhouse/compare/v1.3.3...v1.4.0) (2026-10-23)
+
+
+### ⚠ BREAKING CHANGES
+
+* **mcp:** agents write as their member; Greenhouse records, it does not hold
+* **agents:** POST /api/profiles/custom/:id/lifecycle is gone and profile responses no longer carry lifecycle_status, lifecycle_note, published_version, reviewed_by, reviewed_at or next_review_at. Rows whose retired lifecycle was archived or suspended become visible to their owners again.
+* **mcp:** govern external agent writes with risk tiers, approvals and standing grants
+* remove Workflows
+* /api/missions, /api/cloud-agent, /api/llm, /api/auth/llm-keys and /api/admin/llm-gateway are gone; relay keys and task tokens no longer authenticate.
+* **api:** /api/eval/*, the session eval endpoints, the eval tools and `pnpm cli eval` are gone; eval_refs is no longer accepted or returned by the custom Agent API.
+
+### Added
+
+* **admin:** audit workspace settings and feature-toggle writes ([0eada17](https://github.com/linjiejim/greenhouse/commit/0eada17f11eeea2cc187c003d1193f17655c9c2f))
+* **api:** session_query searches message text and the current conversation ([3a64ae4](https://github.com/linjiejim/greenhouse/commit/3a64ae47fc192422dd5c30d21a74c32c274e20b0))
+* **auth:** keep Feishu and WeCom login state in the database ([dad3f1a](https://github.com/linjiejim/greenhouse/commit/dad3f1a5c70ff1f5898f27e36e9595b9166613a8))
+* **automations:** 15-minute floor, quiet runs and outcome-unknown crash surfacing ([dd7e1f5](https://github.com/linjiejim/greenhouse/commit/dd7e1f573467c804cfa16cbf5776e522a4d0cdfb))
+* **chat:** cache-first prompt and a rolling conversation digest ([b680424](https://github.com/linjiejim/greenhouse/commit/b680424572f2a6e1a9e6dd852b852f95202ea281))
+* **db:** rolling-digest compare-and-set, reset on edit and message content search ([da8a8c2](https://github.com/linjiejim/greenhouse/commit/da8a8c279656492e148994ac82263cc3bb6c722e))
+* **db:** tables for agent write grants, usage counts, shared security state and session digests ([16a63bd](https://github.com/linjiejim/greenhouse/commit/16a63bddbe262e4cc933af782749bba1eb04249c))
+* **knowledge:** push knowledge.changed when a document is written ([9f5fb50](https://github.com/linjiejim/greenhouse/commit/9f5fb5002c285202683df4ee0595723befe4065b))
+* **mcp:** agents write as their member; Greenhouse records, it does not hold ([892e31d](https://github.com/linjiejim/greenhouse/commit/892e31da6fa0afbc26fbf743228f3acbac810de7))
+* **mcp:** bound oversized tool replies and page them with tool_output_read ([0535394](https://github.com/linjiejim/greenhouse/commit/0535394364d1dfffba41872a9ede694d9da5aeba))
+* **mcp:** govern external agent writes with risk tiers, approvals and standing grants ([f8733ec](https://github.com/linjiejim/greenhouse/commit/f8733ecd5f1e97d06f3b5adde202d7224950bc30))
+* **mobile:** label requests and report module opens for usage counts ([020d604](https://github.com/linjiejim/greenhouse/commit/020d604c856d2674757eecbdd4aed985af0d1b46))
+* **security:** keep rate-limit counters in the database ([98cb4f0](https://github.com/linjiejim/greenhouse/commit/98cb4f0d1223381ca0a31b7d0d5c006a840dc8ab))
+* **usage:** count tool calls and page opens per module ([aa460c8](https://github.com/linjiejim/greenhouse/commit/aa460c8e13f7e71eaa177d15a544f4ab0985ca39))
+* **web:** Settings › Agent connections — approvals, standing grants, activity, connect guide ([2df22dc](https://github.com/linjiejim/greenhouse/commit/2df22dc6a990259c0baa9cccf139f7809f696c99))
+
+
+### Fixed
+
+* **agents:** only the current version for non-owners; share toggle on phones ([9f07507](https://github.com/linjiejim/greenhouse/commit/9f0750717f780a08358f58bd7f824a7a131563c2))
+* **mcp,agents:** Codex round 3, plus what the live approval run showed ([dd08476](https://github.com/linjiejim/greenhouse/commit/dd08476b7727c2e20a88a9b1936e353d95038414))
+* **mcp,knowledge:** recheck the source tool on paged reads; keep the tree on live refresh ([bb9470e](https://github.com/linjiejim/greenhouse/commit/bb9470ea251b8b35cb63d01e1ec86e32a3482cd2))
+* **mcp:** close the approval races Codex found in governed writes ([0839075](https://github.com/linjiejim/greenhouse/commit/0839075238d83b5ebdecf6b1dc4238fab3cbdbeb))
+* **mcp:** keep migration 0008's timestamp; mark editing tools destructive ([ef5e234](https://github.com/linjiejim/greenhouse/commit/ef5e234207e2ad75283960fef44018be1f22e303))
+* **mcp:** name a write's document only when its owner may read it ([b2e3c24](https://github.com/linjiejim/greenhouse/commit/b2e3c240b1a48dd77da246fc603f87b531e820d7))
+* **web:** keep approve and reject together on phones ([42b323b](https://github.com/linjiejim/greenhouse/commit/42b323bf0e07484c82a26056908ad4d0d34491ec))
+* **web:** keep conversations, gantt and approval cards readable ([39a2fef](https://github.com/linjiejim/greenhouse/commit/39a2fef7820934bf3ce15f9c2198b8c64d3f4bdb))
+* **web:** label agent writes in the Execution center ([ead3260](https://github.com/linjiejim/greenhouse/commit/ead3260d302951ac793cb37254a242d9b22e28e9))
+* **web:** one button, toolbar and page-column rule across the app ([0eb628b](https://github.com/linjiejim/greenhouse/commit/0eb628b78290aa5a85f2dcaff922b9c76fd17bc8))
+* **web:** one page padding for every ModulePage layout ([bee01c1](https://github.com/linjiejim/greenhouse/commit/bee01c16a2c702aa5c2d1be220be1a6c03ed0c01))
+
+
+### Changed
+
+* **agents:** replace the custom-agent review lifecycle with super-switched team sharing ([c7c7e15](https://github.com/linjiejim/greenhouse/commit/c7c7e159fb8313c7f4821f52337bccd0e8602037))
+* **api:** remove the evaluation system ([099fecf](https://github.com/linjiejim/greenhouse/commit/099fecfd0aadd36cf3713e42c1fc362d8f871ea9))
+* remove Missions and the LLM relay ([b8f3c16](https://github.com/linjiejim/greenhouse/commit/b8f3c16b8db38c0d7b3a560f56fa1ca7f33b1655))
+* remove Workflows ([86d5747](https://github.com/linjiejim/greenhouse/commit/86d5747c5927765ae87f620b4824d7f3153507a1))
+* **types:** share the agent write wire types between API and web ([ab7818a](https://github.com/linjiejim/greenhouse/commit/ab7818a7b532d6bc86c36813fb8e0546a1a4bc96))
+
 ## [1.3.3](https://github.com/linjiejim/greenhouse/compare/v1.3.2...v1.3.3) (2026-10-22)
 
 
