@@ -72,7 +72,7 @@ describe('resolveProxyToolIds', () => {
   });
 
   it('never includes non-allowlisted tools even if effective', () => {
-    const other = ['workbench_query', 'feature_request'];
+    const other = ['workbench_query', 'memory'];
     expect(resolveProxyToolIds(other, { allowedWriteTools: other })).toEqual([]);
     for (const id of other) {
       expect(READONLY_PROXY_ALLOWLIST.has(id)).toBe(false);
