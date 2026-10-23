@@ -1,20 +1,27 @@
 /**
  * The v1.7 HTTP surfaces behind the same guards `index.ts` mounts them with:
  * Administration › Team context and the retro button (super only), the data
- * catalog page (any internal member, their own permissions).
+ * catalog page (any internal member, their own permissions) and the connect
+ * wizard's "检查连接" (the member's own connections only).
  */
 
 import { Hono } from 'hono';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { _resetProvider, initDatabase, type DatabaseProvider, type UserRow } from '@greenhouse/db';
 import { TEST_DATABASE_URL } from '@greenhouse/db/test-config';
-import type { DataCatalog, RetroResult, TeamContextSettingsView } from '@greenhouse/types/hub-context';
+import type {
+  AgentConnectionsCheck,
+  DataCatalog,
+  RetroResult,
+  TeamContextSettingsView,
+} from '@greenhouse/types/hub-context';
 
 import type { AppEnv } from '../../app-env.js';
 import { requireInternal, requireSuper } from '../../auth/middleware.js';
 import { createInternalTestUser } from '../../../../../tests/helpers/internal-user.js';
 import { adminRetroRoutes, adminTeamContextRoutes } from '../admin-team-context.js';
 import dataCatalogRoutes from '../data-catalog.js';
+import { createAgentAccessRoutes } from '../agent-access.js';
 import { invalidateWorkspaceConfigCache } from '../../settings/workspace-config.js';
 import { initializePlatformRuntime, resetPlatformRuntimeForTests } from '../../platform/runtime.js';
 import { tablesRegistration } from '../../platform/tables/application.js';
@@ -46,6 +53,8 @@ function app() {
   hono.route('/api/admin/retro', adminRetroRoutes);
   hono.use('/api/data-catalog', requireInternal());
   hono.route('/api/data-catalog', dataCatalogRoutes);
+  hono.use('/api/agent-access/*', requireInternal());
+  hono.route('/api/agent-access', createAgentAccessRoutes());
   return hono;
 }
 
@@ -169,5 +178,38 @@ describe('data catalog page', () => {
     const catalog = res.json as DataCatalog;
     expect(catalog.bases.map((entry) => entry.id)).toContain(base.id);
     expect(catalog.bases.find((entry) => entry.id === base.id)!.reach[0]!.tool).toBe('tables_query');
+  });
+});
+
+describe('connect wizard check', () => {
+  it('shows when each of my connected agents last reached MCP, and nobody else’s', async () => {
+    const clientId = unique('client');
+    await db.platformOAuth.registerClient({ id: clientId, client_name: 'Claude Code', redirect_uris: '[]' });
+    const grant = await db.platformOAuth.upsertGrant({
+      user_id: member.id,
+      client_id: clientId,
+      resource: 'http://localhost/api/mcp',
+      scopes: JSON.stringify(['mcp:read']),
+    });
+    const token = await db.platformOAuth.createAccessToken(grant.id, {
+      token_hash: unique('hash'),
+      token_type: 'access',
+      resource: 'http://localhost/api/mcp',
+      scopes: JSON.stringify(['mcp:read']),
+      expires_at: new Date(Date.now() + 3_600_000).toISOString(),
+    });
+
+    let check = (await call(member, 'GET', '/api/agent-access/connections')).json as AgentConnectionsCheck;
+    expect(check.connections).toEqual([
+      expect.objectContaining({ client_id: clientId, kind: 'claude-code', last_seen_at: null }),
+    ]);
+
+    await db.platformOAuth.touchAccessToken(token!.id);
+    check = (await call(member, 'GET', '/api/agent-access/connections')).json as AgentConnectionsCheck;
+    expect(check.connections[0]!.last_seen_at).toEqual(expect.any(String));
+
+    expect(
+      ((await call(admin, 'GET', '/api/agent-access/connections')).json as AgentConnectionsCheck).connections,
+    ).toEqual([]);
   });
 });

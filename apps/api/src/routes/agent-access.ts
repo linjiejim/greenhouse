@@ -2,6 +2,7 @@
  * Agent access — what a member sees about their own external agents.
  *
  * GET    /api/agent-access/overview              the MCP endpoint to connect to
+ * GET    /api/agent-access/connections           my connected agents and when each last reached MCP (connect wizard)
  * GET    /api/agent-access/writes                my agents' recent writes, newest first
  * GET    /api/agent-access/gateway               the model gateway: on/off, base URLs, models, my keys + this month's spend
  * POST   /api/agent-access/gateway/keys          create a key {name, allowed_models?, expires_at?} → the secret, once
@@ -21,6 +22,8 @@ import type { AppEnv } from '../app-env.js';
 import { getAuthUser } from '../auth/middleware.js';
 import { getMcpResourceUrl } from '../platform/oauth.js';
 import { agentWriteView } from '../agent-access/governed-write.js';
+import { checkAgentConnections } from '../hub-context/connections.js';
+import type { AgentConnectionsCheck } from '@greenhouse/types/hub-context';
 import {
   gatewayAnthropicBaseUrl,
   gatewayBaseUrl,
@@ -39,6 +42,12 @@ const MANAGE_OWN_GATEWAY_KEYS = 'platform.gateway.manageOwn';
 export function createAgentAccessRoutes() {
   return new Hono<AppEnv>()
     .get('/overview', (c) => c.json({ mcp_url: getMcpResourceUrl() }))
+
+    .get('/connections', async (c) => {
+      const user = getAuthUser(c);
+      const check: AgentConnectionsCheck = await checkAgentConnections(getDb(), user.id);
+      return c.json(check);
+    })
 
     .get('/writes', async (c) => {
       const user = getAuthUser(c);

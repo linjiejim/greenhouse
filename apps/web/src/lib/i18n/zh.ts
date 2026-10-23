@@ -1737,8 +1737,42 @@ const zh: Messages = {
     connectClaude: 'Claude Code',
     connectCursor: 'Cursor（~/.cursor/mcp.json）',
     connectOther: '只支持 stdio 的客户端',
-    connectAfter:
-      '添加后，执行登录命令（Codex）或打开 /mcp（Claude Code），在浏览器里确认授权范围。只给需要改数据的 Agent 勾选写权限。',
+    wizard: {
+      pickTitle: '选择你的 Agent',
+      pickFirst: '选择你在用的 Agent，查看对应的接入步骤。',
+      client: {
+        codex: 'Codex',
+        'claude-code': 'Claude Code',
+        cursor: 'Cursor',
+        other: '其他 MCP 客户端',
+      },
+      setupTitle: '把 Greenhouse 加进去',
+      oauthCodex:
+        'login 这一步会打开浏览器：登录 Greenhouse，批准这个 Agent 能访问的范围。Codex 会保存并自动续期令牌。',
+      oauthClaude:
+        '然后在 Claude Code 里输入 /mcp，选择 greenhouse 并认证：浏览器会打开，登录 Greenhouse 并批准这个 Agent 能访问的范围。',
+      oauthCursor:
+        '保存文件后，在 Cursor › Settings › MCP 里 greenhouse 会提示登录，点击后在浏览器里批准这个 Agent 能访问的范围。',
+      otherHttp:
+        '支持 Streamable HTTP 和 OAuth 的客户端只需要上面的 MCP 地址，它会自己找到登录入口。只支持 stdio 的客户端，用 mcp-remote 转一层：',
+      oauthOther: '两种方式第一次调用时都会打开浏览器，登录 Greenhouse 并批准这个 Agent 能访问的范围。',
+      scopes:
+        '在批准页选择这个 Agent 能访问的数据（知识库、档案库、表格……）以及能否写入。只给你希望它改数据的 Agent 写权限；随时可以在「已连接」里断开。',
+      checkTitle: '检查连接',
+      checkIntro: '让你的 Agent 用一次 Greenhouse（比如「调用 team_context」），再回到这里检查。',
+      check: '检查连接',
+      checking: '检查中…',
+      checkOk: '{name} {ago}连上了 Greenhouse，接入成功。',
+      checkStale: '{name} 上次连上 Greenhouse 是{ago}。让 Agent 调用一个 Greenhouse 工具后再检查。',
+      checkNeverCalled: '{name} 已登录，但还没调用过 Greenhouse。让它调用 team_context 后再检查。',
+      checkNone: '还没有来自这个 Agent 的连接。先完成第 2 步的登录，再检查一次。',
+      checkFailed: '检查连接失败',
+      tipsTitle: '用好它',
+      tipTeamContext: '开始新任务时，先让 Agent 调用 team_context：它会拿到团队约定、术语表、技能和数据源。',
+      tipPrompts:
+        '团队技能和你保存的提示词会作为 MCP prompts 提供（skill-…、prompt-…）；在 Claude Code 里是 /mcp__greenhouse__ 开头的命令。',
+      tipCatalog: 'data_catalog 列出你能查询的数据，以及每个数据源用哪个工具拿到。',
+    },
     howWritesWork: '写入如何处理',
     howWrites1: '读取和你有权限做的修改都直接执行，不会在 Greenhouse 里排队等审批。',
     howWrites2: 'Greenhouse 会提示 Agent：改别人也在用的数据前先跟你确认；Agent 自己的客户端也可能先问你。',

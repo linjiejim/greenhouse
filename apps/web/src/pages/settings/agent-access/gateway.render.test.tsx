@@ -83,19 +83,31 @@ describe('Settings › Agent connections › Model gateway', () => {
     expect(fetchGatewayOverview.mock.calls.length).toBeLessThanOrEqual(3);
   });
 
-  it('shows copy-ready gateway config in the Connect guide', async () => {
+  it('shows copy-ready gateway config in the Connect wizard, per client', async () => {
+    const openai = await render(
+      createElement(ConnectGuide, {
+        mcpUrl: 'https://hub.example.com/api/mcp',
+        gateway: overview,
+        onOpenGatewayKeys: () => undefined,
+        initialClient: 'other',
+      }),
+    );
+    const guide = openai.querySelector('[data-testid="gateway-guide"]')?.textContent ?? '';
+    expect(guide).not.toContain('wire_api');
+    expect(guide).toContain(`export OPENAI_BASE_URL=${overview.base_url}`);
+    expect(guide).toContain(`curl ${overview.base_url}/chat/completions`);
+    expect(guide).toContain('"model":"flash"');
+    if (root) await act(async () => root?.unmount());
+    container?.remove();
+
     const view = await render(
       createElement(ConnectGuide, {
         mcpUrl: 'https://hub.example.com/api/mcp',
         gateway: overview,
         onOpenGatewayKeys: () => undefined,
+        initialClient: 'claude-code',
       }),
     );
-    const guide = view.querySelector('[data-testid="gateway-guide"]')?.textContent ?? '';
-    expect(guide).not.toContain('wire_api');
-    expect(guide).toContain(`export OPENAI_BASE_URL=${overview.base_url}`);
-    expect(guide).toContain(`curl ${overview.base_url}/chat/completions`);
-    expect(guide).toContain('"model":"flash"');
     const claude = view.querySelector('[data-testid="gateway-guide-claude"]')?.textContent ?? '';
     expect(claude).toContain(`export ANTHROPIC_BASE_URL=${overview.anthropic_base_url}`);
     expect(claude).toContain('export ANTHROPIC_AUTH_TOKEN=ghgw_…');
@@ -109,6 +121,7 @@ describe('Settings › Agent connections › Model gateway', () => {
         mcpUrl: 'https://hub.example.com/api/mcp',
         gateway: { ...overview, models: overview.models.map((model) => ({ ...model, anthropic: false })) },
         onOpenGatewayKeys: () => undefined,
+        initialClient: 'claude-code',
       }),
     );
     expect(view.querySelector('[data-testid="gateway-guide-claude"]')).toBeNull();
