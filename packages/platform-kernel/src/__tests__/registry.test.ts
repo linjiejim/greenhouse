@@ -112,6 +112,40 @@ describe('ApplicationRegistry', () => {
     });
   });
 
+  it('folds a handler audit hint into the success audit and strips it from the result', async () => {
+    const audits: PlatformAuditEvent[] = [];
+    const registry = new ApplicationRegistry({
+      authorize: () => ({ allowed: true, reason: 'test-policy' }),
+      audit: (event) => {
+        audits.push(event);
+      },
+    });
+    registry.register({
+      manifest: manifest(),
+      handlers: {
+        listProjects: async () => ({ ok: true, data: [] }),
+        deleteProject: async () => ({ ok: true, data: { id: 9 }, audit: { recordId: '9', summary: { title: 'Q4' } } }),
+      },
+    });
+
+    const result = await registry.dispatch({ actor, appId: 'projects', actionId: 'deleteProject', payload: {} }, {});
+    expect(result).toEqual({ ok: true, data: { id: 9 } });
+    expect(audits[0]).toMatchObject({ resource: { recordId: '9' }, summary: { title: 'Q4' } });
+
+    // A record id the request already names wins over the hint.
+    await registry.dispatch(
+      {
+        actor,
+        appId: 'projects',
+        actionId: 'deleteProject',
+        payload: {},
+        resource: { appId: 'projects', recordId: '4' },
+      },
+      {},
+    );
+    expect(audits[1]).toMatchObject({ resource: { recordId: '4' }, summary: { title: 'Q4' } });
+  });
+
   it('fails closed and audits denied actions before invoking a handler', async () => {
     const audits: PlatformAuditEvent[] = [];
     const deleteHandler = vi.fn(async () => ({ ok: true as const, data: null }));

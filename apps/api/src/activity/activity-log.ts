@@ -19,7 +19,14 @@
  *
  * Objects are named only when the viewer may read them (knowledge through
  * resolveKbAccess, projects by visibility/membership, files by shelf); other
- * targets show their id. Admin details carry setting KEY names, never values.
+ * targets show their id. A record that is gone is named from what its audit
+ * kept only for a viewer who could read it (its own actor, or a super where a
+ * super reads every such record). Admin details carry setting KEY names, never
+ * values.
+ *
+ * Phrasing is shared with Home's recent changes: every item says a verb and
+ * the kind of object (`describeToolWrite` for agent writes), so the same
+ * change reads the same way in both places.
  */
 
 import { Buffer } from 'node:buffer';
@@ -46,7 +53,6 @@ function jsonObject(text: string | null): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
 }
 import { canRead as canReadKb, resolveKbAccess } from '../knowledge/access.js';
-import { targetLabel as agentWriteTargetLabel } from '../agent-access/governed-write.js';
 import { DRIVE_AUDIT_APP_ID, type DriveChangeAction } from '../drive/audit.js';
 import { PLATFORM_ORG_ID } from '../platform/runtime.js';
 import { MUTATING_PROXY_ALLOWLIST } from '../tools/registry.js';
@@ -140,9 +146,9 @@ const VERB_PATTERNS: Array<[RegExp, ActivityVerb]> = [
   [/^archive/, 'archive'],
   [/^(move|reorder)/, 'move'],
   [/^comment|comment$/, 'comment'],
-  [/^(share|grant|authorize|invite|issue|manage)/, 'share'],
+  [/^(share|grant|authorize|invite|issue)/, 'share'],
   [/^(create|add|insert|submit|upload|publish|log|append|import|duplicate|clone)/, 'create'],
-  [/^(update|edit|set|rename|patch|change|rotate|resend|upsert|replace|convert)/, 'update'],
+  [/^(update|edit|set|rename|patch|change|rotate|resend|upsert|replace|convert|manage)/, 'update'],
   [/^(run|trigger)/, 'run'],
 ];
 
@@ -152,6 +158,81 @@ export function verbOf(action: string): ActivityVerb {
   const normalized = last.replace(/([a-z0-9])([A-Z])/g, '$1_$2').toLowerCase();
   for (const [pattern, verb] of VERB_PATTERNS) if (pattern.test(normalized)) return verb;
   return 'other';
+}
+
+/**
+ * The verb of one write-tool action, by its first word (`update_doc`,
+ * `batch_upsert`, `run_now`): what the change did to the object, not how.
+ * Anything else stays `other` and shows the action itself.
+ */
+const TOOL_VERBS: Record<string, ActivityVerb> = {
+  create: 'create',
+  add: 'create',
+  insert: 'create',
+  submit: 'create',
+  upload: 'create',
+  publish: 'create',
+  draft: 'create',
+  update: 'update',
+  edit: 'update',
+  patch: 'update',
+  append: 'update',
+  upsert: 'update',
+  batch: 'update',
+  move: 'update',
+  rename: 'update',
+  set: 'update',
+  delete: 'delete',
+  remove: 'delete',
+  archive: 'archive',
+  unarchive: 'restore',
+  restore: 'restore',
+  share: 'share',
+  unshare: 'unshare',
+  run: 'run',
+  send: 'send',
+};
+
+/** The object an action prefix (`folders.create`) names. */
+const ACTION_ENTITIES: Record<string, string> = {
+  knowledge: 'document',
+  project: 'project',
+  task: 'task',
+  comment: 'task',
+  records: 'record',
+  folders: 'folder',
+  files: 'file',
+  skills: 'skill',
+};
+
+/** The object a tool without an action prefix writes. */
+const TOOL_ENTITIES: Record<string, string> = {
+  knowledge_mutation: 'document',
+  tables_mutation: 'record',
+  skill_mutation: 'skill',
+  automation_mutation: 'automation',
+  feature_request: 'featureRequest',
+  log_friction: 'friction',
+  email_mutation: 'email',
+};
+
+export interface WriteShape {
+  verb: ActivityVerb;
+  /** The kind of object (`document`, `file`, `task`…), or null for an unknown tool. */
+  entity: string | null;
+}
+
+/** What one agent write did, in the Activity vocabulary: "updated document", "created folder". */
+export function describeToolWrite(toolId: string, action: string | null): WriteShape {
+  // log_friction's `action` is the kind of friction, not a verb: it always files a report.
+  if (toolId === 'log_friction') return { verb: 'create', entity: 'friction' };
+  const dot = action ? action.lastIndexOf('.') : -1;
+  const prefix = action && dot > 0 ? action.slice(0, dot) : null;
+  const segment = action ? action.slice(dot + 1) : '';
+  if (toolId === 'project_mutation' && action === 'comment.add') return { verb: 'comment', entity: 'task' };
+  const verb = TOOL_VERBS[segment.split('_')[0] ?? ''] ?? 'other';
+  const entity = (prefix ? ACTION_ENTITIES[prefix] : undefined) ?? TOOL_ENTITIES[toolId] ?? null;
+  return { verb, entity };
 }
 
 // ─── Filters ─────────────────────────────────────────────
@@ -363,15 +444,53 @@ async function projectTarget(ctx: HydrateContext, entity: string | null, recordI
   return null;
 }
 
-function driveTarget(ctx: HydrateContext, entity: string | null, recordId: string, summary: Record<string, unknown>) {
-  const visibility = summary.visibility === 'private' ? 'private' : summary.visibility === 'team' ? 'team' : null;
-  const mine = typeof summary.owner_user_id === 'string' && summary.owner_user_id === ctx.viewer.id;
-  if (summary.scope !== 'kb' || !(visibility === 'team' || mine) || typeof summary.name !== 'string') return null;
+interface DriveNode {
+  scope?: unknown;
+  visibility?: unknown;
+  owner_user_id?: unknown;
+  name?: unknown;
+}
+
+function driveTarget(ctx: HydrateContext, entity: string | null, recordId: string, node: DriveNode) {
+  const visibility = node.visibility === 'private' ? 'private' : node.visibility === 'team' ? 'team' : null;
+  const mine = typeof node.owner_user_id === 'string' && node.owner_user_id === ctx.viewer.id;
+  if (node.scope !== 'kb' || !(visibility === 'team' || mine) || typeof node.name !== 'string') return null;
   const shelf = shelfOfVisibility(visibility);
   const id = Number(recordId);
   const url =
     entity === 'folder' ? filesPageHref({ shelf, folderId: id }) : entity === 'file' ? filesPageHref({ shelf }) : null;
-  return { label: summary.name, url };
+  return { label: node.name, url };
+}
+
+/** A file or folder as it is now, named under the same shelf rule as its audit rows. */
+async function liveDriveTarget(ctx: HydrateContext, entity: 'file' | 'folder', recordId: string) {
+  const id = Number(recordId);
+  if (!Number.isSafeInteger(id) || id <= 0) return null;
+  try {
+    const row = entity === 'folder' ? await ctx.db.drive.getFolder(id) : await ctx.db.drive.getFile(id);
+    return row ? driveTarget(ctx, entity, recordId, row) : null;
+  } catch {
+    return null;
+  }
+}
+
+async function oauthClientName(ctx: HydrateContext, clientId: string | null): Promise<string | null> {
+  if (!clientId) return null;
+  try {
+    return (await ctx.db.platformOAuth.getClient(clientId))?.client_name ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The title an audit kept for a record that may be gone (projects record it on
+ * create and delete). Shown to whoever made the change, and to a super, who
+ * reads every project; never to anyone else.
+ */
+function keptTitle(ctx: HydrateContext, row: ActivityAuditRow, summary: Record<string, unknown>): string | null {
+  if (typeof summary.title !== 'string' || !summary.title) return null;
+  return ctx.viewer.id === row.actor_id || ctx.viewer.role === 'super' ? summary.title : null;
 }
 
 function adminDetail(row: ActivityAuditRow, summary: Record<string, unknown>): string | null {
@@ -387,12 +506,26 @@ function adminDetail(row: ActivityAuditRow, summary: Record<string, unknown>): s
   return null;
 }
 
+/** The verb and object of a person's or admin's audited change. */
+function auditShape(row: ActivityAuditRow, summary: Record<string, unknown>): WriteShape {
+  const verb = verbOf(row.action_id);
+  if (row.app_id === 'knowledge') {
+    if (summary.change === 'comment') return { verb: 'comment', entity: 'document' };
+    if (summary.change === 'uncomment') return { verb: 'delete', entity: 'comment' };
+    if (summary.change === 'reorder') return { verb: 'move', entity: 'document' };
+  }
+  // A comment is filed against its task: "commented on task <title>".
+  if (row.app_id === 'projects' && row.action_id === 'addComment') return { verb: 'comment', entity: 'task' };
+  return { verb, entity: row.entity_id };
+}
+
 async function hydrateAudit(
   ctx: HydrateContext,
   source: 'person' | 'admin',
   row: ActivityAuditRow,
 ): Promise<ActivityItem> {
   const summary = jsonObject(row.summary);
+  const shape = auditShape(row, summary);
   const module =
     source === 'admin'
       ? (ADMIN_MODULE_BY_ACTION.get(row.action_id) ?? 'settings')
@@ -400,18 +533,28 @@ async function hydrateAudit(
         ? 'mcp'
         : appModule(row.app_id);
   let target: ActivityItem['target'] = row.record_id ? { id: row.record_id, label: null, url: null } : null;
-  if (row.record_id) {
+  if (row.app_id === 'platform' && (row.entity_id === 'oauthGrant' || row.entity_id === 'oauthClient')) {
+    // An agent connection is named by its client; the grant / client id means nothing to a person.
+    const clientId = row.entity_id === 'oauthClient' ? row.record_id : row.client_id;
+    const name =
+      (await oauthClientName(ctx, clientId)) ?? (typeof summary.client_name === 'string' ? summary.client_name : null);
+    target = name ? { id: null, label: name, url: null } : null;
+  } else if (row.record_id) {
     const resolved =
       row.app_id === 'knowledge'
         ? await knowledgeTarget(ctx, row.record_id)
         : row.app_id === 'projects'
-          ? await projectTarget(ctx, row.entity_id, row.record_id)
+          ? await projectTarget(ctx, shape.entity, row.record_id)
           : row.app_id === DRIVE_AUDIT_APP_ID
             ? driveTarget(ctx, row.entity_id, row.record_id, summary)
             : row.app_id === 'platform' && row.entity_id === 'user'
               ? { label: ctx.names.get(row.record_id) ?? null, url: null }
               : null;
     if (resolved) target = { id: row.record_id, ...resolved };
+    else if (row.app_id === 'projects') {
+      const kept = keptTitle(ctx, row, summary);
+      if (kept) target = { id: row.record_id, label: kept, url: null };
+    }
   }
   return {
     id: row.key,
@@ -420,8 +563,8 @@ async function hydrateAudit(
     actor: { id: row.actor_id, name: ctx.names.get(row.actor_id) ?? null },
     agent: null,
     module,
-    verb: verbOf(row.action_id),
-    entity: row.entity_id,
+    verb: shape.verb,
+    entity: shape.entity,
     action: row.action_id,
     action_title: ctx.titles.get(`${row.app_id}:${row.action_id}`) ?? null,
     target,
@@ -437,6 +580,85 @@ function runStatus(row: ActivityRunRow): ActivityStatus {
   if (row.status === 'canceled') return 'canceled';
   if (row.status === 'interrupted') return row.kind === 'agent_write' ? 'outcome_unknown' : 'failed';
   return 'running';
+}
+
+function field(value: unknown, ...path: string[]): unknown {
+  let current = value;
+  for (const key of path) {
+    if (!current || typeof current !== 'object' || Array.isArray(current)) return undefined;
+    current = (current as Record<string, unknown>)[key];
+  }
+  return current;
+}
+
+function idText(value: unknown): string | null {
+  if (typeof value === 'number' && Number.isSafeInteger(value) && value > 0) return String(value);
+  if (typeof value === 'string' && value.length > 0) return value;
+  return null;
+}
+
+function text(...values: unknown[]): string | null {
+  for (const value of values) if (typeof value === 'string' && value.trim()) return value.trim();
+  return null;
+}
+
+/**
+ * The object an agent write touched, named only for a viewer who may read it:
+ * looked up as it is now under the module's own read rule (a created record by
+ * the id its output returned). A record that cannot be looked up any more is
+ * named from the write's own input/output only for the member whose agent made
+ * it — they could read it then — or, for modules a super reads in full, a super.
+ */
+async function agentWriteTarget(
+  ctx: HydrateContext,
+  row: ActivityRunRow,
+  toolId: string,
+  action: string | null,
+  shape: WriteShape,
+): Promise<ActivityItem['target']> {
+  const input = field(jsonObject(row.input), 'input');
+  const result = field(safeJsonParse(row.output, null), 'result');
+  const creates = shape.verb === 'create';
+  const own = ctx.viewer.id === row.owner_user_id;
+  const superReads = ctx.viewer.role === 'super';
+  let id: string | null = null;
+  let live: { label: string; url: string | null } | null = null;
+  let kept: string | null = null;
+  let keptVisible = own;
+
+  if (toolId === 'knowledge_mutation') {
+    id = creates ? idText(field(result, 'document', 'id')) : idText(field(input, 'doc_id'));
+    live = id ? await knowledgeTarget(ctx, id) : null;
+    kept = text(field(result, 'document', 'title'), creates ? field(input, 'title') : null);
+  } else if (toolId === 'project_mutation') {
+    const entity = shape.entity === 'project' ? 'project' : 'task';
+    id =
+      action === 'project.create'
+        ? idText(field(result, 'project', 'id'))
+        : action === 'task.create'
+          ? idText(field(result, 'task', 'id'))
+          : idText(field(input, entity === 'project' ? 'project_id' : 'task_id'));
+    live = id ? await projectTarget(ctx, entity, id) : null;
+    kept = text(field(result, entity, 'title'), creates ? field(input, 'title') : null);
+    keptVisible = own || superReads;
+  } else if (toolId === 'files_mutation' && (shape.entity === 'file' || shape.entity === 'folder')) {
+    const entity = shape.entity;
+    id = idText(field(result, entity, 'id')) ?? idText(field(input, entity === 'file' ? 'file_id' : 'folder_id'));
+    live = id ? await liveDriveTarget(ctx, entity, id) : null;
+    kept = text(field(result, entity, 'name'), field(input, 'name'));
+  } else if (toolId === 'skill_mutation') {
+    kept = text(field(result, 'skill', 'display_name'), field(input, 'display_name'), field(input, 'name'));
+    keptVisible = own || superReads;
+  } else if (toolId === 'automation_mutation') {
+    kept = text(field(result, 'automation', 'name'), field(input, 'name'));
+  } else if (toolId === 'feature_request') {
+    kept = text(field(result, 'request', 'title'), field(input, 'title'));
+    keptVisible = own || superReads;
+  }
+
+  if (live) return { id, ...live };
+  if (kept && keptVisible) return { id, label: kept, url: null };
+  return null;
 }
 
 async function hydrateRun(
@@ -456,10 +678,8 @@ async function hydrateRun(
   };
   if (source === 'agent') {
     const toolId = typeof input.tool_id === 'string' ? input.tool_id : 'unknown';
-    const action = typeof input.action === 'string' ? input.action : toolId;
-    // Named only when the VIEWER may read it — a super must not learn the title
-    // of a member's private document through that member's agent write.
-    const label = await agentWriteTargetLabel(ctx.db, ctx.viewer.id, toolId, input.input).catch(() => null);
+    const action = typeof input.action === 'string' && input.action ? input.action : null;
+    const shape = describeToolWrite(toolId, action);
     return {
       ...base,
       agent: {
@@ -467,11 +687,13 @@ async function hydrateRun(
         client_name: typeof input.client_name === 'string' ? input.client_name : 'Agent',
       },
       module: moduleOfTool(toolId),
-      verb: verbOf(action),
-      entity: null,
-      action,
+      verb: shape.verb,
+      entity: shape.entity,
+      action: action ?? toolId,
       action_title: null,
-      target: label ? { id: null, label, url: null } : null,
+      // Named only when the VIEWER may read it — a super must not learn the title
+      // of a member's private document through that member's agent write.
+      target: await agentWriteTarget(ctx, row, toolId, action, shape).catch(() => null),
     };
   }
   const task =

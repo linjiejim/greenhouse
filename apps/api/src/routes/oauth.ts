@@ -588,6 +588,10 @@ const oauthRoutes = new Hono<AppEnv>()
   .delete('/api/oauth/grants/:id', async (c) => {
     const user = await requireOAuthCapability(c);
     if (!user) return c.json({ error: 'Forbidden' }, 403);
+    // The client is kept on the audit so the Activity log can say which agent was disconnected.
+    const clientId = (await getDb().platformOAuth.listUserGrants(user.id)).find(
+      ({ grant }) => grant.id === c.req.param('id'),
+    )?.client.id;
     const revoked = await getDb().platformOAuth.revokeGrant(c.req.param('id'), user.id);
     if (!revoked) return c.json({ error: 'OAuth grant not found' }, 404);
     await getDb().platform.recordAudit({
@@ -595,6 +599,7 @@ const oauthRoutes = new Hono<AppEnv>()
       actorId: user.id,
       actorType: 'human',
       requestId: humanActor(user, c).requestId,
+      ...(clientId ? { clientId } : {}),
       resource: { appId: 'platform', entityId: 'oauthGrant', recordId: c.req.param('id') },
       actionId: 'revokeOAuthGrant',
       capability: MANAGE_OWN_CAPABILITY,
