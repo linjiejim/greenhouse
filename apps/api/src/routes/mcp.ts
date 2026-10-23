@@ -60,7 +60,7 @@ import {
 } from '../agent-runtime/tool-proxy.js';
 import { getAgentIdentity } from '../agent-runtime/api-auth.js';
 import { governProxyWrite } from '../agent-access/governed-write.js';
-import { baseWriteRisk, declaredAdditive, resolveWriteCaller } from '../agent-access/context.js';
+import { baseWriteRisk, resolveWriteCaller } from '../agent-access/context.js';
 import { writeToolCanDelete, writeToolIsAdditiveOnly } from '../agent-access/risk.js';
 import type { AgentIdentity } from '../agent-runtime/api-auth.js';
 import { mcpCredentialMiddleware, recordMcpAudit } from '../agent-runtime/mcp-auth.js';
@@ -264,16 +264,13 @@ const WRITE_TOOL_NOTE =
  * Standard MCP tool annotations, so a client can decide when to ask its user:
  * reads are read-only; a write is destructive unless every action it offers
  * only adds something (MCP: false means "only additive updates" — an edit or
- * an archive is not), read from its `action` enum or declared by the tool
- * (`meta.mcp_additive`). Nothing here reaches outside Greenhouse.
+ * an archive is not). Nothing here reaches outside Greenhouse.
  */
 export function mcpToolAnnotations(entry: ProxyToolManifestEntry) {
   if (!entry.mutating) return { readOnlyHint: true, openWorldHint: false };
   return {
     readOnlyHint: false,
-    destructiveHint: !(
-      declaredAdditive(entry.id) || writeToolIsAdditiveOnly(entry.inputSchema, baseWriteRisk(entry.id))
-    ),
+    destructiveHint: !writeToolIsAdditiveOnly(entry.inputSchema, baseWriteRisk(entry.id)),
     idempotentHint: false,
     openWorldHint: false,
   };

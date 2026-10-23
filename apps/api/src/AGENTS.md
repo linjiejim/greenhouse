@@ -441,7 +441,7 @@ v1 只接 DeepSeek 与 OpenAI 兼容服务，它们**自动**缓存 prompt 前�
   - 每次 MCP 写入都是一条 Runtime run（`kind='agent_write'`、`source_kind='proxy_call'`，owner=凭证绑定的成员），完整 input/output 经 `runtime/tool-evidence.ts` 永久落库；成员在 Settings › Agent 接入 › 写入记录（`GET /api/agent-access/writes`）和执行中心看到它。
   - 风险分级 `agent-access/risk.ts` 只用于记录和删除预览：删除类动作（`delete/remove/purge/destroy/drop`）r3，个人知识库建文档 r1，其余 r2；`runtime_risk` 是下限，扩展工具自动适用。
   - **删除两步确认（软提示，不是锁）**：r3 写入不带 `confirm:true` 时返回 `{"status":"needs_confirmation", preview…}` 普通结果，不建 run、不执行；Agent 给用户看过、再带 `confirm:true` 调一次才执行（basis=`confirmed`）。`confirm` 只出现在能删除的写工具的 schema 里，其他写工具收到会被剥掉并忽略。
-  - **MCP 标注**：每个工具带 `annotations`（读 `readOnlyHint:true`；写 `readOnlyHint:false`，除非每个 action 都只是新增（从 `action` 枚举读出，或工具在 meta 里显式声明 `mcp_additive: true`——没有 action 枚举、每次调用只追加的写工具，目前只有 `log_friction`），否则 `destructiveHint:true`——MCP 里 false 表示「只做新增」，编辑、归档都不算），写工具描述末尾和 `SERVER_INSTRUCTIONS` 都提示「改别人在用的数据前先跟用户确认」，让客户端自己决定何时问人。
+  - **MCP 标注**：每个工具带 `annotations`（读 `readOnlyHint:true`；写 `readOnlyHint:false`，除非每个 action 都只是新增，否则 `destructiveHint:true`——MCP 里 false 表示「只做新增」，编辑、归档都不算），写工具描述末尾和 `SERVER_INSTRUCTIONS` 都提示「改别人在用的数据前先跟用户确认」，让客户端自己决定何时问人。
   - 写入结果：成功返回工具输出 + 末行 `Recorded in Greenhouse as write <id>.`；工具拒绝记为 failed（`isError`）；执行了但结果没能落库记为 `outcome_unknown`（不是错误、不要盲目重试），启动时仍在运行的 agent_write 一律收为 `interrupted / agent_write_outcome_unknown`，**绝不重放**。
   - 通知：agent_write 成功不通知，失败 / 结果未知才通知（链到写入记录）。
   - `/api/agent`（CLI，用成员本人的登录令牌）不走这条路径，保留原来的 `confirm:true`。
