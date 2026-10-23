@@ -4,7 +4,7 @@
  * change when a recorded agent write covers it.
  */
 
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { _resetProvider, initDatabase } from '@greenhouse/db';
 import type { DatabaseProvider, UserRow } from '@greenhouse/db';
 import { TEST_DATABASE_URL } from '@greenhouse/db/test-config';
@@ -114,6 +114,40 @@ describe('recent changes', () => {
     const labels = (await feed(bob)).map((item) => item.target?.label);
     expect(labels).not.toContain(task.title);
     expect(labels).toContain(project.title);
+  });
+
+  it('authorizes just the tasks its rows name, with shared lookups made once', async () => {
+    const project = await db.projects.createProject({
+      title: unique('Busy project'),
+      owner_id: alice.id,
+      created_by: alice.id,
+      visibility: 'public',
+    });
+    const titles: string[] = [];
+    for (let i = 0; i < 20; i++) {
+      const task = await db.projects.createTask({
+        project_id: project.id,
+        title: unique(`Task ${i}`),
+        created_by: alice.id,
+      });
+      titles.push(task.title);
+    }
+    const listTasks = vi.spyOn(db.projects, 'listTasks');
+    const getMembers = vi.spyOn(db.projects, 'getMembers');
+    const getTaskById = vi.spyOn(db.projects, 'getTaskById');
+    const policies = vi.spyOn(db.platform, 'getEntityPolicySnapshot');
+    try {
+      const labels = (await feed(bob)).map((item) => item.target?.label);
+      expect(labels).toEqual(expect.arrayContaining(titles));
+      // No whole-project task listing; one task read per task row; members and
+      // the task policy loaded once for the request, not once per task.
+      expect(listTasks).not.toHaveBeenCalled();
+      expect(getTaskById.mock.calls.length).toBeLessThanOrEqual(20);
+      expect(getMembers.mock.calls.filter(([id]) => id === project.id)).toHaveLength(1);
+      expect(policies.mock.calls.filter(([input]) => input.entityId === 'task')).toHaveLength(1);
+    } finally {
+      vi.restoreAllMocks();
+    }
   });
 
   it('shows new team files, not someone else’s personal ones', async () => {

@@ -25,6 +25,7 @@ import type { UserRole } from '@greenhouse/types/api';
 import { canRead as canReadKb, resolveKbAccess } from '../knowledge/access.js';
 import { userHasFeature } from '../auth/features.js';
 import { humanActor } from '../platform/actor.js';
+import { taskReadAuthorizer } from '../platform/projects/application.js';
 import type { PlatformRuntime } from '../platform/runtime.js';
 import { moduleOfTool } from './activity-log.js';
 
@@ -33,8 +34,6 @@ export const RECENT_MAX_ITEMS = 50;
 /** Bases / tables a single feed looks into. */
 const MAX_BASES = 50;
 const MAX_TABLES = 200;
-/** Tasks listed per project when confirming which task rows the viewer may see. */
-const TASKS_PER_PROJECT = 500;
 /**
  * A change counts as an agent's when it lands inside the run's span: the write
  * happens after the run is created and before it settles, both stamped by the
@@ -127,21 +126,17 @@ async function projectChanges(
   const titles = new Map(projects.map((project) => [project.id, project.title]));
   const fetched = await db.activity.recentProjectActivities({ projectIds: [...titles.keys()], since, limit });
 
-  // A row about a task shows only when the task itself is readable — through
-  // listTasks, the task-aware path (execution capability + task entity policy).
-  // A task the listing does not return (or beyond its page) stays hidden.
+  // A row about a task shows only when that task is readable: the execution
+  // read capability, then the same task rule listTasks applies (project
+  // readability + task entity policy), for just the tasks these rows name, with
+  // the user / policy / project lookups made once for the whole request.
   const taskTitles = new Map<number, string>();
-  const taskProjects = [...new Set(fetched.filter((row) => row.task_id !== null).map((row) => row.project_id))];
-  for (const projectId of taskProjects) {
-    const tasks = await runtime.dispatch({
-      actor,
-      appId: 'projects',
-      actionId: 'listTasks',
-      payload: { projectId, limit: TASKS_PER_PROJECT },
-    });
-    if (!tasks.ok) continue;
-    for (const task of (tasks.data as { tasks: Array<{ id: number; title: string }> }).tasks) {
-      taskTitles.set(task.id, task.title);
+  const taskIds = [...new Set(fetched.map((row) => row.task_id).filter((id): id is number => id !== null))];
+  if (taskIds.length > 0 && (await runtime.authorize(actor, 'projects.execution.read')).allowed) {
+    const canRead = taskReadAuthorizer({ db }, actor);
+    for (const id of taskIds) {
+      const task = await db.projects.getTaskById(id);
+      if (task && (await canRead(task))) taskTitles.set(id, task.title);
     }
   }
   const rows = fetched.filter((row) => row.task_id === null || taskTitles.has(row.task_id));
