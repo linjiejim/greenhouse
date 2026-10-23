@@ -24,6 +24,18 @@ export class LatestChoice<T, R> {
     private stillCurrent: () => boolean = () => true,
   ) {}
 
+  /** Nothing in flight or queued. */
+  get idle(): boolean {
+    return !this.saving && !this.queued;
+  }
+
+  /**
+   * The server's value as freshly read (the screen reloaded). Taken only while idle: a save in
+   * flight or queued is about to make the server's value its own.
+   */
+  rebase(value: T): void {
+    if (this.idle) this.confirmed = value;
+  }
 
   /** Choose a value; answers its outcome, or null once a later choice superseded it. */
   choose(value: T): Promise<ChoiceOutcome<T, R> | null> {

@@ -88,4 +88,14 @@ describe('a menu choice saved one change at a time', () => {
     expect(s.sent).toEqual(['in_progress']);
   });
 
+  it('takes a freshly loaded value as the baseline while idle, never during a save', async () => {
+    const s = server((value) => value === 'cancelled');
+    const choice = new LatestChoice('todo', s.save);
+    choice.rebase('in_review'); // the screen reloaded: someone changed it on the web
+    const failed = choice.choose('cancelled');
+    choice.rebase('done'); // ignored: a save is in flight
+    await s.settle();
+    expect(await failed).toEqual({ ok: false, rollbackTo: 'in_review', message: 'no cancelled' });
+    expect(choice.idle).toBe(true);
+  });
 });

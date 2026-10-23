@@ -68,6 +68,10 @@ export default function TaskScreen() {
     current: () => boolean;
     choice: LatestChoice<TaskStatus, ProjectTask>;
   } | null>(null);
+  // a reload (on focus) brings the server's status: it becomes the baseline while nothing is saving
+  useEffect(() => {
+    if (task && choices.current?.taskId === task.id) choices.current.choice.rebase(task.status);
+  }, [task]);
   const changeStatus = useCallback(
     async (status: TaskStatus) => {
       if (!task || status === task.status) return;
