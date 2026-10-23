@@ -2,6 +2,7 @@
  * 模块用量计数 — /api/usage
  *
  * POST /api/usage/page-open  — 记一次页面打开 {module}（内部用户；client 取 X-Greenhouse-Client：mobile，缺省 web）
+ * GET  /api/usage/spend?month=YYYY-MM — 本人当月花费（按服务 / 客户端 / Agent 客户端）与本人额度（只看自己的）
  *
  * module 只能是 @greenhouse/types/usage 的 PAGE_MODULE_IDS 或当前启用扩展的 `ext.<id>`，
  * 其余一律 400，客户端写不进任意 key。只计数：不记用户、不记内容。
@@ -17,6 +18,8 @@ import { toErrorMessage } from '@greenhouse/utils/error';
 import { EXTENSIONS } from '../extensions/index.js';
 import { pageOpenClient, requestAppClient } from '../usage/counters.js';
 import type { AppEnv } from '../app-env.js';
+import { getAuthUser } from '../auth/middleware.js';
+import { buildMySpend, parseMonth } from '../usage/report.js';
 
 /** Module ids a page open may name on this deployment. */
 function activeExtensionIds(): string[] {
@@ -44,6 +47,12 @@ const usage = new Hono<AppEnv>()
       logger.warn(`[usage] could not count page_open ${module} (${client}): ${toErrorMessage(err)}`);
     }
     return c.json({ ok: true as const }, 202);
+  })
+  /** GET /spend — the caller's own month; never anyone else's */
+  .get('/spend', async (c) => {
+    const at = parseMonth(c.req.query('month'));
+    if (!at) return c.json({ error: 'month must be YYYY-MM' }, 400);
+    return c.json(await buildMySpend(getDb(), getAuthUser(c).id, at));
   });
 
 export default usage;

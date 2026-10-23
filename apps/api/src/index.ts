@@ -94,6 +94,7 @@ import groupRoutes from './routes/groups.js';
 import shareRoutes from './routes/shares.js';
 import { createNotificationRoutes } from './routes/notifications.js';
 import pushDeviceRoutes from './routes/push-devices.js';
+import adminMeteringRoutes from './routes/admin-metering.js';
 import usageRoutes from './routes/usage.js';
 import toolsRoutes from './routes/tools.js';
 import driveRoutes from './routes/drive.js';
@@ -125,6 +126,7 @@ import {
   resolveTrustedExecutionSwitches,
   trustedExecutionBootPlan,
 } from './trusted-execution/kill-switches.js';
+import { initServiceCatalog } from './config/services.js';
 import { initModelCatalog } from './config/models.js';
 // ws CJS/ESM interop — use namespace import for reliable access
 import * as _ws from 'ws';
@@ -276,6 +278,7 @@ function mountRoutes(toolRegistry: ToolRegistry) {
       .use('/api/admin/*', requireSuper())
       .route('/api/admin/platform', platformAdminRoutes)
       .route('/api/admin/operations', costValueRoutes)
+      .route('/api/admin/metering', adminMeteringRoutes)
       .route('/api/admin', adminRoutes)
       .route('/api/admin/settings', adminSettingsRoutes)
       .route('/api/admin/feature-requests', featureRequestRoutes)
@@ -393,6 +396,8 @@ async function main() {
   // The model catalog is config, not data — load it before anything can want a
   // model, and let a malformed file stop the boot rather than the first message.
   initModelCatalog();
+  // Service prices (search, page reads, images, …) — same fail-fast rule.
+  initServiceCatalog();
   const usageBudgetSweeper = await startUsageBudgetSweeper(dbProvider);
   const platformBootstrap = await bootstrapPlatform(dbProvider);
   initializePlatformRuntime(dbProvider, [
