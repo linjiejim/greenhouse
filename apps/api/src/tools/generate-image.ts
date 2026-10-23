@@ -32,7 +32,15 @@ import { putUpload, getUpload, detectImageContentType } from '../storage/uploads
 import { fetchPublicImage } from '../security/network.js';
 import { getImageProviderConfig } from '../llm/media-provider.js';
 import { reserveSpend, settleServiceFact } from '../usage/metering.js';
-import { imageCostMicros, maxImageCostMicros } from '../usage/pricing.js';
+import {
+  effectiveServicePrice,
+  imageCostMicros,
+  imageUnitPrice,
+  maxImageCostMicros,
+  syncPriceOverrides,
+  tokenPriceSnapshot,
+  unitPriceSnapshot,
+} from '../usage/pricing.js';
 import { findBudgetRefusal } from '../usage/budget-errors.js';
 
 /** An image call that never reported back is charged at its estimate after this long. */
@@ -356,6 +364,7 @@ async function meterImageCall(
   call: { action: 'generate' | 'edit'; size: string | undefined; referenceCount: number; estimatedTokens: number },
   run: (onProviderIo: () => void) => Promise<ImageProviderResult>,
 ): Promise<{ result: ImageProviderResult; costUsdMicros: number | null }> {
+  await syncPriceOverrides(ctx.db);
   const estimate = call.size
     ? imageCostMicros({ provider: 'media', quality: QUALITY, size: call.size })
     : maxImageCostMicros('media', QUALITY);
@@ -382,15 +391,30 @@ async function meterImageCall(
     await lease.releaseBeforeProviderIo('image_preflight_failed').catch(() => {});
     throw err;
   }
+  // Priced as of settlement; the fact keeps the rate it was settled at.
+  await syncPriceOverrides(ctx.db);
   const costUsdMicros =
     imageCostMicros({ provider: 'media', quality: QUALITY, size: call.size ?? '', usage: result.usage }) ??
     (call.size ? null : estimate);
+  const effective = effectiveServicePrice('image_generation', 'media');
+  const tokenPriced = Boolean(effective?.tokenPrice && result.usage);
+  const unitPrice = effective && call.size ? imageUnitPrice(effective, QUALITY, call.size) : undefined;
+  const priceApplied = !effective
+    ? null
+    : tokenPriced
+      ? tokenPriceSnapshot(effective.tokenPrice!, effective.source)
+      : unitPriceSnapshot(unitPrice ?? (costUsdMicros ?? 0) / 1_000_000, effective.source, {
+          unit: 'image',
+          quality: QUALITY,
+          size: call.size ?? 'dearest',
+        });
   await settleServiceFact(ctx.db, lease, {
     provider: 'media',
     model: MODEL,
     units: 1,
     unitKind: 'image',
     costUsdMicros,
+    priceApplied,
     metadata: {
       action: call.action,
       size: call.size ?? null,

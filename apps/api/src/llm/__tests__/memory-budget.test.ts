@@ -53,7 +53,11 @@ const mocks = vi.hoisted(() => {
       })),
       reserve: vi.fn(async () => []),
     },
-    metering: { getLimits: vi.fn(async () => []), getAccounts: vi.fn(async () => []) },
+    metering: {
+      getLimits: vi.fn(async () => []),
+      getAccounts: vi.fn(async () => []),
+      listPriceOverrides: vi.fn(async () => []),
+    },
     usage: { record },
   };
   return {

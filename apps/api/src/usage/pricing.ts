@@ -1,6 +1,14 @@
 /**
- * Price computation — pure functions from a price list and measured usage to a
- * cost in USD micros (1 USD = 1_000_000).
+ * Price computation — from the price list and measured usage to a cost in USD
+ * micros (1 USD = 1_000_000).
+ *
+ * The price list is models.yaml / services.yaml, overridden per model or per
+ * service × provider by what a super set on Services & pricing
+ * (`usage_price_overrides`). Overrides are cached in-process and refreshed by
+ * `syncPriceOverrides()` (every metering entry point calls it; a write
+ * refreshes immediately, other processes within OVERRIDE_TTL_MS). A change
+ * applies to calls settled after it; every fact keeps the price it was settled
+ * at (`priceSnapshot*` → `price_applied`).
  *
  * `null` always means "unpriced": the cost is unknown, the caller records the
  * usage anyway and counts it as zero. It is never confused with a real zero
@@ -11,9 +19,114 @@
  */
 
 import { findModelIdByProviderModel, getModelEntry, type TokenPrice } from '@greenhouse/agent-core';
-import { getServiceProviderPrice, type PricedService } from '../config/services.js';
+import type { DatabaseProvider, UsagePriceOverrideRow } from '@greenhouse/db';
+import { logger } from '@greenhouse/utils/logger';
+import { toErrorMessage } from '@greenhouse/utils/error';
+import { getServiceProviderPrice, type PricedService, type ServiceProviderPrice } from '../config/services.js';
 
 export const USD_MICROS = 1_000_000;
+
+// ─── Admin overrides ─────────────────────────────────────
+
+export const OVERRIDE_TTL_MS = 30_000;
+let overrides: readonly UsagePriceOverrideRow[] = [];
+let overridesLoadedAt = 0;
+
+/** Refresh the cached admin price overrides if stale (or `force`). A failed read keeps the last copy. */
+export async function syncPriceOverrides(db: DatabaseProvider, force = false): Promise<void> {
+  if (!force && Date.now() - overridesLoadedAt < OVERRIDE_TTL_MS) return;
+  try {
+    overrides = await db.metering.listPriceOverrides();
+    overridesLoadedAt = Date.now();
+  } catch (err) {
+    logger.warn('[pricing] could not read price overrides; keeping the last copy', { error: toErrorMessage(err) });
+  }
+}
+
+/** Test seam: install overrides directly (empty to clear). */
+export function setPriceOverridesForTests(rows: readonly UsagePriceOverrideRow[]): void {
+  overrides = rows;
+  overridesLoadedAt = rows.length > 0 ? Date.now() : 0;
+}
+
+export function currentPriceOverrides(): readonly UsagePriceOverrideRow[] {
+  return overrides;
+}
+
+function overrideFor(kind: UsagePriceOverrideRow['kind'], target: string, provider = '') {
+  return overrides.find((row) => row.kind === kind && row.target === target && row.provider === provider);
+}
+
+function overrideTokenPrice(row: UsagePriceOverrideRow): TokenPrice | undefined {
+  if (row.input_per_mtok === null || row.output_per_mtok === null) return undefined;
+  return {
+    input: row.input_per_mtok,
+    output: row.output_per_mtok,
+    ...(row.cached_input_per_mtok !== null ? { cachedInput: row.cached_input_per_mtok } : {}),
+  };
+}
+
+export type PriceSource = 'override' | 'config';
+
+/** One provider's effective price: the admin override if set, else the file. */
+export interface EffectiveServicePrice extends Pick<ServiceProviderPrice, 'price' | 'priceBySize' | 'tokenPrice'> {
+  source: PriceSource;
+}
+
+export function effectiveServicePrice(service: PricedService, provider: string): EffectiveServicePrice | undefined {
+  const row = overrideFor('service', service, provider);
+  if (row) {
+    const tokenPrice = overrideTokenPrice(row);
+    return {
+      source: 'override',
+      ...(row.unit_price !== null ? { price: row.unit_price } : {}),
+      ...(tokenPrice ? { tokenPrice } : {}),
+    };
+  }
+  const entry = getServiceProviderPrice(service, provider);
+  if (!entry) return undefined;
+  return {
+    source: 'config',
+    ...(entry.price !== undefined ? { price: entry.price } : {}),
+    ...(entry.priceBySize ? { priceBySize: entry.priceBySize } : {}),
+    ...(entry.tokenPrice ? { tokenPrice: entry.tokenPrice } : {}),
+  };
+}
+
+/** The catalog id a call's model resolves to (flash / pro / …), if any. */
+export function catalogModelId(modelId?: string, logicalModelId?: string): string | undefined {
+  for (const id of [logicalModelId, modelId]) if (id && getModelEntry(id)) return id;
+  return modelId ? findModelIdByProviderModel(modelId) : undefined;
+}
+
+export function effectiveModelPrice(
+  modelId?: string,
+  logicalModelId?: string,
+): { price: TokenPrice; source: PriceSource; model: string } | undefined {
+  const id = catalogModelId(modelId, logicalModelId);
+  if (!id) return undefined;
+  const row = overrideFor('model', id);
+  const override = row ? overrideTokenPrice(row) : undefined;
+  if (override) return { price: override, source: 'override', model: id };
+  const price = getModelEntry(id)?.price;
+  return price ? { price, source: 'config', model: id } : undefined;
+}
+
+// ─── Applied-price snapshots (llm_usage / service_usage `price_applied`) ─
+
+export function tokenPriceSnapshot(price: TokenPrice, source: PriceSource, extra: Record<string, unknown> = {}) {
+  return {
+    source,
+    input_per_mtok: price.input,
+    output_per_mtok: price.output,
+    cached_input_per_mtok: price.cachedInput ?? price.input,
+    ...extra,
+  };
+}
+
+export function unitPriceSnapshot(unitPrice: number, source: PriceSource, extra: Record<string, unknown> = {}) {
+  return { source, unit_price: unitPrice, ...extra };
+}
 
 /**
  * Round a fractional micro amount up, after discarding float noise
@@ -64,18 +177,12 @@ export function estimateTokenCostMicros(
  * provider model id a call reports (`deepseek-v4-flash` → its catalog entry).
  */
 export function modelPrice(modelId?: string, logicalModelId?: string): TokenPrice | undefined {
-  for (const id of [logicalModelId, modelId]) {
-    if (!id) continue;
-    const direct = getModelEntry(id);
-    if (direct) return direct.price;
-  }
-  const byProviderModel = modelId ? findModelIdByProviderModel(modelId) : undefined;
-  return byProviderModel ? getModelEntry(byProviderModel)?.price : undefined;
+  return effectiveModelPrice(modelId, logicalModelId)?.price;
 }
 
 /** USD per unit × units, for call / minute services. */
 export function serviceUnitCostMicros(service: PricedService, provider: string, units: number): number | null {
-  const price = getServiceProviderPrice(service, provider)?.price;
+  const price = effectiveServicePrice(service, provider)?.price;
   if (price === undefined) return null;
   return ceilMicros(price * USD_MICROS * Math.max(0, units));
 }
@@ -104,7 +211,7 @@ export function imageCostMicros(input: {
   size: string;
   usage?: { inputTokens?: number; outputTokens?: number } | null;
 }): number | null {
-  const entry = getServiceProviderPrice('image_generation', input.provider);
+  const entry = effectiveServicePrice('image_generation', input.provider);
   if (!entry) return null;
   if (
     entry.tokenPrice &&
@@ -116,8 +223,14 @@ export function imageCostMicros(input: {
       outputTokens: input.usage.outputTokens ?? 0,
     });
   }
-  const usd = entry.priceBySize?.[input.quality]?.[input.size] ?? entry.price;
+  const usd = imageUnitPrice(entry, input.quality, input.size);
   return usd === undefined ? null : usdToMicros(usd);
+}
+
+/** USD for one image at this quality and size (an override's flat price wins over the size table). */
+export function imageUnitPrice(entry: EffectiveServicePrice, quality: string, size: string): number | undefined {
+  if (entry.source === 'override') return entry.price;
+  return entry.priceBySize?.[quality]?.[size] ?? entry.price;
 }
 
 /**
@@ -125,8 +238,9 @@ export function imageCostMicros(input: {
  * is only known afterwards (an edit that keeps the source's aspect ratio).
  */
 export function maxImageCostMicros(provider: string, quality: string): number | null {
-  const entry = getServiceProviderPrice('image_generation', provider);
+  const entry = effectiveServicePrice('image_generation', provider);
   if (!entry) return null;
+  if (entry.source === 'override') return entry.price === undefined ? null : usdToMicros(entry.price);
   const sizes = Object.values(entry.priceBySize?.[quality] ?? {});
   if (sizes.length > 0) return usdToMicros(Math.max(...sizes));
   return entry.price === undefined ? null : usdToMicros(entry.price);
@@ -134,5 +248,5 @@ export function maxImageCostMicros(provider: string, quality: string): number | 
 
 /** USD per 1M tokens for a token-priced service (image understanding). */
 export function serviceTokenPrice(service: PricedService, provider: string): TokenPrice | undefined {
-  return getServiceProviderPrice(service, provider)?.tokenPrice;
+  return effectiveServicePrice(service, provider)?.tokenPrice;
 }

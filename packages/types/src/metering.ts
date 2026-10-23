@@ -65,7 +65,11 @@ export interface ServiceProviderPriceView {
   token_price: TokenPriceView | null;
   /** False = 未定价: calls are recorded and cost nothing against budgets. */
   priced: boolean;
+  /** Where the price comes from: a super's override, the config file, or nowhere (unpriced). */
+  source: PriceSourceView;
 }
+
+export type PriceSourceView = 'override' | 'config' | null;
 
 export interface ServicePriceView {
   service: MeteredService;
@@ -82,6 +86,7 @@ export interface ModelPriceView {
   /** At least one provider's key is set. */
   configured: boolean;
   price: TokenPriceView | null;
+  source: PriceSourceView;
 }
 
 // ─── Spend (read side) ───────────────────────────────────
@@ -125,6 +130,14 @@ export interface MeteringOverview {
   period: { start: string; end: string };
   services: ServicePriceView[];
   models: ModelPriceView[];
+  /**
+   * In use (key configured, service enabled) yet unpriced: their calls count as
+   * $0, so the page warns until each gets a price.
+   */
+  unpriced_in_use: {
+    models: string[];
+    services: Array<{ service: MeteredService; provider: string }>;
+  };
   spend: {
     totals: SpendTotals;
     by_member: SpendRow[];
@@ -156,6 +169,24 @@ export interface MySpendReport {
   by_client: SpendRow[];
   by_agent_client: SpendRow[];
   budget: BudgetView;
+}
+
+/**
+ * `PUT /api/admin/metering/prices` — a super's price, overriding the config
+ * file. A model or a token-priced service takes `input` + `output` (+ optional
+ * `cached_input`), USD per 1M tokens; a call / image / minute service takes
+ * `unit_price` in USD. Applies to calls settled after the change.
+ */
+export interface PriceOverrideInput {
+  kind: 'model' | 'service';
+  /** Catalog model id, or a metered service id. */
+  target: string;
+  /** Required for a service. */
+  provider?: string;
+  input?: number;
+  output?: number;
+  cached_input?: number | null;
+  unit_price?: number;
 }
 
 /** `PUT /api/admin/metering/budgets` */

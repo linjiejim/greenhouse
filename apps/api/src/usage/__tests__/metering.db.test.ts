@@ -9,6 +9,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { sql } from 'drizzle-orm';
 import {
   _resetProvider,
   getUtcMonthPeriod,
@@ -21,7 +22,9 @@ import {
 import { TEST_DATABASE_URL } from '@greenhouse/db/test-config';
 import { createInternalTestUser } from '../../../../../tests/helpers/internal-user.js';
 import { findBudgetRefusal } from '../budget-errors.js';
-import { reserveSpend, runWithMeteringScope, settleServiceFact } from '../metering.js';
+import { meterServiceCall, reserveSpend, runWithMeteringScope, settleServiceFact } from '../metering.js';
+import { setPriceOverridesForTests, syncPriceOverrides } from '../pricing.js';
+import { reserveUserTokenBudget, settleAndRecordBudgetedUsage } from '../../llm/usage-budget.js';
 import { buildMeteringOverview, buildMySpend } from '../report.js';
 
 let db: DatabaseProvider;
@@ -82,6 +85,8 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  // The in-process override cache must not carry a rolled-back row into the next test.
+  setPriceOverridesForTests([]);
   if (originalOrgScope === undefined) delete process.env.USAGE_BUDGET_ORG_SCOPE_ID;
   else process.env.USAGE_BUDGET_ORG_SCOPE_ID = originalOrgScope;
   await db.close();
@@ -307,5 +312,114 @@ describe('admin limits', () => {
       limit_usd_micros: 7_000_000,
       source: 'default',
     });
+  });
+});
+
+describe('admin price overrides', () => {
+  async function setModelPrice(input: number, output: number) {
+    await db.metering.setPriceOverride({
+      kind: 'model',
+      target: 'flash',
+      input_per_mtok: input,
+      output_per_mtok: output,
+    });
+    await syncPriceOverrides(db, true);
+  }
+
+  async function llmFact(key: string) {
+    const rows = (await db.executeRaw(
+      sql`SELECT cost_usd_micros, price_applied FROM llm_usage WHERE budget_idempotency_key = ${key}`,
+    )) as Array<{ cost_usd_micros: string | number | null; price_applied: string | null }>;
+    return { cost: Number(rows[0]!.cost_usd_micros), price: JSON.parse(rows[0]!.price_applied ?? 'null') };
+  }
+
+  it('prices a model call at the price in force at settlement and keeps it on the fact', async () => {
+    await setModelPrice(1, 2);
+    const lease = await reserveUserTokenBudget({
+      db,
+      userId: member.id,
+      caller: 'chat',
+      estimatedTokens: 1_000,
+      estimatedInputTokens: 800,
+      estimatedOutputTokens: 200,
+      modelId: 'flash',
+      logicalModelId: 'flash',
+      client: 'web',
+      idempotencyKey: unique('priced'),
+    });
+    // Reserved at the price when the call started: 800 × 1 + 200 × 2.
+    expect(lease.spend?.estimatedUsdMicros).toBe(1_200);
+    lease.markProviderIoStarted();
+
+    await setModelPrice(2, 4); // an admin changes the price mid-call
+    await settleAndRecordBudgetedUsage(db, lease, {
+      profile_id: 'team',
+      caller: 'chat',
+      user_id: member.id,
+      model: 'flash',
+      input_tokens: 100,
+      output_tokens: 50,
+    });
+    const settled = await llmFact(lease.idempotencyKey);
+    expect(settled.cost).toBe(400); // 100 × 2 + 50 × 4
+    expect(settled.price).toMatchObject({ source: 'override', input_per_mtok: 2, output_per_mtok: 4, model: 'flash' });
+    const group = await db.usageBudget.getReservationGroup(`${lease.idempotencyKey}:usd`);
+    expect(group.every((row) => row.actual_units === 400)).toBe(true);
+
+    await setModelPrice(10, 10); // later changes never rewrite history
+    expect(await llmFact(lease.idempotencyKey)).toEqual(settled);
+  });
+
+  it('records each search at its provider price and picks up an override for the next call', async () => {
+    const search = () =>
+      runWithMeteringScope({ userId: member.id, client: 'mcp' }, () =>
+        meterServiceCall(
+          { db, service: 'web_search', caller: 'external_search', unitKind: 'call', candidateProviders: ['tavily'] },
+          async (io) => {
+            io.markProviderIoStarted();
+            return { value: unique('result'), provider: 'tavily' };
+          },
+        ),
+      );
+    const facts = async () =>
+      (await db.executeRaw(
+        sql`SELECT cost_usd_micros, price_applied FROM service_usage WHERE user_id = ${member.id} ORDER BY created_at`,
+      )) as Array<{ cost_usd_micros: string | number; price_applied: string }>;
+
+    await search();
+    await db.metering.setPriceOverride({ kind: 'service', target: 'web_search', provider: 'tavily', unit_price: 0.01 });
+    await syncPriceOverrides(db, true);
+    await search();
+
+    const rows = await facts();
+    expect(rows.map((row) => Number(row.cost_usd_micros))).toEqual([8_000, 10_000]);
+    expect(rows.map((row) => JSON.parse(row.price_applied))).toEqual([
+      { source: 'config', unit_price: 0.008, unit: 'call' },
+      { source: 'override', unit_price: 0.01, unit: 'call' },
+    ]);
+  });
+
+  it('flags configured but unpriced models and providers, and stops once they are priced', async () => {
+    const previous = process.env.FIRECRAWL_API_KEY;
+    process.env.FIRECRAWL_API_KEY = 'test-firecrawl-key';
+    try {
+      let overview = await buildMeteringOverview(db);
+      expect(overview.unpriced_in_use.services).toContainEqual({ service: 'web_search', provider: 'firecrawl' });
+      await db.metering.setPriceOverride({
+        kind: 'service',
+        target: 'web_search',
+        provider: 'firecrawl',
+        unit_price: 0.005,
+      });
+      overview = await buildMeteringOverview(db);
+      expect(overview.unpriced_in_use.services).not.toContainEqual({ service: 'web_search', provider: 'firecrawl' });
+      const firecrawl = overview.services
+        .find((service) => service.service === 'web_search')
+        ?.providers.find((provider) => provider.provider === 'firecrawl');
+      expect(firecrawl).toMatchObject({ priced: true, price: 0.005, source: 'override' });
+    } finally {
+      if (previous === undefined) delete process.env.FIRECRAWL_API_KEY;
+      else process.env.FIRECRAWL_API_KEY = previous;
+    }
   });
 });

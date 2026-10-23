@@ -78,7 +78,14 @@ const PERSONAL_PLATFORM_ACTIONS = ['authorizeOAuthClient', 'revokeOAuthGrant'] a
 
 /** Administrator changes, by Activity module. */
 const ADMIN_ACTIONS: Record<'settings' | 'users' | 'mcp', readonly string[]> = {
-  settings: ['updateWorkspaceSettings'],
+  settings: [
+    'updateWorkspaceSettings',
+    // Services & pricing (v1.6): budget limits and price overrides.
+    'updateBudgetLimit',
+    'removeBudgetLimit',
+    'updateServicePrice',
+    'removeServicePrice',
+  ],
   users: [
     'setUserFeature',
     'issueAccountInvite',
@@ -499,6 +506,15 @@ function adminDetail(row: ActivityAuditRow, summary: Record<string, unknown>): s
     // Key names only — some of these settings are secrets.
     const changed = [...keys(summary.set), ...keys(summary.cleared)];
     return changed.length > 0 ? changed.join(', ') : null;
+  }
+  if (
+    (row.action_id === 'updateBudgetLimit' ||
+      row.action_id === 'removeBudgetLimit' ||
+      row.action_id === 'updateServicePrice' ||
+      row.action_id === 'removeServicePrice') &&
+    typeof summary.detail === 'string'
+  ) {
+    return summary.detail;
   }
   if (row.action_id === 'setUserFeature' && typeof summary.feature === 'string') {
     return `${summary.feature}: ${summary.enabled === false ? 'off' : 'on'}`;

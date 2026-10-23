@@ -52,7 +52,13 @@ import type { PricedService } from '../config/services.js';
 import { connectionManager } from '../ws/connection-manager.js';
 import { queueMobilePush } from '../notifications/push/queue.js';
 import { budgetExceededMessage, UsageBudgetAdmissionError, type BudgetRefusal } from './budget-errors.js';
-import { maxServiceUnitCostMicros, serviceUnitCostMicros } from './pricing.js';
+import {
+  effectiveServicePrice,
+  maxServiceUnitCostMicros,
+  serviceUnitCostMicros,
+  syncPriceOverrides,
+  unitPriceSnapshot,
+} from './pricing.js';
 
 export const SERVICE_BUDGET_TTL_MS = 5 * 60_000;
 
@@ -478,6 +484,8 @@ export interface ServiceFact {
   unitKind: ServiceUnitKind;
   /** Null = unpriced. */
   costUsdMicros: number | null;
+  /** The price the call was settled at (kept on the fact so later price changes never rewrite history). */
+  priceApplied?: Readonly<Record<string, unknown>> | null;
   metadata?: Readonly<Record<string, unknown>>;
 }
 
@@ -508,6 +516,7 @@ export async function settleServiceFact(db: DatabaseProvider, lease: SpendLease,
       run_id: lease.attribution.runId,
       session_id: lease.attribution.sessionId,
       budget_idempotency_key: lease.reserved ? lease.idempotencyKey : null,
+      price_applied: fact.costUsdMicros === null ? null : (fact.priceApplied ?? null),
       metadata: fact.metadata,
     });
   } catch (err) {
@@ -554,6 +563,7 @@ export async function meterServiceCall<T>(
   call: (io: { markProviderIoStarted(): void }) => Promise<MeteredServiceResult<T>>,
 ): Promise<T> {
   const db = input.db ?? getDb();
+  await syncPriceOverrides(db);
   const units = Math.max(1, Math.ceil(input.estimatedUnits ?? 1));
   const unitCost = maxServiceUnitCostMicros(input.service, input.candidateProviders);
   const lease = await reserveSpend({
@@ -574,16 +584,23 @@ export async function meterServiceCall<T>(
     throw err;
   }
   const actualUnits = Math.max(0, Math.ceil(result.units ?? units));
+  // Priced as of settlement: an admin change mid-call applies to this call.
+  await syncPriceOverrides(db);
   const cost =
     result.costUsdMicros !== undefined
       ? result.costUsdMicros
       : serviceUnitCostMicros(input.service, result.provider, actualUnits);
+  const effective = effectiveServicePrice(input.service, result.provider);
   await settleServiceFact(db, lease, {
     provider: result.provider,
     model: result.model ?? null,
     units: actualUnits,
     unitKind: input.unitKind,
     costUsdMicros: cost,
+    priceApplied:
+      result.costUsdMicros === undefined && effective?.price !== undefined
+        ? unitPriceSnapshot(effective.price, effective.source, { unit: input.unitKind })
+        : { source: 'provider_reported' },
     ...(result.metadata ? { metadata: result.metadata } : {}),
   });
   return result.value;

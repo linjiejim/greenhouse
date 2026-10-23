@@ -14,6 +14,8 @@ import type { AppEnv } from '../../app-env.js';
 import { requireInternal, requireSuper } from '../../auth/middleware.js';
 import { createInternalTestUser } from '../../../../../tests/helpers/internal-user.js';
 import adminMeteringRoutes from '../admin-metering.js';
+import { listActivity } from '../../activity/activity-log.js';
+import { setPriceOverridesForTests } from '../../usage/pricing.js';
 import usageRoutes from '../usage.js';
 
 let db: DatabaseProvider;
@@ -58,6 +60,7 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  setPriceOverridesForTests([]);
   await db.close();
   _resetProvider();
 });
@@ -109,6 +112,79 @@ describe('admin services & pricing', () => {
     expect((await put({ scope: 'organization', limit_usd_micros: -1 })).status).toBe(400);
     expect((await put({ scope: 'organization', limit_usd_micros: 1.5 })).status).toBe(400);
     expect((await put({ scope: 'service', scope_id: 'web_search', limit_usd_micros: 0 })).status).toBe(200);
+  });
+});
+
+describe('admin prices', () => {
+  it('is super-only', async () => {
+    const body = { kind: 'model', target: 'flash', input: 1, output: 2 };
+    expect((await call(member, 'PUT', '/api/admin/metering/prices', body)).status).toBe(403);
+    expect((await call(member, 'DELETE', '/api/admin/metering/prices?kind=model&target=flash')).status).toBe(403);
+  });
+
+  it('sets a model price, shows it as an override, and resets it to the config', async () => {
+    const set = await call(admin, 'PUT', '/api/admin/metering/prices', {
+      kind: 'model',
+      target: 'flash',
+      input: 0.28,
+      output: 0.42,
+      cached_input: 0.028,
+    });
+    expect(set.status).toBe(200);
+    let overview = (await call(admin, 'GET', '/api/admin/metering/overview')).json as unknown as MeteringOverview;
+    expect(overview.models.find((model) => model.id === 'flash')).toMatchObject({
+      source: 'override',
+      price: { input: 0.28, output: 0.42, cached_input: 0.028 },
+    });
+
+    const reset = await call(admin, 'DELETE', '/api/admin/metering/prices?kind=model&target=flash');
+    expect(reset).toMatchObject({ status: 200, json: { removed: true } });
+    overview = (await call(admin, 'GET', '/api/admin/metering/overview')).json as unknown as MeteringOverview;
+    expect(overview.models.find((model) => model.id === 'flash')?.source).not.toBe('override');
+  });
+
+  it('takes a unit price for per-call services and token rates for per-token ones', async () => {
+    const put = (body: unknown) => call(admin, 'PUT', '/api/admin/metering/prices', body);
+    expect(
+      (await put({ kind: 'service', target: 'web_search', provider: 'firecrawl', unit_price: 0.004 })).status,
+    ).toBe(200);
+    expect((await put({ kind: 'service', target: 'vision', provider: 'media', input: 0.15, output: 0.6 })).status).toBe(
+      200,
+    );
+    // Wrong shape for the unit, unknown names, negative or absurd amounts.
+    expect(
+      (await put({ kind: 'service', target: 'web_search', provider: 'firecrawl', input: 1, output: 1 })).status,
+    ).toBe(400);
+    expect((await put({ kind: 'service', target: 'vision', provider: 'media', unit_price: 1 })).status).toBe(400);
+    expect((await put({ kind: 'service', target: 'web_search', provider: 'bing', unit_price: 1 })).status).toBe(400);
+    expect((await put({ kind: 'model', target: 'gpt-imaginary', input: 1, output: 1 })).status).toBe(400);
+    expect((await put({ kind: 'model', target: 'flash', input: -1, output: 1 })).status).toBe(400);
+    expect((await put({ kind: 'model', target: 'flash', input: 1, output: 1e9 })).status).toBe(400);
+  });
+
+  it('records price and budget changes as admin changes in the Activity log', async () => {
+    await call(admin, 'PUT', '/api/admin/metering/prices', {
+      kind: 'service',
+      target: 'web_search',
+      provider: 'tavily',
+      unit_price: 0.01,
+    });
+    await call(admin, 'PUT', '/api/admin/metering/budgets', {
+      scope: 'member',
+      scope_id: member.id,
+      limit_usd_micros: 3_000_000,
+    });
+    await call(admin, 'DELETE', `/api/admin/metering/budgets?scope=member&scope_id=${member.id}`);
+
+    const page = await listActivity(db, admin, { source: 'admin', userId: admin.id }, { manifests: [] });
+    const changes = page.items.filter((item) => item.actor.id === admin.id);
+    expect(changes.map((item) => [item.action, item.module, item.detail]).reverse()).toEqual([
+      ['updateServicePrice', 'settings', 'web_search/tavily: $0.01 per call'],
+      ['updateBudgetLimit', 'settings', `member ${member.id}: $3.00 / month`],
+      ['removeBudgetLimit', 'settings', `member ${member.id}: back to default`],
+    ]);
+    // A member never sees admin changes.
+    expect((await listActivity(db, member, { source: 'admin' }, { manifests: [] })).items).toEqual([]);
   });
 });
 

@@ -496,12 +496,17 @@ v1 只接 DeepSeek 与 OpenAI 兼容服务，它们**自动**缓存 prompt 前�
 
 - **一条计价路径**：每个花团队钱的外部调用都过 `usage/metering.ts`——模型（chat、自动化、飞书机器人、标题、摘要、记忆整理、`call_llm`、知识库 AI、`analyze_image`）经 `reserveUserTokenBudget` 进来（token 账户并行保留一版），生图 / 搜索 / 读网页直接用 `reserveSpend` / `meterServiceCall`。新的付费调用必须走这里，别自己记账。
 - **三级 USD 预留**：provider I/O 前对 member（`user`）+ `service` + `organization` 三个当月 `usd_micros` 账户原子预留（一个 group，幂等键 `<token key>:usd`）；成功按实际价结算；只有确认 I/O 尚未开始的失败才 release，I/O 可能已开始的一律留给 TTL sweeper 按预估计费。USD 是主限额。
-- **价目**：模型价在 models.yaml `price`（每百万 token 美元：input / output / cached_input），其余在 services.yaml（服务与 provider 是封闭清单，拼错启动即报错）。缓存命中按 `cached_input` 计（缺省同 input），输出含 reasoning。**未定价 = 成本未知**：照常记事实、`cost_usd_micros` 为 NULL、不预留、按 0 计，管理页标「未定价」，绝不因缺价拒绝；但账户已用完时零成本调用一样被拒。`price: 0` 是「免费」，和未定价不是一回事。
-- **限额解析**：`usage_budget_limits` 行（管理页写）→ env（`USAGE_BUDGET_MEMBER/ORG/SERVICE_MONTHLY_USD_MICROS`）→ 内置默认（成员 $50、团队 $2,000、服务只受团队约束）。每次调用都把当前限额写进当月账户（`update_existing_limit`），改额度下一次调用即生效。
+- **价目**：默认价在 models.yaml `price`（每百万 token 美元：input / output / cached_input）与 services.yaml（服务与 provider 是封闭清单，拼错启动即报错）；super 在「服务与计价」页定的价存 `usage_price_overrides`，按模型或「服务 × provider」整条覆盖文件价（按 token 计的模型 / 识图填 input+output(+cached)，按次 / 张 / 分钟的服务填 `unit_price`，生图的覆盖价是不分尺寸的单张价）。代码里不猜厂商价格。覆盖在进程内缓存，`syncPriceOverrides()` 在每个计价入口刷新（写入后立即刷新，其他进程 30 秒内跟上）。**按结算时的价计**：调用中途改价，按新价结算；每条事实的 `price_applied` 记下结算用的价（来源 + 费率），之后再改价不会改写历史。缓存命中按 `cached_input` 计（缺省同 input），输出含 reasoning。**未定价 = 成本未知**：照常记事实、`cost_usd_micros` 为 NULL、不预留、按 0 计，管理页标「未定价」，绝不因缺价拒绝；但账户已用完时零成本调用一样被拒。`price: 0` 是「免费」，和未定价不是一回事。
+- **限额解析**：`usage_budget_limits` 行（管理页写）→ env（`USAGE_BUDGET_MEMBER/ORG/SERVICE_MONTHLY_USD_MICROS`）→ 内置默认（成员 $50、团队 $2,000、服务只受团队约束）。默认值只是起点，每个部署上线前由管理员复核。每次调用都把当前限额写进当月账户（`update_existing_limit`），改额度下一次调用即生效。
 - **归属**：`runWithMeteringScope({ userId, client, oauthClientId, sessionId })` 在入口设一次——Chat（`bindMeteringScope` 包工具 + hook 显式 `client` + 标题 / 摘要包在 scope 里）、`runAgentInSession`（client 由 `toolCallClient` 派生）、MCP `tools/call`（`client:'mcp'` + OAuth client id）、Agent API（`executeProxyTool({ metering })`）。只建一次的共享工具（web search）只能从 scope 知道是谁在花钱；新入口漏设 scope 会记成「无成员」并 warn。client 词表在 `@greenhouse/types/metering`（`METERING_CLIENTS`），由 tool-call client 映射（`web_chat`→`web`）。
 - **超额契约**（`usage/budget-errors.ts`）：拒绝发生在 I/O 之前，`UsageBudgetAdmissionError(429, 'usage_budget_exceeded', refusal={unit:'usd_micros', level, service?})`，`message` 是中英双语、Agent 可读的「本月…额度已用完…联系管理员」。MCP 原样作为 tool error（`isError:true`）返回；工具（生图 / 识图 / call_llm）遇到它必须重新抛出而不是吞成 `{error}`；读网页被拒只在搜索结果里加 `notice`；Chat 的模型调用被拒用 `localizedBudgetNotice` 单语显示；自动化记成失败原因（`budgetRefusalReason`）；Agent API 回 429。
 - **告警**：结算或拒绝后检查涉及的 USD 账户，越过 80% / 100% 发 `budget_attention` 通知（成员账户发给本人，服务 / 团队账户发给所有在职 super），按「账户（含周期）× 阈值」去重，只发最高到达档；写完调 `queueMobilePush()` 并推 WS。限额为 0 是主动封禁，不发告警。告警失败只 warn。
+- **审计**：改预算、改价都写 platform 审计（`updateBudgetLimit` / `removeBudgetLimit` / `updateServicePrice` / `removeServicePrice`，`summary.detail` 是一行可读描述），在操作记录里显示为管理员改动（`activity/activity-log.ts` 的 `ADMIN_ACTIONS.settings`）。
 - **读侧**：`GET /api/admin/metering/overview?month=`（super）与 `GET /api/usage/spend`（只看自己）由 `usage/report.ts` 组装，花费读 `llm_usage ∪ service_usage` 的单月区间（按 `created_at` 索引），预算余额读账户；「按预估计费」是 TTL 过期预留的金额，只在账户里、不在逐次事实里。
+- **已知行为（有意为之）**：
+  - sweeper 把过期预留按预估转成已花时不发告警，下一次结算或拒绝会补上阈值通知；这部分金额不进逐次事实，只在页面「按预估计费」里出现。
+  - 搜索请求发出后失败（含所有 provider 都报错），预留不释放，5 分钟后按预估计费——遵守「结果未知按预估」，不赌 provider 不收失败请求的钱。
+  - 进入计价时 scope 里没有成员的调用，只记到服务与团队账户并 warn；已知入口都会设成员。
 - **蓝绿并存**：旧代码在新库上照跑（列全可空）；旧的生图代码仍按 `$20` 把成员 USD 账户限额改回去，切流期间会和新代码来回改，切完即止。
 
 ### Agent Profiles

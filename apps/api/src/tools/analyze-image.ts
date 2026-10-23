@@ -26,7 +26,6 @@ import { normalizeFileRef, resolveConversationFiles } from '../files/conversatio
 import { fetchPublicImage } from '../security/network.js';
 import { getMediaProviderConfig } from '../llm/media-provider.js';
 import { reserveUserTokenBudget, settleAndRecordBudgetedUsage } from '../llm/usage-budget.js';
-import { serviceTokenPrice } from '../usage/pricing.js';
 import { findBudgetRefusal } from '../usage/budget-errors.js';
 
 const VISION_PROMPT = `Analyze the attached image as neutral source material. Do not assume it is about plants, products, support, or any other domain.
@@ -280,9 +279,8 @@ export function createAnalyzeImageTool(ctx: AnalyzeImageContext) {
           providerId: 'media',
           runId: ctx.sessionId,
           ...(ctx.sessionId ? { sessionId: ctx.sessionId } : {}),
-          // Metered as the `vision` service at its services.yaml token price.
+          // Metered as the `vision` service at its token price (override, else services.yaml).
           service: 'vision',
-          tokenPrice: serviceTokenPrice('vision', 'media') ?? null,
           metadata: { session_id: ctx.sessionId, source: isRemoteUrl(image_id) ? 'remote_url' : 'upload' },
         });
 

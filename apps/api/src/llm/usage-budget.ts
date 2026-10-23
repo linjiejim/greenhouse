@@ -23,7 +23,15 @@ import {
 import type { MeteringClient } from '@greenhouse/types/metering';
 import { UsageBudgetAdmissionError } from '../usage/budget-errors.js';
 import { requireBudgetOwner, reserveSpend, resolveMeteringClient, type SpendLease } from '../usage/metering.js';
-import { estimateTokenCostMicros, modelPrice, tokenCostMicros } from '../usage/pricing.js';
+import {
+  effectiveModelPrice,
+  effectiveServicePrice,
+  estimateTokenCostMicros,
+  syncPriceOverrides,
+  tokenCostMicros,
+  tokenPriceSnapshot,
+  type PriceSource,
+} from '../usage/pricing.js';
 
 export { UsageBudgetAdmissionError } from '../usage/budget-errors.js';
 
@@ -55,8 +63,9 @@ export interface ReserveUserTokenBudgetInput {
   /** Catalog id (flash / pro / …) when `modelId` is the raw provider model. */
   logicalModelId?: string;
   /**
-   * The price to meter at. Default: the model's catalog price. Pass null for
-   * "unpriced"; `vision` passes the services.yaml token price.
+   * The price to meter at. Default: the model's price (admin override, else
+   * models.yaml), or for `vision` the services.yaml / override token price.
+   * Pass null for "unpriced"; an explicit price is never re-read at settlement.
    */
   tokenPrice?: TokenPrice | null;
   /** Split of `estimatedTokens`, for a tighter USD reservation. */
@@ -229,7 +238,7 @@ export function createProviderAttemptBudgetHook(context: ProviderAttemptBudgetCo
           reasoning_tokens: 0,
           duration_ms: Date.now() - startedAt,
           budget_idempotency_key: lease.idempotencyKey,
-          ...lease.usageAttribution(estimatedCost),
+          ...lease.usageAttribution(estimatedCost, lease.currentPrice()),
         });
       },
     };
@@ -304,9 +313,17 @@ export class UserTokenBudgetLease {
     public readonly estimatedTokens: number,
     /** The USD half of this call (null only for test doubles built without one). */
     public readonly spend: SpendLease | null = null,
-    /** The price the call is metered at; undefined = unpriced. */
-    public readonly price: TokenPrice | undefined = undefined,
+    /**
+     * The call's price as of now — re-read at settlement, so a price an admin
+     * changes mid-call applies to the call settled after the change.
+     */
+    private readonly pricer: () => AppliedTokenPrice | undefined = () => undefined,
   ) {}
+
+  /** The price this call settles at; undefined = unpriced. */
+  currentPrice(): AppliedTokenPrice | undefined {
+    return this.pricer();
+  }
 
   markProviderIoStarted(): void {
     this.providerIoStarted = true;
@@ -332,16 +349,43 @@ export class UserTokenBudgetLease {
     });
   }
 
-  /** The metering columns of this call's llm_usage fact. */
-  usageAttribution(costUsdMicros: number | null) {
+  /** The metering columns of this call's llm_usage fact, with the price it was settled at. */
+  usageAttribution(costUsdMicros: number | null, applied: AppliedTokenPrice | undefined) {
     const attribution = this.spend?.attribution;
     return {
       cost_usd_micros: costUsdMicros,
       client: attribution?.client ?? null,
       oauth_client_id: attribution?.oauthClientId ?? null,
       service: attribution?.service ?? 'llm',
+      price_applied:
+        costUsdMicros !== null && applied
+          ? tokenPriceSnapshot(applied.price, applied.source, applied.model ? { model: applied.model } : {})
+          : null,
     };
   }
+}
+
+export interface AppliedTokenPrice {
+  price: TokenPrice;
+  source: PriceSource;
+  /** Catalog model id the price belongs to. */
+  model?: string;
+}
+
+/** How a lease finds its price, now or at settlement. */
+function pricerFor(input: ReserveUserTokenBudgetInput): () => AppliedTokenPrice | undefined {
+  if (input.tokenPrice === null) return () => undefined;
+  if (input.tokenPrice) {
+    const fixed: AppliedTokenPrice = { price: input.tokenPrice, source: 'config' };
+    return () => fixed;
+  }
+  if (input.service === 'vision') {
+    return () => {
+      const entry = effectiveServicePrice('vision', 'media');
+      return entry?.tokenPrice ? { price: entry.tokenPrice, source: entry.source } : undefined;
+    };
+  }
+  return () => effectiveModelPrice(input.modelId, input.logicalModelId);
 }
 
 function estimateUsd(input: ReserveUserTokenBudgetInput, price: TokenPrice | undefined, tokens: number) {
@@ -365,8 +409,9 @@ function estimateUsd(input: ReserveUserTokenBudgetInput, price: TokenPrice | und
 export async function reserveUserTokenBudget(input: ReserveUserTokenBudgetInput): Promise<UserTokenBudgetLease> {
   const estimatedTokens = positiveSafeInteger(input.estimatedTokens);
   const idempotencyKey = input.idempotencyKey ?? `${input.caller}:${randomUUID()}`;
-  const price =
-    input.tokenPrice === null ? undefined : (input.tokenPrice ?? modelPrice(input.modelId, input.logicalModelId));
+  await syncPriceOverrides(input.db);
+  const pricer = pricerFor(input);
+  const price = pricer()?.price;
 
   try {
     const user = await requireBudgetOwner(input.db, input.userId);
@@ -413,7 +458,7 @@ export async function reserveUserTokenBudget(input: ReserveUserTokenBudgetInput)
       .catch(() => {});
     throw err;
   }
-  return new UserTokenBudgetLease(input.db, idempotencyKey, estimatedTokens, spend, price);
+  return new UserTokenBudgetLease(input.db, idempotencyKey, estimatedTokens, spend, pricer);
 }
 
 export type BudgetedUsageRecord = Omit<
@@ -439,7 +484,9 @@ export async function settleAndRecordBudgetedUsage(
     cached_tokens: usage.cached_tokens ?? 0,
     reasoning_tokens: usage.reasoning_tokens ?? 0,
   });
-  const cost = tokenCostMicros(lease.price, {
+  await syncPriceOverrides(db);
+  const applied = lease.currentPrice();
+  const cost = tokenCostMicros(applied?.price, {
     inputTokens: usage.input_tokens,
     outputTokens: usage.output_tokens,
     cachedInputTokens: usage.cached_tokens ?? 0,
@@ -448,7 +495,7 @@ export async function settleAndRecordBudgetedUsage(
   await db.usage.record({
     ...usage,
     budget_idempotency_key: lease.idempotencyKey,
-    ...lease.usageAttribution(cost),
+    ...lease.usageAttribution(cost, applied),
   });
 }
 

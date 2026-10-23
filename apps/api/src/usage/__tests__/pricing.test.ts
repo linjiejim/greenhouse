@@ -10,7 +10,12 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { DEFAULT_MODEL_REGISTRY, setModelRegistry } from '@greenhouse/agent-core';
 import { parseServiceCatalog, setServiceCatalogForTests } from '../../config/services.js';
 import {
+  effectiveModelPrice,
+  effectiveServicePrice,
   estimateTokenCostMicros,
+  setPriceOverridesForTests,
+  tokenPriceSnapshot,
+  unitPriceSnapshot,
   imageCostMicros,
   maxImageCostMicros,
   maxServiceUnitCostMicros,
@@ -21,6 +26,7 @@ import {
 } from '../pricing.js';
 
 afterEach(() => {
+  setPriceOverridesForTests([]);
   setServiceCatalogForTests(null);
   setModelRegistry(DEFAULT_MODEL_REGISTRY);
 });
@@ -151,5 +157,84 @@ describe('parseServiceCatalog', () => {
     ],
   ])('rejects %j', (source, error) => {
     expect(() => parseServiceCatalog(source)).toThrow(error);
+  });
+});
+
+function override(row: {
+  kind: 'model' | 'service';
+  target: string;
+  provider?: string;
+  input?: number;
+  output?: number;
+  cached?: number;
+  unit?: number;
+}) {
+  return {
+    id: `upo_${row.kind}_${row.target}_${row.provider ?? ''}`,
+    kind: row.kind,
+    target: row.target,
+    provider: row.provider ?? '',
+    input_per_mtok: row.input ?? null,
+    output_per_mtok: row.output ?? null,
+    cached_input_per_mtok: row.cached ?? null,
+    unit_price: row.unit ?? null,
+    updated_by: null,
+    created_at: '2026-10-24T00:00:00.000Z',
+    updated_at: '2026-10-24T00:00:00.000Z',
+  };
+}
+
+describe('admin price overrides', () => {
+  it('prices an unpriced model and wins over the catalog price', () => {
+    setModelRegistry({
+      flash: { name: 'Flash', providers: [{ provider: 'deepseek', model: 'raw-flash', apiKeyEnv: 'K' }] },
+      pro: {
+        name: 'Pro',
+        price: { input: 1, output: 2 },
+        providers: [{ provider: 'deepseek', model: 'raw-pro', apiKeyEnv: 'K' }],
+      },
+    });
+    expect(modelPrice('raw-flash')).toBeUndefined();
+    setPriceOverridesForTests([
+      override({ kind: 'model', target: 'flash', input: 0.3, output: 0.5, cached: 0.03 }),
+      override({ kind: 'model', target: 'pro', input: 9, output: 9 }),
+    ]);
+    expect(effectiveModelPrice('raw-flash')).toEqual({
+      price: { input: 0.3, output: 0.5, cachedInput: 0.03 },
+      source: 'override',
+      model: 'flash',
+    });
+    expect(effectiveModelPrice(undefined, 'pro')?.price).toEqual({ input: 9, output: 9 });
+  });
+
+  it('overrides a service unit price, and flattens an image size table', () => {
+    setPriceOverridesForTests([
+      override({ kind: 'service', target: 'web_search', provider: 'firecrawl', unit: 0.01 }),
+      override({ kind: 'service', target: 'image_generation', provider: 'media', unit: 0.02 }),
+      override({ kind: 'service', target: 'vision', provider: 'media', input: 0.15, output: 0.6 }),
+    ]);
+    expect(serviceUnitCostMicros('web_search', 'firecrawl', 1)).toBe(10_000);
+    expect(serviceUnitCostMicros('web_search', 'tavily', 1)).toBe(8_000);
+    expect(imageCostMicros({ provider: 'media', quality: 'low', size: '1024x1024' })).toBe(20_000);
+    expect(maxImageCostMicros('media', 'low')).toBe(20_000);
+    expect(effectiveServicePrice('vision', 'media')).toEqual({
+      source: 'override',
+      tokenPrice: { input: 0.15, output: 0.6 },
+    });
+  });
+
+  it('snapshots the applied rate for the usage fact', () => {
+    expect(tokenPriceSnapshot({ input: 1, output: 2 }, 'override', { model: 'flash' })).toEqual({
+      source: 'override',
+      input_per_mtok: 1,
+      output_per_mtok: 2,
+      cached_input_per_mtok: 1,
+      model: 'flash',
+    });
+    expect(unitPriceSnapshot(0.008, 'config', { unit: 'call' })).toEqual({
+      source: 'config',
+      unit_price: 0.008,
+      unit: 'call',
+    });
   });
 });

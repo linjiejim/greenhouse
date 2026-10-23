@@ -1,7 +1,7 @@
 /**
  * Read models for Administration › Services & pricing and Settings › Usage.
  *
- * Prices come from the two config files, spend from the per-call facts
+ * Prices come from the two config files overridden by a super's prices, spend from the per-call facts
  * (llm_usage + service_usage, one month, indexed), budgets from the admin
  * limit rows resolved exactly as metering resolves them, with this month's
  * account balance next to each.
@@ -33,6 +33,7 @@ import {
   type PricedService,
 } from '../config/services.js';
 import { organizationScopeId, resolveLimitsFromRows } from './metering.js';
+import { effectiveModelPrice, effectiveServicePrice, syncPriceOverrides } from './pricing.js';
 
 function tokenPriceView(price: TokenPrice | undefined): TokenPriceView | null {
   return price ? { input: price.input, output: price.output, cached_input: price.cachedInput ?? null } : null;
@@ -52,16 +53,19 @@ export function listServicePrices(): ServicePriceView[] {
     const definition = catalog[service];
     const providers = SERVICE_PROVIDERS[service].map((provider) => {
       const entry = definition?.providers[provider];
-      const tokenPrice = tokenPriceView(entry?.tokenPrice);
-      const price = entry?.price ?? null;
-      const priceBySize = entry?.priceBySize ?? null;
+      const effective = effectiveServicePrice(service, provider);
+      const tokenPrice = tokenPriceView(effective?.tokenPrice);
+      const price = effective?.price ?? null;
+      const priceBySize = effective?.priceBySize ?? null;
+      const priced = price !== null || priceBySize !== null || tokenPrice !== null;
       return {
         provider,
         configured: entry ? isServiceProviderConfigured(entry) : false,
         price,
         price_by_size: priceBySize,
         token_price: tokenPrice,
-        priced: price !== null || priceBySize !== null || tokenPrice !== null,
+        priced,
+        source: priced ? (effective?.source ?? null) : null,
       };
     });
     return {
@@ -76,12 +80,33 @@ export function listServicePrices(): ServicePriceView[] {
 
 export function listModelPrices(): ModelPriceView[] {
   const catalog = getModelCatalog();
-  return Object.entries(catalog.models).map(([id, entry]) => ({
-    id,
-    name: entry.name,
-    configured: getAvailableProviders(id).length > 0,
-    price: tokenPriceView(entry.price),
-  }));
+  return Object.entries(catalog.models).map(([id, entry]) => {
+    const effective = effectiveModelPrice(undefined, id);
+    return {
+      id,
+      name: entry.name,
+      configured: getAvailableProviders(id).length > 0,
+      price: tokenPriceView(effective?.price),
+      source: effective?.source ?? null,
+    };
+  });
+}
+
+/** Configured, enabled and unpriced — calls that count as $0 right now. */
+export function unpricedInUse(
+  services: ServicePriceView[],
+  models: ModelPriceView[],
+): MeteringOverview['unpriced_in_use'] {
+  return {
+    models: models.filter((model) => model.configured && !model.price).map((model) => model.id),
+    services: services.flatMap((service) =>
+      service.enabled
+        ? service.providers
+            .filter((provider) => provider.configured && !provider.priced)
+            .map((provider) => ({ service: service.service, provider: provider.provider }))
+        : [],
+    ),
+  };
 }
 
 /** `YYYY-MM` → that UTC month; anything else → null. */
@@ -101,6 +126,8 @@ function spendRows(rows: Awaited<ReturnType<DatabaseProvider['metering']['spendB
 export async function buildMeteringOverview(db: DatabaseProvider, at: Date = new Date()): Promise<MeteringOverview> {
   const period = getUtcMonthPeriod(at);
   const query = { since: period.start, until: period.end };
+  // The admin page shows exactly what calls are being priced at now.
+  await syncPriceOverrides(db, true);
   const [totals, byMember, byService, byClient, byAgentClient, unsettled, limitRows, accounts, users] =
     await Promise.all([
       db.metering.spendTotals(query),
@@ -157,10 +184,13 @@ export async function buildMeteringOverview(db: DatabaseProvider, at: Date = new
     };
   });
 
+  const servicePrices = listServicePrices();
+  const modelPrices = listModelPrices();
   return {
     period,
-    services: listServicePrices(),
-    models: listModelPrices(),
+    services: servicePrices,
+    models: modelPrices,
+    unpriced_in_use: unpricedInUse(servicePrices, modelPrices),
     spend: {
       totals,
       by_member: spendRows(byMember).map((row) => ({ ...row, label: row.label ?? userLabel.get(row.key) ?? null })),

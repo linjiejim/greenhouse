@@ -39,6 +39,7 @@ export function fakeMeteringServices() {
   const reserve = vi.fn(async () => []);
   const metering = {
     getLimits: vi.fn(async () => []),
+    listPriceOverrides: vi.fn(async () => []),
     getAccounts: vi.fn(async (ids: readonly string[]) =>
       ids.map((id) => accounts.get(id)).filter((row): row is FakeAccount => Boolean(row)),
     ),
