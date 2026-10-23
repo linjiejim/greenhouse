@@ -10,7 +10,7 @@
  *   when another station is active (signed in or not), and waiting for a sign-in when nobody is
  *   signed in there; a push for someone else (the phone changed hands) or a removed station
  *   just opens the app.
- * - `readBanners`: banners whose notification is read now (in the app or anywhere else) go.
+ * - `readBanners`: banners whose notification is known to be read (in the app or anywhere else) go.
  * - `softAskDue`: the soft ask comes once per 14 days at most, only while the system has not
  *   been asked, and never in the foreground session the member signed in during (iOS offers to
  *   save the password then; two alerts would stack).
@@ -85,20 +85,19 @@ export interface Presented {
 }
 
 /**
- * Banners whose notification is read now: those in `readIds`, and — once the unread list is
- * known (`unreadIds`) — every banner of this station not in it. Another station's banners stay:
- * its facts are unknown here.
+ * Banners whose notification is known to be read (`readIds`: read in the app, or read as the list
+ * shows it). A banner whose notification the phone has not seen is never assumed read — the list
+ * holds only its first pages. Another station's banners stay: its facts are unknown here.
  */
 export function readBanners(
   presented: readonly Presented[],
-  facts: { stationId: string | null; readIds?: ReadonlySet<string>; unreadIds?: ReadonlySet<string> },
+  facts: { stationId: string | null; readIds: ReadonlySet<string> },
 ): string[] {
   return presented
     .filter((item) => {
       const data = parsePushData(item.data);
       if (!data || data.k === 'test' || (data.s && data.s !== facts.stationId)) return false;
-      if (facts.readIds?.has(data.nid)) return true;
-      return facts.unreadIds ? !facts.unreadIds.has(data.nid) : false;
+      return facts.readIds.has(data.nid);
     })
     .map((item) => item.id);
 }

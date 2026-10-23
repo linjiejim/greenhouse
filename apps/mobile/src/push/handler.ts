@@ -101,20 +101,17 @@ async function presented(): Promise<Presented[]> {
 }
 
 /**
- * Banners whose notification is read now go: `readIds` just read in the app; with `all`, every
- * banner of this station that is not in the unread list the app holds (the first page is enough:
- * a banner is recent).
+ * Banners whose notification is known to be read go: `readIds` just read in the app; with `all`,
+ * also every notification the loaded list shows as read. Banners of notifications the list has not
+ * loaded stay — absence from the first pages says nothing.
  */
 export async function clearReadBanners(input: { readIds?: string[]; all?: boolean }): Promise<void> {
   if (!READY || !useAuth.getState().user) return;
   try {
     const { items, status } = useNotifications.getState();
-    const unreadIds = input.all && status === 'ready' ? new Set(items.filter((n) => !n.read_at).map((n) => n.id)) : undefined;
-    const ids = readBanners(await presented(), {
-      stationId: useStations.getState().activeId,
-      readIds: input.readIds ? new Set(input.readIds) : undefined,
-      unreadIds,
-    });
+    const readIds = new Set(input.readIds ?? []);
+    if (input.all && status === 'ready') for (const n of items) if (n.read_at) readIds.add(n.id);
+    const ids = readBanners(await presented(), { stationId: useStations.getState().activeId, readIds });
     await Promise.all(ids.map((id) => Notifications.dismissNotificationAsync(id)));
   } catch {
     // cosmetic

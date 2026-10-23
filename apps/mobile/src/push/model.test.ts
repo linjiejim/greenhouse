@@ -91,7 +91,12 @@ describe('foreground and banners', () => {
       { id: 'e', data: { other: 'app' } },
     ];
     expect(readBanners(shown, { stationId: 'st-home', readIds: new Set(['ntf_1']) })).toEqual(['a']);
-    expect(readBanners(shown, { stationId: 'st-home', unreadIds: new Set(['ntf_1']) })).toEqual(['b']);
+    // a notification the phone has not loaded is never assumed read
+    expect(readBanners(shown, { stationId: 'st-home', readIds: new Set() })).toEqual([]);
+    expect(readBanners(shown, { stationId: 'st-home', readIds: new Set(['ntf_1', 'ntf_2', 'ntf_3']) })).toEqual([
+      'a',
+      'b',
+    ]);
   });
 });
 
