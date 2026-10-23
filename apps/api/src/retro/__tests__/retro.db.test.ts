@@ -141,6 +141,19 @@ beforeEach(async () => {
     kind: 'tool_error',
     summary: 'Table not found: "<id>"',
   });
+  // Free text that names a private document and members: never to be published.
+  await db.toolFrictions.record({
+    fingerprint: unique('fp'),
+    tool_id: 'knowledge_query',
+    kind: 'tool_error',
+    summary: 'Could not open "SECRET-DOC-TITLE" shared by Zed Member: not found',
+  });
+  await db.toolFrictions.record({
+    fingerprint: unique('fp'),
+    tool_id: null,
+    kind: 'detour',
+    summary: 'Alice Wang asked for the Salary Plan 2027 and the agent had to search three times',
+  });
   await db.featureRequests.create({
     title: 'Export dashboards as PDF',
     description: 'please',
@@ -200,10 +213,20 @@ describe('monthly retro', () => {
     expect(content).toMatch(/\| Codex \| \d+ \| \d+ \| \d+ \| \d+ \|/);
     expect(content).toContain('Claude Code');
     expect(content).toContain('Export dashboards as PDF');
-    expect(content).toContain('Table not found');
+    expect(content).toMatch(/\| tables_query \| 工具报错 \| 找不到对象 \| \d+ \| \d+ \|/);
+    expect(content).toMatch(/\| knowledge_query \| 工具报错 \| 找不到对象 \| \d+ \| \d+ \|/);
+    expect(content).toContain('绕了远路');
     expect(content).toContain('web_search');
     expect(content).toContain('- 把 Codex 的失败写入查清楚');
-    for (const secret of ['SECRET-PRIVATE-TITLE', 'Zed Member', member.email]) {
+    for (const secret of [
+      'SECRET-PRIVATE-TITLE',
+      'SECRET-DOC-TITLE',
+      'Zed Member',
+      'Alice Wang',
+      'Salary Plan',
+      'Table not found',
+      member.email,
+    ]) {
       expect(content).not.toContain(secret);
       expect(fake.prompts.join('\n')).not.toContain(secret);
     }

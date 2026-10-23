@@ -20,7 +20,7 @@ import {
   startMonthlyRetroJob,
   stopUpkeepJobs,
 } from '../../scheduler/upkeep-jobs.js';
-import { previousMonthIn, retroMonth, type RetroAggregates } from '../aggregate.js';
+import { frictionErrorClass, previousMonthIn, retroMonth, type RetroAggregates } from '../aggregate.js';
 import { renderRetroMarkdown } from '../render.js';
 
 afterEach(() => {
@@ -66,7 +66,7 @@ describe('retro document', () => {
     frictions: {
       seen: 1,
       new: 1,
-      top: [{ summary: 'Bad | pipe', tool: 'tables_query', kind: 'tool_error', occurrences: 3, status: 'new' }],
+      top: [{ tool: 'tables_query', kind: 'tool_error', error_class: 'not_found', frictions: 2, occurrences: 3 }],
     },
     requests: {
       submitted: 1,
@@ -92,10 +92,31 @@ describe('retro document', () => {
     expect(markdown.startsWith('# 2026-10 复盘\n')).toBe(true);
     expect(markdown).toContain('| Codex | 4 | 2 | 1 | 1 |');
     expect(markdown).toContain('失败 1 次，结果未知 1 次');
-    expect(markdown).toContain('| Bad \\| pipe | tables_query | 3 | 新 |');
+    expect(markdown).toContain('| tables_query | 工具报错 | 找不到对象 | 2 | 3 |');
     expect(markdown).toContain('本月提交 1 条：待处理 1');
     expect(markdown).toContain('本月合计 $1.23，7 次计价调用（其中 2 次未定价，按 0 计）。');
     expect(markdown.trimEnd().endsWith('- 建议')).toBe(true);
+  });
+
+  it('classifies a friction by its error without passing its words on', () => {
+    expect(frictionErrorClass('Doc "Q3 plan" not found')).toBe('not_found');
+    expect(frictionErrorClass('Permission denied for user Ada')).toBe('permission');
+    expect(frictionErrorClass('tableId is required')).toBe('invalid_input');
+    expect(frictionErrorClass('upstream timed out')).toBe('timeout');
+    expect(frictionErrorClass('Ada wanted a summary of the board meeting')).toBe('other');
+  });
+
+  it('escapes table cells', () => {
+    const markdown = renderRetroMarkdown({
+      aggregates: {
+        ...aggregates,
+        requests: { ...aggregates.requests, top: [{ title: 'A | B', status: 'pending', priority: 'normal' }] },
+      },
+      suggestions: { ok: true, text: '-' },
+      generatedAt: new Date(),
+      timeZone: 'UTC',
+    });
+    expect(markdown).toContain('| A \\| B | 待处理 | normal |');
   });
 
   it('says why the suggestions are missing', () => {

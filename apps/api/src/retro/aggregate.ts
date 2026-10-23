@@ -2,8 +2,10 @@
  * Monthly retro (复盘) — the numbers. Aggregates only: counts and sums from
  * the usage counters, members' agent writes, Issues & requests and metering.
  * Never message content, never a member's name, never the title of anything
- * private (friction summaries are the normalized tool errors; feature request
- * titles are what members filed with the team).
+ * private. Friction summaries are free text (a model's or an error's words can
+ * name a document or a person), so they never leave this module: a friction is
+ * published only as tool × kind × error class (a closed vocabulary) × counts.
+ * Feature request titles are what members filed with the team.
  *
  * The month is a UTC calendar month — the period metering and usage counters
  * already use.
@@ -61,7 +63,14 @@ export interface RetroAggregates {
   frictions: {
     seen: number;
     new: number;
-    top: Array<{ summary: string; tool: string | null; kind: string; occurrences: number; status: string }>;
+    /** Grouped by tool × kind × error class — no free text. */
+    top: Array<{
+      tool: string | null;
+      kind: string;
+      error_class: FrictionErrorClass;
+      frictions: number;
+      occurrences: number;
+    }>;
   };
   requests: {
     submitted: number;
@@ -78,6 +87,39 @@ export interface RetroAggregates {
 }
 
 const TOP = 10;
+/** Friction rows grouped per month; the retro shows the top groups. */
+const FRICTION_ROWS = 500;
+
+export const FRICTION_ERROR_CLASSES = [
+  'not_found',
+  'permission',
+  'invalid_input',
+  'conflict',
+  'limit',
+  'timeout',
+  'empty_result',
+  'other',
+] as const;
+export type FrictionErrorClass = (typeof FRICTION_ERROR_CLASSES)[number];
+
+const ERROR_CLASS_PATTERNS: Array<[FrictionErrorClass, RegExp]> = [
+  ['permission', /forbidden|permission|not allowed|denied|unauthori[sz]ed|access|无权|权限|拒绝/i],
+  ['not_found', /not found|no such|does not exist|doesn't exist|unknown|missing|找不到|不存在|未找到/i],
+  ['limit', /budget|quota|rate.?limit|too many|exceed|额度|限流|超出|超过/i],
+  ['timeout', /time(?:d)? ?out|timeout|超时/i],
+  ['conflict', /conflict|already exists|duplicate|revision|冲突|已存在|重复/i],
+  ['invalid_input', /invalid|required|must be|expected|malformed|schema|parse|format|非法|必填|格式|无效/i],
+  ['empty_result', /empty|no results?|nothing found|found: ?0|空|没有结果/i],
+];
+
+/**
+ * The class of a friction's error, from a closed list. The summary is read
+ * here and nowhere else in the retro: only the class leaves this function.
+ */
+export function frictionErrorClass(summary: string): FrictionErrorClass {
+  for (const [errorClass, pattern] of ERROR_CLASS_PATTERNS) if (pattern.test(summary)) return errorClass;
+  return 'other';
+}
 const SUMMARY_CHARS = 120;
 
 function sumBy(rows: Array<{ key: string; client: string; count: number }>, pick: 'key' | 'client'): CountRow[] {
@@ -95,6 +137,29 @@ function lastDay(month: RetroMonth): string {
 function clip(text: string, max: number): string {
   const flat = text.replace(/\s+/g, ' ').trim();
   return flat.length > max ? `${flat.slice(0, max - 1)}…` : flat;
+}
+
+function groupFrictions(
+  rows: ReadonlyArray<{ tool_id: string | null; kind: string; summary: string; occurrence_count: number }>,
+): RetroAggregates['frictions']['top'] {
+  const groups = new Map<string, RetroAggregates['frictions']['top'][number]>();
+  for (const row of rows) {
+    const errorClass = frictionErrorClass(row.summary);
+    const key = `${row.tool_id ?? ''}|${row.kind}|${errorClass}`;
+    const entry = groups.get(key) ?? {
+      tool: row.tool_id,
+      kind: row.kind,
+      error_class: errorClass,
+      frictions: 0,
+      occurrences: 0,
+    };
+    entry.frictions += 1;
+    entry.occurrences += row.occurrence_count;
+    groups.set(key, entry);
+  }
+  return [...groups.values()].sort(
+    (a, b) => b.occurrences - a.occurrences || b.frictions - a.frictions || (a.tool ?? '').localeCompare(b.tool ?? ''),
+  );
 }
 
 export async function collectRetroAggregates(db: DatabaseProvider, month: RetroMonth): Promise<RetroAggregates> {
@@ -118,7 +183,7 @@ export async function collectRetroAggregates(db: DatabaseProvider, month: RetroM
     db.usageCounters.summarize('tool_call', days),
     db.activity.agentWriteTotals(window),
     db.activity.agentWriteMembers(window),
-    db.toolFrictions.listSeenBetween({ ...window, limit: TOP }),
+    db.toolFrictions.listSeenBetween({ ...window, limit: FRICTION_ROWS }),
     db.toolFrictions.countBetween(window),
     db.featureRequests.listCreatedBetween({ ...window, limit: TOP }),
     db.featureRequests.countCreatedBetweenByStatus(window),
@@ -158,13 +223,7 @@ export async function collectRetroAggregates(db: DatabaseProvider, month: RetroM
     frictions: {
       seen: frictionCounts.seen,
       new: frictionCounts.new,
-      top: frictions.map((row) => ({
-        summary: clip(row.summary, SUMMARY_CHARS),
-        tool: row.tool_id,
-        kind: row.kind,
-        occurrences: row.occurrence_count,
-        status: row.status,
-      })),
+      top: groupFrictions(frictions).slice(0, TOP),
     },
     requests: {
       submitted: Object.values(requestCounts).reduce((sum, count) => sum + count, 0),

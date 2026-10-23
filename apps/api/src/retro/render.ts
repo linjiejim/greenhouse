@@ -4,7 +4,7 @@
  */
 
 import type { RetroSuggestionsSkipReason } from '@greenhouse/types/hub-context';
-import type { RetroAggregates } from './aggregate.js';
+import type { FrictionErrorClass, RetroAggregates } from './aggregate.js';
 
 export const RETRO_FOLDER_NAME = '复盘';
 
@@ -18,6 +18,25 @@ const SKIP_COPY: Record<RetroSuggestionsSkipReason, string> = {
   over_budget: '本次没有写建议：团队本月的模型额度已用完（管理员可在「服务与计价」调整）。',
   no_model: '本次没有写建议：这台 Greenhouse 没有配置可用的模型。',
   failed: '本次没有写建议：调用模型失败，可稍后在「问题与需求」重新生成本月复盘。',
+};
+
+const FRICTION_KIND_COPY: Record<string, string> = {
+  tool_error: '工具报错',
+  wrong_params: '参数不对',
+  detour: '绕了远路',
+  data_quirk: '数据问题',
+  capability_gap: '能力缺口',
+};
+
+const ERROR_CLASS_COPY: Record<FrictionErrorClass, string> = {
+  not_found: '找不到对象',
+  permission: '没有权限',
+  invalid_input: '输入不合法',
+  conflict: '冲突',
+  limit: '额度或限流',
+  timeout: '超时',
+  empty_result: '结果为空',
+  other: '其他',
 };
 
 const STATUS_COPY: Record<string, string> = {
@@ -116,8 +135,14 @@ export function renderRetroMarkdown(input: {
     `### 踩坑（本月出现 ${a.frictions.seen} 条，其中新增 ${a.frictions.new} 条）`,
     '',
     ...table(
-      ['问题', '工具', '累计次数', '状态'],
-      a.frictions.top.map((row) => [row.summary, row.tool, row.occurrences, status(row.status)]),
+      ['工具', '类型', '错误类别', '条数', '累计次数'],
+      a.frictions.top.map((row) => [
+        row.tool,
+        FRICTION_KIND_COPY[row.kind] ?? row.kind,
+        ERROR_CLASS_COPY[row.error_class],
+        row.frictions,
+        row.occurrences,
+      ]),
     ),
     '',
     `### 功能需求（本月提交 ${a.requests.submitted} 条${requestsByStatus ? `：${requestsByStatus}` : ''}）`,
