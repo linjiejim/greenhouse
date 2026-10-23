@@ -54,17 +54,22 @@ export function missingGlyphs(text: string): string[] {
   return [...missing];
 }
 
-/**
- * Every code point a TrueType font maps, from its cmap (format 4 or 12, the
- * Unicode subtables). Throws on a font with neither.
- */
-export function readCmapCodePoints(font: Buffer): Set<number> {
+/** Byte offset of a table in a TrueType font, or -1. */
+function tableOffset(font: Buffer, tag: string): number {
   const numTables = font.readUInt16BE(4);
-  let cmap = -1;
   for (let i = 0; i < numTables; i++) {
     const rec = 12 + i * 16;
-    if (font.toString('latin1', rec, rec + 4) === 'cmap') cmap = font.readUInt32BE(rec + 8);
+    if (font.toString('latin1', rec, rec + 4) === tag) return font.readUInt32BE(rec + 8);
   }
+  return -1;
+}
+
+/**
+ * Every code point a TrueType font maps, with its glyph id, from its cmap
+ * (format 4 or 12, the Unicode subtables). Throws on a font with neither.
+ */
+export function readCmap(font: Buffer): Map<number, number> {
+  const cmap = tableOffset(font, 'cmap');
   if (cmap < 0) throw new Error('font has no cmap table');
   const subtables = font.readUInt16BE(cmap + 2);
   let best: { format: number; offset: number } | null = null;
@@ -79,7 +84,7 @@ export function readCmapCodePoints(font: Buffer): Set<number> {
     if (!best || (format === 12 && best.format === 4)) best = { format, offset };
   }
   if (!best) throw new Error('font has no Unicode cmap subtable');
-  const points = new Set<number>();
+  const glyphs = new Map<number, number>();
   const at = best.offset;
   if (best.format === 12) {
     const groups = font.readUInt32BE(at + 12);
@@ -87,9 +92,10 @@ export function readCmapCodePoints(font: Buffer): Set<number> {
       const rec = at + 16 + g * 12;
       const start = font.readUInt32BE(rec);
       const end = font.readUInt32BE(rec + 4);
-      for (let cp = start; cp <= end; cp++) points.add(cp);
+      const first = font.readUInt32BE(rec + 8);
+      for (let cp = start; cp <= end; cp++) glyphs.set(cp, first + (cp - start));
     }
-    return points;
+    return glyphs;
   }
   const segX2 = font.readUInt16BE(at + 6);
   const ends = at + 14;
@@ -109,8 +115,53 @@ export function readCmapCodePoints(font: Buffer): Set<number> {
         glyph = font.readUInt16BE(glyphAt);
         if (glyph !== 0) glyph = (glyph + delta) & 0xffff;
       }
-      if (glyph !== 0) points.add(cp);
+      if (glyph !== 0) glyphs.set(cp, glyph);
     }
   }
-  return points;
+  return glyphs;
+}
+
+/** Every code point a font maps. */
+export function readCmapCodePoints(font: Buffer): Set<number> {
+  return new Set(readCmap(font).keys());
+}
+
+export interface FontMetrics {
+  /** One line of text at size 1 with lineHeight 1 — (ascender − descender + lineGap) / unitsPerEm, from hhea. */
+  lineHeightEm: number;
+  /** Advance width of a code point at size 1; a character the font lacks counts as a full em. */
+  advanceEm(codePoint: number): number;
+}
+
+/** Line height and advance widths of a TrueType font, read from head / hhea / hmtx / cmap. */
+export function readFontMetrics(font: Buffer): FontMetrics {
+  const head = tableOffset(font, 'head');
+  const hhea = tableOffset(font, 'hhea');
+  const hmtx = tableOffset(font, 'hmtx');
+  if (head < 0 || hhea < 0 || hmtx < 0) throw new Error('font lacks head / hhea / hmtx');
+  const upm = font.readUInt16BE(head + 18);
+  const ascender = font.readInt16BE(hhea + 4);
+  const descender = font.readInt16BE(hhea + 6);
+  const lineGap = font.readInt16BE(hhea + 8);
+  const longMetrics = font.readUInt16BE(hhea + 34);
+  const glyphs = readCmap(font);
+  const advance = (glyph: number) => font.readUInt16BE(hmtx + Math.min(glyph, longMetrics - 1) * 4);
+  return {
+    lineHeightEm: (ascender - descender + lineGap) / upm,
+    advanceEm: (codePoint) => {
+      const glyph = glyphs.get(codePoint);
+      return glyph === undefined ? 1 : advance(glyph) / upm;
+    },
+  };
+}
+
+let metrics: { normal: FontMetrics; bold: FontMetrics } | null = null;
+
+/** Metrics of the embedded PDF font (read once per process) — what slide planning measures with. */
+export function reportFontMetrics(): { normal: FontMetrics; bold: FontMetrics } {
+  if (!metrics) {
+    const { normal, bold } = load();
+    metrics = { normal: readFontMetrics(normal), bold: readFontMetrics(bold) };
+  }
+  return metrics;
 }

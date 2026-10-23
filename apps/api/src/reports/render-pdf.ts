@@ -17,7 +17,7 @@ import type { ReportDocument, ReportFigure } from './content.js';
 import { fitLogo, tint, type ReportBrand } from './brand.js';
 import { PDF_FONT_FAMILY, reportFontBytes } from './font.js';
 import { inlineMarkdown, parseMarkdown, type InlineRun, type MdBlock } from './markdown.js';
-import { buildSlides, coverMeta, type Slide } from './slides.js';
+import { buildSlides, coverMeta, DECK, type Slide } from './slides.js';
 
 type Node = Record<string, unknown> | string | Node[];
 
@@ -323,16 +323,23 @@ function reportDefinition(document: ReportDocument, brand: ReportBrand): Record<
 
 // ─── Presentation (16:9) ─────────────────────────────────
 
-const SLIDE = { width: 960, height: 540 };
-const SLIDE_MARGIN_X = 56;
+// Geometry and sizes come from DECK: slides.ts plans the slides with the same numbers.
+const SLIDE = { width: DECK.width, height: DECK.height };
+const SLIDE_MARGIN_X = DECK.marginX;
 
 function slideNodes(slide: Slide, brand: ReportBrand): Node[] {
-  const title = { text: slide.title, fontSize: 26, bold: true, color: TEXT, margin: [0, 0, 0, 18] };
+  const title = {
+    text: slide.title,
+    fontSize: DECK.titleSize,
+    bold: true,
+    color: TEXT,
+    margin: [0, 0, 0, DECK.titleGap],
+  };
   const body = slide.body;
   if (body.type === 'text') {
-    return [title, ...body.blocks.map((block) => blockNode(block, brand, { h2: 18, h3: 16 }))];
+    return [title, ...body.blocks.map((block) => blockNode(block, brand, { h2: DECK.h2Size, h3: DECK.h3Size }))];
   }
-  if (body.type === 'table') return [title, tableNode(body.header, body.rows, brand, 13)];
+  if (body.type === 'table') return [title, tableNode(body.header, body.rows, brand, DECK.tableSize)];
   return [title, { ...(figuresNode(body.figures, brand, 34, 4) as Record<string, unknown>), margin: [-6, 30, -6, 0] }];
 }
 
@@ -360,9 +367,9 @@ function presentationDefinition(document: ReportDocument, brand: ReportBrand): R
   return {
     pageSize: SLIDE,
     pageOrientation: 'landscape',
-    pageMargins: [SLIDE_MARGIN_X, 56, SLIDE_MARGIN_X, 48],
+    pageMargins: [SLIDE_MARGIN_X, DECK.marginTop, SLIDE_MARGIN_X, DECK.marginBottom],
     info: { title: document.cover.title, author: document.cover.author ?? brand.name, creator: brand.name },
-    defaultStyle: { font: PDF_FONT_FAMILY, fontSize: 16, lineHeight: 1.3, color: TEXT },
+    defaultStyle: { font: PDF_FONT_FAMILY, fontSize: DECK.bodySize, lineHeight: DECK.lineHeight, color: TEXT },
     background: (page: number) =>
       page === 1
         ? { canvas: [{ type: 'rect', x: 0, y: 0, w: 18, h: SLIDE.height, color: brand.color }] }

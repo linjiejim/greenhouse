@@ -197,29 +197,106 @@ describe('PowerPoint', () => {
 });
 
 describe('slides', () => {
-  it('splits long bullets, tables and figures into numbered continuation slides', () => {
+  /** A one-section deck, rendered both ways: planned slides vs PDF pages vs PPTX slides (each + cover). */
+  async function planAndRender(title: string, body: ReportDocument['sections'][number]['body']) {
+    const doc = document('presentation', 'pdf');
+    doc.sections = [{ key: 's', title, body }];
+    const slides = buildSlides(doc);
+    const pdf = await renderReport(doc, brand);
+    const pptx = await renderReport({ ...doc, format: 'pptx' }, brand);
+    const pptxSlides = Object.keys(zipEntries(pptx.bytes)).filter((name) => /^ppt\/slides\/slide\d+\.xml$/.test(name));
+    return { slides, pdfPages: (await pdfText(pdf.bytes)).pages, pptxSlides: pptxSlides.length, pdf };
+  }
+
+  function expectNumbered(titles: string[], title: string) {
+    expect(titles.length).toBeGreaterThan(1);
+    expect(titles).toEqual(titles.map((_, i) => `${title} (${i + 1}/${titles.length})`));
+  }
+
+  const cell = (seed: string, length: number) => Array.from({ length }, (_, i) => seed[i % seed.length]).join('');
+
+  it('cuts a table by rendered row height, so the PDF and the PPTX have exactly the planned slides', async () => {
+    // Four columns, eight cells of 190 characters: far fewer rows than a row count would allow fit.
+    const rows = [
+      [
+        cell('报告模板渲染服务', 190),
+        cell('Quarterly revenue grew ', 190),
+        cell('风险与应对措施', 190),
+        cell('下一步计划', 190),
+      ],
+      [
+        cell('里程碑进度说明', 190),
+        cell('On track for launch ', 190),
+        cell('负责人与时间点', 190),
+        cell('需要的支持', 190),
+      ],
+    ];
+    const { slides, pdfPages, pptxSlides } = await planAndRender('里程碑', {
+      kind: 'table',
+      columns: ['事项', 'Status', '风险', '计划'],
+      rows,
+    });
+    expect(pdfPages).toBe(slides.length + 1);
+    expect(pptxSlides).toBe(slides.length + 1);
+    expectNumbered(
+      slides.map((slide) => slide.title),
+      '里程碑',
+    );
+    for (const slide of slides) {
+      // Every continuation repeats the header.
+      expect(slide.body.type === 'table' && slide.body.header.map((c) => c[0]!.text)).toEqual([
+        '事项',
+        'Status',
+        '风险',
+        '计划',
+      ]);
+    }
+  });
+
+  it('cuts a row taller than a slide into pieces that continue cell by cell, losing nothing', async () => {
+    const tall = [cell('一二三四五六七八九十', 500), cell('word ', 500), cell('甲乙丙丁', 300), 'x'];
+    const { slides, pdfPages } = await planAndRender('长行', {
+      kind: 'table',
+      columns: ['A', 'B', 'C', 'D'],
+      rows: [tall],
+    });
+    expect(pdfPages).toBe(slides.length + 1);
+    expectNumbered(
+      slides.map((slide) => slide.title),
+      '长行',
+    );
+    const pieces = slides.flatMap((slide) => (slide.body.type === 'table' ? slide.body.rows : []));
+    expect(pieces.length).toBeGreaterThan(1);
+    for (let column = 0; column < 4; column++) {
+      const joined = pieces.map((row) => row[column]!.map((run) => run.text).join('')).join('');
+      expect(joined.replace(/\s+/g, '')).toBe(tall[column]!.replace(/\s+/g, ''));
+    }
+  });
+
+  it('plans prose, a Markdown table and short lists to the page the PDF renders', async () => {
+    const markdown = [
+      cell('报告正文内容测试', 1500),
+      cell('The quick brown fox jumps over the lazy dog. ', 1200),
+      '| a | b |\n|---|---|\n' +
+        Array.from({ length: 30 }, () => `| ${cell('表格单元', 80)} | ${cell('cell text ', 60)} |`).join('\n'),
+      Array.from({ length: 30 }, (_, i) => `- 第 ${i + 1} 条`).join('\n'),
+    ].join('\n\n');
+    const { slides, pdfPages, pptxSlides } = await planAndRender('正文', { kind: 'markdown', markdown });
+    expect(pdfPages).toBe(slides.length + 1);
+    expect(pptxSlides).toBe(slides.length + 1);
+    expect(slides.map((slide) => slide.body.type)).toContain('table');
+  });
+
+  it('puts figures four to a slide', () => {
     const doc = document('presentation', 'pptx');
     doc.sections = [
-      {
-        key: 'b',
-        title: '要点',
-        body: { kind: 'bullets', items: Array.from({ length: 30 }, (_, i) => `第 ${i + 1} 条`) },
-      },
-      {
-        key: 't',
-        title: '表格',
-        body: { kind: 'table', columns: ['A'], rows: Array.from({ length: 20 }, (_, i) => [`${i}`]) },
-      },
       {
         key: 'f',
         title: '数据',
         body: { kind: 'figures', figures: Array.from({ length: 6 }, (_, i) => ({ label: `L${i}`, value: `${i}` })) },
       },
     ];
-    const titles = buildSlides(doc).map((slide) => slide.title);
-    expect(titles.filter((t) => t.startsWith('要点'))).toEqual(['要点 (1/3)', '要点 (2/3)', '要点 (3/3)']);
-    expect(titles.filter((t) => t.startsWith('表格'))).toEqual(['表格 (1/3)', '表格 (2/3)', '表格 (3/3)']);
-    expect(titles.filter((t) => t.startsWith('数据'))).toEqual(['数据 (1/2)', '数据 (2/2)']);
+    expect(buildSlides(doc).map((slide) => slide.title)).toEqual(['数据 (1/2)', '数据 (2/2)']);
   });
 
   it('puts a Markdown table on its own slide', () => {

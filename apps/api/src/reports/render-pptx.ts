@@ -14,7 +14,7 @@ import type { ReportDocument, ReportFigure } from './content.js';
 import { bareHex, fitLogo, tint, type ReportBrand } from './brand.js';
 import { OFFICE_FONT } from './font.js';
 import type { InlineRun, MdBlock } from './markdown.js';
-import { buildSlides, coverMeta, type Slide } from './slides.js';
+import { buildSlides, coverMeta, DECK, type Slide } from './slides.js';
 
 // The ESM build default-exports the class; some loaders (tsx) hand over the
 // CommonJS build's namespace instead, with the class under `default`.
@@ -76,7 +76,7 @@ function textBlocks(blocks: MdBlock[], brand: ReportBrand): TextProp[] {
         break;
       case 'code':
         for (const line of block.text.split('\n')) {
-          out.push(...paragraph([{ text: line || ' ', options: { fontSize: 13, highlight: CODE_BG } }], {}));
+          out.push(...paragraph([{ text: line || ' ', options: { fontSize: DECK.codeSize, highlight: CODE_BG } }], {}));
         }
         break;
       case 'list':
@@ -113,7 +113,7 @@ function addTable(slide: PptxGenJSImport.Slide, header: InlineRun[][], rows: Inl
       y: BODY_Y,
       w: BODY_W,
       fontFace: OFFICE_FONT,
-      fontSize: 13,
+      fontSize: DECK.tableSize,
       color: TEXT,
       border: { type: 'solid', pt: 0.75, color: RULE },
       margin: 0.08,
@@ -233,7 +233,7 @@ function addBodySlide(pptx: PptxGenJS, slide: Slide, brand: ReportBrand) {
     w: BODY_W,
     h: 0.75,
     fontFace: OFFICE_FONT,
-    fontSize: 28,
+    fontSize: DECK.titleSize,
     bold: true,
     color: TEXT,
     valign: 'middle',
@@ -247,7 +247,7 @@ function addBodySlide(pptx: PptxGenJS, slide: Slide, brand: ReportBrand) {
       w: BODY_W,
       h: BODY_H,
       fontFace: OFFICE_FONT,
-      fontSize: 18,
+      fontSize: DECK.bodySize,
       color: TEXT,
       valign: 'top',
       fit: 'shrink',
