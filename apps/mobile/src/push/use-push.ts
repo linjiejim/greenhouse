@@ -20,6 +20,7 @@ import { useNotifications } from '../store/notifications';
 import { useStations } from '../store/stations';
 import { clearReadBanners, onTap, resolvePendingTap, syncBadge } from './handler';
 import { onDeviceTokenReported, PUSH_PLATFORM_READY, syncPush } from './register';
+import { softAskWhenSettled } from './soft-ask';
 
 export function usePushBridge(ready: boolean): void {
   const router = useRouter();
@@ -49,6 +50,8 @@ export function usePushBridge(ready: boolean): void {
         .then(() => {
           void clearReadBanners({ all: true });
           void syncBadge();
+          // the soft ask deferred from a sign-in comes now (src/push/soft-ask.ts)
+          if (useNotifications.getState().status === 'ready') void softAskWhenSettled();
         });
     });
     const token = Notifications.addPushTokenListener(onDeviceTokenReported);

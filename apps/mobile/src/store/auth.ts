@@ -67,6 +67,8 @@ interface AuthState {
   login: (email: string, password: string) => Promise<{ ok: boolean; error?: string }>;
   logout: () => void;
   setUser: (user: Me | null) => void;
+  /** When this phone last signed in through the sign-in page (null after sign-out / before any). */
+  signedInAt: number | null;
 }
 
 /** `/api/bootstrap` of the active station: its body (whatever it is), or undefined when unreachable. */
@@ -148,6 +150,7 @@ export const useAuth = create<AuthState>((set) => {
     startupError: null,
     station: null,
     mismatch: null,
+    signedInAt: null,
 
     bootstrap: () => initialize(),
     switchStation: (change) => initialize(change),
@@ -156,7 +159,7 @@ export const useAuth = create<AuthState>((set) => {
       const res = await authApi.login(email, password);
       if (res.ok) {
         bootGeneration += 1;
-        set({ user: res.user, loading: false, startupError: null });
+        set({ user: res.user, loading: false, startupError: null, signedInAt: Date.now() });
         return { ok: true };
       }
       return { ok: false, error: res.error };
@@ -166,7 +169,7 @@ export const useAuth = create<AuthState>((set) => {
       bootGeneration += 1;
       bootController?.abort();
       authApi.logout();
-      set({ user: null, loading: false, startupError: null });
+      set({ user: null, loading: false, startupError: null, signedInAt: null });
     },
 
     setUser(user) {

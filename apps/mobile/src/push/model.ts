@@ -11,8 +11,9 @@
  *   signed in there; a push for someone else (the phone changed hands) or a removed station
  *   just opens the app.
  * - `readBanners`: banners whose notification is read now (in the app or anywhere else) go.
- * - `softAskDue`: the soft ask comes once per 14 days at most, and only while the system has
- *   not been asked.
+ * - `softAskDue`: the soft ask comes once per 14 days at most, only while the system has not
+ *   been asked, and never in the foreground session the member signed in during (iOS offers to
+ *   save the password then; two alerts would stack).
  */
 
 import { parsePushData } from '../shared/push';
@@ -106,14 +107,23 @@ export const SOFT_ASK_COOLDOWN_MS = 14 * 24 * 60 * 60 * 1000;
 
 export type PushPermission = 'undetermined' | 'granted' | 'denied';
 
-/** Ask softly now? Only while the system was never asked, the station pushes, and not within 14 days of the last ask. */
+/**
+ * Ask softly now? Only while the system was never asked, the station pushes, not within 14 days of
+ * the last ask, and not before the app has come to the foreground again since a sign-in on this
+ * phone (`signedInAt` after `foregroundAt`: the sign-in happened in this foreground session).
+ */
 export function softAskDue(input: {
   permission: PushPermission;
   supported: boolean;
   lastAskedAt: number | null;
   now: number;
+  /** When the member signed in on the sign-in page (null: the session was restored). */
+  signedInAt?: number | null;
+  /** When the app last came to the foreground (or launched). */
+  foregroundAt?: number;
 }): boolean {
   if (!input.supported || input.permission !== 'undetermined') return false;
+  if (input.signedInAt != null && input.signedInAt >= (input.foregroundAt ?? 0)) return false;
   return input.lastAskedAt === null || input.now - input.lastAskedAt >= SOFT_ASK_COOLDOWN_MS;
 }
 

@@ -106,6 +106,16 @@ describe('the soft ask', () => {
       softAskDue({ permission: 'undetermined', supported: true, lastAskedAt: now - SOFT_ASK_COOLDOWN_MS, now }),
     ).toBe(true);
   });
+
+  it('waits until the app comes back after a sign-in, so it never stacks on Save Password', () => {
+    const base = { permission: 'undetermined', supported: true, lastAskedAt: null, now } as const;
+    // signed in during this foreground session (launch at now - 60 s, sign-in at now - 10 s)
+    expect(softAskDue({ ...base, signedInAt: now - 10_000, foregroundAt: now - 60_000 })).toBe(false);
+    // the app went away and came back after that sign-in
+    expect(softAskDue({ ...base, signedInAt: now - 10_000, foregroundAt: now - 1_000 })).toBe(true);
+    // a restored session (no sign-in on this phone in this run)
+    expect(softAskDue({ ...base, signedInAt: null, foregroundAt: now - 60_000 })).toBe(true);
+  });
 });
 
 it('handles each tap once', () => {
