@@ -32,7 +32,7 @@ interface SeenRequest {
   raw: string;
 }
 
-type Behavior = 'json' | 'stream' | 'stream-error' | 'hang' | 'error400';
+type Behavior = 'json' | 'stream' | 'stream-error' | 'hang' | 'eof' | 'error400';
 
 let upstream: Server;
 let upstreamBase = '';
@@ -101,6 +101,12 @@ function handle(req: IncomingMessage, res: ServerResponse) {
           error: { type: 'overloaded_error', message: `Overloaded at ${upstreamBase} for ${UPSTREAM_KEY}` },
         });
         res.end();
+        return;
+      case 'eof':
+        res.writeHead(200, { 'content-type': 'text/event-stream' });
+        start();
+        delta('partial');
+        setTimeout(() => res.end(), 20); // closes without message_delta / message_stop
         return;
       case 'hang':
         res.writeHead(200, { 'content-type': 'text/event-stream' });
@@ -301,6 +307,7 @@ describe('Anthropic surface', () => {
       expect(text).toContain(`event: ${name}`);
     }
     expect(text).toContain('"text":"lo"');
+    expect(text).not.toContain('event: error');
     await _waitForGatewayCalls();
     expect(await reservationStatuses(row.id)).toEqual(['settled']);
     expect(await facts(member.id)).toEqual([
@@ -314,6 +321,7 @@ describe('Anthropic surface', () => {
     const text = await (await messages(secret, { ...MESSAGE, stream: true })).text();
     expect(text).toContain('event: error');
     expect(text).toContain('overloaded_error');
+    expect(text).not.toContain('ended before the answer');
     expect(text).not.toContain(UPSTREAM_KEY);
     expect(text).not.toContain('127.0.0.1');
     await _waitForGatewayCalls();
@@ -343,6 +351,16 @@ describe('Anthropic surface', () => {
     expect(text).toContain('partial');
     expect(text.trim().split('\n\n').at(-1)).toMatch(/^event: error\ndata: .*"type":"timeout_error"/);
     await hangClosed;
+    await _waitForGatewayCalls();
+    expect(await reservationStatuses(row.id)).toEqual(['reserved']);
+  });
+
+  it('ends a stream the upstream closed early with an Anthropic error event', async () => {
+    behavior = 'eof';
+    const { secret, row } = await newKey(member);
+    const text = await (await messages(secret, { ...MESSAGE, stream: true })).text();
+    expect(text).toContain('partial');
+    expect(text.trim().split('\n\n').at(-1)).toMatch(/^event: error\ndata: .*"type":"api_error"/);
     await _waitForGatewayCalls();
     expect(await reservationStatuses(row.id)).toEqual(['reserved']);
   });

@@ -388,6 +388,10 @@ export class SseUsageRelay {
   private buffer = '';
   usage: GatewayUsage | null = null;
   sawDone = false;
+  /** The upstream itself reported an error in the stream (already relayed, sanitized). */
+  sawError = false;
+  /** Chat Completions: some choice carried a `finish_reason`. */
+  private sawFinish = false;
 
   /** Messages wire: the usage `message_start` reported, completed by `message_delta`. */
   private startUsage: Record<string, unknown> | null = null;
@@ -398,6 +402,16 @@ export class SseUsageRelay {
     private readonly sanitize: (text: string) => string = (text) => text,
     private readonly wire: GatewayWire = 'openai',
   ) {}
+
+  /**
+   * The stream reached its proper end: `[DONE]` / `message_stop`, or — for an
+   * upstream that omits the terminator — a finished choice plus final usage
+   * (Chat Completions) or the final `message_delta` usage (Messages).
+   */
+  get completed(): boolean {
+    if (this.sawDone) return true;
+    return this.wire === 'anthropic' ? this.usage !== null : this.sawFinish && this.usage !== null;
+  }
 
   /** Feed decoded text; returns the complete events to forward now. */
   push(text: string): string {
@@ -440,9 +454,17 @@ export class SseUsageRelay {
     if (this.wire === 'anthropic') return this.relayAnthropic(event, json);
     const error = (json as { error?: unknown } | null)?.error;
     if (error !== undefined && error !== null) {
+      this.sawError = true;
       const upstream = readUpstreamError(JSON.stringify(json));
       const message = this.sanitize(upstream.message ?? 'The model provider reported an error.');
       return `data: ${JSON.stringify({ error: { message, type: upstream.type ?? 'api_error', code: upstream.code } })}\n\n`;
+    }
+    const finishing = (json as { choices?: unknown }).choices;
+    if (
+      Array.isArray(finishing) &&
+      finishing.some((choice) => (choice as { finish_reason?: unknown })?.finish_reason)
+    ) {
+      this.sawFinish = true;
     }
     const usage = parseUsage(json);
     if (!usage) return event;
@@ -460,6 +482,7 @@ export class SseUsageRelay {
   private relayAnthropic(event: string, json: unknown): string {
     const body = (json ?? {}) as { type?: unknown; error?: unknown; message?: { usage?: unknown }; usage?: unknown };
     if (body.type === 'error' || (body.error !== undefined && body.error !== null)) {
+      this.sawError = true;
       const upstream = readUpstreamError(JSON.stringify(json));
       const message = this.sanitize(upstream.message ?? 'The model provider reported an error.');
       const payload = { type: 'error', error: { type: upstream.type ?? 'api_error', message } };

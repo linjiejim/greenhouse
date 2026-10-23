@@ -42,7 +42,7 @@ interface SeenRequest {
   raw: string;
 }
 
-type Behavior = 'json' | 'stream' | 'hang' | 'silent' | 'error400' | 'error500';
+type Behavior = 'json' | 'stream' | 'hang' | 'silent' | 'cut' | 'eof' | 'error400' | 'error500';
 
 let upstream: Server;
 let upstreamUrl = '';
@@ -97,6 +97,16 @@ function handle(req: IncomingMessage, res: ServerResponse) {
         sse(res, chunk('partial'));
         res.on('close', () => markHangClosed());
         return; // never finishes; waits for the gateway to hang up
+      case 'cut':
+        res.writeHead(200, { 'content-type': 'text/event-stream' });
+        sse(res, chunk('partial'));
+        setTimeout(() => res.destroy(), 20); // connection dropped mid-answer
+        return;
+      case 'eof':
+        res.writeHead(200, { 'content-type': 'text/event-stream' });
+        sse(res, chunk('partial'));
+        setTimeout(() => res.end(), 20); // clean close, but no finish, usage or [DONE]
+        return;
       case 'silent':
         res.on('close', () => markHangClosed());
         return; // never answers, not even headers
@@ -506,6 +516,24 @@ describe('proxying', () => {
     await _waitForGatewayCalls();
     expect(await reservations(row.id)).toEqual([expect.objectContaining({ status: 'reserved' })]);
   });
+
+  it.each(['cut', 'eof'] as const)(
+    'ends a stream the upstream broke off (%s) with an error chunk and keeps the reservation',
+    async (how) => {
+      behavior = how;
+      const { secret, row } = await newKey(member);
+      const res = await chat(secret, { model: 'gw-test', stream: true, messages: [{ role: 'user', content: 'hi' }] });
+      const text = await res.text();
+      expect(text).toContain('partial');
+      const last = text.trim().split('\n\n').at(-1)!;
+      expect(JSON.parse(last.slice('data: '.length))).toMatchObject({
+        error: { type: 'api_error', code: 'upstream_interrupted' },
+      });
+      expect(text).not.toContain('127.0.0.1');
+      await _waitForGatewayCalls();
+      expect(await reservations(row.id)).toEqual([expect.objectContaining({ status: 'reserved' })]);
+    },
+  );
 
   it('refuses over budget before any provider I/O, with the bilingual message', async () => {
     await db.metering.setLimit({ scope_type: 'user', scope_id: member.id, limit_units: 0, actor_id: admin.id });

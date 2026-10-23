@@ -157,6 +157,14 @@ describe('usage', () => {
     expect(relay.push(usage + 'data: [DONE]\n\n')).toBe('data: [DONE]\n\n');
     expect(relay.usage).toEqual({ inputTokens: 3, outputTokens: 2, cachedTokens: 0, reasoningTokens: 0 });
     expect(relay.sawDone).toBe(true);
+    expect(relay.completed).toBe(true);
+
+    // No [DONE], but a finished choice and the final usage: complete. A delta alone: not.
+    const noDone = new SseUsageRelay(true);
+    noDone.push(delta);
+    expect(noDone.completed).toBe(false);
+    noDone.push('data: {"choices":[{"delta":{},"finish_reason":"stop"}],"usage":null}\n\n' + usage);
+    expect(noDone.completed).toBe(true);
 
     const sanitizing = new SseUsageRelay(true, (text) => text.replace('secret-host', '[redacted]'));
     const relayed = sanitizing.push('data: {"error":{"message":"overloaded at secret-host","code":"busy"}}\n\n');

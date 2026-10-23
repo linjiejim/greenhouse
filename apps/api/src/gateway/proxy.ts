@@ -547,6 +547,7 @@ export async function proxyCall(c: Context, input: ProxyCallInput): Promise<Resp
         const reader = upstreamBody.getReader();
         const decoder = new TextDecoder();
         upstream.touch();
+        let broken = false;
         try {
           for (;;) {
             const { done, value } = await reader.read();
@@ -559,6 +560,7 @@ export async function proxyCall(c: Context, input: ProxyCallInput): Promise<Resp
           if (rest && !out.aborted) await out.write(rest);
         } catch (err) {
           if (!upstream.reason) {
+            broken = true;
             logger.info('[gateway] upstream stream interrupted', { error: toErrorMessage(err) });
           }
         } finally {
@@ -566,9 +568,21 @@ export async function proxyCall(c: Context, input: ProxyCallInput): Promise<Resp
           // Close the upstream connection whatever happened (a no-op once it ended).
           void reader.cancel().catch(() => undefined);
         }
-        if (upstream.timedOut && !out.aborted) {
-          // The client is still there: end its stream with an error it can read.
-          await out.write(streamErrorEvent(input.wire, TIMEOUT_MESSAGE, 'timeout_error', 'upstream_timeout'));
+        // The client is still there but the answer is not complete: end its stream
+        // with an error it can read (the upstream's own error was already relayed).
+        if (!out.aborted && !relay.sawError) {
+          if (upstream.timedOut) {
+            await out.write(streamErrorEvent(input.wire, TIMEOUT_MESSAGE, 'timeout_error', 'upstream_timeout'));
+          } else if (broken || !relay.completed) {
+            await out.write(
+              streamErrorEvent(
+                input.wire,
+                'The model provider’s stream ended before the answer was complete. Try again.',
+                'api_error',
+                'upstream_interrupted',
+              ),
+            );
+          }
         }
         if (relay.usage) await settleCall(call, relay.usage);
         else
