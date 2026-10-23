@@ -28,14 +28,15 @@
 // ─── Registry ────────────────────────────────────────────
 
 /** Core groups render as fixed sections of Runtime Config; an extension uses its own id as the group. */
-export type WorkspaceSettingGroup = 'branding' | 'llm' | 'media' | 'search';
+export type WorkspaceSettingGroup = 'branding' | 'llm' | 'media' | 'search' | 'gateway';
 
 /**
  * Value shape stored in the `value` jsonb column:
  * 'string' (single line) and 'text' (multi-line) are JSON strings; 'json' is
- * an object validated per-key server-side (theme tokens).
+ * an object validated per-key server-side (theme tokens); 'boolean' is a JSON
+ * true/false (an env fallback reads `true` / `1` / `yes` / `on` as on).
  */
-export type WorkspaceSettingType = 'string' | 'text' | 'json';
+export type WorkspaceSettingType = 'string' | 'text' | 'json' | 'boolean';
 
 export interface WorkspaceSettingDef {
   /** Stable key, stored verbatim in `workspace_settings.key`. Never rename. */
@@ -219,6 +220,16 @@ const WORKSPACE_SETTINGS_LITERAL = [
     type: 'string',
     secret: true,
     env: 'BRAVE_SEARCH_API_KEY',
+  },
+  // ── Model gateway (members' own agents on the team's models) ──
+  {
+    key: 'gateway.enabled',
+    group: 'gateway',
+    label: 'Model gateway',
+    description:
+      "Lets members' own agents call the team's models with a personal gateway key at `/api/gateway/openai/v1`, metered to the member. Off by default.",
+    type: 'boolean',
+    env: 'GATEWAY_ENABLED',
   },
 ] as const satisfies readonly WorkspaceSettingDef[];
 

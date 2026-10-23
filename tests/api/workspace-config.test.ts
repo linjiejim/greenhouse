@@ -27,6 +27,13 @@ describe('validateWorkspaceValue', () => {
     expect(validateWorkspaceValue(def('branding.product_name'), 'x'.repeat(61)).ok).toBe(false);
   });
 
+  it('takes only true / false for a boolean switch (the model gateway)', () => {
+    expect(validateWorkspaceValue(def('gateway.enabled'), true)).toEqual({ ok: true, value: true });
+    expect(validateWorkspaceValue(def('gateway.enabled'), false)).toEqual({ ok: true, value: false });
+    expect(validateWorkspaceValue(def('gateway.enabled'), 'true').ok).toBe(false);
+    expect(validateWorkspaceValue(def('gateway.enabled'), 1).ok).toBe(false);
+  });
+
   it('validates base URLs as http(s)', () => {
     expect(validateWorkspaceValue(def('llm.base_url'), 'https://api.openai.com/v1').ok).toBe(true);
     expect(validateWorkspaceValue(def('llm.base_url'), 'ftp://x').ok).toBe(false);

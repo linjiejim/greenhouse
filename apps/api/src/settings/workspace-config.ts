@@ -108,6 +108,19 @@ export async function getWorkspaceValue(key: string): Promise<unknown> {
   return undefined;
 }
 
+const ENV_ON = new Set(['true', '1', 'yes', 'on']);
+
+/**
+ * A 'boolean' setting's effective value: the stored true/false, else its env
+ * var read as on for `true` / `1` / `yes` / `on`, else off.
+ */
+export async function getWorkspaceFlag(key: string): Promise<boolean> {
+  const value = await getWorkspaceValue(key);
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'string') return ENV_ON.has(value.trim().toLowerCase());
+  return false;
+}
+
 // ─── Env overlay ─────────────────────────────────────────
 
 /**
@@ -158,6 +171,11 @@ const DATA_URL_RE = /^data:([a-z0-9.+/-]+);base64,[A-Za-z0-9+/=]+$/i;
  */
 export function validateWorkspaceValue(def: WorkspaceSettingDef, raw: unknown): ValidationResult {
   const maxLength = def.maxLength ?? 2000;
+
+  if (def.type === 'boolean') {
+    if (typeof raw !== 'boolean') return { ok: false, error: `${def.key} must be true or false` };
+    return { ok: true, value: raw };
+  }
 
   if (def.type === 'string' || def.type === 'text') {
     if (typeof raw !== 'string') return { ok: false, error: `${def.key} must be a string` };
