@@ -5,9 +5,11 @@
  *
  * Below it, "Use the team's model quota": the OpenAI-compatible model gateway
  * (`/api/gateway/openai/v1`, Chat Completions + models only) with a personal
- * `ghgw_` key — config for OpenAI SDKs / OpenAI-compatible tools, curl and
- * Cursor. Codex is not listed: current codex-cli only speaks the Responses
- * API (`wire_api = "chat"` was removed), which the gateway does not serve yet.
+ * `ghgw_` key — Claude Code on the Anthropic surface (`/api/gateway/anthropic`,
+ * only when an Anthropic-wire upstream is configured), and OpenAI SDKs /
+ * OpenAI-compatible tools, curl and Cursor on Chat Completions. Codex is not
+ * listed: current codex-cli only speaks the Responses API (`wire_api = "chat"`
+ * was removed), which the gateway does not serve yet.
  */
 
 import React, { useState } from 'react';
@@ -51,11 +53,26 @@ function Snippet({ title, code }: { title: string; code: string }) {
   );
 }
 
-/** Copy-ready config for the model gateway; every value is what the gateway really accepts. */
+function UrlBox({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <div className="text-xs font-medium text-fg-secondary mb-1">{label}</div>
+      <code className="block truncate text-xs font-mono text-fg bg-surface-sunken rounded-lg px-2.5 py-2">{value}</code>
+    </div>
+  );
+}
+
+/**
+ * Copy-ready config for the model gateway; every value is what the gateway
+ * really accepts. The Claude Code part appears only when some model has an
+ * Anthropic-wire upstream (models.yaml `anthropic_base_url`).
+ */
 function GatewayGuide({ gateway, onOpenKeys }: { gateway: GatewayOverview; onOpenKeys: () => void }) {
   const t = useT();
   const base = gateway.base_url;
-  const model = gateway.models[0]?.id ?? 'flash';
+  const openaiModels = gateway.models.filter((entry) => entry.openai).map((entry) => entry.id);
+  const anthropicModels = gateway.models.filter((entry) => entry.anthropic).map((entry) => entry.id);
+  const model = openaiModels[0] ?? 'flash';
   const sdk = [`export OPENAI_BASE_URL=${base}`, 'export OPENAI_API_KEY=ghgw_…'].join('\n');
   const curl = [
     `curl ${base}/chat/completions \\`,
@@ -63,6 +80,20 @@ function GatewayGuide({ gateway, onOpenKeys }: { gateway: GatewayOverview; onOpe
     '  -H "Content-Type: application/json" \\',
     `  -d '{"model":"${model}","messages":[{"role":"user","content":"Hello"}]}'`,
   ].join('\n');
+  const claudeModel = anthropicModels[0];
+  const claude = claudeModel
+    ? [
+        `export ANTHROPIC_BASE_URL=${gateway.anthropic_base_url}`,
+        'export ANTHROPIC_AUTH_TOKEN=ghgw_…',
+        `export ANTHROPIC_MODEL=${claudeModel}`,
+        `export ANTHROPIC_DEFAULT_OPUS_MODEL=${claudeModel}`,
+        `export ANTHROPIC_DEFAULT_SONNET_MODEL=${claudeModel}`,
+        `export ANTHROPIC_DEFAULT_HAIKU_MODEL=${claudeModel}`,
+        `export CLAUDE_CODE_SUBAGENT_MODEL=${claudeModel}`,
+        'export CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1',
+        'claude',
+      ].join('\n')
+    : null;
   return (
     <Card className="p-4 space-y-4" data-testid="gateway-guide">
       <div className="flex items-start gap-2">
@@ -73,31 +104,37 @@ function GatewayGuide({ gateway, onOpenKeys }: { gateway: GatewayOverview; onOpe
         </div>
       </div>
       {!gateway.enabled && <p className="text-xs text-warning leading-relaxed">{t('gateway.disabledNotice')}</p>}
-      <div className="grid gap-3 sm:grid-cols-2">
-        <div>
-          <div className="text-xs font-medium text-fg-secondary mb-1">{t('gateway.baseUrl')}</div>
-          <code className="block truncate text-xs font-mono text-fg bg-surface-sunken rounded-lg px-2.5 py-2">
-            {base}
-          </code>
-        </div>
-        <div>
-          <div className="text-xs font-medium text-fg-secondary mb-1">{t('gateway.modelIds')}</div>
-          <code className="block truncate text-xs font-mono text-fg bg-surface-sunken rounded-lg px-2.5 py-2">
-            {gateway.models.map((entry) => entry.id).join(', ') || '—'}
-          </code>
-        </div>
-      </div>
       <p className="text-xs text-fg-muted leading-relaxed">
         {t('gateway.guideKey')}{' '}
         <button type="button" className="text-primary-fg hover:underline" onClick={onOpenKeys}>
           {t('gateway.guideKeyLink')}
         </button>
       </p>
-      <Snippet title={t('gateway.guideSdk')} code={sdk} />
-      <Snippet title={t('gateway.guideCurl')} code={curl} />
-      <p className="text-xs text-fg-muted leading-relaxed">{t('gateway.guideCursor')}</p>
+      {claude && (
+        <div className="space-y-3" data-testid="gateway-guide-claude">
+          <h4 className="text-xs font-semibold text-fg">{t('gateway.guideClaudeTitle')}</h4>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <UrlBox label={t('gateway.anthropicBaseUrl')} value={gateway.anthropic_base_url} />
+            <UrlBox label={t('gateway.modelIds')} value={anthropicModels.join(', ')} />
+          </div>
+          <Snippet title={t('gateway.guideClaude')} code={claude} />
+          <p className="text-xs text-fg-muted leading-relaxed">{t('gateway.guideClaudeNote')}</p>
+        </div>
+      )}
+      <div className="space-y-3">
+        <h4 className="text-xs font-semibold text-fg">{t('gateway.guideOpenAiTitle')}</h4>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <UrlBox label={t('gateway.baseUrl')} value={base} />
+          <UrlBox label={t('gateway.modelIds')} value={openaiModels.join(', ') || '—'} />
+        </div>
+        <Snippet title={t('gateway.guideSdk')} code={sdk} />
+        <Snippet title={t('gateway.guideCurl')} code={curl} />
+        <p className="text-xs text-fg-muted leading-relaxed">{t('gateway.guideCursor')}</p>
+      </div>
       <p className="text-xs text-fg-muted leading-relaxed">{t('gateway.guideLimits')}</p>
-      <p className="text-xs text-fg-muted leading-relaxed">{t('gateway.guideCodex')}</p>
+      <p className="text-xs text-fg-muted leading-relaxed">
+        {claude ? t('gateway.guideCodex') : t('gateway.guideNoAnthropic')}
+      </p>
     </Card>
   );
 }

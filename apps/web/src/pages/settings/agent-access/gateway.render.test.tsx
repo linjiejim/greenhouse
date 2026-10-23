@@ -11,7 +11,11 @@ import { ConnectGuide } from './connect';
 const overview: GatewayOverview = {
   enabled: false,
   base_url: 'https://hub.example.com/api/gateway/openai/v1',
-  models: [{ id: 'flash', name: 'Default model' }],
+  anthropic_base_url: 'https://hub.example.com/api/gateway/anthropic',
+  models: [
+    { id: 'flash', name: 'Default model', openai: true, anthropic: false },
+    { id: 'deepseek-flash', name: 'DeepSeek', openai: true, anthropic: true },
+  ],
   keys: [
     {
       id: 'gwk_1',
@@ -23,6 +27,8 @@ const overview: GatewayOverview = {
       revoked_at: null,
       created_at: '2026-10-20T00:00:00.000Z',
       status: 'active',
+      month_spend_usd_micros: 1_250_000,
+      month_calls: 42,
     },
   ],
 };
@@ -68,6 +74,11 @@ describe('Settings › Agent connections › Model gateway', () => {
     expect(view.querySelector('[data-testid="gateway-base-url"]')?.textContent).toBe(overview.base_url);
     expect(view.textContent).toContain('Build script');
     expect(view.textContent).toContain('ghgw_AbCdEfG…');
+    expect(view.textContent).toContain('$1.25');
+    expect(view.textContent).toContain('42 calls');
+    expect(view.querySelector('[data-testid="gateway-anthropic-base-url"]')?.textContent).toBe(
+      overview.anthropic_base_url,
+    );
     // One overview load and one list load — no re-render loop.
     expect(fetchGatewayOverview.mock.calls.length).toBeLessThanOrEqual(3);
   });
@@ -85,5 +96,22 @@ describe('Settings › Agent connections › Model gateway', () => {
     expect(guide).toContain(`export OPENAI_BASE_URL=${overview.base_url}`);
     expect(guide).toContain(`curl ${overview.base_url}/chat/completions`);
     expect(guide).toContain('"model":"flash"');
+    const claude = view.querySelector('[data-testid="gateway-guide-claude"]')?.textContent ?? '';
+    expect(claude).toContain(`export ANTHROPIC_BASE_URL=${overview.anthropic_base_url}`);
+    expect(claude).toContain('export ANTHROPIC_AUTH_TOKEN=ghgw_…');
+    expect(claude).toContain('export ANTHROPIC_MODEL=deepseek-flash');
+    expect(claude).toContain('ANTHROPIC_DEFAULT_HAIKU_MODEL=deepseek-flash');
+  });
+
+  it('leaves Claude Code out when no model has an Anthropic endpoint', async () => {
+    const view = await render(
+      createElement(ConnectGuide, {
+        mcpUrl: 'https://hub.example.com/api/mcp',
+        gateway: { ...overview, models: overview.models.map((model) => ({ ...model, anthropic: false })) },
+        onOpenGatewayKeys: () => undefined,
+      }),
+    );
+    expect(view.querySelector('[data-testid="gateway-guide-claude"]')).toBeNull();
+    expect(view.querySelector('[data-testid="gateway-guide"]')?.textContent).toContain('anthropic_base_url');
   });
 });

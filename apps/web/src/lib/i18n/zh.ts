@@ -2918,10 +2918,10 @@ const zh: Messages = {
   gateway: {
     title: '模型网关',
     intro:
-      '你自己的 Agent 和脚本（Cursor、OpenAI SDK、任何 OpenAI 兼容工具）可以用个人 Key 通过 OpenAI 兼容端点调用团队的模型。每次调用都记在你本月的额度里，和你在 Greenhouse 里的其他花费一样。',
+      '你自己的 Agent 和脚本（Claude Code、Cursor、OpenAI SDK、任何 OpenAI 兼容工具）可以用个人 Key 调用团队的模型。每次调用都记在你本月的额度里，和你在 Greenhouse 里的其他花费一样。',
     baseUrl: 'Base URL',
     modelIds: '模型 id',
-    openGuide: 'OpenAI 兼容工具、Cursor、curl 接入配置',
+    openGuide: 'Claude Code、OpenAI 兼容工具与 curl 接入配置',
     disabledNotice:
       '本工作区的模型网关未开启：不能新建 Key，调用都会被拒绝。管理员可以在 管理后台 › 运行配置（模型网关）里开启。',
     loadFailed: '模型网关加载失败。',
@@ -2954,14 +2954,13 @@ const zh: Messages = {
     guideIntro: '把任何 OpenAI 兼容客户端指向网关，API Key 填你的网关 Key。调用记在你本月的额度里。',
     guideKey: 'API Key 是网关 Key（ghgw_…）：',
     guideKeyLink: '到「模型网关」新建',
-    guideCodex:
-      'Codex 和 Claude Code 暂时接不了：当前的 Codex 只用 OpenAI Responses API，Claude Code 只用 Anthropic Messages API，而网关目前只提供 Chat Completions。',
+    guideCodex: 'Codex 暂时接不了：当前的 Codex 只用 OpenAI Responses API，网关还没有提供。',
     guideSdk: 'OpenAI SDK 与大多数 OpenAI 兼容工具',
     guideCurl: 'curl',
     guideCursor:
       'Cursor：设置 › Models › OpenAI API Key，填网关 Key，打开「Override OpenAI Base URL」填上面的 Base URL，再把模型 id 加为自定义模型。Cursor 从它自己的服务器发起调用，所以只有 Greenhouse 能从公网访问时才可用。',
     guideLimits:
-      '支持：GET /models 与 POST /chat/completions（流式与非流式、tools / function calling、response_format）。暂不支持：Responses API、embeddings、生图与 Anthropic Messages。',
+      '支持：GET /models 与 POST /chat/completions（OpenAI），GET /v1/models 与 POST /v1/messages（Anthropic），流式与非流式，tools 与输出格式原样透传。暂不支持：Responses API、embeddings 与生图。',
     adminIntro: '成员给模型网关建的个人 Key，以及网关总开关。撤销立即生效，成员不会收到通知，请另行告知。',
     adminSwitch: '模型网关',
     adminSwitchHelp: '关闭时所有网关调用都会被拒绝，成员也不能新建 Key。',
@@ -2970,6 +2969,16 @@ const zh: Messages = {
     adminEmpty: '还没有成员建过网关 Key。',
     adminRevokeDescription: '用这把 Key 的 Agent 会立即失效，{owner} 不会收到通知。',
     adminLoadFailed: '网关 Key 加载失败。',
+    anthropicBaseUrl: 'ANTHROPIC_BASE_URL',
+    guideClaudeTitle: 'Claude Code',
+    guideClaude: 'Shell（或 ~/.claude/settings.json 的 env）',
+    guideClaudeNote:
+      'Claude Code 每种用途各要一个模型，都指向网关的模型 id；CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC 让它不再为别的事去连 Anthropic。',
+    guideOpenAiTitle: 'OpenAI 兼容客户端',
+    guideNoAnthropic:
+      'Claude Code 需要配置了 Anthropic 兼容端点的模型（models.yaml 的 anthropic_base_url），本部署还没有。Codex 暂时接不了：它只用 OpenAI Responses API。',
+    colSpend: '本月',
+    callsCount: '{count} 次',
   },
 
   metering: {

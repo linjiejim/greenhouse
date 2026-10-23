@@ -1041,6 +1041,19 @@ function GatewayTab() {
             ),
           },
           {
+            key: 'month_spend_usd_micros',
+            label: t('gateway.colSpend'),
+            type: 'custom',
+            align: 'right',
+            width: '8rem',
+            render: (row) => (
+              <div className="text-right">
+                <div className="font-mono tabular-nums text-xs text-fg">{formatUsd(row.month_spend_usd_micros)}</div>
+                <div className="text-[10px] text-fg-faint">{t('gateway.callsCount', { count: row.month_calls })}</div>
+              </div>
+            ),
+          },
+          {
             key: 'last_used_at',
             label: t('gateway.colLastUsed'),
             type: 'custom',

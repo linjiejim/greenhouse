@@ -2969,10 +2969,10 @@ export default {
   gateway: {
     title: 'Model gateway',
     intro:
-      "Your own agents and scripts (Cursor, OpenAI SDKs, any OpenAI-compatible tool) can use the team's models through an OpenAI-compatible endpoint with a personal key. Every call is charged to your monthly budget, like everything else you spend in Greenhouse.",
+      "Your own agents and scripts (Claude Code, Cursor, OpenAI SDKs, any OpenAI-compatible tool) can use the team's models with a personal key. Every call is charged to your monthly budget, like everything else you spend in Greenhouse.",
     baseUrl: 'Base URL',
     modelIds: 'Model ids',
-    openGuide: 'Setup for OpenAI-compatible tools, Cursor and curl',
+    openGuide: 'Setup for Claude Code, OpenAI-compatible tools and curl',
     disabledNotice:
       'The model gateway is turned off for this workspace, so keys cannot be created and calls are refused. An administrator can turn it on in Administration › Runtime Config (Model gateway).',
     loadFailed: 'Could not load the model gateway.',
@@ -3007,13 +3007,13 @@ export default {
     guideKey: 'The API key is a gateway key (ghgw_…):',
     guideKeyLink: 'create one under Model gateway',
     guideCodex:
-      'Codex and Claude Code cannot use the gateway yet: current Codex only speaks the OpenAI Responses API and Claude Code the Anthropic Messages API, and the gateway serves Chat Completions only.',
+      'Codex cannot use the gateway yet: current Codex only speaks the OpenAI Responses API, which the gateway does not serve.',
     guideSdk: 'OpenAI SDKs and most OpenAI-compatible tools',
     guideCurl: 'curl',
     guideCursor:
       'Cursor: Settings › Models › OpenAI API Key — paste the gateway key, turn on “Override OpenAI Base URL” with the base URL above and add the model ids as custom models. Cursor calls from its own servers, so this only works when Greenhouse is reachable from the internet.',
     guideLimits:
-      'Supported: GET /models and POST /chat/completions, streaming or not, with tools / function calling and response_format. Not yet: the Responses API, embeddings, images and Anthropic Messages.',
+      'Supported: GET /models and POST /chat/completions (OpenAI), GET /v1/models and POST /v1/messages (Anthropic) — streaming or not, with tools and response formats passed through. Not yet: the Responses API, embeddings and images.',
     adminIntro:
       "Members' personal keys for the model gateway, and the switch that turns it on. Revoking a key stops it at once; the member is not told, so tell them.",
     adminSwitch: 'Model gateway',
@@ -3023,6 +3023,16 @@ export default {
     adminEmpty: 'No member has created a gateway key.',
     adminRevokeDescription: 'Agents using this key stop working immediately. {owner} is not notified.',
     adminLoadFailed: 'Could not load gateway keys.',
+    anthropicBaseUrl: 'ANTHROPIC_BASE_URL',
+    guideClaudeTitle: 'Claude Code',
+    guideClaude: 'Shell (or the env block of ~/.claude/settings.json)',
+    guideClaudeNote:
+      'Claude Code asks for a model per role; point every role at a gateway model id. CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC keeps it from calling Anthropic for anything else.',
+    guideOpenAiTitle: 'OpenAI-compatible clients',
+    guideNoAnthropic:
+      'Claude Code needs a model with an Anthropic-compatible endpoint (models.yaml anthropic_base_url); none is configured on this deployment. Codex cannot use the gateway yet: it only speaks the OpenAI Responses API.',
+    colSpend: 'This month',
+    callsCount: '{count} calls',
   },
 
   metering: {

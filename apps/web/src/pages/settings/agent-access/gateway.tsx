@@ -15,6 +15,7 @@ import { FormActions } from '../../../components/form';
 import { AlertTriangle, Check, Copy, Cpu, Key } from '../../../lib/icons';
 import { createGatewayKey, fetchGatewayOverview, revokeGatewayKey } from '../../../lib/api/gateway';
 import { formatDate } from '../../../lib/utils';
+import { formatUsd } from '../../../lib/metering/format';
 import { useT } from '../../../lib/i18n';
 import type { TagTone } from '../../../lib/utils';
 
@@ -176,6 +177,19 @@ export function GatewayKeys({ onOpenGuide }: { onOpenGuide: () => void }) {
             ),
           },
           {
+            key: 'month_spend_usd_micros',
+            label: t('gateway.colSpend'),
+            type: 'custom',
+            align: 'right',
+            width: '8rem',
+            render: (row) => (
+              <div className="text-right">
+                <div className="font-mono tabular-nums text-xs text-fg">{formatUsd(row.month_spend_usd_micros)}</div>
+                <div className="text-[10px] text-fg-faint">{t('gateway.callsCount', { count: row.month_calls })}</div>
+              </div>
+            ),
+          },
+          {
             key: 'last_used_at',
             label: t('gateway.colLastUsed'),
             type: 'custom',
@@ -261,6 +275,12 @@ export function GatewayKeys({ onOpenGuide }: { onOpenGuide: () => void }) {
           <div>
             <div className="text-xs font-medium text-fg-secondary mb-1">{t('gateway.baseUrl')}</div>
             <CopyField value={overview.base_url} testId="gateway-base-url" />
+          </div>
+        )}
+        {overview?.models.some((model) => model.anthropic) && (
+          <div>
+            <div className="text-xs font-medium text-fg-secondary mb-1">{t('gateway.anthropicBaseUrl')}</div>
+            <CopyField value={overview.anthropic_base_url} testId="gateway-anthropic-base-url" />
           </div>
         )}
         <Button size="sm" variant="secondary" onClick={onOpenGuide}>
