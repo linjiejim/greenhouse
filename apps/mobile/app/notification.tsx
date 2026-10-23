@@ -77,11 +77,13 @@ export default function NotificationPage() {
     <View style={styles.root}>
       <Stack.Screen options={{ title: t('notifications.detailTitle') }} />
       {!item ? (
-        failed || !id ? (
-          <EmptyState icon="alert" title={t('notifications.notFound')} style={styles.state} />
-        ) : (
-          <LoadingState style={styles.state} />
-        )
+        <ScrollView contentInsetAdjustmentBehavior="automatic" contentContainerStyle={styles.grow}>
+          {failed || !id ? (
+            <EmptyState icon="alert" title={t('notifications.notFound')} style={styles.state} />
+          ) : (
+            <LoadingState style={styles.state} />
+          )}
+        </ScrollView>
       ) : (
         <ScrollView contentInsetAdjustmentBehavior="automatic" contentContainerStyle={styles.content}>
           <View style={styles.card}>
@@ -107,6 +109,7 @@ export default function NotificationPage() {
 
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.groupedBackground },
+  grow: { flexGrow: 1 },
   state: { paddingTop: space.xxxl },
   content: { padding: space.margin, paddingBottom: space.xxxl },
   card: {
