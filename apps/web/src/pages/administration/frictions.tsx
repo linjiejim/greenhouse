@@ -54,7 +54,7 @@ const STATUS_TONE: Record<FrictionStatus, 'danger' | 'warning' | 'success' | 'ne
   archived: 'neutral',
 };
 
-export function FrictionsPanel({ tabs }: { tabs?: React.ReactNode }) {
+export function FrictionsPanel({ tabs, actions }: { tabs?: React.ReactNode; actions?: React.ReactNode }) {
   const t = useT();
   const [statusFilter, setStatusFilter] = useState<'open' | FrictionStatus>('open');
   const [mining, setMining] = useState(false);
@@ -244,6 +244,7 @@ export function FrictionsPanel({ tabs }: { tabs?: React.ReactNode }) {
       moduleId="admin.issues"
       layout="list"
       tabs={tabs}
+      actions={actions}
       // A one-line page note, like the Activity log's — not a boxed card above the list.
       notice={<p className="text-xs text-fg-muted">{t('frictions.description')}</p>}
     >

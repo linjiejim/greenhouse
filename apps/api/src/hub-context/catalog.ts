@@ -17,6 +17,7 @@
 
 import type { DatabaseProvider, UserRow } from '@greenhouse/db';
 import type { ActorContext } from '@greenhouse/platform-kernel';
+import type { TableBaseRole } from '@greenhouse/types/tables';
 import type {
   DataCatalog,
   DataCatalogBase,
@@ -94,7 +95,7 @@ async function tablesBases(input: CatalogInput): Promise<{ bases: DataCatalogBas
         visibility: 'private' | 'team';
         owner_id: string;
         updated_at: string;
-        role: string;
+        role: TableBaseRole;
       }>;
     }
   ).bases;

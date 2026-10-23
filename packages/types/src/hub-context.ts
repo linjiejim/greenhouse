@@ -7,6 +7,8 @@
  * apps/api/src/retro.
  */
 
+import type { TableBaseRole } from './tables.js';
+
 /** MCP resources a member's agent can read for team context. */
 export const TEAM_CONTEXT_URIS = {
   overview: 'greenhouse://context/overview',
@@ -88,7 +90,7 @@ export interface DataCatalogBase {
   description: string | null;
   visibility: 'private' | 'team';
   /** The member's role in the base. */
-  role: string;
+  role: TableBaseRole;
   owner: { id: string; name: string } | null;
   last_changed_at: string | null;
   tables: DataCatalogTable[];

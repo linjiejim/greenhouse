@@ -738,6 +738,10 @@ export default {
     brandingDesc: 'Product name, logo and theme tokens for this workspace',
     mcpAccess: 'MCP Access',
     mcpAccessDesc: 'OAuth clients for external agents (MCP server)',
+    teamContext: 'Team context',
+    teamContextDesc: "What members' agents receive: conventions, glossary, and when the monthly retro runs",
+    dataCatalog: 'Data catalog',
+    dataCatalogDesc: 'The data you can read, and how your agent reaches each source',
     internalKnowledge: 'Internal Knowledge',
     internalKnowledgeDesc: 'Internal team documents',
     personalKnowledge: 'Personal Knowledge',
@@ -770,6 +774,72 @@ export default {
       requests: 'Feature requests',
       frictions: 'Frictions',
     },
+  },
+
+  teamContext: {
+    intro:
+      "Members' agents receive this over MCP when they start a task (the team_context tool and the greenhouse://context/* resources), along with the SkillHub skills and saved prompts each member can use. Only team documents can be picked; one that is later made private or archived stops being served.",
+    conventionsTitle: 'Team conventions',
+    conventionsDesc:
+      'Documents that say how the team works. Every member’s agent follows them. Up to {count} documents.',
+    noConventions: 'No conventions picked yet.',
+    pickDocument: 'Choose a team document',
+    addConvention: 'Add',
+    remove: 'Remove {title}',
+    glossaryTitle: 'Glossary',
+    glossaryDesc: 'One document with the team’s terms, so agents read your words the way you mean them.',
+    glossaryNone: 'No glossary',
+    timezoneTitle: 'Workspace time zone',
+    timezoneDesc: 'The monthly retro is written into the knowledge base at 09:00 on the 1st, in this zone.',
+    timezoneLabel: 'IANA time zone',
+    timezoneDefault: 'In effect: {zone}. Leave empty for the default.',
+    nextRetro: 'Next retro: {date}',
+    problemHint: 'Not served to agents until this is fixed',
+    problem: {
+      missing: 'Deleted',
+      not_team: 'Not team-visible',
+      archived: 'Archived',
+    },
+    saved: 'Team context saved',
+    saveFailed: 'Could not save the team context',
+    loadFailed: 'Could not load the team context',
+  },
+
+  retro: {
+    generate: 'Generate this month’s retro',
+    generating: 'Generating…',
+    done: '{month} retro written to the knowledge base',
+    open: 'Open {month} retro',
+    failed: 'Could not generate the retro',
+    skipped: {
+      over_budget: '{month} retro written without suggestions: the team’s model budget is used up',
+      no_model: '{month} retro written without suggestions: no model is configured',
+      failed: '{month} retro written without suggestions: the model call failed',
+    },
+  },
+
+  dataCatalog: {
+    open: 'Data catalog',
+    intro:
+      'The data you can read, and how your own agent reaches each source over MCP. Counts only — open a base to see its records.',
+    basesTitle: 'Tables bases',
+    extensionsTitle: 'Other data sources',
+    truncated: 'Showing the first {count} bases.',
+    owner: 'Owner: {name}',
+    lastChange: 'Last change {date}',
+    rows: '{count} rows',
+    reach: 'How your agent reaches it',
+    access: {
+      read: 'read',
+      write: 'write',
+    },
+    scope: 'scope mcp:{group}',
+    inAppOnly: 'in Greenhouse chat only',
+    recordKinds: 'Searchable records: {kinds}',
+    export: 'Export {type}',
+    emptyTitle: 'No data sources you can read yet',
+    emptyDescription: 'Tables bases shared with you and data your administrator connects will appear here.',
+    loadFailed: 'Could not load the data catalog',
   },
 
   activity: {
