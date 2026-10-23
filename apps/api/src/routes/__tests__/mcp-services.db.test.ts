@@ -28,6 +28,7 @@ const fakes = vi.hoisted(() => ({
   search: vi.fn(),
   extract: vi.fn(),
   vision: vi.fn(),
+  edits: [] as FormData[],
 }));
 
 vi.mock('../../storage/uploads.js', async (importOriginal) => {
@@ -146,6 +147,7 @@ beforeEach(async () => {
     created_by: member.id,
   });
   fakes.objects.clear();
+  fakes.edits.length = 0;
   fakes.search.mockReset().mockResolvedValue([{ title: 'Result', url: 'https://example.com/a', snippet: 'about a' }]);
   fakes.extract.mockReset().mockResolvedValue({
     title: 'Page',
@@ -157,8 +159,12 @@ beforeEach(async () => {
   fakes.vision.mockReset().mockResolvedValue({ text: 'A tiny dot.', usage: { inputTokens: 120, outputTokens: 8 } });
   vi.stubGlobal(
     'fetch',
-    vi.fn(async (url: string) => {
+    vi.fn(async (url: string, init?: RequestInit) => {
       if (String(url).startsWith('https://images.test/v1/images/generations')) {
+        return new Response(JSON.stringify({ data: [{ b64_json: PNG.toString('base64') }] }), { status: 200 });
+      }
+      if (String(url).startsWith('https://images.test/v1/images/edits')) {
+        fakes.edits.push(init?.body as FormData);
         return new Response(JSON.stringify({ data: [{ b64_json: PNG.toString('base64') }] }), { status: 200 });
       }
       throw new Error(`unexpected fetch ${url}`);
@@ -296,6 +302,40 @@ describe('MCP service tools: metering', () => {
     const facts = await serviceFacts('image_generation');
     expect(facts).toEqual([expect.objectContaining({ provider: 'media', client: 'mcp', oauth_client_id: clientId })]);
     expect(Number(facts[0]!.cost_usd_micros)).toBe(5_000);
+  });
+
+  it('edits an image it generated into Files, by file id', async () => {
+    const client = await connect(ALL);
+    const generated = await call(client, 'generate_image', { action: 'generate', prompt: 'a seedling' });
+    const { file_id: fileId } = JSON.parse(generated.content[0]!.text) as { file_id: number };
+
+    const edited = await call(client, 'generate_image', { action: 'edit', prompt: 'make it red', file_ids: [fileId] });
+    expect(edited.isError).toBeFalsy();
+    const output = JSON.parse(edited.content[0]!.text) as Record<string, unknown>;
+    expect(output).toMatchObject({ success: true, reference_images: [`files:${fileId}`] });
+    expect(output.file_id).not.toBe(fileId);
+    expect(fakes.edits).toHaveLength(1);
+    const sent = fakes.edits[0]!.getAll('image') as File[];
+    expect(sent).toHaveLength(1);
+    expect(Buffer.from(await sent[0]!.arrayBuffer()).equals(PNG)).toBe(true);
+  });
+
+  it("refuses another member's private file as a reference before anything is charged", async () => {
+    const other = await createInternalTestUser(db, { email: `${unique('svc-ref-other')}@test.local` });
+    const caller = { db, userId: other.id, actor: delegatedAgentActor({ userId: other.id }) };
+    const uploaded = await uploadCabinetFile(caller, { shelf: 'personal', name: 'private.png', bytes: PNG });
+    if ('error' in uploaded) throw new Error(uploaded.error);
+
+    const client = await connect(ALL);
+    const result = await call(client, 'generate_image', {
+      action: 'edit',
+      prompt: 'use it',
+      file_ids: [uploaded.file.id],
+    });
+    expect(result.isError).toBe(true);
+    expect(result.content[0]!.text).toMatch(/No file with id/);
+    expect(fakes.edits).toHaveLength(0);
+    expect(await serviceFacts('image_generation')).toEqual([]);
   });
 
   it('returns an over-budget refusal as a tool error in both languages', async () => {

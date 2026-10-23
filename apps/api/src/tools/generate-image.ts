@@ -42,7 +42,7 @@ import {
   unitPriceSnapshot,
 } from '../usage/pricing.js';
 import { findBudgetRefusal } from '../usage/budget-errors.js';
-import { cabinetDownloadUrl, uploadCabinetFile } from '../drive/kb-cabinet.js';
+import { cabinetDownloadUrl, readCabinetFileBytes, uploadCabinetFile } from '../drive/kb-cabinet.js';
 import { delegatedAgentActor } from '../platform/actor.js';
 
 /** An image call that never reported back is charged at its estimate after this long. */
@@ -159,12 +159,50 @@ async function persistUpload(image: GeneratedImage): Promise<string> {
  * Load a reference image (for edit) by upload id or /api/upload/ URL, from
  * storage (COS with local-disk fallback). Throws if it doesn't exist.
  */
-async function loadReferenceImage(ref: string): Promise<{ buffer: Buffer; mime: string; filename: string }> {
+interface ReferenceImage {
+  buffer: Buffer;
+  mime: string;
+  filename: string;
+}
+
+/** The largest Files image used as a reference. */
+const MAX_REFERENCE_FILE_BYTES = 20 * 1024 * 1024;
+
+async function loadReferenceImage(ref: string): Promise<ReferenceImage> {
   const id = ref.replace(/^\/api\/upload\//, '');
   const stored = await getUpload(id);
   if (!stored) throw new Error(`Image not found: ${ref}`);
   const mime = stored.contentType.startsWith('image/') ? stored.contentType : 'image/png';
   return { buffer: stored.buffer, mime, filename: basename(id) };
+}
+
+/**
+ * A reference image from Files, by the id files_query (or a previous
+ * generate_image on MCP) returned — only a file the caller may read under
+ * drive access (team shelf or their own).
+ */
+async function loadFilesReference(ctx: GenerateImageToolContext, fileId: number): Promise<ReferenceImage> {
+  const read = await readCabinetFileBytes(ctx, { fileId, maxBytes: MAX_REFERENCE_FILE_BYTES });
+  if ('error' in read) throw new Error(read.error);
+  const mime = detectImageContentType(read.bytes);
+  if (!mime) throw new Error(`"${read.file.name}" (file ${fileId}) is not a PNG, JPEG, WebP or GIF image.`);
+  return { buffer: read.bytes, mime, filename: read.file.name };
+}
+
+/** Every reference image of one call, loaded before anything is reserved or sent. */
+async function loadReferences(ctx: GenerateImageToolContext, input: GenerateImageInput): Promise<ReferenceImage[]> {
+  const uploads = input.images ?? [];
+  const files = input.file_ids ?? [];
+  if (uploads.length + files.length > 4) throw new Error('At most 4 reference images (images + file_ids).');
+  return [
+    ...(await Promise.all(uploads.map((ref) => loadReferenceImage(ref)))),
+    ...(await Promise.all(files.map((id) => loadFilesReference(ctx, id)))),
+  ];
+}
+
+/** How the result names its references. */
+function referenceNames(input: GenerateImageInput): string[] {
+  return [...(input.images ?? []), ...(input.file_ids ?? []).map((id) => `files:${id}`)];
 }
 
 // ─── Tool Schema ─────────────────────────────────────────
@@ -202,6 +240,14 @@ const generateImageSchema = z.object({
         'On "generate", these are composited into the new image and reproduced as-is — ' +
         'use this whenever the output must contain a real asset (logo, brand mark, product photo) ' +
         'instead of describing that asset in the prompt and letting the model redraw it.',
+    ),
+  file_ids: z
+    .array(z.number().int().positive())
+    .max(4)
+    .optional()
+    .describe(
+      'Reference images in Files (档案库), by file id — e.g. the file_id a previous generate_image returned, ' +
+        'to edit it further. Used like `images`; at most 4 references in total.',
     ),
 });
 
@@ -280,7 +326,7 @@ async function callGenerate(prompt: string, size: string, onProviderIo: () => vo
  */
 async function callEdit(
   prompt: string,
-  imagePaths: string[],
+  references: ReferenceImage[],
   size: string | undefined,
   onProviderIo: () => void,
 ): Promise<ImageProviderResult> {
@@ -293,8 +339,7 @@ async function callEdit(
   formData.append('quality', QUALITY);
   if (size) formData.append('size', size);
 
-  for (const imgPath of imagePaths) {
-    const { buffer, mime, filename } = await loadReferenceImage(imgPath);
+  for (const { buffer, mime, filename } of references) {
     const blob = new Blob([new Uint8Array(buffer)], { type: mime });
     formData.append('image', blob, filename);
   }
@@ -339,7 +384,7 @@ IMPORTANT — never describe a logo, brand mark, or other fixed asset in the pro
 
 MARKED-UP REVISIONS — given an original plus a copy carrying the user's drawn marks, use action "edit" and pass BOTH in \`images\`, clean original FIRST — edits build on the first image, so leading with the marked copy bakes the ink in. Marks say WHERE; the text says WHAT. Never redraw the marks.
 
-For an agent connected over MCP or the Agent API, every image is saved as a new file on your member's personal Files shelf: the result gives its file_id and, where the deployment keeps files in object storage, a download link valid for a few minutes. Each image is paid by the team.`,
+For an agent connected over MCP or the Agent API, every image is saved as a new file on your member's personal Files shelf: the result gives its file_id and, where the deployment keeps files in object storage, a download link valid for a few minutes. To change it, call again with action "edit" and that id in \`file_ids\` (any image in Files you can read works the same way). Each image is paid by the team.`,
   category: 'team',
   is_global: true,
   icon: 'Palette',
@@ -500,7 +545,7 @@ export function createGenerateImageTool(ctx: GenerateImageToolContext) {
             const snapped = input.size && input.size !== size;
             // Reference assets force the edits endpoint — it is the only one that
             // accepts them (see callEdit).
-            const refs = input.images ?? [];
+            const refs = await loadReferences(ctx, input);
             logger.info(
               `[GenerateImage] 🎨 Generating: "${input.prompt.slice(0, 80)}..." size=${size} quality=${QUALITY}` +
                 (snapped ? ` (snapped from ${input.size})` : '') +
@@ -528,7 +573,7 @@ export function createGenerateImageTool(ctx: GenerateImageToolContext) {
               prompt: input.prompt,
               // Surface the snap so an unsupported request isn't invisibly rewritten.
               ...(snapped ? { requested_size: input.size } : {}),
-              ...(refs.length ? { reference_images: refs } : {}),
+              ...(refs.length ? { reference_images: referenceNames(input) } : {}),
             };
           }
 
@@ -536,22 +581,22 @@ export function createGenerateImageTool(ctx: GenerateImageToolContext) {
             if (!input.prompt) {
               return { error: 'prompt is required for edit' };
             }
-            if (!input.images || input.images.length === 0) {
+            const images = await loadReferences(ctx, input);
+            if (images.length === 0) {
               return {
                 error:
-                  'At least one reference image is required for edit. Pass upload IDs or /api/upload/ URLs — ' +
-                  'they can come from a user upload or from an existing asset (e.g. a logo embedded in a knowledge-base doc).',
+                  'At least one reference image is required for edit. Pass upload IDs or /api/upload/ URLs in images, ' +
+                  'or Files ids in file_ids — e.g. a user upload, an asset embedded in a knowledge-base doc, or a file_id generate_image returned.',
               };
             }
             // Omitted size stays omitted: a plain edit should keep the source's shape,
             // which is what the upstream does by default. A stated size is still snapped.
             const editSize = input.size ? resolveSize(input.size) : undefined;
             logger.info(
-              `[GenerateImage] ✏️ Editing ${input.images.length} image(s): "${input.prompt.slice(0, 80)}..."` +
+              `[GenerateImage] ✏️ Editing ${images.length} image(s): "${input.prompt.slice(0, 80)}..."` +
                 (editSize ? ` size=${editSize}` : ''),
             );
-            const estimatedTokens = estimateImageTokens(input.prompt, editSize, input.images.length);
-            const images = input.images;
+            const estimatedTokens = estimateImageTokens(input.prompt, editSize, images.length);
             const { result: providerResult, costUsdMicros } = await meterImageCall(
               ctx,
               options.toolCallId,
@@ -566,7 +611,7 @@ export function createGenerateImageTool(ctx: GenerateImageToolContext) {
               model: MODEL,
               quality: QUALITY,
               prompt: input.prompt,
-              reference_images: input.images,
+              reference_images: referenceNames(input),
               estimated_cost_usd: costUsd(costUsdMicros),
               ...(editSize ? { size: editSize } : {}),
               ...(input.size && input.size !== editSize ? { requested_size: input.size } : {}),
