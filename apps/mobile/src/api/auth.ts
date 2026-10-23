@@ -20,6 +20,31 @@ import { clearTokens, getAccessToken, getCachedUser, getTokenStationId, setCache
 
 export type LoginOutcome = { ok: true; user: Me } | { ok: false; error: string };
 
+/**
+ * A token pair the station just issued (password or Feishu) → this station's session and its
+ * member. Nothing is written when another station became active meanwhile.
+ */
+async function adoptSession(tokens: Partial<SessionTokens>, sid: string | null): Promise<LoginOutcome> {
+  // Station switched while the request was in flight — these tokens belong
+  // to the previous station; don't write them into the new one's slot.
+  if (getTokenStationId() !== sid) return { ok: false, error: t('login.failed') };
+  if (typeof tokens.accessToken !== 'string' || typeof tokens.refreshToken !== 'string') {
+    return { ok: false, error: t('login.failed') };
+  }
+  setTokens(tokens.accessToken, tokens.refreshToken);
+  const me = await toResult<unknown>(await api('/api/auth/me'));
+  // Another station became active meanwhile: its tokens are in the mirror now, not ours —
+  // never clear them for this station's late answer.
+  if (getTokenStationId() !== sid) return { ok: false, error: t('login.failed') };
+  const user = me.ok ? parseMe(me.data) : null;
+  if (!user) {
+    clearTokens();
+    return { ok: false, error: me.ok ? t('login.failed') : me.message || t('login.failed') };
+  }
+  setCachedUser(user);
+  return { ok: true, user };
+}
+
 /** Email + password → this station's session and its member. */
 export async function login(email: string, password: string): Promise<LoginOutcome> {
   const sid = getTokenStationId();
@@ -31,24 +56,24 @@ export async function login(email: string, password: string): Promise<LoginOutco
     });
     const result = await toResult<SessionTokens>(res);
     if (!result.ok) return { ok: false, error: result.message || t('login.failed') };
-    // Station switched while the request was in flight — these tokens belong
-    // to the previous station; don't write them into the new one's slot.
-    if (getTokenStationId() !== sid) return { ok: false, error: t('login.failed') };
-    if (typeof result.data.accessToken !== 'string' || typeof result.data.refreshToken !== 'string') {
-      return { ok: false, error: t('login.failed') };
-    }
-    setTokens(result.data.accessToken, result.data.refreshToken);
-    const me = await toResult<unknown>(await api('/api/auth/me'));
-    // Another station became active meanwhile: its tokens are in the mirror now, not ours —
-    // never clear them for this station's late answer.
-    if (getTokenStationId() !== sid) return { ok: false, error: t('login.failed') };
-    const user = me.ok ? parseMe(me.data) : null;
-    if (!user) {
-      clearTokens();
-      return { ok: false, error: me.ok ? t('login.failed') : me.message || t('login.failed') };
-    }
-    setCachedUser(user);
-    return { ok: true, user };
+    return await adoptSession(result.data, sid);
+  } catch {
+    return { ok: false, error: t('login.networkError') };
+  }
+}
+
+/** The one-shot code Feishu sign-in handed back to the app → this station's session. */
+export async function loginWithFeishuCode(code: string): Promise<LoginOutcome> {
+  const sid = getTokenStationId();
+  try {
+    const res = await fetch(`${getApiBase()}/api/feishu/oauth/exchange`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code }),
+    });
+    const result = await toResult<SessionTokens>(res);
+    if (!result.ok) return { ok: false, error: result.message || t('login.failed') };
+    return await adoptSession(result.data, sid);
   } catch {
     return { ok: false, error: t('login.networkError') };
   }

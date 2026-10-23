@@ -61,7 +61,7 @@ export default function Login() {
   const passwordRef = useRef<SecureFieldRef>(null);
   const readEmail = useCallback(() => emailState.get(), [emailState]);
   const readPassword = useCallback(() => passwordState.get(), [passwordState]);
-  const { station, productName, error, connectionError, retry, busy, submit, clearError, openStations } = useLogin({
+  const { station, productName, error, connectionError, retry, busy, submit, clearError, openStations, feishu, signInWithFeishu } = useLogin({
     email: readEmail,
     password: readPassword,
   });
@@ -143,6 +143,23 @@ export default function Login() {
             )}
           </Button>
         </Section>
+
+        {feishu ? (
+          <Section>
+            <Button
+              onPress={() => void signInWithFeishu()}
+              modifiers={[
+                buttonStyle('bordered'),
+                controlSize('large'),
+                disabled(busy),
+                listRowBackground('clear'),
+                listRowInsets({ top: 0, leading: 0, bottom: 0, trailing: 0 }),
+              ]}
+            >
+              <Text modifiers={[font({ weight: 'semibold' }), frame({ maxWidth: 9999 })]}>{t('login.feishu')}</Text>
+            </Button>
+          </Section>
+        ) : null}
       </NativeForm>
     </>
   );
