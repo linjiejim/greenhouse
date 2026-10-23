@@ -32,7 +32,7 @@ interface SeenRequest {
   raw: string;
 }
 
-type Behavior = 'json' | 'stream' | 'stream-error' | 'hang' | 'eof' | 'error400';
+type Behavior = 'json' | 'stream' | 'stream-error' | 'hang' | 'eof' | 'eof-data' | 'eof-comment' | 'error400';
 
 let upstream: Server;
 let upstreamBase = '';
@@ -107,6 +107,17 @@ function handle(req: IncomingMessage, res: ServerResponse) {
         start();
         delta('partial');
         setTimeout(() => res.end(), 20); // closes without message_delta / message_stop
+        return;
+      case 'eof-data':
+      case 'eof-comment':
+        res.writeHead(200, { 'content-type': 'text/event-stream' });
+        start();
+        // The last event comes without its blank line before the close.
+        res.end(
+          behavior === 'eof-data'
+            ? `event: content_block_delta\ndata: ${JSON.stringify({ type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'tail' } })}`
+            : ': keepalive',
+        );
         return;
       case 'hang':
         res.writeHead(200, { 'content-type': 'text/event-stream' });
@@ -364,6 +375,24 @@ describe('Anthropic surface', () => {
     await _waitForGatewayCalls();
     expect(await reservationStatuses(row.id)).toEqual(['reserved']);
   });
+
+  it.each(['eof-data', 'eof-comment'] as const)(
+    'keeps the stream well-formed when the upstream closes mid-event (%s)',
+    async (how) => {
+      behavior = how;
+      const { secret } = await newKey(member);
+      const text = await (await messages(secret, { ...MESSAGE, stream: true })).text();
+      expect(text.endsWith('\n\n')).toBe(true);
+      const events = text.trim().split('\n\n');
+      for (const event of events) {
+        expect(event).toMatch(/^event: [a-z_]+\ndata: /);
+        expect(() => JSON.parse(event.slice(event.indexOf('data: ') + 'data: '.length))).not.toThrow();
+      }
+      expect(events.at(-1)).toMatch(/^event: error\ndata: .*"type":"api_error"/);
+      if (how === 'eof-data') expect(text).toContain('"text":"tail"');
+      await _waitForGatewayCalls();
+    },
+  );
 
   it('refuses over budget with the bilingual message, before any provider I/O', async () => {
     await db.metering.setLimit({ scope_type: 'user', scope_id: member.id, limit_units: 0, actor_id: admin.id });

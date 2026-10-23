@@ -427,11 +427,30 @@ export class SseUsageRelay {
     return out;
   }
 
-  /** Whatever is left when the upstream closes (an unterminated last event). */
+  /**
+   * Whatever is left when the upstream closes without a final blank line: a
+   * complete event is relayed with its terminator added; a cut-off payload or a
+   * lone comment is dropped. Either way the output ends on an event boundary,
+   * so anything written after it (an interruption error) stays well-formed.
+   */
   flush(): string {
     const rest = this.buffer;
     this.buffer = '';
-    return rest ? this.relay(rest) : '';
+    const lines = rest.split(/\r?\n/).filter((line) => line.length > 0);
+    const data = lines.filter((line) => line.startsWith('data:')).map((line) => line.slice(5).replace(/^ /, ''));
+    // Only a comment / event name, or nothing: no use to a client, and an
+    // unterminated comment would swallow whatever is written after it.
+    if (data.length === 0) return '';
+    const payload = data.join('\n').trim();
+    if (payload !== '[DONE]') {
+      try {
+        JSON.parse(payload);
+      } catch {
+        return ''; // a payload cut mid-way: drop it rather than hand the client broken JSON
+      }
+    }
+    // A whole event that only lacked its blank line: relay it, properly terminated.
+    return this.relay(`${lines.join('\n')}\n\n`);
   }
 
   private relay(event: string): string {

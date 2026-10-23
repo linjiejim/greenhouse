@@ -42,7 +42,18 @@ interface SeenRequest {
   raw: string;
 }
 
-type Behavior = 'json' | 'stream' | 'hang' | 'silent' | 'cut' | 'eof' | 'error400' | 'error500';
+type Behavior =
+  | 'json'
+  | 'stream'
+  | 'hang'
+  | 'silent'
+  | 'cut'
+  | 'eof'
+  | 'eof-data'
+  | 'eof-partial'
+  | 'eof-comment'
+  | 'error400'
+  | 'error500';
 
 let upstream: Server;
 let upstreamUrl = '';
@@ -106,6 +117,20 @@ function handle(req: IncomingMessage, res: ServerResponse) {
         res.writeHead(200, { 'content-type': 'text/event-stream' });
         sse(res, chunk('partial'));
         setTimeout(() => res.end(), 20); // clean close, but no finish, usage or [DONE]
+        return;
+      case 'eof-data':
+      case 'eof-partial':
+      case 'eof-comment':
+        res.writeHead(200, { 'content-type': 'text/event-stream' });
+        sse(res, chunk('partial'));
+        // The last event comes without its blank line before the close.
+        res.end(
+          behavior === 'eof-data'
+            ? `data: ${JSON.stringify(chunk('tail'))}`
+            : behavior === 'eof-partial'
+              ? 'data: {"choices":[{"delta":{"cont'
+              : ': keepalive',
+        );
         return;
       case 'silent':
         res.on('close', () => markHangClosed());
@@ -532,6 +557,28 @@ describe('proxying', () => {
       expect(text).not.toContain('127.0.0.1');
       await _waitForGatewayCalls();
       expect(await reservations(row.id)).toEqual([expect.objectContaining({ status: 'reserved' })]);
+    },
+  );
+
+  it.each(['eof-data', 'eof-partial', 'eof-comment'] as const)(
+    'keeps the stream well-formed when the upstream closes mid-event (%s)',
+    async (how) => {
+      behavior = how;
+      const { secret } = await newKey(member);
+      const res = await chat(secret, { model: 'gw-test', stream: true, messages: [{ role: 'user', content: 'hi' }] });
+      const text = await res.text();
+      expect(text.endsWith('\n\n')).toBe(true);
+      const events = text.trim().split('\n\n');
+      // Every event is one complete `data:` line with parseable JSON.
+      for (const event of events) {
+        expect(event.startsWith('data: ')).toBe(true);
+        expect(() => JSON.parse(event.slice('data: '.length))).not.toThrow();
+      }
+      expect(JSON.parse(events.at(-1)!.slice('data: '.length))).toMatchObject({
+        error: { code: 'upstream_interrupted' },
+      });
+      if (how === 'eof-data') expect(text).toContain('"content":"tail"');
+      await _waitForGatewayCalls();
     },
   );
 

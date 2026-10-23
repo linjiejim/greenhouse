@@ -176,7 +176,21 @@ describe('usage', () => {
     expect(keep.push(usage)).toBe(usage);
     expect(keep.push(': keepalive\r\n\r\n')).toBe(': keepalive\r\n\r\n');
     expect(keep.push('data: {"x":1}')).toBe('');
-    expect(keep.flush()).toBe('data: {"x":1}');
+    expect(keep.flush()).toBe('data: {"x":1}\n\n');
+  });
+
+  it('ends a flushed tail on an event boundary: whole events terminated, cut-offs and comments dropped', () => {
+    const tail = (wire: 'openai' | 'anthropic', text: string) => {
+      const relay = new SseUsageRelay(false, (value) => value, wire);
+      relay.push(text);
+      return relay.flush();
+    };
+    expect(tail('openai', 'data: {"choices":[]}')).toBe('data: {"choices":[]}\n\n');
+    expect(tail('openai', 'data: [DONE]\n')).toBe('data: [DONE]\n\n');
+    expect(tail('openai', 'data: {"choi')).toBe('');
+    expect(tail('openai', ': keepalive')).toBe('');
+    expect(tail('anthropic', 'event: ping\ndata: {"type":"ping"}')).toBe('event: ping\ndata: {"type":"ping"}\n\n');
+    expect(tail('anthropic', 'event: content_block_delta')).toBe('');
   });
 });
 
