@@ -213,7 +213,7 @@ async function reservations(keyId: string) {
 
 async function facts(userId: string) {
   return (await db.executeRaw(
-    sql`SELECT model, input_tokens, output_tokens, cached_tokens, cost_usd_micros::int AS cost_usd_micros, client, service, caller, budget_idempotency_key
+    sql`SELECT model, input_tokens, output_tokens, cached_tokens, cost_usd_micros::int AS cost_usd_micros, client, service, caller, budget_idempotency_key, gateway_key_id
           FROM llm_usage WHERE user_id = ${userId} ORDER BY id`,
   )) as Array<Record<string, any>>;
 }
@@ -413,6 +413,7 @@ describe('proxying', () => {
         service: 'llm',
         caller: 'gateway',
         budget_idempotency_key: reservation!.idempotency_key,
+        gateway_key_id: row.id,
       }),
     ]);
     const spend = await buildMySpend(db, member.id);
@@ -544,14 +545,17 @@ describe('key routes', () => {
     expect(secret).toMatch(/^ghgw_[A-Za-z0-9_-]{40,}$/);
     expect(key).toMatchObject({ name: 'laptop', allowed_models: ['gw-test'], status: 'active' });
     expect(secret.startsWith(key.prefix)).toBe(true);
-    // The secret works on the gateway.
+    // The secret works on the gateway, and its spend shows on the key.
     expect((await chat(secret, { model: 'gw-test', messages: [{ role: 'user', content: 'hi' }] })).status).toBe(200);
+    await _waitForGatewayCalls();
 
     const overview = (await asUser(member, 'GET', '/api/agent-access/gateway')).json as unknown as GatewayOverview;
     expect(overview.enabled).toBe(true);
     expect(overview.base_url.endsWith('/api/gateway/openai/v1')).toBe(true);
     expect(overview.models.map((model) => model.id)).toEqual(['gw-test', 'gw-other']);
     expect(overview.keys.map((view) => view.id)).toEqual([key.id]);
+    expect(overview.keys[0]).toMatchObject({ month_spend_usd_micros: 27, month_calls: 1 });
+    expect(overview.models.find((model) => model.id === 'gw-test')).toMatchObject({ openai: true, anthropic: false });
     expect(JSON.stringify(overview)).not.toContain(secret);
 
     expect((await asUser(otherMember, 'DELETE', `/api/agent-access/gateway/keys/${key.id}`)).status).toBe(404);
@@ -577,8 +581,11 @@ describe('key routes', () => {
     const listed = await asUser(admin, 'GET', '/api/admin/metering/gateway-keys');
     expect(listed.status).toBe(200);
     expect(listed.json.enabled).toBe(false);
-    const mine = (listed.json.keys as Array<{ id: string; owner: { id: string } }>).find((key) => key.id === row.id);
+    const mine = (
+      listed.json.keys as Array<{ id: string; owner: { id: string }; month_spend_usd_micros: number }>
+    ).find((key) => key.id === row.id);
     expect(mine?.owner.id).toBe(member.id);
+    expect(mine?.month_spend_usd_micros).toBe(0);
     expect(JSON.stringify(listed.json)).not.toContain(row.key_hash);
 
     const revoked = await asUser(admin, 'DELETE', `/api/admin/metering/gateway-keys/${row.id}`);

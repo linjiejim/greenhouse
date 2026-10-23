@@ -15,11 +15,14 @@ import { getModelRegistry } from '@greenhouse/agent-core';
 import {
   gatewayKeyAllowedModels,
   gatewayKeyUsability,
+  getUtcMonthPeriod,
   type DatabaseProvider,
+  type GatewayKeySpend,
   type GatewayKeyRow,
   type GatewayKeyWithOwner,
 } from '@greenhouse/db';
 import {
+  GATEWAY_ANTHROPIC_PATH,
   GATEWAY_KEY_SECRET_PREFIX,
   GATEWAY_OPENAI_PATH,
   type GatewayAdminKeyView,
@@ -32,7 +35,7 @@ import { getOAuthIssuerUrl } from '../platform/oauth.js';
 import { humanActor } from '../platform/actor.js';
 import { PLATFORM_ORG_ID } from '../platform/runtime.js';
 import { getWorkspaceFlag } from '../settings/workspace-config.js';
-import { listGatewayModels } from './upstream.js';
+import { resolveGatewayModel } from './upstream.js';
 
 export const GATEWAY_ENABLED_SETTING = 'gateway.enabled';
 
@@ -51,16 +54,38 @@ export function gatewayBaseUrl(): string {
   return `${getOAuthIssuerUrl()}${GATEWAY_OPENAI_PATH}`;
 }
 
+export function gatewayAnthropicBaseUrl(): string {
+  return `${getOAuthIssuerUrl()}${GATEWAY_ANTHROPIC_PATH}`;
+}
+
 export function generateGatewaySecret(): string {
   return `${GATEWAY_KEY_SECRET_PREFIX}${randomBytes(32).toString('base64url')}`;
 }
 
-/** Catalog models the gateway can serve now (reachable OpenAI-wire upstream), for pickers. */
+/** Catalog models the gateway can serve now on either wire, for pickers and the Connect guide. */
 export function gatewayModelViews(): GatewayModelView[] {
-  return listGatewayModels(getModelRegistry(), null).map((model) => ({ id: model.id, name: model.name }));
+  const registry = getModelRegistry();
+  return Object.entries(registry)
+    .map(([id, entry]) => ({
+      id,
+      name: entry.name,
+      openai: resolveGatewayModel(id, entry, process.env, 'openai') !== null,
+      anthropic: resolveGatewayModel(id, entry, process.env, 'anthropic') !== null,
+    }))
+    .filter((model) => model.openai || model.anthropic);
 }
 
-export function toGatewayKeyView(row: GatewayKeyRow, now: number = Date.now()): GatewayKeyView {
+/** This UTC month's settled spend per key (llm_usage.gateway_key_id), optionally one member's keys. */
+export function monthSpendByKey(db: DatabaseProvider, userId?: string): Promise<Map<string, GatewayKeySpend>> {
+  const period = getUtcMonthPeriod();
+  return db.gatewayKeys.spendByKey({ since: period.start, until: period.end, ...(userId ? { user_id: userId } : {}) });
+}
+
+export function toGatewayKeyView(
+  row: GatewayKeyRow,
+  spend?: GatewayKeySpend,
+  now: number = Date.now(),
+): GatewayKeyView {
   return {
     id: row.id,
     name: row.name,
@@ -71,11 +96,17 @@ export function toGatewayKeyView(row: GatewayKeyRow, now: number = Date.now()): 
     revoked_at: row.revoked_at,
     created_at: row.created_at,
     status: gatewayKeyUsability(row, now),
+    month_spend_usd_micros: spend?.cost_usd_micros ?? 0,
+    month_calls: spend?.calls ?? 0,
   };
 }
 
-export function toGatewayAdminKeyView(row: GatewayKeyWithOwner, now: number = Date.now()): GatewayAdminKeyView {
-  return { ...toGatewayKeyView(row, now), owner: { id: row.user_id, name: row.owner_name || row.owner_email } };
+export function toGatewayAdminKeyView(
+  row: GatewayKeyWithOwner,
+  spend?: GatewayKeySpend,
+  now: number = Date.now(),
+): GatewayAdminKeyView {
+  return { ...toGatewayKeyView(row, spend, now), owner: { id: row.user_id, name: row.owner_name || row.owner_email } };
 }
 
 export type ParsedKeyInput =

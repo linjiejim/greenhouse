@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import type { ModelEntry } from '@greenhouse/agent-core';
 import {
+  anthropicUpstreamHeaders,
+  anthropicUsage,
   buildUpstreamBody,
+  validateMessagesRequest,
   estimateCallTokens,
   GatewayRequestError,
   listGatewayModels,
@@ -190,5 +193,65 @@ describe('upstream errors', () => {
       code: 'bad',
     });
     expect(readUpstreamError('plain')).toEqual({ message: 'plain', type: null, code: null });
+  });
+});
+
+describe('Anthropic wire', () => {
+  const entry: ModelEntry = {
+    name: 'DS',
+    providers: [
+      { provider: 'deepseek', model: 'ds-m', apiKeyEnv: 'K', anthropicBaseUrl: 'https://api.deepseek.com/anthropic' },
+    ],
+  };
+
+  it('resolves only providers that declare an Anthropic endpoint', () => {
+    expect(resolveGatewayModel('ds', entry, { K: 'k' }, 'anthropic')).toMatchObject({
+      provider: 'anthropic',
+      baseUrl: 'https://api.deepseek.com/anthropic',
+      upstreamModel: 'ds-m',
+      scopeId: 'K:anthropic:https://api.deepseek.com/anthropic',
+    });
+    expect(resolveGatewayModel('flash', models.flash!, env, 'anthropic')).toBeNull();
+    expect(resolveGatewayModel('ds', entry, {}, 'anthropic')).toBeNull();
+  });
+
+  it('sends the upstream key as x-api-key and only protocol headers from the client', () => {
+    expect(anthropicUpstreamHeaders('sk-up', false, { version: null, beta: 'a-1,b-2' })).toEqual({
+      'content-type': 'application/json',
+      accept: 'application/json',
+      'x-api-key': 'sk-up',
+      'anthropic-version': '2023-06-01',
+      'anthropic-beta': 'a-1,b-2',
+    });
+    expect(anthropicUpstreamHeaders('sk-up', true, { beta: 'bad\nheader' })['anthropic-beta']).toBeUndefined();
+  });
+
+  it('counts cache reads and writes as input, cache reads as cached', () => {
+    expect(
+      anthropicUsage(
+        { input_tokens: 10, cache_read_input_tokens: 4, cache_creation_input_tokens: 2, output_tokens: 1 },
+        { output_tokens: 8 },
+      ),
+    ).toEqual({ inputTokens: 16, outputTokens: 8, cachedTokens: 4, reasoningTokens: 0 });
+    expect(anthropicUsage({})).toBeNull();
+  });
+
+  it('requires max_tokens on Messages', () => {
+    expect(() => validateMessagesRequest({ model: 'ds', messages: [{}] })).toThrow(/max_tokens/);
+    expect(validateMessagesRequest({ model: 'ds', messages: [{}], max_tokens: 10, stream: true })).toMatchObject({
+      stream: true,
+      requestedOutputTokens: 10,
+    });
+  });
+
+  it('relays Messages events untouched and settles only after message_delta', () => {
+    const relay = new SseUsageRelay(false, (text) => text, 'anthropic');
+    const start =
+      'event: message_start\ndata: {"type":"message_start","message":{"usage":{"input_tokens":5,"output_tokens":1}}}\n\n';
+    expect(relay.push(start)).toBe(start);
+    expect(relay.usage).toBeNull();
+    const delta = 'event: message_delta\ndata: {"type":"message_delta","usage":{"output_tokens":7}}\n\n';
+    expect(relay.push(delta)).toBe(delta);
+    expect(relay.usage).toEqual({ inputTokens: 5, outputTokens: 7, cachedTokens: 0, reasoningTokens: 0 });
   });
 });

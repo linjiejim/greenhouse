@@ -6,7 +6,7 @@
  * DELETE /api/admin/metering/budgets?scope=&scope_id= — 删掉一条覆盖，回落到 env / 默认值
  * PUT    /api/admin/metering/prices                 — 设一个价（覆盖 yaml）{kind: model|service, target, provider?, input/output/cached_input（每百万 token 美元）| unit_price（美元/次·张·分钟）}
  * DELETE /api/admin/metering/prices?kind=&target=&provider= — 删掉覆盖，回落到 models.yaml / services.yaml
- * GET    /api/admin/metering/gateway-keys           — 模型网关：开关状态 + 全员的网关 Key（不含密钥）
+ * GET    /api/admin/metering/gateway-keys           — 模型网关：开关状态 + 全员的网关 Key（不含密钥）与每把本月花费
  * DELETE /api/admin/metering/gateway-keys/:id       — 撤销任一成员的网关 Key（审计 revokeMemberGatewayKey）
  *
  * 读全部有界：一个 UTC 月，按 created_at 索引；改上限、改价下一次调用（结算）即生效，已记账的事实保留当时的价。
@@ -26,7 +26,13 @@ import { getServiceCatalog, SERVICE_PROVIDERS, type PricedService } from '../con
 import { organizationScopeId } from '../usage/metering.js';
 import { syncPriceOverrides } from '../usage/pricing.js';
 import { buildMeteringOverview, isMeteredService, parseMonth } from '../usage/report.js';
-import { isGatewayEnabled, recordGatewayKeyAudit, toGatewayAdminKeyView, toGatewayKeyView } from '../gateway/keys.js';
+import {
+  isGatewayEnabled,
+  monthSpendByKey,
+  recordGatewayKeyAudit,
+  toGatewayAdminKeyView,
+  toGatewayKeyView,
+} from '../gateway/keys.js';
 
 /** Hard ceiling on one price: $10,000 per unit or per 1M tokens. */
 const MAX_PRICE_USD = 10_000;
@@ -249,8 +255,12 @@ const adminMetering = new Hono<AppEnv>()
     return c.json({ ok: true as const, removed });
   })
   .get('/gateway-keys', async (c) => {
-    const keys = await getDb().gatewayKeys.listAll();
-    return c.json({ enabled: await isGatewayEnabled(), keys: keys.map((row) => toGatewayAdminKeyView(row)) });
+    const db = getDb();
+    const [keys, spend] = await Promise.all([db.gatewayKeys.listAll(), monthSpendByKey(db)]);
+    return c.json({
+      enabled: await isGatewayEnabled(),
+      keys: keys.map((row) => toGatewayAdminKeyView(row, spend.get(row.id))),
+    });
   })
   .delete('/gateway-keys/:id', async (c) => {
     const db = getDb();

@@ -3,7 +3,7 @@
  *
  * GET    /api/agent-access/overview              the MCP endpoint to connect to
  * GET    /api/agent-access/writes                my agents' recent writes, newest first
- * GET    /api/agent-access/gateway               the model gateway: on/off, base URL, models, my keys
+ * GET    /api/agent-access/gateway               the model gateway: on/off, base URLs, models, my keys + this month's spend
  * POST   /api/agent-access/gateway/keys          create a key {name, allowed_models?, expires_at?} → the secret, once
  * DELETE /api/agent-access/gateway/keys/:id      revoke one of my keys
  *
@@ -22,11 +22,13 @@ import { getAuthUser } from '../auth/middleware.js';
 import { getMcpResourceUrl } from '../platform/oauth.js';
 import { agentWriteView } from '../agent-access/governed-write.js';
 import {
+  gatewayAnthropicBaseUrl,
   gatewayBaseUrl,
   gatewayModelViews,
   generateGatewaySecret,
   isGatewayEnabled,
   MAX_ACTIVE_GATEWAY_KEYS,
+  monthSpendByKey,
   parseGatewayKeyInput,
   recordGatewayKeyAudit,
   toGatewayKeyView,
@@ -49,12 +51,14 @@ export function createAgentAccessRoutes() {
 
     .get('/gateway', async (c) => {
       const user = getAuthUser(c);
-      const keys = await getDb().gatewayKeys.listByUser(user.id);
+      const db = getDb();
+      const [keys, spend] = await Promise.all([db.gatewayKeys.listByUser(user.id), monthSpendByKey(db, user.id)]);
       const overview: GatewayOverview = {
         enabled: await isGatewayEnabled(),
         base_url: gatewayBaseUrl(),
+        anthropic_base_url: gatewayAnthropicBaseUrl(),
         models: gatewayModelViews(),
-        keys: keys.map((row) => toGatewayKeyView(row)),
+        keys: keys.map((row) => toGatewayKeyView(row, spend.get(row.id))),
       };
       return c.json(overview);
     })
