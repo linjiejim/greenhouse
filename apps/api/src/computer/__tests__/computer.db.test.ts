@@ -419,6 +419,49 @@ describe('cloud computer: lifecycle and per-minute billing', () => {
     expect((await memberComputer()).status).toBe('running');
   });
 
+  it('keeps the funded block of a computer lost after the roll reserved, whatever a stale sweep does', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    const t0 = Date.parse('2026-10-24T12:00:00.000Z');
+    vi.setSystemTime(t0);
+    await run('computer_exec', { command: 'serve', timeout_seconds: 60 });
+    vi.setSystemTime(t0 + 10 * MINUTE);
+    await run('computer_exec', { command: 'test', timeout_seconds: 60 });
+    vi.setSystemTime(t0 + 15 * MINUTE + 30_000);
+    const snapshot = await memberComputer();
+
+    // Sweeper A installs the next block; then a stop the provider does not confirm.
+    expect(await rollComputerBlock(db, snapshot, driver)).toBe('rolled');
+    const fundedKey = (await memberComputer()).budget_key!;
+    driver.kill.mockRejectedValueOnce(new ProviderRequestError('Stopping the computer timed out after 30s.', 408));
+    expect(await stopMemberComputer(db, member.id, 'user', { driver })).toMatchObject({
+      status: 'lost',
+      budget_key: null,
+    });
+
+    // Sweeper B, still on the old snapshot, must not make that runtime free.
+    expect(await rollComputerBlock(db, snapshot, driver)).toBe('superseded');
+    expect((await reservations(fundedKey))[0]).toMatchObject({ status: 'reserved' });
+    await db.usageBudget.expireStaleReservations(new Date(Date.now() + 60 * MINUTE));
+    expect((await reservations(fundedKey))[0]).toMatchObject({ status: 'expired', actual_units: BLOCK });
+  });
+
+  it('gives back a block reserved for a computer that stopped before it ever reached it', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    const t0 = Date.parse('2026-10-24T13:00:00.000Z');
+    vi.setSystemTime(t0);
+    await run('computer_exec', { command: 'serve', timeout_seconds: 60 });
+    vi.setSystemTime(t0 + 10 * MINUTE);
+    await run('computer_exec', { command: 'test', timeout_seconds: 60 });
+    vi.setSystemTime(t0 + 15 * MINUTE + 30_000);
+    const snapshot = await memberComputer();
+    // The member stops it before any sweep rolled the block.
+    await stopMemberComputer(db, member.id, 'user', { driver });
+
+    expect(await rollComputerBlock(db, snapshot, driver)).toBe('superseded');
+    const unusedKey = `computer:${snapshot.id}:${new Date(t0 + 15 * MINUTE).toISOString()}`;
+    expect((await reservations(unusedKey)).map((row) => row.status)).toEqual(['released', 'released', 'released']);
+  });
+
   it('does not idle-stop a computer used after the snapshot the sweep decided on', async () => {
     vi.useFakeTimers({ toFake: ['Date'] });
     const t0 = Date.parse('2026-10-24T11:00:00.000Z');

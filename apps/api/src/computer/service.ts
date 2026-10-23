@@ -161,6 +161,18 @@ async function reserveBlock(db: DatabaseProvider, row: MemberComputerRow, blockS
   });
 }
 
+/** Give back a block reservation that never became the open block. Never throws. */
+async function releaseUnusedBlock(db: DatabaseProvider, key: string): Promise<void> {
+  try {
+    const group = await db.usageBudget.getReservationGroup(key);
+    if (group.length > 0 && group.every((reservation) => reservation.status === 'reserved')) {
+      await db.usageBudget.release({ idempotency_key: key, reason: 'computer_block_never_active' });
+    }
+  } catch (error) {
+    logger.warn('[computer] could not release an unused billing block', { key, error: toErrorMessage(error) });
+  }
+}
+
 /** Settle one block at `minutes` and record the fact. Never throws (an unsettled block is charged its estimate). */
 async function settleBlock(
   db: DatabaseProvider,
@@ -509,13 +521,18 @@ export async function rollComputerBlock(
     add_minutes: COMPUTER_BLOCK_MINUTES,
   });
   if (!rolled) {
-    // Another process rolled it (to this very key — the reservation is theirs
-    // now too) or the computer stopped. Give the reservation back only when
-    // nothing holds it.
+    // Another process installed this very block (same key — the reservation is
+    // theirs too), or the computer left `running` first. Only in the second
+    // case, and only if the computer never got as far as this block, was the
+    // reservation never active: give it back. Never decide from `budget_key`
+    // alone — a stop clears it, and a `lost` computer's last funded block must
+    // stay reserved for the TTL charge. `block_started_at` survives every stop.
     const current = await db.memberComputers.get(row.id);
-    if (current?.budget_key !== lease.idempotencyKey) {
-      await lease.releaseBeforeProviderIo('computer_block_superseded').catch(() => undefined);
-    }
+    const installed =
+      current?.block_started_at !== null &&
+      current?.block_started_at !== undefined &&
+      Date.parse(current.block_started_at) >= Date.parse(nextStart);
+    if (!installed) await releaseUnusedBlock(db, lease.idempotencyKey);
     return 'superseded';
   }
   if (row.budget_key) await settleBlock(db, row, row.budget_key, COMPUTER_BLOCK_MINUTES, 'block');
