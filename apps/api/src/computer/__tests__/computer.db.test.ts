@@ -23,6 +23,10 @@ import {
 import { TEST_DATABASE_URL } from '@greenhouse/db/test-config';
 import { createInternalTestUser } from '../../../../../tests/helpers/internal-user.js';
 
+// Each case drives the MCP server, recorded writes and metering on the real
+// database; under a full parallel run that can pass the default 5 s.
+vi.setConfig({ testTimeout: 20_000 });
+
 const fakes = vi.hoisted(() => ({ objects: new Map<string, { buffer: Buffer; contentType: string }>() }));
 vi.mock('../../storage/uploads.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../storage/uploads.js')>();
