@@ -85,6 +85,7 @@ Chat 与 Automation 共用的执行控制面（`workflow` / `mission` / `eval` �
 | `notifications` | PK `id`；UK `(user_id, dedupe_key)`；user/read/created 与 provenance 索引 | 用户站内收件箱；保存 kind、完整正文/payload、Run/Interrupt/Event/Agent 逻辑来源与 read_at。除已读状态外为永久事实，无生产删除 Service |
 | `notification_delivery_attempts` | PK `id`；UK `(notification_id, channel, recipient)`；claim 索引 | 可选外部渠道的 durable lease/attempt/retry/dead-letter/suppressed；FK 到 notification CASCADE 只服务显式根事实删除语义，常规生产没有删除入口 |
 | `push_devices` | PK `id`（`pdv_`）；UK `token`；`user_id` 部分索引（未停用） | 手机推送设备（迁移 0009）：Expo token、平台、Expo project、站点 `client_ref`、偏好 JSON（needs_you/done/other/preview）、注册时的 `auth_version`、`last_seen_at`；只停用（`disabled_at` + reason）不删除 |
+| `gateway_keys` | PK `id`（`gwk_`）；UK `key_hash`；索引 `(user_id, created_at)` | 模型网关的成员个人 Key（迁移 0011）：只存密钥（`ghgw_…`）的 SHA-256 与开头 12 个字符 `key_prefix`；`allowed_models` 是目录模型 id 的 JSON 数组（NULL = 全部）；`expires_at`、`last_used_at`（每分钟最多写一次）；撤销只写 `revoked_at` / `revoked_by`，不删行 |
 
 ### 统一 Usage Budget
 
@@ -334,6 +335,9 @@ Chat 与 Automation 共用的执行控制面（`workflow` / `mission` / `eval` �
 | `notification_delivery_attempts.notification_id` | `notifications.id` | FK CASCADE；送达状态独立于业务结果，只随显式通知根删除 |
 | `notification_delivery_attempts.recipient`（`mobile_push`） | `push_devices.id` | 逻辑引用；设备停用后投递在复核时 suppressed |
 | `push_devices.user_id` | `users.id` | FK CASCADE；账号删除即删除其设备 |
+| `gateway_keys.user_id` | `users.id` | FK CASCADE；账号删除即删除其网关 Key（审计里留着 Key 名与前缀） |
+| `gateway_keys.revoked_by` | `users.id` | 逻辑引用：本人或撤销它的 super |
+| `usage_budget_reservations.idempotency_key`（`gateway:<keyId>:<uuid>`） | `gateway_keys.id` | 网关调用的预留键里带 Key id，预留 metadata 另记 `gateway_key_id`；`llm_usage.budget_idempotency_key` 同键 |
 | `runtime_events.actor_user_id` | `users.id` | Event actor 审计；账号删除后 Event 仍保留 |
 | `runtime_interrupts.assignee_user_id` / `.decided_by_user_id` | `users.id` | 决策负责人和决定人；完整决议独立保留 |
 | `custom_profiles.forked_from` | 系统或自定义 profile id | profile 谱系，不是数据库 FK |
