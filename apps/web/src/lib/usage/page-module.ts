@@ -13,6 +13,7 @@ import { administrationModules, settingsAllModules, type NavModule } from '../na
 
 /** Top-level routes that count as themselves. `design` is a developer page and is not a module. */
 export const COUNTED_TOP_LEVEL_ROUTES = [
+  'home',
   'chat',
   'knowledge',
   'projects',

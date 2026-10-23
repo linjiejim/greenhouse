@@ -775,6 +775,8 @@ export default {
     newDocument: 'New Document',
     newDocumentDesc: 'Create a knowledge document',
     // v1.5 navigation by goal
+    home: 'Home',
+    homeDesc: 'What changed across the team, and your own cards',
     files: 'Files',
     filesDesc: 'The team’s files and your own — folders, uploads and previews',
     activityLog: 'Activity log',
@@ -1594,6 +1596,12 @@ export default {
 
   // Home workbench (personal dashboard)
   home: {
+    recentChanges: 'Recent changes',
+    recentChangesHint: 'What people and their agents changed in the last two weeks — only what you can open.',
+    viewAllActivity: 'Activity log',
+    feedFailed: 'Could not load recent changes',
+    feedEmpty: 'Nothing changed lately',
+    feedEmptyHint: 'Edits to knowledge, projects, tables and files show up here.',
     defaultTab: 'Overview',
     customize: 'Customize',
     customizeEntry: 'Customize home workbench page',
@@ -1946,6 +1954,7 @@ export default {
         skillhub: 'SkillHub',
         activity: 'Activity log',
         files: 'Files',
+        home: 'Home',
         sessionTags: 'Session tags',
         sessionGroups: 'Session groups',
       },

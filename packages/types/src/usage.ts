@@ -50,6 +50,7 @@ export function parseAppClient(value: string | null | undefined): 'desktop' | 'm
  * filter or manager opens), because they have no page of their own.
  */
 export const PAGE_MODULE_IDS = [
+  'home',
   'chat',
   'knowledge',
   'projects',

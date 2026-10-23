@@ -30,6 +30,7 @@ import {
   Monitor,
   FolderOpen,
   History,
+  House,
 } from './icons';
 import type { LucideIcon } from './icons';
 import type { FeatureKey } from '@greenhouse/types/features';
@@ -272,6 +273,15 @@ const KNOWLEDGE_MODULES: NavModule[] = [];
 // here lets them share ModulePage without creating a second header registry.
 const STANDALONE_MODULES: NavModule[] = [
   {
+    id: 'workspace.home',
+    label: 'Home',
+    icon: House,
+    path: '#/home',
+    parent: 'standalone',
+    description: 'What changed across the team, and your own cards',
+    pinnable: false,
+  },
+  {
     id: 'workspace.files',
     label: 'Files',
     icon: FolderOpen,
@@ -380,6 +390,7 @@ const NAV_COPY: Record<string, { label: TranslationKey; description?: Translatio
   'admin.issues': { label: 'navigation.issues', description: 'navigation.issuesDesc' },
   'admin.activity': { label: 'navigation.activityLog', description: 'navigation.activityLogAdminDesc' },
   'admin.mcp-keys': { label: 'navigation.mcpAccess', description: 'navigation.mcpAccessDesc' },
+  'workspace.home': { label: 'navigation.home', description: 'navigation.homeDesc' },
   'workspace.files': { label: 'navigation.files', description: 'navigation.filesDesc' },
   'workspace.tasks': { label: 'navigation.myPrompts', description: 'navigation.tasksDesc' },
   'workspace.automations': { label: 'navigation.automation', description: 'navigation.automationDesc' },

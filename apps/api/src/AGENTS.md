@@ -425,6 +425,9 @@ v1 只接 DeepSeek 与 OpenAI 兼容服务，它们**自动**缓存 prompt 前�
 - 性能：每个来源各查 `limit+1` 行、按 `(created_at, '<前缀>:<id>' COLLATE "C")` 归并成一个游标；时间窗必填（默认 30 天，最长 366 天），SQL 里有下界，所以不会无界扫表。人员筛选在 human 行上只用 `actor_id`（有 `(actor_id, created_at)` 索引）。`runtime_runs` 没有 `(kind, created_at)` 索引，super 不按人筛时靠时间窗兜底。
 - 导出 `GET /api/activity/export` 与列表同一筛选、同一顺序，最多 5000 行，CSV 单元格防公式注入。
 - 网页：`#/activity`（成员）与 Administration › Activity log（super）是同一个页面；运行详情沿用 `#/activity/<kind>/<id>`。
+- **首页「团队动态」`GET /api/activity/recent`**（`activity/recent-changes.ts`）是另一件事：近 14 天**全团队**的改动，但只含查看者读得到的对象。数据源各用本域自己的记录：知识库 `knowledge_base_versions`（逐篇过 `resolveKbAccess`，同一人连续保存合并为一条）、项目 `project_activities`（只取 `listProjects` dispatch 给查看者列出的项目，实体策略因此生效）、表格 `table_records`（只取 `listBases` 列出的 Base 下的表，按「表 × 人」聚合计数，**从不读记录值**）、档案库新文件（团队架 + 本人）。每条 lane 各自 try/catch，一扇门关着不等于整个 feed 故障。
+  - 「经由哪个 Agent」靠对时间：同一成员、同一模块、落在某条成功的 `agent_write` run 的 `[created_at, settled_at]` 之内就标上客户端名；**不留余量**——Agent 刚写完、本人紧接着手改的那一条必须仍算本人。
+  - 应用内助手（Chat）的写入不在操作记录里单列：它们的平台审计 `actor_type='agent'` 且没有客户端 id，与 MCP 写入分不开；MCP 写入以 agent_write run 为准。
 
 ### MCP 服务端 (`/api/mcp`)
 - 把上面的 Agent 工具代理用 **MCP 协议**包一层，让任意 MCP 客户端（Claude / Cursor / 外部 agent）按标准协议访问内部资源。路由在 `routes/mcp.ts`，**薄适配器**——不自定义资源访问：`tools/list` ← `buildProxyManifest`，`tools/call` ← `executeProxyTool`（confirm 门 / 输入校验 / 权限交集全复用 `tool-proxy.ts`）。

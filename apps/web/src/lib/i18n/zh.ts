@@ -772,6 +772,8 @@ const zh: Messages = {
     newDocument: '新建文档',
     newDocumentDesc: '创建知识文档',
     // v1.5 按目标组织的导航
+    home: '团队动态',
+    homeDesc: '团队最近的改动，以及你自己的卡片',
     files: '档案库',
     filesDesc: '团队的文件和你自己的文件——文件夹、上传与预览',
     activityLog: '操作记录',
@@ -1560,6 +1562,12 @@ const zh: Messages = {
   // 管理面板
   // 首页工作台
   home: {
+    recentChanges: '最近的改动',
+    recentChangesHint: '成员和他们的 Agent 最近两周做出的改动——只显示你能打开的内容。',
+    viewAllActivity: '操作记录',
+    feedFailed: '最近的改动加载失败',
+    feedEmpty: '最近没有改动',
+    feedEmptyHint: '知识库、项目、表格和档案库里的改动会出现在这里。',
     defaultTab: '概览',
     customize: '自定义',
     customizeEntry: '自定义首页工作台',
@@ -1902,6 +1910,7 @@ const zh: Messages = {
         skillhub: 'SkillHub',
         activity: '操作记录',
         files: '档案库',
+        home: '团队动态',
         sessionTags: '会话标签',
         sessionGroups: '会话分组',
       },

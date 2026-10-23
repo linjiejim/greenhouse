@@ -79,11 +79,54 @@ function cursorClause(createdAt: SQL, key: SQL, cursor: ActivityCursor | null | 
   return sql`(${createdAt} < ${cursor.at}::timestamptz OR (${createdAt} = ${cursor.at}::timestamptz AND ${key} COLLATE "C" < ${cursor.key} COLLATE "C"))`;
 }
 
+function inNumbers(column: SQL, values: readonly number[]): SQL {
+  return sql`${column} IN (${sql.join(
+    values.map((value) => sql`${Math.trunc(value)}`),
+    sql`, `,
+  )})`;
+}
+
 function inList(column: SQL, values: readonly string[]): SQL {
   return sql`${column} IN (${sql.join(
     values.map((value) => sql`${value}`),
     sql`, `,
   )})`;
+}
+
+export interface RecentKnowledgeEditRow {
+  version_id: number;
+  doc_pk: number;
+  slug: string;
+  title: string;
+  version: number;
+  changed_by: string | null;
+  visibility: string;
+  owner_user_id: string | null;
+  at: string;
+}
+
+export interface RecentProjectActivityRow {
+  id: number;
+  project_id: number;
+  task_id: number | null;
+  user_id: string;
+  action: string;
+  at: string;
+}
+
+export interface RecentTableChangeRow {
+  table_id: number;
+  updated_by: string;
+  records: number;
+  at: string;
+}
+
+export interface AgentWriteWindowRow {
+  owner_user_id: string;
+  tool_id: string | null;
+  client_name: string | null;
+  from: string;
+  to: string;
 }
 
 export function createActivityService(db: Db) {
@@ -170,6 +213,101 @@ export function createActivityService(db: Db) {
         LIMIT ${bound(input.limit)}
       `);
       return rows as unknown as ActivityRunRow[];
+    },
+
+    // ─── Home "recent changes" sources ─────────────────────
+    // Each reads one domain's own change record, newest first, inside a time
+    // window and a LIMIT; the caller authorizes every row it shows.
+
+    /**
+     * Saved knowledge versions (one row per edit) of documents that are not
+     * archived and that the user may plausibly read: team documents, their own,
+     * and shared private ones (the caller confirms each with resolveKbAccess).
+     */
+    async recentKnowledgeEdits(input: {
+      userId: string;
+      since: string;
+      limit: number;
+    }): Promise<RecentKnowledgeEditRow[]> {
+      const rows = await db.execute(sql`
+        SELECT v.id AS version_id, kb.id AS doc_pk, kb.doc_id AS slug, kb.title, v.version, v.changed_by,
+               kb.visibility, kb.owner_user_id, ${ISO(sql`v.created_at`)} AS at
+        FROM knowledge_base_versions v
+        JOIN knowledge_base kb ON kb.id = v.doc_id
+        WHERE v.created_at >= ${input.since}::timestamptz
+          AND kb.status <> 'archived'
+          AND (kb.visibility = 'team' OR kb.owner_user_id = ${input.userId}
+               OR EXISTS (SELECT 1 FROM knowledge_base_shares s WHERE s.doc_id = kb.id))
+        ORDER BY v.created_at DESC, v.id DESC
+        LIMIT ${bound(input.limit)}
+      `);
+      return rows as unknown as RecentKnowledgeEditRow[];
+    },
+
+    /** Project activity rows of the given (already authorized) projects. */
+    async recentProjectActivities(input: {
+      projectIds: readonly number[];
+      since: string;
+      limit: number;
+    }): Promise<RecentProjectActivityRow[]> {
+      if (input.projectIds.length === 0) return [];
+      const rows = await db.execute(sql`
+        SELECT a.id, a.project_id, a.task_id, a.user_id, a.action, ${ISO(sql`a.created_at`)} AS at
+        FROM project_activities a
+        WHERE ${inNumbers(sql`a.project_id`, input.projectIds)}
+          AND a.created_at >= ${input.since}::timestamptz
+        ORDER BY a.created_at DESC, a.id DESC
+        LIMIT ${bound(input.limit)}
+      `);
+      return rows as unknown as RecentProjectActivityRow[];
+    },
+
+    /**
+     * Record changes in the given (already authorized) tables, one row per
+     * (table, person) with how many records they touched — record values are
+     * never read.
+     */
+    async recentTableChanges(input: {
+      tableIds: readonly number[];
+      since: string;
+      limit: number;
+    }): Promise<RecentTableChangeRow[]> {
+      if (input.tableIds.length === 0) return [];
+      const rows = await db.execute(sql`
+        SELECT r.table_id, r.updated_by, count(*)::int AS records, ${ISO(sql`max(r.updated_at)`)} AS at
+        FROM table_records r
+        WHERE ${inNumbers(sql`r.table_id`, input.tableIds)}
+          AND r.updated_at >= ${input.since}::timestamptz
+          AND r.deleted_at IS NULL
+        GROUP BY r.table_id, r.updated_by
+        ORDER BY max(r.updated_at) DESC
+        LIMIT ${bound(input.limit)}
+      `);
+      return rows as unknown as RecentTableChangeRow[];
+    },
+
+    /** Settled agent writes of these members in a window, to say which agent made a change. */
+    async agentWritesOf(input: {
+      ownerIds: readonly string[];
+      from: string;
+      to: string;
+      limit: number;
+    }): Promise<AgentWriteWindowRow[]> {
+      if (input.ownerIds.length === 0) return [];
+      const rows = await db.execute(sql`
+        SELECT r.owner_user_id, (r.input::jsonb ->> 'tool_id') AS tool_id,
+               (r.input::jsonb ->> 'client_name') AS client_name,
+               ${ISO(sql`r.created_at`)} AS "from", ${ISO(sql`coalesce(r.settled_at, r.updated_at)`)} AS "to"
+        FROM runtime_runs r
+        WHERE r.kind = 'agent_write'
+          AND r.status = 'succeeded'
+          AND ${inList(sql`r.owner_user_id`, input.ownerIds)}
+          AND r.created_at >= ${input.from}::timestamptz
+          AND r.created_at < ${input.to}::timestamptz
+        ORDER BY r.created_at DESC
+        LIMIT ${bound(input.limit)}
+      `);
+      return rows as unknown as AgentWriteWindowRow[];
     },
   };
 }

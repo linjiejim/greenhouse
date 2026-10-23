@@ -2,7 +2,7 @@
  * Activity log API — see apps/api/src/routes/activity.ts.
  */
 
-import type { ActivityPage, ActivitySource } from '@greenhouse/types/activity';
+import type { ActivityItem, ActivityPage, ActivitySource } from '@greenhouse/types/activity';
 import { downloadAuthenticatedFile } from '../file-download';
 import { rpc } from './client';
 
@@ -52,4 +52,14 @@ export function activityExportUrl(filters: ActivityFilters): string {
 
 export async function exportActivityCsv(filters: ActivityFilters): Promise<void> {
   await downloadAuthenticatedFile(activityExportUrl(filters), 'activity.csv');
+}
+
+/** Home "recent changes": the team's latest changes the viewer may read. */
+export async function fetchRecentChanges(limit = 12): Promise<ActivityItem[]> {
+  const args = { query: { limit: String(limit) } };
+  const response = await rpc.api.activity.recent.$get(args);
+  const data: unknown = await response.json();
+  if (!response.ok) throw new Error(errorMessage(data, `Unable to load recent changes (${response.status})`));
+  // The route hands back the shared ActivityItem shape (packages/types/src/activity.ts).
+  return (data as { items: ActivityItem[] }).items;
 }

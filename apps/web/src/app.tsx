@@ -28,6 +28,7 @@ const SkillHubPage = lazy(() => import('./pages/skillhub').then((m) => ({ defaul
 const ActivityPage = lazy(() => import('./pages/activity').then((m) => ({ default: m.ActivityPage })));
 const TablesPage = lazy(() => import('./pages/tables').then((m) => ({ default: m.TablesPage })));
 const FilesPage = lazy(() => import('./pages/files').then((m) => ({ default: m.FilesPage })));
+const HomePage = lazy(() => import('./pages/home').then((m) => ({ default: m.HomePage })));
 const OAuthConsentPage = lazy(() => import('./pages/oauth-consent').then((m) => ({ default: m.OAuthConsentPage })));
 const AccountPasswordPage = lazy(() =>
   import('./pages/account-password').then((m) => ({ default: m.AccountPasswordPage })),
@@ -112,6 +113,7 @@ initScrollActivity();
 // ─── Router ──────────────────────────────────────────────
 
 type Route =
+  | 'home'
   | 'chat'
   | 'extension'
   | 'automations'
@@ -145,11 +147,11 @@ interface ParsedRoute {
  * `hashchange` that matches what we are already rendering, and is ignored).
  */
 function useHashRouter(): { hash: string; pending: string | null; confirmLeave: () => void; cancelLeave: () => void } {
-  const [hash, setHash] = useState(window.location.hash || '#/chat');
+  const [hash, setHash] = useState(window.location.hash || '#/home');
   const [pending, setPending] = useState<string | null>(null);
   useEffect(() => {
     const handler = () => {
-      const next = window.location.hash || '#/chat';
+      const next = window.location.hash || '#/home';
       if (next === hash) {
         setPending(null);
         return;
@@ -210,6 +212,7 @@ function LeaveConfirmDialog({
 
 /** Top-level hashes core owns (plus `DESKTOP_SATELLITE_ROUTE`); an extension alias can never take one over. */
 const CORE_ROUTES: ReadonlySet<string> = new Set([
+  'home',
   'chat',
   'automations',
   'agents',
@@ -235,7 +238,8 @@ function parseRoute(hash: string): ParsedRoute {
   const cleaned = hash.replace(/^#\/?/, '');
   const [path, query] = cleaned.split('?');
   const segments = path.split('/');
-  const topLevel = segments[0] || 'chat';
+  // Home (team activity) is the landing page.
+  const topLevel = segments[0] || 'home';
 
   // Chat utilities used to be in-memory workspace switches. Keep those links
   // working, but canonicalize them to real pages so refresh/back/deep-links all
@@ -267,12 +271,10 @@ function parseRoute(hash: string): ParsedRoute {
     return { route: 'chat', subPath: '', params: new URLSearchParams() };
   }
 
-  // The workbench is the Chat empty state now, so both the retired Apps page and
-  // the short-lived standalone Home page redirect there. Old bookmarks keep
-  // working; they just land on the screen that owns the cards.
-  if (topLevel === 'workbench' || topLevel === 'home') {
-    window.location.hash = '#/chat';
-    return { route: 'chat', subPath: '', params: new URLSearchParams() };
+  // The retired Apps page lands on Home, which shows the workbench cards.
+  if (topLevel === 'workbench') {
+    window.location.hash = '#/home';
+    return { route: 'home', subPath: '', params: new URLSearchParams() };
   }
 
   // The old full-page inbox duplicated the account-menu dialog. Preserve old
@@ -816,6 +818,7 @@ function AppShell({ route, subPath, params, extensionRoute }: AppShellProps) {
                 )}
                 {route === 'tables' && hasApplication('tables') && <TablesPage subPath={subPath} />}
                 {route === 'files' && <FilesPage params={params} />}
+                {route === 'home' && <HomePage />}
                 {route === 'activity' && <ActivityPage subPath={subPath} />}
                 {route === 'extension' && (
                   <ExtensionPageHost route={extensionRoute ?? ''} subPath={subPath} params={params} />

@@ -28,6 +28,7 @@ const MODULE_PAGES: ModulePageContract[] = [
   { file: '../tables/index.tsx', moduleId: 'workspace.tables', layout: 'list' },
   { file: '../projects.tsx', moduleId: 'workspace.projects', layout: 'canvas' },
   { file: '../files.tsx', moduleId: 'workspace.files', layout: 'list' },
+  { file: '../home.tsx', moduleId: 'workspace.home', layout: 'list' },
   { file: '../skillhub/index.tsx', moduleId: 'workspace.skillhub', layout: 'canvas' },
 ];
 

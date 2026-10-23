@@ -271,7 +271,7 @@ export function TopBar({
 
   // Fallback page titles
   const pageTitles: Record<string, string> = {
-    workbench: 'Workbench',
+    home: t('navigation.home'),
     chat: chatUtilityTitle || sessionTitle || t('chat.newConversation'),
     automations: t('navigation.automation'),
     agents: t('navigation.myAgents'),

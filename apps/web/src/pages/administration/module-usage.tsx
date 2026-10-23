@@ -41,6 +41,7 @@ const CLIENT_LABELS: Record<string, TranslationKey> = {
 };
 
 const MODULE_LABELS: Record<string, TranslationKey> = {
+  home: 'usage.modules.moduleNames.home',
   chat: 'usage.modules.moduleNames.chat',
   knowledge: 'usage.modules.moduleNames.knowledge',
   projects: 'usage.modules.moduleNames.projects',
