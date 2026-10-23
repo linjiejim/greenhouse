@@ -400,3 +400,25 @@ export interface GatewayOverview {
   base_url: string | null;
   keys: GatewayKey[];
 }
+
+// ─── assistant chat (/api/sessions, /api/chat) ──────────────────────
+
+export interface ChatSession {
+  id: string;
+  title: string | null;
+  status: string;
+  profile_id: string | null;
+  created_at: string;
+  updated_at: string;
+  is_owner?: boolean;
+  pinned?: boolean;
+}
+
+export interface ChatMessage {
+  id: string;
+  session_id: string;
+  role: 'user' | 'assistant' | 'system' | 'tool' | string;
+  content: string;
+  seq: number;
+  created_at: string;
+}

@@ -186,6 +186,8 @@ export default function RootLayout() {
                 <Stack.Screen name="tables/record" options={detailScreen(c, { grouped: true })} />
                 <Stack.Screen name="agent/index" options={pageScreen(c, { grouped: true })} />
                 <Stack.Screen name="agent/write" options={detailScreen(c, { grouped: true })} />
+                <Stack.Screen name="assistant/index" options={pageScreen(c, { grouped: true })} />
+                <Stack.Screen name="assistant/chat" options={detailScreen(c)} />
 
                 {/* ── sheets ── */}
                 <Stack.Screen name="sheets/stations" options={sheetScreen([0.6, 1], { header: true })} />

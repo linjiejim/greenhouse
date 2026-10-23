@@ -102,12 +102,15 @@ export function onStation(url: string, base: string): boolean {
  * Authenticated fetch against the API. Pass an API-relative path like `/api/auth/me` (an absolute URL
  * is fetched as given; it gets the token only on the active station's origin).
  *
+ * `via` fetches instead of the default transport for one call (the assistant streams its reply
+ * through Expo's fetch, whose body can be read as it arrives).
+ *
  * The origin and the station whose token rides along are read together. A 401 that
  * comes back after the active station changed belongs to the previous station, so it
  * is handed back untouched: refreshing would rotate the new station's pair and retry
  * it to the old origin, and signing out would end the new station's session.
  */
-export async function api(path: string, init: RequestInit = {}): Promise<Response> {
+export async function api(path: string, init: RequestInit = {}, via: typeof fetch = transport): Promise<Response> {
   checkAborted(init.signal);
   const base = getApiBase();
   const url = /^https?:\/\//i.test(path) ? path : `${base}${path}`;
@@ -118,7 +121,7 @@ export async function api(path: string, init: RequestInit = {}): Promise<Respons
   const headers = new Headers(init.headers);
   if (token) headers.set('Authorization', `Bearer ${token}`);
 
-  let res = await transport(url, { ...init, headers });
+  let res = await via(url, { ...init, headers });
   checkAborted(init.signal);
   // Another origin's 401 is about no session of ours.
   if (!own) return res;
@@ -131,7 +134,7 @@ export async function api(path: string, init: RequestInit = {}): Promise<Respons
       const retryHeaders = new Headers(init.headers);
       const newToken = getAccessToken();
       if (newToken) retryHeaders.set('Authorization', `Bearer ${newToken}`);
-      res = await transport(url, { ...init, headers: retryHeaders });
+      res = await via(url, { ...init, headers: retryHeaders });
       checkAborted(init.signal);
       if (res.status === 401 && sameStation()) {
         clearTokens();
