@@ -92,3 +92,19 @@ export function buildPrimaryNavigation({ applications, labels }: BuildPrimaryNav
 
   return { primary, overflow };
 }
+
+/**
+ * The navigation item the current page belongs to, or null when the page has
+ * no home in the navigation (the Activity log is reached from the account menu
+ * and Administration; Settings, Administration and the design page are their
+ * own workspaces). Read from the canonical route only — the query (`?tab=…`)
+ * picks a tab inside the page, never a different item — so a retired hash that
+ * redirected (`#/agents` → `#/automations?tab=profiles`) highlights where it
+ * landed.
+ */
+export function activeNavigationKey(route: string, chatWorkspaceView: string = 'conversation'): string | null {
+  if (route === 'chat') return chatWorkspaceView === 'conversation' ? 'chat' : null;
+  if (route === 'activity' || route === 'settings' || route === 'administration' || route === 'design') return null;
+  if (route === 'extension') return null;
+  return route;
+}

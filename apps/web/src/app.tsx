@@ -43,7 +43,6 @@ import { SessionManagerProvider } from './lib/session-manager';
 import { ConfirmDialog, Drawer, AppLogo, ToastContainer, ErrorBoundary, Spinner, IconButton } from './components/ui';
 import { Plus, X } from './lib/icons';
 import { authFetch, clearToken, setOnUnauthorized, validateSession } from './lib/auth';
-import { navigationBlocked } from './lib/navigation-guard';
 import { LoginScreen, AppSidebar, SidebarAccountMenu, SidebarBackButton, TopBar } from './components/app';
 import { ActionConfirmDialog } from './components/app/action-confirm-dialog';
 import {
@@ -66,8 +65,7 @@ import type { Locale } from './lib/i18n';
 import { buildPrimaryNavigation } from './platform/navigation';
 import { usePlatformCatalog, usePlatformStore } from './stores/platform-store';
 import { useMobileKeyboardViewport } from './hooks/use-mobile-keyboard-viewport';
-import { legacyExecutionRedirect } from './lib/execution-route';
-import { retiredWorkspaceRedirect } from './lib/workspace-routes';
+import { CORE_ROUTES, useHashRouter } from './lib/hash-router';
 
 // Initialize theme from localStorage on app load
 initTheme();
@@ -100,51 +98,6 @@ interface ParsedRoute {
 }
 
 /**
- * The hash router, with a leave guard.
- *
- * A hash change cannot be cancelled — by the time `hashchange` fires the URL has
- * already moved. So when a screen has unsaved work we simply do NOT commit the
- * new hash: the app keeps rendering the current screen while the caller asks the
- * user. Confirming commits it; cancelling puts the URL back (which fires another
- * `hashchange` that matches what we are already rendering, and is ignored).
- */
-function useHashRouter(): { hash: string; pending: string | null; confirmLeave: () => void; cancelLeave: () => void } {
-  const [hash, setHash] = useState(window.location.hash || '#/home');
-  const [pending, setPending] = useState<string | null>(null);
-  useEffect(() => {
-    const handler = () => {
-      const next = window.location.hash || '#/home';
-      if (next === hash) {
-        setPending(null);
-        return;
-      }
-      if (navigationBlocked()) {
-        setPending(next);
-        return;
-      }
-      setHash(next);
-    };
-    window.addEventListener('hashchange', handler);
-    return () => window.removeEventListener('hashchange', handler);
-  }, [hash]);
-
-  const confirmLeave = useCallback(() => {
-    setPending((target) => {
-      if (target) setHash(target);
-      return null;
-    });
-  }, []);
-  const cancelLeave = useCallback(() => {
-    setPending(null);
-    // Back to where we still are. Same-value assignment fires no event, which is
-    // exactly right — nothing to re-render.
-    window.location.hash = hash;
-  }, [hash]);
-
-  return { hash, pending, confirmLeave, cancelLeave };
-}
-
-/**
  * Asks before a guarded screen is navigated away from. Rendered at the app root
  * because the guard lives in the router, not in any one screen — the screen that
  * is about to be left has no chance to render anything at this point.
@@ -172,81 +125,17 @@ function LeaveConfirmDialog({
   );
 }
 
-/** Top-level hashes core owns; an extension alias can never take one over. */
-const CORE_ROUTES: ReadonlySet<string> = new Set([
-  'home',
-  'chat',
-  'automations',
-  'settings',
-  'administration',
-  'projects',
-  'design',
-  'knowledge',
-  'tables',
-  'files',
-  'skillhub',
-  'activity',
-]);
-
+/**
+ * Which page a canonical hash shows. Pure: retired hashes were already resolved
+ * by the router (`lib/hash-router.ts`), so nothing here touches the URL.
+ */
 function parseRoute(hash: string): ParsedRoute {
-  const executionRedirect = legacyExecutionRedirect(hash);
-  if (executionRedirect) {
-    window.location.hash = executionRedirect;
-    return parseRoute(executionRedirect);
-  }
-
   const cleaned = hash.replace(/^#\/?/, '');
   const [path, query] = cleaned.split('?');
   const segments = path.split('/');
   // Home (team activity) is the landing page.
   const topLevel = segments[0] || 'home';
-
-  // Retired workspace pages (My prompts → SkillHub tab, My Agents → Automations
-  // tab) and the legacy
-  // `#/chat?view=…` switches land on their canonical pages, so refresh/back/
-  // deep-links all describe the screen the user is actually looking at.
-  const workspaceRedirect = retiredWorkspaceRedirect(topLevel, new URLSearchParams(query || '').get('view'));
-  if (workspaceRedirect) {
-    window.location.hash = workspaceRedirect;
-    return parseRoute(workspaceRedirect);
-  }
-
-  if (topLevel === 'history') {
-    window.location.hash = '#/chat';
-    return { route: 'chat', subPath: '', params: new URLSearchParams() };
-  }
-
-  // The retired Apps page lands on Home, which shows the workbench cards.
-  if (topLevel === 'workbench') {
-    window.location.hash = '#/home';
-    return { route: 'home', subPath: '', params: new URLSearchParams() };
-  }
-
-  // The old full-page inbox duplicated the account-menu dialog. Preserve old
-  // bookmarks without keeping a second implementation alive.
-  if (topLevel === 'inbox') {
-    window.location.hash = '#/chat';
-    return { route: 'chat', subPath: '', params: new URLSearchParams() };
-  }
-
-  // Retired routes from earlier product areas keep resolving so old links land
-  // somewhere useful instead of on a dead page.
-  if (topLevel === 'dashboard' || topLevel === 'inquiry') {
-    window.location.hash = '#/chat';
-    return { route: 'chat', subPath: '', params: new URLSearchParams() };
-  }
-
-  // Legacy hashes an extension claims (`pages[].aliases`) redirect into the
-  // extension, tail and query intact, so bookmarks and chat links that predate
-  // it keep landing somewhere real. A core route can never be aliased away.
   const coreOwned = CORE_ROUTES.has(topLevel);
-  const alias = coreOwned ? undefined : compiledExtensionRouteAliases().get(topLevel);
-  if (alias) {
-    const tail = segments.slice(1).filter(Boolean).join('/');
-    const destination = `#/${alias}${tail ? `/${tail}` : ''}${query ? `?${query}` : ''}`;
-    window.location.hash = destination;
-    return parseRoute(destination);
-  }
 
   // Extension pages answer their own top-level segment; the host checks the
   // extension is active before rendering anything.
@@ -259,7 +148,7 @@ function parseRoute(hash: string): ParsedRoute {
     };
   }
 
-  const route = (CORE_ROUTES.has(topLevel) ? topLevel : 'chat') as Route;
+  const route = (coreOwned ? topLevel : 'chat') as Route;
   const subPath = segments.slice(1).join('/');
   return { route, subPath, params: new URLSearchParams(query || '') };
 }
@@ -273,7 +162,7 @@ function App() {
   useMobileKeyboardViewport();
   const { authState, currentUser, login, logout, updateUser: _updateUser } = useAuthStore();
   const [userLocale, setUserLocale] = useState<Locale>(getStoredLocale());
-  const { hash, pending: pendingLeave, confirmLeave, cancelLeave } = useHashRouter();
+  const { hash, pending: pendingLeave, confirmLeave, cancelLeave } = useHashRouter(compiledExtensionRouteAliases());
   const { route, subPath, params, extensionRoute } = useMemo(() => parseRoute(hash), [hash]);
   const passwordLinkRoute = hash.split('?')[0] === '#/activate';
   const passwordLinkToken = passwordLinkRoute

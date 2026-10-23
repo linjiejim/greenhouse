@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { PlatformApplication } from './catalog.js';
-import { buildPrimaryNavigation } from './navigation.js';
+import { activeNavigationKey, buildPrimaryNavigation, PRIMARY_NAV_ORDER } from './navigation.js';
 
 function application(id: string): PlatformApplication {
   return {
@@ -54,5 +54,22 @@ describe('Primary navigation', () => {
     expect(navigation.primary[0]).toMatchObject({ key: 'home', href: '#/home' });
     expect(navigation.primary.map((item) => item.href)).not.toContain('#/activity');
     expect(navigation.primary.at(-1)?.key).toBe('chat');
+  });
+});
+
+describe('activeNavigationKey', () => {
+  it('lights the item each primary page belongs to', () => {
+    for (const key of PRIMARY_NAV_ORDER) expect(activeNavigationKey(key)).toBe(key);
+  });
+
+  it('lights nothing in the primary list on pages the account menu or admin owns', () => {
+    for (const route of ['activity', 'settings', 'administration', 'design', 'extension']) {
+      expect(activeNavigationKey(route)).toBeNull();
+    }
+  });
+
+  it('lights Chat only for the conversation itself', () => {
+    expect(activeNavigationKey('chat', 'conversation')).toBe('chat');
+    expect(activeNavigationKey('chat', 'history')).toBeNull();
   });
 });
