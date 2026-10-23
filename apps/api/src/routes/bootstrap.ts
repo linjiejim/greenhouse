@@ -18,8 +18,10 @@ import { getWorkspaceBootstrap } from '../settings/workspace-config.js';
 /**
  * 1: password sign-in, notifications, push devices (`/api/auth/me/push-devices`).
  * 2: Feishu sign-in returning to the app (`/api/feishu/oauth/start-login?app_redirect=`).
+ * 3: projects and tasks, tables, my agent writes, my spend (`/api/usage/spend`), my gateway keys
+ *    (`/api/agent-access/gateway`) and the assistant chat, as of 1.7.
  */
-export const MOBILE_API_LEVEL = 2;
+export const MOBILE_API_LEVEL = 3;
 
 const bootstrapRoutes = new Hono<AppEnv>().get('/', async (c) => {
   const payload = await getWorkspaceBootstrap();

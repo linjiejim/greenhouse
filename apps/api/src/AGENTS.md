@@ -250,7 +250,7 @@ v1 只接 DeepSeek 与 OpenAI 兼容服务，它们**自动**缓存 prompt 前�
 - **默认不带内容**：标题是产品名，正文只说「哪类事」；手机打开「显示预览」才显示通知 title，通知 body（自动化摘要、报错）永远不出服务器。`data` 只有 id（`PushData`：`s` 站点 ref、`u` 账号、`k` 类别、`nid`、`url=/notification?id=`），App 原样 vendor 这份契约。
 - worker 在同一张 `notification_delivery_attempts` 队列里认领 `mobile_push`（只在 `MOBILE_PUSH_ENABLED` 开时认领），**发送前复核**（已读、设备停用/换号/改密/90 天未见、类别关掉、超 24h、审批已处理）→ `suppressed`；`DeviceNotRegistered` → 停用设备 + `failed`；网络 / 429 / 5xx → 退避重试；请求被拒 / `MessageTooBig` → dead letter（error 日志）。
 - 设备路由只给内部账号、只看自己的设备，token 只进不出。`POST /:id/test` 直发一条测试推送（每台 10 秒一次）。
-- `/api/bootstrap` 的 `mobile_api` 是 App 依赖的接口级别（`MOBILE_API_LEVEL`，现为 2：飞书登录回到 App）：App 开始调用一个新接口时同步加一，旧服务器会被 App 提示升级。
+- `/api/bootstrap` 的 `mobile_api` 是 App 依赖的接口级别（`MOBILE_API_LEVEL`，现为 3：项目、表格、我的 Agent、助手对话）：App 开始调用一个新接口时同步加一，旧服务器会被 App 提示升级。
 
 ### 技能中心 (`skills/` + `/api/skills`)
 - 团队 Agent 技能库（OSS greenhouse 移植，B7）：发布/发现/下载/同步 SKILL.md 技能文件夹，不可变 semver + 强制 changelog + sha256 完整性校验。
