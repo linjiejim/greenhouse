@@ -112,8 +112,9 @@ v3 曾把模型收进 Agent 身份：想更强的推理就选 deep、想百万�
   （外部 Agent tool proxy 同样先按真实用户权限 pin）；之后 owner 再编辑，已 pin 的会话 / Automation 仍按原
   版本运行（`assertPinnedProfileExecutionAccess` 只要求「仍可使用该 Agent」+「该版本存在」）。取消共享会立刻
   撤销非 owner 的执行权限。`resolveProfileAsync()` 对缺失/畸形 custom 引用明确失败，绝不静默替换为 Sprouty。
+- **Automation 可以跑在执行配置（run profile）上**（v1.5）：表单列出内置配置 + 自己的 + 团队共享的执行配置；`task-center.ts` 的 `resolveTaskProfile` 按 **automation 的 owner**（不是编辑者——super 改成员的 automation 也不能塞给成员用不了的配置）校验并 pin，原样保存不改配置则保留旧 pin；每次运行 `assertPinnedProfileExecutionAccess` 再按 owner 查一遍，取消共享 / 删除 / 版本缺失都让这次运行带原因失败，绝不退回别的配置。
 - **删除是真删除**：`DELETE /api/profiles/custom/:id` 连同全部版本删除，pin 到它的会话与 Automation 随后
-  fail closed（「custom Agent no longer exists」）。
+  fail closed（「run profile no longer exists」）。
 - 审核生命周期（draft → review → pilot → verified）、复核期、自动治理 worker（`AGENT_GOVERNANCE_ENABLED`）
   及其 `agent_review_due` / `agent_suspended` 通知已在 v1.4 删除；对应列是退役列，见 db AGENTS「退役表」。
 

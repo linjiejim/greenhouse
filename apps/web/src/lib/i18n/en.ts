@@ -2030,6 +2030,7 @@ export default {
       automations: 'Automations',
       profiles: 'Run profiles',
     },
+    systemProfiles: 'Built-in profiles',
     countLabel: '{count} automations',
     create: 'Create',
     createTitle: 'New automation',

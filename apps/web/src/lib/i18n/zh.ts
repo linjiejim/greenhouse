@@ -1982,6 +1982,7 @@ const zh: Messages = {
       automations: '自动化',
       profiles: '执行配置',
     },
+    systemProfiles: '内置配置',
     countLabel: '{count} 个自动化',
     create: '新建',
     createTitle: '新建自动化',
