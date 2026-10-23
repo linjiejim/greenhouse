@@ -1,7 +1,8 @@
 /**
  * `useResource` with an offline copy (../data/offline-view.ts): the copy saved for `kind` shows
  * at once, the station's answer replaces it and is saved, an unreachable station keeps the copy
- * marked offline, and a 403 / 404 deletes it. Copies belong to the station + member that saved
+ * marked offline (also after an earlier answer this visit), and a 403 / 404 / 410 deletes it from
+ * disk even when it was never read into memory. Copies belong to the station + member that saved
  * them (../store/offline.ts) and are read again when either changes.
  */
 
@@ -50,10 +51,9 @@ export function useOfflineResource<T>(
       offlineView({
         fresh: resource.data,
         saved: mine,
-        loading: resource.loading,
         missStatus: resource.error ? resource.error.status : null,
       }),
-    [resource.data, mine, resource.loading, resource.error],
+    [resource.data, mine, resource.error],
   );
 
   useEffect(() => {
