@@ -13,7 +13,7 @@ import { projectsManifest } from '../../platform/manifests/projects.js';
 import { knowledgeManifest } from '../../platform/manifests/knowledge.js';
 import { tablesManifest } from '../../platform/manifests/tables.js';
 import { PLATFORM_ORG_ID } from '../../platform/runtime.js';
-import { ActivityQueryError, listActivity, verbOf, type ActivityQuery } from '../activity-log.js';
+import { ActivityQueryError, activityCsvRows, listActivity, verbOf, type ActivityQuery } from '../activity-log.js';
 
 const manifests = [projectsManifest, knowledgeManifest, tablesManifest];
 
@@ -182,6 +182,39 @@ describe('activity log', () => {
     // A super sees the change, not the private title.
     const adminView = (await all(admin, { userId: alice.id })).find((item) => item.target?.id === String(doc.id));
     expect(adminView?.target?.label).toBeNull();
+  });
+
+  it('names the document an agent wrote only for a viewer who may read it, in the list and the CSV', async () => {
+    const doc = await db.knowledgeBase.create({
+      doc_id: unique('agent-secret'),
+      title: 'Alice private roadmap',
+      content: 'x',
+      visibility: 'private',
+      owner_user_id: alice.id,
+    });
+    await db.runtime.createRun({
+      kind: 'agent_write',
+      owner_user_id: alice.id,
+      initiated_by_user_id: alice.id,
+      source_kind: 'proxy_call',
+      source_id: unique('awr'),
+      max_attempts: 1,
+      input: {
+        client_name: 'Codex',
+        tool_id: 'knowledge_mutation',
+        action: 'knowledge.update_doc',
+        input: { doc_id: doc.doc_id },
+      },
+      actor_user_id: alice.id,
+    });
+    const own = (await all(alice)).filter((item) => item.source === 'agent');
+    expect(own.map((item) => item.target?.label)).toContain('Alice private roadmap');
+
+    // The super sees the write, never the private title — on screen or in the export.
+    const adminItems = await all(admin, { userId: alice.id, source: 'agent' });
+    expect(adminItems.length).toBeGreaterThan(0);
+    expect(adminItems.map((item) => item.target?.label)).not.toContain('Alice private roadmap');
+    expect(activityCsvRows(adminItems).join('\n')).not.toContain('Alice private roadmap');
   });
 
   it('bounds the time window', async () => {

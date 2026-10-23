@@ -457,7 +457,9 @@ async function hydrateRun(
   if (source === 'agent') {
     const toolId = typeof input.tool_id === 'string' ? input.tool_id : 'unknown';
     const action = typeof input.action === 'string' ? input.action : toolId;
-    const label = await agentWriteTargetLabel(ctx.db, row.owner_user_id, toolId, input.input).catch(() => null);
+    // Named only when the VIEWER may read it — a super must not learn the title
+    // of a member's private document through that member's agent write.
+    const label = await agentWriteTargetLabel(ctx.db, ctx.viewer.id, toolId, input.input).catch(() => null);
     return {
       ...base,
       agent: {
