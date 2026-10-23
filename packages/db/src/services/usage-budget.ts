@@ -112,6 +112,25 @@ export interface UsageBudgetSettleInput {
   at?: string | Date;
 }
 
+/**
+ * A cost that was never reserved — the call was unpriced when it started and
+ * priced by settlement (an admin set a price mid-call, a provider reported a
+ * cost). It already happened, so it is charged without a limit check; it is
+ * still a settled reservation group with ledger history, never a bypass.
+ */
+export interface UsageBudgetUnreservedChargeInput {
+  account_ids: readonly string[];
+  idempotency_key: string;
+  actual_units: number;
+  caller: string;
+  user_id?: string;
+  run_id?: string;
+  provider_id?: string;
+  model_id?: string;
+  metadata?: Readonly<Record<string, unknown>>;
+  at?: string | Date;
+}
+
 export interface UsageBudgetReleaseInput {
   idempotency_key: string;
   reason: string;
@@ -802,6 +821,102 @@ export function createUsageBudgetService(db: Db) {
           .from(usageBudgetReservations)
           .where(eq(usageBudgetReservations.idempotency_key, idempotencyKey))
           .orderBy(asc(usageBudgetReservations.account_id));
+      });
+    },
+
+    async chargeUnreserved(input: UsageBudgetUnreservedChargeInput): Promise<UsageBudgetReservationRow[]> {
+      const accountIds = [...new Set(input.account_ids.map((id) => assertIdentifier(id, 'account_id')))].sort();
+      if (accountIds.length === 0) fail('usage_budget_invalid_input', 'At least one budget account is required');
+      const idempotencyKey = assertIdentifier(input.idempotency_key, 'idempotency_key');
+      const actualUnits = assertUnits(input.actual_units, 'actual_units', false);
+      const caller = assertIdentifier(input.caller, 'caller');
+      const at = asIso(input.at);
+      const metadata = encodeMetadata({ ...input.metadata, unreserved: true });
+      const requestHash = reservationRequestHash({
+        account_ids: accountIds,
+        estimated_units: actualUnits,
+        caller,
+        user_id: input.user_id,
+        run_id: input.run_id,
+        provider_id: input.provider_id,
+        model_id: input.model_id,
+        ttl_ms: 0,
+        metadata,
+      });
+
+      return db.transaction(async (tx) => {
+        const lockKey = `usage-budget-reservation:${idempotencyKey}`;
+        await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`);
+        const existing = await tx
+          .select()
+          .from(usageBudgetReservations)
+          .where(eq(usageBudgetReservations.idempotency_key, idempotencyKey))
+          .orderBy(asc(usageBudgetReservations.account_id));
+        if (existing.length > 0) {
+          if (existing.some((row) => row.request_hash !== requestHash)) {
+            fail('usage_budget_idempotency_conflict', 'Idempotency key was already used for a different charge');
+          }
+          return existing;
+        }
+
+        const accounts = await tx
+          .select()
+          .from(usageBudgetAccounts)
+          .where(inArray(usageBudgetAccounts.id, accountIds))
+          .orderBy(asc(usageBudgetAccounts.id))
+          .for('update');
+        if (accounts.length !== accountIds.length) {
+          fail('usage_budget_account_unavailable', 'One or more required budget accounts do not exist');
+        }
+        if (new Set(accounts.map((account) => account.unit)).size !== 1) {
+          fail('usage_budget_invalid_input', 'One charge can only debit accounts with the same unit');
+        }
+
+        const reservations = await tx
+          .insert(usageBudgetReservations)
+          .values(
+            accounts.map((account) => ({
+              id: reservationId(account.id, idempotencyKey),
+              account_id: account.id,
+              idempotency_key: idempotencyKey,
+              request_hash: requestHash,
+              status: 'settled' as const,
+              estimated_units: actualUnits,
+              actual_units: actualUnits,
+              caller,
+              user_id: input.user_id ?? null,
+              run_id: input.run_id ?? null,
+              provider_id: input.provider_id ?? null,
+              model_id: input.model_id ?? null,
+              metadata,
+              expires_at: at,
+              settled_at: at,
+              created_at: at,
+              updated_at: at,
+            })),
+          )
+          .returning();
+        const byAccount = new Map(reservations.map((row) => [row.account_id, row]));
+        for (const account of accounts) {
+          const [updated] = await tx
+            .update(usageBudgetAccounts)
+            .set({ spent_units: account.spent_units + actualUnits, updated_at: at })
+            .where(eq(usageBudgetAccounts.id, account.id))
+            .returning();
+          await tx.insert(usageBudgetLedger).values({
+            account_id: account.id,
+            reservation_id: byAccount.get(account.id)!.id,
+            operation_key: `${idempotencyKey}:settle`,
+            entry_type: 'settle',
+            delta_reserved_units: 0,
+            delta_spent_units: actualUnits,
+            reserved_units_after: updated!.reserved_units,
+            spent_units_after: updated!.spent_units,
+            metadata,
+            created_at: at,
+          });
+        }
+        return reservations.sort((a, b) => a.account_id.localeCompare(b.account_id));
       });
     },
 

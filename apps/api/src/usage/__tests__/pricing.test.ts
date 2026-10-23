@@ -12,6 +12,7 @@ import { parseServiceCatalog, setServiceCatalogForTests } from '../../config/ser
 import {
   effectiveModelPrice,
   effectiveServicePrice,
+  estimateImageCostMicros,
   estimateTokenCostMicros,
   setPriceOverridesForTests,
   tokenPriceSnapshot,
@@ -221,6 +222,24 @@ describe('admin price overrides', () => {
       source: 'override',
       tokenPrice: { input: 0.15, output: 0.6 },
     });
+  });
+
+  it('reserves a token-priced image provider instead of starting it unreserved', () => {
+    setServiceCatalogForTests(
+      parseServiceCatalog(
+        'services:\n  image_generation:\n    unit: image\n    providers:\n      media: { token_price: { input: 5, output: 30 } }\n',
+      ),
+    );
+    // No size table: 1000 estimated tokens at the dearer $30 / 1M.
+    expect(
+      estimateImageCostMicros({ provider: 'media', quality: 'low', size: '1024x1024', estimatedTokens: 1_000 }),
+    ).toBe(30_000);
+    expect(estimateImageCostMicros({ provider: 'media', quality: 'low', estimatedTokens: 1_000 })).toBe(30_000);
+    setServiceCatalogForTests(null);
+    // A size table still decides when there is one.
+    expect(
+      estimateImageCostMicros({ provider: 'media', quality: 'low', size: '1024x1024', estimatedTokens: 1_000 }),
+    ).toBe(6_000);
   });
 
   it('snapshots the applied rate for the usage fact', () => {

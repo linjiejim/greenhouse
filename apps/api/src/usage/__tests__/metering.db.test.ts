@@ -370,6 +370,48 @@ describe('admin price overrides', () => {
     expect(await llmFact(lease.idempotencyKey)).toEqual(settled);
   });
 
+  it('debits all three accounts when a call that started unpriced settles at a price', async () => {
+    await db.metering.setLimit({ scope_type: 'user', scope_id: member.id, limit_units: 100 });
+    // Unpriced at the start: nothing reserved.
+    const lease = await reserveUserTokenBudget({
+      db,
+      userId: member.id,
+      caller: 'chat',
+      estimatedTokens: 1_000,
+      modelId: 'flash',
+      logicalModelId: 'flash',
+      client: 'web',
+      idempotencyKey: unique('late-priced'),
+    });
+    expect(lease.spend?.reserved).toBe(false);
+    lease.markProviderIoStarted();
+
+    // Priced mid-call at more than the member's $0.0001 budget: the money is
+    // already spent, so it is charged anyway (no limit check on settlement).
+    await setModelPrice(1, 2);
+    await settleAndRecordBudgetedUsage(db, lease, {
+      profile_id: 'team',
+      caller: 'chat',
+      user_id: member.id,
+      model: 'flash',
+      input_tokens: 100,
+      output_tokens: 50,
+    });
+
+    const usdKey = `${lease.idempotencyKey}:usd`;
+    const group = await db.usageBudget.getReservationGroup(usdKey);
+    expect(group).toHaveLength(3);
+    expect(group.every((row) => row.status === 'settled' && row.actual_units === 200)).toBe(true);
+    const own = await db.usageBudget.getAccount(accountId('user', member.id));
+    const org = await db.usageBudget.getAccount(accountId('organization', orgScope));
+    expect([own?.spent_units, org?.spent_units]).toEqual([200, 200]);
+    const ledger = await db.usageBudget.listLedger(own!.id);
+    expect(ledger[0]).toMatchObject({ entry_type: 'settle', delta_spent_units: 200, delta_reserved_units: 0 });
+    expect(await llmFact(lease.idempotencyKey)).toMatchObject({ cost: 200 });
+    // The member crossed 100% and is told.
+    expect((await budgetNotifications(member)).map((n) => JSON.parse(n.payload).threshold)).toEqual([100]);
+  });
+
   it('records each search at its provider price and picks up an override for the next call', async () => {
     const search = () =>
       runWithMeteringScope({ userId: member.id, client: 'mcp' }, () =>

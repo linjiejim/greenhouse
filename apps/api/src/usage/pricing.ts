@@ -246,6 +246,31 @@ export function maxImageCostMicros(provider: string, quality: string): number | 
   return entry.price === undefined ? null : usdToMicros(entry.price);
 }
 
+/**
+ * The reservation for one image. A size-priced provider reserves the size (or
+ * the dearest size when it is unknown); a provider priced only per token
+ * reserves `estimatedTokens` at its dearer rate — the call must never start
+ * unreserved just because its price is not a flat number.
+ */
+export function estimateImageCostMicros(input: {
+  provider: string;
+  quality: string;
+  size?: string;
+  estimatedTokens: number;
+}): number | null {
+  const flat = input.size
+    ? imageCostMicros({ provider: input.provider, quality: input.quality, size: input.size })
+    : maxImageCostMicros(input.provider, input.quality);
+  if (flat !== null) return flat;
+  const tokenPrice = effectiveServicePrice('image_generation', input.provider)?.tokenPrice;
+  if (!tokenPrice) return null;
+  const dearer = Math.max(tokenPrice.input, tokenPrice.output);
+  return estimateTokenCostMicros(
+    { input: dearer, output: dearer },
+    { inputTokens: 0, outputTokens: input.estimatedTokens },
+  );
+}
+
 /** USD per 1M tokens for a token-priced service (image understanding). */
 export function serviceTokenPrice(service: PricedService, provider: string): TokenPrice | undefined {
   return effectiveServicePrice(service, provider)?.tokenPrice;

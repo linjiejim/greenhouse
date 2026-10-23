@@ -334,6 +334,8 @@ export interface SpendAttribution {
  */
 export class SpendLease {
   private providerIoStarted = false;
+  /** Debited at settlement without a reservation (see settle). */
+  private charged = false;
 
   constructor(
     private readonly db: DatabaseProvider,
@@ -348,6 +350,11 @@ export class SpendLease {
     this.providerIoStarted = true;
   }
 
+  /** The budget key the fact links to: set once the accounts were debited through the ledger. */
+  get ledgerKey(): string | null {
+    return this.reserved || this.charged ? this.idempotencyKey : null;
+  }
+
   /** Release when the call failed before provider I/O; a no-op once I/O may have started. */
   async releaseBeforeProviderIo(reason: string): Promise<boolean> {
     if (this.providerIoStarted || !this.reserved) return false;
@@ -358,18 +365,38 @@ export class SpendLease {
   /**
    * Settle the actual cost (null = unknown → the estimate stands), then tell
    * the owners of any account that crossed a threshold. Alerts never fail the call.
+   *
+   * A lease with no reservation (the call was unpriced when it started) that
+   * settles at a positive cost — an admin priced it mid-call, the provider
+   * reported a cost — is still debited on all three accounts, through the
+   * ledger and without a limit check: the money is already spent.
    */
   async settle(actualUsdMicros: number | null, metadata?: Readonly<Record<string, unknown>>): Promise<void> {
+    let debited = 0;
     if (this.reserved) {
+      debited = Math.max(0, Math.ceil(actualUsdMicros ?? this.estimatedUsdMicros));
       await this.db.usageBudget.settle({
         idempotency_key: this.idempotencyKey,
-        actual_units: Math.max(0, Math.ceil(actualUsdMicros ?? this.estimatedUsdMicros)),
+        actual_units: debited,
         metadata: { ...metadata, cost_known: actualUsdMicros !== null },
       });
+    } else if (actualUsdMicros !== null && actualUsdMicros > 0) {
+      debited = Math.ceil(actualUsdMicros);
+      const { attribution } = this;
+      await this.db.usageBudget.chargeUnreserved({
+        account_ids: this.accountIds,
+        idempotency_key: this.idempotencyKey,
+        actual_units: debited,
+        caller: attribution.caller,
+        ...(attribution.userId ? { user_id: attribution.userId } : {}),
+        ...(attribution.runId ? { run_id: attribution.runId } : {}),
+        provider_id: attribution.provider,
+        ...(attribution.model ? { model_id: attribution.model } : {}),
+        metadata: { ...metadata, service: attribution.service, client: attribution.client },
+      });
+      this.charged = true;
     }
-    if (this.reserved && (actualUsdMicros ?? this.estimatedUsdMicros) > 0) {
-      await publishBudgetAlerts(this.db, this.accountIds);
-    }
+    if (debited > 0) await publishBudgetAlerts(this.db, this.accountIds);
   }
 }
 
@@ -515,7 +542,7 @@ export async function settleServiceFact(db: DatabaseProvider, lease: SpendLease,
       caller: lease.attribution.caller,
       run_id: lease.attribution.runId,
       session_id: lease.attribution.sessionId,
-      budget_idempotency_key: lease.reserved ? lease.idempotencyKey : null,
+      budget_idempotency_key: lease.ledgerKey,
       price_applied: fact.costUsdMicros === null ? null : (fact.priceApplied ?? null),
       metadata: fact.metadata,
     });

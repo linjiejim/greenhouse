@@ -34,9 +34,9 @@ import { getImageProviderConfig } from '../llm/media-provider.js';
 import { reserveSpend, settleServiceFact } from '../usage/metering.js';
 import {
   effectiveServicePrice,
+  estimateImageCostMicros,
   imageCostMicros,
   imageUnitPrice,
-  maxImageCostMicros,
   syncPriceOverrides,
   tokenPriceSnapshot,
   unitPriceSnapshot,
@@ -365,9 +365,12 @@ async function meterImageCall(
   run: (onProviderIo: () => void) => Promise<ImageProviderResult>,
 ): Promise<{ result: ImageProviderResult; costUsdMicros: number | null }> {
   await syncPriceOverrides(ctx.db);
-  const estimate = call.size
-    ? imageCostMicros({ provider: 'media', quality: QUALITY, size: call.size })
-    : maxImageCostMicros('media', QUALITY);
+  const estimate = estimateImageCostMicros({
+    provider: 'media',
+    quality: QUALITY,
+    ...(call.size ? { size: call.size } : {}),
+    estimatedTokens: call.estimatedTokens,
+  });
   const lease = await reserveSpend({
     db: ctx.db,
     service: 'image_generation',
