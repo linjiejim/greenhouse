@@ -34,14 +34,8 @@ export function monthKey(at: Date): string {
   return at.toISOString().slice(0, 7);
 }
 
-/** The calendar month in `timeZone` that ended before `now` (the cron's target). */
-export function previousMonthIn(now: Date, timeZone: string): string {
-  const parts = new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit' }).formatToParts(now);
-  const year = Number(parts.find((part) => part.type === 'year')!.value);
-  const month = Number(parts.find((part) => part.type === 'month')!.value);
-  const previous = new Date(Date.UTC(year, month - 2, 1));
-  return monthKey(previous);
-}
+/** The month the scheduled run targets lives with the schedule (a leaf module). */
+export { previousMonthIn } from './schedule.js';
 
 export interface CountRow {
   key: string;

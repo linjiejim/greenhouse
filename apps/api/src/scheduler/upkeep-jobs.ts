@@ -8,14 +8,16 @@
  *
  * - 04:00 CST daily  — mine tool errors out of message pipelines into frictions
  * - 05:00 CST Sunday — memory consolidation: demote stale, merge duplicates
- * - 09:00 on the 1st, workspace time — the monthly retro of the month that ended
- *   (retro/generate.ts; the zone is `team_context.timezone`, rescheduled on change)
+ * - 09:00 on the 1st, workspace time (never before the UTC month has closed) —
+ *   the monthly retro of the month that ended (retro/schedule.ts + generate.ts;
+ *   the zone is `team_context.timezone`, rescheduled on change)
  */
 
 import { Cron } from 'croner';
 import { logger } from '@greenhouse/utils/logger';
 import { extensionJobs } from '../extensions/boot.js';
 import { DEFAULT_TIMEZONE } from './task-limits.js';
+import { planMonthlyRetro } from '../retro/schedule.js';
 
 let frictionJob: Cron | null = null;
 let retroJob: Cron | null = null;
@@ -59,31 +61,36 @@ export function startMemoryConsolidationJob(): void {
   );
 }
 
-/** 09:00 on the 1st of every month. */
-export const MONTHLY_RETRO_CRON = '0 9 1 * *';
+export { MONTHLY_RETRO_CRON } from '../retro/schedule.js';
 
 /**
- * (Re)schedule the monthly retro in the workspace zone. Called at boot and
- * whenever an admin changes the zone. Never throws: a retro that cannot be
- * scheduled must not keep the API from starting.
+ * (Re)schedule the monthly retro: 09:00 on the 1st in the workspace zone, or
+ * once the UTC month has closed if that is later (retro/schedule.ts). One run
+ * at a time; each run plans the next. Called at boot and whenever an admin
+ * changes the zone. Never throws: a retro that cannot be scheduled must not
+ * keep the API from starting.
  */
-export async function startMonthlyRetroJob(): Promise<Cron | null> {
+export async function startMonthlyRetroJob(now: Date = new Date()): Promise<Cron | null> {
   try {
     const { workspaceTimeZone } = await import('../hub-context/settings.js');
     const timeZone = await workspaceTimeZone();
+    const plan = planMonthlyRetro(now, timeZone);
     retroJob?.stop();
-    retroJob = new Cron(MONTHLY_RETRO_CRON, { timezone: timeZone }, async () => {
+    const job: Cron = new Cron(plan.runAt, async () => {
       try {
         const { generateMonthlyRetro } = await import('../retro/generate.js');
-        const { previousMonthIn } = await import('../retro/aggregate.js');
         const { getDb } = await import('@greenhouse/db');
-        await generateMonthlyRetro({ db: getDb(), month: previousMonthIn(new Date(), timeZone) });
+        await generateMonthlyRetro({ db: getDb(), month: plan.month });
       } catch (err) {
         logger.error('[RetroJob] Failed:', err);
+      } finally {
+        // Plan the next month unless something rescheduled us meanwhile.
+        if (retroJob === job) await startMonthlyRetroJob(new Date(Math.max(Date.now(), plan.runAt.getTime() + 1)));
       }
     });
-    logger.info(`[RetroJob] Scheduled monthly retro (${timeZone}) → next: ${retroJob.nextRun()?.toISOString()}`);
-    return retroJob;
+    retroJob = job;
+    logger.info(`[RetroJob] Scheduled the ${plan.month} retro (${timeZone}) → ${plan.runAt.toISOString()}`);
+    return job;
   } catch (err) {
     logger.error('[RetroJob] Could not schedule the monthly retro:', err);
     return null;

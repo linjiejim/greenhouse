@@ -21,6 +21,7 @@ import {
   stopUpkeepJobs,
 } from '../../scheduler/upkeep-jobs.js';
 import { frictionErrorClass, previousMonthIn, retroMonth, type RetroAggregates } from '../aggregate.js';
+import { planMonthlyRetro, RETRO_CLOSE_MARGIN_MS } from '../schedule.js';
 import { renderRetroMarkdown } from '../render.js';
 
 afterEach(() => {
@@ -29,24 +30,42 @@ afterEach(() => {
 });
 
 describe('monthly retro schedule', () => {
-  it('runs at 09:00 on the 1st, workspace time, and follows a zone change', async () => {
-    const job = await startMonthlyRetroJob();
-    expect(job?.getPattern()).toBe(MONTHLY_RETRO_CRON);
-    const next = monthlyRetroNextRun()!;
-    // 09:00 in Shanghai (UTC+8) is 01:00 UTC on the 1st.
-    expect(next.getUTCDate()).toBe(1);
-    expect(next.getUTCHours()).toBe(1);
-    expect(next.getUTCMinutes()).toBe(0);
+  it('runs at 09:00 on the 1st, workspace time, for the month that ended, and follows a zone change', async () => {
+    const now = new Date('2026-10-15T00:00:00Z');
+    const job = await startMonthlyRetroJob(now);
+    expect(job).not.toBeNull();
+    // 09:00 in Shanghai (UTC+8) is 01:00 UTC on the 1st — after October closed.
+    expect(monthlyRetroNextRun()!.toISOString()).toBe('2026-11-01T01:00:00.000Z');
+    expect(planMonthlyRetro(now, 'Asia/Shanghai')).toEqual({
+      runAt: new Date('2026-11-01T01:00:00.000Z'),
+      month: '2026-10',
+    });
 
     zone.current = 'UTC';
-    await startMonthlyRetroJob();
-    expect(monthlyRetroNextRun()!.getUTCHours()).toBe(9);
+    await startMonthlyRetroJob(now);
+    expect(monthlyRetroNextRun()!.toISOString()).toBe('2026-11-01T09:00:00.000Z');
+  });
+
+  it('waits for the UTC month to close where 09:00 local comes first (Pacific/Auckland)', () => {
+    // 09:00 NZDT on 1 November is 20:00 UTC on 31 October: October is still open.
+    const closes = new Date(Date.UTC(2026, 10, 1) + RETRO_CLOSE_MARGIN_MS);
+    expect(planMonthlyRetro(new Date('2026-10-15T00:00:00Z'), 'Pacific/Auckland')).toEqual({
+      runAt: closes,
+      month: '2026-10',
+    });
+    // After the local 09:00 went by but before October closed: still that run, not December's.
+    expect(planMonthlyRetro(new Date('2026-10-31T21:00:00Z'), 'Pacific/Auckland')).toEqual({
+      runAt: closes,
+      month: '2026-10',
+    });
+    // Once it ran, the next one is November's.
+    expect(planMonthlyRetro(new Date(closes.getTime() + 1), 'Pacific/Auckland').month).toBe('2026-11');
   });
 
   it('targets the month that just ended in the workspace zone', () => {
-    // 2026-11-01 01:00 UTC is 09:00 on the 1st in Shanghai.
     expect(previousMonthIn(new Date('2026-11-01T01:00:00Z'), 'Asia/Shanghai')).toBe('2026-10');
     expect(previousMonthIn(new Date('2027-01-01T09:00:00Z'), 'UTC')).toBe('2026-12');
+    expect(MONTHLY_RETRO_CRON).toBe('0 9 1 * *');
   });
 });
 
