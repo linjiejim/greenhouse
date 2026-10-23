@@ -1,130 +1,63 @@
 /**
- * Design tokens — Greenhouse Teal, mirrored from the web design system
- * (packages/ui/src/styles/tokens.css is the canonical source; keep the two in
- * sync when the web palette changes). Plain JS objects so every screen uses
- * native StyleSheet (no Tailwind).
- *
- * Two palettes (light/dark) behind `useTheme()`: theme preference lives in
- * prefs ('system' follows useColorScheme). Component styles are built with
- * `makeStyles((c) => ({...}))` factories so palette swaps need no call-site
- * changes beyond the hook.
+ * Greenhouse V1 content colors (./theme/palette.ts), with UIKit/SwiftUI and Material owning
+ * native controls.
+ * RN content selects an explicit palette with the app theme: nested dynamic
+ * UIColors can resolve against different traits inside a native header or Host.
+ * Dark content values mirror system surfaces; controls still use system styling.
+ * `colors` are opaque ColorValues; use `hex` for SVG and alpha calculations.
  */
 
-import { Platform, StyleSheet, useColorScheme } from 'react-native';
+import { useEffect } from 'react';
+import { Appearance, Platform, StyleSheet, useColorScheme, type ColorValue, type TextStyle } from 'react-native';
 import { usePrefs } from './store/prefs';
+import { materialPalette } from './theme-m3';
 
-const light = {
-  // ── Brand Teal (web --primary-*) ──
-  accent: '#0d9488', // primary-600: buttons, active icon/text, brand
-  accentStrong: '#0f766e', // primary-700: pressed / strong active
-  accentDeep: '#115e59', // primary-800: strongest pressed / on-tint text
-  accentTint: '#f0fdfa', // primary-50: active-chip bg, AI avatar bg, subtle fills
-  accentBorder: '#99f6e4', // primary-200: border on tinted surfaces
+/* ------------------------------ hex mirrors ------------------------------ */
 
-  // ── Neutral / surfaces ──
-  bg: '#f9fafb', // app background (sunken)
-  surface: '#ffffff', // cards, composer, sheets
-  surfaceMuted: '#f3f4f6', // pressed rows, input fill
-  hairline: '#e5e7eb', // dividers / borders
-  hairlineStrong: '#d1d5db', // input borders
+import { lightHex, darkHex, type HexPalette } from './theme/palette';
+export type { HexPalette } from './theme/palette';
+const BRAND_LIGHT = lightHex.accent;
 
-  // ── Text ──
-  fg: '#111827',
-  fgSecondary: '#4b5563',
-  fgMuted: '#6b7280',
-  fgFaint: '#9ca3af',
-  onAccent: '#ffffff',
+/* ---------------------------- Android palette ---------------------------- */
 
-  // ── Status (web --t-success/-warning/-danger/-info) ──
-  success: '#059669',
-  warning: '#d97706',
-  danger: '#dc2626',
-  info: '#2563eb',
-  successTint: '#ecfdf5',
-  warningTint: '#fffbeb',
-  dangerTint: '#fef2f2',
-  infoTint: '#eff6ff',
+/** Brand seed of the Material 3 palette on Android (src/theme-m3.android.ts). */
+export const SEED = BRAND_LIGHT;
 
-  // ── Code block (always dark, both themes) ──
-  codeBg: '#0f1720',
-  codeHeader: '#152030',
-  codeText: '#d6e2ef',
-  codeComment: '#6b8299',
-  codeLabel: '#8aa0b8',
+const LIGHT = Platform.OS === 'android' ? materialPalette(lightHex, 'light', SEED) : lightHex;
+const DARK = Platform.OS === 'android' ? materialPalette(darkHex, 'dark', SEED) : darkHex;
 
-  // user avatar gradient ends (steel)
-  userAvatarA: '#7c8aa0',
-  userAvatarB: '#5b6b82',
+export type ThemeColors = { [K in keyof HexPalette]: ColorValue };
 
-  // scrim / overlay
-  scrim: 'rgba(17,24,39,0.34)',
-};
-
-export type ThemeColors = typeof light;
-
-const dark: ThemeColors = {
-  // Dark accents are the light teals (web dark --t-primary-fg family); text on
-  // them must be dark.
-  accent: '#5eead4', // primary-300
-  accentStrong: '#99f6e4', // primary-200
-  accentDeep: '#ccfbf1', // primary-100
-  accentTint: 'rgba(20,184,166,0.12)', // --t-primary-subtle (dark)
-  accentBorder: 'rgba(20,184,166,0.25)', // --t-primary-edge (dark)
-
-  bg: '#0f172a', // slate-900 (midnight)
-  surface: '#1e293b', // slate-800 (raised)
-  surfaceMuted: '#334155', // slate-700
-  hairline: '#334155',
-  hairlineStrong: '#475569',
-
-  fg: '#f8fafc',
-  fgSecondary: '#cbd5e1',
-  fgMuted: '#94a3b8',
-  fgFaint: '#64748b',
-  onAccent: '#042f2e', // dark teal text on light-teal accent
-
-  success: '#34d399',
-  warning: '#fbbf24',
-  danger: '#f87171',
-  info: '#60a5fa',
-  successTint: 'rgba(16,185,129,0.12)',
-  warningTint: 'rgba(245,158,11,0.12)',
-  dangerTint: 'rgba(239,68,68,0.12)',
-  infoTint: 'rgba(59,130,246,0.12)',
-
-  codeBg: '#0f1720',
-  codeHeader: '#152030',
-  codeText: '#d6e2ef',
-  codeComment: '#6b8299',
-  codeLabel: '#8aa0b8',
-
-  userAvatarA: '#64748b',
-  userAvatarB: '#475569',
-
-  scrim: 'rgba(0,0,0,0.5)',
-};
-
-export const palettes = { light, dark } as const;
-
-/** Resolve the active palette from the theme preference + system scheme. */
-export function useTheme(): { colors: ThemeColors; isDark: boolean } {
-  const system = useColorScheme();
+/** Stable objects per appearance keep RN content and native Host colors in sync. */
+export function useTheme(): { colors: ThemeColors; hex: HexPalette; isDark: boolean } {
+  const scheme = useColorScheme();
   const pref = usePrefs((s) => s.theme);
-  const isDark = pref === 'dark' || (pref === 'system' && system === 'dark');
-  return { colors: isDark ? dark : light, isDark };
+  const isDark = pref === 'dark' || (pref === 'system' && scheme === 'dark');
+  const hex = isDark ? DARK : LIGHT;
+  return { colors: hex, hex, isDark };
+}
+
+/**
+ * Apply the in-app theme preference to the whole UI (UIKit trait override), so
+ * native headers, sheets, menus and SwiftUI follow it. Call
+ * once from the root layout.
+ */
+export function useApplyAppearance(): void {
+  const pref = usePrefs((s) => s.theme);
+  useEffect(() => {
+    Appearance.setColorScheme(pref === 'system' ? 'unspecified' : pref);
+  }, [pref]);
 }
 
 /**
  * Build a themed StyleSheet factory. Define once at module scope:
- *   const useStyles = makeStyles((c) => ({ root: { backgroundColor: c.bg } }));
+ *   const useStyles = makeStyles((c) => ({ root: { backgroundColor: c.background } }));
  * then inside the component:
  *   const { colors: c } = useTheme();
  *   const styles = useStyles(c);
- * Sheets are created once per palette and cached.
+ * Sheets are created once per palette object and cached.
  */
-export function makeStyles<T extends StyleSheet.NamedStyles<T>>(
-  fn: (c: ThemeColors) => T,
-): (c: ThemeColors) => T {
+export function makeStyles<T extends StyleSheet.NamedStyles<T>>(fn: (c: ThemeColors) => T): (c: ThemeColors) => T {
   const cache = new Map<ThemeColors, T>();
   return (c: ThemeColors): T => {
     let s = cache.get(c);
@@ -136,27 +69,53 @@ export function makeStyles<T extends StyleSheet.NamedStyles<T>>(
   };
 }
 
-// `tile` is the one radius for every leading icon tile (was drifting 9/10/14).
-export const radius = { sm: 8, md: 10, lg: 14, xl: 18, tile: 10, full: 999 } as const;
-
-export const space = { xs: 4, sm: 8, md: 12, lg: 16, xl: 24, xxl: 32 } as const;
+/* ------------------------------ typography ------------------------------ */
 
 /**
- * Type scale (px) — the single source for every font size. Snap all text to one
- * of these steps; no ad-hoc or half-point sizes. Mirrors the Pencil design
- * system (design/greenhouse-mobile.pen).
+ * iOS text styles (HIG, default "Large" content size; Android: the Material
+ * type scale below). Nunito is bundled locally; RN still scales these with Dynamic Type / font scale. Pick the
+ * style by *role* (headline for row titles, footnote for meta…) and adjust
+ * weight with `weight.*` only for emphasis — never invent sizes.
  */
-export const font = {
-  caption: 12, // meta, captions, tags, hints, chips
-  small: 13, // secondary text, summaries, metrics
-  label: 14, // segmented, secondary values
-  body: 15, // body copy, row titles, inputs
-  title: 16, // nav (compact) titles, buttons, prominent row labels
-  heading: 18, // section headings, sheet titles
-  large: 22, // doc titles, large headings
-  displaySm: 28, // screen large-titles (login / settings / knowledge)
-  display: 30, // home hero
-} as const;
+const iosTypo = {
+  largeTitle: { fontSize: 34, lineHeight: 41, fontWeight: '700' },
+  title1: { fontSize: 28, lineHeight: 34, fontWeight: '700' },
+  title2: { fontSize: 22, lineHeight: 28, fontWeight: '700' },
+  title3: { fontSize: 20, lineHeight: 25, fontWeight: '600' },
+  headline: { fontSize: 17, lineHeight: 22, fontWeight: '600' },
+  body: { fontSize: 17, lineHeight: 22, fontWeight: '400' },
+  callout: { fontSize: 16, lineHeight: 21, fontWeight: '400' },
+  subheadline: { fontSize: 15, lineHeight: 20, fontWeight: '400' },
+  footnote: { fontSize: 13, lineHeight: 18, fontWeight: '400' },
+  caption1: { fontSize: 12, lineHeight: 16, fontWeight: '400' },
+  caption2: { fontSize: 12, lineHeight: 16, fontWeight: '400' },
+} as const satisfies Record<string, TextStyle>;
+
+/**
+ * Android: the Material 3 type scale under the same role names (bodyLarge 16 /
+ * 24, titleMedium 16 medium, bodyMedium 14, bodySmall 12…). Nunito uses the
+ * platform-specific scale rather than reusing iOS point sizes. Weights stay as the roles expect.
+ */
+const androidTypo: { [K in keyof typeof iosTypo]: TextStyle } = {
+  largeTitle: { fontSize: 32, lineHeight: 40, fontWeight: '700' },
+  title1: { fontSize: 26, lineHeight: 34, fontWeight: '700' },
+  title2: { fontSize: 22, lineHeight: 28, fontWeight: '700' },
+  title3: { fontSize: 19, lineHeight: 26, fontWeight: '600' },
+  headline: { fontSize: 16, lineHeight: 24, fontWeight: '600' },
+  body: { fontSize: 16, lineHeight: 24, fontWeight: '400' },
+  callout: { fontSize: 15, lineHeight: 22, fontWeight: '400' },
+  subheadline: { fontSize: 14, lineHeight: 20, fontWeight: '400' },
+  footnote: { fontSize: 12, lineHeight: 16, fontWeight: '400' },
+  caption1: { fontSize: 12, lineHeight: 16, fontWeight: '400' },
+  caption2: { fontSize: 12, lineHeight: 16, fontWeight: '400' },
+};
+
+export const typo = Object.fromEntries(
+  Object.entries(Platform.OS === 'android' ? androidTypo : iosTypo).map(([role, style]) => [
+    role,
+    { ...style, fontFamily: 'Nunito' },
+  ]),
+) as { [K in keyof typeof iosTypo]: (typeof iosTypo)[K] & { fontFamily: string } };
 
 /** The only font weights in use — name them so call sites read intent. */
 export const weight = {
@@ -166,28 +125,68 @@ export const weight = {
   bold: '700',
 } as const;
 
-/** Reusable shadows (iOS shadow* + Android elevation). */
+/* ------------------------------ layout ------------------------------ */
+
+/** 4-pt spacing scale; `margin` is the iPhone layout margin (16). */
+export const space = { xxs: 2, xs: 4, sm: 8, md: 12, lg: 16, xl: 20, xxl: 24, xxxl: 32, margin: 16 } as const;
+
+/**
+ * Corner radii. Pair every rounded rect with `borderCurve: 'continuous'`
+ * (`squircle`) for the native iOS shape. `group` matches inset-grouped list
+ * sections; `bubble` the chat bubbles.
+ */
+export const radius = { xs: 6, sm: 8, md: 12, lg: 16, xl: 22, group: 26, bubble: 20, full: 999 } as const;
+
+/** Spread into any rounded style: iOS continuous (squircle) corners. */
+export const squircle = { borderCurve: 'continuous' } as const;
+
+/**
+ * A real color string at opacity `a` (0–1), for data-driven colors (tag /
+ * project hexes) and the `hex.*` mirror — never for `colors.*`, which are
+ * opaque native color objects. Accepts `#RGB`, `#RRGGBB`, `#RRGGBBAA` and
+ * `rgb()/rgba()` (an existing alpha is multiplied); anything else is returned
+ * unchanged.
+ *
+ *   alpha(tag.color, 0.12)   // a faint wash of the tag's color
+ */
+export function alpha(color: string, a: number): string {
+  const src = color.trim();
+  let rgb: number[];
+  let base = 1;
+  if (src.startsWith('#')) {
+    let h = src.slice(1);
+    if (h.length === 3 || h.length === 4) h = [...h].map((ch) => ch + ch).join('');
+    if (h.length !== 6 && h.length !== 8) return color;
+    rgb = [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16));
+    if (h.length === 8) base = parseInt(h.slice(6, 8), 16) / 255;
+  } else {
+    const parts = /^rgba?\(([^)]+)\)$/i
+      .exec(src)?.[1]
+      .split(',')
+      .map((p) => parseFloat(p));
+    if (!parts || parts.length < 3) return color;
+    rgb = parts.slice(0, 3);
+    if (parts.length > 3) base = parts[3];
+  }
+  if (rgb.some((n) => Number.isNaN(n)) || Number.isNaN(base)) return color;
+  const out = Math.round(Math.min(1, Math.max(0, base * a)) * 1000) / 1000;
+  return `rgba(${rgb.map(Math.round).join(',')},${out})`;
+}
+
+/** Motion durations; system navigation owns its own transitions. */
+export const motion = { fast: 140, base: 200, slow: 240, exit: 180 } as const;
+
+/** Minimum touch target (HIG). */
+export const HIT = 44;
+
+/** Soft elevation for the rare floating element that isn't glass. */
 export const shadow = {
-  card: {
-    shadowColor: '#111827',
-    shadowOpacity: 0.06,
-    shadowRadius: 16,
+  float: {
+    shadowColor: '#000000',
+    shadowOpacity: 0.12,
+    shadowRadius: 18,
     shadowOffset: { width: 0, height: 6 },
-    elevation: 2,
-  },
-  lift: {
-    shadowColor: '#111827',
-    shadowOpacity: 0.1,
-    shadowRadius: 28,
-    shadowOffset: { width: 0, height: 12 },
-    elevation: 8,
-  },
-  accent: {
-    shadowColor: '#0d9488',
-    shadowOpacity: 0.35,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 5,
+    elevation: 6,
   },
 } as const;
 

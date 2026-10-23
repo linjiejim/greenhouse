@@ -16,6 +16,9 @@ const escaped = rootModules.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const blockRoot = new RegExp(`^${escaped}[\\\\/].*`);
 
 config.watchFolders = [__dirname];
+// Android toolbar icons are XML vector drawables (assets/icons/android, see
+// src/ui/toolbar-icon.android.ts) — @expo/ui's Compose Icon loads them as assets.
+config.resolver.assetExts = [...config.resolver.assetExts, 'xml'];
 config.resolver.blockList = config.resolver.blockList
   ? [].concat(config.resolver.blockList, blockRoot)
   : [blockRoot];

@@ -1,55 +1,93 @@
-# 移动端（@greenhouse/mobile）
+# apps/mobile: the team-hub app (Expo SDK 57; iOS system UI first, Material 3 on Android)
 
-Expo SDK 56 / React Native 0.85 / React 19 应用，从 letpot-greenhouse（本仓的下游 fork）的 apps/mobile 搬迁适配而来。功能：**对话（AI-first，流式 Agent 聊天 + 图片上传 + Agent Profile 切换）· 知识库（浏览 + 作用域筛选 + 原生编辑 + 修改历史/恢复）· 项目管理（列表/看板/甘特 + 任务树/评论/成员）· 设置（主题/语言/账号）**。设计对齐 web 的 **Teal 设计系统**（light + dark 双色板，跟随系统）。
+## Scope
 
-## 关键约束（容易踩坑）
+- The app is the team's Agent hub on the phone: Home (notifications), Knowledge, Files, Projects, Tables, Settings, and later what my agents wrote and a light assistant chat. It is not a web wrapper and not an agent console.
+- Places not on the phone yet are listed in src/shell/modules.ts with `ready: false` and open app/module/[id].tsx ("Coming soon"); give a place its own route when it lands and drop it from the placeholder.
+- Experience bar: content within 1.5 s of a cold start (cache first, refresh in background), 60 fps lists, haptics and optimistic updates, offline reading of recent items, dark mode, Dynamic Type, VoiceOver.
 
-- **不是 pnpm workspace 成员**。`pnpm-workspace.yaml` 用 `!apps/mobile` 显式排除——它的 React-19 / RN 依赖图若被 hoist 进共享 store 会污染 web/api 的 React 类型。
-  - 安装：在本目录运行 `pnpm install --ignore-workspace`（或根目录 `pnpm mobile:install`），依赖全部落在 `apps/mobile/node_modules`，有自己的 `pnpm-lock.yaml`。
-  - **不要用 `npx expo install` 装依赖**——它会绕过隔离、把 apps/mobile 作为 importer 写进**根** `pnpm-lock.yaml`（已踩过）。正确做法：手动在 package.json 里钉版本（SDK 56 的包一般是 `~56.x`），再 `pnpm install --ignore-workspace`。
-  - **expo CLI 的自动依赖检查同样会泄漏**（已踩，2026-07）：`expo run:ios` 等命令会自己跑一次未隔离的 `pnpm install`，把部分符号链接重连到**根** store —— Metro 的 blockList 拦下后表现为真机红屏 `Unable to resolve "expo-status-bar"`（node_modules 混合指向，`readlink node_modules/<pkg>` 出现 `../../../node_modules/.pnpm` 即中招）。隔离屏障 = 本目录自己的 [pnpm-workspace.yaml](./pnpm-workspace.yaml)（pnpm 向上查找先命中它，裸 `pnpm install` 也是 standalone）；**不要用项目级 `.npmrc` 承载 pnpm 配置——pnpm 11 不读它**（历史上的 `node-linker=hoisted` 就一直没生效，实际布局是 isolated symlink，Metro 兼容）。若再泄漏：`rm -rf node_modules && pnpm install` 重建 + `expo start --clear`。
-  - 不要 `import '@greenhouse/types'` 等 workspace 包。需要的类型在 [src/shared/greenhouse-types.ts](./src/shared/greenhouse-types.ts) 里 **vendored**（复制子集，头注释指向 canonical 源 `packages/types/src/api.ts`）。服务端形状变了要同步改这里。
-  - **TODO（待办）**：letpot 的 `packages/contract/src/mobile-parity.ts` 是现成模板，可加同款 CI 绊网把 vendored 类型与真相做可赋值断言，防漂移。
-  - **Metro 也要隔离**：[metro.config.js](./metro.config.js) 用 `resolver.blockList` 屏蔽**仓库根** `node_modules`，否则 Metro 的逐层向上查找会捞到泄漏的重复依赖（曾致 `react-native-worklets` 原生/JS 版本不匹配）。新增原生模块若报 "version mismatch"，先查根 `node_modules` 泄漏。
-- **原生工程不入库**。`/android`、`/ios` 由 `expo prebuild`（CNG）生成，已在 `.gitignore`。`expo prebuild --clean` 会清掉 `android/local.properties`，真机构建前需补 `sdk.dir`（或导出 `ANDROID_HOME`）。
-- **打包/Release Android 构建两坑（首次跑 release APK 踩，2026-07-04）**：`expo run:android` 的 **debug** 变体不打包 JS（真机从 Metro 取），所以这两坑只在**打包构建**（`gradlew :app:assembleRelease` / 独立可离线跑的 release APK）暴露：
-  1. **`babel-preset-expo` 必须是直接依赖**。[babel.config.js](./babel.config.js) 用裸字符串 `'babel-preset-expo'`，pnpm isolated 布局不把这个传递依赖 hoist 到顶层 `node_modules` → 打包步 `:app:createBundleReleaseJsAndAssets`（`expo export:embed`）报 `Cannot find module 'babel-preset-expo'`。已按「手动钉版本」约定加进 devDependencies（`~56.0.16`，随 SDK 56）。
-  2. **HTTP LAN API 要放行 cleartext**。targetSdk≥28 下 release 默认禁明文 → 打到 `http://<lan>:4401` 的请求全部失败（debug 有 `android/app/src/debug/AndroidManifest.xml` 豁免，故只 release 中招）。**已用 `expo-build-properties` 插件固化**（app.json：`android.usesCleartextTraffic: true`，prebuild 自动写入 manifest）——重跑过 `pnpm mobile:prebuild` 之后不需要再手改；改动此插件配置后记得重跑 prebuild。release 默认用 **debug keystore** 签名（`signingConfigs.debug`），与 dev client 同签名，可直接 `adb install -r` 覆盖装机、不丢 SecureStore 登录态。
-- **Expo Go 跑不了**：`expo-secure-store` / `react-native-keyboard-controller` 需要 dev client（`pnpm mobile:ios` / `pnpm mobile:android` 构建）。开发期大部分 UI 可用 `pnpm mobile:web`（Expo web）验证。
-- **`.env` 不入库**。工作站（station）配置由本目录 [greenhouse.config.ts](./greenhouse.config.ts) 从 `EXPO_PUBLIC_*` env 组装——对应根 `greenhouse.config.ts` 的 `clients.stations`（类型 vendored 在 [src/shared/greenhouse-config.ts](./src/shared/greenhouse-config.ts)），经 [src/config.ts](./src/config.ts) 暴露为 `STATIONS` / `IS_SINGLE_STATION`（旧的 `DEFAULT_API_BASE` / `HAS_PINNED_BASE` 由此派生）。三个 env：
-  - `EXPO_PUBLIC_API_BASE_URL`（可选）：默认工作站的 origin，设了就是 `STATIONS.defaults` 的唯一一项，首启种进注册表（未登录）——它只是**首启种子**、不硬编码 API 地址。不设 → 通用商店构建，首启为空列表、由用户自己添加服务器（`__DEV__` 下仍种 `http://localhost:3000`；Android 模拟器用 `10.0.2.2:3000`，真机用 Mac 的 LAN IP）。
-  - `EXPO_PUBLIC_STATION_NAME`（可选）：默认工作站的显示名，缺省为 host。
-  - `EXPO_PUBLIC_STATIONS_MODE`：`multi`（默认，用户可添加/切换）或 `single`（**锁定**到默认工作站：`hydrate()` 每次把注册表收敛为只剩它——同 origin 的旧条目保留 id 与 token，其余连 token 一起清掉；`add`/`switchTo`/`remove` 忽略；StationSheet 只显示它、隐藏添加表单与删除，登录页/设置/抽屉的入口照常打开 sheet 看当前服务器）。`single` 而没设 URL、或 mode 值未知，会在 import 时抛错（fail closed）。
-- **模块用量**：`api()` 与流式 chat 都带 `X-Greenhouse-Client: mobile`（服务端据此把移动端对话的工具调用记为 `mobile`；只是计数标签，不是鉴权）。根布局按首段路由（`MOBILE_USAGE_MODULES`）每进一个模块报一次 `reportPageOpen`，标签 sheet 打开记 `session-tags`；模块 id 必须在服务端封闭清单 `PAGE_MODULE_IDS`（`packages/types/src/usage.ts`）里，否则 400。
-- **Expo web 开发要给 API 配 CORS**：API 的 CORS 是白名单制（`CORS_ALLOWED_ORIGINS` env）。本地跑 `pnpm mobile:web`（8081 端口）时启动 API 要带 `CORS_ALLOWED_ORIGINS=http://localhost:8081`。原生 app 无 Origin 头，不受影响。
+## Install and tests
 
-## 约定
+- apps/mobile is outside the pnpm workspace with its own lockfile: install with `pnpm mobile:install`, and run `pnpm typecheck` and `pnpm lint` inside apps/mobile, because root checks skip it.
+- Never run `npx expo install`; it writes apps/mobile into the root pnpm-lock.yaml. Pin versions by hand (SDK 57 packages are ~57.x), then run `pnpm mobile:install`.
+- apps/mobile/pnpm-workspace.yaml is the isolation barrier; pnpm 11 ignores .npmrc, so never put pnpm settings there.
+- If packages get relinked into the root store (metro.config.js blocks it: red screen "Unable to resolve" or a native "version mismatch"), delete node_modules, run `pnpm mobile:install`, then `expo start --clear`.
+- Never add `@react-navigation/*` (expo-router vendors it; import from `expo-router/react-navigation`); keep react-native-drawer-layout and babel-preset-expo as direct dependencies.
+- Never import `@greenhouse/*` packages. Files headed VENDORED are verbatim copies (src/shared/push.ts ← packages/types/src/push.ts); re-copy instead of editing. src/shared/greenhouse-types.ts is the hand-kept subset of v1 server shapes; declarations marked verbatim are checked by src/shared/vendor.parity.test.ts.
+- The root vitest runs mobile tests without a mobile install: tests must not import react, react-native or `expo-*`, even transitively (mock them, as src/startup/startup.test.ts does); keep logic in React-free modules (src/data, src/push/model.ts, src/api/compat.ts).
+- Tests and the modules they import sit in folders with a stub tsconfig.json (copy src/api/tsconfig.json), or CI fails with TSConfckParseError.
 
-- 路由用 expo-router（文件即路由，`app/`）；根布局 [app/_layout.tsx](./app/_layout.tsx) 负责 auth 引导 + prefs 水合 + 路由门禁，并提供 `GestureHandlerRootView` + `KeyboardProvider` + `SafeAreaProvider` + `BottomSheetModalProvider`。每屏自绘 header，native stack `headerShown:false`。
-- **左抽屉是原生 Drawer**：首页放在 `app/(drawer)/` 路由组，其 [_layout.tsx](./app/(drawer)/_layout.tsx) 用 **expo-router 的 `Drawer` 布局**（底层 `react-native-drawer-layout`，跑在既有 gesture-handler + reanimated 上，**无需 prebuild/原生改动**）——原生侧滑开合 + 左缘 edge-swipe 开箱即用。chat/knowledge/settings 等是 root stack 压在抽屉组**之上**的页，故只有首页有抽屉。
-  - **expo-router 56 已把 react-navigation vendored 进包内**（`expo-router/drawer` 导出 `Drawer`/`DrawerContentScrollView`/`useDrawerStatus`… + `standard-navigation` 内核）——**不要再装 `@react-navigation/drawer`**。唯一手动钉的运行时依赖是 `react-native-drawer-layout`（`~4.2.5`，本是 expo-router 的传递依赖，钉成直接依赖以在隔离布局下稳定解析）。
-  - 可复用件在 [src/ui/drawer.tsx](./src/ui/drawer.tsx)：`drawerScreenOptions(colors)`（面板宽/圆角/scrim/edge-swipe 统一项，spread 进 `Drawer` 的 `screenOptions`）+ `DrawerScaffold`（账号头 + 可滚 children + footer + 版本；**不再内置退出登录**，退出在设置页底部）+ `DrawerRow`（图标 + label + 可选 muted value + chevron）；首页抽屉内容与导航在 [src/chat/home-drawer.tsx](./src/chat/home-drawer.tsx)（`HomeDrawerContent`）——中部是**导航目录**（知识库 / 项目 / 历史会话）一列 `DrawerRow`，不再嵌历史列表；footer 是 设置 + **工作站切换行**（显示当前 station 名，开 `StationSheet`）；点行先 `closeDrawer()` 再延时 `push`。☰ 与 edge-swipe 都走 `navigation.openDrawer()`；别处加抽屉照此拼。
-- **对话即首页**：[app/(drawer)/index.tsx](./app/(drawer)/index.tsx) 是 AI hero（输入即开新会话，会话在创建时绑定 prefs 里选的 profile）。顶栏左上 **☰**（或左缘滑动）开左抽屉；右侧一组**纯图标**按钮（历史 `clock` 弹出 `HistorySheet` · 知识库 `book` 进 [app/knowledge/](./app/knowledge) · 项目 `folder` 进 [app/projects/](./app/projects)），每颗带 `accessibilityLabel`。**Agent Profile 入口已下移到 Composer**：`composer` 的可选 `onPickProfile`/`profileName` 在输入框上方渲染一行触发条，开 [src/chat/profile-sheet.tsx](./src/chat/profile-sheet.tsx)；对话页不传该 prop，故无 profile 入口。
-- **主题**：[src/theme.ts](./src/theme.ts) 双色板（light/dark，值来自 web 的 `packages/ui/src/styles/tokens.css`，改 web 色板要同步）。组件样式一律 `const useStyles = makeStyles((c) => ({...}))` 工厂 + 组件内 `const { colors: c } = useTheme(); const styles = useStyles(c);`。**不要**在模块级引用色值。偏好 system/light/dark 存 prefs。**设计系统对齐**（真相源 `design/greenhouse-mobile.pen`）：字号只取 `font.*` 九档阶梯（caption 12 / small 13 / label 14 / body 15 / title 16 / heading 18 / large 22 / displaySm 28 / display 30），字重取 `weight.*`，图标底座圆角取 `radius.tile`——不要再写 `15.5`/`13.5` 这类散值或字面圆角，向阶梯就近取整。
-- **i18n**：[src/lib/i18n/](./src/lib/i18n)（本地 40 行实现，workspace 隔离导不了 @greenhouse/ui）。en.ts 是 key 真相源，key 命名对齐 web 的 `chat.*`/`settings.*`。组件内用 `useT()`，非组件（format.ts）用 `t()`。新增文案必须双语。已知缺口：format.ts 的 `TOOL_LABELS`/`CAT_LABELS` 仍是中文硬编码。
-- **键盘避让**：不要用 RN 的 `KeyboardAvoidingView`。用 `react-native-keyboard-controller` 的封装 [src/lib/keyboard.ts](./src/lib/keyboard.ts)：`useBottomPadStyle`（根容器）+ `useCollapsingInsetStyle`（composer bar）；**表单类页面**（登录）用 compat 层导出的 `KeyboardAwareScrollView`（只滚动到聚焦输入框可见的最小位移，切换输入框不重排页面；Expo Go 下退化为普通 ScrollView），配合背景 `Pressable` → `Keyboard.dismiss()` 点空白收起键盘。**Bottom sheet 的键盘策略已统一在 `Sheet` 基元里**（[src/ui/sheet.tsx](./src/ui/sheet.tsx)）：`keyboardBehavior="extend"` + body 内 `useBottomPadStyle` 跟随键盘 —— sheet 本体**永不随键盘位移**（gorhom 的 `interactive` 会把高 sheet 的拉手顶出屏幕、无法关闭，已踩）；键盘弹出时 sheet 只会长高到 92% 的扩展档位。表单在滚动内容**末尾**的 sheet（tag-manager 新建、station 添加）用 `useSheetEndReveal()`：input `onFocus` 后 scrollToEnd 把表单滚进可视区。新 sheet 一律沿用，不要在单个 sheet 里改回 `interactive`。
-- **两个真机踩坑**（继承自 letpot，都已修）：
-  - **Hermes 日期解析**比浏览器严格：Postgres 时间戳 `"… 05:05:34.202+00"` 直接 `new Date()` 是 Invalid Date。一律走 [src/lib/format.ts](./src/lib/format.ts) 的 `parseMs()`。
-  - **gorhom 列表不滚动**：`@gorhom/bottom-sheet` v5 内容滚动手势失灵，`Sheet` 的 `nativeScroll` 开关改用原生 `FlatList` 自己滚。长列表 sheet 都走这条。
-- **UI kit 在 [src/ui/](./src/ui)**：`core`（Touchable/Icon/Spinner/Caret）、`sprouty`（**SproutyFace 吉祥物**，vendored 自 `packages/ui/.../sprouty-face-svg.ts` 的静态 SVG 子集：剥掉了 CSS 动画与 fx 层，呼吸动画用 Reanimated 包裹；web 吉祥物几何变了要同步）、`logo`（**GreenhouseMark** 品牌标志：house+sprout 内联 SVG，登录页替代吉祥物，用 `color`/`accent` 着色；几何真相源 `logos/greenhouse-mark.svg`）、`widgets`（复用基元：`Tile` 图标底座 · `DisclosureRow` 折叠触发行（工具/引用/推理/指标共用）· `ScreenHeader` 两档页头 large/compact · 以及 Chip/Segmented/Field/Button/EmptyState/Toast…）、`sheet`、`drawer`（**原生抽屉可复用件** `drawerScreenOptions`/`DrawerScaffold`/`DrawerRow`，见上「左抽屉是原生 Drawer」）、`haptics`。
-- **对话相关在 [src/chat/](./src/chat)**：`composer`（多行输入 + 附件缩略图条 + 全屏编辑 + 可选 profile 触发条）、`markdown`（富 markdown 渲染，knowledge 详情也复用）、`message`（AiMessage 工具管线/推理/引用/指标 + thinking 位 Sprouty、UserMessage 图片渲染）、`history-*`、`profile-sheet`、`home-drawer`（原生左抽屉内容 `HomeDrawerContent`）。**历史会话**：`history-list`（`useSessions` 分页 hook + `HistoryRow` 紧凑行）→ `history-browser`（`HistoryBrowser`：搜索 + `TagFilter` + 无限滚动 + 长按删/标签，两处共用）→ 两个宿主：`history-sheet`（`HistorySheet` 88% 弹层，首页历史图标触发）与 [app/history/index.tsx](./app/history/index.tsx)（独立历史页，root stack 注册）；tag 管理 sheet 由宿主各自持有。**会话标签**（对齐 web）：`tag-chip`（着色胶囊）/`tag-filter`（历史筛选条）/`tag-selector-sheet`（指派 + 内联新建）/`tag-manager-sheet`（CRUD + 10 色取色器），store 在 [src/store/tags.ts](./src/store/tags.ts)，色板 [src/lib/tag-colors.ts](./src/lib/tag-colors.ts) mirror `apps/web/src/components/session-tags/colors.ts`。**per-user**，服务端限 20 标签/用户、5/会话；chip 颜色内联（非 token），只读/非属主会话不给标签入口（对齐 tag-bar 的 `readOnly` 守卫）。指派用 `busyRef` 串行化乐观更新以避免 stale-closure 覆盖。
-- **知识库**（对齐 web 的能力子集，语义同 `apps/api/src/knowledge/access.ts`）：[app/knowledge/index.tsx](./app/knowledge/index.tsx) 列表页顶部 `Segmented` 作用域 tabs（全部/团队/个人/共享 → API `?visibility=`；行图标 book/lock/share 按归属区分，`access==='reader'` 标只读）；[app/knowledge/[slug].tsx](./app/knowledge/%5Bslug%5D.tsx) 详情页 `useFocusEffect` 回焦重取，页头笔/时钟按钮开编辑与历史；[app/knowledge/edit.tsx](./app/knowledge/edit.tsx) **原生编辑器**（notes 风格两枚裸 `TextInput`：标题 + flex 多行 Markdown 源文，选区/滚动到光标全走系统行为；PUT 只发 title+content_markdown，服务端记版本并重导 Tiptap JSON；脏状态关闭有放弃确认，路由 `slide_from_bottom` 且关横滑手势防绕过）；[src/knowledge/versions-sheet.tsx](./src/knowledge/versions-sheet.tsx) 修改历史 sheet（对上一版的字段徽章 + 字符增减、点行展开渲染快照、恢复走确认弹窗，服务端把回滚记成新版本故不丢历史；不做 web 的逐词 diff）。创建文档仍只在 web。
-- **项目管理在 [src/projects/](./src/projects) + [app/projects/](./app/projects)**（web 语义源 `apps/web/src/components/project/*`）：`meta`（状态/优先级元数据 + 树/日期数学，色值全走 theme token；`PROJECT_COLORS` mirror 服务端 fallback 色板）· `task-list`（树形列表，长按开动作）· `board`（横滑吸附泳道看板，状态变更走长按菜单而非拖拽）· `gantt`（**移动原生甘特**：固定任务标签列 + sticky 时间轴（`useAnimatedReaction`+`scrollTo` 与画布 UI-thread 同步）+ **捏合缩放**（活动期 scaleX 焦点锚定预览、松手按新 dayWidth 提交重排，档位 tier 与预设镜像 web `ganttDayWidth`：日28/周14/月8/年3）+ 父任务/项目折叠 + today 线/周末底纹/里程碑菱形/逾期着色/子树进度填充；**单项目与全局两模式**（`sections[].project` 有值即渲染项目分段带）。**刻意不搬** web 的拖拽改期/拖拽建任务/依赖箭头/批量框选/minimap——触屏错误率高，编辑一律走 sheet）· 表单 sheets（`task-form-sheet`/`project-form-sheet`/`user-picker-sheet`/`project-sheets`(成员+动态)）· `task-action-sheets`（长按动作：详情/改状态/编辑/子任务/里程碑切换/删除）。屏幕：`app/projects/{index,[id],task/[taskId]}.tsx`（详情页 `useFocusEffect` 回焦重拉；任务页无单任务 GET，从项目树 `findTask`）。日期选择用 [src/ui/date-field.tsx](./src/ui/date-field.tsx)（**纯 JS 内联月历，不引原生 datetimepicker**——避免 dev client 重建与 EAS 指纹变更；日期一律 `YYYY-MM-DD` UTC，对齐服务端 date-only 列）。
-- **API 层在 [src/api/](./src/api)**：`client.ts`（401 透明刷新）、`chat.ts`（`expo/fetch` 流式 NDJSON → `handleStreamEvent`，消息可带 `images`）、`sessions.ts`（`listSessions({tagId})` 加 `?tag_id` 筛选）、`session-tags.ts`（标签 CRUD/reorder + 会话指派：`/api/session-tags`、`/api/sessions/:id/tags`）、`knowledge.ts`（列表/详情 + `updateDoc`/`listVersions`/`restoreVersion`，`canEditDoc` 按服务端返回的 `doc.access` 判编辑权）、`upload.ts`（图片 ≤1024px 压缩 → `POST /api/upload`，**仅图片**，服务端 5MB/魔数校验）、`token-storage.ts`（SecureStore/localStorage + 内存镜像，**token 按工作站分 key**（`__<stationId>` 后缀），`hydrateTokens(stationId)` 换站重灌，也承载 prefs 持久化）。API 地址一律 `getApiBase()` 运行时解析，不要 import 常量。
-- **多工作站（station）**（spec：`docs/specs/20260707-multi-station-workspaces.md`）：[src/store/stations.ts](./src/store/stations.ts)（zustand 注册表 `{stations, activeId}` + `normalizeBaseUrl`（IP/localhost 缺省 http、域名缺省 https）+ `probeStation`（`GET /api/auth/status`）+ `getApiBase()`）。首启迁移/种子见 `hydrate()`：种入 `STATIONS.defaults`（首项激活），旧版未后缀 token 迁到首个种子站；`single` 模式每次 hydrate 把注册表收敛为锁定站（见上「`.env` 不入库」）。UI 入口 [src/stations/station-sheet.tsx](./src/stations/station-sheet.tsx)（列表切换/添加/删除，登录页与设置页共用）；**切换后必须 `auth.bootstrap()`**（重灌 token + 重验证，root layout 按结果路由 home 或 /login）。profile 偏好是设备级的，换站后陈旧 profile 由 `createSession` 一次 default 兜底重试消化。
-- 偏好（主题/语言/profile）在 [src/store/prefs.ts](./src/store/prefs.ts)（zustand + 持久化，`hydrate()` 在 _layout 调一次）。
-- **iOS 桌面 widget 在 [targets/widget/](./targets/widget)**（`@bacons/apple-targets` config plugin；`app.json` 里 `ios.appleTeamId` + plugins 项 + App Group entitlement）。widget 是独立 extension，**只能 SwiftUI，跑不了 RN**。五种 family：小（问候 + Sprouty + 新对话）、中（任务状态 2 条 + 双入口）、大（任务 3 条 + 最近会话续聊）、锁屏矩形（最近任务一行）、锁屏圆形。deep link：`greenhouse://?compose=1`（首页 composer `autoFocus`）、`greenhouse://knowledge`、`greenhouse://chat/<id>`。
-  - **数据管道（快照模式）**：RN 侧 [src/lib/widget-snapshot.ts](./src/lib/widget-snapshot.ts)（**schema 真相源**，`v` 字段版本化）从 tasks/sessions API 组快照 → [modules/widget-bridge](./modules/widget-bridge)（本地 expo module，iOS-only，Android/web no-op）写入 App Group `group.app.greenhouse.mobile` 并 `reloadAllTimelines()`。写入时机在 `_layout.tsx`：登录 bootstrap 后 + 每次退后台；登出清空（widget 退化为纯 launcher）。**改 schema 必须同步 Swift 侧 `Snapshot` Codable 并升 `v`**。widget 不自己发网络请求（token 不出 app；要"准实时"再演进为 extension 自拉 + Keychain 共享）。
-  - 色板与 Sprouty 图由 [expo-target.config.js](./targets/widget/expo-target.config.js) 的 `colors`/`images` 生成进 `Assets.xcassets`：颜色 mirror `src/theme.ts`（dark 半透明 tint 预先叠到 `#1e293b` 算成不透明 hex）；`sprouty-idle/-sleep.png` 由 `src/ui/sprouty.tsx` 的 SVG 离线渲染（sharp，几何变了要重新导出），表情按时段切换（22:00–6:00 睡颜）。Swift 文案 mirror `src/lib/i18n` + `format.ts greeting()`，语言跟快照里的 app 偏好（无快照时跟系统）。改 config / app.json / entitlements 要重跑 prebuild。
-- **范围边界（本期不做）**：语音输入、非图片附件、知识库**新建**（编辑/历史已做，见上）、会话分享/重命名/导出（菜单占位 toast）、session channel 上报（记为 web）、项目任务的依赖编辑与拖拽交互（甘特只读展示依赖外的全部，编辑走 sheet）。
-- **发布 / EAS**（业界标准，runbook 见根 [RELEASING.md](../../RELEASING.md) 的 "Mobile → fingerprint CD"）：构建走 **EAS Build**，profile 在 [eas.json](./eas.json)——`development`（dev client）/ `preview`（`distribution:internal`、Android 出 `apk`）/ `production`（store）。**CD 已自动化**：[.github/workflows/mobile.yml](../../.github/workflows/mobile.yml) 在 `main` 触及本目录时按 **native 指纹**分流——指纹匹配既有构建 → `eas update`（JS/资源 OTA，用户下次启动生效，不过商店）；指纹变了 → `eas build --auto-submit`（iOS 自动上 **TestFlight**，App Review 的最后提交仍在 ASC 手动点）。无 `EXPO_TOKEN` secret 时整个 job 绿色跳过（fork 安全）。**mobile `version` 跟产品版本走**（app.json + package.json 由 release-please `extra-files` 随 Release PR 一并 bump，**别手改**）；但**构建节奏仍与产品 tag 解耦**——版本号 bump 本身不触发 store build：[fingerprint.config.js](./fingerprint.config.js) 用 `sourceSkips: ExpoConfigVersions` 把版本字段排除出指纹，发版只走 OTA，TestFlight 二进制带的是它上次指纹变化时的产品版本。
-  - 关键配置：`app.json` `runtimeVersion.policy: "fingerprint"`（OTA 只投给指纹兼容的二进制，杜绝不兼容热更）；`eas.json` `appVersionSource: "remote"`（`buildNumber`/`versionCode` 在 EAS 云端自增——CI 的 checkout 是一次性的，local 自增会丢）；`expo-updates` 已装（CNG prebuild 自动应用其 config plugin，无需手动进 plugins 数组）。已知 gotcha：`eas init`/`eas build` 触发的 @bacons/apple-targets 同步会把 widget 的 App Group **重复追加**进主 app 的 `ios.entitlements`（不去重）——提交 app.json 前手动 dedupe 回单条。
-  - 一次性开通（secret-gated，见 RELEASING.md 步骤 1–5）：`eas init` + `eas update:configure`（回填 `projectId`/`updates.url` 后提交）→ 本地跑一次 `eas build --profile production --auto-submit` 播种凭据/ASC app/远端 build 号 → Expo dashboard 配 `EXPO_PUBLIC_API_BASE_URL`（构建期烘焙,workspace-picker 登录落地前的过渡）→ 仓库加 `EXPO_TOKEN` secret。
-  - 测试者拿包：workflow_dispatch 选 `preview`，或本地 `eas build --profile preview`（离线替代仍是本目录 AGENTS 记的 `gradlew :app:assembleRelease` 本地通道）。
-- 命令（根目录）：`pnpm mobile:install` / `pnpm mobile`（dev client）/ `pnpm mobile:web` / `pnpm mobile:ios` / `pnpm mobile:android` / `pnpm mobile:prebuild`；本目录 `pnpm typecheck`、`pnpm lint`。根仓的 lint/typecheck/prettier 均已排除本目录（eslint.config.js ignores、tsconfig exclude、.prettierignore）。
-- **App 图标**：`assets/icon.png`（iOS/默认，1024 满幅方形——**不要烘焙圆角**，Apple 自己套遮罩）+ `assets/adaptive-icon.png`（Android 自适应前景，白 glyph 居中约 44% 以适配圆形遮罩，底色在 app.json `adaptiveIcon.backgroundColor` #0D9488）。两张都由品牌 SVG（`apps/web/public/favicon.svg`，与 GreenhouseMark 同几何）经 `rsvg-convert` 1024px 渲出；品牌标志变更后重渲。注意改图标属 **native 指纹变化** → CI 走 build lane 出新构建，不走 OTA。
+## Server contract (v1 API)
+
+- Sign-in: `POST /api/auth/login` → `{ accessToken, refreshToken, user }`; refresh: `POST /api/auth/refresh` with `{ refreshToken }` (single use, one refresh at a time per station); member: `GET /api/auth/me` → `{ user }`; language: `PUT /api/auth/me/preferences`. There is no logout endpoint: sign-out forgets the pair.
+- Errors are `{ error: '<words>' }`; src/api/client.ts maps the status to a stable `code` and keeps the words as `message`.
+- `/api/bootstrap` (public) gives branding and `mobile_api`. `MOBILE_API` (src/api/compat.ts) is the level this build needs; a server below it shows the mismatch screen ("needs an update"), a v2 server (`api_version`) is unsupported. Raise `MOBILE_API` together with the server's `MOBILE_API_LEVEL` when the app starts calling a new endpoint.
+- Notifications: `GET /api/notifications` (cursor pages), `/summary`, `POST /:id/read` (answers with the notification; it is also how a notification missing from the list is fetched), `POST /read-all`.
+- Push devices: `/api/auth/me/push-devices` (src/api/push.ts). Feishu sign-in needs a server redirect back into the app (the web callback lands on the web login page); it is not offered yet.
+- API reads and writes answer an `ApiResult` and never throw; resolve the base with getApiBase() at call time; api() sends tokens only to the active station's origin; switch stations only with useAuth.switchStation.
+
+## Data
+
+- Cache first: useAuth opens on the member cached for the station (loading drops before the network answers) and revalidates; a refused session signs out when it comes back; offline the cached member stays.
+- Per-member offline copies live in the documents directory (src/data/disk-cache.ts, one JSON per station + member + kind). Sign-out, a server-ended session and removing a station delete them.
+- Stores that hold member data reset on any station or member change (module-scope subscriptions, see src/store/notifications.ts) and drop late answers with captureIdentity().
+- Read marks and similar writes are optimistic and roll back on failure, with alertError for the failure.
+- Hermes rejects Postgres timestamps; parse them with parseMs() (src/data/time.ts).
+
+## Push
+
+- The server pushes every notification-center fact through the Expo Push Service; the phone's switches (needs you / done / other / preview) only narrow it. Pushes carry ids only (`PushData`: station ref, member, category, notification id, `/notification?id=`); previews (the notification title) are off by default.
+- Registration (src/push/register.ts) runs after sign-in, on foreground and on a new Expo token, per station; it never prompts. The soft ask (src/push/soft-ask.ts) comes once notifications are on screen, at most every 14 days; only "allow" raises the system prompt.
+- A tap opens /notification on the station that sent it (switching first); a push for another member or a removed station only opens the app (src/push/model.ts, pure and tested).
+- Never commit development: true in getExpoPushTokenAsync; simulator push payloads put PushData under the top-level body key.
+
+## Native builds and release
+
+- **Do not publish before the 3.0 release**: no `eas build`, `eas update` or `eas submit` from this line, and never point .github/workflows/mobile.yml at `v1`. The EAS project, bundle id and update URL are shared with the store app that ships from v2. See RELEASING.md.
+- ios/ and android/ are generated by `pnpm mobile:prebuild` and git-ignored; rerun it after changing app.json, plugins or entitlements, then restore sdk.dir (or ANDROID_HOME), since --clean deletes android/local.properties.
+- If prebuild cannot find CocoaPods, run pod install in ios/ yourself with Homebrew's pod and GEM_HOME/GEM_PATH unset; confirm "Building from source: false" (a silent fallback to building React Native from source crashes at launch on React.framework).
+- After pod install, stale .last_build_configuration flavor markers cause Debug link errors or a launch SIGSEGV in Props::Props(); write the opposite configuration into the markers so the next build re-extracts.
+- Expo Go cannot run the app; use a dev client (`pnpm mobile:ios`, `pnpm mobile:android`) on a dedicated simulator and judge UI there, never on Expo web.
+- Releases follow the native fingerprint (`runtimeVersion.policy: fingerprint`): JS-only changes ship as OTA; native changes (new native modules, ICONS entries, app icon, fonts, entitlements, app.json) need a build.
+- Never hand-edit the version in app.json or package.json; release-please bumps it and fingerprint.config.js keeps it out of the fingerprint.
+- The app icon (assets/icon.png, adaptive-icon.png) is rendered from logos/greenhouse-mark.svg's paths on V1 green with rsvg-convert; regenerate both together.
+- iOS status bars are owned by native controllers (`UIViewControllerBasedStatusBarAppearance=true`); all stacks pass the app theme to stackDefaults. Expo StatusBar is Android-only.
+
+## UI
+
+- Use system components: the expo-router native Stack, @expo/ui/swift-ui and NativeMenu (src/ui/menu.tsx); never JS-drawn headers, bottom sheets, action sheets, calendars or switches.
+- Brand: V1 green (#2E8B3D, src/theme/palette.ts from apps/web/src/app.css) and Nunito; dark content surfaces mirror UIKit's; native controls keep system styling with the accent as tint. Palette contrast is tested (src/theme/palette.test.ts).
+- `colors.*` are opaque ColorValues: never concatenate or compute alpha on them; use `hex.*` for strings and alpha() for transparency.
+- Text and icons on the accent use onAccent, on other solid fills onTint; no hex literals except data colors.
+- Take typo, weight, radius (with squircle) and HIT from src/theme.ts; never disable allowFontScaling.
+- Register icons as [SF Symbol, Material] pairs in ICONS (src/ui/core.tsx) and run `python3 scripts/android-icons.py` in apps/mobile; toolbar icons go through toolbarIcon().
+- Give every icon-only button an accessibilityLabel; Icon is hidden from VoiceOver unless it stands alone.
+- Declare presentation only in app/_layout.tsx with the src/ui/nav.ts presets; screens set their own title and toolbar; the back button is always the system's.
+- Glass (src/ui/glass.tsx) is for the control layer only; content sits on solid system colors.
+- A failed user action shows alertError; toast is for success only; a failed load shows EmptyState with retry; login errors stay inline.
+- Forms use NativeForm with FormNavRow; content buttons use NativeButton, never Pressable plus Text.
+- Every SwiftUI Host you create gets the useLocaleEnv() modifier, and inline hosts in RN content get ignoreSafeArea="all".
+- Lists use src/ui/list.tsx; virtualized rows pass position instead of sitting in ListSection; show LoadingState and EmptyState.
+- Use react-native-keyboard-controller; never KeyboardAvoidingView.
+
+## Native pitfalls
+
+- RN overlays render below native sheets: UI that must cover them (toast) uses FullWindowOverlay, mounted only while shown.
+- The root Stack starts at (drawer) (home): go home with router.dismissTo('/') (src/shell/nav.ts), never `<Redirect>` or router.replace.
+- Mount a SwiftUI Form on the first frame and swap its children when data arrives, or its first untitled Section slides under the nav bar.
+- Never remove a Form section while one of its inputs has focus (UIKit crash); call Keyboard.dismiss() in beforeRemove.
+- Changing the system font size at runtime does not relayout (RN 0.86 bug): key stateless text containers with useFontScaleKey(), never screens, lists, navigators or forms.
+- Only the root layout's auth gate navigates on sign-in and sign-out (routes reachable signed out go in SIGNED_OUT_ROUTES); startup readiness may hold the splash but never block route mounting.
+
+## Android
+
+- Rendering @expo/ui/swift-ui crashes on Android: every module that renders it needs a `*.android.tsx` sibling with the same extension as its base file, with behavior in a shared hook.
+- Android files import platform siblings with the explicit .android suffix; restart Metro after adding a platform file.
+- Compose islands use M3Host (src/ui/m3.tsx), never a bare Host; never wrap list rows in Compose hosts.
+- Offset content with useHeaderInset(), never useHeaderHeight().
+- Android gets an Expo push token only once the build has Firebase credentials (google-services.json); until then registration fails quietly.
+
+## i18n
+
+- en.ts is the key source and zh must match; delete unused keys after searching dynamic uses (`t(module.title)`, notification kind labels).
+- Words follow the web: 动态 (Home), 知识库, 档案库, 项目, 表格, 通知, 工作站.

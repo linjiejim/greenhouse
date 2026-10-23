@@ -1,0 +1,28 @@
+/**
+ * Settings — a page-sheet modal with its own native stack: the large-title root (index.tsx, a
+ * SwiftUI Form) and its pushed sub-pages (工作站, 通知), each with a collapsing large title and
+ * the system back button. A deep link straight to a sub-page still gets the root underneath
+ * (`initialRouteName`), so it has a back button.
+ */
+
+import React from 'react';
+import { Stack } from 'expo-router';
+import { sheetEdgeLayout } from '../../src/ui/sheet-edge';
+import { useTheme } from '../../src/theme';
+import { pageScreen, stackDefaults } from '../../src/ui/nav';
+
+export const unstable_settings = { initialRouteName: 'index' };
+
+export default function SettingsLayout() {
+  const { colors: c, hex, isDark } = useTheme();
+  return (
+    <Stack
+      screenLayout={sheetEdgeLayout}
+      screenOptions={{ ...stackDefaults(c, hex, isDark), ...pageScreen(c, { grouped: true }) }}
+    >
+      <Stack.Screen name="index" />
+      <Stack.Screen name="stations" />
+      <Stack.Screen name="notifications" />
+    </Stack>
+  );
+}
