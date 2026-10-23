@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { ApiResult } from '../api/client';
 import type { ChatEvent } from './chat-stream';
-import { Conversation, tailOf, type ConversationDeps, type StreamOutcome } from './conversation';
+import { Conversation, headOf, tailOf, type ConversationDeps, type StreamOutcome } from './conversation';
 import type { MessagePage, TranscriptMessage } from './transcript';
 
 const m = (seq: number, role: string, content = `m${seq}`): TranscriptMessage => ({ id: `msg_${seq}`, role, content, seq });
@@ -201,8 +201,10 @@ describe('an open conversation', () => {
     const c = new Conversation(s.deps);
     await c.open();
     const opened = tailOf(c.state);
+    const firstHead = headOf(c.state);
     await c.loadOlder();
     expect(tailOf(c.state)).toBe(opened);
+    expect(headOf(c.state)).not.toBe(firstHead);
     const tails: string[] = [];
     c.subscribe(() => tails.push(tailOf(c.state)));
     await c.send('Hi');

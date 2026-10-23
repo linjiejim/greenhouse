@@ -68,9 +68,15 @@ export const CLOSED_CONVERSATION: ConversationState<never> = {
   loadingOlder: false,
 };
 
+/** The first loaded message: it changes when older history comes in at the top. */
+export function headOf(state: ConversationState): string {
+  const first = state.transcript?.messages[0];
+  return first ? `${first.seq}:${first.id}` : '';
+}
+
 /**
  * What is at the bottom of the conversation. It changes when a message or reply text arrives at
- * the end, never when older history comes in at the top — the screen follows the end only then.
+ * the end, never when older history comes in at the top (src/data/follow-end.ts).
  */
 export function tailOf(state: ConversationState): string {
   const last = state.transcript?.messages.at(-1);

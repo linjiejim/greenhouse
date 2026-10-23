@@ -15,7 +15,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { chatRun, getMessages, getSessionInfo } from '../../src/api/assistant';
 import { followRun, sendMessage } from '../../src/assistant/send';
 import { visibleMessages, type LiveReply } from '../../src/data/chat-stream';
-import { CLOSED_CONVERSATION, Conversation, tailOf, type ConversationState } from '../../src/data/conversation';
+import { CLOSED_CONVERSATION, Conversation, headOf, tailOf, type ConversationState } from '../../src/data/conversation';
+import { atEnd, shouldFollowEnd } from '../../src/data/follow-end';
 import { captureIdentity } from '../../src/data/identity';
 import { useT } from '../../src/lib/i18n';
 import { Markdown } from '../../src/markdown';
@@ -48,7 +49,9 @@ export default function Chat() {
   // follow the reply only once the conversation is taller than the screen (a short one stays
   // where the header inset puts it)
   const viewport = useRef(0);
-  const followedTail = useRef('');
+  // pinned to the end while the member is at the bottom (src/data/follow-end.ts)
+  const pinned = useRef(true);
+  const shape = useRef({ head: '', tail: '' });
 
   const conversation = useMemo(() => {
     if (!sessionId) return null;
@@ -93,6 +96,8 @@ export default function Chat() {
     const text = draft;
     if (!conversation || !text.trim() || state.busy) return;
     setDraft('');
+    // sending takes me to the end of the conversation
+    pinned.current = true;
     const result = await conversation.send(text);
     if (result.sent) return;
     // my words come back to the box whatever refused them
@@ -135,13 +140,27 @@ export default function Chat() {
         maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
         onStartReached={() => void conversation?.loadOlder()}
         onStartReachedThreshold={0.5}
+        scrollEventThrottle={32}
+        onScroll={(e) => {
+          const { contentOffset, layoutMeasurement, contentSize } = e.nativeEvent;
+          pinned.current = atEnd({
+            offsetY: contentOffset.y,
+            viewportHeight: layoutMeasurement.height,
+            contentHeight: contentSize.height,
+          });
+        }}
         onContentSizeChange={(_, height) => {
-          // follow the end only when something arrived there, never when older history came in on top
-          const tail = tailOf(state);
-          if (tail === followedTail.current) return;
-          followedTail.current = tail;
+          const next = { head: headOf(state), tail: tailOf(state) };
+          const follow = shouldFollowEnd({
+            pinned: pinned.current,
+            head: next.head,
+            prevHead: shape.current.head,
+            tail: next.tail,
+            prevTail: shape.current.tail,
+          });
+          shape.current = next;
           // the visible part is the screen under the bar (status bar + navigation bar)
-          if (height > viewport.current - insets.top - NAV_BAR) list.current?.scrollToEnd({ animated: true });
+          if (follow && height > viewport.current - insets.top - NAV_BAR) list.current?.scrollToEnd({ animated: true });
         }}
         ListHeaderComponent={state.loadingOlder ? <Spinner style={styles.older} /> : null}
         renderItem={({ item }) => {
