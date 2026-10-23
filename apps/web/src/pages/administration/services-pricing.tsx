@@ -18,6 +18,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { GatewayAdminKeyView } from '@greenhouse/types/agent-access';
+import type { WorkspaceFlagState } from '@greenhouse/types';
 import type {
   BudgetLimitInput,
   BudgetView,
@@ -70,6 +71,7 @@ import {
 import { fetchAllGatewayKeys, revokeMemberGatewayKey } from '../../lib/api/gateway';
 import { saveWorkspaceSettings } from '../../lib/api/workspace-settings';
 import { formatDate } from '../../lib/utils';
+import { flagSourceKey } from '../../lib/workspace-flags';
 import { useT } from '../../lib/i18n';
 import {
   clientLabelKey,
@@ -935,7 +937,7 @@ function BudgetsTab({
 
 function GatewayTab() {
   const t = useT();
-  const [enabled, setEnabled] = useState<boolean | null>(null);
+  const [state, setState] = useState<WorkspaceFlagState | null>(null);
   const [saving, setSaving] = useState(false);
   const [version, setVersion] = useState(0);
 
@@ -943,7 +945,7 @@ function GatewayTab() {
     let cancelled = false;
     void fetchAllGatewayKeys()
       .then((data) => {
-        if (!cancelled) setEnabled(data.enabled);
+        if (!cancelled) setState(data.switch);
       })
       .catch(() => undefined);
     return () => {
@@ -951,12 +953,13 @@ function GatewayTab() {
     };
   }, [version]);
 
-  const toggle = async (next: boolean) => {
+  /** true / false stores an override; null drops it so the env var / default applies again. */
+  const save = async (next: boolean | null) => {
     setSaving(true);
     try {
       await saveWorkspaceSettings({ 'gateway.enabled': next });
-      setEnabled(next);
       toast(t('gateway.adminSwitchSaved'), 'success');
+      setVersion((v) => v + 1);
     } catch (err) {
       toast(err instanceof Error ? err.message : t('metering.saveFailed'), 'error');
     } finally {
@@ -1072,19 +1075,32 @@ function GatewayTab() {
   return (
     <div className="space-y-4">
       <SettingsSection title={t('gateway.adminSwitch')} icon={Cpu}>
-        <div className="flex items-start gap-3">
+        <div className="flex items-start gap-3" data-testid="admin-gateway-switch">
           <Toggle
-            checked={enabled === true}
-            disabled={enabled === null || saving}
-            onChange={(next) => void toggle(next)}
+            checked={state?.effective === true}
+            disabled={state === null || saving}
+            onChange={(next) => void save(next)}
             label={t('gateway.adminSwitch')}
           />
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1">
             <div className="text-xs font-medium text-fg">
-              {enabled ? t('runtimeConfig.on') : t('runtimeConfig.off')}
+              {state?.effective ? t('runtimeConfig.on') : t('runtimeConfig.off')}
+              {state && (
+                <span className="ml-2 font-normal text-fg-muted">
+                  {t(flagSourceKey(state.source), { env: 'GATEWAY_ENABLED' })}
+                </span>
+              )}
             </div>
             <p className="text-xs text-fg-muted leading-relaxed">{t('gateway.adminSwitchHelp')}</p>
           </div>
+          {state?.override !== null && state !== null && (
+            <Button size="sm" variant="ghost" disabled={saving} onClick={() => void save(null)}>
+              <RotateCcw size={12} />
+              {t('runtimeConfig.flagReset', {
+                value: state.fallback ? t('runtimeConfig.on') : t('runtimeConfig.off'),
+              })}
+            </Button>
+          )}
         </div>
       </SettingsSection>
       <SettingsSection title={t('metering.tabs.gateway')} icon={Key}>

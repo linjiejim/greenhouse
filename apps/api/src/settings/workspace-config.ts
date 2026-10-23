@@ -33,6 +33,8 @@ import {
   type WorkspaceSettingView,
   type WorkspaceSettingSource,
   type WorkspaceBootstrap,
+  type WorkspaceFlagState,
+  type WorkspaceFlagView,
   type ThemeTokens,
 } from '@greenhouse/types/workspace-settings';
 import { getDb, isDbInitialized } from '@greenhouse/db';
@@ -111,14 +113,29 @@ export async function getWorkspaceValue(key: string): Promise<unknown> {
 const ENV_ON = new Set(['true', '1', 'yes', 'on']);
 
 /**
- * A 'boolean' setting's effective value: the stored true/false, else its env
- * var read as on for `true` / `1` / `yes` / `on`, else off.
+ * A 'boolean' setting resolved: the stored override (a DB row holding
+ * true/false), what it falls back to without one (its env var — on for
+ * `true` / `1` / `yes` / `on`, off for any other non-empty value — else the
+ * def's `defaultValue`, else off), and which of the two is in effect.
  */
+export async function getWorkspaceFlagState(key: string): Promise<WorkspaceFlagState> {
+  const def = getWorkspaceSettingDef(key);
+  const stored = (await ensureCache()).get(key);
+  const override = typeof stored === 'boolean' ? stored : null;
+  const env = def?.env ? originalEnv(def.env)?.trim() : undefined;
+  const fromEnv = env ? ENV_ON.has(env.toLowerCase()) : undefined;
+  const fallback = fromEnv ?? def?.defaultValue ?? false;
+  return {
+    override,
+    fallback,
+    effective: override ?? fallback,
+    source: override !== null ? 'db' : fromEnv !== undefined ? 'env' : 'default',
+  };
+}
+
+/** A 'boolean' setting's effective value (see getWorkspaceFlagState). */
 export async function getWorkspaceFlag(key: string): Promise<boolean> {
-  const value = await getWorkspaceValue(key);
-  if (typeof value === 'boolean') return value;
-  if (typeof value === 'string') return ENV_ON.has(value.trim().toLowerCase());
-  return false;
+  return (await getWorkspaceFlagState(key)).effective;
 }
 
 // ─── Env overlay ─────────────────────────────────────────
@@ -218,7 +235,7 @@ export function validateWorkspaceValue(def: WorkspaceSettingDef, raw: unknown): 
 
 export async function getWorkspaceSettingViews(): Promise<WorkspaceSettingView[]> {
   const db = await ensureCache();
-  return allWorkspaceSettings().map((def) => {
+  const views = allWorkspaceSettings().map((def) => {
     const hasDb = db.has(def.key);
     let source: WorkspaceSettingSource = 'none';
     if (hasDb) source = 'db';
@@ -234,8 +251,16 @@ export async function getWorkspaceSettingViews(): Promise<WorkspaceSettingView[]
       value: !def.secret && hasDb ? db.get(def.key) : null,
       has_value: hasDb,
       source,
+      flag: null as WorkspaceFlagView | null,
     };
   });
+  // Booleans also say what is in effect and what clearing the override would leave.
+  for (const view of views) {
+    if (view.type !== 'boolean') continue;
+    const state = await getWorkspaceFlagState(view.key);
+    view.flag = { effective: state.effective, fallback: state.fallback };
+  }
+  return views;
 }
 
 // ─── Bootstrap payload (public, pre-login) ───────────────

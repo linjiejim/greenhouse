@@ -644,6 +644,7 @@ describe('key routes', () => {
     const listed = await asUser(admin, 'GET', '/api/admin/metering/gateway-keys');
     expect(listed.status).toBe(200);
     expect(listed.json.enabled).toBe(false);
+    expect(listed.json.switch).toEqual({ override: null, fallback: false, effective: false, source: 'default' });
     const mine = (
       listed.json.keys as Array<{ id: string; owner: { id: string }; month_spend_usd_micros: number }>
     ).find((key) => key.id === row.id);

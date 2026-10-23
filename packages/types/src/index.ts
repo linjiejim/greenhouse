@@ -72,6 +72,8 @@ export type {
   WorkspaceSettingKey,
   WorkspaceSettingSource,
   WorkspaceSettingView,
+  WorkspaceFlagView,
+  WorkspaceFlagState,
   WorkspaceBootstrap,
   ThemeTokens,
 } from './workspace-settings.js';

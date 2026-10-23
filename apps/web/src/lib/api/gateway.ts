@@ -12,6 +12,7 @@ import type {
   GatewayKeyCreated,
   GatewayOverview,
 } from '@greenhouse/types/agent-access';
+import type { WorkspaceFlagState } from '@greenhouse/types';
 import { rpc } from './client';
 
 function errorMessage(value: unknown, fallback: string): string {
@@ -45,7 +46,11 @@ export async function revokeGatewayKey(id: string): Promise<void> {
   }
 }
 
-export async function fetchAllGatewayKeys(): Promise<{ enabled: boolean; keys: GatewayAdminKeyView[] }> {
+export async function fetchAllGatewayKeys(): Promise<{
+  enabled: boolean;
+  switch: WorkspaceFlagState;
+  keys: GatewayAdminKeyView[];
+}> {
   const response = await rpc.api.admin.metering['gateway-keys'].$get();
   const data = await response.json();
   if (!response.ok) throw new Error(errorMessage(data, `Unable to load gateway keys (${response.status})`));

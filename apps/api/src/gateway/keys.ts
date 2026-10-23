@@ -34,7 +34,8 @@ import type { AuthUser } from '../auth/token.js';
 import { getOAuthIssuerUrl } from '../platform/oauth.js';
 import { humanActor } from '../platform/actor.js';
 import { PLATFORM_ORG_ID } from '../platform/runtime.js';
-import { getWorkspaceFlag } from '../settings/workspace-config.js';
+import { getWorkspaceFlag, getWorkspaceFlagState } from '../settings/workspace-config.js';
+import type { WorkspaceFlagState } from '@greenhouse/types/workspace-settings';
 import { resolveGatewayModel } from './upstream.js';
 
 export const GATEWAY_ENABLED_SETTING = 'gateway.enabled';
@@ -48,6 +49,11 @@ const MAX_EXPIRY_MS = 2 * 365 * 24 * 60 * 60 * 1000;
 /** Off unless a super (Runtime Config / Services & pricing) or `GATEWAY_ENABLED` turns it on. */
 export function isGatewayEnabled(): Promise<boolean> {
   return getWorkspaceFlag(GATEWAY_ENABLED_SETTING);
+}
+
+/** The switch with its stored override and fallback, for the admin page. */
+export function gatewaySwitchState(): Promise<WorkspaceFlagState> {
+  return getWorkspaceFlagState(GATEWAY_ENABLED_SETTING);
 }
 
 export function gatewayBaseUrl(): string {

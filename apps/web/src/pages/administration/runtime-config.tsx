@@ -22,6 +22,7 @@ import { ModulePage } from '../../components/app/module-page';
 import { useI18n } from '../../lib/i18n';
 import type { TranslationKey } from '../../lib/i18n';
 import { fetchWorkspaceSettings, saveWorkspaceSettings } from '../../lib/api/workspace-settings';
+import { flagChecked } from '../../lib/workspace-flags';
 import { useExtensionsStore } from '../../stores/extensions-store';
 
 const RUNTIME_GROUPS: WorkspaceSettingGroup[] = ['llm', 'media', 'search', 'gateway'];
@@ -158,7 +159,7 @@ export function RuntimeConfigPanel() {
                     : v.secret
                       ? ''
                       : String(v.value ?? '');
-                const checked = typeof staged === 'boolean' ? staged : v.value === true;
+                const checked = flagChecked(v, staged);
                 const secretPlaceholder =
                   v.secret && v.has_value && staged === undefined
                     ? `${t('runtimeConfig.secretSet')} ••••••`
@@ -184,12 +185,12 @@ export function RuntimeConfigPanel() {
                           <div className="flex flex-1 items-center gap-2 py-1">
                             <Toggle
                               size="sm"
-                              checked={!isCleared && checked}
+                              checked={checked}
                               onChange={(next) => stage(v.key, next)}
                               label={v.label}
                             />
                             <span className="text-xs text-fg-secondary">
-                              {!isCleared && checked ? t('runtimeConfig.on') : t('runtimeConfig.off')}
+                              {checked ? t('runtimeConfig.on') : t('runtimeConfig.off')}
                             </span>
                           </div>
                         ) : (

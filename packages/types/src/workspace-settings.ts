@@ -52,6 +52,8 @@ export interface WorkspaceSettingDef {
   secret?: boolean;
   /** Env var this setting overlays / falls back to (see module doc). */
   env?: string;
+  /** 'boolean' only: the value when neither a stored override nor the env var says otherwise (default false). */
+  defaultValue?: boolean;
   /** Max serialized length accepted on write (defense-in-depth; default 2000). */
   maxLength?: number;
   placeholder?: string;
@@ -292,6 +294,24 @@ export interface WorkspaceSettingView {
   /** True when a DB row exists for this key. */
   has_value: boolean;
   source: WorkspaceSettingSource;
+  /**
+   * 'boolean' settings only (null otherwise): what the switch is now
+   * (`effective`: stored override → env var → default) and what it would be
+   * without the stored override (`fallback`: env var → default). `value` stays
+   * the stored override alone.
+   */
+  flag: WorkspaceFlagView | null;
+}
+
+export interface WorkspaceFlagView {
+  effective: boolean;
+  fallback: boolean;
+}
+
+/** A boolean switch resolved: the stored override (null = none), what it falls back to, and where the effective value comes from. */
+export interface WorkspaceFlagState extends WorkspaceFlagView {
+  override: boolean | null;
+  source: 'db' | 'env' | 'default';
 }
 
 /** Pre-login personalization payload served by GET /api/bootstrap. */
