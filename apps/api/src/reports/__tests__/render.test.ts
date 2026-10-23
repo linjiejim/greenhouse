@@ -303,6 +303,50 @@ describe('slides', () => {
     expect(items.map((item) => item.runs.map((r) => r.text).join('')).at(-1)).toBe('最后一条');
   });
 
+  it('keeps the indentation of a code block cut across slides, in the PDF and the PPTX', async () => {
+    const code = ['if ready:', ...Array.from({ length: 60 }, (_, i) => `    value_${i} = compute(${i})`)].join('\n');
+    const doc = document('presentation', 'pdf');
+    doc.sections = [{ key: 's', title: '代码', body: { kind: 'markdown', markdown: '```python\n' + code + '\n```' } }];
+    const slides = buildSlides(doc);
+    expect(slides.length).toBeGreaterThan(1);
+    const pieces = slides.map((slide) => {
+      const block = slide.body.type === 'text' ? slide.body.blocks[0] : undefined;
+      return block?.type === 'code' ? block.text : '';
+    });
+    // The plan: every continuation starts with its indented line, and nothing is lost.
+    for (const piece of pieces.slice(1)) expect(piece).toMatch(/^ {4}value_\d+ = /);
+    expect(pieces.join('\n')).toBe(code);
+
+    // PDF: every indented line, on every page, starts at the same x — right of "if ready:".
+    const pdf = await renderReport(doc, brand);
+    const { getDocumentProxy } = await import('unpdf');
+    const proxy = await getDocumentProxy(new Uint8Array(pdf.bytes));
+    expect(proxy.numPages).toBe(slides.length + 1);
+    const xs = new Map<string, number>();
+    for (let page = 2; page <= proxy.numPages; page++) {
+      const items = (await (await proxy.getPage(page)).getTextContent()).items as Array<{
+        str: string;
+        transform: number[];
+      }>;
+      for (const item of items) {
+        const key = item.str.trim();
+        if (key === 'if ready:' || key.startsWith('value_')) xs.set(key, Math.round(item.transform[4]!));
+      }
+    }
+    const indented = [...xs].filter(([key]) => key.startsWith('value_')).map(([, x]) => x);
+    expect(indented).toHaveLength(60);
+    expect(new Set(indented).size).toBe(1);
+    expect(indented[0]!).toBeGreaterThan(xs.get('if ready:')!);
+
+    // PPTX: the first code line of every continuation slide keeps its four spaces.
+    const pptx = await renderReport({ ...doc, format: 'pptx' }, brand);
+    const entries = zipEntries(pptx.bytes);
+    for (let slide = 3; slide <= slides.length + 1; slide++) {
+      const texts = [...entries[`ppt/slides/slide${slide}.xml`]!.matchAll(/<a:t>([^<]*)<\/a:t>/g)].map((m) => m[1]);
+      expect(texts[1]).toMatch(/^ {4}value_\d+ = /);
+    }
+  });
+
   it('plans prose, a Markdown table and short lists to the page the PDF renders', async () => {
     const markdown = [
       cell('报告正文内容测试', 1500),

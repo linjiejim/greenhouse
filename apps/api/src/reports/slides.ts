@@ -152,15 +152,32 @@ function trimRuns(runs: InlineRun[]): InlineRun[] {
   return out.filter((run) => run.text);
 }
 
-/** Runs cut into pieces of at most `maxLines` wrapped lines each. */
-function splitRunsByLines(runs: InlineRun[], width: number, size: number, maxLines: number): InlineRun[][] {
+/**
+ * Runs cut into pieces of at most `maxLines` wrapped lines each. Prose pieces
+ * are trimmed at the cut; `preserveWhitespace` (code) keeps every character
+ * except the line break the cut falls on, so a continuation keeps its indentation.
+ */
+function splitRunsByLines(
+  runs: InlineRun[],
+  width: number,
+  size: number,
+  maxLines: number,
+  preserveWhitespace = false,
+): InlineRun[][] {
   const text = runsText(runs);
   const starts = wrap(text, width, size);
   if (starts.length <= maxLines) return [runs];
-  const length = [...text].length;
+  const chars = [...text];
   const pieces: InlineRun[][] = [];
   for (let line = 0; line < starts.length; line += maxLines) {
-    const end = line + maxLines < starts.length ? starts[line + maxLines]! : length;
+    let end = line + maxLines < starts.length ? starts[line + maxLines]! : chars.length;
+    if (preserveWhitespace) {
+      // Drop only the newline the cut lands on; spaces are content in code.
+      if (end > starts[line]! && chars[end - 1] === '\n') end -= 1;
+      const piece = sliceRuns(runs, starts[line]!, end);
+      if (piece.length) pieces.push(piece);
+      continue;
+    }
     const piece = trimRuns(sliceRuns(runs, starts[line]!, end));
     if (piece.length) pieces.push(piece);
   }
@@ -230,7 +247,7 @@ function splitTallBlock(block: MdBlock, budget: number): MdBlock[] {
   }
   if (block.type === 'code') {
     const maxLines = Math.max(1, Math.floor((budget - CODE_EXTRA) / lineHeight(DECK.codeSize)));
-    return splitRunsByLines([{ text: block.text }], CONTENT_WIDTH - CODE_INSET, DECK.codeSize, maxLines).map(
+    return splitRunsByLines([{ text: block.text }], CONTENT_WIDTH - CODE_INSET, DECK.codeSize, maxLines, true).map(
       (runs) => ({ type: 'code', text: runsText(runs) }),
     );
   }
