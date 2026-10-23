@@ -454,6 +454,8 @@ export const TOOL_ICONS: Record<string, LucideIcon> = {
   files_mutation: FolderOpen,
   feedback_query: Lightbulb,
   log_friction: MessageSquareWarning,
+  report_templates: FileText,
+  report_render: FileText,
 };
 
 /** Get the Lucide icon for a tool name. */

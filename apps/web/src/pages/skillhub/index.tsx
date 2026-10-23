@@ -12,8 +12,8 @@
  * the same shared components (components/skillhub) — one implementation.
  *
  * My prompts tab: `#/skillhub?tab=prompts` (the retired `#/tasks` page redirects
- * here). The tab lives in the query, not the path, because the path segment is
- * a skill name.
+ * here). Report templates tab: `#/skillhub?tab=reports` (v1.7). Tabs live in
+ * the query, not the path, because the path segment is a skill name.
  */
 
 import React, { useState } from 'react';
@@ -22,16 +22,24 @@ import { ModulePage } from '../../components/app/module-page';
 import { Button, Tabs } from '../../components/ui';
 import { Upload } from '../../lib/icons';
 import { useT } from '../../lib/i18n';
-import { SKILLHUB_PROMPTS_HASH } from '../../lib/workspace-routes';
+import { SKILLHUB_PROMPTS_HASH, SKILLHUB_REPORTS_HASH } from '../../lib/workspace-routes';
 import { PromptsPanel } from './prompts';
+import { ReportTemplatesPanel } from './report-templates';
 
-type SkillHubTab = 'skills' | 'prompts';
+type SkillHubTab = 'skills' | 'prompts' | 'reports';
+
+const TAB_HASH: Record<SkillHubTab, string> = {
+  skills: '#/skillhub',
+  prompts: SKILLHUB_PROMPTS_HASH,
+  reports: SKILLHUB_REPORTS_HASH,
+};
 
 export function SkillHubPage({ subPath, params }: { subPath: string; params?: URLSearchParams }) {
   const t = useT();
   const name = subPath.split('/').filter(Boolean)[0] || '';
   const [uploadOpen, setUploadOpen] = useState(false);
-  const tab: SkillHubTab = params?.get('tab') === 'prompts' ? 'prompts' : 'skills';
+  const requested = params?.get('tab');
+  const tab: SkillHubTab = requested === 'prompts' || requested === 'reports' ? requested : 'skills';
 
   if (name) {
     return (
@@ -46,10 +54,11 @@ export function SkillHubPage({ subPath, params }: { subPath: string; params?: UR
       tabs={[
         { key: 'skills', label: t('skillHub.tabs.skills') },
         { key: 'prompts', label: t('skillHub.tabs.prompts') },
+        { key: 'reports', label: t('skillHub.tabs.reports') },
       ]}
       active={tab}
       onChange={(key) => {
-        window.location.hash = key === 'prompts' ? SKILLHUB_PROMPTS_HASH : '#/skillhub';
+        window.location.hash = TAB_HASH[key as SkillHubTab] ?? '#/skillhub';
       }}
       ariaLabel={t('skillHub.tabs.label')}
     />
@@ -59,6 +68,19 @@ export function SkillHubPage({ subPath, params }: { subPath: string; params?: UR
     return (
       <ModulePage moduleId="workspace.skillhub" layout="list" tabs={tabs}>
         <PromptsPanel />
+      </ModulePage>
+    );
+  }
+
+  if (tab === 'reports') {
+    return (
+      <ModulePage
+        moduleId="workspace.skillhub"
+        layout="list"
+        tabs={tabs}
+        notice={<p className="text-xs text-fg-muted">{t('reportTemplates.notice')}</p>}
+      >
+        <ReportTemplatesPanel />
       </ModulePage>
     );
   }

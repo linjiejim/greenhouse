@@ -108,6 +108,11 @@ same script doubles as an end-to-end smoke tour (see [Development](#development)
 - **Skill Center** — an org-wide library of agent skills (SKILL.md bundles) with immutable
   versions, changelogs, security scanning, and first-party packs shipped from `skillhub/`. Its
   *My prompts* tab holds your reusable prompts (Tasks), called from the chat composer with `/`.
+- **Report templates** — the team's required shape for reports and decks (SkillHub › Report
+  templates): ordered sections with writing guidance, cover fields and allowed formats. Any
+  agent — a member's Codex over MCP or the in-app assistant — writes content against a template
+  and the server renders it to PDF, Word or PowerPoint in the workspace brand (pure JS, Chinese
+  included), saving the file to Files. A weekly report and a project review deck ship by default.
 - **Email** *(optional)* — personal IMAP/SMTP mailboxes and a shared team mailbox; search,
   read, draft and send with a server-side draft confirmation.
 - **Notifications** — an in-app notification center with durable delivery to email, WeCom and
@@ -391,6 +396,10 @@ Every capability is reachable three ways from the same tool layer:
   sandbox (`computer_exec`), list / read its files, copy files in from Files and save results back
   (`computer_transfer`), and stop it. Created on first use, stopped after 15 idle minutes, at most
   N running per workspace, billed per minute.
+- **Reports** (`mcp:reports`) — `report_templates` lists the team's report templates with
+  each section's guidance and content shape and validates content without saving; `report_render`
+  renders a report or deck from a template (PDF / docx / pptx) into the member's Files as a new
+  file, recorded like any other agent write. Rendering is local and not metered.
 
 For both proxy surfaces the effective tool set is `resolveEffectiveTools(user, profile)`
 intersected with the proxy allowlist — a tool only appears if it declares the relevant

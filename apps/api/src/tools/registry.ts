@@ -49,6 +49,8 @@ import { filesMutationTool } from './files-mutation.js';
 import { feedbackQueryTool } from './feedback-query.js';
 import { readUrlTool, webSearchTool } from './web-search.js';
 import { computerExecTool, computerFilesTool, computerStopTool, computerTransferTool } from './computer.js';
+import { reportTemplatesTool } from './report-templates.js';
+import { reportRenderTool } from './report-render.js';
 
 // ─── Catalog ─────────────────────────────────────────────
 
@@ -91,6 +93,8 @@ const CORE_TOOL_MODULES: ToolModule[] = [
   computerFilesTool,
   computerTransferTool,
   computerStopTool,
+  reportTemplatesTool,
+  reportRenderTool,
 ];
 
 /** Static tools (constructed once from the shared db) — drives createToolRegistry. */

@@ -18,6 +18,8 @@ import type { ToolRegistry } from '../agent.js';
 import { createFeatureRequestTool } from '../tools/feature-request.js';
 import { createFilesQueryTool } from '../tools/files-query.js';
 import { createFilesMutationTool } from '../tools/files-mutation.js';
+import { createReportTemplatesTool } from '../tools/report-templates.js';
+import { createReportRenderTool } from '../tools/report-render.js';
 import { createFeedbackQueryTool } from '../tools/feedback-query.js';
 // Derived from the catalog (kind !== 'static' + route-constructed special metas) — see registry.
 import {
@@ -293,6 +295,15 @@ export function buildLazyServerTools(
   }
   if (effectiveTools.includes('files_mutation')) {
     tools.files_mutation = createFilesMutationTool(db, { userId });
+  }
+  // Report templates (v1.7) — visibility and edit rights live in
+  // reports/templates.ts; a rendered report is a new file in Files. Not
+  // session-scoped, so Chat, the Agent API and MCP all reach them.
+  if (effectiveTools.includes('report_templates')) {
+    tools.report_templates = createReportTemplatesTool(db, { userId, userRole });
+  }
+  if (effectiveTools.includes('report_render')) {
+    tools.report_render = createReportRenderTool(db, { userId, userRole });
   }
   // Skill Center writes — owner/super checks live in skills/center.ts; the
   // read side (skill_query) is static and comes from the base registry.

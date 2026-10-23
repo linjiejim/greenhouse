@@ -87,6 +87,7 @@ Chat 与 Automation 共用的执行控制面（`workflow` / `mission` / `eval` �
 | `push_devices` | PK `id`（`pdv_`）；UK `token`；`user_id` 部分索引（未停用） | 手机推送设备（迁移 0009）：Expo token、平台、Expo project、站点 `client_ref`、偏好 JSON（needs_you/done/other/preview）、注册时的 `auth_version`、`last_seen_at`；只停用（`disabled_at` + reason）不删除 |
 | `gateway_keys` | PK `id`（`gwk_`）；UK `key_hash`；索引 `(user_id, created_at)` | 模型网关的成员个人 Key（迁移 0011）：只存密钥（`ghgw_…`）的 SHA-256 与开头 12 个字符 `key_prefix`；`allowed_models` 是目录模型 id 的 JSON 数组（NULL = 全部）；`expires_at`、`last_used_at`（每分钟最多写一次）；撤销只写 `revoked_at` / `revoked_by`，不删行 |
 | `member_computers` | PK `id`（`cmp_`）；部分 UK `user_id`（status ∈ starting/running/stopping）；`status`、`(user_id, started_at)` 索引 | 成员的云电脑（迁移 0012，v1.6）：E2B 沙箱 id、状态（starting/running/stopping/stopped/failed/lost）、started/last_used/stopped 时间、停止原因、已结算分钟数、当前计费块的预留键与起点、发起方 client / OAuth client id；只改状态不删行 |
+| `report_templates` | PK `id`（`rtpl_`）；索引 `(visibility, updated_at)`、`(owner_user_id, updated_at)` | 报告 / 演示模板（迁移 0013，v1.7）：名称、说明、`kind`（report/presentation）、`formats` / `sections` / `cover_fields`（JSON 文本）、`visibility`（team/personal 草稿）、`is_default`（内置）、`version`（每次编辑 +1）、`created_by` / `updated_by`；软删 `deleted_at` |
 
 ### 统一 Usage Budget
 
@@ -341,6 +342,7 @@ Chat 与 Automation 共用的执行控制面（`workflow` / `mission` / `eval` �
 | `usage_budget_reservations.idempotency_key`（`gateway:<keyId>:<uuid>`） | `gateway_keys.id` | 网关调用的预留键里带 Key id，预留 metadata 另记 `gateway_key_id`；`llm_usage.budget_idempotency_key` 同键 |
 | `llm_usage.gateway_key_id` | `gateway_keys.id` | 逻辑引用；Key 撤销或随账号删除后，用量事实照常保留 |
 | `member_computers.user_id` | `users.id` | FK CASCADE；账号删除即删除其云电脑记录 |
+| `report_templates.owner_user_id` | `users.id` | 逻辑引用（无 FK）：团队模板比作者长寿；NULL = 内置模板 |
 | `runtime_events.actor_user_id` | `users.id` | Event actor 审计；账号删除后 Event 仍保留 |
 | `runtime_interrupts.assignee_user_id` / `.decided_by_user_id` | `users.id` | 决策负责人和决定人；完整决议独立保留 |
 | `custom_profiles.forked_from` | 系统或自定义 profile id | profile 谱系，不是数据库 FK |

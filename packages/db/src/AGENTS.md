@@ -296,6 +296,10 @@
 - `db.metering` 拥有 `service_usage`（非模型付费调用的事实）、`usage_price_overrides`（super 定的价，覆盖 yaml）与 `usage_budget_limits`（管理员 USD 上限：organization / service / `user` + `*` 成员默认 / `user` + 用户 id），并把 `llm_usage ∪ service_usage` 按单月区间聚合（`spendBy` / `spendTotals`）。`cost_usd_micros` 为 NULL 表示未定价，聚合按 0 计并单独数 `unpriced_calls`。
 - 读必须带 `[since, until)`：两张表都有 `(user_id, created_at)` 索引，`service_usage` 另有 `(service, created_at)`。别写不带区间的全表聚合。
 
+### 报告模板（`services/report-templates.ts`，迁移 0013）
+
+- `report_templates` 只存已校验的定义（`sections` / `cover_fields` / `formats` 为 JSON 文本，NOT NULL）；可见与编辑规则在 API 层 `apps/api/src/reports/templates.ts`。`owner_user_id` 是松散引用（无 FK，团队模板比作者长寿），NULL = 内置模板。删除只打 `deleted_at`；`seedIfNeverUsed` 在 advisory 锁里按「含已删行的总数为 0」才写入内置模板。
+
 ### 新增表流程
 
 1. 在对应的 `schema/*.ts` 文件中添加表定义，并在文件底部导出 Row 类型（`typeof table.$inferSelect`）

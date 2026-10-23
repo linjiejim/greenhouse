@@ -62,6 +62,11 @@ export const AUTOMATION_OPT_IN_TOOLS: readonly AutomationOptInTool[] = [
   { id: 'tables_mutation', tier: 'write' },
   { id: 'knowledge_mutation', tier: 'write' },
   { id: 'project_mutation', tier: 'write' },
+  // v1.7: a scheduled weekly report. Only ever adds a file (deletable) — on the
+  // owner's personal shelf unless the task names a team folder the owner may
+  // write, so it sits with the other reversible business writes. Its read
+  // half, report_templates, is replay-safe and granted automatically.
+  { id: 'report_render', tier: 'write' },
 ];
 
 export const AUTOMATION_OPT_IN_TOOL_IDS: ReadonlySet<string> = new Set(AUTOMATION_OPT_IN_TOOLS.map((t) => t.id));

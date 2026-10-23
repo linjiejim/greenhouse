@@ -10,6 +10,9 @@
 /** SkillHub → My prompts. */
 export const SKILLHUB_PROMPTS_HASH = '#/skillhub?tab=prompts';
 
+/** SkillHub → Report templates (v1.7). */
+export const SKILLHUB_REPORTS_HASH = '#/skillhub?tab=reports';
+
 /** Automations → Run profiles (custom agents). */
 export const AUTOMATIONS_PROFILES_HASH = '#/automations?tab=profiles';
 

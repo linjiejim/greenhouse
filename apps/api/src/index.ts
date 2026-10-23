@@ -105,6 +105,8 @@ import driveRoutes from './routes/drive.js';
 import chatFileRoutes from './routes/chat-files.js';
 import artifactActionRoutes from './routes/artifact-actions.js';
 import skillRoutes from './routes/skills.js';
+import reportTemplateRoutes from './routes/report-templates.js';
+import { seedDefaultReportTemplates } from './reports/defaults.js';
 import tablesRoutes from './routes/tables.js';
 import { createWorkbenchRoutes } from './routes/workbench.js';
 import { getSkillStore } from './skills/store.js';
@@ -332,6 +334,10 @@ function mountRoutes(toolRegistry: ToolRegistry) {
       // Skill Center — all internal users (writes owner/super-gated in skills/center.ts)
       .use('/api/skills/*', requireInternal())
       .route('/api/skills', skillRoutes)
+      // Report templates (v1.7) — all internal users (edit rights in reports/templates.ts)
+      .use('/api/report-templates', requireInternal())
+      .use('/api/report-templates/*', requireInternal())
+      .route('/api/report-templates', reportTemplateRoutes)
       // Module usage counts (page opens) — all internal users; counts only
       .use('/api/usage/*', requireInternal())
       .route('/api/usage', usageRoutes)
@@ -430,6 +436,9 @@ async function main() {
   // First-party skill packs ride the release: sync the repo's skillhub/ into
   // the Skill Center on boot (no-op without the directory; never blocks boot).
   await seedSkillhub(dbProvider);
+
+  // The shipped report templates, once, while the workspace has never had one.
+  await seedDefaultReportTemplates(dbProvider);
 
   // Backfill security verdicts for skills published before the scanner existed.
   // Fire-and-forget like the other boot sweeps — never blocks the health gate,
