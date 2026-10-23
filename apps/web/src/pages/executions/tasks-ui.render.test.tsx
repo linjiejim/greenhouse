@@ -5,8 +5,6 @@ import { describe, expect, it } from 'vitest';
 import { I18nProvider } from '../../lib/i18n';
 import { RuntimeInterruptsSection } from './interrupts-section';
 import { RuntimeToolCallsSection } from './runtime-detail-sections';
-import { TaskRunList } from './task-list';
-import { ApprovalInbox } from './approval-inbox';
 
 function render(node: ReactNode) {
   return renderToStaticMarkup(createElement(I18nProvider, { initialLocale: 'en', children: node }));
@@ -66,30 +64,13 @@ const INTERRUPT: RuntimeInterrupt = {
   version: 1,
 };
 
-describe('Execution Center UI', () => {
-  it('renders a canonical deep link plus independent execution, interaction, and connection axes', () => {
-    const html = render(<TaskRunList runs={[RUN]} interrupts={[INTERRUPT]} />);
-    expect(html).toContain('href="#/executions/mission/run-1"');
-    expect(html).toContain('Market review');
-    expect(html).toContain('title="Execution: Running"');
-    expect(html).toContain('title="Interaction: Approval needed"');
-    expect(html).toContain('title="Connection: Live"');
-  });
-
+describe('Runtime run detail UI', () => {
   it('shows historical interrupts read-only, with their full payload and no decision buttons', () => {
     const html = render(<RuntimeInterruptsSection interrupts={[INTERRUPT]} />);
     expect(html).not.toContain('>Approve<');
     expect(html).not.toContain('>Reject<');
     expect(html).toContain('ceo@example.com');
     expect(html).toContain('abc123');
-  });
-
-  it('keeps attention cards focused on the execution title instead of raw payload content', () => {
-    const html = render(<ApprovalInbox items={[{ run: RUN, interrupt: INTERRUPT }]} />);
-    expect(html).toContain('Market review');
-    expect(html).toContain('Change approval');
-    expect(html).not.toContain('ceo@example.com');
-    expect(html).not.toContain('Q3 plan');
   });
 
   it('renders complete tool input and output in collapsible technical details', () => {

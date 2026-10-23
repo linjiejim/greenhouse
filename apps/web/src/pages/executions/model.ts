@@ -1,59 +1,7 @@
-import {
-  isRuntimeRunActive,
-  projectRuntimeForUser,
-  type RuntimeInterrupt,
-  type RuntimeRun,
-  type RuntimeRunKind,
-  type RuntimeTransport,
-  type RuntimeUserProjection,
-} from '@greenhouse/types/runtime';
+import { isRuntimeRunActive, type RuntimeRun, type RuntimeTransport } from '@greenhouse/types/runtime';
 export { executionRunHref, parseExecutionSubPath } from '../../lib/execution-route';
 
-export type TaskCenterTab = 'attention' | 'active' | 'completed' | 'failed' | 'all';
-/** Retired kinds (Mission, Workflow) have no filter of their own; their history shows under All. */
-export type TaskCenterKindFilter = 'all' | Extract<RuntimeRunKind, 'automation' | 'subagent' | 'agent_write'>;
-export type TaskCenterScope = 'own' | 'all';
 export type RuntimeConnectionState = 'disconnected' | 'connecting' | 'connected';
-
-export interface TaskCenterSummary {
-  runs: {
-    total: number;
-    by_status: Record<string, number>;
-    by_kind: Record<string, number>;
-  };
-  pending_interrupts: number;
-}
-
-export interface TaskCenterCounts {
-  attention: number;
-  active: number;
-  completed: number;
-  failed: number;
-  all: number;
-}
-
-const ACTIVE_STATUSES = ['queued', 'claimed', 'running', 'waiting', 'paused'] as const;
-
-function countStatuses(summary: TaskCenterSummary, statuses: readonly string[]): number {
-  return statuses.reduce((total, status) => total + (summary.runs.by_status[status] ?? 0), 0);
-}
-
-export function taskCenterCounts(summary: TaskCenterSummary | null): TaskCenterCounts {
-  if (!summary) return { attention: 0, active: 0, completed: 0, failed: 0, all: 0 };
-  return {
-    attention: summary.pending_interrupts,
-    active: countStatuses(summary, ACTIVE_STATUSES),
-    completed: summary.runs.by_status.succeeded ?? 0,
-    failed: countStatuses(summary, ['failed', 'interrupted']),
-    all: summary.runs.total,
-  };
-}
-
-export function taskCenterKinds(
-  filter: TaskCenterKindFilter,
-): Array<'mission' | 'workflow' | 'automation' | 'subagent' | 'agent_write'> {
-  return filter === 'all' ? ['mission', 'workflow', 'automation', 'subagent', 'agent_write'] : [filter];
-}
 
 function objectPayload(value: RuntimeRun['input']): Record<string, unknown> | null {
   return value !== null && !Array.isArray(value) && typeof value === 'object' ? value : null;
@@ -88,22 +36,6 @@ export function runtimeRunTitle(run: RuntimeRun): string {
   return run.source_id || run.id;
 }
 
-export function runtimeRunSubtitle(run: RuntimeRun): string | null {
-  const input = objectPayload(run.input);
-  if (!input) return null;
-  if (run.kind === 'agent_write') return firstDisplayString(input, ['tool_id']);
-  const automationTask = run.kind === 'automation' ? nestedObject(input, 'task') : null;
-  const prompt =
-    firstDisplayString(input, ['prompt', 'task', 'task_input']) ??
-    (automationTask ? firstDisplayString(automationTask, ['task_prompt']) : null) ??
-    firstDisplayString(input, ['prepared_prompt']);
-  const title =
-    firstDisplayString(input, ['title', 'name', 'session_title']) ??
-    (automationTask ? firstDisplayString(automationTask, ['name']) : null);
-  if (!prompt || prompt === title) return null;
-  return prompt.replace(/\s+/g, ' ').trim();
-}
-
 export function runtimeTransport(
   run: RuntimeRun,
   now = Date.now(),
@@ -114,34 +46,6 @@ export function runtimeTransport(
   if (!isRuntimeRunActive(run.status)) return 'live';
   if (run.lease_expires_at && Date.parse(run.lease_expires_at) < now) return 'stale';
   return 'live';
-}
-
-export function runtimeRunProjection(
-  run: RuntimeRun,
-  interrupts: readonly RuntimeInterrupt[],
-  now = Date.now(),
-  connection: RuntimeConnectionState = 'connected',
-): RuntimeUserProjection {
-  return projectRuntimeForUser({
-    status: run.status,
-    interrupts: interrupts.filter((interrupt) => interrupt.run_id === run.id),
-    transport: runtimeTransport(run, now, connection),
-  });
-}
-
-export function filterTaskCenterRuns(
-  runs: readonly RuntimeRun[],
-  interrupts: readonly RuntimeInterrupt[],
-  tab: TaskCenterTab,
-): RuntimeRun[] {
-  if (tab === 'all') return [...runs];
-  if (tab === 'active') return runs.filter((run) => isRuntimeRunActive(run.status));
-  if (tab === 'completed') return runs.filter((run) => run.status === 'succeeded');
-  if (tab === 'failed') return runs.filter((run) => run.status === 'failed' || run.status === 'interrupted');
-  const requiringAttention = new Set(
-    interrupts.filter((interrupt) => interrupt.status === 'pending').map((interrupt) => interrupt.run_id),
-  );
-  return runs.filter((run) => requiringAttention.has(run.id));
 }
 
 export function payloadText(payload: unknown): string {

@@ -77,6 +77,7 @@ export * from './services/user-features.js';
 export * from './services/user-memories.js';
 export * from './services/tool-frictions.js';
 export * from './services/drive.js';
+export * from './services/activity.js';
 export * from './services/email.js';
 export * from './services/skills.js';
 export * from './services/platform.js';

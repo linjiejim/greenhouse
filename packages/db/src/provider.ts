@@ -40,6 +40,7 @@ import { createUserFeatureService } from './services/user-features.js';
 import { createUserMemoryService } from './services/user-memories.js';
 import { createToolFrictionService } from './services/tool-frictions.js';
 import { createDriveService } from './services/drive.js';
+import { createActivityService } from './services/activity.js';
 import { createEmailService } from './services/email.js';
 import { createSkillService } from './services/skills.js';
 import { createPlatformService } from './services/platform.js';
@@ -88,6 +89,7 @@ function createDatabaseProvider(db: Db, client: DbClient['client'] | null) {
     userMemories: createUserMemoryService(db),
     toolFrictions: createToolFrictionService(db),
     drive: createDriveService(db),
+    activity: createActivityService(db),
     email: createEmailService(db),
     skills: createSkillService(db),
     platform: createPlatformService(db),

@@ -59,7 +59,7 @@ export const PAGE_MODULE_IDS = [
   'tasks',
   'agents',
   'skillhub',
-  'executions',
+  'activity',
   'session-tags',
   'session-groups',
   'settings.preferences',
@@ -75,6 +75,7 @@ export const PAGE_MODULE_IDS = [
   'admin.usage',
   'admin.feature-requests',
   'admin.frictions',
+  'admin.activity',
   'admin.mcp-keys',
 ] as const;
 export type CorePageModuleId = (typeof PAGE_MODULE_IDS)[number];

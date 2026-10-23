@@ -29,6 +29,7 @@ import {
   FolderKanban,
   Monitor,
   FolderOpen,
+  History,
 } from './icons';
 import type { LucideIcon } from './icons';
 import type { FeatureKey } from '@greenhouse/types/features';
@@ -244,6 +245,15 @@ const ADMINISTRATION_MODULES: NavModule[] = [
     requireRole: ['super'],
   },
   {
+    id: 'admin.activity',
+    label: 'Activity log',
+    icon: History,
+    path: '#/administration/activity',
+    parent: 'administration',
+    description: 'Changes by people, their agents, automations and admins',
+    requireRole: ['super'],
+  },
+  {
     id: 'admin.mcp-keys',
     label: 'MCP Access',
     icon: Key,
@@ -325,12 +335,12 @@ const STANDALONE_MODULES: NavModule[] = [
     pinnable: false,
   },
   {
-    id: 'workspace.executions',
-    label: 'Execution Center',
-    icon: ClipboardList,
-    path: '#/executions',
+    id: 'workspace.activity',
+    label: 'Activity log',
+    icon: History,
+    path: '#/activity',
     parent: 'standalone',
-    description: 'Background work, decisions, progress, and outcomes in one place',
+    description: 'What you, your agents and your automations changed',
     pinnable: false,
   },
   {
@@ -381,6 +391,7 @@ const NAV_COPY: Record<string, { label: TranslationKey; description?: Translatio
     description: 'navigation.featureRequestsDesc',
   },
   'admin.frictions': { label: 'navigation.frictions', description: 'navigation.frictionsDesc' },
+  'admin.activity': { label: 'navigation.activityLog', description: 'navigation.activityLogAdminDesc' },
   'admin.mcp-keys': { label: 'navigation.mcpAccess', description: 'navigation.mcpAccessDesc' },
   'workspace.files': { label: 'navigation.files', description: 'navigation.filesDesc' },
   'workspace.tasks': { label: 'navigation.myPrompts', description: 'navigation.tasksDesc' },
@@ -388,7 +399,7 @@ const NAV_COPY: Record<string, { label: TranslationKey; description?: Translatio
   'workspace.agents': { label: 'navigation.myAgents', description: 'navigation.myAgentsDesc' },
   'workspace.tables': { label: 'navigation.tables', description: 'navigation.tablesDesc' },
   'workspace.projects': { label: 'projects.title', description: 'navigation.projectsDesc' },
-  'workspace.executions': { label: 'taskCenter.title', description: 'taskCenter.description' },
+  'workspace.activity': { label: 'navigation.activityLog', description: 'navigation.activityLogDesc' },
   'workspace.skillhub': { label: 'skillHub.title', description: 'navigation.skillHubDesc' },
 };
 

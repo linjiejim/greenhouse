@@ -1,15 +1,6 @@
-import type { RuntimeInterrupt, RuntimeRun } from '@greenhouse/types/runtime';
+import type { RuntimeRun } from '@greenhouse/types/runtime';
 import { describe, expect, it } from 'vitest';
-import {
-  executionRunHref,
-  filterTaskCenterRuns,
-  parseExecutionSubPath,
-  runtimeRunProjection,
-  runtimeRunSubtitle,
-  runtimeRunTitle,
-  taskCenterCounts,
-  taskCenterKinds,
-} from './model.js';
+import { executionRunHref, parseExecutionSubPath, runtimeRunTitle, runtimeTransport } from './model.js';
 
 function run(overrides: Partial<RuntimeRun> = {}): RuntimeRun {
   return {
@@ -48,41 +39,11 @@ function run(overrides: Partial<RuntimeRun> = {}): RuntimeRun {
   };
 }
 
-function interrupt(overrides: Partial<RuntimeInterrupt> = {}): RuntimeInterrupt {
-  return {
-    id: 'interrupt-1',
-    run_id: 'run-1',
-    step_id: null,
-    tool_call_id: null,
-    kind: 'mutation_approval',
-    status: 'pending',
-    payload: { action: 'update' },
-    canonical_input_hash: 'hash',
-    risk_level: 'r1',
-    assignee_user_id: 'user-1',
-    expires_at: null,
-    decision: null,
-    decided_by_user_id: null,
-    decided_at: null,
-    created_at: '2026-08-12T00:00:00.000Z',
-    updated_at: '2026-08-12T00:00:00.000Z',
-    version: 1,
-    ...overrides,
-  };
-}
-
-describe('Execution Center view model', () => {
+describe('Runtime run detail view model', () => {
   it('creates and parses canonical deep links without confusing the legacy prompt Tasks', () => {
-    expect(executionRunHref(run())).toBe('#/executions/mission/run-1');
+    expect(executionRunHref(run())).toBe('#/activity/mission/run-1');
     expect(parseExecutionSubPath('workflow/run%2F42')).toEqual({ kind: 'workflow', runId: 'run/42' });
     expect(parseExecutionSubPath('')).toEqual({ kind: null, runId: null });
-  });
-
-  it('keeps all durable user task kinds in the shared filter', () => {
-    // Retired kinds stay in All so their history remains visible.
-    expect(taskCenterKinds('all')).toEqual(['mission', 'workflow', 'automation', 'subagent', 'agent_write']);
-    expect(taskCenterKinds('automation')).toEqual(['automation']);
-    expect(taskCenterKinds('agent_write')).toEqual(['agent_write']);
   });
 
   it('derives a readable title without changing the complete stored prompt', () => {
@@ -91,7 +52,7 @@ describe('Execution Center view model', () => {
     expect(value.input).toEqual({ prompt: 'Research the market\nwith sources' });
   });
 
-  it('uses the immutable Automation task snapshot for its title and subtitle', () => {
+  it('uses the immutable Automation task snapshot for its title', () => {
     const value = run({
       kind: 'automation',
       source_kind: 'scheduled_task:42',
@@ -105,40 +66,12 @@ describe('Execution Center view model', () => {
     });
 
     expect(runtimeRunTitle(value)).toBe('Scheduled: Daily CRM brief — Aug 12');
-    expect(runtimeRunSubtitle(value)).toBe('Summarize durable CRM changes');
   });
 
-  it('projects execution, interaction and transport independently', () => {
-    expect(runtimeRunProjection(run(), [interrupt()])).toEqual({
-      lifecycle: 'running',
-      attention: 'approval',
-      transport: 'live',
-    });
-    expect(runtimeRunProjection(run({ lease_expires_at: '2020-01-01T00:00:00.000Z' }), [], Date.now()).transport).toBe(
-      'stale',
-    );
-    expect(runtimeRunProjection(run(), [], Date.now(), 'connecting').transport).toBe('reconnecting');
-    expect(runtimeRunProjection(run(), [], Date.now(), 'disconnected').transport).toBe('offline');
-  });
-
-  it('filters attention and execution tabs from separate facts', () => {
-    const completed = run({ id: 'run-2', status: 'succeeded' });
-    expect(filterTaskCenterRuns([run(), completed], [interrupt()], 'attention').map((item) => item.id)).toEqual([
-      'run-1',
-    ]);
-    expect(filterTaskCenterRuns([run(), completed], [], 'completed').map((item) => item.id)).toEqual(['run-2']);
-  });
-
-  it('uses the server summary for whole-collection tab counts', () => {
-    expect(
-      taskCenterCounts({
-        runs: {
-          total: 9,
-          by_status: { queued: 1, running: 2, waiting: 1, succeeded: 3, failed: 1, interrupted: 1 },
-          by_kind: { mission: 6, workflow: 3 },
-        },
-        pending_interrupts: 2,
-      }),
-    ).toEqual({ attention: 2, active: 4, completed: 3, failed: 2, all: 9 });
+  it('derives the connection state of a run independently of its status', () => {
+    expect(runtimeTransport(run())).toBe('live');
+    expect(runtimeTransport(run({ lease_expires_at: '2020-01-01T00:00:00.000Z' }))).toBe('stale');
+    expect(runtimeTransport(run(), Date.now(), 'connecting')).toBe('reconnecting');
+    expect(runtimeTransport(run(), Date.now(), 'disconnected')).toBe('offline');
   });
 });

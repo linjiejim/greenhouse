@@ -89,6 +89,7 @@ import { initializePlatformRuntime } from './platform/runtime.js';
 import promptRoutes from './routes/prompts.js';
 import knowledgeRoutes from './routes/knowledge.js';
 import { createSearchRoute } from './routes/search.js';
+import { createActivityRoutes } from './routes/activity.js';
 import groupRoutes from './routes/groups.js';
 import shareRoutes from './routes/shares.js';
 import { createNotificationRoutes } from './routes/notifications.js';
@@ -300,6 +301,8 @@ function mountRoutes(toolRegistry: ToolRegistry) {
       // Global search — guards live inside the route (a bare `/api/search` is not
       // matched by a `/*` prefix middleware), and each domain lane gates itself.
       .route('/api/search', createSearchRoute())
+      // Activity log — guard inside the route (a bare `/api/activity` is not matched by `/*`).
+      .route('/api/activity', createActivityRoutes())
       // Drive — internal users; per-node checks live in resolveDriveAccess
       .use('/api/drive/*', requireInternal())
       .route('/api/drive', driveRoutes)

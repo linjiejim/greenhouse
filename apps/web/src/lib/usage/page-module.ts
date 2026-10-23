@@ -22,7 +22,7 @@ export const COUNTED_TOP_LEVEL_ROUTES = [
   'tasks',
   'agents',
   'skillhub',
-  'executions',
+  'activity',
 ] as const;
 
 const TOP_LEVEL = new Set<string>(COUNTED_TOP_LEVEL_ROUTES);

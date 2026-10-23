@@ -1,8 +1,12 @@
-import { ClipboardList } from '../../lib/icons';
+import { History } from '../../lib/icons';
 import { useT } from '../../lib/i18n';
-import { useRuntimeAttentionCount } from '../../hooks/use-runtime-attention-count';
-import { useAuthStore } from '../../stores';
+import { ACTIVITY_ROOT_HASH } from '../../lib/execution-route';
 
+/**
+ * The account-flyout / collapsed-rail entry to the Activity log (操作记录) —
+ * every member's own record of changes, which is what the Execution Center
+ * became in v1.5. (Admins also reach everyone's under Administration.)
+ */
 export function ExecutionCenterLink({
   active,
   compact = false,
@@ -15,18 +19,15 @@ export function ExecutionCenterLink({
   onNavigate?: () => void;
 }) {
   const t = useT();
-  const user = useAuthStore((state) => state.currentUser);
-  const attentionCount = useRuntimeAttentionCount(!!user);
-  const countLabel = attentionCount > 99 ? '99+' : attentionCount;
-  const href = attentionCount > 0 ? '#/executions?tab=attention' : '#/executions';
+  const label = t('navigation.activityLog');
 
   return (
     <a
-      href={href}
+      href={ACTIVITY_ROOT_HASH}
       onClick={onNavigate}
       aria-current={active ? 'page' : undefined}
-      aria-label={t('taskCenter.title')}
-      title={t('taskCenter.title')}
+      aria-label={label}
+      title={label}
       role={menu ? 'menuitem' : undefined}
       className={
         menu
@@ -43,16 +44,9 @@ export function ExecutionCenterLink({
       }
     >
       <span className={menu ? 'w-5 text-center text-fg-faint' : undefined}>
-        <ClipboardList size={compact ? 16 : menu ? 15 : 14} className="inline flex-shrink-0" aria-hidden="true" />
+        <History size={compact ? 16 : menu ? 15 : 14} className="inline flex-shrink-0" aria-hidden="true" />
       </span>
-      {!compact && <span className="min-w-0 flex-1 truncate">{t('taskCenter.title')}</span>}
-      {attentionCount > 0 && (
-        <span
-          className={`${compact ? 'absolute -right-1 -top-1' : ''} inline-flex min-w-4 items-center justify-center rounded-full bg-warning-subtle px-1 text-[9px] font-semibold text-warning`}
-        >
-          {countLabel}
-        </span>
-      )}
+      {!compact && <span className="min-w-0 flex-1 truncate">{label}</span>}
     </a>
   );
 }

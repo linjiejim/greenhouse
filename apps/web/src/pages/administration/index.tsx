@@ -27,6 +27,7 @@ import { UserManagementPanel } from './users';
 import { McpKeysPanel } from './mcp-keys';
 import { RuntimeConfigPanel } from './runtime-config';
 import { BrandingStudioPanel } from './branding-studio';
+import { ActivityLogPage } from '../activity/activity-log';
 
 const ALL_MODULES = administrationModules;
 const DEFAULT_MODULE = 'users';
@@ -59,6 +60,7 @@ export function AdministrationPage({ subPath }: { subPath: string }) {
       {activeModule === 'usage' && <UsagePanelWithUsers />}
       {activeModule === 'feature-requests' && <FeatureRequestsPanel />}
       {activeModule === 'frictions' && <FrictionsPanel />}
+      {activeModule === 'activity' && <ActivityLogPage moduleId="admin.activity" />}
       {activeModule === 'mcp-keys' && <McpKeysPanel />}
       {activeModule === 'runtime-config' && <RuntimeConfigPanel />}
       {activeModule === 'branding' && <BrandingStudioPanel />}

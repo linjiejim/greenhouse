@@ -27,7 +27,7 @@ const MODULE_PAGES: ModulePageContract[] = [
   { file: '../agents.tsx', moduleId: 'workspace.agents', layout: 'list' },
   { file: '../tables/index.tsx', moduleId: 'workspace.tables', layout: 'list' },
   { file: '../projects.tsx', moduleId: 'workspace.projects', layout: 'canvas' },
-  { file: '../executions/task-center.tsx', moduleId: 'workspace.executions', layout: 'list' },
+  { file: '../files.tsx', moduleId: 'workspace.files', layout: 'list' },
   { file: '../skillhub/index.tsx', moduleId: 'workspace.skillhub', layout: 'canvas' },
 ];
 
@@ -43,6 +43,16 @@ describe('ModulePage coverage', () => {
     );
 
     expect(source).toMatch(pageContract);
+  });
+
+  it('renders the Activity log on the shared list contract for both of its hosts', () => {
+    // One page, two identities: the member's own record and the admin's view of everyone.
+    const page = readFileSync(new URL('../activity/activity-log.tsx', import.meta.url), 'utf8');
+    expect(page).toMatch(/<ModulePage[\s\S]{0,240}moduleId=\{moduleId\}[\s\S]{0,240}layout="list"/);
+    const member = readFileSync(new URL('../activity/index.tsx', import.meta.url), 'utf8');
+    expect(member).toContain('<ActivityLogPage moduleId="workspace.activity" />');
+    const admin = readFileSync(new URL('../administration/index.tsx', import.meta.url), 'utf8');
+    expect(admin).toContain('<ActivityLogPage moduleId="admin.activity" />');
   });
 
   it('keeps scrolling and page padding out of the route-level shells', () => {

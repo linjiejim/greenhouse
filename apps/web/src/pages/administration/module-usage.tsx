@@ -49,7 +49,8 @@ const MODULE_LABELS: Record<string, TranslationKey> = {
   tasks: 'usage.modules.moduleNames.tasks',
   agents: 'usage.modules.moduleNames.agents',
   skillhub: 'usage.modules.moduleNames.skillhub',
-  executions: 'usage.modules.moduleNames.executions',
+  activity: 'usage.modules.moduleNames.activity',
+  files: 'usage.modules.moduleNames.files',
   'session-tags': 'usage.modules.moduleNames.sessionTags',
   'session-groups': 'usage.modules.moduleNames.sessionGroups',
 };

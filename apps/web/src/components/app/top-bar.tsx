@@ -48,7 +48,7 @@ type Route =
   | 'files'
   | 'skillhub'
   | 'tasks'
-  | 'executions';
+  | 'activity';
 
 interface TopBarProps {
   route: Route;
@@ -283,7 +283,7 @@ export function TopBar({
     files: t('navigation.files'),
     skillhub: t('app.skillhub'),
     tasks: t('navigation.myPrompts'),
-    executions: t('taskCenter.title'),
+    activity: t('navigation.activityLog'),
   };
 
   const title = pageTitles[route] || '';

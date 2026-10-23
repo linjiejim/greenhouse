@@ -86,7 +86,7 @@ export function resolveUrlContext(hash: string): PageContext | null {
       };
     }
 
-    case 'executions': {
+    case 'activity': {
       const parsed = parseExecutionSubPath(segments.slice(1).join('/'));
       return {
         type: 'execution-center',

@@ -27,7 +27,7 @@ afterEach(async () => {
 });
 
 describe('SidebarAccountMenu destinations', () => {
-  it('places Execution Center immediately below Inbox, then Release notes, in the account flyout', async () => {
+  it('places the Activity log immediately below Inbox, then Release notes, in the account flyout', async () => {
     container = document.createElement('div');
     document.body.append(container);
     root = createRoot(container);
@@ -50,10 +50,10 @@ describe('SidebarAccountMenu destinations', () => {
     const items = Array.from(container.querySelectorAll<HTMLElement>('[role="menuitem"]'));
     expect(items.slice(0, 3).map((item) => item.textContent?.trim())).toEqual([
       'Inbox',
-      'Execution Center',
+      'Activity log',
       'Release notes',
     ]);
-    expect(items[1]?.getAttribute('href')).toBe('#/executions');
+    expect(items[1]?.getAttribute('href')).toBe('#/activity');
 
     // Release notes open the web-owned dialog in a browser too — they are not
     // gated on the desktop shell, unlike "Check for updates".

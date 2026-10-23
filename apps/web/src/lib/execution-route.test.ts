@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
-  EXECUTIONS_ROOT_HASH,
+  ACTIVITY_ROOT_HASH,
   executionNotificationHref,
   executionRunHref,
   legacyExecutionRedirect,
@@ -9,11 +9,11 @@ import {
   parseExecutionSubPath,
 } from './execution-route.js';
 
-describe('Execution Center routes', () => {
+describe('Activity log and run detail routes', () => {
   it('builds canonical list and detail URLs', () => {
-    expect(EXECUTIONS_ROOT_HASH).toBe('#/executions');
-    expect(executionRunHref({ kind: 'workflow', id: 'run/42' })).toBe('#/executions/workflow/run%2F42');
-    expect(missionExecutionHref('car_42')).toBe('#/executions/mission/rtm_car_42');
+    expect(ACTIVITY_ROOT_HASH).toBe('#/activity');
+    expect(executionRunHref({ kind: 'workflow', id: 'run/42' })).toBe('#/activity/workflow/run%2F42');
+    expect(missionExecutionHref('car_42')).toBe('#/activity/mission/rtm_car_42');
   });
 
   it('parses canonical kind/id detail routes', () => {
@@ -22,21 +22,26 @@ describe('Execution Center routes', () => {
   });
 
   it('builds notification deep links from the Runtime kind', () => {
-    expect(executionNotificationHref('run/42', { runtime_kind: 'workflow' })).toBe('#/executions/workflow/run%2F42');
-    expect(executionNotificationHref('old/run', {})).toBe('#/executions/old%2Frun');
+    expect(executionNotificationHref('run/42', { runtime_kind: 'workflow' })).toBe('#/activity/workflow/run%2F42');
+    expect(executionNotificationHref('old/run', {})).toBe('#/activity/old%2Frun');
   });
 
   it('redirects every retired execution route and preserves query parameters', () => {
     expect(legacyExecutionRedirect('#/task-center/mission/rtm_car_42?view=runtime')).toBe(
-      '#/executions/mission/rtm_car_42?view=runtime',
+      '#/activity/mission/rtm_car_42?view=runtime',
     );
-    expect(legacyExecutionRedirect('#/tasks/workflow/run-1')).toBe('#/executions/workflow/run-1');
-    expect(legacyExecutionRedirect('#/missions')).toBe('#/executions?kind=mission');
+    expect(legacyExecutionRedirect('#/tasks/workflow/run-1')).toBe('#/activity/workflow/run-1');
+    expect(legacyExecutionRedirect('#/missions')).toBe('#/activity?kind=mission');
     expect(legacyExecutionRedirect('#/missions/car_42?tab=artifacts')).toBe(
-      '#/executions/mission/rtm_car_42?tab=artifacts',
+      '#/activity/mission/rtm_car_42?tab=artifacts',
     );
-    expect(legacyExecutionRedirect('#/cloud-agent/runs/car_42')).toBe('#/executions/mission/rtm_car_42');
-    expect(legacyExecutionRedirect('#/executions')).toBeNull();
+    expect(legacyExecutionRedirect('#/cloud-agent/runs/car_42')).toBe('#/activity/mission/rtm_car_42');
+    expect(legacyExecutionRedirect('#/activity')).toBeNull();
+    // v1.5: the Execution Center became the Activity log.
+    expect(legacyExecutionRedirect('#/executions')).toBe('#/activity');
+    expect(legacyExecutionRedirect('#/executions/automation/rtr_1?tab=attention')).toBe(
+      '#/activity/automation/rtr_1?tab=attention',
+    );
   });
 });
 

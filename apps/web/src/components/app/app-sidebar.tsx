@@ -53,7 +53,7 @@ type Route =
   | 'files'
   | 'skillhub'
   | 'tasks'
-  | 'executions';
+  | 'activity';
 
 interface AppSidebarProps {
   route: Route;
@@ -291,14 +291,14 @@ export function AppSidebar({
               </>
             )}
 
-            {!isOverlayRoute && route !== 'chat' && route !== 'executions' && (
+            {!isOverlayRoute && route !== 'chat' && route !== 'activity' && (
               <PinnedSectionCollapsed currentHash={`#/${route}${subPath ? '/' + subPath : ''}`} />
             )}
 
             <div className="flex-1" />
 
             <DesktopUpdateNotice compact />
-            <SidebarAccountMenu user={currentUser} compact executionCenterActive={route === 'executions'} />
+            <SidebarAccountMenu user={currentUser} compact executionCenterActive={route === 'activity'} />
           </div>
         </div>
         {resizeHandle}
@@ -366,7 +366,7 @@ export function AppSidebar({
 
               {/* Tables own the full contextual rail. Execution Center is a
                   global utility and deliberately omits unrelated pinned links. */}
-              {route !== 'tables' && route !== 'executions' && (
+              {route !== 'tables' && route !== 'activity' && (
                 <PinnedSection currentHash={`#/${route}${subPath ? '/' + subPath : ''}`} />
               )}
 
@@ -396,7 +396,7 @@ export function AppSidebar({
               <SidebarAccountMenu
                 user={currentUser}
                 settingsActive={isOverlayRoute}
-                executionCenterActive={route === 'executions'}
+                executionCenterActive={route === 'activity'}
                 onBackFromSettings={onBack}
                 isSettingsRoute={isOverlayRoute}
               />

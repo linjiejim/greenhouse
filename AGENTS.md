@@ -437,7 +437,8 @@ dialog (`apps/web/src/pages/administration/user-permissions-modal.tsx`) renders 
   `pnpm cli platform create-app <id> --title "..."`; an app without a web UI may stay
   Agent/MCP-only. The web catalog and the fixed shell navigation
   (`Chat → Knowledge → Projects → Tables → More`) derive from the user's authorized catalog;
-  durable execution tracking lives in the execution center (`#/executions`).
+  who changed what (people, their agents, automations, admins) lives in the Activity log (`#/activity`,
+  formerly the execution center; `#/executions` redirects).
 
 ### Workspace settings (DB-backed, admin-editable deployment config)
 

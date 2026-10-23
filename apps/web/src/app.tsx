@@ -25,7 +25,7 @@ const AgentsPage = lazy(() => import('./pages/agents').then((m) => ({ default: m
 const AutomationsPage = lazy(() => import('./pages/automations').then((m) => ({ default: m.AutomationsPanel })));
 const PersonalTasksPage = lazy(() => import('./pages/tasks').then((m) => ({ default: m.PromptsPage })));
 const SkillHubPage = lazy(() => import('./pages/skillhub').then((m) => ({ default: m.SkillHubPage })));
-const ExecutionCenterPage = lazy(() => import('./pages/executions').then((m) => ({ default: m.ExecutionsPage })));
+const ActivityPage = lazy(() => import('./pages/activity').then((m) => ({ default: m.ActivityPage })));
 const TablesPage = lazy(() => import('./pages/tables').then((m) => ({ default: m.TablesPage })));
 const FilesPage = lazy(() => import('./pages/files').then((m) => ({ default: m.FilesPage })));
 const OAuthConsentPage = lazy(() => import('./pages/oauth-consent').then((m) => ({ default: m.OAuthConsentPage })));
@@ -125,7 +125,7 @@ type Route =
   | 'files'
   | 'skillhub'
   | 'tasks'
-  | 'executions';
+  | 'activity';
 
 interface ParsedRoute {
   route: Route;
@@ -222,7 +222,7 @@ const CORE_ROUTES: ReadonlySet<string> = new Set([
   'files',
   'skillhub',
   'tasks',
-  'executions',
+  'activity',
 ]);
 
 function parseRoute(hash: string): ParsedRoute {
@@ -741,7 +741,7 @@ function AppShell({ route, subPath, params, extensionRoute }: AppShellProps) {
                     <div className="flex min-h-0 flex-1 flex-col pt-1">
                       <KnowledgeNavPanel activeModule={subPath} onNavigate={() => setNavOpen(false)} />
                     </div>
-                  ) : route === 'executions' ? (
+                  ) : route === 'activity' ? (
                     <div className="min-h-0 flex-1" />
                   ) : route === 'extension' ? (
                     <div className="min-h-0 flex-1 overflow-y-auto">
@@ -768,7 +768,7 @@ function AppShell({ route, subPath, params, extensionRoute }: AppShellProps) {
                     user={currentUser}
                     showSettingsIcon
                     settingsActive={route === 'settings'}
-                    executionCenterActive={route === 'executions'}
+                    executionCenterActive={route === 'activity'}
                     onNavigate={() => setNavOpen(false)}
                   />
                 </div>
@@ -816,7 +816,7 @@ function AppShell({ route, subPath, params, extensionRoute }: AppShellProps) {
                 )}
                 {route === 'tables' && hasApplication('tables') && <TablesPage subPath={subPath} />}
                 {route === 'files' && <FilesPage params={params} />}
-                {route === 'executions' && <ExecutionCenterPage subPath={subPath} params={params} />}
+                {route === 'activity' && <ActivityPage subPath={subPath} />}
                 {route === 'extension' && (
                   <ExtensionPageHost route={extensionRoute ?? ''} subPath={subPath} params={params} />
                 )}
