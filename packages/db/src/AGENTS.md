@@ -16,7 +16,7 @@
 - PostgreSQL sequence 是非事务的：测试不得假设首条记录 ID 为 1，也不得用固定 ID 更新/删除。
 - 只有多连接提交可见性、DDL、连接级锁/竞态等无法在单事务内验证的行为，才使用 `*.db-commit.test.ts(x)`；文件头必须写 `@db-commit-reason`。该层串行；各测试必须用每次运行唯一的业务键、只做最小定向清理且不能依赖全局计数，禁止整库 `resetSchema()`。
 - project 启动时的全库清理是唯一共享 baseline reset。Platform manifests、protected roles 和 baseline policies 在 global setup 提交一次作为不可变基线；每条测试仍须在自己的事务内创建用户，并通过 `tests/helpers/internal-user.ts` 直接绑定 baseline role。`syncLegacyRoleBinding()` 留给确实验证历史角色切换/协调的测试，不作为新用户 fixture。其它昂贵且只读的公共 seed 才考虑放 global setup，可变数据按场景惰性创建，只包含当前断言需要的最小 actor、关系和字段。
-- `TEST_DATABASE_URL` 必须指向本机、库名含 `test`/`e2e` 的一次性数据库；多 worktree 使用独立 `greenhouse_test_<slug>`，不得复用 dev/共享库。
+- `TEST_DATABASE_URL` 必须指向本机、库名含 `test`/`e2e` 的一次性数据库；多 worktree 使用独立 `greenhouse_test_<slug>`，不得复用 dev/共享库。本地不设就直接报错（只有 CI 回退到 `localhost:5432/greenhouse_test`）。
 
 ### Service 模式（2026-06 起；旧"接口层 + Repository 类"已删除）
 

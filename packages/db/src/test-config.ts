@@ -4,9 +4,19 @@ import { createDatabase, createTestTransactionDatabase, type DatabaseProvider } 
 import { createDbClient, type Db, type DbClient } from './client.js';
 import { clearActiveTestTransactionProvider, setActiveTestTransactionProvider } from './test-runtime.js';
 
-/** PostgreSQL URL shared by integration tests; override for disposable databases. */
-export const TEST_DATABASE_URL =
-  process.env.TEST_DATABASE_URL ?? 'postgresql://greenhouse:greenhouse@localhost:5432/greenhouse_test';
+/**
+ * PostgreSQL URL shared by integration tests. CI's service container is the
+ * only place the default applies: a local run must name its disposable
+ * database, because port 5432 on a workstation often belongs to another
+ * project and the DB tests empty the database they reach.
+ */
+export const TEST_DATABASE_URL = resolveTestDatabaseUrl();
+
+function resolveTestDatabaseUrl(): string {
+  if (process.env.TEST_DATABASE_URL) return process.env.TEST_DATABASE_URL;
+  if (process.env.CI) return 'postgresql://greenhouse:greenhouse@localhost:5432/greenhouse_test';
+  return 'postgresql://unset@invalid.test/set_TEST_DATABASE_URL';
+}
 
 const UNSAFE_OVERRIDE = 'I_UNDERSTAND_TEST_DATABASE_IS_DESTRUCTIVE';
 const ROLLBACK = Symbol('rollback integration test');
@@ -25,6 +35,12 @@ export function assertSafeTestDatabase(
     throw new Error('TEST_DATABASE_URL is not a valid URL');
   }
 
+  if (url.hostname === 'invalid.test') {
+    throw new Error(
+      'TEST_DATABASE_URL is not set. Point it at a disposable database (name containing "test" or "e2e"); ' +
+        'outside CI there is no default, so tests never reach a database another project owns.',
+    );
+  }
   const host = url.hostname.toLowerCase();
   const database = decodeURIComponent(url.pathname.replace(/^\/+/, ''));
   const isLoopback = host === 'localhost' || host === '127.0.0.1' || host === '::1' || host === '[::1]';
