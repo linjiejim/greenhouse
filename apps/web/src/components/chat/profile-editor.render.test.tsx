@@ -48,7 +48,7 @@ describe('ProfileEditorDrawer', () => {
       }),
     );
 
-    expect(html).toContain('aria-label="Create Agent"');
+    expect(html).toContain('aria-label="New run profile"');
     expect(html).toContain('sm:w-[90vw]');
     expect(html).toContain('lg:grid-cols-[minmax(0,1.15fr)_minmax(20rem,0.85fr)]');
     expect(html).toContain('Choose only the tools this Agent needs');
@@ -62,7 +62,7 @@ describe('ProfileEditorDrawer', () => {
     expect(html).toContain('Confirm');
     expect(html).toContain('Selected only');
     expect(html).toContain('aria-expanded="false"');
-    expect(html).toMatch(/<button[^>]*disabled=""[^>]*>Create Agent<\/button>/);
+    expect(html).toMatch(/<button[^>]*disabled=""[^>]*>New run profile<\/button>/);
     expect(html).toContain('lg:overflow-y-auto');
     expect(html).toContain('min-h-0 flex-1 overflow-y-auto');
   });
