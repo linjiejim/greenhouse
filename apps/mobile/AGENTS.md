@@ -41,11 +41,19 @@
 - Stores that hold member data reset on any station or member change (module-scope subscriptions, see src/store/notifications.ts) and drop late answers with captureIdentity().
 - Read marks and similar writes are optimistic and roll back on failure, with alertError for the failure.
 - Hermes rejects Postgres timestamps; parse them with parseMs() (src/data/time.ts).
+- My tasks, the last 20 records opened and the details of the last 20 files opened read offline too: useOfflineResource (src/data/offline-view.ts rules: saved copy first, kept and marked 离线中 when unreachable, deleted on 403 / 404) and src/store/offline.ts.
 - Opened knowledge documents keep a saved copy and the recently opened list per station + member (src/store/knowledge.ts, rules in src/data/recent-docs.ts). A 403 / 404 deletes the copy and stops showing it; only an unreachable station (no answer, 502/503/504) falls back to it (`docMiss`).
 - The top of a knowledge shelf lists the recently opened documents even when the shelf fails, so they open offline on a cold launch (src/data/kb-rows.ts).
 - Offset-paginated lists are read to the end with collectPages() (src/data/paging.ts), bound to the identity they started on; never stop at the first page.
 - Every multi-step write (a Files upload: init, bytes, complete, later batch items) checks the identity captured before its first step and stops on a change (src/api/drive.ts).
 - Links go through src/lib/deep-links.ts (pure) and src/shell/open-target.ts: documents, files, projects and tasks (`#/projects/<id>?task=`), tables and records (`#/tables/<base>/table/<table>?record=`), conversations (`#/chat?session=`) and My Agents open natively; other station pages in the in-app Safari view at the active station, other sites in Safari. A notification opens what its payload `url` names (or My Agents for an agent write), else its page (src/shell/open-notification.ts).
+
+## Widgets and iPad
+
+- targets/widget holds the 我的任务 and 最近文档 widgets; they read only the App Group snapshot src/widget/publish.ts writes through modules/widget-bridge (shape: src/widget/model.ts, a parity test checks the Swift decoder). Never put a token or private body text in it.
+- Widget links carry `station=`; app/+native-intent.tsx opens them only on that station.
+- Colorsets do not reach Color.accentColor in an extension: spell the V1 green out in Swift.
+- iPad at regular width splits list and detail (src/ui/split.tsx, rules in src/data/split-layout.ts); detail screens are views (src/<area>/*-view.tsx) used by both the route and the pane, and render their title and actions through ScreenChrome.
 
 ## Push
 
