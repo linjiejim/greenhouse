@@ -269,10 +269,20 @@ function definitelyRefused(error: unknown): boolean {
   );
 }
 
+/**
+ * How long the provider may let a computer live without hearing from us: the
+ * idle window after the operation in hand, plus slack. Every renewal (use,
+ * heartbeat) pushes it out again.
+ */
+function providerDeadlineSeconds(operationSeconds: number): number {
+  return COMPUTER_IDLE_MINUTES * 60 + Math.max(0, operationSeconds) + RENEW_SLACK_SECONDS;
+}
+
 async function startClaimed(
   db: DatabaseProvider,
   driver: ComputerDriver,
   row: MemberComputerRow,
+  operationSeconds: number,
 ): Promise<UsableComputer> {
   const blockStartedAt = new Date().toISOString();
   let lease;
@@ -288,7 +298,8 @@ async function startClaimed(
     ({ sandboxId } = await driver.create({
       computerId: row.id,
       userId: row.user_id,
-      timeoutSeconds: COMPUTER_IDLE_MINUTES * 60 + RENEW_SLACK_SECONDS,
+      // The first command runs right away: its own time counts before the idle window.
+      timeoutSeconds: providerDeadlineSeconds(operationSeconds),
     }));
   } catch (error) {
     // A provider refusal created nothing: give the reservation back. Anything
@@ -324,10 +335,7 @@ async function keepAlive(
   row: MemberComputerRow,
   operationSeconds: number,
 ): Promise<boolean> {
-  const alive = await driver.renew(
-    row.sandbox_id!,
-    COMPUTER_IDLE_MINUTES * 60 + operationSeconds + RENEW_SLACK_SECONDS,
-  );
+  const alive = await driver.renew(row.sandbox_id!, providerDeadlineSeconds(operationSeconds));
   if (!alive) {
     // The provider already killed it (its deadline passed without a renewal):
     // bill up to when it can have lived at most.
@@ -361,7 +369,7 @@ export async function ensureComputer(
     });
     if (claim.status === 'full') throw new ComputerUnavailableError('full', fullMessage(maxRunning), 429);
     if (claim.status === 'claimed') {
-      const started = await startClaimed(caller.db, driver, claim.row);
+      const started = await startClaimed(caller.db, driver, claim.row, operationSeconds);
       return { ...started, replaced };
     }
     const row = claim.row;
@@ -394,17 +402,36 @@ export async function currentComputer(
   return { row, sandboxId: row.sandbox_id, started: false, replaced: false };
 }
 
-/** Run `work` while keeping the computer counted as in use (a long command never idles out). */
-export async function withHeartbeat<T>(db: DatabaseProvider, computerId: string, work: () => Promise<T>): Promise<T> {
-  const timer = setInterval(() => {
-    db.memberComputers.touch(computerId).catch(() => undefined);
-  }, HEARTBEAT_MS);
+/**
+ * Run `work` while the computer counts as in use, here and at the provider: a
+ * long command neither idles out in our sweeper nor outlives the provider's
+ * kill deadline. Each beat records use and pushes the deadline a full idle
+ * window out; when the work ends, both are refreshed once more.
+ */
+export async function withHeartbeat<T>(
+  db: DatabaseProvider,
+  computer: Pick<UsableComputer, 'row' | 'sandboxId'>,
+  driver: ComputerDriver,
+  work: () => Promise<T>,
+  options: { intervalMs?: number } = {},
+): Promise<T> {
+  const beat = () => {
+    db.memberComputers.touch(computer.row.id).catch(() => undefined);
+    driver.renew(computer.sandboxId, providerDeadlineSeconds(0)).catch((error: unknown) =>
+      logger.warn('[computer] could not renew a busy computer', {
+        computer: computer.row.id,
+        error: toErrorMessage(error),
+      }),
+    );
+  };
+  const timer = setInterval(beat, options.intervalMs ?? HEARTBEAT_MS);
   timer.unref?.();
   try {
     return await work();
   } finally {
     clearInterval(timer);
-    await db.memberComputers.touch(computerId).catch(() => undefined);
+    await db.memberComputers.touch(computer.row.id).catch(() => undefined);
+    await driver.renew(computer.sandboxId, providerDeadlineSeconds(0)).catch(() => false);
   }
 }
 

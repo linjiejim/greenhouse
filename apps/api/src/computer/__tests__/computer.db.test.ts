@@ -37,7 +37,13 @@ vi.mock('../../storage/uploads.js', async (importOriginal) => {
 });
 
 import { setComputerDriverForTests, type ComputerDriver } from '../driver.js';
-import { COMPUTER_DISABLED_MESSAGE, ensureComputer, sweepComputers, stopMemberComputer } from '../service.js';
+import {
+  COMPUTER_DISABLED_MESSAGE,
+  ensureComputer,
+  sweepComputers,
+  stopMemberComputer,
+  withHeartbeat,
+} from '../service.js';
 import { ProviderRequestError } from '../e2b/http.js';
 import { buildMcpServer, composeMcpContext } from '../../routes/mcp.js';
 import { identityFromOAuthScopes } from '../../agent-runtime/mcp-auth.js';
@@ -96,7 +102,7 @@ function fakeDriver() {
     writeFile: vi.fn(
       async (_id: string, input: { path: string; bytes: Buffer }) => void files.set(input.path, input.bytes),
     ),
-    renew: vi.fn(async (id: string) => alive.has(id)),
+    renew: vi.fn(async (id: string, _timeoutSeconds?: number) => alive.has(id)),
     kill: vi.fn(async (id: string) => void alive.delete(id)),
   };
   return impl satisfies ComputerDriver & Record<string, unknown>;
@@ -351,6 +357,28 @@ describe('cloud computer: lifecycle and per-minute billing', () => {
     expect(await memberComputer()).toMatchObject({ status: 'stopped', stop_reason: 'idle', minutes_billed: 25 });
     expect((await computerFacts()).map((fact) => fact.units)).toEqual([15, 10]);
     expect(driver.create).toHaveBeenCalledTimes(1);
+  });
+
+  it('gives the provider the first command time before its idle window starts', async () => {
+    await run('computer_exec', { command: 'long-build', timeout_seconds: 600 });
+    // 15 idle minutes + the 10-minute command + 2 minutes of slack.
+    expect(driver.create).toHaveBeenCalledWith(expect.objectContaining({ timeoutSeconds: 15 * 60 + 600 + 120 }));
+  });
+
+  it('keeps a busy computer alive at the provider while work runs, and once it ends', async () => {
+    const computer = await ensureComputer({ db, userId: member.id, scope: scope() });
+    driver.renew.mockClear();
+    const before = (await memberComputer()).last_used_at;
+    await withHeartbeat(db, computer, driver, () => new Promise((resolve) => setTimeout(resolve, 60)), {
+      intervalMs: 10,
+    });
+    // At least one beat during the work, plus the closing renewal.
+    expect(driver.renew.mock.calls.length).toBeGreaterThanOrEqual(2);
+    for (const [sandboxId, seconds] of driver.renew.mock.calls) {
+      expect(sandboxId).toBe(computer.sandboxId);
+      expect(seconds).toBe(15 * 60 + 120);
+    }
+    expect(Date.parse((await memberComputer()).last_used_at)).toBeGreaterThanOrEqual(Date.parse(before));
   });
 
   it('refuses a new computer once the workspace runs its limit', async () => {

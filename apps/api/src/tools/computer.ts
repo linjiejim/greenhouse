@@ -190,7 +190,7 @@ export function createComputerExecTool(ctx: ComputerToolContext) {
           { operationSeconds: input.timeout_seconds, ...(ctx.driver ? { driver: ctx.driver } : {}) },
         );
         const driver = ctx.driver ?? getComputerDriver();
-        const result = await withHeartbeat(ctx.db, computer.row.id, () =>
+        const result = await withHeartbeat(ctx.db, computer, driver, () =>
           driver.exec(computer.sandboxId, {
             command: input.command,
             cwd,
