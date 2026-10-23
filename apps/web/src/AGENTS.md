@@ -19,7 +19,7 @@
 - 新增原子组件：SearchInput、Toggle、StatusDot、Checkbox、Avatar、DateRangeInput
 - 表单布局组件 (`components/form/`)：`FormField`、`FormGrid`、`FormGroup`、`FormSection`、`FormActions`、`FormError`。业务表单只组合字段与领域值，不再各写 label/help/error/footer 间距；`FormField` 负责 `htmlFor`、`aria-describedby`、`aria-invalid`。
 - Settings 分区 (`components/settings/`)：`SettingsPanel`（统一 `space-y-4`）与 `SettingsSection`（标题/说明/图标/操作/内容）；Settings 子页不得再各造卡片头与外层节奏。
-- 模块页框 (`components/app/module-page.tsx`)：`ModulePageShell` 只拥有模块导航/viewport；所有非 Chat 的常规总览、集合与列表页由 `ModulePage` 从导航注册表派生身份，并统一 `actions → notice → tabs → toolbar → content`、`form/list/canvas` 宽度与滚动。当前覆盖 Settings/Administration、Tasks、Automation、My Agents、Tables 首页、Projects、Execution Center、SkillHub 入口和 Knowledge 三个公开集合；这些页面不得再自建外层 header、padding、max-width 或滚动容器。记录详情、整页编辑器、Project/Tables 数据工作区、SkillHub 技能详情等沉浸式页面继续使用 Detail/Canvas 专用结构，禁止为了形式统一套第二层页头。标题为紧凑单行，说明必须 `truncate + title`，避免操作区被长文案挤出。
+- 模块页框 (`components/app/module-page.tsx`)：`ModulePageShell` 只拥有模块导航/viewport；所有非 Chat 的常规总览、集合与列表页由 `ModulePage` 从导航注册表派生身份，并统一 `actions → notice → tabs → toolbar → content`、`form/list/canvas` 宽度与滚动。当前覆盖 Settings/Administration、Home、Files、Automations（含 Run profiles tab）、SkillHub（含我的提示词 tab）、Tables 首页、Projects、操作记录（Activity log）和 Knowledge 三个公开集合；页面分区一律只用 `tabs` 槽里的一排 `<Tabs>`，二级视图（如 super 的用量报告）放工具栏按钮，不再叠第二排 tab；这些页面不得再自建外层 header、padding、max-width 或滚动容器。记录详情、整页编辑器、Project/Tables 数据工作区、SkillHub 技能详情等沉浸式页面继续使用 Detail/Canvas 专用结构，禁止为了形式统一套第二层页头。标题为紧凑单行，说明必须 `truncate + title`，避免操作区被长文案挤出。
 - 详情页组件 (`components/detail/`)：`<DetailHeader>`、`<DetailSection>`、`<FieldGrid>`、`<Field>`——见下方「详情页规范」
 - 列表分页：`<Pagination>` + `usePersistedPageSize`——见下方「列表分页规范」
 - 标签：`<Tag>`（方角紧凑、单行）/`<TagList>`（多标签单行 +N）——见下方「标签 Tag 规范」
@@ -298,7 +298,7 @@ stores/
 ### 聊天输入框（Composer）
 - 输入框是纯 `<textarea>` + 结构化选中项，**不要**改成 contenteditable 富文本。
 - 聚焦态属于最外层 composer：外壳用 `focus-within` 统一画 border/ring，textarea 自己不得再画 outline（dark 全局 focus 规则显式排除 `.chat-composer-textarea`），保证 Light/Dark 都是一块完整输入面。
-- `@` 只触发 [mention-popover.tsx](./components/chat/mention-popover.tsx) 的 Agent Profile 选择：候选与 `/ Task` 一样保持单行、明确高亮、`aria-selected` 和 `↑↓`/Enter/Tab 键盘选择；左侧名称，右侧用紧凑 Tag 标明 System / Shared / Personal，不渲染描述。选择会切换新会话 profile 并驱动 `selectedProfileId`；Chat Composer 不提供成员 mention，成员协作走会话 Share。
+- `@` 只触发 [mention-popover.tsx](./components/chat/mention-popover.tsx) 的 Agent Profile 选择：候选与 `/` 提示词菜单一样保持单行、明确高亮、`aria-selected` 和 `↑↓`/Enter/Tab 键盘选择；左侧名称，右侧用紧凑 Tag 标明 System / Shared / Personal，不渲染描述。选择会切换新会话 profile 并驱动 `selectedProfileId`；Chat Composer 不提供成员 mention，成员协作走会话 Share。
 - `/` 触发 [command-menu-popover.tsx](./components/chat/command-menu-popover.tsx) 的 Tasks 选择（团队/个人子组），`↑↓` 在一条扁平索引上连续走。候选行保持单行：左侧标题、右侧 `/shortcut`，不渲染描述或正文；`↑↓` 的当前项必须有明确高亮并用 `aria-selected` 暴露，Enter/Tab 确认。选中带变量 Task 后焦点直接进入第一个变量，Tab 由 `TaskVariableForm` 确定性地依次移到其余变量、最后进入正文 textarea（不能只依赖 WebView 的默认焦点推进）；Task 正文仍只在发送时展开。（v1.4 前的 Skills 段随 Mission 一并删除。）
 - 选中的 profile 以药丸形式渲染在 [composer-chips.tsx](./components/chat/composer-chips.tsx)（textarea 上方），可整体移除。
 - 触发检测复用 [use-trigger-popup.ts](./components/chat/use-trigger-popup.ts)（`insertSelection('')` 删 token、`insertSelection(text)` 展开）。

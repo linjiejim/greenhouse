@@ -101,7 +101,7 @@ describe('ChatInput responsive layout', () => {
         }),
       }),
     );
-    expect(taskOnly).toContain('placeholder="Message… · / Task"');
+    expect(taskOnly).toContain('placeholder="Message… · / Prompt"');
 
     const agentOnly = renderToStaticMarkup(
       createElement(I18nProvider, {
@@ -178,7 +178,7 @@ describe('ChatInput responsive layout', () => {
     );
     expect(html.indexOf('data-task-variable-input="region"')).toBeLessThan(html.indexOf('<textarea'));
     expect(html).toContain('bottom-full');
-    expect(html).toContain('aria-label="Remove Task Market research"');
+    expect(html).toContain('aria-label="Remove prompt Market research"');
     expect(html.match(/aria-label="Send"/g)).toHaveLength(2);
   });
 });

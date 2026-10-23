@@ -1792,7 +1792,7 @@ function ChatArtifactCardsSection() {
     <Section
       id="chat-artifact-cards"
       title="Chat Artifact Cards"
-      description="Shared anatomy and lifecycle for Ask User, Schema Plan and Task Capture cards. Business bodies vary; header density, state, footer actions and resolved receipts stay consistent."
+      description="Shared anatomy and lifecycle for Ask User, Schema Plan and Prompt capture cards. Business bodies vary; header density, state, footer actions and resolved receipts stay consistent."
     >
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
         <SubSection title="Ask User · awaiting input">
@@ -1837,10 +1837,10 @@ function ChatArtifactCardsSection() {
           </ArtifactCard>
         </SubSection>
 
-        <SubSection title="Task Capture · completed receipt">
+        <SubSection title="Prompt capture · completed receipt">
           <ArtifactCard
             icon={<Bookmark size={14} />}
-            title="Save as a Task"
+            title="Save as a prompt"
             meta="Weekly launch review"
             status={{ label: 'Completed', tone: 'success' }}
             tone="success"
@@ -1848,7 +1848,7 @@ function ChatArtifactCardsSection() {
             onToggle={() => setCompletedOpen((value) => !value)}
           >
             <p className="text-xs text-fg-secondary">
-              The Task was created exactly once. Refreshing or retrying restores this receipt without creating a
+              The prompt was created exactly once. Refreshing or retrying restores this receipt without creating a
               duplicate.
             </p>
           </ArtifactCard>
@@ -1857,7 +1857,7 @@ function ChatArtifactCardsSection() {
         <SubSection title="Action failure · remains expanded">
           <ArtifactCard
             icon={<Bookmark size={14} />}
-            title="Save as a Task"
+            title="Save as a prompt"
             meta="Customer follow-up"
             status={{ label: 'Failed', tone: 'danger' }}
             tone="danger"
