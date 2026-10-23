@@ -32,6 +32,7 @@ import { knowledgeRegistration } from '../../platform/knowledge/registration.js'
 import { tablesRegistration } from '../../platform/tables/application.js';
 import { humanActor } from '../../platform/actor.js';
 import { buildDataCatalog } from '../catalog.js';
+import { buildTeamContextBundle } from '../team-context.js';
 
 vi.setConfig({ testTimeout: 20_000 });
 
@@ -145,6 +146,34 @@ describe('data catalog: Tables bases', () => {
       // …but how many records it holds is not this member's to know.
       expect(team.tables[0]!.row_count).toBeNull();
     }
+  });
+
+  it('keeps the table total and flags a base whose tables were cut, here and in team_context', async () => {
+    const big = await db.tables.createBase({
+      name: unique('Big base'),
+      visibility: 'team',
+      owner_id: owner.id,
+      created_by: owner.id,
+    });
+    for (let index = 0; index < 52; index++) {
+      await db.tables.createTable({ base_id: big.id, name: `T${index}`, created_by: owner.id });
+    }
+    const entry = (await webCatalog(member)).bases.find((candidate) => candidate.id === big.id)!;
+    expect(entry.tables).toHaveLength(50);
+    expect(entry.table_count).toBe(52);
+    expect(entry.tables_truncated).toBe(true);
+    const team = (await webCatalog(member)).bases.find((candidate) => candidate.id === teamBaseId)!;
+    expect(team).toMatchObject({ table_count: 1, tables_truncated: false });
+
+    const bundle = await buildTeamContextBundle({
+      db,
+      userId: member.id,
+      role: 'team',
+      reachable: await memberMcpToolIds(member.id, 'team'),
+      actor: humanActor(member),
+    });
+    expect(bundle.data_sources.tables).toBeGreaterThanOrEqual(52 + 1 + 1);
+    expect(bundle.data_sources).toMatchObject({ truncated: true });
   });
 
   it('lists no bases for a member whose Tables access is switched off', async () => {

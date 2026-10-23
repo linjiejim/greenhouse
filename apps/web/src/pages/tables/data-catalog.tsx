@@ -126,6 +126,11 @@ export function DataCatalogPage() {
                         ))}
                       </ul>
                     )}
+                    {base.tables_truncated && (
+                      <p className="mt-2 text-[11px] text-fg-muted" data-testid="data-catalog-tables-truncated">
+                        {t('dataCatalog.tablesTruncated', { shown: base.tables.length, total: base.table_count })}
+                      </p>
+                    )}
                     <Reach reach={base.reach} />
                   </Card>
                 ))}

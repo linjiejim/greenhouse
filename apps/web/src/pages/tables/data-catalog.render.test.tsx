@@ -51,6 +51,8 @@ const catalog: DataCatalog = {
       last_changed_at: '2026-10-20T08:00:00.000Z',
       url: '#/tables/3',
       tables: [{ id: 9, name: 'Deals', row_count: 128, last_changed_at: '2026-10-20T08:00:00.000Z' }],
+      table_count: 60,
+      tables_truncated: true,
       reach: [
         { tool: 'tables_query', access: 'read', group: 'tables', how: 'tables_query action=tables.list base_id=3' },
       ],
@@ -83,6 +85,9 @@ describe('Tables › Data catalog', () => {
     expect(base.textContent).toContain('tables_query');
     expect(base.textContent).toContain('scope mcp:tables');
     expect(base.querySelector('a[href="#/tables/3/table/9"]')?.textContent).toBe('Deals');
+    expect(base.querySelector('[data-testid="data-catalog-tables-truncated"]')?.textContent).toBe(
+      'Showing 1 of 60 tables — open the base for the rest.',
+    );
 
     const source = page.querySelector('[data-testid="data-catalog-extension"]')!;
     expect(source.textContent).toContain('CRM');

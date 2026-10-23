@@ -820,6 +820,7 @@ const zh: Messages = {
     basesTitle: '表格',
     extensionsTitle: '其他数据源',
     truncated: '只显示前 {count} 个表格库。',
+    tablesTruncated: '显示了 {total} 张表中的 {shown} 张，其余请打开表格库查看。',
     owner: '负责人：{name}',
     lastChange: '最近改动 {date}',
     rows: '{count} 行',

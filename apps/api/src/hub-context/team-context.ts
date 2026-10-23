@@ -155,7 +155,9 @@ async function dataSummary(caller: TeamContextCaller) {
   });
   return {
     bases: catalog.bases.length,
-    tables: catalog.bases.reduce((sum, base) => sum + base.tables.length, 0),
+    // Every table, not just the ones the catalog lists per base.
+    tables: catalog.bases.reduce((sum, base) => sum + base.table_count, 0),
+    truncated: catalog.truncated || catalog.bases.some((base) => base.tables_truncated),
     extensions: catalog.extensions.map((ext) => ext.name),
   };
 }
@@ -209,7 +211,10 @@ async function overviewMarkdown(caller: TeamContextCaller): Promise<string> {
     '## Data sources',
     '',
     data.bases > 0 || data.extensions.length > 0
-      ? `- ${data.bases} Tables base(s) with ${data.tables} table(s)${data.extensions.length > 0 ? `, plus ${data.extensions.join(', ')}` : ''}. Call ${DATA_CATALOG_TOOL} for the list and how to query each.`
+      ? `- ${data.bases} Tables base(s) with ${data.tables} table(s)${data.extensions.length > 0 ? `, plus ${data.extensions.join(', ')}` : ''}. Call ${DATA_CATALOG_TOOL} for the list and how to query each.` +
+        (data.truncated
+          ? ` It lists the first tables of very large bases (and the first bases) only; tables_query action=tables.list base_id=… has the rest.`
+          : '')
       : `- None this connection can read. Call ${DATA_CATALOG_TOOL} to check.`,
     '',
     '## Working agreements',
@@ -327,6 +332,12 @@ export async function buildTeamContextBundle(caller: TeamContextCaller) {
     data_sources: {
       tables_bases: data.bases,
       tables: data.tables,
+      ...(data.truncated
+        ? {
+            truncated: true,
+            note: `${DATA_CATALOG_TOOL} lists the first tables per base; tables_query tables.list has all of them.`,
+          }
+        : {}),
       extensions: data.extensions,
       how: `Call ${DATA_CATALOG_TOOL} for every source and the tool to query it.`,
     },

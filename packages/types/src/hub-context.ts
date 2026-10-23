@@ -94,7 +94,11 @@ export interface DataCatalogBase {
   role: TableBaseRole;
   owner: { id: string; name: string } | null;
   last_changed_at: string | null;
+  /** The first tables of the base (capped); `table_count` is all of them. */
   tables: DataCatalogTable[];
+  table_count: number;
+  /** True when `tables` stops short of `table_count`. */
+  tables_truncated: boolean;
   url: string;
   reach: DataCatalogReach[];
 }

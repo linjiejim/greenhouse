@@ -102,6 +102,7 @@ async function tablesBases(input: CatalogInput): Promise<{ bases: DataCatalogBas
   ).bases;
   const picked = all.slice(0, MAX_BASES);
   const runtime = getPlatformRuntime();
+  const tableTotals = new Map<number, number>();
   // Tables through the guarded listing (table entity policy, `tables.structure.read`),
   // never straight from the service.
   const tablesByBase = new Map(
@@ -114,6 +115,7 @@ async function tablesBases(input: CatalogInput): Promise<{ bases: DataCatalogBas
           payload: { baseId: base.id },
         });
         const tables = result.ok ? (result.data as { tables: TableDefinitionRow[] }).tables : [];
+        tableTotals.set(base.id, tables.length);
         return [base.id, tables.slice(0, MAX_TABLES_PER_BASE)] as const;
       }),
     ),
@@ -182,6 +184,8 @@ async function tablesBases(input: CatalogInput): Promise<{ bases: DataCatalogBas
         : null,
       last_changed_at: latest(base.updated_at, ...tables.map((table) => table.last_changed_at)),
       tables,
+      table_count: tableTotals.get(base.id) ?? tables.length,
+      tables_truncated: (tableTotals.get(base.id) ?? tables.length) > tables.length,
       url: `#/tables/${base.id}`,
       reach,
     };

@@ -825,6 +825,7 @@ export default {
     basesTitle: 'Tables bases',
     extensionsTitle: 'Other data sources',
     truncated: 'Showing the first {count} bases.',
+    tablesTruncated: 'Showing {shown} of {total} tables — open the base for the rest.',
     owner: 'Owner: {name}',
     lastChange: 'Last change {date}',
     rows: '{count} rows',
