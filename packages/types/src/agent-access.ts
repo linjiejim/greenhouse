@@ -49,3 +49,63 @@ export interface AgentWritePreview {
   input: RuntimePayload;
   message: string;
 }
+
+// ─── Model gateway (members' agents on the team's models) ──
+
+/** Every gateway secret starts with this, so a leaked one is recognisable. */
+export const GATEWAY_KEY_SECRET_PREFIX = 'ghgw_';
+
+/** Where the OpenAI-compatible gateway lives, relative to the server origin. */
+export const GATEWAY_OPENAI_PATH = '/api/gateway/openai/v1';
+
+export type GatewayKeyStatus = 'active' | 'revoked' | 'expired';
+
+/** A gateway key as its owner (and an admin) sees it — never the secret. */
+export interface GatewayKeyView {
+  id: string;
+  name: string;
+  /** The first characters of the secret (`ghgw_…`). */
+  prefix: string;
+  /** Catalog model ids the key may use; null = every gateway model. */
+  allowed_models: string[] | null;
+  expires_at: string | null;
+  last_used_at: string | null;
+  revoked_at: string | null;
+  created_at: string;
+  status: GatewayKeyStatus;
+}
+
+/** Administration › Services & pricing: every member's keys. */
+export interface GatewayAdminKeyView extends GatewayKeyView {
+  owner: { id: string; name: string | null };
+}
+
+/** A catalog model the gateway can serve right now. */
+export interface GatewayModelView {
+  id: string;
+  name: string;
+}
+
+/** Settings › Agent connections › Model gateway. */
+export interface GatewayOverview {
+  /** The workspace switch (`gateway.enabled`); off = every gateway call is refused. */
+  enabled: boolean;
+  /** `<origin>/api/gateway/openai/v1` — the OpenAI base URL to configure. */
+  base_url: string;
+  models: GatewayModelView[];
+  keys: GatewayKeyView[];
+}
+
+export interface GatewayKeyCreateInput {
+  name: string;
+  /** Catalog model ids; omitted / null / empty = every gateway model. */
+  allowed_models?: string[] | null;
+  /** ISO time; omitted / null = never expires. */
+  expires_at?: string | null;
+}
+
+/** The only response that carries the secret: shown once, never stored. */
+export interface GatewayKeyCreated {
+  key: GatewayKeyView;
+  secret: string;
+}

@@ -509,6 +509,17 @@ v1 只接 DeepSeek 与 OpenAI 兼容服务，它们**自动**缓存 prompt 前�
   - 进入计价时 scope 里没有成员的调用，只记到服务与团队账户并 warn；已知入口都会设成员。
 - **蓝绿并存**：旧代码在新库上照跑（列全可空）；旧的生图代码仍按 `$20` 把成员 USD 账户限额改回去，切流期间会和新代码来回改，切完即止。
 
+### 模型网关（`routes/gateway.ts` + `gateway/`，v1.6，D4）
+
+- 成员自己的 Agent 用团队模型额度：`GET /api/gateway/openai/v1/models`、`POST /api/gateway/openai/v1/chat/completions`（OpenAI Chat Completions，流式与非流式，tools / response_format 原样透传）。别的 OpenAI 端点（Responses、embeddings、images）与 Anthropic Messages 都没有，别在文案里说有。
+- 鉴权只认 `Authorization: Bearer ghgw_…`（`db.gatewayKeys`，库里只有 SHA-256 + 12 字符前缀）。`/api/gateway/` 在 `isPublicPath` 里（带尾斜杠，别的路由不许叫 `/api/gateway…`）；CORS 在 `security.ts` 对它关闭；请求体上限 4 MB；限流走 `checkRateLimit`：每 IP 600/分，每 Key `GATEWAY_RATE_LIMIT_PER_MINUTE`（默认 60）。
+- 工作区开关 `gateway.enabled`（`boolean` 型 workspace setting，env 回落 `GATEWAY_ENABLED`，默认关；`getWorkspaceFlag`）：关着时两个端点都回 403 `gateway_disabled`，成员也建不了 Key（撤销照常）。
+- 模型解析：只认目录 id（`getModelRegistry()`，没有别名）；Key 的 `allowed_models` 不含则 403 `model_not_allowed`；目录里没有 404 `model_not_found`；第一个配了 key 的 OpenAI 线协议 provider（`openai` / `deepseek` / `openai-compatible`）就是上游，换成它的 model 名转发，不跨 provider 回退。转发只带上游 key 与 content-type / accept——成员请求里的任何头（含它的 ghgw Key）都不往上游带。
+- 计价走 `reserveUserTokenBudget`（caller / profile `gateway`，client `gateway`，service `llm`，幂等键 `gateway:<keyId>:<uuid>`，预留 metadata 带 `gateway_key_id`）。预留 = 输入估算（×1.25，内联图片按张 1500）+ 输出（请求的 max_tokens / max_completion_tokens，否则目录 max_tokens，否则 16k，不超过 context window，× n）。结算：非流式读响应 `usage`，流式强制 `stream_options.include_usage` 并从末尾 usage chunk 结算（客户端没要就把只含 usage 的 chunk 去掉）。上游 4xx 与连不上（ECONNREFUSED / ENOTFOUND）= 明确没花钱 → `releaseAfterProviderRefusal`；客户端断开（中止上游）、5xx、成功却没 usage = 结果未知 → 预留留给 sweeper 按预估计费。
+- 错误一律 OpenAI 形状 `{error:{message,type,code,param}}`。超额 429 `type:'insufficient_quota'`、`code:'usage_budget_exceeded'`，message 是 `budget-errors.ts` 的中英双语原文。上游错误文本经 `sanitizeUpstreamText`（去掉上游 key、base URL、host、任何 URL / Bearer / 像 key 的串）才给成员；上游 401/403 不透传原文，只说「凭证被拒，找管理员」。
+- Key 管理：成员 `GET /api/agent-access/gateway`、`POST /gateway/keys`（密钥只在 201 响应里出现一次；每人最多 20 把可用的）、`DELETE /gateway/keys/:id`；super `GET / DELETE /api/admin/metering/gateway-keys`。审计：`createGatewayKey` / `revokeGatewayKey`（操作记录里本人的 mcp 改动）、`revokeMemberGatewayKey`（管理员改动），summary 只有名称、前缀、模型、过期时间，不含密钥。
+- 外部 Agent 以成员身份调用，没有审批关卡（产品规则）；用量出现在「服务与计价」与「设置 › 用量」的 client `gateway` 下。
+
 ### Agent Profiles
 - Profile YAML 文件放在 `profiles/` 目录
 - 架构、工具矩阵、设计决策详见 [agent-profiles.md](./profiles/agent-profiles.md)

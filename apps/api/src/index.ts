@@ -56,6 +56,8 @@ import clientActionRoutes from './routes/client-actions.js';
 import { CLIENT_ACTIONS_API_PREFIX } from '@greenhouse/types/api';
 import { createAgentRoutes } from './routes/agent-tools.js';
 import { createMcpRoutes } from './routes/mcp.js';
+import { createGatewayRoutes } from './routes/gateway.js';
+import { GATEWAY_OPENAI_PATH } from '@greenhouse/types/agent-access';
 import { createAgentAccessRoutes } from './routes/agent-access.js';
 import oauthRoutes from './routes/oauth.js';
 import healthRoutes from './routes/health.js';
@@ -362,6 +364,9 @@ function mountRoutes(toolRegistry: ToolRegistry) {
       // Agent tool proxy (login access-token auth, revalidated against the internal user)
       .route('/api/agent', createAgentRoutes(toolRegistry))
       .route('/api/mcp', createMcpRoutes(toolRegistry))
+      // Model gateway (OpenAI-compatible): a public path authenticated only by a
+      // member's `ghgw_` key, switched by `gateway.enabled`, metered to the member.
+      .route(GATEWAY_OPENAI_PATH, createGatewayRoutes())
   );
 }
 

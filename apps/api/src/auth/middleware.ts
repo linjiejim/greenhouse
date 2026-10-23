@@ -78,6 +78,9 @@ export function isPublicPath(path: string): boolean {
   if (path.startsWith('/api/agent/')) return true;
   // MCP server uses its own OAuth token auth (bound to an internal user) + audit/rate limit.
   if (path.startsWith('/api/mcp')) return true;
+  // Model gateway: authenticated only by a member's `ghgw_` key, with its own rate limit
+  // (routes/gateway.ts). The trailing slash matters — nothing else may start `/api/gateway`.
+  if (path.startsWith('/api/gateway/')) return true;
   // OAuth 2.1 protocol endpoints use client credentials / PKCE rather than the
   // app's login bearer. The consent API under /api/oauth stays authenticated.
   if (

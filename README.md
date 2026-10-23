@@ -388,6 +388,25 @@ intersected with the proxy allowlist — a tool only appears if it declares the 
 `surface` in its metadata (see below). The proxy can only *narrow* a user's permissions,
 never widen them.
 
+### Model gateway (members' agents on the team's models)
+
+Members' own agents (Codex, Cursor, scripts) can call the team's catalog models through an
+OpenAI-compatible endpoint, metered to the member in the same USD budgets as everything else:
+
+- A super turns it on: **Administration → Runtime Config → Model gateway** (or the switch on
+  **Services & pricing → Gateway keys**; `GATEWAY_ENABLED=true` as the env fallback). Off by
+  default; while off every call gets `403 gateway_disabled`.
+- A member creates a personal key under **Settings → Agent connections → Model gateway**
+  (`ghgw_…`, shown once; optional model allow-list and expiry; revocable). Supers can list and
+  revoke every key under **Services & pricing → Gateway keys**.
+- Base URL `<origin>/api/gateway/openai/v1`, API key = the gateway key, model = a catalog id
+  (`GET /models`). Supported: `GET /models`, `POST /chat/completions` (streaming, tools,
+  `response_format`). Not yet: the Responses API (Codex needs `wire_api = "chat"`), embeddings,
+  images, Anthropic Messages.
+- Every call reserves before it is forwarded and settles from the provider's `usage`; an
+  exhausted budget answers `429` with `code: "usage_budget_exceeded"`. Per-key rate limit:
+  `GATEWAY_RATE_LIMIT_PER_MINUTE` (default 60).
+
 ## Adding a tool
 
 A tool's metadata and implementation live in one file, declared with `defineTool`, and the

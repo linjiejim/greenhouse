@@ -112,7 +112,10 @@ function isAllowedCorsOrigin(origin: string): boolean {
  */
 export async function corsMiddleware(c: Context, next: Next) {
   const origin = c.req.header('Origin') || '';
-  const allowed = origin && isAllowedCorsOrigin(origin);
+  // The model gateway is for agents and scripts, never a browser page: no
+  // origin is allowed there, so a page can never spend a member's key.
+  const closed = c.req.path.startsWith('/api/gateway/');
+  const allowed = !closed && origin && isAllowedCorsOrigin(origin);
 
   if (allowed) {
     c.header('Access-Control-Allow-Origin', origin);

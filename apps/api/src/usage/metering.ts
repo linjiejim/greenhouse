@@ -374,6 +374,19 @@ export class SpendLease {
   }
 
   /**
+   * Release after the provider gave a definite refusal (an HTTP 4xx: malformed
+   * request, rate limited, …) or provably never received the request (the
+   * connection was refused): nothing was billed, so nothing is owed. Unlike
+   * `releaseBeforeProviderIo` this applies once I/O started — never use it for
+   * an outcome that is unknown (5xx, a timeout, a dropped connection).
+   */
+  async releaseAfterProviderRefusal(reason: string): Promise<boolean> {
+    if (!this.reserved) return false;
+    await this.db.usageBudget.release({ idempotency_key: this.idempotencyKey, reason });
+    return true;
+  }
+
+  /**
    * Settle a call that SUCCEEDED at its actual cost, then tell the owners of any
    * account that crossed a threshold. Alerts never fail the call.
    *

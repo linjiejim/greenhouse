@@ -10,7 +10,8 @@
  *               with the client's name (agent-access/governed-write.ts);
  *   automation  runtime_runs kind 'automation';
  *   admin       platform_audit_events of the admin actions listed below
- *               (workspace settings, user access, MCP machine clients).
+ *               (workspace settings, user access, MCP machine clients, a
+ *               member's model gateway key revoked by a super).
  *
  * Who sees what: a member sees their own changes (and their agents' and
  * automations'); a super sees everyone's and may narrow to one person. Admin
@@ -73,8 +74,13 @@ const DRIVE_ACTIONS: readonly DriveChangeAction[] = [
   'deleteFile',
 ];
 
-/** A member connecting or disconnecting one of their agents. */
-const PERSONAL_PLATFORM_ACTIONS = ['authorizeOAuthClient', 'revokeOAuthGrant'] as const;
+/** A member connecting or disconnecting one of their agents, or creating / revoking a model gateway key. */
+const PERSONAL_PLATFORM_ACTIONS = [
+  'authorizeOAuthClient',
+  'revokeOAuthGrant',
+  'createGatewayKey',
+  'revokeGatewayKey',
+] as const;
 
 /** Administrator changes, by Activity module. */
 const ADMIN_ACTIONS: Record<'settings' | 'users' | 'mcp', readonly string[]> = {
@@ -100,6 +106,8 @@ const ADMIN_ACTIONS: Record<'settings' | 'users' | 'mcp', readonly string[]> = {
     'deleteOAuthClient',
     'disableOAuthClient',
     'enableOAuthClient',
+    // A super revoking a member's model gateway key (Services & pricing).
+    'revokeMemberGatewayKey',
   ],
 };
 
@@ -516,6 +524,7 @@ function adminDetail(row: ActivityAuditRow, summary: Record<string, unknown>): s
   ) {
     return summary.detail;
   }
+  if (row.action_id === 'revokeMemberGatewayKey' && typeof summary.detail === 'string') return summary.detail;
   if (row.action_id === 'setUserFeature' && typeof summary.feature === 'string') {
     return `${summary.feature}: ${summary.enabled === false ? 'off' : 'on'}`;
   }
@@ -555,6 +564,9 @@ async function hydrateAudit(
     const name =
       (await oauthClientName(ctx, clientId)) ?? (typeof summary.client_name === 'string' ? summary.client_name : null);
     target = name ? { id: null, label: name, url: null } : null;
+  } else if (row.app_id === 'platform' && row.entity_id === 'gatewayKey') {
+    // A gateway key is named by the name its owner gave it (never its secret).
+    target = typeof summary.name === 'string' ? { id: row.record_id, label: summary.name, url: null } : null;
   } else if (row.record_id) {
     const resolved =
       row.app_id === 'knowledge'
