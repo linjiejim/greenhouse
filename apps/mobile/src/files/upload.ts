@@ -9,6 +9,7 @@ import { File, UploadType } from 'expo-file-system';
 import * as ImagePicker from 'expo-image-picker';
 import { uploadBatch, type BatchOutcome, type FilesShelf, type UploadSource } from '../api/drive';
 import { getAccessToken } from '../api/token-storage';
+import { mediaPickerOptions } from './picker-options';
 
 export type UploadFrom = 'photos' | 'camera' | 'files';
 
@@ -34,7 +35,7 @@ export async function pick(from: UploadFrom): Promise<UploadSource[]> {
       type: asset.mimeType ?? null,
     }));
   }
-  const options: ImagePicker.ImagePickerOptions = { mediaTypes: ['images', 'videos'], quality: 1, allowsMultipleSelection: from === 'photos' };
+  const options: ImagePicker.ImagePickerOptions = mediaPickerOptions(from);
   if (from === 'camera') {
     const permission = await ImagePicker.requestCameraPermissionsAsync();
     if (!permission.granted) throw new Error('camera_denied');
