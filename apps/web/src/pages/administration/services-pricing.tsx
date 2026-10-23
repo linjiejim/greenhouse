@@ -808,7 +808,8 @@ function MemberLimits({ month, version, onChanged }: { month: string; version: n
     [dataSource, t],
   );
 
-  return <CrudPage schema={schema} />;
+  // The list is this month's balances: a new month or a budget change elsewhere on the page re-reads it.
+  return <CrudPage key={`${month}:${version}`} schema={schema} />;
 }
 
 function BudgetsTab({
