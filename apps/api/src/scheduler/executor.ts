@@ -9,6 +9,7 @@
  */
 
 import { toErrorMessage } from '@greenhouse/utils/error';
+import { budgetRefusalReason } from '../usage/budget-errors.js';
 import { safeJsonParse } from '@greenhouse/utils/json';
 import { normalizeAutomationOptInTools } from '@greenhouse/types/automation-tools';
 import { Cron } from 'croner';
@@ -283,7 +284,8 @@ export async function executeTaskInSession(
     );
     return result;
   } catch (err) {
-    const errorMsg = toErrorMessage(err);
+    // Over budget: record the refusal's own words as the reason, not a wrapper's.
+    const errorMsg = budgetRefusalReason(err) ?? toErrorMessage(err);
     const errorStack = err instanceof Error ? err.stack : undefined;
     logger.error(`[Scheduler] ❌ Task "${task.name}" in session ${sessionId} failed: ${errorMsg}`);
     if (errorStack) logger.error(`[Scheduler] Stack: ${errorStack}`);

@@ -25,7 +25,7 @@ import type { ClientActionBridge } from '../tools/client-action-bridge.js';
 import type { AgentProfile } from '../profiles/profile.js';
 import { persistChatResult } from './persist.js';
 import { chatRunRegistry, type ChatRun } from './runs.js';
-import { UsageBudgetAdmissionError } from '../llm/usage-budget.js';
+import { findUsageBudgetAdmission, localizedBudgetNotice } from '../usage/budget-errors.js';
 import { connectionManager } from '../ws/connection-manager.js';
 import {
   chatRuntimePayload,
@@ -561,18 +561,14 @@ export function chatStopNotice(locale?: string): string {
 export function usageBudgetNotice(err: unknown, locale?: string): string | null {
   // The AI SDK wraps provider-attempt failures (e.g. in RetryError) before they
   // reach fullStream, so match on the cause chain rather than the top value.
-  let admission: UsageBudgetAdmissionError | null = null;
-  let cursor: unknown = err;
-  for (let depth = 0; cursor && depth < 4; depth++) {
-    if (cursor instanceof UsageBudgetAdmissionError) {
-      admission = cursor;
-      break;
-    }
-    cursor = (cursor as { cause?: unknown }).cause;
-  }
+  const admission = findUsageBudgetAdmission(err);
   if (!admission) return null;
 
   const en = locale === 'en';
+  // USD metering names the budget that ran out (member / service / team).
+  if (admission.status === 429 && admission.refusal?.unit === 'usd_micros') {
+    return localizedBudgetNotice(admission.refusal, locale);
+  }
   if (admission.status === 429) {
     return en
       ? "This month's token budget is used up, so retrying will not help. Ask an administrator to raise the monthly limit."

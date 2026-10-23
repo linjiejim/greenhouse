@@ -20,6 +20,7 @@ const REQUEST_TIMEOUT_MS = 20_000;
 // ─── Jina Reader Extractor ──────────────────────────────
 
 export class JinaReaderExtractor implements ContentExtractor {
+  readonly name = 'jina';
   private baseUrl = 'https://r.jina.ai';
 
   async extract(url: string): Promise<ExtractedContent> {
@@ -67,6 +68,7 @@ export class JinaReaderExtractor implements ContentExtractor {
  * never reach 127.0.0.1, the LAN or cloud metadata.
  */
 export class LocalFallbackExtractor implements ContentExtractor {
+  readonly name = 'local';
   async extract(url: string): Promise<ExtractedContent> {
     const page = await fetchPublicPage(url, {
       timeoutMs: REQUEST_TIMEOUT_MS,
@@ -100,12 +102,18 @@ export class ContentExtractorChain implements ContentExtractor {
     this.extractors = extractors ?? [new JinaReaderExtractor(), new LocalFallbackExtractor()];
   }
 
+  /** Provider names in try order (metering estimates the dearest). */
+  get names(): string[] {
+    return this.extractors.map((extractor, index) => extractor.name ?? `extractor_${index}`);
+  }
+
   async extract(url: string): Promise<ExtractedContent> {
     let lastError: Error | null = null;
 
-    for (const extractor of this.extractors) {
+    for (const [index, extractor] of this.extractors.entries()) {
       try {
-        return await extractor.extract(url);
+        const extracted = await extractor.extract(url);
+        return { ...extracted, extractor: extractor.name ?? `extractor_${index}` };
       } catch (err) {
         lastError = err instanceof Error ? err : new Error(String(err));
         // Continue to next extractor

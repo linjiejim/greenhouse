@@ -6,6 +6,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { fakeMeteringServices } from '../helpers/metering-db.js';
 
 // Some upstreams answer with inline base64, but an OpenAI-compatible endpoint may answer with
 // a URL instead, in which case the tool downloads it through the SSRF-guarded fetcher.
@@ -31,6 +32,7 @@ import { createGenerateImageTool, resolveSize } from '../../apps/api/src/tools/g
 const PNG_BYTES = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
 const API_BASE = 'https://media.example.com/v1';
 
+const metered = fakeMeteringServices();
 const budgetDb = {
   users: {
     getById: vi.fn(async () => ({
@@ -42,14 +44,14 @@ const budgetDb = {
   },
   usageBudget: {
     reserveMonthlyUser: vi.fn(async () => []),
-    ensureAccount: vi.fn(async (input: { scope_type: string; scope_id: string; unit: string }) => ({
-      id: `${input.scope_type}:${input.scope_id}:${input.unit}`,
-    })),
-    reserve: vi.fn(async () => []),
+    ensureAccount: metered.ensureAccount,
+    reserve: metered.reserve,
     settle: vi.fn(async () => []),
     release: vi.fn(async () => []),
   },
+  metering: metered.metering,
   usage: { record: vi.fn(async () => undefined) },
+  notifications: { createWithStatus: vi.fn(), countUnread: vi.fn(async () => 0) },
 };
 
 function createImageTool() {
@@ -154,16 +156,33 @@ describe('GenerateImageTool', () => {
       expect((result as any).size).toBe('1024x1024');
       expect((result as any).estimated_cost_usd).toBe(0.006);
 
+      // Member + image_generation service + organization USD accounts.
       expect(budgetDb.usageBudget.ensureAccount).toHaveBeenCalledTimes(3);
       expect(budgetDb.usageBudget.reserve).toHaveBeenCalledWith(
-        expect.objectContaining({ estimated_units: 6_000, provider_id: 'media' }),
+        expect.objectContaining({
+          account_ids: expect.arrayContaining([
+            'user:image-user:usd_micros',
+            'service:image_generation:usd_micros',
+            'organization:default:usd_micros',
+          ]),
+          estimated_units: 6_000,
+          provider_id: 'media',
+        }),
       );
-      const budgetKey = budgetDb.usageBudget.reserve.mock.calls[0]![0].idempotency_key;
+      const budgetKey = (budgetDb.usageBudget.reserve.mock.calls[0] as any)[0].idempotency_key;
       expect(budgetDb.usageBudget.settle).toHaveBeenCalledWith(
         expect.objectContaining({ idempotency_key: budgetKey, actual_units: 6_000 }),
       );
-      expect(budgetDb.usage.record).toHaveBeenCalledWith(
-        expect.objectContaining({ budget_idempotency_key: budgetKey }),
+      expect(budgetDb.metering.recordService).toHaveBeenCalledWith(
+        expect.objectContaining({
+          budget_idempotency_key: budgetKey,
+          service: 'image_generation',
+          provider: 'media',
+          unit_kind: 'image',
+          units: 1,
+          cost_usd_micros: 6_000,
+          user_id: 'image-user',
+        }),
       );
 
       const [url, init] = spy.mock.calls[0];

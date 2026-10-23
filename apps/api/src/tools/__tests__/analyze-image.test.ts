@@ -1,3 +1,4 @@
+import { fakeMeteringServices } from '../../../../../tests/helpers/metering-db.js';
 import { describe, expect, it, vi } from 'vitest';
 import {
   analyzeImageSchema,
@@ -50,8 +51,10 @@ function budgetDb(events: string[]) {
   const record = vi.fn(async (_input: Record<string, unknown>) => {
     events.push('record');
   });
+  const metered = fakeMeteringServices();
   return {
     db: {
+      metering: metered.metering,
       users: {
         getById: vi.fn(async () => ({
           id: 'user-1',
@@ -60,7 +63,13 @@ function budgetDb(events: string[]) {
           monthly_token_limit: 1_000_000,
         })),
       },
-      usageBudget: { reserveMonthlyUser, settle, release },
+      usageBudget: {
+        reserveMonthlyUser,
+        settle,
+        release,
+        ensureAccount: metered.ensureAccount,
+        reserve: metered.reserve,
+      },
       usage: { record },
     },
     record,

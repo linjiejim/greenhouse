@@ -13,6 +13,11 @@
  * Env vars:
  *   TAVILY_API_KEY       — Tavily search (primary, recommended)
  *   BRAVE_SEARCH_API_KEY — Brave Search (fallback)
+ *
+ * Metered (usage/metering.ts): one `web_search` call per search, at the price of
+ * the provider that answered, and one `page_read` call per extracted page. The
+ * tool is built once and shared, so the paying member comes from the metering
+ * scope the caller (Chat, automations, MCP, Agent API) set around the call.
  */
 
 import { tool } from 'ai';
@@ -26,6 +31,8 @@ import { ContentExtractorChain } from './extractor.js';
 import { sanitizeContent, sanitizeSnippet } from './sanitizer.js';
 import { runWithConcurrency } from '@greenhouse/utils/concurrency';
 import type { ExternalSearchOutput } from './types.js';
+import { meterServiceCall } from '../../usage/metering.js';
+import { findBudgetRefusal } from '../../usage/budget-errors.js';
 
 // ─── Constants ───────────────────────────────────────────
 
@@ -97,12 +104,25 @@ export function createExternalSearchTool() {
     execute: async (input): Promise<ExternalSearchOutput> => {
       const { query, maxResults, extractContent, language } = input;
 
-      // 1. Search via provider registry (auto-fallback)
-      const { results: rawResults, provider } = await registry.search(query, {
-        maxResults,
-        language,
-        extractContent,
-      });
+      // 1. Search via provider registry (auto-fallback). No provider configured
+      //    is a local failure: refuse before reserving anything.
+      if (registry.size === 0) {
+        throw new Error('No search providers registered. Set TAVILY_API_KEY or BRAVE_SEARCH_API_KEY in .env');
+      }
+      const { results: rawResults, provider } = await meterServiceCall(
+        {
+          service: 'web_search',
+          caller: 'external_search',
+          unitKind: 'call',
+          candidateProviders: registry.names,
+          metadata: { max_results: maxResults, extract_content: extractContent },
+        },
+        async (io) => {
+          io.markProviderIoStarted();
+          const found = await registry.search(query, { maxResults, language, extractContent });
+          return { value: found, provider: found.provider, metadata: { result_count: found.results.length } };
+        },
+      );
 
       // 2. Build output with sanitized snippets
       const outputResults: ExternalSearchOutput['results'] = rawResults.map((r) => ({
@@ -115,17 +135,32 @@ export function createExternalSearchTool() {
 
       // 3. If extractContent requested and results don't already have content,
       //    fetch page content in parallel with bounded concurrency
+      let budgetNotice: string | undefined;
       if (extractContent) {
         const needsExtraction = outputResults.filter((r) => !r.content);
 
         if (needsExtraction.length > 0) {
           await runWithConcurrency(needsExtraction, EXTRACT_CONCURRENCY, async (result) => {
             try {
-              const extracted = await extractor.extract(result.url);
+              const extracted = await meterServiceCall(
+                {
+                  service: 'page_read',
+                  caller: 'external_search',
+                  unitKind: 'call',
+                  candidateProviders: extractor.names,
+                },
+                async (io) => {
+                  io.markProviderIoStarted();
+                  const page = await extractor.extract(result.url);
+                  return { value: page, provider: page.extractor ?? extractor.names[0]! };
+                },
+              );
               const sanitized = sanitizeContent(extracted.content, result.url);
               result.content = sanitized.text;
-            } catch {
-              // Extraction failure is non-fatal — keep the snippet
+            } catch (err) {
+              // Extraction failure is non-fatal — keep the snippet. An over-budget
+              // refusal is said once, so the agent knows why pages are missing.
+              budgetNotice ??= findBudgetRefusal(err)?.message;
               result.content = undefined;
             }
           });
@@ -137,6 +172,7 @@ export function createExternalSearchTool() {
         resultCount: outputResults.length,
         provider,
         results: outputResults,
+        ...(budgetNotice ? { notice: budgetNotice } : {}),
       };
     },
   });

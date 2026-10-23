@@ -13,6 +13,7 @@
  * summarizeOutput (whose default returns the full output).
  */
 
+import { fakeMeteringServices } from '../../../../../tests/helpers/metering-db.js';
 import { describe, it, expect, vi } from 'vitest';
 import { extractPipelineAndReferences, runAgentInSession } from '../run-agent.js';
 
@@ -147,6 +148,7 @@ describe('runAgentInSession transcript persistence', () => {
       usage: { inputTokens: 4, outputTokens: 2 },
       steps: [],
     });
+    const metered = fakeMeteringServices();
     const db = {
       sessions: {
         getLatestMessage,
@@ -157,7 +159,10 @@ describe('runAgentInSession transcript persistence', () => {
         reserveMonthlyUser,
         settle: settleBudget,
         release: vi.fn().mockResolvedValue([]),
+        ensureAccount: metered.ensureAccount,
+        reserve: metered.reserve,
       },
+      metering: metered.metering,
       users: {
         getById: vi.fn().mockResolvedValue({
           id: 'owner-1',

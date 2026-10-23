@@ -44,7 +44,16 @@ const mocks = vi.hoisted(() => {
       create: vi.fn(),
       setStatus: vi.fn(),
     },
-    usageBudget: { reserveMonthlyUser, settle, release },
+    usageBudget: {
+      reserveMonthlyUser,
+      settle,
+      release,
+      ensureAccount: vi.fn(async (input: { scope_type: string; scope_id: string; unit?: string }) => ({
+        id: `${input.scope_type}:${input.scope_id}:${input.unit}`,
+      })),
+      reserve: vi.fn(async () => []),
+    },
+    metering: { getLimits: vi.fn(async () => []), getAccounts: vi.fn(async () => []) },
     usage: { record },
   };
   return {

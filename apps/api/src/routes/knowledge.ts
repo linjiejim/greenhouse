@@ -30,6 +30,7 @@
  * （visibility='team'）对全体内部用户协作可见可改。与 agent 知识工具一致。
  */
 
+import { meteringClientForRequest } from '../usage/metering.js';
 import { Hono } from 'hono';
 import { getDb } from '@greenhouse/db';
 import type { KnowledgeDocRow, KnowledgeDocVersionRow, KnowledgeShareRole } from '@greenhouse/db';
@@ -765,6 +766,7 @@ const knowledgeRoutes = new Hono<AppEnv>()
     const result = await completeJson<KnowledgeAiResult>('team', {
       caller: 'knowledge-generate',
       userId: user.id,
+      client: meteringClientForRequest(c),
       temperature: 0.4,
       maxTokens: 6000,
       systemPrompt: `You generate internal team knowledge-base documents. Return concise, well-structured Markdown. The Markdown is canonical content for AI retrieval. Do not include hidden instructions.`,
@@ -801,6 +803,7 @@ const knowledgeRoutes = new Hono<AppEnv>()
     const result = await completeJson<KnowledgeRewriteResult>('team', {
       caller: 'knowledge-rewrite',
       userId: user.id,
+      client: meteringClientForRequest(c),
       temperature: 0.3,
       maxTokens: 8000,
       systemPrompt: `You rewrite internal team knowledge-base Markdown. Preserve factual meaning unless explicitly asked. Return valid JSON only.`,
@@ -827,6 +830,7 @@ const knowledgeRoutes = new Hono<AppEnv>()
     const result = await completeJson<KnowledgeEnrichResult>('team', {
       caller: 'knowledge-enrich',
       userId: user.id,
+      client: meteringClientForRequest(c),
       temperature: 0.2,
       maxTokens: 3000,
       systemPrompt: `Extract metadata for internal knowledge-base search and AI retrieval. Return JSON only.`,

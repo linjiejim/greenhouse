@@ -26,6 +26,7 @@ import { logger } from '@greenhouse/utils/logger';
 import type { ToolRegistry } from '../agent.js';
 import { instrumentRuntimeTools, type RuntimeToolEvidenceScope } from '../runtime/tool-evidence.js';
 import { countToolCalls } from '../usage/counters.js';
+import { bindMeteringScope, meteringClientForToolClient } from '../usage/metering.js';
 import type { ToolCallClient } from '@greenhouse/types/usage';
 import {
   createProviderAttemptBudgetHook,
@@ -197,6 +198,13 @@ export async function runAgentInSession(args: RunAgentInSessionArgs): Promise<Ru
     };
   }
 
+  // Metering: the owner pays for every paid call of this run, labelled with the
+  // surface that started it (automation / feishu).
+  const meteringScope = {
+    userId: args.usageContext.userId,
+    client: meteringClientForToolClient(args.toolCallClient),
+    sessionId: args.sessionId,
+  };
   const providerAttemptHook = createProviderAttemptBudgetHook({
     db,
     userId: args.usageContext.userId,
@@ -205,6 +213,7 @@ export async function runAgentInSession(args: RunAgentInSessionArgs): Promise<Ru
     sessionId: args.sessionId,
     runId: args.sessionId,
     metadata: { max_steps: args.maxSteps },
+    client: meteringScope.client,
   });
 
   // Production models are metered at each concrete V3 attempt. An injected
@@ -231,6 +240,8 @@ export async function runAgentInSession(args: RunAgentInSessionArgs): Promise<Ru
       modelId: args.modelConfig.id ?? args.modelConfig.model,
       providerId: args.modelConfig.provider,
       runId: args.sessionId,
+      sessionId: args.sessionId,
+      client: meteringScope.client,
       idempotencyKey: `${args.usageContext.caller}:${args.sessionId}:${randomUUID()}`,
       metadata: { session_id: args.sessionId, profile_id: args.usageContext.profileId, max_steps: args.maxSteps },
     });
@@ -238,7 +249,12 @@ export async function runAgentInSession(args: RunAgentInSessionArgs): Promise<Ru
   }
   // Count inside the Runtime evidence fence: a call refused at admission never
   // reaches the counting wrapper, so the count means "the tool really ran".
-  const countedTools = args.tools ? countToolCalls(args.tools, args.toolCallClient, () => db) : undefined;
+  const countedTools = args.tools
+    ? bindMeteringScope(
+        countToolCalls(args.tools, args.toolCallClient, () => db),
+        meteringScope,
+      )
+    : undefined;
   const executionTools = args.runtimeToolEvidence
     ? instrumentRuntimeTools(countedTools, { db, ...args.runtimeToolEvidence })
     : countedTools;

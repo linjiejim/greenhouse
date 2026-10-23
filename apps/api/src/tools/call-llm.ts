@@ -21,6 +21,7 @@ import {
   reserveUserTokenBudget,
   settleAndRecordBudgetedUsage,
 } from '../llm/usage-budget.js';
+import { findBudgetRefusal } from '../usage/budget-errors.js';
 import { defineTool, type ToolMeta } from './define.js';
 
 const callLlmSchema = z.object({
@@ -219,6 +220,8 @@ export function createCallLlmTool(db: DatabaseProvider, ctx: CallLlmContext) {
           usage: { input_tokens: result.usage?.inputTokens, output_tokens: result.usage?.outputTokens },
         };
       } catch (err) {
+        // Over budget: the refusal itself must reach the agent (tool error), not a summary of it.
+        if (findBudgetRefusal(err)) throw err;
         const durationMs = Date.now() - startTime;
         const message = controller.signal.aborted
           ? `call_llm timed out after ${Math.round(CALL_LLM_TIMEOUT_MS / 1000)}s`

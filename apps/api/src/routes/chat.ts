@@ -66,6 +66,7 @@ import {
 import { runtimeAdapterEnabled } from '../trusted-execution/kill-switches.js';
 import { instrumentRuntimeTools } from '../runtime/tool-evidence.js';
 import { chatToolCallClient, countToolCalls, requestAppClient } from '../usage/counters.js';
+import { bindMeteringScope, meteringClientForToolClient, runWithMeteringScope } from '../usage/metering.js';
 
 // ─── Route Factory ───────────────────────────────────────
 
@@ -432,7 +433,16 @@ export function createChatRoute(toolRegistry: ToolRegistry) {
           // execution under the client that ran the turn. Client actions are
           // added after this and stay uncounted — their names come from the
           // browser, so they must never become counter keys.
-          const tools = countToolCalls(
+          // Metering: every paid call this turn makes (the model itself, web
+          // search, images, …) is charged to this member and labelled with the
+          // client the turn came from. Shared tools learn the member from this scope.
+          const turnClient = chatToolCallClient(sessionChannel, requestAppClient(c));
+          const meteringScope = {
+            userId,
+            client: meteringClientForToolClient(turnClient),
+            ...(sessionId ? { sessionId } : {}),
+          };
+          const countedTools = countToolCalls(
             {
               ...selectTools(
                 toolRegistry,
@@ -447,8 +457,9 @@ export function createChatRoute(toolRegistry: ToolRegistry) {
                 toolRegistry,
               }),
             },
-            chatToolCallClient(sessionChannel, requestAppClient(c)),
+            turnClient,
           );
+          const tools = bindMeteringScope(countedTools, meteringScope);
 
           // Snapshot before the page's Client Actions join: the system prompt is
           // decided on these alone so it does not change with the page.
@@ -531,11 +542,13 @@ export function createChatRoute(toolRegistry: ToolRegistry) {
           // provider envelope are durable.
           if (pendingTitleMessage && sessionId) {
             const firstUserMessage = pendingTitleMessage;
-            titlePromise = generateSessionTitle(firstUserMessage, {
-              userId,
-              sessionId,
-              ...(runtimeTrace ? { runId: runtimeTrace.runId } : {}),
-            })
+            titlePromise = runWithMeteringScope(meteringScope, () =>
+              generateSessionTitle(firstUserMessage, {
+                userId,
+                sessionId,
+                ...(runtimeTrace ? { runId: runtimeTrace.runId } : {}),
+              }),
+            )
               .then(async (title) => {
                 await getDb().sessions.updateTitle(sessionId, title);
                 return title;
@@ -568,6 +581,7 @@ export function createChatRoute(toolRegistry: ToolRegistry) {
             ...(sessionId ? { sessionId } : {}),
             runId: runtimeTrace?.runId ?? run.runId,
             metadata: { max_steps: maxSteps },
+            client: meteringScope.client,
           });
 
           // ── Create chat stream via shared engine ──
@@ -612,7 +626,9 @@ export function createChatRoute(toolRegistry: ToolRegistry) {
             ...(sessionId
               ? {
                   onPersisted: () => {
-                    void scheduleDigestFold({ sessionId, userId, modelId: effectiveModelId });
+                    void runWithMeteringScope(meteringScope, () =>
+                      scheduleDigestFold({ sessionId, userId, modelId: effectiveModelId }),
+                    );
                   },
                 }
               : {}),

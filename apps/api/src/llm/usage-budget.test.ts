@@ -1,24 +1,20 @@
 import { describe, expect, it, vi } from 'vitest';
+import { fakeMeteringServices } from '../../../../tests/helpers/metering-db.js';
 import { DEFAULT_MODEL_REGISTRY, setModelRegistry } from '@greenhouse/agent-core';
 import {
   UsageBudgetAdmissionError,
   createProviderAttemptBudgetHook,
   estimateAgentLoopTokens,
   estimateCompletionTokens,
-  reserveImageUsdBudget,
   reserveUserTokenBudget,
   settleAndRecordBudgetedUsage,
-  settleAndRecordBudgetedImageUsage,
 } from './usage-budget.js';
 
 function fixture() {
   const reserveMonthlyUser = vi.fn().mockResolvedValue([]);
   const settle = vi.fn().mockResolvedValue([]);
   const release = vi.fn().mockResolvedValue([]);
-  const ensureAccount = vi.fn(async (input: { scope_type: string; scope_id: string; unit?: string }) => ({
-    id: `${input.scope_type}:${input.scope_id}:${input.unit ?? 'tokens'}`,
-  }));
-  const reserve = vi.fn().mockResolvedValue([]);
+  const { ensureAccount, reserve, metering, accounts } = fakeMeteringServices();
   const record = vi.fn().mockResolvedValue(undefined);
   const db = {
     users: {
@@ -30,9 +26,11 @@ function fixture() {
       }),
     },
     usageBudget: { ensureAccount, reserve, reserveMonthlyUser, settle, release },
+    metering,
     usage: { record },
+    notifications: { createWithStatus: vi.fn(), countUnread: vi.fn(async () => 0) },
   };
-  return { db, ensureAccount, record, release, reserve, reserveMonthlyUser, settle };
+  return { accounts, db, ensureAccount, metering, record, release, reserve, reserveMonthlyUser, settle };
 }
 
 describe('provider usage-budget guard', () => {
@@ -246,39 +244,117 @@ describe('provider usage-budget guard', () => {
     expect(estimate).toBeGreaterThan(11_000);
   });
 
-  it('accounts image generation in atomic user, organization, and provider USD micros', async () => {
+  it('reserves a priced model call in USD against member, service and organization, then settles the real cost', async () => {
     const f = fixture();
-    const lease = await reserveImageUsdBudget({
+    setModelRegistry({
+      flash: {
+        name: 'Priced model',
+        price: { input: 1, output: 4, cachedInput: 0.1 },
+        providers: [{ provider: 'openai-compatible', model: 'priced-model', apiKeyEnv: 'LLM_API_KEY' }],
+      },
+    });
+    try {
+      const lease = await reserveUserTokenBudget({
+        db: f.db as never,
+        userId: 'user-1',
+        caller: 'chat',
+        estimatedTokens: 1_200,
+        estimatedInputTokens: 1_000,
+        estimatedOutputTokens: 200,
+        modelId: 'priced-model',
+        logicalModelId: 'flash',
+        client: 'mcp',
+        oauthClientId: 'lpoa_client_codex',
+        idempotencyKey: 'usd:key',
+      });
+      // 1000 × $1/M + 200 × $4/M = 1800 micros, every input token uncached.
+      expect(f.reserve).toHaveBeenCalledWith(
+        expect.objectContaining({
+          idempotency_key: 'usd:key:usd',
+          estimated_units: 1_800,
+          account_ids: expect.arrayContaining([
+            'user:user-1:usd_micros',
+            'service:llm:usd_micros',
+            'organization:default:usd_micros',
+          ]),
+        }),
+      );
+      lease.markProviderIoStarted();
+      await settleAndRecordBudgetedUsage(f.db as never, lease, {
+        profile_id: 'team',
+        caller: 'chat',
+        user_id: 'user-1',
+        model: 'priced-model',
+        input_tokens: 900,
+        output_tokens: 100,
+        cached_tokens: 800,
+      });
+      // 100 uncached × 1 + 800 cached × 0.1 + 100 out × 4 = 580 micros.
+      expect(f.settle).toHaveBeenCalledWith(
+        expect.objectContaining({ idempotency_key: 'usd:key:usd', actual_units: 580 }),
+      );
+      expect(f.record).toHaveBeenCalledWith(
+        expect.objectContaining({
+          budget_idempotency_key: 'usd:key',
+          cost_usd_micros: 580,
+          client: 'mcp',
+          oauth_client_id: 'lpoa_client_codex',
+          service: 'llm',
+        }),
+      );
+    } finally {
+      setModelRegistry(DEFAULT_MODEL_REGISTRY);
+    }
+  });
+
+  it('records an unpriced model call with an unknown cost and reserves no USD', async () => {
+    const f = fixture();
+    const lease = await reserveUserTokenBudget({
       db: f.db as never,
       userId: 'user-1',
-      caller: 'generate-image',
-      estimatedUsdMicros: 6_000,
-      providerId: 'media',
-      modelId: 'gpt-image-2',
-      idempotencyKey: 'image:key',
+      caller: 'chat',
+      estimatedTokens: 100,
+      modelId: 'flash',
+      idempotencyKey: 'free:key',
     });
-    lease.markProviderIoStarted();
-    await settleAndRecordBudgetedImageUsage(f.db as never, lease, 6_000, {
-      profile_id: 'image',
-      caller: 'generate-image',
+    expect(f.reserve).not.toHaveBeenCalled();
+    await settleAndRecordBudgetedUsage(f.db as never, lease, {
+      profile_id: 'team',
+      caller: 'chat',
       user_id: 'user-1',
-      model: 'gpt-image-2',
+      model: 'flash',
       input_tokens: 10,
-      output_tokens: 200,
+      output_tokens: 5,
     });
+    expect(f.record).toHaveBeenCalledWith(expect.objectContaining({ cost_usd_micros: null, service: 'llm' }));
+  });
 
-    expect(f.ensureAccount).toHaveBeenCalledTimes(3);
-    expect(f.reserve).toHaveBeenCalledWith(
-      expect.objectContaining({
-        account_ids: expect.arrayContaining([
-          'user:user-1:usd_micros',
-          'organization:default:image:usd_micros',
-          'provider:media:usd_micros',
-        ]),
-        estimated_units: 6_000,
-      }),
+  it('refuses an unpriced call once a USD budget is exhausted, and gives the tokens back', async () => {
+    const f = fixture();
+    f.metering.getAccounts.mockImplementation(async (ids: readonly string[]) =>
+      ids.map((id) => ({
+        ...f.accounts.get(id)!,
+        spent_units: id.startsWith('user:') ? f.accounts.get(id)!.limit_units : 0,
+      })),
     );
-    expect(f.settle).toHaveBeenCalledWith(expect.objectContaining({ actual_units: 6_000 }));
-    expect(f.record).toHaveBeenCalledWith(expect.objectContaining({ budget_idempotency_key: 'image:key' }));
+    const refusal = await reserveUserTokenBudget({
+      db: f.db as never,
+      userId: 'user-1',
+      caller: 'chat',
+      estimatedTokens: 100,
+      modelId: 'flash',
+      idempotencyKey: 'blocked:key',
+    }).catch((err: unknown) => err);
+    expect(refusal).toBeInstanceOf(UsageBudgetAdmissionError);
+    expect(refusal).toMatchObject({
+      status: 429,
+      code: 'usage_budget_exceeded',
+      refusal: { unit: 'usd_micros', level: 'member' },
+    });
+    expect((refusal as Error).message).toContain('本月个人额度已用完');
+    expect((refusal as Error).message).toContain('member budget is used up');
+    expect(f.release).toHaveBeenCalledWith(
+      expect.objectContaining({ idempotency_key: 'blocked:key', reason: 'usd_budget_refused' }),
+    );
   });
 });

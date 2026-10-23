@@ -35,6 +35,8 @@ import {
 import type { AppEnv } from '../app-env.js';
 import { pinProfileIdForUser, ProfileAccessError } from '../profiles/access.js';
 import { agentApiToolCallClient, requestAppClient } from '../usage/counters.js';
+import { meteringClientForToolClient } from '../usage/metering.js';
+import { findBudgetRefusal } from '../usage/budget-errors.js';
 
 /**
  * Profile used when a request omits `profile_id`. This route is internal-only
@@ -209,9 +211,11 @@ export function createAgentRoutes(toolRegistry: ToolRegistry) {
           }
 
           try {
+            const toolClient = agentApiToolCallClient(requestAppClient(c));
             const output = await executeProxyTool(ctx.registry, toolId, ctx.toolIds, body.input, {
               confirm: body.confirm,
-              usageClient: agentApiToolCallClient(requestAppClient(c)),
+              usageClient: toolClient,
+              metering: { userId: getAgentIdentity(c).userId, client: meteringClientForToolClient(toolClient) },
             });
             await recordAgentAudit(c, {
               endpoint: '/api/agent/tools/:toolId/call',
@@ -227,6 +231,17 @@ export function createAgentRoutes(toolRegistry: ToolRegistry) {
                 start,
                 meta: { tool: toolId },
               });
+            }
+            const refusal = findBudgetRefusal(err);
+            if (refusal) {
+              await recordAgentAudit(c, {
+                endpoint: '/api/agent/tools/:toolId/call',
+                statusCode: 429,
+                durationMs: Date.now() - start,
+                error: refusal.code,
+                meta: { tool: toolId },
+              });
+              return c.json({ error: { message: refusal.message, type: 'usage_budget_exceeded' } }, 429);
             }
             logger.error(`[agent] tool "${toolId}" execution failed:`, err);
             await recordAgentAudit(c, {

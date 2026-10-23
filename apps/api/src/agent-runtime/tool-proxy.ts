@@ -22,6 +22,7 @@ import { logger } from '@greenhouse/utils/logger';
 import type { ToolCallClient } from '@greenhouse/types/usage';
 import type { ToolRegistry } from '../agent.js';
 import { getToolMeta } from '../tools/registry.js';
+import { runWithMeteringScope, type MeteringScope } from '../usage/metering.js';
 import { countUsage } from '../usage/counters.js';
 
 import { READONLY_PROXY_ALLOWLIST, MUTATING_PROXY_ALLOWLIST } from '../tools/registry.js';
@@ -201,6 +202,9 @@ export function prepareProxyToolCall(
  * @throws ProxyToolError(400) if a mutating tool is called without confirm:true, or input fails validation
  * @throws ProxyToolError(404) if the tool has no executable implementation
  *
+ * `metering` is the attribution of any paid call the tool makes (the member,
+ * the client, the agent's OAuth client) — see usage/metering.ts.
+ *
  * `usageClient` counts one `tool_call` (fire-and-forget) once every check has
  * passed, keyed by the canonical tool id; omit it for internal evaluations
  * (workbench refresh) that are not a client calling a tool.
@@ -210,7 +214,7 @@ export async function executeProxyTool(
   toolId: string,
   allowedToolIds: string[],
   input: unknown,
-  opts: { confirm?: boolean; usageClient?: ToolCallClient } = {},
+  opts: { confirm?: boolean; usageClient?: ToolCallClient; metering?: MeteringScope } = {},
 ): Promise<unknown> {
   const normalized = normalizeLegacyToolCall(toolId, input);
   const actualToolId = normalized.toolId;
@@ -227,7 +231,9 @@ export async function executeProxyTool(
 
   const prepared = prepareProxyToolCall(registry, toolId, allowedToolIds, actualInput);
   if (opts.usageClient) countUsage('tool_call', prepared.toolId, opts.usageClient);
-  return prepared.execute(prepared.input, { toolCallId: `agent-proxy-${actualToolId}`, messages: [] });
+  const run = () => prepared.execute(prepared.input, { toolCallId: `agent-proxy-${actualToolId}`, messages: [] });
+  // Paid calls inside (search, images, …) are charged to this member and client.
+  return opts.metering ? runWithMeteringScope(opts.metering, run) : run();
 }
 
 /** The tool a (possibly legacy) name actually runs as. */

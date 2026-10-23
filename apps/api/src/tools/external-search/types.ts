@@ -42,9 +42,13 @@ export interface ExtractedContent {
   byteLength: number;
   /** Whether content was truncated */
   truncated: boolean;
+  /** Which extractor produced it (`jina` / `local`) — the page read's metered provider. */
+  extractor?: string;
 }
 
 export interface ContentExtractor {
+  /** Metered provider name (services.yaml `page_read.providers`). */
+  readonly name?: string;
   /** Extract clean text content from a URL */
   extract(url: string): Promise<ExtractedContent>;
 }
@@ -72,4 +76,6 @@ export interface ExternalSearchOutput {
     snippet: string;
     content?: string;
   }>;
+  /** Why page content is missing (an over-budget refusal), when it is. */
+  notice?: string;
 }

@@ -31,7 +31,12 @@ import { basename } from 'node:path';
 import { putUpload, getUpload, detectImageContentType } from '../storage/uploads.js';
 import { fetchPublicImage } from '../security/network.js';
 import { getImageProviderConfig } from '../llm/media-provider.js';
-import { IMAGE_BUDGET_TTL_MS, reserveImageUsdBudget, settleAndRecordBudgetedImageUsage } from '../llm/usage-budget.js';
+import { reserveSpend, settleServiceFact } from '../usage/metering.js';
+import { imageCostMicros, maxImageCostMicros } from '../usage/pricing.js';
+import { findBudgetRefusal } from '../usage/budget-errors.js';
+
+/** An image call that never reported back is charged at its estimate after this long. */
+const IMAGE_BUDGET_TTL_MS = 5 * 60_000;
 
 // ─── Upstream ────────────────────────────────────────────
 
@@ -56,17 +61,6 @@ const DEFAULT_SIZE = '1536x1024';
  * size nobody asked for. `resolveSize` snaps to this set instead.
  */
 const SUPPORTED_SIZES = ['1024x1024', '1536x1024', '1024x1536'] as const;
-
-/**
- * Per-image cost in USD at `low`, by size. The upstream bills image output at $30/1M tokens
- * and each tier emits a fixed token count, so a supported size is effectively a flat
- * price. Every key of SUPPORTED_SIZES must appear here.
- */
-const COST_USD_BY_SIZE: Record<string, number> = {
-  '1024x1024': 0.006,
-  '1536x1024': 0.005,
-  '1024x1536': 0.005,
-};
 
 /** Conservative image-token equivalents at low quality (rounded upward). */
 const OUTPUT_TOKENS_BY_SIZE: Record<string, number> = {
@@ -349,15 +343,68 @@ function estimateImageTokens(prompt: string, size: string | undefined, reference
   return Math.max(1, estimateTokens(prompt) + outputTokens + referenceCount * REFERENCE_IMAGE_TOKEN_ALLOWANCE);
 }
 
-function imageCostUsdMicros(size: string | undefined): number {
-  // An edit without an explicit size preserves the source aspect ratio, which
-  // the control plane cannot know before provider I/O. Reserve/settle the most
-  // expensive supported shape so an unknown square source can never exceed a
-  // hard USD budget (the runner still reports the actual rendered asset).
-  const cost = size
-    ? (COST_USD_BY_SIZE[size] ?? COST_USD_BY_SIZE[DEFAULT_SIZE])
-    : Math.max(...Object.values(COST_USD_BY_SIZE));
-  return Math.ceil(cost * 1_000_000);
+/**
+ * Run one provider call metered in USD (services.yaml `image_generation`): reserve
+ * the size's price before I/O, settle the actual cost after. An edit without a
+ * size keeps the source's aspect ratio, which nobody knows before the call, so
+ * it reserves — and, unless the provider reports token usage, settles — the
+ * dearest supported size: an unknown shape can never exceed a hard budget.
+ */
+async function meterImageCall(
+  ctx: GenerateImageToolContext,
+  toolCallId: string,
+  call: { action: 'generate' | 'edit'; size: string | undefined; referenceCount: number; estimatedTokens: number },
+  run: (onProviderIo: () => void) => Promise<ImageProviderResult>,
+): Promise<{ result: ImageProviderResult; costUsdMicros: number | null }> {
+  const estimate = call.size
+    ? imageCostMicros({ provider: 'media', quality: QUALITY, size: call.size })
+    : maxImageCostMicros('media', QUALITY);
+  const lease = await reserveSpend({
+    db: ctx.db,
+    service: 'image_generation',
+    provider: 'media',
+    model: MODEL,
+    caller: 'generate-image',
+    estimatedUsdMicros: estimate,
+    userId: ctx.userId,
+    ...(ctx.sessionId ? { sessionId: ctx.sessionId } : {}),
+    // A replayed business toolCallId performs fresh provider I/O — there is no
+    // cached image result — so every attempt needs a new accounting key rather
+    // than silently reusing an old settlement.
+    idempotencyKey: `generate-image:${ctx.userId}:${toolCallId.slice(0, 120)}:${randomUUID()}`,
+    ttlMs: IMAGE_BUDGET_TTL_MS,
+    metadata: { action: call.action, size: call.size ?? null, reference_count: call.referenceCount },
+  });
+  let result: ImageProviderResult;
+  try {
+    result = await run(() => lease.markProviderIoStarted());
+  } catch (err) {
+    await lease.releaseBeforeProviderIo('image_preflight_failed').catch(() => {});
+    throw err;
+  }
+  const costUsdMicros =
+    imageCostMicros({ provider: 'media', quality: QUALITY, size: call.size ?? '', usage: result.usage }) ??
+    (call.size ? null : estimate);
+  await settleServiceFact(ctx.db, lease, {
+    provider: 'media',
+    model: MODEL,
+    units: 1,
+    unitKind: 'image',
+    costUsdMicros,
+    metadata: {
+      action: call.action,
+      size: call.size ?? null,
+      quality: QUALITY,
+      reference_count: call.referenceCount,
+      input_tokens: result.usage?.inputTokens ?? null,
+      output_tokens: result.usage?.outputTokens ?? call.estimatedTokens,
+    },
+  });
+  return { result, costUsdMicros };
+}
+
+function costUsd(micros: number | null): number | null {
+  return micros === null ? null : micros / 1_000_000;
 }
 
 export function createGenerateImageTool(ctx: GenerateImageToolContext) {
@@ -382,48 +429,16 @@ export function createGenerateImageTool(ctx: GenerateImageToolContext) {
                 (refs.length ? ` refs=${refs.length}` : ''),
             );
             const estimatedTokens = estimateImageTokens(input.prompt, size, refs.length);
-            const estimatedUsdMicros = imageCostUsdMicros(size);
-            const budget = await reserveImageUsdBudget({
-              db: ctx.db,
-              userId: ctx.userId,
-              caller: 'generate-image',
-              estimatedUsdMicros,
-              modelId: MODEL,
-              providerId: 'media',
-              runId: ctx.sessionId,
-              // A replayed business toolCallId performs fresh provider I/O —
-              // there is no cached image result — so every attempt needs a new
-              // accounting key rather than silently reusing an old settlement.
-              idempotencyKey: `generate-image:${ctx.userId}:${options.toolCallId.slice(0, 120)}:${randomUUID()}`,
-              ttlMs: IMAGE_BUDGET_TTL_MS,
-              metadata: { action: input.action, size, reference_count: refs.length },
-            });
-            let providerResult: ImageProviderResult;
-            try {
-              providerResult = refs.length
-                ? await callEdit(input.prompt, refs, size, () => budget.markProviderIoStarted())
-                : await callGenerate(input.prompt, size, () => budget.markProviderIoStarted());
-            } catch (err) {
-              await budget.releaseBeforeProviderIo('image_preflight_failed').catch(() => {});
-              throw err;
-            }
+            const { result: providerResult, costUsdMicros } = await meterImageCall(
+              ctx,
+              options.toolCallId,
+              { action: 'generate', size, referenceCount: refs.length, estimatedTokens },
+              (onProviderIo) =>
+                refs.length
+                  ? callEdit(input.prompt, refs, size, onProviderIo)
+                  : callGenerate(input.prompt, size, onProviderIo),
+            );
             const filename = providerResult.filename;
-            const actualInput = providerResult.usage?.inputTokens ?? 0;
-            const actualOutput = providerResult.usage?.outputTokens ?? estimatedTokens;
-            await settleAndRecordBudgetedImageUsage(ctx.db, budget, estimatedUsdMicros, {
-              profile_id: 'image',
-              caller: 'generate-image',
-              session_id: ctx.sessionId,
-              user_id: ctx.userId,
-              model: MODEL,
-              input_tokens: actualInput,
-              output_tokens: actualOutput,
-            }).catch((err) => {
-              logger.warn('[GenerateImage] failed to settle budgeted usage', {
-                budgetKey: budget.idempotencyKey,
-                error: String(err),
-              });
-            });
             logger.info(`[GenerateImage] ✅ Saved: ${filename} (model: ${MODEL})`);
             const imageUrl = `/api/upload/${filename}`;
             return {
@@ -434,7 +449,7 @@ export function createGenerateImageTool(ctx: GenerateImageToolContext) {
               model: MODEL,
               size,
               quality: QUALITY,
-              estimated_cost_usd: COST_USD_BY_SIZE[size],
+              estimated_cost_usd: costUsd(costUsdMicros),
               prompt: input.prompt,
               // Surface the snap so an unsupported request isn't invisibly rewritten.
               ...(snapped ? { requested_size: input.size } : {}),
@@ -461,43 +476,14 @@ export function createGenerateImageTool(ctx: GenerateImageToolContext) {
                 (editSize ? ` size=${editSize}` : ''),
             );
             const estimatedTokens = estimateImageTokens(input.prompt, editSize, input.images.length);
-            const estimatedUsdMicros = imageCostUsdMicros(editSize);
-            const budget = await reserveImageUsdBudget({
-              db: ctx.db,
-              userId: ctx.userId,
-              caller: 'generate-image',
-              estimatedUsdMicros,
-              modelId: MODEL,
-              providerId: 'media',
-              runId: ctx.sessionId,
-              idempotencyKey: `generate-image:${ctx.userId}:${options.toolCallId.slice(0, 120)}:${randomUUID()}`,
-              ttlMs: IMAGE_BUDGET_TTL_MS,
-              metadata: { action: input.action, size: editSize, reference_count: input.images.length },
-            });
-            let providerResult: ImageProviderResult;
-            try {
-              providerResult = await callEdit(input.prompt, input.images, editSize, () =>
-                budget.markProviderIoStarted(),
-              );
-            } catch (err) {
-              await budget.releaseBeforeProviderIo('image_preflight_failed').catch(() => {});
-              throw err;
-            }
+            const images = input.images;
+            const { result: providerResult, costUsdMicros } = await meterImageCall(
+              ctx,
+              options.toolCallId,
+              { action: 'edit', size: editSize, referenceCount: images.length, estimatedTokens },
+              (onProviderIo) => callEdit(input.prompt, images, editSize, onProviderIo),
+            );
             const filename = providerResult.filename;
-            await settleAndRecordBudgetedImageUsage(ctx.db, budget, estimatedUsdMicros, {
-              profile_id: 'image',
-              caller: 'generate-image',
-              session_id: ctx.sessionId,
-              user_id: ctx.userId,
-              model: MODEL,
-              input_tokens: providerResult.usage?.inputTokens ?? 0,
-              output_tokens: providerResult.usage?.outputTokens ?? estimatedTokens,
-            }).catch((err) => {
-              logger.warn('[GenerateImage] failed to settle budgeted usage', {
-                budgetKey: budget.idempotencyKey,
-                error: String(err),
-              });
-            });
             logger.info(`[GenerateImage] ✅ Edited & saved: ${filename}`);
             const imageUrl = `/api/upload/${filename}`;
             return {
@@ -509,6 +495,7 @@ export function createGenerateImageTool(ctx: GenerateImageToolContext) {
               quality: QUALITY,
               prompt: input.prompt,
               reference_images: input.images,
+              estimated_cost_usd: costUsd(costUsdMicros),
               ...(editSize ? { size: editSize } : {}),
               ...(input.size && input.size !== editSize ? { requested_size: input.size } : {}),
             };
@@ -518,6 +505,9 @@ export function createGenerateImageTool(ctx: GenerateImageToolContext) {
             return { error: `Unknown action: ${input.action}` };
         }
       } catch (err) {
+        // Over budget: let the refusal itself reach the agent (MCP tool error,
+        // Chat tool error) instead of a generic "generation error".
+        if (findBudgetRefusal(err)) throw err;
         const message = toErrorMessage(err);
         logger.error(`[GenerateImage] ❌ Error: ${message}`);
         return { error: `Image generation error: ${message}` };

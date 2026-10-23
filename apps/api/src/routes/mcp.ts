@@ -27,6 +27,8 @@
  * Each tool must also be in the proxy READ/WRITE allowlists to be reachable.
  */
 
+import { runWithMeteringScope, type MeteringScope } from '../usage/metering.js';
+import { findBudgetRefusal } from '../usage/budget-errors.js';
 import { Hono } from 'hono';
 import type { Context } from 'hono';
 import { logger } from '@greenhouse/utils/logger';
@@ -305,7 +307,13 @@ export function buildMcpServer(c: Context, ctx: McpContext): Server {
     return { tools: tools as never };
   });
 
-  server.setRequestHandler(CallToolRequestSchema, async (req) => {
+  // Metering: every paid call a tool makes is charged to the member and
+  // labelled as their agent's (client `mcp` + the OAuth client id).
+  const meteringScope: MeteringScope = { userId: identity.userId, client: 'mcp', oauthClientId: oauthClientId ?? null };
+
+  server.setRequestHandler(CallToolRequestSchema, (req) => runWithMeteringScope(meteringScope, () => callTool(req)));
+
+  const callTool = async (req: { params: { name: string; arguments?: Record<string, unknown> } }) => {
     const start = Date.now();
     const name = req.params.name;
     const rawArgs = (req.params.arguments ?? {}) as Record<string, unknown>;
@@ -407,7 +415,10 @@ export function buildMcpServer(c: Context, ctx: McpContext): Server {
         return { content: [{ type: 'text', text: view.error ?? 'Write failed' }], isError: true };
       }
 
-      const output = await executeProxyTool(ctx.registry, name, ctx.toolIds, rawArgs, { usageClient: 'mcp' });
+      const output = await executeProxyTool(ctx.registry, name, ctx.toolIds, rawArgs, {
+        usageClient: 'mcp',
+        metering: meteringScope,
+      });
       const bounded = await boundReplyText(JSON.stringify(output), outputCaller, canonicalProxyToolId(name));
       await recordMcpAudit(c, {
         endpoint: 'mcp:tools/call',
@@ -417,9 +428,11 @@ export function buildMcpServer(c: Context, ctx: McpContext): Server {
       });
       return { content: bounded.content };
     } catch (err) {
-      const known = err instanceof ProxyToolError || err instanceof ToolOutputNotFoundError;
-      const status = err instanceof ProxyToolError ? err.status : known ? 404 : 500;
-      const message = known ? err.message : 'Tool execution failed';
+      // Over budget is the agent's to know: its own words, as a tool error.
+      const refusal = findBudgetRefusal(err);
+      const known = err instanceof ProxyToolError || err instanceof ToolOutputNotFoundError || refusal !== null;
+      const status = err instanceof ProxyToolError ? err.status : refusal ? 429 : known ? 404 : 500;
+      const message = refusal ? refusal.message : known ? (err as Error).message : 'Tool execution failed';
       if (!known) {
         logger.error(`[mcp] tool "${name}" failed:`, err);
       }
@@ -433,7 +446,7 @@ export function buildMcpServer(c: Context, ctx: McpContext): Server {
       // Surface as a tool error (not a transport failure) so the agent can react.
       return { content: [{ type: 'text', text: message }], isError: true };
     }
-  });
+  };
 
   server.setRequestHandler(ListResourcesRequestSchema, async () => {
     const start = Date.now();

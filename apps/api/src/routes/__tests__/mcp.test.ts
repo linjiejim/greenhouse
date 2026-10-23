@@ -65,6 +65,8 @@ function view(over: Record<string, unknown> = {}) {
 }
 
 import { buildMcpServer, mcpToolAnnotations, toMcpInputSchema } from '../mcp.js';
+import { UsageBudgetAdmissionError, budgetExceededMessage } from '../../usage/budget-errors.js';
+import { currentMeteringScope } from '../../usage/metering.js';
 import type { ToolRegistry } from '../../agent.js';
 import type { ProxyToolManifestEntry } from '../../agent-runtime/tool-proxy.js';
 
@@ -275,6 +277,42 @@ describe('MCP server — tools/call', () => {
     const unknown = await client.callTool({ name: 'project_mutation', arguments: { name: 'X' } });
     expect(unknown.isError).toBeFalsy();
     expect(JSON.parse(firstText(unknown))).toMatchObject({ status: 'outcome_unknown', write_id: 'rtr_1' });
+    await client.close();
+    await server.close();
+  });
+
+  it('returns an over-budget refusal as a tool error in its own words', async () => {
+    const ctx = makeCtx();
+    const refusal = { unit: 'usd_micros' as const, level: 'member' as const };
+    (ctx.registry as Record<string, any>).project_query.execute = async () => {
+      // Wrapped the way the AI SDK / a tool would wrap it.
+      throw new Error('tool failed', {
+        cause: new UsageBudgetAdmissionError(
+          budgetExceededMessage(refusal),
+          429,
+          'usage_budget_exceeded',
+          undefined,
+          refusal,
+        ),
+      });
+    };
+    const { client, server } = await connect(ctx);
+    const res = await client.callTool({ name: 'project_query', arguments: {} });
+    expect(res.isError).toBe(true);
+    expect(firstText(res)).toBe(budgetExceededMessage(refusal));
+    expect(firstText(res)).toContain('联系管理员');
+    await client.close();
+    await server.close();
+  });
+
+  it('runs every tool call as the member, client mcp and the agent’s OAuth client', async () => {
+    const ctx = makeCtx();
+    (ctx.registry as Record<string, any>).project_query.execute = async () => ({ scope: currentMeteringScope() });
+    const { client, server } = await connect(ctx, contextFor('client-codex'));
+    const res = await client.callTool({ name: 'project_query', arguments: {} });
+    expect(JSON.parse(firstText(res))).toEqual({
+      scope: { userId: 'mcp-test-user', client: 'mcp', oauthClientId: 'client-codex' },
+    });
     await client.close();
     await server.close();
   });

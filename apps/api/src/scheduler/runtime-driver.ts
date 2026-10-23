@@ -20,6 +20,7 @@ import {
 } from '@greenhouse/types/runtime';
 import { safeJsonParse } from '@greenhouse/utils/json';
 import { toErrorMessage } from '@greenhouse/utils/error';
+import { budgetRefusalReason } from '../usage/budget-errors.js';
 import { logger } from '@greenhouse/utils/logger';
 import type { ToolRegistry } from '../agent.js';
 import type { RuntimeDriver, RuntimeDriverContext } from '../runtime/worker.js';
@@ -367,7 +368,9 @@ async function transitionRunTerminal(input: {
     lease_ms: input.leaseMs,
     ...(input.output ? { output: input.output } : {}),
     ...(input.status === 'failed'
-      ? { error_code: 'automation_driver_failed', error_message: toErrorMessage(input.error) }
+      ? budgetRefusalReason(input.error)
+        ? { error_code: 'usage_budget_exceeded', error_message: budgetRefusalReason(input.error)! }
+        : { error_code: 'automation_driver_failed', error_message: toErrorMessage(input.error) }
       : {}),
   });
 }
@@ -396,7 +399,9 @@ async function transitionStepTerminal(input: {
     lease_ms: input.leaseMs,
     ...(input.output ? { output: input.output } : {}),
     ...(input.status === 'failed'
-      ? { error_code: 'automation_turn_failed', error_message: toErrorMessage(input.error) }
+      ? budgetRefusalReason(input.error)
+        ? { error_code: 'usage_budget_exceeded', error_message: budgetRefusalReason(input.error)! }
+        : { error_code: 'automation_turn_failed', error_message: toErrorMessage(input.error) }
       : {}),
     ...(input.durationMs !== undefined ? { duration_ms: input.durationMs } : {}),
     ...(input.tokensUsed !== undefined ? { tokens_used: input.tokensUsed } : {}),

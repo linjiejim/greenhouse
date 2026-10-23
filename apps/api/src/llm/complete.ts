@@ -17,6 +17,7 @@ import type { AgentProfile } from '../profiles/profile.js';
 import { extractJson } from '@greenhouse/utils/json';
 import { getDb } from '@greenhouse/db';
 import { createProviderAttemptBudgetHook } from './usage-budget.js';
+import type { MeteringClient } from '@greenhouse/types/metering';
 
 // ─── Types ───────────────────────────────────────────────
 
@@ -45,6 +46,8 @@ export interface CompletionOptions {
   responseFormat?: 'json';
   /** Propagate durable Runtime cancellation into provider I/O. */
   abortSignal?: AbortSignal;
+  /** Metering client; defaults to the current metering scope, then the caller's usual client. */
+  client?: MeteringClient;
 }
 
 export interface CompletionResult {
@@ -105,6 +108,7 @@ export async function complete(
     profileId: profile.id,
     ...(options.sessionId ? { sessionId: options.sessionId, runId: options.sessionId } : {}),
     metadata: { response_format: options.responseFormat ?? null },
+    ...(options.client ? { client: options.client } : {}),
   });
   const model = await createModelFromConfig(modelConfig, { onProviderAttempt: providerAttemptHook });
   const providerOptions = buildProviderOptions(modelConfig);

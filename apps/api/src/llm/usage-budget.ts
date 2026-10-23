@@ -1,8 +1,11 @@
 /**
- * Provider-call usage budget guard.
+ * Provider-call usage budget guard — the model half of metering.
  *
- * Every model/image provider call must reserve the owning user's monthly token
- * budget before I/O. Once provider I/O may have started, a failed/unknown call
+ * Every model provider call reserves before I/O: the owning user's monthly
+ * token budget (plus organization / provider token accounts — kept in parallel
+ * for this release) AND the call's USD price against the member, `llm` (or
+ * `vision`) service and organization USD accounts (usage/metering.ts — USD is
+ * the primary limit). Once provider I/O may have started, a failed/unknown call
  * is deliberately left reserved for the DB TTL sweeper to charge at the
  * conservative estimate; only failures known to precede provider I/O release.
  */
@@ -10,10 +13,21 @@
 import { randomUUID } from 'node:crypto';
 import type { DatabaseProvider, UsageBudgetAccountInput, UsageRecord } from '@greenhouse/db';
 import { getUtcMonthPeriod, UsageBudgetError, UsageBudgetExceededError } from '@greenhouse/db';
-import { estimateTokens, getAvailableProviders, getModelEntry, type ProviderAttemptHook } from '@greenhouse/agent-core';
+import {
+  estimateTokens,
+  getAvailableProviders,
+  getModelEntry,
+  type ProviderAttemptHook,
+  type TokenPrice,
+} from '@greenhouse/agent-core';
+import type { MeteringClient } from '@greenhouse/types/metering';
+import { UsageBudgetAdmissionError } from '../usage/budget-errors.js';
+import { requireBudgetOwner, reserveSpend, resolveMeteringClient, type SpendLease } from '../usage/metering.js';
+import { estimateTokenCostMicros, modelPrice, tokenCostMicros } from '../usage/pricing.js';
+
+export { UsageBudgetAdmissionError } from '../usage/budget-errors.js';
 
 export const MODEL_BUDGET_TTL_MS = 20 * 60_000;
-export const IMAGE_BUDGET_TTL_MS = 5 * 60_000;
 
 const DEFAULT_OUTPUT_TOKENS = 4_096;
 /** Headroom over the tokenizer approximation for one concrete provider attempt. */
@@ -21,22 +35,7 @@ const PROVIDER_ATTEMPT_ESTIMATE_MARGIN = 1.25;
 const TOOL_SCHEMA_TOKEN_ALLOWANCE = 16_000;
 const DEFAULT_ORG_MONTHLY_TOKENS = 1_000_000_000;
 const DEFAULT_PROVIDER_MONTHLY_TOKENS = 500_000_000;
-const DEFAULT_USER_MONTHLY_IMAGE_USD_MICROS = 20_000_000;
-const DEFAULT_ORG_MONTHLY_IMAGE_USD_MICROS = 2_000_000_000;
-const DEFAULT_PROVIDER_MONTHLY_IMAGE_USD_MICROS = 2_000_000_000;
 const DEFAULT_ORG_SCOPE_ID = 'default';
-
-export class UsageBudgetAdmissionError extends Error {
-  constructor(
-    message: string,
-    public readonly status: 403 | 429 | 503,
-    public readonly code: string,
-    options?: ErrorOptions,
-  ) {
-    super(message, options);
-    this.name = 'UsageBudgetAdmissionError';
-  }
-}
 
 export interface ReserveUserTokenBudgetInput {
   db: DatabaseProvider;
@@ -51,19 +50,22 @@ export interface ReserveUserTokenBudgetInput {
   idempotencyKey?: string;
   ttlMs?: number;
   metadata?: Readonly<Record<string, unknown>>;
-}
-
-export interface ReserveImageUsdBudgetInput {
-  db: DatabaseProvider;
-  userId: string;
-  caller: string;
-  estimatedUsdMicros: number;
-  providerId: string;
-  modelId?: string;
-  runId?: string;
-  idempotencyKey?: string;
-  ttlMs?: number;
-  metadata?: Readonly<Record<string, unknown>>;
+  /** Metered service: `llm` (default) for chat models, `vision` for analyze_image. */
+  service?: 'llm' | 'vision';
+  /** Catalog id (flash / pro / …) when `modelId` is the raw provider model. */
+  logicalModelId?: string;
+  /**
+   * The price to meter at. Default: the model's catalog price. Pass null for
+   * "unpriced"; `vision` passes the services.yaml token price.
+   */
+  tokenPrice?: TokenPrice | null;
+  /** Split of `estimatedTokens`, for a tighter USD reservation. */
+  estimatedInputTokens?: number;
+  estimatedOutputTokens?: number;
+  /** Attribution; defaults to the current metering scope, then the caller's usual client. */
+  client?: MeteringClient;
+  oauthClientId?: string | null;
+  sessionId?: string;
 }
 
 function positiveSafeInteger(value: number): number {
@@ -111,6 +113,9 @@ export interface ProviderAttemptBudgetContext {
   sessionId?: string;
   runId?: string;
   metadata?: Readonly<Record<string, unknown>>;
+  /** Attribution; defaults to the current metering scope, then the caller's usual client. */
+  client?: MeteringClient;
+  oauthClientId?: string | null;
 }
 
 function providerAttemptEstimate(options: Parameters<ProviderAttemptHook>[0]['options']): number {
@@ -156,15 +161,22 @@ export function createProviderAttemptBudgetHook(context: ProviderAttemptBudgetCo
   return async ({ descriptor, options }) => {
     const startedAt = Date.now();
     const estimatedTokens = providerAttemptEstimate(options);
+    const maxOutputTokens = options.maxOutputTokens ?? DEFAULT_OUTPUT_TOKENS;
     const lease = await reserveUserTokenBudget({
       db: context.db,
       userId: context.userId,
       caller: context.caller,
       estimatedTokens,
+      estimatedInputTokens: Math.max(1, estimatedTokens - maxOutputTokens),
+      estimatedOutputTokens: maxOutputTokens,
       modelId: descriptor.modelId,
+      ...(descriptor.logicalModelId ? { logicalModelId: descriptor.logicalModelId } : {}),
       providerId: descriptor.scopeId,
       providerScopeOverride: descriptor.scopeId,
       runId: context.runId ?? context.sessionId,
+      ...(context.sessionId ? { sessionId: context.sessionId } : {}),
+      ...(context.client ? { client: context.client } : {}),
+      ...(context.oauthClientId !== undefined ? { oauthClientId: context.oauthClientId } : {}),
       metadata: {
         ...(context.metadata ?? {}),
         profile_id: context.profileId,
@@ -203,6 +215,8 @@ export function createProviderAttemptBudgetHook(context: ProviderAttemptBudgetCo
         // A successful adapter response without usage is not free. Charge the
         // safe estimate while keeping the statistical fact explicitly zero.
         await lease.settle(lease.estimatedTokens, { provider_usage_missing: true });
+        const estimatedCost = lease.spend?.reserved ? lease.spend.estimatedUsdMicros : null;
+        await lease.spend?.settle(estimatedCost, { provider_usage_missing: true });
         await context.db.usage.record({
           profile_id: context.profileId,
           caller: context.caller,
@@ -215,6 +229,7 @@ export function createProviderAttemptBudgetHook(context: ProviderAttemptBudgetCo
           reasoning_tokens: 0,
           duration_ms: Date.now() - startedAt,
           budget_idempotency_key: lease.idempotencyKey,
+          ...lease.usageAttribution(estimatedCost),
         });
       },
     };
@@ -287,10 +302,15 @@ export class UserTokenBudgetLease {
     private readonly db: DatabaseProvider,
     public readonly idempotencyKey: string,
     public readonly estimatedTokens: number,
+    /** The USD half of this call (null only for test doubles built without one). */
+    public readonly spend: SpendLease | null = null,
+    /** The price the call is metered at; undefined = unpriced. */
+    public readonly price: TokenPrice | undefined = undefined,
   ) {}
 
   markProviderIoStarted(): void {
     this.providerIoStarted = true;
+    this.spend?.markProviderIoStarted();
   }
 
   async releaseBeforeProviderIo(reason: string): Promise<boolean> {
@@ -299,9 +319,11 @@ export class UserTokenBudgetLease {
       idempotency_key: this.idempotencyKey,
       reason,
     });
+    await this.spend?.releaseBeforeProviderIo(reason);
     return true;
   }
 
+  /** Settle the token reservation (the USD half settles in settleAndRecordBudgetedUsage). */
   async settle(actualTokens: number, metadata?: Readonly<Record<string, unknown>>): Promise<void> {
     await this.db.usageBudget.settle({
       idempotency_key: this.idempotencyKey,
@@ -309,53 +331,42 @@ export class UserTokenBudgetLease {
       metadata,
     });
   }
+
+  /** The metering columns of this call's llm_usage fact. */
+  usageAttribution(costUsdMicros: number | null) {
+    const attribution = this.spend?.attribution;
+    return {
+      cost_usd_micros: costUsdMicros,
+      client: attribution?.client ?? null,
+      oauth_client_id: attribution?.oauthClientId ?? null,
+      service: attribution?.service ?? 'llm',
+    };
+  }
 }
 
-/** USD-denominated image lease; image output pricing is not comparable to text tokens. */
-export class ImageUsdBudgetLease {
-  private providerIoStarted = false;
-
-  constructor(
-    private readonly db: DatabaseProvider,
-    public readonly idempotencyKey: string,
-    public readonly estimatedUsdMicros: number,
-  ) {}
-
-  markProviderIoStarted(): void {
-    this.providerIoStarted = true;
-  }
-
-  async releaseBeforeProviderIo(reason: string): Promise<boolean> {
-    if (this.providerIoStarted) return false;
-    await this.db.usageBudget.release({ idempotency_key: this.idempotencyKey, reason });
-    return true;
-  }
-
-  async settle(actualUsdMicros: number, metadata?: Readonly<Record<string, unknown>>): Promise<void> {
-    await this.db.usageBudget.settle({
-      idempotency_key: this.idempotencyKey,
-      actual_units: Math.max(0, Math.ceil(actualUsdMicros)),
-      metadata,
+function estimateUsd(input: ReserveUserTokenBudgetInput, price: TokenPrice | undefined, tokens: number) {
+  if (!price) return null;
+  if (input.estimatedInputTokens !== undefined || input.estimatedOutputTokens !== undefined) {
+    return estimateTokenCostMicros(price, {
+      inputTokens: input.estimatedInputTokens ?? 0,
+      outputTokens: input.estimatedOutputTokens ?? 0,
     });
   }
+  // Only a total is known: every token at the dearer rate.
+  const dearer = Math.max(price.input, price.output);
+  return estimateTokenCostMicros({ input: dearer, output: dearer }, { inputTokens: 0, outputTokens: tokens });
 }
 
-async function requireBudgetOwner(db: DatabaseProvider, userId: string) {
-  const user = await db.users.getById(userId);
-  if (!user || user.status !== 'active' || (user.role !== 'team' && user.role !== 'super')) {
-    throw new UsageBudgetAdmissionError(
-      'The account responsible for this request is unavailable',
-      403,
-      'usage_budget_subject_unavailable',
-    );
-  }
-  return user;
-}
-
-/** Reserve the active internal owner's current UTC-month token account. */
+/**
+ * Reserve the active internal owner's current UTC-month token account, then the
+ * call's USD against the member / service / organization accounts. A USD
+ * refusal releases the token reservation it just made.
+ */
 export async function reserveUserTokenBudget(input: ReserveUserTokenBudgetInput): Promise<UserTokenBudgetLease> {
   const estimatedTokens = positiveSafeInteger(input.estimatedTokens);
   const idempotencyKey = input.idempotencyKey ?? `${input.caller}:${randomUUID()}`;
+  const price =
+    input.tokenPrice === null ? undefined : (input.tokenPrice ?? modelPrice(input.modelId, input.logicalModelId));
 
   try {
     const user = await requireBudgetOwner(input.db, input.userId);
@@ -372,87 +383,49 @@ export async function reserveUserTokenBudget(input: ReserveUserTokenBudgetInput)
       additional_accounts: buildTokenSharedAccounts(input),
       metadata: input.metadata,
     });
-    return new UserTokenBudgetLease(input.db, idempotencyKey, estimatedTokens);
   } catch (err) {
     throw toAdmissionError(err);
   }
-}
 
-/** Reserve image spend atomically across user, organization, and provider USD accounts. */
-export async function reserveImageUsdBudget(input: ReserveImageUsdBudgetInput): Promise<ImageUsdBudgetLease> {
-  const estimatedUsdMicros = positiveSafeInteger(input.estimatedUsdMicros);
-  const idempotencyKey = input.idempotencyKey ?? `${input.caller}:${randomUUID()}`;
-
+  let spend: SpendLease;
   try {
-    const user = await requireBudgetOwner(input.db, input.userId);
-    const period = getUtcMonthPeriod();
-    const orgScope = process.env.USAGE_BUDGET_ORG_SCOPE_ID?.trim() || DEFAULT_ORG_SCOPE_ID;
-    const accountInputs: UsageBudgetAccountInput[] = [
-      {
-        scope_type: 'user',
-        scope_id: user.id,
-        unit: 'usd_micros',
-        period_start: period.start,
-        period_end: period.end,
-        limit_units: readPositiveLimit(
-          'USAGE_BUDGET_USER_MONTHLY_IMAGE_USD_MICROS',
-          DEFAULT_USER_MONTHLY_IMAGE_USD_MICROS,
-        ),
-        bootstrap_metadata: { workload: 'image' },
-        update_existing_limit: true,
-      },
-      {
-        scope_type: 'organization',
-        scope_id: `${orgScope}:image`,
-        unit: 'usd_micros',
-        period_start: period.start,
-        period_end: period.end,
-        limit_units: readPositiveLimit(
-          'USAGE_BUDGET_ORG_MONTHLY_IMAGE_USD_MICROS',
-          DEFAULT_ORG_MONTHLY_IMAGE_USD_MICROS,
-        ),
-        bootstrap_metadata: { workload: 'image' },
-        update_existing_limit: true,
-      },
-      {
-        scope_type: 'provider',
-        scope_id: input.providerId,
-        unit: 'usd_micros',
-        period_start: period.start,
-        period_end: period.end,
-        limit_units: readPositiveLimit(
-          'USAGE_BUDGET_PROVIDER_MONTHLY_IMAGE_USD_MICROS',
-          DEFAULT_PROVIDER_MONTHLY_IMAGE_USD_MICROS,
-        ),
-        bootstrap_metadata: { workload: 'image', provider_id: input.providerId },
-        update_existing_limit: true,
-      },
-    ];
-    const accounts = await Promise.all(accountInputs.map((account) => input.db.usageBudget.ensureAccount(account)));
-    await input.db.usageBudget.reserve({
-      account_ids: accounts.map((account) => account.id),
-      idempotency_key: idempotencyKey,
-      estimated_units: estimatedUsdMicros,
+    spend = await reserveSpend({
+      db: input.db,
+      service: input.service ?? 'llm',
+      provider: input.providerScopeOverride ?? input.providerId ?? input.modelId ?? 'unattributed',
+      model: input.modelId ?? null,
       caller: input.caller,
-      user_id: user.id,
-      run_id: input.runId,
-      provider_id: input.providerId,
-      model_id: input.modelId,
-      ttl_ms: input.ttlMs ?? IMAGE_BUDGET_TTL_MS,
-      metadata: input.metadata,
+      estimatedUsdMicros: estimateUsd(input, price, estimatedTokens),
+      userId: input.userId,
+      ownerVerified: true,
+      client: resolveMeteringClient(input.client, input.caller),
+      ...(input.oauthClientId !== undefined ? { oauthClientId: input.oauthClientId } : {}),
+      ...(input.sessionId ? { sessionId: input.sessionId } : {}),
+      ...(input.runId ? { runId: input.runId } : {}),
+      idempotencyKey: `${idempotencyKey}:usd`,
+      ttlMs: input.ttlMs ?? MODEL_BUDGET_TTL_MS,
+      metadata: { token_reservation: idempotencyKey, logical_model: input.logicalModelId ?? null },
     });
-    return new ImageUsdBudgetLease(input.db, idempotencyKey, estimatedUsdMicros);
   } catch (err) {
-    throw toAdmissionError(err);
+    // Nothing reached the provider: give the tokens back before refusing.
+    await input.db.usageBudget
+      .release({ idempotency_key: idempotencyKey, reason: 'usd_budget_refused' })
+      .catch(() => {});
+    throw err;
   }
+  return new UserTokenBudgetLease(input.db, idempotencyKey, estimatedTokens, spend, price);
 }
 
-export type BudgetedUsageRecord = Omit<UsageRecord, 'budget_idempotency_key'>;
+export type BudgetedUsageRecord = Omit<
+  UsageRecord,
+  'budget_idempotency_key' | 'cost_usd_micros' | 'client' | 'oauth_client_id' | 'service'
+>;
 
 /**
- * Settle the hard-budget ledger, then append the statistical llm_usage fact
- * with the same key. Callers may catch failures after provider I/O; an unsettled
- * reservation remains conservative and expires to the original estimate.
+ * Settle the token and USD reservations, then append the llm_usage fact with
+ * the same key, its cost and its attribution. Callers may catch failures after
+ * provider I/O; an unsettled reservation remains conservative and expires to
+ * the original estimate.
  */
 export async function settleAndRecordBudgetedUsage(
   db: DatabaseProvider,
@@ -466,22 +439,17 @@ export async function settleAndRecordBudgetedUsage(
     cached_tokens: usage.cached_tokens ?? 0,
     reasoning_tokens: usage.reasoning_tokens ?? 0,
   });
-  await db.usage.record({ ...usage, budget_idempotency_key: lease.idempotencyKey });
-}
-
-/** Settle an image's dollar budget and preserve its provider token usage as a linked fact. */
-export async function settleAndRecordBudgetedImageUsage(
-  db: DatabaseProvider,
-  lease: ImageUsdBudgetLease,
-  actualUsdMicros: number,
-  usage: BudgetedUsageRecord,
-): Promise<void> {
-  await lease.settle(actualUsdMicros, {
-    usd_micros: Math.max(0, Math.ceil(actualUsdMicros)),
-    input_tokens: usage.input_tokens,
-    output_tokens: usage.output_tokens,
+  const cost = tokenCostMicros(lease.price, {
+    inputTokens: usage.input_tokens,
+    outputTokens: usage.output_tokens,
+    cachedInputTokens: usage.cached_tokens ?? 0,
   });
-  await db.usage.record({ ...usage, budget_idempotency_key: lease.idempotencyKey });
+  await lease.spend?.settle(cost, { input_tokens: usage.input_tokens, output_tokens: usage.output_tokens });
+  await db.usage.record({
+    ...usage,
+    budget_idempotency_key: lease.idempotencyKey,
+    ...lease.usageAttribution(cost),
+  });
 }
 
 /**

@@ -43,6 +43,7 @@ import {
   scheduledToolBase,
 } from '../executor.js';
 import { SessionTranscriptChangedError } from '../../agent-runtime/run-agent.js';
+import { budgetExceededMessage, UsageBudgetAdmissionError } from '../../usage/budget-errors.js';
 
 function task(overrides: Partial<ScheduledTaskRow> = {}): ScheduledTaskRow {
   return {
@@ -206,6 +207,24 @@ describe('scheduled task executor authorization', () => {
     await expect(executeTaskInSession(task(), 'session-1', {})).rejects.toThrow('transcript changed');
 
     expect(mocks.db.sessions.addMessage).not.toHaveBeenCalled();
+    expect(mocks.db.scheduledTasks.updateRunStatus).toHaveBeenCalledWith(task().id, 'failed', expect.any(String));
+  });
+
+  it('records an over-budget refusal as the failure reason, in its own words', async () => {
+    const refusal = { unit: 'usd_micros' as const, level: 'member' as const };
+    const message = budgetExceededMessage(refusal);
+    mocks.runAgentInSession.mockRejectedValueOnce(
+      new Error('Failed after 3 attempts', {
+        cause: new UsageBudgetAdmissionError(message, 429, 'usage_budget_exceeded', undefined, refusal),
+      }),
+    );
+
+    await expect(executeTaskInSession(task(), 'session-1', {})).rejects.toThrow();
+
+    expect(mocks.db.sessions.addMessageOnce).toHaveBeenCalledWith(
+      'automation-failed:session-1',
+      expect.objectContaining({ content: expect.stringContaining('本月个人额度已用完') }),
+    );
     expect(mocks.db.scheduledTasks.updateRunStatus).toHaveBeenCalledWith(task().id, 'failed', expect.any(String));
   });
 });
