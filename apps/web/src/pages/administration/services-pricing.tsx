@@ -5,7 +5,9 @@
  * - Spend: this month's USD spend by member, service, client and the agent
  *   (OAuth client) that made it over MCP; unpriced calls are flagged.
  * - Prices: every paid service and model with its price, or 未定价, and
- *   whether its key is configured. Prices live in models.yaml / services.yaml.
+ *   whether its key is configured. models.yaml / services.yaml are the
+ *   defaults; a super's price here overrides them (`PUT /prices`) and applies
+ *   to calls settled afterwards. A banner warns while anything in use is unpriced.
  * - Budgets: the team, per-service and member-default monthly limits with
  *   this month's spent / reserved, plus per-member overrides (CRUD). Writes go
  *   to `PUT / DELETE /api/admin/metering/budgets` and apply on the next call.
@@ -16,7 +18,9 @@ import type {
   BudgetLimitInput,
   BudgetView,
   MeteringOverview,
+  PriceOverrideInput,
   ServicePriceView,
+  ServiceUnitKind,
   TokenPriceView,
 } from '@greenhouse/types/metering';
 import { defineCrud, CrudPage, type CrudDataSource } from '../settings/crud';
@@ -26,9 +30,26 @@ import { ModulePage } from '../../components/app/module-page';
 import { SettingsSection } from '../../components/settings';
 import { KpiCard } from '../../components/usage/usage-widgets';
 import { BudgetBar, SpendTable } from '../../components/usage/spend-widgets';
-import { Bot, Coins, Cpu, Layers, Pencil, RefreshCw, RotateCcw, Smartphone, Users } from '../../lib/icons';
+import {
+  AlertTriangle,
+  Bot,
+  Coins,
+  Cpu,
+  Layers,
+  Pencil,
+  RefreshCw,
+  RotateCcw,
+  Smartphone,
+  Users,
+} from '../../lib/icons';
 import { authFetch } from '../../lib/auth';
-import { fetchMeteringOverview, resetBudgetLimit, saveBudgetLimit } from '../../lib/api/metering';
+import {
+  fetchMeteringOverview,
+  resetBudgetLimit,
+  resetPriceOverride,
+  saveBudgetLimit,
+  savePriceOverride,
+} from '../../lib/api/metering';
 import { useT } from '../../lib/i18n';
 import {
   clientLabelKey,
@@ -178,20 +199,196 @@ function SpendTab({ overview }: { overview: MeteringOverview }) {
 
 // ─── Prices ──────────────────────────────────────────────
 
-function PricesTab({ overview }: { overview: MeteringOverview }) {
+interface PriceTarget {
+  kind: PriceOverrideInput['kind'];
+  target: string;
+  provider?: string;
+  name: string;
+  /** Token-priced (models, image understanding) vs per call / image / minute. */
+  unit: ServiceUnitKind;
+  current: { input?: number; output?: number; cached_input?: number | null; unit_price?: number };
+}
+
+function numberText(value: number | null | undefined): string {
+  return value === null || value === undefined ? '' : String(value);
+}
+
+function parsePrice(value: string): number | null {
+  const trimmed = value.trim().replace(/^\$/, '');
+  if (!/^\d+(\.\d+)?$/.test(trimmed)) return null;
+  return Number(trimmed);
+}
+
+function PriceEditDialog({
+  target,
+  onClose,
+  onSaved,
+}: {
+  target: PriceTarget | null;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
   const t = useT();
+  const [input, setInput] = useState('');
+  const [output, setOutput] = useState('');
+  const [cached, setCached] = useState('');
+  const [unitPrice, setUnitPrice] = useState('');
+  const [saving, setSaving] = useState(false);
+  useEffect(() => {
+    if (!target) return;
+    setInput(numberText(target.current.input));
+    setOutput(numberText(target.current.output));
+    setCached(numberText(target.current.cached_input));
+    setUnitPrice(numberText(target.current.unit_price));
+  }, [target]);
+
+  const tokenPriced = target?.unit === 'token';
+  const inputValue = parsePrice(input);
+  const outputValue = parsePrice(output);
+  const cachedValue = cached.trim() ? parsePrice(cached) : null;
+  const unitValue = parsePrice(unitPrice);
+  const valid = tokenPriced
+    ? inputValue !== null && outputValue !== null && (cached.trim() === '' || cachedValue !== null)
+    : unitValue !== null;
+  const invalid = (text: string, parsed: number | null) =>
+    text.trim() && parsed === null ? t('metering.invalidAmount') : undefined;
+
+  const save = async () => {
+    if (!target || !valid) return;
+    setSaving(true);
+    try {
+      await savePriceOverride({
+        kind: target.kind,
+        target: target.target,
+        ...(target.provider ? { provider: target.provider } : {}),
+        ...(tokenPriced
+          ? { input: inputValue!, output: outputValue!, cached_input: cachedValue }
+          : { unit_price: unitValue! }),
+      });
+      toast(t('metering.priceSaved'), 'success');
+      onSaved();
+      onClose();
+    } catch (err) {
+      toast(err instanceof Error ? err.message : t('metering.saveFailed'), 'error');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Dialog
+      open={target !== null}
+      onClose={onClose}
+      size="sm"
+      title={t('metering.priceTitle', { name: target?.name ?? '' })}
+    >
+      <div className="space-y-3">
+        <p className="text-xs leading-5 text-fg-muted">{t('metering.priceHelp')}</p>
+        {tokenPriced ? (
+          <>
+            <FormField label={t('metering.inputPrice')} error={invalid(input, inputValue)} required>
+              <Input
+                value={input}
+                inputMode="decimal"
+                onChange={(e) => setInput(e.target.value)}
+                data-testid="metering-price-input"
+              />
+            </FormField>
+            <FormField label={t('metering.outputPrice')} error={invalid(output, outputValue)} required>
+              <Input
+                value={output}
+                inputMode="decimal"
+                onChange={(e) => setOutput(e.target.value)}
+                data-testid="metering-price-output"
+              />
+            </FormField>
+            <FormField label={t('metering.cachedInputPrice')} error={invalid(cached, cachedValue)}>
+              <Input value={cached} inputMode="decimal" onChange={(e) => setCached(e.target.value)} />
+            </FormField>
+          </>
+        ) : (
+          <FormField
+            label={t('metering.unitPrice', {
+              unit: target && target.unit !== 'token' ? t(`metering.unitNames.${target.unit}`) : '',
+            })}
+            error={invalid(unitPrice, unitValue)}
+            required
+          >
+            <Input
+              value={unitPrice}
+              inputMode="decimal"
+              onChange={(e) => setUnitPrice(e.target.value)}
+              data-testid="metering-price-unit"
+            />
+          </FormField>
+        )}
+        <FormActions>
+          <Button variant="ghost" onClick={onClose}>
+            {t('common.cancel')}
+          </Button>
+          <Button onClick={() => void save()} disabled={saving || !valid} data-testid="metering-price-save">
+            {t('common.save')}
+          </Button>
+        </FormActions>
+      </div>
+    </Dialog>
+  );
+}
+
+function PriceActions({
+  overridden,
+  onEdit,
+  onReset,
+}: {
+  overridden: boolean;
+  onEdit: () => void;
+  onReset: () => void;
+}) {
+  const t = useT();
+  return (
+    <div className="flex items-center justify-end gap-1 whitespace-nowrap">
+      {overridden ? <Tag tone="primary">{t('metering.source.override')}</Tag> : null}
+      <Button size="sm" variant="ghost" onClick={onEdit}>
+        <Pencil size={12} />
+        {t('metering.editPrice')}
+      </Button>
+      {overridden && (
+        <Button size="sm" variant="ghost" onClick={onReset}>
+          <RotateCcw size={12} />
+          {t('metering.resetPrice')}
+        </Button>
+      )}
+    </div>
+  );
+}
+
+function PricesTab({ overview, onChanged }: { overview: MeteringOverview; onChanged: () => void }) {
+  const t = useT();
+  const [editing, setEditing] = useState<PriceTarget | null>(null);
+
+  const reset = async (kind: PriceOverrideInput['kind'], target: string, provider?: string) => {
+    try {
+      await resetPriceOverride(kind, target, provider);
+      toast(t('metering.priceReset'), 'success');
+      onChanged();
+    } catch (err) {
+      toast(err instanceof Error ? err.message : t('metering.saveFailed'), 'error');
+    }
+  };
+
   return (
     <div className="space-y-4">
       <p className="text-xs text-fg-muted">{t('metering.pricesHint')}</p>
       <SettingsSection title={t('metering.services')} icon={Layers}>
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[560px] text-xs" data-testid="metering-services">
+          <table className="w-full min-w-[720px] text-xs" data-testid="metering-services">
             <thead>
               <tr className="text-fg-faint">
                 <th className="pb-2 text-left font-medium">{t('metering.service')}</th>
                 <th className="pb-2 text-left font-medium">{t('metering.provider')}</th>
                 <th className="pb-2 text-left font-medium">{t('metering.status')}</th>
                 <th className="pb-2 text-left font-medium">{t('metering.price')}</th>
+                <th className="pb-2" />
               </tr>
             </thead>
             <tbody>
@@ -212,8 +409,33 @@ function PricesTab({ overview }: { overview: MeteringOverview }) {
                         <Tag tone="neutral">{t('metering.notConfigured')}</Tag>
                       )}
                     </td>
-                    <td className="py-1.5">
+                    <td className="py-1.5 pr-3">
                       <ServicePrice service={service} provider={provider} />
+                    </td>
+                    <td className="py-1.5">
+                      <PriceActions
+                        overridden={provider.source === 'override'}
+                        onEdit={() =>
+                          setEditing({
+                            kind: 'service',
+                            target: service.service,
+                            provider: provider.provider,
+                            name: `${serviceName(service.service, t)} · ${provider.provider}`,
+                            unit: service.unit,
+                            current: {
+                              ...(provider.token_price
+                                ? {
+                                    input: provider.token_price.input,
+                                    output: provider.token_price.output,
+                                    cached_input: provider.token_price.cached_input,
+                                  }
+                                : {}),
+                              ...(provider.price !== null ? { unit_price: provider.price } : {}),
+                            },
+                          })
+                        }
+                        onReset={() => void reset('service', service.service, provider.provider)}
+                      />
                     </td>
                   </tr>
                 )),
@@ -224,12 +446,13 @@ function PricesTab({ overview }: { overview: MeteringOverview }) {
       </SettingsSection>
       <SettingsSection title={t('metering.models')} icon={Cpu}>
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[480px] text-xs" data-testid="metering-models">
+          <table className="w-full min-w-[640px] text-xs" data-testid="metering-models">
             <thead>
               <tr className="text-fg-faint">
                 <th className="pb-2 text-left font-medium">{t('metering.models')}</th>
                 <th className="pb-2 text-left font-medium">{t('metering.status')}</th>
                 <th className="pb-2 text-left font-medium">{t('metering.price')}</th>
+                <th className="pb-2" />
               </tr>
             </thead>
             <tbody>
@@ -244,13 +467,67 @@ function PricesTab({ overview }: { overview: MeteringOverview }) {
                       {model.configured ? t('metering.configured') : t('metering.notConfigured')}
                     </Tag>
                   </td>
-                  <td className="py-1.5">{model.price ? tokenPriceLabel(model.price, t) : <UnpricedTag />}</td>
+                  <td className="py-1.5 pr-3">{model.price ? tokenPriceLabel(model.price, t) : <UnpricedTag />}</td>
+                  <td className="py-1.5">
+                    <PriceActions
+                      overridden={model.source === 'override'}
+                      onEdit={() =>
+                        setEditing({
+                          kind: 'model',
+                          target: model.id,
+                          name: model.name,
+                          unit: 'token',
+                          current: model.price
+                            ? {
+                                input: model.price.input,
+                                output: model.price.output,
+                                cached_input: model.price.cached_input,
+                              }
+                            : {},
+                        })
+                      }
+                      onReset={() => void reset('model', model.id)}
+                    />
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
       </SettingsSection>
+      <PriceEditDialog target={editing} onClose={() => setEditing(null)} onSaved={onChanged} />
+    </div>
+  );
+}
+
+/** The 未定价 warning: anything configured and enabled that has no price counts as $0. */
+function UnpricedBanner({ overview, onOpenPrices }: { overview: MeteringOverview; onOpenPrices: () => void }) {
+  const t = useT();
+  const { models, services } = overview.unpriced_in_use;
+  const count = models.length + services.length;
+  if (count === 0) return null;
+  const names = [
+    ...models.map((id) => overview.models.find((model) => model.id === id)?.name ?? id),
+    ...services.map((entry) => `${serviceName(entry.service, t)} · ${entry.provider}`),
+  ];
+  return (
+    <div
+      role="status"
+      data-testid="metering-unpriced-banner"
+      className="flex flex-col gap-2 rounded-lg border border-warning bg-warning-subtle px-3 py-2.5 sm:flex-row sm:items-center sm:justify-between"
+    >
+      <div className="min-w-0">
+        <div className="flex items-center gap-1.5 text-sm font-semibold text-warning">
+          <AlertTriangle size={14} aria-hidden="true" />
+          {t('metering.unpricedBanner', { count })}
+        </div>
+        <div className="mt-0.5 truncate text-xs text-fg-secondary" title={names.join(', ')}>
+          {names.join(', ')}
+        </div>
+      </div>
+      <Button size="sm" variant="secondary" onClick={onOpenPrices}>
+        {t('metering.unpricedBannerAction')}
+      </Button>
     </div>
   );
 }
@@ -685,6 +962,7 @@ export function ServicesPricingPanel() {
           </Button>
         </>
       }
+      notice={overview ? <UnpricedBanner overview={overview} onOpenPrices={() => setTab('prices')} /> : undefined}
       tabs={
         <Tabs
           tabs={[
@@ -704,7 +982,7 @@ export function ServicesPricingPanel() {
       ) : tab === 'spend' ? (
         <SpendTab overview={overview} />
       ) : tab === 'prices' ? (
-        <PricesTab overview={overview} />
+        <PricesTab overview={overview} onChanged={changed} />
       ) : (
         <BudgetsTab overview={overview} month={month} version={version} onChanged={changed} />
       )}

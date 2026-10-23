@@ -118,11 +118,13 @@ same script doubles as an end-to-end smoke tour (see [Development](#development)
   machines) with scopes per resource group; the same tools over the structured `/api/agent`
   proxy.
 - **Services & pricing** — every paid call (models, web search, page reads, images) is priced
-  in USD (`models.yaml` `price`, `services.yaml`), reserved against monthly member, service and
+  in USD (defaults in `models.yaml` `price` and `services.yaml`, editable by an admin on the
+  Services & pricing page, each call keeping the price it was settled at), reserved against monthly member, service and
   team budgets before it runs, and attributed to the member, service and client — including
   which of a member's agents made it over MCP. Members are told at 80% and 100%; an exhausted
   budget refuses the call with a message the agent can read. Administration → Services &
-  pricing shows spend, prices (unpriced ones flagged) and budgets; Settings → Usage shows a
+  pricing shows spend, prices (a banner while anything in use is unpriced) and budgets — review the
+  default limits ($50 per member, $2,000 for the team); Settings → Usage shows a
   member their own month. Token budgets per user, organization and provider still run alongside.
 - **Module usage** — Administration → Usage → By Modules shows tool calls by tool and client
   (MCP, Agent API, web chat, mobile, Feishu, automations), page
