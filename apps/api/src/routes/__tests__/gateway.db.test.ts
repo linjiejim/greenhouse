@@ -42,7 +42,7 @@ interface SeenRequest {
   raw: string;
 }
 
-type Behavior = 'json' | 'stream' | 'hang' | 'error400' | 'error500';
+type Behavior = 'json' | 'stream' | 'hang' | 'silent' | 'error400' | 'error500';
 
 let upstream: Server;
 let upstreamUrl = '';
@@ -97,6 +97,9 @@ function handle(req: IncomingMessage, res: ServerResponse) {
         sse(res, chunk('partial'));
         res.on('close', () => markHangClosed());
         return; // never finishes; waits for the gateway to hang up
+      case 'silent':
+        res.on('close', () => markHangClosed());
+        return; // never answers, not even headers
       case 'error400':
         res.writeHead(400, { 'content-type': 'application/json' });
         res.end(
@@ -249,6 +252,7 @@ beforeAll(async () => {
 afterAll(async () => {
   setModelRegistry(DEFAULT_MODEL_REGISTRY);
   delete process.env[KEY_ENV];
+  upstream.closeAllConnections();
   await new Promise<void>((resolve) => upstream.close(() => resolve()));
 });
 
@@ -265,6 +269,8 @@ beforeEach(async () => {
 afterEach(async () => {
   await _waitForGatewayCalls();
   delete process.env.GATEWAY_RATE_LIMIT_PER_MINUTE;
+  delete process.env.GATEWAY_UPSTREAM_TIMEOUT_MS;
+  delete process.env.GATEWAY_UPSTREAM_IDLE_TIMEOUT_MS;
   invalidateWorkspaceConfigCache();
   await db.close();
   _resetProvider();
@@ -470,6 +476,35 @@ describe('proxying', () => {
     expect(reservation).toMatchObject({ status: 'reserved', actual_units: null });
     expect(reservation!.estimated_units).toBeGreaterThan(1_000);
     expect(await facts(member.id)).toEqual([]);
+  });
+
+  it('times out an upstream that never answers: 504, reservation kept, connection closed', async () => {
+    behavior = 'silent';
+    process.env.GATEWAY_UPSTREAM_TIMEOUT_MS = '150';
+    hangClosed = new Promise<void>((resolve) => (markHangClosed = resolve));
+    const { secret, row } = await newKey(member);
+    const res = await chat(secret, { model: 'gw-test', messages: [{ role: 'user', content: 'hi' }] });
+    expect(res.status).toBe(504);
+    expect((await res.json()) as unknown).toMatchObject({ error: { type: 'timeout_error', code: 'upstream_timeout' } });
+    await hangClosed;
+    expect(await reservations(row.id)).toEqual([expect.objectContaining({ status: 'reserved' })]);
+  });
+
+  it('ends an idle stream with an error chunk and keeps the reservation', async () => {
+    behavior = 'hang';
+    process.env.GATEWAY_UPSTREAM_IDLE_TIMEOUT_MS = '120';
+    hangClosed = new Promise<void>((resolve) => (markHangClosed = resolve));
+    const { secret, row } = await newKey(member);
+    const res = await chat(secret, { model: 'gw-test', stream: true, messages: [{ role: 'user', content: 'hi' }] });
+    const text = await res.text();
+    expect(text).toContain('partial');
+    const last = text.trim().split('\n\n').at(-1)!;
+    expect(JSON.parse(last.slice('data: '.length))).toMatchObject({
+      error: { type: 'timeout_error', code: 'upstream_timeout' },
+    });
+    await hangClosed;
+    await _waitForGatewayCalls();
+    expect(await reservations(row.id)).toEqual([expect.objectContaining({ status: 'reserved' })]);
   });
 
   it('refuses over budget before any provider I/O, with the bilingual message', async () => {

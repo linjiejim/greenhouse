@@ -201,6 +201,7 @@ beforeAll(async () => {
 afterAll(async () => {
   setModelRegistry(DEFAULT_MODEL_REGISTRY);
   delete process.env[KEY_ENV];
+  upstream.closeAllConnections();
   await new Promise<void>((resolve) => upstream.close(() => resolve()));
 });
 
@@ -216,6 +217,7 @@ beforeEach(async () => {
 
 afterEach(async () => {
   await _waitForGatewayCalls();
+  delete process.env.GATEWAY_UPSTREAM_IDLE_TIMEOUT_MS;
   invalidateWorkspaceConfigCache();
   await db.close();
   _resetProvider();
@@ -330,6 +332,19 @@ describe('Anthropic surface', () => {
     await _waitForGatewayCalls();
     expect(await reservationStatuses(row.id)).toEqual(['reserved']);
     expect(await facts(member.id)).toEqual([]);
+  });
+
+  it('ends an idle stream with an Anthropic error event and keeps the reservation', async () => {
+    behavior = 'hang';
+    process.env.GATEWAY_UPSTREAM_IDLE_TIMEOUT_MS = '120';
+    hangClosed = new Promise<void>((resolve) => (markHangClosed = resolve));
+    const { secret, row } = await newKey(member);
+    const text = await (await messages(secret, { ...MESSAGE, stream: true })).text();
+    expect(text).toContain('partial');
+    expect(text.trim().split('\n\n').at(-1)).toMatch(/^event: error\ndata: .*"type":"timeout_error"/);
+    await hangClosed;
+    await _waitForGatewayCalls();
+    expect(await reservationStatuses(row.id)).toEqual(['reserved']);
   });
 
   it('refuses over budget with the bilingual message, before any provider I/O', async () => {

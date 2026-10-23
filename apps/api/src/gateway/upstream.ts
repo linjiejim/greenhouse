@@ -477,6 +477,19 @@ export class SseUsageRelay {
 }
 
 /**
+ * An error the gateway itself writes into a stream that already started, in
+ * the wire's format: OpenAI clients read a `data: {"error":…}` chunk,
+ * Anthropic clients an `event: error`. The text is the gateway's own (never an
+ * upstream's raw words).
+ */
+export function streamErrorEvent(wire: GatewayWire, message: string, type: string, code: string): string {
+  if (wire === 'anthropic') {
+    return `event: error\ndata: ${JSON.stringify({ type: 'error', error: { type, message } })}\n\n`;
+  }
+  return `data: ${JSON.stringify({ error: { message, type, code } })}\n\n`;
+}
+
+/**
  * An upstream's own error text, safe to show the member: the upstream key, its
  * base URL and host, any URL, bearer token or key-looking string redacted, and
  * cut to a sane length.

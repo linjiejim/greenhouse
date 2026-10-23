@@ -28,6 +28,7 @@ import {
   readUpstreamError,
   sanitizeUpstreamText,
   SseUsageRelay,
+  streamErrorEvent,
   type GatewayModel,
   type GatewayUsage,
   type GatewayWire,
@@ -49,13 +50,79 @@ const IP_REQUESTS_PER_MINUTE = 600;
 export const DEFAULT_KEY_REQUESTS_PER_MINUTE = 300;
 
 export type GatewayEnv = { Variables: { gatewayKey: GatewayKeyRow } };
-export type ErrorStatus = 400 | 401 | 403 | 404 | 413 | 422 | 429 | 499 | 500 | 502 | 503 | 529;
+export type ErrorStatus = 400 | 401 | 403 | 404 | 413 | 422 | 429 | 499 | 500 | 502 | 503 | 504 | 529;
 
 /** Requests per minute one key may make (`GATEWAY_RATE_LIMIT_PER_MINUTE`, default 300). */
 export function keyRequestsPerMinute(): number {
   const raw = Number(process.env.GATEWAY_RATE_LIMIT_PER_MINUTE);
   return Number.isSafeInteger(raw) && raw > 0 ? raw : DEFAULT_KEY_REQUESTS_PER_MINUTE;
 }
+
+// ─── Upstream lifetime ───────────────────────────────────
+
+/** A whole upstream call (headers + body) may take this long (`GATEWAY_UPSTREAM_TIMEOUT_MS`, default 10 min). */
+export const DEFAULT_UPSTREAM_TIMEOUT_MS = 10 * 60_000;
+/** A stream may go this long without a byte (`GATEWAY_UPSTREAM_IDLE_TIMEOUT_MS`, default 2 min). */
+export const DEFAULT_UPSTREAM_IDLE_TIMEOUT_MS = 2 * 60_000;
+
+function positiveEnv(name: string, fallback: number): number {
+  const raw = Number(process.env[name]);
+  return Number.isSafeInteger(raw) && raw > 0 ? raw : fallback;
+}
+
+type UpstreamEnd = 'client' | 'deadline' | 'idle';
+
+/**
+ * One upstream call's abort controller with its two clocks: a deadline over
+ * the whole call (fetch and body) and, once a stream is flowing, an idle timer
+ * reset by every chunk. Whoever ends it first is remembered (`reason`); `done()`
+ * clears both clocks and must run on every path.
+ */
+class UpstreamLifetime {
+  readonly controller = new AbortController();
+  reason: UpstreamEnd | null = null;
+  private readonly deadline: ReturnType<typeof setTimeout>;
+  private idle: ReturnType<typeof setTimeout> | null = null;
+  private readonly idleMs = positiveEnv('GATEWAY_UPSTREAM_IDLE_TIMEOUT_MS', DEFAULT_UPSTREAM_IDLE_TIMEOUT_MS);
+
+  constructor() {
+    this.deadline = setTimeout(
+      () => this.end('deadline'),
+      positiveEnv('GATEWAY_UPSTREAM_TIMEOUT_MS', DEFAULT_UPSTREAM_TIMEOUT_MS),
+    );
+  }
+
+  get signal(): AbortSignal {
+    return this.controller.signal;
+  }
+
+  get timedOut(): boolean {
+    return this.reason === 'deadline' || this.reason === 'idle';
+  }
+
+  end(reason: UpstreamEnd): void {
+    if (this.reason) return;
+    this.reason = reason;
+    this.done();
+    this.controller.abort();
+  }
+
+  /** A chunk arrived: restart the idle clock. */
+  touch(): void {
+    if (this.reason) return;
+    if (this.idle) clearTimeout(this.idle);
+    this.idle = setTimeout(() => this.end('idle'), this.idleMs);
+  }
+
+  done(): void {
+    clearTimeout(this.deadline);
+    if (this.idle) clearTimeout(this.idle);
+    this.idle = null;
+  }
+}
+
+const TIMEOUT_MESSAGE =
+  'The model provider took too long to answer. Try again; a long request may need a smaller max_tokens.';
 
 // ─── Error bodies ────────────────────────────────────────
 
@@ -96,6 +163,7 @@ function anthropicTypeFor(status: number): string {
   if (status === 413) return 'request_too_large';
   if (status === 429) return 'rate_limit_error';
   if (status === 529) return 'overloaded_error';
+  if (status === 504) return 'timeout_error';
   if (status >= 500 || status === 499) return 'api_error';
   return 'invalid_request_error';
 }
@@ -386,10 +454,14 @@ export async function proxyCall(c: Context, input: ProxyCallInput): Promise<Resp
   const call: CallContext = { key, model, lease, startedAt };
 
   // ── Forward: the upstream key only, never anything the client sent ──
-  const upstream = new AbortController();
+  const upstream = new UpstreamLifetime();
   const clientSignal = c.req.raw.signal;
-  const onClientGone = () => upstream.abort();
+  const onClientGone = () => upstream.end('client');
   clientSignal?.addEventListener('abort', onClientGone, { once: true });
+  const finish = () => {
+    upstream.done();
+    clientSignal?.removeEventListener('abort', onClientGone);
+  };
   lease.markProviderIoStarted();
   let response: Response;
   try {
@@ -400,8 +472,12 @@ export async function proxyCall(c: Context, input: ProxyCallInput): Promise<Resp
       signal: upstream.signal,
     });
   } catch (err) {
-    clientSignal?.removeEventListener('abort', onClientGone);
-    if (upstream.signal.aborted) {
+    finish();
+    if (upstream.timedOut) {
+      leaveReserved(call, 'upstream_timeout');
+      return fail(c, 504, TIMEOUT_MESSAGE, 'timeout_error', 'upstream_timeout');
+    }
+    if (upstream.reason === 'client') {
       leaveReserved(call, 'client_disconnected');
       return fail(c, 499, 'The client closed the request.', 'api_error', 'client_closed');
     }
@@ -418,8 +494,7 @@ export async function proxyCall(c: Context, input: ProxyCallInput): Promise<Resp
   }
 
   if (!response.ok) {
-    clientSignal?.removeEventListener('abort', onClientGone);
-    return track(upstreamFailure(c, input, call, response));
+    return track(upstreamFailure(c, input, call, response).finally(finish));
   }
 
   const isEventStream = (response.headers.get('content-type') ?? '').includes('text/event-stream');
@@ -431,10 +506,14 @@ export async function proxyCall(c: Context, input: ProxyCallInput): Promise<Resp
         try {
           text = await response.text();
         } catch {
-          leaveReserved(call, upstream.signal.aborted ? 'client_disconnected' : 'upstream_body_failed');
+          if (upstream.timedOut) {
+            leaveReserved(call, 'upstream_timeout');
+            return fail(c, 504, TIMEOUT_MESSAGE, 'timeout_error', 'upstream_timeout');
+          }
+          leaveReserved(call, upstream.reason === 'client' ? 'client_disconnected' : 'upstream_body_failed');
           return fail(c, 502, 'The model provider response was cut off.', 'api_error', 'upstream_error');
         } finally {
-          clientSignal?.removeEventListener('abort', onClientGone);
+          finish();
         }
         const json = parseJson(text);
         if (json === null) {
@@ -464,29 +543,43 @@ export async function proxyCall(c: Context, input: ProxyCallInput): Promise<Resp
   return honoStream(c, (out) =>
     track(
       (async () => {
-        out.onAbort(() => upstream.abort());
+        out.onAbort(() => upstream.end('client'));
         const reader = upstreamBody.getReader();
         const decoder = new TextDecoder();
+        upstream.touch();
         try {
           for (;;) {
             const { done, value } = await reader.read();
             if (done) break;
+            upstream.touch();
             const text = relay.push(decoder.decode(value, { stream: true }));
             if (text && !out.aborted) await out.write(text);
           }
           const rest = relay.push(decoder.decode()) + relay.flush();
           if (rest && !out.aborted) await out.write(rest);
         } catch (err) {
-          if (!upstream.signal.aborted) {
+          if (!upstream.reason) {
             logger.info('[gateway] upstream stream interrupted', { error: toErrorMessage(err) });
           }
         } finally {
-          clientSignal?.removeEventListener('abort', onClientGone);
+          finish();
           // Close the upstream connection whatever happened (a no-op once it ended).
           void reader.cancel().catch(() => undefined);
         }
+        if (upstream.timedOut && !out.aborted) {
+          // The client is still there: end its stream with an error it can read.
+          await out.write(streamErrorEvent(input.wire, TIMEOUT_MESSAGE, 'timeout_error', 'upstream_timeout'));
+        }
         if (relay.usage) await settleCall(call, relay.usage);
-        else leaveReserved(call, out.aborted || upstream.signal.aborted ? 'client_disconnected' : 'usage_missing');
+        else
+          leaveReserved(
+            call,
+            upstream.timedOut
+              ? 'upstream_timeout'
+              : out.aborted || upstream.reason
+                ? 'client_disconnected'
+                : 'usage_missing',
+          );
       })(),
     ),
   );
