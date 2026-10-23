@@ -4,16 +4,21 @@
  * read at once) and clears its banner. While it is on screen its own pushes stay quiet
  * (src/shell/surface.ts). A notification not in the list yet (a push for something newer) is
  * fetched by marking it read — the server answers with it. If the read cannot reach the server,
- * the member is told and the banner stays.
+ * the member is told and the banner stays. When it points somewhere (a document, a file, a
+ * run in the Activity log), a button opens it — natively, or in the web app.
  */
 
 import React, { useEffect, useState } from 'react';
 import { ScrollView, Text, View } from 'react-native';
-import { Stack, useLocalSearchParams } from 'expo-router';
+import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useT, type TranslationKey } from '../src/lib/i18n';
 import { plainText } from '../src/lib/plain-text';
 import { relativeTimeNow } from '../src/lib/time-words';
 import { readOnOpen } from '../src/data/read-on-open';
+import { notificationTarget } from '../src/lib/deep-links';
+import { openTarget } from '../src/shell/open-target';
+import { getApiBase } from '../src/store/stations';
+import { NativeButton } from '../src/ui/button';
 import { clearReadBanners } from '../src/push/handler';
 import type { PlatformNotification } from '../src/shared/greenhouse-types';
 import { useSurface } from '../src/shell/surface';
@@ -32,7 +37,8 @@ const KIND: Record<string, { icon: IconName; label: TranslationKey }> = {
 };
 
 export default function NotificationPage() {
-  const { colors: c } = useTheme();
+  const { colors: c, hex } = useTheme();
+  const router = useRouter();
   const styles = useStyles(c);
   const t = useT();
   const { id: raw } = useLocalSearchParams<{ id?: string }>();
@@ -79,6 +85,15 @@ export default function NotificationPage() {
   const kind = item ? (KIND[item.kind] ?? { icon: 'bell' as const, label: 'notifications.kindOther' as const }) : null;
   const tint = item?.kind === 'runtime_failed' ? c.redTile : item?.kind.endsWith('_attention') ? c.orangeTile : undefined;
   const body = item ? plainText(item.body) : '';
+  const target = item ? notificationTarget(item, getApiBase()) : null;
+  const openLabel =
+    target?.kind === 'doc'
+      ? t('notifications.openDoc')
+      : target?.kind === 'files'
+        ? t('notifications.openFile')
+        : target
+          ? t('notifications.openWeb')
+          : null;
 
   return (
     <View style={styles.root}>
@@ -108,6 +123,16 @@ export default function NotificationPage() {
               </Text>
             ) : null}
           </View>
+          {target && openLabel ? (
+            <NativeButton
+              label={openLabel}
+              icon={target.kind === 'web' || target.kind === 'external' ? 'open' : 'chevR'}
+              variant="prominent"
+              fullWidth
+              onPress={() => openTarget(router, target, hex.accent)}
+              style={styles.action}
+            />
+          ) : null}
         </ScrollView>
       )}
     </View>
@@ -131,4 +156,5 @@ const useStyles = makeStyles((c) => ({
   time: { ...typo.footnote, color: c.secondaryLabel },
   title: { ...typo.title3, fontWeight: weight.semibold, color: c.label },
   body: { ...typo.body, color: c.label },
+  action: { marginTop: space.lg },
 }));

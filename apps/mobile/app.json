@@ -94,6 +94,14 @@
             ]
           }
         }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Greenhouse uploads the photos and videos you choose to Files.",
+          "cameraPermission": "Greenhouse uploads the photos you take to Files.",
+          "microphonePermission": false
+        }
       ]
     ],
     "experiments": {
