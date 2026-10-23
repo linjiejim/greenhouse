@@ -156,7 +156,6 @@ export function LoginScreen({ onSuccess }: { onSuccess: (user: AuthenticatedUser
       className="brand-auth-background app-viewport overflow-y-auto flex items-center justify-center px-4 py-[max(1rem,env(safe-area-inset-top))]"
       onPointerMove={handleBackgroundPointerMove}
       onPointerLeave={resetBackgroundGlow}
-      data-tauri-drag-region
     >
       <form
         onSubmit={handleSubmit}

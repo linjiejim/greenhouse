@@ -8,7 +8,6 @@
 
 import './app.css';
 import React, { useState, useEffect, useMemo, useCallback, useRef, Suspense, lazy } from 'react';
-import type { AssistantLaunchRequest } from '@greenhouse/types/agent-context';
 import { createRoot } from 'react-dom/client';
 import { ChatPage } from './pages/chat';
 
@@ -31,14 +30,6 @@ const OAuthConsentPage = lazy(() => import('./pages/oauth-consent').then((m) => 
 const AccountPasswordPage = lazy(() =>
   import('./pages/account-password').then((m) => ({ default: m.AccountPasswordPage })),
 );
-// Desktop satellite windows. Lazy so a browser session never downloads them.
-const DesktopQuickPage = lazy(() => import('./pages/desktop/quick').then((m) => ({ default: m.DesktopQuickPage })));
-const DesktopSelectionBarPage = lazy(() =>
-  import('./pages/desktop/selection-bar').then((m) => ({ default: m.DesktopSelectionBarPage })),
-);
-const DesktopPreferencesDialog = lazy(() =>
-  import('./pages/desktop/preferences').then((m) => ({ default: m.DesktopPreferencesDialog })),
-);
 import { AgentProvider } from './components/agent-context';
 import { compiledExtensionRouteAliases, compiledExtensionRoutes, findExtensionPage } from './extensions';
 import { reportPageOpen } from './lib/api/usage';
@@ -53,16 +44,8 @@ import { ConfirmDialog, Drawer, AppLogo, ToastContainer, ErrorBoundary, Spinner,
 import { Plus, X } from './lib/icons';
 import { authFetch, clearToken, setOnUnauthorized, validateSession } from './lib/auth';
 import { navigationBlocked } from './lib/navigation-guard';
-import {
-  LoginScreen,
-  AppSidebar,
-  DesktopTrayMenuSync,
-  SidebarAccountMenu,
-  SidebarBackButton,
-  TopBar,
-} from './components/app';
+import { LoginScreen, AppSidebar, SidebarAccountMenu, SidebarBackButton, TopBar } from './components/app';
 import { ActionConfirmDialog } from './components/app/action-confirm-dialog';
-import { DesktopKnowledgeSearchBridge } from './components/app/desktop-knowledge-search-bridge';
 import {
   ChatHistoryPanel,
   KnowledgeNavPanel,
@@ -78,30 +61,12 @@ import { useWsStore } from './stores/ws-store';
 import { initTheme } from './lib/theme';
 import { initWorkspaceBranding } from './lib/workspace-branding';
 import { initScrollActivity } from './lib/scroll-activity';
-import { initDesktop, isDesktop, reportDesktopBootOk } from './lib/desktop';
-import { loadReleaseNotes } from './lib/desktop/updates';
-import { onAttachment } from './lib/desktop/attach';
 import { I18nProvider, useT, getStoredLocale } from './lib/i18n';
 import type { Locale } from './lib/i18n';
 import { buildPrimaryNavigation } from './platform/navigation';
 import { usePlatformCatalog, usePlatformStore } from './stores/platform-store';
 import { useMobileKeyboardViewport } from './hooks/use-mobile-keyboard-viewport';
 import { legacyExecutionRedirect } from './lib/execution-route';
-
-/**
- * `#/desktop/*` is the desktop shell's satellite-window surface (quick capture,
- * selection bar). Core-owned like `CORE_ROUTES` below, but not a page: `App`
- * renders it chrome-less when the Tauri bridge exists and lets it fall through to
- * Chat in a browser, so it must never resolve as an extension alias or route.
- * Declared before the module-scope check below, which runs at evaluation time.
- */
-const DESKTOP_SATELLITE_ROUTE = 'desktop';
-
-// Satellite windows are native transparent overlays. Mark their document before
-// React mounts so the normal opaque app canvas never flashes through the shell.
-if (isDesktop() && window.location.hash.startsWith(`#/${DESKTOP_SATELLITE_ROUTE}/`)) {
-  document.documentElement.classList.add('desktop-satellite-surface');
-}
 
 // Initialize theme from localStorage on app load
 initTheme();
@@ -206,7 +171,7 @@ function LeaveConfirmDialog({
   );
 }
 
-/** Top-level hashes core owns (plus `DESKTOP_SATELLITE_ROUTE`); an extension alias can never take one over. */
+/** Top-level hashes core owns; an extension alias can never take one over. */
 const CORE_ROUTES: ReadonlySet<string> = new Set([
   'chat',
   'automations',
@@ -289,7 +254,7 @@ function parseRoute(hash: string): ParsedRoute {
   // Legacy hashes an extension claims (`pages[].aliases`) redirect into the
   // extension, tail and query intact, so bookmarks and chat links that predate
   // it keep landing somewhere real. A core route can never be aliased away.
-  const coreOwned = CORE_ROUTES.has(topLevel) || topLevel === DESKTOP_SATELLITE_ROUTE;
+  const coreOwned = CORE_ROUTES.has(topLevel);
   const alias = coreOwned ? undefined : compiledExtensionRouteAliases().get(topLevel);
   if (alias) {
     const tail = segments.slice(1).filter(Boolean).join('/');
@@ -316,34 +281,6 @@ function parseRoute(hash: string): ParsedRoute {
 
 // ─── App ─────────────────────────────────────────────────
 
-/**
- * Desktop satellite windows (`#/desktop/*`) render chrome-less and outside the auth
- * gate: they're frameless overlays a few hundred pixels tall. They may read the
- * authenticated Profile catalog, but all session creation and streaming remains
- * owned by the main window. Matched on the raw hash before routing/session setup,
- * so the normal application shell does not mount twice.
- */
-function DesktopSatellite({ hash }: { hash: string }) {
-  const route = hash.replace(/^#\/?/, '');
-  return (
-    <Suspense fallback={null}>
-      <ErrorBoundary>
-        {route === 'desktop/quick' ? <DesktopQuickPage /> : null}
-        {route === 'desktop/selection-bar' ? <DesktopSelectionBarPage /> : null}
-      </ErrorBoundary>
-    </Suspense>
-  );
-}
-
-function DesktopPreferencesLayer() {
-  if (!isDesktop()) return null;
-  return (
-    <Suspense fallback={null}>
-      <DesktopPreferencesDialog />
-    </Suspense>
-  );
-}
-
 function App() {
   // One viewport coordinator covers login, route pages and every shared
   // overlay. Call it above the auth branches so no mobile input falls back to
@@ -353,10 +290,6 @@ function App() {
   const [userLocale, setUserLocale] = useState<Locale>(getStoredLocale());
   const { hash, pending: pendingLeave, confirmLeave, cancelLeave } = useHashRouter();
   const { route, subPath, params, extensionRoute } = useMemo(() => parseRoute(hash), [hash]);
-  // A browser can be handed an arbitrary hash. Treat desktop routes as satellite
-  // windows only when the Tauri bridge actually exists; otherwise normal routing
-  // falls back to Chat without importing or invoking any native capability.
-  const isSatellite = isDesktop() && hash.startsWith(`#/${DESKTOP_SATELLITE_ROUTE}/`);
   const passwordLinkRoute = hash.split('?')[0] === '#/activate';
   const passwordLinkToken = passwordLinkRoute
     ? new URLSearchParams(hash.includes('?') ? hash.slice(hash.indexOf('?') + 1) : '').get('token')
@@ -383,24 +316,11 @@ function App() {
     useProfileStore.getState().clear();
   }, [logout]);
 
-  // Tell the desktop shell we mounted, so it keeps (rather than rolls back) the web
-  // bundle it booted, then wire up the native capabilities. Both no-op in a browser.
-  // Satellites are excluded: they must not claim the boot handshake or re-register
-  // the agent's client actions on behalf of the main window.
-  useEffect(() => {
-    if (isSatellite) return;
-    // Release notes ship only inside desktop web bundles; a browser fetch just
-    // 404s and logs two console errors on every page load.
-    if (isDesktop()) void loadReleaseNotes();
-    reportDesktopBootOk();
-    initDesktop();
-  }, [isSatellite]);
-
   useEffect(() => {
     // The one-time link page owns its unauthenticated session lifecycle. A
     // stale access-token validation must not race a successful completion and
     // clear the freshly issued session.
-    if (isSatellite || passwordLinkRoute) return;
+    if (passwordLinkRoute) return;
     setOnUnauthorized(handleUnauthorized);
 
     (async () => {
@@ -416,7 +336,7 @@ function App() {
         useAuthStore.getState().setAuthState('needs-login');
       }
     })();
-  }, [handleUnauthorized, login, isSatellite, passwordLinkRoute]);
+  }, [handleUnauthorized, login, passwordLinkRoute]);
 
   // ── WebSocket lifecycle: connect on login, disconnect on logout ──
   useEffect(() => {
@@ -435,14 +355,6 @@ function App() {
     return unsub;
   }, []);
 
-  if (isSatellite) {
-    return (
-      <I18nProvider initialLocale={userLocale} onLocaleChange={handleLocaleChange}>
-        <DesktopSatellite hash={hash} />
-      </I18nProvider>
-    );
-  }
-
   if (passwordLinkRoute) {
     return (
       <I18nProvider initialLocale={userLocale} onLocaleChange={handleLocaleChange}>
@@ -458,7 +370,6 @@ function App() {
             }}
           />
         </Suspense>
-        <DesktopPreferencesLayer />
         <ToastContainer />
       </I18nProvider>
     );
@@ -484,7 +395,6 @@ function App() {
             useAuthStore.getState().setAuthState('authenticated');
           }}
         />
-        <DesktopPreferencesLayer />
         <ToastContainer />
       </I18nProvider>
     );
@@ -496,7 +406,6 @@ function App() {
         <Suspense fallback={<LoadingScreen />}>
           <OAuthConsentPage />
         </Suspense>
-        <DesktopPreferencesLayer />
         <ToastContainer />
       </I18nProvider>
     );
@@ -507,9 +416,6 @@ function App() {
       <AgentProvider>
         <SessionManagerProvider>
           <AppShell route={route} subPath={subPath} params={params} extensionRoute={extensionRoute} />
-          {isDesktop() && <DesktopTrayMenuSync />}
-          {isDesktop() && <DesktopKnowledgeSearchBridge />}
-          <DesktopPreferencesLayer />
           <ActionConfirmDialog />
           <LeaveConfirmDialog open={pendingLeave !== null} onConfirm={confirmLeave} onCancel={cancelLeave} />
           <ToastContainer />
@@ -536,27 +442,10 @@ function AppShell({ route, subPath, params, extensionRoute }: AppShellProps) {
 
   const { orderedApplications, hasApplication, loading: catalogLoading } = usePlatformCatalog();
   const loadPlatformCatalog = usePlatformStore((state) => state.load);
-  const [chatLaunchRequest, setChatLaunchRequest] = useState<AssistantLaunchRequest | null>(null);
-  const chatLaunchIdRef = useRef(0);
 
   useEffect(() => {
     void loadPlatformCatalog(true);
   }, [loadPlatformCatalog]);
-
-  // Desktop hand-offs aimed at the full Chat page (quick capture, selection bar,
-  // tray). Files stay with the Assistant overlay path; here only drafts/sessions.
-  useEffect(
-    () =>
-      onAttachment((attachment) => {
-        chatLaunchIdRef.current += 1;
-        const launchId = chatLaunchIdRef.current;
-        const { draft, autoSend, profileId, newConversation, sessionId } = attachment;
-        setChatLaunchRequest({ id: launchId, draft, autoSend, profileId, newConversation, sessionId });
-        setChatWorkspaceView('conversation');
-        window.location.hash = sessionId ? `#/chat?session=${sessionId}` : `#/chat?new=${launchId}`;
-      }, 'chat'),
-    [setChatWorkspaceView],
-  );
 
   const loadExtensions = useExtensionsStore((state) => state.load);
   useEffect(() => {
@@ -792,10 +681,6 @@ function AppShell({ route, subPath, params, extensionRoute }: AppShellProps) {
                   <ChatPage
                     key={params.get('session') || params.get('new') || 'new'}
                     initialSessionId={params.get('session') || undefined}
-                    launchRequest={chatLaunchRequest}
-                    onLaunchConsumed={(id) => {
-                      setChatLaunchRequest((request) => (request?.id === id ? null : request));
-                    }}
                   />
                 )}
                 {route === 'automations' && <AutomationsPage />}
@@ -842,7 +727,7 @@ function AppShell({ route, subPath, params, extensionRoute }: AppShellProps) {
 function LoadingScreen() {
   const t = useT();
   return (
-    <div className="app-viewport flex items-center justify-center bg-surface-sunken" data-tauri-drag-region>
+    <div className="app-viewport flex items-center justify-center bg-surface-sunken">
       <div className="text-center">
         <div className="mx-auto flex justify-center">
           <AppLogo size="xl" logoOnly />

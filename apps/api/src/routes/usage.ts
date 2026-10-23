@@ -1,7 +1,7 @@
 /**
  * 模块用量计数 — /api/usage
  *
- * POST /api/usage/page-open  — 记一次页面打开 {module}（内部用户；client 取 X-Greenhouse-Client：desktop / mobile / browser，缺省 web）
+ * POST /api/usage/page-open  — 记一次页面打开 {module}（内部用户；client 取 X-Greenhouse-Client：mobile / browser，缺省 web）
  *
  * module 只能是 @greenhouse/types/usage 的 PAGE_MODULE_IDS 或当前启用扩展的 `ext.<id>`，
  * 其余一律 400，客户端写不进任意 key。只计数：不记用户、不记内容。

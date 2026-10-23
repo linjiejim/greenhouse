@@ -62,7 +62,7 @@ export function shouldUseApiBase(path: string): boolean {
   return API_PATH_RE.test(path);
 }
 
-/** Convert `/api/*` and `/health` to an absolute backend URL when Desktop needs it. */
+/** Convert `/api/*` and `/health` to an absolute backend URL when a base is configured. */
 export function apiUrl(url: string): string {
   if (!url || ABSOLUTE_URL_RE.test(url) || url.startsWith('//')) return url;
   if (!shouldUseApiBase(url)) return url;

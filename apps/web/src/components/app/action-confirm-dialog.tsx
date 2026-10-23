@@ -30,7 +30,7 @@ export function ActionConfirmDialog() {
   useEffect(() => onConfirmationChange(setPrompt), []);
 
   const decline = () => {
-    if (prompt) resolveConfirmation(prompt.id, { allowed: false, rememberSite: false });
+    if (prompt) resolveConfirmation(prompt.id, { allowed: false });
   };
 
   if (!prompt) return null;
@@ -69,7 +69,7 @@ export function ActionConfirmDialog() {
           <Button
             variant={hasReasons ? 'destructive' : 'default'}
             size="sm"
-            onClick={() => resolveConfirmation(prompt.id, { allowed: true, rememberSite: false })}
+            onClick={() => resolveConfirmation(prompt.id, { allowed: true })}
           >
             {prompt.confirmLabel ?? t('actionConfirm.allow')}
           </Button>

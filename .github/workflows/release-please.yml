@@ -42,7 +42,7 @@ jobs:
           manifest-file: .release-please-manifest.json
 
       # A new GitHub Release becomes the repository's "Latest" by default, and the
-      # README's desktop install command downloads from releases/latest. Latest
+      # v2 line's README (main) installs its desktop app from releases/latest. Latest
       # belongs to the newest v2+ release, so hand it back after every v1 release.
       - name: Keep Latest on the newest v2+ release
         if: steps.release.outputs.release_created == 'true'

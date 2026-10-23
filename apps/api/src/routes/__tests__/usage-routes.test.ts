@@ -62,12 +62,10 @@ describe('POST /api/usage/page-open', () => {
   });
 
   it('labels the client from the app header and ignores unknown header values', async () => {
-    await pageOpen({ module: 'settings.desktop' }, { 'X-Greenhouse-Client': 'desktop' });
-    await pageOpen({ module: 'chat' }, { 'X-Greenhouse-Client': 'Mobile' });
+    await pageOpen({ module: 'settings.memory' }, { 'X-Greenhouse-Client': 'Mobile' });
     await pageOpen({ module: 'chat' }, { 'X-Greenhouse-Client': 'evil' });
     expect(mocks.usageCounters.increment.mock.calls).toEqual([
-      ['page_open', 'settings.desktop', 'desktop'],
-      ['page_open', 'chat', 'mobile'],
+      ['page_open', 'settings.memory', 'mobile'],
       ['page_open', 'chat', 'web'],
     ]);
   });

@@ -37,16 +37,13 @@ const registry: Map<string, Map<string, RegisteredClientAction>> = ((globalThis 
 /**
  * Non-page capabilities that should be advertised from every active page scope.
  *
- * These handlers belong to the app, not to a route — desktop native capture and
- * the browser bridge keep working no matter which page is showing — so
- * executor.ts deliberately does NOT expire them on navigation. Page actions
- * still do: a later route must never inherit an earlier page's handlers.
+ * These handlers belong to the app, not to a route, so executor.ts
+ * deliberately does NOT expire them on navigation. Page actions still do: a
+ * later route must never inherit an earlier page's handlers.
  *
  * The two rules have to agree, because `snapshotClientActions` advertises the
- * global set from every scope. While execution expired them with the page, a
- * long browsing turn advertised `browser_*` and then refused every call once
- * anything touched the URL — the model was told it had a capability that was
- * already gone.
+ * global set from every scope: expiring a global action with the page would
+ * tell the model it had a capability that was already gone.
  */
 export const GLOBAL_CLIENT_ACTION_SCOPE = 'global:client-actions';
 

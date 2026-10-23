@@ -38,7 +38,6 @@ interface UIStore {
   navOpen: boolean;
   myProfileOpen: boolean;
   preferencesOpen: boolean;
-  desktopPreferencesOpen: boolean;
 
   // Chat right-side workspace selected from the sidebar quick navigation.
   chatWorkspaceView: ChatWorkspaceView;
@@ -82,7 +81,6 @@ interface UIStore {
   setMyProfileOpen: (open: boolean) => void;
   setPreferencesOpen: (open: boolean) => void;
   setChatWorkspaceView: (view: ChatWorkspaceView) => void;
-  setDesktopPreferencesOpen: (open: boolean) => void;
   closeAll: () => void;
 
   setSidebarCollapsed: (collapsed: boolean) => void;
@@ -106,7 +104,6 @@ export const useUIStore = create<UIStore>((set) => ({
   myProfileOpen: false,
   preferencesOpen: false,
   chatWorkspaceView: 'conversation',
-  desktopPreferencesOpen: false,
 
   sidebarCollapsed: typeof window !== 'undefined' ? localStorage.getItem('sidebar-collapsed') === 'true' : false,
   sidebarWidth: getInitialSidebarWidth(),
@@ -127,8 +124,7 @@ export const useUIStore = create<UIStore>((set) => ({
   setMyProfileOpen: (myProfileOpen) => set({ myProfileOpen }),
   setPreferencesOpen: (preferencesOpen) => set({ preferencesOpen }),
   setChatWorkspaceView: (chatWorkspaceView) => set({ chatWorkspaceView }),
-  setDesktopPreferencesOpen: (desktopPreferencesOpen) => set({ desktopPreferencesOpen }),
-  closeAll: () => set({ navOpen: false, myProfileOpen: false, preferencesOpen: false, desktopPreferencesOpen: false }),
+  closeAll: () => set({ navOpen: false, myProfileOpen: false, preferencesOpen: false }),
 
   setSidebarCollapsed: (sidebarCollapsed) => {
     localStorage.setItem('sidebar-collapsed', String(sidebarCollapsed));

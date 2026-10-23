@@ -27,8 +27,8 @@ for people who want to test the tip and understand it can break.
 - Branch `v1` carries 1.x; `main` carries v2. release-please runs on pushes to `v1` with `target-branch: v1`.
 - v1 tags publish `:X.Y.Z` and `:X.Y` only; `:latest` stays with the newest v2 release (`latest=false` in release.yml).
 - No `release-as` pin since 1.4.0. A `!` commit on v1 computes 2.0.0 and collides with v2: don't use `!` on this line, or pin `release-as` in `release-please-config.json` before merging the Release PR and drop it after.
-- A new GitHub Release becomes the repository's Latest by default, and the README's desktop install command reads `releases/latest`. After every v1 release, release-please.yml hands Latest back to the newest v2+ release.
-- Desktop shells do not publish from tags on this line; dispatch desktop-release.yml by hand if a v1 desktop build is ever needed.
+- A new GitHub Release becomes the repository's Latest by default, and the v2 README's desktop install command reads `releases/latest`. After every v1 release, release-please.yml hands Latest back to the newest v2+ release.
+- The desktop shell was removed from this line in 1.5 (`apps/desktop`, `desktop-release.yml`, `desktop-check.yml`); v1 tags publish no desktop artifacts.
 
 ## Version strategy
 
@@ -120,46 +120,6 @@ The whole app is one deployable unit (the API serves the built SPA), so the
 `dist/manifest.json` `version` from `APP_VERSION` (normalised to Chrome's numeric
 form — `v0.2.0-rc.1` → `0.2.0`), and zips `dist/` into
 `greenhouse-bridge-v<version>.zip` for "Load unpacked" / Web Store submission.
-
-### Desktop shell → installers + update manifests (`desktop-release.yml`)
-
-Every `v*` tag also builds the Tauri desktop shell (`apps/desktop`) for macOS (Apple Silicon)
-and Windows (x64), packages the signed web bundle, attaches everything to the tag's GitHub
-Release and publishes the three manifests installed shells trust —
-`app/latest.json`, `app/downloads.json`, `web/manifest.json` — to the project site under
-`docs/updates/desktop/<channel>/` (GitHub Pages serves `docs/` from `main`, so a commit is
-the deploy). Pre-release tags (`v1.2.0-rc.1`) publish to `beta`; `workflow_dispatch` can
-rebuild an existing tag into either channel. The built shell reads its updates from
-`https://greenhouse.linjiejim.com/updates/desktop` and only downloads installers from the
-Release host (`GREENHOUSE_DESKTOP_ARTIFACT_ORIGINS`), so a tampered manifest cannot redirect it.
-
-Web changes between tags do **not** reach installed shells automatically — a hot update is cut
-per tag. Installed shells check 20 s after launch and every 4 h.
-
-Every installer is attached twice: under its versioned name (what the manifests reference)
-and under a stable alias — `Greenhouse-macos-aarch64.app.tar.gz`, `Greenhouse-macos-aarch64.dmg`,
-`Greenhouse-windows-x86_64-setup.exe` — so `releases/latest/download/<alias>` (the README's
-install command) always resolves to the newest stable release. Pre-releases are never `latest`.
-
-**One-time repository configuration (settings, not code):**
-
-| Kind | Name | How |
-|---|---|---|
-| secret | `TAURI_SIGNING_PRIVATE_KEY` | `pnpm --filter @greenhouse/desktop tauri signer generate -w ~/.tauri/greenhouse.key` — the private key text |
-| var | `TAURI_UPDATER_PUBKEY` | the public key the same command prints |
-| secret | `WEB_BUNDLE_SIGN_KEY` | `node scripts/desktop/gen-web-bundle-key.mjs` → contents of `apps/desktop/.keys/web-bundle-sign.pem` |
-| var | `WEB_BUNDLE_PUBKEY` | contents of `apps/desktop/.keys/web-bundle-sign.pub` |
-| optional secrets | `APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD`, `APPLE_SIGNING_IDENTITY`, `APPLE_API_ISSUER`, `APPLE_API_KEY`, `APPLE_API_KEY_P8` | Developer ID signing + notarization. Without them the macOS build is ad-hoc signed: a browser-downloaded `.dmg` is quarantined and Gatekeeper reports it as *damaged* (no "open anyway"), which is why the README installs from the `.app.tar.gz` with `curl \| tar` — no quarantine flag, no prompt |
-
-The `shell` jobs refuse to run without the two key pairs: a shell that cannot verify its own
-updates must not be published. **Rotating either key invalidates every published manifest for
-installed shells** — rotate only together with a new shell release. Back the private keys up
-outside GitHub; a lost `TAURI_SIGNING_PRIVATE_KEY` means installed shells can never update
-again except by hand.
-
-Local dry run of the artifacts (no publishing): `pnpm desktop:build && node
-scripts/desktop/make-app-release.mjs`, then `node scripts/desktop/merge-app-release.mjs
---channel beta --artifact-base https://example.invalid/app --allow-missing`.
 
 ### Mobile → fingerprint CD (OTA update / store build → TestFlight)
 

@@ -113,7 +113,7 @@ same script doubles as an end-to-end smoke tour (see [Development](#development)
 - **Usage budgets** — monthly token and image budgets per user, organization and provider.
 - **Module usage** — Administration → Usage → By Modules shows tool calls by tool and client
   (MCP, Agent API, web chat, browser extension, mobile, Feishu, automations, sub-agents), page
-  opens by module and app (web, desktop, mobile, browser extension) and the prompt-cache hit
+  opens by module and app (web, mobile, browser extension) and the prompt-cache hit
   rate per model over 7 / 30 / 90 days. Only daily totals are stored — no users, arguments or
   content — and counting started with v1.4.
 - **Platform kernel** — applications declare a manifest (modules, entities, fields, actions);
@@ -261,23 +261,6 @@ Web Store). The **mobile app** ships on its own cadence via EAS: JS-only changes
 roll out as over-the-air updates; native changes auto-build and upload to
 TestFlight. Maintainer runbook: **[RELEASING.md](./RELEASING.md)**.
 
-The **desktop app** (a Tauri shell for macOS on Apple Silicon and Windows x64) is
-attached to each Release as well; installed copies update themselves from the project
-site. The macOS build is ad-hoc signed — no Developer ID — so a `.dmg` that came through
-a browser carries the quarantine flag and Gatekeeper reports it as *damaged* instead of
-warning. Install from the terminal instead: `curl` and `tar` set no quarantine flag, and
-the app opens like any other.
-
-```bash
-curl -fsSL https://github.com/linjiejim/greenhouse/releases/latest/download/Greenhouse-macos-aarch64.app.tar.gz | tar xz -C /Applications
-```
-
-(Already have the `.dmg`? `xattr -dr com.apple.quarantine /Applications/Greenhouse.app` gets
-you to the same place.) Windows:
-[`Greenhouse-windows-x86_64-setup.exe`](https://github.com/linjiejim/greenhouse/releases/latest/download/Greenhouse-windows-x86_64-setup.exe)
-— unsigned, so SmartScreen asks once (*More info → Run anyway*). Later versions arrive
-through the built-in updater, signature-checked, without any prompt.
-
 ### Upgrading
 
 Database migrations ship inside the image and are applied by a one-shot `migrate`
@@ -296,6 +279,10 @@ git pull && docker compose up -d --build
 # Bare-metal source checkout:
 git pull && pnpm install && pnpm drizzle-kit migrate   # then restart the API
 ```
+
+> **Upgrading to 1.5** — Greenhouse narrows to a team agent hub: members bring their own
+> agents over MCP, and the in-app agent is an assistant. The desktop app (Tauri shell) is
+> removed — use the web app in a browser; installed shells stop receiving updates.
 
 > **Upgrading to 1.4** — Evaluation, Missions (the cloud-agent sandbox), the team LLM relay
 > (`/api/llm`, relay keys, AI Gateway admin page) and Workflows are removed. There is no

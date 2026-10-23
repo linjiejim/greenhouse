@@ -10,15 +10,12 @@ import type { UploadResult } from '@greenhouse/types/api';
 
 const BASE = '';
 
-/**
- * Longest edge for a general image upload. Screenshots and text-heavy documents can
- * need a larger limit than photos, so desktop capture passes its own limit.
- */
-const DEFAULT_MAX_DIMENSION = 1024;
+/** Longest edge for an image upload. */
+const MAX_DIMENSION = 1024;
 
-export async function uploadImage(file: File, options: { maxDimension?: number } = {}): Promise<UploadResult> {
+export async function uploadImage(file: File): Promise<UploadResult> {
   // Compress image client-side before uploading
-  const compressed = await compressImage(file, options.maxDimension ?? DEFAULT_MAX_DIMENSION);
+  const compressed = await compressImage(file, MAX_DIMENSION);
   const formData = new FormData();
   formData.append('file', compressed);
   const res = await authFetch(`${BASE}/api/upload`, {

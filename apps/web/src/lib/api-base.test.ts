@@ -3,12 +3,12 @@ import { apiUrl, apiWebSocketUrl, getApiBaseUrl, publicAssetUrl, shouldUseApiBas
 
 /**
  * The web bundle is same-origin by default; a split-hosting deployment sets a
- * build-time API base, and the desktop shell injects one as a window global.
- * These tests run in node, so `window` and `location` are stubbed rather than
- * mocked out of a real DOM.
+ * build-time API base (`__GREENHOUSE_API_BASE_URL__`, a Vite define). These tests
+ * run in node, so the define, `window` and `location` are stubbed on globalThis
+ * rather than mocked out of a real DOM.
  */
-function asDesktop(base: string) {
-  (globalThis as { window?: unknown }).window = { __GREENHOUSE_DESKTOP_API_BASE__: base };
+function asSplitHosted(base: string) {
+  (globalThis as { __GREENHOUSE_API_BASE_URL__?: string }).__GREENHOUSE_API_BASE_URL__ = base;
 }
 
 function asBrowser() {
@@ -21,6 +21,7 @@ function asBrowser() {
 }
 
 afterEach(() => {
+  delete (globalThis as { __GREENHOUSE_API_BASE_URL__?: string }).__GREENHOUSE_API_BASE_URL__;
   delete (globalThis as { window?: unknown }).window;
   delete (globalThis as { location?: unknown }).location;
 });
@@ -55,34 +56,32 @@ describe('api base resolution', () => {
   });
 });
 
-describe('desktop shell api base', () => {
-  it('uses the base the desktop shell injected', () => {
-    asDesktop('https://greenhouse.example.com:18888');
+describe('split-hosting api base', () => {
+  it('uses the build-time base', () => {
+    asSplitHosted('https://greenhouse.example.com:18888');
     expect(getApiBaseUrl()).toBe('https://greenhouse.example.com:18888');
     expect(apiUrl('/api/chat')).toBe('https://greenhouse.example.com:18888/api/chat');
   });
 
   it('strips trailing slashes so paths never double up', () => {
-    asDesktop('https://greenhouse.example.com:18888///');
+    asSplitHosted('https://greenhouse.example.com:18888///');
     expect(apiUrl('/api/chat')).toBe('https://greenhouse.example.com:18888/api/chat');
   });
 
-  it('rewrites /public so desktop assets hit the API, not the app bundle', () => {
-    // Regression: the shell serves the window from greenhouse://localhost, where a
-    // relative /public/... resolves against the bundle and 404s.
-    asDesktop('https://greenhouse.example.com:18888');
+  it('rewrites /public so runtime assets hit the API, not the app bundle', () => {
+    asSplitHosted('https://greenhouse.example.com:18888');
     expect(publicAssetUrl('logo.svg')).toBe('https://greenhouse.example.com:18888/public/logo.svg');
     expect(publicAssetUrl('/public/uploads/a.png')).toBe('https://greenhouse.example.com:18888/public/uploads/a.png');
   });
 
-  it('leaves absolute and protocol-relative URLs alone even with a desktop base', () => {
-    asDesktop('https://greenhouse.example.com:18888');
+  it('leaves absolute and protocol-relative URLs alone even with a base', () => {
+    asSplitHosted('https://greenhouse.example.com:18888');
     expect(apiUrl('https://example.com/api/x')).toBe('https://example.com/api/x');
     expect(apiUrl('//example.com/api/x')).toBe('//example.com/api/x');
   });
 
-  it('derives the websocket URL from the desktop base', () => {
-    asDesktop('https://greenhouse.example.com:18888');
+  it('derives the websocket URL from the base', () => {
+    asSplitHosted('https://greenhouse.example.com:18888');
     expect(apiWebSocketUrl('/api/ws')).toBe('wss://greenhouse.example.com:18888/api/ws');
   });
 });

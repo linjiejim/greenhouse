@@ -95,7 +95,7 @@ export function agentApiToolCallClient(appClient: ReturnType<typeof parseAppClie
   return appClient === 'mobile' || appClient === 'browser' ? appClient : 'agent_api';
 }
 
-/** Page opens: the app header names desktop / mobile / browser, anything else is the web app. */
+/** Page opens: the app header names mobile / browser, anything else is the web app. */
 export function pageOpenClient(appClient: ReturnType<typeof parseAppClient>): PageOpenClient {
   return appClient ?? 'web';
 }

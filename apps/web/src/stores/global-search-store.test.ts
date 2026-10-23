@@ -6,7 +6,7 @@ describe('global search store launch context', () => {
     useGlobalSearchStore.setState({ isOpen: false, initialQuery: '', initialKind: null });
   });
 
-  it('carries a Desktop knowledge query into the next palette open', () => {
+  it('carries a launch query into the next palette open', () => {
     useGlobalSearchStore.getState().open({ query: 'hydroponics', kind: 'kb_doc' });
     expect(useGlobalSearchStore.getState()).toMatchObject({
       isOpen: true,

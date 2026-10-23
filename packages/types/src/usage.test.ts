@@ -20,8 +20,7 @@ describe('isPageModuleId', () => {
 });
 
 describe('parseAppClient', () => {
-  it('reads the three first-party apps, case-insensitively', () => {
-    expect(parseAppClient('desktop')).toBe('desktop');
+  it('reads the first-party apps, case-insensitively', () => {
     expect(parseAppClient(' Mobile ')).toBe('mobile');
     expect(parseAppClient('BROWSER')).toBe('browser');
   });
@@ -31,5 +30,7 @@ describe('parseAppClient', () => {
     expect(parseAppClient('')).toBeNull();
     expect(parseAppClient('web')).toBeNull();
     expect(parseAppClient('mcp')).toBeNull();
+    // The desktop app was removed in 1.5; an old shell's header no longer labels counts.
+    expect(parseAppClient('desktop')).toBeNull();
   });
 });
