@@ -1,13 +1,13 @@
 /**
  * Upload to Files from the phone: pick from the photo library, take a photo, or pick from Files,
- * then send through the three-step drive upload (../api/drive.ts `uploadFile`). Bytes stream from
+ * then send through the three-step drive upload (../api/drive.ts `uploadBatch`). Bytes stream from
  * disk with the native uploader; the access token rides only to the active station.
  */
 
 import * as DocumentPicker from 'expo-document-picker';
 import { File, UploadType } from 'expo-file-system';
 import * as ImagePicker from 'expo-image-picker';
-import { uploadFile, type FilesShelf, type UploadSource } from '../api/drive';
+import { uploadBatch, type BatchOutcome, type FilesShelf, type UploadSource } from '../api/drive';
 import { getAccessToken } from '../api/token-storage';
 
 export type UploadFrom = 'photos' | 'camera' | 'files';
@@ -49,24 +49,23 @@ export async function pick(from: UploadFrom): Promise<UploadSource[]> {
   }));
 }
 
-/** Upload each source; the number that made it and the first failure's words. */
-export async function uploadAll(
+/**
+ * Upload each source, all to the station + account `stillCurrent` was captured on (before the
+ * picker opened); an identity change stops the batch (../api/drive.ts `uploadBatch`).
+ */
+export function uploadAll(
   target: { shelf: FilesShelf; folderId: number | null },
   sources: UploadSource[],
-): Promise<{ done: number; failed: number; error: string }> {
-  let done = 0;
-  let failed = 0;
-  let error = '';
-  for (const source of sources) {
-    const result = await uploadFile(target, source, putBytes, () => {
+  stillCurrent: () => boolean,
+): Promise<BatchOutcome> {
+  return uploadBatch(
+    target,
+    sources,
+    putBytes,
+    () => {
       const token = getAccessToken();
       return token ? `Bearer ${token}` : null;
-    });
-    if (result.ok) done += 1;
-    else {
-      failed += 1;
-      error ||= result.message;
-    }
-  }
-  return { done, failed, error };
+    },
+    stillCurrent,
+  );
 }

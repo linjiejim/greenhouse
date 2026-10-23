@@ -9,6 +9,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { FlatList, View } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { breadcrumb, listLevel, searchCabinet, type FilesShelf } from '../src/api/drive';
+import { captureIdentity } from '../src/data/identity';
 import { useResource } from '../src/data/use-resource';
 import { pick, uploadAll, type UploadFrom } from '../src/files/upload';
 import { useT } from '../src/lib/i18n';
@@ -126,6 +127,8 @@ export default function Files() {
   }, [hits, resource.data, shelf]);
 
   const upload = async (from: UploadFrom) => {
+    // the whole upload belongs to whoever opened the picker, on this station
+    const current = captureIdentity();
     let sources;
     try {
       sources = await pick(from);
@@ -133,10 +136,11 @@ export default function Files() {
       alertError(t('files.cameraDenied'));
       return;
     }
-    if (!sources.length) return;
+    if (!sources.length || !current()) return;
     setUploading(true);
-    const result = await uploadAll({ shelf, folderId }, sources);
+    const result = await uploadAll({ shelf, folderId }, sources, current);
     setUploading(false);
+    if (result.stopped || !current()) return;
     if (result.done) {
       notifySuccess();
       toast(t('files.uploaded', { n: result.done }), 'check');
