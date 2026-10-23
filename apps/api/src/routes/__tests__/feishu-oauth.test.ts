@@ -59,7 +59,7 @@ vi.mock('../../feishu/client.js', async (importOriginal) => {
 
 import { isPublicPath } from '../../auth/middleware.js';
 import { resolveUserByCode } from '../../feishu/client.js';
-import { feishuOAuthRoutes } from '../feishu-oauth.js';
+import { APP_LOGIN_REDIRECT, feishuOAuthRoutes, isAllowedAppRedirect } from '../feishu-oauth.js';
 
 const resolveUserByCodeMock = vi.mocked(resolveUserByCode);
 
@@ -349,5 +349,81 @@ describe('Feishu scan login', () => {
     });
     expect(res.status).toBe(403);
     expect(issueUserSessionMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('Feishu login from the phone app', () => {
+  it('allows exactly the app’s own return address and nothing else', () => {
+    expect(isAllowedAppRedirect(APP_LOGIN_REDIRECT)).toBe(true);
+    for (const value of [
+      'greenhouse://auth/feishu/',
+      'greenhouse://auth/feishu?x=1',
+      'greenhouse://evil',
+      'GREENHOUSE://auth/feishu',
+      'greenhouse:/auth/feishu',
+      'https://greenhouse.example.test/#/login',
+      'https://evil.example/greenhouse://auth/feishu',
+      'exp+greenhouse-mobile://auth/feishu',
+      '',
+      undefined,
+      null,
+    ]) {
+      expect(isAllowedAppRedirect(value), String(value)).toBe(false);
+    }
+  });
+
+  it('refuses any other return address before minting a state', async () => {
+    const res = await feishuOAuthRoutes.request(
+      `/oauth/start-login?app_redirect=${encodeURIComponent('https://evil.example/callback')}`,
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it('returns the one-shot code to the app, which exchanges it once', async () => {
+    identityBinding = { user_id: 'user-1' };
+    const start = await feishuOAuthRoutes.request(
+      `/oauth/start-login?app_redirect=${encodeURIComponent(APP_LOGIN_REDIRECT)}`,
+    );
+    expect(start.status).toBe(200);
+    const { authorize_url } = (await start.json()) as { authorize_url: string };
+    // the registered web callback stays the OAuth redirect: the app address only rides in our state
+    expect(new URL(authorize_url).searchParams.get('redirect_uri') ?? authorize_url).toContain(
+      '/api/feishu/oauth/callback',
+    );
+    const state = new URL(authorize_url).searchParams.get('state')!;
+
+    const callback = await feishuOAuthRoutes.request(`/oauth/callback?code=abc&state=${state}`);
+    expect(callback.status).toBe(302);
+    const location = callback.headers.get('location')!;
+    expect(location.startsWith(`${APP_LOGIN_REDIRECT}?feishu_code=`)).toBe(true);
+    const code = new URL(location.replace('greenhouse://', 'https://app.invalid/')).searchParams.get('feishu_code')!;
+
+    const exchange = () =>
+      feishuOAuthRoutes.request('/oauth/exchange', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code }),
+      });
+    expect((await exchange()).status).toBe(200);
+    expect((await exchange()).status).toBe(401);
+    // the state was single use as well
+    const replay = await feishuOAuthRoutes.request(`/oauth/callback?code=abc&state=${state}`);
+    expect(replay.headers.get('location')).not.toContain('greenhouse://');
+  });
+
+  it('sends an app login’s failures back to the app, and a web login’s to the web', async () => {
+    identityBinding = null; // not bound: the login fails
+    const start = await feishuOAuthRoutes.request(
+      `/oauth/start-login?app_redirect=${encodeURIComponent(APP_LOGIN_REDIRECT)}`,
+    );
+    const appState = new URL(((await start.json()) as { authorize_url: string }).authorize_url).searchParams.get(
+      'state',
+    )!;
+    const appFail = await feishuOAuthRoutes.request(`/oauth/callback?code=abc&state=${appState}`);
+    expect(appFail.headers.get('location')).toBe(`${APP_LOGIN_REDIRECT}?feishu=error&reason=not_bound`);
+
+    const webState = await issueLoginState();
+    const webFail = await feishuOAuthRoutes.request(`/oauth/callback?code=abc&state=${webState}`);
+    expect(webFail.headers.get('location')).toContain('https://greenhouse.example.test/#/login?feishu=error');
   });
 });
