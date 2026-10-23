@@ -347,6 +347,36 @@ describe('activity log', () => {
     expect(forAdmin.target?.label).toBe('E2E launch plan');
   });
 
+  it('reads a comment on a task as a comment on that task, and names a deleted one by its task', async () => {
+    const project = await db.projects.createProject({
+      title: unique('Comments'),
+      owner_id: alice.id,
+      visibility: 'public',
+      created_by: alice.id,
+    });
+    const task = await db.projects.createTask({ project_id: project.id, title: 'Fix login', created_by: alice.id });
+    const common = { actor: alice, appId: 'projects', entityId: 'comment' } as const;
+    await audit({ ...common, actionId: 'addComment', recordId: String(task.id), at: minutesAgo(2) });
+    await audit({
+      ...common,
+      actionId: 'deleteComment',
+      recordId: '999999',
+      summary: { task_id: task.id, project_id: project.id },
+      at: minutesAgo(1),
+    });
+    const items = await all(alice, { module: 'projects' });
+    expect(items.find((item) => item.action === 'addComment')).toMatchObject({
+      verb: 'comment',
+      entity: 'task',
+      target: { label: 'Fix login' },
+    });
+    expect(items.find((item) => item.action === 'deleteComment')).toMatchObject({
+      verb: 'delete',
+      entity: 'comment',
+      target: { label: 'Fix login' },
+    });
+  });
+
   it('leaves editor heartbeats out and reads a knowledge comment as a comment', async () => {
     const doc = await db.knowledgeBase.create({
       doc_id: unique('team-doc'),

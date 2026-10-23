@@ -544,7 +544,10 @@ async function hydrateAudit(
       row.app_id === 'knowledge'
         ? await knowledgeTarget(ctx, row.record_id)
         : row.app_id === 'projects'
-          ? await projectTarget(ctx, shape.entity, row.record_id)
+          ? shape.entity === 'comment'
+            ? // A deleted comment is named by the task it was on, which its audit keeps.
+              await projectTarget(ctx, 'task', String(summary.task_id ?? ''))
+            : await projectTarget(ctx, shape.entity, row.record_id)
           : row.app_id === DRIVE_AUDIT_APP_ID
             ? driveTarget(ctx, row.entity_id, row.record_id, summary)
             : row.app_id === 'platform' && row.entity_id === 'user'
