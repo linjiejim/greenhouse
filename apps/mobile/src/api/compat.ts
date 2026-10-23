@@ -11,8 +11,8 @@
 
 import type { Bootstrap } from '../shared/greenhouse-types';
 
-/** The API level this build needs: 1 = password sign-in, notifications, push devices. */
-export const MOBILE_API = 1;
+/** The API level this build needs: 2 = password and Feishu sign-in, notifications, push devices. */
+export const MOBILE_API = 2;
 
 export type ApiMismatch = 'server_outdated' | 'unsupported';
 

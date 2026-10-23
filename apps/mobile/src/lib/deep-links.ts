@@ -1,0 +1,113 @@
+/**
+ * Where a link or a notification goes on the phone. React-free (./deep-links.test.ts).
+ *
+ * The web app's hash routes are the addresses (`#/knowledge/doc/<id>-<slug>`, `#/files?…`,
+ * `#/activity/<kind>/<run>`, `#/chat?session=`); the same links appear in documents, comments
+ * and notifications. A route the phone has a screen for opens natively; any other route of the
+ * same station opens in the in-app Safari view at that station's web app; other http(s) links
+ * open in Safari as they are.
+ */
+
+export type FilesShelf = 'team' | 'personal';
+
+export type AppTarget =
+  | { kind: 'doc'; id: number }
+  | { kind: 'files'; shelf: FilesShelf; folderId: number | null; fileId: number | null }
+  /** A page of this station's web app (no screen here yet): `hash` starts with `#/`. */
+  | { kind: 'web'; hash: string }
+  | { kind: 'external'; url: string };
+
+function positiveInt(raw: string | null | undefined): number | null {
+  if (!raw || !/^[1-9][0-9]{0,15}$/.test(raw)) return null;
+  const value = Number(raw);
+  return Number.isSafeInteger(value) ? value : null;
+}
+
+/** A `#/…` route of the web app → the phone's target for it, or null when it is not a route. */
+export function parseHashRoute(hash: string): AppTarget | null {
+  if (!hash.startsWith('#/')) return null;
+  const [path, query = ''] = hash.slice(2).split('?', 2) as [string, string?];
+  const segments = path.split('/').filter(Boolean);
+  if (segments[0] === 'knowledge' && segments[1] === 'doc') {
+    const id = positiveInt(/^([0-9]+)/.exec(segments[2] ?? '')?.[1]);
+    if (id) return { kind: 'doc', id };
+  }
+  if (segments[0] === 'files' && segments.length === 1) {
+    const params = new URLSearchParams(query);
+    return {
+      kind: 'files',
+      shelf: params.get('shelf') === 'personal' ? 'personal' : 'team',
+      folderId: positiveInt(params.get('folder')),
+      fileId: positiveInt(params.get('file')),
+    };
+  }
+  return { kind: 'web', hash };
+}
+
+/**
+ * Any link as written in content → its target. `stationBase` is the active station's origin:
+ * an absolute link to it is read as its hash route. Null for what is not a link (`javascript:`,
+ * relative paths with nowhere to go).
+ */
+export function linkTarget(href: string, stationBase: string): AppTarget | null {
+  const value = href.trim();
+  if (value.startsWith('#/')) return parseHashRoute(value);
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    return null;
+  }
+  if (url.protocol !== 'https:' && url.protocol !== 'http:') return null;
+  let station: URL | null;
+  try {
+    station = new URL(stationBase);
+  } catch {
+    station = null;
+  }
+  if (station && url.origin === station.origin && url.hash.startsWith('#/')) return parseHashRoute(url.hash);
+  return { kind: 'external', url: url.toString() };
+}
+
+/** The web address of a station page (`#/…`), for the in-app Safari view. */
+export function webUrl(stationBase: string, hash: string): string {
+  return `${stationBase.replace(/\/+$/, '')}/${hash.startsWith('#') ? hash : `#/${hash}`}`;
+}
+
+const RUN_KINDS = new Set(['mission', 'workflow', 'automation', 'subagent', 'eval', 'agent_write']);
+
+/** The fields of a notification that say where it points. */
+export interface NotificationLink {
+  run_id: string | null;
+  payload: unknown;
+}
+
+function record(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
+}
+
+/**
+ * Where opening a notification leads, beyond its own page: a link the payload names
+ * (`href` / `url`, a hash route or a same-station link), else the scheduled task's conversation,
+ * else its run in the Activity log (web). Null when it points nowhere else.
+ */
+export function notificationTarget(n: NotificationLink, stationBase: string): AppTarget | null {
+  const payload = record(n.payload);
+  for (const key of ['href', 'url'] as const) {
+    const value = payload?.[key];
+    if (typeof value === 'string') {
+      const target = linkTarget(value, stationBase);
+      if (target && target.kind !== 'external') return target;
+    }
+  }
+  if (typeof payload?.session_id === 'string' && payload.session_id) {
+    return { kind: 'web', hash: `#/chat?session=${encodeURIComponent(payload.session_id)}` };
+  }
+  if (n.run_id) {
+    if (payload?.runtime_kind === 'agent_write') return { kind: 'web', hash: '#/settings/agent-connections/activity' };
+    const kind = typeof payload?.runtime_kind === 'string' && RUN_KINDS.has(payload.runtime_kind) ? payload.runtime_kind : null;
+    const run = encodeURIComponent(n.run_id);
+    return { kind: 'web', hash: kind ? `#/activity/${kind}/${run}` : `#/activity/${run}` };
+  }
+  return null;
+}

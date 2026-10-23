@@ -3,7 +3,7 @@
 ## Scope
 
 - The app is the team's Agent hub on the phone: Home (notifications), Knowledge, Files, Projects, Tables, Settings, and later what my agents wrote and a light assistant chat. It is not a web wrapper and not an agent console.
-- Places not on the phone yet are listed in src/shell/modules.ts with `ready: false` and open app/module/[id].tsx ("Coming soon"); give a place its own route when it lands and drop it from the placeholder.
+- Places not on the phone yet are listed in src/shell/modules.ts with `ready: false` and open app/module/[id].tsx ("Coming soon"); give a place its own route when it lands and drop it from the placeholder (Knowledge and Files have theirs).
 - Experience bar: content within 1.5 s of a cold start (cache first, refresh in background), 60 fps lists, haptics and optimistic updates, offline reading of recent items, dark mode, Dynamic Type, VoiceOver.
 
 ## Install and tests
@@ -23,7 +23,10 @@
 - Errors are `{ error: '<words>' }`; src/api/client.ts maps the status to a stable `code` and keeps the words as `message`.
 - `/api/bootstrap` (public) gives branding and `mobile_api`. `MOBILE_API` (src/api/compat.ts) is the level this build needs; a server below it shows the mismatch screen ("needs an update"), a v2 server (`api_version`) is unsupported. Raise `MOBILE_API` together with the server's `MOBILE_API_LEVEL` when the app starts calling a new endpoint.
 - Notifications: `GET /api/notifications` (cursor pages), `/summary`, `POST /:id/read` (answers with the notification; it is also how a notification missing from the list is fetched), `POST /read-all`.
-- Push devices: `/api/auth/me/push-devices` (src/api/push.ts). Feishu sign-in needs a server redirect back into the app (the web callback lands on the web login page); it is not offered yet.
+- Push devices: `/api/auth/me/push-devices` (src/api/push.ts).
+- Knowledge: `/api/knowledge/docs?visibility=`, `/docs/id/:id`, `/search`, `/docs/:id/comments`; folders are drive folders of scope `kb` (`/api/drive/folders?scope=kb&visibility=&parent_id=all`). The server caps a docs page at 100.
+- Files: `/api/drive` scope `kb` (team = `visibility=team`, mine = `private`): folders, files, search, breadcrumb, `files/:id/content` (authenticated; 302 to a signed URL on COS), and upload init → bytes (presigned PUT, or PUT to the API in proxy mode) → complete.
+- Feishu sign-in: `/api/feishu/login-available`, then `start-login?app_redirect=greenhouse://auth/feishu` (the server allow-lists exactly that address) in the system auth session, then `/api/feishu/oauth/exchange`. Keep `FEISHU_APP_REDIRECT` (src/login/feishu.ts) equal to the server's `APP_LOGIN_REDIRECT`; a test compares them.
 - API reads and writes answer an `ApiResult` and never throw; resolve the base with getApiBase() at call time; api() sends tokens only to the active station's origin; switch stations only with useAuth.switchStation.
 
 ## Data
@@ -33,6 +36,11 @@
 - Stores that hold member data reset on any station or member change (module-scope subscriptions, see src/store/notifications.ts) and drop late answers with captureIdentity().
 - Read marks and similar writes are optimistic and roll back on failure, with alertError for the failure.
 - Hermes rejects Postgres timestamps; parse them with parseMs() (src/data/time.ts).
+- Opened knowledge documents keep a saved copy and the recently opened list per station + member (src/store/knowledge.ts, rules in src/data/recent-docs.ts). A 403 / 404 deletes the copy and stops showing it; only an unreachable station (no answer, 502/503/504) falls back to it (`docMiss`).
+- The top of a knowledge shelf lists the recently opened documents even when the shelf fails, so they open offline on a cold launch (src/data/kb-rows.ts).
+- Offset-paginated lists are read to the end with collectPages() (src/data/paging.ts), bound to the identity they started on; never stop at the first page.
+- Every multi-step write (a Files upload: init, bytes, complete, later batch items) checks the identity captured before its first step and stops on a change (src/api/drive.ts).
+- Links go through src/lib/deep-links.ts (pure) and src/shell/open-target.ts: document and file routes open natively, other station pages in the in-app Safari view at the active station, other sites in Safari. A notification opens the document or file it names, else its page, which offers the web page (src/shell/open-notification.ts).
 
 ## Push
 
@@ -40,6 +48,15 @@
 - Registration (src/push/register.ts) runs after sign-in, on foreground and on a new Expo token, per station; it never prompts. The soft ask (src/push/soft-ask.ts) comes once notifications are on screen, at most every 14 days; only "allow" raises the system prompt.
 - A tap opens /notification on the station that sent it (switching first); a push for another member or a removed station only opens the app (src/push/model.ts, pure and tested).
 - Never commit development: true in getExpoPushTokenAsync; simulator push payloads put PushData under the top-level body key.
+
+## Share extension
+
+- targets/share ("存到 Greenhouse", @bacons/apple-targets type `share`, SwiftUI) uploads shared photos, videos and files into Files on the active station: shelf and folder picker, then init → bytes → complete.
+- It reads only the station and a short-lived access token from the App Group keychain item `greenhouse.share.session` (src/share/session.ts writes it on every token change; src/share/payload.ts is the shape). Never put the refresh token there: a single-use refresh in the extension would sign the app out. An expired token tells the member to open the app.
+- Keep the keychain key, service and App Group in payload.ts and ShareModel.swift identical; the extension's Info.plist activation rule caps what it accepts.
+- The session carries the app's language; the extension speaks it (else the phone's) and uses the V1 green from ShareLogic.swift `Brand`, kept equal to src/theme/palette.ts.
+- Logic the extension needs goes in Foundation-only targets/share/ShareLogic.swift; src/share/share-logic.test.ts compiles it with src/share/ShareLogicCheck.swift and runs the checks (skipped without swiftc). A retry uploads only attachments that failed for a passing reason (no answer, 408, 429, 5xx); other 4xx refusals are listed with their reason and only another folder tries them again.
+- The camera captures photos only: the app has no microphone permission (src/files/picker-options.ts).
 
 ## Native builds and release
 

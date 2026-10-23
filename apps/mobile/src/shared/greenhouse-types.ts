@@ -95,3 +95,77 @@ export interface PlatformNotificationList {
 export interface PlatformNotificationSummary {
   unread: number;
 }
+
+// ─── knowledge (/api/knowledge) ─────────────────────────────────────
+
+export type KbAccess = 'owner' | 'editor' | 'reader';
+
+/** A document as `docToApi` answers it (routes/knowledge.ts). */
+export interface KbDoc {
+  id: number;
+  slug: string;
+  title: string;
+  content_markdown: string;
+  summary: string;
+  tags: string;
+  folder_id: number | null;
+  visibility: 'team' | 'private';
+  status: 'draft' | 'published' | 'archived';
+  owner_user_id: string | null;
+  updated_by: string | null;
+  created_at: string;
+  updated_at: string;
+  access?: KbAccess;
+}
+
+/** `GET /api/knowledge/search` hits. */
+export interface KbSearchHit {
+  id: number;
+  slug: string;
+  title: string;
+  summary: string;
+  snippet: string;
+  scope: 'team' | 'personal' | 'shared';
+}
+
+export interface KbComment {
+  id: number;
+  author_user_id: string;
+  author_nickname: string;
+  content: string;
+  created_at: string;
+  can_delete: boolean;
+}
+
+// ─── drive: the knowledge cabinet (/api/drive, scope kb) ────────────
+
+export interface DriveFolder {
+  id: number;
+  parent_id: number | null;
+  name: string;
+  visibility: 'team' | 'private' | null;
+  sort_order?: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DriveFile {
+  id: number;
+  folder_id: number | null;
+  name: string;
+  content_type: string | null;
+  size: number;
+  status?: 'pending' | 'active' | 'deleted';
+  visibility: 'team' | 'private' | null;
+  uploaded_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** `POST /api/drive/files/init`: a presigned PUT (`cos`) or the API itself (`proxy`). */
+export interface DriveUploadInit {
+  file_id: number;
+  mode: 'cos' | 'proxy';
+  upload_url: string;
+  complete_url?: string;
+}

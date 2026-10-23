@@ -78,6 +78,26 @@ function persistSet(key: string, value: string | null): void {
   }
 }
 
+// ─── change listeners ────────────────────────────────────
+
+const listeners = new Set<() => void>();
+
+/** Called after the mirror's pair changed (sign-in, refresh, sign-out, station switch). */
+export function onTokensChanged(listener: () => void): () => void {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
+}
+
+function changed(): void {
+  for (const listener of listeners) {
+    try {
+      listener();
+    } catch {
+      // a listener's failure is its own
+    }
+  }
+}
+
 // ─── public API ──────────────────────────────────────────
 
 /**
@@ -93,6 +113,7 @@ export function detachTokens(stationId: string | null): void {
   activeSid = stationId;
   mem = emptyMirror();
   hydrating = stationId !== null;
+  changed();
 }
 
 /**
@@ -116,6 +137,7 @@ export async function hydrateTokens(stationId: string | null, signal?: AbortSign
   if (started !== epoch) return;
   mem = { access, refresh, user: userRaw ? safeParseUser(userRaw) : null };
   hydrating = false;
+  changed();
   STALE_USER_KEYS.forEach((key, index) => {
     if (stale[index] !== null) persistSet(keyFor(key, stationId), null);
   });
@@ -159,6 +181,7 @@ export function setTokens(access: string, refresh: string): void {
   hydrating = false;
   mem.access = access;
   mem.refresh = refresh;
+  changed();
   if (!activeSid) return;
   persistSet(keyFor(ACCESS_KEY, activeSid), access);
   persistSet(keyFor(REFRESH_KEY, activeSid), refresh);
@@ -181,6 +204,7 @@ export function clearTokens(): void {
   if (hydrating) return;
   epoch += 1;
   mem = emptyMirror();
+  changed();
   if (activeSid) purgeStationTokens(activeSid);
 }
 

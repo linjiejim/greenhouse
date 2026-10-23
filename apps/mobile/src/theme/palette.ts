@@ -76,6 +76,17 @@ export const lightHex = {
   purple: '#AF52DE',
   gray: '#8E8E93',
 
+  // ── Code blocks (always dark, both schemes) ──
+  codeBg: '#1C1C1E',
+  codeHeader: '#2C2C2E',
+  codeText: '#E5E5EA',
+  codeComment: '#8E8E93',
+  codeLabel: '#AEAEB2',
+  /** Syntax colors on the always-dark code card (Xcode's default dark theme). */
+  codeKeyword: '#FC5FA3',
+  codeString: '#FC6A5D',
+  codeNumber: '#D0BF69',
+
   /** Dimming layer under the drawer / custom overlays. */
   scrim: 'rgba(0,0,0,0.22)',
 };
@@ -126,6 +137,15 @@ export const darkHex: HexPalette = {
   indigo: '#5E5CE6',
   purple: '#BF5AF2',
   gray: '#8E8E93',
+
+  codeBg: '#1C1C1E',
+  codeHeader: '#2C2C2E',
+  codeText: '#E5E5EA',
+  codeComment: '#8E8E93',
+  codeLabel: '#AEAEB2',
+  codeKeyword: '#FC5FA3',
+  codeString: '#FC6A5D',
+  codeNumber: '#D0BF69',
 
   scrim: 'rgba(0,0,0,0.45)',
 };

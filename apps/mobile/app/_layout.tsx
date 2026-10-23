@@ -5,7 +5,9 @@ import { clearHandoffs } from '../src/lib/handoff';
  *
  *  - `(drawer)`        home (动态 / 通知) behind the left drawer with the hub's places
  *  - `notification`    one notification (push taps and Home rows land here), an inline-title page
- *  - `module/[id]`     the hub's places not on the phone yet (Knowledge, Files, Projects, Tables)
+ *  - `knowledge/*`     the knowledge base (shelves, folders, search) and one document
+ *  - `files`, `file-preview`   Files (档案库): shelves, folders, upload; Quick Look with share
+ *  - `module/[id]`     the hub's places not on the phone yet (Projects, Tables)
  *  - `settings`        a page-sheet modal with its own stack (account, stations, notifications)
  *  - `sheets/stations` the stations sheet the sign-in page opens
  *  - `login`           full screen, shown when signed out
@@ -26,6 +28,7 @@ import { clearHandoffs } from '../src/lib/handoff';
  */
 
 import 'react-native-gesture-handler';
+import '../src/share/session';
 import React, { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { Keyboard, Platform, View } from 'react-native';
 import { useFonts } from 'expo-font';
@@ -170,6 +173,10 @@ export default function RootLayout() {
                 {/* ── pages over home ── */}
                 <Stack.Screen name="notification" options={detailScreen(c, { grouped: true })} />
                 <Stack.Screen name="module/[id]" options={pageScreen(c, { grouped: true })} />
+                <Stack.Screen name="knowledge/index" options={pageScreen(c, { grouped: true })} />
+                <Stack.Screen name="knowledge/doc" options={detailScreen(c)} />
+                <Stack.Screen name="files" options={pageScreen(c, { grouped: true })} />
+                <Stack.Screen name="file-preview" options={{ ...detailScreen(c), presentation: 'modal' }} />
 
                 {/* ── sheets ── */}
                 <Stack.Screen name="sheets/stations" options={sheetScreen([0.6, 1], { header: true })} />

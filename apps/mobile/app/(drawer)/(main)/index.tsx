@@ -3,8 +3,8 @@
  *
  *  - Cache first: the offline copy opens at once (src/store/notifications.ts), the network
  *    answer replaces it; offline, the copy stays with a quiet "showing saved" line.
- *  - A row opens the notification page (/notification?id=), which marks it read; "mark all
- *    read" sits in the toolbar. Read marks are optimistic and come back on failure.
+ *  - A row opens what the notification points at (a document or a file) or its own page
+ *    (/notification?id=), and reads it; "mark all read" sits in the toolbar. Read marks are optimistic and come back on failure.
  *  - Pull to refresh, endless paging, ☰ opens the drawer.
  *  - The launch splash waits for the first list (cached or fresh) under it.
  *  - Once notifications are on screen, the push soft ask may follow (src/push/soft-ask.ts).
@@ -18,9 +18,9 @@ import { useT } from '../../../src/lib/i18n';
 import { plainText } from '../../../src/lib/plain-text';
 import { relativeTimeNow } from '../../../src/lib/time-words';
 import { softAskWhenSettled } from '../../../src/push/soft-ask';
-import { clearReadBanners } from '../../../src/push/handler';
+import { clearAllStationBanners } from '../../../src/push/handler';
 import type { PlatformNotification } from '../../../src/shared/greenhouse-types';
-import { openNotification } from '../../../src/shell/nav';
+import { openNotificationOrTarget } from '../../../src/shell/open-notification';
 import { useStartupContent } from '../../../src/startup/context';
 import { useAuth } from '../../../src/store/auth';
 import { useNotifications } from '../../../src/store/notifications';
@@ -48,7 +48,7 @@ function position(index: number, count: number): RowPosition {
 }
 
 export default function Home() {
-  const { colors: c } = useTheme();
+  const { colors: c, hex } = useTheme();
   const styles = useStyles(c);
   const t = useT();
   const router = useRouter();
@@ -83,14 +83,14 @@ export default function Home() {
   const markAll = useCallback(async () => {
     selectionTick();
     if (!(await useNotifications.getState().markAllRead())) alertError(t('notifications.markFailed'));
-    else void clearReadBanners({ all: true });
+    else void clearAllStationBanners();
   }, [t]);
 
   const open = useCallback(
     (item: PlatformNotification) => {
-      openNotification(router, item.id);
+      void openNotificationOrTarget(router, item.id, hex.accent);
     },
-    [router],
+    [router, hex.accent],
   );
 
   // the saved copy is on screen and the network did not answer

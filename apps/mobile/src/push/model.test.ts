@@ -5,6 +5,7 @@ import {
   parsePushData,
   planTap,
   readBanners,
+  stationBanners,
   routeOf,
   shouldPresent,
   SOFT_ASK_COOLDOWN_MS,
@@ -97,6 +98,18 @@ describe('foreground and banners', () => {
       'a',
       'b',
     ]);
+  });
+});
+
+describe('after marking everything read', () => {
+  it('clears every banner of this station, loaded in the list or not, and nothing else', () => {
+    const shown = [
+      { id: 'a', data: push },
+      { id: 'b', data: { ...push, nid: 'ntf_999', url: '/notification?id=ntf_999' } },
+      { id: 'c', data: { ...push, s: 'st-work', nid: 'ntf_3', url: undefined } },
+      { id: 'e', data: { other: 'app' } },
+    ];
+    expect(stationBanners(shown, 'st-home')).toEqual(['a', 'b']);
   });
 });
 

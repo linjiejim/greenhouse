@@ -10,7 +10,7 @@ import { BrandText as Text } from '../src/ui/brand-text.android';
 import React, { useCallback, useRef } from 'react';
 import { BackHandler, Keyboard, Text as RNText, useWindowDimensions, View } from 'react-native';
 import { Stack, useFocusEffect } from 'expo-router';
-import { Button, CircularProgressIndicator, RNHostView, type TextFieldRef } from '@expo/ui/jetpack-compose';
+import { Button, CircularProgressIndicator, OutlinedButton, RNHostView, type TextFieldRef } from '@expo/ui/jetpack-compose';
 import { fillMaxWidth, padding, size } from '@expo/ui/jetpack-compose/modifiers';
 import { useLogin } from '../src/login/use-login';
 import { useT } from '../src/lib/i18n';
@@ -47,7 +47,7 @@ export default function Login() {
   );
   const readEmail = useCallback(() => emailState.get(), [emailState]);
   const readPassword = useCallback(() => passwordState.get(), [passwordState]);
-  const { station, productName, error, connectionError, retry, busy, submit, clearError, openStations } = useLogin({
+  const { station, productName, error, connectionError, retry, busy, submit, clearError, openStations, feishu, signInWithFeishu } = useLogin({
     email: readEmail,
     password: readPassword,
   });
@@ -116,6 +116,16 @@ export default function Login() {
             <Text style={{ typography: 'titleMedium' }}>{t('login.submit')}</Text>
           )}
         </Button>
+        {feishu ? (
+          <OutlinedButton
+            onClick={() => void signInWithFeishu()}
+            enabled={!busy}
+            modifiers={[fillMaxWidth(), padding(0, 8, 0, 0)]}
+            contentPadding={{ start: 24, end: 24, top: 14, bottom: 14 }}
+          >
+            <Text style={{ typography: 'titleMedium' }}>{t('login.feishu')}</Text>
+          </OutlinedButton>
+        ) : null}
       </NativeForm>
     </>
   );

@@ -10,7 +10,8 @@
  *   when another station is active (signed in or not), and waiting for a sign-in when nobody is
  *   signed in there; a push for someone else (the phone changed hands) or a removed station
  *   just opens the app.
- * - `readBanners`: banners whose notification is known to be read (in the app or anywhere else) go.
+ * - `readBanners`: banners whose notification is known to be read (in the app or anywhere else) go;
+ *   `stationBanners`: all of this station's, once marking everything read was confirmed.
  * - `softAskDue`: the soft ask comes once per 14 days at most, only while the system has not
  *   been asked, and never in the foreground session the member signed in during (iOS offers to
  *   save the password then; two alerts would stack).
@@ -98,6 +99,19 @@ export function readBanners(
       const data = parsePushData(item.data);
       if (!data || data.k === 'test' || (data.s && data.s !== facts.stationId)) return false;
       return facts.readIds.has(data.nid);
+    })
+    .map((item) => item.id);
+}
+
+/**
+ * Every banner this station delivered — for when the member just marked everything read and the
+ * server confirmed it: then every one of them is read, loaded in the list or not.
+ */
+export function stationBanners(presented: readonly Presented[], stationId: string | null): string[] {
+  return presented
+    .filter((item) => {
+      const data = parsePushData(item.data);
+      return !!data && (!data.s || data.s === stationId);
     })
     .map((item) => item.id);
 }

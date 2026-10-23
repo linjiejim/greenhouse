@@ -2,7 +2,7 @@
  * 飞书身份绑定与扫码登录 — /api/feishu
  *
  * GET    /api/feishu/oauth/start        — 起绑定授权，返回授权页 URL（需 Bearer）
- * GET    /api/feishu/oauth/start-login  — 起登录授权（公开，登录页未持有 token）
+ * GET    /api/feishu/oauth/start-login  — 起登录授权（公开，登录页未持有 token）；`?app_redirect=` 只认手机 App 的回跳地址（APP_LOGIN_REDIRECT），其他一律 400
  * GET    /api/feishu/oauth/callback     — 飞书把浏览器重定向回来（公开；按 state 的 intent 分流 bind/login）
  * POST   /api/feishu/oauth/exchange     — 一次性兑换码换正常会话（公开，限流）
  * GET    /api/feishu/binding            — 当前用户的绑定状态（需 Bearer）
@@ -55,12 +55,33 @@ interface PendingAuth {
   intent: 'bind' | 'login';
   /** Present only for bind states — the login flow does not know the user yet. */
   userId?: string;
+  /** A login the phone app started: the callback returns to the app, not the web login page. */
+  app?: true;
+}
+
+/**
+ * The phone app's return address (apps/mobile app.json `scheme` + the sign-in path) — the ONLY
+ * redirect a login may ask for. Exact match: no other scheme, host, path or query is accepted, so
+ * the one-shot exchange code can never be sent anywhere but the app.
+ */
+export const APP_LOGIN_REDIRECT = 'greenhouse://auth/feishu';
+
+export function isAllowedAppRedirect(value: unknown): value is typeof APP_LOGIN_REDIRECT {
+  return value === APP_LOGIN_REDIRECT;
 }
 
 function asPendingAuth(payload: Record<string, unknown> | null): PendingAuth | null {
   if (!payload || (payload.intent !== 'bind' && payload.intent !== 'login')) return null;
   if (payload.intent === 'bind' && typeof payload.userId !== 'string') return null;
-  return { intent: payload.intent, ...(typeof payload.userId === 'string' ? { userId: payload.userId } : {}) };
+  return {
+    intent: payload.intent,
+    ...(typeof payload.userId === 'string' ? { userId: payload.userId } : {}),
+    ...(payload.intent === 'login' && payload.app === true ? { app: true as const } : {}),
+  };
+}
+
+function appRedirect(params: Record<string, string>): string {
+  return `${APP_LOGIN_REDIRECT}?${new URLSearchParams(params).toString()}`;
 }
 
 function baseUrl(reqUrl: string): string {
@@ -132,8 +153,13 @@ export const feishuOAuthRoutes = new Hono<AppEnv>()
   .get('/oauth/start-login', async (c) => {
     const config = getFeishuConfig();
     if (!config) return c.json({ error: 'Feishu login is not configured on this deployment' }, 503);
+    // The phone app asks to come back to itself; nothing else may be named as a return address.
+    const requested = c.req.query('app_redirect');
+    if (requested !== undefined && !isAllowedAppRedirect(requested)) {
+      return c.json({ error: 'app_redirect is not an allowed app address' }, 400);
+    }
 
-    const state = await issueState({ intent: 'login' });
+    const state = await issueState(requested !== undefined ? { intent: 'login', app: true } : { intent: 'login' });
     return c.json({ authorize_url: buildAuthorizeUrl(config, callbackUrl(c.req.url), state) });
   })
 
@@ -161,7 +187,9 @@ export const feishuOAuthRoutes = new Hono<AppEnv>()
     const fail = (reason: string) =>
       c.redirect(
         entry.intent === 'login'
-          ? loginRedirect(c.req.url, { feishu: 'error', reason })
+          ? entry.app
+            ? appRedirect({ feishu: 'error', reason })
+            : loginRedirect(c.req.url, { feishu: 'error', reason })
           : settingsRedirect(c.req.url, { feishu: 'error', reason }),
       );
 
@@ -216,7 +244,11 @@ export const feishuOAuthRoutes = new Hono<AppEnv>()
         payload: { userId: user.id },
         expiresAt: new Date(Date.now() + LOGIN_CODE_TTL_MS).toISOString(),
       });
-      return c.redirect(loginRedirect(c.req.url, { feishu_code: exchangeCode }));
+      return c.redirect(
+        entry.app
+          ? appRedirect({ feishu_code: exchangeCode })
+          : loginRedirect(c.req.url, { feishu_code: exchangeCode }),
+      );
     } catch (err) {
       logger.error(`[Feishu] callback failed: ${toErrorMessage(err)}`);
       return fail('server_error');

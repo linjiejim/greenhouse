@@ -9,7 +9,9 @@ describe('the hub’s places', () => {
   });
 
   it('resolves module routes and nothing else', () => {
-    expect(moduleOf('files')?.href).toBe('/module/files');
+    expect(moduleOf('tables')?.href).toBe('/module/tables');
+    // places with their own screens are not placeholders
+    expect(moduleOf('files')).toBeNull();
     expect(moduleOf('home')).toBeNull();
     expect(moduleOf('../settings')).toBeNull();
     expect(moduleOf(undefined)).toBeNull();

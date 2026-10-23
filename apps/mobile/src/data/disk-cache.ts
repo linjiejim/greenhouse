@@ -38,6 +38,15 @@ export function writeCache(stationId: string, memberId: string, kind: string, va
   }
 }
 
+export function removeCache(stationId: string, memberId: string, kind: string): void {
+  try {
+    const target = file(cacheFileName(stationId, memberId, kind));
+    if (target.exists) target.delete();
+  } catch {
+    // best effort
+  }
+}
+
 /** Every offline copy of one station + member, or of the whole station (sign-out, removing it). */
 export function forgetMember(stationId: string, memberId?: string): void {
   try {

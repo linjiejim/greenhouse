@@ -14,7 +14,8 @@ import { useEffect, useState } from 'react';
 import { AppState } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import { useRouter } from 'expo-router';
-import { goHome, openNotification } from '../shell/nav';
+import { goHome } from '../shell/nav';
+import { openNotificationOrTarget } from '../shell/open-notification';
 import { useAuth } from '../store/auth';
 import { useNotifications } from '../store/notifications';
 import { useStations } from '../store/stations';
@@ -68,7 +69,7 @@ export function usePushBridge(ready: boolean): void {
     if (!PUSH_PLATFORM_READY || !ready || loading) return;
     const route = resolvePendingTap();
     if (!route) return;
-    if (route.kind === 'notification') openNotification(router, route.id);
+    if (route.kind === 'notification') void openNotificationOrTarget(router, route.id);
     else goHome(router);
   }, [ready, loading, user, identity, taps, router]);
 

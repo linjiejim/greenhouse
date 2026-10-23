@@ -18,7 +18,15 @@ import { visibleNotification } from '../shell/surface';
 import { useAuth } from '../store/auth';
 import { useNotifications } from '../store/notifications';
 import { useStations } from '../store/stations';
-import { createTapLedger, planTap, readBanners, shouldPresent, type Presented, type PushRoute } from './model';
+import {
+  createTapLedger,
+  planTap,
+  readBanners,
+  shouldPresent,
+  stationBanners,
+  type Presented,
+  type PushRoute,
+} from './model';
 
 const READY = Platform.OS === 'ios' || Platform.OS === 'android';
 const ledger = createTapLedger();
@@ -102,8 +110,8 @@ async function presented(): Promise<Presented[]> {
 
 /**
  * Banners whose notification is known to be read go: `readIds` just read in the app; with `all`,
- * also every notification the loaded list shows as read. Banners of notifications the list has not
- * loaded stay — absence from the first pages says nothing.
+ * also every notification the loaded list shows as read (a foreground refresh). Banners of
+ * notifications the list has not loaded stay — absence from the first pages says nothing.
  */
 export async function clearReadBanners(input: { readIds?: string[]; all?: boolean }): Promise<void> {
   if (!READY || !useAuth.getState().user) return;
@@ -112,6 +120,17 @@ export async function clearReadBanners(input: { readIds?: string[]; all?: boolea
     const readIds = new Set(input.readIds ?? []);
     if (input.all && status === 'ready') for (const n of items) if (n.read_at) readIds.add(n.id);
     const ids = readBanners(await presented(), { stationId: useStations.getState().activeId, readIds });
+    await Promise.all(ids.map((id) => Notifications.dismissNotificationAsync(id)));
+  } catch {
+    // cosmetic
+  }
+}
+
+/** The server confirmed "mark all read": every banner this station delivered is read now. */
+export async function clearAllStationBanners(): Promise<void> {
+  if (!READY || !useAuth.getState().user) return;
+  try {
+    const ids = stationBanners(await presented(), useStations.getState().activeId);
     await Promise.all(ids.map((id) => Notifications.dismissNotificationAsync(id)));
   } catch {
     // cosmetic

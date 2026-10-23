@@ -177,6 +177,7 @@ v1 只接 DeepSeek 与 OpenAI 兼容服务，它们**自动**缓存 prompt 前�
 
 - **绑定走 OAuth 而非邮箱匹配**（Greenhouse 邮箱与飞书邮箱不一致），存的是 `open_id`；user access token 换完 user_info 即弃，任何飞书凭证都不落库。
 - **绑定与登录共用一个 callback**（`/api/feishu/oauth/callback`），按 state 里的 `intent` 分流——飞书后台每条重定向 URL 都要登记，单 callback 少登记一条。bind state 绑死 userId；login state 不绑，命中绑定后发 **60s 单次消费的兑换码**回 `#/login?feishu_code=...`，前端 `POST /oauth/exchange`（公开 + IP 限流）换正常会话——**复用 `routes/auth.ts` 导出的 `issueUserSession`**，不长第二条签发路径；长期凭证永不进 URL。未绑定 → `not_bound` 引导先密码登录再绑定；**不自动建号**。
+- **手机 App 登录**：`start-login?app_redirect=` 只接受 `APP_LOGIN_REDIRECT`（`greenhouse://auth/feishu`，与 apps/mobile app.json 的 scheme 对应，**逐字精确匹配**，其他一律 400，且在发 state 之前拒绝）；state 里记 `app: true`，callback 的兑换码与失败原因都回到这个地址，网页登录不受影响。OAuth 的 redirect_uri 仍是登记过的网页 callback。改地址要同时改 App（`src/login/feishu.ts`，有测试对照）。
 - **三条公开路径**（`isPublicPath`）：`/oauth/callback`（浏览器重定向，state 是凭证）、`/oauth/start-login` 与 `/oauth/exchange`（登录页没有 Bearer 可带）。`/oauth/start` 与 `/binding` 仍要 Bearer，守卫写在路由文件内。护栏 `routes/__tests__/feishu-oauth.test.ts` 直接断言五个路径的 `isPublicPath` 取值。
 - **state 与兑换码在 `oauth_login_states`**（v1.4）：只存 SHA-256，`consume` 是单条条件 UPDATE（并发只有一个赢家），TTL 不变（state 10 分钟、兑换码 60 秒），过期行由五分钟 upkeep 清扫；重启不丢、多实例共享。回调里查 state 失败（库不可用）照样 302 回设置页（`reason=server_error`），不吐 JSON。tenant token 缓存仍在进程内存，多实例部署需换共享存储。DM 需应用开通「机器人」能力且收件人在应用可见范围内（`230002 user not visible to app` 就是范围没放开）。
 
@@ -249,7 +250,7 @@ v1 只接 DeepSeek 与 OpenAI 兼容服务，它们**自动**缓存 prompt 前�
 - **默认不带内容**：标题是产品名，正文只说「哪类事」；手机打开「显示预览」才显示通知 title，通知 body（自动化摘要、报错）永远不出服务器。`data` 只有 id（`PushData`：`s` 站点 ref、`u` 账号、`k` 类别、`nid`、`url=/notification?id=`），App 原样 vendor 这份契约。
 - worker 在同一张 `notification_delivery_attempts` 队列里认领 `mobile_push`（只在 `MOBILE_PUSH_ENABLED` 开时认领），**发送前复核**（已读、设备停用/换号/改密/90 天未见、类别关掉、超 24h、审批已处理）→ `suppressed`；`DeviceNotRegistered` → 停用设备 + `failed`；网络 / 429 / 5xx → 退避重试；请求被拒 / `MessageTooBig` → dead letter（error 日志）。
 - 设备路由只给内部账号、只看自己的设备，token 只进不出。`POST /:id/test` 直发一条测试推送（每台 10 秒一次）。
-- `/api/bootstrap` 的 `mobile_api` 是 App 依赖的接口级别（`MOBILE_API_LEVEL`）：App 开始调用一个新接口时同步加一，旧服务器会被 App 提示升级。
+- `/api/bootstrap` 的 `mobile_api` 是 App 依赖的接口级别（`MOBILE_API_LEVEL`，现为 2：飞书登录回到 App）：App 开始调用一个新接口时同步加一，旧服务器会被 App 提示升级。
 
 ### 技能中心 (`skills/` + `/api/skills`)
 - 团队 Agent 技能库（OSS greenhouse 移植，B7）：发布/发现/下载/同步 SKILL.md 技能文件夹，不可变 semver + 强制 changelog + sha256 完整性校验。

@@ -15,8 +15,11 @@ import { Hono } from 'hono';
 import type { AppEnv } from '../app-env.js';
 import { getWorkspaceBootstrap } from '../settings/workspace-config.js';
 
-/** 1: password sign-in, notifications, push devices (`/api/auth/me/push-devices`). */
-export const MOBILE_API_LEVEL = 1;
+/**
+ * 1: password sign-in, notifications, push devices (`/api/auth/me/push-devices`).
+ * 2: Feishu sign-in returning to the app (`/api/feishu/oauth/start-login?app_redirect=`).
+ */
+export const MOBILE_API_LEVEL = 2;
 
 const bootstrapRoutes = new Hono<AppEnv>().get('/', async (c) => {
   const payload = await getWorkspaceBootstrap();

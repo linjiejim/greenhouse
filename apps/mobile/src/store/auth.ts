@@ -65,6 +65,8 @@ interface AuthState {
    */
   switchStation: (change: () => Promise<unknown>) => Promise<void>;
   login: (email: string, password: string) => Promise<{ ok: boolean; error?: string }>;
+  /** Sign in with the one-shot code Feishu sign-in returned to the app. */
+  loginWithFeishu: (code: string) => Promise<{ ok: boolean; error?: string }>;
   logout: () => void;
   setUser: (user: Me | null) => void;
   /** When this phone last signed in through the sign-in page (null after sign-out / before any). */
@@ -157,6 +159,16 @@ export const useAuth = create<AuthState>((set) => {
 
     async login(email, password) {
       const res = await authApi.login(email, password);
+      if (res.ok) {
+        bootGeneration += 1;
+        set({ user: res.user, loading: false, startupError: null, signedInAt: Date.now() });
+        return { ok: true };
+      }
+      return { ok: false, error: res.error };
+    },
+
+    async loginWithFeishu(code) {
+      const res = await authApi.loginWithFeishuCode(code);
       if (res.ok) {
         bootGeneration += 1;
         set({ user: res.user, loading: false, startupError: null, signedInAt: Date.now() });
