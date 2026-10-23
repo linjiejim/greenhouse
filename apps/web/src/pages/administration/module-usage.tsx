@@ -51,6 +51,8 @@ const MODULE_LABELS: Record<string, TranslationKey> = {
   agents: 'usage.modules.moduleNames.agents',
   skillhub: 'usage.modules.moduleNames.skillhub',
   activity: 'usage.modules.moduleNames.activity',
+  // Retired in 1.5 (became the Activity log); recorded counts still read back.
+  executions: 'usage.modules.moduleNames.executions',
   files: 'usage.modules.moduleNames.files',
   'session-tags': 'usage.modules.moduleNames.sessionTags',
   'session-groups': 'usage.modules.moduleNames.sessionGroups',

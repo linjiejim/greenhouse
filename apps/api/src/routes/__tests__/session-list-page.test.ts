@@ -17,12 +17,9 @@ const mocks = vi.hoisted(() => ({
   sessionShares: {
     getSharedSessionIds: vi.fn(),
   },
-  sessionGroups: {
-    getOrganizedSessionIds: vi.fn(),
-    getMembershipsForUser: vi.fn(),
-  },
-  sessionTags: {
-    getTagsBySessionIds: vi.fn(),
+  sessionPins: {
+    getPinnedSessionIds: vi.fn(),
+    getPinSortsForUser: vi.fn(),
   },
 }));
 
@@ -73,9 +70,8 @@ beforeEach(() => {
   mocks.sessions.update.mockResolvedValue(undefined);
   mocks.users.getById.mockResolvedValue(undefined);
   mocks.sessionShares.getSharedSessionIds.mockResolvedValue([]);
-  mocks.sessionGroups.getOrganizedSessionIds.mockResolvedValue([]);
-  mocks.sessionGroups.getMembershipsForUser.mockResolvedValue(new Map());
-  mocks.sessionTags.getTagsBySessionIds.mockResolvedValue(new Map());
+  mocks.sessionPins.getPinnedSessionIds.mockResolvedValue([]);
+  mocks.sessionPins.getPinSortsForUser.mockResolvedValue(new Map());
 });
 
 describe('PATCH /api/sessions/:id status boundary', () => {
@@ -137,19 +133,19 @@ describe('GET /api/sessions list pagination metadata', () => {
     );
   });
 
-  it('derives the page cursor from trimmed base rows before enriching shared and organized sessions', async () => {
+  it('derives the page cursor from trimmed base rows before enriching shared and pinned sessions', async () => {
     mocks.sessions.list.mockResolvedValue([
       makeSession('base-a', 'owner', '2026-07-31T04:00:00.000Z'),
       makeSession('base-b', 'owner', '2026-07-31T03:00:00.000Z'),
       makeSession('lookahead', 'owner', '2026-07-31T02:00:00.000Z'),
     ]);
     mocks.sessionShares.getSharedSessionIds.mockResolvedValue(['shared-old']);
-    mocks.sessionGroups.getOrganizedSessionIds.mockResolvedValue(['organized-old']);
+    mocks.sessionPins.getPinnedSessionIds.mockResolvedValue(['pinned-old']);
     mocks.sessions.listSharedWith.mockResolvedValue([
       makeSession('shared-old', 'another-user', '2026-07-31T01:00:00.000Z'),
     ]);
     mocks.sessions.getById.mockImplementation(async (id: string) => {
-      if (id === 'organized-old') return makeSession(id, 'owner', '2026-07-31T00:00:00.000Z');
+      if (id === 'pinned-old') return makeSession(id, 'owner', '2026-07-31T00:00:00.000Z');
       return undefined;
     });
 
@@ -170,13 +166,13 @@ describe('GET /api/sessions list pagination metadata', () => {
       has_more: true,
       next_offset: 7,
     });
-    expect(body.sessions.map((session) => session.id)).toEqual(['base-a', 'base-b', 'shared-old', 'organized-old']);
+    expect(body.sessions.map((session) => session.id)).toEqual(['base-a', 'base-b', 'shared-old', 'pinned-old']);
     expect(body.sessions.map((session) => session.id)).not.toContain('lookahead');
-    expect(mocks.sessionTags.getTagsBySessionIds).toHaveBeenCalledWith([
+    expect(mocks.sessionPins.getPinSortsForUser).toHaveBeenCalledWith('owner', [
       'base-a',
       'base-b',
       'shared-old',
-      'organized-old',
+      'pinned-old',
     ]);
   });
 
@@ -265,22 +261,22 @@ describe('GET /api/sessions?scope=', () => {
     expect(mocks.sessions.listSharedWith).not.toHaveBeenCalled();
   });
 
-  it('still surfaces a pinned or filed conversation in scope=mine', async () => {
+  it('still surfaces a pinned conversation in scope=mine', async () => {
     mocks.sessions.list.mockResolvedValue([]);
-    mocks.sessionGroups.getOrganizedSessionIds.mockResolvedValue(['filed-old']);
-    mocks.sessions.getById.mockResolvedValue(makeSession('filed-old', 'owner'));
+    mocks.sessionPins.getPinnedSessionIds.mockResolvedValue(['pinned-old']);
+    mocks.sessions.getById.mockResolvedValue(makeSession('pinned-old', 'owner'));
 
     const response = await createApp().request('/api/sessions?scope=mine');
     const body = (await response.json()) as { sessions: Array<{ id: string }> };
 
-    expect(body.sessions.map((s) => s.id)).toEqual(['filed-old']);
+    expect(body.sessions.map((s) => s.id)).toEqual(['pinned-old']);
   });
 
-  it('excludes the caller by owner for scope=team, and skips the organized backfill', async () => {
+  it('excludes the caller by owner for scope=team, and skips the pinned backfill', async () => {
     await createApp(superUser).request('/api/sessions?scope=team');
 
     expect(mocks.sessions.list).toHaveBeenCalledWith(expect.objectContaining({ excludeUserId: 'boss' }));
-    expect(mocks.sessionGroups.getOrganizedSessionIds).not.toHaveBeenCalled();
+    expect(mocks.sessionPins.getPinnedSessionIds).not.toHaveBeenCalled();
   });
 
   it('reads scope=shared from the share query, not the owner query', async () => {

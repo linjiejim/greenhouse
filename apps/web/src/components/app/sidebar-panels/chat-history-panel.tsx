@@ -14,12 +14,10 @@ import {
   Trash2,
   Archive,
   RefreshCw,
-  Tag,
   Copy,
   Share2,
   Pin,
   PinOff,
-  FolderOpen,
   ChevronDown,
   ChevronRight,
   Star,
@@ -33,11 +31,9 @@ import * as api from '../../../lib/api';
 import { runWithConcurrency } from '@greenhouse/utils/concurrency';
 import { FullHistoryModal } from '../../history-modal';
 import { useT } from '../../../lib/i18n';
-import { TagFilter, TagSelector, BatchTagSelector, TagManagerDialog, SessionTagsInline } from '../../session-tags';
-import { GroupManagerDialog, GroupSelector } from '../../session-groups';
 import { BatchActionBar } from './batch-action-bar';
 import { pruneMissing, rangeSelect, toggleOne, type SelectableRow } from './selection';
-import type { SessionTag, SessionGroup, SessionScope } from '@greenhouse/types/api';
+import type { SessionScope } from '@greenhouse/types/api';
 import { DEFAULT_ASSET_SCOPE } from '../../../lib/asset-scopes';
 
 // Long-press duration (touch) to enter multi-select mode.
@@ -133,9 +129,7 @@ function SessionContextMenu({
   session,
   onClose,
   onRename,
-  onTags,
   onTogglePin,
-  onMoveToGroup,
   onRegenerateTitle,
   onArchive,
   onDelete,
@@ -145,9 +139,7 @@ function SessionContextMenu({
   session: api.Session;
   onClose: () => void;
   onRename: (session: api.Session) => void;
-  onTags: (session: api.Session) => void;
   onTogglePin: (session: api.Session) => void;
-  onMoveToGroup: (session: api.Session, x: number, y: number) => void;
   onRegenerateTitle: (session: api.Session) => void;
   onArchive: (session: api.Session) => void;
   onDelete: (session: api.Session) => void;
@@ -184,13 +176,6 @@ function SessionContextMenu({
       label: session.pinned ? t('sessionGroups.unpin') : t('sessionGroups.pin'),
       action: () => onTogglePin(session),
     },
-    {
-      key: 'move-to-group',
-      icon: FolderOpen,
-      label: t('sessionGroups.moveToGroup'),
-      action: () => onMoveToGroup(session, x, y),
-    },
-    { key: 'tags', icon: Tag, label: 'Tags', action: () => onTags(session) },
     {
       key: 'regenerate-title',
       icon: RefreshCw,
@@ -268,28 +253,15 @@ export function ChatHistoryPanel({ currentSessionId, onSelectSession, collapsed 
   const renameInputRef = useRef<HTMLInputElement>(null);
   // Delete confirm state
   const [pendingDeleteSession, setPendingDeleteSession] = useState<api.Session | null>(null);
-  // Tag state
-  const [allTags, setAllTags] = useState<SessionTag[]>([]);
-  const [activeTagFilter, setActiveTagFilter] = useState<number | null>(null);
-  const [showTagManager, setShowTagManager] = useState(false);
-  const [tagSelectorState, setTagSelectorState] = useState<{ session: api.Session; x: number; y: number } | null>(null);
-  // Group (folder) state
-  const [groups, setGroups] = useState<SessionGroup[]>([]);
-  const [showGroupManager, setShowGroupManager] = useState(false);
-  const [groupSelectorState, setGroupSelectorState] = useState<{
-    session: api.Session;
-    x: number;
-    y: number;
-  } | null>(null);
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(loadCollapsedSections);
   // How many date-bucket sessions to render (incremented by "show more").
   const [dateBucketLimit, setDateBucketLimit] = useState(DATE_BUCKET_PAGE);
-  // Drag: which session is being dragged, from which section (+ that section's
-  // group id for reorder persistence). Drives both in-section reorder and
-  // cross-section move.
+  // Drag: which session is being dragged, from which section (+ whether that
+  // section is orderable). Drives in-section reorder of Pinned and dropping a
+  // row onto Pinned to pin it.
   const [dragState, setDragState] = useState<{
     sectionKey: string;
-    dragGroupId?: number;
+    orderable: boolean;
     orderedIds: string[];
     draggingId: string;
   } | null>(null);
@@ -300,13 +272,11 @@ export function ChatHistoryPanel({ currentSessionId, onSelectSession, collapsed 
   // ── Multi-select (batch operations) ──
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  // Anchor for Shift-ranges: the ROW key (`<sectionKey>|<sessionId>`), because a
-  // pinned+filed session is rendered twice and the two copies must not be confused.
+  // Anchor for Shift-ranges: the ROW key (`<sectionKey>|<sessionId>`), so a
+  // session drawn in more than one section is never confused with its copy.
   const [lastClickedKey, setLastClickedKey] = useState<string | null>(null);
   const [batchBusy, setBatchBusy] = useState(false);
-  // Batch popovers / confirm (positioned near the bottom action bar).
-  const [batchTagState, setBatchTagState] = useState<{ x: number; y: number } | null>(null);
-  const [batchGroupState, setBatchGroupState] = useState<{ x: number; y: number } | null>(null);
+  // Batch confirm (archive / delete the selection).
   const [batchConfirm, setBatchConfirm] = useState<'archive' | 'delete' | null>(null);
   // Long-press (touch) → enter select mode.
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -407,17 +377,6 @@ export function ChatHistoryPanel({ currentSessionId, onSelectSession, collapsed 
     setPendingDeleteSession(session);
   }, []);
 
-  const handleTagsClick = useCallback(
-    (session: api.Session) => {
-      // Use context menu position as fallback, or center of session item
-      const x = contextMenu?.x ?? 200;
-      const y = contextMenu?.y ?? 200;
-      setContextMenu(null);
-      setTagSelectorState({ session, x, y });
-    },
-    [contextMenu],
-  );
-
   const confirmDelete = useCallback(async () => {
     if (!pendingDeleteSession) return;
     try {
@@ -454,7 +413,7 @@ export function ChatHistoryPanel({ currentSessionId, onSelectSession, collapsed 
     setLoading(true);
     try {
       const data = await api.listSessions('active', false, 500, effectiveScope);
-      // Keep the full set (server caps at 500): pinned/grouped sessions must
+      // Keep the full set (server caps at 500): pinned sessions must
       // survive even when older than the 50 most-recent. Date buckets cap
       // their own render below.
       const sorted = data.sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
@@ -468,44 +427,11 @@ export function ChatHistoryPanel({ currentSessionId, onSelectSession, collapsed 
     setLoading(false);
   }, [effectiveScope]);
 
-  // Load user tags.
-  const loadTags = useCallback(async () => {
-    try {
-      const data = await api.listSessionTags();
-      setAllTags(data);
-    } catch {
-      // silent — tags are optional
-    }
-  }, []);
-
-  // Load user groups/folders.
-  const loadGroups = useCallback(async () => {
-    try {
-      setGroups(await api.listSessionGroups());
-    } catch {
-      // silent — groups are optional
-    }
-  }, []);
-
   useEffect(() => {
     loadSessions();
-    loadTags();
-    loadGroups();
-  }, [loadSessions, loadTags, loadGroups]);
+  }, [loadSessions]);
 
-  const handleTagsChanged = useCallback(() => {
-    // Reload tags and sessions
-    loadTags();
-    loadSessions();
-  }, [loadSessions, loadTags]);
-
-  // Reload after a group membership / library change (move, pin, manager edits).
-  const handleGroupsChanged = useCallback(() => {
-    loadGroups();
-    loadSessions();
-  }, [loadGroups, loadSessions]);
-
-  // Pin / unpin (optimistic, then refresh sort orders + counts).
+  // Pin / unpin (optimistic, then refresh sort orders).
   const handleTogglePin = useCallback(
     async (session: api.Session) => {
       const willPin = !session.pinned;
@@ -514,19 +440,13 @@ export function ChatHistoryPanel({ currentSessionId, onSelectSession, collapsed 
         if (willPin) await api.pinSession(session.id);
         else await api.unpinSession(session.id);
         loadSessions();
-        loadGroups();
       } catch {
         setSessions((prev) => prev.map((s) => (s.id === session.id ? { ...s, pinned: !willPin } : s)));
         toast(t('common.saveFailed'), 'error');
       }
     },
-    [t, loadSessions, loadGroups],
+    [t, loadSessions],
   );
-
-  const handleMoveToGroupClick = useCallback((session: api.Session, x: number, y: number) => {
-    setContextMenu(null);
-    setGroupSelectorState({ session, x, y });
-  }, []);
 
   const toggleSection = useCallback((key: string) => {
     setCollapsedSections((prev) => {
@@ -538,12 +458,12 @@ export function ChatHistoryPanel({ currentSessionId, onSelectSession, collapsed 
     });
   }, []);
 
-  // ── Drag: reorder within a section + move across sections ──
+  // ── Drag: reorder within Pinned + drop onto Pinned to pin ──
   const handleRowDragStart = useCallback(
-    (e: React.DragEvent, sectionKey: string, dragGroupId: number | undefined, orderedIds: string[], id: string) => {
+    (e: React.DragEvent, sectionKey: string, orderable: boolean, orderedIds: string[], id: string) => {
       e.dataTransfer.effectAllowed = 'move';
       e.dataTransfer.setData('text/plain', id);
-      setDragState({ sectionKey, dragGroupId, orderedIds, draggingId: id });
+      setDragState({ sectionKey, orderable, orderedIds, draggingId: id });
     },
     [],
   );
@@ -553,9 +473,8 @@ export function ChatHistoryPanel({ currentSessionId, onSelectSession, collapsed 
     e.dataTransfer.dropEffect = 'move';
     setDragState((prev) => {
       // Live-reorder only within the source section, and only orderable ones
-      // (Pinned / folders have a group id; date buckets do not).
-      if (!prev || prev.sectionKey !== sectionKey || prev.dragGroupId == null || prev.draggingId === overId)
-        return prev;
+      // (Pinned; date buckets are not).
+      if (!prev || prev.sectionKey !== sectionKey || !prev.orderable || prev.draggingId === overId) return prev;
       const order = [...prev.orderedIds];
       const from = order.indexOf(prev.draggingId);
       const to = order.indexOf(overId);
@@ -568,28 +487,20 @@ export function ChatHistoryPanel({ currentSessionId, onSelectSession, collapsed 
 
   const handleRowDragEnd = useCallback(() => setDragState(null), []);
 
-  // Drop onto a section: same section → persist reorder; other section → move.
+  // Drop onto Pinned: from Pinned → persist the new order; from a date bucket → pin.
   const handleSectionDrop = useCallback(
-    async (targetKey: string, targetGroupId: number | undefined) => {
+    async (targetKey: string) => {
       const ds = dragState;
       setDragState(null);
-      if (!ds) return;
+      if (!ds || targetKey !== 'pinned') return;
       const id = ds.draggingId;
 
-      // Same orderable section → persist the new member order.
       if (ds.sectionKey === targetKey) {
-        if (targetGroupId == null) return;
         const updates = ds.orderedIds.map((session_id, i) => ({ session_id, sort_order: i }));
         const sortMap = new Map(updates.map((u) => [u.session_id, u.sort_order]));
-        setSessions((prev) =>
-          prev.map((s) => {
-            if (!sortMap.has(s.id)) return s;
-            const so = sortMap.get(s.id)!;
-            return targetKey === 'pinned' ? { ...s, pin_sort: so } : { ...s, group_sort: so };
-          }),
-        );
+        setSessions((prev) => prev.map((s) => (sortMap.has(s.id) ? { ...s, pin_sort: sortMap.get(s.id)! } : s)));
         try {
-          await api.reorderGroupMembers(targetGroupId, updates);
+          await api.reorderPinnedSessions(updates);
         } catch {
           toast(t('sessionGroups.reorderFailed'), 'error');
           loadSessions();
@@ -597,20 +508,14 @@ export function ChatHistoryPanel({ currentSessionId, onSelectSession, collapsed 
         return;
       }
 
-      // Cross-section → move the session.
       try {
-        if (targetKey === 'pinned') await api.pinSession(id);
-        else if (targetKey.startsWith('g:') && targetGroupId != null) await api.setSessionGroup(id, targetGroupId);
-        else if (targetKey === 'ungrouped') await api.setSessionGroup(id, null);
-        else return;
-        toast(t('sessionGroups.moved'), 'info');
+        await api.pinSession(id);
         loadSessions();
-        loadGroups();
       } catch {
         toast(t('common.saveFailed'), 'error');
       }
     },
-    [dragState, t, loadSessions, loadGroups],
+    [dragState, t, loadSessions],
   );
 
   // Auto-refresh when streaming sessions change or new sessions are created
@@ -657,25 +562,16 @@ export function ChatHistoryPanel({ currentSessionId, onSelectSession, collapsed 
     if (searchQuery) {
       result = result.filter((s) => (s.title || '').toLowerCase().includes(searchQuery.toLowerCase()));
     }
-    if (activeTagFilter != null) {
-      result = result.filter((s) => (s as any).tags?.some((t: any) => t.id === activeTagFilter));
-    }
     return result;
-  }, [sessions, searchQuery, activeTagFilter]);
+  }, [sessions, searchQuery]);
 
-  // ── Partition into sections: Pinned (cross-cutting) + folders (single-home)
-  //    + date buckets (the unpinned, unfiled rest). ──
+  // ── Partition into sections: Pinned + date buckets (the unpinned rest). ──
   //
-  // Pinning and folders are how you organise YOUR conversations, so those
-  // sections only exist in the 'mine' scope. The shared and team views are a
-  // flat date-bucketed list — otherwise a pinned foreign conversation would be
+  // Pinning is how you organise YOUR conversations, so the Pinned section only
+  // exists in the 'mine' scope. The shared and team views are a flat
+  // date-bucketed list — otherwise a pinned foreign conversation would be
   // filtered out of the buckets and have no section left to appear in.
   const showOrganizedSections = effectiveScope === 'mine';
-  const pinnedGroupId = useMemo(() => groups.find((g) => g.kind === 'pinned')?.id, [groups]);
-  const customGroups = useMemo(
-    () => groups.filter((g) => g.kind !== 'pinned').sort((a, b) => a.sort_order - b.sort_order),
-    [groups],
-  );
 
   const pinnedSessions = useMemo(
     () =>
@@ -685,23 +581,9 @@ export function ChatHistoryPanel({ currentSessionId, onSelectSession, collapsed 
     [filteredSessions, showOrganizedSections],
   );
 
-  const folderSections = useMemo(() => {
-    if (!showOrganizedSections) return [];
-    // While dragging, show empty folders too so they can be drop targets.
-    const showEmpty = dragState != null;
-    return customGroups
-      .map((g) => ({
-        group: g,
-        sessions: filteredSessions
-          .filter((s) => s.group_id === g.id)
-          .sort((a, b) => (a.group_sort ?? 0) - (b.group_sort ?? 0)),
-      }))
-      .filter((sec) => sec.sessions.length > 0 || showEmpty);
-  }, [customGroups, filteredSessions, dragState, showOrganizedSections]);
-
-  // Date buckets exclude pinned (lifted up) and filed (shown in their folder).
+  // Date buckets exclude pinned (lifted up).
   const dateBucketSessions = useMemo(
-    () => (showOrganizedSections ? filteredSessions.filter((s) => !s.pinned && s.group_id == null) : filteredSessions),
+    () => (showOrganizedSections ? filteredSessions.filter((s) => !s.pinned) : filteredSessions),
     [filteredSessions, showOrganizedSections],
   );
   const groupedSessions = useMemo(
@@ -712,8 +594,8 @@ export function ChatHistoryPanel({ currentSessionId, onSelectSession, collapsed 
 
   // ── Multi-select derived state + handlers ──
 
-  // Single source of truth for "visible render order": pinned → folders → date
-  // buckets, matching the DOM order below. Collapsed sections are excluded so a
+  // Single source of truth for "visible render order": pinned → date buckets,
+  // matching the DOM order below. Collapsed sections are excluded so a
   // Shift range never reaches a hidden row ("看不见却被选中").
   const visibleRows = useMemo(() => {
     const rows: SelectableRow[] = [];
@@ -721,21 +603,16 @@ export function ChatHistoryPanel({ currentSessionId, onSelectSession, collapsed 
       for (const s of list) rows.push({ key: `${sectionKey}|${s.id}`, id: s.id });
     };
     if (!collapsedSections.has('pinned')) push('pinned', pinnedSessions);
-    for (const sec of folderSections) {
-      if (!collapsedSections.has(`g:${sec.group.id}`)) push(`g:${sec.group.id}`, sec.sessions);
-    }
     for (const group of groupedSessions) {
       if (!collapsedSections.has(`date:${group.group}`)) push(`date:${group.group}`, group.sessions);
     }
     return rows;
-  }, [pinnedSessions, folderSections, groupedSessions, collapsedSections]);
+  }, [pinnedSessions, groupedSessions, collapsedSections]);
 
   const exitSelectMode = useCallback(() => {
     setSelectMode(false);
     setSelectedIds(new Set());
     setLastClickedKey(null);
-    setBatchTagState(null);
-    setBatchGroupState(null);
     setBatchConfirm(null);
   }, []);
 
@@ -803,63 +680,22 @@ export function ChatHistoryPanel({ currentSessionId, onSelectSession, collapsed 
     [batchBusy, selectedIds, sessions, runBatch, loadSessions, bumpSessionListVersion, t],
   );
 
-  const handleBatchMove = useCallback(
-    async (groupId: number | null) => {
-      if (batchBusy) return;
-      const ids = [...selectedIds];
-      if (ids.length === 0) return;
-      setBatchBusy(true);
-      // Serial on purpose: `setSessionGroup` derives the new sort_order from
-      // `max(sort_order) + 1` inside the folder, so parallel writes would hand
-      // out the same slot and leave the folder order tie-dependent.
-      const failures = await runBatch(ids, (id) => api.setSessionGroup(id, groupId), 1);
-      await loadSessions();
-      loadGroups();
-      bumpSessionListVersion();
-      if (failures > 0) toast(t('sessionGroups.partialFailed', { n: failures }), 'error');
-      else toast(t('sessionGroups.moved'), 'info');
-      setBatchBusy(false);
-    },
-    [batchBusy, selectedIds, runBatch, loadSessions, loadGroups, bumpSessionListVersion, t],
-  );
-
-  const handleBatchApplyTags = useCallback(
-    async (tagIds: number[]) => {
-      if (batchBusy) return;
-      const ids = [...selectedIds];
-      if (ids.length === 0 || tagIds.length === 0) return;
-      setBatchBusy(true);
-      // add-only semantics — existing tags are never removed. One unit of work
-      // per session (its tags applied in sequence) so a session that rejects all
-      // N tags counts as ONE failure — `partialFailed` is phrased per conversation.
-      const failures = await runBatch(ids, async (id) => {
-        for (const tagId of tagIds) await api.addTagToSession(id, tagId);
-      });
-      await loadTags();
-      await loadSessions();
-      if (failures > 0) toast(t('sessionGroups.partialFailed', { n: failures }), 'error');
-      else toast(t('common.saved'), 'success');
-      setBatchBusy(false);
-    },
-    [batchBusy, selectedIds, runBatch, loadTags, loadSessions, t],
-  );
-
-  // Escape exits select mode (unless a batch popover/dialog owns it first).
+  // Escape exits select mode (unless the batch confirm dialog owns it first).
   useEffect(() => {
     if (!selectMode) return;
     const handler = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
-      if (batchTagState || batchGroupState || batchConfirm) return;
+      if (batchConfirm) return;
       exitSelectMode();
     };
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
-  }, [selectMode, batchTagState, batchGroupState, batchConfirm, exitSelectMode]);
+  }, [selectMode, batchConfirm, exitSelectMode]);
 
   if (collapsed) return null;
 
-  // ── Row + section renderers (shared by Pinned, folders, and date buckets) ──
-  const renderRow = (session: api.Session, sectionKey: string, dragGroupId?: number, orderedIds?: string[]) => {
+  // ── Row + section renderers (shared by Pinned and date buckets) ──
+  const renderRow = (session: api.Session, sectionKey: string, orderable = false, orderedIds?: string[]) => {
     const isActive = session.id === currentSessionId;
     // Local streaming state OR the server-reported run set — the latter is what
     // keeps the dot alive across a page refresh (runs continue in the cloud).
@@ -872,13 +708,12 @@ export function ChatHistoryPanel({ currentSessionId, onSelectSession, collapsed 
     const isRenaming = renamingId === session.id;
     const isTypewriting = typewriterIds.has(session.id);
     const isSelected = selectedIds.has(session.id);
-    // Identity of this *rendered row*. A pinned session that also lives in a
-    // folder is drawn twice, so Shift-ranges anchor on this, not on session.id.
+    // Identity of this *rendered row*; Shift-ranges anchor on this, not on session.id.
     const rowKey = `${sectionKey}|${session.id}`;
     // Dragging and selecting are mutually exclusive gestures — disable drag in
     // select mode so the two don't stack.
-    // All cloud rows are draggable (to move across sections); only Pinned /
-    // folder rows reorder within their section (they carry a dragGroupId).
+    // All rows are draggable (onto Pinned to pin); only Pinned rows reorder
+    // within their section.
     const draggable = !isRenaming && !selectMode;
     const isDragging = dragState?.draggingId === session.id;
 
@@ -924,7 +759,7 @@ export function ChatHistoryPanel({ currentSessionId, onSelectSession, collapsed 
         tabIndex={0}
         draggable={draggable}
         onDragStart={
-          draggable ? (e) => handleRowDragStart(e, sectionKey, dragGroupId, orderedIds ?? [], session.id) : undefined
+          draggable ? (e) => handleRowDragStart(e, sectionKey, orderable, orderedIds ?? [], session.id) : undefined
         }
         onDragOver={draggable ? (e) => handleRowDragOver(e, sectionKey, session.id) : undefined}
         onDragEnd={draggable ? handleRowDragEnd : undefined}
@@ -1015,17 +850,6 @@ export function ChatHistoryPanel({ currentSessionId, onSelectSession, collapsed 
             {session.owner_nickname}
           </span>
         )}
-        {(session as any).tags?.length > 0 && (
-          <SessionTagsInline
-            tags={(session as any).tags}
-            maxVisible={1}
-            size="xs"
-            onEdit={(e) => {
-              e.stopPropagation();
-              setTagSelectorState({ session, x: e.clientX, y: e.clientY });
-            }}
-          />
-        )}
         <span className="sidebar-secondary-meta relative flex-shrink-0 flex items-center">
           <span className="text-[10px] text-fg-faint tabular-nums group-hover/item:invisible">
             {relativeTime(session.updated_at)}
@@ -1055,11 +879,10 @@ export function ChatHistoryPanel({ currentSessionId, onSelectSession, collapsed 
     title: string;
     count: number;
     sessions: api.Session[];
-    dragGroupId?: number;
-    colorDot?: string;
+    orderable?: boolean;
     showPinIcon?: boolean;
   }) => {
-    const { key, title, count, sessions: secSessions, dragGroupId, colorDot, showPinIcon } = opts;
+    const { key, title, count, sessions: secSessions, orderable = false, showPinIcon } = opts;
     const isCollapsed = collapsedSections.has(key);
     // While reordering this section, render in the live drag order.
     let display = secSessions;
@@ -1070,7 +893,7 @@ export function ChatHistoryPanel({ currentSessionId, onSelectSession, collapsed 
     const orderedIds = display.map((s) => s.id);
     const isDropTarget = dragState != null && dragState.sectionKey !== key;
     return (
-      <div key={key} onDragOver={(e) => e.preventDefault()} onDrop={() => handleSectionDrop(key, dragGroupId)}>
+      <div key={key} onDragOver={(e) => e.preventDefault()} onDrop={() => handleSectionDrop(key)}>
         <button
           onClick={() => toggleSection(key)}
           className={`w-full flex items-center gap-1.5 px-3 py-1 mt-1 first:mt-0 text-fg-faint hover:text-fg-secondary transition-colors ${
@@ -1079,11 +902,10 @@ export function ChatHistoryPanel({ currentSessionId, onSelectSession, collapsed 
         >
           {isCollapsed ? <ChevronRight size={11} /> : <ChevronDown size={11} />}
           {showPinIcon && <Pin size={11} />}
-          {colorDot && <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: colorDot }} />}
           <span className="text-[10px] font-semibold uppercase tracking-wider flex-1 text-left truncate">{title}</span>
           <span className="text-[10px] tabular-nums">{count}</span>
         </button>
-        {!isCollapsed && display.map((s) => renderRow(s, key, dragGroupId, orderedIds))}
+        {!isCollapsed && display.map((s) => renderRow(s, key, orderable, orderedIds))}
         {!isCollapsed && display.length === 0 && isDropTarget && (
           <div className="mx-3 my-1 rounded border border-dashed border-edge px-3 py-2 text-center text-[10px] text-fg-faint">
             {t('sessionGroups.dropHere')}
@@ -1108,21 +930,13 @@ export function ChatHistoryPanel({ currentSessionId, onSelectSession, collapsed 
                 icon: CheckSquare,
                 onClick: () => (selectMode ? exitSelectMode() : setSelectMode(true)),
               },
-              {
-                label: t('sessionGroups.manageGroups'),
-                icon: FolderOpen,
-                onClick: () => setShowGroupManager(true),
-              },
-              { label: t('sessionTags.manage'), icon: Tag, onClick: () => setShowTagManager(true) },
               { label: t('history.viewAll'), icon: History, onClick: () => setShowFullHistory(true) },
             ]}
           />
         </div>
 
         {/* Scope tabs — mine (default) / shared with me / team (super only).
-            `segment`, not pills: this is a switch where one option is always on,
-            and the round pills below it are the tag filter. Same shape for two
-            different behaviours reads as one long filter row. */}
+            `segment`, not pills: this is a switch where one option is always on. */}
         <div className="px-3 pb-1.5 flex-shrink-0">
           <FilterPills
             variant="segment"
@@ -1141,13 +955,6 @@ export function ChatHistoryPanel({ currentSessionId, onSelectSession, collapsed 
             fill
           />
         </div>
-
-        {/* Tag filter */}
-        {allTags.length > 0 && (
-          <div className="px-3 pb-2 flex-shrink-0">
-            <TagFilter tags={allTags} activeTagId={activeTagFilter} onSelect={setActiveTagFilter} collapseInSidebar />
-          </div>
-        )}
 
         {/* Session list — grouped by date. In select mode, a click on the empty
             padding (target === the scroll container itself) exits. */}
@@ -1176,25 +983,12 @@ export function ChatHistoryPanel({ currentSessionId, onSelectSession, collapsed 
               title: t('sessionGroups.pinned'),
               count: pinnedSessions.length,
               sessions: pinnedSessions,
-              dragGroupId: pinnedGroupId,
+              orderable: true,
               showPinIcon: true,
             })}
 
-          {/* User folders (single-home) */}
-          {folderSections.map((sec) =>
-            renderSection({
-              key: `g:${sec.group.id}`,
-              title: sec.group.name,
-              count: sec.sessions.length,
-              sessions: sec.sessions,
-              dragGroupId: sec.group.id,
-              colorDot: sec.group.color,
-            }),
-          )}
-
-          {/* Date buckets — the unpinned, unfiled rest. Also a drop target:
-              dropping a filed session here removes it from its folder. */}
-          <div onDragOver={(e) => e.preventDefault()} onDrop={() => handleSectionDrop('ungrouped', undefined)}>
+          {/* Date buckets — the unpinned rest. */}
+          <div>
             {groupedSessions.map((group) => {
               const sectionKey = `date:${group.group}`;
               const isCollapsed = collapsedSections.has(sectionKey);
@@ -1232,16 +1026,6 @@ export function ChatHistoryPanel({ currentSessionId, onSelectSession, collapsed 
           <BatchActionBar
             count={selectedIds.size}
             busy={batchBusy}
-            onTag={(e) => {
-              const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
-              setBatchGroupState(null);
-              setBatchTagState({ x: r.left, y: r.top });
-            }}
-            onMove={(e) => {
-              const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
-              setBatchTagState(null);
-              setBatchGroupState({ x: r.left, y: r.top });
-            }}
             onArchive={() => setBatchConfirm('archive')}
             onDelete={() => setBatchConfirm('delete')}
             onDone={exitSelectMode}
@@ -1275,9 +1059,7 @@ export function ChatHistoryPanel({ currentSessionId, onSelectSession, collapsed 
               session={menuSession}
               onClose={() => setContextMenu(null)}
               onRename={handleRenameStart}
-              onTags={handleTagsClick}
               onTogglePin={handleTogglePin}
-              onMoveToGroup={handleMoveToGroupClick}
               onRegenerateTitle={handleRegenerateTitle}
               onArchive={handleArchive}
               onDelete={handleDelete}
@@ -1295,74 +1077,6 @@ export function ChatHistoryPanel({ currentSessionId, onSelectSession, collapsed 
         confirmLabel={t('common.delete')}
         confirmVariant="destructive"
       />
-
-      {/* Tag selector popover */}
-      {tagSelectorState && (
-        <TagSelector
-          sessionId={tagSelectorState.session.id}
-          sessionTags={(tagSelectorState.session as any).tags || []}
-          allTags={allTags}
-          onChanged={handleTagsChanged}
-          onClose={() => setTagSelectorState(null)}
-          x={tagSelectorState.x}
-          y={tagSelectorState.y}
-        />
-      )}
-
-      {/* Tag manager dialog */}
-      <TagManagerDialog
-        open={showTagManager}
-        onClose={() => setShowTagManager(false)}
-        onTagsChanged={handleTagsChanged}
-      />
-
-      {/* Group selector popover (move session to a folder) */}
-      {groupSelectorState && (
-        <GroupSelector
-          sessionId={groupSelectorState.session.id}
-          currentGroupId={groupSelectorState.session.group_id ?? null}
-          allGroups={groups}
-          onChanged={handleGroupsChanged}
-          onClose={() => setGroupSelectorState(null)}
-          x={groupSelectorState.x}
-          y={groupSelectorState.y}
-        />
-      )}
-
-      {/* Group manager dialog */}
-      <GroupManagerDialog
-        open={showGroupManager}
-        onClose={() => setShowGroupManager(false)}
-        onGroupsChanged={handleGroupsChanged}
-      />
-
-      {/* ── Batch popovers + confirm (multi-select) ── */}
-
-      {/* Batch tag popover (add-only across the selection) */}
-      {batchTagState && (
-        <BatchTagSelector
-          sessionIds={[...selectedIds]}
-          allTags={allTags}
-          onApply={handleBatchApplyTags}
-          onTagsChanged={loadTags}
-          onClose={() => setBatchTagState(null)}
-          x={batchTagState.x}
-          y={batchTagState.y}
-        />
-      )}
-
-      {/* Batch move popover (file the whole selection into one folder) */}
-      {batchGroupState && (
-        <GroupSelector
-          currentGroupId={null}
-          allGroups={groups}
-          onChanged={() => {}}
-          onPick={handleBatchMove}
-          onClose={() => setBatchGroupState(null)}
-          x={batchGroupState.x}
-          y={batchGroupState.y}
-        />
-      )}
 
       {/* Batch archive / delete confirmation */}
       <ConfirmDialog

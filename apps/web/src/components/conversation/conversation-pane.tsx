@@ -46,13 +46,11 @@ import type { AssistantLaunchRequest } from '@greenhouse/types/agent-context';
 import type { ChatTurnEnvironment } from '@greenhouse/types/api';
 import { snapshotClientActions } from '../../lib/client-actions/registry';
 import { pageActionScopeId } from '../../lib/page-action-scope';
-import type { AgentAttachment } from '../../lib/desktop/attach';
 import { CONVERSATION_SURFACE_POLICIES, type ConversationSurface } from './surface-policy';
 import { onComposerDraft } from '../../lib/composer-draft';
 
 export type { ConversationSurface } from './surface-policy';
 
-type ExternalAttachmentRequest = AgentAttachment & { id: number };
 type PendingForkRequest = { messageId?: string; preserveDraft: boolean };
 
 export interface ConversationPaneProps {
@@ -66,12 +64,6 @@ export interface ConversationPaneProps {
   onLaunchConsumed?: (id: number) => void;
   onSessionChange?: (sessionId: string | null) => void;
   getTurnEnvironment?: () => ChatTurnEnvironment | undefined;
-  /**
-   * Files (and optionally a draft) handed in from outside the React tree — the
-   * desktop shell's screenshot / selection capture. Keyed by `id` so the same
-   * request is applied once even if the host re-renders with it still set.
-   */
-  externalAttachment?: ExternalAttachmentRequest | null;
 }
 
 /** Stored sessions may still carry retired ids; map them onto the one preset. */
@@ -138,15 +130,14 @@ export function ConversationPane({
   onLaunchConsumed,
   onSessionChange,
   getTurnEnvironment,
-  externalAttachment,
 }: ConversationPaneProps) {
   const policy = CONVERSATION_SURFACE_POLICIES[surface];
   /**
    * Hosts that carry page context (the Assistant overlay) pass their own
    * environment. Everyone else still needs to advertise globally-registered
-   * client actions — desktop native capabilities and browser automation are
-   * available from the full Chat page too, and were previously invisible there
-   * because this prop was the only path to `client_actions`.
+   * client actions — they are available from the full Chat page too, and were
+   * previously invisible there because this prop was the only path to
+   * `client_actions`.
    *
    * No ambient context is attached: there is no page to describe. The server
    * only requires the two scopes to match *when* ambient context is present.
@@ -170,7 +161,6 @@ export function ConversationPane({
   const [sessionProfileId, setSessionProfileId] = useState(DEFAULT_AGENT_ID);
   const [sessionRating, setSessionRating] = useState<number | null>(null);
   const [sessionComment, setSessionComment] = useState<string | null>(null);
-  const [sessionTags, setSessionTags] = useState<Array<{ id: number; name: string; color: string }>>([]);
   // Retired channels (Mission conversations, Workflow node transcripts) open
   // read-only; workflow nodes keep a link back to the orchestrating session.
   const [sessionChannel, setSessionChannel] = useState<string>('web');
@@ -464,19 +454,10 @@ export function ConversationPane({
       if (!sessionId || !isOwner || sessionChannel !== 'web' || !title || title === sessionTitle) return;
       await api.updateSession(sessionId, { title });
       setSessionTitle(title);
-      setCurrentSessionInfo(title, sessionProfileId, sessionTags);
+      setCurrentSessionInfo(title, sessionProfileId);
       bumpSessionListVersion();
     },
-    [
-      bumpSessionListVersion,
-      isOwner,
-      sessionChannel,
-      sessionId,
-      sessionProfileId,
-      sessionTags,
-      sessionTitle,
-      setCurrentSessionInfo,
-    ],
+    [bumpSessionListVersion, isOwner, sessionChannel, sessionId, sessionProfileId, sessionTitle, setCurrentSessionInfo],
   );
   useEffect(() => {
     if (!policy.publishGlobalChatUi) return;
@@ -485,7 +466,6 @@ export function ConversationPane({
       // Keep the global snapshot complete for non-TopBar consumers even though
       // the title bar itself no longer repeats the active Agent.
       sessionId ? sessionProfileId : selectedProfileId,
-      sessionTags,
     );
   }, [
     isLoadingSession,
@@ -493,7 +473,6 @@ export function ConversationPane({
     sessionTitle,
     sessionProfileId,
     selectedProfileId,
-    sessionTags,
     setCurrentSessionInfo,
     t,
     policy.publishGlobalChatUi,
@@ -601,7 +580,6 @@ export function ConversationPane({
           setSessionProfileId(pid);
           setSessionRating(data.session.rating ?? null);
           setSessionComment(data.session.comment ?? null);
-          setSessionTags((data.session as any).tags || []);
           setSessionChannel(data.session.channel ?? 'web');
           setParentSessionId(data.session.parent_session_id ?? null);
           setMessages(data.messages.map(parseMessage));
@@ -624,7 +602,6 @@ export function ConversationPane({
       setSessionProfileId(DEFAULT_AGENT_ID);
       setSessionRating(null);
       setSessionComment(null);
-      setSessionTags([]);
       setSessionChannel('web');
       setParentSessionId(null);
       setIsOwner(true);
@@ -1067,27 +1044,6 @@ export function ConversationPane({
       }),
     [],
   );
-
-  const lastExternalAttachmentIdRef = useRef<number | null>(null);
-  useEffect(() => {
-    if (!externalAttachment || lastExternalAttachmentIdRef.current === externalAttachment.id) return;
-    lastExternalAttachmentIdRef.current = externalAttachment.id;
-
-    void (async () => {
-      if (externalAttachment.files?.length) {
-        // Same path as a pasted or dropped image: one attachment path, not two.
-        await handleImageSelect(externalAttachment.files);
-      }
-      if (externalAttachment.draft) {
-        sessionDrafts.set(draftKey, { input: externalAttachment.draft, annotations: [], prompt: null });
-        setInput(externalAttachment.draft);
-        setAnnotations([]);
-        setSelectedPrompt(null);
-        setTaskValues({});
-        if (externalAttachment.autoSend) setPendingAutoSend(externalAttachment.draft);
-      }
-    })();
-  }, [draftKey, externalAttachment, handleImageSelect]);
 
   const removeImage = useCallback((index: number) => {
     setPendingImages((prev) => {

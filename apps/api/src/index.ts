@@ -93,8 +93,6 @@ import { createActivityRoutes } from './routes/activity.js';
 import groupRoutes from './routes/groups.js';
 import shareRoutes from './routes/shares.js';
 import { createNotificationRoutes } from './routes/notifications.js';
-import sessionTagRoutes from './routes/session-tags.js';
-import sessionGroupRoutes from './routes/session-groups.js';
 import usageRoutes from './routes/usage.js';
 import toolsRoutes from './routes/tools.js';
 import driveRoutes from './routes/drive.js';
@@ -117,7 +115,6 @@ import { reconcileInterruptedChatRuntimeRuns } from './chat/runtime.js';
 import { reconcileInterruptedAgentWrites } from './agent-access/governed-write.js';
 import { sweepExpiredToolOutputs } from './agent-runtime/tool-output-store.js';
 import { createAutomationRuntimeDriver } from './scheduler/runtime-driver.js';
-import { createSubagentRuntimeDriver, reconcileReclaimedSubagentRun } from './runtime/subagent-driver.js';
 import { createRuntimeNotificationProjector } from './notifications/runtime-projector.js';
 import { startNotificationDeliveryWorker } from './notifications/delivery-worker.js';
 import { createRuntimeDomainProjector } from './runtime/domain-projector.js';
@@ -320,12 +317,6 @@ function mountRoutes(toolRegistry: ToolRegistry) {
       // Skill Center — all internal users (writes owner/super-gated in skills/center.ts)
       .use('/api/skills/*', requireInternal())
       .route('/api/skills', skillRoutes)
-      // Session tags — all internal users
-      .use('/api/session-tags/*', requireInternal())
-      .route('/api/session-tags', sessionTagRoutes)
-      // Session groups (folders) + Pinned — all internal users
-      .use('/api/session-groups/*', requireInternal())
-      .route('/api/session-groups', sessionGroupRoutes)
       // Module usage counts (page opens) — all internal users; counts only
       .use('/api/usage/*', requireInternal())
       .route('/api/usage', usageRoutes)
@@ -428,7 +419,7 @@ async function main() {
   const toolRegistry = createToolRegistry(dbProvider);
   await runExtensionBootHooks(dbProvider);
 
-  // Runs of kinds retired in v1.4 (Eval, Mission, Workflow) can never progress again;
+  // Runs of retired kinds (Eval, Mission, Workflow in v1.4; Subagent in 1.5) can never progress again;
   // close any that were still active at upgrade so they render as finished.
   await settleRetiredRuntimeRuns(dbProvider).catch((error) => {
     logger.error('[runtime] retired-kind settlement unavailable', { error: String(error) });
@@ -518,16 +509,12 @@ async function main() {
         },
         drivers: {
           ...(trustedExecutionPlan.automationDriver ? { automation: createAutomationRuntimeDriver(toolRegistry) } : {}),
-          ...(trustedExecutionPlan.subagentDriver ? { subagent: createSubagentRuntimeDriver({ toolRegistry }) } : {}),
         },
-        driverConcurrency: { automation: 3, subagent: 5 },
+        driverConcurrency: { automation: 3 },
         // An Automation whose worker died mid-turn may have written something:
         // it ends interrupted / outcome unknown and the owner is told which
         // writes were in flight. It is never re-executed.
         outcomeUnknownKinds: ['automation'],
-        onRunReclaimed: async (run) => {
-          if (run.kind === 'subagent') await reconcileReclaimedSubagentRun(dbProvider, run);
-        },
       })
     : null;
 

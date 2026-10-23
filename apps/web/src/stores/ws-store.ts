@@ -13,7 +13,6 @@ import { create } from 'zustand';
 import { wsClient, type WsStatus } from '../lib/ws';
 import type { OnlineUser, ServerWsEvent } from '@greenhouse/types/ws';
 import { toast } from '../components/ui';
-import { useUIStore } from './ui-store';
 import { useKnowledgeStore } from './knowledge-store';
 import { notifyRuntimeInvalidated } from '../lib/runtime-invalidation';
 
@@ -83,11 +82,6 @@ export const useWsStore = create<WsStore>((set) => {
         set((s) => ({
           onlineUsers: s.onlineUsers.filter((u) => u.userId !== event.userId),
         }));
-        break;
-
-      case 'session:created':
-        // A child session was spawned server-side — refresh the history sidebar.
-        useUIStore.getState().bumpSessionListVersion();
         break;
 
       case 'runtime:invalidate':

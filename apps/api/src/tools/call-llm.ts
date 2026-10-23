@@ -1,8 +1,7 @@
 /**
  * Call LLM tool — a one-shot, tool-less LLM sub-call from within a session.
  *
- * Lightweight counterpart to spawn_session: no child session, no agent loop, no
- * tools — just a single model call whose full input/output is recorded to the
+ * No child session, no agent loop, no tools — just a single model call whose full input/output is recorded to the
  * `llm_calls` audit table (so it is retrospectable without being reloaded into
  * the calling session's context). The model can issue several call_llm calls in
  * one turn to fan out in parallel.
@@ -95,7 +94,7 @@ const meta: ToolMeta = {
 
 Use it to summarize / classify / extract / rewrite / transform a chunk of content WITHOUT loading that content (or the full result) into your own context, or to route bulk/simple work to a cheaper \`model\`. Call it several times in one turn to fan the work out in parallel.
 
-This is one round with no tools — for any task that needs tools or multiple steps, use spawn_session instead. Every call's full input and output is recorded for later retrospection.`,
+This is one round with no tools — do any work that needs tools or multiple steps yourself. Every call's full input and output is recorded for later retrospection.`,
   category: 'team',
   is_global: true,
   icon: 'Sparkles',

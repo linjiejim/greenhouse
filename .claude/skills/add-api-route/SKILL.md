@@ -29,11 +29,11 @@ description: >-
 
 ```typescript
 /**
- * Session Tag routes — /api/session-tags
+ * Email account routes — /api/email-accounts
  *
- * GET    /api/session-tags       — 获取当前用户的所有标签
- * POST   /api/session-tags       — 创建新标签
- * DELETE /api/session-tags/:id   — 删除标签
+ * GET    /api/email-accounts       — 获取当前用户的邮箱账户
+ * POST   /api/email-accounts       — 绑定新邮箱
+ * DELETE /api/email-accounts/:id   — 解绑邮箱
  */
 ```
 

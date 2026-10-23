@@ -24,18 +24,6 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-/*
- * Frameless Desktop satellite windows sit on a transparent native NSWindow.
- * The main app canvas must not leak into them: only each floating glass surface
- * paints pixels, leaving rounded corners and unused space genuinely transparent.
- */
-html.desktop-satellite-surface,
-html.desktop-satellite-surface body,
-html.desktop-satellite-surface #root {
-  background: transparent;
-  overflow: hidden;
-}
-
 .font-display,
 h1,
 h2,

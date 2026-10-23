@@ -4,13 +4,11 @@
  * Kept as pure functions (no React) so the tricky range / prune semantics are
  * unit-testable in isolation.
  *
- * The list renders *occurrences*, not sessions: Pinned is cross-cutting, so a
- * session that is both pinned and filed into a folder is drawn twice. Ranges
- * are therefore computed over `SelectableRow.key` (unique per rendered row)
- * while the selection itself stays keyed by `id` (the session the batch acts
- * on). Ranging over bare ids instead would make a Shift-click on the folder
- * copy resolve to the pinned copy near the top of the list and silently sweep
- * in every row between them.
+ * The list renders *occurrences*, not sessions. Ranges are computed over
+ * `SelectableRow.key` (unique per rendered row, `<section>|<id>`) while the
+ * selection itself stays keyed by `id` (the session the batch acts on), so a
+ * session drawn in more than one section can never make a Shift-click resolve
+ * to the wrong copy and sweep in every row between them.
  *
  * `rows` is the single source of truth for "visible render order" and only ever
  * contains currently-visible (un-collapsed) rows — range selection therefore
@@ -18,7 +16,7 @@
  */
 
 export interface SelectableRow {
-  /** Unique per rendered occurrence, e.g. `pinned|<id>` vs `g:3|<id>`. */
+  /** Unique per rendered occurrence, e.g. `pinned|<id>` vs `date:today|<id>`. */
   key: string;
   /** Session id — may repeat across sections. */
   id: string;

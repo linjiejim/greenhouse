@@ -28,7 +28,7 @@ jobs:
       # A tag pushed by the default GITHUB_TOKEN does NOT cascade to other workflows
       # (GitHub's recursion guard), so release.yml's `on: push: tags` never fires for
       # a release-please tag. A PAT (RELEASE_PLEASE_TOKEN, contents+PRs write) makes
-      # the tag push trigger release.yml → stable image + browser zip, automatically.
+      # the tag push trigger release.yml → stable image, automatically.
       # Falls back to GITHUB_TOKEN when the secret is absent: releases still tag &
       # publish notes, but the stable artifacts must then be published by re-pushing
       # the tag manually (RELEASING.md → "Publishing stable artifacts"). Add the PAT
@@ -42,7 +42,7 @@ jobs:
           manifest-file: .release-please-manifest.json
 
       # A new GitHub Release becomes the repository's "Latest" by default, and the
-      # README's desktop install command downloads from releases/latest. Latest
+      # v2 line's README (main) installs its desktop app from releases/latest. Latest
       # belongs to the newest v2+ release, so hand it back after every v1 release.
       - name: Keep Latest on the newest v2+ release
         if: steps.release.outputs.release_created == 'true'

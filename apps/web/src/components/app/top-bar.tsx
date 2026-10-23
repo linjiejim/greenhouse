@@ -12,7 +12,6 @@ import {
   Menu,
   ChevronRight,
   WifiOff,
-  Tag,
   Share2,
   Users,
   History,
@@ -23,13 +22,10 @@ import {
 import { useSidePaneStore, useUIStore, useWsStore } from '../../stores';
 import { useT } from '../../lib/i18n';
 import { resolveSubModule } from '../../lib/nav-registry';
-import { TagSelector } from '../session-tags';
 import { IconButton, Input, toast } from '../ui';
 import { FullHistoryModal } from '../history-modal';
 import { chatWorkspaceLabel } from '../chat/chat-workspace-navigation';
 import type { ChatWorkspaceView } from '../../stores';
-import type { SessionTag } from '../../lib/api';
-import * as api from '../../lib/api';
 import { MessageFeedback } from '../chat/message-feedback';
 
 type Route =
@@ -37,7 +33,6 @@ type Route =
   | 'chat'
   | 'extension'
   | 'automations'
-  | 'agents'
   | 'settings'
   | 'administration'
   | 'projects'
@@ -46,7 +41,6 @@ type Route =
   | 'tables'
   | 'files'
   | 'skillhub'
-  | 'tasks'
   | 'activity';
 
 interface TopBarProps {
@@ -217,50 +211,11 @@ export function TopBar({
   children,
 }: TopBarProps) {
   const t = useT();
-  const {
-    setNavOpen,
-    currentSessionTags,
-    currentChatSessionId,
-    chatShare,
-    chatFeedback,
-    chatTitleEdit,
-    setCurrentSessionInfo,
-    bumpSessionListVersion,
-  } = useUIStore();
-  const [allTags, setAllTags] = useState<SessionTag[]>([]);
-  const [tagSelector, setTagSelector] = useState<{ x: number; y: number } | null>(null);
+  const { setNavOpen, chatShare, chatFeedback, chatTitleEdit } = useUIStore();
   const [showMobileHistory, setShowMobileHistory] = useState(false);
   const sidePaneOpen = useSidePaneStore((state) => state.isOpen);
   const collapseSidePane = useSidePaneStore((state) => state.collapse);
   const reopenSidePane = useSidePaneStore((state) => state.reopen);
-
-  // Load user tags once
-  useEffect(() => {
-    api
-      .listSessionTags()
-      .then(setAllTags)
-      .catch(() => {});
-  }, []);
-
-  const handleTagEdit = useCallback((e: React.MouseEvent) => {
-    e.stopPropagation();
-    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    setTagSelector({ x: rect.left, y: rect.bottom + 4 });
-  }, []);
-
-  const handleTagsChanged = useCallback(async () => {
-    if (!currentChatSessionId) return;
-    try {
-      const data = await api.getSession(currentChatSessionId);
-      const tags = (data.session as any).tags || [];
-      setCurrentSessionInfo(data.session.title || '', data.session.profile_id || 'team', tags);
-      const freshTags = await api.listSessionTags();
-      setAllTags(freshTags);
-      bumpSessionListVersion();
-    } catch {
-      /* silent */
-    }
-  }, [currentChatSessionId, setCurrentSessionInfo, bumpSessionListVersion]);
 
   // Check for sub-module breadcrumb
   const subMeta = subPath ? resolveSubModule(route, subPath, t) : null;
@@ -272,7 +227,6 @@ export function TopBar({
     home: t('navigation.home'),
     chat: chatUtilityTitle || sessionTitle || t('chat.newConversation'),
     automations: t('navigation.automation'),
-    agents: t('navigation.myAgents'),
     projects: t('app.projects'),
     settings: t('app.settings'),
     administration: t('app.administration'),
@@ -280,7 +234,6 @@ export function TopBar({
     tables: 'Tables',
     files: t('navigation.files'),
     skillhub: t('app.skillhub'),
-    tasks: t('navigation.myPrompts'),
     activity: t('navigation.activityLog'),
   };
 
@@ -330,15 +283,6 @@ export function TopBar({
             {sidePaneOpen ? <PanelRightClose size={16} /> : <PanelRightOpen size={16} />}
           </IconButton>
         )}
-        {isChatConversation && currentChatSessionId && (
-          <IconButton
-            onClick={handleTagEdit}
-            label={currentSessionTags.length > 0 ? t('common.tags') : t('chat.addTags')}
-            className={currentSessionTags.length > 0 ? 'text-primary-fg-strong' : ''}
-          >
-            <Tag size={16} />
-          </IconButton>
-        )}
         {isChatConversation && <ChatTopBarSessionActions feedback={chatFeedback} share={chatShare} />}
         {children}
         <div className="flex items-center gap-1 md:hidden">
@@ -350,19 +294,6 @@ export function TopBar({
           <WsStatusIndicator />
         </div>
       </div>
-
-      {/* Tag selector popover */}
-      {tagSelector && isChatConversation && currentChatSessionId && (
-        <TagSelector
-          sessionId={currentChatSessionId}
-          sessionTags={currentSessionTags}
-          allTags={allTags}
-          onChanged={handleTagsChanged}
-          onClose={() => setTagSelector(null)}
-          x={tagSelector.x}
-          y={tagSelector.y}
-        />
-      )}
 
       <FullHistoryModal
         open={showMobileHistory}

@@ -12,7 +12,11 @@
  * extension active on this deployment.
  */
 
-/** Surfaces that execute tools. */
+/**
+ * Surfaces that execute tools. `browser` still labels turns in conversations the
+ * browser extension started; `subagent` (sub-sessions, removed in 1.5) is kept
+ * so counts recorded before then still read back.
+ */
 export const TOOL_CALL_CLIENTS = [
   'mcp',
   'agent_api',
@@ -25,29 +29,32 @@ export const TOOL_CALL_CLIENTS = [
 ] as const;
 export type ToolCallClient = (typeof TOOL_CALL_CLIENTS)[number];
 
-/** Apps that show pages. */
+/**
+ * Apps that show pages. `desktop` and `browser` are kept so counts recorded
+ * before the desktop app and the browser extension were removed (1.5) still
+ * read back; nothing new is labelled with them.
+ */
 export const PAGE_OPEN_CLIENTS = ['web', 'desktop', 'mobile', 'browser'] as const;
 export type PageOpenClient = (typeof PAGE_OPEN_CLIENTS)[number];
 
 /**
- * Request header a first-party app sets on its API calls: `desktop` (the web
- * app inside the desktop shell), `mobile` or `browser` (the extension). Absent
- * means the plain web app. It only labels counts — never an authorization input.
+ * Request header a first-party app sets on its API calls: `mobile`. Absent means
+ * the plain web app. It only labels counts — never an authorization input.
  */
 export const APP_CLIENT_HEADER = 'X-Greenhouse-Client';
-const APP_CLIENTS = new Set<string>(['desktop', 'mobile', 'browser']);
 
 /** The app named by `APP_CLIENT_HEADER`, or null for the plain web app / anything unknown. */
-export function parseAppClient(value: string | null | undefined): 'desktop' | 'mobile' | 'browser' | null {
-  const normalized = value?.trim().toLowerCase() ?? '';
-  return APP_CLIENTS.has(normalized) ? (normalized as 'desktop' | 'mobile' | 'browser') : null;
+export function parseAppClient(value: string | null | undefined): 'mobile' | null {
+  return value?.trim().toLowerCase() === 'mobile' ? 'mobile' : null;
 }
 
 /**
  * Core page modules. Top-level pages use their route name; Settings and
- * Administration use their navigation module id. `session-tags` /
- * `session-groups` are the chat-sidebar organizers (counted when their picker,
- * filter or manager opens), because they have no page of their own.
+ * Administration use their navigation module id. Retired modules (the session
+ * tags / groups organizers; `tasks` — My prompts, now a SkillHub tab counted as
+ * `skillhub`; `agents` — My Agents, now an Automations tab counted as
+ * `automations` — all 1.5) are no longer accepted; counts already recorded
+ * under them still read back in Administration › Usage.
  */
 export const PAGE_MODULE_IDS = [
   'home',
@@ -57,19 +64,14 @@ export const PAGE_MODULE_IDS = [
   'tables',
   'files',
   'automations',
-  'tasks',
-  'agents',
   'skillhub',
   'activity',
-  'session-tags',
-  'session-groups',
   'settings.preferences',
   'settings.groups',
   'settings.agent-connections',
   'settings.provider-bindings',
   'settings.email-accounts',
   'settings.memory',
-  'settings.desktop',
   'admin.users',
   'admin.runtime-config',
   'admin.branding',

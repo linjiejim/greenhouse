@@ -20,6 +20,7 @@ import {
   Input,
   Select,
   Spinner,
+  Tabs,
   Tag,
   Textarea,
   Toggle,
@@ -44,6 +45,8 @@ import { fetchFeishuBinding } from '../lib/api/feishu';
 import { useAuthStore } from '../stores';
 import { assetScopeItems, DEFAULT_ASSET_SCOPE, filterAutomationsByScope, type AssetScope } from '../lib/asset-scopes';
 import { ModulePage } from '../components/app/module-page';
+import { AUTOMATIONS_PROFILES_HASH } from '../lib/workspace-routes';
+import { RunProfilesPanel } from './run-profiles';
 
 type Task = ScheduledTask & { schedule_desc?: string };
 
@@ -502,7 +505,7 @@ function RunHistoryDialog({ task, onClose }: { task: Task; onClose: () => void }
 
 // ─── Panel ───────────────────────────────────────────────
 
-export function AutomationsPanel() {
+export function AutomationsPanel({ sectionTabs }: { sectionTabs?: React.ReactNode }) {
   const t = useT();
   const currentUser = useAuthStore((state) => state.currentUser);
   const isSuper = currentUser?.role === 'super';
@@ -889,9 +892,37 @@ export function AutomationsPanel() {
   );
 
   return (
-    <ModulePage moduleId="workspace.automations" layout="list">
+    <ModulePage moduleId="workspace.automations" layout="list" tabs={sectionTabs}>
       <CrudPage key={scope} schema={schema} />
       {historyTask && <RunHistoryDialog task={historyTask} onClose={() => setHistoryTask(null)} />}
     </ModulePage>
+  );
+}
+
+/**
+ * The Automations route: scheduled automations, and since 1.5 the "Run profiles"
+ * tab (`#/automations?tab=profiles`) that hosts custom-agent management — the
+ * agents an automation runs as. The old `#/agents` page redirects to the tab.
+ */
+export function AutomationsPage({ params }: { params?: URLSearchParams }) {
+  const t = useT();
+  const tab = params?.get('tab') === 'profiles' ? 'profiles' : 'automations';
+  const sectionTabs = (
+    <Tabs
+      tabs={[
+        { key: 'automations', label: t('automations.tabs.automations') },
+        { key: 'profiles', label: t('automations.tabs.profiles') },
+      ]}
+      active={tab}
+      onChange={(key) => {
+        window.location.hash = key === 'profiles' ? AUTOMATIONS_PROFILES_HASH : '#/automations';
+      }}
+      ariaLabel={t('automations.tabs.label')}
+    />
+  );
+  return tab === 'profiles' ? (
+    <RunProfilesPanel sectionTabs={sectionTabs} />
+  ) : (
+    <AutomationsPanel sectionTabs={sectionTabs} />
   );
 }

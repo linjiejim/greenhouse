@@ -12,18 +12,12 @@ export type { Session, Message, Profile };
  * `search` filters by title server-side (case-insensitive substring) so a match
  * on an unloaded page is still reachable via pagination.
  */
-export async function listSessions(opts?: {
-  limit?: number;
-  offset?: number;
-  tagId?: number | null;
-  search?: string;
-}): Promise<Session[]> {
+export async function listSessions(opts?: { limit?: number; offset?: number; search?: string }): Promise<Session[]> {
   const limit = opts?.limit ?? 200;
   const offset = opts?.offset ?? 0;
-  const tag = opts?.tagId != null ? `&tag_id=${opts.tagId}` : '';
   const q = opts?.search ? `&q=${encodeURIComponent(opts.search)}` : '';
   const data = await apiJson<{ sessions: Session[] }>(
-    `/api/sessions?status=active&limit=${limit}&offset=${offset}${tag}${q}`,
+    `/api/sessions?status=active&limit=${limit}&offset=${offset}${q}`,
     { sessions: [] },
   );
   return data.sessions ?? [];

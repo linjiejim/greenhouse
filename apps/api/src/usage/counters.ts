@@ -6,7 +6,7 @@
  * or slow the tool call or page view it describes.
  *
  * Tool calls are counted at their real execution boundaries, once each:
- *   - `countToolCalls()` wraps a per-turn registry (Chat, Automation, Subagent,
+ *   - `countToolCalls()` wraps a per-turn registry (Chat, Automation,
  *     the Feishu bot) so the count fires when `execute` is entered;
  *   - `executeProxyTool({ usageClient })` counts MCP and Agent API calls after
  *     the proxy's reachability / confirm / schema checks pass.
@@ -86,16 +86,16 @@ export function chatToolCallClient(
 ): ToolCallClient {
   if (channel === 'browser') return 'browser';
   if (channel === 'feishu') return 'feishu';
-  if (appClient === 'mobile' || appClient === 'browser') return appClient;
+  if (appClient === 'mobile') return appClient;
   return 'web_chat';
 }
 
-/** Agent API calls from the browser extension or the mobile app count as that app. */
+/** Agent API calls from the mobile app count as that app. */
 export function agentApiToolCallClient(appClient: ReturnType<typeof parseAppClient>): ToolCallClient {
-  return appClient === 'mobile' || appClient === 'browser' ? appClient : 'agent_api';
+  return appClient === 'mobile' ? appClient : 'agent_api';
 }
 
-/** Page opens: the app header names desktop / mobile / browser, anything else is the web app. */
+/** Page opens: the app header names the mobile app, anything else is the web app. */
 export function pageOpenClient(appClient: ReturnType<typeof parseAppClient>): PageOpenClient {
   return appClient ?? 'web';
 }

@@ -25,8 +25,9 @@ export default defineConfig({
   },
   clients: {
     stations: {
-      // 'multi': users add and switch Greenhouse servers in the browser extension and
-      // the mobile app. 'single': lock a client build to the one station below.
+      // 'multi': users add and switch Greenhouse servers in the mobile app.
+      // 'single': lock a client build to the one station below. The mobile build
+      // mirrors this through EXPO_PUBLIC_STATIONS_MODE / EXPO_PUBLIC_API_BASE_URL.
       mode: 'multi',
       defaults: [],
     },

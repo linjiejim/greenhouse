@@ -33,9 +33,9 @@ export async function executeClientAction(
     return { toolCallId, output: null, error: `Unknown client action: ${toolId}` };
   }
 
-  // Page actions expire with the route that declared them. Global ones (desktop
-  // native capture, the browser bridge) are not bound to any route, so expiring
-  // them would only break long turns — see registry.ts.
+  // Page actions expire with the route that declared them. Global ones are not
+  // bound to any route, so expiring them would only break long turns — see
+  // registry.ts.
   if (resolved.origin === 'page' && !isPageActionScopeActive(scopeId!)) {
     return {
       toolCallId,

@@ -79,8 +79,7 @@ export function createChatRoute(toolRegistry: ToolRegistry) {
   return (
     new Hono<AppEnv>()
       .post('/', async (c) => {
-        // One shared definition with every first-party client (web, browser
-        // extension); tests/browser/chat-contract.test.ts holds the extension to it.
+        // One shared definition with every first-party client.
         const body = (await c.req.json()) as ChatRequestBody;
 
         const sessionId = body.session_id;
@@ -422,9 +421,9 @@ export function createChatRoute(toolRegistry: ToolRegistry) {
             profile,
             profileId,
           });
-          // A browser-extension conversation reads untrusted pages, so it gets
-          // no inline writer at all; its panel's confirm-carded Client Action is
-          // the only write path (filterBrowserSessionToolIds, agent-runtime/tool-resolution.ts).
+          // A browser-extension conversation (extension removed in 1.5) carries
+          // untrusted page text, so it still gets no inline writer at all
+          // (filterBrowserSessionToolIds, agent-runtime/tool-resolution.ts).
           const executionTools =
             sessionChannel === BROWSER_SESSION_CHANNEL ? filterBrowserSessionToolIds(effectiveTools) : effectiveTools;
 
@@ -445,7 +444,6 @@ export function createChatRoute(toolRegistry: ToolRegistry) {
                 sessionId,
                 workspaceId: body.workspace_id,
                 profileId: profile.id,
-                runtimeRunId: runtimeTrace?.runId ?? null,
                 toolRegistry,
               }),
             },

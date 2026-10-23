@@ -7,6 +7,8 @@
  * page component so the redirect map can be exercised without mounting React.
  */
 
+import { AUTOMATIONS_PROFILES_HASH, SKILLHUB_PROMPTS_HASH } from '../../lib/workspace-routes';
+
 /** Default settings module when the sub-path is empty. */
 export const DEFAULT_MODULE = 'preferences';
 
@@ -57,8 +59,8 @@ export function resolveSettingsRedirect(subPath: string): string | null {
   const segments = subPath.split('/').filter(Boolean);
   const moduleKey = segments[0] || DEFAULT_MODULE;
 
-  // Custom agents moved out of Settings into their own surface (v3).
-  if (moduleKey === 'my-profiles') return '#/agents';
+  // Custom agents moved out of Settings (v3), and into Automations › Run profiles (1.5).
+  if (moduleKey === 'my-profiles') return AUTOMATIONS_PROFILES_HASH;
 
   // The read-only System Agents inventory was retired once the product
   // converged on one built-in preset. Keep historical links useful by landing
@@ -67,7 +69,7 @@ export function resolveSettingsRedirect(subPath: string): string | null {
 
   // Personal utilities are independent, refresh-safe pages now.
   if (moduleKey === 'automations') return '#/automations';
-  if (moduleKey === 'prompts') return '#/tasks';
+  if (moduleKey === 'prompts') return SKILLHUB_PROMPTS_HASH;
 
   const tabRedirect = resolveAdministrationRedirect(subPath);
   if (tabRedirect) return tabRedirect;

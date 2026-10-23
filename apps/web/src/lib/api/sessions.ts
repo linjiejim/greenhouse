@@ -83,17 +83,7 @@ export async function deleteSession(id: string): Promise<void> {
   if (!res.ok) throw new Error(`deleteSession failed: ${res.status}`);
 }
 
-// ─── Group / Pin membership (per-user organization) ──────
-
-/** File a session into a custom folder, or pass null to remove it from its folder. */
-export async function setSessionGroup(sessionId: string, groupId: number | null): Promise<void> {
-  const args = { param: { id: sessionId }, json: { group_id: groupId } };
-  const res = await rpc.api.sessions[':id'].group.$put(args);
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: 'Failed' }));
-    throw new Error(('error' in err && err.error) || `Failed: ${res.status}`);
-  }
-}
+// ─── Pins (per-user organization) ───────────────────────
 
 export async function pinSession(sessionId: string): Promise<void> {
   const res = await rpc.api.sessions[':id'].pin.$post({ param: { id: sessionId } });
@@ -103,6 +93,14 @@ export async function pinSession(sessionId: string): Promise<void> {
 export async function unpinSession(sessionId: string): Promise<void> {
   const res = await rpc.api.sessions[':id'].pin.$delete({ param: { id: sessionId } });
   if (!res.ok) throw new Error(`Unpin failed: ${res.status}`);
+}
+
+/** Persist the order of the caller's pinned sessions. */
+export async function reorderPinnedSessions(updates: Array<{ session_id: string; sort_order: number }>): Promise<void> {
+  // Non-literal arg: hc only types `json` for validator-backed routes (none yet).
+  const args = { json: { updates } };
+  const res = await rpc.api.sessions.pins.reorder.$post(args);
+  if (!res.ok) throw new Error(`Reorder failed: ${res.status}`);
 }
 
 export async function regenerateTitle(sessionId: string): Promise<string> {

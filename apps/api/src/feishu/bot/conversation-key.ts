@@ -35,19 +35,14 @@ export function feishuConversationKey(refs: FeishuThreadRefs): string {
  *  - **编排类**（schema-plan/task-capture）：它们的确认门是 Web
  *    专属的富卡片。IM 里没有确认按钮那道天然减速带，一句话就能起一个几十
  *    分钟、烧模型额度的任务（spec D4，Jim 拍板禁用）。
- *  - **会话编排**（spawn/call_llm）：本就 session-scoped 且只在带 sessionId 的
+ *  - **会话编排**（call_llm）：本就 session-scoped 且只在带 sessionId 的
  *    chat 面装配，这里显式列出是为了让「飞书面有什么」可以只读这一处。
  *
  * 注意这**不是** `UNATTENDED_TOOL_DENYLIST`——飞书面对面有真人在等回答，不是
  * 无人值守（spec D6）。两者刻意分开：那份禁的是「没人能按确认」，这份禁的是
  * 「这个交互形态承载不了」。
  */
-export const FEISHU_DENIED_TOOL_IDS: readonly string[] = [
-  'tables_schema_plan',
-  'task_capture',
-  'spawn_session',
-  'call_llm',
-];
+export const FEISHU_DENIED_TOOL_IDS: readonly string[] = ['tables_schema_plan', 'task_capture', 'call_llm'];
 
 const DENIED = new Set(FEISHU_DENIED_TOOL_IDS);
 

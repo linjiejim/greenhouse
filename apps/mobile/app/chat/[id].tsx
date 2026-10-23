@@ -20,15 +20,11 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Clipboard from 'expo-clipboard';
 import * as ImagePicker from 'expo-image-picker';
-import { handleStreamEvent, type SessionTag } from '../../src/shared/greenhouse-types';
+import { handleStreamEvent } from '../../src/shared/greenhouse-types';
 import { getSession, deleteSession } from '../../src/api/sessions';
-import { removeTagFromSession } from '../../src/api/session-tags';
 import { streamChat } from '../../src/api/chat';
 import { prepareImage, uploadImage } from '../../src/api/upload';
 import { Composer, type Annotation, type ComposerImage } from '../../src/chat/composer';
-import { TagChip } from '../../src/chat/tag-chip';
-import { TagSelectorSheet } from '../../src/chat/tag-selector-sheet';
-import { TagManagerSheet } from '../../src/chat/tag-manager-sheet';
 import {
   AiMessage,
   UserMessage,
@@ -86,17 +82,15 @@ export default function Conversation() {
     ],
     [t],
   );
-  const headerActions = useMemo<ActionItem[]>(() => {
-    const items: ActionItem[] = [
+  const headerActions = useMemo<ActionItem[]>(
+    () => [
       { id: 'share', label: t('chat.actionShare'), icon: 'share' },
-      { id: 'tags', label: t('chat.actionTags'), icon: 'tag' },
       { id: 'rename', label: t('chat.actionRename'), icon: 'pen' },
       { id: 'export', label: t('chat.actionExport'), icon: 'download' },
       { id: 'del', label: t('chat.actionDelete'), icon: 'trash', danger: true },
-    ];
-    // Read-only (shared / non-owned) sessions can't be written — hide tag editing.
-    return readOnly ? items.filter((i) => i.id !== 'tags') : items;
-  }, [t, readOnly]);
+    ],
+    [t],
+  );
 
   const rootPad = useBottomPadStyle(0);
   const barInset = useCollapsingInsetStyle(Math.max(insets.bottom, 8));
@@ -119,9 +113,6 @@ export default function Conversation() {
   const [menuMsg, setMenuMsg] = useState<ChatMessage | null>(null);
   const [headMenu, setHeadMenu] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
-  const [sessionTags, setSessionTags] = useState<SessionTag[]>([]);
-  const [tagSel, setTagSel] = useState(false);
-  const [tagMgr, setTagMgr] = useState(false);
 
   const scrollRef = useRef<ScrollView>(null);
   const followRef = useRef(true);
@@ -330,7 +321,6 @@ export default function Conversation() {
       const data = await getSession(sessionId);
       if (!alive || !data) return;
       if (data.session?.title) setTitle(data.session.title);
-      setSessionTags(data.session?.tags ?? (data as { tags?: SessionTag[] }).tags ?? []);
       const hist = (data.messages || [])
         .filter((m) => m.role === 'user' || m.role === 'assistant')
         .map(fromStored);
@@ -463,21 +453,11 @@ export default function Conversation() {
       if (id === 'del') {
         deleteSession(sessionId).catch(() => {});
         router.back();
-      } else if (id === 'tags') {
-        setTagSel(true);
       } else {
         flash(t('common.comingSoon'));
       }
     },
     [sessionId, router, flash, t],
-  );
-
-  const removeTag = useCallback(
-    async (tag: SessionTag) => {
-      setSessionTags((prev) => prev.filter((x) => x.id !== tag.id));
-      await removeTagFromSession(sessionId, tag.id);
-    },
-    [sessionId],
   );
 
   return (
@@ -497,13 +477,6 @@ export default function Conversation() {
             </Touchable>
           }
         />
-        {sessionTags.length ? (
-          <View style={styles.tagBar}>
-            {sessionTags.map((tag) => (
-              <TagChip key={tag.id} tag={tag} onRemove={readOnly ? undefined : () => removeTag(tag)} />
-            ))}
-          </View>
-        ) : null}
       </View>
 
       {/* messages */}
@@ -656,19 +629,6 @@ export default function Conversation() {
       />
       <ActionSheet visible={headMenu} onClose={() => setHeadMenu(false)} items={headerActions} onPick={onHeaderPick} />
 
-      <TagSelectorSheet
-        visible={tagSel}
-        onClose={() => setTagSel(false)}
-        sessionId={sessionId}
-        sessionTags={sessionTags}
-        onChange={setSessionTags}
-        onManage={() => {
-          setTagSel(false);
-          setTagMgr(true);
-        }}
-      />
-      <TagManagerSheet visible={tagMgr} onClose={() => setTagMgr(false)} />
-
       {toast ? (
         <View style={styles.toastWrap} pointerEvents="none">
           <Toast message={toast} />
@@ -691,7 +651,6 @@ const useStyles = makeStyles((c) => ({
     backgroundColor: c.bg,
   },
   headerBtn: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center' },
-  tagBar: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingTop: 8, paddingBottom: 2, backgroundColor: c.bg },
   headerTitle: { fontSize: font.title, fontWeight: '700', color: c.fg, maxWidth: 240 },
   headerSub: { fontSize: font.caption, color: c.fgMuted, marginTop: 1 },
 

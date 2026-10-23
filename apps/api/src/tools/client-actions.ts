@@ -38,10 +38,8 @@ export function sanitizeClientActions(raw: unknown): ClientActionDescriptor[] {
   let truncated = 0;
   for (const item of raw) {
     // Truncation is silent to the caller by design (a full tool set shouldn't 400 a
-    // chat turn), but it must not be silent to us: the desktop's global capabilities
-    // and the browser bridge already claim 20 of the 32 slots, so a page declaring a
-    // dozen of its own is enough to make screenshot/selection/clipboard vanish from
-    // the model's tool list with nothing anywhere to explain why.
+    // chat turn), but it must not be silent to us: actions past the cap vanish from
+    // the model's tool list with nothing anywhere else to explain why.
     if (out.length >= MAX_ACTIONS) {
       truncated += 1;
       continue;

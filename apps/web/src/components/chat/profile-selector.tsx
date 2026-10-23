@@ -18,6 +18,7 @@ import type { EyeStyle, SproutyVariant, LeafStyle } from '../sprouty/index.js';
 import { useLocalized, useT, type TranslationKey } from '../../lib/i18n';
 import { DEFAULT_AGENT_ID } from '../../lib/agent-constants';
 import { useHoverFlyout } from '../../hooks/use-hover-flyout';
+import { AUTOMATIONS_PROFILES_HASH } from '../../lib/workspace-routes';
 
 /** Resolves server-authored copy to the active locale — see `useLocalized`. */
 type Localize = ReturnType<typeof useLocalized>;
@@ -312,7 +313,7 @@ function ProfilePickerPopover({
           <button
             onClick={() => {
               onClose();
-              window.location.hash = '#/agents';
+              window.location.hash = AUTOMATIONS_PROFILES_HASH;
             }}
             className="ml-auto rounded-md px-1.5 py-0.5 text-[11px] text-fg-secondary transition-colors hover:bg-surface-muted hover:text-fg"
           >
@@ -448,7 +449,7 @@ function ProfilePickerDrawer({
           <button
             onClick={() => {
               onClose();
-              window.location.hash = '#/agents';
+              window.location.hash = AUTOMATIONS_PROFILES_HASH;
             }}
             className="rounded-md px-2 py-1 text-xs text-fg-secondary transition-colors hover:bg-surface-muted hover:text-fg"
           >

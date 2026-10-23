@@ -10,12 +10,12 @@
  *                           extensions are on, where content packs live, how the
  *                           clients treat server stations.
  *
- * This module is dependency-free (types + `defineConfig`) so the browser extension
- * and the mobile app can import the same shapes. The zod schema that validates a
+ * This module is dependency-free (types + `defineConfig`) so clients can import
+ * the same shapes. The zod schema that validates a
  * config file at boot lives in `./config-schema` (server side only).
  */
 
-/** One Greenhouse server as seen by a client (browser extension, mobile app). */
+/** One Greenhouse server as seen by a client (the mobile app). */
 export interface StationConfig {
   /** Stable id, lowercase letters / digits / dashes. */
   id: string;

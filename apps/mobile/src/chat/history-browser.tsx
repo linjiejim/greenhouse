@@ -1,25 +1,20 @@
 /**
  * HistoryBrowser — the shared conversation-browsing body: a title search
- * (server-side ?q=), a tag filter bar (server-side ?tag_id=), and an
- * infinite-scroll list of <HistoryRow>s with long-press actions (tag / delete).
- * Reused by both hosts:
+ * (server-side ?q=) and an infinite-scroll list of <HistoryRow>s with a
+ * long-press delete action. Reused by both hosts:
  *   - <HistorySheet> — the top-bar popup (88% sheet; `inSheet` uses the
  *     bottom-sheet-aware text input);
  *   - app/history/index.tsx — the standalone history screen.
- * The host owns the tag-manager sheet + its trigger button (header placement
- * differs) and passes `onManageTags`.
  */
 
 import React, { useState } from 'react';
-import { Alert, type AlertButton, FlatList, StyleSheet, TextInput, View } from 'react-native';
+import { Alert, FlatList, StyleSheet, TextInput, View } from 'react-native';
 import { deleteSession } from '../api/sessions';
 import type { Session } from '../shared/greenhouse-types';
 import { useT } from '../lib/i18n';
 import { font, makeStyles, radius, useTheme } from '../theme';
 import { BottomSheetTextInput, EmptyState, Icon, Skeleton, Spinner, Touchable } from '../ui';
 import { HistoryRow, useSessions } from './history-list';
-import { TagFilter } from './tag-filter';
-import { TagSelectorSheet } from './tag-selector-sheet';
 
 export interface OpenConversation {
   id: string;
@@ -30,14 +25,12 @@ export interface OpenConversation {
 export function HistoryBrowser({
   enabled,
   onOpen,
-  onManageTags,
   inSheet = false,
   bottomInset = 24,
 }: {
   /** Gate the first page load (e.g. the sheet's `visible`). */
   enabled: boolean;
   onOpen: (c: OpenConversation) => void;
-  onManageTags: () => void;
   /** Inside a bottom sheet — use the sheet-aware text input for the search box. */
   inSheet?: boolean;
   /** Bottom padding for the list (safe-area on a full screen). */
@@ -46,10 +39,8 @@ export function HistoryBrowser({
   const { colors: c } = useTheme();
   const styles = useStyles(c);
   const t = useT();
-  const [filterId, setFilterId] = useState<number | null>(null);
   const [q, setQ] = useState('');
-  const { items, loading, loadMore, removeItem, updateItem } = useSessions(enabled, 20, filterId, q);
-  const [tagTarget, setTagTarget] = useState<Session | null>(null);
+  const { items, loading, loadMore, removeItem } = useSessions(enabled, 20, q);
 
   const fallbackTitle = t('chat.newConversation');
   const SearchInput = inSheet ? BottomSheetTextInput : TextInput;
@@ -69,15 +60,10 @@ export function HistoryBrowser({
   }
 
   function rowActions(s: Session) {
-    const buttons: AlertButton[] = [
+    Alert.alert(s.title || fallbackTitle, undefined, [
       { text: t('history.delete'), style: 'destructive', onPress: () => doDelete(s) },
       { text: t('common.cancel'), style: 'cancel' },
-    ];
-    // Only owners can write tags — don't offer tagging on shared/non-owned sessions.
-    if (s.is_owner !== false) {
-      buttons.unshift({ text: t('tags.sessionTags'), onPress: () => setTagTarget(s) });
-    }
-    Alert.alert(s.title || fallbackTitle, undefined, buttons);
+    ]);
   }
 
   const searchBar = (
@@ -108,12 +94,7 @@ export function HistoryBrowser({
         style={styles.list}
         contentContainerStyle={{ paddingBottom: bottomInset, flexGrow: 1 }}
         keyboardShouldPersistTaps="handled"
-        ListHeaderComponent={
-          <View>
-            {searchBar}
-            <TagFilter activeId={filterId} onChange={setFilterId} />
-          </View>
-        }
+        ListHeaderComponent={searchBar}
         onEndReached={() => loadMore()}
         onEndReachedThreshold={0.5}
         ItemSeparatorComponent={RowSep}
@@ -148,22 +129,6 @@ export function HistoryBrowser({
             onLongPress={() => rowActions(item)}
           />
         )}
-      />
-
-      <TagSelectorSheet
-        visible={!!tagTarget}
-        onClose={() => setTagTarget(null)}
-        sessionId={tagTarget?.id ?? ''}
-        sessionTags={tagTarget?.tags ?? []}
-        onChange={(newTags) => {
-          if (!tagTarget) return;
-          updateItem(tagTarget.id, { tags: newTags });
-          setTagTarget((prev) => (prev ? { ...prev, tags: newTags } : prev));
-        }}
-        onManage={() => {
-          setTagTarget(null);
-          onManageTags();
-        }}
       />
     </>
   );

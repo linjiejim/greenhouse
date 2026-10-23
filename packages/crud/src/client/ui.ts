@@ -7,8 +7,7 @@
  * push-style registries and keeps the framework in lockstep with the app's
  * theme AND its toast singleton (toasts render in the app's ToastContainer).
  *
- * Upstream (OSS greenhouse) imports these from @greenhouse/ui directly; if a
- * shared ui package ever lands here, this seam collapses into plain imports.
+ * If a shared ui package ever lands here, this seam collapses into plain imports.
  */
 
 import type {

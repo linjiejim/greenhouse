@@ -183,10 +183,10 @@ describe('Runtime durable worker', () => {
     const { db, runtime } = fakeDb(null);
     runtime.claimNextRun.mockResolvedValueOnce(
       runtimeRun({
-        id: 'subagent-runtime-1',
-        root_run_id: 'subagent-runtime-1',
-        kind: 'subagent',
-        source_kind: 'spawned_session',
+        id: 'automation-runtime-1',
+        root_run_id: 'automation-runtime-1',
+        kind: 'automation',
+        source_kind: 'scheduled_task:1',
         source_id: 'session-1',
         status: 'claimed',
         lease_owner: 'worker',
@@ -200,7 +200,7 @@ describe('Runtime durable worker', () => {
     const worker = await startRuntimeWorker({
       db,
       workerId: 'worker',
-      drivers: { subagent: driver },
+      drivers: { automation: driver },
       skipBootPass: true,
       intervalMs: 60_000,
     });

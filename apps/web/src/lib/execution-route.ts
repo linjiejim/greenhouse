@@ -95,7 +95,7 @@ export function legacyExecutionRedirect(hash: string): string | null {
   }
 
   // Runtime details briefly lived below #/tasks before that URL returned to
-  // personal Prompt Tasks.
+  // personal Prompt Tasks (now the SkillHub › My prompts tab).
   if (root === 'tasks' && isExecutionRouteKind(segments[1]) && segments[2]) {
     return withQuery(`${ACTIVITY_ROOT_HASH}/${segments.slice(1).join('/')}`, query);
   }

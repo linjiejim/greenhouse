@@ -11,7 +11,6 @@ import { create } from 'zustand';
 import type { AuthenticatedUser } from '../shared/greenhouse-types';
 import { hydrateTokens, getCachedUser, getAccessToken } from '../api/token-storage';
 import { useStations } from './stations';
-import { useTags } from './tags';
 import * as authApi from '../api/auth';
 
 /** Bumped per bootstrap so a superseded run (station switched again mid-flight)
@@ -39,8 +38,6 @@ export const useAuth = create<AuthState>((set) => ({
     if (gen !== bootGeneration) return;
     await hydrateTokens(useStations.getState().activeId);
     if (gen !== bootGeneration) return;
-    // Server-side caches (tags) belong to the previous station/user — drop them.
-    useTags.getState().reset();
     // Optimistically show the cached user, then validate in the background.
     const cached = getCachedUser();
     if (cached) set({ user: cached });

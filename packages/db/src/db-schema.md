@@ -49,10 +49,10 @@
 | `chat_artifact_receipts` | PK `id`；索引 session/user | 聊天动作卡的持久回执；稳定 action id 原子 claim，绑定 session/user/kind/request hash，保存 processing/succeeded/failed 与原始结果。用于 Schema Plan 与 Task Capture 的刷新恢复和 exactly-once 执行，不替代业务表 |
 | `session_shares` | PK `id`；UK `(session_id, shared_with)`；FK `session_id` CASCADE | 会话共享；目标为 user id 或 `__team__`；已读状态独立存于 `session_share_reads` |
 | `session_share_reads` | PK `id`；UK `(session_id, user_id)`；FK `session_id` CASCADE | 团队共享的逐用户已读状态 |
-| `session_tags` | PK `id`；UK `(user_id, name)` | 用户私有会话标签 |
-| `session_tag_links` | PK `id`；UK `(session_id, tag_id)` | 会话与标签关联；标签删除时级联 |
-| `session_groups` | PK `id`；UK `(user_id, name)` | 会话文件夹；`kind=custom/pinned` |
-| `session_group_members` | PK `id`；UK `(user_id, group_id, session_id)`；部分 UK `(user_id, session_id) WHERE kind='custom'` | 每用户的会话归档；同一会话最多进入一个 custom 文件夹，但可同时 pinned |
+| `session_tags` | PK `id`；UK `(user_id, name)` | 用户私有会话标签（功能 1.5 移除，表保留到 1.6 删除，无读写方） |
+| `session_tag_links` | PK `id`；UK `(session_id, tag_id)` | 会话与标签关联；标签删除时级联（同上，1.6 删除） |
+| `session_groups` | PK `id`；UK `(user_id, name)` | `kind=pinned` 为每用户的置顶系统组（`services/session-pins.ts` 唯一读写方）；`kind=custom` 文件夹功能 1.5 移除，存量行不读不改 |
+| `session_group_members` | PK `id`；UK `(user_id, group_id, session_id)`；部分 UK `(user_id, session_id) WHERE kind='custom'` | 每用户的置顶成员（`sort_order` 为置顶区顺序）；`kind=custom` 的存量文件夹归档行 1.5 起无读写方 |
 | `llm_calls` | PK `id`；索引 `session_id` | `call_llm` 子调用审计；保存输入、输出、模型、状态、token 与耗时 |
 | `llm_usage` | PK `id`；索引 profile/caller/user/created_at/budget key | LLM 用量统计；按 profile、caller、session、user、model 记录 token 与耗时；`budget_idempotency_key` 关联统一预算预留，NULL 表示迁移前或尚未接入预算的 legacy 调用 |
 | `scheduled_tasks` | PK `id` | 用户定时 Agent 任务；profile 默认 `team`，保存 cron、时区、执行状态与计数；`notify_webhook`（可选企微/飞书**群**机器人地址，host 白名单二选一、按 host 分派 payload 格式）、`notify_email`（布尔，发到 owner 账号邮箱）、`notify_wecom`（布尔，以企微应用消息发给 owner 本人，收件人取自其 `user_provider_tokens(provider='wecom')` 绑定）与 `notify_feishu`（布尔，以飞书卡片 DM 发给 owner 本人，收件人取自 `provider='feishu'` 绑定，迁移 0064）四条送达通道，均由 scheduler（非 Agent）在跑完后推送摘要——布尔通道**没有任何可供瞄准的收件人字段**，这正是它们免确认的原因；`unattended_tools`（JSON 字符串数组，迁移 0065）是 owner 逐任务勾选的额外工具，目录在 `@greenhouse/types/automation-tools`——它是**过滤器不是授权**（运行时取 `勾选 ∩ 目录 ∩ owner 当前 effectiveTools`），且只有用户自己的控制台请求能写，`automation_mutation` 一律拒绝；`quiet_when_empty`（v1.4）为真时，回答 `NO_UPDATE` 的运行照常记历史但不推送任何渠道 |
@@ -60,9 +60,9 @@
 
 ### 统一 Runtime Kernel
 
-Chat、Automation 与 Subagent 共用的执行控制面（`workflow` / `mission` / `eval` 只剩 v1.4 前的历史 Run）（见 [平台收敛 spec](../../../docs/specs/20260812-trusted-execution-platform-convergence.md)）。Run/Step 的竞争迁移走 version CAS，worker 领取走 `FOR UPDATE SKIP LOCKED` + lease；heartbeat、状态迁移、永久 Event 与至少一次 Outbox 在同一事务提交。跨领域 Run command 的 `FOR UPDATE` 锁覆盖来源 side effect，再 CAS 推进 Runtime 并落 Event/Outbox，阻止同版本 pause/cancel 双执行。stale Step 只有 driver 提供安全 checkpoint 后才会把旧 attempt 终态化并排入新的 attempt，避免把不确定外部写静默重放。
+Chat 与 Automation 共用的执行控制面（`workflow` / `mission` / `eval` 只剩 v1.4 前的历史 Run，`subagent` 只剩 1.5 前的历史 Run）（见 [平台收敛 spec](../../../docs/specs/20260812-trusted-execution-platform-convergence.md)）。Run/Step 的竞争迁移走 version CAS，worker 领取走 `FOR UPDATE SKIP LOCKED` + lease；heartbeat、状态迁移、永久 Event 与至少一次 Outbox 在同一事务提交。跨领域 Run command 的 `FOR UPDATE` 锁覆盖来源 side effect，再 CAS 推进 Runtime 并落 Event/Outbox，阻止同版本 pause/cancel 双执行。stale Step 只有 driver 提供安全 checkpoint 后才会把旧 attempt 终态化并排入新的 attempt，避免把不确定外部写静默重放。
 
-Subagent 以 child session 作为唯一 `source_id`，完整请求保存在 Run/Step input；`parent_run_id/root_run_id` 串起 Chat、Automation 和嵌套 Subagent。`runtime.admitSubagent()` 以稳定 tool-call identity 派生的 child/message id 为幂等边界，在同一事务写 child session、seq=0 user message、Run 与 Step，失败整笔回滚，因此不需要 boot orphan reconciler。每父 active async child admission 由内部 `createRun` advisory lock + JSON input 的 parent/mode 计数原子裁决，无进程内计数事实。整轮 Agent turn 的 `max_attempts=1`：claim-only 崩溃可在 provider/工具边界前释放 Step lease恢复，`running` stale 终态失败且不自动重放。
+历史 Subagent Run（1.5 前）以 child session 作为唯一 `source_id`，`parent_run_id/root_run_id` 串起父 Chat / Automation；子会话已退役，不再产生新行。
 
 | 表 | 主键 / 唯一约束 | 关键字段与用途 |
 |---|---|---|
@@ -153,7 +153,7 @@ Subagent 以 child session 作为唯一 `source_id`，完整请求保存在 Run/
 
 | 表 | 主键 / 唯一约束 | 关键字段与用途 |
 |---|---|---|
-| `usage_counters` | 复合 PK `(day, kind, key, client)` | 每日用量计数：`tool_call`（key=工具 id）/ `page_open`（key=模块 id）× 客户端（工具调用：mcp / agent_api / web_chat / browser / mobile / feishu / automation / subagent；页面打开：web / desktop / mobile / browser）；只有计数，没有内容和用户 |
+| `usage_counters` | 复合 PK `(day, kind, key, client)` | 每日用量计数：`tool_call`（key=工具 id）/ `page_open`（key=模块 id）× 客户端（工具调用：mcp / agent_api / web_chat / browser / mobile / feishu / automation，历史行还有 subagent；页面打开：web / mobile，历史行还有 desktop / browser）；只有计数，没有内容和用户 |
 | `rate_limit_buckets` | PK `key` | 固定窗口限流计数（`<规则>:<主体>:<窗口起点>`），过期即清；进程重启或多实例不再重置限流 |
 | `oauth_login_states` | PK `id`（state/code 的 SHA-256） | 飞书 / 企微登录的 pending state 与一次性登录码；原值不入库，`consumed_at` 保证一次性，过期即清 |
 

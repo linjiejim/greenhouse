@@ -158,7 +158,7 @@ export interface Session {
   feedback: string | null;
   profile_id: string;
   channel?: string;
-  /** Set when the session was spawned by another one (spawn_session; historically workflow nodes). */
+  /** Set when the session was spawned by another one (historical: retired sub-sessions and workflow nodes). */
   parent_session_id?: string | null;
   metadata: string;
   created_at: string;
@@ -171,31 +171,10 @@ export interface Session {
   owner_nickname?: string;
   /** Share count — how many people/team can see this session. -1 = team-wide. */
   share_count?: number;
-  /** The current user's custom folder for this session (per-user; null = unfiled). */
-  group_id?: number | null;
-  /** Sort order within that folder. */
-  group_sort?: number;
   /** Whether the current user has pinned this session. */
   pinned?: boolean;
   /** Sort order within the current user's Pinned group. */
   pin_sort?: number;
-}
-
-/**
- * Session group (folder) as returned by the API. The built-in Pinned group
- * has kind='pinned'; user folders have kind='custom'.
- */
-export interface SessionGroup {
-  id: number;
-  name: string;
-  color: string;
-  icon: string | null;
-  kind: string;
-  sort_order: number;
-  created_at: string;
-  updated_at: string;
-  /** Number of sessions filed in this group (when the API includes counts). */
-  member_count?: number;
 }
 
 /**
@@ -472,17 +451,6 @@ export interface ShareInfo {
   total_viewers: number; // -1 = team-wide
 }
 
-// ─── Session Tag Types ───────────────────────────────────
-
-export interface SessionTag {
-  id: number;
-  name: string;
-  color: string;
-  sort_order: number;
-  created_at: string;
-  updated_at: string;
-}
-
 // ─── Auth Types ──────────────────────────────────────────
 
 export type UserRole = 'super' | 'team' | 'external';
@@ -531,8 +499,8 @@ export const CLIENT_ACTIONS_API_PREFIX = '/api/client-actions';
 
 /**
  * Where a client posts a Client Action result to resume the paused agent step.
- * Body: `{ session_id, toolCallId, output, error? }`. The web app and the
- * browser extension both import this — never hand-write the path.
+ * Body: `{ session_id, toolCallId, output, error? }`. Clients import this —
+ * never hand-write the path.
  */
 export const CLIENT_ACTION_RESULT_PATH = `${CLIENT_ACTIONS_API_PREFIX}/tool-result` as const;
 
@@ -560,8 +528,7 @@ export interface ChatRequestBody {
   profile_id?: string;
   /**
    * Per-turn model choice. The agent's `model.id` is the default; headless
-   * callers (scheduled tasks, spawned sub-sessions)
-   * never send this and keep that default.
+   * callers (scheduled tasks) never send this and keep that default.
    */
   model?: string;
   /** Active workspace for the per-user tool proxy. */

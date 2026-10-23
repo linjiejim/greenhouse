@@ -5,8 +5,8 @@ import { administrationModules } from '../../lib/nav-registry';
 const adminKey = (id: string) => id.split('.').pop()!;
 
 describe('resolveSettingsRedirect', () => {
-  it('sends the retired My Agents page to the Agents surface', () => {
-    expect(resolveSettingsRedirect('my-profiles')).toBe('#/agents');
+  it('sends the retired My Agents page to Automations › Run profiles', () => {
+    expect(resolveSettingsRedirect('my-profiles')).toBe('#/automations?tab=profiles');
   });
 
   it('sends the retired System Agents inventory to Agent Usages', () => {
@@ -16,7 +16,7 @@ describe('resolveSettingsRedirect', () => {
 
   it('sends retired personal-tool settings links to their independent pages', () => {
     expect(resolveSettingsRedirect('automations')).toBe('#/automations');
-    expect(resolveSettingsRedirect('prompts')).toBe('#/tasks');
+    expect(resolveSettingsRedirect('prompts')).toBe('#/skillhub?tab=prompts');
   });
 
   it('returns null for a real Settings module (stays put)', () => {

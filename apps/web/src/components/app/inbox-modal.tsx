@@ -11,6 +11,7 @@ import { timeAgo, markdownPreview } from '../../lib/utils';
 import * as api from '../../lib/api';
 import { useWsStore } from '../../stores';
 import { Badge, Dialog, EmptyState, Spinner } from '../ui';
+import { AUTOMATIONS_PROFILES_HASH } from '../../lib/workspace-routes';
 
 type InboxTab = 'notifications' | 'shares';
 
@@ -20,7 +21,7 @@ function notificationHref(item: PlatformNotification): string | null {
     // router keeps this compatibility form readable.
     return executionNotificationHref(item.run_id, item.payload);
   }
-  if (item.agent_id) return '#/agents';
+  if (item.agent_id) return AUTOMATIONS_PROFILES_HASH;
   return null;
 }
 

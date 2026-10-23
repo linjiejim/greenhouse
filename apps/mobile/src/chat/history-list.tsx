@@ -1,11 +1,9 @@
 /**
  * Shared conversation-history pieces:
  *  - `useSessions`  — paginated session loader (infinite scroll; dedupes pages;
- *                     optional server-side tag filter + debounced title search,
- *                     both hard-reset pagination on change).
- *  - `HistoryRow`   — compact single-line row: title (left), then up to two small
- *                     tag chips (+N overflow) and the relative time on the right;
- *                     no leading avatar/icon. Used by the shared <HistoryBrowser>
+ *                     debounced title search, which hard-resets pagination on change).
+ *  - `HistoryRow`   — compact single-line row: title (left) and the relative time
+ *                     on the right; no leading avatar/icon. Used by the shared <HistoryBrowser>
  *                     (top-bar popup + standalone /history page).
  */
 
@@ -17,29 +15,26 @@ import { shortTime } from '../lib/format';
 import { useT } from '../lib/i18n';
 import { font, makeStyles, useTheme } from '../theme';
 import { Icon, Touchable } from '../ui';
-import { TagChip } from './tag-chip';
 
 /* ----------------------------- pagination hook ----------------------------- */
 
-export function useSessions(enabled: boolean, pageSize = 20, tagId: number | null = null, search = '') {
+export function useSessions(enabled: boolean, pageSize = 20, search = '') {
   const [items, setItems] = useState<Session[]>([]);
   const [loading, setLoading] = useState(false);
   const [done, setDone] = useState(false);
   const offset = useRef(0);
   const busy = useRef(false);
   const doneRef = useRef(false);
-  const tagRef = useRef<number | null>(tagId);
   const searchRef = useRef(search);
 
   const loadMore = useCallback(async () => {
     if (busy.current || doneRef.current) return;
     busy.current = true;
     setLoading(true);
-    const forTag = tagRef.current;
     const forSearch = searchRef.current;
-    const batch = await listSessions({ limit: pageSize, offset: offset.current, tagId: forTag, search: forSearch || undefined });
-    // The tag filter or search term changed while this page was in flight — discard it.
-    if (tagRef.current !== forTag || searchRef.current !== forSearch) {
+    const batch = await listSessions({ limit: pageSize, offset: offset.current, search: forSearch || undefined });
+    // The search term changed while this page was in flight — discard it.
+    if (searchRef.current !== forSearch) {
       busy.current = false;
       setLoading(false);
       return;
@@ -70,14 +65,13 @@ export function useSessions(enabled: boolean, pageSize = 20, tagId: number | nul
     return () => clearTimeout(id);
   }, [search]);
 
-  // Tag filter or search change → hard reset + reload (skips the initial mount).
+  // Search change → hard reset + reload (skips the initial mount).
   const firstRun = useRef(true);
   useEffect(() => {
     if (firstRun.current) {
       firstRun.current = false;
       return;
     }
-    tagRef.current = tagId;
     searchRef.current = debouncedSearch;
     offset.current = 0;
     doneRef.current = false;
@@ -86,7 +80,7 @@ export function useSessions(enabled: boolean, pageSize = 20, tagId: number | nul
     setItems([]);
     if (enabled) void loadMore();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tagId, debouncedSearch]);
+  }, [debouncedSearch]);
 
   const removeItem = useCallback((id: string) => setItems((it) => it.filter((x) => x.id !== id)), []);
   const updateItem = useCallback(
@@ -111,9 +105,6 @@ export function HistoryRow({
   const { colors: c } = useTheme();
   const styles = useStyles(c);
   const t = useT();
-  const tags = session.tags ?? [];
-  const shown = tags.slice(0, 2);
-  const extra = tags.length - shown.length;
   return (
     <Touchable
       haptic="none"
@@ -127,14 +118,6 @@ export function HistoryRow({
           {session.title || t('chat.newConversation')}
         </Text>
         {session.share_count ? <Icon name="share" size={12} color={c.fgFaint} /> : null}
-        {shown.length ? (
-          <View style={styles.tags}>
-            {shown.map((tag) => (
-              <TagChip key={tag.id} tag={tag} size="sm" />
-            ))}
-            {extra > 0 ? <Text style={styles.more}>+{extra}</Text> : null}
-          </View>
-        ) : null}
         <Text style={styles.time}>{shortTime(session.updated_at)}</Text>
       </View>
     </Touchable>
@@ -146,6 +129,4 @@ const useStyles = makeStyles((c) => ({
   top: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   title: { flex: 1, fontSize: font.label, fontWeight: '500', color: c.fg },
   time: { fontSize: font.caption, color: c.fgFaint, flexShrink: 0 },
-  tags: { flexDirection: 'row', alignItems: 'center', gap: 4, flexShrink: 0 },
-  more: { fontSize: font.caption, color: c.fgFaint },
 }));

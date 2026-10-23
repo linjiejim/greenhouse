@@ -26,7 +26,6 @@ import { nowIso } from '@greenhouse/utils/date';
 
 import type { Db } from '../client.js';
 import {
-  messages,
   runtimeArtifacts,
   runtimeEvents,
   runtimeInterrupts,
@@ -36,7 +35,6 @@ import {
   runtimeToolCalls,
   sessions,
 } from '../schema/index.js';
-import type { MessageRow, SessionRow } from '@greenhouse/types/session';
 import type {
   RuntimeActionRisk,
   RuntimeArtifactRow,
@@ -93,15 +91,6 @@ export interface RuntimeRunCreateInput {
    * for one scheduled task definition.
    */
   single_active_source_kind?: boolean;
-  /**
-   * Subagent fan-out admission is a database fact, not a process-local counter.
-   * Creation is serialized per parent session and rejected when the active
-   * child count reaches the caller-supplied bound.
-   */
-  active_subagent_parent?: {
-    parent_session_id: string;
-    limit: number;
-  };
   input: RuntimePayload;
   actor_user_id?: string | null;
   /**
@@ -171,38 +160,6 @@ export interface RuntimeExecutionClaimInput {
 export interface RuntimeExecutionClaimResult {
   run: RuntimeRunRow;
   step: RuntimeStepRow;
-}
-
-/**
- * One atomic `spawn_session` admission. The deterministic child/message IDs
- * bind retries of the same tool call to the same transcript + Runtime source.
- */
-export interface RuntimeSubagentAdmissionInput {
-  child_session_id: string;
-  seed_message_id: string;
-  owner_user_id: string;
-  initiated_by_user_id: string;
-  parent_session_id: string;
-  parent_run_id?: string | null;
-  profile_id: string;
-  title: string;
-  metadata: RuntimePayload;
-  prompt: string;
-  depth: number;
-  max_steps: number;
-  mode: 'sync' | 'async';
-  timeout_ms: number;
-  workspace_id: string | null;
-  active_limit?: number;
-  actor_user_id?: string | null;
-}
-
-export interface RuntimeSubagentAdmissionResult {
-  session: SessionRow;
-  message: MessageRow;
-  run: RuntimeRunRow;
-  step: RuntimeStepRow;
-  idempotent: boolean;
 }
 
 export interface RuntimeChatTraceAdmissionInput {
@@ -679,194 +636,6 @@ export function createRuntimeService(db: Db) {
   const service = {
     // ─── Runs ────────────────────────────────────────────
 
-    async admitSubagent(input: RuntimeSubagentAdmissionInput): Promise<RuntimeSubagentAdmissionResult> {
-      const childSessionId = assertIdentifier(input.child_session_id, 'child_session_id');
-      const seedMessageId = assertIdentifier(input.seed_message_id, 'seed_message_id');
-      const ownerUserId = assertIdentifier(input.owner_user_id, 'owner_user_id');
-      const initiatedBy = assertIdentifier(input.initiated_by_user_id, 'initiated_by_user_id');
-      const parentSessionId = assertIdentifier(input.parent_session_id, 'parent_session_id');
-      const parentRunId = input.parent_run_id ? assertIdentifier(input.parent_run_id, 'parent_run_id') : null;
-      const profileId = assertIdentifier(input.profile_id, 'profile_id');
-      const title = assertIdentifier(input.title, 'title');
-      const prompt = assertIdentifier(input.prompt, 'prompt', 100_000);
-      const depth = assertPositiveInteger(input.depth, 'depth');
-      const maxSteps = assertPositiveInteger(input.max_steps, 'max_steps');
-      if (maxSteps > 30) fail('runtime_invalid_input', 'max_steps must not exceed 30');
-      const timeoutMs = assertPositiveInteger(input.timeout_ms, 'timeout_ms');
-      const activeLimit =
-        input.active_limit === undefined ? undefined : assertPositiveInteger(input.active_limit, 'active_limit');
-      const workspaceId = input.workspace_id ? assertIdentifier(input.workspace_id, 'workspace_id') : null;
-      const metadata = encodeJson(input.metadata, 'subagent session metadata');
-      const runInput = {
-        child_session_id: childSessionId,
-        parent_session_id: parentSessionId,
-        profile_id: profileId,
-        prompt,
-        title,
-        depth,
-        max_steps: maxSteps,
-        mode: input.mode,
-        timeout_ms: timeoutMs,
-        workspace_id: workspaceId,
-      } satisfies RuntimePayload;
-      const stepInput = {
-        child_session_id: childSessionId,
-        prompt,
-        profile_id: profileId,
-        max_steps: maxSteps,
-      } satisfies RuntimePayload;
-
-      return db.transaction(async (rawTx) => {
-        const tx = rawTx as unknown as TransactionalDb;
-        await tx.execute(
-          sql`SELECT pg_advisory_xact_lock(hashtextextended(${`runtime-subagent-admit:${childSessionId}`}, 0))`,
-        );
-
-        const [parent] = await tx
-          .select()
-          .from(sessions)
-          .where(eq(sessions.id, parentSessionId))
-          .for('update')
-          .limit(1);
-        if (!parent || parent.user_id !== ownerUserId) {
-          fail('runtime_not_found', 'Subagent parent session is missing or belongs to another owner');
-        }
-
-        if (parentRunId) {
-          const [parentRun] = await tx
-            .select()
-            .from(runtimeRuns)
-            .where(eq(runtimeRuns.id, parentRunId))
-            .for('update')
-            .limit(1);
-          if (!parentRun || parentRun.owner_user_id !== ownerUserId || parentRun.session_id !== parentSessionId) {
-            fail('runtime_not_found', 'Subagent parent Runtime is missing or does not own the parent session');
-          }
-          if ((parentRun.status !== 'claimed' && parentRun.status !== 'running') || parentRun.desired_state !== 'run') {
-            fail('runtime_invalid_transition', 'Subagent parent Runtime is no longer accepting child work');
-          }
-        }
-
-        const [existingSession] = await tx
-          .select()
-          .from(sessions)
-          .where(eq(sessions.id, childSessionId))
-          .for('update')
-          .limit(1);
-        let session: SessionRow;
-        let message: MessageRow;
-        let idempotent = false;
-        if (existingSession) {
-          if (
-            existingSession.title !== title ||
-            existingSession.status !== 'active' ||
-            existingSession.profile_id !== profileId ||
-            existingSession.user_id !== ownerUserId ||
-            existingSession.channel !== 'subagent' ||
-            existingSession.parent_session_id !== parentSessionId ||
-            existingSession.metadata !== metadata
-          ) {
-            fail('runtime_idempotency_conflict', 'Subagent admission identity was reused with different session input');
-          }
-          const [existingMessage] = await tx.select().from(messages).where(eq(messages.id, seedMessageId)).limit(1);
-          if (
-            !existingMessage ||
-            existingMessage.session_id !== childSessionId ||
-            existingMessage.role !== 'user' ||
-            existingMessage.content !== prompt ||
-            existingMessage.seq !== 0
-          ) {
-            fail('runtime_idempotency_conflict', 'Subagent admission seed message is missing or changed');
-          }
-          session = existingSession as SessionRow;
-          message = existingMessage as MessageRow;
-          idempotent = true;
-        } else {
-          const [messageCollision] = await tx.select().from(messages).where(eq(messages.id, seedMessageId)).limit(1);
-          if (messageCollision) {
-            fail('runtime_idempotency_conflict', 'Subagent seed message identity already belongs to another session');
-          }
-          const at = nowIso();
-          const [createdSession] = await tx
-            .insert(sessions)
-            .values({
-              id: childSessionId,
-              title,
-              status: 'active',
-              profile_id: profileId,
-              user_id: ownerUserId,
-              app_id: null,
-              channel: 'subagent',
-              parent_session_id: parentSessionId,
-              metadata,
-              created_at: at,
-              updated_at: at,
-            })
-            .returning();
-          const [createdMessage] = await tx
-            .insert(messages)
-            .values({
-              id: seedMessageId,
-              session_id: childSessionId,
-              role: 'user',
-              content: prompt,
-              references_: '[]',
-              pipeline: '[]',
-              reasoning: null,
-              model: null,
-              images: '[]',
-              confidence: null,
-              grounded: null,
-              input_tokens: null,
-              output_tokens: null,
-              cached_tokens: null,
-              reasoning_tokens: null,
-              duration_ms: null,
-              seq: 0,
-              created_at: at,
-            })
-            .returning();
-          session = createdSession as SessionRow;
-          message = createdMessage as MessageRow;
-        }
-
-        // Bind services to this outer transaction. Their nested transactions
-        // are savepoints, so transcript + Run + Step either all commit or all
-        // disappear when any identity/admission check fails.
-        const nested = createRuntimeService(tx);
-        const run = await nested.createRun({
-          kind: 'subagent',
-          owner_user_id: ownerUserId,
-          initiated_by_user_id: initiatedBy,
-          session_id: childSessionId,
-          ...(parentRunId ? { parent_run_id: parentRunId } : {}),
-          source_kind: 'spawned_session',
-          source_id: childSessionId,
-          idempotency_key: `spawned-session:${childSessionId}`,
-          max_attempts: 1,
-          input: runInput,
-          actor_user_id: input.actor_user_id ?? initiatedBy,
-          ...(input.mode === 'async' && activeLimit
-            ? {
-                active_subagent_parent: {
-                  parent_session_id: parentSessionId,
-                  limit: activeLimit,
-                },
-              }
-            : {}),
-        });
-        const step = await nested.createStep({
-          run_id: run.id,
-          step_key: 'agent-turn',
-          kind: 'subagent_turn',
-          input: stepInput,
-          actor_user_id: input.actor_user_id ?? initiatedBy,
-          idempotency_key: 'subagent:step:created',
-        });
-        return { session, message, run, step, idempotent };
-      });
-    },
-
     /**
      * Atomically verify/lock a conversation and create its Chat Run + Step.
      * Session deletion takes the same row lock before checking active Runtime
@@ -920,18 +689,6 @@ export function createRuntimeService(db: Db) {
       const priority = assertNonnegativeInteger(input.priority ?? 0, 'priority');
       const maxAttempts = assertPositiveInteger(input.max_attempts ?? 3, 'max_attempts');
       const encodedInput = encodeJson(input.input, 'run input');
-      const activeSubagentParent = input.active_subagent_parent
-        ? {
-            parent_session_id: assertIdentifier(
-              input.active_subagent_parent.parent_session_id,
-              'active_subagent_parent.parent_session_id',
-            ),
-            limit: assertPositiveInteger(input.active_subagent_parent.limit, 'active_subagent_parent.limit'),
-          }
-        : null;
-      if (activeSubagentParent && (input.kind !== 'subagent' || sourceKind !== 'spawned_session')) {
-        fail('runtime_invalid_input', 'active_subagent_parent is only valid for spawned_session subagent Runs');
-      }
       const notBefore = input.not_before ? asIso(input.not_before, 'not_before') : null;
       const deadlineAt = input.deadline_at ? asIso(input.deadline_at, 'deadline_at') : null;
       if (notBefore && deadlineAt && Date.parse(deadlineAt) <= Date.parse(notBefore)) {
@@ -940,11 +697,9 @@ export function createRuntimeService(db: Db) {
 
       return db.transaction(async (rawTx) => {
         const tx = rawTx as unknown as TransactionalDb;
-        const creationLock = activeSubagentParent
-          ? `runtime-create-subagent:${ownerUserId}:${activeSubagentParent.parent_session_id}`
-          : input.single_active_source_kind
-            ? `runtime-create-active:${ownerUserId}:${input.kind}:${sourceKind}`
-            : `runtime-create:${ownerUserId}:${input.kind}:${idempotencyKey ?? `${sourceKind}:${sourceId}`}`;
+        const creationLock = input.single_active_source_kind
+          ? `runtime-create-active:${ownerUserId}:${input.kind}:${sourceKind}`
+          : `runtime-create:${ownerUserId}:${input.kind}:${idempotencyKey ?? `${sourceKind}:${sourceId}`}`;
         await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${creationLock}, 0))`);
 
         const candidates = await tx
@@ -1017,28 +772,6 @@ export function createRuntimeService(db: Db) {
             .limit(1);
           if (active) {
             fail('runtime_invalid_transition', `Runtime source ${sourceKind} already has an active run`);
-          }
-        }
-
-        if (activeSubagentParent) {
-          const [active] = await tx
-            .select({ count: sql<number>`COUNT(*)` })
-            .from(runtimeRuns)
-            .where(
-              and(
-                eq(runtimeRuns.owner_user_id, ownerUserId),
-                eq(runtimeRuns.kind, 'subagent'),
-                eq(runtimeRuns.source_kind, 'spawned_session'),
-                inArray(runtimeRuns.status, [...ACTIVE_RUN_STATUSES]),
-                sql`${runtimeRuns.input}::jsonb ->> 'parent_session_id' = ${activeSubagentParent.parent_session_id}`,
-                sql`${runtimeRuns.input}::jsonb ->> 'mode' = 'async'`,
-              ),
-            );
-          if (Number(active?.count ?? 0) >= activeSubagentParent.limit) {
-            fail(
-              'runtime_invalid_transition',
-              `Too many active subagent Runs for parent session (max ${activeSubagentParent.limit})`,
-            );
           }
         }
 
@@ -1124,23 +857,6 @@ export function createRuntimeService(db: Db) {
         .orderBy(desc(runtimeRuns.created_at), desc(runtimeRuns.id))
         .limit(1);
       return row;
-    },
-
-    /** Durable replacement for the old process-local async child counter. */
-    async countActiveSubagentRuns(parentSessionId: string, ownerUserId?: string): Promise<number> {
-      const [row] = await db
-        .select({ count: sql<number>`COUNT(*)` })
-        .from(runtimeRuns)
-        .where(
-          and(
-            eq(runtimeRuns.kind, 'subagent'),
-            eq(runtimeRuns.source_kind, 'spawned_session'),
-            inArray(runtimeRuns.status, [...ACTIVE_RUN_STATUSES]),
-            sql`${runtimeRuns.input}::jsonb ->> 'parent_session_id' = ${assertIdentifier(parentSessionId, 'parent_session_id')}`,
-            ...(ownerUserId ? [eq(runtimeRuns.owner_user_id, assertIdentifier(ownerUserId, 'owner_user_id'))] : []),
-          ),
-        );
-      return Number(row?.count ?? 0);
     },
 
     async listRunsByOwner(ownerUserId: string, limit = 50): Promise<RuntimeRunRow[]> {

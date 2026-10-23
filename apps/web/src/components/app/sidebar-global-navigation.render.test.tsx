@@ -46,18 +46,30 @@ describe('SidebarGlobalNavigation', () => {
     expect(html).toMatch(/href="#\/chat"[^>]*class="[^"]*font-semibold/);
   });
 
-  it('keeps the personal utilities and overflow applications under More, Automations out of it', () => {
-    const html = render('tasks');
+  it('keeps only overflow applications under More — automations, prompts and run profiles live elsewhere', () => {
+    const html = render('tables');
 
-    expect(html.indexOf('More')).toBeLessThan(html.indexOf('Tasks'));
-    expect(html.indexOf('Tasks')).toBeLessThan(html.indexOf('My Agents'));
-    expect(html).toContain('SkillHub');
+    expect(html.indexOf('More')).toBeLessThan(html.indexOf('SkillHub'));
     expect(html).toContain('Tables');
     expect(html).not.toContain('href="#/automations"');
-    expect(html).toContain('href="#/tasks"');
-    expect(html).toContain('href="#/agents"');
+    expect(html).not.toContain('href="#/tasks"');
+    expect(html).not.toContain('href="#/agents"');
     expect(html).toMatch(/aria-haspopup="menu"[^>]*aria-expanded="true"[^>]*aria-current="page"/);
-    expect(html).toMatch(/href="#\/tasks"[^>]*aria-current="page"/);
+    expect(html).toMatch(/href="#\/tables"[^>]*aria-current="page"/);
     expect(html).toMatch(/role="menu"[^>]*class="[^"]*pl-1/);
+  });
+
+  it('draws no More at all when nothing would be in it', () => {
+    const html = renderToStaticMarkup(
+      <I18nProvider initialLocale="en">
+        <SidebarGlobalNavigation
+          navigation={{ primary: navigation.primary, overflow: [] }}
+          route="chat"
+          chatWorkspaceView="conversation"
+          onSelectChatWorkspace={vi.fn()}
+        />
+      </I18nProvider>,
+    );
+    expect(html).not.toContain('aria-haspopup="menu"');
   });
 });

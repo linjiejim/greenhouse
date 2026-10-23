@@ -50,12 +50,7 @@ describe('filterFeishuToolIds', () => {
   });
 
   it('禁用集合钉死 —— 增删都应该是有意识的改动', () => {
-    expect([...FEISHU_DENIED_TOOL_IDS].sort()).toEqual([
-      'call_llm',
-      'spawn_session',
-      'tables_schema_plan',
-      'task_capture',
-    ]);
+    expect([...FEISHU_DENIED_TOOL_IDS].sort()).toEqual(['call_llm', 'tables_schema_plan', 'task_capture']);
   });
 });
 

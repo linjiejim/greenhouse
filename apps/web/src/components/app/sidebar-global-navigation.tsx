@@ -4,7 +4,6 @@ import { ChevronDown, ChevronRight, MoreHorizontal } from '../../lib/icons';
 import { useT } from '../../lib/i18n';
 import type { ChatWorkspaceView } from '../../stores';
 import type { PrimaryNavigation, PrimaryNavigationItem } from '../../platform/navigation';
-import { CHAT_WORKSPACE_ITEMS } from '../chat/chat-workspace-navigation';
 import { useHoverFlyout } from '../../hooks/use-hover-flyout';
 import { useAuthStore } from '../../stores';
 import { useExtensionsStore } from '../../stores/extensions-store';
@@ -24,17 +23,6 @@ interface SidebarGlobalNavigationProps {
   defaultMoreOpen?: boolean;
   className?: string;
 }
-
-// Automations moved into the primary list (v1.5); what remains here are the
-// personal utilities without a goal of their own.
-const MORE_UTILITY_ITEMS = (['prompts', 'agents'] as const).map((id) => {
-  const item = CHAT_WORKSPACE_ITEMS.find((candidate) => candidate.id === id)!;
-  return {
-    ...item,
-    route: id === 'prompts' ? 'tasks' : id,
-    href: id === 'prompts' ? '#/tasks' : `#/${id}`,
-  };
-});
 
 function directItemClasses(active: boolean, compact: boolean): string {
   return compact
@@ -105,7 +93,6 @@ export function SidebarGlobalNavigation({
   } = useHoverFlyout({ defaultOpen: defaultMoreOpen });
   const moreRef = useRef<HTMLDivElement>(null);
   const hoverEnabled = morePlacement === 'flyout';
-  const utilityMoreActive = MORE_UTILITY_ITEMS.some((item) => item.route === route);
   const overflowActive = navigation.overflow.some((item) => item.key === route);
   const { currentUser } = useAuthStore();
   const activeExtensions = useExtensionsStore((s) => s.extensions);
@@ -115,8 +102,10 @@ export function SidebarGlobalNavigation({
       (!item.requireFeature || canUseFeature(currentUser, item.requireFeature)),
   );
   const extensionMoreActive = route === 'extension' && extensionItems.some((item) => item.route === extensionRoute);
-  const moreActive = utilityMoreActive || overflowActive || extensionMoreActive;
-  const hasMore = MORE_UTILITY_ITEMS.length > 0 || navigation.overflow.length > 0 || extensionItems.length > 0;
+  const moreActive = overflowActive || extensionMoreActive;
+  // Automations, prompts and run profiles all have homes of their own since
+  // v1.5; More only holds extension pages and overflow applications.
+  const hasMore = navigation.overflow.length > 0 || extensionItems.length > 0;
 
   useEffect(() => {
     if (!moreOpen) return;
@@ -206,41 +195,6 @@ export function SidebarGlobalNavigation({
                     : ''
                 }
               >
-                {MORE_UTILITY_ITEMS.map((item) => {
-                  const Icon = item.icon;
-                  const active = route === item.route;
-                  return (
-                    <a
-                      key={item.id}
-                      href={item.href}
-                      role="menuitem"
-                      onClick={() => {
-                        setMoreOpen(false);
-                        onNavigate?.();
-                      }}
-                      aria-current={active ? 'page' : undefined}
-                      className={`flex min-h-11 w-full items-center gap-2.5 px-3 py-1.5 text-left text-sm transition-colors md:min-h-9 ${
-                        active ? 'sidebar-active-item font-semibold' : 'text-fg-secondary hover:bg-surface-muted'
-                      }`}
-                    >
-                      <Icon
-                        size={15}
-                        className={`flex-shrink-0 ${active ? 'text-primary-fg' : 'text-fg-faint'}`}
-                        aria-hidden="true"
-                      />
-                      <span className="truncate">{t(item.labelKey)}</span>
-                    </a>
-                  );
-                })}
-
-                {MORE_UTILITY_ITEMS.length > 0 && navigation.overflow.length > 0 && (
-                  <div className="mx-2 my-1 border-t border-edge" />
-                )}
-
-                {extensionItems.length > 0 && (MORE_UTILITY_ITEMS.length > 0 || navigation.overflow.length > 0) && (
-                  <div className="mx-2 my-1 border-t border-edge" />
-                )}
-
                 {extensionItems.map((item) => {
                   const Icon = item.icon;
                   const active = route === 'extension' && item.route === extensionRoute;
@@ -267,6 +221,10 @@ export function SidebarGlobalNavigation({
                     </a>
                   );
                 })}
+
+                {extensionItems.length > 0 && navigation.overflow.length > 0 && (
+                  <div className="mx-2 my-1 border-t border-edge" />
+                )}
 
                 {navigation.overflow.map((item) => {
                   const Icon = item.icon;

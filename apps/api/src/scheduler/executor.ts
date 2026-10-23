@@ -251,7 +251,6 @@ export async function executeTaskInSession(
         profileId: profile.id,
         toolRegistry,
         unattended: true,
-        runtimeRunId: options.runtimeRunId ?? null,
       }),
     );
     // Scheduled runs act for their owner, so they get the owner's memory index

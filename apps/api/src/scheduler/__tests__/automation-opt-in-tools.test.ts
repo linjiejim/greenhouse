@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { childSpawnToolIds, filterUnattendedToolIds } from '../../agent-runtime/tool-resolution.js';
+import { filterUnattendedToolIds } from '../../agent-runtime/tool-resolution.js';
 import { scheduledToolBase } from '../executor.js';
 import { validateUnattendedTools, type TaskActor } from '../task-center.js';
 
@@ -59,13 +59,7 @@ describe('scheduledToolBase', () => {
   });
 });
 
-describe('the grant does not leak to the other unattended consumers', () => {
-  it('spawned sub-sessions are unaffected', () => {
-    // childSpawnToolIds calls filterUnattendedToolIds with no opt-in argument;
-    // if the grant were a default or ambient value this would start passing.
-    expect(childSpawnToolIds(EFFECTIVE, 0)).not.toContain('tables_mutation');
-  });
-
+describe('the grant does not leak to other callers', () => {
   it('a bare filter call stays read-only', () => {
     expect(filterUnattendedToolIds(EFFECTIVE)).not.toContain('tables_mutation');
   });

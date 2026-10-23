@@ -47,7 +47,7 @@ function activeScope(): string {
  */
 function answerNextConfirmation(allowed: boolean): () => void {
   const off = onConfirmationChange((prompt) => {
-    if (prompt) resolveConfirmation(prompt.id, { allowed, rememberSite: false });
+    if (prompt) resolveConfirmation(prompt.id, { allowed });
   });
   return off;
 }

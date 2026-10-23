@@ -4,7 +4,6 @@ import type { DatabaseProvider } from '@greenhouse/db';
 import type { RuntimeJsonValue } from '@greenhouse/types/runtime';
 import { reconcileReclaimedAutomationRun } from '../scheduler/runtime-driver.js';
 import { notifyTaskResult } from '../scheduler/notify.js';
-import { reconcileReclaimedSubagentRun } from './subagent-driver.js';
 import type { RuntimeEventEnvelope } from './worker.js';
 
 function record(value: RuntimeJsonValue | undefined): Record<string, RuntimeJsonValue> | null {
@@ -129,6 +128,6 @@ export function createRuntimeDomainProjector(db: DatabaseProvider) {
         await reconcileReclaimedAutomationRun(db, run);
       }
       await projectAutomationOutcome(db, run, event.event_id);
-    } else if (run.kind === 'subagent') await reconcileReclaimedSubagentRun(db, run);
+    }
   };
 }

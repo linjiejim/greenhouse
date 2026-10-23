@@ -20,8 +20,6 @@ export const COUNTED_TOP_LEVEL_ROUTES = [
   'tables',
   'files',
   'automations',
-  'tasks',
-  'agents',
   'skillhub',
   'activity',
 ] as const;

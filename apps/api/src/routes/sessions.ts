@@ -13,12 +13,14 @@
  * DELETE /api/sessions/:id/shares/:shareId               — 移除单个分享
  * PATCH  /api/sessions/:id/messages/:msgId             — 编辑用户消息内容（同时删除后续消息）
  * POST   /api/sessions/:id/regenerate                  — 校验指定的末尾 AI 回复可重新生成
+ * POST   /api/sessions/:id/pin                         — 置顶（当前用户私有）
+ * DELETE /api/sessions/:id/pin                         — 取消置顶
+ * POST   /api/sessions/pins/reorder                    — 调整当前用户置顶会话的顺序
  */
 
 import { Hono } from 'hono';
 import { getDb, SessionActiveRuntimeError } from '@greenhouse/db';
 import { SESSION_SCOPES, type SessionScope } from '@greenhouse/types/api';
-import { BROWSER_SESSION_CHANNEL } from '@greenhouse/types/session';
 import { getAuthUser } from '../auth/middleware.js';
 import { generateSessionTitle } from '../llm/title.js';
 import { resolveProfileAsync } from '../profiles/profile.js';
@@ -67,6 +69,26 @@ const sessions = new Hono<AppEnv>()
       .map((u) => ({ id: u.id, nickname: u.nickname, email: u.email, role: u.role }));
     return c.json({ users });
   })
+  /** POST /api/sessions/pins/reorder — reorder the caller's pinned sessions */
+  .post('/pins/reorder', async (c) => {
+    const authUser = getAuthUser(c);
+    const body = (await c.req.json().catch(() => ({}))) as {
+      updates?: Array<{ session_id?: unknown; sort_order?: unknown }>;
+    };
+    if (!Array.isArray(body.updates) || body.updates.length === 0) {
+      return c.json({ error: 'Updates array required' }, 400);
+    }
+    const updates: Array<{ session_id: string; sort_order: number }> = [];
+    for (const u of body.updates) {
+      if (typeof u?.session_id !== 'string' || !Number.isInteger(u.sort_order)) {
+        return c.json({ error: 'Each update needs a session_id and an integer sort_order' }, 400);
+      }
+      updates.push({ session_id: u.session_id, sort_order: u.sort_order as number });
+    }
+    // Scoped to the caller's own Pinned group, so foreign ids are no-ops.
+    await getDb().sessionPins.reorder(authUser.id, updates);
+    return c.json({ ok: true });
+  })
   /** POST /api/sessions — create a new session */
   .post('/', async (c) => {
     const authUser = getAuthUser(c);
@@ -74,15 +96,11 @@ const sessions = new Hono<AppEnv>()
     const body = (await c.req.json().catch(() => ({}))) as {
       title?: string;
       profile_id?: string;
-      channel?: unknown;
     };
-    // The browser extension files its conversations on their own channel: its
-    // panel lists only those, and the chat route gives them a read-only tool
-    // face. Every other channel is server-assigned, so any other value is ignored.
-    const channel = body.channel === BROWSER_SESSION_CHANNEL ? BROWSER_SESSION_CHANNEL : undefined;
+    // Channels are server-assigned; a client-supplied one is ignored. (The browser
+    // extension used to file its own `browser` conversations; it was removed in 1.5.)
     try {
-      // `channel='mission'` is never minted (Missions were retired in v1.4).
-      const session = await createOwnedSession(authUser, { title: body.title, profileId: body.profile_id, channel });
+      const session = await createOwnedSession(authUser, { title: body.title, profileId: body.profile_id });
       return c.json(session, 201);
     } catch (err) {
       if (err instanceof SessionCreationError) return c.json({ error: err.message }, err.status);
@@ -112,7 +130,6 @@ const sessions = new Hono<AppEnv>()
     // exact requested limit until Web has migrated to the page_meta contract.
     const limit = includePageMeta ? Math.min(requestedLimit, 200) : requestedLimit;
     const includeEval = c.req.query('include_eval') === '1';
-    const tagId = c.req.query('tag_id') ? parseInt(c.req.query('tag_id')!, 10) : undefined;
     const channel = c.req.query('channel');
 
     const scope = parseSessionScope(c.req.query('scope'));
@@ -173,19 +190,19 @@ const sessions = new Hono<AppEnv>()
       list.sort((a, b) => (b.updated_at > a.updated_at ? 1 : -1));
     }
 
-    // Backfill pinned/grouped sessions that fell outside the recent window
-    // (an old or shared session the user filed/pinned must still surface).
-    // Filing something is an explicit act, so it outranks the scope filter —
-    // but only where those sections are rendered ('mine' and the unscoped list).
-    // A channel-filtered list is not the sidebar: it answers "my conversations
-    // on <channel>" (the extension panel's history), so it gets no backfill.
-    const organizedIds =
+    // Backfill pinned sessions that fell outside the recent window (an old or
+    // shared session the user pinned must still surface). Pinning is an
+    // explicit act, so it outranks the scope filter — but only where the Pinned
+    // section is rendered ('mine' and the unscoped list). A channel-filtered
+    // list is not the sidebar: it answers "my conversations on <channel>", so
+    // it gets no backfill.
+    const pinnedIds =
       scope === 'shared' || scope === 'team' || channel
         ? []
-        : await getDb().sessionGroups.getOrganizedSessionIds(authUser.id);
-    if (organizedIds.length > 0) {
+        : await getDb().sessionPins.getPinnedSessionIds(authUser.id);
+    if (pinnedIds.length > 0) {
       const existingIds = new Set(list.map((s) => s.id));
-      const missingIds = organizedIds.filter((id) => !existingIds.has(id));
+      const missingIds = pinnedIds.filter((id) => !existingIds.has(id));
       if (missingIds.length > 0) {
         const fetched = await Promise.all(missingIds.map((id) => getDb().sessions.getById(id)));
         for (const s of fetched) {
@@ -200,34 +217,23 @@ const sessions = new Hono<AppEnv>()
       }
     }
 
-    // Enrich with tags + group/pin membership + ownership flags.
+    // Enrich with pin state + ownership flags.
     // is_owner: the current user created this session.
     // shared: this session was shared with the current user by someone else
     //         (a self-shared session — e.g. one you shared to __team__ — is not "shared with me").
-    const sessionIds = list.map((s) => s.id);
-    const [tagsMap, membershipMap] = await Promise.all([
-      getDb().sessionTags.getTagsBySessionIds(sessionIds),
-      getDb().sessionGroups.getMembershipsForUser(authUser.id, sessionIds),
-    ]);
-    const enriched = list.map((s) => {
-      const m = membershipMap.get(s.id);
-      return {
-        ...s,
-        is_owner: s.user_id === authUser.id,
-        shared: sharedIdSet.has(s.id) && s.user_id !== authUser.id,
-        tags: (tagsMap.get(s.id) || []).map((t) => ({ id: t.id, name: t.name, color: t.color })),
-        group_id: m?.group_id ?? null,
-        group_sort: m?.group_sort ?? 0,
-        pinned: m?.pinned ?? false,
-        pin_sort: m?.pin_sort ?? 0,
-      };
-    });
-
-    // Filter by tag if requested
-    const filtered = tagId ? enriched.filter((s) => s.tags.some((t) => t.id === tagId)) : enriched;
-    // Name the owner on rows the caller doesn't own — resolved after the tag
-    // filter so dropped rows cost nothing.
-    const result = await withOwnerNicknames(getDb(), filtered, authUser.id);
+    const pinSorts = await getDb().sessionPins.getPinSortsForUser(
+      authUser.id,
+      list.map((s) => s.id),
+    );
+    const enriched = list.map((s) => ({
+      ...s,
+      is_owner: s.user_id === authUser.id,
+      shared: sharedIdSet.has(s.id) && s.user_id !== authUser.id,
+      pinned: pinSorts.has(s.id),
+      pin_sort: pinSorts.get(s.id) ?? 0,
+    }));
+    // Name the owner on rows the caller doesn't own.
+    const result = await withOwnerNicknames(getDb(), enriched, authUser.id);
 
     if (includePageMeta) {
       return c.json({
@@ -290,10 +296,9 @@ const sessions = new Hono<AppEnv>()
 
     const isOwner = session.user_id === authUser.id;
 
-    const [messages, usage, tags, shareRows] = await Promise.all([
+    const [messages, usage, shareRows] = await Promise.all([
       includeMessages ? getDb().sessions.getMessages(id) : Promise.resolve([]),
       getDb().sessions.getUsage(id),
-      getDb().sessionTags.getSessionTags(id),
       getDb().sessionShares.getSharesForSession(id),
     ]);
 
@@ -309,7 +314,6 @@ const sessions = new Hono<AppEnv>()
       user_id: undefined, // strip internal field
       is_owner: isOwner,
       share_count: shareCount,
-      tags: tags.map((t) => ({ id: t.id, name: t.name, color: t.color })),
     };
 
     // For non-owner viewers, include share context
@@ -585,72 +589,10 @@ const sessions = new Hono<AppEnv>()
     if (!deleted) return c.json({ error: 'Share not found' }, 404);
     return c.json({ ok: true });
   })
-  // ─── Session Tag Link Endpoints ──────────────────────────
-
-  /** POST /api/sessions/:id/tags — add a tag to a session */
-  .post('/:id/tags', async (c) => {
-    const authUser = getAuthUser(c);
-    const sessionId = c.req.param('id');
-    const session = await getDb().sessions.getById(sessionId);
-    if (!session || !canWriteSession(authUser, session)) {
-      return c.json({ error: 'Session not found' }, 404);
-    }
-
-    const body = (await c.req.json()) as { tag_id?: number };
-    if (!body.tag_id) return c.json({ error: 'tag_id required' }, 400);
-
-    // Verify tag belongs to user
-    const tag = await getDb().sessionTags.getById(body.tag_id);
-    if (!tag || tag.user_id !== authUser.id) {
-      return c.json({ error: 'Tag not found' }, 404);
-    }
-
-    // Check max 5 tags per session
-    const existingTags = await getDb().sessionTags.getSessionTags(sessionId);
-    if (existingTags.length >= 5) {
-      return c.json({ error: 'Maximum 5 tags per session' }, 400);
-    }
-
-    await getDb().sessionTags.addTagToSession(sessionId, body.tag_id);
-    return c.json({ ok: true });
-  })
-  /** DELETE /api/sessions/:id/tags/:tagId — remove a tag from a session */
-  .delete('/:id/tags/:tagId', async (c) => {
-    const authUser = getAuthUser(c);
-    const sessionId = c.req.param('id');
-    const tagId = parseInt(c.req.param('tagId'), 10);
-    if (isNaN(tagId)) return c.json({ error: 'Invalid tag ID' }, 400);
-
-    const session = await getDb().sessions.getById(sessionId);
-    if (!session || !canWriteSession(authUser, session)) {
-      return c.json({ error: 'Session not found' }, 404);
-    }
-
-    await getDb().sessionTags.removeTagFromSession(sessionId, tagId);
-    return c.json({ ok: true });
-  })
-
-  // ─── Session Group / Pin Membership Endpoints ────────────
+  // ─── Pin Endpoints ───────────────────────────────────────
   // Per-user organization: gated by canAccessSession (NOT canWriteSession) so a
-  // session shared with me can be filed/pinned into my own private layout.
+  // session shared with me can be pinned into my own private layout.
 
-  /** PUT /api/sessions/:id/group — file into a folder (group_id: number) or remove (null). */
-  .put('/:id/group', async (c) => {
-    const authUser = getAuthUser(c);
-    const sessionId = c.req.param('id');
-    const session = await getDb().sessions.getById(sessionId);
-    if (!session || !(await canAccessSession(authUser, session))) {
-      return c.json({ error: 'Session not found' }, 404);
-    }
-
-    const body = (await c.req.json().catch(() => ({}))) as { group_id?: number | null };
-    const groupId = body.group_id == null ? null : Number(body.group_id);
-    if (groupId !== null && isNaN(groupId)) return c.json({ error: 'Invalid group_id' }, 400);
-
-    const ok = await getDb().sessionGroups.setSessionGroup(authUser.id, sessionId, groupId);
-    if (!ok) return c.json({ error: 'Group not found' }, 404);
-    return c.json({ ok: true });
-  })
   /** POST /api/sessions/:id/pin — pin the session for the current user */
   .post('/:id/pin', async (c) => {
     const authUser = getAuthUser(c);
@@ -659,7 +601,7 @@ const sessions = new Hono<AppEnv>()
     if (!session || !(await canAccessSession(authUser, session))) {
       return c.json({ error: 'Session not found' }, 404);
     }
-    await getDb().sessionGroups.pin(authUser.id, sessionId);
+    await getDb().sessionPins.pin(authUser.id, sessionId);
     return c.json({ ok: true });
   })
   /** DELETE /api/sessions/:id/pin — unpin the session for the current user */
@@ -670,7 +612,7 @@ const sessions = new Hono<AppEnv>()
     if (!session || !(await canAccessSession(authUser, session))) {
       return c.json({ error: 'Session not found' }, 404);
     }
-    await getDb().sessionGroups.unpin(authUser.id, sessionId);
+    await getDb().sessionPins.unpin(authUser.id, sessionId);
     return c.json({ ok: true });
   });
 
