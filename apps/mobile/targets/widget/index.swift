@@ -23,7 +23,8 @@ struct WidgetTask: Decodable, Hashable {
   let title: String
   let project: String
   let due: String?
-  /// "overdue" | "today" | "soon" | "later" | "none"
+  /// "overdue" | "today" | "soon" | "later" | "none" when the app wrote it; the widget works it
+  /// out again from `due` and the entry's day (DueBuckets.swift).
   let bucket: String
   let url: String
 }
@@ -90,8 +91,8 @@ private struct Words {
     return formatter.localizedString(for: Date(timeIntervalSince1970: doc.openedAt), relativeTo: Date())
   }
 
-  func dueLabel(_ task: WidgetTask) -> String? {
-    switch task.bucket {
+  func dueLabel(_ task: WidgetTask, bucket: String) -> String? {
+    switch bucket {
     case "overdue": return overdue
     case "today": return today
     default:
@@ -125,9 +126,15 @@ struct SnapshotProvider: TimelineProvider {
   }
 
   func getTimeline(in context: Context, completion: @escaping (Timeline<SnapshotEntry>) -> Void) {
-    // The app reloads the timelines whenever its copies change; the hourly refresh moves "today".
-    let entry = SnapshotEntry(date: Date(), snapshot: loadSnapshot())
-    completion(Timeline(entries: [entry], policy: .after(Date().addingTimeInterval(3600))))
+    // The app reloads the timelines whenever its copies change. Each entry works the due buckets
+    // out for its own day, so a second entry at midnight moves "today" and "overdue" on time.
+    let now = Date()
+    let snapshot = loadSnapshot()
+    var entries = [SnapshotEntry(date: now, snapshot: snapshot)]
+    if let midnight = DueBuckets.nextDay(after: now) {
+      entries.append(SnapshotEntry(date: midnight, snapshot: snapshot))
+    }
+    completion(Timeline(entries: entries, policy: .after(now.addingTimeInterval(3600))))
   }
 }
 
@@ -164,9 +171,13 @@ private struct TaskRow: View {
   let task: WidgetTask
   let words: Words
   let showProject: Bool
+  /// The timeline entry's day: the due bucket is worked out for it, not taken from the app's copy.
+  let today: Date
+
+  var bucket: String { DueBuckets.bucket(due: task.due, today: today) }
 
   var tint: Color {
-    switch task.bucket {
+    switch bucket {
     case "overdue": return .red
     case "today": return .orange
     default: return .secondary
@@ -177,7 +188,7 @@ private struct TaskRow: View {
     VStack(alignment: .leading, spacing: 1) {
       Text(task.title).font(.subheadline.weight(.medium)).lineLimit(1)
       HStack(spacing: 4) {
-        if let due = words.dueLabel(task) {
+        if let due = words.dueLabel(task, bucket: bucket) {
           Text(due).foregroundStyle(tint)
         }
         if showProject {
@@ -221,7 +232,9 @@ struct TasksView: View {
         Text(words.myTasks).font(.caption2.weight(.semibold))
         if let first = tasks.first {
           Text(first.title).font(.caption).lineLimit(1)
-          if let due = words.dueLabel(first) { Text(due).font(.caption2) }
+          if let due = words.dueLabel(first, bucket: DueBuckets.bucket(due: first.due, today: entry.date)) {
+            Text(due).font(.caption2)
+          }
         } else {
           Text(entry.snapshot == nil ? words.signIn : words.noTasks).font(.caption).lineLimit(2)
         }
@@ -237,9 +250,9 @@ struct TasksView: View {
         } else {
           ForEach(Array(tasks.prefix(3).enumerated()), id: \.offset) { _, task in
             if family == .systemSmall {
-              TaskRow(task: task, words: words, showProject: false)
+              TaskRow(task: task, words: words, showProject: false, today: entry.date)
             } else if let url = URL(string: task.url) {
-              Link(destination: url) { TaskRow(task: task, words: words, showProject: true) }
+              Link(destination: url) { TaskRow(task: task, words: words, showProject: true, today: entry.date) }
             }
           }
           Spacer(minLength: 0)
