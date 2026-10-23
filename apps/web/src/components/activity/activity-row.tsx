@@ -25,8 +25,15 @@ export function activityModuleLabel(t: Translate, module: string): string {
   return has(t, `activity.module.${module}`) ?? module;
 }
 
-/** "updated project", "deleted file", "ran automation" — the middle of the sentence. */
+/**
+ * "updated project", "deleted file", "ran automation" — the middle of the
+ * sentence, the same for one change wherever it shows (Activity log, Home).
+ * An action with a phrase of its own ("connected agent") uses it; otherwise
+ * verb + kind of object, the module only when the object is unknown.
+ */
 export function activityPhrase(t: Translate, item: ActivityItem): string {
+  const own = /^[A-Za-z]+$/.test(item.action) ? has(t, `activity.action.${item.action}`) : null;
+  if (own) return own;
   const verb = has(t, `activity.verb.${item.verb}`);
   const entity = item.entity ? has(t, `activity.entity.${item.entity}`) : null;
   if (verb && item.verb !== 'other')

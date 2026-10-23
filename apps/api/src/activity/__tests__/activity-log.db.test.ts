@@ -8,12 +8,22 @@ import { _resetProvider, initDatabase } from '@greenhouse/db';
 import type { DatabaseProvider, UserRow } from '@greenhouse/db';
 import { TEST_DATABASE_URL } from '@greenhouse/db/test-config';
 import type { ActivityItem } from '@greenhouse/types/activity';
+import type { RuntimeJsonValue } from '@greenhouse/types/runtime';
 import { createInternalTestUser } from '../../../../../tests/helpers/internal-user.js';
 import { projectsManifest } from '../../platform/manifests/projects.js';
 import { knowledgeManifest } from '../../platform/manifests/knowledge.js';
 import { tablesManifest } from '../../platform/manifests/tables.js';
-import { PLATFORM_ORG_ID } from '../../platform/runtime.js';
-import { ActivityQueryError, activityCsvRows, listActivity, verbOf, type ActivityQuery } from '../activity-log.js';
+import { initializePlatformRuntime, PLATFORM_ORG_ID, resetPlatformRuntimeForTests } from '../../platform/runtime.js';
+import { projectsRegistration } from '../../platform/projects/application.js';
+import { humanActor } from '../../platform/actor.js';
+import {
+  ActivityQueryError,
+  activityCsvRows,
+  describeToolWrite,
+  listActivity,
+  verbOf,
+  type ActivityQuery,
+} from '../activity-log.js';
 
 const manifests = [projectsManifest, knowledgeManifest, tablesManifest];
 
@@ -54,8 +64,14 @@ async function audit(input: {
   });
 }
 
-async function agentWrite(owner: UserRow, toolId: string, action: string) {
-  return db.runtime.createRun({
+async function agentWrite(
+  owner: UserRow,
+  toolId: string,
+  action: string,
+  args: { [key: string]: RuntimeJsonValue } = {},
+  result?: { [key: string]: RuntimeJsonValue },
+) {
+  const run = await db.runtime.createRun({
     kind: 'agent_write',
     owner_user_id: owner.id,
     initiated_by_user_id: owner.id,
@@ -69,10 +85,28 @@ async function agentWrite(owner: UserRow, toolId: string, action: string) {
       client_name: 'Claude Code',
       tool_id: toolId,
       action,
-      input: {},
+      input: args,
     },
     actor_user_id: owner.id,
   });
+  if (!result) return run;
+  // Settle it the way a governed write does, with the tool's result recorded.
+  let current = run;
+  for (const status of ['claimed', 'running', 'succeeded'] as const) {
+    current = await db.runtime.transitionRun({
+      id: current.id,
+      expected_version: current.version,
+      to_status: status,
+      idempotency_key: `test:${current.id}:${status}`,
+      actor_user_id: owner.id,
+      ...(status === 'succeeded'
+        ? { output: { basis: 'direct', result }, settled_at: new Date().toISOString() }
+        : status === 'running'
+          ? { projection_only: true }
+          : {}),
+    });
+  }
+  return current;
 }
 
 async function all(viewer: UserRow, query: ActivityQuery = {}): Promise<ActivityItem[]> {
@@ -114,6 +148,7 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  resetPlatformRuntimeForTests();
   await db.close();
   _resetProvider();
 });
@@ -125,7 +160,12 @@ describe('activity log', () => {
     expect(items.map((item) => item.action).sort()).toEqual(['createProject', 'knowledge.update_doc']);
 
     const write = items.find((item) => item.source === 'agent')!;
-    expect(write).toMatchObject({ agent: { client_name: 'Claude Code' }, module: 'knowledge', verb: 'update' });
+    expect(write).toMatchObject({
+      agent: { client_name: 'Claude Code' },
+      module: 'knowledge',
+      verb: 'update',
+      entity: 'document',
+    });
     expect(write.run?.kind).toBe('agent_write');
 
     // A member cannot widen to someone else, nor see admin changes.
@@ -217,10 +257,174 @@ describe('activity log', () => {
     expect(activityCsvRows(adminItems).join('\n')).not.toContain('Alice private roadmap');
   });
 
+  it('names what an agent created from its result, only for a viewer who may read it', async () => {
+    const doc = await db.knowledgeBase.create({
+      doc_id: unique('agent-created'),
+      title: 'Q4 customer interview notes',
+      content: 'x',
+      visibility: 'private',
+      owner_user_id: alice.id,
+    });
+    await agentWrite(
+      alice,
+      'knowledge_mutation',
+      'knowledge.create_doc',
+      { title: 'Q4 customer interview notes', scope: 'personal' },
+      { action: 'knowledge.create_doc', status: 'created', document: { id: doc.id, title: doc.title } },
+    );
+    const own = (await all(alice, { source: 'agent' })).find((item) => item.action === 'knowledge.create_doc')!;
+    expect(own).toMatchObject({
+      verb: 'create',
+      entity: 'document',
+      target: { id: String(doc.id), label: 'Q4 customer interview notes' },
+    });
+    expect(own.target?.url).toContain(String(doc.id));
+
+    // The super sees that Alice's agent created a document — not which one.
+    const seen = (await all(admin, { userId: alice.id, source: 'agent' })).find(
+      (item) => item.action === 'knowledge.create_doc',
+    )!;
+    expect(seen).toMatchObject({ verb: 'create', entity: 'document', target: null });
+  });
+
+  it('says what each kind of agent write did to which kind of object', async () => {
+    const project = await db.projects.createProject({
+      title: unique('Agent launch'),
+      owner_id: alice.id,
+      visibility: 'public',
+      created_by: alice.id,
+    });
+    await agentWrite(alice, 'project_mutation', 'project.update', { project_id: project.id });
+    await agentWrite(alice, 'knowledge_mutation', 'knowledge.append_doc', { doc_id: unique('missing') });
+    // A file the agent deleted is gone; its member still sees the name the write carried.
+    await agentWrite(alice, 'files_mutation', 'files.delete', { file_id: 987654 }, { file: { name: 'old.pdf' } });
+
+    const items = await all(alice, { source: 'agent' });
+    const by = (action: string) => items.find((item) => item.action === action)!;
+    expect(by('project.update')).toMatchObject({
+      verb: 'update',
+      entity: 'project',
+      target: { label: project.title },
+    });
+    expect(by('knowledge.append_doc')).toMatchObject({ verb: 'update', entity: 'document', target: null });
+    expect(by('files.delete')).toMatchObject({ verb: 'delete', entity: 'file', target: { label: 'old.pdf' } });
+    expect(
+      (await all(admin, { userId: alice.id, source: 'agent' })).find((i) => i.action === 'files.delete'),
+    ).toMatchObject({ target: null });
+  });
+
+  it('names a project a person created or deleted, through the audit the projects app keeps', async () => {
+    const runtime = initializePlatformRuntime(db, [projectsRegistration]);
+    const created = await runtime.dispatch({
+      actor: humanActor(alice),
+      appId: 'projects',
+      actionId: 'createProject',
+      payload: { title: 'E2E launch plan', visibility: 'private' },
+    });
+    expect(created.ok).toBe(true);
+    const projectId = (created as { data: { project: { id: number } } }).data.project.id;
+    expect(created).not.toHaveProperty('audit');
+
+    const createdRow = (await all(alice)).find((item) => item.action === 'createProject' && item.target)!;
+    expect(createdRow).toMatchObject({
+      verb: 'create',
+      entity: 'project',
+      target: { id: String(projectId), label: 'E2E launch plan' },
+    });
+
+    const removed = await runtime.dispatch({
+      actor: humanActor(alice),
+      appId: 'projects',
+      actionId: 'deleteProject',
+      payload: { projectId },
+      resource: { appId: 'projects', moduleId: 'portfolio', entityId: 'project', recordId: String(projectId) },
+    });
+    expect(removed.ok).toBe(true);
+    const deletedRow = (await all(alice)).find((item) => item.action === 'deleteProject')!;
+    expect(deletedRow).toMatchObject({ verb: 'delete', target: { label: 'E2E launch plan', url: null } });
+    // A super reads every project, so may see the name of one that is gone.
+    const forAdmin = (await all(admin, { userId: alice.id })).find((item) => item.action === 'deleteProject')!;
+    expect(forAdmin.target?.label).toBe('E2E launch plan');
+  });
+
+  it('reads a comment on a task as a comment on that task, and names a deleted one by its task', async () => {
+    const project = await db.projects.createProject({
+      title: unique('Comments'),
+      owner_id: alice.id,
+      visibility: 'public',
+      created_by: alice.id,
+    });
+    const task = await db.projects.createTask({ project_id: project.id, title: 'Fix login', created_by: alice.id });
+    const common = { actor: alice, appId: 'projects', entityId: 'comment' } as const;
+    await audit({ ...common, actionId: 'addComment', recordId: String(task.id), at: minutesAgo(2) });
+    await audit({
+      ...common,
+      actionId: 'deleteComment',
+      recordId: '999999',
+      summary: { task_id: task.id, project_id: project.id },
+      at: minutesAgo(1),
+    });
+    const items = await all(alice, { module: 'projects' });
+    expect(items.find((item) => item.action === 'addComment')).toMatchObject({
+      verb: 'comment',
+      entity: 'task',
+      target: { label: 'Fix login' },
+    });
+    expect(items.find((item) => item.action === 'deleteComment')).toMatchObject({
+      verb: 'delete',
+      entity: 'comment',
+      target: { label: 'Fix login' },
+    });
+  });
+
+  it('leaves editor heartbeats out and reads a knowledge comment as a comment', async () => {
+    const doc = await db.knowledgeBase.create({
+      doc_id: unique('team-doc'),
+      title: 'Team handbook',
+      content: 'x',
+      visibility: 'team',
+      owner_user_id: bob.id,
+    });
+    const common = { actor: alice, appId: 'knowledge', actionId: 'updateDocument', entityId: 'document' } as const;
+    await audit({
+      ...common,
+      recordId: String(doc.id),
+      summary: { change: 'presence', activity: false },
+      at: minutesAgo(3),
+    });
+    await audit({ ...common, recordId: String(doc.id), summary: { change: 'comment' }, at: minutesAgo(2) });
+    const rows = (await all(alice, { module: 'knowledge' })).filter((item) => item.target?.id === String(doc.id));
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ verb: 'comment', entity: 'document', target: { label: 'Team handbook' } });
+  });
+
   it('bounds the time window', async () => {
     await expect(all(admin, { from: '2020-01-01', to: '2026-01-01' })).rejects.toBeInstanceOf(ActivityQueryError);
     await expect(all(admin, { cursor: 'not-a-cursor' })).rejects.toBeInstanceOf(ActivityQueryError);
     expect(mine(await all(admin, { from: minutesAgo(35), to: minutesAgo(25) }), alice, bob, admin)).toHaveLength(1);
+  });
+});
+
+describe('describeToolWrite', () => {
+  it('reads the verb from the action and the object from the tool, not the module', () => {
+    expect(describeToolWrite('knowledge_mutation', 'knowledge.update_doc')).toEqual({
+      verb: 'update',
+      entity: 'document',
+    });
+    expect(describeToolWrite('knowledge_mutation', 'knowledge.create_doc')).toEqual({
+      verb: 'create',
+      entity: 'document',
+    });
+    expect(describeToolWrite('knowledge_mutation', 'knowledge.patch_doc').verb).toBe('update');
+    expect(describeToolWrite('knowledge_mutation', 'knowledge.unshare_doc').verb).toBe('unshare');
+    expect(describeToolWrite('files_mutation', 'folders.update')).toEqual({ verb: 'update', entity: 'folder' });
+    expect(describeToolWrite('files_mutation', 'files.upload')).toEqual({ verb: 'create', entity: 'file' });
+    expect(describeToolWrite('project_mutation', 'task.create')).toEqual({ verb: 'create', entity: 'task' });
+    expect(describeToolWrite('project_mutation', 'comment.add')).toEqual({ verb: 'comment', entity: 'task' });
+    expect(describeToolWrite('tables_mutation', 'records.batch_upsert')).toEqual({ verb: 'update', entity: 'record' });
+    expect(describeToolWrite('automation_mutation', 'run_now')).toEqual({ verb: 'run', entity: 'automation' });
+    expect(describeToolWrite('log_friction', 'wrong_params')).toEqual({ verb: 'create', entity: 'friction' });
+    expect(describeToolWrite('crm_mutation', 'deals.frobnicate')).toEqual({ verb: 'other', entity: null });
   });
 });
 

@@ -43,6 +43,17 @@ export async function fetchProfiles(): Promise<Profile[]> {
   }
 }
 
+/**
+ * Super only: the run profiles another member may run as (their own +
+ * team-shared), for editing that member's automation.
+ */
+export async function fetchRunProfilesUsableBy(userId: string): Promise<Profile[]> {
+  const res = await rpc.api.profiles['usable-by'][':userId'].$get({ param: { userId } });
+  if (!res.ok) throw new Error(`Failed to load run profiles: ${res.status}`);
+  const data = await res.json();
+  return data.profiles as Profile[];
+}
+
 export async function fetchProfileDetail(id: string): Promise<ProfileDetail> {
   const res = await rpc.api.profiles[':id'].$get({ param: { id } });
   if (!res.ok) throw new Error(`Failed to fetch profile: ${res.status}`);

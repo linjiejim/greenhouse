@@ -12,9 +12,17 @@ import type { KnowledgeActionId } from './adapter.js';
 import { getAuthUser } from '../../auth/middleware.js';
 import { getPlatformRuntime } from '../runtime.js';
 
+/**
+ * What kind of change a route that shares an action with others makes, for the
+ * Activity log: `presence` is an editor heartbeat (not a change, never shown),
+ * `comment` / `uncomment` and `reorder` read better than "updated document".
+ */
+export type KnowledgeHttpChange = 'presence' | 'comment' | 'uncomment' | 'reorder';
+
 interface KnowledgeHttpAction {
   actionId: KnowledgeActionId;
   documentId?: string;
+  change?: KnowledgeHttpChange;
 }
 
 export function matchKnowledgeAction(method: string, fullPath: string): KnowledgeHttpAction | undefined {
@@ -27,7 +35,7 @@ export function matchKnowledgeAction(method: string, fullPath: string): Knowledg
   if (method === 'POST' && path === '/docs/generate') return { actionId: 'generateDocument' };
   // Sibling ordering writes `sort_order` on the docs (and folders) it is given —
   // the same permission moving a doc between folders needs, so the same action.
-  if (method === 'POST' && path === '/tree/reorder') return { actionId: 'updateDocument' };
+  if (method === 'POST' && path === '/tree/reorder') return { actionId: 'updateDocument', change: 'reorder' };
   // Bulk export reads the team library. `requireSuper()` on the route is the
   // extra "this is an admin act" gate; the capability itself is plain read.
   if (method === 'GET' && path === '/export') return { actionId: 'listDocuments' };
@@ -39,11 +47,11 @@ export function matchKnowledgeAction(method: string, fullPath: string): Knowledg
   if (match && method === 'GET') return { actionId: 'readDocument', documentId: match[1] };
   match = path.match(/^\/docs\/(\d+)\/comments$/);
   if (match && method === 'GET') return { actionId: 'readDocument', documentId: match[1] };
-  if (match && method === 'POST') return { actionId: 'updateDocument', documentId: match[1] };
+  if (match && method === 'POST') return { actionId: 'updateDocument', documentId: match[1], change: 'comment' };
   match = path.match(/^\/docs\/(\d+)\/editing-presence$/);
-  if (match && method === 'POST') return { actionId: 'updateDocument', documentId: match[1] };
+  if (match && method === 'POST') return { actionId: 'updateDocument', documentId: match[1], change: 'presence' };
   match = path.match(/^\/comments\/\d+$/);
-  if (match && method === 'DELETE') return { actionId: 'updateDocument' };
+  if (match && method === 'DELETE') return { actionId: 'updateDocument', change: 'uncomment' };
 
   match = path.match(/^\/docs\/(\d+)\/versions$/);
   if (match && method === 'GET') return { actionId: 'listVersions', documentId: match[1] };
@@ -65,6 +73,16 @@ export function matchKnowledgeAction(method: string, fullPath: string): Knowledg
   match = path.match(/^\/docs\/([^/]+)$/);
   if (match && method === 'GET') return { actionId: 'readDocument', documentId: match[1] };
   return undefined;
+}
+
+/** The id of the document a create route just answered with, so the audit can name it. */
+async function createdDocumentId(c: Context): Promise<string | undefined> {
+  try {
+    const body = (await c.res.clone().json()) as { doc?: { id?: unknown } };
+    return typeof body.doc?.id === 'number' ? String(body.doc.id) : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 export function knowledgePlatformHttpMiddleware() {
@@ -102,16 +120,27 @@ export function knowledgePlatformHttpMiddleware() {
     try {
       await next();
       const status = c.res.status;
+      const succeeded = status >= 200 && status < 400;
       await getDb().platform.recordAudit({
         orgId: actor.orgId,
         actorId: actor.actorId,
         actorType: actor.actorType,
         requestId: actor.requestId,
-        resource,
+        resource:
+          succeeded && matched.actionId === 'createDocument'
+            ? { ...resource, recordId: await createdDocumentId(c) }
+            : resource,
         actionId: action.id,
         capability: action.capability,
-        result: status >= 200 && status < 400 ? 'success' : status === 403 ? 'denied' : 'error',
-        summary: { status, method: c.req.method, transport: 'http' },
+        result: succeeded ? 'success' : status === 403 ? 'denied' : 'error',
+        summary: {
+          status,
+          method: c.req.method,
+          transport: 'http',
+          ...(matched.change ? { change: matched.change } : {}),
+          // A heartbeat is audited (it needs edit rights) but is not a change.
+          ...(matched.change === 'presence' ? { activity: false } : {}),
+        },
       });
     } catch (error) {
       await getDb().platform.recordAudit({

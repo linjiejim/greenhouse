@@ -209,8 +209,8 @@ export function FrictionsPanel({ tabs }: { tabs?: React.ReactNode }) {
           message: t('frictions.deleteDescription', { summary: f.summary }),
         }),
         slots: {
-          toolbar: () => (
-            <div className="flex items-center gap-2">
+          toolbar: (ctx) => (
+            <div className="flex flex-wrap items-center gap-2">
               <Select
                 size="sm"
                 inline
@@ -228,6 +228,10 @@ export function FrictionsPanel({ tabs }: { tabs?: React.ReactNode }) {
                 <RefreshCw size={13} className={mining ? 'animate-spin' : ''} />
                 {t(mining ? 'frictions.scanning' : 'frictions.scanLast7Days')}
               </Button>
+              <div className="flex-1" />
+              <span className="text-xs text-fg-muted whitespace-nowrap">
+                {t('settings.requestTotal', { count: ctx.total })}
+              </span>
             </div>
           ),
         },
@@ -240,11 +244,8 @@ export function FrictionsPanel({ tabs }: { tabs?: React.ReactNode }) {
       moduleId="admin.issues"
       layout="list"
       tabs={tabs}
-      notice={
-        <div className="bg-surface-raised border border-edge rounded-xl p-4">
-          <p className="text-sm text-fg-muted">{t('frictions.description')}</p>
-        </div>
-      }
+      // A one-line page note, like the Activity log's — not a boxed card above the list.
+      notice={<p className="text-xs text-fg-muted">{t('frictions.description')}</p>}
     >
       <CrudPage schema={schema} />
     </ModulePage>

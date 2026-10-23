@@ -47,6 +47,8 @@ import { assetScopeItems, DEFAULT_ASSET_SCOPE, filterAutomationsByScope, type As
 import { ModulePage } from '../components/app/module-page';
 import { AUTOMATIONS_PROFILES_HASH } from '../lib/workspace-routes';
 import { RunProfilesPanel } from './run-profiles';
+import { pinnedProfileVersion, unpinnedProfileId } from '../lib/automation-profiles';
+import { AutomationProfileSelect } from './automation-profile-select';
 
 type Task = ScheduledTask & { schedule_desc?: string };
 
@@ -533,10 +535,7 @@ export function AutomationsPanel({ sectionTabs }: { sectionTabs?: React.ReactNod
   useEffect(() => {
     api
       .fetchProfiles()
-      // Scheduled execution currently resolves immutable system YAML profiles.
-      // Custom profiles are intentionally not advertised until their ownership,
-      // sharing, and deletion semantics are supported by the scheduler.
-      .then((items) => setProfiles(items.filter((profile) => !profile.is_custom)))
+      .then(setProfiles)
       .catch(() => {});
   }, []);
 
@@ -556,16 +555,19 @@ export function AutomationsPanel({ sectionTabs }: { sectionTabs?: React.ReactNod
 
   // Retired system ids (`team`, `default`, …) run as the default agent on the server; name them so.
   const profileName = useCallback(
-    (id: string) =>
-      profiles.find((p) => p.id === id)?.name ??
-      (id.startsWith('custom:') ? id : (profiles.find((p) => p.id === DEFAULT_AGENT_ID)?.name ?? id)),
+    (id: string) => {
+      const found = profiles.find((p) => p.id === unpinnedProfileId(id));
+      const version = pinnedProfileVersion(id);
+      if (found) return version ? `${found.name} · v${version}` : found.name;
+      return id.startsWith('custom:') ? id : (profiles.find((p) => p.id === DEFAULT_AGENT_ID)?.name ?? id);
+    },
     [profiles],
   );
 
   const schema = useMemo(
     () =>
       defineCrud<Task>({
-        name: 'Task',
+        name: 'Automation',
         idField: 'id',
         dataSource,
         pageSize: 50,
@@ -681,14 +683,15 @@ export function AutomationsPanel({ sectionTabs }: { sectionTabs?: React.ReactNod
             type: 'custom',
             width: 1,
             defaultValue: 'team',
-            render: ({ value, onChange }) => (
-              <Select value={String(value ?? 'team')} onChange={(e) => onChange(e.target.value)}>
-                {profiles.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-              </Select>
+            render: ({ value, onChange, form, mode }) => (
+              <AutomationProfileSelect
+                value={String(value ?? 'team')}
+                onChange={onChange}
+                profiles={profiles}
+                currentUserId={currentUser?.id}
+                ownerId={mode === 'edit' && typeof form.user_id === 'string' ? form.user_id : undefined}
+                nameOf={profileName}
+              />
             ),
           },
           {
@@ -888,7 +891,7 @@ export function AutomationsPanel({ sectionTabs }: { sectionTabs?: React.ReactNod
       }),
     // `wecom` arrives asynchronously; without it the schema never rebuilds
     // and the WeCom toggle stays disabled even after the binding loads.
-    [t, dataSource, profiles, profileName, wecom, feishu, scope, isSuper],
+    [t, dataSource, profiles, currentUser?.id, profileName, wecom, feishu, scope, isSuper],
   );
 
   return (

@@ -194,17 +194,21 @@ export async function assertPinnedProfileExecutionAccess(
   const normalized = normalizeProfileId(profileId) ?? profileId;
   if (!normalized.startsWith('custom:')) return;
   const reference = parseCustomProfileReference(normalized);
+  // Each reason is the run's error message: an automation whose run profile
+  // went away fails saying why, never falls back to another profile.
   if (!reference?.version) {
-    throw new Error(`${surface} custom Agent reference is not pinned to an immutable version`);
+    throw new Error(`${surface} run profile reference is not pinned to an immutable version`);
   }
   const asset = await database.customProfiles.getById(reference.profileId);
-  if (!asset) throw new Error(`${surface} custom Agent no longer exists`);
+  if (!asset) throw new Error(`${surface} run profile no longer exists — pick another one`);
   const owns = actor.role === 'super' || asset.user_id === actor.id;
   if (!owns && !asset.is_shared) {
-    throw new Error(`${surface} custom Agent access was revoked`);
+    throw new Error(
+      `${surface} run profile "${asset.name}" access was revoked: it is no longer shared with the team — pick another one`,
+    );
   }
   if (!(await database.customProfiles.getVersion(reference.profileId, reference.version))) {
-    throw new Error(`${surface} custom Agent version no longer exists`);
+    throw new Error(`${surface} run profile version v${reference.version} no longer exists — pick another one`);
   }
 }
 

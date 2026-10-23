@@ -8,7 +8,8 @@ const tr = (key: Parameters<typeof translate>[1]) => translate(getStoredLocale()
 const provider: ContextProviderDescriptor<'execution-center'> = {
   type: 'execution-center',
 
-  label: (ctx) => ctx.runTitle || tr('taskCenter.title'),
+  // The list page is the Activity log; only a run detail is "Run details".
+  label: (ctx) => ctx.runTitle || tr(ctx.runId ? 'taskCenter.title' : 'navigation.activityLog'),
 
   emptyMessage: () => tr('taskCenter.assistantEmpty'),
 

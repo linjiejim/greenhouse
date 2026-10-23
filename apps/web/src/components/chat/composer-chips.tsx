@@ -57,7 +57,7 @@ export function ComposerChips({ profile, onRemoveProfile, prompt, onRemovePrompt
                 type="button"
                 onClick={onRemovePrompt}
                 className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full text-fg-muted transition-colors hover:bg-surface-raised hover:text-fg"
-                aria-label={t('chat.removeTask', { title: prompt.title })}
+                aria-label={t('chat.removePrompt', { title: prompt.title })}
               >
                 <X size={12} />
               </button>

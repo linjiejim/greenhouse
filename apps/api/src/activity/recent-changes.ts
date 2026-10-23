@@ -55,7 +55,7 @@ const PROJECT_ACTIONS: Record<string, { verb: ActivityVerb; entity: string }> = 
   task_created: { verb: 'create', entity: 'task' },
   task_updated: { verb: 'update', entity: 'task' },
   comment_added: { verb: 'comment', entity: 'task' },
-  member_added: { verb: 'share', entity: 'project' },
+  member_added: { verb: 'update', entity: 'member' },
 };
 
 function draft(base: Omit<Draft, 'agent' | 'action_title' | 'status' | 'run' | 'detail'> & Partial<Draft>): Draft {
@@ -195,7 +195,7 @@ async function tableChanges(
       actorId: row.updated_by,
       module: 'tables',
       verb: 'update',
-      entity: 'record',
+      entity: 'tableRecords',
       action: 'updateRecords',
       target: { id: String(row.table_id), label: table.name, url: `#/tables/${table.baseId}/table/${row.table_id}` },
       detail: String(row.records),

@@ -15,6 +15,7 @@ import {
   type EntityPolicy,
   type PlatformActionHandler,
   type PlatformActionResult,
+  type PlatformAuditHint,
 } from '@greenhouse/platform-kernel';
 import type {
   Priority,
@@ -34,8 +35,16 @@ export type ProjectActionId = keyof typeof projectsManifest.actions;
 
 type Handler = PlatformActionHandler<PlatformHandlerContext>;
 
-function ok<T>(data: T): PlatformActionResult<T> {
-  return { ok: true, data };
+function ok<T>(data: T, audit?: PlatformAuditHint): PlatformActionResult<T> {
+  return audit ? { ok: true, data, audit } : { ok: true, data };
+}
+
+/**
+ * What the audit keeps about a project or task a write created or removed, so
+ * the Activity log can still name it (only to viewers who could read it).
+ */
+function namedRecord(record: { id: number; title: string }, extra: Record<string, unknown> = {}): PlatformAuditHint {
+  return { recordId: recordId(record.id), summary: { title: record.title, ...extra } };
 }
 
 function fail(
@@ -289,7 +298,7 @@ const createProject: Handler = async (request, context) => {
     visibility: payload.visibility,
     created_by: userId,
   });
-  return ok({ project });
+  return ok({ project }, namedRecord(project, { visibility: project.visibility }));
 };
 
 const updateProject: Handler = async (request, context) => {
@@ -315,7 +324,7 @@ const deleteProject: Handler = async (request, context) => {
   const project = await findWritableProject(context, request.actor, projectId, true);
   if (!project) return fail('NOT_FOUND', 'Project not found');
   return (await context.db.projects.deleteProject(project.id))
-    ? ok({ success: true })
+    ? ok({ success: true }, namedRecord(project, { visibility: project.visibility }))
     : fail('NOT_FOUND', 'Project not found');
 };
 
@@ -387,7 +396,7 @@ const createTask: Handler = async (request, context) => {
     dependencies: payload.dependencies,
     created_by: effectiveUserId(request.actor),
   });
-  return ok({ task });
+  return ok({ task }, namedRecord(task, { project_id: project.id }));
 };
 
 const updateTask: Handler = async (request, context) => {
@@ -419,7 +428,9 @@ const deleteTask: Handler = async (request, context) => {
   if (!task || !(await canAccessTask(context, request.actor, task, 'write'))) {
     return fail('NOT_FOUND', 'Task not found');
   }
-  return (await context.db.projects.deleteTask(task.id)) ? ok({ success: true }) : fail('NOT_FOUND', 'Task not found');
+  return (await context.db.projects.deleteTask(task.id))
+    ? ok({ success: true }, namedRecord(task, { project_id: task.project_id }))
+    : fail('NOT_FOUND', 'Task not found');
 };
 
 const reorderTasks: Handler = async (request, context) => {
@@ -503,7 +514,7 @@ const deleteComment: Handler = async (request, context) => {
     return fail('NOT_FOUND', 'Comment not found');
   }
   return (await context.db.projects.deleteComment(comment.id))
-    ? ok({ success: true })
+    ? ok({ success: true }, { summary: { task_id: task.id, project_id: task.project_id } })
     : fail('NOT_FOUND', 'Comment not found');
 };
 

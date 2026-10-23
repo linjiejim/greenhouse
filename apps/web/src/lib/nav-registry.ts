@@ -273,7 +273,7 @@ const STANDALONE_MODULES: NavModule[] = [
     icon: Zap,
     path: '#/automations',
     parent: 'standalone',
-    description: 'Schedule recurring work for Agents',
+    description: 'Scheduled work your agents run, and the run profiles they run as',
     pinnable: false,
   },
   {
@@ -309,7 +309,7 @@ const STANDALONE_MODULES: NavModule[] = [
     icon: Package,
     path: '#/skillhub',
     parent: 'standalone',
-    description: 'The organization-wide library of reusable Agent skills',
+    description: 'Skills and prompts the team and its agents share',
     pinnable: false,
   },
 ];

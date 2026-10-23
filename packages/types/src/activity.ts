@@ -37,6 +37,8 @@ export const ACTIVITY_VERBS = [
   'move',
   'comment',
   'share',
+  'unshare',
+  'send',
   'run',
   'other',
 ] as const;
