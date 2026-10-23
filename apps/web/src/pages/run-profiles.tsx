@@ -1,51 +1,33 @@
 /**
- * Agents — the one place agents are managed (v3).
+ * Run profiles (执行配置) — the "Run profiles" tab of Automations
+ * (`#/automations?tab=profiles`): a model + instructions + tools + look that an
+ * automation (or a chat) runs as. Reached from the profile selector's manage
+ * entry; the old `#/agents` page redirects here. Before 1.5 these were "My
+ * Agents"; the data is the same custom profiles.
  *
- * Three groups: the built-in presets (read-only, forkable), the user's own
- * agents, and agents shared by the team. An agent is its model + prompt +
- * tools + look, so all four are edited here and nowhere else; Chat only picks.
+ * Three groups behind the toolbar's scope switch: your own, the ones shared
+ * with the team (plus the built-in presets you can copy), and — for a super —
+ * members' private ones. A run profile is private to its owner unless it is
+ * available to the team (`is_shared`); only a super switches that, from any row
+ * they can see, and owners get a one-line hint to ask an admin.
  *
- * A custom agent is private to its owner unless it is available to the team
- * (`is_shared`). Only a super switches that — from any row they can see;
- * owners get a one-line hint to ask an admin. Everyone who picks an agent gets
- * its current version.
- *
- * Since 1.5 this is the "Run profiles / 执行配置" tab of Automations
- * (`#/automations?tab=profiles`): the agents an automation runs as. Reached from
- * the profile selector's manage entry; the old `#/agents` page redirects here.
+ * One tab row, the page's: a super's usage report is a toolbar button that
+ * swaps the list for the report, not a second tab bar.
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
-import {
-  Button,
-  Badge,
-  Tag,
-  Spinner,
-  ConfirmDialog,
-  EmptyState,
-  FilterPills,
-  Tabs,
-  Toggle,
-  toast,
-} from '../components/ui';
-import { Bot, Plus, Pencil, Trash2, Globe, GitFork } from '../lib/icons';
+import { Button, Badge, Tag, Spinner, ConfirmDialog, EmptyState, FilterPills, Toggle, toast } from '../components/ui';
+import { ArrowLeft, BarChart3, Bot, Plus, Pencil, Trash2, Globe, GitFork } from '../lib/icons';
 import { SproutyAvatar } from '../components/sprouty/index.js';
 import { profileToSprouty } from '../components/chat/profile-selector';
 import * as api from '../lib/api';
 import { useAuthStore, useProfileStore } from '../stores';
 import { ProfileEditorDrawer } from '../components/chat/profile-editor';
 import { PRESET_AGENT_IDS } from '../lib/agent-constants';
-import { useLocalized, useT, type TranslationKey } from '../lib/i18n';
+import { useLocalized, useT } from '../lib/i18n';
 import { CostValuePanel } from '../components/agents/cost-value-panel';
 import { assetScopeItems, DEFAULT_ASSET_SCOPE, type AssetScope } from '../lib/asset-scopes';
 import { ModulePage } from '../components/app/module-page';
-
-const BUILT_IN_PURPOSES: Record<string, TranslationKey> = {
-  'sprouty-quick': 'agents.quickPurpose',
-  'sprouty-deep': 'agents.deepPurpose',
-  'sprouty-k3': 'agents.k3Purpose',
-  'sprouty-workflows': 'agents.workflowPurpose',
-};
 
 export function RunProfilesPanel({ sectionTabs }: { sectionTabs?: React.ReactNode }) {
   const t = useT();
@@ -57,7 +39,7 @@ export function RunProfilesPanel({ sectionTabs }: { sectionTabs?: React.ReactNod
   const [profiles, setProfiles] = useState<api.Profile[]>([]);
   const [systemProfiles, setSystemProfiles] = useState<api.Profile[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'agents' | 'usage'>('agents');
+  const [view, setView] = useState<'profiles' | 'usage'>('profiles');
   const [scope, setScope] = useState<AssetScope>(DEFAULT_ASSET_SCOPE);
 
   // Drawer state
@@ -170,16 +152,6 @@ export function RunProfilesPanel({ sectionTabs }: { sectionTabs?: React.ReactNod
     />
   );
 
-  if (loading) {
-    return (
-      <ModulePage moduleId="workspace.automations" layout="list" tabs={sectionTabs}>
-        <div className="flex items-center justify-center py-12">
-          <Spinner />
-        </div>
-      </ModulePage>
-    );
-  }
-
   const myProfiles = profiles.filter((p) => p.user_id === currentUser?.id);
   // Super receives every member's agents (that is where team availability is
   // switched); everyone else receives their own plus the team-shared ones.
@@ -190,54 +162,57 @@ export function RunProfilesPanel({ sectionTabs }: { sectionTabs?: React.ReactNod
   const scopedProfiles = scope === 'mine' ? myProfiles : scope === 'shared' ? sharedProfiles : teamProfiles;
   const hasScopeContent = scopedProfiles.length > 0 || (scope === 'shared' && templateProfiles.length > 0);
 
+  const showUsage = isSuper && view === 'usage';
+
   return (
-    <ModulePage
-      moduleId="workspace.automations"
-      layout="list"
-      tabs={
-        <div className="flex flex-col gap-2">
-          {sectionTabs}
+    <ModulePage moduleId="workspace.automations" layout="list" tabs={sectionTabs} contentClassName="space-y-4">
+      {/* The toolbar opens the content, as in the sibling Automations tab, so
+          switching tabs moves nothing. */}
+      {showUsage ? (
+        <div className="flex flex-wrap items-center gap-2">
+          <Button variant="ghost" size="sm" onClick={() => setView('profiles')}>
+            <ArrowLeft size={14} />
+            {t('agents.backToProfiles')}
+          </Button>
+        </div>
+      ) : (
+        <div className="flex flex-wrap items-center gap-2">
+          <FilterPills
+            items={assetScopeItems(isSuper, {
+              mine: t('history.scopeMine'),
+              shared: t('history.scopeShared'),
+              team: t('history.scopeTeam'),
+            })}
+            activeKey={scope}
+            onChange={(key) => setScope((key ?? 'mine') as AssetScope)}
+            variant="segment"
+            fill
+            className="w-full sm:w-auto sm:min-w-80"
+          />
+          <div className="flex-1" />
+          <span className="text-xs text-fg-muted whitespace-nowrap">
+            {t('agents.count', { count: scopedProfiles.length })}
+          </span>
           {isSuper && (
-            <Tabs
-              tabs={[
-                { key: 'agents', label: t('agents.tabs.agents') },
-                { key: 'usage', label: t('agents.tabs.usage') },
-              ]}
-              active={activeTab}
-              onChange={(key) => setActiveTab(key as 'agents' | 'usage')}
-              ariaLabel={t('agents.tabs.label')}
-            />
+            <Button variant="outline" size="sm" onClick={() => setView('usage')}>
+              <BarChart3 size={14} />
+              {t('agents.usageDetails')}
+            </Button>
+          )}
+          {scope === 'mine' && (
+            <Button onClick={openCreate} size="sm">
+              <Plus size={14} />
+              {t('agents.create')}
+            </Button>
           )}
         </div>
-      }
-      toolbar={
-        activeTab === 'agents' ? (
-          <div className="flex flex-wrap items-center gap-2">
-            <FilterPills
-              items={assetScopeItems(isSuper, {
-                mine: t('history.scopeMine'),
-                shared: t('history.scopeShared'),
-                team: t('history.scopeTeam'),
-              })}
-              activeKey={scope}
-              onChange={(key) => setScope((key ?? 'mine') as AssetScope)}
-              variant="segment"
-              fill
-              className="w-full sm:w-auto sm:min-w-80"
-            />
-            <div className="hidden flex-1 sm:block" />
-            {scope === 'mine' && (
-              <Button onClick={openCreate} size="sm" className="w-full sm:w-auto">
-                <Plus size={14} />
-                {t('agents.create')}
-              </Button>
-            )}
-          </div>
-        ) : undefined
-      }
-    >
-      {isSuper && activeTab === 'usage' ? (
+      )}
+      {showUsage ? (
         <CostValuePanel />
+      ) : loading ? (
+        <div className="flex items-center justify-center py-12">
+          <Spinner />
+        </div>
       ) : (
         <>
           {/* Fork from System Profile */}
@@ -259,9 +234,7 @@ export function RunProfilesPanel({ sectionTabs }: { sectionTabs?: React.ReactNod
                         {localized(p.name_i18n, p.name)}
                       </div>
                       <div className="mt-0.5 line-clamp-2 text-[10px] leading-relaxed text-fg-muted">
-                        {BUILT_IN_PURPOSES[p.id]
-                          ? t(BUILT_IN_PURPOSES[p.id])
-                          : localized(p.description_i18n, p.description ?? '') || t('agents.defaultPurpose')}
+                        {localized(p.description_i18n, p.description ?? '') || t('agents.defaultPurpose')}
                       </div>
                       <div className="mt-1 text-[10px] text-fg-faint">
                         {p.model_id ?? 'flash'} · {t('agents.toolsCount', { count: p.tools.length })}
@@ -277,7 +250,7 @@ export function RunProfilesPanel({ sectionTabs }: { sectionTabs?: React.ReactNod
             </div>
           )}
 
-          {/* My Agents */}
+          {/* Your run profiles */}
           {!hasScopeContent ? (
             <EmptyState
               icon={Bot}
@@ -296,7 +269,7 @@ export function RunProfilesPanel({ sectionTabs }: { sectionTabs?: React.ReactNod
                         <th className="text-left px-4 py-2 font-medium">{t('agents.version')}</th>
                         <th className="text-center px-4 py-2 font-medium">{t('agents.tools')}</th>
                         <th className="text-center px-4 py-2 font-medium hidden lg:table-cell">{t('agents.calls')}</th>
-                        {/* Visible on phones: it is the only place to share or unshare an Agent. */}
+                        {/* Visible on phones: it is the only place to share or unshare a run profile. */}
                         <th className="text-center px-4 py-2 font-medium">{t('agents.shared')}</th>
                         <th className="text-center px-4 py-2 font-medium w-20">{t('agents.actions')}</th>
                       </tr>
@@ -445,7 +418,7 @@ export function RunProfilesPanel({ sectionTabs }: { sectionTabs?: React.ReactNod
         </>
       )}
 
-      {/* Agent Editor */}
+      {/* Run profile editor */}
       <ProfileEditorDrawer
         open={drawerOpen}
         onClose={() => setDrawerOpen(false)}

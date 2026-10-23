@@ -56,8 +56,19 @@ export type PlatformCommandRequest<TPayload = unknown> = PlatformActionRequest<T
   idempotencyKey?: string;
 };
 
+/**
+ * What a handler adds to its own success audit: the id of a record it created
+ * (the request could not name it), and facts the audit should keep after the
+ * record is gone (a deleted project's title). Never secrets or content. The
+ * registry folds this into the audit event and strips it from the result.
+ */
+export interface PlatformAuditHint {
+  recordId?: ResourceId;
+  summary?: Record<string, unknown>;
+}
+
 export type PlatformActionResult<TResult = unknown> =
-  | { ok: true; data: TResult }
+  | { ok: true; data: TResult; audit?: PlatformAuditHint }
   | {
       ok: false;
       code: 'INVALID_INPUT' | 'NOT_FOUND' | 'CONFLICT' | 'FORBIDDEN' | 'INTERNAL_ERROR';

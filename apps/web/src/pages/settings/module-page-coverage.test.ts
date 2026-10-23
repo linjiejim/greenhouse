@@ -57,6 +57,21 @@ describe('ModulePage coverage', () => {
     expect(admin).toContain('<ActivityLogPage moduleId="admin.activity" />');
   });
 
+  it('gives every tabbed page one row of shared <Tabs>, never a second tab bar or pills for sections', () => {
+    const read = (file: string) => readFileSync(new URL(file, import.meta.url), 'utf8');
+    // Sections are <Tabs> in the tabs slot.
+    expect(read('../files.tsx')).toMatch(/tabs=\{[\s\S]{0,200}<Tabs/);
+    for (const file of ['../skillhub/index.tsx', '../automations.tsx', '../administration/issues.tsx']) {
+      expect(read(file)).toContain('<Tabs');
+    }
+    // A tab's own content never stacks another tab row under the page's.
+    for (const file of ['../run-profiles.tsx', '../skillhub/prompts.tsx', '../administration/frictions.tsx']) {
+      expect(read(file)).not.toContain('<Tabs');
+    }
+    const requests = read('../administration/feature-requests.tsx');
+    expect(requests.match(/<Tabs/g) ?? []).toHaveLength(0);
+  });
+
   it('keeps scrolling and page padding out of the route-level shells', () => {
     for (const file of ['./index.tsx', '../administration/index.tsx']) {
       const source = readFileSync(new URL(file, import.meta.url), 'utf8');

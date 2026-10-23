@@ -110,3 +110,55 @@ describe('custom Agent team availability routes', () => {
     expect(await db.customProfiles.getById(Number(numericId))).toBeUndefined();
   });
 });
+
+describe('GET /api/profiles/usable-by/:userId', () => {
+  beforeEach(async () => {
+    db = await initDatabase({ type: 'pg', pgConnectionString: TEST_DATABASE_URL });
+    const stamp = `${Date.now()}-${Math.random()}`;
+    owner = await createInternalTestUser(db, { email: `usable-owner-${stamp}@test.local` });
+    reader = await createInternalTestUser(db, { email: `usable-reader-${stamp}@test.local` });
+    admin = await createInternalTestUser(db, { email: `usable-admin-${stamp}@test.local`, role: 'super' });
+  });
+
+  afterEach(async () => {
+    await db.close();
+    _resetProvider();
+  });
+
+  async function profile(user: UserRow, name: string, shared = false) {
+    const row = await db.customProfiles.create({
+      slug: `usable-${name}-${Date.now()}-${Math.random()}`.replace(/[^a-z0-9-]/gi, '-'),
+      user_id: user.id,
+      name,
+      base_profile_id: 'sprouty',
+      system_prompt: 'Help.',
+      tools: [],
+      created_by: user.id,
+    });
+    if (shared) await db.customProfiles.setShared(row.id, true);
+    return row;
+  }
+
+  it('gives a super the run profiles the member may run as — theirs and shared, not the super’s private ones', async () => {
+    const app = createApp([owner, reader, admin]);
+    const ownersPrivate = await profile(owner, 'Owner private');
+    const teamShared = await profile(reader, 'Team shared', true);
+    const readersPrivate = await profile(reader, 'Reader private');
+    const adminsPrivate = await profile(admin, 'Admin private');
+
+    const response = await app.request(`/api/profiles/usable-by/${owner.id}`, as(admin));
+    expect(response.status).toBe(200);
+    const ids = ((await response.json()) as { profiles: Array<{ id: string }> }).profiles.map((p) => p.id);
+    expect(ids).toContain(`custom:${ownersPrivate.id}`);
+    expect(ids).toContain(`custom:${teamShared.id}`);
+    expect(ids).not.toContain(`custom:${readersPrivate.id}`);
+    expect(ids).not.toContain(`custom:${adminsPrivate.id}`);
+  });
+
+  it('is super only, and only for an active internal member', async () => {
+    const app = createApp([owner, reader, admin]);
+    expect((await app.request(`/api/profiles/usable-by/${owner.id}`, as(reader))).status).toBe(403);
+    expect((await app.request(`/api/profiles/usable-by/${owner.id}`, as(owner))).status).toBe(403);
+    expect((await app.request('/api/profiles/usable-by/usr_nobody', as(admin))).status).toBe(404);
+  });
+});

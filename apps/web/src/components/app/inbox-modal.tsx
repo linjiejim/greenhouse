@@ -7,6 +7,7 @@ import type { PlatformNotification } from '@greenhouse/types/notification';
 import { CheckCheck, Inbox, MessageSquare, Users } from '../../lib/icons';
 import { useT } from '../../lib/i18n';
 import { executionNotificationHref } from '../../lib/execution-route';
+import { notificationCopy } from '../../lib/notification-copy';
 import { timeAgo, markdownPreview } from '../../lib/utils';
 import * as api from '../../lib/api';
 import { useWsStore } from '../../stores';
@@ -17,7 +18,7 @@ type InboxTab = 'notifications' | 'shares';
 
 function notificationHref(item: PlatformNotification): string | null {
   if (item.run_id) {
-    // Historical notifications predate the kind segment; the Execution Center
+    // Historical notifications predate the kind segment; the run-detail
     // router keeps this compatibility form readable.
     return executionNotificationHref(item.run_id, item.payload);
   }
@@ -175,33 +176,36 @@ export function InboxModal({ open, onClose }: { open: boolean; onClose: () => vo
 
           {!loading && tab === 'notifications' && notifications.length > 0 && (
             <div className="space-y-1.5">
-              {notifications.map((item) => (
-                <button
-                  key={item.id}
-                  type="button"
-                  onClick={() => void openNotification(item)}
-                  className={`flex w-full gap-3 rounded-lg border px-3 py-2.5 text-left transition-colors ${
-                    item.read_at
-                      ? 'border-edge bg-surface-raised hover:border-edge-strong'
-                      : 'border-primary-edge bg-primary-subtle hover:bg-primary-subtle-hover'
-                  }`}
-                >
-                  <span className="mt-1.5 w-2 flex-shrink-0">
-                    {!item.read_at && <span className="block h-2 w-2 rounded-full bg-primary-500" />}
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span
-                      className={`block truncate text-sm ${item.read_at ? 'text-fg-secondary' : 'font-medium text-fg'}`}
-                    >
-                      {item.title}
+              {notifications.map((item) => {
+                const copy = notificationCopy(t, item);
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => void openNotification(item)}
+                    className={`flex w-full gap-3 rounded-lg border px-3 py-2.5 text-left transition-colors ${
+                      item.read_at
+                        ? 'border-edge bg-surface-raised hover:border-edge-strong'
+                        : 'border-primary-edge bg-primary-subtle hover:bg-primary-subtle-hover'
+                    }`}
+                  >
+                    <span className="mt-1.5 w-2 flex-shrink-0">
+                      {!item.read_at && <span className="block h-2 w-2 rounded-full bg-primary-500" />}
                     </span>
-                    <span className="mt-0.5 line-clamp-2 block text-xs leading-5 text-fg-muted">
-                      {markdownPreview(item.body)}
+                    <span className="min-w-0 flex-1">
+                      <span
+                        className={`block truncate text-sm ${item.read_at ? 'text-fg-secondary' : 'font-medium text-fg'}`}
+                      >
+                        {copy.title}
+                      </span>
+                      <span className="mt-0.5 line-clamp-2 block text-xs leading-5 text-fg-muted">
+                        {markdownPreview(copy.body)}
+                      </span>
                     </span>
-                  </span>
-                  <span className="flex-shrink-0 text-[11px] text-fg-faint">{timeAgo(item.created_at)}</span>
-                </button>
-              ))}
+                    <span className="flex-shrink-0 text-[11px] text-fg-faint">{timeAgo(item.created_at)}</span>
+                  </button>
+                );
+              })}
             </div>
           )}
 

@@ -3,7 +3,7 @@ import { useEffect, useRef } from 'react';
 import { ChevronDown, ChevronRight, MoreHorizontal } from '../../lib/icons';
 import { useT } from '../../lib/i18n';
 import type { ChatWorkspaceView } from '../../stores';
-import type { PrimaryNavigation, PrimaryNavigationItem } from '../../platform/navigation';
+import { activeNavigationKey, type PrimaryNavigation, type PrimaryNavigationItem } from '../../platform/navigation';
 import { useHoverFlyout } from '../../hooks/use-hover-flyout';
 import { useAuthStore } from '../../stores';
 import { useExtensionsStore } from '../../stores/extensions-store';
@@ -93,7 +93,9 @@ export function SidebarGlobalNavigation({
   } = useHoverFlyout({ defaultOpen: defaultMoreOpen });
   const moreRef = useRef<HTMLDivElement>(null);
   const hoverEnabled = morePlacement === 'flyout';
-  const overflowActive = navigation.overflow.some((item) => item.key === route);
+  // One answer for "where am I" across the primary list and More.
+  const activeKey = activeNavigationKey(route, chatWorkspaceView);
+  const overflowActive = navigation.overflow.some((item) => item.key === activeKey);
   const { currentUser } = useAuthStore();
   const activeExtensions = useExtensionsStore((s) => s.extensions);
   const extensionItems = activeExtensionNavItems(new Set(activeExtensions.map((e) => e.id))).filter(
@@ -123,11 +125,6 @@ export function SidebarGlobalNavigation({
     };
   }, [closeMore, moreOpen]);
 
-  const directPrimaryActive = (item: PrimaryNavigationItem) => {
-    if (item.key === 'chat') return route === 'chat' && chatWorkspaceView === 'conversation';
-    return item.key === route;
-  };
-
   return (
     <nav
       className={`${compact ? 'flex flex-col items-center gap-1' : 'flex flex-col gap-0.5 px-3'} ${className}`}
@@ -137,7 +134,7 @@ export function SidebarGlobalNavigation({
         <PrimaryLink
           key={item.key}
           item={item}
-          active={directPrimaryActive(item)}
+          active={item.key === activeKey}
           compact={compact}
           onNavigate={() => {
             if (item.key === 'chat') onSelectChatWorkspace('conversation');
@@ -228,7 +225,7 @@ export function SidebarGlobalNavigation({
 
                 {navigation.overflow.map((item) => {
                   const Icon = item.icon;
-                  const active = route === item.key;
+                  const active = item.key === activeKey;
                   return (
                     <a
                       key={item.key}

@@ -13,7 +13,7 @@ import { useEffect, useState } from 'react';
 import { filesPageHref, parseFilesLocation, type FilesShelf } from '@greenhouse/types/files';
 import { ModulePage } from '../components/app/module-page';
 import { DriveBrowser } from '../components/drive/drive-browser';
-import { EmptyState, FilterPills, SearchInput, Spinner, Tag, toast } from '../components/ui';
+import { EmptyState, SearchInput, Spinner, Tabs, Tag, toast } from '../components/ui';
 import { FileText, Folder, Search } from '../lib/icons';
 import { formatFileSize, searchKnowledgeCabinet, type CabinetSearchResult } from '../lib/api/drive';
 import { formatDate } from '../lib/utils';
@@ -37,17 +37,19 @@ export function FilesPage({ params }: { params: URLSearchParams }) {
       moduleId="workspace.files"
       layout="list"
       tabs={
-        <FilterPills
-          variant="segment"
-          items={[
+        // The two shelves are the page's sections: the same tab row as every
+        // other module page. A search spans both; picking a shelf clears it.
+        <Tabs
+          tabs={[
             { key: 'team', label: t('files.teamShelf') },
             { key: 'personal', label: t('files.personalShelf') },
           ]}
-          activeKey={searching ? null : shelf}
+          active={shelf}
           onChange={(key) => {
             setQuery('');
-            go(filesPageHref({ shelf: (key ?? 'team') as FilesShelf }));
+            go(filesPageHref({ shelf: key as FilesShelf }));
           }}
+          ariaLabel={t('files.shelvesLabel')}
         />
       }
       toolbar={

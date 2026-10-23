@@ -61,6 +61,52 @@ describe('ActivityRow', () => {
     expect(html).toContain('Outcome unknown');
   });
 
+  it('phrases an agent write by what it did to which object, the same way Home phrases the change', () => {
+    const write = item({
+      source: 'agent',
+      agent: { client_id: 'c1', client_name: 'Codex' },
+      module: 'knowledge',
+      verb: 'update',
+      entity: 'document',
+      action: 'knowledge.update_doc',
+      action_title: null,
+      target: { id: '5', label: 'Product Roadmap 2026', url: '#/knowledge/doc/5' },
+      run: { id: 'rtr_1', kind: 'agent_write' },
+    });
+    const home = item({
+      id: 'kb:9',
+      source: 'agent',
+      agent: { client_id: null, client_name: 'Codex' },
+      module: 'knowledge',
+      verb: 'update',
+      entity: 'document',
+      action: 'updateDocument',
+      action_title: null,
+      target: { id: '5', label: 'Product Roadmap 2026', url: '#/knowledge/doc/5' },
+    });
+    for (const value of [write, home]) {
+      const html = render(value);
+      expect(html).toContain('updated document');
+      expect(html).not.toContain('Knowledge Product');
+      expect(render(value, 'zh')).toContain('更新了文档');
+    }
+  });
+
+  it('uses an action’s own phrase where verb and object would misdescribe it', () => {
+    const html = render(
+      item({
+        module: 'mcp',
+        verb: 'share',
+        entity: 'oauthGrant',
+        action: 'authorizeOAuthClient',
+        target: { id: null, label: 'Claude Code', url: null },
+      }),
+    );
+    expect(html).toContain('connected agent');
+    expect(html).not.toContain('shared');
+    expect(html).toContain('Claude Code');
+  });
+
   it('falls back to the server title for an action without a known verb', () => {
     expect(render(item({ verb: 'other', action: 'syncThing', action_title: 'Sync thing' }))).toContain('Sync thing');
   });

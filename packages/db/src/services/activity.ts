@@ -134,7 +134,8 @@ export function createActivityService(db: Db) {
     /**
      * Successful audit events of the given actions. `actions` pairs an app with
      * the action ids that count as changes there (reads are audited too and must
-     * not show up as activity). Optional narrowing by actor type and by the
+     * not show up as activity, nor does a row whose summary says
+     * `"activity":false`). Optional narrowing by actor type and by the
      * person (the actor itself, or the member an agent acted for).
      */
     async listAuditChanges(
@@ -173,6 +174,8 @@ export function createActivityService(db: Db) {
           AND ${created} >= ${input.from}::timestamptz
           AND ${created} < ${input.to}::timestamptz
           AND (${actionMatch})
+          -- A write audited for access but marked as no change (an editor heartbeat).
+          AND e.summary NOT LIKE '%"activity":false%'
           AND ${input.actorType ? sql`e.actor_type = ${input.actorType}` : sql`TRUE`}
           AND ${person}
           AND ${cursorClause(created, key, input.cursor)}

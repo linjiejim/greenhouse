@@ -654,6 +654,28 @@ const profiles = new Hono<AppEnv>()
     logger.info(`[Profile] 🗑️ Custom profile deleted: custom:${id} (${row.name}) by ${authUser.id}`);
     return c.json({ success: true });
   })
+  /**
+   * GET /api/profiles/usable-by/:userId — the run profiles one member may run as
+   * (their own + team-shared), for a super editing that member's automation:
+   * the form must offer the OWNER's choices, which the server enforces on save
+   * (scheduler/task-center.ts). Super only; the member must be an active
+   * internal user. System profiles are the same for everyone and not repeated.
+   */
+  .get('/usable-by/:userId', async (c) => {
+    if (getAuthUser(c).role !== 'super') return c.json({ error: 'Forbidden' }, 403);
+    const owner = await getDb().users.getById(c.req.param('userId'));
+    if (!owner || owner.status !== 'active' || (owner.role !== 'team' && owner.role !== 'super')) {
+      return c.json({ error: 'User not found' }, 404);
+    }
+    // A super may run any profile, but an automation's choices are what the
+    // owner could pick themselves: their own and the team-shared ones.
+    const rows = await getDb().customProfiles.listForUser(owner.id);
+    const baseMap = new Map(loadAllProfiles().map((p) => [p.id, p]));
+    const profiles = await Promise.all(
+      rows.map(async (r) => formatCustomProfile(r, baseMap, await currentVersionOf(r))),
+    );
+    return c.json({ profiles });
+  })
   // ─── System Profile Routes ───────────────────────────────
 
   /** GET /api/profiles — list available profiles (system + custom, filtered by user access) */

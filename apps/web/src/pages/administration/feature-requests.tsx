@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { Button, EmptyState, IconButton, Select, Spinner, Textarea } from '../../components/ui';
-import { ClipboardList, Check, X, Clock, CheckCircle } from '../../lib/icons';
+import { ClipboardList, Check, X, Clock, CheckCircle, RefreshCw } from '../../lib/icons';
 import { fetchFeatureRequests, updateFeatureRequest } from '../../lib/api';
 import type { FeatureRequest } from '../../lib/api';
 import { relativeTime } from '../../lib/utils';
@@ -91,16 +91,16 @@ export function FeatureRequestsPanel({ tabs }: { tabs?: React.ReactNode }) {
   };
 
   return (
-    <ModulePage
-      moduleId="admin.issues"
-      layout="list"
-      tabs={tabs}
-      toolbar={
-        <div className="flex items-center gap-3">
+    <ModulePage moduleId="admin.issues" layout="list" tabs={tabs}>
+      <div className="space-y-4">
+        {/* The toolbar opens the content, as in the sibling Frictions tab (a
+            CRUD list), so switching tabs moves nothing. */}
+        <div className="flex flex-wrap items-center gap-2">
           <Select
+            size="sm"
+            inline
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
-            className="text-xs w-auto"
             aria-label={t('common.status')}
           >
             <option value="">{t('settings.allStatus')}</option>
@@ -109,15 +109,15 @@ export function FeatureRequestsPanel({ tabs }: { tabs?: React.ReactNode }) {
             <option value="rejected">{t('common.rejected')}</option>
             <option value="done">{t('common.done')}</option>
           </Select>
-          <span className="text-xs text-fg-muted">{t('settings.requestTotal', { count: total })}</span>
           <div className="flex-1" />
+          <span className="text-xs text-fg-muted whitespace-nowrap">
+            {t('settings.requestTotal', { count: total })}
+          </span>
           <IconButton label={t('common.refresh')} onClick={load}>
-            <Clock size={14} />
+            <RefreshCw size={14} />
           </IconButton>
         </div>
-      }
-    >
-      <div className="space-y-4">
+
         {/* Loading */}
         {loading && (
           <div className="flex justify-center py-8">

@@ -42,7 +42,7 @@ describe('SidebarPrimaryAction', () => {
 
     expect(expanded).toContain('favicon.svg');
     expect(expanded).toContain('Greenhouse');
-    expect(expanded).toContain('AI-native workbench');
+    expect(expanded).toContain('Team agent hub');
     expect(expanded).not.toContain('Localhost');
     expect(expanded).not.toContain('bg-primary-900');
     expect(expanded).not.toContain('aria-label="Collapse sidebar"');

@@ -316,6 +316,28 @@ describe('Knowledge Platform migration', () => {
     ).toBe(true);
   });
 
+  it('audits the document a create made and marks an editor heartbeat as no change', async () => {
+    await setupOwner();
+    const app = createHttpApp([owner]);
+    const created = await app.request('/api/knowledge/docs', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-test-user': owner.id },
+      body: JSON.stringify({ title: `Audit me ${Date.now()}`, content: 'x' }),
+    });
+    expect(created.status).toBe(201);
+    const docId = ((await created.json()) as { doc: { id: number } }).doc.id;
+    await app.request(`/api/knowledge/docs/${docId}/editing-presence`, {
+      method: 'POST',
+      headers: { 'x-test-user': owner.id },
+    });
+
+    const audits = (await db.platform.listAuditEvents('default', 50)).filter((event) => event.actor_id === owner.id);
+    const create = audits.find((event) => event.action_id === 'createDocument' && event.result === 'success');
+    expect(create?.record_id).toBe(String(docId));
+    const beat = audits.find((event) => JSON.parse(event.summary).change === 'presence');
+    expect(JSON.parse(beat!.summary)).toMatchObject({ activity: false });
+  });
+
   it('allows group editors to write while reader grants remain read-only', async () => {
     await Promise.all([setupDirectShare(), setupGroupShare()]);
     const app = createHttpApp([directReader, groupEditor]);

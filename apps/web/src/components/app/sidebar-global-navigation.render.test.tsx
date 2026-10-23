@@ -59,6 +59,35 @@ describe('SidebarGlobalNavigation', () => {
     expect(html).toMatch(/role="menu"[^>]*class="[^"]*pl-1/);
   });
 
+  it('lights exactly the item of the current page, and none on the Activity log', () => {
+    const full: PrimaryNavigation = {
+      primary: ['home', 'knowledge', 'files', 'tables', 'projects', 'skillhub', 'automations', 'chat'].map((key) => ({
+        key,
+        label: key,
+        icon: MessageCircle,
+        href: `#/${key}`,
+      })),
+      overflow: [],
+    };
+    const markup = (route: string) =>
+      renderToStaticMarkup(
+        <I18nProvider initialLocale="en">
+          <SidebarGlobalNavigation
+            navigation={full}
+            route={route}
+            chatWorkspaceView="conversation"
+            onSelectChatWorkspace={vi.fn()}
+          />
+        </I18nProvider>,
+      );
+    const current = (html: string) => [...html.matchAll(/href="#\/(\w+)"[^>]*aria-current="page"/g)].map((m) => m[1]);
+
+    for (const item of full.primary) expect(current(markup(item.key))).toEqual([item.key]);
+    // `#/agents` lands on `#/automations?tab=profiles`: the route is automations.
+    expect(current(markup('automations'))).toEqual(['automations']);
+    expect(current(markup('activity'))).toEqual([]);
+  });
+
   it('draws no More at all when nothing would be in it', () => {
     const html = renderToStaticMarkup(
       <I18nProvider initialLocale="en">

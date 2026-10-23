@@ -52,7 +52,7 @@ describe('HistoryList row metadata', () => {
   it('reuses the sidebar session-type icon for historical cloud sessions', () => {
     const html = renderList([session({ profile_id: 'sprouty-mission' })]);
 
-    expect(html).toContain('title="Cloud mission"');
+    expect(html).toContain('title="Cloud mission (retired)"');
     expect(html).not.toContain('>sprouty-mission<');
   });
 });

@@ -257,23 +257,35 @@ function canAccess(task: ScheduledTaskRow, actor: TaskActor): boolean {
   return actor.scope === 'any' && actor.role === 'super';
 }
 
-/** Resolve + validate a profile id, returning the error message on failure. */
+/**
+ * Resolve + validate the profile an automation runs as, returning the error
+ * message on failure. A system profile, or a run profile (`custom:<id>`) the
+ * OWNER may use — their own or one shared with the team — pinned to its current
+ * version (`custom:<id>@<v>`). The owner is who the scheduler runs it as, so a
+ * super editing a member's automation cannot hand it a profile the member may
+ * not use; the run re-checks the same rule (assertPinnedProfileExecutionAccess)
+ * and fails with the reason if access went away since.
+ */
 async function resolveTaskProfile(
   rawProfileId: string | undefined,
   actor: TaskActor,
+  owner: { id: string; role: string },
   database: DatabaseProvider,
   existingPin = false,
 ): Promise<{ profileId: string } | TaskError> {
   try {
     if (actor.role !== 'team' && actor.role !== 'super') return err('forbidden', 'Internal account required');
-    const profileId = await pinProfileIdForUser({ id: actor.userId, role: actor.role }, rawProfileId, database, {
+    if (owner.role !== 'team' && owner.role !== 'super') return err('forbidden', 'The owner is not an internal user');
+    const profileId = await pinProfileIdForUser({ id: owner.id, role: owner.role }, rawProfileId, database, {
       existingPin,
     });
     const accessError = await checkProfileAccess(profileId, database);
     if (accessError) return err('forbidden', accessError);
     return { profileId };
   } catch (error) {
-    if (error instanceof ProfileAccessError && error.status === 403) return err('forbidden', error.message);
+    if (error instanceof ProfileAccessError && error.status === 403) {
+      return err('forbidden', `The automation's owner cannot use this run profile: ${error.message}`);
+    }
     return err('invalid', `Profile "${rawProfileId ?? 'team'}" not found`);
   }
 }
@@ -411,7 +423,8 @@ export async function createTask(
   const toolGrant = validateUnattendedTools(input.unattended_tools, actor);
   if (toolGrant && 'ok' in toolGrant) return toolGrant;
 
-  const profileResult = await resolveTaskProfile(input.profile_id, actor, db);
+  // The creator is the owner.
+  const profileResult = await resolveTaskProfile(input.profile_id, actor, { id: actor.userId, role: actor.role }, db);
   if ('ok' in profileResult) return profileResult;
 
   // Quota is per owner — a super creating on the console still fills their own.
@@ -493,10 +506,13 @@ export async function updateTask(
   }
 
   if (input.profile_id !== undefined) {
-    // Saving an Automation without changing its Agent keeps its own pin.
+    // Saving an Automation without changing its profile keeps its own pin.
+    const ownerRow =
+      existing.user_id === actor.userId ? { role: actor.role } : await db.users.getById(existing.user_id);
     const profileResult = await resolveTaskProfile(
       input.profile_id,
       actor,
+      { id: existing.user_id, role: ownerRow?.role ?? 'none' },
       db,
       input.profile_id === existing.profile_id,
     );

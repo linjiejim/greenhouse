@@ -1,5 +1,5 @@
 /**
- * My prompts — the prompt (Task) library, shown as a tab of SkillHub
+ * My prompts — the member's prompt library (stored as Prompt Tasks), shown as a tab of SkillHub
  * (`#/skillhub?tab=prompts`; the old `#/tasks` page redirects here).
  *
  * Rebuilt on @greenhouse/crud: one defineCrud schema drives the list, the add/edit
@@ -61,7 +61,7 @@ export function PromptsPanel() {
   const schema = useMemo(
     () =>
       defineCrud<UserPrompt>({
-        name: 'Task',
+        name: 'Prompt',
         dataSource,
         pageSize: 50,
         storageKey: `settings-prompts:${scope}`,

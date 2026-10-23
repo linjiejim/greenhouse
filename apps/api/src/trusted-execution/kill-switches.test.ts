@@ -82,7 +82,7 @@ describe('trusted-execution kill switches', () => {
     const response = await app.request('/tasks/list');
     expect(response.status).toBe(503);
     await expect(response.json()).resolves.toEqual({
-      error: 'Execution Center is unavailable in this environment',
+      error: 'Run details are unavailable in this environment',
       code: 'task_center_disabled',
     });
   });

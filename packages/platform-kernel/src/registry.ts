@@ -1,5 +1,11 @@
 import { AuthorizationDeniedError } from './authz.js';
-import type { PlatformActionRequest, PlatformAuditEvent, PlatformActionResult, ActorContext } from './contract.js';
+import type {
+  PlatformActionRequest,
+  PlatformAuditEvent,
+  PlatformAuditHint,
+  PlatformActionResult,
+  ActorContext,
+} from './contract.js';
 import { compileApp, type ApplicationManifest, type ManifestAction } from './dsl.js';
 
 export type PlatformActionHandler<TContext = unknown> = (
@@ -136,8 +142,13 @@ export class ApplicationRegistry<TContext = unknown> {
       });
       throw error;
     }
-    await this.#recordAudit(request, action, result.ok ? 'success' : result.code === 'FORBIDDEN' ? 'denied' : 'error', {
-      resultCode: result.ok ? undefined : result.code,
+    if (result.ok) {
+      const { audit: hint, ...plain } = result;
+      await this.#recordAudit(request, action, 'success', { ...hint?.summary }, hint?.recordId);
+      return plain;
+    }
+    await this.#recordAudit(request, action, result.code === 'FORBIDDEN' ? 'denied' : 'error', {
+      resultCode: result.code,
     });
     return result;
   }
@@ -147,7 +158,13 @@ export class ApplicationRegistry<TContext = unknown> {
     action: ManifestAction,
     result: PlatformAuditEvent['result'],
     summary: Record<string, unknown>,
+    createdRecordId?: PlatformAuditHint['recordId'],
   ): Promise<void> {
+    const resource = request.resource ?? {
+      appId: request.appId,
+      moduleId: action.module,
+      entityId: action.entity,
+    };
     await this.#audit({
       orgId: request.actor.orgId,
       actorId: request.actor.actorId,
@@ -155,11 +172,10 @@ export class ApplicationRegistry<TContext = unknown> {
       onBehalfOfUserId: request.actor.onBehalfOfUserId,
       clientId: request.actor.clientId,
       requestId: request.actor.requestId,
-      resource: request.resource ?? {
-        appId: request.appId,
-        moduleId: action.module,
-        entityId: action.entity,
-      },
+      resource:
+        createdRecordId !== undefined && resource.recordId === undefined
+          ? { ...resource, recordId: createdRecordId }
+          : resource,
       actionId: action.id,
       capability: action.capability,
       result,
