@@ -633,7 +633,7 @@ function BudgetRow({
       <td className="py-2 pr-3 text-right font-mono tabular-nums">
         {showBalance ? formatUsd(budget.reserved_usd_micros) : '—'}
       </td>
-      <td className="w-32 py-2 pr-3">
+      <td className="w-32 py-2 pl-3 pr-3">
         {showBalance && (
           <BudgetBar
             spent={budget.spent_usd_micros}
@@ -844,12 +844,13 @@ function BudgetsTab({
           <table className="w-full min-w-[720px] text-xs" data-testid="metering-budgets">
             <thead>
               <tr className="text-fg-faint">
-                <th className="pb-2 text-left font-medium">{t('metering.scope')}</th>
-                <th className="pb-2 text-right font-medium">{t('metering.limit')}</th>
-                <th className="pb-2 text-right font-medium">{t('metering.spent')}</th>
-                <th className="pb-2 text-right font-medium">{t('metering.reserved')}</th>
-                <th className="pb-2 text-left font-medium">{t('metering.used')}</th>
-                <th className="pb-2 text-left font-medium" />
+                {/* Same horizontal padding as the cells below, so right-aligned amounts never touch the next header. */}
+                <th className="pb-2 pr-3 text-left font-medium">{t('metering.scope')}</th>
+                <th className="pb-2 pr-3 text-right font-medium">{t('metering.limit')}</th>
+                <th className="pb-2 pr-3 text-right font-medium">{t('metering.spent')}</th>
+                <th className="pb-2 pr-3 text-right font-medium">{t('metering.reserved')}</th>
+                <th className="pb-2 pl-3 pr-3 text-left font-medium">{t('metering.used')}</th>
+                <th className="pb-2 pr-3 text-left font-medium" />
                 <th className="pb-2" />
               </tr>
             </thead>
