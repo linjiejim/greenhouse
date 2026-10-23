@@ -95,9 +95,10 @@ export default function ProjectDetailScreen() {
   ) : null;
 
   const listing = (
-    <View style={styles.root}>
+    <>
       <Stack.Screen options={{ title: project?.title ?? '' }} />
       <FlatList<Row>
+        style={styles.root}
         contentInsetAdjustmentBehavior="automatic"
         data={rows}
         keyExtractor={(row) => row.key}
@@ -146,7 +147,7 @@ export default function ProjectDetailScreen() {
         }
         contentContainerStyle={styles.content}
       />
-    </View>
+    </>
   );
   if (!split) return listing;
   return (

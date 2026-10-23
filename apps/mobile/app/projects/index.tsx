@@ -102,9 +102,10 @@ export default function Projects() {
   );
 
   const listing = (
-    <View style={styles.root}>
+    <>
       <Stack.Screen options={{ title: t('nav.projects') }} />
       <FlatList<Row>
+        style={styles.root}
         contentInsetAdjustmentBehavior="automatic"
         data={rows}
         keyExtractor={(row) => row.key}
@@ -157,7 +158,7 @@ export default function Projects() {
         ListEmptyComponent={empty}
         contentContainerStyle={styles.content}
       />
-    </View>
+    </>
   );
   if (!split) return listing;
   return (

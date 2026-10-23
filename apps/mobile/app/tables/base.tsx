@@ -40,9 +40,10 @@ export default function Base() {
   }
 
   return (
-    <View style={styles.root}>
+    <>
       <Stack.Screen options={{ title: resource.data?.base.name ?? '' }} />
       <FlatList<TableDef>
+        style={styles.root}
         contentInsetAdjustmentBehavior="automatic"
         data={tables}
         keyExtractor={(table) => String(table.id)}
@@ -74,7 +75,7 @@ export default function Base() {
         }
         contentContainerStyle={styles.content}
       />
-    </View>
+    </>
   );
 }
 

@@ -8,7 +8,7 @@
 import { FilePreviewPane } from '../src/files/file-preview-view';
 import { SplitView, useSplit } from '../src/ui/split';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { FlatList, View } from 'react-native';
+import { FlatList } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { breadcrumb, listLevel, searchCabinet, type FilesShelf } from '../src/api/drive';
 import { captureIdentity } from '../src/data/identity';
@@ -200,7 +200,7 @@ export default function Files() {
   };
 
   const listing = (
-    <View style={styles.root}>
+    <>
       <Stack.Screen options={{ title: folderId != null ? (folder?.name ?? '') : t('nav.files') }} />
       <DirectorySearch filter={filter} />
       <Stack.Toolbar placement="right">
@@ -217,6 +217,7 @@ export default function Files() {
         </Stack.Toolbar.Menu>
       </Stack.Toolbar>
       <FlatList<Row>
+        style={styles.root}
         contentInsetAdjustmentBehavior="automatic"
         data={rows}
         keyExtractor={(row) => row.key}
@@ -277,7 +278,7 @@ export default function Files() {
         }
         contentContainerStyle={styles.content}
       />
-    </View>
+    </>
   );
   if (!split) return listing;
   return (

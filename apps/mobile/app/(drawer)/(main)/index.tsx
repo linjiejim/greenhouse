@@ -124,7 +124,7 @@ export default function Home() {
   }, [status, styles.empty, t]);
 
   const listing = (
-    <View style={styles.root}>
+    <>
       <Stack.Screen options={{ title: t('nav.home') }} />
       <Stack.Toolbar placement="left">
         <Stack.Toolbar.Button
@@ -142,6 +142,7 @@ export default function Home() {
         />
       </Stack.Toolbar>
       <FlatList<PlatformNotification>
+        style={styles.root}
         contentInsetAdjustmentBehavior="automatic"
         data={items}
         keyExtractor={(item) => item.id}
@@ -183,7 +184,7 @@ export default function Home() {
         windowSize={11}
         removeClippedSubviews
       />
-    </View>
+    </>
   );
   if (!split) return listing;
   return (

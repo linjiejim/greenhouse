@@ -50,9 +50,10 @@ export default function MyAgents() {
   const services = (spend.data?.by_service ?? []).filter((row) => row.cost_usd_micros > 0 || row.calls > 0);
 
   return (
-    <View style={styles.root}>
+    <>
       <Stack.Screen options={{ title: t('nav.agent') }} />
       <ScrollView
+        style={styles.root}
         contentInsetAdjustmentBehavior="automatic"
         contentContainerStyle={styles.content}
         refreshControl={<RefreshControl refreshing={loading && !!(spend.data || writes.data)} onRefresh={refresh} />}
@@ -157,7 +158,7 @@ export default function MyAgents() {
           <SectionFailed title={t('agent.keys')} onRetry={() => void gateway.refresh()} />
         ) : null}
       </ScrollView>
-    </View>
+    </>
   );
 }
 

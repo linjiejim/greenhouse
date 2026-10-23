@@ -8,7 +8,7 @@
 import { DocView } from '../../src/knowledge/doc-view';
 import { SplitView, useSplit } from '../../src/ui/split';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { FlatList, View } from 'react-native';
+import { FlatList } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { listDocs, listKbFolders, searchDocs, type KbShelf } from '../../src/api/knowledge';
 import type { ApiResult } from '../../src/api/client';
@@ -132,10 +132,11 @@ export default function Knowledge() {
   );
 
   const listing = (
-    <View style={styles.root}>
+    <>
       <Stack.Screen options={{ title }} />
       <DirectorySearch filter={filter} />
       <FlatList<KbRow>
+        style={styles.root}
         contentInsetAdjustmentBehavior="automatic"
         data={rows}
         keyExtractor={(row) => row.key}
@@ -181,7 +182,7 @@ export default function Knowledge() {
         ListEmptyComponent={empty}
         contentContainerStyle={styles.content}
       />
-    </View>
+    </>
   );
   if (!split) return listing;
   return (

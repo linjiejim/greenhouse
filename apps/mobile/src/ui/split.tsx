@@ -38,6 +38,8 @@ export function SplitView({
   const styles = useStyles(c);
   return (
     <View style={styles.row}>
+      {/* the large title can only follow a list that is the screen's root; side by side it would stick */}
+      <Stack.Screen options={{ headerLargeTitleEnabled: false }} />
       <View style={[styles.list, { width: splitListWidth(width) }]}>{list}</View>
       <View style={styles.detail}>
         {detail ?? <EmptyState icon={placeholder.icon} title={placeholder.title} style={styles.placeholder} />}

@@ -104,6 +104,7 @@
 
 - RN overlays render below native sheets: UI that must cover them (toast) uses FullWindowOverlay, mounted only while shown.
 - The root Stack starts at (drawer) (home): go home with router.dismissTo('/') (src/shell/nav.ts), never `<Redirect>` or router.replace.
+- A large-title page's list or ScrollView is the screen's root element (a fragment, the background on the list's own style); inside a wrapping View the title sticks over the rows instead of collapsing.
 - Mount a SwiftUI Form on the first frame and swap its children when data arrives, or its first untitled Section slides under the nav bar.
 - Never remove a Form section while one of its inputs has focus (UIKit crash); call Keyboard.dismiss() in beforeRemove.
 - Changing the system font size at runtime does not relayout (RN 0.86 bug): key stateless text containers with useFontScaleKey(), never screens, lists, navigators or forms.

@@ -122,7 +122,7 @@ export default function TableScreen() {
     records.length === 1 ? 'only' : index === 0 ? 'first' : index === records.length - 1 ? 'last' : 'middle';
 
   const listing = (
-    <View style={styles.root}>
+    <>
       <Stack.Screen options={{ title: head?.schema.table.name ?? '' }} />
       {head && canAddRecords(head.role) ? (
         <Stack.Toolbar placement="right">
@@ -177,9 +177,10 @@ export default function TableScreen() {
             <EmptyState icon="table" title={t('tables.recordsEmpty')} style={styles.state} />
           )
         }
+        style={styles.root}
         contentContainerStyle={styles.content}
       />
-    </View>
+    </>
   );
   if (!split) return listing;
   return (
