@@ -212,12 +212,28 @@ export function createMemberComputerService(db: Db) {
       return row;
     },
 
-    /** `running` → `stopping`: exactly one caller wins the right to stop it. */
-    async claimStop(id: string, at: string = nowIso()): Promise<MemberComputerRow | undefined> {
+    /**
+     * `running` → `stopping`: exactly one caller wins the right to stop it, and
+     * only while the billing block it evaluated is still the open one
+     * (`budget_key`). A stale snapshot loses.
+     */
+    async claimStop(
+      id: string,
+      options: { at?: string; budget_key?: string | null } = {},
+    ): Promise<MemberComputerRow | undefined> {
+      const at = options.at ?? nowIso();
+      const conditions = [eq(memberComputers.id, id), eq(memberComputers.status, 'running')];
+      if (options.budget_key !== undefined) {
+        conditions.push(
+          options.budget_key === null
+            ? sql`${memberComputers.budget_key} IS NULL`
+            : eq(memberComputers.budget_key, options.budget_key),
+        );
+      }
       const [row] = await db
         .update(memberComputers)
         .set({ status: 'stopping', updated_at: at })
-        .where(and(eq(memberComputers.id, id), eq(memberComputers.status, 'running')))
+        .where(and(...conditions))
         .returning();
       return row;
     },

@@ -40,6 +40,8 @@ import { setComputerDriverForTests, type ComputerDriver } from '../driver.js';
 import {
   COMPUTER_DISABLED_MESSAGE,
   ensureComputer,
+  rollComputerBlock,
+  stopComputer,
   sweepComputers,
   stopMemberComputer,
   withHeartbeat,
@@ -379,6 +381,38 @@ describe('cloud computer: lifecycle and per-minute billing', () => {
       expect(seconds).toBe(15 * 60 + 120);
     }
     expect(Date.parse((await memberComputer()).last_used_at)).toBeGreaterThanOrEqual(Date.parse(before));
+  });
+
+  it('lets two sweeps of one block fund it once, and a stale refusal never stops a funded computer', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    const t0 = Date.parse('2026-10-24T10:00:00.000Z');
+    vi.setSystemTime(t0);
+    await run('computer_exec', { command: 'serve', timeout_seconds: 60 });
+    vi.setSystemTime(t0 + 10 * MINUTE);
+    await run('computer_exec', { command: 'test', timeout_seconds: 60 });
+    vi.setSystemTime(t0 + 15 * MINUTE + 30_000);
+    const snapshot = await memberComputer();
+
+    // Process A rolls the block.
+    expect(await rollComputerBlock(db, snapshot, driver)).toBe('rolled');
+    const funded = await memberComputer();
+    expect(funded.budget_key).toBe(`computer:${snapshot.id}:${new Date(t0 + 15 * MINUTE).toISOString()}`);
+
+    // Process B, on the same snapshot, after the budget ran out: same block key,
+    // so the same (funded) admission — it neither stops nor releases anything.
+    await db.metering.setLimit({ scope_type: 'user', scope_id: member.id, limit_units: 0 });
+    expect(await rollComputerBlock(db, snapshot, driver)).toBe('superseded');
+    expect(await memberComputer()).toMatchObject({ status: 'running', budget_key: funded.budget_key });
+    expect((await reservations(funded.budget_key!))[0]).toMatchObject({ status: 'reserved' });
+    // The finished block was settled once.
+    expect((await computerFacts()).map((fact) => fact.units)).toEqual([15]);
+
+    // A refusal evaluated on the old block cannot stop the computer either.
+    expect(await stopComputer(db, snapshot, 'budget', { driver, expect: { budgetKey: snapshot.budget_key } })).toBe(
+      null,
+    );
+    expect(driver.kill).not.toHaveBeenCalled();
+    expect((await memberComputer()).status).toBe('running');
   });
 
   it('refuses a new computer once the workspace runs its limit', async () => {

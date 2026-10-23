@@ -22,7 +22,6 @@
  * its reservation, and the budget sweeper charges the estimate.
  */
 
-import { randomUUID } from 'node:crypto';
 import { getUtcMonthPeriod, type DatabaseProvider, type MemberComputerRow, type UserRow } from '@greenhouse/db';
 import type { AdminComputersReport, ComputerView, MeteringClient, MyComputerReport } from '@greenhouse/types/metering';
 import { logger } from '@greenhouse/utils/logger';
@@ -135,6 +134,15 @@ async function blockEstimate(db: DatabaseProvider): Promise<number | null> {
   return perMinute === null ? null : perMinute * COMPUTER_BLOCK_MINUTES;
 }
 
+/**
+ * The reservation key of one billing block: one per computer and block start,
+ * so every process that evaluates the same block makes the same admission
+ * (a second reserve with the key returns the first one's reservation).
+ */
+export function blockBudgetKey(computerId: string, blockStartedAt: string): string {
+  return `computer:${computerId}:${new Date(blockStartedAt).toISOString()}`;
+}
+
 /** Reserve one block of minutes for a computer; throws the budget refusal when it does not fit. */
 async function reserveBlock(db: DatabaseProvider, row: MemberComputerRow, blockStartedAt: string) {
   return reserveSpend({
@@ -147,7 +155,7 @@ async function reserveBlock(db: DatabaseProvider, row: MemberComputerRow, blockS
     client: row.client as MeteringClient,
     oauthClientId: row.oauth_client_id,
     runId: row.id,
-    idempotencyKey: `computer:${row.id}:${randomUUID()}`,
+    idempotencyKey: blockBudgetKey(row.id, blockStartedAt),
     ttlMs: BLOCK_TTL_MS,
     metadata: { computer_id: row.id, block_started_at: blockStartedAt, block_minutes: COMPUTER_BLOCK_MINUTES },
   });
@@ -205,14 +213,23 @@ export type StopReason = 'user' | 'admin' | 'idle' | 'budget' | 'disabled' | 'ex
  * not confirm leaves the computer `lost` with its block reserved.
  *
  * `endedAt` is for a sandbox that is already gone: bill up to when it died.
+ * `expect` makes the stop conditional on what the caller decided from: the
+ * billing block it evaluated is still open. A caller holding a stale snapshot
+ * stops nothing.
  */
 export async function stopComputer(
   db: DatabaseProvider,
   row: MemberComputerRow,
   reason: StopReason,
-  options: { driver?: ComputerDriver; endedAt?: number } = {},
+  options: {
+    driver?: ComputerDriver;
+    endedAt?: number;
+    expect?: { budgetKey?: string | null };
+  } = {},
 ): Promise<MemberComputerRow | null> {
-  const claimed = await db.memberComputers.claimStop(row.id);
+  const claimed = await db.memberComputers.claimStop(row.id, {
+    ...(options.expect?.budgetKey !== undefined ? { budget_key: options.expect.budgetKey } : {}),
+  });
   if (!claimed) return null;
   if (options.endedAt === undefined && claimed.sandbox_id) {
     try {
@@ -458,17 +475,31 @@ async function finishStale(db: DatabaseProvider, row: MemberComputerRow): Promis
   }
 }
 
-/** A running computer crossed its block boundary: reserve the next block, then settle the finished one. */
-async function rollBlock(db: DatabaseProvider, row: MemberComputerRow, driver: ComputerDriver): Promise<void> {
+/**
+ * A running computer crossed its block boundary: reserve the next block, then
+ * settle the finished one.
+ *
+ * Safe for two processes sweeping the same snapshot: the next block's key is
+ * the same for both, so they get one admission decision; the block is rolled
+ * by compare-and-set on the open block's key, so one of them settles it; and a
+ * refusal stops the computer only while the block it evaluated is still the
+ * open one — never a computer another process has already funded further.
+ */
+export async function rollComputerBlock(
+  db: DatabaseProvider,
+  row: MemberComputerRow,
+  driver: ComputerDriver,
+): Promise<'rolled' | 'stopped' | 'superseded'> {
   const nextStart = new Date(Date.parse(row.block_started_at!) + BLOCK_MS).toISOString();
   let lease;
   try {
     lease = await reserveBlock(db, row, nextStart);
   } catch (error) {
     if (!findBudgetRefusal(error)) throw error;
-    logger.info('[computer] stopping a computer whose next block does not fit the budget', { computer: row.id });
-    await stopComputer(db, row, 'budget', { driver });
-    return;
+    const stopped = await stopComputer(db, row, 'budget', { driver, expect: { budgetKey: row.budget_key } });
+    if (stopped)
+      logger.info('[computer] stopped a computer whose next block did not fit the budget', { computer: row.id });
+    return stopped ? 'stopped' : 'superseded';
   }
   const rolled = await db.memberComputers.rollBlock(row.id, {
     expected_budget_key: row.budget_key,
@@ -477,11 +508,17 @@ async function rollBlock(db: DatabaseProvider, row: MemberComputerRow, driver: C
     add_minutes: COMPUTER_BLOCK_MINUTES,
   });
   if (!rolled) {
-    // Another process rolled or stopped it first.
-    await lease.releaseBeforeProviderIo('computer_block_superseded').catch(() => undefined);
-    return;
+    // Another process rolled it (to this very key — the reservation is theirs
+    // now too) or the computer stopped. Give the reservation back only when
+    // nothing holds it.
+    const current = await db.memberComputers.get(row.id);
+    if (current?.budget_key !== lease.idempotencyKey) {
+      await lease.releaseBeforeProviderIo('computer_block_superseded').catch(() => undefined);
+    }
+    return 'superseded';
   }
   if (row.budget_key) await settleBlock(db, row, row.budget_key, COMPUTER_BLOCK_MINUTES, 'block');
+  return 'rolled';
 }
 
 /**
@@ -509,8 +546,9 @@ export async function sweepComputers(
         continue;
       }
       if (row.block_started_at && now >= Date.parse(row.block_started_at) + BLOCK_MS) {
-        await rollBlock(db, row, driver);
-        rolled++;
+        const outcome = await rollComputerBlock(db, row, driver);
+        if (outcome === 'rolled') rolled++;
+        if (outcome === 'stopped') stopped++;
       }
     } catch (error) {
       logger.warn('[computer] sweep failed for a computer', { computer: row.id, error: toErrorMessage(error) });
