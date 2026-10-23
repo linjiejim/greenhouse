@@ -6,7 +6,7 @@
  *
  * Sections (see `settingsSections` in nav-registry):
  * - Preferences + Cloud (one flat block): Preferences, Groups, Agent Connections,
- *   Connections, Email Accounts
+ *   Connections, Email Accounts, Usage (my month's spend and limit)
  * - Labs (feature-gated): Memory
  *
  * Personal Chat utilities (Automation, Tasks, My Agents) render inside
@@ -29,6 +29,7 @@ import { EmailAccountsPanel } from './email-accounts';
 import { MemoryPanel } from './memory';
 import { GroupsPanel } from './groups';
 import { AgentAccessPanel } from './agent-access';
+import { MyUsagePanel } from './my-usage';
 import { DEFAULT_MODULE, resolveSettingsRedirect } from './redirects';
 
 // ─── Sub-module helpers ─────────────────────────────────
@@ -83,6 +84,7 @@ export function SettingsPage({ subPath }: { subPath: string }) {
       {effectiveModule === 'email-accounts' && <EmailAccountsPanel />}
       {effectiveModule === 'groups' && <GroupsPanel />}
       {effectiveModule === 'memory' && <MemoryPanel />}
+      {effectiveModule === 'my-usage' && <MyUsagePanel />}
       {extensionModule && effectiveModule === moduleKey && <extensionModule.component />}
     </ModulePageShell>
   );

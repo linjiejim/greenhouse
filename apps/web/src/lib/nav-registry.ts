@@ -22,6 +22,8 @@ import {
   SlidersHorizontal,
   BarChart3,
   Brain,
+  Coins,
+  Gauge,
   Zap,
   Table2,
   FolderKanban,
@@ -134,6 +136,15 @@ const SETTINGS_TOP: NavModule[] = [
     parent: 'settings',
     description: 'Bind a mailbox so the agent can read and send your email',
   },
+  {
+    // `my-usage`, not `usage`: `#/settings/usage` is the legacy link to Administration › Usage.
+    id: 'settings.my-usage',
+    label: 'Usage',
+    icon: Gauge,
+    path: '#/settings/my-usage',
+    parent: 'settings',
+    description: 'What you and your agents spent this month, and your limit',
+  },
 ];
 
 const SETTINGS_LABS: NavModule[] = [
@@ -184,6 +195,15 @@ const ADMINISTRATION_MODULES: NavModule[] = [
     path: '#/administration/usage',
     parent: 'administration',
     description: 'Token consumption and cost tracking',
+    requireRole: ['super'],
+  },
+  {
+    id: 'admin.services',
+    label: 'Services & pricing',
+    icon: Coins,
+    path: '#/administration/services',
+    parent: 'administration',
+    description: 'Paid services, their prices, this month’s spend and budgets',
     requireRole: ['super'],
   },
   {
@@ -341,10 +361,12 @@ const NAV_COPY: Record<string, { label: TranslationKey; description?: Translatio
     description: 'navigation.emailAccountsDesc',
   },
   'settings.memory': { label: 'navigation.memory', description: 'navigation.memoryDesc' },
+  'settings.my-usage': { label: 'navigation.myUsage', description: 'navigation.myUsageDesc' },
   'admin.users': { label: 'navigation.users', description: 'navigation.usersDesc' },
   'admin.runtime-config': { label: 'navigation.runtimeConfig', description: 'navigation.runtimeConfigDesc' },
   'admin.branding': { label: 'navigation.branding', description: 'navigation.brandingDesc' },
   'admin.usage': { label: 'navigation.agentUsages', description: 'navigation.agentUsagesDesc' },
+  'admin.services': { label: 'navigation.servicesPricing', description: 'navigation.servicesPricingDesc' },
   'admin.issues': { label: 'navigation.issues', description: 'navigation.issuesDesc' },
   'admin.activity': { label: 'navigation.activityLog', description: 'navigation.activityLogAdminDesc' },
   'admin.mcp-keys': { label: 'navigation.mcpAccess', description: 'navigation.mcpAccessDesc' },

@@ -23,6 +23,7 @@ export const DEFAULT_MODULE = 'preferences';
 export const ADMIN_REDIRECTS: Record<string, string> = {
   users: 'users',
   usage: 'usage',
+  services: 'services',
   issues: 'issues',
   // v1.5: both queues became tabs of Issues & requests (see ADMIN_TAB_REDIRECTS).
   'feature-requests': 'issues',

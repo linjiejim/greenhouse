@@ -2,7 +2,7 @@
  * Administration page — global management surface (super only).
  *
  * Split out from Settings: Settings is user-scoped personal config, while
- * Administration holds org-wide management (Users, Usage, Activity log,
+ * Administration holds org-wide management (Users, Usage, Services & pricing, Activity log,
  * Issues & requests, Branding, Runtime Config, MCP Access).
  *
  * Routes the active administration sub-module to its panel. The panels
@@ -21,6 +21,7 @@ import { useT } from '../../lib/i18n';
 
 // Sub-panels (shared with the former Settings > Administration section)
 import { UsagePanelWithUsers } from './usage';
+import { ServicesPricingPanel } from './services-pricing';
 import { IssuesPanel } from './issues';
 import { resolveAdministrationRedirect } from '../settings/redirects';
 import { UsersAndGroupsPanel } from './users-and-groups';
@@ -65,6 +66,7 @@ export function AdministrationPage({ subPath }: { subPath: string }) {
     <ModulePageShell activeKey={activeModule} mobileItems={visibleModules} contentClassName="bg-surface-canvas">
       {activeModule === 'users' && <UsersAndGroupsPanel subPath={subPath} />}
       {activeModule === 'usage' && <UsagePanelWithUsers />}
+      {activeModule === 'services' && <ServicesPricingPanel />}
       {activeModule === 'issues' && <IssuesPanel subPath={subPath} />}
       {activeModule === 'activity' && <ActivityLogPage moduleId="admin.activity" />}
       {activeModule === 'mcp-keys' && <McpKeysPanel />}
