@@ -117,7 +117,13 @@ same script doubles as an end-to-end smoke tour (see [Development](#development)
 - **MCP server + agent tool-proxy** — OAuth 2.1 (PKCE for people, client credentials for
   machines) with scopes per resource group; the same tools over the structured `/api/agent`
   proxy.
-- **Usage budgets** — monthly token and image budgets per user, organization and provider.
+- **Services & pricing** — every paid call (models, web search, page reads, images) is priced
+  in USD (`models.yaml` `price`, `services.yaml`), reserved against monthly member, service and
+  team budgets before it runs, and attributed to the member, service and client — including
+  which of a member's agents made it over MCP. Members are told at 80% and 100%; an exhausted
+  budget refuses the call with a message the agent can read. Administration → Services &
+  pricing shows spend, prices (unpriced ones flagged) and budgets; Settings → Usage shows a
+  member their own month. Token budgets per user, organization and provider still run alongside.
 - **Module usage** — Administration → Usage → By Modules shows tool calls by tool and client
   (MCP, Agent API, web chat, mobile, Feishu, automations), page
   opens by module and app (web, mobile) and the prompt-cache hit
@@ -339,7 +345,8 @@ Everything is environment-driven; see [.env.example](./.env.example) for the ful
 a deployment can use: the built-in `flash` / `pro` entries follow `LLM_*`, and the native
 DeepSeek V4.1 Flash entry (`deepseek-flash`) appears in the chat picker as soon as
 `DEEPSEEK_API_KEY` is set. Add a provider entry to offer another model; secrets never live in
-the file. The default model is treated as multimodal: images attached in Chat go straight into
+the file. An optional `price` (USD per 1M input / output / cached-input tokens) feeds metering;
+non-model services are priced in `apps/api/src/config/services.yaml`. The default model is treated as multimodal: images attached in Chat go straight into
 its payload. Set `LLM_VISION=false` when `LLM_MODEL` is text-only, and images go through
 `analyze_image` instead.
 

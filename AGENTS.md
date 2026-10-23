@@ -467,6 +467,11 @@ instead of routing them through `analyze_image`; `vision_env` lets a deployment 
 whatever `LLM_MODEL` names). A requested model the deployment can no longer reach — retired from
 the catalog or its key unset — never fails a turn: Chat and custom Agents fall
 back to the agent / deployment default.
+A model's optional `price` (USD per 1M input / output / cached-input tokens) and the
+non-model price list `apps/api/src/config/services.yaml` (web search, page reads, images,
+vision, reserved cloud computer) feed USD metering: every paid call goes through
+`apps/api/src/usage/metering.ts` (member / service / organization budgets, attribution, 80% /
+100% alerts, one over-budget error) — see apps/api/src/AGENTS.md「服务与计价」.
 `@greenhouse/agent-core` keeps an env-derived fallback registry for tests and for consumers
 that boot without the file. A `flash` / `pro` entry whose `LLM_MODEL` / `LLM_BASE_URL` point at
 DeepSeek is built with the DeepSeek client (`isDeepSeekFamily` in agent-core), so the catalog's

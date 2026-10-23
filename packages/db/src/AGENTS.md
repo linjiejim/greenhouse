@@ -288,6 +288,11 @@
 - `push_devices` 按 token upsert，`register` 在 token 级 advisory lock 里做：同账号刷新同一行并保留偏好；换账号 = 这一行改归新账号、偏好重置；每账号最多 `MAX_ACTIVE_PUSH_DEVICES` 台在用，多出来的按 `last_seen_at` 停用最久没见的（`device_limit`）。任何路径都不物理删设备：注销 / `DeviceNotRegistered` 只停用，再注册就恢复。
 - 「能不能投」只有一份判定：`isDeliverable()`（未停用 + 属于这个账号 + `auth_version` 等于账号当前代数 + 90 天内见过），`listDeliverable()` 是它的 SQL 版，两者同改。
 
+### 计价（`services/metering.ts`，迁移 0010）
+
+- `db.metering` 拥有 `service_usage`（非模型付费调用的事实）与 `usage_budget_limits`（管理员 USD 上限：organization / service / `user` + `*` 成员默认 / `user` + 用户 id），并把 `llm_usage ∪ service_usage` 按单月区间聚合（`spendBy` / `spendTotals`）。`cost_usd_micros` 为 NULL 表示未定价，聚合按 0 计并单独数 `unpriced_calls`。
+- 读必须带 `[since, until)`：两张表都有 `(user_id, created_at)` 索引，`service_usage` 另有 `(service, created_at)`。别写不带区间的全表聚合。
+
 ### 新增表流程
 
 1. 在对应的 `schema/*.ts` 文件中添加表定义，并在文件底部导出 Row 类型（`typeof table.$inferSelect`）
