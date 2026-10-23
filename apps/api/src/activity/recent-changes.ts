@@ -33,6 +33,8 @@ export const RECENT_MAX_ITEMS = 50;
 /** Bases / tables a single feed looks into. */
 const MAX_BASES = 50;
 const MAX_TABLES = 200;
+/** Tasks listed per project when confirming which task rows the viewer may see. */
+const TASKS_PER_PROJECT = 500;
 /**
  * A change counts as an agent's when it lands inside the run's span: the write
  * happens after the run is created and before it settles, both stamped by the
@@ -110,19 +112,39 @@ async function projectChanges(
   since: string,
   limit: number,
 ) {
+  const actor = humanActor(viewer);
   const listed = await runtime.dispatch({
-    actor: humanActor(viewer),
+    actor,
     appId: 'projects',
     actionId: 'listProjects',
     payload: { limit: 500 },
   });
   if (!listed.ok) return [];
+  // Project activity is what listActivities serves: a readable project AND the
+  // collaboration read capability.
+  if (!(await runtime.authorize(actor, 'projects.collaboration.read')).allowed) return [];
   const projects = (listed.data as { projects: Array<{ id: number; title: string }> }).projects;
   const titles = new Map(projects.map((project) => [project.id, project.title]));
-  const rows = await db.activity.recentProjectActivities({ projectIds: [...titles.keys()], since, limit });
-  const taskIds = [...new Set(rows.map((row) => row.task_id).filter((id): id is number => id !== null))];
-  const tasks = await Promise.all(taskIds.map((id) => db.projects.getTaskById(id).catch(() => undefined)));
-  const taskTitles = new Map(taskIds.map((id, index) => [id, tasks[index]?.title ?? null]));
+  const fetched = await db.activity.recentProjectActivities({ projectIds: [...titles.keys()], since, limit });
+
+  // A row about a task shows only when the task itself is readable — through
+  // listTasks, the task-aware path (execution capability + task entity policy).
+  // A task the listing does not return (or beyond its page) stays hidden.
+  const taskTitles = new Map<number, string>();
+  const taskProjects = [...new Set(fetched.filter((row) => row.task_id !== null).map((row) => row.project_id))];
+  for (const projectId of taskProjects) {
+    const tasks = await runtime.dispatch({
+      actor,
+      appId: 'projects',
+      actionId: 'listTasks',
+      payload: { projectId, limit: TASKS_PER_PROJECT },
+    });
+    if (!tasks.ok) continue;
+    for (const task of (tasks.data as { tasks: Array<{ id: number; title: string }> }).tasks) {
+      taskTitles.set(task.id, task.title);
+    }
+  }
+  const rows = fetched.filter((row) => row.task_id === null || taskTitles.has(row.task_id));
   return rows.map((row) => {
     const kind = PROJECT_ACTIONS[row.action] ?? { verb: 'update' as const, entity: 'project' };
     const label = row.task_id ? (taskTitles.get(row.task_id) ?? null) : (titles.get(row.project_id) ?? null);

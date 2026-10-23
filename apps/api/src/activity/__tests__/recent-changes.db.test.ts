@@ -88,6 +88,34 @@ describe('recent changes', () => {
     expect(alices).toEqual(expect.arrayContaining([team.title, secret.title, open.title, closed.title]));
   });
 
+  it('shows a task change only to a viewer the task-aware listing lets read it', async () => {
+    const project = await db.projects.createProject({
+      title: unique('Public project'),
+      owner_id: alice.id,
+      created_by: alice.id,
+      visibility: 'public',
+    });
+    const task = await db.projects.createTask({
+      project_id: project.id,
+      title: unique('Hidden task'),
+      created_by: alice.id,
+    });
+    expect((await feed(bob)).map((item) => item.target?.label)).toContain(task.title);
+
+    // Bob may read the project but not its tasks: the task row disappears, the project row stays.
+    await db.platform.setUserCapabilityOverride({
+      org_id: 'default',
+      user_id: bob.id,
+      capability: 'projects.execution.read',
+      effect: 'deny',
+      granted_by: alice.id,
+      reason: 'Test restriction',
+    });
+    const labels = (await feed(bob)).map((item) => item.target?.label);
+    expect(labels).not.toContain(task.title);
+    expect(labels).toContain(project.title);
+  });
+
   it('shows new team files, not someone else’s personal ones', async () => {
     const make = async (visibility: 'team' | 'private', name: string) => {
       const row = await db.drive.initFile({
