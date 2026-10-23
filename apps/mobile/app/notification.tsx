@@ -15,7 +15,7 @@ import { useT, type TranslationKey } from '../src/lib/i18n';
 import { plainText } from '../src/lib/plain-text';
 import { relativeTimeNow } from '../src/lib/time-words';
 import { readOnOpen } from '../src/data/read-on-open';
-import { notificationTarget } from '../src/lib/deep-links';
+import { notificationTarget, type AppTarget } from '../src/lib/deep-links';
 import { openTarget } from '../src/shell/open-target';
 import { getApiBase } from '../src/store/stations';
 import { NativeButton } from '../src/ui/button';
@@ -28,6 +28,17 @@ import { alertError } from '../src/ui/dialogs';
 import { EmptyState, LoadingState } from '../src/ui/empty';
 import { IconTile } from '../src/ui/list';
 import type { IconName } from '../src/ui/core';
+
+const OPEN_LABEL: Record<AppTarget['kind'], TranslationKey> = {
+  doc: 'notifications.openDoc',
+  files: 'notifications.openFile',
+  project: 'notifications.openProject',
+  tables: 'notifications.openTables',
+  chat: 'notifications.openChat',
+  agent: 'notifications.openAgent',
+  web: 'notifications.openWeb',
+  external: 'notifications.openWeb',
+};
 
 const KIND: Record<string, { icon: IconName; label: TranslationKey }> = {
   runtime_attention: { icon: 'hand', label: 'notifications.kindNeedsYou' },
@@ -86,14 +97,7 @@ export default function NotificationPage() {
   const tint = item?.kind === 'runtime_failed' ? c.redTile : item?.kind.endsWith('_attention') ? c.orangeTile : undefined;
   const body = item ? plainText(item.body) : '';
   const target = item ? notificationTarget(item, getApiBase()) : null;
-  const openLabel =
-    target?.kind === 'doc'
-      ? t('notifications.openDoc')
-      : target?.kind === 'files'
-        ? t('notifications.openFile')
-        : target
-          ? t('notifications.openWeb')
-          : null;
+  const openLabel = target ? t(OPEN_LABEL[target.kind]) : null;
 
   return (
     <View style={styles.root}>

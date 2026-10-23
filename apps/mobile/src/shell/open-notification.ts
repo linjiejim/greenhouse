@@ -1,6 +1,7 @@
 /**
- * Opening a notification from a Home row or a push tap: when it points at a document or a file
- * (src/lib/deep-links.ts `notificationTarget`), that screen opens straight away and the
+ * Opening a notification from a Home row or a push tap: when it points at something with a screen
+ * here — a document, a file, a project or task, a table record, a conversation, My Agents
+ * (src/lib/deep-links.ts `notificationTarget`) — that screen opens straight away and the
  * notification is read (its banner goes once the server has it read, src/data/read-on-open.ts);
  * otherwise its own page opens (/notification), which offers the web page it points at.
  */
@@ -22,7 +23,7 @@ export async function openNotificationOrTarget(router: Router, id: string, accen
   const store = useNotifications.getState();
   const known = store.items.find((item) => item.id === id);
   const target = known ? notificationTarget(known, getApiBase()) : null;
-  if (!target || (target.kind !== 'doc' && target.kind !== 'files')) {
+  if (!target || target.kind === 'web' || target.kind === 'external') {
     openNotification(router, id);
     return;
   }

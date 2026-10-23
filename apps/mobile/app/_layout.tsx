@@ -172,7 +172,6 @@ export default function RootLayout() {
 
                 {/* ── pages over home ── */}
                 <Stack.Screen name="notification" options={detailScreen(c, { grouped: true })} />
-                <Stack.Screen name="module/[id]" options={pageScreen(c, { grouped: true })} />
                 <Stack.Screen name="knowledge/index" options={pageScreen(c, { grouped: true })} />
                 <Stack.Screen name="knowledge/doc" options={detailScreen(c)} />
                 <Stack.Screen name="files" options={pageScreen(c, { grouped: true })} />

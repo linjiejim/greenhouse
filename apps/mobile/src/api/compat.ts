@@ -11,8 +11,11 @@
 
 import type { Bootstrap } from '../shared/greenhouse-types';
 
-/** The API level this build needs: 2 = password and Feishu sign-in, notifications, push devices. */
-export const MOBILE_API = 2;
+/**
+ * The API level this build needs: 3 = password and Feishu sign-in, notifications, push devices,
+ * projects, tables, my agent writes, spend and gateway keys, and the assistant chat.
+ */
+export const MOBILE_API = 3;
 
 export type ApiMismatch = 'server_outdated' | 'unsupported';
 

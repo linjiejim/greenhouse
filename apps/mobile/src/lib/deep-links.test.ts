@@ -20,6 +20,34 @@ describe('hash routes', () => {
   });
 });
 
+describe('C2 routes', () => {
+  it('opens projects, tasks, tables, records, conversations and My Agents natively', () => {
+    expect(parseHashRoute('#/projects')).toEqual({ kind: 'project', id: null, taskId: null });
+    expect(parseHashRoute('#/projects/7')).toEqual({ kind: 'project', id: 7, taskId: null });
+    expect(parseHashRoute('#/projects/7?task=12')).toEqual({ kind: 'project', id: 7, taskId: 12 });
+    expect(parseHashRoute('#/projects/x')).toEqual({ kind: 'web', hash: '#/projects/x' });
+    expect(parseHashRoute('#/tables')).toEqual({ kind: 'tables', baseId: null, tableId: null, recordId: null });
+    expect(parseHashRoute('#/tables/3')).toEqual({ kind: 'tables', baseId: 3, tableId: null, recordId: null });
+    expect(parseHashRoute('#/tables/3/table/9?record=41')).toEqual({ kind: 'tables', baseId: 3, tableId: 9, recordId: 41 });
+    expect(parseHashRoute('#/tables/3/dashboard/2')).toEqual({ kind: 'web', hash: '#/tables/3/dashboard/2' });
+    expect(parseHashRoute('#/tables/catalog')).toEqual({ kind: 'web', hash: '#/tables/catalog' });
+    expect(parseHashRoute('#/chat?session=ses_9')).toEqual({ kind: 'chat', sessionId: 'ses_9' });
+    expect(parseHashRoute('#/settings/agent-connections/activity')).toEqual({ kind: 'agent' });
+  });
+
+  it('follows the monthly retro notice to its document', () => {
+    expect(
+      notificationTarget({ run_id: null, payload: { url: '#/knowledge/doc/42-retro-2026-09', doc_id: 42 } }, BASE),
+    ).toEqual({ kind: 'doc', id: 42 });
+    expect(notificationTarget({ run_id: null, payload: { url: '#/tables/3/table/9?record=41' } }, BASE)).toEqual({
+      kind: 'tables',
+      baseId: 3,
+      tableId: 9,
+      recordId: 41,
+    });
+  });
+});
+
 describe('links in content', () => {
   it('reads same-station links as routes and leaves other sites alone', () => {
     expect(linkTarget(`${BASE}/#/knowledge/doc/5-x`, BASE)).toEqual({ kind: 'doc', id: 5 });
@@ -50,18 +78,19 @@ describe('notifications', () => {
   });
 
   it('opens a scheduled task’s conversation, or the run in the Activity log', () => {
+    expect(notificationTarget({ run_id: 'rtr_1', payload: { session_id: 'ses_1' } }, BASE)).toEqual({
+      kind: 'chat',
+      sessionId: 'ses_1',
+    });
     expect(notificationTarget({ run_id: 'rtr_1', payload: { session_id: 's 1' } }, BASE)).toEqual({
-      kind: 'web',
-      hash: '#/chat?session=s%201',
+      kind: 'chat',
+      sessionId: null,
     });
     expect(notificationTarget({ run_id: 'rtr_1', payload: { runtime_kind: 'automation' } }, BASE)).toEqual({
       kind: 'web',
       hash: '#/activity/automation/rtr_1',
     });
-    expect(notificationTarget({ run_id: 'rtr_1', payload: { runtime_kind: 'agent_write' } }, BASE)).toEqual({
-      kind: 'web',
-      hash: '#/settings/agent-connections/activity',
-    });
+    expect(notificationTarget({ run_id: 'rtr_1', payload: { runtime_kind: 'agent_write' } }, BASE)).toEqual({ kind: 'agent' });
     expect(notificationTarget({ run_id: 'rtr_2', payload: {} }, BASE)).toEqual({ kind: 'web', hash: '#/activity/rtr_2' });
     expect(notificationTarget({ run_id: null, payload: { href: 'https://evil.example' } }, BASE)).toBeNull();
   });

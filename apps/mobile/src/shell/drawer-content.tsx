@@ -1,6 +1,6 @@
 /**
  * The drawer: the team hub's places (src/shell/modules.ts) — Home (动态/通知, with the unread
- * count), Knowledge, Files, Projects, Tables — and, pinned to the bottom, the active station (tap:
+ * count), Knowledge, Files, Projects, Tables, My Agents, Assistant — and, pinned to the bottom, the active station (tap:
  * switch or add one) and Settings.
  *
  * Home is the drawer's own screen: choosing it closes the drawer. Every other place is a page
@@ -20,7 +20,7 @@ import { HIT, makeStyles, radius, space, squircle, typo, useTheme, weight } from
 import { Icon, type IconName } from '../ui/core';
 import { useFontScaleKey } from '../ui/font-scale';
 import { selectionTick } from '../ui/haptics';
-import { HUB_MODULES, type HubModule } from './modules';
+import { visibleModules, type HubModule } from './modules';
 
 export function DrawerContent({ navigation }: DrawerContentComponentProps) {
   const { colors: c } = useTheme();
@@ -32,6 +32,7 @@ export function DrawerContent({ navigation }: DrawerContentComponentProps) {
   const station = useActiveStation();
   const productName = useAuth((s) => s.station?.product_name) || 'Greenhouse';
   const unread = useNotifications((s) => s.unread);
+  const user = useAuth((s) => s.user);
 
   const open = (module: HubModule) => {
     selectionTick();
@@ -45,14 +46,13 @@ export function DrawerContent({ navigation }: DrawerContentComponentProps) {
         {productName}
       </Text>
       <ScrollView style={styles.list}>
-        {HUB_MODULES.map((module) => (
+        {visibleModules(user).map((module) => (
           <Row
             key={module.id}
             icon={module.icon}
             label={t(module.title)}
             current={module.id === 'home'}
             badge={module.id === 'home' && unread > 0 ? unread : 0}
-            note={module.ready ? undefined : t('common.comingSoon')}
             onPress={() => open(module)}
           />
         ))}
