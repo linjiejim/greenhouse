@@ -1,16 +1,19 @@
 /**
  * One record (`/tables/record?table=&id=`): every live field with its value as text (formula and
- * rollup results included). A record I cannot read answers 404; a masked record has no values.
+ * rollup results included). The last records opened are kept on the phone and read offline; a
+ * record I cannot read any more (403 / 404) loses its copy. A masked record has no values.
  */
 
-import React, { useCallback, useMemo } from 'react';
+import React, { useCallback, useEffect, useMemo } from 'react';
 import { ScrollView, Text, View } from 'react-native';
 import { Stack, useLocalSearchParams } from 'expo-router';
 import type { ApiResult } from '../../src/api/client';
 import { getRecord, getSchema } from '../../src/api/tables';
 import { noAccess, notFound } from '../../src/data/access';
 import { cellValue, displayValue, liveFields, recordTitle } from '../../src/data/table-fields';
-import { useResource } from '../../src/data/use-resource';
+import { parseSavedRecord, recordKind } from '../../src/data/recent-items';
+import { useOfflineResource } from '../../src/data/use-offline-resource';
+import { rememberRecord } from '../../src/store/offline';
 import { useT } from '../../src/lib/i18n';
 import { relativeTimeNow } from '../../src/lib/time-words';
 import type { TableRecord, TableSchema } from '../../src/shared/greenhouse-types';
@@ -34,8 +37,16 @@ export default function RecordScreen() {
     if (!record.ok) return record;
     return { ok: true, data: { schema: schema.data, record: record.data.record } };
   }, [tableId, recordId]);
-  const resource = useResource(load);
+  // the last records opened read offline too (src/data/recent-items.ts)
+  const resource = useOfflineResource(
+    tableId != null && recordId != null ? recordKind(tableId, recordId) : null,
+    load,
+    (saved) => (tableId != null && recordId != null ? parseSavedRecord(saved, tableId, recordId) : null),
+  );
   const data = resource.data;
+  useEffect(() => {
+    if (tableId != null && recordId != null && data && !resource.offline) void rememberRecord(tableId, recordId);
+  }, [tableId, recordId, data, resource.offline]);
   const fields = useMemo(() => (data ? liveFields(data.schema.fields) : []), [data]);
   const words = useFieldWords(fields);
 
@@ -64,6 +75,7 @@ export default function RecordScreen() {
             <Text style={styles.title} accessibilityRole="header" selectable>
               {recordTitle(fields, data.record, words)}
             </Text>
+            {resource.offline ? <Text style={styles.meta}>{t('common.savedCopy')}</Text> : null}
             <Text style={styles.meta}>{t('tables.updated', { when: relativeTimeNow(data.record.updated_at) })}</Text>
             <ListSection header={t('tables.fields')}>
               {fields.map((field) => {

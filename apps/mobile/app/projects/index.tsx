@@ -1,24 +1,27 @@
 /**
  * Projects (项目): my tasks — open tasks assigned to me across projects, grouped by when they are
- * due (src/data/tasks.ts `myTasks`, from the gantt view) — and the project list. A member without
+ * due (src/data/tasks.ts `myTasks`, from the gantt view; kept on the phone and shown offline,
+ * src/data/use-offline-resource.ts) — and the project list. A member without
  * the Projects capability gets a 403: say so instead of an error with a retry.
  */
 
 import React, { useCallback, useMemo } from 'react';
-import { FlatList, View } from 'react-native';
+import { FlatList, Text, View } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { gantt, listProjects } from '../../src/api/projects';
 import type { ApiResult } from '../../src/api/client';
 import { captureIdentity } from '../../src/data/identity';
 import { noAccess } from '../../src/data/access';
 import { localDay, myTasks, type DueBucket, type MyTask } from '../../src/data/tasks';
+import { parseMyTasks } from '../../src/data/recent-items';
+import { useOfflineResource } from '../../src/data/use-offline-resource';
 import { useResource } from '../../src/data/use-resource';
 import { useT } from '../../src/lib/i18n';
 import { calendarDateLabel } from '../../src/lib/time-words';
 import { statusIcon, statusTint } from '../../src/projects/look';
 import type { Project } from '../../src/shared/greenhouse-types';
 import { useAuth } from '../../src/store/auth';
-import { makeStyles, space, useTheme } from '../../src/theme';
+import { makeStyles, space, typo, useTheme } from '../../src/theme';
 import { EmptyState, LoadingState } from '../../src/ui/empty';
 import { ListRow, ListSectionHeader, type RowPosition } from '../../src/ui/list';
 import { Segmented } from '../../src/ui/segmented';
@@ -47,7 +50,8 @@ export default function Projects() {
     return { ok: true, data: myTasks(result.data.projects, userId ?? '', localDay(new Date())) };
   }, [userId]);
   const loadAll = useCallback(() => listProjects(captureIdentity()), []);
-  const mine = useResource(loadMine);
+  // my tasks read offline too: the last list the station gave stays on this phone
+  const mine = useOfflineResource('my-tasks', loadMine, parseMyTasks);
   const all = useResource(loadAll);
   const resource = tab === 'mine' ? mine : all;
 
@@ -67,12 +71,15 @@ export default function Projects() {
   }, [tab, mine.data, all.data, t]);
 
   const header = (
-    <Segmented
-      value={tab}
-      onChange={(value) => router.setParams({ tab: value })}
-      options={(['mine', 'all'] as const).map((value) => ({ value, label: t(`projects.tabs.${value}`) }))}
-      style={styles.segmented}
-    />
+    <View>
+      <Segmented
+        value={tab}
+        onChange={(value) => router.setParams({ tab: value })}
+        options={(['mine', 'all'] as const).map((value) => ({ value, label: t(`projects.tabs.${value}`) }))}
+        style={styles.segmented}
+      />
+      {tab === 'mine' && mine.offline ? <Text style={styles.offline}>{t('common.savedCopy')}</Text> : null}
+    </View>
   );
 
   const empty = !resource.data ? (
@@ -152,4 +159,5 @@ const useStyles = makeStyles((c) => ({
   content: { paddingBottom: space.xxxl },
   segmented: { marginHorizontal: space.margin, marginVertical: space.md },
   state: { paddingTop: space.xxxl },
+  offline: { ...typo.footnote, color: c.secondaryLabel, marginHorizontal: space.margin + space.xs, marginBottom: space.sm },
 }));
