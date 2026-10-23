@@ -112,7 +112,6 @@ vi.mock('../../profiles/access.js', () => ({
 
 import { createChatRoute } from '../chat.js';
 import { formatDigestSection } from '../../chat/digest.js';
-import { buildChatRequestBody } from '../../../../browser/src/lib/chat-request';
 
 interface ProviderInput {
   system_prompt: string;
@@ -201,21 +200,26 @@ async function pageTurnWithImage(): Promise<ProviderInput> {
     inlined: 1,
     hinted: 0,
   }));
-  return sendTurn(
-    buildChatRequestBody({
-      sessionId: 'session-1',
-      message: 'Compare it with this screenshot',
-      scopeId: 'scope-page-1',
-      ambientContext: {
-        version: 1,
-        scope_id: 'scope-page-1',
-        source: 'current-page',
-        label: 'Plans',
-        route: '#/tables/plans',
-        hint: 'PAGE-CONTEXT-MARKER',
+  return sendTurn({
+    session_id: 'session-1',
+    messages: [{ role: 'user', content: 'Compare it with this screenshot' }],
+    ambient_context: {
+      version: 1,
+      scope_id: 'scope-page-1',
+      source: 'current-page',
+      label: 'Plans',
+      route: '#/tables/plans',
+      hint: 'PAGE-CONTEXT-MARKER',
+    },
+    client_action_scope_id: 'scope-page-1',
+    client_actions: [
+      {
+        name: 'read_current_view',
+        description: 'Read the table the user is looking at',
+        parameters: { type: 'object', properties: {} },
       },
-    }),
-  );
+    ],
+  });
 }
 
 function lastUserText(input: ProviderInput): string {

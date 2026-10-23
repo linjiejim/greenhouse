@@ -18,7 +18,6 @@
 import { Hono } from 'hono';
 import { getDb, SessionActiveRuntimeError } from '@greenhouse/db';
 import { SESSION_SCOPES, type SessionScope } from '@greenhouse/types/api';
-import { BROWSER_SESSION_CHANNEL } from '@greenhouse/types/session';
 import { getAuthUser } from '../auth/middleware.js';
 import { generateSessionTitle } from '../llm/title.js';
 import { resolveProfileAsync } from '../profiles/profile.js';
@@ -74,15 +73,11 @@ const sessions = new Hono<AppEnv>()
     const body = (await c.req.json().catch(() => ({}))) as {
       title?: string;
       profile_id?: string;
-      channel?: unknown;
     };
-    // The browser extension files its conversations on their own channel: its
-    // panel lists only those, and the chat route gives them a read-only tool
-    // face. Every other channel is server-assigned, so any other value is ignored.
-    const channel = body.channel === BROWSER_SESSION_CHANNEL ? BROWSER_SESSION_CHANNEL : undefined;
+    // Channels are server-assigned; a client-supplied one is ignored. (The browser
+    // extension used to file its own `browser` conversations; it was removed in 1.5.)
     try {
-      // `channel='mission'` is never minted (Missions were retired in v1.4).
-      const session = await createOwnedSession(authUser, { title: body.title, profileId: body.profile_id, channel });
+      const session = await createOwnedSession(authUser, { title: body.title, profileId: body.profile_id });
       return c.json(session, 201);
     } catch (err) {
       if (err instanceof SessionCreationError) return c.json({ error: err.message }, err.status);
@@ -178,7 +173,7 @@ const sessions = new Hono<AppEnv>()
     // Filing something is an explicit act, so it outranks the scope filter —
     // but only where those sections are rendered ('mine' and the unscoped list).
     // A channel-filtered list is not the sidebar: it answers "my conversations
-    // on <channel>" (the extension panel's history), so it gets no backfill.
+    // on <channel>", so it gets no backfill.
     const organizedIds =
       scope === 'shared' || scope === 'team' || channel
         ? []

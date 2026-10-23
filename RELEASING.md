@@ -58,9 +58,8 @@ for people who want to test the tip and understand it can break.
    Release with the generated notes.
 4. **The tag triggers `.github/workflows/release.yml`**, which builds & publishes:
    - the **container image** to `ghcr.io/<owner>/greenhouse` (`:X.Y.Z`, `:X.Y`,
-     `:latest`), stamped with `APP_VERSION`/`APP_REVISION` + OCI labels;
-   - the **browser extension zip** `greenhouse-bridge-vX.Y.Z.zip`, attached to the
-     Release.
+     `:latest`), stamped with `APP_VERSION`/`APP_REVISION` + OCI labels.
+     (The browser extension zip was dropped with the extension in 1.5.)
    The source tarball is attached automatically by GitHub.
 
 Pushes to `main` (no tag) run the same `release.yml` but only publish the `:edge` /
@@ -75,7 +74,7 @@ write** as the `RELEASE_PLEASE_TOKEN` secret — release-please uses it
 (`secrets.RELEASE_PLEASE_TOKEN || GITHUB_TOKEN`) and step 4 becomes hands-off.
 
 **Without the PAT**, the Release + tag are still created, but you must publish the
-stable image + browser zip by re-pushing the tag from a machine with normal push
+stable image by re-pushing the tag from a machine with normal push
 rights (a `GITHUB_TOKEN`-free push *does* cascade):
 
 ```bash
@@ -113,13 +112,6 @@ The whole app is one deployable unit (the API serves the built SPA), so the
 "standard package" is the **container image**. `release.yml` builds it with
 `docker/build-push-action`, tags via `docker/metadata-action`, and pushes to
 **GHCR** (public, free, GitHub-native auth). `docker compose up` consumes it.
-
-### Browser extension → versioned zip
-
-`pnpm --filter @greenhouse/browser package` runs `vite build`, stamps
-`dist/manifest.json` `version` from `APP_VERSION` (normalised to Chrome's numeric
-form — `v0.2.0-rc.1` → `0.2.0`), and zips `dist/` into
-`greenhouse-bridge-v<version>.zip` for "Load unpacked" / Web Store submission.
 
 ### Mobile → fingerprint CD (OTA update / store build → TestFlight)
 

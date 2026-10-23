@@ -112,8 +112,8 @@ same script doubles as an end-to-end smoke tour (see [Development](#development)
   proxy.
 - **Usage budgets** — monthly token and image budgets per user, organization and provider.
 - **Module usage** — Administration → Usage → By Modules shows tool calls by tool and client
-  (MCP, Agent API, web chat, browser extension, mobile, Feishu, automations, sub-agents), page
-  opens by module and app (web, mobile, browser extension) and the prompt-cache hit
+  (MCP, Agent API, web chat, mobile, Feishu, automations, sub-agents), page
+  opens by module and app (web, mobile) and the prompt-cache hit
   rate per model over 7 / 30 / 90 days. Only daily totals are stored — no users, arguments or
   content — and counting started with v1.4.
 - **Platform kernel** — applications declare a manifest (modules, entities, fields, actions);
@@ -139,8 +139,6 @@ greenhouse/
 │   ├── api/                  # Hono backend — routes, agent runtime, platform kernel, auth,
 │   │                         #   scheduler, runtime kernel, CLI; also serves the web SPA at `/`
 │   ├── web/                  # React + Vite single-page app (hash router)
-│   ├── browser/              # Chrome extension (MV3) — side-panel companion; connects to your
-│   │                         #   instances via saved multi-server "stations"
 │   └── mobile/               # Expo (React Native) app — chat, knowledge, projects, settings;
 │                             #   isolated install (pnpm mobile:install, then pnpm mobile)
 ├── packages/
@@ -152,7 +150,6 @@ greenhouse/
 │   ├── db/                   # Database layer — Drizzle schema + domain services
 │   ├── knowledge-editor/     # Tiptap schema + server-side Markdown ↔ Tiptap JSON
 │   ├── crud/                 # Low-code CRUD framework (one schema → list / form / detail)
-│   ├── ui/                   # Shared React UI kit (atoms, markdown, tool-call cards, tokens)
 │   └── contract/             # Typed API contract — re-exports the API's AppType + hc
 ├── skillhub/                 # First-party skill packs (synced into the Skill Center on boot)
 ├── drizzle/                  # Migration files (the single source of truth for the schema)
@@ -255,9 +252,7 @@ stable:
 Every release is stamped: `GET /health` returns the `version` + commit `revision`
 the running build was cut from, so a bug report can be matched to exact code.
 
-The **browser extension** is attached to each Release as
-`greenhouse-bridge-vX.Y.Z.zip` (unzip → Chrome → "Load unpacked", or submit to the
-Web Store). The **mobile app** ships on its own cadence via EAS: JS-only changes
+The **mobile app** ships on its own cadence via EAS: JS-only changes
 roll out as over-the-air updates; native changes auto-build and upload to
 TestFlight. Maintainer runbook: **[RELEASING.md](./RELEASING.md)**.
 
@@ -282,7 +277,9 @@ git pull && pnpm install && pnpm drizzle-kit migrate   # then restart the API
 
 > **Upgrading to 1.5** — Greenhouse narrows to a team agent hub: members bring their own
 > agents over MCP, and the in-app agent is an assistant. The desktop app (Tauri shell) is
-> removed — use the web app in a browser; installed shells stop receiving updates.
+> removed — use the web app in a browser; installed shells stop receiving updates. The browser
+> extension (Greenhouse Bridge) is removed and no longer attached to releases; conversations it
+> started stay readable and keep their read-only tool face.
 
 > **Upgrading to 1.4** — Evaluation, Missions (the cloud-agent sandbox), the team LLM relay
 > (`/api/llm`, relay keys, AI Gateway admin page) and Workflows are removed. There is no
@@ -341,7 +338,7 @@ values saved there are stored in the database (secrets encrypted with
 
 **Structure lives in code**: [`greenhouse.config.ts`](./greenhouse.config.ts) (typed, validated
 at boot) declares which extensions are switched on, where content packs live (skill packs,
-agent profiles, a seed dataset) and how the browser extension / mobile app treat server
+agent profiles, a seed dataset) and how client builds (the mobile app) treat server
 stations. `GREENHOUSE_EXTENSIONS=crm,example` overrides the extension list per deployment.
 
 ## MCP & agent access

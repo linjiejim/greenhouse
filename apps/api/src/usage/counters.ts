@@ -86,16 +86,16 @@ export function chatToolCallClient(
 ): ToolCallClient {
   if (channel === 'browser') return 'browser';
   if (channel === 'feishu') return 'feishu';
-  if (appClient === 'mobile' || appClient === 'browser') return appClient;
+  if (appClient === 'mobile') return appClient;
   return 'web_chat';
 }
 
-/** Agent API calls from the browser extension or the mobile app count as that app. */
+/** Agent API calls from the mobile app count as that app. */
 export function agentApiToolCallClient(appClient: ReturnType<typeof parseAppClient>): ToolCallClient {
-  return appClient === 'mobile' || appClient === 'browser' ? appClient : 'agent_api';
+  return appClient === 'mobile' ? appClient : 'agent_api';
 }
 
-/** Page opens: the app header names mobile / browser, anything else is the web app. */
+/** Page opens: the app header names the mobile app, anything else is the web app. */
 export function pageOpenClient(appClient: ReturnType<typeof parseAppClient>): PageOpenClient {
   return appClient ?? 'web';
 }

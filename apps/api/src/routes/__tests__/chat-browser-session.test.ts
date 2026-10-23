@@ -1,10 +1,10 @@
 /**
- * The browser-extension conversation surface through the real POST /api/chat
- * route: a `browser`-channel session has its tools narrowed by
- * `filterBrowserSessionToolIds` (no inline writer; the panel's confirm-carded
- * Client Action is the only write path), while the panel's actions and the page
- * it is on do reach the model. Keyed on the session's channel, so the same
- * request on a web session is not narrowed.
+ * Browser-extension conversations through the real POST /api/chat route. The
+ * extension was removed in 1.5, but its `browser`-channel sessions remain and
+ * their history carries untrusted page text, so their tools stay narrowed by
+ * `filterBrowserSessionToolIds` (no inline writer) while Client Actions and the
+ * page context still reach the model. Keyed on the session's channel, so the
+ * same request on a web session is not narrowed.
  *
  * The filter is a stand-in here on purpose: the real one reads the tool catalog,
  * which loads every active extension, and a fork running these tests with its
@@ -234,9 +234,6 @@ beforeEach(() => {
   mocks.withFinalAnswerGuarantee.mockImplementation((streamResult) => streamResult.fullStream);
 });
 
-import { buildChatRequestBody, newTurnScopeId } from '../../../../browser/src/lib/chat-request';
-import { buildPageAmbientContext } from '../../../../browser/src/lib/page-context';
-
 function sessionOn(channel: string) {
   return {
     id: 'session-1',
@@ -256,24 +253,29 @@ function sessionOn(channel: string) {
   };
 }
 
-function panelTurnBody() {
-  const scopeId = newTurnScopeId();
-  const ambientContext = buildPageAmbientContext(
-    {
-      tabId: 7,
-      url: 'https://example.com/pricing',
-      title: 'Pricing',
-      selection: 'SELECTED-SNIPPET-42',
-      permitted: true,
+/** A turn that carries page context and one Client Action for that page. */
+function pageTurnBody() {
+  const scopeId = 'page:pricing';
+  return {
+    session_id: 'session-1',
+    messages: [{ role: 'user', content: 'What does this plan cost?' }],
+    ambient_context: {
+      version: 1,
+      scope_id: scopeId,
+      source: 'current-page',
+      label: 'Pricing',
+      route: 'https://example.com/pricing',
+      hint: 'Selected text: SELECTED-SNIPPET-42',
     },
-    scopeId,
-  );
-  return buildChatRequestBody({
-    sessionId: 'session-1',
-    message: 'What does this plan cost?',
-    scopeId,
-    ambientContext,
-  });
+    client_action_scope_id: scopeId,
+    client_actions: [
+      {
+        name: 'read_current_view',
+        description: 'Read the page the user is looking at',
+        parameters: { type: 'object', properties: {} },
+      },
+    ],
+  };
 }
 
 async function sendTurn(
@@ -310,16 +312,16 @@ describe('POST /api/chat on the browser-extension channel', () => {
     });
   });
 
-  it('gives a browser session no inline writer, but the panel actions and page context reach the model', async () => {
+  it('gives a browser session no inline writer, but Client Actions and page context reach the model', async () => {
     mocks.sessions.getById.mockResolvedValue(sessionOn('browser'));
 
-    const { tool_ids, system_prompt, messages } = await sendTurn(panelTurnBody());
+    const { tool_ids, system_prompt, messages } = await sendTurn(pageTurnBody());
 
     expect(filterBrowserSessionToolIds).toHaveBeenCalledWith(EFFECTIVE_TOOLS);
     expect(tool_ids).toEqual(expect.arrayContaining(['knowledge_query', 'export_data']));
     for (const writer of ['knowledge_mutation', 'project_mutation', 'memory']) expect(tool_ids).not.toContain(writer);
-    // The confirm-carded write path and the browser automation are registered as Client Actions.
-    expect(tool_ids).toEqual(expect.arrayContaining(['save_to_knowledge', 'browser_read_page', 'browser_click']));
+    // Client Actions are registered after the filter, so they are unaffected by it.
+    expect(tool_ids).toContain('read_current_view');
     // Page context and the UI-actions note are per-turn: they close the newest
     // user message, never the (cache-stable) system prompt.
     const closing = messages.at(-1)!.content;
@@ -332,13 +334,13 @@ describe('POST /api/chat on the browser-extension channel', () => {
   it('keeps the writers for the same turn on a web session', async () => {
     mocks.sessions.getById.mockResolvedValue(sessionOn('web'));
 
-    const { tool_ids } = await sendTurn(panelTurnBody());
+    const { tool_ids } = await sendTurn(pageTurnBody());
 
     expect(filterBrowserSessionToolIds).not.toHaveBeenCalled();
     expect(tool_ids).toEqual(expect.arrayContaining(['knowledge_mutation', 'project_mutation', 'memory']));
   });
 
-  it('stays read-only when the web app continues a browser session without the panel', async () => {
+  it('stays read-only when the web app continues a browser session', async () => {
     mocks.sessions.getById.mockResolvedValue(sessionOn('browser'));
 
     const { tool_ids } = await sendTurn({ session_id: 'session-1', messages: [{ role: 'user', content: 'Save it' }] });

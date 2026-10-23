@@ -531,8 +531,8 @@ export const CLIENT_ACTIONS_API_PREFIX = '/api/client-actions';
 
 /**
  * Where a client posts a Client Action result to resume the paused agent step.
- * Body: `{ session_id, toolCallId, output, error? }`. The web app and the
- * browser extension both import this — never hand-write the path.
+ * Body: `{ session_id, toolCallId, output, error? }`. Clients import this —
+ * never hand-write the path.
  */
 export const CLIENT_ACTION_RESULT_PATH = `${CLIENT_ACTIONS_API_PREFIX}/tool-result` as const;
 

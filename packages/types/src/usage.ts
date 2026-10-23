@@ -26,24 +26,22 @@ export const TOOL_CALL_CLIENTS = [
 export type ToolCallClient = (typeof TOOL_CALL_CLIENTS)[number];
 
 /**
- * Apps that show pages. `desktop` is kept so counts recorded before the desktop
- * app was removed (1.5) still read back; nothing writes it any more.
+ * Apps that show pages. `desktop` and `browser` are kept so counts recorded
+ * before the desktop app and the browser extension were removed (1.5) still
+ * read back; nothing new is labelled with them.
  */
 export const PAGE_OPEN_CLIENTS = ['web', 'desktop', 'mobile', 'browser'] as const;
 export type PageOpenClient = (typeof PAGE_OPEN_CLIENTS)[number];
 
 /**
- * Request header a first-party app sets on its API calls: `mobile` or `browser`
- * (the extension). Absent means the plain web app. It only labels counts — never
- * an authorization input.
+ * Request header a first-party app sets on its API calls: `mobile`. Absent means
+ * the plain web app. It only labels counts — never an authorization input.
  */
 export const APP_CLIENT_HEADER = 'X-Greenhouse-Client';
-const APP_CLIENTS = new Set<string>(['mobile', 'browser']);
 
 /** The app named by `APP_CLIENT_HEADER`, or null for the plain web app / anything unknown. */
-export function parseAppClient(value: string | null | undefined): 'mobile' | 'browser' | null {
-  const normalized = value?.trim().toLowerCase() ?? '';
-  return APP_CLIENTS.has(normalized) ? (normalized as 'mobile' | 'browser') : null;
+export function parseAppClient(value: string | null | undefined): 'mobile' | null {
+  return value?.trim().toLowerCase() === 'mobile' ? 'mobile' : null;
 }
 
 /**

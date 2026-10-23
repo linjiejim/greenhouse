@@ -10,8 +10,6 @@
     "api": "tsx apps/api/src/index.ts",
     "web:build": "pnpm --filter @greenhouse/web build",
     "web:dev": "pnpm --filter @greenhouse/web dev",
-    "browser:build": "pnpm --filter @greenhouse/browser build",
-    "browser:package": "pnpm --filter @greenhouse/browser package",
     "mobile:install": "cd apps/mobile && pnpm install --ignore-workspace",
     "mobile": "cd apps/mobile && npx expo start --dev-client",
     "mobile:web": "cd apps/mobile && npx expo start --web --port 8081",

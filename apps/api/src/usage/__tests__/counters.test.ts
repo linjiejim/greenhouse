@@ -112,7 +112,6 @@ describe('client attribution', () => {
 
   it('agent API calls from the first-party apps count as those apps', () => {
     expect(agentApiToolCallClient(null)).toBe('agent_api');
-    expect(agentApiToolCallClient('browser')).toBe('browser');
     expect(agentApiToolCallClient('mobile')).toBe('mobile');
   });
 

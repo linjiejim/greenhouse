@@ -1,8 +1,8 @@
 /**
- * The extension's conversations live on their own `browser` channel: POST
- * /api/sessions accepts exactly that client-supplied channel (every other one is
- * server-assigned), and the panel's channel-filtered history is "my sessions on
- * this channel" with nothing from the sidebar folded in.
+ * Session channels are server-assigned: POST /api/sessions ignores any
+ * client-supplied channel (the browser extension that used to file its own
+ * `browser` conversations was removed in 1.5), and a channel-filtered list is
+ * "my sessions on this channel" with nothing from the sidebar folded in.
  */
 
 import { Hono } from 'hono';
@@ -107,21 +107,13 @@ function createSession(body: Record<string, unknown>) {
 }
 
 describe('POST /api/sessions channel', () => {
-  it('files an extension conversation on the browser channel', async () => {
-    const response = await createSession({ profile_id: 'sprouty', channel: 'browser' });
-
-    expect(response.status).toBe(201);
-    expect(mocks.sessions.create).toHaveBeenCalledWith(undefined, 'sprouty', 'owner', undefined, 'browser');
-    await expect(response.json()).resolves.toMatchObject({ channel: 'browser' });
-  });
-
-  it('ignores any other client-supplied channel', async () => {
-    for (const channel of ['feishu', 'task', 'workflow', 'web', 42]) {
+  it('ignores any client-supplied channel', async () => {
+    for (const channel of ['browser', 'feishu', 'task', 'workflow', 'web', 42]) {
       mocks.sessions.create.mockClear();
       const response = await createSession({ profile_id: 'sprouty', channel });
 
       expect(response.status).toBe(201);
-      expect(mocks.sessions.create).toHaveBeenCalledWith(undefined, 'sprouty', 'owner', undefined, undefined);
+      expect(mocks.sessions.create).toHaveBeenCalledWith(undefined, 'sprouty', 'owner');
     }
   });
 });

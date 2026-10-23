@@ -52,9 +52,9 @@ export default defineConfig({
 - **`packs`** — content, not code: skill packs, profile YAMLs and a seed dataset that live outside
   the repository (a fork's `packs/` folder, a mounted volume). Paths are absolute or relative to
   the repository root.
-- **`clients.stations`** — how the browser extension and the mobile app treat servers. `multi`
-  (default) lets users add and switch stations; `single` locks a client build to the one station in
-  `defaults`. See `apps/browser/src/AGENTS.md` and `apps/mobile/AGENTS.md` for the build wiring.
+- **`clients.stations`** — how client builds treat servers. `multi` (default) lets users add and
+  switch stations; `single` locks a client build to the one station in `defaults`. The mobile app
+  mirrors it at build time; see `apps/mobile/AGENTS.md` for the wiring.
 
 ## Extensions
 
