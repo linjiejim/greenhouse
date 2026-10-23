@@ -1058,6 +1058,10 @@ const zh: Messages = {
     automation: { label: '自动化', description: '读取你的自动化及其执行情况。' },
     image: { label: '图片生成', description: '生成图片。每次调用都会产生费用。' },
     feedback: { label: '问题与需求', description: '提交功能需求，反馈工具使用中遇到的问题。' },
+    services: {
+      label: '付费服务',
+      description: '联网搜索、读取网页、识别图片，以及生成图片并存入你的档案库。每次调用都会产生费用。',
+    },
   },
 
   oauthConsent: {

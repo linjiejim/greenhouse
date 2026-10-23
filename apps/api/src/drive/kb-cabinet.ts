@@ -77,7 +77,10 @@ function shelfRoot(userId: string, shelf: FilesShelf): DriveAccessNode {
   return { scope: 'kb', visibility, owner_user_id: visibility === 'private' ? userId : null };
 }
 
-const access = (caller: CabinetCaller, node: DriveAccessNode) => resolveDriveAccess(node, caller.userId, {});
+/** What a read needs: who is asking. Writes also name the actor for the audit row. */
+type CabinetReader = Pick<CabinetCaller, 'db' | 'userId'>;
+
+const access = (caller: CabinetReader, node: DriveAccessNode) => resolveDriveAccess(node, caller.userId, {});
 
 const notFound = (what: 'folder' | 'file', id: number) =>
   ({ error: `No ${what} with id "${id}" that you can see. Use search or list to find the right id.` }) as const;
@@ -95,7 +98,7 @@ async function writableFolder(caller: CabinetCaller, id: number): Promise<Cabine
   return folder;
 }
 
-async function readableFile(caller: CabinetCaller, id: number): Promise<CabinetResult<DriveFileRow>> {
+async function readableFile(caller: CabinetReader, id: number): Promise<CabinetResult<DriveFileRow>> {
   const file = await caller.db.drive.getFile(id);
   if (!file || file.scope !== 'kb' || file.status !== 'active' || !canReadDrive(access(caller, file))) {
     return notFound('file', id);
@@ -183,6 +186,30 @@ export async function cabinetDownloadUrl(
     };
   }
   return { file: fileView(file), download_url: url, expires_in_seconds: DOWNLOAD_URL_TTL_SECONDS };
+}
+
+/**
+ * The original bytes of a file the caller may read, up to `maxBytes` — for
+ * tools that hand a file to another service (image analysis, the cloud
+ * computer) rather than read it as text.
+ */
+export async function readCabinetFileBytes(
+  caller: CabinetReader,
+  input: { fileId: number; maxBytes: number },
+): Promise<CabinetResult<{ file: CabinetFileView; bytes: Buffer }>> {
+  const file = await readableFile(caller, input.fileId);
+  if ('error' in file) return file;
+  if (file.size > input.maxBytes) {
+    return {
+      error: `"${file.name}" is ${Math.ceil(file.size / 1024 / 1024)} MB; at most ${Math.floor(input.maxBytes / 1024 / 1024)} MB can be used here.`,
+    };
+  }
+  const object = await getObjectAtKey(file.cos_key);
+  if (!object) return { error: `The bytes of "${file.name}" are missing from storage.` };
+  if (object.buffer.length > input.maxBytes) {
+    return { error: `"${file.name}" is larger than ${Math.floor(input.maxBytes / 1024 / 1024)} MB.` };
+  }
+  return { file: fileView(file), bytes: object.buffer };
 }
 
 export async function readCabinetFile(

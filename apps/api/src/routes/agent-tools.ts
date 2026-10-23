@@ -19,6 +19,7 @@ import { getDb } from '@greenhouse/db';
 import type { ToolRegistry } from '../agent.js';
 import { resolveProfileAsync } from '../profiles/profile.js';
 import { resolveEffectiveTools, buildLazyServerTools } from '../agent-runtime/tool-resolution.js';
+import { buildExternalServiceTools } from '../agent-runtime/service-tools.js';
 import {
   resolveProxyToolIds,
   buildProxyManifest,
@@ -102,6 +103,7 @@ export function createAgentRoutes(toolRegistry: ToolRegistry) {
         workspaceId,
         lockWorkspace: true,
       }),
+      ...buildExternalServiceTools(getDb(), effectiveTools, { userId: identity.userId }),
     };
     return { toolIds, registry };
   }

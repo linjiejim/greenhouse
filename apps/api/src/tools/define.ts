@@ -68,6 +68,17 @@ export interface ToolMeta {
     mcp?: McpResourceGroup | (string & {});
     workbench?: boolean;
     unattendedReplaySafe?: boolean;
+    /**
+     * MCP `openWorldHint`: the tool reaches outside Greenhouse (the web, a
+     * cloud computer). Default false — everything else stays inside.
+     */
+    openWorld?: boolean;
+    /**
+     * MCP `destructiveHint: false` for a write that only ever adds something
+     * and has no `action` enum that says so (generate_image creates a new file).
+     * Tools with an action enum are judged by their verbs (agent-access/risk.ts).
+     */
+    additiveOnly?: boolean;
   };
   /**
    * Part of every Agent's native ability, rather than something the author picks.

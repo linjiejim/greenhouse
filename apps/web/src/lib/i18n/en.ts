@@ -1082,6 +1082,11 @@ export default {
       label: 'Issues & requests',
       description: 'File feature requests and report where the tools got in the way.',
     },
+    services: {
+      label: 'Paid services',
+      description:
+        'Search the web, read web pages, analyze images and generate images into your Files. Each call costs money.',
+    },
   },
 
   oauthConsent: {

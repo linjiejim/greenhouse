@@ -382,6 +382,10 @@ Every capability is reachable three ways from the same tool layer:
   (client credentials) that a super binds to a least-privilege internal user under
   Administration → MCP Access. Scopes combine an action (`mcp:read` / `mcp:write`) with
   resource groups (`mcp:knowledge`, `mcp:projects`, `mcp:tables`, …).
+- **Paid services over MCP** (`mcp:services`) — `web_search`, `read_url` (public pages only),
+  `analyze_image` (an image URL or a file in Files) and `generate_image`, which saves each image
+  as a new file on the member's personal Files shelf and is recorded like any other agent write.
+  Every call is metered to the member and to the agent's OAuth client.
 
 For both proxy surfaces the effective tool set is `resolveEffectiveTools(user, profile)`
 intersected with the proxy allowlist — a tool only appears if it declares the relevant

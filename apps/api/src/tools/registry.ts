@@ -47,6 +47,7 @@ import { workbenchQueryTool, workbenchMutationTool } from './workbench.js';
 import { filesQueryTool } from './files-query.js';
 import { filesMutationTool } from './files-mutation.js';
 import { feedbackQueryTool } from './feedback-query.js';
+import { readUrlTool, webSearchTool } from './web-search.js';
 
 // ─── Catalog ─────────────────────────────────────────────
 
@@ -83,6 +84,8 @@ const CORE_TOOL_MODULES: ToolModule[] = [
   filesQueryTool,
   filesMutationTool,
   feedbackQueryTool,
+  webSearchTool,
+  readUrlTool,
 ];
 
 /** Static tools (constructed once from the shared db) — drives createToolRegistry. */
@@ -171,11 +174,21 @@ export const MCP_TOOL_IDS_BY_GROUP: ReadonlyMap<string, ReadonlySet<string>> = (
   return map;
 })();
 
+/**
+ * Retired resource groups → exactly the tools a grant carrying them reached
+ * before the group was retired (RETIRED_MCP_RESOURCE_GROUP_IDS in
+ * @greenhouse/types/mcp). A stored `mcp:image` keeps `generate_image` and
+ * gains nothing from the group that tool moved into.
+ */
+export const LEGACY_MCP_GROUP_TOOLS: Readonly<Record<string, readonly string[]>> = {
+  image: ['generate_image'],
+};
+
 /** Tool ids reachable for a set of granted resource groups. Unknown groups are ignored. */
 export function mcpToolIdsForGroups(groups: Iterable<string>): Set<string> {
   const ids = new Set<string>();
   for (const group of groups) {
-    for (const id of MCP_TOOL_IDS_BY_GROUP.get(group) ?? []) ids.add(id);
+    for (const id of MCP_TOOL_IDS_BY_GROUP.get(group) ?? LEGACY_MCP_GROUP_TOOLS[group] ?? []) ids.add(id);
   }
   return ids;
 }

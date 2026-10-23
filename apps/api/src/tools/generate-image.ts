@@ -42,6 +42,8 @@ import {
   unitPriceSnapshot,
 } from '../usage/pricing.js';
 import { findBudgetRefusal } from '../usage/budget-errors.js';
+import { cabinetDownloadUrl, uploadCabinetFile } from '../drive/kb-cabinet.js';
+import { delegatedAgentActor } from '../platform/actor.js';
 
 /** An image call that never reported back is charged at its estimate after this long. */
 const IMAGE_BUDGET_TTL_MS = 5 * 60_000;
@@ -117,15 +119,19 @@ function generateFilename(contentType: string): string {
   return `gen-${Date.now()}-${randomUUID()}.${ext}`;
 }
 
+interface GeneratedImage {
+  buffer: Buffer;
+  contentType: string;
+}
+
 /**
- * Materialize an API image response (b64_json or url) into a Buffer, persist it
- * to storage (COS `generate/` folder, or local disk), and return its flat id.
+ * Materialize an API image response (b64_json or url) into a Buffer.
  *
  * Some upstreams return BOTH forms; taking base64 first is deliberate — it skips a
  * network hop, and hosted image URLs may be short-lived or unreachable from the
  * server's network.
  */
-async function persistImage(imgData: { b64_json?: string; url?: string }): Promise<string> {
+async function materializeImage(imgData: { b64_json?: string; url?: string }): Promise<GeneratedImage> {
   let buffer: Buffer;
   let contentType: string;
   if (imgData.b64_json) {
@@ -139,8 +145,13 @@ async function persistImage(imgData: { b64_json?: string; url?: string }): Promi
     throw new Error(`Unknown image response format: ${Object.keys(imgData).join(', ')}`);
   }
   if (!contentType) throw new Error('Image API returned unsupported image bytes');
-  const filename = generateFilename(contentType);
-  await putUpload(filename, buffer, contentType);
+  return { buffer, contentType };
+}
+
+/** Persist to the chat image store (COS `generate/` folder, or local disk); returns its flat id. */
+async function persistUpload(image: GeneratedImage): Promise<string> {
+  const filename = generateFilename(image.contentType);
+  await putUpload(filename, image.buffer, image.contentType);
   return filename;
 }
 
@@ -203,7 +214,7 @@ type GenerateImageInput = z.infer<typeof generateImageSchema>;
  * Throws on any upstream failure — there is no second provider to fall back to.
  */
 interface ImageProviderResult {
-  filename: string;
+  image: GeneratedImage;
   usage?: { inputTokens: number; outputTokens: number };
 }
 
@@ -255,7 +266,7 @@ async function callGenerate(prompt: string, size: string, onProviderIo: () => vo
   const image = result.data?.[0];
   if (!image) throw new Error('Image generation API returned no image');
 
-  return { filename: await persistImage(image), usage: extractImageUsage(result) };
+  return { image: await materializeImage(image), usage: extractImageUsage(result) };
 }
 
 /**
@@ -310,7 +321,7 @@ async function callEdit(
   const image = result.data?.[0];
   if (!image) throw new Error('Image edit API returned no image');
 
-  return { filename: await persistImage(image), usage: extractImageUsage(result) };
+  return { image: await materializeImage(image), usage: extractImageUsage(result) };
 }
 
 // ─── Tool Factory ────────────────────────────────────────
@@ -326,15 +337,19 @@ Images render at a fixed cost-efficient quality; if the result looks soft, ask f
 
 IMPORTANT — never describe a logo, brand mark, or other fixed asset in the prompt and let the model draw it: it will invent a lookalike, which brand guidelines forbid. Instead pass the real file in \`images\` (works with action "generate" too) and instruct the model to place it unchanged. Brand assets live in the knowledge base — e.g. the doc "brand/foundations/logo" embeds the logo lockup and mark as /api/upload/<id> links; read the doc first and pass those IDs here.
 
-MARKED-UP REVISIONS — given an original plus a copy carrying the user's drawn marks, use action "edit" and pass BOTH in \`images\`, clean original FIRST — edits build on the first image, so leading with the marked copy bakes the ink in. Marks say WHERE; the text says WHAT. Never redraw the marks.`,
+MARKED-UP REVISIONS — given an original plus a copy carrying the user's drawn marks, use action "edit" and pass BOTH in \`images\`, clean original FIRST — edits build on the first image, so leading with the marked copy bakes the ink in. Marks say WHERE; the text says WHAT. Never redraw the marks.
+
+For an agent connected over MCP or the Agent API, every image is saved as a new file on your member's personal Files shelf: the result gives its file_id and, where the deployment keeps files in object storage, a download link valid for a few minutes. Each image is paid by the team.`,
   category: 'team',
   is_global: true,
   icon: 'Palette',
-  // Reachable through the /api/agent proxy and /api/mcp server as a read-tool
-  // (generation has cost but mutates no domain data — no confirm gate). This is
-  // how image skills generate images; is_global means every internal
-  // user already holds it, so it appears for all super/team MCP clients.
-  surface: { proxy: 'read', mcp: 'image' },
+  // v1.6: one of the paid services members' agents reach over MCP (group
+  // `services`; grants that still carry the retired `image` group keep it).
+  // A write: on the external surfaces each image becomes a new file on the
+  // member's personal Files shelf (agent-runtime/service-tools.ts), recorded
+  // like any other agent write and only ever additive. In Chat it stays an
+  // inline artifact in the conversation.
+  surface: { proxy: 'write', mcp: 'services', additiveOnly: true },
   runtime_risk: 'r1',
   sort_order: 12,
   presentation: 'artifact', // generated image renders inline in the message body
@@ -344,6 +359,42 @@ export interface GenerateImageToolContext {
   db: DatabaseProvider;
   userId: string;
   sessionId?: string;
+  /**
+   * Where the image goes. `uploads` (Chat): the flat image store, rendered
+   * inline. `files` (members' agents): a new file on the member's personal
+   * Files shelf, which is what an agent outside Greenhouse can find again.
+   */
+  saveTo?: 'uploads' | 'files';
+}
+
+/** A new image on the member's personal shelf, named by when it was made. */
+async function saveToFiles(ctx: GenerateImageToolContext, image: GeneratedImage) {
+  const caller = { db: ctx.db, userId: ctx.userId, actor: delegatedAgentActor({ userId: ctx.userId }) };
+  const stamp = new Date().toISOString().replace(/[-:]/g, '').replace('T', '-').slice(0, 15);
+  const ext = image.contentType === 'image/jpeg' ? 'jpg' : image.contentType.slice('image/'.length);
+  const uploaded = await uploadCabinetFile(caller, {
+    shelf: 'personal',
+    name: `image-${stamp}-${randomUUID().slice(0, 6)}.${ext}`,
+    bytes: image.buffer,
+  });
+  if ('error' in uploaded)
+    throw new Error(`The image was generated but could not be saved to Files: ${uploaded.error}`);
+  const link = await cabinetDownloadUrl(caller, uploaded.file.id);
+  return {
+    file_id: uploaded.file.id,
+    file: uploaded.file,
+    ...('error' in link
+      ? { download_url: null, download_note: 'No direct link on this deployment; open it from the Files page.' }
+      : { download_url: link.download_url, download_expires_in_seconds: link.expires_in_seconds }),
+  };
+}
+
+/** Store one generated image where this surface keeps them; the part of the result that says where. */
+async function storeImage(ctx: GenerateImageToolContext, image: GeneratedImage, alt: string) {
+  if (ctx.saveTo === 'files') return saveToFiles(ctx, image);
+  const filename = await persistUpload(image);
+  const imageUrl = `/api/upload/${filename}`;
+  return { url: imageUrl, markdown: `![${alt}](${imageUrl})`, filename };
 }
 
 function estimateImageTokens(prompt: string, size: string | undefined, referenceCount: number): number {
@@ -465,14 +516,11 @@ export function createGenerateImageTool(ctx: GenerateImageToolContext) {
                   ? callEdit(input.prompt, refs, size, onProviderIo)
                   : callGenerate(input.prompt, size, onProviderIo),
             );
-            const filename = providerResult.filename;
-            logger.info(`[GenerateImage] ✅ Saved: ${filename} (model: ${MODEL})`);
-            const imageUrl = `/api/upload/${filename}`;
+            const stored = await storeImage(ctx, providerResult.image, 'Generated Image');
+            logger.info(`[GenerateImage] ✅ Saved (${ctx.saveTo ?? 'uploads'}, model: ${MODEL})`);
             return {
               success: true,
-              url: imageUrl,
-              markdown: `![Generated Image](${imageUrl})`,
-              filename,
+              ...stored,
               model: MODEL,
               size,
               quality: QUALITY,
@@ -510,14 +558,11 @@ export function createGenerateImageTool(ctx: GenerateImageToolContext) {
               { action: 'edit', size: editSize, referenceCount: images.length, estimatedTokens },
               (onProviderIo) => callEdit(input.prompt, images, editSize, onProviderIo),
             );
-            const filename = providerResult.filename;
-            logger.info(`[GenerateImage] ✅ Edited & saved: ${filename}`);
-            const imageUrl = `/api/upload/${filename}`;
+            const stored = await storeImage(ctx, providerResult.image, 'Edited Image');
+            logger.info(`[GenerateImage] ✅ Edited & saved (${ctx.saveTo ?? 'uploads'})`);
             return {
               success: true,
-              url: imageUrl,
-              markdown: `![Edited Image](${imageUrl})`,
-              filename,
+              ...stored,
               model: MODEL,
               quality: QUALITY,
               prompt: input.prompt,
