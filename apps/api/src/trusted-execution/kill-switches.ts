@@ -90,7 +90,7 @@ type GuardedSurface = 'task-center' | 'approval-inbox';
 
 const SURFACE_UNAVAILABLE = {
   'task-center': {
-    error: 'Execution Center is unavailable in this environment',
+    error: 'Run details are unavailable in this environment',
     code: 'task_center_disabled',
   },
   'approval-inbox': {

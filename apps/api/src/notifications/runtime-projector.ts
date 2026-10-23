@@ -27,10 +27,18 @@ function runLabel(run: RuntimeRunRow): string {
   return 'Run';
 }
 
+/**
+ * Server-side English; the web inbox shows its own translation of these
+ * generic lines (`lib/notification-copy.ts`) and keeps an error message as is.
+ */
+function reviewBody(label: string): string {
+  return `Open it in the Activity log to review this ${label.toLowerCase()}.`;
+}
+
 function interruptCopy(interrupt: RuntimeInterruptRow, run: RuntimeRunRow): { title: string; body: string } {
   const label = runLabel(run);
   const title =
-    interrupt.kind === 'mutation_approval' || interrupt.kind === 'workflow_gate'
+    interrupt.kind === 'mutation_approval'
       ? `${label} needs approval`
       : interrupt.kind === 'ask_user'
         ? `${label} needs your input`
@@ -43,7 +51,7 @@ function interruptCopy(interrupt: RuntimeInterruptRow, run: RuntimeRunRow): { ti
               : `${label} needs your attention`;
   return {
     title,
-    body: `Open Execution Center to review ${label.toLowerCase()} ${run.source_id}.`,
+    body: reviewBody(label),
   };
 }
 
@@ -115,7 +123,7 @@ export function createRuntimeNotificationProjector(db: DatabaseProvider) {
     if (eventStatus !== 'succeeded' && eventStatus !== 'failed' && eventStatus !== 'interrupted') return;
     const run = await db.runtime.getRun(event.run_id);
     if (!run) return;
-    // Ordinary Chat is intentionally absent from Execution Center. Its turn result
+    // Ordinary Chat is intentionally absent from the Activity log. Its turn result
     // is already visible in the conversation, so a notification per assistant
     // reply would drown out automations and real attention items.
     if (run.kind === 'chat') return;
@@ -137,8 +145,8 @@ export function createRuntimeNotificationProjector(db: DatabaseProvider) {
       kind: failed ? 'runtime_failed' : 'runtime_completed',
       title: failed ? `${label} needs review` : `${label} completed`,
       body: failed
-        ? eventError || `Open Execution Center to review ${label.toLowerCase()} ${run.source_id}.`
-        : `Open Execution Center to review the result for ${label.toLowerCase()} ${run.source_id}.`,
+        ? eventError || reviewBody(label)
+        : `Open it in the Activity log to see the result of this ${label.toLowerCase()}.`,
       payload: {
         runtime_kind: run.kind,
         source_kind: run.source_kind,

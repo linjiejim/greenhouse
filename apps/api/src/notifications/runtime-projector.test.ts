@@ -83,6 +83,10 @@ describe('Runtime notification projector', () => {
         dedupe_key: 'runtime-terminal:rtm_mission_1:succeeded:3',
       }),
     );
+    // Points at the surface that exists (the Activity log), never the retired Execution Center.
+    const body = (createWithStatus.mock.calls[0]![0] as { body: string }).body;
+    expect(body).toContain('Activity log');
+    expect(body).not.toMatch(/Execution Center|mission-1/);
     expect(ws.sendToUser).toHaveBeenCalledTimes(1);
   });
 
