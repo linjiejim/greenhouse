@@ -1,6 +1,8 @@
 /**
  * Runtime Config (super only) — registry-driven workspace settings editor for
- * the runtime credentials: main LLM, media (vision + image generation), web search.
+ * the runtime credentials: main LLM, media (vision + image generation), web
+ * search, and switches (the model gateway). A 'boolean' setting renders as a
+ * toggle; clearing it falls back to its env var.
  *
  * Rendered straight from the settings registry (@greenhouse/types, plus the
  * entries active extensions register): adding a setting makes it appear here —
@@ -15,14 +17,14 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import type { WorkspaceSettingGroup, WorkspaceSettingView } from '@greenhouse/types';
-import { Button, Input, Spinner, toast } from '../../components/ui';
+import { Button, Input, Spinner, Toggle, toast } from '../../components/ui';
 import { ModulePage } from '../../components/app/module-page';
 import { useI18n } from '../../lib/i18n';
 import type { TranslationKey } from '../../lib/i18n';
 import { fetchWorkspaceSettings, saveWorkspaceSettings } from '../../lib/api/workspace-settings';
 import { useExtensionsStore } from '../../stores/extensions-store';
 
-const RUNTIME_GROUPS: WorkspaceSettingGroup[] = ['llm', 'media', 'search'];
+const RUNTIME_GROUPS: WorkspaceSettingGroup[] = ['llm', 'media', 'search', 'gateway'];
 
 /** Registry descriptions mark identifiers with backticks; show them as inline code, not raw ticks. */
 function Description({ text, className }: { text: string; className: string }) {
@@ -64,7 +66,7 @@ function SourceBadge({ source }: { source: WorkspaceSettingView['source'] }) {
 export function RuntimeConfigPanel() {
   const { t } = useI18n();
   const [views, setViews] = useState<WorkspaceSettingView[] | null>(null);
-  const [dirty, setDirty] = useState<Record<string, string | null>>({});
+  const [dirty, setDirty] = useState<Record<string, string | boolean | null>>({});
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
@@ -95,7 +97,7 @@ export function RuntimeConfigPanel() {
     return t('runtimeConfig.group_extension', { name });
   };
 
-  const stage = (key: string, value: string | null) => {
+  const stage = (key: string, value: string | boolean | null) => {
     setDirty((prev) => ({ ...prev, [key]: value }));
   };
   const unstage = (key: string) => {
@@ -149,7 +151,14 @@ export function RuntimeConfigPanel() {
               {(grouped.get(group) ?? []).map((v) => {
                 const staged = dirty[v.key];
                 const isCleared = staged === null;
-                const inputValue = isCleared ? '' : (staged ?? (v.secret ? '' : String(v.value ?? '')));
+                const inputValue = isCleared
+                  ? ''
+                  : typeof staged === 'string'
+                    ? staged
+                    : v.secret
+                      ? ''
+                      : String(v.value ?? '');
+                const checked = typeof staged === 'boolean' ? staged : v.value === true;
                 const secretPlaceholder =
                   v.secret && v.has_value && staged === undefined
                     ? `${t('runtimeConfig.secretSet')} ••••••`
@@ -171,16 +180,30 @@ export function RuntimeConfigPanel() {
                     </div>
                     <div>
                       <div className="flex items-center gap-2">
-                        <Input
-                          type={v.secret ? 'password' : 'text'}
-                          value={inputValue}
-                          onChange={(e) => stage(v.key, e.target.value)}
-                          placeholder={v.secret ? secretPlaceholder : v.value == null ? '' : undefined}
-                          size="sm"
-                          className="flex-1 font-mono text-xs"
-                          spellCheck={false}
-                          autoComplete="off"
-                        />
+                        {v.type === 'boolean' ? (
+                          <div className="flex flex-1 items-center gap-2 py-1">
+                            <Toggle
+                              size="sm"
+                              checked={!isCleared && checked}
+                              onChange={(next) => stage(v.key, next)}
+                              label={v.label}
+                            />
+                            <span className="text-xs text-fg-secondary">
+                              {!isCleared && checked ? t('runtimeConfig.on') : t('runtimeConfig.off')}
+                            </span>
+                          </div>
+                        ) : (
+                          <Input
+                            type={v.secret ? 'password' : 'text'}
+                            value={inputValue}
+                            onChange={(e) => stage(v.key, e.target.value)}
+                            placeholder={v.secret ? secretPlaceholder : v.value == null ? '' : undefined}
+                            size="sm"
+                            className="flex-1 font-mono text-xs"
+                            spellCheck={false}
+                            autoComplete="off"
+                          />
+                        )}
                         {(v.has_value || staged !== undefined) && !isCleared ? (
                           <Button variant="outline" size="sm" onClick={() => stage(v.key, null)}>
                             {t('runtimeConfig.clear')}

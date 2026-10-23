@@ -11,9 +11,13 @@
  * - Budgets: the team, per-service and member-default monthly limits with
  *   this month's spent / reserved, plus per-member overrides (CRUD). Writes go
  *   to `PUT / DELETE /api/admin/metering/budgets` and apply on the next call.
+ * - Gateway keys: the model gateway switch (`gateway.enabled`, the same
+ *   workspace setting Runtime Config shows) and every member's gateway key,
+ *   each revocable (`/api/admin/metering/gateway-keys`).
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import type { GatewayAdminKeyView } from '@greenhouse/types/agent-access';
 import type {
   BudgetLimitInput,
   BudgetView,
@@ -24,7 +28,19 @@ import type {
   TokenPriceView,
 } from '@greenhouse/types/metering';
 import { defineCrud, CrudPage, type CrudDataSource } from '../settings/crud';
-import { Button, Dialog, EmptyState, Input, Select, SkeletonCard, Tabs, Tag, toast } from '../../components/ui';
+import {
+  Button,
+  Dialog,
+  EmptyState,
+  Input,
+  Select,
+  SkeletonCard,
+  Tabs,
+  Tag,
+  TagList,
+  Toggle,
+  toast,
+} from '../../components/ui';
 import { FormActions, FormField } from '../../components/form';
 import { ModulePage } from '../../components/app/module-page';
 import { SettingsSection } from '../../components/settings';
@@ -35,6 +51,7 @@ import {
   Bot,
   Coins,
   Cpu,
+  Key,
   Layers,
   Pencil,
   RefreshCw,
@@ -50,6 +67,9 @@ import {
   saveBudgetLimit,
   savePriceOverride,
 } from '../../lib/api/metering';
+import { fetchAllGatewayKeys, revokeMemberGatewayKey } from '../../lib/api/gateway';
+import { saveWorkspaceSettings } from '../../lib/api/workspace-settings';
+import { formatDate } from '../../lib/utils';
 import { useT } from '../../lib/i18n';
 import {
   clientLabelKey,
@@ -63,7 +83,7 @@ import {
 } from '../../lib/metering/format';
 
 type Translate = ReturnType<typeof useT>;
-type TabKey = 'spend' | 'prices' | 'budgets';
+type TabKey = 'spend' | 'prices' | 'budgets' | 'gateway';
 
 interface EditTarget {
   scope: BudgetLimitInput['scope'];
@@ -911,6 +931,161 @@ function BudgetsTab({
   );
 }
 
+// ─── Gateway keys ────────────────────────────────────────
+
+function GatewayTab() {
+  const t = useT();
+  const [enabled, setEnabled] = useState<boolean | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [version, setVersion] = useState(0);
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetchAllGatewayKeys()
+      .then((data) => {
+        if (!cancelled) setEnabled(data.enabled);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [version]);
+
+  const toggle = async (next: boolean) => {
+    setSaving(true);
+    try {
+      await saveWorkspaceSettings({ 'gateway.enabled': next });
+      setEnabled(next);
+      toast(t('gateway.adminSwitchSaved'), 'success');
+    } catch (err) {
+      toast(err instanceof Error ? err.message : t('metering.saveFailed'), 'error');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const dataSource = useMemo<CrudDataSource<GatewayAdminKeyView>>(
+    () => ({
+      async list(params) {
+        return pageOf((await fetchAllGatewayKeys()).keys, params);
+      },
+      async remove(id) {
+        await revokeMemberGatewayKey(id);
+      },
+    }),
+    [],
+  );
+
+  const schema = useMemo(
+    () =>
+      defineCrud<GatewayAdminKeyView>({
+        name: t('gateway.key'),
+        icon: Key,
+        testId: 'admin-gateway-keys',
+        dataSource,
+        pageSize: 50,
+        storageKey: 'administration-gateway-keys',
+        onRowClick: 'none',
+        emptyMessage: t('gateway.adminEmpty'),
+        access: {
+          canView: false,
+          canAdd: false,
+          canEdit: false,
+          canDelete: true,
+          canDeleteRow: (row) => row.status === 'active',
+        },
+        deleteConfirm: (row) => ({
+          title: t('gateway.revokeTitle', { name: row.name }),
+          description: t('gateway.adminRevokeDescription', { owner: row.owner.name ?? row.owner.id }),
+        }),
+        columns: [
+          {
+            key: 'owner',
+            label: t('gateway.adminOwner'),
+            type: 'custom',
+            render: (row) => <span className="text-sm text-fg">{row.owner.name ?? row.owner.id}</span>,
+          },
+          {
+            key: 'name',
+            label: t('gateway.colName'),
+            type: 'custom',
+            render: (row) => (
+              <div className="min-w-0">
+                <div className="text-sm text-fg truncate" title={row.name}>
+                  {row.name}
+                </div>
+                <div className="text-[10px] font-mono text-fg-faint truncate">{row.prefix}…</div>
+              </div>
+            ),
+          },
+          {
+            key: 'allowed_models',
+            label: t('gateway.colModels'),
+            type: 'custom',
+            render: (row) =>
+              row.allowed_models ? (
+                <TagList items={row.allowed_models} max={3} />
+              ) : (
+                <span className="text-xs text-fg-muted">{t('gateway.allModels')}</span>
+              ),
+          },
+          {
+            key: 'status',
+            label: t('common.status'),
+            type: 'custom',
+            width: '6rem',
+            render: (row) => (
+              <Tag tone={row.status === 'active' ? 'success' : row.status === 'expired' ? 'warning' : 'neutral'}>
+                {t(`gateway.status_${row.status}`)}
+              </Tag>
+            ),
+          },
+          {
+            key: 'last_used_at',
+            label: t('gateway.colLastUsed'),
+            type: 'custom',
+            width: '9rem',
+            render: (row) => (
+              <span className="text-xs text-fg-muted">
+                {row.last_used_at ? formatDate(row.last_used_at) : t('gateway.neverUsed')}
+              </span>
+            ),
+          },
+        ],
+      }),
+    [dataSource, t],
+  );
+
+  return (
+    <div className="space-y-4">
+      <SettingsSection title={t('gateway.adminSwitch')} icon={Cpu}>
+        <div className="flex items-start gap-3">
+          <Toggle
+            checked={enabled === true}
+            disabled={enabled === null || saving}
+            onChange={(next) => void toggle(next)}
+            label={t('gateway.adminSwitch')}
+          />
+          <div className="min-w-0">
+            <div className="text-xs font-medium text-fg">
+              {enabled ? t('runtimeConfig.on') : t('runtimeConfig.off')}
+            </div>
+            <p className="text-xs text-fg-muted leading-relaxed">{t('gateway.adminSwitchHelp')}</p>
+          </div>
+        </div>
+      </SettingsSection>
+      <SettingsSection title={t('metering.tabs.gateway')} icon={Key}>
+        <p className="mb-3 text-xs text-fg-muted leading-relaxed">{t('gateway.adminIntro')}</p>
+        <CrudPage key={version} schema={schema} />
+        <Button size="sm" variant="ghost" className="mt-2" onClick={() => setVersion((v) => v + 1)}>
+          <RefreshCw size={12} />
+          {t('common.refresh')}
+        </Button>
+      </SettingsSection>
+    </div>
+  );
+}
+
 // ─── Page ────────────────────────────────────────────────
 
 export function ServicesPricingPanel() {
@@ -973,13 +1148,16 @@ export function ServicesPricingPanel() {
             { key: 'spend', label: t('metering.tabs.spend') },
             { key: 'prices', label: t('metering.tabs.prices') },
             { key: 'budgets', label: t('metering.tabs.budgets') },
+            { key: 'gateway', label: t('metering.tabs.gateway') },
           ]}
           active={tab}
           onChange={(key) => setTab(key as TabKey)}
         />
       }
     >
-      {loading && !overview ? (
+      {tab === 'gateway' ? (
+        <GatewayTab />
+      ) : loading && !overview ? (
         <SkeletonCard />
       ) : failed || !overview ? (
         <EmptyState icon={Coins} title={t('metering.loadFailed')} tone="danger" />
