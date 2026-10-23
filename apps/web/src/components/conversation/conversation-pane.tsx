@@ -37,7 +37,6 @@ import { ShareDialog } from '../chat/share-dialog';
 import { ProfileEditorDrawer } from '../chat/profile-editor';
 import { Button, ErrorBoundary, Skeleton, toast } from '../ui';
 import { MAX_IMAGES } from '../../lib/constants';
-import { WorkbenchPanel } from '../workbench/workbench-panel';
 import { DEFAULT_AGENT_ID, LEGACY_AGENT_IDS } from '../../lib/agent-constants';
 import { acceptAttachments, uploadPendingAttachments, MAX_ATTACHMENTS, type PendingAttachment } from './attachments';
 import { uploadChatFile, type ChatFileRef } from '../../lib/api/chat-files';
@@ -166,7 +165,6 @@ export function ConversationPane({
   const [messages, setMessages] = useState<ParsedMessage[]>([]);
   const [isLoadingSession, setIsLoadingSession] = useState(() => !!initialSessionId);
   const [input, setInput] = useState('');
-  const [workbenchConversationMode, setWorkbenchConversationMode] = useState(false);
   const [pendingAutoSend, setPendingAutoSend] = useState<string | null>(null);
   const [sessionTitle, setSessionTitle] = useState('');
   const [sessionProfileId, setSessionProfileId] = useState(DEFAULT_AGENT_ID);
@@ -733,10 +731,7 @@ export function ConversationPane({
 
   const scrollToBottom = useCallback(
     (behavior: ScrollBehavior = 'smooth') => {
-      // The empty state is not a transcript: it holds the workbench, and its
-      // "end" is the bottom of a dashboard the user has not read yet. Jumping
-      // there on mount (or whenever a card finishes loading and the content
-      // grows) would hide the top of their own home page.
+      // The empty state is not a transcript: there is no end to jump to.
       if (messages.length === 0) return;
       if (isUserAtBottomRef.current) {
         messagesEndRef.current?.scrollIntoView({ behavior });
@@ -777,8 +772,7 @@ export function ConversationPane({
   // replacing a hard-coded timeout.
   useEffect(() => {
     isUserAtBottomRef.current = true;
-    // A new conversation has no transcript to land at the end of — it opens on
-    // the workbench, which must start at the top.
+    // A new conversation has no transcript to land at the end of.
     if (!sessionId) return;
     const raf = requestAnimationFrame(() => {
       requestAnimationFrame(() => {
@@ -834,10 +828,7 @@ export function ConversationPane({
             })
             .join('\n\n') + '\n\n---\n\n';
       }
-      const workbenchAwareMessage = workbenchConversationMode
-        ? t('home.chatEditInstruction', { instruction: rawMsg })
-        : rawMsg;
-      const msg = annotationPrefix + workbenchAwareMessage;
+      const msg = annotationPrefix + rawMsg;
 
       if (isComposerSend) {
         setInput('');
@@ -950,7 +941,6 @@ export function ConversationPane({
       policy.publishGlobalChatUi,
       sendMessage,
       t,
-      workbenchConversationMode,
     ],
   );
 
@@ -1223,11 +1213,6 @@ export function ConversationPane({
     if (request) void handleForkSession(request.messageId, request.preserveDraft);
   }, [handleForkSession, pendingFork]);
 
-  const handleWorkbenchConversationModeChange = useCallback((enabled: boolean) => {
-    setWorkbenchConversationMode(enabled);
-    if (enabled) setTimeout(() => chatInputRef.current?.focus(), 0);
-  }, []);
-
   return (
     <div className="flex flex-col h-full bg-surface-canvas">
       {/* Main chat area */}
@@ -1286,44 +1271,10 @@ export function ConversationPane({
                   onSelect={(prompt) => setInput((prev) => (prev ? `${prev}${prompt}` : prompt))}
                 />
               ) : (
-                (() => {
-                  // A new conversation opens onto the personal workbench: this
-                  // screen is the user's home page, so it shows their data
-                  // first and introduces the assistant only when there is no
-                  // data yet.
-                  const intro = (
-                    <ProfileEmptyState
-                      profile={displayProfiles.find((p) => p.id === (sessionId ? sessionProfileId : selectedProfileId))}
-                      onCustomize={
-                        policy.showWorkbench
-                          ? () => {
-                              handleWorkbenchConversationModeChange(true);
-                              setInput((prev) => prev || t('home.customizePrompt'));
-                            }
-                          : undefined
-                      }
-                    />
-                  );
-                  return policy.showWorkbench ? (
-                    <WorkbenchPanel
-                      emptyFallback={intro}
-                      conversationMode={workbenchConversationMode}
-                      onConversationModeChange={handleWorkbenchConversationModeChange}
-                    />
-                  ) : (
-                    intro
-                  );
-                })()
+                <ProfileEmptyState
+                  profile={displayProfiles.find((p) => p.id === (sessionId ? sessionProfileId : selectedProfileId))}
+                />
               ))
-            )}
-
-            {!isLoadingSession && workbenchConversationMode && messages.length > 0 && policy.showWorkbench && (
-              <div
-                data-workbench-live-preview
-                className="sticky top-0 z-[5] max-h-[55vh] overflow-y-auto rounded-xl border border-primary-edge bg-surface-canvas/95 p-3 shadow-lg backdrop-blur-sm"
-              >
-                <WorkbenchPanel conversationMode onConversationModeChange={handleWorkbenchConversationModeChange} />
-              </div>
             )}
 
             {!isLoadingSession &&
@@ -1418,9 +1369,7 @@ export function ConversationPane({
             <div ref={messagesEndRef} />
 
             {/* Jump-to-latest — sticks to the bottom of the scroll viewport */}
-            {/* Only ever about the transcript. The empty state can scroll too —
-                it holds the workbench — but "jump to latest" over a dashboard
-                with no messages in it is nonsense. */}
+            {/* Only ever about the transcript — an empty state has nothing to jump to. */}
             {showScrollButton && messages.length > 0 && (
               <div className="sticky bottom-2 flex justify-center pointer-events-none">
                 <button
@@ -1512,7 +1461,6 @@ export function ConversationPane({
             onRemoveAttachment={handleRemoveAttachment}
             maxAttachments={MAX_ATTACHMENTS}
             inputRef={chatInputRef}
-            placeholder={workbenchConversationMode ? t('home.chatEditPlaceholder') : undefined}
             slashPrompts={slashPrompts}
             selectedPrompt={selectedPrompt}
             taskValues={taskValues}
@@ -1645,8 +1593,8 @@ function ConversationSuggestions({
 // ─── Profile Empty State ───────────────────────────────
 
 /**
- * What a new conversation shows when the user has no workbench cards yet: who
- * they are talking to, and one quiet way to build a home page.
+ * What a new conversation shows: who the user is talking to. The workbench
+ * cards live on Home (v1.5), so Chat opens onto the assistant alone.
  *
  * The capability list ("Try asking") that used to fill the right half is gone on
  * purpose (spec D16). The first thing this screen owes the user is their own
@@ -1654,7 +1602,7 @@ function ConversationSuggestions({
  * anyone reads twice. Profile capabilities were removed outright afterwards —
  * YAML, type, column, editor section and all.
  */
-function ProfileEmptyState({ profile, onCustomize }: { profile?: api.Profile; onCustomize?: () => void }) {
+function ProfileEmptyState({ profile }: { profile?: api.Profile }) {
   const t = useT();
   const localized = useLocalized();
   const description = localized(profile?.description_i18n, profile?.description ?? '');
@@ -1673,15 +1621,6 @@ function ProfileEmptyState({ profile, onCustomize }: { profile?: api.Profile; on
         </h3>
         <p className="mt-1 text-sm text-fg-faint leading-snug">{description || t('chat.defaultDescription')}</p>
       </div>
-      {onCustomize && (
-        <button
-          type="button"
-          onClick={onCustomize}
-          className="mt-1 text-xs text-fg-faint underline decoration-dotted underline-offset-4 transition-colors hover:text-fg-secondary"
-        >
-          {t('home.customizeEntry')}
-        </button>
-      )}
     </div>
   );
 }

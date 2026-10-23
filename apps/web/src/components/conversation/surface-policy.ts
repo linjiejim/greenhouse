@@ -9,12 +9,6 @@ export interface ConversationSurfacePolicy {
   showProfileManagement: boolean;
   allowTranslate: boolean;
   allowQuote: boolean;
-  /**
-   * Whether a new conversation opens onto the personal workbench. The full page
-   * is the user's home; the overlay is a side panel about the page behind it,
-   * where a dashboard would be noise.
-   */
-  showWorkbench: boolean;
 }
 
 /**
@@ -32,7 +26,6 @@ export const CONVERSATION_SURFACE_POLICIES: Record<ConversationSurface, Conversa
     showProfileManagement: true,
     allowTranslate: true,
     allowQuote: true,
-    showWorkbench: true,
   },
   overlay: {
     compactMessages: true,
@@ -43,6 +36,5 @@ export const CONVERSATION_SURFACE_POLICIES: Record<ConversationSurface, Conversa
     showProfileManagement: false,
     allowTranslate: false,
     allowQuote: false,
-    showWorkbench: false,
   },
 };

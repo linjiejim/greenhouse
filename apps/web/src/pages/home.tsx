@@ -4,9 +4,9 @@
  *
  * The feed reads `GET /api/activity/recent`, which only returns objects the
  * viewer may read and says which agent made a change when one did. The cards
- * are the same personal workbench the Chat empty state shows (one component,
- * one stored config — including recipes extensions register); Customize lives
- * in the page actions here instead of the chat TopBar.
+ * are the personal workbench (one stored config, including recipes extensions
+ * register); this is their only home since v1.5, and Customize lives in the
+ * page actions.
  */
 
 import { useCallback, useEffect, useState } from 'react';

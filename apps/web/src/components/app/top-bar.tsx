@@ -26,7 +26,6 @@ import { resolveSubModule } from '../../lib/nav-registry';
 import { TagSelector } from '../session-tags';
 import { IconButton, Input, toast } from '../ui';
 import { FullHistoryModal } from '../history-modal';
-import { WorkbenchTopBarActions } from '../workbench/workbench-topbar-actions';
 import { chatWorkspaceLabel } from '../chat/chat-workspace-navigation';
 import type { ChatWorkspaceView } from '../../stores';
 import type { SessionTag } from '../../lib/api';
@@ -225,7 +224,6 @@ export function TopBar({
     chatShare,
     chatFeedback,
     chatTitleEdit,
-    homeWorkbench,
     setCurrentSessionInfo,
     bumpSessionListVersion,
   } = useUIStore();
@@ -324,10 +322,6 @@ export function TopBar({
 
       {/* Right — session actions stay together and never compete with the title. */}
       <div className="ml-auto flex flex-shrink-0 items-center justify-end gap-1 sm:gap-2">
-        {/* Workbench controls, only while the panel that registered them is on
-            screen (the empty state of a new conversation). Sending the first
-            message unmounts the panel, which takes these with it. */}
-        {isChatConversation && <WorkbenchTopBarActions controls={homeWorkbench} />}
         {isChatConversation && (
           <IconButton
             onClick={sidePaneOpen ? collapseSidePane : reopenSidePane}

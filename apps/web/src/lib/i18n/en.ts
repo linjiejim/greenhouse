@@ -1612,15 +1612,6 @@ export default {
     feedEmptyHint: 'Edits to knowledge, projects, tables and files show up here.',
     defaultTab: 'Overview',
     customize: 'Customize',
-    customizeEntry: 'Customize home workbench page',
-    customizePrompt:
-      'Help me customize my home workbench: which cards and data sources can I use? Then set up a few based on the data I work with most.',
-    editByChat: 'Edit by chat',
-    chatEditActive:
-      'Conversational editing is active. Describe the change in the composer below; this preview updates after each saved change.',
-    chatEditPlaceholder: 'Describe how you want to change the workbench…',
-    chatEditInstruction:
-      'Update my home workbench as follows: {instruction}\n\nUse the workbench tools and verify the saved result.',
     doneEditing: 'Done',
     templates: 'Workbench templates',
     templatesDescription: 'Choose a ready-made layout. Templates you cannot use are hidden.',
