@@ -313,6 +313,25 @@ describe('monthly retro', () => {
     expect(october.frictions.top.map((row) => row.tool)).toContain('files_query');
   });
 
+  it('groups every active friction, not the first page of them', async () => {
+    const tool = unique('bulk_tool');
+    await db.executeRaw(sql`
+      INSERT INTO tool_frictions (fingerprint, tool_id, kind, summary, occurrence_count, first_seen_at, last_seen_at, created_at, updated_at)
+      SELECT ${tool} || '-' || n, ${tool}, 'tool_error', 'record not found', 2,
+             '2026-08-05T08:00:00Z', '2026-08-06T08:00:00Z', now(), now()
+      FROM generate_series(1, 501) AS n
+    `);
+    const august = await collectRetroAggregates(db, retroMonth('2026-08')!);
+    expect(august.frictions.active).toBeGreaterThanOrEqual(501);
+    expect(august.frictions.top.find((row) => row.tool === tool)).toEqual({
+      tool,
+      kind: 'tool_error',
+      error_class: 'not_found',
+      frictions: 501,
+      occurrences: 1002,
+    });
+  });
+
   it('refuses a month that is malformed or has not started', async () => {
     await expect(generateMonthlyRetro({ db, month: '2026-13' })).rejects.toThrow(/YYYY-MM/);
     await expect(generateMonthlyRetro({ db, month: '2999-01' })).rejects.toThrow(/not started/);

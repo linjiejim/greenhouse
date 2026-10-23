@@ -6,7 +6,7 @@
  * priority signal a reviewer sorts by. Nothing here is injected into a prompt.
  */
 
-import { eq, and, desc, sql, inArray, gte, lt } from 'drizzle-orm';
+import { eq, and, asc, desc, sql, inArray, gte, lt } from 'drizzle-orm';
 import { nowIso } from '@greenhouse/utils/date';
 
 import type { Db } from '../client.js';
@@ -155,13 +155,20 @@ export function createToolFrictionService(db: Db) {
      * over-include a friction seen before and after the window but not inside
      * it; `occurrence_count` is cumulative, never per window.
      */
-    async listActiveBetween(input: { from: string; to: string; limit?: number }): Promise<ToolFrictionRow[]> {
+    async listActiveBetween(input: {
+      from: string;
+      to: string;
+      limit?: number;
+      offset?: number;
+    }): Promise<ToolFrictionRow[]> {
       return await db
         .select()
         .from(toolFrictions)
         .where(and(lt(toolFrictions.first_seen_at, input.to), gte(toolFrictions.last_seen_at, input.from)))
-        .orderBy(desc(toolFrictions.occurrence_count), desc(toolFrictions.last_seen_at))
-        .limit(input.limit ?? 10);
+        // `id` last: a total order, so paging with offset never skips or repeats a row.
+        .orderBy(desc(toolFrictions.occurrence_count), desc(toolFrictions.last_seen_at), asc(toolFrictions.id))
+        .limit(input.limit ?? 10)
+        .offset(input.offset ?? 0);
     },
 
     /** How many frictions were active in a window (see listActiveBetween) and how many first appeared in it. */

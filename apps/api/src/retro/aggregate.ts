@@ -82,8 +82,8 @@ export interface RetroAggregates {
 }
 
 const TOP = 10;
-/** Friction rows grouped per month; the retro shows the top groups. */
-const FRICTION_ROWS = 500;
+/** Friction rows are read in pages of this size; every active row is grouped before the top cut. */
+const FRICTION_PAGE = 500;
 
 export const FRICTION_ERROR_CLASSES = [
   'not_found',
@@ -134,6 +134,16 @@ function clip(text: string, max: number): string {
   return flat.length > max ? `${flat.slice(0, max - 1)}…` : flat;
 }
 
+/** Every friction active in the window, page by page — grouping a slice would undercount. */
+async function allActiveFrictions(db: DatabaseProvider, window: { from: string; to: string }) {
+  const rows: Awaited<ReturnType<DatabaseProvider['toolFrictions']['listActiveBetween']>> = [];
+  for (let offset = 0; ; offset += FRICTION_PAGE) {
+    const page = await db.toolFrictions.listActiveBetween({ ...window, limit: FRICTION_PAGE, offset });
+    rows.push(...page);
+    if (page.length < FRICTION_PAGE) return rows;
+  }
+}
+
 function groupFrictions(
   rows: ReadonlyArray<{ tool_id: string | null; kind: string; summary: string; occurrence_count: number }>,
 ): RetroAggregates['frictions']['top'] {
@@ -178,7 +188,7 @@ export async function collectRetroAggregates(db: DatabaseProvider, month: RetroM
     db.usageCounters.summarize('tool_call', days),
     db.activity.agentWriteTotals(window),
     db.activity.agentWriteMembers(window),
-    db.toolFrictions.listActiveBetween({ ...window, limit: FRICTION_ROWS }),
+    allActiveFrictions(db, window),
     db.toolFrictions.countBetween(window),
     db.featureRequests.listCreatedBetween({ ...window, limit: TOP }),
     db.featureRequests.countCreatedBetweenByStatus(window),
