@@ -184,9 +184,8 @@ export default function RootLayout() {
                 <Stack.Screen name="tables/base" options={pageScreen(c, { grouped: true })} />
                 <Stack.Screen name="tables/table" options={pageScreen(c, { grouped: true })} />
                 <Stack.Screen name="tables/record" options={detailScreen(c, { grouped: true })} />
-                <Stack.Screen name="projects/index" options={pageScreen(c, { grouped: true })} />
-                <Stack.Screen name="projects/detail" options={pageScreen(c, { grouped: true })} />
-                <Stack.Screen name="projects/task" options={detailScreen(c, { grouped: true })} />
+                <Stack.Screen name="agent/index" options={pageScreen(c, { grouped: true })} />
+                <Stack.Screen name="agent/write" options={detailScreen(c, { grouped: true })} />
 
                 {/* ── sheets ── */}
                 <Stack.Screen name="sheets/stations" options={sheetScreen([0.6, 1], { header: true })} />

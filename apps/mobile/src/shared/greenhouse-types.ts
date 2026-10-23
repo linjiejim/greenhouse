@@ -339,3 +339,64 @@ export interface TableUser {
   id: string;
   nickname: string | null;
 }
+
+// ─── agent access, spend and the model gateway (1.6) ────────────────
+
+export type AgentWriteStatus = 'running' | 'executed' | 'failed' | 'outcome_unknown';
+
+/** `GET /api/agent-access/writes` → `{ writes }` (the caller's own, newest first, at most 50). */
+export interface AgentWrite {
+  request_id: string;
+  status: AgentWriteStatus;
+  tool_id: string;
+  action: string | null;
+  risk: 'r1' | 'r2' | 'r3';
+  client_id: string;
+  client_name: string;
+  basis: 'direct' | 'confirmed' | null;
+  target_label: string | null;
+  input: unknown;
+  output: unknown;
+  error: string | null;
+  created_at: string;
+  settled_at: string | null;
+}
+
+export interface SpendRow {
+  key: string;
+  label: string | null;
+  cost_usd_micros: number;
+  calls: number;
+  unpriced_calls: number;
+}
+
+/** `GET /api/usage/spend` (the caller's own; integer USD micros). */
+export interface MySpend {
+  period: { start: string; end: string };
+  totals: { cost_usd_micros: number; calls: number; unpriced_calls: number };
+  by_service: SpendRow[];
+  by_client: SpendRow[];
+  by_agent_client?: SpendRow[];
+  budget: { limit_usd_micros: number; spent_usd_micros: number; reserved_usd_micros: number; source: string };
+}
+
+export interface GatewayKey {
+  id: string;
+  name: string;
+  prefix: string;
+  allowed_models: string[] | null;
+  expires_at: string | null;
+  last_used_at: string | null;
+  revoked_at: string | null;
+  created_at: string;
+  status: 'active' | 'revoked' | 'expired';
+  month_spend_usd_micros: number;
+  month_calls: number;
+}
+
+/** `GET /api/agent-access/gateway`; never carries a key's secret. */
+export interface GatewayOverview {
+  enabled: boolean;
+  base_url: string | null;
+  keys: GatewayKey[];
+}
