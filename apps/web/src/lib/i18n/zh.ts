@@ -691,7 +691,7 @@ const zh: Messages = {
     collapseSidebar: '收起侧边栏',
     resizeSidebar: '调整上下文侧边栏宽度',
     greenHouseHome: 'Greenhouse 首页',
-    brandTagline: '团队 Agent 枢纽',
+    brandTagline: '团队 Agent 中台',
     apiTargetLocal: '本地',
     apiTargetDev: 'Dev',
     apiTargetToggle: '在本地与 Dev API 之间切换',
