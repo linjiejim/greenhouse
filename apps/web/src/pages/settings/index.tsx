@@ -30,6 +30,7 @@ import { MemoryPanel } from './memory';
 import { GroupsPanel } from './groups';
 import { AgentAccessPanel } from './agent-access';
 import { MyUsagePanel } from './my-usage';
+import { ComputerPanel } from './computer';
 import { DEFAULT_MODULE, resolveSettingsRedirect } from './redirects';
 
 // ─── Sub-module helpers ─────────────────────────────────
@@ -85,6 +86,7 @@ export function SettingsPage({ subPath }: { subPath: string }) {
       {effectiveModule === 'groups' && <GroupsPanel />}
       {effectiveModule === 'memory' && <MemoryPanel />}
       {effectiveModule === 'my-usage' && <MyUsagePanel />}
+      {effectiveModule === 'computer' && <ComputerPanel />}
       {extensionModule && effectiveModule === moduleKey && <extensionModule.component />}
     </ModulePageShell>
   );

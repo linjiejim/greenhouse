@@ -520,6 +520,7 @@ v1 只接 DeepSeek 与 OpenAI 兼容服务，它们**自动**缓存 prompt 前�
 - 计价（`computer` / `e2b` / 分钟）：按 15 分钟一块预留 USD；跨块时清扫先预留下一块（被拒即停机）、再整块结算上一块；停机按实际分钟（向上取整）结算当前块。行上只存当前块的预留键，任何进程都能用 `restoreSpendLease` 结算。结果未知照规则走：create 可能已到 provider、或 kill 没得到确认（行记 `lost`），预留都留给 TTL 清扫按预估计费；provider 明确拒绝的 create 才释放。
 - MCP：独立资源组 `mcp:computer`（不并进 `services`：能跑任意代码、能上网，和付费查询不是一种授权）。`computer_exec`（写，命令 ≤10 分钟，输出各截 200KB，长回复走 `tool_output_read`）、`computer_files`（读：list / read ≤1MB）、`computer_transfer`（写：档案库 → 电脑 ≤25MB；电脑 → 档案库 ≤5MB，默认个人架）、`computer_stop`（写）。写走 `governProxyWrite` 留痕，`openWorldHint:true`。
 - 驱动：`computer/e2b/` 从 v2 的 `packages/providers/src/sandbox/e2b` 搬了控制面（create / connect / timeout / kill，纯 HTTP）和 envd 进程 API；文件改走 envd 的 `/files` HTTP 接口（v2 走自己的 bridge，stock 模板没有）。没搬：桌面 / 浏览器 / VNC / DevTools bridge、pause/resume、备份、自定义模板、每 Agent 一台、出网 nft 规则（stock 模板里成员本来就能 sudo，沙箱里不放任何 Greenhouse 密钥）。沙箱建时关公网入站、在 provider 边缘拒私网段。测试一律用 `setComputerDriverForTests` 的假驱动，不连 E2B。
+- 网页：设置 › 云电脑（成员：状态、本月分钟、开 / 停）；服务与计价的 `computer` 行显示开关 / 已配置 / 每分钟价，并列出正在运行的电脑（管理员可停，审计 `stopMemberComputer`）。
 
 ### Agent Profiles
 - Profile YAML 文件放在 `profiles/` 目录
