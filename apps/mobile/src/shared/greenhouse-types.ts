@@ -252,3 +252,90 @@ export interface TaskComment {
   created_at: string;
   user_nickname?: string | null;
 }
+
+// ─── tables (/api/tables, routes/tables.ts; feature `tables`) ───────
+
+export type TableRole = 'owner' | 'builder' | 'editor' | 'viewer';
+
+export interface TableBase {
+  id: number;
+  name: string;
+  description: string | null;
+  visibility: 'private' | 'team';
+  owner_id: string;
+  created_at: string;
+  updated_at: string;
+  archived_at?: string | null;
+  role?: TableRole;
+}
+
+export interface TableDef {
+  id: number;
+  base_id: number;
+  name: string;
+  description: string | null;
+  position: number;
+  schema_revision: number;
+  archived_at: string | null;
+}
+
+export type TableFieldType =
+  | 'text'
+  | 'long_text'
+  | 'number'
+  | 'boolean'
+  | 'date'
+  | 'datetime'
+  | 'single_select'
+  | 'multi_select'
+  | 'user'
+  | 'multi_user'
+  | 'url'
+  | 'email'
+  | 'phone'
+  | 'attachment'
+  | 'relation'
+  | 'formula'
+  | 'rollup';
+
+export interface TableField {
+  id: number;
+  table_id: number;
+  name: string;
+  type: TableFieldType | string;
+  required: boolean;
+  is_primary: boolean;
+  /** JSON text (`{ options: [{ id, label, color? }] }` for selects). */
+  config: string | null;
+  position: number;
+  archived_at: string | null;
+}
+
+export interface TableRecord {
+  id: number;
+  table_id: number;
+  /** Keyed by field id as a string. */
+  values: Record<string, unknown>;
+  computed_values?: Record<string, unknown> | null;
+  revision: number;
+  created_by: string;
+  updated_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TableSchema {
+  table: TableDef;
+  fields: TableField[];
+}
+
+export interface TableRecordPage {
+  records: TableRecord[];
+  total: number;
+  nextCursor: string | null;
+}
+
+export interface TableUser {
+  id: string;
+  nickname: string | null;
+}
