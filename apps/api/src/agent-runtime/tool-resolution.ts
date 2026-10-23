@@ -16,6 +16,8 @@ import { normalizeAutomationOptInTools } from '@greenhouse/types/automation-tool
 import { resolveUserTools, selectTools } from '../agent.js';
 import type { ToolRegistry } from '../agent.js';
 import { createFeatureRequestTool } from '../tools/feature-request.js';
+import { createFilesQueryTool } from '../tools/files-query.js';
+import { createFilesMutationTool } from '../tools/files-mutation.js';
 // Derived from the catalog (kind !== 'static' + route-constructed special metas) — see registry.
 import {
   BUILTIN_AGENT_TOOL_IDS,
@@ -303,6 +305,15 @@ export function buildLazyServerTools(
   }
   if (effectiveTools.includes('knowledge_mutation')) {
     tools.knowledge_mutation = createKnowledgeMutationTool(db, { userId });
+  }
+  // Files (the knowledge cabinet) — every node is authorized inside
+  // drive/kb-cabinet.ts, and like automations they belong to a user, not to a
+  // conversation, so the stateless proxy/MCP surfaces reach them too.
+  if (effectiveTools.includes('files_query')) {
+    tools.files_query = createFilesQueryTool(db, { userId });
+  }
+  if (effectiveTools.includes('files_mutation')) {
+    tools.files_mutation = createFilesMutationTool(db, { userId });
   }
   // Skill Center writes — owner/super checks live in skills/center.ts; the
   // read side (skill_query) is static and comes from the base registry.

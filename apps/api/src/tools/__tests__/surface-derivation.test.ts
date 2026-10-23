@@ -52,6 +52,8 @@ describe('surface-derived exposure sets', () => {
         // 2026-08-05: mailbox reading returns after the 0.18.0 removal. Read is
         // safe to expose broadly; the write half is confirm-gated below.
         'email_query',
+        // v1.5: the team's file cabinet (Files), authorized per node by drive access.
+        'files_query',
       ].sort(),
     );
   });
@@ -65,6 +67,7 @@ describe('surface-derived exposure sets', () => {
         'tables_mutation',
         'automation_mutation',
         'email_mutation',
+        'files_mutation',
       ].sort(),
     );
   });
@@ -94,6 +97,10 @@ describe('surface-derived exposure sets', () => {
         // collapsing two-step confirmation into one. email_query left with it:
         // a private inbox is not something to hand a third-party client.
         // Both keep their proxy tier (CLI + Mission sandbox still use them).
+        // v1.5: members' agents reach the team's files in their own `files`
+        // group; writes are recorded and deletes take the preview round trip.
+        'files_query',
+        'files_mutation',
       ].sort(),
     );
   });
@@ -175,6 +182,8 @@ describe('surface-derived exposure sets', () => {
         'workbench_mutation',
         'email_query',
         'email_mutation',
+        'files_query',
+        'files_mutation',
       ].sort(),
     );
   });

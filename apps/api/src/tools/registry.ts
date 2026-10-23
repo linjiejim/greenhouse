@@ -45,6 +45,8 @@ import { emailMutationTool } from './email-mutation.js';
 import { memoryTool } from './memory.js';
 import { logFrictionTool } from './log-friction.js';
 import { workbenchQueryTool, workbenchMutationTool } from './workbench.js';
+import { filesQueryTool } from './files-query.js';
+import { filesMutationTool } from './files-mutation.js';
 
 // ─── Catalog ─────────────────────────────────────────────
 
@@ -79,6 +81,8 @@ const CORE_TOOL_MODULES: ToolModule[] = [
   logFrictionTool,
   workbenchQueryTool,
   workbenchMutationTool,
+  filesQueryTool,
+  filesMutationTool,
 ];
 
 /** Static tools (constructed once from the shared db) — drives createToolRegistry. */

@@ -17,6 +17,7 @@ export const COUNTED_TOP_LEVEL_ROUTES = [
   'knowledge',
   'projects',
   'tables',
+  'files',
   'automations',
   'tasks',
   'agents',

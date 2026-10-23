@@ -7,7 +7,7 @@
  * this service is pure data.
  */
 
-import { and, asc, eq, isNull, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, isNull, sql } from 'drizzle-orm';
 import { nowIso } from '@greenhouse/utils/date';
 
 import type { Db } from '../client.js';
@@ -194,6 +194,88 @@ export function createDriveService(db: Db) {
     async getFile(id: number): Promise<DriveFileRow | undefined> {
       const rows = await db.select().from(driveFiles).where(eq(driveFiles.id, id)).limit(1);
       return rows[0];
+    },
+
+    /**
+     * Rename and/or move an active file. `folder_id: null` moves it to the root
+     * of its scope; omitting a field leaves it untouched. Like updateFolder, the
+     * caller owns the scope/ownership checks on both ends — this is pure data.
+     */
+    async updateFile(
+      id: number,
+      patch: { name?: string; folder_id?: number | null },
+    ): Promise<DriveFileRow | undefined> {
+      const values: Partial<DriveFileRow> = { updated_at: nowIso() };
+      if (patch.name !== undefined) values.name = patch.name;
+      if (patch.folder_id !== undefined) values.folder_id = patch.folder_id;
+      const [row] = await db
+        .update(driveFiles)
+        .set(values)
+        .where(and(eq(driveFiles.id, id), eq(driveFiles.status, 'active')))
+        .returning();
+      return row;
+    },
+
+    /**
+     * Name search over the knowledge cabinet one user may read: every team node
+     * plus that user's own personal nodes (the kb access model — there is no
+     * folder sharing). Newest first, capped; the caller still authorizes each row.
+     */
+    async searchKb(opts: {
+      userId: string;
+      query: string;
+      limit?: number;
+    }): Promise<{ folders: DriveFolderRow[]; files: DriveFileRow[] }> {
+      const limit = Math.min(Math.max(opts.limit ?? 20, 1), 50);
+      const pattern = `%${opts.query.replace(/[\\%_]/g, (ch) => `\\${ch}`)}%`;
+      const [folders, files] = await Promise.all([
+        db
+          .select()
+          .from(driveFolders)
+          .where(
+            and(
+              eq(driveFolders.scope, 'kb'),
+              sql`${driveFolders.name} ILIKE ${pattern}`,
+              sql`(${driveFolders.visibility} = 'team' OR ${driveFolders.owner_user_id} = ${opts.userId})`,
+            ),
+          )
+          .orderBy(desc(driveFolders.updated_at), desc(driveFolders.id))
+          .limit(limit),
+        db
+          .select()
+          .from(driveFiles)
+          .where(
+            and(
+              eq(driveFiles.scope, 'kb'),
+              eq(driveFiles.status, 'active'),
+              sql`${driveFiles.name} ILIKE ${pattern}`,
+              sql`(${driveFiles.visibility} = 'team' OR ${driveFiles.owner_user_id} = ${opts.userId})`,
+            ),
+          )
+          .orderBy(desc(driveFiles.updated_at), desc(driveFiles.id))
+          .limit(limit),
+      ]);
+      return { folders, files };
+    },
+
+    /**
+     * The newest active knowledge-cabinet files one user may read (team files +
+     * their own personal ones), for activity feeds. Bounded by `limit` (≤ 50).
+     */
+    async listRecentKbFiles(opts: { userId: string; limit?: number }): Promise<DriveFileRow[]> {
+      const limit = Math.min(Math.max(opts.limit ?? 20, 1), 50);
+      return db
+        .select()
+        .from(driveFiles)
+        .where(
+          and(
+            eq(driveFiles.scope, 'kb'),
+            eq(driveFiles.status, 'active'),
+            sql`(${driveFiles.visibility} = 'team' OR ${driveFiles.owner_user_id} = ${opts.userId})`,
+          ),
+        )
+        .orderBy(desc(driveFiles.created_at), desc(driveFiles.id))
+        .limit(limit);
     },
 
     /**

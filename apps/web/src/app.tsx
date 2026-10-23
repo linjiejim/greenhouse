@@ -27,6 +27,7 @@ const PersonalTasksPage = lazy(() => import('./pages/tasks').then((m) => ({ defa
 const SkillHubPage = lazy(() => import('./pages/skillhub').then((m) => ({ default: m.SkillHubPage })));
 const ExecutionCenterPage = lazy(() => import('./pages/executions').then((m) => ({ default: m.ExecutionsPage })));
 const TablesPage = lazy(() => import('./pages/tables').then((m) => ({ default: m.TablesPage })));
+const FilesPage = lazy(() => import('./pages/files').then((m) => ({ default: m.FilesPage })));
 const OAuthConsentPage = lazy(() => import('./pages/oauth-consent').then((m) => ({ default: m.OAuthConsentPage })));
 const AccountPasswordPage = lazy(() =>
   import('./pages/account-password').then((m) => ({ default: m.AccountPasswordPage })),
@@ -121,6 +122,7 @@ type Route =
   | 'design'
   | 'knowledge'
   | 'tables'
+  | 'files'
   | 'skillhub'
   | 'tasks'
   | 'executions';
@@ -217,6 +219,7 @@ const CORE_ROUTES: ReadonlySet<string> = new Set([
   'design',
   'knowledge',
   'tables',
+  'files',
   'skillhub',
   'tasks',
   'executions',
@@ -812,6 +815,7 @@ function AppShell({ route, subPath, params, extensionRoute }: AppShellProps) {
                   <KnowledgePage subPath={subPath} basePath="#/knowledge" />
                 )}
                 {route === 'tables' && hasApplication('tables') && <TablesPage subPath={subPath} />}
+                {route === 'files' && <FilesPage params={params} />}
                 {route === 'executions' && <ExecutionCenterPage subPath={subPath} params={params} />}
                 {route === 'extension' && (
                   <ExtensionPageHost route={extensionRoute ?? ''} subPath={subPath} params={params} />

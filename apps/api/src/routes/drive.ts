@@ -19,13 +19,19 @@
  *   PUT    /folders/:id                                     — rename and/or move
  *   DELETE /folders/:id                                     — delete (must be empty)
  *   GET    /breadcrumb?folder_id                            — ancestor chain
+ *   GET    /search?q&limit                                  — name search over the knowledge cabinet
+ *                                                             (team + my personal nodes)
  * Files:
  *   GET    /files?scope&base_id|visibility&folder_id        — list active files
  *   POST   /files/init                                      — start an upload (presign or proxy)
  *   POST   /files/:id/complete                              — confirm a presigned upload
  *   PUT    /files/:id/content                               — proxy upload (local/fallback)
  *   GET    /files/:id/content                               — forced attachment download (302 or stream)
+ *   PUT    /files/:id                                       — rename and/or move
  *   DELETE /files/:id                                       — soft-delete + GC the object
+ *
+ * Every successful write is also recorded in the platform audit (drive/audit.ts)
+ * so the Activity log can show who changed which file.
  */
 
 import { Hono } from 'hono';
@@ -38,7 +44,15 @@ import { logger } from '@greenhouse/utils/logger';
 import { toErrorMessage } from '@greenhouse/utils/error';
 import { getAuthUser } from '../auth/middleware.js';
 import { contentDisposition } from '../http/content-disposition.js';
-import { resolveDriveAccessAsync, isKnownDriveScope, canReadDrive, canWriteDrive } from '../drive/access.js';
+import {
+  resolveDriveAccessAsync,
+  isKnownDriveScope,
+  canReadDrive,
+  canWriteDrive,
+  sameDriveCabinet,
+} from '../drive/access.js';
+import { recordDriveChange } from '../drive/audit.js';
+import { searchCabinet } from '../drive/kb-cabinet.js';
 import type { DriveAccessNode } from '../drive/access.js';
 import { validateDriveUpload, safeDriveContentType, MAX_DRIVE_FILE_SIZE } from '../drive/upload-policy.js';
 import {
@@ -182,6 +196,19 @@ const fileInitSchema = z.object({
   content_type: z.string().optional(),
 });
 
+// `folder_id: null` moves the file to the root; omitting a key leaves it as is.
+const fileUpdateSchema = z
+  .object({
+    name: z
+      .string()
+      .min(1)
+      .transform((s) => s.trim())
+      .refine((s) => s.length > 0, 'name is required')
+      .optional(),
+    folder_id: z.number().int().positive().nullable().optional(),
+  })
+  .refine((v) => v.name !== undefined || v.folder_id !== undefined, 'nothing to update');
+
 // ─── Routes ──────────────────────────────────────────────
 
 const drive = new Hono<AppEnv>()
@@ -244,6 +271,7 @@ const drive = new Hono<AppEnv>()
       owner_user_id: keys.owner_user_id,
       created_by: getAuthUser(c).id,
     });
+    await recordDriveChange(db, humanActor(getAuthUser(c), c), 'createFolder', { kind: 'folder', ...folder });
     return c.json({ folder });
   })
   .put('/folders/:id', async (c) => {
@@ -263,13 +291,7 @@ const drive = new Hono<AppEnv>()
     if (parent_id != null) {
       const parent = await db.drive.getFolder(parent_id);
       if (!parent) return c.json({ error: 'parent folder not found' }, 404);
-      if (
-        parent.scope !== folder.scope ||
-        parent.visibility !== folder.visibility ||
-        parent.owner_user_id !== folder.owner_user_id ||
-        parent.base_id !== folder.base_id ||
-        parent.owner_key !== folder.owner_key
-      ) {
+      if (!sameDriveCabinet(parent, folder)) {
         return c.json({ error: 'parent folder is in a different scope' }, 400);
       }
       if (!canWriteDrive(await accessFor(c, toNode(parent), 'write'))) return c.json({ error: 'forbidden' }, 403);
@@ -281,6 +303,7 @@ const drive = new Hono<AppEnv>()
         ? c.json({ error: 'cannot move a folder into itself or its own subfolder' }, 400)
         : c.json({ error: 'not found' }, 404);
     }
+    await recordDriveChange(db, humanActor(getAuthUser(c), c), 'updateFolder', { kind: 'folder', ...result.folder });
     return c.json({ folder: result.folder });
   })
   .delete('/folders/:id', async (c) => {
@@ -291,6 +314,7 @@ const drive = new Hono<AppEnv>()
     if (!canWriteDrive(await accessFor(c, toNode(folder), 'write'))) return c.json({ error: 'forbidden' }, 403);
     const result = await db.drive.deleteFolder(id);
     if (!result.ok) return c.json({ error: result.reason }, result.reason === 'not_empty' ? 409 : 404);
+    await recordDriveChange(db, humanActor(getAuthUser(c), c), 'deleteFolder', { kind: 'folder', ...folder });
     return c.json({ ok: true });
   })
   .get('/breadcrumb', async (c) => {
@@ -301,6 +325,16 @@ const drive = new Hono<AppEnv>()
     if (!folder) return c.json({ error: 'not found' }, 404);
     if (!canReadDrive(await accessFor(c, toNode(folder), 'read'))) return c.json({ error: 'forbidden' }, 403);
     return c.json({ folders: await db.drive.breadcrumb(folderId) });
+  })
+  .get('/search', async (c) => {
+    // The knowledge cabinet only: team nodes plus the caller's own personal ones.
+    const query = (c.req.query('q') ?? '').trim();
+    if (!query) return c.json({ folders: [], files: [] });
+    const user = getAuthUser(c);
+    const limit = parseIntOrNull(c.req.query('limit')) ?? undefined;
+    const result = await searchCabinet({ db: getDb(), userId: user.id, actor: humanActor(user, c) }, { query, limit });
+    if ('error' in result) return c.json({ error: result.error }, 400);
+    return c.json(result);
   })
   // ── Files ──
   .get('/files', async (c) => {
@@ -336,6 +370,11 @@ const drive = new Hono<AppEnv>()
     const keys = buildScopeKeys(c, scope, { base_id, visibility, owner_key });
     if ('error' in keys) return c.json({ error: keys.error }, 400);
     if (!canWriteDrive(await accessFor(c, keys, 'write'))) return c.json({ error: 'forbidden' }, 403);
+    // The target folder must sit in the same cabinet the file is filed under.
+    if (folder_id) {
+      const folder = await getDb().drive.getFolder(folder_id);
+      if (!folder || !sameDriveCabinet(folder, keys)) return c.json({ error: 'folder not found' }, 404);
+    }
 
     const cosKey = driveKeyFor({
       scope,
@@ -388,6 +427,15 @@ const drive = new Hono<AppEnv>()
       return c.json({ error: 'file too large' }, 400);
     }
     const completed = await db.drive.completeFile(id, { size });
+    if (completed) {
+      await recordDriveChange(
+        db,
+        humanActor(getAuthUser(c), c),
+        'uploadFile',
+        { kind: 'file', ...completed },
+        { size },
+      );
+    }
     return c.json({ file: completed ?? file });
   })
   .put(
@@ -406,6 +454,17 @@ const drive = new Hono<AppEnv>()
       const buffer = Buffer.from(await c.req.arrayBuffer());
       await putObjectAtKey(file.cos_key, buffer, safeDriveContentType(file.name));
       const completed = await db.drive.completeFile(id, { size: buffer.length });
+      if (completed) {
+        await recordDriveChange(
+          db,
+          humanActor(getAuthUser(c), c),
+          'uploadFile',
+          { kind: 'file', ...completed },
+          {
+            size: buffer.length,
+          },
+        );
+      }
       return c.json({ file: completed ?? file });
     },
   )
@@ -432,6 +491,37 @@ const drive = new Hono<AppEnv>()
     c.header('Content-Disposition', contentDisposition(file.name));
     return c.body(Uint8Array.from(obj.buffer).buffer);
   })
+  .put('/files/:id', async (c) => {
+    const id = Number(c.req.param('id'));
+    const parsed = fileUpdateSchema.safeParse(await c.req.json().catch(() => null));
+    if (!parsed.success) return c.json({ error: 'invalid input' }, 400);
+
+    const db = getDb();
+    const file = await db.drive.getFile(id);
+    if (!file || file.status !== 'active') return c.json({ error: 'not found' }, 404);
+    if (!canWriteDrive(await accessFor(c, toNode(file), 'write'))) return c.json({ error: 'forbidden' }, 403);
+
+    const { name, folder_id } = parsed.data;
+    // A rename may not turn a document into something the upload policy refuses
+    // (an .html or .exe would still download as an attachment, but it should
+    // never have been accepted in the first place).
+    if (name !== undefined) {
+      const valid = validateDriveUpload({ name, size: file.size });
+      if (!valid.ok) return c.json({ error: valid.error }, 400);
+    }
+    // Same rule as a folder move: both ends authorized, never across cabinets.
+    if (folder_id != null) {
+      const folder = await db.drive.getFolder(folder_id);
+      if (!folder) return c.json({ error: 'folder not found' }, 404);
+      if (!sameDriveCabinet(folder, file)) return c.json({ error: 'folder is in a different scope' }, 400);
+      if (!canWriteDrive(await accessFor(c, toNode(folder), 'write'))) return c.json({ error: 'forbidden' }, 403);
+    }
+
+    const updated = await db.drive.updateFile(id, { name, folder_id });
+    if (!updated) return c.json({ error: 'not found' }, 404);
+    await recordDriveChange(db, humanActor(getAuthUser(c), c), 'updateFile', { kind: 'file', ...updated });
+    return c.json({ file: updated });
+  })
   .delete('/files/:id', async (c) => {
     const id = Number(c.req.param('id'));
     const db = getDb();
@@ -444,6 +534,9 @@ const drive = new Hono<AppEnv>()
     deleteObjectAtKey(file.cos_key).catch((err) =>
       logger.warn(`[Drive] object GC failed for ${file.cos_key}: ${toErrorMessage(err)}`),
     );
+    if (file.status === 'active') {
+      await recordDriveChange(db, humanActor(getAuthUser(c), c), 'deleteFile', { kind: 'file', ...file });
+    }
     return c.json({ ok: true });
   });
 

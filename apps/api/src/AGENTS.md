@@ -96,6 +96,13 @@ v1 只接 DeepSeek 与 OpenAI 兼容服务，它们**自动**缓存 prompt 前�
 - 预签名下载（`presignGetUrl` → `/api/chat-files/:id/content`、`/api/drive/files/:id/content` 鉴权后 302 到 COS）**吃 CSP 的 `connect-src`**：前端 `downloadAuthenticatedFile()` 用 `fetch` 取字节，`fetch` 跟随重定向后**目标域要单独过 `connect-src`**，所以 `security/security.ts` 那条必须带 `https://*.myqcloud.com`。此前只有 `img-src`/`media-src`/`frame-src` 放行了它，于是图片预览一直正常、只有下载被 block（2026-07-30 修）。**本地 `pnpm dev` 复现不出来**——页面由 Vite 提供、根本不带 CSP 头，只有部署环境（api 直接 serve 打包产物）才有；回归护栏是 `security-headers.test.ts`。另一半前提在云上：COS 桶的 CORS 白名单必须含站点 origin（含端口）。
 - `routes/upload.ts` 的 `GET /api/upload/:id` 是私有 bucket 的回源代理。浏览器 `<img>` 不能附加 Bearer header，因此该 GET 在中央 auth allowlist 中公开读取；对象 id 必须保持 `timestamp + 完整 UUID` 的不可枚举格式。`POST /api/upload` 仍要求内部账号，不得把公开读取扩展到上传、列表或删除。
 
+### 档案库（`/api/drive` 的 kb 架 + `files_*` 工具，v1.5）
+
+- 档案库页 `#/files` 就是知识库目录的文件面：drive scope `kb`，团队架（`visibility='team'`）+ 个人架（`private` + 本人）。没有新存储路径、没有新表。
+- `PUT /api/drive/files/:id` 改名/移动：两端都鉴权，`sameDriveCabinet` 不许跨架；改名必须再过 `validateDriveUpload`（不然 `.txt` 能改成 `.html`）。`POST /files/init` 的 `folder_id` 也必须在同一个架里。
+- `GET /api/drive/search?q=` 只搜知识库档案（团队 + 本人），每行再过一次 `resolveDriveAccess`。
+- **drive 的写入记平台审计**（`drive/audit.ts`，`app_id='drive'`、entity `file|folder`）：drive 不是已注册的平台应用、不走 dispatch，路由和 `files_*` 工具各自在成功后记一行，操作记录据此显示「谁改了哪个文件」。审计写失败只 warn，不让已完成的写失败。
+
 ### 聊天附件（`/api/chat-files` + `read_attachment`）
 
 - **一个上传口，任意文件类型**：`POST /api/chat-files/upload`（multipart，≤100MB/个、每用户 5GB 配额）写 `chat_files` 行（`source='user'`），下载走既有 `GET /api/chat-files/:id/content`（跟随会话读权限 + no-store + 预签名 302）。方案见 [附件与预设收敛 spec](../../../docs/specs/20260731-attachment-and-preset-convergence.md)。
@@ -434,10 +441,11 @@ v1 只接 DeepSeek 与 OpenAI 兼容服务，它们**自动**缓存 prompt 前�
   - **存储不建表**：对象放在既有存储驱动的 `drive/mcp-output/<sha256(成员+客户端)>/<output_id>.json`。读取时用**调用方**的成员与 OAuth 客户端重算 key，别的成员或同一成员的另一个客户端只会拿到「not found or expired」——鉴权就是 key 本身，没有行可查也没有存在性可泄露。`chat_files` 不能用：每行必须挂在一个聊天会话上，而 MCP 调用没有会话。
   - `output_id` 自带创建时间：读取时先按它判 24 小时过期（不等清扫），清扫（`index.ts` 的五分钟 upkeep）只靠列举前缀删过期对象；前缀下形状不对的 key 一律不碰。单份存储上限 4,000,000 字符（超出时句柄带 `stored_chars`）。存储写失败不让调用失败（写入可能已执行）：照样返回句柄（`output_id:null`）+ 预览。
   - 只在 MCP 面；`/api/agent`（CLI）不截断。
-- **暴露范围**：`MCP_EXPOSED_TOOL_IDS`（由各工具 `meta.surface` 派生，见 `tools/registry.ts`）= knowledge + project + tables + chat + skills + automation（只读）+ 生图（`generate_image`，2026-07-23 开放，见下）。工具须同时有 proxy 读/写 tier。
+- **暴露范围**：`MCP_EXPOSED_TOOL_IDS`（由各工具 `meta.surface` 派生，见 `tools/registry.ts`）= knowledge + files + project + tables + chat + skills + automation（只读）+ 生图（`generate_image`，2026-07-23 开放，见下）。工具须同时有 proxy 读/写 tier。
   - **2026-08-16 摘掉三个**：`email_query` / `email_mutation` / `automation_mutation`（proxy tier 原样保留，CLI 照常用）。理由不是"风险大"这种泛泛判断，而是**它们的安全模型在 MCP 上不成立**：`email_mutation` 的全部安全性来自"用户读了那张草稿卡"——draft 把 token 交给模型、send 发服务端存的草稿，中间那道人读的门是承重的；MCP 上 `user_confirmed` 与合成的 `confirm` 都由调用方模型自填，两段确认坍缩成一段。同一条理由早已把它写进 `UNATTENDED_TOOL_DENYLIST`，而 **client_credentials 机器客户端就是无人值守**。email 又是全部写工具里唯一外发、不可逆、发出去收不回的通道。`email_query` 一并摘掉：私人收件箱全文不该交给第三方客户端。`automation_mutation` 是自我增殖（"能建定时任务的定时任务"），当前有三层兜底所以不算在救火，但重开无人值守写权限前先关掉这条侧门。**别用"加 approval lease"复活它们**——那套形状服务的是长任务里等人拍板，MCP 是同步请求-响应，调用方会阻塞等人点按钮。
   - chat：只读 `session_query`（已在只读白名单；`session_history` 2026-08-07 并入其 search/messages，旧名经 `normalizeLegacyToolCall` 别名兼容）；MCP 不提供直接驱动聊天的端点。
   - skills：技能中心 `skill_query`(读：find/get/download/check_updates)/`skill_mutation`(写：publish/update_meta/archive/unarchive/delete)——owner/super 校验在 `skills/center.ts`，与 `/api/skills` 路由共用同一实现；外部 agent 可经 MCP 发布/同步团队技能。
+  - files（v1.5，独立资源组 `mcp:files`，存量 grant 不自动获得）：档案库 `files_query`（读：files.list/search/get/read/download_url）/`files_mutation`（写：folders.create/update/delete、files.upload/update/delete）。只覆盖知识库档案（drive scope `kb`：团队架 + 本人个人架），实现只有一份 `drive/kb-cabinet.ts`，每个节点都过 `resolveDriveAccess`，移动不跨架；上传 ≤5MB（`drive/cabinet-limits.ts`）、改名同样过上传黑名单；下载链接只在配了对象存储时给（5 分钟预签名），本地存储明确报错并指向 files.read。删除类动作自动走预览 → confirm:true。
 - 审计：每次 `tools/call` 经 `recordMcpAudit` 写 `api_audit_log`（`channel='a2a'` 枚举沿用、`app_id`=OAuth client id、绑定 `user_id`）；平台侧 actor `authMethod` 区分 `oauth`（人授权）/`oauth-client`（机器凭证）。
 - 机器客户端管理：`/api/admin/platform/oauth/machine-clients`（仅 super，routes/platform-admin.ts）：create（返回一次性 `lpoa_cs_` secret）/rotate-secret/disable（级联撤 grant+token，re-enable 自动恢复机器 grant）/delete/per-client audit；创建即校验被绑用户 active/内部并 upsert 机器 grant。DCR (`/oauth/register`) 保持 public-only，机器客户端不可自助注册。
 - 性能：用户的 effective 工具集（flag / user_tools）**每请求重新解析**（两次轻量 DB 读），60s 的 `CONTEXT_TTL_MS` 缓存只免注册表构建——cache key 含 effectiveTools 签名，任何权限变化即 miss；Platform 工具可见性与 OAuth token/grant/client/user 状态同样不缓存。**撤权（含 flag 关闭与 user_tools 收回）一律下一请求生效**。flag→工具的门控只在 `resolveUserTools` 一处（由 `FEATURE_POINTS` 派生），本路由不再二次门控——曾经手写的第二份 CRM/Tables 工具表与 feature-points 漂移过，跨渠道口径由 `tests/api/channel-tool-parity.db.test.ts` 钉住。

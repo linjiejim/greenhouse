@@ -129,6 +129,31 @@ export async function deleteDriveFolder(id: number): Promise<void> {
   await jsonReq(`/api/drive/folders/${id}`, 'DELETE');
 }
 
+/** Rename and/or move a file. `folder_id: null` moves it to the root of its cabinet. */
+export async function updateDriveFile(
+  id: number,
+  patch: { name?: string; folder_id?: number | null },
+): Promise<DriveFile> {
+  const { file } = await jsonReq<{ file: DriveFile }>(`/api/drive/files/${id}`, 'PUT', patch);
+  return file;
+}
+
+/** Name search over the knowledge cabinet: team files plus the caller's personal ones. */
+export async function searchKnowledgeCabinet(
+  query: string,
+  limit = 30,
+): Promise<{ folders: DriveFolder[]; files: DriveFile[] }> {
+  return jsonReq<{ folders: DriveFolder[]; files: DriveFile[] }>(
+    `/api/drive/search?q=${encodeURIComponent(query)}&limit=${limit}`,
+    'GET',
+  );
+}
+
+/** Authenticated content URL of a file (download, or preview as a blob). */
+export function driveFileContentUrl(file: Pick<DriveFile, 'id'>): string {
+  return `/api/drive/files/${file.id}/content`;
+}
+
 export async function deleteDriveFile(id: number): Promise<void> {
   await jsonReq(`/api/drive/files/${id}`, 'DELETE');
 }
@@ -170,7 +195,7 @@ export async function uploadDriveFile(owner: DriveOwner, folderId: number | null
  * short-lived presigned COS URL, which fetch follows).
  */
 export async function downloadDriveFile(file: DriveFile): Promise<void> {
-  return downloadAuthenticatedFile(`/api/drive/files/${file.id}/content`, file.name).catch(() => {
+  return downloadAuthenticatedFile(driveFileContentUrl(file), file.name).catch(() => {
     throw new Error('下载失败');
   });
 }

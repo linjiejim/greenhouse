@@ -157,6 +157,7 @@ import {
   Monitor,
   MonitorDown,
   FolderOpen,
+  FolderInput,
   Folder,
   FolderPlus,
   ScrollText,
@@ -363,6 +364,7 @@ export {
   Monitor,
   MonitorDown,
   FolderOpen,
+  FolderInput,
   Folder,
   FolderPlus,
   ScrollText,
@@ -448,6 +450,8 @@ export const TOOL_ICONS: Record<string, LucideIcon> = {
   tables_query: Table2,
   tables_mutation: Table2,
   tables_schema_plan: Columns3,
+  files_query: FolderOpen,
+  files_mutation: FolderOpen,
 };
 
 /** Get the Lucide icon for a tool name. */

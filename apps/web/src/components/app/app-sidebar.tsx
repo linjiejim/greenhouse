@@ -50,6 +50,7 @@ type Route =
   | 'design'
   | 'knowledge'
   | 'tables'
+  | 'files'
   | 'skillhub'
   | 'tasks'
   | 'executions';

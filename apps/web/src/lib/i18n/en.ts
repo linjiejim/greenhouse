@@ -778,6 +778,17 @@ export default {
     personalKnowledgeDesc: 'Private personal documents',
     newDocument: 'New Document',
     newDocumentDesc: 'Create a knowledge document',
+    // v1.5 navigation by goal
+    files: 'Files',
+    filesDesc: 'The team’s files and your own — folders, uploads and previews',
+  },
+
+  files: {
+    teamShelf: 'Team files',
+    personalShelf: 'My files',
+    searchPlaceholder: 'Search files by name',
+    noResults: 'No files match',
+    noResultsHint: 'Try another part of the name. Search covers team files and your own.',
   },
 
   // Desktop-only pages and native update feedback
@@ -1150,6 +1161,7 @@ export default {
       label: 'Knowledge base',
       description: 'Search and read team and personal documents.',
     },
+    files: { label: 'Files', description: 'Browse, read and upload files on the team and your personal shelf.' },
     projects: { label: 'Projects', description: 'Read projects and their tasks.' },
     tables: { label: 'Tables', description: 'Read records in the team’s tables.' },
     skills: { label: 'Skill Center', description: 'Browse and download shared agent skills.' },
@@ -2313,6 +2325,13 @@ export default {
     deleteFileTitle: 'Delete file?',
     deleteFileConfirm: '“{name}” will be deleted',
     deleteFolderConfirm: '“{name}” will be deleted (the folder must be empty first)',
+    rename: 'Rename',
+    newName: 'New name',
+    move: 'Move',
+    moveTitle: 'Move “{name}” to…',
+    moveHere: 'Move here',
+    preview: 'Preview',
+    previewFailed: 'This file cannot be previewed',
   },
 
   toolSpawn: {

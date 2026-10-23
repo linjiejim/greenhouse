@@ -28,6 +28,7 @@ import {
   Table2,
   FolderKanban,
   Monitor,
+  FolderOpen,
 } from './icons';
 import type { LucideIcon } from './icons';
 import type { FeatureKey } from '@greenhouse/types/features';
@@ -270,6 +271,15 @@ const KNOWLEDGE_MODULES: NavModule[] = [];
 // here lets them share ModulePage without creating a second header registry.
 const STANDALONE_MODULES: NavModule[] = [
   {
+    id: 'workspace.files',
+    label: 'Files',
+    icon: FolderOpen,
+    path: '#/files',
+    parent: 'standalone',
+    description: 'The team’s files and your own — folders, uploads and previews',
+    pinnable: false,
+  },
+  {
     id: 'workspace.tasks',
     label: 'Tasks',
     icon: ClipboardList,
@@ -372,6 +382,7 @@ const NAV_COPY: Record<string, { label: TranslationKey; description?: Translatio
   },
   'admin.frictions': { label: 'navigation.frictions', description: 'navigation.frictionsDesc' },
   'admin.mcp-keys': { label: 'navigation.mcpAccess', description: 'navigation.mcpAccessDesc' },
+  'workspace.files': { label: 'navigation.files', description: 'navigation.filesDesc' },
   'workspace.tasks': { label: 'navigation.myPrompts', description: 'navigation.tasksDesc' },
   'workspace.automations': { label: 'navigation.automation', description: 'navigation.automationDesc' },
   'workspace.agents': { label: 'navigation.myAgents', description: 'navigation.myAgentsDesc' },

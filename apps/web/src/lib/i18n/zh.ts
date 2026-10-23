@@ -775,6 +775,17 @@ const zh: Messages = {
     personalKnowledgeDesc: '个人私有文档',
     newDocument: '新建文档',
     newDocumentDesc: '创建知识文档',
+    // v1.5 按目标组织的导航
+    files: '档案库',
+    filesDesc: '团队的文件和你自己的文件——文件夹、上传与预览',
+  },
+
+  files: {
+    teamShelf: '团队文件',
+    personalShelf: '我的文件',
+    searchPlaceholder: '按文件名搜索',
+    noResults: '没有匹配的文件',
+    noResultsHint: '换个关键词试试。搜索范围包括团队文件和你自己的文件。',
   },
 
   // Desktop-only pages and native update feedback
@@ -1129,6 +1140,7 @@ const zh: Messages = {
 
   mcpGroups: {
     knowledge: { label: '知识库', description: '检索和阅读团队与个人文档。' },
+    files: { label: '档案库', description: '浏览、读取和上传团队与个人档案库中的文件。' },
     projects: { label: '项目', description: '读取项目及其任务。' },
     tables: { label: '表格', description: '读取团队表格中的记录。' },
     skills: { label: '技能中心', description: '浏览并下载团队共享的 Agent 技能。' },
@@ -2265,6 +2277,13 @@ const zh: Messages = {
     deleteFileTitle: '删除文件？',
     deleteFileConfirm: '「{name}」将被删除',
     deleteFolderConfirm: '「{name}」将被删除（文件夹需先清空）',
+    rename: '重命名',
+    newName: '新名称',
+    move: '移动',
+    moveTitle: '将「{name}」移动到…',
+    moveHere: '移到这里',
+    preview: '预览',
+    previewFailed: '该文件无法预览',
   },
 
   toolSpawn: {

@@ -95,6 +95,10 @@
     "./usage": {
       "import": "./src/usage.ts",
       "types": "./src/usage.ts"
+    },
+    "./files": {
+      "import": "./src/files.ts",
+      "types": "./src/files.ts"
     }
   },
   "scripts": {

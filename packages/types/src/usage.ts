@@ -54,6 +54,7 @@ export const PAGE_MODULE_IDS = [
   'knowledge',
   'projects',
   'tables',
+  'files',
   'automations',
   'tasks',
   'agents',

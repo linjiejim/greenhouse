@@ -45,6 +45,7 @@ type Route =
   | 'design'
   | 'knowledge'
   | 'tables'
+  | 'files'
   | 'skillhub'
   | 'tasks'
   | 'executions';
@@ -279,6 +280,7 @@ export function TopBar({
     administration: t('app.administration'),
     knowledge: t('app.knowledge'),
     tables: 'Tables',
+    files: t('navigation.files'),
     skillhub: t('app.skillhub'),
     tasks: t('navigation.myPrompts'),
     executions: t('taskCenter.title'),
