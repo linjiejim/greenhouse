@@ -78,6 +78,28 @@ describe('AutomationProfileSelect', () => {
     expect(options).not.toContain('Admin private');
   });
 
+  it('says so and offers a retry when the owner’s run profiles fail to load', async () => {
+    usableBy.mockRejectedValueOnce(new Error('offline'));
+    usableBy.mockResolvedValueOnce([p({ id: 'custom:7', name: 'Maya private', is_custom: true, user_id: 'maya' })]);
+    const options = await render('maya');
+    // Never falls back to the editor's own profiles.
+    expect(options).toEqual(['Sprouty']);
+    const alert = container?.querySelector('[role="alert"]');
+    expect(alert?.textContent).toContain("Couldn't load the owner's run profiles.");
+    await act(async () => {
+      alert?.querySelector('button')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(usableBy).toHaveBeenCalledTimes(2);
+    expect(container?.querySelector('[role="alert"]')).toBeNull();
+    expect([...(container?.querySelectorAll('option') ?? [])].map((o) => o.textContent)).toEqual([
+      'Sprouty',
+      'Maya private',
+    ]);
+  });
+
   it('keeps showing an automation’s pinned run profile version', async () => {
     usableBy.mockResolvedValue([]);
     expect(await render('maya', 'custom:9@3')).toEqual(['Sprouty', 'custom:9@3']);

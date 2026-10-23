@@ -2041,6 +2041,8 @@ export default {
       profiles: 'Run profiles',
     },
     systemProfiles: 'Built-in profiles',
+    ownerProfilesLoading: "Loading the owner's run profiles…",
+    ownerProfilesFailed: "Couldn't load the owner's run profiles.",
     countLabel: '{count} automations',
     create: 'Create',
     createTitle: 'New automation',

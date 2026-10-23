@@ -40,7 +40,9 @@ export function AutomationProfileSelect({
   const t = useT();
   const forOther = !!ownerId && ownerId !== currentUserId;
   const own = automationProfileChoices(profiles, currentUserId);
-  const [ownerRunProfiles, setOwnerRunProfiles] = useState<Profile[] | null>(null);
+  // null while loading; 'error' when the owner's list could not be loaded.
+  const [ownerRunProfiles, setOwnerRunProfiles] = useState<Profile[] | 'error' | null>(null);
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     if (!forOther || !ownerId) return;
@@ -48,36 +50,49 @@ export function AutomationProfileSelect({
     setOwnerRunProfiles(null);
     fetchRunProfilesUsableBy(ownerId)
       .then((items) => alive && setOwnerRunProfiles(items))
-      // On failure offer none rather than the editor's own: the server would refuse those.
-      .catch(() => alive && setOwnerRunProfiles([]));
+      // Never fall back to the editor's own profiles: the server would refuse those.
+      .catch(() => alive && setOwnerRunProfiles('error'));
     return () => {
       alive = false;
     };
-  }, [forOther, ownerId]);
+  }, [forOther, ownerId, attempt]);
 
-  const runProfiles = forOther ? (ownerRunProfiles ?? []) : own.runProfiles;
+  const ownerFailed = forOther && ownerRunProfiles === 'error';
+  const ownerLoading = forOther && ownerRunProfiles === null;
+  const runProfiles = forOther ? (Array.isArray(ownerRunProfiles) ? ownerRunProfiles : []) : own.runProfiles;
   // A stored pin (`custom:<id>@<v>`) keeps showing; picking the profile again re-pins it.
   const pinned = pinnedProfileVersion(value) !== null && !runProfiles.some((p) => p.id === value);
 
   return (
-    <Select value={value} onChange={(event) => onChange(event.target.value)}>
-      <optgroup label={t('automations.systemProfiles')}>
-        {own.system.map((p) => (
-          <option key={p.id} value={p.id}>
-            {p.name}
-          </option>
-        ))}
-      </optgroup>
-      {(runProfiles.length > 0 || pinned) && (
-        <optgroup label={t('automations.tabs.profiles')}>
-          {pinned && <option value={value}>{nameOf(value)}</option>}
-          {runProfiles.map((p) => (
+    <div className="space-y-1">
+      <Select value={value} onChange={(event) => onChange(event.target.value)}>
+        <optgroup label={t('automations.systemProfiles')}>
+          {own.system.map((p) => (
             <option key={p.id} value={p.id}>
               {p.name}
             </option>
           ))}
         </optgroup>
+        {(runProfiles.length > 0 || pinned) && (
+          <optgroup label={t('automations.tabs.profiles')}>
+            {pinned && <option value={value}>{nameOf(value)}</option>}
+            {runProfiles.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </optgroup>
+        )}
+      </Select>
+      {ownerLoading && <p className="text-xs text-fg-muted">{t('automations.ownerProfilesLoading')}</p>}
+      {ownerFailed && (
+        <p role="alert" className="text-xs text-danger">
+          {t('automations.ownerProfilesFailed')}{' '}
+          <button type="button" className="underline" onClick={() => setAttempt((n) => n + 1)}>
+            {t('common.retry')}
+          </button>
+        </p>
       )}
-    </Select>
+    </div>
   );
 }
