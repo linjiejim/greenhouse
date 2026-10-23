@@ -501,8 +501,10 @@ is parsed; the generic OpenAI client drops both (that is how auto-titles went bl
   Create internal test users with `tests/helpers/internal-user.ts`.
 - Every test builds its own fixtures and asserts on ids returned by `create`; never rely on
   fixed serial ids (sequences don't roll back).
-- Parallel worktrees set `TEST_DATABASE_URL=.../greenhouse_test_<slug>`; the safety check only
-  accepts loopback targets whose name contains `test` / `e2e`.
+- Set `TEST_DATABASE_URL` for every local DB test run (parallel worktrees use
+  `.../greenhouse_test_<slug>`); without it the run fails, only CI defaults to
+  `localhost:5432/greenhouse_test`. The safety check only accepts loopback targets whose name
+  contains `test` / `e2e`.
 - Fast feedback: `pnpm test:unit`; database focus: `pnpm test:db`; before landing run the full
   `pnpm test`. Worker counts are tunable via `VITEST_UNIT_MAX_WORKERS` /
   `VITEST_DB_MAX_WORKERS`.
