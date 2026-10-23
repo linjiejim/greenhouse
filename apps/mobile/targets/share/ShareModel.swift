@@ -63,7 +63,8 @@ struct SharedFile {
 
 enum ShareError: Error {
   case signedOut
-  case refused(String)
+  /// The server answered with an error status (see ShareLogic.swift `UploadFailure`).
+  case http(Int, String)
   case network
 }
 
@@ -87,7 +88,7 @@ struct ShareAPI {
     if http.statusCode == 401 { throw ShareError.signedOut }
     guard (200..<300).contains(http.statusCode) else {
       let words = (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?["error"] as? String
-      throw ShareError.refused(words ?? "HTTP \(http.statusCode)")
+      throw ShareError.http(http.statusCode, words ?? "HTTP \(http.statusCode)")
     }
   }
 

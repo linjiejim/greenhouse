@@ -16,7 +16,7 @@ const hasSwiftc = spawnSync('swiftc', ['--version'], { stdio: 'ignore' }).status
 const here = (path: string) => fileURLToPath(new URL(path, import.meta.url));
 
 describe.skipIf(!hasSwiftc)('the share extension’s upload logic', () => {
-  it('retries only the files not saved yet, speaks the app’s language and wears its green', () => {
+  it('retries only what can still succeed, lists refused files, speaks the app’s language and wears its green', () => {
     const dir = mkdtempSync(join(tmpdir(), 'share-logic-'));
     try {
       const binary = join(dir, 'check');

@@ -55,7 +55,7 @@
 - It reads only the station and a short-lived access token from the App Group keychain item `greenhouse.share.session` (src/share/session.ts writes it on every token change; src/share/payload.ts is the shape). Never put the refresh token there: a single-use refresh in the extension would sign the app out. An expired token tells the member to open the app.
 - Keep the keychain key, service and App Group in payload.ts and ShareModel.swift identical; the extension's Info.plist activation rule caps what it accepts.
 - The session carries the app's language; the extension speaks it (else the phone's) and uses the V1 green from ShareLogic.swift `Brand`, kept equal to src/theme/palette.ts.
-- Logic the extension needs goes in Foundation-only targets/share/ShareLogic.swift; src/share/share-logic.test.ts compiles it with src/share/ShareLogicCheck.swift and runs the checks (skipped without swiftc). A retry uploads only the attachments not saved yet.
+- Logic the extension needs goes in Foundation-only targets/share/ShareLogic.swift; src/share/share-logic.test.ts compiles it with src/share/ShareLogicCheck.swift and runs the checks (skipped without swiftc). A retry uploads only attachments that failed for a passing reason (no answer, 408, 429, 5xx); other 4xx refusals are listed with their reason and only another folder tries them again.
 - The camera captures photos only: the app has no microphone permission (src/files/picker-options.ts).
 
 ## Native builds and release

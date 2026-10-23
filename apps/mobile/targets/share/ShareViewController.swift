@@ -28,8 +28,9 @@ final class ShareViewModel: ObservableObject {
     case choosing
     case uploading
     case finished(Int)
-    /// An upload stopped; `progress` says which files are already saved.
-    case failed(String)
+    /// Some files did not make it; `progress` says which are saved, refused or worth retrying.
+    case failed
+    case signedOut
   }
 
   let session = ShareSession.load()
@@ -38,7 +39,7 @@ final class ShareViewModel: ObservableObject {
   @Published var files: [SharedFile]? = nil {
     didSet { progress = UploadProgress(total: files?.count ?? 0) }
   }
-  /// Survives a failure: a retry uploads only the files not saved yet.
+  /// Survives a failure: a retry uploads only the files that can still succeed.
   @Published private(set) var progress = UploadProgress(total: 0)
   /// Where the last attempt went, for "retry the rest".
   private(set) var lastFolder: Int?
@@ -53,28 +54,30 @@ final class ShareViewModel: ObservableObject {
 
   var api: ShareAPI? { session.map(ShareAPI.init) }
 
+  func name(_ index: Int) -> String { files?[index].name ?? "" }
+
   func save(to folder: Int?) {
     guard let api, let files, !files.isEmpty, !progress.pending.isEmpty else { return }
     lastFolder = folder
     phase = .uploading
     Task {
       // a refused or failed file does not stop the others; an expired sign-in stops them all
-      var firstError: String?
+      let connection = L.t("Couldn’t upload. Check your connection and try again.", "上传失败，请检查网络后重试。")
       for index in progress.pending {
         do {
           try await api.upload(files[index], shelf: shelf, folder: folder)
           progress.markSaved(index)
         } catch ShareError.signedOut {
-          phase = .failed(L.t("Your sign-in expired. Open Greenhouse, then share again.", "登录已过期。请打开 Greenhouse 后再分享。"))
+          phase = .signedOut
           return
-        } catch ShareError.refused(let words) {
-          firstError = firstError ?? words
+        } catch ShareError.http(let status, let words) {
+          progress.markFailed(index, .classify(status: status, words: words))
         } catch {
-          firstError = firstError ?? L.t("Couldn’t upload. Check your connection and try again.", "上传失败，请检查网络后重试。")
+          progress.markFailed(index, .classify(status: nil, words: connection))
         }
       }
-      if let firstError {
-        phase = .failed(firstError)
+      if !progress.isComplete {
+        phase = .failed
         return
       }
       phase = .finished(progress.savedCount)
@@ -83,9 +86,15 @@ final class ShareViewModel: ObservableObject {
     }
   }
 
-  /// Upload the files not saved yet to the same place.
+  /// Upload the files that failed for a passing reason, to the same place.
   func retry() {
     save(to: lastFolder)
+  }
+
+  /// Back to the folder list; refused files get another chance in another folder.
+  func chooseAnotherFolder() {
+    progress.forgetRefusals()
+    phase = .choosing
   }
 }
 
@@ -142,26 +151,13 @@ struct ShareRootView: View {
               Image(systemName: "checkmark.circle.fill").font(.system(size: 48)).foregroundStyle(Color.greenhouse)
               Text(L.t("Saved \(count) to Files", "已存入档案库 \(count) 个"))
             }
-          case .failed(let words):
-            let saved = model.progress.savedCount
-            let left = model.progress.pending.count
+          case .failed:
+            FailureView(model: model)
+          case .signedOut:
             VStack(spacing: 12) {
-              Image(systemName: "exclamationmark.triangle").font(.system(size: 40)).foregroundStyle(.orange)
-              Text(words).multilineTextAlignment(.center)
-              if saved > 0 {
-                Text(L.t("\(saved) of \(model.progress.total) already saved — they won’t be sent again.", "已保存 \(saved) 个（共 \(model.progress.total) 个），不会重复上传。"))
-                  .font(.footnote)
-                  .foregroundStyle(.secondary)
-                  .multilineTextAlignment(.center)
-              }
-              Button(left == model.progress.total ? L.t("Try Again", "重试") : L.t("Retry the Remaining \(left)", "重试剩下的 \(left) 个")) {
-                model.retry()
-              }
-              .buttonStyle(PrimaryButtonStyle())
-              Button(L.t("Choose Another Folder", "换个文件夹")) { model.phase = .choosing }
-              if saved > 0 {
-                Button(L.t("Done", "完成")) { model.finish(true) }
-              }
+              Image(systemName: "person.crop.circle.badge.exclamationmark").font(.system(size: 40)).foregroundStyle(.secondary)
+              Text(L.t("Your sign-in expired. Open Greenhouse, then share again.", "登录已过期。请打开 Greenhouse 后再分享。"))
+                .multilineTextAlignment(.center)
             }
             .padding(32)
           }
@@ -183,6 +179,51 @@ struct ShareRootView: View {
       }
     }
     .tint(Color.greenhouse)
+  }
+}
+
+/// What did not make it: the files refused for good with their reasons (no retry), and a retry
+/// for those that failed for a passing reason.
+struct FailureView: View {
+  @ObservedObject var model: ShareViewModel
+
+  var body: some View {
+    let progress = model.progress
+    let retryable = progress.retryable.count
+    let refused = progress.refused.keys.sorted()
+    ScrollView {
+      VStack(spacing: 12) {
+        Image(systemName: "exclamationmark.triangle").font(.system(size: 40)).foregroundStyle(.orange)
+        if progress.savedCount > 0 {
+          Text(L.t("\(progress.savedCount) of \(progress.total) saved.", "已保存 \(progress.savedCount) 个（共 \(progress.total) 个）。"))
+            .font(.headline)
+        }
+        if !refused.isEmpty {
+          VStack(alignment: .leading, spacing: 8) {
+            Text(L.t("Couldn’t be saved:", "无法保存：")).font(.subheadline.weight(.semibold))
+            ForEach(refused, id: \.self) { index in
+              VStack(alignment: .leading, spacing: 2) {
+                Text(model.name(index)).font(.subheadline)
+                Text(progress.refused[index] ?? "").font(.footnote).foregroundStyle(.secondary)
+              }
+            }
+          }
+          .frame(maxWidth: .infinity, alignment: .leading)
+          .padding(12)
+          .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12))
+        }
+        if retryable > 0, let reason = progress.retryReason {
+          Text(reason).multilineTextAlignment(.center).foregroundStyle(.secondary)
+          Button(L.t("Retry the Remaining \(retryable)", "重试剩下的 \(retryable) 个")) { model.retry() }
+            .buttonStyle(PrimaryButtonStyle())
+        }
+        Button(L.t("Choose Another Folder", "换个文件夹")) { model.chooseAnotherFolder() }
+        if retryable == 0 || progress.savedCount > 0 {
+          Button(L.t("Done", "完成")) { model.finish(progress.savedCount > 0) }
+        }
+      }
+      .padding(32)
+    }
   }
 }
 
