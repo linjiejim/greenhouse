@@ -53,6 +53,13 @@ interface StationPush {
 
 const STATIONS_PREF = 'push_stations';
 
+/**
+ * Stations the member switched pushes off for during this run, set synchronously when the switch
+ * flips — before anything is awaited. A registration that was already in flight checks it when its
+ * PUT comes back and takes itself back (the off switch always wins over a late registration).
+ */
+const switchedOff = new Set<string>();
+
 async function loadStationPush(): Promise<Record<string, StationPush>> {
   try {
     const raw = await loadPref(STATIONS_PREF);
@@ -203,7 +210,13 @@ async function syncOnce(): Promise<void> {
   }
   if (!current()) return;
   const registered = await registerPushDevice({ token, platform: PLATFORM, project_id: project, client_ref: stationId });
-  if (!current() || !registered.ok) return;
+  if (!registered.ok) return;
+  if (registered.data.device && switchedOff.has(stationId)) {
+    // switched off while this PUT was in flight: the server just re-enabled the phone — undo it
+    await unregisterPushDevice(registered.data.device.id);
+    return;
+  }
+  if (!current()) return;
   if (!registered.data.enabled || !registered.data.device) {
     usePush.setState({ support: 'disabled', device: null });
     return;
@@ -235,12 +248,24 @@ export async function setPushOff(off: boolean): Promise<boolean> {
   const stationId = useStations.getState().activeId;
   if (!stationId) return false;
   if (off) {
-    const device = usePush.getState().device;
-    if (device && !(await unregisterPushDevice(device.id)).ok) return false;
+    // first, synchronously: any registration still in flight takes itself back when it lands
+    switchedOff.add(stationId);
+    usePush.setState({ off: true });
     await patchStationPush(stationId, { off: true });
-    usePush.setState({ off: true, device: null });
+    // let a running sync settle, so the device it may just have registered is known below
+    if (syncing) await syncing.catch(() => undefined);
+    const device = usePush.getState().device;
+    usePush.setState({ device: null });
+    if (device && !(await unregisterPushDevice(device.id)).ok) {
+      // the station still pushes to this phone: the switch goes back on, and says so
+      switchedOff.delete(stationId);
+      await patchStationPush(stationId, { off: false });
+      usePush.setState({ off: false, device });
+      return false;
+    }
     return true;
   }
+  switchedOff.delete(stationId);
   await patchStationPush(stationId, { off: false });
   usePush.setState({ off: false });
   const permission = usePush.getState().permission;
