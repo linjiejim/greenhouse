@@ -45,6 +45,7 @@ export const MCP_RESOURCE_GROUP_IDS = [
   'chat',
   'automation',
   'image',
+  'feedback',
 ] as const;
 
 export type McpResourceGroup = (typeof MCP_RESOURCE_GROUP_IDS)[number];

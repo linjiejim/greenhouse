@@ -21,14 +21,33 @@ export const DEFAULT_MODULE = 'preferences';
 export const ADMIN_REDIRECTS: Record<string, string> = {
   users: 'users',
   usage: 'usage',
-  'feature-requests': 'feature-requests',
-  frictions: 'frictions',
+  issues: 'issues',
+  // v1.5: both queues became tabs of Issues & requests (see ADMIN_TAB_REDIRECTS).
+  'feature-requests': 'issues',
+  frictions: 'issues',
   activity: 'activity',
   'mcp-keys': 'mcp-keys',
   'runtime-config': 'runtime-config',
   branding: 'branding',
   permissions: 'users',
 };
+
+/**
+ * Retired administration module keys that became a tab of another module; the
+ * tail (e.g. a friction id) is kept after the tab. Shared by the Settings
+ * redirect below and the Administration page itself.
+ */
+export const ADMIN_TAB_REDIRECTS: Record<string, string> = {
+  'feature-requests': 'issues/requests',
+  frictions: 'issues/frictions',
+};
+
+/** `#/administration/<sub-path>` for a retired admin key, or null. */
+export function resolveAdministrationRedirect(subPath: string): string | null {
+  const [key, ...rest] = subPath.split('/').filter(Boolean);
+  const target = key ? ADMIN_TAB_REDIRECTS[key] : undefined;
+  return target ? `#/administration/${[target, ...rest].join('/')}` : null;
+}
 
 /**
  * Resolve a legacy Settings sub-path to its new canonical hash, or `null` when
@@ -49,6 +68,9 @@ export function resolveSettingsRedirect(subPath: string): string | null {
   // Personal utilities are independent, refresh-safe pages now.
   if (moduleKey === 'automations') return '#/automations';
   if (moduleKey === 'prompts') return '#/tasks';
+
+  const tabRedirect = resolveAdministrationRedirect(subPath);
+  if (tabRedirect) return tabRedirect;
 
   const adminTarget = ADMIN_REDIRECTS[moduleKey];
   if (adminTarget) {

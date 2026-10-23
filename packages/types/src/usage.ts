@@ -73,8 +73,7 @@ export const PAGE_MODULE_IDS = [
   'admin.runtime-config',
   'admin.branding',
   'admin.usage',
-  'admin.feature-requests',
-  'admin.frictions',
+  'admin.issues',
   'admin.activity',
   'admin.mcp-keys',
 ] as const;

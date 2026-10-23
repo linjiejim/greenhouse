@@ -179,6 +179,34 @@ describe('MCP server — Files tools', () => {
   });
 });
 
+describe('MCP server — Issues & requests tools', () => {
+  it('lists feedback_query read-only and the two filing tools as writes without a delete preview', async () => {
+    const { createFeedbackQueryTool } = await import('../../tools/feedback-query.js');
+    const { createFeatureRequestTool } = await import('../../tools/feature-request.js');
+    const { createLogFrictionTool } = await import('../../tools/log-friction.js');
+    const db = {} as never;
+    const ctx = {
+      toolIds: ['feedback_query', 'feature_request', 'log_friction'],
+      registry: {
+        feedback_query: createFeedbackQueryTool(db, { userId: 'mcp-test-user', userRole: 'team' }),
+        feature_request: createFeatureRequestTool(db, { userId: 'mcp-test-user', userRole: 'team' }),
+        log_friction: createLogFrictionTool(db, {}),
+      } as unknown as ToolRegistry,
+    };
+    const { client, server } = await connect(ctx);
+    const { tools } = await client.listTools();
+    expect(tools.find((t) => t.name === 'feedback_query')!.annotations).toMatchObject({ readOnlyHint: true });
+    for (const name of ['feature_request', 'log_friction']) {
+      const write = tools.find((t) => t.name === name)!;
+      expect(write.annotations).toMatchObject({ readOnlyHint: false });
+      expect(write.description).toMatch(/recorded in their name/);
+      expect((write.inputSchema as { properties: Record<string, unknown> }).properties.confirm).toBeUndefined();
+    }
+    await client.close();
+    await server.close();
+  });
+});
+
 describe('MCP server — tools/call', () => {
   it('runs a read tool and returns its output as JSON text', async () => {
     const { client, server } = await connect(makeCtx());

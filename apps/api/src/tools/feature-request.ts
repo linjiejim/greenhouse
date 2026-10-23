@@ -8,6 +8,11 @@
  * - submit: 提交新需求（team/super）
  * - list: 查看需求列表（super only）
  * - update: 更新需求状态（super only）
+ *
+ * v1.5: also a write tool on /api/agent and MCP (group `feedback`), so members'
+ * agents can file requests; over MCP every call is a recorded write in the
+ * member's name, with the agent's client (agent-access/governed-write.ts).
+ * Plain reads of one's own requests are feedback_query.
  */
 
 import { tool } from 'ai';
@@ -55,6 +60,7 @@ Super users can list/update all requests; team users can create new requests.`,
   is_global: true,
   icon: 'Lightbulb',
   runtime_risk: 'r1',
+  surface: { proxy: 'write', mcp: 'feedback' },
   sort_order: 11,
 };
 

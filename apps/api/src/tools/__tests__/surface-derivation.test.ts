@@ -54,6 +54,8 @@ describe('surface-derived exposure sets', () => {
         'email_query',
         // v1.5: the team's file cabinet (Files), authorized per node by drive access.
         'files_query',
+        // v1.5: a member's own feature requests and their answers (Issues & requests).
+        'feedback_query',
       ].sort(),
     );
   });
@@ -68,6 +70,9 @@ describe('surface-derived exposure sets', () => {
         'automation_mutation',
         'email_mutation',
         'files_mutation',
+        // v1.5: members' agents file requests and report frictions as recorded writes.
+        'feature_request',
+        'log_friction',
       ].sort(),
     );
   });
@@ -101,6 +106,11 @@ describe('surface-derived exposure sets', () => {
         // group; writes are recorded and deletes take the preview round trip.
         'files_query',
         'files_mutation',
+        // v1.5: Issues & requests in their own `feedback` group — file a request,
+        // log a friction (recorded writes), read back your own requests (plain read).
+        'feature_request',
+        'log_friction',
+        'feedback_query',
       ].sort(),
     );
   });
@@ -184,6 +194,7 @@ describe('surface-derived exposure sets', () => {
         'email_mutation',
         'files_query',
         'files_mutation',
+        'feedback_query',
       ].sort(),
     );
   });

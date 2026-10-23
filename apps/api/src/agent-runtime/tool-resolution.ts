@@ -18,6 +18,7 @@ import type { ToolRegistry } from '../agent.js';
 import { createFeatureRequestTool } from '../tools/feature-request.js';
 import { createFilesQueryTool } from '../tools/files-query.js';
 import { createFilesMutationTool } from '../tools/files-mutation.js';
+import { createFeedbackQueryTool } from '../tools/feedback-query.js';
 // Derived from the catalog (kind !== 'static' + route-constructed special metas) — see registry.
 import {
   BUILTIN_AGENT_TOOL_IDS,
@@ -281,6 +282,9 @@ export function buildLazyServerTools(
       userRole,
       sessionId: sessionId ?? undefined,
     });
+  }
+  if (effectiveTools.includes('feedback_query')) {
+    tools.feedback_query = createFeedbackQueryTool(db, { userId, userRole });
   }
   if (effectiveTools.includes('project_query')) {
     tools.project_query = createProjectQueryTool(db, { userId });

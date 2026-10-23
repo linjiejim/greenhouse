@@ -758,14 +758,10 @@ const zh: Messages = {
     memoryDesc: '查看和管理 AI 对你的记忆',
     agentUsages: 'Agent 用量',
     agentUsagesDesc: 'Token 消耗与成本追踪',
-    featureRequests: '功能建议',
-    featureRequestsDesc: '用户提交的功能建议',
-    frictions: '问题反馈',
     runtimeConfig: '运行时配置',
     runtimeConfigDesc: '模型、媒体与搜索凭据——保存在工作区，回落到环境变量',
     branding: '品牌工作室',
     brandingDesc: '本工作区的产品名、Logo 与主题 token',
-    frictionsDesc: 'Agent 遇到的工具错误和绕路问题',
     mcpAccess: 'MCP 访问',
     mcpAccessDesc: '外部 Agent 的 OAuth 客户端（MCP 服务）',
     overview: '概览',
@@ -781,6 +777,16 @@ const zh: Messages = {
     activityLog: '操作记录',
     activityLogDesc: '你、你的 Agent 和你的定时任务做过的改动',
     activityLogAdminDesc: '成员、成员的 Agent、定时任务与管理员的改动',
+    issues: '问题与需求',
+    issuesDesc: '成员及其 Agent 提交的功能需求与使用中遇到的问题',
+  },
+
+  issues: {
+    tabsLabel: '问题与需求',
+    tab: {
+      requests: '功能需求',
+      frictions: '问题反馈',
+    },
   },
 
   activity: {
@@ -1230,6 +1236,7 @@ const zh: Messages = {
     chat: { label: '会话历史', description: '搜索你自己的历史对话并读取其中的消息。' },
     automation: { label: '定时任务', description: '读取你的定时任务及其执行情况。' },
     image: { label: '图片生成', description: '生成图片。每次调用都会产生费用。' },
+    feedback: { label: '问题与需求', description: '提交功能需求，反馈工具使用中遇到的问题。' },
   },
 
   oauthConsent: {

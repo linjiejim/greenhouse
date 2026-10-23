@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ADMIN_REDIRECTS, resolveSettingsRedirect } from './redirects';
+import { ADMIN_REDIRECTS, resolveAdministrationRedirect, resolveSettingsRedirect } from './redirects';
 import { administrationModules } from '../../lib/nav-registry';
 
 const adminKey = (id: string) => id.split('.').pop()!;
@@ -32,7 +32,15 @@ describe('resolveSettingsRedirect', () => {
   });
 
   it('preserves the sub-path for 1:1 admin remaps', () => {
-    expect(resolveSettingsRedirect('frictions/123')).toBe('#/administration/frictions/123');
+    expect(resolveSettingsRedirect('usage/123')).toBe('#/administration/usage/123');
+  });
+
+  it('sends the retired request and friction queues to their Issues & requests tabs', () => {
+    expect(resolveSettingsRedirect('feature-requests')).toBe('#/administration/issues/requests');
+    expect(resolveSettingsRedirect('frictions/123')).toBe('#/administration/issues/frictions/123');
+    expect(resolveAdministrationRedirect('frictions')).toBe('#/administration/issues/frictions');
+    expect(resolveAdministrationRedirect('feature-requests')).toBe('#/administration/issues/requests');
+    expect(resolveAdministrationRedirect('issues/frictions')).toBeNull();
   });
 
   it('drops any tail for folded pages (no sub-route of their own)', () => {

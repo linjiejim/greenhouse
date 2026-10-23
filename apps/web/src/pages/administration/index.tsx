@@ -2,8 +2,8 @@
  * Administration page — global management surface (super only).
  *
  * Split out from Settings: Settings is user-scoped personal config, while
- * Administration holds org-wide management (Users, Agent Usages,
- * Feature Requests, MCP Access, Runtime Config, Branding).
+ * Administration holds org-wide management (Users, Usage, Activity log,
+ * Issues & requests, Branding, Runtime Config, MCP Access).
  *
  * Routes the active administration sub-module to its panel. The panels
  * themselves are reused verbatim from the old Settings > Administration section.
@@ -21,8 +21,8 @@ import { useT } from '../../lib/i18n';
 
 // Sub-panels (shared with the former Settings > Administration section)
 import { UsagePanelWithUsers } from './usage';
-import { FeatureRequestsPanel } from './feature-requests';
-import { FrictionsPanel } from './frictions';
+import { IssuesPanel } from './issues';
+import { resolveAdministrationRedirect } from '../settings/redirects';
 import { UserManagementPanel } from './users';
 import { McpKeysPanel } from './mcp-keys';
 import { RuntimeConfigPanel } from './runtime-config';
@@ -46,6 +46,13 @@ export function AdministrationPage({ subPath }: { subPath: string }) {
   const requestedModuleKey = segments[0] || DEFAULT_MODULE;
   const moduleKey = requestedModuleKey === 'profiles' ? 'usage' : requestedModuleKey;
 
+  // The request and friction queues are tabs of Issues & requests now.
+  const redirect = resolveAdministrationRedirect(subPath);
+  if (redirect) {
+    window.location.hash = redirect;
+    return null;
+  }
+
   // Administration is super-only end to end.
   if (!isSuper) {
     return <div className="flex h-full items-center justify-center text-sm text-fg-faint">{t('app.noPermission')}</div>;
@@ -58,8 +65,7 @@ export function AdministrationPage({ subPath }: { subPath: string }) {
     <ModulePageShell activeKey={activeModule} mobileItems={visibleModules} contentClassName="bg-surface-canvas">
       {activeModule === 'users' && <UserManagementPanel />}
       {activeModule === 'usage' && <UsagePanelWithUsers />}
-      {activeModule === 'feature-requests' && <FeatureRequestsPanel />}
-      {activeModule === 'frictions' && <FrictionsPanel />}
+      {activeModule === 'issues' && <IssuesPanel subPath={subPath} />}
       {activeModule === 'activity' && <ActivityLogPage moduleId="admin.activity" />}
       {activeModule === 'mcp-keys' && <McpKeysPanel />}
       {activeModule === 'runtime-config' && <RuntimeConfigPanel />}

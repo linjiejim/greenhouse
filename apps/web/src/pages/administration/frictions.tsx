@@ -54,7 +54,7 @@ const STATUS_TONE: Record<FrictionStatus, 'danger' | 'warning' | 'success' | 'ne
   archived: 'neutral',
 };
 
-export function FrictionsPanel() {
+export function FrictionsPanel({ tabs }: { tabs?: React.ReactNode }) {
   const t = useT();
   const [statusFilter, setStatusFilter] = useState<'open' | FrictionStatus>('open');
   const [mining, setMining] = useState(false);
@@ -237,8 +237,9 @@ export function FrictionsPanel() {
 
   return (
     <ModulePage
-      moduleId="admin.frictions"
+      moduleId="admin.issues"
       layout="list"
+      tabs={tabs}
       notice={
         <div className="bg-surface-raised border border-edge rounded-xl p-4">
           <p className="text-sm text-fg-muted">{t('frictions.description')}</p>

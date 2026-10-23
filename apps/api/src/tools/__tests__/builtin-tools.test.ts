@@ -50,12 +50,13 @@ describe('BUILTIN_AGENT_TOOL_IDS', () => {
     for (const id of forbidden) expect(BUILTIN_AGENT_TOOL_IDS.has(id)).toBe(false);
   });
 
-  it('contains exactly one write tool, and that one cannot self-propagate', () => {
-    // `automation_mutation` is the single exception: owner-scoped, quota-capped,
-    // and already denied in unattended contexts — so a scheduled run cannot use
-    // it to create more scheduled runs.
+  it('contains only writes that cannot self-propagate', () => {
+    // `automation_mutation` is owner-scoped, quota-capped, and already denied in
+    // unattended contexts — so a scheduled run cannot use it to create more
+    // scheduled runs. `log_friction` (a write surface since v1.5, so members'
+    // agents can report) only appends a note to the team's review queue.
     const writes = [...BUILTIN_AGENT_TOOL_IDS].filter((id) => MUTATING_PROXY_ALLOWLIST.has(id));
-    expect(writes).toEqual(['automation_mutation']);
+    expect(writes.sort()).toEqual(['automation_mutation', 'log_friction']);
     expect(UNATTENDED_TOOL_DENYLIST.has('automation_mutation')).toBe(true);
   });
 

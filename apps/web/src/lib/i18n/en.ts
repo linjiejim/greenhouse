@@ -761,14 +761,10 @@ export default {
     memoryDesc: 'View and manage what the AI remembers about you',
     agentUsages: 'Agent Usages',
     agentUsagesDesc: 'Token consumption and cost tracking',
-    featureRequests: 'Feature Requests',
-    featureRequestsDesc: 'User-submitted requests',
-    frictions: 'Frictions',
     runtimeConfig: 'Runtime Config',
     runtimeConfigDesc: 'LLM, media and search credentials — saved in the workspace, env fallback',
     branding: 'Branding Studio',
     brandingDesc: 'Product name, logo and theme tokens for this workspace',
-    frictionsDesc: 'Where the agent stumbled — tool errors and detours to fix',
     mcpAccess: 'MCP Access',
     mcpAccessDesc: 'OAuth clients for external agents (MCP server)',
     overview: 'Overview',
@@ -784,6 +780,16 @@ export default {
     activityLog: 'Activity log',
     activityLogDesc: 'What you, your agents and your automations changed',
     activityLogAdminDesc: 'Changes by people, their agents, automations and admins',
+    issues: 'Issues & requests',
+    issuesDesc: 'Feature requests and frictions reported by members and their agents',
+  },
+
+  issues: {
+    tabsLabel: 'Issues and requests',
+    tab: {
+      requests: 'Feature requests',
+      frictions: 'Frictions',
+    },
   },
 
   activity: {
@@ -1252,6 +1258,10 @@ export default {
     chat: { label: 'Chat history', description: 'Search your own past conversations and read their messages.' },
     automation: { label: 'Automations', description: 'Read your scheduled automations and whether they ran.' },
     image: { label: 'Image generation', description: 'Generate images. Each call costs money.' },
+    feedback: {
+      label: 'Issues & requests',
+      description: 'File feature requests and report where the tools got in the way.',
+    },
   },
 
   oauthConsent: {

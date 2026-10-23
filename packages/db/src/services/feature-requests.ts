@@ -2,7 +2,7 @@
  * Feature request service — feature request CRUD (PostgreSQL).
  */
 
-import { eq, sql, desc } from 'drizzle-orm';
+import { and, eq, sql, desc } from 'drizzle-orm';
 import { nowIso } from '@greenhouse/utils/date';
 
 import type { Db } from '../client.js';
@@ -25,6 +25,8 @@ export interface FeatureRequestUpdateInput {
 
 export interface FeatureRequestListOpts {
   status?: FeatureRequestStatus;
+  /** Only the requests one member submitted. */
+  submitted_by?: string;
   limit?: number;
   offset?: number;
 }
@@ -56,19 +58,14 @@ export function createFeatureRequestService(db: Db) {
     async list(opts?: FeatureRequestListOpts): Promise<FeatureRequestRow[]> {
       const limit = opts?.limit ?? 50;
       const offset = opts?.offset ?? 0;
-
-      if (opts?.status) {
-        return await db
-          .select()
-          .from(featureRequests)
-          .where(eq(featureRequests.status, opts.status))
-          .orderBy(desc(featureRequests.created_at))
-          .limit(limit)
-          .offset(offset);
-      }
+      const conditions = [
+        ...(opts?.status ? [eq(featureRequests.status, opts.status)] : []),
+        ...(opts?.submitted_by ? [eq(featureRequests.submitted_by, opts.submitted_by)] : []),
+      ];
       return await db
         .select()
         .from(featureRequests)
+        .where(conditions.length > 0 ? and(...conditions) : undefined)
         .orderBy(desc(featureRequests.created_at))
         .limit(limit)
         .offset(offset);

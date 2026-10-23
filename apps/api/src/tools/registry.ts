@@ -47,6 +47,7 @@ import { logFrictionTool } from './log-friction.js';
 import { workbenchQueryTool, workbenchMutationTool } from './workbench.js';
 import { filesQueryTool } from './files-query.js';
 import { filesMutationTool } from './files-mutation.js';
+import { feedbackQueryTool } from './feedback-query.js';
 
 // ─── Catalog ─────────────────────────────────────────────
 
@@ -83,6 +84,7 @@ const CORE_TOOL_MODULES: ToolModule[] = [
   workbenchMutationTool,
   filesQueryTool,
   filesMutationTool,
+  feedbackQueryTool,
 ];
 
 /** Static tools (constructed once from the shared db) — drives createToolRegistry. */
