@@ -513,6 +513,14 @@ v1 只接 DeepSeek 与 OpenAI 兼容服务，它们**自动**缓存 prompt 前�
   - 进入计价时 scope 里没有成员的调用，只记到服务与团队账户并 warn；已知入口都会设成员。
 - **蓝绿并存**：旧代码在新库上照跑（列全可空）；旧的生图代码仍按 `$20` 把成员 USD 账户限额改回去，切流期间会和新代码来回改，切完即止。
 
+### 云电脑（`computer/` + `computer_*` 工具 + `/api/computer`，v1.6）
+
+- 成员自己的托管沙箱（E2B），**工作区开关 `computer.enabled` 默认关**：关着时任何路径都不调驱动的 `create`（`ensureComputer` 第一步就拒），MCP 上 `computer_*` 不出现在 tools/list，调了也只回「云电脑未开启，请管理员在服务与计价里开启」（`externalToolUnavailableMessage`，在留痕之前）；每分钟的清扫把还在跑的停掉。开关、E2B key / template / domain、同时运行上限 `computer.max_running`（默认 5）都是工作区设置（env 回落 `COMPUTER_ENABLED` / `E2B_*` / `COMPUTER_MAX_RUNNING`），运行时读 `process.env`。
+- 每个成员最多一台：首次用时建（`computer_exec`、`computer_transfer` 拷入），用完 15 分钟空闲即停、可手动停；停了就是 kill，**里面的文件一并没了**，要留的先存进档案库。读（`computer_files`、存出到档案库）从不建机。整个工作区同时运行台数超限时明确拒绝。状态在 `member_computers`（迁移 0012），每次转换 compare-and-set。
+- 计价（`computer` / `e2b` / 分钟）：按 15 分钟一块预留 USD；跨块时清扫先预留下一块（被拒即停机）、再整块结算上一块；停机按实际分钟（向上取整）结算当前块。行上只存当前块的预留键，任何进程都能用 `restoreSpendLease` 结算。结果未知照规则走：create 可能已到 provider、或 kill 没得到确认（行记 `lost`），预留都留给 TTL 清扫按预估计费；provider 明确拒绝的 create 才释放。
+- MCP：独立资源组 `mcp:computer`（不并进 `services`：能跑任意代码、能上网，和付费查询不是一种授权）。`computer_exec`（写，命令 ≤10 分钟，输出各截 200KB，长回复走 `tool_output_read`）、`computer_files`（读：list / read ≤1MB）、`computer_transfer`（写：档案库 → 电脑 ≤25MB；电脑 → 档案库 ≤5MB，默认个人架）、`computer_stop`（写）。写走 `governProxyWrite` 留痕，`openWorldHint:true`。
+- 驱动：`computer/e2b/` 从 v2 的 `packages/providers/src/sandbox/e2b` 搬了控制面（create / connect / timeout / kill，纯 HTTP）和 envd 进程 API；文件改走 envd 的 `/files` HTTP 接口（v2 走自己的 bridge，stock 模板没有）。没搬：桌面 / 浏览器 / VNC / DevTools bridge、pause/resume、备份、自定义模板、每 Agent 一台、出网 nft 规则（stock 模板里成员本来就能 sudo，沙箱里不放任何 Greenhouse 密钥）。沙箱建时关公网入站、在 provider 边缘拒私网段。测试一律用 `setComputerDriverForTests` 的假驱动，不连 E2B。
+
 ### Agent Profiles
 - Profile YAML 文件放在 `profiles/` 目录
 - 架构、工具矩阵、设计决策详见 [agent-profiles.md](./profiles/agent-profiles.md)

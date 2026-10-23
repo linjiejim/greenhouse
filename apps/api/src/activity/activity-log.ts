@@ -85,6 +85,8 @@ const ADMIN_ACTIONS: Record<'settings' | 'users' | 'mcp', readonly string[]> = {
     'removeBudgetLimit',
     'updateServicePrice',
     'removeServicePrice',
+    // Cloud computer (v1.6): an admin stopping a member's computer.
+    'stopMemberComputer',
   ],
   users: [
     'setUserFeature',

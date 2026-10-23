@@ -19,7 +19,7 @@ import { getDb } from '@greenhouse/db';
 import type { ToolRegistry } from '../agent.js';
 import { resolveProfileAsync } from '../profiles/profile.js';
 import { resolveEffectiveTools, buildLazyServerTools } from '../agent-runtime/tool-resolution.js';
-import { buildExternalServiceTools } from '../agent-runtime/service-tools.js';
+import { buildExternalServiceTools, listableExternalToolIds } from '../agent-runtime/service-tools.js';
 import {
   resolveProxyToolIds,
   buildProxyManifest,
@@ -170,7 +170,7 @@ export function createAgentRoutes(toolRegistry: ToolRegistry) {
         return c.json({
           profile_id: profileId,
           workspace_id: workspaceId,
-          tools: buildProxyManifest(ctx.toolIds, ctx.registry),
+          tools: buildProxyManifest(listableExternalToolIds(ctx.toolIds), ctx.registry),
           capabilities: { serverTools: true, localTools: false },
         });
       })

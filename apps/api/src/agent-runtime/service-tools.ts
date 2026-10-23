@@ -17,6 +17,13 @@ import type { DatabaseProvider } from '@greenhouse/db';
 import type { ToolRegistry } from '../agent.js';
 import { createGenerateImageTool } from '../tools/generate-image.js';
 import { createReadUrlTool, createWebSearchTool } from '../tools/web-search.js';
+import {
+  computerToolUnavailableMessage,
+  createComputerExecTool,
+  createComputerFilesTool,
+  createComputerStopTool,
+  createComputerTransferTool,
+} from '../tools/computer.js';
 
 export function buildExternalServiceTools(
   db: DatabaseProvider,
@@ -29,5 +36,26 @@ export function buildExternalServiceTools(
   if (effectiveTools.includes('generate_image')) {
     tools.generate_image = createGenerateImageTool({ db, userId: ctx.userId, saveTo: 'files' });
   }
+  // The member's cloud computer. Built even while the workspace switch is off,
+  // so a call names the reason; listings drop them (listableExternalToolIds).
+  const computer = { db, userId: ctx.userId };
+  if (effectiveTools.includes('computer_exec')) tools.computer_exec = createComputerExecTool(computer);
+  if (effectiveTools.includes('computer_files')) tools.computer_files = createComputerFilesTool(computer);
+  if (effectiveTools.includes('computer_transfer')) tools.computer_transfer = createComputerTransferTool(computer);
+  if (effectiveTools.includes('computer_stop')) tools.computer_stop = createComputerStopTool(computer);
   return tools;
+}
+
+/**
+ * Why an external tool cannot run at all right now — today only the cloud
+ * computer while its workspace switch is off — or null. Asked per request,
+ * never cached.
+ */
+export function externalToolUnavailableMessage(toolId: string): string | null {
+  return computerToolUnavailableMessage(toolId);
+}
+
+/** The tools a listing shows: a computer tool is not listed at all while the switch is off. */
+export function listableExternalToolIds(toolIds: readonly string[]): string[] {
+  return toolIds.filter((id) => externalToolUnavailableMessage(id) === null);
 }

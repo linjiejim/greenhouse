@@ -196,3 +196,51 @@ export interface BudgetLimitInput {
   scope_id?: string;
   limit_usd_micros: number;
 }
+
+// ─── Cloud computer (read side) ──────────────────────────
+
+/** One member's cloud computer, as the member and the admins see it. */
+export interface ComputerView {
+  id: string;
+  status: 'starting' | 'running' | 'stopping' | 'stopped' | 'failed' | 'lost';
+  started_at: string;
+  last_used_at: string;
+  stopped_at: string | null;
+  stop_reason: string | null;
+  /** Settled whole minutes so far. */
+  minutes_billed: number;
+  /** Who started it: `web`, `mcp`, … */
+  client: string;
+}
+
+/** `GET /api/computer` — the caller's own computer. */
+export interface MyComputerReport {
+  /** The workspace switch (Services & pricing). */
+  enabled: boolean;
+  /** An E2B key is set. */
+  configured: boolean;
+  /** USD per minute at the price in force; null = unpriced. */
+  price_per_minute_usd: number | null;
+  idle_minutes: number;
+  /** The computer holding the member's slot, if any. */
+  computer: ComputerView | null;
+  /** Settled minutes on computers started this UTC month. */
+  minutes_this_month: number;
+  period: { start: string; end: string };
+}
+
+export interface AdminComputerView extends ComputerView {
+  user_id: string;
+  user_label: string | null;
+  oauth_client_id: string | null;
+}
+
+/** `GET /api/admin/computers` — the computers holding a slot right now. */
+export interface AdminComputersReport {
+  enabled: boolean;
+  configured: boolean;
+  max_running: number;
+  idle_minutes: number;
+  price_per_minute_usd: number | null;
+  running: AdminComputerView[];
+}

@@ -58,6 +58,8 @@ describe('surface-derived exposure sets', () => {
         // v1.6: the paid web services members' agents use (MCP group `services`).
         'web_search',
         'read_url',
+        // v1.6: list / read files in the member's own cloud computer.
+        'computer_files',
       ].sort(),
     );
   });
@@ -78,6 +80,10 @@ describe('surface-derived exposure sets', () => {
         // v1.6: an external agent's image is a new file in the member's Files —
         // a recorded, additive write (Chat still renders it inline).
         'generate_image',
+        // v1.6: the member's cloud computer — run, move files, stop (recorded writes).
+        'computer_exec',
+        'computer_transfer',
+        'computer_stop',
       ].sort(),
     );
   });
@@ -122,6 +128,12 @@ describe('surface-derived exposure sets', () => {
         'web_search',
         'read_url',
         'analyze_image',
+        // v1.6: the member's cloud computer in its own `computer` group (off
+        // until an admin turns it on; not even listed while off).
+        'computer_exec',
+        'computer_files',
+        'computer_transfer',
+        'computer_stop',
       ].sort(),
     );
   });
@@ -207,6 +219,10 @@ describe('surface-derived exposure sets', () => {
         'feedback_query',
         'web_search',
         'read_url',
+        'computer_exec',
+        'computer_files',
+        'computer_transfer',
+        'computer_stop',
       ].sort(),
     );
   });

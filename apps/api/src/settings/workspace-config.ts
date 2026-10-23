@@ -40,6 +40,10 @@ import { logger } from '@greenhouse/utils/logger';
 import { toErrorMessage } from '@greenhouse/utils/error';
 import { decryptToken } from '../auth/crypto.js';
 import { reloadModelCatalog } from '../config/models.js';
+import {
+  E2B_DOMAIN_PATTERN as COMPUTER_DOMAIN_RE,
+  E2B_TEMPLATE_PATTERN as COMPUTER_TEMPLATE_RE,
+} from '../computer/config.js';
 
 // ─── State ───────────────────────────────────────────────
 
@@ -170,6 +174,18 @@ export function validateWorkspaceValue(def: WorkspaceSettingDef, raw: unknown): 
       if (!(LOGO_ALLOWED_MIME as readonly string[]).includes(match[1].toLowerCase()))
         return { ok: false, error: `branding.logo mime must be one of: ${LOGO_ALLOWED_MIME.join(', ')}` };
       if (value.length > LOGO_MAX_DATA_URL_LENGTH) return { ok: false, error: 'branding.logo exceeds 256 KB' };
+    }
+    if (def.key === 'computer.enabled' && !/^(true|false)$/i.test(value)) {
+      return { ok: false, error: 'computer.enabled must be true or false' };
+    }
+    if (def.key === 'computer.max_running' && !(/^\d+$/.test(value) && Number(value) >= 1 && Number(value) <= 1000)) {
+      return { ok: false, error: 'computer.max_running must be a whole number from 1 to 1000' };
+    }
+    if (def.key === 'computer.domain' && !COMPUTER_DOMAIN_RE.test(value.toLowerCase())) {
+      return { ok: false, error: 'computer.domain must be a domain name such as e2b.app' };
+    }
+    if (def.key === 'computer.template' && !COMPUTER_TEMPLATE_RE.test(value)) {
+      return { ok: false, error: 'computer.template must be a template name or id' };
     }
     if (def.key.endsWith('base_url')) {
       try {

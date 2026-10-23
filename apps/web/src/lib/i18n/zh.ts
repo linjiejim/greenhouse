@@ -594,6 +594,7 @@ const zh: Messages = {
     group_llm: '主模型',
     group_media: '媒体（视觉与图像生成）',
     group_search: '联网搜索',
+    group_computer: '云电脑（E2B）',
     group_extension: '{name}（扩展）',
     sourceDb: '工作区',
     sourceEnv: '环境变量',
@@ -827,6 +828,7 @@ const zh: Messages = {
       removeBudgetLimit: '恢复了默认预算',
       updateServicePrice: '修改了价格',
       removeServicePrice: '恢复了默认价格',
+      stopMemberComputer: '停掉了云电脑',
     },
     entity: {
       project: '项目',
@@ -1062,6 +1064,7 @@ const zh: Messages = {
       label: '付费服务',
       description: '联网搜索、读取网页、识别图片，以及生成图片并存入你的档案库。每次调用都会产生费用。',
     },
+    computer: { label: '云电脑', description: '在你自己的云电脑里运行命令、传送文件。运行期间按分钟计费。' },
   },
 
   oauthConsent: {

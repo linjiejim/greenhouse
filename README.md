@@ -386,6 +386,11 @@ Every capability is reachable three ways from the same tool layer:
   `analyze_image` (an image URL or a file in Files) and `generate_image`, which saves each image
   as a new file on the member's personal Files shelf and is recorded like any other agent write.
   Every call is metered to the member and to the agent's OAuth client.
+- **Cloud computer** (`mcp:computer`, off by default) — once an admin turns it on under Services &
+  pricing and sets an E2B key, each member's agent can run commands in its own hosted Linux
+  sandbox (`computer_exec`), list / read its files, copy files in from Files and save results back
+  (`computer_transfer`), and stop it. Created on first use, stopped after 15 idle minutes, at most
+  N running per workspace, billed per minute.
 
 For both proxy surfaces the effective tool set is `resolveEffectiveTools(user, profile)`
 intersected with the proxy allowlist — a tool only appears if it declares the relevant

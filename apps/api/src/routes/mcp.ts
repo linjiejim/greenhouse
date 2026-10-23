@@ -47,7 +47,11 @@ import {
 import type { ToolRegistry } from '../agent.js';
 import { resolveProfileAsync } from '../profiles/profile.js';
 import { resolveEffectiveTools, buildLazyServerTools } from '../agent-runtime/tool-resolution.js';
-import { buildExternalServiceTools } from '../agent-runtime/service-tools.js';
+import {
+  buildExternalServiceTools,
+  externalToolUnavailableMessage,
+  listableExternalToolIds,
+} from '../agent-runtime/service-tools.js';
 // Derived from each tool's `meta.surface.mcp` (tools/registry.ts); re-exported
 // for tests/consumers that previously imported the hand-maintained list here.
 import { MCP_EXPOSED_TOOL_IDS, getToolMeta } from '../tools/registry.js';
@@ -302,7 +306,8 @@ export function buildMcpServer(c: Context, ctx: McpContext): Server {
   });
 
   server.setRequestHandler(ListToolsRequestSchema, async () => {
-    const entries = buildProxyManifest(ctx.toolIds, ctx.registry);
+    // A cloud-computer tool is not listed at all while the workspace switch is off.
+    const entries = buildProxyManifest(listableExternalToolIds(ctx.toolIds), ctx.registry);
     const tools: Array<Record<string, unknown>> = entries.map((entry) => ({
       name: entry.id,
       description: entry.mutating ? `${entry.description}${WRITE_TOOL_NOTE}` : entry.description,
@@ -349,6 +354,20 @@ export function buildMcpServer(c: Context, ctx: McpContext): Server {
             { type: 'text', text },
           ],
         };
+      }
+
+      // A tool this grant reaches but the workspace has switched off (the cloud
+      // computer): say why, before anything is recorded, started or charged.
+      const unavailable = ctx.toolIds.includes(name) ? externalToolUnavailableMessage(name) : null;
+      if (unavailable) {
+        await recordMcpAudit(c, {
+          endpoint: 'mcp:tools/call',
+          statusCode: 403,
+          durationMs: Date.now() - start,
+          error: 'unavailable',
+          meta: { tool: name },
+        });
+        return { content: [{ type: 'text', text: unavailable }], isError: true };
       }
 
       if (isMutatingProxyTool(name)) {

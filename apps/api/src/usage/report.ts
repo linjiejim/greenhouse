@@ -26,6 +26,7 @@ import {
   type TokenPriceView,
 } from '@greenhouse/types/metering';
 import { getModelCatalog } from '../config/models.js';
+import { isComputerEnabled } from '../computer/config.js';
 import {
   getServiceCatalog,
   isServiceProviderConfigured,
@@ -72,7 +73,8 @@ export function listServicePrices(): ServicePriceView[] {
       service,
       name: definition?.name ?? defaults[service].name,
       unit: definition?.unit ?? defaults[service].unit,
-      enabled: definition ? definition.enabled : service !== 'computer',
+      // The cloud computer runs only while the workspace switch is on (computer/config.ts).
+      enabled: (definition ? definition.enabled : true) && (service !== 'computer' || isComputerEnabled()),
       providers,
     };
   });

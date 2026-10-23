@@ -591,6 +591,7 @@ export default {
     group_llm: 'Main LLM',
     group_media: 'Media (vision & image generation)',
     group_search: 'Web search',
+    group_computer: 'Cloud computer (E2B)',
     group_extension: '{name} (extension)',
     sourceDb: 'Workspace',
     sourceEnv: 'Environment',
@@ -831,6 +832,7 @@ export default {
       removeBudgetLimit: 'reset the budget',
       updateServicePrice: 'changed the price of',
       removeServicePrice: 'reset the price of',
+      stopMemberComputer: 'stopped the cloud computer of',
     },
     entity: {
       project: 'project',
@@ -1086,6 +1088,10 @@ export default {
       label: 'Paid services',
       description:
         'Search the web, read web pages, analyze images and generate images into your Files. Each call costs money.',
+    },
+    computer: {
+      label: 'Cloud computer',
+      description: 'Run commands and move files in your own cloud computer. Billed per minute while it runs.',
     },
   },
 

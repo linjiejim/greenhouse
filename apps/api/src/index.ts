@@ -95,6 +95,8 @@ import shareRoutes from './routes/shares.js';
 import { createNotificationRoutes } from './routes/notifications.js';
 import pushDeviceRoutes from './routes/push-devices.js';
 import adminMeteringRoutes from './routes/admin-metering.js';
+import { adminComputerRoutes, computerRoutes } from './routes/computer.js';
+import { sweepComputers } from './computer/service.js';
 import usageRoutes from './routes/usage.js';
 import toolsRoutes from './routes/tools.js';
 import driveRoutes from './routes/drive.js';
@@ -279,6 +281,7 @@ function mountRoutes(toolRegistry: ToolRegistry) {
       .route('/api/admin/platform', platformAdminRoutes)
       .route('/api/admin/operations', costValueRoutes)
       .route('/api/admin/metering', adminMeteringRoutes)
+      .route('/api/admin/computers', adminComputerRoutes)
       .route('/api/admin', adminRoutes)
       .route('/api/admin/settings', adminSettingsRoutes)
       .route('/api/admin/feature-requests', featureRequestRoutes)
@@ -330,6 +333,8 @@ function mountRoutes(toolRegistry: ToolRegistry) {
       // Module usage counts (page opens) — all internal users; counts only
       .use('/api/usage/*', requireInternal())
       .route('/api/usage', usageRoutes)
+      .use('/api/computer/*', requireInternal())
+      .route('/api/computer', computerRoutes)
       // Tool metadata — authenticated internal users
       .route('/api/tools', toolsRoutes)
       // WebSocket endpoint — internal users only (auth via query token)
@@ -552,6 +557,17 @@ async function main() {
       void sweep().catch((error) => logger.warn(`[upkeep] ${label} sweep failed`, { error: toErrorMessage(error) }));
     }
   }, 5 * 60_000);
+
+  // Cloud computers, every minute: stop idle ones (all of them while the
+  // switch is off), roll per-minute billing blocks, close half-done starts and
+  // stops. Never creates a computer.
+  setInterval(
+    () =>
+      void sweepComputers(dbProvider).catch((error) =>
+        logger.warn('[computer] sweep failed', { error: toErrorMessage(error) }),
+      ),
+    60_000,
+  );
 
   // Heartbeat: ping all WS connections every 30s. Never an unhandled rejection:
   // Node would exit the whole API over one failed tick.

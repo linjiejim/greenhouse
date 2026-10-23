@@ -518,6 +518,44 @@ export async function reserveSpend(input: ReserveSpendInput): Promise<SpendLease
   }
 }
 
+/**
+ * The lease of a reservation made earlier — by another request, another API
+ * process, or before a restart — rebuilt from its idempotency key so it can be
+ * settled now. Long-lived spend (a cloud computer billed per minute in blocks)
+ * keeps only the key; the accounts come from the reservation group, or, when
+ * nothing was reserved because the service was unpriced at the time, from this
+ * period's accounts, so a price set since still debits all three levels.
+ */
+export async function restoreSpendLease(
+  db: DatabaseProvider,
+  input: {
+    idempotencyKey: string;
+    estimatedUsdMicros: number;
+    attribution: SpendAttribution;
+  },
+): Promise<SpendLease> {
+  const group = await db.usageBudget.getReservationGroup(input.idempotencyKey);
+  const accountIds = group.length
+    ? group.map((row) => row.account_id)
+    : (
+        await ensureSpendAccounts(db, {
+          ...(input.attribution.userId ? { userId: input.attribution.userId } : {}),
+          service: input.attribution.service,
+        })
+      ).ids;
+  const lease = new SpendLease(
+    db,
+    input.idempotencyKey,
+    group.length ? input.estimatedUsdMicros : 0,
+    group.length > 0,
+    accountIds,
+    input.attribution,
+  );
+  // The call this lease paid for has run; settling it is all that is left.
+  lease.markProviderIoStarted();
+  return lease;
+}
+
 // ─── Non-model services ──────────────────────────────────
 
 export interface ServiceFact {
