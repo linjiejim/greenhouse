@@ -58,3 +58,19 @@ export function parseSaved(value: unknown, id: number): SavedDoc | null {
   if (typeof saved.doc.title !== 'string' || typeof saved.doc.content_markdown !== 'string') return null;
   return saved as SavedDoc;
 }
+
+/**
+ * What a failed read of a document means for the copy saved on this phone:
+ * - `gone`: the server says it is not there or no longer mine to read (403 / 404 / 410) — the
+ *   copy is deleted and stops showing, so revoked access never lingers offline;
+ * - `unreachable`: no answer from the station (no network, or a gateway that cannot reach it) —
+ *   the saved copy, if any, is shown and marked as such;
+ * - `failed`: the station answered with another error — no copy, an error with a retry.
+ */
+export type DocMiss = 'gone' | 'unreachable' | 'failed';
+
+export function docMiss(status: number): DocMiss {
+  if (status === 403 || status === 404 || status === 410) return 'gone';
+  if (status === 0 || status === 502 || status === 503 || status === 504) return 'unreachable';
+  return 'failed';
+}

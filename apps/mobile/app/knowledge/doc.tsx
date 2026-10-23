@@ -1,7 +1,8 @@
 /**
  * One knowledge document (`/knowledge/doc?id=`), read-only: its saved copy opens at once when the
  * phone has one (offline reading), the server's version replaces it and is saved again
- * (src/store/knowledge.ts); a document that is gone or no longer readable loses its copy.
+ * (src/store/knowledge.ts); a document that is gone or no longer readable (403 / 404) loses its
+ * copy at once — only an unreachable station falls back to it (src/data/recent-docs.ts `docMiss`).
  * Below it, the comments, and a toolbar button to add one.
  */
 
@@ -10,7 +11,7 @@ import { ScrollView, Text, View } from 'react-native';
 import { Stack, useLocalSearchParams } from 'expo-router';
 import { addComment, getDoc, listComments } from '../../src/api/knowledge';
 import { captureIdentity } from '../../src/data/identity';
-import type { SavedDoc } from '../../src/data/recent-docs';
+import { docMiss, type SavedDoc } from '../../src/data/recent-docs';
 import { useT } from '../../src/lib/i18n';
 import { relativeTimeNow } from '../../src/lib/time-words';
 import { Markdown } from '../../src/markdown';
@@ -42,28 +43,43 @@ export default function KnowledgeDoc() {
     if (id == null) return;
     let alive = true;
     const current = captureIdentity();
+    // once the station answered, the early saved copy must not come back over its verdict
+    let answered = false;
     setFailed(false);
+    setMissing(false);
     void savedDoc(id).then((saved: SavedDoc | null) => {
-      if (alive && saved) setDoc((shown) => shown ?? saved.doc);
+      if (alive && !answered && saved) setDoc((shown) => shown ?? saved.doc);
     });
     void getDoc(id).then(async (result) => {
       if (!alive || !current()) return;
+      answered = true;
       if (result.ok) {
         setDoc(result.data.doc);
         setOffline(false);
         void rememberDoc(result.data.doc);
         return;
       }
-      if (result.status === 404) {
+      const miss = docMiss(result.status);
+      if (miss === 'gone') {
+        // revoked or deleted: the copy goes and stops showing
+        setDoc(null);
+        setOffline(false);
         setMissing(true);
         void forgetDoc(id);
         return;
       }
-      // unreachable: the saved copy (if any) stays, marked as such
-      const saved = await savedDoc(id);
-      if (!alive) return;
-      if (saved) setOffline(true);
-      else setFailed(true);
+      if (miss === 'unreachable') {
+        const saved = await savedDoc(id);
+        if (!alive || !current()) return;
+        if (saved) {
+          setDoc(saved.doc);
+          setOffline(true);
+        } else setFailed(true);
+        return;
+      }
+      setDoc(null);
+      setOffline(false);
+      setFailed(true);
     });
     void listComments(id).then((result) => {
       if (alive && current() && result.ok) setComments(result.data.comments);

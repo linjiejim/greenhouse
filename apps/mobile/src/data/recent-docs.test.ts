@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { KbDoc } from '../shared/greenhouse-types';
-import { dropped, parseRecent, parseSaved, RECENT_MAX, toSaved, withOpened } from './recent-docs';
+import { docMiss, dropped, parseRecent, parseSaved, RECENT_MAX, toSaved, withOpened } from './recent-docs';
 
 describe('recently opened documents', () => {
   it('moves a reopened document to the top and caps the list', () => {
@@ -34,5 +34,24 @@ describe('recently opened documents', () => {
     expect(parseSaved(saved, 8)).toBeNull();
     expect(parseRecent([{ id: 1, title: 't', openedAt: 1 }, { id: 'x' }])).toHaveLength(1);
     expect(parseRecent(null)).toEqual([]);
+  });
+});
+
+describe('a document the station would not give back', () => {
+  it('loses its saved copy when access was revoked or it is gone', () => {
+    expect(docMiss(403)).toBe('gone');
+    expect(docMiss(404)).toBe('gone');
+    expect(docMiss(410)).toBe('gone');
+  });
+
+  it('reads from the saved copy only when the station could not be reached', () => {
+    expect(docMiss(0)).toBe('unreachable');
+    expect(docMiss(502)).toBe('unreachable');
+    expect(docMiss(503)).toBe('unreachable');
+    expect(docMiss(504)).toBe('unreachable');
+  });
+
+  it('shows an error, not the copy, for any other answer', () => {
+    for (const status of [400, 401, 409, 429, 500]) expect(docMiss(status)).toBe('failed');
   });
 });
