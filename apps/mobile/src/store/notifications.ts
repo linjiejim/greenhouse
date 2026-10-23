@@ -19,10 +19,10 @@ import {
 import { forgetMember, readCache, writeCache } from '../data/disk-cache';
 import { captureIdentity } from '../data/identity';
 import {
+  afterRefresh,
   parseSnapshot,
   toSnapshot,
   withAllRead,
-  withFirstPage,
   withItem,
   withNextPage,
   withRead,
@@ -91,11 +91,17 @@ export const useNotifications = create<NotificationsState>((set, get) => {
         set({ status: items.length ? (status === 'cached' ? 'cached' : 'ready') : 'error', error: page });
         return;
       }
-      const merged = withFirstPage(get().items, page.data.notifications);
-      const keepsTail = merged.length > page.data.notifications.length;
+      const { items, nextCursor } = afterRefresh({
+        current: get().items,
+        currentCursor: get().nextCursor,
+        // the offline copy's tail is not a server continuation (a cut copy has no cursor at all)
+        continues: get().status === 'ready' || get().status === 'error',
+        page: page.data.notifications,
+        pageCursor: page.data.next_cursor,
+      });
       set({
-        items: merged,
-        nextCursor: keepsTail ? get().nextCursor : page.data.next_cursor,
+        items,
+        nextCursor,
         unread: summary.ok ? summary.data.unread : get().unread,
         status: 'ready',
         error: null,

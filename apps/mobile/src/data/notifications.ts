@@ -33,6 +33,26 @@ export function withFirstPage(current: readonly PlatformNotification[], page: re
   return [...page, ...tail].sort(byNewest);
 }
 
+/**
+ * The list after a fresh first page, with a cursor that really continues it. Items loaded beyond
+ * the page stay only when they came from this run's own paging (`continues`: their cursor is the
+ * server's). An offline copy's tail does not — a cut copy has no cursor, and its older items may
+ * be stale — so it is dropped and paging restarts from the page's own cursor.
+ */
+export function afterRefresh(input: {
+  current: readonly PlatformNotification[];
+  currentCursor: string | null;
+  /** The items beyond the first page were paged in this run (not restored from the offline copy). */
+  continues: boolean;
+  page: readonly PlatformNotification[];
+  pageCursor: string | null;
+}): { items: PlatformNotification[]; nextCursor: string | null } {
+  if (!input.continues) return { items: [...input.page], nextCursor: input.pageCursor };
+  const items = withFirstPage(input.current, input.page);
+  const keepsTail = items.length > input.page.length;
+  return { items, nextCursor: keepsTail ? input.currentCursor : input.pageCursor };
+}
+
 /** A later page appended, without duplicates. */
 export function withNextPage(current: readonly PlatformNotification[], page: readonly PlatformNotification[]) {
   const ids = new Set(current.map((item) => item.id));

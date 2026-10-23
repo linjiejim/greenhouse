@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { PlatformNotification } from '../shared/greenhouse-types';
 import {
+  afterRefresh,
   parseSnapshot,
   SNAPSHOT_MAX,
   toSnapshot,
@@ -40,6 +41,27 @@ describe('pages', () => {
     // an item inside the page's range but gone from it was deleted: dropped
     expect(ids(merged)).not.toContain(note(8).id);
     expect(withFirstPage(shown, [])).toEqual([]);
+  });
+
+  it('restarts paging from the server after restoring a cut offline copy', () => {
+    // the copy kept 3 items and had to drop its cursor; the server's first page is 2 items
+    const restored = [note(9), note(8), note(7)];
+    const page = [note(10), note(9)];
+    const after = afterRefresh({ current: restored, currentCursor: null, continues: false, page, pageCursor: 'c-9' });
+    expect(ids(after.items)).toEqual(ids(page));
+    expect(after.nextCursor).toBe('c-9');
+  });
+
+  it('keeps items paged in this run, with their own cursor', () => {
+    const loaded = [note(9), note(8), note(7), note(6)];
+    const page = [note(10), note(9)];
+    const after = afterRefresh({ current: loaded, currentCursor: 'c-6', continues: true, page, pageCursor: 'c-9' });
+    expect(ids(after.items)).toEqual(ids([note(10), note(9), note(8), note(7), note(6)]));
+    expect(after.nextCursor).toBe('c-6');
+    // nothing beyond the page: the page's cursor
+    expect(afterRefresh({ current: [], currentCursor: null, continues: true, page, pageCursor: 'c-9' }).nextCursor).toBe(
+      'c-9',
+    );
   });
 
   it('appends a later page without duplicates', () => {
