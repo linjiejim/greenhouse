@@ -511,7 +511,7 @@ v1 只接 DeepSeek 与 OpenAI 兼容服务，它们**自动**缓存 prompt 前�
 
 ### 模型网关（`routes/gateway.ts` + `gateway/`，v1.6，D4）
 
-- 成员自己的 Agent 用团队模型额度：`GET /api/gateway/openai/v1/models`、`POST /api/gateway/openai/v1/chat/completions`（OpenAI Chat Completions，流式与非流式，tools / response_format 原样透传）。别的 OpenAI 端点（Responses、embeddings、images）与 Anthropic Messages 都没有，别在文案里说有。
+- 成员自己的 Agent 用团队模型额度：`GET /api/gateway/openai/v1/models`、`POST /api/gateway/openai/v1/chat/completions`（OpenAI Chat Completions，流式与非流式，tools / response_format 原样透传）。别的 OpenAI 端点（Responses、embeddings、images）与 Anthropic Messages 都没有，别在文案里说有——所以当前的 Codex（codex-cli 已删掉 `wire_api = "chat"`，只走 Responses）和 Claude Code（只走 Messages）都接不上，接入指南不给它们配置。
 - 鉴权只认 `Authorization: Bearer ghgw_…`（`db.gatewayKeys`，库里只有 SHA-256 + 12 字符前缀）。`/api/gateway/` 在 `isPublicPath` 里（带尾斜杠，别的路由不许叫 `/api/gateway…`）；CORS 在 `security.ts` 对它关闭；请求体上限 4 MB；限流走 `checkRateLimit`：每 IP 600/分，每 Key `GATEWAY_RATE_LIMIT_PER_MINUTE`（默认 60）。
 - 工作区开关 `gateway.enabled`（`boolean` 型 workspace setting，env 回落 `GATEWAY_ENABLED`，默认关；`getWorkspaceFlag`）：关着时两个端点都回 403 `gateway_disabled`，成员也建不了 Key（撤销照常）。
 - 模型解析：只认目录 id（`getModelRegistry()`，没有别名）；Key 的 `allowed_models` 不含则 403 `model_not_allowed`；目录里没有 404 `model_not_found`；第一个配了 key 的 OpenAI 线协议 provider（`openai` / `deepseek` / `openai-compatible`）就是上游，换成它的 model 名转发，不跨 provider 回退。转发只带上游 key 与 content-type / accept——成员请求里的任何头（含它的 ghgw Key）都不往上游带。

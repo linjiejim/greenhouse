@@ -2918,10 +2918,10 @@ const zh: Messages = {
   gateway: {
     title: '模型网关',
     intro:
-      '你自己的 Agent（Codex、Cursor、脚本）可以用个人 Key 通过 OpenAI 兼容端点调用团队的模型。每次调用都记在你本月的额度里，和你在 Greenhouse 里的其他花费一样。',
+      '你自己的 Agent 和脚本（Cursor、OpenAI SDK、任何 OpenAI 兼容工具）可以用个人 Key 通过 OpenAI 兼容端点调用团队的模型。每次调用都记在你本月的额度里，和你在 Greenhouse 里的其他花费一样。',
     baseUrl: 'Base URL',
     modelIds: '模型 id',
-    openGuide: 'Codex、Cursor、curl 接入配置',
+    openGuide: 'OpenAI 兼容工具、Cursor、curl 接入配置',
     disabledNotice:
       '本工作区的模型网关未开启：不能新建 Key，调用都会被拒绝。管理员可以在 管理后台 › 运行配置（模型网关）里开启。',
     loadFailed: '模型网关加载失败。',
@@ -2938,7 +2938,7 @@ const zh: Messages = {
     status_revoked: '已撤销',
     status_expired: '已过期',
     fieldName: '名称',
-    fieldNamePlaceholder: '例如：笔记本上的 Codex',
+    fieldNamePlaceholder: '例如：笔记本上的 Cursor',
     fieldModels: '模型',
     fieldModelsHelp: '留空表示网关提供的所有模型都能用。',
     fieldExpiry: '过期时间',
@@ -2954,13 +2954,14 @@ const zh: Messages = {
     guideIntro: '把任何 OpenAI 兼容客户端指向网关，API Key 填你的网关 Key。调用记在你本月的额度里。',
     guideKey: 'API Key 是网关 Key（ghgw_…）：',
     guideKeyLink: '到「模型网关」新建',
-    guideCodex: 'Codex（~/.codex/config.toml，Key 放在 GREENHOUSE_GATEWAY_KEY）',
+    guideCodex:
+      'Codex 和 Claude Code 暂时接不了：当前的 Codex 只用 OpenAI Responses API，Claude Code 只用 Anthropic Messages API，而网关目前只提供 Chat Completions。',
     guideSdk: 'OpenAI SDK 与大多数 OpenAI 兼容工具',
     guideCurl: 'curl',
     guideCursor:
       'Cursor：设置 › Models › OpenAI API Key，填网关 Key，打开「Override OpenAI Base URL」填上面的 Base URL，再把模型 id 加为自定义模型。Cursor 从它自己的服务器发起调用，所以只有 Greenhouse 能从公网访问时才可用。',
     guideLimits:
-      '支持：GET /models 与 POST /chat/completions（流式与非流式、tools / function calling、response_format）。暂不支持：Responses API、embeddings、生图与 Anthropic Messages，所以 Codex 要用 wire_api = "chat"。',
+      '支持：GET /models 与 POST /chat/completions（流式与非流式、tools / function calling、response_format）。暂不支持：Responses API、embeddings、生图与 Anthropic Messages。',
     adminIntro: '成员给模型网关建的个人 Key，以及网关总开关。撤销立即生效，成员不会收到通知，请另行告知。',
     adminSwitch: '模型网关',
     adminSwitchHelp: '关闭时所有网关调用都会被拒绝，成员也不能新建 Key。',

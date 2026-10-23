@@ -2969,10 +2969,10 @@ export default {
   gateway: {
     title: 'Model gateway',
     intro:
-      "Your own agents (Codex, Cursor, scripts) can use the team's models through an OpenAI-compatible endpoint with a personal key. Every call is charged to your monthly budget, like everything else you spend in Greenhouse.",
+      "Your own agents and scripts (Cursor, OpenAI SDKs, any OpenAI-compatible tool) can use the team's models through an OpenAI-compatible endpoint with a personal key. Every call is charged to your monthly budget, like everything else you spend in Greenhouse.",
     baseUrl: 'Base URL',
     modelIds: 'Model ids',
-    openGuide: 'Setup for Codex, Cursor and curl',
+    openGuide: 'Setup for OpenAI-compatible tools, Cursor and curl',
     disabledNotice:
       'The model gateway is turned off for this workspace, so keys cannot be created and calls are refused. An administrator can turn it on in Administration › Runtime Config (Model gateway).',
     loadFailed: 'Could not load the model gateway.',
@@ -2989,7 +2989,7 @@ export default {
     status_revoked: 'Revoked',
     status_expired: 'Expired',
     fieldName: 'Name',
-    fieldNamePlaceholder: 'e.g. Codex on my laptop',
+    fieldNamePlaceholder: 'e.g. Cursor on my laptop',
     fieldModels: 'Models',
     fieldModelsHelp: 'Leave empty to allow every model the gateway offers.',
     fieldExpiry: 'Expires',
@@ -3006,13 +3006,14 @@ export default {
       'Point any OpenAI-compatible client at the gateway and use your gateway key as its API key. Calls are charged to your monthly budget.',
     guideKey: 'The API key is a gateway key (ghgw_…):',
     guideKeyLink: 'create one under Model gateway',
-    guideCodex: 'Codex (~/.codex/config.toml, key in GREENHOUSE_GATEWAY_KEY)',
+    guideCodex:
+      'Codex and Claude Code cannot use the gateway yet: current Codex only speaks the OpenAI Responses API and Claude Code the Anthropic Messages API, and the gateway serves Chat Completions only.',
     guideSdk: 'OpenAI SDKs and most OpenAI-compatible tools',
     guideCurl: 'curl',
     guideCursor:
       'Cursor: Settings › Models › OpenAI API Key — paste the gateway key, turn on “Override OpenAI Base URL” with the base URL above and add the model ids as custom models. Cursor calls from its own servers, so this only works when Greenhouse is reachable from the internet.',
     guideLimits:
-      'Supported: GET /models and POST /chat/completions, streaming or not, with tools / function calling and response_format. Not yet: the Responses API, embeddings, images and Anthropic Messages — so Codex must use wire_api = "chat".',
+      'Supported: GET /models and POST /chat/completions, streaming or not, with tools / function calling and response_format. Not yet: the Responses API, embeddings, images and Anthropic Messages.',
     adminIntro:
       "Members' personal keys for the model gateway, and the switch that turns it on. Revoking a key stops it at once; the member is not told, so tell them.",
     adminSwitch: 'Model gateway',

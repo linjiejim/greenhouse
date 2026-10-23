@@ -5,7 +5,9 @@
  *
  * Below it, "Use the team's model quota": the OpenAI-compatible model gateway
  * (`/api/gateway/openai/v1`, Chat Completions + models only) with a personal
- * `ghgw_` key — config for Codex (chat wire API), Cursor, OpenAI SDKs and curl.
+ * `ghgw_` key — config for OpenAI SDKs / OpenAI-compatible tools, curl and
+ * Cursor. Codex is not listed: current codex-cli only speaks the Responses
+ * API (`wire_api = "chat"` was removed), which the gateway does not serve yet.
  */
 
 import React, { useState } from 'react';
@@ -54,16 +56,6 @@ function GatewayGuide({ gateway, onOpenKeys }: { gateway: GatewayOverview; onOpe
   const t = useT();
   const base = gateway.base_url;
   const model = gateway.models[0]?.id ?? 'flash';
-  const codex = [
-    `model = "${model}"`,
-    'model_provider = "greenhouse"',
-    '',
-    '[model_providers.greenhouse]',
-    'name = "Greenhouse"',
-    `base_url = "${base}"`,
-    'env_key = "GREENHOUSE_GATEWAY_KEY"',
-    'wire_api = "chat"',
-  ].join('\n');
   const sdk = [`export OPENAI_BASE_URL=${base}`, 'export OPENAI_API_KEY=ghgw_…'].join('\n');
   const curl = [
     `curl ${base}/chat/completions \\`,
@@ -101,11 +93,11 @@ function GatewayGuide({ gateway, onOpenKeys }: { gateway: GatewayOverview; onOpe
           {t('gateway.guideKeyLink')}
         </button>
       </p>
-      <Snippet title={t('gateway.guideCodex')} code={codex} />
       <Snippet title={t('gateway.guideSdk')} code={sdk} />
       <Snippet title={t('gateway.guideCurl')} code={curl} />
       <p className="text-xs text-fg-muted leading-relaxed">{t('gateway.guideCursor')}</p>
       <p className="text-xs text-fg-muted leading-relaxed">{t('gateway.guideLimits')}</p>
+      <p className="text-xs text-fg-muted leading-relaxed">{t('gateway.guideCodex')}</p>
     </Card>
   );
 }

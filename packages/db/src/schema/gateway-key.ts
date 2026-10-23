@@ -2,7 +2,7 @@
  * Drizzle schema — model gateway keys (PostgreSQL).
  *
  * A member's personal key for the OpenAI-compatible model gateway
- * (`/api/gateway/openai/v1`): their own agents (Codex, Cursor, scripts) call the
+ * (`/api/gateway/openai/v1`): their own agents (Cursor, scripts, OpenAI-compatible tools) call the
  * team's models with it and every call is metered to that member.
  *
  * - The secret (`ghgw_…`) is shown once at creation and never stored: `key_hash`

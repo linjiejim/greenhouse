@@ -390,8 +390,8 @@ never widen them.
 
 ### Model gateway (members' agents on the team's models)
 
-Members' own agents (Codex, Cursor, scripts) can call the team's catalog models through an
-OpenAI-compatible endpoint, metered to the member in the same USD budgets as everything else:
+Members' own agents and scripts (Cursor, OpenAI SDKs, any OpenAI-compatible tool) can call the
+team's catalog models through an OpenAI-compatible endpoint, metered to the member in the same USD budgets as everything else:
 
 - A super turns it on: **Administration → Runtime Config → Model gateway** (or the switch on
   **Services & pricing → Gateway keys**; `GATEWAY_ENABLED=true` as the env fallback). Off by
@@ -401,8 +401,8 @@ OpenAI-compatible endpoint, metered to the member in the same USD budgets as eve
   revoke every key under **Services & pricing → Gateway keys**.
 - Base URL `<origin>/api/gateway/openai/v1`, API key = the gateway key, model = a catalog id
   (`GET /models`). Supported: `GET /models`, `POST /chat/completions` (streaming, tools,
-  `response_format`). Not yet: the Responses API (Codex needs `wire_api = "chat"`), embeddings,
-  images, Anthropic Messages.
+  `response_format`). Not yet: the Responses API, embeddings, images, Anthropic Messages — so
+  current Codex (Responses-only) and Claude Code (Messages-only) cannot use it yet.
 - Every call reserves before it is forwarded and settles from the provider's `usage`; an
   exhausted budget answers `429` with `code: "usage_budget_exceeded"`. Per-key rate limit:
   `GATEWAY_RATE_LIMIT_PER_MINUTE` (default 60).
