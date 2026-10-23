@@ -10,6 +10,7 @@ import { FlatList, View } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { listDocs, listKbFolders, searchDocs, type KbShelf } from '../../src/api/knowledge';
 import type { ApiResult } from '../../src/api/client';
+import { captureIdentity } from '../../src/data/identity';
 import { levelOf, pathTo } from '../../src/data/kb-tree';
 import type { RecentDoc } from '../../src/data/recent-docs';
 import { useResource } from '../../src/data/use-resource';
@@ -49,7 +50,7 @@ export default function Knowledge() {
 
   const load = useCallback(async (): Promise<ApiResult<{ folders: DriveFolder[]; docs: KbDoc[] }>> => {
     const [docs, folders] = await Promise.all([
-      listDocs(shelf),
+      listDocs(shelf, captureIdentity()),
       shelf === 'shared' ? Promise.resolve({ ok: true as const, data: { folders: [] } }) : listKbFolders(shelf),
     ]);
     if (!docs.ok) return docs;
