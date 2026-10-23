@@ -26,12 +26,17 @@ import { renderRetroMarkdown } from '../render.js';
 
 afterEach(() => {
   stopUpkeepJobs();
+  vi.useRealTimers();
   zone.current = 'Asia/Shanghai';
 });
 
 describe('monthly retro schedule', () => {
   it('runs at 09:00 on the 1st, workspace time, for the month that ended, and follows a zone change', async () => {
     const now = new Date('2026-10-15T00:00:00Z');
+    // Croner's one-shot reads the clock: pin it to the fixture date (Date only,
+    // so no timer fires) — otherwise this goes stale once November begins.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(now);
     const job = await startMonthlyRetroJob(now);
     expect(job).not.toBeNull();
     // 09:00 in Shanghai (UTC+8) is 01:00 UTC on the 1st — after October closed.
