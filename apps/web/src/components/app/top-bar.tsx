@@ -34,7 +34,6 @@ type Route =
   | 'chat'
   | 'extension'
   | 'automations'
-  | 'agents'
   | 'settings'
   | 'administration'
   | 'projects'
@@ -228,7 +227,6 @@ export function TopBar({
     workbench: 'Workbench',
     chat: chatUtilityTitle || sessionTitle || t('chat.newConversation'),
     automations: t('navigation.automation'),
-    agents: t('navigation.myAgents'),
     projects: t('app.projects'),
     settings: t('app.settings'),
     administration: t('app.administration'),

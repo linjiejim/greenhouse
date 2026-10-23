@@ -22,7 +22,8 @@ const MODULE_PAGES: ModulePageContract[] = [
   { file: '../administration/runtime-config.tsx', moduleId: 'admin.runtime-config', layout: 'form' },
   { file: '../administration/branding-studio.tsx', moduleId: 'admin.branding', layout: 'canvas' },
   { file: '../automations.tsx', moduleId: 'workspace.automations', layout: 'list' },
-  { file: '../agents.tsx', moduleId: 'workspace.agents', layout: 'list' },
+  // Run profiles (custom agents) is the second Automations tab.
+  { file: '../run-profiles.tsx', moduleId: 'workspace.automations', layout: 'list' },
   { file: '../tables/index.tsx', moduleId: 'workspace.tables', layout: 'list' },
   { file: '../projects.tsx', moduleId: 'workspace.projects', layout: 'canvas' },
   { file: '../executions/task-center.tsx', moduleId: 'workspace.executions', layout: 'list' },
@@ -57,7 +58,6 @@ describe('ModulePage coverage', () => {
   it('keeps standalone workspace route wrappers out of App', () => {
     const source = readFileSync(new URL('../../app.tsx', import.meta.url), 'utf8');
 
-    expect(source).toMatch(/route === 'automations' && <AutomationsPage \/>/);
-    expect(source).toMatch(/route === 'agents' && <AgentsPage \/>/);
+    expect(source).toMatch(/route === 'automations' && <AutomationsPage params=\{params\} \/>/);
   });
 });

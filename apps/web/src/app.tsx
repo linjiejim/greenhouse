@@ -20,8 +20,7 @@ const AdministrationPage = lazy(() =>
 );
 const DesignPage = lazy(() => import('./pages/design').then((m) => ({ default: m.DesignPage })));
 const KnowledgePage = lazy(() => import('./pages/knowledge').then((m) => ({ default: m.KnowledgePage })));
-const AgentsPage = lazy(() => import('./pages/agents').then((m) => ({ default: m.AgentsPage })));
-const AutomationsPage = lazy(() => import('./pages/automations').then((m) => ({ default: m.AutomationsPanel })));
+const AutomationsPage = lazy(() => import('./pages/automations').then((m) => ({ default: m.AutomationsPage })));
 const SkillHubPage = lazy(() => import('./pages/skillhub').then((m) => ({ default: m.SkillHubPage })));
 const ExecutionCenterPage = lazy(() => import('./pages/executions').then((m) => ({ default: m.ExecutionsPage })));
 const TablesPage = lazy(() => import('./pages/tables').then((m) => ({ default: m.TablesPage })));
@@ -79,7 +78,6 @@ type Route =
   | 'chat'
   | 'extension'
   | 'automations'
-  | 'agents'
   | 'settings'
   | 'administration'
   | 'projects'
@@ -174,7 +172,6 @@ function LeaveConfirmDialog({
 const CORE_ROUTES: ReadonlySet<string> = new Set([
   'chat',
   'automations',
-  'agents',
   'settings',
   'administration',
   'projects',
@@ -197,7 +194,8 @@ function parseRoute(hash: string): ParsedRoute {
   const segments = path.split('/');
   const topLevel = segments[0] || 'chat';
 
-  // Retired workspace pages (My prompts → SkillHub tab) and the legacy
+  // Retired workspace pages (My prompts → SkillHub tab, My Agents → Automations
+  // tab) and the legacy
   // `#/chat?view=…` switches land on their canonical pages, so refresh/back/
   // deep-links all describe the screen the user is actually looking at.
   const workspaceRedirect = retiredWorkspaceRedirect(topLevel, new URLSearchParams(query || '').get('view'));
@@ -665,8 +663,7 @@ function AppShell({ route, subPath, params, extensionRoute }: AppShellProps) {
                     initialSessionId={params.get('session') || undefined}
                   />
                 )}
-                {route === 'automations' && <AutomationsPage />}
-                {route === 'agents' && <AgentsPage />}
+                {route === 'automations' && <AutomationsPage params={params} />}
                 {route === 'skillhub' && <SkillHubPage subPath={subPath} params={params} />}
                 {route === 'settings' && <SettingsPage subPath={subPath} />}
                 {route === 'administration' && <AdministrationPage subPath={subPath} />}

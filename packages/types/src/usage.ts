@@ -51,8 +51,9 @@ export function parseAppClient(value: string | null | undefined): 'mobile' | nul
 /**
  * Core page modules. Top-level pages use their route name; Settings and
  * Administration use their navigation module id. Retired modules (the session
- * tags / groups organizers, and `tasks` — My prompts, now a SkillHub tab counted
- * as `skillhub` — all 1.5) are no longer accepted; counts already recorded
+ * tags / groups organizers; `tasks` — My prompts, now a SkillHub tab counted as
+ * `skillhub`; `agents` — My Agents, now an Automations tab counted as
+ * `automations` — all 1.5) are no longer accepted; counts already recorded
  * under them still read back in Administration › Usage.
  */
 export const PAGE_MODULE_IDS = [
@@ -61,7 +62,6 @@ export const PAGE_MODULE_IDS = [
   'projects',
   'tables',
   'automations',
-  'agents',
   'skillhub',
   'executions',
   'settings.preferences',

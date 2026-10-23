@@ -702,8 +702,6 @@ const zh: Messages = {
     newChat: '新对话',
     automation: '自动化',
     automationDesc: '安排 Agent 定期执行重复工作',
-    myAgents: '我的 Agent',
-    myAgentsDesc: '创建和管理可复用的 Agent 配置',
     tables: '数据表',
     tablesDesc: '由团队与 Agent 共同使用的结构化内部数据',
     projectsDesc: '在一个组合视图中查看进行中、规划中和暂停中的项目',
@@ -1917,6 +1915,11 @@ const zh: Messages = {
 
   // 自动化（定时任务）
   automations: {
+    tabs: {
+      label: '自动化分区',
+      automations: '自动化',
+      profiles: '执行配置',
+    },
     countLabel: '{count} 个自动化任务',
     create: '新建',
     createTitle: '新建自动化',

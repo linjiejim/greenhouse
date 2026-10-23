@@ -41,7 +41,6 @@ type Route =
   | 'chat'
   | 'extension'
   | 'automations'
-  | 'agents'
   | 'settings'
   | 'administration'
   | 'projects'

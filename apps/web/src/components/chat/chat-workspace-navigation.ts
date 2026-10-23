@@ -1,4 +1,4 @@
-import { Bot, Zap, type LucideIcon } from '../../lib/icons';
+import { Zap, type LucideIcon } from '../../lib/icons';
 import type { TranslationKey } from '../../lib/i18n';
 import type { ChatWorkspaceView } from '../../stores';
 
@@ -13,11 +13,6 @@ export const CHAT_WORKSPACE_ITEMS: readonly ChatWorkspaceNavigationItem[] = [
     id: 'automations',
     labelKey: 'navigation.automation',
     icon: Zap,
-  },
-  {
-    id: 'agents',
-    labelKey: 'navigation.myAgents',
-    icon: Bot,
   },
 ] as const;
 

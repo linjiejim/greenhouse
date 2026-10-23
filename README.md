@@ -287,7 +287,9 @@ git pull && pnpm install && pnpm drizzle-kit migrate   # then restart the API
 > Subagent runs) are removed: Subagent runs still active at upgrade are closed on first boot,
 > historical ones stay readable in the Execution center, and `RUNTIME_SUBAGENT_DRIVER_ENABLED`
 > can be removed from `.env`. *My prompts* (formerly the standalone Tasks page, `#/tasks`) moved
-> into SkillHub as its second tab; old links redirect.
+> into SkillHub as its second tab, and *My Agents* (`#/agents`) into Automations as the
+> *Run profiles* tab; old links redirect. Custom agents, the chat agent picker and
+> automations that run as `custom:<id>@<v>` are unchanged.
 
 > **Upgrading to 1.4** — Evaluation, Missions (the cloud-agent sandbox), the team LLM relay
 > (`/api/llm`, relay keys, AI Gateway admin page) and Workflows are removed. There is no

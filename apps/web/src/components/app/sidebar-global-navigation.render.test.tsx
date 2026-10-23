@@ -46,15 +46,14 @@ describe('SidebarGlobalNavigation', () => {
     expect(html).toMatch(/href="#\/chat"[^>]*class="[^"]*font-semibold/);
   });
 
-  it('moves Automation and My Agents into More with overflow applications; prompts live in SkillHub', () => {
+  it('moves Automation into More with overflow applications; prompts and agents are tabs now', () => {
     const html = render('automations');
 
     expect(html.indexOf('More')).toBeLessThan(html.indexOf('Automation'));
-    expect(html.indexOf('Automation')).toBeLessThan(html.indexOf('My Agents'));
     expect(html).toContain('SkillHub');
     expect(html).toContain('Tables');
     expect(html).toContain('href="#/automations"');
-    expect(html).toContain('href="#/agents"');
+    expect(html).not.toContain('href="#/agents"');
     expect(html).not.toContain('href="#/tasks"');
     expect(html).toMatch(/aria-haspopup="menu"[^>]*aria-expanded="true"[^>]*aria-current="page"/);
     expect(html).toMatch(/href="#\/automations"[^>]*aria-current="page"/);

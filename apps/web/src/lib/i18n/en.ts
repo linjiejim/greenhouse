@@ -705,8 +705,6 @@ export default {
     newChat: 'New Chat',
     automation: 'Automation',
     automationDesc: 'Schedule recurring work for Agents',
-    myAgents: 'My Agents',
-    myAgentsDesc: 'Create and manage reusable Agent configurations',
     tables: 'Tables',
     tablesDesc: 'Structured internal data shared with your team and Agents',
     projectsDesc: 'Active, planned, and paused projects in one portfolio view',
@@ -1957,6 +1955,11 @@ export default {
 
   // Automations (scheduled tasks)
   automations: {
+    tabs: {
+      label: 'Automation sections',
+      automations: 'Automations',
+      profiles: 'Run profiles',
+    },
     countLabel: '{count} automations',
     create: 'Create',
     createTitle: 'Create Automation',

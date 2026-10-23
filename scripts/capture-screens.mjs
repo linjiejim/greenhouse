@@ -607,7 +607,7 @@ await step('executions', async () => {
 });
 
 await step('agents', async () => {
-  await page.goto(`${BASE}/#/agents`);
+  await page.goto(`${BASE}/#/automations?tab=profiles`);
   await snap(page, 'agents', { wait: 1200 });
   await page.goto(`${BASE}/#/skillhub`);
   await snap(page, 'skillhub', { wait: 1500 });

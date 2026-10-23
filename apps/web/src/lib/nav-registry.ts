@@ -24,7 +24,6 @@ import {
   BarChart3,
   Brain,
   Zap,
-  Bot,
   Table2,
   FolderKanban,
 } from './icons';
@@ -256,15 +255,6 @@ const STANDALONE_MODULES: NavModule[] = [
     pinnable: false,
   },
   {
-    id: 'workspace.agents',
-    label: 'My Agents',
-    icon: Bot,
-    path: '#/agents',
-    parent: 'standalone',
-    description: 'Create and manage reusable Agent configurations',
-    pinnable: false,
-  },
-  {
     id: 'workspace.tables',
     label: 'Tables',
     icon: Table2,
@@ -340,7 +330,6 @@ const NAV_COPY: Record<string, { label: TranslationKey; description?: Translatio
   'admin.frictions': { label: 'navigation.frictions', description: 'navigation.frictionsDesc' },
   'admin.mcp-keys': { label: 'navigation.mcpAccess', description: 'navigation.mcpAccessDesc' },
   'workspace.automations': { label: 'navigation.automation', description: 'navigation.automationDesc' },
-  'workspace.agents': { label: 'navigation.myAgents', description: 'navigation.myAgentsDesc' },
   'workspace.tables': { label: 'navigation.tables', description: 'navigation.tablesDesc' },
   'workspace.projects': { label: 'projects.title', description: 'navigation.projectsDesc' },
   'workspace.executions': { label: 'taskCenter.title', description: 'taskCenter.description' },

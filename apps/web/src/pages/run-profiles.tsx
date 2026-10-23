@@ -10,7 +10,9 @@
  * owners get a one-line hint to ask an admin. Everyone who picks an agent gets
  * its current version.
  *
- * Reached from the profile selector's manage entry, or `#/agents` directly.
+ * Since 1.5 this is the "Run profiles / 执行配置" tab of Automations
+ * (`#/automations?tab=profiles`): the agents an automation runs as. Reached from
+ * the profile selector's manage entry; the old `#/agents` page redirects here.
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
@@ -45,7 +47,7 @@ const BUILT_IN_PURPOSES: Record<string, TranslationKey> = {
   'sprouty-workflows': 'agents.workflowPurpose',
 };
 
-export function AgentsPage() {
+export function RunProfilesPanel({ sectionTabs }: { sectionTabs?: React.ReactNode }) {
   const t = useT();
   const localized = useLocalized();
   const { currentUser } = useAuthStore();
@@ -170,7 +172,7 @@ export function AgentsPage() {
 
   if (loading) {
     return (
-      <ModulePage moduleId="workspace.agents" layout="list">
+      <ModulePage moduleId="workspace.automations" layout="list" tabs={sectionTabs}>
         <div className="flex items-center justify-center py-12">
           <Spinner />
         </div>
@@ -190,20 +192,23 @@ export function AgentsPage() {
 
   return (
     <ModulePage
-      moduleId="workspace.agents"
+      moduleId="workspace.automations"
       layout="list"
       tabs={
-        isSuper ? (
-          <Tabs
-            tabs={[
-              { key: 'agents', label: t('agents.tabs.agents') },
-              { key: 'usage', label: t('agents.tabs.usage') },
-            ]}
-            active={activeTab}
-            onChange={(key) => setActiveTab(key as 'agents' | 'usage')}
-            ariaLabel={t('agents.tabs.label')}
-          />
-        ) : undefined
+        <div className="flex flex-col gap-2">
+          {sectionTabs}
+          {isSuper && (
+            <Tabs
+              tabs={[
+                { key: 'agents', label: t('agents.tabs.agents') },
+                { key: 'usage', label: t('agents.tabs.usage') },
+              ]}
+              active={activeTab}
+              onChange={(key) => setActiveTab(key as 'agents' | 'usage')}
+              ariaLabel={t('agents.tabs.label')}
+            />
+          )}
+        </div>
       }
       toolbar={
         activeTab === 'agents' ? (
