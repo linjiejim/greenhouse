@@ -845,6 +845,8 @@ export default {
       updateServicePrice: 'changed the price of',
       removeServicePrice: 'reset the price of',
       stopMemberComputer: 'stopped the cloud computer of',
+      updateMemberReportTemplate: 'updated the report template',
+      deleteMemberReportTemplate: 'deleted the report template',
     },
     entity: {
       project: 'project',
@@ -876,6 +878,7 @@ export default {
       featureRequest: 'feature request',
       friction: 'friction report',
       email: 'email',
+      reportTemplate: 'report template',
     },
     status: {
       succeeded: 'Done',

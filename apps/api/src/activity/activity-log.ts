@@ -55,6 +55,12 @@ function jsonObject(text: string | null): Record<string, unknown> {
 }
 import { canRead as canReadKb, resolveKbAccess } from '../knowledge/access.js';
 import { DRIVE_AUDIT_APP_ID, type DriveChangeAction } from '../drive/audit.js';
+import {
+  REPORT_TEMPLATE_ADMIN_ACTIONS,
+  REPORT_TEMPLATE_PERSON_ACTIONS,
+  REPORTS_AUDIT_APP_ID,
+} from '../reports/audit.js';
+import { canViewTemplate } from '../reports/templates.js';
 import { PLATFORM_ORG_ID } from '../platform/runtime.js';
 import { MUTATING_PROXY_ALLOWLIST } from '../tools/registry.js';
 
@@ -83,7 +89,7 @@ const PERSONAL_PLATFORM_ACTIONS = [
 ] as const;
 
 /** Administrator changes, by Activity module. */
-const ADMIN_ACTIONS: Record<'settings' | 'users' | 'mcp', readonly string[]> = {
+const ADMIN_ACTIONS: Record<'settings' | 'users' | 'mcp' | 'skills', readonly string[]> = {
   settings: [
     'updateWorkspaceSettings',
     // Services & pricing (v1.6): budget limits and price overrides.
@@ -111,6 +117,9 @@ const ADMIN_ACTIONS: Record<'settings' | 'users' | 'mcp', readonly string[]> = {
     // A super revoking a member's model gateway key (Services & pricing).
     'revokeMemberGatewayKey',
   ],
+  // Report templates (v1.7): a super changing or deleting a template someone
+  // else owns, or one shipped with Greenhouse (reports/audit.ts).
+  skills: REPORT_TEMPLATE_ADMIN_ACTIONS,
 };
 
 const ADMIN_MODULE_BY_ACTION = new Map(
@@ -119,7 +128,10 @@ const ADMIN_MODULE_BY_ACTION = new Map(
 
 /** Module of a platform application's audit row. */
 function appModule(appId: string): string {
-  return appId === DRIVE_AUDIT_APP_ID ? 'files' : appId;
+  if (appId === DRIVE_AUDIT_APP_ID) return 'files';
+  // Report templates live in SkillHub.
+  if (appId === REPORTS_AUDIT_APP_ID) return 'skills';
+  return appId;
 }
 
 const TOOL_MODULES: Record<string, string> = {
@@ -370,6 +382,7 @@ async function fetchPending(
       if (wants(appModule(appId))) actions.push({ appId, actionIds });
     }
     if (wants('files')) actions.push({ appId: DRIVE_AUDIT_APP_ID, actionIds: DRIVE_ACTIONS });
+    if (wants('skills')) actions.push({ appId: REPORTS_AUDIT_APP_ID, actionIds: REPORT_TEMPLATE_PERSON_ACTIONS });
     if (wants('mcp')) actions.push({ appId: 'platform', actionIds: PERSONAL_PLATFORM_ACTIONS });
     jobs.push(
       db.activity
@@ -511,6 +524,27 @@ async function oauthClientName(ctx: HydrateContext, clientId: string | null): Pr
 }
 
 /**
+ * A report template, named only for a viewer who may read it: as it is now
+ * (team templates for everyone, a draft for its owner), or — once deleted —
+ * from the name its audit kept, for whoever made the change or anyone when
+ * it was a team template. A member's draft is never named to anyone else,
+ * a super included — the same rule as reading it.
+ */
+async function reportTemplateTarget(ctx: HydrateContext, row: ActivityAuditRow, summary: Record<string, unknown>) {
+  const url = '#/skillhub?tab=reports';
+  try {
+    const live = row.record_id ? await ctx.db.reportTemplates.get(row.record_id) : null;
+    if (live)
+      return canViewTemplate(live, { userId: ctx.viewer.id, role: ctx.viewer.role }) ? { label: live.name, url } : null;
+  } catch {
+    // Fall back to the kept name.
+  }
+  if (typeof summary.name !== 'string' || !summary.name) return null;
+  const readable = summary.visibility === 'team' || ctx.viewer.id === row.actor_id;
+  return readable ? { label: summary.name, url: null } : null;
+}
+
+/**
  * The title an audit kept for a record that may be gone (projects record it on
  * create and delete). Shown to whoever made the change, and to a super, who
  * reads every project; never to anyone else.
@@ -537,6 +571,12 @@ function adminDetail(row: ActivityAuditRow, summary: Record<string, unknown>): s
     return summary.detail;
   }
   if (row.action_id === 'revokeMemberGatewayKey' && typeof summary.detail === 'string') return summary.detail;
+  if (
+    (REPORT_TEMPLATE_ADMIN_ACTIONS as readonly string[]).includes(row.action_id) &&
+    typeof summary.detail === 'string'
+  ) {
+    return summary.detail;
+  }
   if (row.action_id === 'setUserFeature' && typeof summary.feature === 'string') {
     return `${summary.feature}: ${summary.enabled === false ? 'off' : 'on'}`;
   }
@@ -576,6 +616,9 @@ async function hydrateAudit(
     const name =
       (await oauthClientName(ctx, clientId)) ?? (typeof summary.client_name === 'string' ? summary.client_name : null);
     target = name ? { id: null, label: name, url: null } : null;
+  } else if (row.entity_id === 'reportTemplate' && row.record_id) {
+    const named = await reportTemplateTarget(ctx, row, summary);
+    target = { id: row.record_id, label: named?.label ?? null, url: named?.url ?? null };
   } else if (row.app_id === 'platform' && row.entity_id === 'gatewayKey') {
     // A gateway key is named by the name its owner gave it (never its secret).
     target = typeof summary.name === 'string' ? { id: row.record_id, label: summary.name, url: null } : null;

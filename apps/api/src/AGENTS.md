@@ -286,6 +286,7 @@ v1 只接 DeepSeek 与 OpenAI 兼容服务，它们**自动**缓存 prompt 前�
 - 中文：PDF 内嵌 Noto Sans SC（OFL）子集 `apps/api/assets/fonts/`（GB2312 + 拉丁 + 常用符号，两档字重各 ~2.4 MB，`scripts/build-report-fonts.sh` 重建），pdfkit 每份文档再子集化，PDF 通常几十 KB；子集外的字（emoji、生僻字）显示为空白，结果里给 `warnings` 点名。Word/PPT 不嵌字体，写 `Microsoft YaHei`，缺字体时由查看器替换。
 - 品牌取 Branding Studio：产品名、logo、`theme_tokens.brand`（缺省 V1 绿 `#2E8B3D`）。logo 能嵌就嵌：PDF 收 PNG/JPEG/SVG，Word 与 PPT 只收 PNG/JPEG（pptxgenjs 在服务端生成不了 SVG 预览图），嵌不了就换成产品名并给警告。
 - 存档：默认存成员个人架，可指定团队架或有写权限的文件夹，经 `uploadCabinetFile`（drive 审计照记、5 MB 上限）；返回 `file_id`、Files 深链与 5 分钟下载链接。本地渲染，**不计价**。Chat 同一实现（`buildLazyServerTools` 构造，非会话绑定）。
+- 模板的建 / 改 / 删记平台审计（`reports/audit.ts`，成功后记、失败只 warn）：自己的模板记成本人改动（`app_id='reports'`，`createReportTemplate` 等，SkillHub 模块）；super 改删别人的或内置模板记成管理员改动（`app_id='platform'`，`updateMemberReportTemplate` / `deleteMemberReportTemplate`，detail 写「owned by …」或 built-in）。summary 只存名称、可见范围和作者，不存章节。已删模板按审计里的名字命名：团队模板谁都可以，草稿只有作者本人——super 也看不到草稿名，与读权限一致。
 - 网页：SkillHub › 报告模板（`#/skillhub?tab=reports`），预览 = `POST /api/report-templates/preview` 用示例内容渲染 PDF（已保存的按 id，编辑中的按表单定义），不保存。
 
 ### Agent 输出兜底
@@ -439,7 +440,7 @@ v1 只接 DeepSeek 与 OpenAI 兼容服务，它们**自动**缓存 prompt 前�
 
 ### 操作记录（`activity/activity-log.ts` + `/api/activity`，v1.5）
 
-- 执行中心改成「操作记录」：一条按时间倒序的改动流，来源四种——成员在应用里（`platform_audit_events`，`actor_type='human'`，只取各已注册应用 manifest 里 `kind:'command'` 的动作 + drive 改动 + 成员自己连接/断开 Agent）、成员的 Agent（`agent_write` run，带客户端名）、定时任务（`automation` run）、管理员（工作区设置 / 用户访问 / MCP 机器客户端，动作 id 白名单在 `ADMIN_ACTIONS`）。读操作也会记审计，**绝不能**当作改动显示。
+- 执行中心改成「操作记录」：一条按时间倒序的改动流，来源四种——成员在应用里（`platform_audit_events`，`actor_type='human'`，只取各已注册应用 manifest 里 `kind:'command'` 的动作 + drive 改动 + 报告模板改动（v1.7，`app_id='reports'`，归 SkillHub 模块）+ 成员自己连接/断开 Agent）、成员的 Agent（`agent_write` run，带客户端名）、定时任务（`automation` run）、管理员（工作区设置 / 用户访问 / MCP 机器客户端，动作 id 白名单在 `ADMIN_ACTIONS`）。读操作也会记审计，**绝不能**当作改动显示。
 - 可见性在服务端：成员只看自己（`user_id` 参数被忽略）；super 看全员、可按人筛；管理员改动只给 super。对象名只在**查看者**读得到时给出（知识库走 `resolveKbAccess`，项目按公开/成员，档案按团队架或本人）；super 看不到别人私有文档的标题。管理员设置改动只显示**键名**。
 - 性能：每个来源各查 `limit+1` 行、按 `(created_at, '<前缀>:<id>' COLLATE "C")` 归并成一个游标；时间窗必填（默认 30 天，最长 366 天），SQL 里有下界，所以不会无界扫表。人员筛选在 human 行上只用 `actor_id`（有 `(actor_id, created_at)` 索引）。`runtime_runs` 没有 `(kind, created_at)` 索引，super 不按人筛时靠时间窗兜底。
 - 措辞（v1.5 polish）：每条都是「动词 + 对象种类 + 对象名」，首页团队动态与操作记录对同一改动说同一句话（网页 `ActivityRow` 共用）。Agent 写入按工具动作推出动词与对象（`describeToolWrite`：`knowledge.update_doc` → 更新了文档，`folders.create` → 创建了文件夹，`log_friction` 的 `action` 是问题种类、不是动词），**对象种类不用模块名**。新建的对象按写入结果里的 id 现查、按查看者读权限命名；查不到（已删）时只对发起写入的本人（项目/技能/需求另加 super）用写入自带的标题。动词或对象说不清的动作（连接/断开 Agent、邀请、重置密码…）在网页 `activity.action.<actionId>` 里给整句。

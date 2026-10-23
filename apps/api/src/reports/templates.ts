@@ -9,6 +9,7 @@
  */
 
 import type { DatabaseProvider, ReportTemplateWithOwner } from '@greenhouse/db';
+import type { ActorContext } from '@greenhouse/platform-kernel';
 import { safeJsonParse } from '@greenhouse/utils/json';
 import {
   checkReportTemplateDefinition,
@@ -20,11 +21,17 @@ import {
   type ReportTemplateVisibility,
   type ReportFormat,
 } from '@greenhouse/types/reports';
+import { humanActor } from '../platform/actor.js';
+import { recordReportTemplateChange } from './audit.js';
 
 export interface TemplateActor {
   userId: string;
   role: string;
+  /** Who the audit row names, with the request id; a person acting in the app by default. */
+  audit?: ActorContext;
 }
+
+const auditActor = (actor: TemplateActor) => actor.audit ?? humanActor({ id: actor.userId });
 
 export type TemplateErrorCode = 'invalid' | 'forbidden' | 'not_found';
 
@@ -121,6 +128,7 @@ export async function createTemplate(
     owner_user_id: actor.userId,
     created_by: actor.userId,
   });
+  await recordReportTemplateChange(db, auditActor(actor), actor.role, 'create', row);
   return getTemplate(db, actor, row.id);
 }
 
@@ -147,6 +155,11 @@ export async function updateTemplate(
     actor.userId,
   );
   if (!updated) return fail('not_found', `No report template "${id}".`);
+  // Named as it is now; owned by whoever owned it before (an edit never changes the owner).
+  await recordReportTemplateChange(db, auditActor(actor), actor.role, 'update', {
+    ...updated,
+    owner_name: existing.owner_name,
+  });
   return getTemplate(db, actor, id);
 }
 
@@ -161,5 +174,6 @@ export async function deleteTemplate(
     return fail('forbidden', `Only the owner of "${existing.name}" (or a super admin) can delete it.`);
   }
   if (!(await db.reportTemplates.softDelete(id, actor.userId))) return fail('not_found', `No report template "${id}".`);
+  await recordReportTemplateChange(db, auditActor(actor), actor.role, 'delete', existing);
   return { ok: true, value: { id } };
 }

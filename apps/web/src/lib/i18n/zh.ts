@@ -841,6 +841,8 @@ const zh: Messages = {
       updateServicePrice: '修改了价格',
       removeServicePrice: '恢复了默认价格',
       stopMemberComputer: '停掉了云电脑',
+      updateMemberReportTemplate: '修改了报告模板',
+      deleteMemberReportTemplate: '删除了报告模板',
     },
     entity: {
       project: '项目',
@@ -872,6 +874,7 @@ const zh: Messages = {
       featureRequest: '功能需求',
       friction: '问题反馈',
       email: '邮件',
+      reportTemplate: '报告模板',
     },
     status: {
       succeeded: '已完成',

@@ -12,11 +12,12 @@
  * implementation the report_templates / report_render agent tools use.
  */
 
-import { Hono } from 'hono';
+import { Hono, type Context } from 'hono';
 import { getDb } from '@greenhouse/db';
 import { checkReportTemplateDefinition } from '@greenhouse/types/reports';
 import { getAuthUser } from '../auth/middleware.js';
 import type { AppEnv } from '../app-env.js';
+import { humanActor } from '../platform/actor.js';
 import {
   createTemplate,
   deleteTemplate,
@@ -31,6 +32,11 @@ import { renderPdf } from '../reports/render-pdf.js';
 import { sampleReportContent } from '../reports/sample.js';
 
 const STATUS: Record<TemplateErrorCode, 400 | 403 | 404> = { invalid: 400, forbidden: 403, not_found: 404 };
+
+/** The caller as a template editor, with the request id its audit row carries. */
+function editor(user: { id: string; role: string }, c: Context) {
+  return { userId: user.id, role: user.role, audit: humanActor(user, c) };
+}
 
 async function readJson(c: { req: { json: () => Promise<unknown> } }): Promise<unknown> {
   try {
@@ -77,24 +83,19 @@ const reportTemplateRoutes = new Hono<AppEnv>()
   })
   .post('/', async (c) => {
     const user = getAuthUser(c);
-    const result = await createTemplate(getDb(), { userId: user.id, role: user.role }, await readJson(c));
+    const result = await createTemplate(getDb(), editor(user, c), await readJson(c));
     if (!result.ok) return c.json({ error: result.error, errors: result.errors ?? [] }, STATUS[result.code]);
     return c.json({ template: result.value }, 201);
   })
   .put('/:id', async (c) => {
     const user = getAuthUser(c);
-    const result = await updateTemplate(
-      getDb(),
-      { userId: user.id, role: user.role },
-      c.req.param('id'),
-      await readJson(c),
-    );
+    const result = await updateTemplate(getDb(), editor(user, c), c.req.param('id'), await readJson(c));
     if (!result.ok) return c.json({ error: result.error, errors: result.errors ?? [] }, STATUS[result.code]);
     return c.json({ template: result.value });
   })
   .delete('/:id', async (c) => {
     const user = getAuthUser(c);
-    const result = await deleteTemplate(getDb(), { userId: user.id, role: user.role }, c.req.param('id'));
+    const result = await deleteTemplate(getDb(), editor(user, c), c.req.param('id'));
     if (!result.ok) return c.json({ error: result.error }, STATUS[result.code]);
     return c.json({ deleted: true, id: result.value.id });
   });

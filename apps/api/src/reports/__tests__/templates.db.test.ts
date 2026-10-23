@@ -16,6 +16,7 @@ import reportTemplateRoutes from '../../routes/report-templates.js';
 import type { AppEnv } from '../../app-env.js';
 import { createInternalTestUser } from '../../../../../tests/helpers/internal-user.js';
 import { DEFAULT_REPORT_TEMPLATES, seedDefaultReportTemplates } from '../defaults.js';
+import { listActivity } from '../../activity/activity-log.js';
 
 vi.setConfig({ testTimeout: 20_000 });
 
@@ -184,5 +185,93 @@ describe('report templates: preview', () => {
     expect((await as(alice).preview({ template: { name: 'x' } })).status).toBe(400);
     const draft = await created(await as(alice).create(definition(unique('Mine'), 'personal')));
     expect((await as(bob).preview({ template_id: draft.id })).status).toBe(404);
+  });
+});
+
+describe('report templates: activity log', () => {
+  // `to` a minute ahead: a change in the same millisecond as "now" would fall outside the window.
+  const window = () => ({ to: new Date(Date.now() + 60_000).toISOString() });
+  /** Items of one source, sorted by action so same-millisecond changes compare stably. */
+  const activity = async (viewer: UserRow, source: 'person' | 'admin', userId?: string) =>
+    (await listActivity(db, viewer, { source, module: 'skills', userId, ...window() }, { manifests: [] })).items.sort(
+      (a, b) => a.action.localeCompare(b.action),
+    );
+
+  it("records a member's own changes as their changes, under SkillHub", async () => {
+    const name = unique('Weekly');
+    const template = await created(await as(alice).create(definition(name)));
+    expect((await as(alice).update(template.id, definition(`${name} v2`))).status).toBe(200);
+
+    const mine = await activity(alice, 'person');
+    expect(mine.map((item) => [item.action, item.verb, item.entity])).toEqual([
+      ['createReportTemplate', 'create', 'reportTemplate'],
+      ['updateReportTemplate', 'update', 'reportTemplate'],
+    ]);
+    expect(mine[1]).toMatchObject({
+      source: 'person',
+      module: 'skills',
+      actor: { id: alice.id },
+      target: { id: template.id, label: `${name} v2`, url: '#/skillhub?tab=reports' },
+    });
+    // A member sees only their own changes.
+    expect(await activity(bob, 'person')).toEqual([]);
+  });
+
+  it("records a super changing someone else's or a shipped template as an admin change", async () => {
+    const name = unique('Team');
+    const template = await created(await as(alice).create(definition(name)));
+    expect((await as(admin).update(template.id, definition(`${name} fixed`))).status).toBe(200);
+    expect((await as(admin).remove(template.id)).status).toBe(200);
+
+    const adminRows = await activity(admin, 'admin');
+    expect(adminRows.map((item) => [item.action, item.verb])).toEqual([
+      ['deleteMemberReportTemplate', 'delete'],
+      ['updateMemberReportTemplate', 'update'],
+    ]);
+    expect(adminRows.find((item) => item.action === 'updateMemberReportTemplate')).toMatchObject({
+      source: 'admin',
+      module: 'skills',
+      actor: { id: admin.id },
+      detail: `owned by ${alice.nickname}`,
+      // Deleted since, so named from what the audit kept — it was a team template.
+      target: { id: template.id, label: `${name} fixed` },
+    });
+    // Not a person change of the super's, and never shown to the member as an admin change.
+    // A super sees everyone's person rows: only Alice's create, none of the super's own.
+    const personRows = (await activity(admin, 'person')).filter((item) => item.target?.id === template.id);
+    expect(personRows.map((item) => [item.actor.id, item.action])).toEqual([[alice.id, 'createReportTemplate']]);
+    expect(await activity(alice, 'admin')).toEqual([]);
+
+    const shipped = await db.reportTemplates.create({
+      ...DEFAULT_REPORT_TEMPLATES[0]!,
+      visibility: 'team',
+      owner_user_id: null,
+      is_default: true,
+      created_by: null,
+    });
+    expect((await as(admin).remove(shipped.id)).status).toBe(200);
+    expect((await activity(admin, 'admin')).find((item) => item.target?.id === shipped.id)).toMatchObject({
+      action: 'deleteMemberReportTemplate',
+      detail: 'built-in',
+    });
+  });
+
+  it("records a super's own template as a person change", async () => {
+    const template = await created(await as(admin).create(definition(unique('Mine'))));
+    expect((await as(admin).update(template.id, definition('Renamed'))).status).toBe(200);
+    expect(
+      (await activity(admin, 'person')).filter((item) => item.target?.id === template.id).map((item) => item.action),
+    ).toEqual(['createReportTemplate', 'updateReportTemplate']);
+    expect((await activity(admin, 'admin')).some((item) => item.target?.id === template.id)).toBe(false);
+  });
+
+  it("never names a member's draft to anyone else, a super included", async () => {
+    const draft = await created(await as(alice).create(definition(unique('Secret'), 'personal')));
+    expect((await as(alice).remove(draft.id)).status).toBe(200);
+    const own = (await activity(alice, 'person')).find((item) => item.action === 'deleteReportTemplate')!;
+    expect(own.target).toMatchObject({ id: draft.id, label: draft.name });
+    const seenBySuper = await activity(admin, 'person', alice.id);
+    expect(seenBySuper.length).toBe(2);
+    for (const item of seenBySuper) expect(item.target).toEqual({ id: draft.id, label: null, url: null });
   });
 });
