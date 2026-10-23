@@ -1983,6 +1983,8 @@ const zh: Messages = {
       profiles: '执行配置',
     },
     systemProfiles: '内置配置',
+    ownerProfilesLoading: '正在加载这条自动化主人的执行配置…',
+    ownerProfilesFailed: '没能加载这条自动化主人的执行配置。',
     countLabel: '{count} 个自动化',
     create: '新建',
     createTitle: '新建自动化',
