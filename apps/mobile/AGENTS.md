@@ -2,8 +2,8 @@
 
 ## Scope
 
-- The app is the team's Agent hub on the phone: Home (notifications), Knowledge, Files, Projects, Tables, Settings, and later what my agents wrote and a light assistant chat. It is not a web wrapper and not an agent console.
-- Places not on the phone yet are listed in src/shell/modules.ts with `ready: false` and open app/module/[id].tsx ("Coming soon"); give a place its own route when it lands and drop it from the placeholder (Knowledge and Files have theirs).
+- The app is the team's Agent hub on the phone: Home (notifications), Knowledge, Files, Projects, Tables, My Agents (what my agents wrote, my spend, my gateway keys), a light Assistant chat, and Settings. It is not a web wrapper and not an agent console.
+- The drawer lists src/shell/modules.ts `visibleModules(user)`: Tables only with the `tables` feature (supers always). A new place gets its own route and an entry there; there are no placeholder screens.
 - Experience bar: content within 1.5 s of a cold start (cache first, refresh in background), 60 fps lists, haptics and optimistic updates, offline reading of recent items, dark mode, Dynamic Type, VoiceOver.
 
 ## Install and tests
@@ -26,6 +26,11 @@
 - Push devices: `/api/auth/me/push-devices` (src/api/push.ts).
 - Knowledge: `/api/knowledge/docs?visibility=`, `/docs/id/:id`, `/search`, `/docs/:id/comments`; folders are drive folders of scope `kb` (`/api/drive/folders?scope=kb&visibility=&parent_id=all`). The server caps a docs page at 100.
 - Files: `/api/drive` scope `kb` (team = `visibility=team`, mine = `private`): folders, files, search, breadcrumb, `files/:id/content` (authenticated; 302 to a signed URL on COS), and upload init → bytes (presigned PUT, or PUT to the API in proxy mode) → complete.
+- Projects: `/api/projects` (offset pages), `/:id` (project with its task tree, members, stats), `/gantt` (every readable project with its tasks; the source of "my tasks": open tasks assigned to me, src/data/tasks.ts), `PATCH /tasks/:id` (status changes are optimistic, the latest change wins, src/data/latest.ts), `/tasks/:id/comments`. There is no task by id; read it from its project's tree. `tags` may be a JSON string.
+- Tables (feature `tables`): `/api/tables/bases`, `/bases/:id` (tables and my role), `/tables/:id/schema`, `POST /tables/:id/records/query` (cursor pages), `/records/:id`, `POST /records` with `{ values }` keyed by field id. Only text, number, date, single select and boolean are written from the phone (src/data/table-fields.ts); editors and up may add. Select values are option ids; formula and rollup results are in `computed_values`.
+- My Agents: `/api/agent-access/writes` (mine, newest 50; a write's detail comes from that list), `/api/usage/spend` (my month, USD micros, src/data/money.ts), `/api/agent-access/gateway` (my keys, never a secret; created on the web).
+- Assistant: `/api/sessions` (mine; new ones use the default assistant), `/api/sessions/:id`, `POST /api/chat` streams NDJSON (src/data/chat-stream.ts) through Expo's fetch (`api(path, init, via)`); after the stream, wait on `/api/chat/runs/:id` when it broke off, then re-read the saved messages.
+- Access: a 403 means a role, feature or capability gate (EmptyState without retry); a 404 means gone or not visible to this member (src/data/access.ts).
 - Feishu sign-in: `/api/feishu/login-available`, then `start-login?app_redirect=greenhouse://auth/feishu` (the server allow-lists exactly that address) in the system auth session, then `/api/feishu/oauth/exchange`. Keep `FEISHU_APP_REDIRECT` (src/login/feishu.ts) equal to the server's `APP_LOGIN_REDIRECT`; a test compares them.
 - API reads and writes answer an `ApiResult` and never throw; resolve the base with getApiBase() at call time; api() sends tokens only to the active station's origin; switch stations only with useAuth.switchStation.
 
@@ -40,7 +45,7 @@
 - The top of a knowledge shelf lists the recently opened documents even when the shelf fails, so they open offline on a cold launch (src/data/kb-rows.ts).
 - Offset-paginated lists are read to the end with collectPages() (src/data/paging.ts), bound to the identity they started on; never stop at the first page.
 - Every multi-step write (a Files upload: init, bytes, complete, later batch items) checks the identity captured before its first step and stops on a change (src/api/drive.ts).
-- Links go through src/lib/deep-links.ts (pure) and src/shell/open-target.ts: document and file routes open natively, other station pages in the in-app Safari view at the active station, other sites in Safari. A notification opens the document or file it names, else its page, which offers the web page (src/shell/open-notification.ts).
+- Links go through src/lib/deep-links.ts (pure) and src/shell/open-target.ts: documents, files, projects and tasks (`#/projects/<id>?task=`), tables and records (`#/tables/<base>/table/<table>?record=`), conversations (`#/chat?session=`) and My Agents open natively; other station pages in the in-app Safari view at the active station, other sites in Safari. A notification opens what its payload `url` names (or My Agents for an agent write), else its page (src/shell/open-notification.ts).
 
 ## Push
 
