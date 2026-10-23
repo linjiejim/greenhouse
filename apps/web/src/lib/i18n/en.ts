@@ -1241,6 +1241,7 @@ export default {
     format: { pdf: 'PDF', docx: 'Word (.docx)', pptx: 'PowerPoint (.pptx)' },
     visibility: { team: 'Team', personal: 'Draft' },
     visibilityHelp: 'Team templates are visible to every member and their agents. A draft is visible only to you.',
+    formatsRequired: 'Pick at least one output format.',
     formatsHelp: 'Which files agents may render. The first one checked is the default.',
     coverHelp: 'Fields shown on the cover or title block. Required ones must be filled in by the writer.',
     sectionsHelp:

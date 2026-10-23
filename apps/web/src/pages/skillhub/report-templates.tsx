@@ -38,17 +38,29 @@ import {
   type ReportTemplateInput,
 } from '../../lib/api/report-templates';
 
-/** The form's values as a template definition (formats narrowed to the kind). */
-function toInput(data: Record<string, unknown>): ReportTemplateInput {
-  const kind: ReportKind = data.kind === 'presentation' ? 'presentation' : 'report';
-  const allowed = REPORT_FORMATS_BY_KIND[kind];
+function kindOf(data: Record<string, unknown>): ReportKind {
+  return data.kind === 'presentation' ? 'presentation' : 'report';
+}
+
+/** The ticked formats the form's kind allows — empty when none are, never a silent default. */
+function pickedFormats(data: Record<string, unknown>): ReportFormat[] {
   const picked = Array.isArray(data.formats) ? (data.formats as ReportFormat[]) : [];
-  const formats = allowed.filter((format) => picked.includes(format));
+  return REPORT_FORMATS_BY_KIND[kindOf(data)].filter((format) => picked.includes(format));
+}
+
+/**
+ * The form's values as a template definition. Formats are only narrowed to
+ * the kind: a cleared selection stays cleared and is refused by validation
+ * (defaults belong to a new form's initial values, not to saving).
+ */
+export function toInput(data: Record<string, unknown>): ReportTemplateInput {
+  const kind = kindOf(data);
+  const formats = pickedFormats(data);
   return {
     name: String(data.name ?? '').trim(),
     description: String(data.description ?? '').trim(),
     kind,
-    formats: formats.length ? formats : [...allowed],
+    formats,
     visibility: (data.visibility === 'personal' ? 'personal' : 'team') as ReportTemplateVisibility,
     cover_fields: Array.isArray(data.cover_fields) ? (data.cover_fields as ReportTemplateCoverField[]) : [],
     sections: Array.isArray(data.sections) ? (data.sections as ReportTemplateSection[]) : [],
@@ -216,6 +228,12 @@ export function ReportTemplatesPanel() {
             type: 'custom',
             defaultValue: ['pdf', 'docx'],
             help: t('reportTemplates.formatsHelp'),
+            rules: [
+              {
+                validate: (_value, form) =>
+                  pickedFormats(form).length === 0 ? t('reportTemplates.formatsRequired') : null,
+              },
+            ],
             render: ({ value, onChange, form }) => (
               <FormatsField
                 kind={form.kind === 'presentation' ? 'presentation' : 'report'}
@@ -255,7 +273,13 @@ export function ReportTemplatesPanel() {
                   size="sm"
                   variant="ghost"
                   disabled={previewBusy}
-                  onClick={() => void openPreview({ template: toInput(form) })}
+                  onClick={() => {
+                    // A preview always renders a PDF, whatever is ticked.
+                    const draft = toInput(form);
+                    void openPreview({
+                      template: { ...draft, formats: draft.formats.length ? draft.formats : ['pdf'] },
+                    });
+                  }}
                   data-testid="report-templates-preview-form"
                 >
                   <Eye size={14} /> {t('reportTemplates.previewDraft')}

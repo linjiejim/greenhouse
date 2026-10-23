@@ -47,7 +47,8 @@ vi.mock('../../lib/api/report-templates', () => ({
 }));
 
 import { I18nProvider } from '../../lib/i18n';
-import { ReportTemplatesPanel } from './report-templates';
+import { ReportTemplatesPanel, toInput } from './report-templates';
+import { createReportTemplate } from '../../lib/api/report-templates';
 import { SectionsField } from '../../components/skillhub/report-template-fields';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -102,6 +103,34 @@ describe('ReportTemplatesPanel', () => {
     expect(weekly.querySelector('[data-testid="report-templates-edit"]')).toBeNull();
     expect(mine.querySelector('[data-testid="report-templates-edit"]')).not.toBeNull();
     expect(mine.querySelector('[data-testid="report-templates-delete"]')).not.toBeNull();
+  });
+});
+
+describe('output formats', () => {
+  it('keeps a cleared selection cleared instead of defaulting it', () => {
+    expect(toInput({ name: 'x', kind: 'report', formats: [] }).formats).toEqual([]);
+    expect(toInput({ name: 'x', kind: 'presentation', formats: ['docx'] }).formats).toEqual([]);
+    expect(toInput({ name: 'x', kind: 'presentation', formats: ['pdf', 'pptx'] }).formats).toEqual(['pptx', 'pdf']);
+  });
+
+  it('refuses to save a template with every format unticked, and says why', async () => {
+    await mount(createElement(ReportTemplatesPanel));
+    await waitFor('Weekly report');
+    const add = container!.querySelector('[data-testid="report-templates-new"]') as HTMLButtonElement;
+    await act(async () => add.click());
+    // A new report template starts with PDF and Word ticked; untick both.
+    for (const label of ['PDF', 'Word (.docx)']) {
+      const box = [...document.querySelectorAll('label')]
+        .find((node) => node.textContent?.trim() === label)!
+        .querySelector('input') as HTMLInputElement;
+      expect(box.checked).toBe(true);
+      await act(async () => box.click());
+      expect(box.checked).toBe(false);
+    }
+    const submit = document.querySelector('[data-testid="report-templates-submit"]') as HTMLButtonElement;
+    await act(async () => submit.click());
+    expect(document.body.textContent).toContain('Pick at least one output format.');
+    expect(createReportTemplate).not.toHaveBeenCalled();
   });
 });
 

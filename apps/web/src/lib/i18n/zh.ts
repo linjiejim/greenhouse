@@ -1206,6 +1206,7 @@ const zh: Messages = {
     format: { pdf: 'PDF', docx: 'Word（.docx）', pptx: 'PowerPoint（.pptx）' },
     visibility: { team: '团队', personal: '草稿' },
     visibilityHelp: '团队模板对每位成员和他们的 Agent 可见；草稿只有你自己能看到。',
+    formatsRequired: '至少选择一种输出格式。',
     formatsHelp: 'Agent 可以渲染成哪些文件，勾选的第一个是默认格式。',
     coverHelp: '封面或标题区显示的字段，必填的由撰写者填写。',
     sectionsHelp: '按顺序排列。key 是 Agent 写内容时用的键，说明告诉它该写什么。必填章节必须存在且不能为空。',
