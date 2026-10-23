@@ -11,7 +11,7 @@
  */
 
 import { randomBytes } from 'node:crypto';
-import { and, desc, eq, gte, inArray, lt, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, lt, lte, sql } from 'drizzle-orm';
 import { nowIso } from '@greenhouse/utils/date';
 
 import type { Db } from '../client.js';
@@ -214,12 +214,13 @@ export function createMemberComputerService(db: Db) {
 
     /**
      * `running` → `stopping`: exactly one caller wins the right to stop it, and
-     * only while the billing block it evaluated is still the open one
-     * (`budget_key`). A stale snapshot loses.
+     * only while what it decided on still holds — the billing block it
+     * evaluated is still the open one (`budget_key`), and the computer has not
+     * been used since the idle cutoff (`idle_before`). A stale snapshot loses.
      */
     async claimStop(
       id: string,
-      options: { at?: string; budget_key?: string | null } = {},
+      options: { at?: string; budget_key?: string | null; idle_before?: string } = {},
     ): Promise<MemberComputerRow | undefined> {
       const at = options.at ?? nowIso();
       const conditions = [eq(memberComputers.id, id), eq(memberComputers.status, 'running')];
@@ -230,6 +231,7 @@ export function createMemberComputerService(db: Db) {
             : eq(memberComputers.budget_key, options.budget_key),
         );
       }
+      if (options.idle_before !== undefined) conditions.push(lte(memberComputers.last_used_at, options.idle_before));
       const [row] = await db
         .update(memberComputers)
         .set({ status: 'stopping', updated_at: at })

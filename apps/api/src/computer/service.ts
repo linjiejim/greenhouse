@@ -214,8 +214,8 @@ export type StopReason = 'user' | 'admin' | 'idle' | 'budget' | 'disabled' | 'ex
  *
  * `endedAt` is for a sandbox that is already gone: bill up to when it died.
  * `expect` makes the stop conditional on what the caller decided from: the
- * billing block it evaluated is still open. A caller holding a stale snapshot
- * stops nothing.
+ * billing block it evaluated is still open, the computer was not used after
+ * the idle cutoff. A caller holding a stale snapshot stops nothing.
  */
 export async function stopComputer(
   db: DatabaseProvider,
@@ -224,11 +224,12 @@ export async function stopComputer(
   options: {
     driver?: ComputerDriver;
     endedAt?: number;
-    expect?: { budgetKey?: string | null };
+    expect?: { budgetKey?: string | null; idleBefore?: string };
   } = {},
 ): Promise<MemberComputerRow | null> {
   const claimed = await db.memberComputers.claimStop(row.id, {
     ...(options.expect?.budgetKey !== undefined ? { budget_key: options.expect.budgetKey } : {}),
+    ...(options.expect?.idleBefore !== undefined ? { idle_before: options.expect.idleBefore } : {}),
   });
   if (!claimed) return null;
   if (options.endedAt === undefined && claimed.sandbox_id) {
@@ -541,8 +542,14 @@ export async function sweepComputers(
         continue;
       }
       const driver = options.driver ?? getComputerDriver();
-      if (!enabled || now - Date.parse(row.last_used_at) >= IDLE_MS) {
-        if (await stopComputer(db, row, enabled ? 'idle' : 'disabled', { driver })) stopped++;
+      if (!enabled) {
+        if (await stopComputer(db, row, 'disabled', { driver })) stopped++;
+        continue;
+      }
+      if (now - Date.parse(row.last_used_at) >= IDLE_MS) {
+        // Only if it is still idle now: a use since this snapshot keeps it running.
+        const idleBefore = new Date(now - IDLE_MS).toISOString();
+        if (await stopComputer(db, row, 'idle', { driver, expect: { idleBefore } })) stopped++;
         continue;
       }
       if (row.block_started_at && now >= Date.parse(row.block_started_at) + BLOCK_MS) {

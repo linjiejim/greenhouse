@@ -415,6 +415,23 @@ describe('cloud computer: lifecycle and per-minute billing', () => {
     expect((await memberComputer()).status).toBe('running');
   });
 
+  it('does not idle-stop a computer used after the snapshot the sweep decided on', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    const t0 = Date.parse('2026-10-24T11:00:00.000Z');
+    vi.setSystemTime(t0);
+    await ensureComputer({ db, userId: member.id, scope: scope() });
+    vi.setSystemTime(t0 + 16 * MINUTE);
+    const stale = await memberComputer();
+    // The member's agent uses it again before the sweep acts on its snapshot.
+    await db.memberComputers.touch(stale.id);
+
+    const idleBefore = new Date(t0 + 16 * MINUTE - 15 * MINUTE).toISOString();
+    expect(await stopComputer(db, stale, 'idle', { driver, expect: { idleBefore } })).toBe(null);
+    expect(driver.kill).not.toHaveBeenCalled();
+    expect((await memberComputer()).status).toBe('running');
+    expect(await sweepComputers(db, { driver })).toEqual({ stopped: 0, rolled: 1 });
+  });
+
   it('refuses a new computer once the workspace runs its limit', async () => {
     const other = await createInternalTestUser(db, { email: `${unique('computer-other')}@test.local` });
     await ensureComputer({ db, userId: other.id, scope: { userId: other.id, client: 'web' } });
