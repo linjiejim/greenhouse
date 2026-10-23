@@ -3,7 +3,8 @@
  * recently opened documents change on the phone, the station or member changes, or the language
  * changes, the snapshot (./model.ts) is rebuilt from the offline copies and published into the
  * App Group. Signed out, it is cleared. When the app comes to the foreground it refreshes my tasks
- * (at most every 10 minutes) so the widget's "next due" stays current. Imported once by the root
+ * (at most every 10 minutes) so the widget's "next due" stays current; a 403 / 404 / 410 deletes
+ * the copy and the widget shows no tasks. Imported once by the root
  * layout.
  */
 
@@ -15,11 +16,11 @@ import { parseMyTasks } from '../data/recent-items';
 import { localDay, myTasks } from '../data/tasks';
 import { useAuth } from '../store/auth';
 import { recentDocs } from '../store/knowledge';
-import { readOffline, writeOffline } from '../store/offline';
+import { readOffline, removeOffline, writeOffline } from '../store/offline';
 import { onOfflineChanged } from '../store/offline-events';
 import { usePrefs } from '../store/prefs';
 import { getActiveStation, useStations } from '../store/stations';
-import { buildSnapshot } from './model';
+import { buildSnapshot, myTasksRefreshAction } from './model';
 
 const REFRESH_MS = 10 * 60_000;
 let timer: ReturnType<typeof setTimeout> | null = null;
@@ -61,8 +62,12 @@ async function refreshMyTasks(): Promise<void> {
   lastRefresh = Date.now();
   const current = captureIdentity();
   const result = await gantt();
-  if (!current() || !result.ok) return;
-  writeOffline('my-tasks', myTasks(result.data.projects, useAuth.getState().user?.id ?? '', localDay(new Date())));
+  if (!current()) return;
+  const action = myTasksRefreshAction(result);
+  // deleting notifies onOfflineChanged, which republishes the widget without tasks
+  if (action === 'delete') removeOffline('my-tasks');
+  if (action === 'save' && result.ok)
+    writeOffline('my-tasks', myTasks(result.data.projects, useAuth.getState().user?.id ?? '', localDay(new Date())));
 }
 
 onOfflineChanged((kind) => {

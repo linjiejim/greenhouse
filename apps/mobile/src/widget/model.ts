@@ -8,7 +8,7 @@
  * (`widgetLinkPath`).
  */
 
-import type { RecentDoc } from '../data/recent-docs';
+import { docMiss, type RecentDoc } from '../data/recent-docs';
 import type { DueBucket, MyTask } from '../data/tasks';
 
 export const WIDGET_TASKS = 3;
@@ -78,6 +78,16 @@ export function buildSnapshot(input: {
     tasks,
     docs,
   };
+}
+
+/**
+ * What the foreground refresh of my tasks does with the saved copy the widget reads: save the
+ * station's answer, delete the copy when the station says it is gone or no longer mine (403 / 404
+ * / 410; the widget is then republished without tasks), or keep it on any other miss.
+ */
+export function myTasksRefreshAction(result: { ok: true } | { ok: false; status: number }): 'save' | 'delete' | 'keep' {
+  if (result.ok) return 'save';
+  return docMiss(result.status) === 'gone' ? 'delete' : 'keep';
 }
 
 /**

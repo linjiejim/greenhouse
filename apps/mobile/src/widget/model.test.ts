@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { MyTask } from '../data/tasks';
-import { buildSnapshot, widgetLinkPath } from './model';
+import { buildSnapshot, myTasksRefreshAction, widgetLinkPath } from './model';
 
 const task = (id: number, due: string | null): MyTask =>
   ({
@@ -51,6 +51,20 @@ describe('the widgets’ snapshot', () => {
     const empty = buildSnapshot({ station: { id: 's', name: 'S' }, lang: 'en', myTasks: null, recentDocs: [], now: 0 });
     expect(empty.tasks).toEqual([]);
     expect(empty.docs).toEqual([]);
+  });
+});
+
+describe('the foreground refresh of my tasks for the widget', () => {
+  it('saves the station’s answer', () => {
+    expect(myTasksRefreshAction({ ok: true })).toBe('save');
+  });
+
+  it('deletes the copy when the station says it is gone or no longer mine, so the widget empties', () => {
+    for (const status of [403, 404, 410]) expect(myTasksRefreshAction({ ok: false, status })).toBe('delete');
+  });
+
+  it('keeps the copy on any other miss', () => {
+    for (const status of [0, 500, 502, 503, 504, 429]) expect(myTasksRefreshAction({ ok: false, status })).toBe('keep');
   });
 });
 
