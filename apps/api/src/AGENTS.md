@@ -476,6 +476,29 @@ v1 只接 DeepSeek 与 OpenAI 兼容服务，它们**自动**缓存 prompt 前�
 - 性能：用户的 effective 工具集（flag / user_tools）**每请求重新解析**（两次轻量 DB 读），60s 的 `CONTEXT_TTL_MS` 缓存只免注册表构建——cache key 含 effectiveTools 签名，任何权限变化即 miss；Platform 工具可见性与 OAuth token/grant/client/user 状态同样不缓存。**撤权（含 flag 关闭与 user_tools 收回）一律下一请求生效**。flag→工具的门控只在 `resolveUserTools` 一处（由 `FEATURE_POINTS` 派生），本路由不再二次门控——曾经手写的第二份 CRM/Tables 工具表与 feature-points 漂移过，跨渠道口径由 `tests/api/channel-tool-parity.db.test.ts` 钉住。
 - 管理 UI：Settings › Administration › MCP Access（`apps/web/src/pages/administration/mcp-keys.tsx`，super-only）：建/轮换/禁用/删 key、复制客户端配置（折叠的 "How to connect"）、per-key Activity（读 `/:id/audit` 看最近调用）。
 - 纯逻辑（`toMcpInputSchema` 的 schema 归一化 + confirm 注入、协议往返）已单测：`routes/__tests__/mcp.test.ts`（用 SDK `InMemoryTransport`+`Client`，不连 DB）。
+- **团队上下文（v1.7，`hub-context/`）**：服务器声明 `tools` + `resources` + `prompts` 三种能力，内容一律按本次 grant 可达的工具集（`ctx.toolIds` = scope ∩ 成员权限）裁剪，见下方「团队上下文与数据目录」。
+  - resources：`greenhouse://context/overview`（任何 grant 都有）、`/conventions`、`/glossary`（要能到 `knowledge_query`）；知识库文档资源同样要 `knowledge_query`（v1.7 前 resources 只看平台权限、不看资源组，已收紧）。
+  - prompts：`skill-<name>`（技能中心里本人能下载的技能，隔离规则即 `downloadSkill` 的 `skillUsableBy`）与 `prompt-<id>`（本人的 + 共享给团队的 Tasks），都要能到 `skill_query`。
+  - 协议层工具 `team_context` / `data_catalog`（与 `tool_output_read` 同层，不进 registry）：每个 grant 都列出、只读，回复同样经 `boundReplyText`，按 `mcp` 计 `tool_call`。`SERVER_INSTRUCTIONS` 要求新任务先调 `team_context`。
+  - 「成员能到哪些 MCP 工具」的平台过滤在 `agent-runtime/mcp-tool-visibility.ts`（`filterMcpToolIdsByPlatform`、`memberMcpToolIds`），`routes/mcp.ts` 只是转出；别在别处再写一份能力→工具表。
+
+### 团队上下文与数据目录（`hub-context/` + `/api/admin/team-context` + `/api/data-catalog`，v1.7）
+
+- 配置存工作区设置 `team_context.conventions`（文档 id 数组，≤10）/ `team_context.glossary` / `team_context.timezone`（env `WORKSPACE_TIMEZONE`，缺省 `Asia/Shanghai`），不建表；只在 Administration › Team context 编辑，Runtime Config 不渲染这一组。
+- 只有已发布的团队文档能被选：保存时 `validateTeamContextSelection` 校验，**每次读取再校验一次**（`resolveTeamContextDocs`），之后改成私有 / 归档 / 删除的文档直接停止下发，管理页标出原因。下发前仍逐篇过 `resolveKbAccess`。
+- 写走 `applyWorkspaceSettingValues`（`routes/admin-settings.ts`，与 Runtime Config 同一条校验 + 审计路径）；改时区立即 `startMonthlyRetroJob()` 重排。
+- 数据目录 `hub-context/catalog.ts` 只有一份实现，网页（`GET /api/data-catalog`，成员全部 MCP 可达工具 `memberMcpToolIds`）与 MCP（`data_catalog`，本 grant 的工具）共用：
+  - Tables：要能到 `tables_query`；base 列表来自 Tables 应用自己的 `listBases` dispatch（角色、实体策略照常），行数与最近改动来自 `db.tables.recordStats`，**只计数不读记录值**；写入路径只给 editor 及以上且能到 `tables_mutation` 的人。
+  - 扩展：从启用扩展的契约派生（`tools` 里带 `surface.mcp` 的工具、`searchSources` 的 kind、`exportSources` 的 type/describe），成员一个工具都到不了就不列（功能开关 / 平台能力 / grant 的资源组决定）。`export_data` 只在应用内，标为 in-app only，不冒充 MCP 可达。扩展不需要新字段。
+- 检查连接 `GET /api/agent-access/connections`（`hub-context/connections.ts`）：本人有效 grant + 其 access token 最近一次 `last_used_at`（`mcpCredentialMiddleware` 每请求都 touch，所以 initialize / tools/list 也算），按客户端名归类 codex / claude-code / cursor / other。
+
+### 每月复盘（`retro/` + `POST /api/admin/retro`，v1.7）
+
+- 每月 1 日 09:00（工作区时区，`scheduler/upkeep-jobs.ts` 的 `startMonthlyRetroJob`）写刚结束那个月；Issues & requests 的「生成本月复盘」（super）写当月。统计区间是 UTC 自然月，与计价、用量计数同口径。
+- 文档 id 按月固定 `team-retro-YYYY-MM`，标题「YYYY-MM 复盘」，首次写进团队根目录文件夹「复盘」（没有就建）；再次生成更新同一篇（多一个版本），被移动的保持原位、被归档的重新发布。作者是点按钮的 super，定时任务取最早的在职 super。
+- **只放汇总**（`retro/aggregate.ts`）：页面打开 / 工具调用按模块与客户端、Agent 写入按客户端（成功 / 失败 / 结果未知 = `interrupted`）、本月出现的踩坑（归一化摘要）与本月提交的需求标题、花费按服务与客户端。绝不放消息内容、成员姓名、私有文档标题。
+- 「下月建议」由模型根据同一份汇总写（`retro/suggest.ts`），走 `createOrganizationAttemptBudgetHook`：只预留 `llm` 服务 + 组织 USD 账户（`reserveSpend({ organizationOnly: true })`，不报「漏设 scope」），client `system`，`llm_usage.user_id` 为空。超额 / 没配模型 / 调用失败都只跳过这一节并在文中写明原因，复盘照常落库。
+- 写完给每位在职 super 发 `system` 通知（payload `url` = 文档深链，网页收件箱点开直达；dedupe 按「月份 + 文档 updated_at」，每次生成一条），随后 `queueMobilePush`。
 
 ### 模块用量计数（`usage/counters.ts` + `/api/usage` + `usage_counters`）
 
@@ -503,6 +526,7 @@ v1 只接 DeepSeek 与 OpenAI 兼容服务，它们**自动**缓存 prompt 前�
 - **三级 USD 预留**：provider I/O 前对 member（`user`）+ `service` + `organization` 三个当月 `usd_micros` 账户原子预留（一个 group，幂等键 `<token key>:usd`）；成功按实际价结算；只有确认 I/O 尚未开始的失败才 release，I/O 可能已开始的一律留给 TTL sweeper 按预估计费。USD 是主限额。
 - **价目**：默认价在 models.yaml `price`（每百万 token 美元：input / output / cached_input）与 services.yaml（服务与 provider 是封闭清单，拼错启动即报错）；super 在「服务与计价」页定的价存 `usage_price_overrides`，按模型或「服务 × provider」整条覆盖文件价（按 token 计的模型 / 识图填 input+output(+cached)，按次 / 张 / 分钟的服务填 `unit_price`，生图的覆盖价是不分尺寸的单张价）。代码里不猜厂商价格。覆盖在进程内缓存，`syncPriceOverrides()` 在每个计价入口刷新（写入后立即刷新，其他进程 30 秒内跟上）。**按结算时的价计**：调用中途改价，按新价结算；每条事实的 `price_applied` 记下结算用的价（来源 + 费率），之后再改价不会改写历史。缓存命中按 `cached_input` 计（缺省同 input），输出含 reasoning。**未定价 = 成本未知**：照常记事实、`cost_usd_micros` 为 NULL、不预留、按 0 计，管理页标「未定价」，绝不因缺价拒绝；但账户已用完时零成本调用一样被拒。`price: 0` 是「免费」，和未定价不是一回事。
 - **限额解析**：`usage_budget_limits` 行（管理页写）→ env（`USAGE_BUDGET_MEMBER/ORG/SERVICE_MONTHLY_USD_MICROS`）→ 内置默认（成员 $50、团队 $2,000）。服务没有自己的行也没有 env 时跟随团队解析后的限额（行 / env / 默认），此时服务账户不单独发告警，拒绝文案说团队额度。默认值只是起点，每个部署上线前由管理员复核。每次调用都把当前限额写进当月账户（`update_existing_limit`），改额度下一次调用即生效。
+- **组织付费的调用**（没有成员，目前只有每月复盘的建议）：`createOrganizationAttemptBudgetHook`（`llm/usage-budget.ts`）→ `reserveSpend({ organizationOnly: true, client: 'system' })`，只记服务与组织账户；别用它绕开成员预算。
 - **归属**：`runWithMeteringScope({ userId, client, oauthClientId, sessionId })` 在入口设一次——Chat（`bindMeteringScope` 包工具 + hook 显式 `client` + 标题 / 摘要包在 scope 里）、`runAgentInSession`（client 由 `toolCallClient` 派生）、MCP `tools/call`（`client:'mcp'` + OAuth client id）、Agent API（`executeProxyTool({ metering })`）。只建一次的共享工具（web search）只能从 scope 知道是谁在花钱；新入口漏设 scope 会记成「无成员」并 warn。client 词表在 `@greenhouse/types/metering`（`METERING_CLIENTS`），由 tool-call client 映射（`web_chat`→`web`）。
 - **超额契约**（`usage/budget-errors.ts`）：拒绝发生在 I/O 之前，`UsageBudgetAdmissionError(429, 'usage_budget_exceeded', refusal={unit:'usd_micros', level, service?})`，`message` 是中英双语、Agent 可读的「本月…额度已用完…联系管理员」。MCP 原样作为 tool error（`isError:true`）返回；工具（生图 / 识图 / call_llm）遇到它必须重新抛出而不是吞成 `{error}`；读网页被拒只在搜索结果里加 `notice`；Chat 的模型调用被拒用 `localizedBudgetNotice` 单语显示；自动化记成失败原因（`budgetRefusalReason`）；Agent API 回 429。
 - **告警**：结算或拒绝后检查涉及的 USD 账户，越过 80% / 100% 发 `budget_attention` 通知（成员账户发给本人，服务 / 团队账户发给所有在职 super），按「账户（含周期）× 阈值」去重，只发最高到达档；写完调 `queueMobilePush()` 并推 WS。限额为 0 是主动封禁，不发告警。告警失败只 warn。

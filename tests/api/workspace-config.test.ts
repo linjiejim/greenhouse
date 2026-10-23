@@ -29,6 +29,27 @@ describe('validateWorkspaceValue', () => {
     expect(validateWorkspaceValue(def('computer.template'), 'a b').ok).toBe(false);
   });
 
+  it('takes team context picks as document ids and the zone as an IANA name', () => {
+    const conventions = validateWorkspaceValue(def('team_context.conventions'), [
+      ' how-we-work ',
+      'how-we-work',
+      '规范',
+    ]);
+    expect(conventions).toEqual({ ok: true, value: ['how-we-work', '规范'] });
+    expect(validateWorkspaceValue(def('team_context.conventions'), 'how-we-work').ok).toBe(false);
+    expect(validateWorkspaceValue(def('team_context.conventions'), ['a/b']).ok).toBe(false);
+    expect(
+      validateWorkspaceValue(
+        def('team_context.conventions'),
+        Array.from({ length: 11 }, (_, index) => `doc-${index}`),
+      ).ok,
+    ).toBe(false);
+    expect(validateWorkspaceValue(def('team_context.glossary'), 'terms').ok).toBe(true);
+    expect(validateWorkspaceValue(def('team_context.glossary'), 'two words').ok).toBe(false);
+    expect(validateWorkspaceValue(def('team_context.timezone'), 'Asia/Shanghai').ok).toBe(true);
+    expect(validateWorkspaceValue(def('team_context.timezone'), 'Mars/Base').ok).toBe(false);
+  });
+
   it('accepts and trims plain strings', () => {
     const r = validateWorkspaceValue(def('llm.model'), '  gpt-4o-mini  ');
     expect(r).toEqual({ ok: true, value: 'gpt-4o-mini' });

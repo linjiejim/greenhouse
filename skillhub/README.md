@@ -35,6 +35,9 @@ skillhub/
         └── scripts/         # optional: helper scripts the agent may run
 ```
 
+- A skill is also offered to members' agents as an MCP prompt (`skill-<name>`). Its arguments
+  come from a frontmatter `variables:` list (`key` or `name`, optional `description` /
+  `required`), or else from the `{{placeholder}}`s in the body; filled ones are substituted.
 - `SKILL.md` frontmatter `version` is the published version; bump it with every content
   change and add a matching `CHANGELOG.md` entry — the sync refuses a content change without a
   version bump.

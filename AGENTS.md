@@ -230,6 +230,8 @@ greenhouse/
 │   │       ├── skills/       # Skill Center — bundle validation, store, publish/download, scanner
 │   │       ├── storage/      # upload storage (local disk / COS) + s3-lite (SigV4 client)
 │   │       ├── workbench/    # workbench card evaluation (shared by API + tools)
+│   │       ├── hub-context/  # team context for members' agents: MCP prompts/resources, team_context, data catalog
+│   │       ├── retro/        # monthly retro (复盘) doc: aggregates, suggestions, writer
 │   │       └── cli/          # `pnpm cli` console: index.ts dispatcher + commands/*
 │   ├── web/              # React SPA — pages (administration/, settings/, executions/, …), components,
 │   │                     #   lib, stores, platform catalog, extensions/ (web half of the seam)

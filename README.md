@@ -103,6 +103,14 @@ same script doubles as an end-to-end smoke tour (see [Development](#development)
   which writes were in flight.
 - **Issues & requests** — feature requests and frictions in one admin queue; members' agents
   can file both over MCP.
+- **Monthly retro (复盘)** — at 09:00 on the 1st (workspace time zone) a team document
+  "YYYY-MM 复盘" lands in the knowledge folder 复盘: module usage, members' agent writes by client
+  (failed / outcome unknown), top frictions and requests, and spend by service — aggregates only —
+  plus a short list of suggestions the model writes from those numbers (charged to the team;
+  skipped, with the reason, when the budget is used up or no model is set). Admins can also
+  generate this month's from Issues & requests.
+- **Data catalog** — Tables › Data catalog lists the bases and extension data sources a member
+  can read (row counts, owner, last change) and which MCP tool their agent reaches each with.
 - **Memory** — per-user memories with titles, pinning and lifecycle, plus the friction signals
   the agent logs when tooling gets in its way.
 - **Skill Center** — an org-wide library of agent skills (SKILL.md bundles) with immutable
@@ -382,6 +390,13 @@ Every capability is reachable three ways from the same tool layer:
   (client credentials) that a super binds to a least-privilege internal user under
   Administration → MCP Access. Scopes combine an action (`mcp:read` / `mcp:write`) with
   resource groups (`mcp:knowledge`, `mcp:projects`, `mcp:tables`, …).
+- **Team context over MCP** — an admin picks team documents as the conventions and the glossary
+  (Administration → Team context). Every member's agent gets them, cut to its grant, as
+  resources (`greenhouse://context/overview`, `…/conventions`, `…/glossary`), as the
+  `team_context` tool for clients without resources ("call it first in a new task"), and
+  SkillHub skills plus the member's saved prompts as MCP prompts. `data_catalog` lists the data
+  the grant can query. Settings → Agent connections → Connect walks a member through Codex,
+  Claude Code, Cursor or any other client and checks that the connection arrived.
 - **Paid services over MCP** (`mcp:services`) — `web_search`, `read_url` (public pages only),
   `analyze_image` (an image URL or a file in Files) and `generate_image`, which saves each image
   as a new file on the member's personal Files shelf and is recorded like any other agent write.
