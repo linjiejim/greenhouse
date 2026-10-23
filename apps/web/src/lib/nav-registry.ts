@@ -122,7 +122,7 @@ const SETTINGS_TOP: NavModule[] = [
     icon: Key,
     path: '#/settings/agent-connections',
     parent: 'settings',
-    description: 'Connect your agents, approve their writes, manage standing grants',
+    description: 'Connect your agents and see what they wrote as you',
   },
   {
     id: 'settings.provider-bindings',

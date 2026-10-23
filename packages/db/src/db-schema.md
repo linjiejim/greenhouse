@@ -153,7 +153,6 @@ Subagent 以 child session 作为唯一 `source_id`，完整请求保存在 Run/
 
 | 表 | 主键 / 唯一约束 | 关键字段与用途 |
 |---|---|---|
-| `agent_write_grants` | PK `id`；索引 `(user_id, tool_id)`；FK `user_id` / `client_id` CASCADE | 成员给自己的外部 Agent（MCP / Agent API）预先授权的 r2 写入：`client_id` NULL=该成员任一客户端，`action` NULL=该工具全部 r2 动作；`expires_at` 必填、`revoked_at` 撤销、`use_count` / `last_used_at` 计数。r3 写入永不被覆盖 |
 | `usage_counters` | 复合 PK `(day, kind, key, client)` | 每日用量计数：`tool_call`（key=工具 id）/ `page_open`（key=模块 id）× 客户端（工具调用：mcp / agent_api / web_chat / browser / mobile / feishu / automation / subagent；页面打开：web / desktop / mobile / browser）；只有计数，没有内容和用户 |
 | `rate_limit_buckets` | PK `key` | 固定窗口限流计数（`<规则>:<主体>:<窗口起点>`），过期即清；进程重启或多实例不再重置限流 |
 | `oauth_login_states` | PK `id`（state/code 的 SHA-256） | 飞书 / 企微登录的 pending state 与一次性登录码；原值不入库，`consumed_at` 保证一次性，过期即清 |

@@ -1,12 +1,12 @@
 /**
- * E2E — governed MCP writes over real HTTP.
+ * E2E — recorded MCP writes over real HTTP.
  *
- * A machine client with write scope calls /api/mcp. A shared-data write comes
- * back as needs_approval (a normal tool result), the client's creator decides
- * through /api/agent-access, the write runs exactly once, and the agent reads
- * the outcome with agent_write_status. The transition switch keeps confirm:true
- * working for r2 writes. A read too long for one reply comes back bounded (preview +
- * output_id) and only the producing client can page it with tool_output_read.
+ * A machine client with write scope calls /api/mcp. A permitted write runs at
+ * once and shows up under /api/agent-access/writes; a delete first comes back
+ * as a preview (a normal tool result) and runs only when sent again with
+ * confirm:true. Tools carry the MCP annotations clients use to ask their user.
+ * A read too long for one reply comes back bounded (preview + output_id) and
+ * only the producing client can page it with tool_output_read.
  *
  * Use `pnpm test:e2e:ci`.
  */
@@ -54,7 +54,7 @@ async function machineClient(label: string) {
     body: JSON.stringify({
       client_name: `e2e-${label}-${UNIQUE}`,
       bound_user_id: superUserId,
-      scopes: ['mcp:read', 'mcp:write', 'mcp:knowledge'],
+      scopes: ['mcp:read', 'mcp:write', 'mcp:knowledge', 'mcp:tables'],
     }),
   });
   expect(created.status).toBe(201);
@@ -66,7 +66,7 @@ async function machineClient(label: string) {
       grant_type: 'client_credentials',
       client_id: client.client_id,
       client_secret: client.client_secret,
-      scope: 'mcp:read mcp:write mcp:knowledge',
+      scope: 'mcp:read mcp:write mcp:knowledge mcp:tables',
     }),
   });
   expect(token.status).toBe(200);
@@ -83,8 +83,7 @@ beforeAll(async () => {
   superToken = createSuperToken();
   superUserId = process.env.E2E_SUPER_USER_ID!;
 
-  // Bound to the super itself so the knowledge write is permitted; the
-  // creator (also the super) is the approver for a machine client.
+  // Bound to the super itself so the knowledge write is permitted.
   ({ clientId, accessToken } = await machineClient('agent-write'));
   // Same member, second client: must not read the first client's stored outputs.
   ({ clientId: otherClientId, accessToken: otherAccessToken } = await machineClient('agent-write-other'));
@@ -96,81 +95,88 @@ afterAll(async () => {
   }
 });
 
-describe('E2E: governed MCP writes', () => {
-  it('lists agent_write_status and keeps confirm optional while the transition switch is on', async () => {
+describe('E2E: recorded MCP writes', () => {
+  it('annotates tools for the client and offers confirm only where a tool can delete', async () => {
     const tools = (await mcp('tools/list', {})).result!.tools!;
-    expect(tools.map((tool) => tool.name)).toContain('agent_write_status');
-    const write = tools.find((tool) => tool.name === 'knowledge_mutation')!;
-    expect(write.inputSchema.properties.confirm).toBeDefined();
-    expect(write.inputSchema.required ?? []).not.toContain('confirm');
+    const names = tools.map((tool) => tool.name);
+    expect(names).not.toContain('agent_write_status');
+    const read = tools.find((tool) => tool.name === 'knowledge_query')!;
+    expect(read.annotations).toMatchObject({ readOnlyHint: true });
+    const knowledgeWrite = tools.find((tool) => tool.name === 'knowledge_mutation')!;
+    expect(knowledgeWrite.annotations).toMatchObject({ readOnlyHint: false, destructiveHint: false });
+    expect(knowledgeWrite.inputSchema.properties.confirm).toBeUndefined();
+    expect(knowledgeWrite.description).toMatch(/recorded in their name/);
+    const tablesWrite = tools.find((tool) => tool.name === 'tables_mutation')!;
+    expect(tablesWrite.annotations).toMatchObject({ readOnlyHint: false, destructiveHint: true });
+    expect(tablesWrite.inputSchema.properties.confirm).toBeDefined();
+    expect(tablesWrite.inputSchema.required ?? []).not.toContain('confirm');
   });
 
-  it('holds a shared write for approval, runs it once when approved, and lets the agent read the result', async () => {
-    const title = `E2E governed ${UNIQUE}`;
-    const held = await callTool('knowledge_mutation', {
-      action: 'knowledge.create_doc',
-      scope: 'team',
-      title,
-      content: 'Written by a governed agent.',
-    });
-    expect(held.isError).toBeFalsy();
-    const pending = json(held);
-    expect(pending).toMatchObject({ status: 'needs_approval', risk: 'r2' });
-    expect(pending.approve_url).toContain('#/settings/agent-connections/requests/');
-
-    // The same write again while it waits is the same request.
-    const repeated = json(
-      await callTool('knowledge_mutation', {
-        action: 'knowledge.create_doc',
-        scope: 'team',
-        title,
-        content: 'Written by a governed agent.',
-      }),
-    );
-    expect(repeated.request_id).toBe(pending.request_id);
-
-    const list = await fetch(`${BASE_URL}/api/agent-access/requests?view=pending`, { headers: h(superToken) });
-    const rows = ((await list.json()) as { requests: Array<{ request_id: string; interrupt_id: string }> }).requests;
-    const row = rows.find((candidate) => candidate.request_id === pending.request_id)!;
-    expect(row).toBeDefined();
-
-    const decided = await fetch(`${BASE_URL}/api/agent-access/requests/${row.interrupt_id}/decision`, {
-      method: 'POST',
-      headers: h(superToken),
-      body: JSON.stringify({ decision: 'approve' }),
-    });
-    expect(decided.status).toBe(200);
-    expect(((await decided.json()) as { request: { status: string } }).request.status).toBe('executed');
-
-    // A second decision loses.
-    const again = await fetch(`${BASE_URL}/api/agent-access/requests/${row.interrupt_id}/decision`, {
-      method: 'POST',
-      headers: h(superToken),
-      body: JSON.stringify({ decision: 'approve' }),
-    });
-    expect(again.status).toBe(409);
-
-    const status = json(await callTool('agent_write_status', { request_id: pending.request_id }));
-    expect(status.status).toBe('executed');
-    expect(JSON.stringify(status.output)).toContain('created');
-
-    const search = json(await callTool('knowledge_query', { action: 'search', scope: 'team', query: title }));
-    expect(JSON.stringify(search)).toContain(title);
-  });
-
-  it('still honours confirm:true for a shared write during the transition, recorded as legacy', async () => {
+  it('runs a permitted shared-data write at once and records it for the member', async () => {
+    const title = `E2E direct ${UNIQUE}`;
     const result = await callTool('knowledge_mutation', {
       action: 'knowledge.create_doc',
       scope: 'team',
-      title: `E2E legacy ${UNIQUE}`,
-      content: 'Legacy confirm path.',
-      confirm: true,
+      title,
+      content: 'Written by an agent as its member.',
     });
     expect(result.isError).toBeFalsy();
-    expect(result.content.at(-1)!.text).toMatch(/legacy_confirm/);
+    expect(JSON.stringify(json(result))).toContain('created');
+    const line = result.content.at(-1)!.text;
+    expect(line).toMatch(/^Recorded in Greenhouse as write rtr_/);
+    const writeId = line.match(/(rtr_\w+)/)![1];
+
+    const search = json(await callTool('knowledge_query', { action: 'search', scope: 'team', query: title }));
+    expect(JSON.stringify(search)).toContain(title);
+
+    const activity = await fetch(`${BASE_URL}/api/agent-access/writes`, { headers: h(superToken) });
+    expect(activity.status).toBe(200);
+    const writes = ((await activity.json()) as { writes: Array<Record<string, unknown>> }).writes;
+    expect(writes.find((row) => row.request_id === writeId)).toMatchObject({
+      status: 'executed',
+      risk: 'r2',
+      basis: 'direct',
+      action: 'knowledge.create_doc',
+    });
   });
 
-  it('runs a personal doc create at once and refuses a status read for an unknown request', async () => {
+  it('answers a delete with a preview and records nothing until the agent confirms', async () => {
+    const before = await fetch(`${BASE_URL}/api/agent-access/writes`, { headers: h(superToken) });
+    const count = ((await before.json()) as { writes: unknown[] }).writes.length;
+
+    const preview = await callTool('tables_mutation', {
+      action: 'records.delete',
+      table_id: 999_999,
+      record_id: 1,
+      revision: 1,
+    });
+    expect(preview.isError).toBeFalsy();
+    expect(json(preview)).toMatchObject({
+      status: 'needs_confirmation',
+      action: 'records.delete',
+      risk: 'r3',
+      input: { table_id: 999_999, record_id: 1 },
+    });
+
+    const after = await fetch(`${BASE_URL}/api/agent-access/writes`, { headers: h(superToken) });
+    expect(((await after.json()) as { writes: unknown[] }).writes).toHaveLength(count);
+
+    // Confirmed, it runs (and the tool itself refuses the unknown table) — recorded either way.
+    const confirmed = await callTool('tables_mutation', {
+      action: 'records.delete',
+      table_id: 999_999,
+      record_id: 1,
+      revision: 1,
+      confirm: true,
+    });
+    expect(confirmed.isError).toBe(true);
+    const later = await fetch(`${BASE_URL}/api/agent-access/writes`, { headers: h(superToken) });
+    const rows = ((await later.json()) as { writes: Array<Record<string, unknown>> }).writes;
+    expect(rows).toHaveLength(count + 1);
+    expect(rows[0]).toMatchObject({ status: 'failed', risk: 'r3', basis: 'confirmed' });
+  });
+
+  it('records a personal doc create as r1', async () => {
     const personal = await callTool('knowledge_mutation', {
       action: 'knowledge.create_doc',
       scope: 'personal',
@@ -178,10 +184,7 @@ describe('E2E: governed MCP writes', () => {
       content: 'Mine.',
     });
     expect(personal.isError).toBeFalsy();
-    expect(personal.content.at(-1)!.text).toMatch(/own_reversible/);
-
-    const unknown = await callTool('agent_write_status', { request_id: 'rtr_does_not_exist' });
-    expect(unknown.isError).toBe(true);
+    expect(personal.content.at(-1)!.text).toMatch(/^Recorded in Greenhouse as write rtr_/);
   });
 
   it('bounds a long read reply and pages the rest with tool_output_read, for the producing client only', async () => {
@@ -228,14 +231,5 @@ describe('E2E: governed MCP writes', () => {
     const foreign = await callTool('tool_output_read', { output_id: handle.output_id }, otherAccessToken);
     expect(foreign.isError).toBe(true);
     expect(foreign.content[0]!.text).toMatch(/not found or expired/);
-  });
-
-  it('rejects a standing grant for a delete', async () => {
-    const res = await fetch(`${BASE_URL}/api/agent-access/grants`, {
-      method: 'POST',
-      headers: h(superToken),
-      body: JSON.stringify({ tool_id: 'tables_mutation', action: 'records.delete', days: 7 }),
-    });
-    expect(res.status).toBe(400);
   });
 });

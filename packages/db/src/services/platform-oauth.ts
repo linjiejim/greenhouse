@@ -17,7 +17,6 @@ import {
   platformOAuthClients,
   platformOAuthGrants,
   platformOAuthTokens,
-  agentWriteGrants,
 } from '../schema/index.js';
 import type {
   PlatformOAuthAuthorizationCodeRow,
@@ -327,28 +326,12 @@ export function createPlatformOAuthService(db: Db) {
               ? and(eq(platformOAuthGrants.id, id), eq(platformOAuthGrants.user_id, userId))
               : eq(platformOAuthGrants.id, id),
           )
-          .returning({
-            id: platformOAuthGrants.id,
-            user_id: platformOAuthGrants.user_id,
-            client_id: platformOAuthGrants.client_id,
-          });
+          .returning({ id: platformOAuthGrants.id });
         if (!rows[0]) return false;
         await tx
           .update(platformOAuthTokens)
           .set({ revoked_at: now })
           .where(and(eq(platformOAuthTokens.grant_id, id), isNull(platformOAuthTokens.revoked_at)));
-        // Standing write grants for this agent end with its access, so a later
-        // reconnect starts from "ask every time" instead of reviving old grants.
-        await tx
-          .update(agentWriteGrants)
-          .set({ revoked_at: now })
-          .where(
-            and(
-              eq(agentWriteGrants.user_id, rows[0].user_id),
-              eq(agentWriteGrants.client_id, rows[0].client_id),
-              isNull(agentWriteGrants.revoked_at),
-            ),
-          );
         return true;
       });
     },

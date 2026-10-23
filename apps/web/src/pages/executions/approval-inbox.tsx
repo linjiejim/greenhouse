@@ -5,7 +5,6 @@ import { CheckCircle2, ChevronRight, Inbox } from '../../lib/icons';
 import { useT, type TranslationKey } from '../../lib/i18n';
 import { formatDate } from '../../lib/utils';
 import { executionRunHref, runtimeRunTitle } from './model';
-import { agentWriteRequestHref } from '../../lib/execution-route';
 import { RuntimeKindTag, RuntimeRiskTag } from './status-axes';
 
 const INTERRUPT_KEYS: Record<RuntimeInterruptKind, TranslationKey> = {
@@ -72,9 +71,7 @@ export function ApprovalInbox({
                 variant="outline"
                 size="sm"
                 onClick={() => {
-                  // An agent's write is decided on its approval card; everything else in its run detail.
-                  window.location.hash =
-                    item.run.kind === 'agent_write' ? agentWriteRequestHref(item.run.id) : executionRunHref(item.run);
+                  window.location.hash = executionRunHref(item.run);
                 }}
               >
                 <span className="hidden sm:inline">{t('taskCenter.review')}</span>

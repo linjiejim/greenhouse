@@ -3,13 +3,12 @@ import { test, expect } from './fixtures';
 /**
  * Settings › Agent connections, driven by a real MCP write.
  *
- * A machine client (created by the test super and bound to it) asks to create
- * a team knowledge doc over /api/mcp; the write waits for approval. The super
- * opens the approval link the agent was given, approves on the card, and the
- * request moves to Activity as done.
+ * A machine client (created by the test super and bound to it) creates a team
+ * knowledge doc over /api/mcp. It runs at once — nothing waits in Greenhouse —
+ * and shows up under Activity as done, with the document title.
  */
 
-test('a held agent write is approved from its card and shows up as done', async ({ page, api, runId }) => {
+test("an agent's write runs at once and shows up under Activity", async ({ page, api, runId }) => {
   const me = (await (await api.get('/api/auth/me')).json()) as { user?: { id: string }; id?: string };
   const userId = me.user?.id ?? me.id!;
   const created = await api.post('/api/admin/platform/oauth/machine-clients', {
@@ -33,7 +32,7 @@ test('a held agent write is approved from its card and shows up as done', async 
     expect(token.status()).toBe(200);
     const accessToken = ((await token.json()) as { access_token: string }).access_token;
 
-    const title = `${runId} approved doc`;
+    const title = `${runId} agent doc`;
     const call = await api.post('/api/mcp', {
       headers: { Authorization: `Bearer ${accessToken}`, Accept: 'application/json, text/event-stream' },
       data: {
@@ -46,24 +45,16 @@ test('a held agent write is approved from its card and shows up as done', async 
         },
       },
     });
-    const pending = JSON.parse(
-      ((await call.json()) as { result: { content: Array<{ text: string }> } }).result.content[0]!.text,
-    );
-    expect(pending.status).toBe('needs_approval');
+    const content = ((await call.json()) as { result: { content: Array<{ text: string }> } }).result.content;
+    expect(content.at(-1)!.text).toMatch(/^Recorded in Greenhouse as write rtr_/);
 
-    await page.goto(`/#/settings/agent-connections/requests/${pending.request_id}`);
-    const card = page.getByTestId(`agent-write-request-${pending.request_id}`);
-    await expect(card).toBeVisible();
-    await expect(card).toContainText(`${runId}-codex`);
-    await expect(card).toContainText('knowledge.create_doc');
-    await expect(card).toContainText(title);
-
-    await card.getByRole('button', { name: /^(Approve|批准)$/ }).click();
-    await expect(card).toHaveCount(0);
-
-    await page.getByRole('tab', { name: /Activity|写入记录/ }).click();
+    await page.goto('/#/settings/agent-connections/activity');
     const row = page.getByRole('row', { name: new RegExp(`${runId}-codex`) }).first();
     await expect(row).toContainText(/Done|已执行/);
+    await expect(row).toContainText('knowledge.create_doc');
+    await expect(row).toContainText(title);
+    // Nothing to approve: the page has no approvals tab at all.
+    await expect(page.getByRole('tab', { name: /Approvals|待审批/ })).toHaveCount(0);
   } finally {
     await api.delete(`/api/admin/platform/oauth/clients/${client.client_id}`).catch(() => {});
   }

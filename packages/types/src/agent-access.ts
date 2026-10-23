@@ -5,25 +5,22 @@
 
 import type { RuntimePayload } from './runtime.js';
 
-/** Risk tier of a write: r1 own+reversible, r2 shared data, r3 irreversible. */
+/** Risk tier of a write: r1 own+reversible, r2 shared data, r3 delete-like. */
 export type AgentWriteRisk = 'r1' | 'r2' | 'r3';
 
-/** Why a write ran without a fresh decision, or `approved` when a member said yes. */
-export type AgentWriteBasis = 'own_reversible' | 'standing_grant' | 'legacy_confirm' | 'approved';
+/**
+ * Why a write ran: `direct` — the member's own permissions allow it; `confirmed`
+ * — a delete-like write the agent sent again with confirm:true after its preview.
+ */
+export type AgentWriteBasis = 'direct' | 'confirmed';
 
-export type AgentWriteStatus =
-  | 'pending'
-  | 'running'
-  | 'executed'
-  | 'failed'
-  | 'rejected'
-  | 'expired'
-  | 'withdrawn'
-  | 'superseded'
-  | 'outcome_unknown';
+export const AGENT_WRITE_BASES: readonly AgentWriteBasis[] = ['direct', 'confirmed'];
 
+export type AgentWriteStatus = 'running' | 'executed' | 'failed' | 'outcome_unknown';
+
+/** One recorded write (a Runtime run of kind `agent_write`). */
 export interface AgentWriteView {
-  /** The Runtime run id; what the agent polls with `agent_write_status`. */
+  /** The Runtime run id. */
   request_id: string;
   status: AgentWriteStatus;
   tool_id: string;
@@ -32,40 +29,23 @@ export interface AgentWriteView {
   client_id: string;
   client_name: string;
   basis: AgentWriteBasis | null;
-  /** What the write targets, named for a person (the document or task title), when known. */
+  /** What the write targets, named for a person (the document title), when the member may read it. */
   target_label: string | null;
   input: RuntimePayload;
   output: RuntimePayload | null;
   error: string | null;
   created_at: string;
   settled_at: string | null;
-  expires_at: string | null;
-  /** The approval interrupt, when the write needed one. */
-  interrupt_id: string | null;
-  decided_by_user_id: string | null;
 }
 
-/** A pending request as its approver sees it (owner differs for machine clients). */
-export interface AgentWritePendingView extends AgentWriteView {
-  owner_user_id: string;
-  owner_nickname: string | null;
-}
-
-export const AGENT_WRITE_GRANT_DAY_OPTIONS = [1, 7, 30, 90] as const;
-export type AgentWriteGrantDayOption = (typeof AGENT_WRITE_GRANT_DAY_OPTIONS)[number];
-
-export interface AgentWriteGrantWire {
-  id: string;
-  user_id: string;
-  client_id: string | null;
-  client_name: string | null;
-  tool_id: string;
-  tool_name: string;
+/** What a delete-like write returns the first time: nothing has run yet. */
+export interface AgentWritePreview {
+  status: 'needs_confirmation';
+  tool: string;
   action: string | null;
-  created_via: 'approval' | 'settings';
-  expires_at: string;
-  revoked_at: string | null;
-  use_count: number;
-  last_used_at: string | null;
-  created_at: string;
+  risk: 'r3';
+  /** The document title, when the member may read it. */
+  target: string | null;
+  input: RuntimePayload;
+  message: string;
 }

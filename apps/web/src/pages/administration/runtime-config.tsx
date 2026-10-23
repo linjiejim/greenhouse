@@ -15,14 +15,14 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import type { WorkspaceSettingGroup, WorkspaceSettingView } from '@greenhouse/types';
-import { Button, Input, Spinner, Toggle, toast } from '../../components/ui';
+import { Button, Input, Spinner, toast } from '../../components/ui';
 import { ModulePage } from '../../components/app/module-page';
 import { useI18n } from '../../lib/i18n';
 import type { TranslationKey } from '../../lib/i18n';
 import { fetchWorkspaceSettings, saveWorkspaceSettings } from '../../lib/api/workspace-settings';
 import { useExtensionsStore } from '../../stores/extensions-store';
 
-const RUNTIME_GROUPS: WorkspaceSettingGroup[] = ['llm', 'media', 'search', 'agent_access'];
+const RUNTIME_GROUPS: WorkspaceSettingGroup[] = ['llm', 'media', 'search'];
 
 /** Registry descriptions mark identifiers with backticks; show them as inline code, not raw ticks. */
 function Description({ text, className }: { text: string; className: string }) {
@@ -64,7 +64,7 @@ function SourceBadge({ source }: { source: WorkspaceSettingView['source'] }) {
 export function RuntimeConfigPanel() {
   const { t } = useI18n();
   const [views, setViews] = useState<WorkspaceSettingView[] | null>(null);
-  const [dirty, setDirty] = useState<Record<string, string | boolean | null>>({});
+  const [dirty, setDirty] = useState<Record<string, string | null>>({});
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
@@ -95,7 +95,7 @@ export function RuntimeConfigPanel() {
     return t('runtimeConfig.group_extension', { name });
   };
 
-  const stage = (key: string, value: string | boolean | null) => {
+  const stage = (key: string, value: string | null) => {
     setDirty((prev) => ({ ...prev, [key]: value }));
   };
   const unstage = (key: string) => {
@@ -149,35 +149,7 @@ export function RuntimeConfigPanel() {
               {(grouped.get(group) ?? []).map((v) => {
                 const staged = dirty[v.key];
                 const isCleared = staged === null;
-                if (v.type === 'boolean') {
-                  const effective =
-                    typeof staged === 'boolean'
-                      ? staged
-                      : typeof v.value === 'boolean' && !isCleared
-                        ? v.value
-                        : (v.default_value ?? false);
-                  return (
-                    <div key={v.key} className="grid md:grid-cols-[220px_minmax(0,1fr)] gap-x-4 gap-y-1 items-start">
-                      <div className="pt-1">
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-xs font-medium text-fg-secondary">{v.label}</span>
-                          <SourceBadge source={isCleared ? 'none' : staged !== undefined ? 'db' : v.source} />
-                        </div>
-                      </div>
-                      <div>
-                        <Toggle checked={effective} onChange={(next) => stage(v.key, next)} size="sm" label={v.label} />
-                        <Description text={v.description} className="text-[10px] text-fg-faint mt-1 leading-relaxed" />
-                      </div>
-                    </div>
-                  );
-                }
-                const inputValue = isCleared
-                  ? ''
-                  : typeof staged === 'string'
-                    ? staged
-                    : v.secret
-                      ? ''
-                      : String(v.value ?? '');
+                const inputValue = isCleared ? '' : (staged ?? (v.secret ? '' : String(v.value ?? '')));
                 const secretPlaceholder =
                   v.secret && v.has_value && staged === undefined
                     ? `${t('runtimeConfig.secretSet')} ••••••`

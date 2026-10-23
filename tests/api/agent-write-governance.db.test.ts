@@ -1,11 +1,11 @@
 /**
- * Governed writes by external agents, end to end on the real Runtime tables:
- * tiers, standing grants, the legacy confirm switch, exactly-once approval,
- * supersede/withdraw/reject/expire, and the boot reconciliation that never
- * replays a write whose outcome is unknown.
+ * Recorded writes by external agents, end to end on the real Runtime tables:
+ * a permitted write runs at once and is recorded, a delete returns a preview
+ * until the agent confirms, unknown outcomes are never reported as failures,
+ * and the boot reconciliation never replays a write.
  *
  * The write tool is a fake `tables_mutation` that counts its executions, so
- * "ran at most once" is asserted directly.
+ * "ran / did not run" is asserted directly.
  */
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -14,14 +14,10 @@ import type { DatabaseProvider, UserRow } from '@greenhouse/db';
 import { TEST_DATABASE_URL } from '@greenhouse/db/test-config';
 import { createInternalTestUser } from '../helpers/internal-user.js';
 import type { ToolRegistry } from '../../apps/api/src/agent.js';
+import { ProxyToolError } from '../../apps/api/src/agent-runtime/tool-proxy.js';
 import {
-  AgentWriteError,
-  agentWriteStatus,
-  decideAgentWrite,
   governProxyWrite,
   reconcileInterruptedAgentWrites,
-  sweepExpiredAgentWrites,
-  withdrawAgentWrite,
   type WriteCaller,
 } from '../../apps/api/src/agent-access/governed-write.js';
 
@@ -37,7 +33,7 @@ function unique(label: string): string {
   return `${label}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
-function govern(input: Record<string, unknown>, opts: { legacy?: boolean } = {}) {
+function govern(input: Record<string, unknown>, opts: { confirmed?: boolean } = {}) {
   return governProxyWrite({
     db,
     caller,
@@ -46,20 +42,15 @@ function govern(input: Record<string, unknown>, opts: { legacy?: boolean } = {})
     registry,
     allowedToolIds: [TOOL],
     baseRisk: 'r2',
-    legacyConfirm: opts.legacy ?? false,
+    confirmed: opts.confirmed ?? false,
   });
 }
 
-const okContext = async () => ({ ok: true as const, registry, toolIds: [TOOL] });
-
-async function pendingInterruptId(requestId: string): Promise<string> {
-  const interrupts = await db.runtime.listInterrupts(requestId);
-  const pending = interrupts.find((interrupt) => interrupt.status === 'pending');
-  if (!pending) throw new Error('no pending interrupt');
-  return pending.id;
+async function writeRuns() {
+  return (await db.runtime.listRuns({ owner_user_id: member.id, kinds: ['agent_write'], limit: 50 })).items;
 }
 
-describe('governed external-agent writes', () => {
+describe('recorded external-agent writes', () => {
   beforeEach(async () => {
     db = await initDatabase({ type: 'pg', pgConnectionString: TEST_DATABASE_URL });
     member = await createInternalTestUser(db, { email: `${unique('awg-member')}@test.local` });
@@ -85,7 +76,6 @@ describe('governed external-agent writes', () => {
       clientId: client.id,
       clientName: 'Codex',
       authMethod: 'oauth',
-      approverUserId: member.id,
     };
   });
 
@@ -94,208 +84,163 @@ describe('governed external-agent writes', () => {
     _resetProvider();
   });
 
-  it('holds an r2 write for approval, runs it exactly once when approved, and records the output', async () => {
+  it('runs a permitted shared-data write at once, as the member, and records it', async () => {
     const result = await govern({ action: 'records.update', record_id: 'rec_1', values: { a: 1 } });
-    expect(result.status).toBe('needs_approval');
-    expect(result.view.risk).toBe('r2');
-    expect(calls).toHaveLength(0);
-
-    const again = await govern({ action: 'records.update', record_id: 'rec_1', values: { a: 1 } });
-    expect(again.status).toBe('needs_approval');
-    expect(again.view.request_id).toBe(result.view.request_id);
-    expect(again.status === 'needs_approval' && again.reused).toBe(true);
-
-    const interruptId = await pendingInterruptId(result.view.request_id);
-    const decided = await decideAgentWrite({
-      db,
-      interruptId,
-      actor: { id: member.id, role: 'team' },
-      decision: 'approve',
-      resolveContext: okContext,
-    });
-    expect(decided.status).toBe('executed');
-    expect(decided.basis).toBe('approved');
-    expect(decided.output).toMatchObject({ ok: true });
+    expect(result.status).toBe('executed');
+    if (result.status !== 'executed') throw new Error('expected executed');
+    expect(result.view).toMatchObject({ status: 'executed', risk: 'r2', basis: 'direct', client_name: 'Codex' });
+    expect(result.view.output).toMatchObject({ ok: true });
     expect(calls).toHaveLength(1);
 
-    // A second click (or a second approver) loses and runs nothing.
-    await expect(
-      decideAgentWrite({
-        db,
-        interruptId,
-        actor: { id: member.id, role: 'team' },
-        decision: 'approve',
-        resolveContext: okContext,
-      }),
-    ).rejects.toBeInstanceOf(AgentWriteError);
-    expect(calls).toHaveLength(1);
-
-    const status = await agentWriteStatus(db, result.view.request_id, caller);
-    expect(status.status).toBe('executed');
+    const [run] = await writeRuns();
+    expect(run).toMatchObject({ id: result.view.request_id, status: 'succeeded', owner_user_id: member.id });
+    expect(JSON.parse(run!.input)).toMatchObject({ tool_id: TOOL, action: 'records.update', risk: 'r2' });
+    const [call] = await db.runtime.listToolCalls(run!.id);
+    expect(call).toMatchObject({ status: 'succeeded' });
   });
 
-  it('approve-and-allow creates a standing grant that covers the next r2 write but never a delete', async () => {
-    const first = await govern({ action: 'records.update', record_id: 'rec_2', values: {} });
-    await decideAgentWrite({
-      db,
-      interruptId: await pendingInterruptId(first.view.request_id),
-      actor: { id: member.id, role: 'team' },
-      decision: 'approve',
-      grantDays: 7,
-      resolveContext: okContext,
-    });
-    const grants = await db.agentWriteGrants.listForUser(member.id);
-    expect(grants).toHaveLength(1);
-    expect(grants[0]).toMatchObject({ tool_id: TOOL, action: 'records.update', client_id: caller.clientId });
-
-    const covered = await govern({ action: 'records.update', record_id: 'rec_3', values: {} });
-    expect(covered.status).toBe('executed');
-    expect(covered.view.basis).toBe('standing_grant');
-    expect((await db.agentWriteGrants.listForUser(member.id))[0]!.use_count).toBe(1);
-
-    await db.agentWriteGrants.create({
-      user_id: member.id,
-      client_id: null,
-      tool_id: TOOL,
-      action: null,
-      days: 30,
-      created_via: 'settings',
-    });
-    const deletion = await govern({ action: 'records.delete', record_id: 'rec_3' });
-    expect(deletion.status).toBe('needs_approval');
-    expect(deletion.view.risk).toBe('r3');
-    expect(calls).toHaveLength(2);
-  });
-
-  it('refuses to pre-approve when approving an r3 write', async () => {
-    const deletion = await govern({ action: 'records.delete', record_id: 'rec_9' });
-    await expect(
-      decideAgentWrite({
-        db,
-        interruptId: await pendingInterruptId(deletion.view.request_id),
-        actor: { id: member.id, role: 'team' },
-        decision: 'approve',
-        grantDays: 30,
-        resolveContext: okContext,
-      }),
-    ).rejects.toMatchObject({ code: 'invalid' });
-    expect(calls).toHaveLength(0);
-  });
-
-  it('honours legacy confirm:true for r2 writes only', async () => {
-    const legacy = await govern({ action: 'records.update', record_id: 'rec_4', values: {} }, { legacy: true });
-    expect(legacy.status).toBe('executed');
-    expect(legacy.view.basis).toBe('legacy_confirm');
-    const deletion = await govern({ action: 'records.delete', record_id: 'rec_4' }, { legacy: true });
-    expect(deletion.status).toBe('needs_approval');
-    expect(calls).toHaveLength(1);
-  });
-
-  it('runs a personal knowledge create at once (r1)', async () => {
-    registry = { knowledge_mutation: registry[TOOL] } as unknown as ToolRegistry;
+  it('records a personal knowledge create as r1', async () => {
+    registry.knowledge_mutation = registry[TOOL]!;
     const result = await governProxyWrite({
       db,
       caller,
       toolId: 'knowledge_mutation',
-      input: { action: 'knowledge.create_doc', scope: 'personal', title: 't', content: 'c' },
+      input: { action: 'knowledge.create_doc', scope: 'personal', title: 'Mine', content: 'x' },
       registry,
       allowedToolIds: ['knowledge_mutation'],
       baseRisk: 'r2',
-      legacyConfirm: false,
+      confirmed: false,
     });
     expect(result.status).toBe('executed');
-    expect(result.view.basis).toBe('own_reversible');
-    expect(result.view.risk).toBe('r1');
+    if (result.status !== 'executed') throw new Error('expected executed');
+    expect(result.view).toMatchObject({ risk: 'r1', basis: 'direct' });
   });
 
-  it('rejects, supersedes and withdraws without ever executing', async () => {
-    const rejected = await govern({ action: 'records.update', record_id: 'rec_5', values: { v: 1 } });
-    const view = await decideAgentWrite({
-      db,
-      interruptId: await pendingInterruptId(rejected.view.request_id),
-      actor: { id: member.id, role: 'team' },
-      decision: 'reject',
-      resolveContext: okContext,
+  it('answers a delete with a preview and runs nothing until the agent confirms', async () => {
+    const preview = await govern({ action: 'records.delete', record_id: 'rec_2' });
+    expect(preview).toMatchObject({
+      status: 'needs_confirmation',
+      preview: {
+        status: 'needs_confirmation',
+        tool: TOOL,
+        action: 'records.delete',
+        risk: 'r3',
+        input: { record_id: 'rec_2' },
+      },
     });
-    expect(view.status).toBe('rejected');
-
-    const older = await govern({ action: 'records.update', record_id: 'rec_6', values: { v: 1 } });
-    const newer = await govern({ action: 'records.update', record_id: 'rec_6', values: { v: 2 } });
-    expect(newer.view.request_id).not.toBe(older.view.request_id);
-    expect((await agentWriteStatus(db, older.view.request_id, caller)).status).toBe('superseded');
-
-    const withdrawn = await withdrawAgentWrite(db, newer.view.request_id, caller);
-    expect(withdrawn.status).toBe('withdrawn');
     expect(calls).toHaveLength(0);
+    expect(await writeRuns()).toHaveLength(0);
+
+    const confirmed = await govern({ action: 'records.delete', record_id: 'rec_2' }, { confirmed: true });
+    expect(confirmed.status).toBe('executed');
+    if (confirmed.status !== 'executed') throw new Error('expected executed');
+    expect(confirmed.view).toMatchObject({ risk: 'r3', basis: 'confirmed' });
+    expect(calls).toHaveLength(1);
   });
 
-  it('lets only the assignee (or a super) decide, and only the calling agent read its request', async () => {
-    const result = await govern({ action: 'records.update', record_id: 'rec_7', values: {} });
+  it('ignores confirm on ordinary writes', async () => {
+    const result = await govern({ action: 'records.update', record_id: 'rec_3', values: {} }, { confirmed: true });
+    expect(result.status).toBe('executed');
+    if (result.status !== 'executed') throw new Error('expected executed');
+    expect(result.view.basis).toBe('direct');
+  });
+
+  it("records the tool's own refusal as a failed write", async () => {
+    registry[TOOL] = {
+      description: 'fake',
+      execute: async () => ({ error: 'Record not found' }),
+    } as unknown as ToolRegistry[string];
+    const result = await govern({ action: 'records.update', record_id: 'missing', values: {} });
+    expect(result.status).toBe('failed');
+    if (result.status !== 'failed') throw new Error('expected failed');
+    expect(result.view).toMatchObject({ status: 'failed', error: 'Record not found' });
+  });
+
+  it('refuses a tool the agent cannot reach before anything is recorded', async () => {
     await expect(
-      decideAgentWrite({
+      governProxyWrite({
         db,
-        interruptId: await pendingInterruptId(result.view.request_id),
-        actor: { id: other.id, role: 'team' },
-        decision: 'approve',
-        resolveContext: okContext,
+        caller,
+        toolId: TOOL,
+        input: { action: 'records.update' },
+        registry,
+        allowedToolIds: [],
+        baseRisk: 'r2',
+        confirmed: false,
       }),
-    ).rejects.toMatchObject({ code: 'forbidden' });
-    await expect(
-      agentWriteStatus(db, result.view.request_id, { userId: other.id, clientId: caller.clientId }),
-    ).rejects.toMatchObject({
-      code: 'not_found',
-    });
-    await expect(
-      agentWriteStatus(db, result.view.request_id, { userId: member.id, clientId: 'another-client' }),
-    ).rejects.toMatchObject({
-      code: 'not_found',
-    });
-    expect(calls).toHaveLength(0);
+    ).rejects.toBeInstanceOf(ProxyToolError);
+    expect(await writeRuns()).toHaveLength(0);
   });
 
-  it('fails an approved write the agent is no longer permitted to make', async () => {
-    const result = await govern({ action: 'records.update', record_id: 'rec_8', values: {} });
-    const view = await decideAgentWrite({
-      db,
-      interruptId: await pendingInterruptId(result.view.request_id),
-      actor: { id: member.id, role: 'team' },
-      decision: 'approve',
-      resolveContext: async () => ({ ok: false as const, reason: "The agent's access has been revoked" }),
-    });
-    expect(view.status).toBe('failed');
-    expect(view.error).toContain('revoked');
-    expect(calls).toHaveLength(0);
+  it('reports outcome unknown, not failed, when the write ran but its result was not recorded', async () => {
+    const transition = db.runtime.transitionToolCall.bind(db.runtime);
+    db.runtime.transitionToolCall = (async (input: Parameters<typeof transition>[0]) => {
+      if (input.to_status === 'succeeded') throw new Error('database went away');
+      return transition(input);
+    }) as typeof transition;
+    try {
+      const result = await govern({ action: 'records.update', record_id: 'rec_21', values: {} });
+      expect(calls).toHaveLength(1);
+      expect(result.status).toBe('outcome_unknown');
+      if (result.status !== 'outcome_unknown') throw new Error('expected outcome_unknown');
+      expect(result.view.status).toBe('outcome_unknown');
+    } finally {
+      db.runtime.transitionToolCall = transition;
+    }
   });
 
-  it('expires a request nobody decided', async () => {
-    const result = await govern({ action: 'records.update', record_id: 'rec_10', values: {} });
-    // The Runtime worker expires interrupts; run it as if 25 hours had passed.
-    await db.runtime.expireInterrupts(new Date(Date.now() + 25 * 60 * 60 * 1000));
-    expect(await sweepExpiredAgentWrites(db)).toBeGreaterThanOrEqual(1);
-    expect((await agentWriteStatus(db, result.view.request_id, caller)).status).toBe('expired');
+  it('still settles as outcome unknown when even the uncertain marker cannot be written', async () => {
+    const transition = db.runtime.transitionToolCall.bind(db.runtime);
+    db.runtime.transitionToolCall = (async (input: Parameters<typeof transition>[0]) => {
+      if (input.to_status === 'succeeded' || input.to_status === 'uncertain') throw new Error('database went away');
+      return transition(input);
+    }) as typeof transition;
+    try {
+      const result = await govern({ action: 'records.update', record_id: 'rec_23', values: {} });
+      expect(calls).toHaveLength(1);
+      // Never left running: no sweep would ever pick it up again.
+      expect(result.status).toBe('outcome_unknown');
+      if (result.status !== 'outcome_unknown') throw new Error('expected outcome_unknown');
+      expect(result.view.status).toBe('outcome_unknown');
+    } finally {
+      db.runtime.transitionToolCall = transition;
+    }
   });
 
-  it("ends an agent's standing grants when its access is revoked, so a reconnect asks again", async () => {
-    const oauthGrant = await db.platformOAuth.upsertGrant({
-      user_id: member.id,
-      client_id: caller.clientId,
-      resource: 'https://greenhouse.test/api/mcp',
-      scopes: '["mcp:read","mcp:write"]',
+  it('names a team document on the record but never a private one its owner cannot read', async () => {
+    const team = await db.knowledgeBase.create({
+      doc_id: unique('kb-team'),
+      title: 'Team roadmap',
+      content: 'x',
+      visibility: 'team',
+      owner_user_id: other.id,
+      created_by: other.id,
     });
-    await db.agentWriteGrants.create({
-      user_id: member.id,
-      client_id: caller.clientId,
-      tool_id: TOOL,
-      action: null,
-      days: 30,
-      created_via: 'settings',
+    const secret = await db.knowledgeBase.create({
+      doc_id: unique('kb-secret'),
+      title: 'Salary review',
+      content: 'x',
+      visibility: 'private',
+      owner_user_id: other.id,
+      created_by: other.id,
     });
-    expect((await govern({ action: 'records.update', record_id: 'rec_11', values: {} })).status).toBe('executed');
-
-    expect(await db.platformOAuth.revokeGrant(oauthGrant.id, member.id)).toBe(true);
-    const [grant] = await db.agentWriteGrants.listForUser(member.id);
-    expect(grant!.revoked_at).not.toBeNull();
-    expect((await govern({ action: 'records.update', record_id: 'rec_12', values: {} })).status).toBe('needs_approval');
+    const knowledge = (docId: string) =>
+      governProxyWrite({
+        db,
+        caller,
+        toolId: 'knowledge_mutation',
+        input: { action: 'knowledge.append_doc', doc_id: docId, content: 'more' },
+        registry: { knowledge_mutation: registry[TOOL] } as unknown as ToolRegistry,
+        allowedToolIds: ['knowledge_mutation'],
+        baseRisk: 'r2',
+        confirmed: false,
+      });
+    expect(((await knowledge(team.doc_id)) as { view: { target_label: string | null } }).view.target_label).toBe(
+      'Team roadmap',
+    );
+    expect(
+      ((await knowledge(secret.doc_id)) as { view: { target_label: string | null } }).view.target_label,
+    ).toBeNull();
   });
 
   it('closes a write left running by a crash as outcome unknown and never replays it', async () => {
@@ -340,118 +285,5 @@ describe('governed external-agent writes', () => {
     expect(after?.status).toBe('interrupted');
     expect(after?.error_code).toBe('agent_write_outcome_unknown');
     expect(calls).toHaveLength(0);
-  });
-
-  it('runs a write once when the same member approves twice at the same moment', async () => {
-    const result = await govern({ action: 'records.update', record_id: 'rec_20', values: { a: 1 } });
-    const interruptId = await pendingInterruptId(result.view.request_id);
-    const approve = () =>
-      decideAgentWrite({
-        db,
-        interruptId,
-        actor: { id: member.id, role: 'team' },
-        decision: 'approve',
-        resolveContext: okContext,
-      });
-    const outcomes = await Promise.allSettled([approve(), approve()]);
-    const won = outcomes.filter((outcome) => outcome.status === 'fulfilled');
-    const lost = outcomes.filter((outcome) => outcome.status === 'rejected');
-    expect(won).toHaveLength(1);
-    expect(lost).toHaveLength(1);
-    expect((lost[0] as PromiseRejectedResult).reason).toBeInstanceOf(AgentWriteError);
-    expect(calls).toHaveLength(1);
-    expect((await agentWriteStatus(db, result.view.request_id, caller)).status).toBe('executed');
-  });
-
-  it('reports outcome unknown, not failed, when the write ran but its result was not recorded', async () => {
-    const transition = db.runtime.transitionToolCall.bind(db.runtime);
-    db.runtime.transitionToolCall = (async (input: Parameters<typeof transition>[0]) => {
-      if (input.to_status === 'succeeded') throw new Error('database went away');
-      return transition(input);
-    }) as typeof transition;
-    try {
-      const result = await govern({ action: 'records.update', record_id: 'rec_21', values: {} }, { legacy: true });
-      expect(calls).toHaveLength(1);
-      expect(result.view.status).toBe('outcome_unknown');
-    } finally {
-      db.runtime.transitionToolCall = transition;
-    }
-  });
-
-  it('still settles as outcome unknown when even the uncertain marker cannot be written', async () => {
-    const transition = db.runtime.transitionToolCall.bind(db.runtime);
-    db.runtime.transitionToolCall = (async (input: Parameters<typeof transition>[0]) => {
-      if (input.to_status === 'succeeded' || input.to_status === 'uncertain') throw new Error('database went away');
-      return transition(input);
-    }) as typeof transition;
-    try {
-      const result = await govern({ action: 'records.update', record_id: 'rec_23', values: {} }, { legacy: true });
-      expect(calls).toHaveLength(1);
-      // Never left running: no sweep would ever pick it up again.
-      expect(result.view.status).toBe('outcome_unknown');
-    } finally {
-      db.runtime.transitionToolCall = transition;
-    }
-  });
-
-  it('keeps an approved request non-terminal for pollers until the write lands', async () => {
-    const result = await govern({ action: 'records.update', record_id: 'rec_22', values: {} });
-    const [interrupt] = await db.runtime.listInterrupts(result.view.request_id);
-    // The approval has resolved the interrupt; the run has not moved yet.
-    await db.runtime.commandInterrupt(
-      {
-        type: 'resolve',
-        interrupt_id: interrupt!.id,
-        expected_version: interrupt!.version,
-        idempotency_key: unique('resolve'),
-        decision: { decision: 'approve' },
-      },
-      member.id,
-    );
-    expect((await agentWriteStatus(db, result.view.request_id, caller)).status).toBe('running');
-    // A recent approval is in flight: the sweep leaves it alone, and a withdraw loses.
-    await sweepExpiredAgentWrites(db);
-    expect((await agentWriteStatus(db, result.view.request_id, caller)).status).toBe('running');
-    await expect(withdrawAgentWrite(db, result.view.request_id, caller)).rejects.toBeInstanceOf(AgentWriteError);
-    expect(calls).toHaveLength(0);
-  });
-
-  it('lets two new records in one table wait side by side', async () => {
-    const first = await govern({ action: 'records.create', table_id: 'tbl_1', values: { a: 1 } });
-    const second = await govern({ action: 'records.create', table_id: 'tbl_1', values: { a: 2 } });
-    expect(second.view.request_id).not.toBe(first.view.request_id);
-    expect((await agentWriteStatus(db, first.view.request_id, caller)).status).toBe('pending');
-  });
-
-  it('names a team document on the approval card but never a private one its owner cannot read', async () => {
-    const team = await db.knowledgeBase.create({
-      doc_id: unique('kb-team'),
-      title: 'Team roadmap',
-      content: 'x',
-      visibility: 'team',
-      owner_user_id: other.id,
-      created_by: other.id,
-    });
-    const secret = await db.knowledgeBase.create({
-      doc_id: unique('kb-secret'),
-      title: 'Salary review',
-      content: 'x',
-      visibility: 'private',
-      owner_user_id: other.id,
-      created_by: other.id,
-    });
-    const knowledge = (docId: string) =>
-      governProxyWrite({
-        db,
-        caller,
-        toolId: 'knowledge_mutation',
-        input: { action: 'knowledge.append_doc', doc_id: docId, content: 'more' },
-        registry: { knowledge_mutation: registry[TOOL] } as unknown as ToolRegistry,
-        allowedToolIds: ['knowledge_mutation'],
-        baseRisk: 'r2',
-        legacyConfirm: false,
-      });
-    expect((await knowledge(team.doc_id)).view.target_label).toBe('Team roadmap');
-    expect((await knowledge(secret.doc_id)).view.target_label).toBeNull();
   });
 });

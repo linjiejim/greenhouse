@@ -28,15 +28,14 @@
 // ─── Registry ────────────────────────────────────────────
 
 /** Core groups render as fixed sections of Runtime Config; an extension uses its own id as the group. */
-export type WorkspaceSettingGroup = 'branding' | 'llm' | 'media' | 'search' | 'agent_access';
+export type WorkspaceSettingGroup = 'branding' | 'llm' | 'media' | 'search';
 
 /**
  * Value shape stored in the `value` jsonb column:
  * 'string' (single line) and 'text' (multi-line) are JSON strings; 'json' is
- * an object validated per-key server-side (theme tokens); 'boolean' is a JSON
- * boolean rendered as a switch (unset = the def's `defaultValue`).
+ * an object validated per-key server-side (theme tokens).
  */
-export type WorkspaceSettingType = 'string' | 'text' | 'json' | 'boolean';
+export type WorkspaceSettingType = 'string' | 'text' | 'json';
 
 export interface WorkspaceSettingDef {
   /** Stable key, stored verbatim in `workspace_settings.key`. Never rename. */
@@ -55,8 +54,6 @@ export interface WorkspaceSettingDef {
   /** Max serialized length accepted on write (defense-in-depth; default 2000). */
   maxLength?: number;
   placeholder?: string;
-  /** What an unset boolean means; readers must apply it (no env fallback for booleans). */
-  defaultValue?: boolean;
 }
 
 /** Logo upload constraints (data URL stored as the `branding.logo` value). */
@@ -223,15 +220,6 @@ const WORKSPACE_SETTINGS_LITERAL = [
     secret: true,
     env: 'BRAVE_SEARCH_API_KEY',
   },
-  {
-    key: 'agent_access.legacy_confirm',
-    group: 'agent_access',
-    label: 'Honour confirm:true from agents',
-    description:
-      'Transition switch. On: an external agent that passes confirm:true still writes shared data without asking (recorded as "legacy confirm"). Off: every shared-data write needs the member\'s approval or a standing grant. Deletes always need approval. Turn this off once your team has set up standing grants.',
-    type: 'boolean',
-    defaultValue: true,
-  },
 ] as const satisfies readonly WorkspaceSettingDef[];
 
 /** The registry, widened to WorkspaceSettingDef so optional fields (env,
@@ -293,8 +281,6 @@ export interface WorkspaceSettingView {
   /** True when a DB row exists for this key. */
   has_value: boolean;
   source: WorkspaceSettingSource;
-  /** Boolean settings: what "unset" means. */
-  default_value: boolean | null;
 }
 
 /** Pre-login personalization payload served by GET /api/bootstrap. */

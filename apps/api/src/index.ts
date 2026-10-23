@@ -113,7 +113,7 @@ import runtimeRoutes from './routes/runtime.js';
 import { settleRetiredRuntimeRuns } from './runtime/retired-kinds.js';
 import { startRuntimeWorker } from './runtime/worker.js';
 import { reconcileInterruptedChatRuntimeRuns } from './chat/runtime.js';
-import { reconcileInterruptedAgentWrites, sweepExpiredAgentWrites } from './agent-access/governed-write.js';
+import { reconcileInterruptedAgentWrites } from './agent-access/governed-write.js';
 import { sweepExpiredToolOutputs } from './agent-runtime/tool-output-store.js';
 import { createAutomationRuntimeDriver } from './scheduler/runtime-driver.js';
 import { createSubagentRuntimeDriver, reconcileReclaimedSubagentRun } from './runtime/subagent-driver.js';
@@ -346,10 +346,10 @@ function mountRoutes(toolRegistry: ToolRegistry) {
       // Runtime is the cross-domain Execution Center read model. Domain drivers
       // remain authoritative and every object is owner/super guarded again in
       // the route as defense in depth.
-      // Agent access: a member's own external agents — pending approvals,
-      // standing grants, recent writes. Every handler re-scopes to the caller.
+      // Agent access: a member's own external agents — the MCP endpoint and
+      // their recorded writes. Every handler re-scopes to the caller.
       .use('/api/agent-access/*', requireInternal())
-      .route('/api/agent-access', createAgentAccessRoutes(toolRegistry))
+      .route('/api/agent-access', createAgentAccessRoutes())
       .use('/api/runtime', requireInternal())
       .use('/api/runtime/*', requireInternal())
       .use('/api/runtime', requireTrustedExecutionSurface(trustedExecutionPlan.taskCenter, 'task-center'))
@@ -530,13 +530,10 @@ async function main() {
 
   // Five-minute expiry sweeps, each failing on its own (one bad sweep never
   // skips the others, and never becomes an unhandled rejection):
-  //  - approval requests nobody decided in time, so the agent's status call gets
-  //    a final answer (cheap: only waiting agent writes are read);
   //  - oversized MCP replies past their 24-hour life (agent-runtime/tool-output-store.ts);
   //  - rate-limit buckets whose window has ended (security/security.ts);
   //  - Feishu / WeCom login states and one-time login codes past their TTL.
   const expirySweeps: Array<[string, () => Promise<unknown>]> = [
-    ['agent-access expiry', () => sweepExpiredAgentWrites(dbProvider)],
     ['MCP tool output', () => sweepExpiredToolOutputs()],
     ['rate-limit bucket', () => dbProvider.rateLimits.sweepExpired()],
     ['OAuth login state', () => dbProvider.oauthLoginStates.sweepExpired()],

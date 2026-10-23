@@ -50,7 +50,6 @@ import { createChatArtifactReceiptService } from './services/chat-artifact-recei
 import { createRuntimeService } from './services/runtime.js';
 import { createNotificationService } from './services/notifications.js';
 import { createWorkspaceSettingService } from './services/workspace-settings.js';
-import { createAgentWriteGrantService } from './services/agent-write-grants.js';
 import { createOAuthLoginStateService, createRateLimitService } from './services/security-state.js';
 
 function createDatabaseProvider(db: Db, client: DbClient['client'] | null) {
@@ -99,7 +98,6 @@ function createDatabaseProvider(db: Db, client: DbClient['client'] | null) {
     runtime: createRuntimeService(db),
     notifications: createNotificationService(db),
     workspaceSettings: createWorkspaceSettingService(db),
-    agentWriteGrants: createAgentWriteGrantService(db),
     rateLimits: createRateLimitService(db),
     oauthLoginStates: createOAuthLoginStateService(db),
 
@@ -147,7 +145,6 @@ function createDatabaseProvider(db: Db, client: DbClient['client'] | null) {
         ...extensionResetTables(),
         'workspace_settings',
         'usage_counters',
-        'agent_write_grants',
         'rate_limit_buckets',
         'oauth_login_states',
         'notification_delivery_attempts',

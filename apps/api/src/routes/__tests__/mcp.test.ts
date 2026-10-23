@@ -17,33 +17,20 @@ vi.mock('@greenhouse/db', async (importOriginal) => {
   return { ...actual, getDb: () => ({ apiAudit: { record: async () => {} } }) };
 });
 
-// Writes are governed in agent-access (covered end to end by
+// Writes are recorded in agent-access (covered end to end by
 // tests/api/agent-write-governance.db.test.ts); here the route's own job is
-// asserted: strip confirm, honour it only while the switch is on, and shape
-// the three outcomes for the agent.
-const governance = vi.hoisted(() => ({
-  legacy: true,
-  govern: vi.fn(),
-  status: vi.fn(),
-  withdraw: vi.fn(),
-}));
+// asserted: strip confirm and pass it on, and shape each outcome for the agent.
+const governance = vi.hoisted(() => ({ govern: vi.fn() }));
 vi.mock('../../agent-access/context.js', () => ({
-  legacyConfirmEnabled: async () => governance.legacy,
   baseWriteRisk: () => 'r2',
   resolveWriteCaller: async (_db: unknown, input: { userId: string; clientId: string; authMethod: string }) => ({
     ...input,
     clientName: 'Codex',
-    approverUserId: input.userId,
   }),
 }));
 vi.mock('../../agent-access/governed-write.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../agent-access/governed-write.js')>();
-  return {
-    ...actual,
-    governProxyWrite: governance.govern,
-    agentWriteStatus: governance.status,
-    withdrawAgentWrite: governance.withdraw,
-  };
+  return { ...actual, governProxyWrite: governance.govern };
 });
 
 // Oversized replies go to the object store; an in-memory map keeps this test off disk.
@@ -60,26 +47,24 @@ vi.mock('../../storage/uploads.js', () => ({
 function view(over: Record<string, unknown> = {}) {
   return {
     request_id: 'rtr_1',
-    status: 'pending',
+    status: 'executed',
     tool_id: 'project_mutation',
     action: 'project.update',
     risk: 'r2',
     client_id: 'c1',
     client_name: 'Codex',
-    basis: null,
+    basis: 'direct',
+    target_label: null,
     input: {},
     output: null,
     error: null,
     created_at: '2026-10-23T00:00:00.000Z',
-    settled_at: null,
-    expires_at: '2026-10-24T00:00:00.000Z',
-    interrupt_id: 'rti_1',
-    decided_by_user_id: null,
+    settled_at: '2026-10-23T00:00:01.000Z',
     ...over,
   };
 }
 
-import { buildMcpServer, toMcpInputSchema } from '../mcp.js';
+import { buildMcpServer, mcpToolAnnotations, toMcpInputSchema } from '../mcp.js';
 import type { ToolRegistry } from '../../agent.js';
 import type { ProxyToolManifestEntry } from '../../agent-runtime/tool-proxy.js';
 
@@ -140,26 +125,21 @@ function firstText(res: unknown): string {
 }
 
 describe('MCP server — tools/list', () => {
-  it('lists only the tools in the request context, plus agent_write_status when writes are reachable', async () => {
-    governance.legacy = true;
+  it('lists the tools in the request context with annotations, and a write note on writes', async () => {
     const { client, server } = await connect(makeCtx());
     const { tools } = await client.listTools();
 
-    expect(tools.map((t) => t.name).sort()).toEqual([
-      'agent_write_status',
-      'project_mutation',
-      'project_query',
-      'tool_output_read',
-    ]);
+    expect(tools.map((t) => t.name).sort()).toEqual(['project_mutation', 'project_query', 'tool_output_read']);
 
     const write = tools.find((t) => t.name === 'project_mutation')!;
-    // While the transition switch is on, confirm is an optional legacy flag — never required.
-    expect((write.inputSchema as { properties: Record<string, unknown> }).properties.confirm).toBeDefined();
-    expect((write.inputSchema as { required?: string[] }).required ?? []).not.toContain('confirm');
-    expect(write.description).toMatch(/approval/);
+    expect(write.annotations).toMatchObject({ readOnlyHint: false, destructiveHint: false, openWorldHint: false });
+    expect(write.description).toMatch(/recorded in their name/);
+    // This write cannot delete, so it has no confirm flag at all.
+    expect((write.inputSchema as { properties: Record<string, unknown> }).properties.confirm).toBeUndefined();
 
     const read = tools.find((t) => t.name === 'project_query')!;
-    expect((read.inputSchema as { properties?: Record<string, unknown> }).properties?.confirm).toBeUndefined();
+    expect(read.annotations).toMatchObject({ readOnlyHint: true });
+    expect(tools.find((t) => t.name === 'tool_output_read')!.annotations).toMatchObject({ readOnlyHint: true });
 
     await client.close();
     await server.close();
@@ -176,61 +156,60 @@ describe('MCP server — tools/call', () => {
     await server.close();
   });
 
-  it('answers a write that needs approval with needs_approval, not an error', async () => {
-    governance.govern.mockResolvedValueOnce({ status: 'needs_approval', reused: false, view: view() });
+  it('runs a write at once, strips confirm and passes it on, and says where it is recorded', async () => {
+    governance.govern.mockResolvedValue({ status: 'executed', view: view({ output: { created: { name: 'X' } } }) });
     const { client, server } = await connect(makeCtx());
     const res = await client.callTool({ name: 'project_mutation', arguments: { name: 'X' } });
     expect(res.isError).toBeFalsy();
-    const body = JSON.parse(firstText(res));
-    expect(body).toMatchObject({ status: 'needs_approval', request_id: 'rtr_1', risk: 'r2' });
-    expect(body.message).toMatch(/agent_write_status/);
-    expect(governance.govern.mock.calls.at(-1)![0]).toMatchObject({ toolId: 'project_mutation', legacyConfirm: false });
-    await client.close();
-    await server.close();
-  });
-
-  it('strips confirm before governance and honours it only while the switch is on', async () => {
-    governance.govern.mockResolvedValue({
-      status: 'executed',
-      view: view({ status: 'executed', basis: 'legacy_confirm', output: { created: { name: 'X' } } }),
-    });
-    governance.legacy = true;
-    const { client, server } = await connect(makeCtx());
-    const res = await client.callTool({ name: 'project_mutation', arguments: { name: 'X', confirm: true } });
-    expect(res.isError).toBeFalsy();
     expect(JSON.parse(firstText(res))).toEqual({ created: { name: 'X' } });
-    expect(governance.govern.mock.calls.at(-1)![0]).toMatchObject({ input: { name: 'X' }, legacyConfirm: true });
+    expect((res.content as Array<{ text: string }>).at(-1)!.text).toBe('Recorded in Greenhouse as write rtr_1.');
+    expect(governance.govern.mock.calls.at(-1)![0]).toMatchObject({ input: { name: 'X' }, confirmed: false });
 
-    governance.legacy = false;
     await client.callTool({ name: 'project_mutation', arguments: { name: 'X', confirm: true } });
-    expect(governance.govern.mock.calls.at(-1)![0]).toMatchObject({ input: { name: 'X' }, legacyConfirm: false });
+    expect(governance.govern.mock.calls.at(-1)![0]).toMatchObject({ input: { name: 'X' }, confirmed: true });
     governance.govern.mockReset();
     await client.close();
     await server.close();
   });
 
-  it('reports a failed write as a tool error', async () => {
+  it('answers a delete without confirm with its preview, not an error', async () => {
+    governance.govern.mockResolvedValueOnce({
+      status: 'needs_confirmation',
+      preview: {
+        status: 'needs_confirmation',
+        tool: 'project_mutation',
+        action: 'records.delete',
+        risk: 'r3',
+        target: null,
+        input: { record_id: 'r1' },
+        message: 'Nothing has been deleted yet.',
+      },
+    });
+    const { client, server } = await connect(makeCtx());
+    const res = await client.callTool({ name: 'project_mutation', arguments: { name: 'X' } });
+    expect(res.isError).toBeFalsy();
+    expect(JSON.parse(firstText(res))).toMatchObject({ status: 'needs_confirmation', risk: 'r3' });
+    await client.close();
+    await server.close();
+  });
+
+  it('reports a failed write as a tool error, and an unknown outcome as a status to check', async () => {
     governance.govern.mockResolvedValueOnce({
       status: 'failed',
       view: view({ status: 'failed', error: 'revision conflict' }),
     });
     const { client, server } = await connect(makeCtx());
-    const res = await client.callTool({ name: 'project_mutation', arguments: { name: 'X' } });
-    expect(res.isError).toBe(true);
-    expect(firstText(res)).toBe('revision conflict');
-    await client.close();
-    await server.close();
-  });
+    const failed = await client.callTool({ name: 'project_mutation', arguments: { name: 'X' } });
+    expect(failed.isError).toBe(true);
+    expect(firstText(failed)).toBe('revision conflict');
 
-  it('agent_write_status returns the executed output', async () => {
-    governance.status.mockResolvedValueOnce(view({ status: 'executed', basis: 'approved', output: { ok: 1 } }));
-    const { client, server } = await connect(makeCtx());
-    const res = await client.callTool({
-      name: 'agent_write_status',
-      arguments: { request_id: 'rtr_1', wait_seconds: 5 },
+    governance.govern.mockResolvedValueOnce({
+      status: 'outcome_unknown',
+      view: view({ status: 'outcome_unknown', error: 'The write ran but its result could not be recorded' }),
     });
-    expect(JSON.parse(firstText(res))).toMatchObject({ status: 'executed', output: { ok: 1 } });
-    expect(governance.status.mock.calls.at(-1)!.slice(1)).toEqual(['rtr_1', expect.anything(), 5]);
+    const unknown = await client.callTool({ name: 'project_mutation', arguments: { name: 'X' } });
+    expect(unknown.isError).toBeFalsy();
+    expect(JSON.parse(firstText(unknown))).toMatchObject({ status: 'outcome_unknown', write_id: 'rtr_1' });
     await client.close();
     await server.close();
   });
@@ -287,18 +266,15 @@ describe('MCP server — bounded replies', () => {
     await other.server.close();
   });
 
-  it('bounds an executed governed write and keeps the request line last', async () => {
+  it('bounds an executed write and keeps the record line last', async () => {
     objects.clear();
     const big = { rows: Array.from({ length: 600 }, (_, i) => ({ id: i, note: 'n'.repeat(50) })) };
-    governance.govern.mockResolvedValueOnce({
-      status: 'executed',
-      view: view({ status: 'executed', basis: 'standing_grant', output: big }),
-    });
+    governance.govern.mockResolvedValueOnce({ status: 'executed', view: view({ output: big }) });
     const { client, server } = await connect(makeCtx());
     const res = await client.callTool({ name: 'project_mutation', arguments: { name: 'X' } });
     const blocks = res.content as Array<{ text: string }>;
     expect(JSON.parse(blocks[0]!.text)).toMatchObject({ truncated: true });
-    expect(blocks.at(-1)!.text).toMatch(/Recorded as Greenhouse request rtr_1/);
+    expect(blocks.at(-1)!.text).toBe('Recorded in Greenhouse as write rtr_1.');
     expect(objects.size).toBe(1);
     await client.close();
     await server.close();
@@ -326,15 +302,26 @@ describe('toMcpInputSchema', () => {
     expect(toMcpInputSchema(base({ inputSchema: undefined }))).toMatchObject({ type: 'object' });
   });
 
-  it('adds an optional legacy confirm flag to writes only while the switch is on', () => {
-    const entry = base({
+  it('adds an optional confirm flag only to writes that can delete', () => {
+    const plain = base({
       mutating: true,
       inputSchema: { type: 'object', properties: { name: { type: 'string' } }, required: ['name'] },
     });
-    const legacy = toMcpInputSchema(entry, { legacyConfirm: true });
-    expect((legacy.properties as Record<string, { type?: string }>).confirm.type).toBe('boolean');
-    expect(legacy.required).toEqual(['name']);
-    const strict = toMcpInputSchema(entry, { legacyConfirm: false });
-    expect((strict.properties as Record<string, unknown>).confirm).toBeUndefined();
+    expect((toMcpInputSchema(plain).properties as Record<string, unknown>).confirm).toBeUndefined();
+
+    const deleting = base({
+      mutating: true,
+      inputSchema: {
+        type: 'object',
+        properties: { action: { type: 'string', enum: ['records.update', 'records.delete'] } },
+        required: ['action'],
+      },
+    });
+    const schema = toMcpInputSchema(deleting);
+    expect((schema.properties as Record<string, { type?: string }>).confirm.type).toBe('boolean');
+    expect(schema.required).toEqual(['action']);
+    expect(mcpToolAnnotations(deleting)).toMatchObject({ readOnlyHint: false, destructiveHint: true });
+    expect(mcpToolAnnotations(plain)).toMatchObject({ readOnlyHint: false, destructiveHint: false });
+    expect(mcpToolAnnotations(base({}))).toEqual({ readOnlyHint: true, openWorldHint: false });
   });
 });

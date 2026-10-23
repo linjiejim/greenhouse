@@ -41,9 +41,9 @@ describe('Execution Center routes', () => {
 });
 
 describe('agent write notifications', () => {
-  it('open the approval card in Settings, not the Execution center', () => {
+  it('open Activity in Settings › Agent connections, not the Execution center', () => {
     expect(executionNotificationHref('rtr_1', { runtime_kind: 'agent_write' })).toBe(
-      '#/settings/agent-connections/requests/rtr_1',
+      '#/settings/agent-connections/activity',
     );
   });
 });

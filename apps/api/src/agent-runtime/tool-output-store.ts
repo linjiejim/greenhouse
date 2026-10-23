@@ -255,7 +255,7 @@ export async function sweepExpiredToolOutputs(now: number = Date.now()): Promise
   return removed;
 }
 
-/** MCP tool definition — protocol level, like agent_write_status; not a catalog tool. */
+/** MCP tool definition — protocol level, not a catalog tool. */
 export function toolOutputReadToolDef() {
   return {
     name: TOOL_OUTPUT_READ_TOOL,

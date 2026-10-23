@@ -30,7 +30,6 @@ describe('personal AI tool navigation', () => {
 describe('resolveSubModule breadcrumbs for deep links', () => {
   it('shows a numeric detail id but not a tab name or request id', () => {
     expect(resolveSubModule('settings', 'groups/12')?.secondary).toMatch(/› #12$/);
-    expect(resolveSubModule('settings', 'agent-connections/requests/rtr_abc')?.secondary).not.toContain('#');
     expect(resolveSubModule('settings', 'agent-connections/activity')?.secondary).not.toContain('#');
   });
 });

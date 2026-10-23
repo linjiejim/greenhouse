@@ -182,11 +182,6 @@ export function validateWorkspaceValue(def: WorkspaceSettingDef, raw: unknown): 
     return { ok: true, value };
   }
 
-  if (def.type === 'boolean') {
-    if (typeof raw !== 'boolean') return { ok: false, error: `${def.key} must be true or false` };
-    return { ok: true, value: raw };
-  }
-
   // type === 'json'
   const serialized = JSON.stringify(raw);
   if (!serialized || serialized.length > maxLength)
@@ -221,7 +216,6 @@ export async function getWorkspaceSettingViews(): Promise<WorkspaceSettingView[]
       value: !def.secret && hasDb ? db.get(def.key) : null,
       has_value: hasDb,
       source,
-      default_value: def.defaultValue ?? null,
     };
   });
 }

@@ -326,7 +326,7 @@ v1 只接 DeepSeek 与 OpenAI 兼容服务，它们**自动**缓存 prompt 前�
 
 ### 知识库实时更新（`knowledge/live.ts` + WS `knowledge.changed`）
 - 文档被创建、编辑、归档时，看得见它的人收到 `{type:'knowledge.changed', docId, change:'created'|'updated'|'archived'}`，只带 id，接收端经鉴权 API 重拉。
-- **挂在 service 的唯一写路径上**：`db.knowledgeBase.create/update`（`archive`、`restoreVersion` 都走 `update`）调 `onKnowledgeDocChange` 的监听；网页路由、聊天 `knowledge_mutation`、MCP、审批后执行的 agent 写入都经过这里。**别在路由或工具里再发一遍**。不发：`upsert`（CLI 批量导入，另一个进程）、`updateEnrichment`（派生字段）、`delete`。
+- **挂在 service 的唯一写路径上**：`db.knowledgeBase.create/update`（`archive`、`restoreVersion` 都走 `update`）调 `onKnowledgeDocChange` 的监听；网页路由、聊天 `knowledge_mutation`、MCP 的 agent 写入都经过这里。**别在路由或工具里再发一遍**。不发：`upsert`（CLI 批量导入，另一个进程）、`updateEnrichment`（派生字段）、`delete`。
 - 受众 = 变更前**或**后能看到它的人：team 文档（含刚从 team 改成 private 的）广播给所有在线连接（WS 只接内部账号）；private 文档发给 owner（新旧都发）+ 直接共享与组共享的成员（`knowledgeShares.userIdsWithAccess`）。监听里的异步错误只记 warn，绝不回到写入方。
 - 网页：`ws-store` 收到后调 `useKnowledgeStore.remoteChanged()`（400ms 合并一批）→ `version` +1 → 侧栏树、打开的文档、已归档列表各自重拉。编辑器的冲突基线是**打开编辑器时**的 `updated_at`（`EditorState.baseUpdatedAt`），不能取会被实时刷新的 `selectedDoc.updated_at`，否则别人的保存会把冲突检测抹掉。
 
@@ -420,16 +420,17 @@ v1 只接 DeepSeek 与 OpenAI 兼容服务，它们**自动**缓存 prompt 前�
   - ⚠️ **`normalizeOAuthScopes`（请求侧）与 `parseStoredOAuthScopes`（存储侧）刻意不对称，方向写反就是静默提权**：前者对"没提资源组"的请求展开成全部组（客户端不知道我们怎么分组，多数只会照搬 `scopes_supported` 或干脆不传，不展开等于打断所有现有客户端）；后者**永远不展开**——存的是什么就是什么。在存储侧加一行展开，等于把每个存量 grant 提权成全权限。存量行由迁移链 显式回填，所以代码里**没有**、也不该有"无组视为全部"的兼容分支。回归护栏在 `platform/__tests__/oauth.test.ts`。
   - **空资源组不是合法状态**：consent 页全不勾时禁用按钮，approve 端点 400 拒绝。这不是体验优化——是让"没有资源组"永远不出现在存储里，从而杜绝将来有人把它读成"全部"。
   - **`AgentIdentity.allowedTools` 同理**：`undefined` = 不收窄（CLI/沙箱按用户全权），`[]` = 零个可读工具。`resolveProxyToolIds` 曾把空数组当"不收窄"，而 MCP 现在正是从资源组派生这个列表——两者合流就是把最窄的授权变成无限制。
-- OAuth scope 只收窄、不放大平台权限：`mcp:read` 才可访问，`mcp:write` 只决定是否暴露 confirm-gated 写工具；401/403 challenge 的 `WWW-Authenticate: scope=` **必须广播全量 `OAUTH_SUPPORTED_SCOPES`**——MCP 客户端按 SEP-835 优先采用它（高于 metadata 的 `scopes_supported`），只写 `mcp:read` 会把所有被发现的客户端钉死成只读 grant，用户在 consent 页连选都选不到（2026-07-27 修）；真正的授权决定权在 consent 页，写入还要经过写入治理（见下）。每个 action 仍走绑定用户的 Platform capability + record/field ACL。MCP 与 refresh 每次都把 token/code scopes 和当前 grant scopes 取交集校验；grant scopes 变化会事务性撤销旧 token/未用 code，grant/client/user 撤销在下一请求生效。
+- OAuth scope 只收窄、不放大平台权限：`mcp:read` 才可访问，`mcp:write` 只决定是否暴露写工具；401/403 challenge 的 `WWW-Authenticate: scope=` **必须广播全量 `OAUTH_SUPPORTED_SCOPES`**——MCP 客户端按 SEP-835 优先采用它（高于 metadata 的 `scopes_supported`），只写 `mcp:read` 会把所有被发现的客户端钉死成只读 grant，用户在 consent 页连选都选不到（2026-07-27 修）；真正的授权决定权在 consent 页，写入会留痕（见下）。每个 action 仍走绑定用户的 Platform capability + record/field ACL。MCP 与 refresh 每次都把 token/code scopes 和当前 grant scopes 取交集校验；grant scopes 变化会事务性撤销旧 token/未用 code，grant/client/user 撤销在下一请求生效。
 - **安全边界 = key 绑的那个内部用户**：代理只能收窄其权限（`resolveEffectiveTools ∩ 代理白名单 ∩ MCP 阶段集`）。给每个外部集成绑**最小权限专设用户**，别绑 super / 个人账号。
-- **写入治理（v1.4，`agent-access/`）**：外部 Agent 的每次 MCP 写入都是一条 Runtime run（`kind='agent_write'`、`source_kind='proxy_call'`，owner=凭证绑定的成员），run 本身就是审计记录与审批请求。风险分级在 `agent-access/risk.ts`：删除类动作（`delete/remove/purge/destroy/drop`）一律 r3，在自己的个人知识库建文档是 r1，其余 r2；工具目录的 `runtime_risk` 是下限（r3 工具永远 r3），扩展工具自动适用同一规则。
-  - r1 立即执行；r2 有常驻授权（`agent_write_grants`，成员 + 客户端/任意客户端 + 工具 + 动作/全部，1/7/30/90 天）或过渡开关下带 `confirm:true` 时立即执行；否则（以及所有 r3）run 进 `waiting` + `mutation_approval` interrupt（assignee=成员；机器客户端=其创建者 super，24 小时过期），Agent 拿到 `{"status":"needs_approval","request_id"}` 普通结果（不是错误），再用协议层工具 `agent_write_status`（`wait_seconds` ≤30、`action=withdraw`）取结果。**常驻授权永远不覆盖 r3**，服务层与 API 都拒绝。
-  - **审批只执行一次**：先 CAS interrupt（pending→resolved），再 CAS run（waiting→running），各只有一个赢家；执行前按**当前**的 client/grant/scope/用户状态重建身份（`agent-access/context.ts` → `composeMcpContext`），撤销或收窄的授权会让已批准的写入失败而不是执行。执行走 `runtime/tool-evidence.ts`（unleased projection 只允许 chat_turn 与 agent_write/proxy_call 两种），完整 input/output 永久落库。启动时仍在运行的 agent_write 一律收为 `interrupted / agent_write_outcome_unknown`，**绝不重放**；每 5 分钟清理过期请求。
-  - 同一客户端重复同一写入（同输入 hash）时返回原请求；同一目标（工具+动作+记录 id）的新请求取代旧的等待中请求（`superseded`）。
-  - **过渡开关** `agent_access.legacy_confirm`（Runtime Config › Agent 接入，布尔，默认开）：开着时 `confirm` 是 tools/list 里的**可选**旧参数，带 `true` 的 r2 写入照旧直接执行并记 basis=`legacy_confirm`；r3 无论如何都要审批。团队配好常驻授权后关掉。
-  - 通知：interrupt 生成 inbox 通知（"Codex wants to run records.update"）；agent_write 成功不通知，失败/结果未知才通知。成员侧 API 在 `routes/agent-access.ts`（`/api/agent-access/*`），网页在 Settings › Agent 接入。
-  - `/api/agent`（CLI，用成员本人的登录令牌，等同本人操作）**不**走这套审批，保留 `confirm:true`。
-- **有界回复（v1.4，`agent-runtime/tool-output-store.ts`）**：`tools/call` 的回复文本（读工具、已执行的受治理写入、`agent_write_status`）超过 12,000 字符时不原样返回：全文存为私有对象，回复改为两块——先是句柄 `{truncated:true, output_id, total_chars, next_offset, expires_at}`，再是 ≤8,000 字符的预览（截在换行 / `},` / 逗号处）。协议层工具 `tool_output_read`（`output_id`、`offset`、`limit` ≤12,000）按区间续读。长度按 JS 字符串单位计，区间不劈开代理对。
+- **写入留痕（v1.4，`agent-access/`）**：外部 Agent 以连接它的成员身份工作，成员有权限做的写入**立即执行**，Greenhouse 里不排队、不审批；确认交给坐在 Agent 旁边的人（客户端自己的确认 + 我们给的提示）。别加回网页审批队列、常驻授权或过渡开关：那会让人在 Agent 和 Greenhouse 两头操作。
+  - 每次 MCP 写入都是一条 Runtime run（`kind='agent_write'`、`source_kind='proxy_call'`，owner=凭证绑定的成员），完整 input/output 经 `runtime/tool-evidence.ts` 永久落库；成员在 Settings › Agent 接入 › 写入记录（`GET /api/agent-access/writes`）和执行中心看到它。
+  - 风险分级 `agent-access/risk.ts` 只用于记录和删除预览：删除类动作（`delete/remove/purge/destroy/drop`）r3，个人知识库建文档 r1，其余 r2；`runtime_risk` 是下限，扩展工具自动适用。
+  - **删除两步确认（软提示，不是锁）**：r3 写入不带 `confirm:true` 时返回 `{"status":"needs_confirmation", preview…}` 普通结果，不建 run、不执行；Agent 给用户看过、再带 `confirm:true` 调一次才执行（basis=`confirmed`）。`confirm` 只出现在能删除的写工具的 schema 里，其他写工具收到会被剥掉并忽略。
+  - **MCP 标注**：每个工具带 `annotations`（读 `readOnlyHint:true`；写 `readOnlyHint:false`，能删除的 `destructiveHint:true`），写工具描述末尾和 `SERVER_INSTRUCTIONS` 都提示「改别人在用的数据前先跟用户确认」，让客户端自己决定何时问人。
+  - 写入结果：成功返回工具输出 + 末行 `Recorded in Greenhouse as write <id>.`；工具拒绝记为 failed（`isError`）；执行了但结果没能落库记为 `outcome_unknown`（不是错误、不要盲目重试），启动时仍在运行的 agent_write 一律收为 `interrupted / agent_write_outcome_unknown`，**绝不重放**。
+  - 通知：agent_write 成功不通知，失败 / 结果未知才通知（链到写入记录）。
+  - `/api/agent`（CLI，用成员本人的登录令牌）不走这条路径，保留原来的 `confirm:true`。
+- **有界回复（v1.4，`agent-runtime/tool-output-store.ts`）**：`tools/call` 的回复文本（读工具、已执行的写入）超过 12,000 字符时不原样返回：全文存为私有对象，回复改为两块——先是句柄 `{truncated:true, output_id, total_chars, next_offset, expires_at}`，再是 ≤8,000 字符的预览（截在换行 / `},` / 逗号处）。协议层工具 `tool_output_read`（`output_id`、`offset`、`limit` ≤12,000）按区间续读。长度按 JS 字符串单位计，区间不劈开代理对。
   - **存储不建表**：对象放在既有存储驱动的 `drive/mcp-output/<sha256(成员+客户端)>/<output_id>.json`。读取时用**调用方**的成员与 OAuth 客户端重算 key，别的成员或同一成员的另一个客户端只会拿到「not found or expired」——鉴权就是 key 本身，没有行可查也没有存在性可泄露。`chat_files` 不能用：每行必须挂在一个聊天会话上，而 MCP 调用没有会话。
   - `output_id` 自带创建时间：读取时先按它判 24 小时过期（不等清扫），清扫（`index.ts` 的五分钟 upkeep）只靠列举前缀删过期对象；前缀下形状不对的 key 一律不碰。单份存储上限 4,000,000 字符（超出时句柄带 `stored_chars`）。存储写失败不让调用失败（写入可能已执行）：照样返回句柄（`output_id:null`）+ 预览。
   - 只在 MCP 面；`/api/agent`（CLI）不截断。

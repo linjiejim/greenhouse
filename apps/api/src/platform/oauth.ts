@@ -16,8 +16,8 @@ export const OAUTH_AUTHORIZATION_CODE_TTL_SECONDS = 5 * 60;
 
 /**
  * Action scopes — WHAT a token may do. `mcp:read` is mandatory (it is what
- * grants access at all); `mcp:write` additionally exposes the confirm-gated
- * mutating tools.
+ * grants access at all); `mcp:write` additionally exposes the mutating tools
+ * (recorded writes, see agent-access/governed-write.ts).
  */
 export const OAUTH_ACTION_SCOPES = ['mcp:read', 'mcp:write'] as const;
 

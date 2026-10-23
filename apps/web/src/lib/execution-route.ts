@@ -40,10 +40,8 @@ export function parseExecutionSubPath(subPath: string): {
   }
 }
 
-/** Agent writes are decided and reviewed in Settings › Agent connections, not the Execution center. */
-export function agentWriteRequestHref(runId: string): string {
-  return `#/settings/agent-connections/requests/${encodeURIComponent(runId)}`;
-}
+/** A member reviews their agents' writes in Settings › Agent connections › Activity. */
+export const AGENT_WRITE_ACTIVITY_HREF = '#/settings/agent-connections/activity';
 
 export function executionNotificationHref(runId: string, payload: RuntimeJsonValue): string {
   if (
@@ -52,7 +50,7 @@ export function executionNotificationHref(runId: string, payload: RuntimeJsonVal
     !Array.isArray(payload) &&
     payload.runtime_kind === 'agent_write'
   ) {
-    return agentWriteRequestHref(runId);
+    return AGENT_WRITE_ACTIVITY_HREF;
   }
   const kind =
     payload !== null &&

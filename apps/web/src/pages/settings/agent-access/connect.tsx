@@ -1,6 +1,6 @@
 /**
  * Connect an agent — the MCP endpoint, copy-ready setup for the common
- * clients, and how writes are governed. Commands are the clients' real CLIs
+ * clients, and how writes are handled. Commands are the clients' real CLIs
  * (checked against codex-cli and claude): add the server, then sign in once.
  */
 
@@ -85,7 +85,6 @@ export function ConnectGuide({ mcpUrl }: { mcpUrl: string }) {
           <li>{t('agentAccess.howWrites2')}</li>
           <li>{t('agentAccess.howWrites3')}</li>
           <li>{t('agentAccess.howWrites4')}</li>
-          <li>{t('agentAccess.howWrites5')}</li>
         </ul>
       </Card>
     </div>
