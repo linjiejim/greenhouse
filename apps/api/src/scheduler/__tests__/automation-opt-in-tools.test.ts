@@ -23,6 +23,8 @@ const EFFECTIVE = [
   'email_mutation',
   'automation_mutation',
   'tables_schema_plan',
+  'report_templates',
+  'report_render',
 ];
 
 describe('scheduledToolBase', () => {
@@ -31,6 +33,16 @@ describe('scheduledToolBase', () => {
     expect(base).toContain('tables_query');
     expect(base).not.toContain('tables_mutation');
     expect(base).not.toContain('generate_image');
+    // Reading the team's report templates is replay-safe; rendering one is not.
+    expect(base).toContain('report_templates');
+    expect(base).not.toContain('report_render');
+  });
+
+  it('lets the owner grant report rendering for a scheduled report', () => {
+    const base = scheduledToolBase(EFFECTIVE, ['report_render']);
+    expect(base).toContain('report_render');
+    expect(base).toContain('report_templates');
+    expect(base).not.toContain('tables_mutation');
   });
 
   it('adds exactly what was granted, and keeps the automatic reads', () => {

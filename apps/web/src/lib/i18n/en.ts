@@ -2200,6 +2200,7 @@ export default {
     tool_tables_mutation: 'Write Tables records (recoverable from the recycle bin)',
     tool_knowledge_mutation: 'Write knowledge docs (version history kept)',
     tool_project_mutation: 'Write projects and tasks',
+    tool_report_render: 'Render reports from team templates into Files (your shelf, or a team folder you can write)',
     notifyEmailHint: 'Sent from the shared Greenhouse mailbox to your own account address.',
     quietWhenEmpty: 'Quiet when nothing new',
     quietWhenEmptyHint: 'A run that finds nothing new is kept in history as “No update” and sends no notification.',

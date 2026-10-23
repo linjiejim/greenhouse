@@ -2143,6 +2143,7 @@ const zh: Messages = {
     tool_tables_mutation: '写 Tables 记录（可从回收站恢复）',
     tool_knowledge_mutation: '写知识库文档（保留版本历史）',
     tool_project_mutation: '写项目与任务',
+    tool_report_render: '按团队模板渲染报告存入档案库（你的个人架，或你能写的团队文件夹）',
     notifyEmailHint: '由共享的 Greenhouse 邮箱发送到你的账号邮箱。',
     quietWhenEmpty: '没有新内容时不通知',
     quietWhenEmptyHint: '某次运行没有发现新内容时，只在历史里记为“无更新”，不发送任何通知。',

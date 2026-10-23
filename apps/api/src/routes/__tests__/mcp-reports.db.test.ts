@@ -44,6 +44,7 @@ import { buildMcpServer, composeMcpContext } from '../mcp.js';
 import { identityFromOAuthScopes } from '../../agent-runtime/mcp-auth.js';
 import { buildLazyServerTools, resolveEffectiveTools } from '../../agent-runtime/tool-resolution.js';
 import { resolveProfileAsync } from '../../profiles/profile.js';
+import { scheduledToolBase } from '../../scheduler/executor.js';
 import { initializePlatformRuntime, resetPlatformRuntimeForTests } from '../../platform/runtime.js';
 import { projectsRegistration } from '../../platform/projects/application.js';
 import { knowledgeRegistration } from '../../platform/knowledge/registration.js';
@@ -339,5 +340,72 @@ describe('report tools in Chat', () => {
       success: true,
       file: { shelf: 'personal', url: expect.stringContaining('#/files') },
     });
+  });
+});
+
+describe('report tools in automations', () => {
+  /** The tools a scheduled run gets, assembled the way scheduler/executor.ts does. */
+  async function automationTools(grant: string[]) {
+    const { effectiveTools } = await resolveEffectiveTools({
+      userId: member.id,
+      userRole: 'team',
+      profile: await resolveProfileAsync('desktop'),
+      profileId: 'desktop',
+    });
+    const ids = scheduledToolBase(effectiveTools, grant);
+    return {
+      ids,
+      tools: buildLazyServerTools(db, ids, {
+        userId: member.id,
+        userRole: 'team',
+        sessionId: 'task',
+        unattended: true,
+      }),
+    };
+  }
+  type Exec = { execute: (input: unknown, options: unknown) => Promise<unknown> };
+  const run = (tool: unknown, input: unknown) =>
+    (tool as Exec).execute(input, { toolCallId: 'auto-1', messages: [] }) as Promise<Record<string, unknown>>;
+
+  it('reads templates without a grant, renders only when the owner ticked report_render', async () => {
+    const plain = await automationTools([]);
+    expect(plain.ids).toContain('report_templates');
+    expect(plain.ids).not.toContain('report_render');
+
+    const granted = await automationTools(['report_render']);
+    const output = await run(granted.tools.report_render, { ...CONTENT, template_id: templateId });
+    expect(output).toMatchObject({ success: true, file: { shelf: 'personal' } });
+    const file = await db.drive.getFile(output.file_id as number);
+    expect(file).toMatchObject({ visibility: 'private', owner_user_id: member.id, uploaded_by: member.id });
+  });
+
+  it("saves into a team folder the owner may write, never into someone else's shelf", async () => {
+    const { tools } = await automationTools(['report_render']);
+    const teamFolder = await db.drive.createFolder({ scope: 'kb', name: unique('Weekly'), visibility: 'team' });
+    const saved = await run(tools.report_render, {
+      ...CONTENT,
+      template_id: templateId,
+      shelf: 'team',
+      folder_id: teamFolder.id,
+    });
+    expect(await db.drive.getFile(saved.file_id as number)).toMatchObject({
+      visibility: 'team',
+      folder_id: teamFolder.id,
+    });
+
+    const other = await createInternalTestUser(db, { email: `${unique('rpt-auto-other')}@test.local` });
+    const theirs = await db.drive.createFolder({
+      scope: 'kb',
+      name: unique('Private'),
+      visibility: 'private',
+      owner_user_id: other.id,
+    });
+    const refused = await run(tools.report_render, {
+      ...CONTENT,
+      template_id: templateId,
+      shelf: 'personal',
+      folder_id: theirs.id,
+    });
+    expect(refused.error).toMatch(/not saved: No folder/);
   });
 });
