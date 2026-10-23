@@ -4,7 +4,9 @@
  * read answers 404 — "not available", not an error with a retry.
  */
 
-import React, { useCallback, useMemo } from 'react';
+import { TaskView } from '../../src/projects/task-view';
+import { SplitView, useSplit } from '../../src/ui/split';
+import React, { useCallback, useMemo, useState } from 'react';
 import { FlatList, Text, View } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { getProject } from '../../src/api/projects';
@@ -34,6 +36,9 @@ export default function ProjectDetailScreen() {
   const router = useRouter();
   const { colors: c } = useTheme();
   const styles = useStyles(c);
+  // iPad: the task opens beside the list (src/ui/split.tsx)
+  const split = useSplit();
+  const [selected, setSelected] = useState<{ project: number; task: number } | null>(null);
   const load = useCallback(() => getProject(id ?? 0), [id]);
   const resource = useResource(load);
   const detail = resource.data;
@@ -89,7 +94,7 @@ export default function ProjectDetailScreen() {
     </View>
   ) : null;
 
-  return (
+  const listing = (
     <View style={styles.root}>
       <Stack.Screen options={{ title: project?.title ?? '' }} />
       <FlatList<Row>
@@ -121,7 +126,9 @@ export default function ProjectDetailScreen() {
               }
               position={item.position}
               onPress={() =>
-                router.push({ pathname: '/projects/task', params: { project: String(task.project_id), task: String(task.id) } })
+                split
+                  ? setSelected({ project: task.project_id, task: task.id })
+                  : router.push({ pathname: '/projects/task', params: { project: String(task.project_id), task: String(task.id) } })
               }
             />
           );
@@ -140,6 +147,14 @@ export default function ProjectDetailScreen() {
         contentContainerStyle={styles.content}
       />
     </View>
+  );
+  if (!split) return listing;
+  return (
+    <SplitView
+      list={listing}
+      detail={selected ? <TaskView key={selected.task} projectId={selected.project} taskId={selected.task} embedded onChanged={() => void resource.refresh()} /> : null}
+      placeholder={{ icon: 'checkCircle', title: t('projects.pick') }}
+    />
   );
 }
 

@@ -5,7 +5,9 @@
  * the Projects capability gets a 403: say so instead of an error with a retry.
  */
 
-import React, { useCallback, useMemo } from 'react';
+import { TaskView } from '../../src/projects/task-view';
+import { SplitView, useSplit } from '../../src/ui/split';
+import React, { useCallback, useMemo, useState } from 'react';
 import { FlatList, Text, View } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { gantt, listProjects } from '../../src/api/projects';
@@ -42,6 +44,9 @@ export default function Projects() {
   const router = useRouter();
   const { colors: c } = useTheme();
   const styles = useStyles(c);
+  // iPad: the task opens beside the list (src/ui/split.tsx)
+  const split = useSplit();
+  const [selected, setSelected] = useState<{ project: number; task: number } | null>(null);
   const userId = useAuth((s) => s.user?.id);
 
   const loadMine = useCallback(async (): Promise<ApiResult<ReturnType<typeof myTasks>>> => {
@@ -96,7 +101,7 @@ export default function Projects() {
     <EmptyState icon="checkCircle" title={t('projects.empty')} style={styles.state} />
   );
 
-  return (
+  const listing = (
     <View style={styles.root}>
       <Stack.Screen options={{ title: t('nav.projects') }} />
       <FlatList<Row>
@@ -122,7 +127,9 @@ export default function Projects() {
                 accessory="chevron"
                 position={item.position}
                 onPress={() =>
-                  router.push({ pathname: '/projects/task', params: { project: String(task.project_id), task: String(task.id) } })
+                  split
+                    ? setSelected({ project: task.project_id, task: task.id })
+                    : router.push({ pathname: '/projects/task', params: { project: String(task.project_id), task: String(task.id) } })
                 }
               />
             );
@@ -151,6 +158,14 @@ export default function Projects() {
         contentContainerStyle={styles.content}
       />
     </View>
+  );
+  if (!split) return listing;
+  return (
+    <SplitView
+      list={listing}
+      detail={selected ? <TaskView key={selected.task} projectId={selected.project} taskId={selected.task} embedded onChanged={() => void mine.refresh()} /> : null}
+      placeholder={{ icon: 'checkCircle', title: t('projects.pick') }}
+    />
   );
 }
 

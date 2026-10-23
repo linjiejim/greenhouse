@@ -95,6 +95,7 @@ export const en = {
     linkUnavailable: 'This link can’t be opened here.',
   },
   knowledge: {
+    pick: 'Choose a document',
     shelf: { team: 'Team', personal: 'Mine', shared: 'Shared with me' },
     recent: 'Recently Opened',
     empty: 'No documents here',
@@ -110,6 +111,7 @@ export const en = {
     commentAdded: 'Comment added',
   },
   files: {
+    pick: 'Choose a file',
     shelf: { team: 'Team', personal: 'Mine' },
     recent: 'Recently Opened',
     offlineRecent: 'Details of files you opened recently stay readable offline.',
@@ -134,6 +136,7 @@ export const en = {
     textTruncated: 'Only the beginning is shown. Share the file to read all of it.',
   },
   notifications: {
+    pick: 'Choose a notification',
     markAllRead: 'Mark All as Read',
     markFailed: 'Couldn’t mark them read',
     empty: 'You’re all caught up',
@@ -215,6 +218,7 @@ export const en = {
     deniedMessage: 'Turn on notifications for Greenhouse in Settings.',
   },
   projects: {
+    pick: 'Choose a task',
     tabs: { mine: 'My Tasks', all: 'Projects' },
     dueGroup: { overdue: 'Overdue', today: 'Due Today', soon: 'Next 7 Days', later: 'Later', none: 'No Due Date' },
     status: { todo: 'To Do', in_progress: 'In Progress', in_review: 'In Review', done: 'Done', cancelled: 'Cancelled' },
@@ -252,6 +256,7 @@ export const en = {
     commentAdded: 'Comment added',
   },
   tables: {
+    pick: 'Choose a record',
     empty: 'No bases',
     emptyHint: 'Bases shared with you show up here.',
     loadFailed: 'Couldn’t load tables',

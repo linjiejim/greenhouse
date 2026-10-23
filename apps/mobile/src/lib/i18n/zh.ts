@@ -89,6 +89,7 @@ export const zh: Catalog = {
     linkUnavailable: '这个链接无法在这里打开。',
   },
   knowledge: {
+    pick: '选择一篇文档',
     shelf: { team: '团队', personal: '我的', shared: '共享给我' },
     recent: '最近打开',
     empty: '这里还没有文档',
@@ -104,6 +105,7 @@ export const zh: Catalog = {
     commentAdded: '已添加评论',
   },
   files: {
+    pick: '选择一个文件',
     shelf: { team: '团队', personal: '我的' },
     recent: '最近打开',
     offlineRecent: '最近打开过的文件，离线时仍能看到它们的信息。',
@@ -128,6 +130,7 @@ export const zh: Catalog = {
     textTruncated: '只显示了开头部分，分享文件可查看全文。',
   },
   notifications: {
+    pick: '选择一条通知',
     markAllRead: '全部标为已读',
     markFailed: '没能标为已读',
     empty: '都看完了',
@@ -209,6 +212,7 @@ export const zh: Catalog = {
     deniedMessage: '请在系统设置里打开 Greenhouse 的通知。',
   },
   projects: {
+    pick: '选择一个任务',
     tabs: { mine: '我的任务', all: '项目' },
     dueGroup: { overdue: '已逾期', today: '今天到期', soon: '7 天内', later: '更晚', none: '无截止日期' },
     status: { todo: '待办', in_progress: '进行中', in_review: '审核中', done: '已完成', cancelled: '已取消' },
@@ -246,6 +250,7 @@ export const zh: Catalog = {
     commentAdded: '评论已添加',
   },
   tables: {
+    pick: '选择一条记录',
     empty: '还没有数据表',
     emptyHint: '共享给你的数据表会出现在这里。',
     loadFailed: '表格加载失败',

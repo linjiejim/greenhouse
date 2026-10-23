@@ -5,6 +5,8 @@
  * the folder on screen; a file opens in Quick Look (app/file-preview.tsx) with share.
  */
 
+import { FilePreviewPane } from '../src/files/file-preview-view';
+import { SplitView, useSplit } from '../src/ui/split';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FlatList, View } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
@@ -49,6 +51,9 @@ export default function Files() {
   const filter = useDirectoryFilter();
   const query = filter.query.trim();
   const [uploading, setUploading] = useState(false);
+  // iPad: the file opens beside the list (src/ui/split.tsx)
+  const split = useSplit();
+  const [selected, setSelected] = useState<{ id: number; name: string } | null>(null);
 
   const load = useCallback(() => listLevel(shelf, folderId), [shelf, folderId]);
   const resource = useResource(load);
@@ -63,9 +68,10 @@ export default function Files() {
     (id: number, name: string) => {
       const file = resource.data?.files.find((entry) => entry.id === id);
       if (file) void rememberFile(file, shelf);
-      router.push({ pathname: '/file-preview', params: { id: String(id), name } });
+      if (split) setSelected({ id, name });
+      else router.push({ pathname: '/file-preview', params: { id: String(id), name } });
     },
-    [resource.data, shelf, router],
+    [resource.data, shelf, router, split],
   );
 
   const [folder, setFolder] = useState<DriveFolder | null>(null);
@@ -82,8 +88,9 @@ export default function Files() {
     if (!openFileId || opened.current || !resource.data) return;
     opened.current = true;
     const file = resource.data.files.find((entry) => entry.id === openFileId);
-    router.push({ pathname: '/file-preview', params: { id: String(openFileId), name: file?.name ?? '' } });
-  }, [openFileId, resource.data, router]);
+    if (split) setSelected({ id: openFileId, name: file?.name ?? '' });
+    else router.push({ pathname: '/file-preview', params: { id: String(openFileId), name: file?.name ?? '' } });
+  }, [openFileId, resource.data, router, split]);
 
   const [hits, setHits] = useState<Row[] | null>(null);
   useEffect(() => {
@@ -191,7 +198,7 @@ export default function Files() {
     if (result.failed) alertError(t('files.uploadFailed', { n: result.failed }), result.error || undefined);
   };
 
-  return (
+  const listing = (
     <View style={styles.root}>
       <Stack.Screen options={{ title: folderId != null ? (folder?.name ?? '') : t('nav.files') }} />
       <DirectorySearch filter={filter} />
@@ -270,6 +277,14 @@ export default function Files() {
         contentContainerStyle={styles.content}
       />
     </View>
+  );
+  if (!split) return listing;
+  return (
+    <SplitView
+      list={listing}
+      detail={selected ? <FilePreviewPane key={selected.id} id={String(selected.id)} name={selected.name} embedded /> : null}
+      placeholder={{ icon: 'file', title: t('files.pick') }}
+    />
   );
 }
 
