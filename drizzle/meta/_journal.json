@@ -85,6 +85,13 @@
       "when": 1792777987044,
       "tag": "0011_gateway_keys",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1792782634085,
+      "tag": "0012_member_computers",
+      "breakpoints": true
     }
   ]
 }

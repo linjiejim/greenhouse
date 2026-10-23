@@ -47,6 +47,8 @@ import { workbenchQueryTool, workbenchMutationTool } from './workbench.js';
 import { filesQueryTool } from './files-query.js';
 import { filesMutationTool } from './files-mutation.js';
 import { feedbackQueryTool } from './feedback-query.js';
+import { readUrlTool, webSearchTool } from './web-search.js';
+import { computerExecTool, computerFilesTool, computerStopTool, computerTransferTool } from './computer.js';
 
 // ─── Catalog ─────────────────────────────────────────────
 
@@ -83,6 +85,12 @@ const CORE_TOOL_MODULES: ToolModule[] = [
   filesQueryTool,
   filesMutationTool,
   feedbackQueryTool,
+  webSearchTool,
+  readUrlTool,
+  computerExecTool,
+  computerFilesTool,
+  computerTransferTool,
+  computerStopTool,
 ];
 
 /** Static tools (constructed once from the shared db) — drives createToolRegistry. */
@@ -171,11 +179,21 @@ export const MCP_TOOL_IDS_BY_GROUP: ReadonlyMap<string, ReadonlySet<string>> = (
   return map;
 })();
 
+/**
+ * Retired resource groups → exactly the tools a grant carrying them reached
+ * before the group was retired (RETIRED_MCP_RESOURCE_GROUP_IDS in
+ * @greenhouse/types/mcp). A stored `mcp:image` keeps `generate_image` and
+ * gains nothing from the group that tool moved into.
+ */
+export const LEGACY_MCP_GROUP_TOOLS: Readonly<Record<string, readonly string[]>> = {
+  image: ['generate_image'],
+};
+
 /** Tool ids reachable for a set of granted resource groups. Unknown groups are ignored. */
 export function mcpToolIdsForGroups(groups: Iterable<string>): Set<string> {
   const ids = new Set<string>();
   for (const group of groups) {
-    for (const id of MCP_TOOL_IDS_BY_GROUP.get(group) ?? []) ids.add(id);
+    for (const id of MCP_TOOL_IDS_BY_GROUP.get(group) ?? LEGACY_MCP_GROUP_TOOLS[group] ?? []) ids.add(id);
   }
   return ids;
 }
@@ -241,4 +259,24 @@ export function getAllToolIds(): string[] {
 /** Get all tool metadata, sorted by sort_order. */
 export function getAllToolMetas(): ToolMeta[] {
   return [...TOOL_DEFINITIONS].sort((a, b) => a.sort_order - b.sort_order);
+}
+
+/** Tools only members' agents get, over MCP and the Agent API (`surface.externalOnly`). */
+export const EXTERNAL_ONLY_TOOL_IDS: ReadonlySet<string> = new Set(
+  TOOL_DEFINITIONS.filter((m) => m.surface?.externalOnly === true).map((m) => m.id),
+);
+
+/** Whether the in-app surfaces (Chat, its tool picker, permissions, the Agent editor) may show this tool. */
+export function isInAppTool(id: string): boolean {
+  return !EXTERNAL_ONLY_TOOL_IDS.has(id);
+}
+
+/** Tool metadata for the in-app catalogs, sorted by sort_order. */
+export function getInAppToolMetas(): ToolMeta[] {
+  return getAllToolMetas().filter((m) => isInAppTool(m.id));
+}
+
+/** Tool ids an in-app Agent or a per-user assignment may name. */
+export function getInAppToolIds(): string[] {
+  return getAllToolIds().filter(isInAppTool);
 }

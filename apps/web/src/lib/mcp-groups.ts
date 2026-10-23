@@ -10,7 +10,7 @@
  * renamed namespace otherwise ships the raw key string to the screen).
  */
 
-import { MCP_RESOURCE_GROUP_IDS } from '@greenhouse/types/mcp';
+import { MCP_RESOURCE_GROUP_IDS, isRetiredMcpResourceGroup } from '@greenhouse/types/mcp';
 import type { TranslationKey } from './i18n';
 import { registeredMcpGroups } from './extension-registries';
 
@@ -26,12 +26,13 @@ export function mcpGroupDescriptionKey(id: string): TranslationKey {
 
 /**
  * Groups to offer in the consent screen and the machine-client form: the core
- * ones plus those of the extensions this deployment actually runs.
+ * ones plus those of the extensions this deployment actually runs. Retired
+ * groups (`image`) are never offered; grants that carry them still work.
  */
 export function mcpGroupIds(activeExtensionIds: readonly string[]): string[] {
   const active = new Set(activeExtensionIds);
   return [
-    ...MCP_RESOURCE_GROUP_IDS,
+    ...MCP_RESOURCE_GROUP_IDS.filter((id) => !isRetiredMcpResourceGroup(id)),
     ...registeredMcpGroups()
       .filter((group) => active.has(group.extensionId))
       .map((group) => group.id),

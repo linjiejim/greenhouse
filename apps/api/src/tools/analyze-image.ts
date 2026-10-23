@@ -21,10 +21,11 @@ import { defineTool, type ToolMeta } from './define.js';
 import { logger } from '@greenhouse/utils/logger';
 import { z } from 'zod';
 import type { DatabaseProvider } from '@greenhouse/db';
-import { getUpload, isValidUploadId } from '../storage/uploads.js';
+import { detectImageContentType, getUpload, isValidUploadId } from '../storage/uploads.js';
 import { normalizeFileRef, resolveConversationFiles } from '../files/conversation-files.js';
 import { fetchPublicImage } from '../security/network.js';
 import { getMediaProviderConfig } from '../llm/media-provider.js';
+import { readCabinetFileBytes } from '../drive/kb-cabinet.js';
 import { reserveUserTokenBudget, settleAndRecordBudgetedUsage } from '../llm/usage-budget.js';
 import { findBudgetRefusal } from '../usage/budget-errors.js';
 
@@ -51,8 +52,20 @@ export function buildVisionPrompt(question?: string): string {
 
 export const MAX_VISION_QUESTION_CHARS = 8 * 1024;
 
+/** The largest Files image handed to the vision model (the public-URL path has its own cap). */
+export const MAX_FILES_IMAGE_BYTES = 10 * 1024 * 1024;
+
 export const analyzeImageSchema = z.object({
-  image_id: z.string().describe('The uploaded image ID or a public HTTPS image URL to analyze'),
+  image_id: z
+    .string()
+    .optional()
+    .describe('The uploaded image ID or a public HTTPS image URL to analyze. Pass this or file_id.'),
+  file_id: z
+    .number()
+    .int()
+    .positive()
+    .optional()
+    .describe('An image in Files (档案库), by the id files_query returns. Pass this or image_id.'),
   question: z
     .string()
     .max(MAX_VISION_QUESTION_CHARS, `Question must not exceed ${MAX_VISION_QUESTION_CHARS} characters`)
@@ -131,6 +144,17 @@ async function loadStoredImage(ref: string): Promise<LoadedImage | null> {
   if (!isValidUploadId(ref)) return null;
   const stored = await getUpload(ref);
   return stored ? { buffer: stored.buffer, contentType: stored.contentType } : null;
+}
+
+/** An image in Files the caller may read (team shelf or their own), by drive access. */
+async function resolveFilesImage(ctx: AnalyzeImageContext, fileId: number): Promise<ImageResolution> {
+  const read = await readCabinetFileBytes(ctx, { fileId, maxBytes: MAX_FILES_IMAGE_BYTES });
+  if ('error' in read) throw new Error(read.error);
+  const contentType = detectImageContentType(read.bytes);
+  if (!contentType) {
+    return { kind: 'not_an_image', name: read.file.name, contentType: read.file.content_type ?? 'unknown' };
+  }
+  return { kind: 'loaded', image: { buffer: read.bytes, contentType } };
 }
 
 async function resolveImage(ctx: AnalyzeImageContext, imageId: string): Promise<ImageResolution> {
@@ -212,12 +236,13 @@ const meta: ToolMeta = {
   id: 'analyze_image',
   name: 'Image Analysis',
   brief: 'Extract important information from images',
-  description: `Analyze an image by uploaded file ID or public HTTPS URL and extract the information most relevant to the user's request. Works with screenshots, emails, documents, charts, interfaces, product or plant photos, and general scenes without assuming a domain.
+  description: `Analyze an image — an uploaded image ID or public HTTPS URL (image_id), or an image in Files (file_id) — and extract the information most relevant to the user's request. Works with screenshots, emails, documents, charts, interfaces, product or plant photos, and general scenes without assuming a domain.
 When the user attaches images or a ticket has public image attachments, you MUST call this tool for each image before responding. Pass the user's actual question when available so the analysis can focus on it. Report visible facts before inference, flag uncertainty, and never invent unreadable text. Pass a public HTTPS image URL directly as image_id; private-network URLs are rejected and must be re-uploaded first.`,
   category: 'core',
   is_global: true,
   builtin: true,
-  surface: { proxy: 'read' },
+  // v1.6: one of the paid services members' agents reach over MCP.
+  surface: { proxy: 'read', mcp: 'services', openWorld: true },
   runtime_risk: 'r1',
   icon: 'Image',
   sort_order: 4,
@@ -228,17 +253,25 @@ export function createAnalyzeImageTool(ctx: AnalyzeImageContext) {
     description: meta.description,
     inputSchema: analyzeImageSchema,
     execute: async (input: AnalyzeImageInput) => {
-      const { image_id, question } = input;
+      const { question } = input;
       const startTime = Date.now();
+      if ((input.image_id ? 1 : 0) + (input.file_id ? 1 : 0) !== 1) {
+        return {
+          error: 'Pass exactly one of image_id (an upload id or a public HTTPS URL) or file_id (a file in Files).',
+        };
+      }
+      const image_id = input.image_id ?? `files:${input.file_id}`;
 
       let loaded: LoadedImage;
 
       try {
-        const resolution = ctx.loadImage
-          ? await ctx
-              .loadImage(image_id)
-              .then((image): ImageResolution => (image ? { kind: 'loaded', image } : { kind: 'missing' }))
-          : await resolveImage(ctx, image_id);
+        const resolution = input.file_id
+          ? await resolveFilesImage(ctx, input.file_id)
+          : ctx.loadImage
+            ? await ctx
+                .loadImage(image_id)
+                .then((image): ImageResolution => (image ? { kind: 'loaded', image } : { kind: 'missing' }))
+            : await resolveImage(ctx, image_id);
 
         if (resolution.kind === 'not_an_image') {
           // Naming the file ends the search: without it the model reads any
@@ -281,7 +314,10 @@ export function createAnalyzeImageTool(ctx: AnalyzeImageContext) {
           ...(ctx.sessionId ? { sessionId: ctx.sessionId } : {}),
           // Metered as the `vision` service at its token price (override, else services.yaml).
           service: 'vision',
-          metadata: { session_id: ctx.sessionId, source: isRemoteUrl(image_id) ? 'remote_url' : 'upload' },
+          metadata: {
+            session_id: ctx.sessionId,
+            source: input.file_id ? 'files' : isRemoteUrl(image_id) ? 'remote_url' : 'upload',
+          },
         });
 
         // Entering the generate seam is the provider boundary; a thrown error

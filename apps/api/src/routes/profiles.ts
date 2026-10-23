@@ -36,7 +36,7 @@ import { getDb } from '@greenhouse/db';
 import type { CustomProfileRiskLevel, CustomProfileRow, CustomProfileVersionRow } from '@greenhouse/db';
 import { getAuthUser, requireSuper } from '../auth/middleware.js';
 import { assertCustomProfileAccess, pinProfileIdForUser, ProfileAccessError } from '../profiles/access.js';
-import { getAllToolIds } from '../tools/registry.js';
+import { getInAppToolIds } from '../tools/registry.js';
 import { resolveUserTools } from '../agent.js';
 import { sanitizeForPrompt } from '../security/security.js';
 import { logger } from '@greenhouse/utils/logger';
@@ -276,7 +276,8 @@ const profiles = new Hono<AppEnv>()
     }
 
     // Validate tools are within user's allowed set
-    const allTools = getAllToolIds();
+    // External-only tools (MCP / Agent API) cannot be given to an in-app Agent.
+    const allTools = getInAppToolIds();
     const invalidTools = tools.filter((t: string) => !allTools.includes(t));
     if (invalidTools.length > 0) {
       return c.json({ error: `Unknown tools: ${invalidTools.join(', ')}` }, 400);
@@ -573,7 +574,7 @@ const profiles = new Hono<AppEnv>()
     }
     if (body.tools !== undefined) {
       if (!Array.isArray(body.tools)) return c.json({ error: 'Tools must be an array' }, 400);
-      const allTools = getAllToolIds();
+      const allTools = getInAppToolIds();
       const invalidTools = body.tools.filter((t: string) => !allTools.includes(t));
       if (invalidTools.length > 0) {
         return c.json({ error: `Unknown tools: ${invalidTools.join(', ')}` }, 400);

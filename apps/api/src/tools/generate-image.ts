@@ -42,6 +42,8 @@ import {
   unitPriceSnapshot,
 } from '../usage/pricing.js';
 import { findBudgetRefusal } from '../usage/budget-errors.js';
+import { cabinetDownloadUrl, readCabinetFileBytes, uploadCabinetFile } from '../drive/kb-cabinet.js';
+import { delegatedAgentActor } from '../platform/actor.js';
 
 /** An image call that never reported back is charged at its estimate after this long. */
 const IMAGE_BUDGET_TTL_MS = 5 * 60_000;
@@ -117,15 +119,19 @@ function generateFilename(contentType: string): string {
   return `gen-${Date.now()}-${randomUUID()}.${ext}`;
 }
 
+interface GeneratedImage {
+  buffer: Buffer;
+  contentType: string;
+}
+
 /**
- * Materialize an API image response (b64_json or url) into a Buffer, persist it
- * to storage (COS `generate/` folder, or local disk), and return its flat id.
+ * Materialize an API image response (b64_json or url) into a Buffer.
  *
  * Some upstreams return BOTH forms; taking base64 first is deliberate — it skips a
  * network hop, and hosted image URLs may be short-lived or unreachable from the
  * server's network.
  */
-async function persistImage(imgData: { b64_json?: string; url?: string }): Promise<string> {
+async function materializeImage(imgData: { b64_json?: string; url?: string }): Promise<GeneratedImage> {
   let buffer: Buffer;
   let contentType: string;
   if (imgData.b64_json) {
@@ -139,8 +145,13 @@ async function persistImage(imgData: { b64_json?: string; url?: string }): Promi
     throw new Error(`Unknown image response format: ${Object.keys(imgData).join(', ')}`);
   }
   if (!contentType) throw new Error('Image API returned unsupported image bytes');
-  const filename = generateFilename(contentType);
-  await putUpload(filename, buffer, contentType);
+  return { buffer, contentType };
+}
+
+/** Persist to the chat image store (COS `generate/` folder, or local disk); returns its flat id. */
+async function persistUpload(image: GeneratedImage): Promise<string> {
+  const filename = generateFilename(image.contentType);
+  await putUpload(filename, image.buffer, image.contentType);
   return filename;
 }
 
@@ -148,12 +159,50 @@ async function persistImage(imgData: { b64_json?: string; url?: string }): Promi
  * Load a reference image (for edit) by upload id or /api/upload/ URL, from
  * storage (COS with local-disk fallback). Throws if it doesn't exist.
  */
-async function loadReferenceImage(ref: string): Promise<{ buffer: Buffer; mime: string; filename: string }> {
+interface ReferenceImage {
+  buffer: Buffer;
+  mime: string;
+  filename: string;
+}
+
+/** The largest Files image used as a reference. */
+const MAX_REFERENCE_FILE_BYTES = 20 * 1024 * 1024;
+
+async function loadReferenceImage(ref: string): Promise<ReferenceImage> {
   const id = ref.replace(/^\/api\/upload\//, '');
   const stored = await getUpload(id);
   if (!stored) throw new Error(`Image not found: ${ref}`);
   const mime = stored.contentType.startsWith('image/') ? stored.contentType : 'image/png';
   return { buffer: stored.buffer, mime, filename: basename(id) };
+}
+
+/**
+ * A reference image from Files, by the id files_query (or a previous
+ * generate_image on MCP) returned — only a file the caller may read under
+ * drive access (team shelf or their own).
+ */
+async function loadFilesReference(ctx: GenerateImageToolContext, fileId: number): Promise<ReferenceImage> {
+  const read = await readCabinetFileBytes(ctx, { fileId, maxBytes: MAX_REFERENCE_FILE_BYTES });
+  if ('error' in read) throw new Error(read.error);
+  const mime = detectImageContentType(read.bytes);
+  if (!mime) throw new Error(`"${read.file.name}" (file ${fileId}) is not a PNG, JPEG, WebP or GIF image.`);
+  return { buffer: read.bytes, mime, filename: read.file.name };
+}
+
+/** Every reference image of one call, loaded before anything is reserved or sent. */
+async function loadReferences(ctx: GenerateImageToolContext, input: GenerateImageInput): Promise<ReferenceImage[]> {
+  const uploads = input.images ?? [];
+  const files = input.file_ids ?? [];
+  if (uploads.length + files.length > 4) throw new Error('At most 4 reference images (images + file_ids).');
+  return [
+    ...(await Promise.all(uploads.map((ref) => loadReferenceImage(ref)))),
+    ...(await Promise.all(files.map((id) => loadFilesReference(ctx, id)))),
+  ];
+}
+
+/** How the result names its references. */
+function referenceNames(input: GenerateImageInput): string[] {
+  return [...(input.images ?? []), ...(input.file_ids ?? []).map((id) => `files:${id}`)];
 }
 
 // ─── Tool Schema ─────────────────────────────────────────
@@ -192,6 +241,14 @@ const generateImageSchema = z.object({
         'use this whenever the output must contain a real asset (logo, brand mark, product photo) ' +
         'instead of describing that asset in the prompt and letting the model redraw it.',
     ),
+  file_ids: z
+    .array(z.number().int().positive())
+    .max(4)
+    .optional()
+    .describe(
+      'Reference images in Files (档案库), by file id — e.g. the file_id a previous generate_image returned, ' +
+        'to edit it further. Used like `images`; at most 4 references in total.',
+    ),
 });
 
 type GenerateImageInput = z.infer<typeof generateImageSchema>;
@@ -203,7 +260,7 @@ type GenerateImageInput = z.infer<typeof generateImageSchema>;
  * Throws on any upstream failure — there is no second provider to fall back to.
  */
 interface ImageProviderResult {
-  filename: string;
+  image: GeneratedImage;
   usage?: { inputTokens: number; outputTokens: number };
 }
 
@@ -255,7 +312,7 @@ async function callGenerate(prompt: string, size: string, onProviderIo: () => vo
   const image = result.data?.[0];
   if (!image) throw new Error('Image generation API returned no image');
 
-  return { filename: await persistImage(image), usage: extractImageUsage(result) };
+  return { image: await materializeImage(image), usage: extractImageUsage(result) };
 }
 
 /**
@@ -269,7 +326,7 @@ async function callGenerate(prompt: string, size: string, onProviderIo: () => vo
  */
 async function callEdit(
   prompt: string,
-  imagePaths: string[],
+  references: ReferenceImage[],
   size: string | undefined,
   onProviderIo: () => void,
 ): Promise<ImageProviderResult> {
@@ -282,8 +339,7 @@ async function callEdit(
   formData.append('quality', QUALITY);
   if (size) formData.append('size', size);
 
-  for (const imgPath of imagePaths) {
-    const { buffer, mime, filename } = await loadReferenceImage(imgPath);
+  for (const { buffer, mime, filename } of references) {
     const blob = new Blob([new Uint8Array(buffer)], { type: mime });
     formData.append('image', blob, filename);
   }
@@ -310,7 +366,7 @@ async function callEdit(
   const image = result.data?.[0];
   if (!image) throw new Error('Image edit API returned no image');
 
-  return { filename: await persistImage(image), usage: extractImageUsage(result) };
+  return { image: await materializeImage(image), usage: extractImageUsage(result) };
 }
 
 // ─── Tool Factory ────────────────────────────────────────
@@ -326,15 +382,19 @@ Images render at a fixed cost-efficient quality; if the result looks soft, ask f
 
 IMPORTANT — never describe a logo, brand mark, or other fixed asset in the prompt and let the model draw it: it will invent a lookalike, which brand guidelines forbid. Instead pass the real file in \`images\` (works with action "generate" too) and instruct the model to place it unchanged. Brand assets live in the knowledge base — e.g. the doc "brand/foundations/logo" embeds the logo lockup and mark as /api/upload/<id> links; read the doc first and pass those IDs here.
 
-MARKED-UP REVISIONS — given an original plus a copy carrying the user's drawn marks, use action "edit" and pass BOTH in \`images\`, clean original FIRST — edits build on the first image, so leading with the marked copy bakes the ink in. Marks say WHERE; the text says WHAT. Never redraw the marks.`,
+MARKED-UP REVISIONS — given an original plus a copy carrying the user's drawn marks, use action "edit" and pass BOTH in \`images\`, clean original FIRST — edits build on the first image, so leading with the marked copy bakes the ink in. Marks say WHERE; the text says WHAT. Never redraw the marks.
+
+For an agent connected over MCP or the Agent API, every image is saved as a new file on your member's personal Files shelf: the result gives its file_id and, where the deployment keeps files in object storage, a download link valid for a few minutes. To change it, call again with action "edit" and that id in \`file_ids\` (any image in Files you can read works the same way). Each image is paid by the team.`,
   category: 'team',
   is_global: true,
   icon: 'Palette',
-  // Reachable through the /api/agent proxy and /api/mcp server as a read-tool
-  // (generation has cost but mutates no domain data — no confirm gate). This is
-  // how image skills generate images; is_global means every internal
-  // user already holds it, so it appears for all super/team MCP clients.
-  surface: { proxy: 'read', mcp: 'image' },
+  // v1.6: one of the paid services members' agents reach over MCP (group
+  // `services`; grants that still carry the retired `image` group keep it).
+  // A write: on the external surfaces each image becomes a new file on the
+  // member's personal Files shelf (agent-runtime/service-tools.ts), recorded
+  // like any other agent write and only ever additive. In Chat it stays an
+  // inline artifact in the conversation.
+  surface: { proxy: 'write', mcp: 'services', additiveOnly: true },
   runtime_risk: 'r1',
   sort_order: 12,
   presentation: 'artifact', // generated image renders inline in the message body
@@ -344,6 +404,42 @@ export interface GenerateImageToolContext {
   db: DatabaseProvider;
   userId: string;
   sessionId?: string;
+  /**
+   * Where the image goes. `uploads` (Chat): the flat image store, rendered
+   * inline. `files` (members' agents): a new file on the member's personal
+   * Files shelf, which is what an agent outside Greenhouse can find again.
+   */
+  saveTo?: 'uploads' | 'files';
+}
+
+/** A new image on the member's personal shelf, named by when it was made. */
+async function saveToFiles(ctx: GenerateImageToolContext, image: GeneratedImage) {
+  const caller = { db: ctx.db, userId: ctx.userId, actor: delegatedAgentActor({ userId: ctx.userId }) };
+  const stamp = new Date().toISOString().replace(/[-:]/g, '').replace('T', '-').slice(0, 15);
+  const ext = image.contentType === 'image/jpeg' ? 'jpg' : image.contentType.slice('image/'.length);
+  const uploaded = await uploadCabinetFile(caller, {
+    shelf: 'personal',
+    name: `image-${stamp}-${randomUUID().slice(0, 6)}.${ext}`,
+    bytes: image.buffer,
+  });
+  if ('error' in uploaded)
+    throw new Error(`The image was generated but could not be saved to Files: ${uploaded.error}`);
+  const link = await cabinetDownloadUrl(caller, uploaded.file.id);
+  return {
+    file_id: uploaded.file.id,
+    file: uploaded.file,
+    ...('error' in link
+      ? { download_url: null, download_note: 'No direct link on this deployment; open it from the Files page.' }
+      : { download_url: link.download_url, download_expires_in_seconds: link.expires_in_seconds }),
+  };
+}
+
+/** Store one generated image where this surface keeps them; the part of the result that says where. */
+async function storeImage(ctx: GenerateImageToolContext, image: GeneratedImage, alt: string) {
+  if (ctx.saveTo === 'files') return saveToFiles(ctx, image);
+  const filename = await persistUpload(image);
+  const imageUrl = `/api/upload/${filename}`;
+  return { url: imageUrl, markdown: `![${alt}](${imageUrl})`, filename };
 }
 
 function estimateImageTokens(prompt: string, size: string | undefined, referenceCount: number): number {
@@ -449,7 +545,7 @@ export function createGenerateImageTool(ctx: GenerateImageToolContext) {
             const snapped = input.size && input.size !== size;
             // Reference assets force the edits endpoint — it is the only one that
             // accepts them (see callEdit).
-            const refs = input.images ?? [];
+            const refs = await loadReferences(ctx, input);
             logger.info(
               `[GenerateImage] 🎨 Generating: "${input.prompt.slice(0, 80)}..." size=${size} quality=${QUALITY}` +
                 (snapped ? ` (snapped from ${input.size})` : '') +
@@ -465,14 +561,11 @@ export function createGenerateImageTool(ctx: GenerateImageToolContext) {
                   ? callEdit(input.prompt, refs, size, onProviderIo)
                   : callGenerate(input.prompt, size, onProviderIo),
             );
-            const filename = providerResult.filename;
-            logger.info(`[GenerateImage] ✅ Saved: ${filename} (model: ${MODEL})`);
-            const imageUrl = `/api/upload/${filename}`;
+            const stored = await storeImage(ctx, providerResult.image, 'Generated Image');
+            logger.info(`[GenerateImage] ✅ Saved (${ctx.saveTo ?? 'uploads'}, model: ${MODEL})`);
             return {
               success: true,
-              url: imageUrl,
-              markdown: `![Generated Image](${imageUrl})`,
-              filename,
+              ...stored,
               model: MODEL,
               size,
               quality: QUALITY,
@@ -480,7 +573,7 @@ export function createGenerateImageTool(ctx: GenerateImageToolContext) {
               prompt: input.prompt,
               // Surface the snap so an unsupported request isn't invisibly rewritten.
               ...(snapped ? { requested_size: input.size } : {}),
-              ...(refs.length ? { reference_images: refs } : {}),
+              ...(refs.length ? { reference_images: referenceNames(input) } : {}),
             };
           }
 
@@ -488,40 +581,37 @@ export function createGenerateImageTool(ctx: GenerateImageToolContext) {
             if (!input.prompt) {
               return { error: 'prompt is required for edit' };
             }
-            if (!input.images || input.images.length === 0) {
+            const images = await loadReferences(ctx, input);
+            if (images.length === 0) {
               return {
                 error:
-                  'At least one reference image is required for edit. Pass upload IDs or /api/upload/ URLs — ' +
-                  'they can come from a user upload or from an existing asset (e.g. a logo embedded in a knowledge-base doc).',
+                  'At least one reference image is required for edit. Pass upload IDs or /api/upload/ URLs in images, ' +
+                  'or Files ids in file_ids — e.g. a user upload, an asset embedded in a knowledge-base doc, or a file_id generate_image returned.',
               };
             }
             // Omitted size stays omitted: a plain edit should keep the source's shape,
             // which is what the upstream does by default. A stated size is still snapped.
             const editSize = input.size ? resolveSize(input.size) : undefined;
             logger.info(
-              `[GenerateImage] ✏️ Editing ${input.images.length} image(s): "${input.prompt.slice(0, 80)}..."` +
+              `[GenerateImage] ✏️ Editing ${images.length} image(s): "${input.prompt.slice(0, 80)}..."` +
                 (editSize ? ` size=${editSize}` : ''),
             );
-            const estimatedTokens = estimateImageTokens(input.prompt, editSize, input.images.length);
-            const images = input.images;
+            const estimatedTokens = estimateImageTokens(input.prompt, editSize, images.length);
             const { result: providerResult, costUsdMicros } = await meterImageCall(
               ctx,
               options.toolCallId,
               { action: 'edit', size: editSize, referenceCount: images.length, estimatedTokens },
               (onProviderIo) => callEdit(input.prompt, images, editSize, onProviderIo),
             );
-            const filename = providerResult.filename;
-            logger.info(`[GenerateImage] ✅ Edited & saved: ${filename}`);
-            const imageUrl = `/api/upload/${filename}`;
+            const stored = await storeImage(ctx, providerResult.image, 'Edited Image');
+            logger.info(`[GenerateImage] ✅ Edited & saved (${ctx.saveTo ?? 'uploads'})`);
             return {
               success: true,
-              url: imageUrl,
-              markdown: `![Edited Image](${imageUrl})`,
-              filename,
+              ...stored,
               model: MODEL,
               quality: QUALITY,
               prompt: input.prompt,
-              reference_images: input.images,
+              reference_images: referenceNames(input),
               estimated_cost_usd: costUsd(costUsdMicros),
               ...(editSize ? { size: editSize } : {}),
               ...(input.size && input.size !== editSize ? { requested_size: input.size } : {}),

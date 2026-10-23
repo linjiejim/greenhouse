@@ -73,6 +73,7 @@ export const PAGE_MODULE_IDS = [
   'settings.email-accounts',
   'settings.memory',
   'settings.my-usage',
+  'settings.computer',
   'admin.users',
   'admin.runtime-config',
   'admin.branding',

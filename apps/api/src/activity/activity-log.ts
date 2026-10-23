@@ -91,6 +91,8 @@ const ADMIN_ACTIONS: Record<'settings' | 'users' | 'mcp', readonly string[]> = {
     'removeBudgetLimit',
     'updateServicePrice',
     'removeServicePrice',
+    // Cloud computer (v1.6): an admin stopping a member's computer.
+    'stopMemberComputer',
   ],
   users: [
     'setUserFeature',
@@ -123,6 +125,8 @@ function appModule(appId: string): string {
 const TOOL_MODULES: Record<string, string> = {
   knowledge_mutation: 'knowledge',
   files_mutation: 'files',
+  // An agent's generated image is a new file on the member's personal shelf.
+  generate_image: 'files',
   project_mutation: 'projects',
   tables_mutation: 'tables',
   skill_mutation: 'skills',
@@ -229,6 +233,7 @@ const TOOL_ENTITIES: Record<string, string> = {
   feature_request: 'featureRequest',
   log_friction: 'friction',
   email_mutation: 'email',
+  generate_image: 'file',
 };
 
 export interface WriteShape {
@@ -241,6 +246,8 @@ export interface WriteShape {
 export function describeToolWrite(toolId: string, action: string | null): WriteShape {
   // log_friction's `action` is the kind of friction, not a verb: it always files a report.
   if (toolId === 'log_friction') return { verb: 'create', entity: 'friction' };
+  // generate_image's `edit` makes a new image too; the original is untouched.
+  if (toolId === 'generate_image') return { verb: 'create', entity: 'file' };
   const dot = action ? action.lastIndexOf('.') : -1;
   const prefix = action && dot > 0 ? action.slice(0, dot) : null;
   const segment = action ? action.slice(dot + 1) : '';

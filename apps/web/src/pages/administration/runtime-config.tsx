@@ -25,7 +25,7 @@ import { fetchWorkspaceSettings, saveWorkspaceSettings } from '../../lib/api/wor
 import { flagChecked } from '../../lib/workspace-flags';
 import { useExtensionsStore } from '../../stores/extensions-store';
 
-const RUNTIME_GROUPS: WorkspaceSettingGroup[] = ['llm', 'media', 'search', 'gateway'];
+const RUNTIME_GROUPS: WorkspaceSettingGroup[] = ['llm', 'media', 'search', 'gateway', 'computer'];
 
 /** Registry descriptions mark identifiers with backticks; show them as inline code, not raw ticks. */
 function Description({ text, className }: { text: string; className: string }) {

@@ -136,7 +136,9 @@ describe('parseServiceCatalog', () => {
       readFileSync(resolve(import.meta.dirname, '../../config/services.yaml'), 'utf-8'),
     );
     expect(Object.keys(catalog).sort()).toEqual(['computer', 'image_generation', 'page_read', 'vision', 'web_search']);
-    expect(catalog.computer?.enabled).toBe(false);
+    // Whether computers may run is the workspace switch, not the price list.
+    expect(catalog.computer?.enabled).toBe(true);
+    expect(catalog.computer?.providers.e2b).toMatchObject({ apiKeyEnv: ['E2B_API_KEY'], price: 0.0018 });
     expect(catalog.image_generation?.providers.media?.apiKeyEnv).toEqual([
       'IMAGE_API_KEY',
       'MEDIA_API_KEY',

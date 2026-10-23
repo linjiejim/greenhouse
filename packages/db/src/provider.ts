@@ -52,6 +52,7 @@ import { createRuntimeService } from './services/runtime.js';
 import { createNotificationService } from './services/notifications.js';
 import { createPushDeviceService } from './services/push-devices.js';
 import { createGatewayKeyService } from './services/gateway-keys.js';
+import { createMemberComputerService } from './services/member-computers.js';
 import { createWorkspaceSettingService } from './services/workspace-settings.js';
 import { createOAuthLoginStateService, createRateLimitService } from './services/security-state.js';
 
@@ -103,6 +104,7 @@ function createDatabaseProvider(db: Db, client: DbClient['client'] | null) {
     notifications: createNotificationService(db),
     pushDevices: createPushDeviceService(db),
     gatewayKeys: createGatewayKeyService(db),
+    memberComputers: createMemberComputerService(db),
     workspaceSettings: createWorkspaceSettingService(db),
     rateLimits: createRateLimitService(db),
     oauthLoginStates: createOAuthLoginStateService(db),
@@ -157,6 +159,7 @@ function createDatabaseProvider(db: Db, client: DbClient['client'] | null) {
         'notifications',
         'push_devices',
         'gateway_keys',
+        'member_computers',
         'runtime_outbox',
         'runtime_events',
         'runtime_interrupts',

@@ -47,9 +47,14 @@ import {
 import type { ToolRegistry } from '../agent.js';
 import { resolveProfileAsync } from '../profiles/profile.js';
 import { resolveEffectiveTools, buildLazyServerTools } from '../agent-runtime/tool-resolution.js';
+import {
+  buildExternalServiceTools,
+  externalToolUnavailableMessage,
+  listableExternalToolIds,
+} from '../agent-runtime/service-tools.js';
 // Derived from each tool's `meta.surface.mcp` (tools/registry.ts); re-exported
 // for tests/consumers that previously imported the hand-maintained list here.
-import { MCP_EXPOSED_TOOL_IDS } from '../tools/registry.js';
+import { MCP_EXPOSED_TOOL_IDS, getToolMeta } from '../tools/registry.js';
 export { MCP_EXPOSED_TOOL_IDS };
 import {
   resolveProxyToolIds,
@@ -220,6 +225,7 @@ export async function composeMcpContext(identity: AgentIdentity, toolRegistry: T
       userRole: identity.userRole,
       workspaceId: null,
     }),
+    ...buildExternalServiceTools(getDb(), effectiveTools, { userId: identity.userId }),
   };
 
   const ctx: McpContext = { toolIds, registry };
@@ -266,15 +272,21 @@ const WRITE_TOOL_NOTE =
  * Standard MCP tool annotations, so a client can decide when to ask its user:
  * reads are read-only; a write is destructive unless every action it offers
  * only adds something (MCP: false means "only additive updates" — an edit or
- * an archive is not). Nothing here reaches outside Greenhouse.
+ * an archive is not), or the tool declares itself additive (generate_image
+ * only ever creates a file). Only tools that declare `surface.openWorld`
+ * (the web services, the cloud computer) reach outside Greenhouse.
  */
 export function mcpToolAnnotations(entry: ProxyToolManifestEntry) {
-  if (!entry.mutating) return { readOnlyHint: true, openWorldHint: false };
+  const surface = getToolMeta(entry.id)?.surface;
+  const openWorldHint = surface?.openWorld === true;
+  if (!entry.mutating) return { readOnlyHint: true, openWorldHint };
+  const additive =
+    surface?.additiveOnly === true || writeToolIsAdditiveOnly(entry.inputSchema, baseWriteRisk(entry.id));
   return {
     readOnlyHint: false,
-    destructiveHint: !writeToolIsAdditiveOnly(entry.inputSchema, baseWriteRisk(entry.id)),
+    destructiveHint: !additive,
     idempotentHint: false,
-    openWorldHint: false,
+    openWorldHint,
   };
 }
 
@@ -294,7 +306,8 @@ export function buildMcpServer(c: Context, ctx: McpContext): Server {
   });
 
   server.setRequestHandler(ListToolsRequestSchema, async () => {
-    const entries = buildProxyManifest(ctx.toolIds, ctx.registry);
+    // A cloud-computer tool is not listed at all while the workspace switch is off.
+    const entries = buildProxyManifest(await listableExternalToolIds(ctx.toolIds), ctx.registry);
     const tools: Array<Record<string, unknown>> = entries.map((entry) => ({
       name: entry.id,
       description: entry.mutating ? `${entry.description}${WRITE_TOOL_NOTE}` : entry.description,
@@ -341,6 +354,20 @@ export function buildMcpServer(c: Context, ctx: McpContext): Server {
             { type: 'text', text },
           ],
         };
+      }
+
+      // A tool this grant reaches but the workspace has switched off (the cloud
+      // computer): say why, before anything is recorded, started or charged.
+      const unavailable = ctx.toolIds.includes(name) ? await externalToolUnavailableMessage(name) : null;
+      if (unavailable) {
+        await recordMcpAudit(c, {
+          endpoint: 'mcp:tools/call',
+          statusCode: 403,
+          durationMs: Date.now() - start,
+          error: 'unavailable',
+          meta: { tool: name },
+        });
+        return { content: [{ type: 'text', text: unavailable }], isError: true };
       }
 
       if (isMutatingProxyTool(name)) {

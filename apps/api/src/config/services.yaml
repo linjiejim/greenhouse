@@ -71,11 +71,16 @@ services:
       media:
         api_key_env: [MEDIA_API_KEY, LLM_API_KEY]
 
-  # Reserved for the cloud-computer lane (per minute, hosted sandbox).
+  # Members' cloud computers (per minute while running). Whether they may run
+  # at all is the workspace switch `computer.enabled` (Services & pricing),
+  # off by default.
   computer:
     name: Cloud computer
     unit: minute
-    enabled: false
     providers:
       e2b:
         api_key_env: E2B_API_KEY
+        # E2B bills per second of vCPU and RAM: the stock `base` sandbox
+        # (2 vCPU, 512 MiB) is 2 × $0.000014 + 0.5 × $0.0000045 per second ≈
+        # $0.0018 a minute. Check it against your plan and template.
+        price: 0.0018

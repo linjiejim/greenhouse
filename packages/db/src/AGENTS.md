@@ -66,6 +66,8 @@
 - `sessions.digest` / `digest_upto_seq` 只经 `sessions.advanceDigest()` 写入（锁会话行的比较后写：只前进、且最后一条被折叠的消息未变）；任何改动 `seq ≤ digest_upto_seq` 消息的 service 方法必须在同一事务里调 `resetDigestIfFolded`。列表查询用 `sessionListColumns`，不带摘要正文。
 - `custom_profiles` 在 v1.4 去掉审核生命周期：团队可见只看 `is_shared`；`lifecycle_status` / `lifecycle_note` / `reviewed_*` / `next_review_at` / `published_version` 成为退役列（迁移 0008 把未审核却 `is_shared` 的行改回私有，保持可见性不变）。
 
+- `member_computers`（v1.6 云电脑）的状态只经 `memberComputers` service 改：每个转换都是带期望状态（结算时再带期望的预留键 `budget_key`）的 compare-and-set，两个 API 进程或空闲清扫与成员手动停机抢同一台时只有一方生效；开机在一把全工作区的 advisory 锁里数正在用的台数并占位，成员同时最多一台由部分唯一索引兜底。
+
 - `knowledgeBase.create/update` 写完会同步调用 `onKnowledgeDocChange` 的监听（API 用它推 WS `knowledge.changed`）。新增会改文档内容、可见性或状态的 service 方法，要么走 `update`，要么自己 emit；监听必须不抛、不阻塞（异步活放进 detached promise）。
 
 ### 退役表（`schema/retired.ts`）

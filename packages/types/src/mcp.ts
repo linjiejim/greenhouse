@@ -46,9 +46,27 @@ export const MCP_RESOURCE_GROUP_IDS = [
   'automation',
   'image',
   'feedback',
+  'services',
+  'computer',
 ] as const;
 
 export type McpResourceGroup = (typeof MCP_RESOURCE_GROUP_IDS)[number];
+
+/**
+ * Groups no longer offered on the consent screen or the machine-client form,
+ * kept only so grants that already carry them still parse.
+ *
+ * `image` (v1.4): `generate_image` moved into `services` in v1.6, where it sits
+ * with the other paid services (web search, page reads, image analysis). A
+ * stored `mcp:image` keeps reaching `generate_image` and nothing else (see
+ * `LEGACY_MCP_GROUP_TOOLS` in apps/api/src/tools/registry.ts), so an old
+ * grant neither loses what it had nor gains anything.
+ */
+export const RETIRED_MCP_RESOURCE_GROUP_IDS: readonly string[] = ['image'];
+
+export function isRetiredMcpResourceGroup(id: string): boolean {
+  return RETIRED_MCP_RESOURCE_GROUP_IDS.includes(id);
+}
 
 // ─── Extension groups ────────────────────────────────────
 // An extension that owns a data domain gets its own consent group, so a token

@@ -44,7 +44,6 @@ describe('surface-derived exposure sets', () => {
         'session_query',
         'knowledge_query',
         'skill_query',
-        'generate_image',
         'tables_query',
         // 2026-08-03: Automations (scheduled tasks) — the model can inspect and
         // manage the user's own schedules; owner scoping is inside the tools.
@@ -56,6 +55,11 @@ describe('surface-derived exposure sets', () => {
         'files_query',
         // v1.5: a member's own feature requests and their answers (Issues & requests).
         'feedback_query',
+        // v1.6: the paid web services members' agents use (MCP group `services`).
+        'web_search',
+        'read_url',
+        // v1.6: list / read files in the member's own cloud computer.
+        'computer_files',
       ].sort(),
     );
   });
@@ -73,6 +77,13 @@ describe('surface-derived exposure sets', () => {
         // v1.5: members' agents file requests and report frictions as recorded writes.
         'feature_request',
         'log_friction',
+        // v1.6: an external agent's image is a new file in the member's Files —
+        // a recorded, additive write (Chat still renders it inline).
+        'generate_image',
+        // v1.6: the member's cloud computer — run, move files, stop (recorded writes).
+        'computer_exec',
+        'computer_transfer',
+        'computer_stop',
       ].sort(),
     );
   });
@@ -111,6 +122,18 @@ describe('surface-derived exposure sets', () => {
         'feature_request',
         'log_friction',
         'feedback_query',
+        // v1.6: the paid services in their own `services` group: web search,
+        // page reads, image analysis and generation (generate_image moved here
+        // from the retired `image` group; old grants keep it, see registry).
+        'web_search',
+        'read_url',
+        'analyze_image',
+        // v1.6: the member's cloud computer in its own `computer` group (off
+        // until an admin turns it on; not even listed while off).
+        'computer_exec',
+        'computer_files',
+        'computer_transfer',
+        'computer_stop',
       ].sort(),
     );
   });
@@ -194,6 +217,12 @@ describe('surface-derived exposure sets', () => {
         'files_query',
         'files_mutation',
         'feedback_query',
+        'web_search',
+        'read_url',
+        'computer_exec',
+        'computer_files',
+        'computer_transfer',
+        'computer_stop',
       ].sort(),
     );
   });

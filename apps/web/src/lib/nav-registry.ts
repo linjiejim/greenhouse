@@ -24,6 +24,7 @@ import {
   Brain,
   Coins,
   Gauge,
+  Monitor,
   Zap,
   Table2,
   FolderKanban,
@@ -144,6 +145,14 @@ const SETTINGS_TOP: NavModule[] = [
     path: '#/settings/my-usage',
     parent: 'settings',
     description: 'What you and your agents spent this month, and your limit',
+  },
+  {
+    id: 'settings.computer',
+    label: 'Cloud computer',
+    icon: Monitor,
+    path: '#/settings/computer',
+    parent: 'settings',
+    description: 'Your agents’ own cloud computer: status, minutes and start / stop',
   },
 ];
 
@@ -362,6 +371,7 @@ const NAV_COPY: Record<string, { label: TranslationKey; description?: Translatio
   },
   'settings.memory': { label: 'navigation.memory', description: 'navigation.memoryDesc' },
   'settings.my-usage': { label: 'navigation.myUsage', description: 'navigation.myUsageDesc' },
+  'settings.computer': { label: 'navigation.computer', description: 'navigation.computerDesc' },
   'admin.users': { label: 'navigation.users', description: 'navigation.usersDesc' },
   'admin.runtime-config': { label: 'navigation.runtimeConfig', description: 'navigation.runtimeConfigDesc' },
   'admin.branding': { label: 'navigation.branding', description: 'navigation.brandingDesc' },

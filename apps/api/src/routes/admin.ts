@@ -32,7 +32,7 @@ import {
 } from '@greenhouse/db';
 import { hashPassword } from '../auth/password.js';
 import { getAuthUser } from '../auth/middleware.js';
-import { getAllToolIds } from '../tools/registry.js';
+import { getInAppToolIds } from '../tools/registry.js';
 import { FEATURE_OWNED_TOOL_IDS, buildUserAccessView } from '../platform/feature-points.js';
 import type { AppEnv } from '../app-env.js';
 import { USAGE_RANGE_DAYS, type ModuleUsageReport, type UsageRangeDays } from '@greenhouse/types/usage';
@@ -555,7 +555,8 @@ const admin = new Hono<AppEnv>()
     if (!user) return c.json({ error: 'User not found' }, 404);
 
     const assigned = await getDb().userTools.getTools(id);
-    const available = getAllToolIds();
+    // External-only tools (MCP / Agent API) are not assignable in the app.
+    const available = getInAppToolIds();
 
     return c.json({ assigned, available });
   })
@@ -572,7 +573,7 @@ const admin = new Hono<AppEnv>()
     const user = await getDb().users.getById(id);
     if (!user) return c.json({ error: 'User not found' }, 404);
 
-    const available = new Set(getAllToolIds());
+    const available = new Set(getInAppToolIds());
     const invalid = body.tools.filter((t) => !available.has(t));
     if (invalid.length > 0) {
       return c.json({ error: `Unknown tools: ${invalid.join(', ')}` }, 400);

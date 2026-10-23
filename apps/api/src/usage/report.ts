@@ -26,6 +26,7 @@ import {
   type TokenPriceView,
 } from '@greenhouse/types/metering';
 import { getModelCatalog } from '../config/models.js';
+import { isComputerEnabled } from '../computer/service.js';
 import {
   getServiceCatalog,
   isServiceProviderConfigured,
@@ -40,7 +41,8 @@ function tokenPriceView(price: TokenPrice | undefined): TokenPriceView | null {
 }
 
 /** Every priced service, declared or not: a service missing from the file is shown as unpriced. */
-export function listServicePrices(): ServicePriceView[] {
+/** `computerEnabled`: the workspace switch, resolved by the (async) caller. */
+export function listServicePrices(computerEnabled = false): ServicePriceView[] {
   const catalog = getServiceCatalog();
   const defaults: Record<PricedService, Pick<ServicePriceView, 'name' | 'unit'>> = {
     vision: { name: 'Image understanding', unit: 'token' },
@@ -72,7 +74,8 @@ export function listServicePrices(): ServicePriceView[] {
       service,
       name: definition?.name ?? defaults[service].name,
       unit: definition?.unit ?? defaults[service].unit,
-      enabled: definition ? definition.enabled : service !== 'computer',
+      // The cloud computer runs only while the workspace switch is on (computer/config.ts).
+      enabled: (definition ? definition.enabled : true) && (service !== 'computer' || computerEnabled),
       providers,
     };
   });
@@ -184,7 +187,7 @@ export async function buildMeteringOverview(db: DatabaseProvider, at: Date = new
     };
   });
 
-  const servicePrices = listServicePrices();
+  const servicePrices = listServicePrices(await isComputerEnabled());
   const modelPrices = listModelPrices();
   return {
     period,

@@ -601,6 +601,7 @@ const zh: Messages = {
     flagSource_env: '来自 {env}',
     flagSource_default: '默认值',
     flagReset: '取消覆盖（{value}）',
+    group_computer: '云电脑（E2B）',
     group_extension: '{name}（扩展）',
     sourceDb: '工作区',
     sourceEnv: '环境变量',
@@ -726,6 +727,8 @@ const zh: Messages = {
     servicesPricingDesc: '付费服务、价目、本月花费与预算',
     myUsage: '用量',
     myUsageDesc: '你和你的 Agent 本月花了多少，以及你的额度',
+    computer: '云电脑',
+    computerDesc: '你的 Agent 用的云电脑：状态、分钟数、启动与停止',
     runtimeConfig: '运行时配置',
     runtimeConfigDesc: '模型、媒体与搜索凭据——保存在工作区，回落到环境变量',
     branding: '品牌工作室',
@@ -837,6 +840,7 @@ const zh: Messages = {
       removeBudgetLimit: '恢复了默认预算',
       updateServicePrice: '修改了价格',
       removeServicePrice: '恢复了默认价格',
+      stopMemberComputer: '停掉了云电脑',
     },
     entity: {
       project: '项目',
@@ -1058,6 +1062,45 @@ const zh: Messages = {
     reviewNotesPlaceholder: '添加供审核参考的备注...',
   },
 
+  computer: {
+    off: '云电脑未开启',
+    offHint: '管理员可以在「管理 › 服务与计价」里开启。',
+    notConfigured: '云电脑还没有配置好',
+    notConfiguredHint: '需要管理员在「运行配置」里填写 E2B API key。',
+    intro:
+      '给你的 Agent 用的一台云端 Linux 电脑：在里面运行命令，在它和档案库之间传文件。第一次使用时启动，空闲 {minutes} 分钟后自动停止。',
+    filesLost:
+      '停止时（手动停止或空闲 {minutes} 分钟后）里面的文件会全部删除。要保留的内容，先让 Agent 存进档案库（computer_transfer）。',
+    price: '运行期间每分钟 {price}',
+    unpriced: '尚未定价',
+    status: '状态',
+    statusRunning: '运行中',
+    statusStarting: '启动中',
+    statusStopping: '停止中',
+    statusNone: '未运行',
+    startedAt: '启动于',
+    lastUsedAt: '上次使用',
+    minutesThisMonth: '本月分钟数',
+    minutesBilled: '已计费分钟',
+    start: '启动',
+    stop: '停止',
+    started: '云电脑已启动',
+    stopped: '云电脑已停止',
+    actionFailed: '操作没有成功',
+    adminTitle: '云电脑',
+    adminHint:
+      '成员的 Agent 各有一台自己的沙箱（E2B），按上面的价格按分钟计费。同时最多运行 {max} 台，空闲 {minutes} 分钟自动停止。',
+    switchOff: '已关闭',
+    switchReset: '云电脑开关已恢复为环境变量 / 默认值',
+    turnedOn: '云电脑已开启',
+    turnedOff: '云电脑已关闭，正在运行的会在一分钟内停止',
+    configureKey: '请先在「运行配置」里填写 E2B API key。',
+    running: '正在运行',
+    noneRunning: '目前没有运行中的云电脑。',
+    member: '成员',
+    client: '启动来源',
+  },
+
   mcpGroups: {
     knowledge: { label: '知识库', description: '检索和阅读团队与个人文档。' },
     files: { label: '档案库', description: '浏览、读取和上传团队与个人档案库中的文件。' },
@@ -1068,6 +1111,11 @@ const zh: Messages = {
     automation: { label: '自动化', description: '读取你的自动化及其执行情况。' },
     image: { label: '图片生成', description: '生成图片。每次调用都会产生费用。' },
     feedback: { label: '问题与需求', description: '提交功能需求，反馈工具使用中遇到的问题。' },
+    services: {
+      label: '付费服务',
+      description: '联网搜索、读取网页、识别图片，以及生成图片并存入你的档案库。每次调用都会产生费用。',
+    },
+    computer: { label: '云电脑', description: '在你自己的云电脑里运行命令、传送文件。运行期间按分钟计费。' },
   },
 
   oauthConsent: {

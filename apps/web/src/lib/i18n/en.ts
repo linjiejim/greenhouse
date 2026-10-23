@@ -598,6 +598,7 @@ export default {
     flagSource_env: 'from {env}',
     flagSource_default: 'default',
     flagReset: 'Drop the override ({value})',
+    group_computer: 'Cloud computer (E2B)',
     group_extension: '{name} (extension)',
     sourceDb: 'Workspace',
     sourceEnv: 'Environment',
@@ -729,6 +730,8 @@ export default {
     servicesPricingDesc: 'Paid services, their prices, this month’s spend and budgets',
     myUsage: 'Usage',
     myUsageDesc: 'What you and your agents spent this month, and your limit',
+    computer: 'Cloud computer',
+    computerDesc: 'Your agents’ own cloud computer: status, minutes and start / stop',
     runtimeConfig: 'Runtime Config',
     runtimeConfigDesc: 'LLM, media and search credentials — saved in the workspace, env fallback',
     branding: 'Branding Studio',
@@ -841,6 +844,7 @@ export default {
       removeBudgetLimit: 'reset the budget',
       updateServicePrice: 'changed the price of',
       removeServicePrice: 'reset the price of',
+      stopMemberComputer: 'stopped the cloud computer of',
     },
     entity: {
       project: 'project',
@@ -1074,6 +1078,46 @@ export default {
     reviewNotesPlaceholder: 'Add notes for review...',
   },
 
+  // Cloud computer — Settings › Cloud computer (member) and the admin section of Services & pricing.
+  computer: {
+    off: 'The cloud computer is off',
+    offHint: 'An administrator can turn it on in Administration › Services & pricing.',
+    notConfigured: 'The cloud computer is not set up yet',
+    notConfiguredHint: 'An administrator needs to add an E2B API key in Runtime Config.',
+    intro:
+      'Your own Linux computer in the cloud for your agents: they run commands in it and move files between it and Files. It starts when first used and stops after {minutes} idle minutes.',
+    filesLost:
+      'Stopping it — by hand or after {minutes} idle minutes — deletes everything in it. Have your agent save what you want to keep into Files first (computer_transfer).',
+    price: '{price} per minute while it runs',
+    unpriced: 'No price set yet',
+    status: 'Status',
+    statusRunning: 'Running',
+    statusStarting: 'Starting',
+    statusStopping: 'Stopping',
+    statusNone: 'Not running',
+    startedAt: 'Started',
+    lastUsedAt: 'Last used',
+    minutesThisMonth: 'Minutes this month',
+    minutesBilled: 'Minutes billed',
+    start: 'Start',
+    stop: 'Stop',
+    started: 'Cloud computer started',
+    stopped: 'Cloud computer stopped',
+    actionFailed: 'That did not work',
+    adminTitle: 'Cloud computer',
+    adminHint:
+      'Members’ agents get their own sandbox (E2B), billed per minute at the price above. At most {max} run at once; idle ones stop after {minutes} minutes.',
+    switchOff: 'Off',
+    switchReset: 'Cloud computer switch follows the environment / default again',
+    turnedOn: 'Cloud computer turned on',
+    turnedOff: 'Cloud computer turned off; running computers stop within a minute',
+    configureKey: 'Add the E2B API key in Runtime Config first.',
+    running: 'Running now',
+    noneRunning: 'No cloud computer is running.',
+    member: 'Member',
+    client: 'Started from',
+  },
+
   // MCP resource groups — keys are derived from the group id (lib/mcp-groups.ts),
   // so localized.test.ts asserts each one resolves rather than the compiler.
   mcpGroups: {
@@ -1091,6 +1135,15 @@ export default {
     feedback: {
       label: 'Issues & requests',
       description: 'File feature requests and report where the tools got in the way.',
+    },
+    services: {
+      label: 'Paid services',
+      description:
+        'Search the web, read web pages, analyze images and generate images into your Files. Each call costs money.',
+    },
+    computer: {
+      label: 'Cloud computer',
+      description: 'Run commands and move files in your own cloud computer. Billed per minute while it runs.',
     },
   },
 

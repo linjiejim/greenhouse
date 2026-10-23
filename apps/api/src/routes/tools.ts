@@ -6,7 +6,7 @@
 
 import { Hono } from 'hono';
 import { getAuthUser } from '../auth/middleware.js';
-import { getAllToolMetas } from '../tools/registry.js';
+import { getInAppToolMetas } from '../tools/registry.js';
 import { resolveUserTools } from '../agent.js';
 import type { AppEnv } from '../app-env.js';
 
@@ -20,7 +20,8 @@ const tools = new Hono<AppEnv>()
   .get('/', async (c) => {
     const authUser = getAuthUser(c);
 
-    const allMetas = getAllToolMetas();
+    // External-only tools (MCP / Agent API) are never offered in the app.
+    const allMetas = getInAppToolMetas();
 
     // Reuse the single authoritative allow-set resolver so this listing can never
     // drift from what the agent actually grants (super = all, team = global ∪ assigned).
