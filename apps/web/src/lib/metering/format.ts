@@ -50,3 +50,13 @@ export function clientLabelKey(client: string): TranslationKey {
 export function perUnitKey(unit: ServiceUnitKind): TranslationKey | null {
   return unit === 'token' ? null : (`metering.perUnit.${unit}` as TranslationKey);
 }
+
+/** One page of an in-memory list for a CRUD data source: the slice, and the full count for the pager. */
+export function pageOf<T>(
+  items: readonly T[],
+  params?: { skip?: number; limit?: number },
+): { items: T[]; total: number } {
+  const skip = Math.max(0, params?.skip ?? 0);
+  const limit = Math.max(1, params?.limit ?? items.length);
+  return { items: items.slice(skip, skip + limit), total: items.length };
+}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatUsd, formatUsdPrice, parseUsdInput, usedFraction } from './format';
+import { formatUsd, formatUsdPrice, pageOf, parseUsdInput, usedFraction } from './format';
 
 describe('metering formatting', () => {
   it('formats micros as dollars without rounding small spend to zero', () => {
@@ -27,5 +27,12 @@ describe('metering formatting', () => {
     expect(usedFraction(50, 100)).toBe(0.5);
     expect(usedFraction(0, 0)).toBe(0);
     expect(usedFraction(1, 0)).toBe(1);
+  });
+
+  it('pages an in-memory list and keeps the full count', () => {
+    const rows = Array.from({ length: 7 }, (_, i) => i);
+    expect(pageOf(rows, { skip: 0, limit: 3 })).toEqual({ items: [0, 1, 2], total: 7 });
+    expect(pageOf(rows, { skip: 6, limit: 3 })).toEqual({ items: [6], total: 7 });
+    expect(pageOf(rows)).toEqual({ items: rows, total: 7 });
   });
 });

@@ -55,6 +55,7 @@ import {
   clientLabelKey,
   formatUsd,
   formatUsdPrice,
+  pageOf,
   parseUsdInput,
   perUnitKey,
   serviceLabelKey,
@@ -682,7 +683,7 @@ function MemberLimits({ month, version, onChanged }: { month: string; version: n
 
   const dataSource = useMemo<CrudDataSource<MemberLimitRow>>(
     () => ({
-      async list() {
+      async list(params) {
         void version;
         const overview = await fetchMeteringOverview(month);
         const items = overview.budgets.members.map((budget) => ({
@@ -694,7 +695,8 @@ function MemberLimits({ month, version, onChanged }: { month: string; version: n
           reserved_usd_micros: budget.reserved_usd_micros,
           source: budget.source,
         }));
-        return { items, total: items.length };
+        // One page of the list, with the full count, so the pager is truthful.
+        return pageOf(items, params);
       },
       async create(data) {
         const micros = parseUsdInput(String(data.limit_usd ?? ''));
