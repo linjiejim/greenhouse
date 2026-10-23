@@ -39,8 +39,11 @@ export async function login(email: string, password: string): Promise<LoginOutco
     }
     setTokens(result.data.accessToken, result.data.refreshToken);
     const me = await toResult<unknown>(await api('/api/auth/me'));
+    // Another station became active meanwhile: its tokens are in the mirror now, not ours —
+    // never clear them for this station's late answer.
+    if (getTokenStationId() !== sid) return { ok: false, error: t('login.failed') };
     const user = me.ok ? parseMe(me.data) : null;
-    if (!user || getTokenStationId() !== sid) {
+    if (!user) {
       clearTokens();
       return { ok: false, error: me.ok ? t('login.failed') : me.message || t('login.failed') };
     }
