@@ -1,7 +1,7 @@
 /**
  * What was opened recently, for offline reading of files' details, records and my tasks. React-free
  * (./recent-items.test.ts). Files keep their details in the list itself (name, size, when, where);
- * records keep a saved copy each (schema and values), listed here so the oldest copies go when
+ * records keep a saved copy each (schema, values and the names of the people it names), listed here so the oldest copies go when
  * the list is full. My tasks keep one copy of the grouped list.
  */
 
@@ -95,17 +95,28 @@ export function parseRecentRecords(value: unknown): RecentRecord[] {
     .slice(0, RECENT_ITEMS_MAX);
 }
 
-/** A record's saved copy: the table's schema and the record, or null when it is not this record's. */
-export function parseSavedRecord(
-  value: unknown,
-  tableId: number,
-  recordId: number,
-): { schema: TableSchema; record: TableRecord } | null {
-  const saved = value as { schema?: Partial<TableSchema>; record?: Partial<TableRecord> } | null;
+/** A record as it is shown and saved: the table's schema, the record, and the names of the people it names. */
+export interface SavedRecord {
+  schema: TableSchema;
+  record: TableRecord;
+  /** User id → name for the record's user fields (../data/table-fields.ts `recordUserNames`). */
+  users: Record<string, string>;
+}
+
+/**
+ * A record's saved copy, or null when it is not this record's. Copies saved before names were
+ * kept (or with a damaged name list) read with no names, so their user fields show ids.
+ */
+export function parseSavedRecord(value: unknown, tableId: number, recordId: number): SavedRecord | null {
+  const saved = value as { schema?: Partial<TableSchema>; record?: Partial<TableRecord>; users?: unknown } | null;
   if (!saved?.schema?.table || !Array.isArray(saved.schema.fields) || !saved.record) return null;
   if (saved.record.id !== recordId || saved.record.table_id !== tableId) return null;
   if (!saved.record.values || typeof saved.record.values !== 'object') return null;
-  return saved as { schema: TableSchema; record: TableRecord };
+  const users: Record<string, string> = {};
+  if (saved.users && typeof saved.users === 'object' && !Array.isArray(saved.users)) {
+    for (const [id, name] of Object.entries(saved.users)) if (typeof name === 'string') users[id] = name;
+  }
+  return { schema: saved.schema as TableSchema, record: saved.record as TableRecord, users };
 }
 
 // ─── my tasks ────────────────────────────────────────────

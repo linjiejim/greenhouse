@@ -41,7 +41,7 @@
 - Stores that hold member data reset on any station or member change (module-scope subscriptions, see src/store/notifications.ts) and drop late answers with captureIdentity().
 - Read marks and similar writes are optimistic and roll back on failure, with alertError for the failure.
 - Hermes rejects Postgres timestamps; parse them with parseMs() (src/data/time.ts).
-- My tasks, the last 20 records opened and the details of the last 20 files opened read offline too: useOfflineResource (src/data/offline-view.ts rules: saved copy first, kept and marked 离线中 when unreachable, deleted on 403 / 404) and src/store/offline.ts.
+- My tasks, the last 20 records opened (with the names of the people they name) and the details of the last 20 files opened read offline too: useOfflineResource (src/data/offline-view.ts rules: saved copy first, kept and marked 离线中 when unreachable, deleted on 403 / 404) and src/store/offline.ts.
 - Opened knowledge documents keep a saved copy and the recently opened list per station + member (src/store/knowledge.ts, rules in src/data/recent-docs.ts). A 403 / 404 deletes the copy and stops showing it; only an unreachable station (no answer, 502/503/504) falls back to it (`docMiss`).
 - The top of a knowledge shelf lists the recently opened documents even when the shelf fails, so they open offline on a cold launch (src/data/kb-rows.ts).
 - Offset-paginated lists are read to the end with collectPages() (src/data/paging.ts), bound to the identity they started on; never stop at the first page.

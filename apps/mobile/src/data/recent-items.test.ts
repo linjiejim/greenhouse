@@ -49,10 +49,22 @@ describe('recently opened records', () => {
       schema: { table: { id: 1 }, fields: [] },
       record: { id: 5, table_id: 1, values: { '1': 'Acme' } },
     };
-    expect(parseSavedRecord(saved, 1, 5)).toEqual(saved);
+    // a copy saved before names were kept reads with none
+    expect(parseSavedRecord(saved, 1, 5)).toEqual({ ...saved, users: {} });
     expect(parseSavedRecord(saved, 1, 6)).toBeNull();
     expect(parseSavedRecord(saved, 2, 5)).toBeNull();
     expect(parseSavedRecord({ schema: {} }, 1, 5)).toBeNull();
+  });
+
+  it('keeps the names of the people a saved record names, so they read offline', () => {
+    const saved = {
+      schema: { table: { id: 1 }, fields: [] },
+      record: { id: 5, table_id: 1, values: { '2': 'usr_maya' } },
+      users: { usr_maya: 'Maya' },
+    };
+    expect(parseSavedRecord(saved, 1, 5)?.users).toEqual({ usr_maya: 'Maya' });
+    expect(parseSavedRecord({ ...saved, users: { usr_maya: 3, usr_li: 'Li' } }, 1, 5)?.users).toEqual({ usr_li: 'Li' });
+    expect(parseSavedRecord({ ...saved, users: ['Maya'] }, 1, 5)?.users).toEqual({});
   });
 });
 

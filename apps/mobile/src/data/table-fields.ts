@@ -6,7 +6,7 @@
  * in `computed_values`.
  */
 
-import type { TableField, TableRecord } from '../shared/greenhouse-types';
+import type { TableField, TableRecord, TableUser } from '../shared/greenhouse-types';
 
 export interface SelectOption {
   id: string;
@@ -167,3 +167,24 @@ export function draftValues(
 
 /** Roles that may add records (editor and up). */
 export const canAddRecords = (role: string | null | undefined) => role === 'owner' || role === 'builder' || role === 'editor';
+
+/**
+ * The names of the people a record's user fields name, from the station's member lookup. Kept with
+ * the record's offline copy so those fields read as names offline; only the people this record
+ * names, never the whole member list.
+ */
+export function recordUserNames(
+  fields: readonly Pick<TableField, 'id' | 'type'>[],
+  record: Pick<TableRecord, 'values' | 'computed_values'>,
+  users: readonly TableUser[],
+): Record<string, string> {
+  const wanted = new Set<string>();
+  for (const field of fields) {
+    if (field.type !== 'user' && field.type !== 'multi_user') continue;
+    const value = cellValue(field, record);
+    for (const id of Array.isArray(value) ? value : [value]) if (typeof id === 'string') wanted.add(id);
+  }
+  const names: Record<string, string> = {};
+  for (const user of users) if (wanted.has(user.id) && user.nickname) names[user.id] = user.nickname;
+  return names;
+}

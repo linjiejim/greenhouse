@@ -7,15 +7,14 @@
 import React, { useCallback, useEffect, useMemo } from 'react';
 import { ScrollView, Text, View } from 'react-native';
 import type { ApiResult } from '../api/client';
-import { getRecord, getSchema } from '../api/tables';
+import { getRecord, getSchema, tableUsers } from '../api/tables';
 import { noAccess, notFound } from '../data/access';
-import { cellValue, displayValue, liveFields, recordTitle } from '../data/table-fields';
-import { parseSavedRecord, recordKind } from '../data/recent-items';
+import { cellValue, displayValue, liveFields, recordTitle, recordUserNames } from '../data/table-fields';
+import { parseSavedRecord, recordKind, type SavedRecord } from '../data/recent-items';
 import { useOfflineResource } from '../data/use-offline-resource';
 import { rememberRecord } from '../store/offline';
 import { useT } from '../lib/i18n';
 import { relativeTimeNow } from '../lib/time-words';
-import type { TableRecord, TableSchema } from '../shared/greenhouse-types';
 import { useFieldWords } from '../tables/use-field-words';
 import { makeStyles, space, typo, useTheme, weight } from '../theme';
 import { EmptyState, LoadingState } from '../ui/empty';
@@ -35,11 +34,17 @@ export function RecordView({
   const t = useT();
   const { colors: c } = useTheme();
   const styles = useStyles(c);
-  const load = useCallback(async (): Promise<ApiResult<{ schema: TableSchema; record: TableRecord }>> => {
-    const [schema, record] = await Promise.all([getSchema(tableId ?? 0), getRecord(tableId ?? 0, recordId ?? 0)]);
+  const load = useCallback(async (): Promise<ApiResult<SavedRecord>> => {
+    const [schema, record, users] = await Promise.all([
+      getSchema(tableId ?? 0),
+      getRecord(tableId ?? 0, recordId ?? 0),
+      tableUsers(),
+    ]);
     if (!schema.ok) return schema;
     if (!record.ok) return record;
-    return { ok: true, data: { schema: schema.data, record: record.data.record } };
+    // the names of the people it names go with the offline copy, so they read offline too
+    const names = users.ok ? recordUserNames(schema.data.fields, record.data.record, users.data.users) : {};
+    return { ok: true, data: { schema: schema.data, record: record.data.record, users: names } };
   }, [tableId, recordId]);
   // the last records opened read offline too (src/data/recent-items.ts)
   const resource = useOfflineResource(
@@ -52,7 +57,7 @@ export function RecordView({
     if (tableId != null && recordId != null && data && !resource.offline) void rememberRecord(tableId, recordId);
   }, [tableId, recordId, data, resource.offline]);
   const fields = useMemo(() => (data ? liveFields(data.schema.fields) : []), [data]);
-  const words = useFieldWords(fields);
+  const words = useFieldWords(fields, data?.users);
 
   if (tableId == null || recordId == null || (!data && !resource.loading && (notFound(resource.error) || noAccess(resource.error)))) {
     return (
