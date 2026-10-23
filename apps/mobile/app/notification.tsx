@@ -70,7 +70,7 @@ export default function NotificationPage() {
   }, [id]);
 
   const kind = item ? (KIND[item.kind] ?? { icon: 'bell' as const, label: 'notifications.kindOther' as const }) : null;
-  const tint = item?.kind === 'runtime_failed' ? c.red : item?.kind.endsWith('_attention') ? c.orange : undefined;
+  const tint = item?.kind === 'runtime_failed' ? c.redTile : item?.kind.endsWith('_attention') ? c.orangeTile : undefined;
   const body = item ? plainText(item.body) : '';
 
   return (

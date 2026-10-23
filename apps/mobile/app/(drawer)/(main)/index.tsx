@@ -152,9 +152,9 @@ export default function Home() {
               icon={KIND_ICON[item.kind] ?? 'bell'}
               iconTint={
                 item.kind === 'runtime_attention' || item.kind === 'budget_attention'
-                  ? c.orange
+                  ? c.orangeTile
                   : item.kind === 'runtime_failed'
-                    ? c.red
+                    ? c.redTile
                     : undefined
               }
               value={relativeTimeNow(item.created_at)}

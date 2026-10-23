@@ -30,6 +30,10 @@ describe('V1 palette contrast', () => {
     });
 
     for (const role of ['red', 'orange', 'green', 'blue'] as const) {
+      it(`${name}: a white glyph on the ${role} status tile is readable`, () => {
+        expect(contrastRatio(palette.onTint, palette[`${role}Tile`])).toBeGreaterThanOrEqual(4.5);
+      });
+
       it(`${name}: ${role} is readable on its fill and on content surfaces`, () => {
         for (const background of [palette[`${role}Fill`], palette.background, palette.secondaryGroupedBackground]) {
           expect(contrastRatio(palette[role], background)).toBeGreaterThanOrEqual(4.5);

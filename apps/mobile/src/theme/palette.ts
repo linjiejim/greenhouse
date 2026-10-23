@@ -63,6 +63,14 @@ export const lightHex = {
   greenFill: '#EEF5EA',
   blue: '#24566E',
   blueFill: '#EDF7FA',
+  /**
+   * Solid status tiles behind an onTint (white) glyph — a row's kind icon. The text roles above
+   * are pale in dark mode (readable as text on black), so tiles take their own darker fills.
+   */
+  redTile: '#B03A35',
+  orangeTile: '#8F431D',
+  greenTile: '#1F6B34',
+  blueTile: '#24566E',
   yellow: '#FFCC00',
   indigo: '#5856D6',
   purple: '#AF52DE',
@@ -110,6 +118,10 @@ export const darkHex: HexPalette = {
   greenFill: '#1C2E1E',
   blue: '#A1CFE1',
   blueFill: '#1A2B33',
+  redTile: '#B3362F',
+  orangeTile: '#9C4A1C',
+  greenTile: '#2A7A37',
+  blueTile: '#2A6582',
   yellow: '#FFD60A',
   indigo: '#5E5CE6',
   purple: '#BF5AF2',
