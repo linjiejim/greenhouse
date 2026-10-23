@@ -58,6 +58,8 @@ final class ShareViewModel: ObservableObject {
     lastFolder = folder
     phase = .uploading
     Task {
+      // a refused or failed file does not stop the others; an expired sign-in stops them all
+      var firstError: String?
       for index in progress.pending {
         do {
           try await api.upload(files[index], shelf: shelf, folder: folder)
@@ -66,12 +68,14 @@ final class ShareViewModel: ObservableObject {
           phase = .failed(L.t("Your sign-in expired. Open Greenhouse, then share again.", "登录已过期。请打开 Greenhouse 后再分享。"))
           return
         } catch ShareError.refused(let words) {
-          phase = .failed(words)
-          return
+          firstError = firstError ?? words
         } catch {
-          phase = .failed(L.t("Couldn’t upload. Check your connection and try again.", "上传失败，请检查网络后重试。"))
-          return
+          firstError = firstError ?? L.t("Couldn’t upload. Check your connection and try again.", "上传失败，请检查网络后重试。")
         }
+      }
+      if let firstError {
+        phase = .failed(firstError)
+        return
       }
       phase = .finished(progress.savedCount)
       try? await Task.sleep(nanoseconds: 900_000_000)
