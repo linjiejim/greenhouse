@@ -565,7 +565,7 @@ export function AutomationsPanel({ sectionTabs }: { sectionTabs?: React.ReactNod
   const schema = useMemo(
     () =>
       defineCrud<Task>({
-        name: 'Task',
+        name: 'Automation',
         idField: 'id',
         dataSource,
         pageSize: 50,

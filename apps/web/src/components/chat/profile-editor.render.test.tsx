@@ -51,7 +51,7 @@ describe('ProfileEditorDrawer', () => {
     expect(html).toContain('aria-label="New run profile"');
     expect(html).toContain('sm:w-[90vw]');
     expect(html).toContain('lg:grid-cols-[minmax(0,1.15fr)_minmax(20rem,0.85fr)]');
-    expect(html).toContain('Choose only the tools this Agent needs');
+    expect(html).toContain('Choose only the tools this run profile needs');
     // Built-ins are not offered as choices — every Agent has them, so a
     // checkbox would be asking a question whose answer changes nothing.
     expect(html).not.toContain('Ask the user clarifying questions.');

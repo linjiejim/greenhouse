@@ -122,7 +122,7 @@ export function SidebarBrandHeader(props: SidebarBrandHeaderProps) {
   return (
     <div className="flex h-14 w-full flex-shrink-0 items-center gap-2 border-b border-edge px-3">
       <div className="sidebar-brand-identity group relative flex min-w-0 flex-1 items-center overflow-hidden rounded-lg px-1">
-        <a href="#/chat" className="absolute inset-0 z-0 rounded-lg" aria-label={t('navigation.greenHouseHome')} />
+        <a href="#/home" className="absolute inset-0 z-0 rounded-lg" aria-label={t('navigation.greenHouseHome')} />
         <div className="pointer-events-none relative z-[1] flex items-center gap-2 transition-opacity group-hover:opacity-80">
           <AppLogo size="sm" logoOnly />
           <div className="flex min-w-0 flex-col">

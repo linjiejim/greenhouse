@@ -54,7 +54,6 @@ export function HistoryFiltersBar({
     { key: 'active', label: t('common.active') },
     { key: 'archived', label: t('common.archived') },
     { key: 'deleted', label: t('common.deleted') },
-    { key: 'eval', label: t('history.eval') },
   ];
   const feedbackPills: Array<{ key: Exclude<FeedbackFilter, 'all'>; label: string }> = [
     { key: 'good', label: t('history.good') },
@@ -127,16 +126,13 @@ export function HistoryFiltersBar({
       {showMore && (
         <div className="space-y-2 border-t border-edge pt-2">
           <FilterSection label={t('history.sectionOrganize')}>
-            <Select
-              size="sm"
-              inline
-              value={filters.group}
-              aria-label={t('history.group')}
-              onChange={(e) => onChange({ group: e.target.value })}
-            >
-              <option value="all">{t('history.allGroups')}</option>
-              <option value="pinned">📌 {t('history.pinned')}</option>
-            </Select>
+            {/* Pinned is the only way left to organise conversations (session groups went in 1.5). */}
+            <FilterPills
+              toggle
+              items={[{ key: 'pinned', label: t('history.pinned') }]}
+              activeKey={filters.group === 'pinned' ? 'pinned' : null}
+              onChange={(key) => onChange({ group: key ?? 'all' })}
+            />
 
             {profiles.length > 1 && (
               <Select
