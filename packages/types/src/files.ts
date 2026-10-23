@@ -41,6 +41,31 @@ export function parseFilesLocation(params: URLSearchParams): FilesLocation {
   };
 }
 
+/**
+ * A folder / file as the knowledge cabinet hands it out — to the files_* tools
+ * and from `GET /api/drive/search`. `url` is this page's address for it.
+ */
+export interface CabinetFolderView {
+  id: number;
+  name: string;
+  shelf: FilesShelf;
+  parent_id: number | null;
+  url: string;
+}
+
+export interface CabinetFileView {
+  id: number;
+  name: string;
+  shelf: FilesShelf;
+  folder_id: number | null;
+  size: number;
+  content_type: string | null;
+  uploaded_by: string | null;
+  created_at: string;
+  updated_at: string;
+  url: string;
+}
+
 /** Stored drive visibility ↔ shelf name. */
 export function shelfOfVisibility(visibility: 'team' | 'private' | null | undefined): FilesShelf {
   return visibility === 'private' ? 'personal' : 'team';

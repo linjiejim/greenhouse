@@ -70,6 +70,23 @@ interface Props {
 
 type Target = { kind: 'file'; item: DriveFile } | { kind: 'folder'; item: DriveFolder };
 
+/**
+ * One step of the deep-link preview: open the named file once it is listed,
+ * not again while the link stays, and forget it when the link clears — so
+ * coming Back to the same link opens the preview again.
+ */
+export function deepLinkPreview(
+  handled: number | null,
+  previewFileId: number | null,
+  files: readonly DriveFile[],
+): { handled: number | null; open: DriveFile | null } {
+  if (!previewFileId) return { handled: null, open: null };
+  if (handled === previewFileId) return { handled, open: null };
+  const file = files.find((candidate) => candidate.id === previewFileId);
+  if (!file) return { handled, open: null };
+  return { handled: previewFileId, open: drivePreviewKind(file) ? file : null };
+}
+
 const iconButton =
   'opacity-0 group-hover:opacity-100 focus-visible:opacity-100 touch-visible p-1 rounded text-fg-faint transition-colors';
 
@@ -136,11 +153,9 @@ export function DriveBrowser({
 
   // A deep link names a file: open its preview once it shows up in the listing.
   useEffect(() => {
-    if (!previewFileId || deepLinkHandled.current === previewFileId) return;
-    const file = files.find((candidate) => candidate.id === previewFileId);
-    if (!file) return;
-    deepLinkHandled.current = previewFileId;
-    if (drivePreviewKind(file)) setPreview(file);
+    const step = deepLinkPreview(deepLinkHandled.current, previewFileId, files);
+    deepLinkHandled.current = step.handled;
+    if (step.open) setPreview(step.open);
   }, [files, previewFileId]);
 
   const afterChange = async () => {

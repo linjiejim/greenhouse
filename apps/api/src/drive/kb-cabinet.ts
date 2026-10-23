@@ -14,7 +14,16 @@
 
 import type { DatabaseProvider, DriveFileRow, DriveFolderRow } from '@greenhouse/db';
 import type { ActorContext } from '@greenhouse/platform-kernel';
-import { filesPageHref, shelfOfVisibility, visibilityOfShelf, type FilesShelf } from '@greenhouse/types/files';
+import {
+  filesPageHref,
+  shelfOfVisibility,
+  visibilityOfShelf,
+  type CabinetFileView,
+  type CabinetFolderView,
+  type FilesShelf,
+} from '@greenhouse/types/files';
+
+export type { CabinetFileView, CabinetFolderView };
 import { logger } from '@greenhouse/utils/logger';
 import { toErrorMessage } from '@greenhouse/utils/error';
 import { canReadDrive, canWriteDrive, resolveDriveAccess, sameDriveCabinet, type DriveAccessNode } from './access.js';
@@ -34,27 +43,6 @@ export interface CabinetCaller {
 }
 
 export type CabinetResult<T> = T | { error: string };
-
-export interface CabinetFolderView {
-  id: number;
-  name: string;
-  shelf: FilesShelf;
-  parent_id: number | null;
-  url: string;
-}
-
-export interface CabinetFileView {
-  id: number;
-  name: string;
-  shelf: FilesShelf;
-  folder_id: number | null;
-  size: number;
-  content_type: string | null;
-  uploaded_by: string | null;
-  created_at: string;
-  updated_at: string;
-  url: string;
-}
 
 function folderView(row: DriveFolderRow): CabinetFolderView {
   const shelf = shelfOfVisibility(row.visibility);

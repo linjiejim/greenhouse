@@ -7,6 +7,7 @@
  * same authFetch for one cohesive module.
  */
 
+import type { CabinetFileView, CabinetFolderView } from '@greenhouse/types/files';
 import { authFetch } from '../auth';
 import { downloadAuthenticatedFile } from '../file-download';
 export { formatFileSize } from '../file-download';
@@ -139,14 +140,14 @@ export async function updateDriveFile(
 }
 
 /** Name search over the knowledge cabinet: team files plus the caller's personal ones. */
-export async function searchKnowledgeCabinet(
-  query: string,
-  limit = 30,
-): Promise<{ folders: DriveFolder[]; files: DriveFile[] }> {
-  return jsonReq<{ folders: DriveFolder[]; files: DriveFile[] }>(
-    `/api/drive/search?q=${encodeURIComponent(query)}&limit=${limit}`,
-    'GET',
-  );
+/** What the search returns: cabinet views, with the shelf and the Files page address of each. */
+export interface CabinetSearchResult {
+  folders: CabinetFolderView[];
+  files: CabinetFileView[];
+}
+
+export async function searchKnowledgeCabinet(query: string, limit = 30): Promise<CabinetSearchResult> {
+  return jsonReq<CabinetSearchResult>(`/api/drive/search?q=${encodeURIComponent(query)}&limit=${limit}`, 'GET');
 }
 
 /** Authenticated content URL of a file (download, or preview as a blob). */

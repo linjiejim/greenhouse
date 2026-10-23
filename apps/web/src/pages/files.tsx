@@ -10,12 +10,12 @@
  */
 
 import { useEffect, useState } from 'react';
-import { filesPageHref, parseFilesLocation, shelfOfVisibility, type FilesShelf } from '@greenhouse/types/files';
+import { filesPageHref, parseFilesLocation, type FilesShelf } from '@greenhouse/types/files';
 import { ModulePage } from '../components/app/module-page';
 import { DriveBrowser } from '../components/drive/drive-browser';
 import { EmptyState, FilterPills, SearchInput, Spinner, Tag, toast } from '../components/ui';
 import { FileText, Folder, Search } from '../lib/icons';
-import { formatFileSize, searchKnowledgeCabinet, type DriveFile, type DriveFolder } from '../lib/api/drive';
+import { formatFileSize, searchKnowledgeCabinet, type CabinetSearchResult } from '../lib/api/drive';
 import { formatDate } from '../lib/utils';
 import { useT } from '../lib/i18n';
 
@@ -86,7 +86,7 @@ export function FilesPage({ params }: { params: URLSearchParams }) {
 
 function FilesSearchResults({ query, onOpen }: { query: string; onOpen: (href: string) => void }) {
   const t = useT();
-  const [result, setResult] = useState<{ folders: DriveFolder[]; files: DriveFile[] } | null>(null);
+  const [result, setResult] = useState<CabinetSearchResult | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -119,9 +119,19 @@ function FilesSearchResults({ query, onOpen }: { query: string; onOpen: (href: s
     );
   }
 
-  const shelfTag = (visibility: 'team' | 'private' | null) => (
-    <Tag size="xs" tone={visibility === 'private' ? 'neutral' : 'primary'}>
-      {shelfOfVisibility(visibility) === 'personal' ? t('files.personalShelf') : t('files.teamShelf')}
+  return <FilesSearchList result={result} onOpen={onOpen} />;
+}
+
+/**
+ * The search hits. Each carries its shelf and its Files address from the
+ * server (the same `url` the files_* tools return), so a personal hit is
+ * labelled and opened on the personal shelf.
+ */
+export function FilesSearchList({ result, onOpen }: { result: CabinetSearchResult; onOpen: (href: string) => void }) {
+  const t = useT();
+  const shelfTag = (shelf: FilesShelf) => (
+    <Tag size="xs" tone={shelf === 'personal' ? 'neutral' : 'primary'}>
+      {shelf === 'personal' ? t('files.personalShelf') : t('files.teamShelf')}
     </Tag>
   );
 
@@ -134,29 +144,23 @@ function FilesSearchResults({ query, onOpen }: { query: string; onOpen: (href: s
         <button
           key={`fd${folder.id}`}
           type="button"
-          onClick={() => onOpen(filesPageHref({ shelf: shelfOfVisibility(folder.visibility), folderId: folder.id }))}
+          data-href={folder.url}
+          onClick={() => onOpen(folder.url)}
           className="flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors hover:bg-surface-muted"
         >
           <Folder size={18} className="flex-shrink-0 text-info" />
           <span className="min-w-0 flex-1 truncate text-sm text-fg" title={folder.name}>
             {folder.name}
           </span>
-          {shelfTag(folder.visibility)}
+          {shelfTag(folder.shelf)}
         </button>
       ))}
       {result.files.map((file) => (
         <button
           key={`fl${file.id}`}
           type="button"
-          onClick={() =>
-            onOpen(
-              filesPageHref({
-                shelf: shelfOfVisibility(file.visibility),
-                folderId: file.folder_id,
-                fileId: file.id,
-              }),
-            )
-          }
+          data-href={file.url}
+          onClick={() => onOpen(file.url)}
           className="flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors hover:bg-surface-muted"
         >
           <FileText size={18} className="flex-shrink-0 text-fg-muted" />
@@ -168,7 +172,7 @@ function FilesSearchResults({ query, onOpen }: { query: string; onOpen: (href: s
               {formatFileSize(file.size)} · {formatDate(file.updated_at)}
             </span>
           </span>
-          {shelfTag(file.visibility)}
+          {shelfTag(file.shelf)}
         </button>
       ))}
     </div>
