@@ -64,6 +64,13 @@
       "when": 1792692469681,
       "tag": "0008_v1_4_platform_hardening",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1792746832372,
+      "tag": "0009_push_devices",
+      "breakpoints": true
     }
   ]
 }

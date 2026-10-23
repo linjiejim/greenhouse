@@ -146,7 +146,8 @@ greenhouse/
 │   ├── api/                  # Hono backend — routes, agent runtime, platform kernel, auth,
 │   │                         #   scheduler, runtime kernel, CLI; also serves the web SPA at `/`
 │   ├── web/                  # React + Vite single-page app (hash router)
-│   └── mobile/               # Expo (React Native) app — chat, knowledge, projects, settings;
+│   └── mobile/               # Expo (React Native) team-hub app — notifications + push, stations,
+│                             #   settings (knowledge, files, projects, tables follow);
 │                             #   isolated install (pnpm mobile:install, then pnpm mobile)
 ├── packages/
 │   ├── agent-core/           # Agent kernel — streamText loop, OpenAI-compatible model factory
@@ -261,7 +262,8 @@ the running build was cut from, so a bug report can be matched to exact code.
 
 The **mobile app** ships on its own cadence via EAS: JS-only changes
 roll out as over-the-air updates; native changes auto-build and upload to
-TestFlight. Maintainer runbook: **[RELEASING.md](./RELEASING.md)**.
+TestFlight. On the 1.x line the new team-hub app is not published before 3.0 (the
+store app still ships from the v2 line). Maintainer runbook: **[RELEASING.md](./RELEASING.md)**.
 
 ### Upgrading
 

@@ -93,6 +93,7 @@ import { createActivityRoutes } from './routes/activity.js';
 import groupRoutes from './routes/groups.js';
 import shareRoutes from './routes/shares.js';
 import { createNotificationRoutes } from './routes/notifications.js';
+import pushDeviceRoutes from './routes/push-devices.js';
 import usageRoutes from './routes/usage.js';
 import toolsRoutes from './routes/tools.js';
 import driveRoutes from './routes/drive.js';
@@ -116,7 +117,8 @@ import { reconcileInterruptedAgentWrites } from './agent-access/governed-write.j
 import { sweepExpiredToolOutputs } from './agent-runtime/tool-output-store.js';
 import { createAutomationRuntimeDriver } from './scheduler/runtime-driver.js';
 import { createRuntimeNotificationProjector } from './notifications/runtime-projector.js';
-import { startNotificationDeliveryWorker } from './notifications/delivery-worker.js';
+import { AUTOMATION_DELIVERY_CHANNELS, startNotificationDeliveryWorker } from './notifications/delivery-worker.js';
+import { mobilePushEnabled } from './notifications/push/config.js';
 import { createRuntimeDomainProjector } from './runtime/domain-projector.js';
 import {
   requireTrustedExecutionSurface,
@@ -314,6 +316,11 @@ function mountRoutes(toolRegistry: ToolRegistry) {
       .use('/api/notifications', requireInternal())
       .use('/api/notifications/*', requireInternal())
       .route('/api/notifications', createNotificationRoutes())
+      // Mobile push devices — the member's own phones. The bare collection path is
+      // not matched by `/*`, so it is guarded explicitly.
+      .use('/api/auth/me/push-devices', requireInternal())
+      .use('/api/auth/me/push-devices/*', requireInternal())
+      .route('/api/auth/me/push-devices', pushDeviceRoutes)
       // Skill Center — all internal users (writes owner/super-gated in skills/center.ts)
       .use('/api/skills/*', requireInternal())
       .route('/api/skills', skillRoutes)
@@ -492,9 +499,16 @@ async function main() {
   // External Automation channels are transport facts, not part of the
   // terminal Runtime transaction. Drain their permanent per-channel queue on
   // every boot and keep retrying independently until delivered/dead-lettered.
-  notificationDeliveryWorker = trustedExecutionPlan.notificationProjector
-    ? await startNotificationDeliveryWorker({ db: dbProvider })
-    : null;
+  // Mobile pushes ride the same queue under their own switch (MOBILE_PUSH_ENABLED):
+  // off, the worker never claims one and nothing is sent to exp.host.
+  const deliveryChannels = [
+    ...(trustedExecutionPlan.notificationProjector ? AUTOMATION_DELIVERY_CHANNELS : []),
+    ...(mobilePushEnabled() ? (['mobile_push'] as const) : []),
+  ];
+  notificationDeliveryWorker =
+    deliveryChannels.length > 0
+      ? await startNotificationDeliveryWorker({ db: dbProvider, channels: deliveryChannels })
+      : null;
 
   // No Runtime driver may claim work until the socket above is actually
   // listening. The boot pass also drains stale leases/outbox immediately.

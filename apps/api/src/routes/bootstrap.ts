@@ -5,17 +5,24 @@
  * data URL, theme tokens). Served before auth so the login
  * screen can brand itself; therefore it must never expose secrets, user data
  * or feature configuration. Listed in PUBLIC_PATHS (auth/middleware.ts).
+ *
+ * `mobile_api` is the level of the API the phone app relies on: the app reads it
+ * before sign-in and asks for a server update when the level is below what it
+ * needs. Bump it when a release adds an endpoint the app starts calling.
  */
 
 import { Hono } from 'hono';
 import type { AppEnv } from '../app-env.js';
 import { getWorkspaceBootstrap } from '../settings/workspace-config.js';
 
+/** 1: password sign-in, notifications, push devices (`/api/auth/me/push-devices`). */
+export const MOBILE_API_LEVEL = 1;
+
 const bootstrapRoutes = new Hono<AppEnv>().get('/', async (c) => {
   const payload = await getWorkspaceBootstrap();
   // Admin edits should show up on the next reload — don't let browsers cache.
   c.header('Cache-Control', 'no-store');
-  return c.json(payload);
+  return c.json({ ...payload, mobile_api: MOBILE_API_LEVEL });
 });
 
 export default bootstrapRoutes;

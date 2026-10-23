@@ -29,6 +29,7 @@ import type { DatabaseProvider, ScheduledTaskRow } from '@greenhouse/db';
 import { flattenRichOutput, renderNotificationEmail } from '../notifications/render.js';
 import { notifyWebhookKind } from './task-limits.js';
 import { connectionManager } from '../ws/connection-manager.js';
+import { queueMobilePush } from '../notifications/push/queue.js';
 
 /** Keep the card readable in a group chat; the session link carries the rest. */
 const MAX_SUMMARY_CHARS = 600;
@@ -353,6 +354,7 @@ export async function notifyTaskResult(
       : `automation-result:${task.id}:${outcome.sessionId}:${outcome.status}`,
   });
   const queued = { wecom: false, email: false, wecomDm: false, feishuDm: false };
+  await queueMobilePush(db, result.notification);
 
   if (task.notify_webhook) {
     // The webhook family is derived from the (write-time validated) URL host,

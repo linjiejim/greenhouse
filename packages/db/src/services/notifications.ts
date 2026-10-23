@@ -459,6 +459,47 @@ export function createNotificationService(db: Db) {
       return updated;
     },
 
+    /**
+     * End a leased attempt without delivering it, for good: `suppressed` (re-checked
+     * and no longer worth sending), `failed` (the transport says the recipient is
+     * gone) or `dead_letter` (a send that can never succeed — a bug). Lease rules as
+     * `acknowledgeDelivery`.
+     */
+    async settleDelivery(input: {
+      id: string;
+      expected_version: number;
+      worker_id: string;
+      status: Extract<NotificationDeliveryAttemptRow['status'], 'suppressed' | 'failed' | 'dead_letter'>;
+      reason: string;
+      at?: string | Date;
+    }): Promise<NotificationDeliveryAttemptRow> {
+      const at = timestamp(input.at);
+      const [updated] = await db
+        .update(notificationDeliveryAttempts)
+        .set({
+          status: input.status,
+          lease_owner: null,
+          lease_expires_at: null,
+          last_error: identifier(input.reason, 'reason', 2048),
+          updated_at: at,
+          version: sql`${notificationDeliveryAttempts.version} + 1`,
+        })
+        .where(
+          and(
+            eq(notificationDeliveryAttempts.id, identifier(input.id, 'id')),
+            eq(notificationDeliveryAttempts.version, positiveInt(input.expected_version, 'expected_version')),
+            eq(notificationDeliveryAttempts.status, 'claimed'),
+            eq(notificationDeliveryAttempts.lease_owner, identifier(input.worker_id, 'worker_id')),
+            gt(notificationDeliveryAttempts.lease_expires_at, at),
+          ),
+        )
+        .returning();
+      if (!updated) {
+        throw new NotificationError('notification_lease_lost', 'Notification delivery lease is no longer owned');
+      }
+      return updated;
+    },
+
     async failDelivery(input: {
       id: string;
       expected_version: number;

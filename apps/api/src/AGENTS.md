@@ -242,6 +242,15 @@ v1 只接 DeepSeek 与 OpenAI 兼容服务，它们**自动**缓存 prompt 前�
 - ⚠️ **`marked` 的渲染器覆写必须写成普通对象**：`Marked.use()` 用 `Object.keys` 收方法，只看得见自有属性，`Renderer` 子类的原型方法**全部静默失效**（实现时踩到，三条覆写一条都没生效）。
 - payload 里的 `summary` 仍存**原文**：payload 是事实，渲染是表现，存渲染结果等于把改样式变成数据迁移。
 
+### 手机推送（`notifications/push/` + `/api/auth/me/push-devices`）
+
+- **每条站内通知都可以推到手机**：生产者写完 `db.notifications.createWithStatus()` 后**必须**调 `queueMobilePush(db, notification)`（`push/queue.ts`；Runtime projector 与 `scheduler/notify.ts` 已接）。新增通知生产者漏调 = 它的事实永远到不了手机。重放也要调：投递行按「事实 × 手机」唯一，崩溃后重试会自愈。
+- 类别由 kind 决定（`pushCategoryOf`，`@greenhouse/types/push`）：`runtime_attention` / `budget_attention` → `needs_you`（审批类 time-sensitive），`runtime_completed` / `runtime_failed` → `done`，其余（含以后新增的 kind）→ `other`。每台手机按类别有开关，只能收窄。
+- **默认不带内容**：标题是产品名，正文只说「哪类事」；手机打开「显示预览」才显示通知 title，通知 body（自动化摘要、报错）永远不出服务器。`data` 只有 id（`PushData`：`s` 站点 ref、`u` 账号、`k` 类别、`nid`、`url=/notification?id=`），App 原样 vendor 这份契约。
+- worker 在同一张 `notification_delivery_attempts` 队列里认领 `mobile_push`（只在 `MOBILE_PUSH_ENABLED` 开时认领），**发送前复核**（已读、设备停用/换号/改密/90 天未见、类别关掉、超 24h、审批已处理）→ `suppressed`；`DeviceNotRegistered` → 停用设备 + `failed`；网络 / 429 / 5xx → 退避重试；请求被拒 / `MessageTooBig` → dead letter（error 日志）。
+- 设备路由只给内部账号、只看自己的设备，token 只进不出。`POST /:id/test` 直发一条测试推送（每台 10 秒一次）。
+- `/api/bootstrap` 的 `mobile_api` 是 App 依赖的接口级别（`MOBILE_API_LEVEL`）：App 开始调用一个新接口时同步加一，旧服务器会被 App 提示升级。
+
 ### 技能中心 (`skills/` + `/api/skills`)
 - 团队 Agent 技能库（OSS greenhouse 移植，B7）：发布/发现/下载/同步 SKILL.md 技能文件夹，不可变 semver + 强制 changelog + sha256 完整性校验。
 - **单一实现**在 `skills/center.ts`（publish/download/check-updates/manage 编排，返回 `{ok,code,error}` 判别联合而非 throw）；HTTP 路由 `routes/skills.ts`（挂载 `requireInternal()`）与 agent 工具 `tools/skills/{skill-query,skill-mutation}.ts` 都只是薄壳。权限：读=全体内部用户，写=owner 或 super，硬删=仅 super（校验在 center.ts，不在路由层）。

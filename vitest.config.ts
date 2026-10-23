@@ -37,6 +37,7 @@ export default defineConfig({
       '@greenhouse/types/entity-links': resolve(__dirname, 'packages/types/src/entity-links.ts'),
       '@greenhouse/types/search': resolve(__dirname, 'packages/types/src/search.ts'),
       '@greenhouse/types/notification': resolve(__dirname, 'packages/types/src/notification.ts'),
+      '@greenhouse/types/push': resolve(__dirname, 'packages/types/src/push.ts'),
       '@greenhouse/types/email': resolve(__dirname, 'packages/types/src/email.ts'),
       '@greenhouse/types/runtime': resolve(__dirname, 'packages/types/src/runtime.ts'),
       '@greenhouse/types/agent-access': resolve(__dirname, 'packages/types/src/agent-access.ts'),
