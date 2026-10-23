@@ -155,6 +155,12 @@ describe('usage', () => {
     expect(relay.usage).toEqual({ inputTokens: 3, outputTokens: 2, cachedTokens: 0, reasoningTokens: 0 });
     expect(relay.sawDone).toBe(true);
 
+    const sanitizing = new SseUsageRelay(true, (text) => text.replace('secret-host', '[redacted]'));
+    const relayed = sanitizing.push('data: {"error":{"message":"overloaded at secret-host","code":"busy"}}\n\n');
+    expect(relayed).toContain('[redacted]');
+    expect(relayed).not.toContain('secret-host');
+    expect(JSON.parse(relayed.slice(6))).toMatchObject({ error: { code: 'busy', type: 'api_error' } });
+
     const keep = new SseUsageRelay(false);
     expect(keep.push(usage)).toBe(usage);
     expect(keep.push(': keepalive\r\n\r\n')).toBe(': keepalive\r\n\r\n');

@@ -495,7 +495,7 @@ export function createGatewayRoutes() {
         c.header('Content-Type', 'text/event-stream; charset=utf-8');
         c.header('Cache-Control', 'no-cache');
         c.header('X-Accel-Buffering', 'no');
-        const relay = new SseUsageRelay(!request.clientWantsUsage);
+        const relay = new SseUsageRelay(!request.clientWantsUsage, (text) => sanitizeUpstreamText(text, model));
         const upstreamBody = response.body;
         return honoStream(c, (out) =>
           track(

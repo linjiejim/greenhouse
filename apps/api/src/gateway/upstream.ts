@@ -262,7 +262,11 @@ export class SseUsageRelay {
   usage: GatewayUsage | null = null;
   sawDone = false;
 
-  constructor(private readonly dropUsageOnlyChunks: boolean) {}
+  constructor(
+    private readonly dropUsageOnlyChunks: boolean,
+    /** Rewrites the text of an in-stream error event (upstream error text never reaches the member raw). */
+    private readonly sanitize: (text: string) => string = (text) => text,
+  ) {}
 
   /** Feed decoded text; returns the complete events to forward now. */
   push(text: string): string {
@@ -301,6 +305,12 @@ export class SseUsageRelay {
       json = JSON.parse(payload);
     } catch {
       return event;
+    }
+    const error = (json as { error?: unknown } | null)?.error;
+    if (error !== undefined && error !== null) {
+      const upstream = readUpstreamError(JSON.stringify(json));
+      const message = this.sanitize(upstream.message ?? 'The model provider reported an error.');
+      return `data: ${JSON.stringify({ error: { message, type: upstream.type ?? 'api_error', code: upstream.code } })}\n\n`;
     }
     const usage = parseUsage(json);
     if (!usage) return event;
