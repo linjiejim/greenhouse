@@ -59,7 +59,7 @@ import { projectsRegistration } from '../../platform/projects/application.js';
 import { knowledgeRegistration } from '../../platform/knowledge/registration.js';
 import { tablesRegistration } from '../../platform/tables/application.js';
 import { runWithMeteringScope, type MeteringScope } from '../../usage/metering.js';
-import { setPriceOverridesForTests } from '../../usage/pricing.js';
+import { setPriceOverridesForTests, syncPriceOverrides } from '../../usage/pricing.js';
 import { uploadCabinetFile } from '../../drive/kb-cabinet.js';
 import { delegatedAgentActor } from '../../platform/actor.js';
 import { computerRoutes } from '../../routes/computer.js';
@@ -460,6 +460,55 @@ describe('cloud computer: lifecycle and per-minute billing', () => {
     expect(await rollComputerBlock(db, snapshot, driver)).toBe('superseded');
     const unusedKey = `computer:${snapshot.id}:${new Date(t0 + 15 * MINUTE).toISOString()}`;
     expect((await reservations(unusedKey)).map((row) => row.status)).toEqual(['released', 'released', 'released']);
+  });
+
+  /** A sweep reserves the next block, then dies before installing it. */
+  async function crashAfterReserving(snapshot: MemberComputerRow) {
+    const install = vi.spyOn(db.memberComputers, 'rollBlock').mockRejectedValueOnce(new Error('process died'));
+    await expect(rollComputerBlock(db, snapshot, driver)).rejects.toThrow('process died');
+    install.mockRestore();
+  }
+
+  it("finishes a half-done roll after a price change, keeping the block's original admission", async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    const t0 = Date.parse('2026-10-24T14:00:00.000Z');
+    vi.setSystemTime(t0);
+    await run('computer_exec', { command: 'serve', timeout_seconds: 60 });
+    vi.setSystemTime(t0 + 10 * MINUTE);
+    await run('computer_exec', { command: 'test', timeout_seconds: 60 });
+    vi.setSystemTime(t0 + 15 * MINUTE + 30_000);
+    const snapshot = await memberComputer();
+    await crashAfterReserving(snapshot);
+    const key = `computer:${snapshot.id}:${new Date(t0 + 15 * MINUTE).toISOString()}`;
+    expect((await reservations(key))[0]).toMatchObject({ status: 'reserved', estimated_units: BLOCK });
+
+    // An admin changes the price before the next sweep.
+    await db.metering.setPriceOverride({ kind: 'service', target: 'computer', provider: 'e2b', unit_price: 0.003 });
+    await syncPriceOverrides(db, true);
+    vi.setSystemTime(t0 + 16 * MINUTE);
+    expect(await sweepComputers(db, { driver })).toEqual({ stopped: 0, rolled: 1 });
+    expect(await memberComputer()).toMatchObject({ status: 'running', budget_key: key, minutes_billed: 15 });
+    expect((await reservations(key))[0]).toMatchObject({ status: 'reserved', estimated_units: BLOCK });
+  });
+
+  it('finishes a half-done roll across a month boundary against the month it was reserved in', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    const t0 = Date.parse('2026-10-31T23:40:00.000Z');
+    vi.setSystemTime(t0);
+    await run('computer_exec', { command: 'serve', timeout_seconds: 60 });
+    vi.setSystemTime(t0 + 12 * MINUTE);
+    await run('computer_exec', { command: 'test', timeout_seconds: 60 });
+    vi.setSystemTime(t0 + 15 * MINUTE + 30_000);
+    const snapshot = await memberComputer();
+    await crashAfterReserving(snapshot);
+    const key = `computer:${snapshot.id}:${new Date(t0 + 15 * MINUTE).toISOString()}`;
+    const reservedIn = (await reservations(key)).map((row) => row.account_id).sort();
+
+    // The retry runs in November: fresh admission would use November's accounts.
+    vi.setSystemTime(Date.parse('2026-11-01T00:01:00.000Z'));
+    expect(await sweepComputers(db, { driver })).toEqual({ stopped: 0, rolled: 1 });
+    expect(await memberComputer()).toMatchObject({ status: 'running', budget_key: key, minutes_billed: 15 });
+    expect((await reservations(key)).map((row) => row.account_id).sort()).toEqual(reservedIn);
   });
 
   it('does not idle-stop a computer used after the snapshot the sweep decided on', async () => {

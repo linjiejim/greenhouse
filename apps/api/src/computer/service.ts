@@ -33,6 +33,7 @@ import {
   settleServiceFact,
   type MeteringScope,
   type SpendAttribution,
+  type SpendLease,
 } from '../usage/metering.js';
 import {
   effectiveServicePrice,
@@ -143,8 +144,27 @@ export function blockBudgetKey(computerId: string, blockStartedAt: string): stri
   return `computer:${computerId}:${new Date(blockStartedAt).toISOString()}`;
 }
 
-/** Reserve one block of minutes for a computer; throws the budget refusal when it does not fit. */
-async function reserveBlock(db: DatabaseProvider, row: MemberComputerRow, blockStartedAt: string) {
+/**
+ * Reserve one block of minutes for a computer; throws the budget refusal when
+ * it does not fit.
+ *
+ * A block already reserved under its key (a sweep that reserved it and died
+ * before installing it, or another process) keeps that admission: its
+ * accounts, its period and its estimate are restored as they are. Admitting it
+ * afresh would compute other accounts after a month boundary, or another
+ * estimate after a price change, and collide with the stored reservation on
+ * every retry, so the computer would never advance again.
+ */
+async function reserveBlock(db: DatabaseProvider, row: MemberComputerRow, blockStartedAt: string): Promise<SpendLease> {
+  const key = blockBudgetKey(row.id, blockStartedAt);
+  const existing = await db.usageBudget.getReservationGroup(key);
+  if (existing.length > 0) {
+    return restoreSpendLease(db, {
+      idempotencyKey: key,
+      estimatedUsdMicros: existing[0]!.estimated_units,
+      attribution: attributionOf(row),
+    });
+  }
   return reserveSpend({
     db,
     service: 'computer',
@@ -155,7 +175,7 @@ async function reserveBlock(db: DatabaseProvider, row: MemberComputerRow, blockS
     client: row.client as MeteringClient,
     oauthClientId: row.oauth_client_id,
     runId: row.id,
-    idempotencyKey: blockBudgetKey(row.id, blockStartedAt),
+    idempotencyKey: key,
     ttlMs: BLOCK_TTL_MS,
     metadata: { computer_id: row.id, block_started_at: blockStartedAt, block_minutes: COMPUTER_BLOCK_MINUTES },
   });
