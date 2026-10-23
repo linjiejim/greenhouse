@@ -26,6 +26,13 @@ describe('a screen with an offline copy', () => {
     }
   });
 
+  it('deletes the copy on disk even when it was never read into memory', () => {
+    // first open: the answer was saved to disk while the earlier disk read found nothing
+    for (const status of [403, 404, 410]) {
+      expect(offlineView({ fresh: null, saved: null, loading: false, missStatus: status })).toEqual({ data: null, offline: false, evict: true });
+    }
+  });
+
   it('shows another error instead of the copy', () => {
     expect(offlineView({ fresh: null, saved, loading: false, missStatus: 500 })).toEqual({ data: null, offline: false, evict: false });
   });
