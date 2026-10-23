@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { ApiResult } from '../api/client';
 import type { ChatEvent } from './chat-stream';
-import { Conversation, type ConversationDeps, type StreamOutcome } from './conversation';
+import { Conversation, tailOf, type ConversationDeps, type StreamOutcome } from './conversation';
 import type { MessagePage, TranscriptMessage } from './transcript';
 
 const m = (seq: number, role: string, content = `m${seq}`): TranscriptMessage => ({ id: `msg_${seq}`, role, content, seq });
@@ -196,4 +196,17 @@ describe('an open conversation', () => {
     expect(c.state.transcript?.messages.at(-1)?.id).toBe('msg_4_again');
   });
 
+  it('keeps its tail when older history comes in, and moves it when the end changes', async () => {
+    const s = station();
+    const c = new Conversation(s.deps);
+    await c.open();
+    const opened = tailOf(c.state);
+    await c.loadOlder();
+    expect(tailOf(c.state)).toBe(opened);
+    const tails: string[] = [];
+    c.subscribe(() => tails.push(tailOf(c.state)));
+    await c.send('Hi');
+    expect(new Set(tails).size).toBeGreaterThan(1);
+    expect(tailOf(c.state)).not.toBe(opened);
+  });
 });

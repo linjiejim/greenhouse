@@ -15,7 +15,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { chatRun, getMessages, getSessionInfo } from '../../src/api/assistant';
 import { followRun, sendMessage } from '../../src/assistant/send';
 import { visibleMessages, type LiveReply } from '../../src/data/chat-stream';
-import { CLOSED_CONVERSATION, Conversation, type ConversationState } from '../../src/data/conversation';
+import { CLOSED_CONVERSATION, Conversation, tailOf, type ConversationState } from '../../src/data/conversation';
 import { captureIdentity } from '../../src/data/identity';
 import { useT } from '../../src/lib/i18n';
 import { Markdown } from '../../src/markdown';
@@ -48,6 +48,7 @@ export default function Chat() {
   // follow the reply only once the conversation is taller than the screen (a short one stays
   // where the header inset puts it)
   const viewport = useRef(0);
+  const followedTail = useRef('');
 
   const conversation = useMemo(() => {
     if (!sessionId) return null;
@@ -135,10 +136,12 @@ export default function Chat() {
         onStartReached={() => void conversation?.loadOlder()}
         onStartReachedThreshold={0.5}
         onContentSizeChange={(_, height) => {
+          // follow the end only when something arrived there, never when older history came in on top
+          const tail = tailOf(state);
+          if (tail === followedTail.current) return;
+          followedTail.current = tail;
           // the visible part is the screen under the bar (status bar + navigation bar)
-          if (!state.loadingOlder && height > viewport.current - insets.top - NAV_BAR) {
-            list.current?.scrollToEnd({ animated: true });
-          }
+          if (height > viewport.current - insets.top - NAV_BAR) list.current?.scrollToEnd({ animated: true });
         }}
         ListHeaderComponent={state.loadingOlder ? <Spinner style={styles.older} /> : null}
         renderItem={({ item }) => {

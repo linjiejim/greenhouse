@@ -65,6 +65,20 @@ export const CLOSED_CONVERSATION: ConversationState<never> = {
   loadingOlder: false,
 };
 
+/**
+ * What is at the bottom of the conversation. It changes when a message or reply text arrives at
+ * the end, never when older history comes in at the top — the screen follows the end only then.
+ */
+export function tailOf(state: ConversationState): string {
+  const last = state.transcript?.messages.at(-1);
+  const reply = state.reply;
+  return [
+    last ? `${last.seq}:${last.id}` : '',
+    state.pending ?? '',
+    reply ? `${reply.text.length}:${reply.tool ?? ''}:${reply.error ?? ''}:${state.unreconciled}` : '',
+  ].join('|');
+}
+
 const RUN_POLLS = 40;
 const RUN_POLL_MS = 1500;
 
