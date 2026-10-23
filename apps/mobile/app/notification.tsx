@@ -3,7 +3,8 @@
  * when, and its whole text (selectable); opening it marks it read (optimistic — the row turns
  * read at once) and clears its banner. While it is on screen its own pushes stay quiet
  * (src/shell/surface.ts). A notification not in the list yet (a push for something newer) is
- * fetched by marking it read — the server answers with it.
+ * fetched by marking it read — the server answers with it. If the read cannot reach the server,
+ * the member is told and the banner stays.
  */
 
 import React, { useEffect, useState } from 'react';
@@ -12,11 +13,13 @@ import { Stack, useLocalSearchParams } from 'expo-router';
 import { useT, type TranslationKey } from '../src/lib/i18n';
 import { plainText } from '../src/lib/plain-text';
 import { relativeTimeNow } from '../src/lib/time-words';
+import { readOnOpen } from '../src/data/read-on-open';
 import { clearReadBanners } from '../src/push/handler';
 import type { PlatformNotification } from '../src/shared/greenhouse-types';
 import { useSurface } from '../src/shell/surface';
 import { useNotifications } from '../src/store/notifications';
 import { makeStyles, radius, space, squircle, typo, useTheme, weight } from '../src/theme';
+import { alertError } from '../src/ui/dialogs';
 import { EmptyState, LoadingState } from '../src/ui/empty';
 import { IconTile } from '../src/ui/list';
 import type { IconName } from '../src/ui/core';
@@ -48,25 +51,29 @@ export default function NotificationPage() {
     };
   }, [id]);
 
-  // opening it reads it (or fetches it, for one the list does not have yet)
+  // opening it reads it (or fetches it, for one the list does not have yet); the banner goes only
+  // once the server has it read (src/data/read-on-open.ts)
   useEffect(() => {
     if (!id) return;
     let alive = true;
     const store = useNotifications.getState();
-    const known = store.items.find((entry) => entry.id === id);
-    if (known) {
-      if (!known.read_at) void store.markRead(id);
-    } else {
-      void store.open(id).then((found) => {
-        if (!alive) return;
-        if (found) setFetched(found);
-        else setFailed(true);
-      });
-    }
-    void clearReadBanners({ readIds: [id] });
+    void readOnOpen(id, {
+      known: store.items.find((entry) => entry.id === id),
+      markRead: (target) => store.markRead(target),
+      fetchByReading: (target) => store.open(target),
+      clearBanner: (target) => clearReadBanners({ readIds: [target] }),
+      reportFailure: () => {
+        if (alive) alertError(t('notifications.markFailed'));
+      },
+    }).then(({ notification }) => {
+      if (!alive || listed) return;
+      if (notification) setFetched(notification);
+      else setFailed(true);
+    });
     return () => {
       alive = false;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once per opened notification
   }, [id]);
 
   const kind = item ? (KIND[item.kind] ?? { icon: 'bell' as const, label: 'notifications.kindOther' as const }) : null;
