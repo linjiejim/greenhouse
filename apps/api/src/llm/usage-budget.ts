@@ -340,6 +340,12 @@ export class UserTokenBudgetLease {
     return true;
   }
 
+  /** See `SpendLease.releaseAfterProviderRefusal`: a definite provider refusal owes nothing. */
+  async releaseAfterProviderRefusal(reason: string): Promise<void> {
+    await this.db.usageBudget.release({ idempotency_key: this.idempotencyKey, reason });
+    await this.spend?.releaseAfterProviderRefusal(reason);
+  }
+
   /** Settle the token reservation (the USD half settles in settleAndRecordBudgetedUsage). */
   async settle(actualTokens: number, metadata?: Readonly<Record<string, unknown>>): Promise<void> {
     await this.db.usageBudget.settle({

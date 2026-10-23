@@ -24,6 +24,12 @@ export interface ProviderEntry {
   apiKeyEnv: string;
   /** Optional base URL override */
   baseUrl?: string;
+  /**
+   * The same credential's Anthropic Messages endpoint (without `/v1`), when the
+   * provider offers one (e.g. DeepSeek's `https://api.deepseek.com/anthropic`).
+   * Only the model gateway's Anthropic surface uses it; the agent runtime never does.
+   */
+  anthropicBaseUrl?: string;
 }
 
 /**

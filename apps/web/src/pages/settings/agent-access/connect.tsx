@@ -2,11 +2,20 @@
  * Connect an agent — the MCP endpoint, copy-ready setup for the common
  * clients, and how writes are handled. Commands are the clients' real CLIs
  * (checked against codex-cli and claude): add the server, then sign in once.
+ *
+ * Below it, "Use the team's model quota": the OpenAI-compatible model gateway
+ * (`/api/gateway/openai/v1`, Chat Completions + models only) with a personal
+ * `ghgw_` key — Claude Code on the Anthropic surface (`/api/gateway/anthropic`,
+ * only when an Anthropic-wire upstream is configured), and OpenAI SDKs /
+ * OpenAI-compatible tools, curl and Cursor on Chat Completions. Codex is not
+ * listed: current codex-cli only speaks the Responses API (`wire_api = "chat"`
+ * was removed), which the gateway does not serve yet.
  */
 
 import React, { useState } from 'react';
+import type { GatewayOverview } from '@greenhouse/types/agent-access';
 import { Button, Card } from '../../../components/ui';
-import { Check, Copy, Plug, ShieldCheck } from '../../../lib/icons';
+import { Check, Copy, Cpu, Plug, ShieldCheck } from '../../../lib/icons';
 import { useT } from '../../../lib/i18n';
 
 function CopyButton({ text }: { text: string }) {
@@ -44,49 +53,149 @@ function Snippet({ title, code }: { title: string; code: string }) {
   );
 }
 
-export function ConnectGuide({ mcpUrl }: { mcpUrl: string }) {
+function UrlBox({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <div className="text-xs font-medium text-fg-secondary mb-1">{label}</div>
+      <code className="block truncate text-xs font-mono text-fg bg-surface-sunken rounded-lg px-2.5 py-2">{value}</code>
+    </div>
+  );
+}
+
+/**
+ * Copy-ready config for the model gateway; every value is what the gateway
+ * really accepts. The Claude Code part appears only when some model has an
+ * Anthropic-wire upstream (models.yaml `anthropic_base_url`).
+ */
+function GatewayGuide({ gateway, onOpenKeys }: { gateway: GatewayOverview; onOpenKeys: () => void }) {
+  const t = useT();
+  const base = gateway.base_url;
+  const openaiModels = gateway.models.filter((entry) => entry.openai).map((entry) => entry.id);
+  const anthropicModels = gateway.models.filter((entry) => entry.anthropic).map((entry) => entry.id);
+  const model = openaiModels[0] ?? 'flash';
+  const sdk = [`export OPENAI_BASE_URL=${base}`, 'export OPENAI_API_KEY=ghgw_…'].join('\n');
+  const curl = [
+    `curl ${base}/chat/completions \\`,
+    '  -H "Authorization: Bearer $GREENHOUSE_GATEWAY_KEY" \\',
+    '  -H "Content-Type: application/json" \\',
+    `  -d '{"model":"${model}","messages":[{"role":"user","content":"Hello"}]}'`,
+  ].join('\n');
+  const claudeModel = anthropicModels[0];
+  const claude = claudeModel
+    ? [
+        `export ANTHROPIC_BASE_URL=${gateway.anthropic_base_url}`,
+        'export ANTHROPIC_AUTH_TOKEN=ghgw_…',
+        `export ANTHROPIC_MODEL=${claudeModel}`,
+        `export ANTHROPIC_DEFAULT_OPUS_MODEL=${claudeModel}`,
+        `export ANTHROPIC_DEFAULT_SONNET_MODEL=${claudeModel}`,
+        `export ANTHROPIC_DEFAULT_HAIKU_MODEL=${claudeModel}`,
+        `export CLAUDE_CODE_SUBAGENT_MODEL=${claudeModel}`,
+        'export CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1',
+        'claude',
+      ].join('\n')
+    : null;
+  return (
+    <Card className="p-4 space-y-4" data-testid="gateway-guide">
+      <div className="flex items-start gap-2">
+        <Cpu size={16} className="text-primary-fg mt-0.5 flex-shrink-0" />
+        <div>
+          <h3 className="text-sm font-semibold text-fg">{t('gateway.guideTitle')}</h3>
+          <p className="text-xs text-fg-muted mt-1 leading-relaxed">{t('gateway.guideIntro')}</p>
+        </div>
+      </div>
+      {!gateway.enabled && <p className="text-xs text-warning leading-relaxed">{t('gateway.disabledNotice')}</p>}
+      <p className="text-xs text-fg-muted leading-relaxed">
+        {t('gateway.guideKey')}{' '}
+        <button type="button" className="text-primary-fg hover:underline" onClick={onOpenKeys}>
+          {t('gateway.guideKeyLink')}
+        </button>
+      </p>
+      {claude && (
+        <div className="space-y-3" data-testid="gateway-guide-claude">
+          <h4 className="text-xs font-semibold text-fg">{t('gateway.guideClaudeTitle')}</h4>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <UrlBox label={t('gateway.anthropicBaseUrl')} value={gateway.anthropic_base_url} />
+            <UrlBox label={t('gateway.modelIds')} value={anthropicModels.join(', ')} />
+          </div>
+          <Snippet title={t('gateway.guideClaude')} code={claude} />
+          <p className="text-xs text-fg-muted leading-relaxed">{t('gateway.guideClaudeNote')}</p>
+        </div>
+      )}
+      <div className="space-y-3">
+        <h4 className="text-xs font-semibold text-fg">{t('gateway.guideOpenAiTitle')}</h4>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <UrlBox label={t('gateway.baseUrl')} value={base} />
+          <UrlBox label={t('gateway.modelIds')} value={openaiModels.join(', ') || '—'} />
+        </div>
+        <Snippet title={t('gateway.guideSdk')} code={sdk} />
+        <Snippet title={t('gateway.guideCurl')} code={curl} />
+        <p className="text-xs text-fg-muted leading-relaxed">{t('gateway.guideCursor')}</p>
+      </div>
+      <p className="text-xs text-fg-muted leading-relaxed">{t('gateway.guideLimits')}</p>
+      <p className="text-xs text-fg-muted leading-relaxed">
+        {claude ? t('gateway.guideCodex') : t('gateway.guideNoAnthropic')}
+      </p>
+    </Card>
+  );
+}
+
+export function ConnectGuide({
+  mcpUrl,
+  gateway,
+  onOpenGatewayKeys,
+}: {
+  mcpUrl: string;
+  gateway: GatewayOverview | null;
+  onOpenGatewayKeys: () => void;
+}) {
   const t = useT();
   const cursor = JSON.stringify({ mcpServers: { greenhouse: { url: mcpUrl } } }, null, 2);
   return (
-    <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]">
-      <Card className="p-4 space-y-4">
-        <div className="flex items-start gap-2">
-          <Plug size={16} className="text-primary-fg mt-0.5 flex-shrink-0" />
+    <div className="space-y-4">
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]">
+        <Card className="p-4 space-y-4">
+          <div className="flex items-start gap-2">
+            <Plug size={16} className="text-primary-fg mt-0.5 flex-shrink-0" />
+            <div>
+              <h3 className="text-sm font-semibold text-fg">{t('agentAccess.connectTitle')}</h3>
+              <p className="text-xs text-fg-muted mt-1 leading-relaxed">{t('agentAccess.connectIntro')}</p>
+            </div>
+          </div>
           <div>
-            <h3 className="text-sm font-semibold text-fg">{t('agentAccess.connectTitle')}</h3>
-            <p className="text-xs text-fg-muted mt-1 leading-relaxed">{t('agentAccess.connectIntro')}</p>
+            <div className="text-xs font-medium text-fg-secondary mb-1">{t('agentAccess.endpoint')}</div>
+            <div className="flex items-center gap-2">
+              <code className="flex-1 min-w-0 truncate text-xs font-mono text-fg bg-surface-sunken rounded-lg px-2.5 py-2">
+                {mcpUrl}
+              </code>
+              <CopyButton text={mcpUrl} />
+            </div>
           </div>
-        </div>
-        <div>
-          <div className="text-xs font-medium text-fg-secondary mb-1">{t('agentAccess.endpoint')}</div>
-          <div className="flex items-center gap-2">
-            <code className="flex-1 min-w-0 truncate text-xs font-mono text-fg bg-surface-sunken rounded-lg px-2.5 py-2">
-              {mcpUrl}
-            </code>
-            <CopyButton text={mcpUrl} />
+          <Snippet
+            title={t('agentAccess.connectCodex')}
+            code={`codex mcp add greenhouse --url ${mcpUrl}\ncodex mcp login greenhouse`}
+          />
+          <Snippet
+            title={t('agentAccess.connectClaude')}
+            code={`claude mcp add --transport http greenhouse ${mcpUrl}`}
+          />
+          <Snippet title={t('agentAccess.connectCursor')} code={cursor} />
+          <Snippet title={t('agentAccess.connectOther')} code={`npx -y mcp-remote ${mcpUrl}`} />
+          <p className="text-xs text-fg-muted leading-relaxed">{t('agentAccess.connectAfter')}</p>
+        </Card>
+        <Card className="p-4 space-y-2 h-fit">
+          <div className="flex items-center gap-1.5">
+            <ShieldCheck size={15} className="text-primary-fg" />
+            <h3 className="text-sm font-semibold text-fg">{t('agentAccess.howWritesWork')}</h3>
           </div>
-        </div>
-        <Snippet
-          title={t('agentAccess.connectCodex')}
-          code={`codex mcp add greenhouse --url ${mcpUrl}\ncodex mcp login greenhouse`}
-        />
-        <Snippet title={t('agentAccess.connectClaude')} code={`claude mcp add --transport http greenhouse ${mcpUrl}`} />
-        <Snippet title={t('agentAccess.connectCursor')} code={cursor} />
-        <Snippet title={t('agentAccess.connectOther')} code={`npx -y mcp-remote ${mcpUrl}`} />
-        <p className="text-xs text-fg-muted leading-relaxed">{t('agentAccess.connectAfter')}</p>
-      </Card>
-      <Card className="p-4 space-y-2 h-fit">
-        <div className="flex items-center gap-1.5">
-          <ShieldCheck size={15} className="text-primary-fg" />
-          <h3 className="text-sm font-semibold text-fg">{t('agentAccess.howWritesWork')}</h3>
-        </div>
-        <ul className="space-y-1.5 text-xs text-fg-secondary leading-relaxed list-disc pl-4">
-          <li>{t('agentAccess.howWrites1')}</li>
-          <li>{t('agentAccess.howWrites2')}</li>
-          <li>{t('agentAccess.howWrites3')}</li>
-          <li>{t('agentAccess.howWrites4')}</li>
-        </ul>
-      </Card>
+          <ul className="space-y-1.5 text-xs text-fg-secondary leading-relaxed list-disc pl-4">
+            <li>{t('agentAccess.howWrites1')}</li>
+            <li>{t('agentAccess.howWrites2')}</li>
+            <li>{t('agentAccess.howWrites3')}</li>
+            <li>{t('agentAccess.howWrites4')}</li>
+          </ul>
+        </Card>
+      </div>
+      {gateway && <GatewayGuide gateway={gateway} onOpenKeys={onOpenGatewayKeys} />}
     </div>
   );
 }

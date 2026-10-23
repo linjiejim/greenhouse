@@ -32,6 +32,8 @@ export interface UsageRecord {
   service?: string | null;
   /** The price this call was settled at (source + rates); null = unpriced. */
   price_applied?: Readonly<Record<string, unknown>> | null;
+  /** The model gateway key the call came through. */
+  gateway_key_id?: string | null;
 }
 
 export interface UsageStats {
@@ -223,6 +225,7 @@ export function createUsageService(db: Db) {
         oauth_client_id: usage.oauth_client_id ?? null,
         service: usage.service ?? null,
         price_applied: usage.price_applied ? JSON.stringify(usage.price_applied) : null,
+        gateway_key_id: usage.gateway_key_id ?? null,
         created_at: nowIso(),
       });
     },

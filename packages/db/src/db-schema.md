@@ -54,7 +54,7 @@
 | `session_groups` | PK `id`；UK `(user_id, name)` | `kind=pinned` 为每用户的置顶系统组（`services/session-pins.ts` 唯一读写方）；`kind=custom` 文件夹功能 1.5 移除，存量行不读不改 |
 | `session_group_members` | PK `id`；UK `(user_id, group_id, session_id)`；部分 UK `(user_id, session_id) WHERE kind='custom'` | 每用户的置顶成员（`sort_order` 为置顶区顺序）；`kind=custom` 的存量文件夹归档行 1.5 起无读写方 |
 | `llm_calls` | PK `id`；索引 `session_id` | `call_llm` 子调用审计；保存输入、输出、模型、状态、token 与耗时 |
-| `llm_usage` | PK `id`；索引 profile/caller/user/created_at/budget key/(user_id, created_at) | LLM 用量统计；按 profile、caller、session、user、model 记录 token 与耗时；`budget_idempotency_key` 关联统一预算预留，NULL 表示迁移前或尚未接入预算的 legacy 调用。计价列（迁移 0010，全部可空，旧行照常有效）：`cost_usd_micros`（NULL = 未定价或计价前写入，按 0 计）、`client`（web/mobile/mcp/agent_api/automation/feishu/gateway/system）、`oauth_client_id`（成员的 Agent 经 MCP 调用时的 OAuth client）、`service`（`llm` / `vision`；NULL 的旧行按 caller 推断）、`price_applied`（结算时用的价，JSON；NULL = 未定价或旧行） |
+| `llm_usage` | PK `id`；索引 profile/caller/user/created_at/budget key/(user_id, created_at) | LLM 用量统计；按 profile、caller、session、user、model 记录 token 与耗时；`budget_idempotency_key` 关联统一预算预留，NULL 表示迁移前或尚未接入预算的 legacy 调用。计价列（迁移 0010，全部可空，旧行照常有效）：`cost_usd_micros`（NULL = 未定价或计价前写入，按 0 计）、`client`（web/mobile/mcp/agent_api/automation/feishu/gateway/system）、`oauth_client_id`（成员的 Agent 经 MCP 调用时的 OAuth client）、`service`（`llm` / `vision`；NULL 的旧行按 caller 推断）、`price_applied`（结算时用的价，JSON；NULL = 未定价或旧行）；`gateway_key_id`（迁移 0011：经模型网关的调用记下 Key，索引 `(gateway_key_id, created_at)` 供每把 Key 的月花费） |
 | `service_usage` | PK `id`（`svu_<hex>`）；索引 (user_id, created_at)/(service, created_at)/created_at/budget key | 非模型付费调用的事实（迁移 0010）：网页搜索、网页读取、生图，日后云电脑分钟。`service`/`provider`/`model`、`units` + `unit_kind`（call/image/minute/token）、`cost_usd_micros`（NULL = 未定价）、`client`、`oauth_client_id`、`caller`、`run_id`/`session_id`、`budget_idempotency_key`、`price_applied`（结算时用的价，JSON：来源 + 费率）、`metadata`。append-only，主体均为逻辑引用 |
 | `usage_price_overrides` | PK `id`（`upo_<hash>`，按 kind+target+provider 确定）；UK `(kind, target, provider)`；CHECK 价格 ≥ 0 | super 在服务与计价页定的价（迁移 0010），覆盖 models.yaml / services.yaml：`kind='model'` + 模型 id，或 `kind='service'` + 服务 id + provider。token 价 `input_per_mtok` / `output_per_mtok` / `cached_input_per_mtok`（每百万 token 美元），按次 / 张 / 分钟 `unit_price`（美元）。改价只影响之后结算的调用 |
 | `scheduled_tasks` | PK `id` | 用户定时 Agent 任务；profile 默认 `team`，保存 cron、时区、执行状态与计数；`notify_webhook`（可选企微/飞书**群**机器人地址，host 白名单二选一、按 host 分派 payload 格式）、`notify_email`（布尔，发到 owner 账号邮箱）、`notify_wecom`（布尔，以企微应用消息发给 owner 本人，收件人取自其 `user_provider_tokens(provider='wecom')` 绑定）与 `notify_feishu`（布尔，以飞书卡片 DM 发给 owner 本人，收件人取自 `provider='feishu'` 绑定，迁移 0064）四条送达通道，均由 scheduler（非 Agent）在跑完后推送摘要——布尔通道**没有任何可供瞄准的收件人字段**，这正是它们免确认的原因；`unattended_tools`（JSON 字符串数组，迁移 0065）是 owner 逐任务勾选的额外工具，目录在 `@greenhouse/types/automation-tools`——它是**过滤器不是授权**（运行时取 `勾选 ∩ 目录 ∩ owner 当前 effectiveTools`），且只有用户自己的控制台请求能写，`automation_mutation` 一律拒绝；`quiet_when_empty`（v1.4）为真时，回答 `NO_UPDATE` 的运行照常记历史但不推送任何渠道 |
@@ -85,6 +85,7 @@ Chat 与 Automation 共用的执行控制面（`workflow` / `mission` / `eval` �
 | `notifications` | PK `id`；UK `(user_id, dedupe_key)`；user/read/created 与 provenance 索引 | 用户站内收件箱；保存 kind、完整正文/payload、Run/Interrupt/Event/Agent 逻辑来源与 read_at。除已读状态外为永久事实，无生产删除 Service |
 | `notification_delivery_attempts` | PK `id`；UK `(notification_id, channel, recipient)`；claim 索引 | 可选外部渠道的 durable lease/attempt/retry/dead-letter/suppressed；FK 到 notification CASCADE 只服务显式根事实删除语义，常规生产没有删除入口 |
 | `push_devices` | PK `id`（`pdv_`）；UK `token`；`user_id` 部分索引（未停用） | 手机推送设备（迁移 0009）：Expo token、平台、Expo project、站点 `client_ref`、偏好 JSON（needs_you/done/other/preview）、注册时的 `auth_version`、`last_seen_at`；只停用（`disabled_at` + reason）不删除 |
+| `gateway_keys` | PK `id`（`gwk_`）；UK `key_hash`；索引 `(user_id, created_at)` | 模型网关的成员个人 Key（迁移 0011）：只存密钥（`ghgw_…`）的 SHA-256 与开头 12 个字符 `key_prefix`；`allowed_models` 是目录模型 id 的 JSON 数组（NULL = 全部）；`expires_at`、`last_used_at`（每分钟最多写一次）；撤销只写 `revoked_at` / `revoked_by`，不删行 |
 
 ### 统一 Usage Budget
 
@@ -97,7 +98,7 @@ Chat 与 Automation 共用的执行控制面（`workflow` / `mission` / `eval` �
 | `usage_budget_ledger` | BIGSERIAL PK `id`；UK `(account_id, operation_key)`；索引 account+created/reservation | 永久 append-only 账本；记录 bootstrap/reconcile/reserve/settle/release/expire/adjustment/status 的 reserved/spent delta 与变更后余额。账户、预留、主体都为逻辑关联，避免审计随业务记录删除 |
 | `usage_budget_limits` | PK `id`（`ubl_<hash>`，按 scope 确定）；UK `(scope_type, scope_id, unit)`；CHECK limit ≥ 0 | 管理员设的跨周期 USD 月度上限（迁移 0010）：`organization`、`service`（服务 id）、`user` + `scope_id='*'`（成员默认）、`user` + 用户 id（成员覆盖）。每次计价调用按「本表 → env → 内置默认」解析并写入当月账户；删行即回落 |
 
-月度账户以 **UTC 自然月**为周期；文本模型一次原子预留 user + organization（Eval/Judge 走隔离的 `organization:eval` 池）+ provider 三层 token 账户（1.6 起与 USD 并行保留一版），并另起一组 `<key>:usd` 原子预留 member（`user`）+ `service` + `organization` 三层 `usd_micros` 账户（USD 是主限额）；生图、搜索、读网页只走这三层 USD 账户。未定价调用不预留，只做准入检查（账户已用完即拒绝）。首次建账与后续预留只投影 `llm_usage.budget_idempotency_key IS NULL` 的 legacy 行到 `legacy_spent_units`，budget-aware 调用只由 reservation/ledger 结算，防止双计。一个 reservation group 内账户必须使用同一 unit；不同 unit 使用各自的幂等子键。显式 `release` 仅用于确认 provider I/O 尚未开始的失败；一旦结果未知，TTL sweep 把 estimated 从 reserved 转 spent，迟到的真实 usage 再只结算差额。
+月度账户以 **UTC 自然月**为周期；文本模型一次原子预留 user + organization（Eval/Judge 走隔离的 `organization:eval` 池）+ provider 三层 token 账户（1.6 起与 USD 并行保留一版），并另起一组 `<key>:usd` 原子预留 member（`user`）+ `service` + `organization` 三层 `usd_micros` 账户（USD 是主限额）；生图、搜索、读网页只走这三层 USD 账户。未定价调用不预留，只做准入检查（账户已用完即拒绝）。首次建账与后续预留只投影 `llm_usage.budget_idempotency_key IS NULL` 的 legacy 行到 `legacy_spent_units`，budget-aware 调用只由 reservation/ledger 结算，防止双计。一个 reservation group 内账户必须使用同一 unit；不同 unit 使用各自的幂等子键。显式 `release` 仅用于确认 provider I/O 尚未开始的失败，或模型网关收到上游明确拒绝（4xx / 连接被拒）的调用；一旦结果未知，TTL sweep 把 estimated 从 reserved 转 spent，迟到的真实 usage 再只结算差额。
 
 ### 知识库、云盘与技能
 
@@ -334,6 +335,10 @@ Chat 与 Automation 共用的执行控制面（`workflow` / `mission` / `eval` �
 | `notification_delivery_attempts.notification_id` | `notifications.id` | FK CASCADE；送达状态独立于业务结果，只随显式通知根删除 |
 | `notification_delivery_attempts.recipient`（`mobile_push`） | `push_devices.id` | 逻辑引用；设备停用后投递在复核时 suppressed |
 | `push_devices.user_id` | `users.id` | FK CASCADE；账号删除即删除其设备 |
+| `gateway_keys.user_id` | `users.id` | FK CASCADE；账号删除即删除其网关 Key（审计里留着 Key 名与前缀） |
+| `gateway_keys.revoked_by` | `users.id` | 逻辑引用：本人或撤销它的 super |
+| `usage_budget_reservations.idempotency_key`（`gateway:<keyId>:<uuid>`） | `gateway_keys.id` | 网关调用的预留键里带 Key id，预留 metadata 另记 `gateway_key_id`；`llm_usage.budget_idempotency_key` 同键 |
+| `llm_usage.gateway_key_id` | `gateway_keys.id` | 逻辑引用；Key 撤销或随账号删除后，用量事实照常保留 |
 | `runtime_events.actor_user_id` | `users.id` | Event actor 审计；账号删除后 Event 仍保留 |
 | `runtime_interrupts.assignee_user_id` / `.decided_by_user_id` | `users.id` | 决策负责人和决定人；完整决议独立保留 |
 | `custom_profiles.forked_from` | 系统或自定义 profile id | profile 谱系，不是数据库 FK |

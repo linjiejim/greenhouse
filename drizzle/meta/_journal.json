@@ -78,6 +78,13 @@
       "when": 1792771350015,
       "tag": "0010_usd_metering",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1792777987044,
+      "tag": "0011_gateway_keys",
+      "breakpoints": true
     }
   ]
 }

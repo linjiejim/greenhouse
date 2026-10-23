@@ -42,6 +42,56 @@ models:
     expect(catalog.models.pro!.name).toBe('pro'); // falls back to the id
   });
 
+  it('reads an Anthropic endpoint per provider, literal or from an env var, and rejects a bad one', () => {
+    const previous = process.env.GW_TEST_ANTHROPIC_URL;
+    try {
+      process.env.GW_TEST_ANTHROPIC_URL = 'https://llm.example.com/anthropic/';
+      const catalog = parseModelCatalog(`
+models:
+  ds:
+    providers:
+      - { provider: deepseek, model: m, api_key_env: K, anthropic_base_url: https://api.deepseek.com/anthropic }
+  env:
+    providers:
+      - { provider: openai-compatible, model: m, api_key_env: K, anthropic_base_url_env: GW_TEST_ANTHROPIC_URL }
+  unset:
+    providers:
+      - { provider: openai-compatible, model: m, api_key_env: K, anthropic_base_url_env: GW_TEST_UNSET_URL }
+`);
+      expect(catalog.models.ds!.providers[0]!.anthropicBaseUrl).toBe('https://api.deepseek.com/anthropic');
+      expect(catalog.models.env!.providers[0]!.anthropicBaseUrl).toBe('https://llm.example.com/anthropic');
+      expect(catalog.models.unset!.providers[0]!.anthropicBaseUrl).toBeUndefined();
+
+      process.env.GW_TEST_ANTHROPIC_URL = 'not a url';
+      const lenient = parseModelCatalog(`
+models:
+  env:
+    providers:
+      - { provider: openai-compatible, model: m, api_key_env: K, anthropic_base_url_env: GW_TEST_ANTHROPIC_URL }
+`);
+      expect(lenient.models.env!.providers[0]!.anthropicBaseUrl).toBeUndefined();
+    } finally {
+      if (previous === undefined) delete process.env.GW_TEST_ANTHROPIC_URL;
+      else process.env.GW_TEST_ANTHROPIC_URL = previous;
+    }
+    expect(() =>
+      parseModelCatalog(`
+models:
+  bad:
+    providers:
+      - { provider: deepseek, model: m, api_key_env: K, anthropic_base_url: ftp://x }
+`),
+    ).toThrow(/anthropic_base_url must be an http/);
+    expect(() =>
+      parseModelCatalog(`
+models:
+  both:
+    providers:
+      - { provider: deepseek, model: m, api_key_env: K, anthropic_base_url: https://x, anthropic_base_url_env: Y }
+`),
+    ).toThrow(/not both/);
+  });
+
   it('never carries a secret — only the env var name', () => {
     const catalog = parseModelCatalog(MINIMAL);
     expect(JSON.stringify(catalog)).not.toMatch(/api_key["']?\s*:/);
@@ -166,7 +216,12 @@ models:
       expect(catalog.models.flash!.vision).toBe(true);
       expect(catalog.models['deepseek-flash']!.vision).toBe(true);
       expect(catalog.models['deepseek-flash']!.providers).toEqual([
-        { provider: 'deepseek', model: 'deepseek-flash', apiKeyEnv: 'DEEPSEEK_API_KEY' },
+        {
+          provider: 'deepseek',
+          model: 'deepseek-flash',
+          apiKeyEnv: 'DEEPSEEK_API_KEY',
+          anthropicBaseUrl: 'https://api.deepseek.com/anthropic',
+        },
       ]);
       // Env-derived providers drop out when LLM_MODEL is unset, so assert a subset.
       const providers = Object.values(catalog.models).flatMap((m) => m.providers.map((p) => p.provider));

@@ -51,6 +51,7 @@ import { createChatArtifactReceiptService } from './services/chat-artifact-recei
 import { createRuntimeService } from './services/runtime.js';
 import { createNotificationService } from './services/notifications.js';
 import { createPushDeviceService } from './services/push-devices.js';
+import { createGatewayKeyService } from './services/gateway-keys.js';
 import { createWorkspaceSettingService } from './services/workspace-settings.js';
 import { createOAuthLoginStateService, createRateLimitService } from './services/security-state.js';
 
@@ -101,6 +102,7 @@ function createDatabaseProvider(db: Db, client: DbClient['client'] | null) {
     runtime: createRuntimeService(db),
     notifications: createNotificationService(db),
     pushDevices: createPushDeviceService(db),
+    gatewayKeys: createGatewayKeyService(db),
     workspaceSettings: createWorkspaceSettingService(db),
     rateLimits: createRateLimitService(db),
     oauthLoginStates: createOAuthLoginStateService(db),
@@ -154,6 +156,7 @@ function createDatabaseProvider(db: Db, client: DbClient['client'] | null) {
         'notification_delivery_attempts',
         'notifications',
         'push_devices',
+        'gateway_keys',
         'runtime_outbox',
         'runtime_events',
         'runtime_interrupts',

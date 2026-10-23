@@ -49,10 +49,13 @@ export const llmUsage = pgTable(
     service: text('service'),
     /** JSON snapshot of the price applied at settlement (source + rates); null = unpriced / older row. */
     price_applied: text('price_applied'),
+    /** The model gateway key the call came through (`gateway_keys.id`, logical); null = not a gateway call. */
+    gateway_key_id: text('gateway_key_id'),
     created_at: timestamp('created_at', { withTimezone: true, mode: 'string' }).notNull(),
   },
   (table) => [
     index('idx_llm_usage_profile').on(table.profile_id),
+    index('idx_llm_usage_gateway_key').on(table.gateway_key_id, table.created_at),
     index('idx_llm_usage_created').on(table.created_at),
     index('idx_llm_usage_caller').on(table.caller),
     index('idx_llm_usage_user').on(table.user_id),

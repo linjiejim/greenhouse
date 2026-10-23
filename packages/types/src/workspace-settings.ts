@@ -28,14 +28,15 @@
 // ─── Registry ────────────────────────────────────────────
 
 /** Core groups render as fixed sections of Runtime Config; an extension uses its own id as the group. */
-export type WorkspaceSettingGroup = 'branding' | 'llm' | 'media' | 'search';
+export type WorkspaceSettingGroup = 'branding' | 'llm' | 'media' | 'search' | 'gateway';
 
 /**
  * Value shape stored in the `value` jsonb column:
  * 'string' (single line) and 'text' (multi-line) are JSON strings; 'json' is
- * an object validated per-key server-side (theme tokens).
+ * an object validated per-key server-side (theme tokens); 'boolean' is a JSON
+ * true/false (an env fallback reads `true` / `1` / `yes` / `on` as on).
  */
-export type WorkspaceSettingType = 'string' | 'text' | 'json';
+export type WorkspaceSettingType = 'string' | 'text' | 'json' | 'boolean';
 
 export interface WorkspaceSettingDef {
   /** Stable key, stored verbatim in `workspace_settings.key`. Never rename. */
@@ -51,6 +52,8 @@ export interface WorkspaceSettingDef {
   secret?: boolean;
   /** Env var this setting overlays / falls back to (see module doc). */
   env?: string;
+  /** 'boolean' only: the value when neither a stored override nor the env var says otherwise (default false). */
+  defaultValue?: boolean;
   /** Max serialized length accepted on write (defense-in-depth; default 2000). */
   maxLength?: number;
   placeholder?: string;
@@ -220,6 +223,16 @@ const WORKSPACE_SETTINGS_LITERAL = [
     secret: true,
     env: 'BRAVE_SEARCH_API_KEY',
   },
+  // ── Model gateway (members' own agents on the team's models) ──
+  {
+    key: 'gateway.enabled',
+    group: 'gateway',
+    label: 'Model gateway',
+    description:
+      "Lets members' own agents call the team's models with a personal gateway key at `/api/gateway/openai/v1`, metered to the member. Off by default.",
+    type: 'boolean',
+    env: 'GATEWAY_ENABLED',
+  },
 ] as const satisfies readonly WorkspaceSettingDef[];
 
 /** The registry, widened to WorkspaceSettingDef so optional fields (env,
@@ -281,6 +294,24 @@ export interface WorkspaceSettingView {
   /** True when a DB row exists for this key. */
   has_value: boolean;
   source: WorkspaceSettingSource;
+  /**
+   * 'boolean' settings only (null otherwise): what the switch is now
+   * (`effective`: stored override → env var → default) and what it would be
+   * without the stored override (`fallback`: env var → default). `value` stays
+   * the stored override alone.
+   */
+  flag: WorkspaceFlagView | null;
+}
+
+export interface WorkspaceFlagView {
+  effective: boolean;
+  fallback: boolean;
+}
+
+/** A boolean switch resolved: the stored override (null = none), what it falls back to, and where the effective value comes from. */
+export interface WorkspaceFlagState extends WorkspaceFlagView {
+  override: boolean | null;
+  source: 'db' | 'env' | 'default';
 }
 
 /** Pre-login personalization payload served by GET /api/bootstrap. */

@@ -509,6 +509,25 @@ v1 只接 DeepSeek 与 OpenAI 兼容服务，它们**自动**缓存 prompt 前�
   - 进入计价时 scope 里没有成员的调用，只记到服务与团队账户并 warn；已知入口都会设成员。
 - **蓝绿并存**：旧代码在新库上照跑（列全可空）；旧的生图代码仍按 `$20` 把成员 USD 账户限额改回去，切流期间会和新代码来回改，切完即止。
 
+### 模型网关（`routes/gateway.ts` + `gateway/`，v1.6，D4）
+
+- 成员自己的 Agent 用团队模型额度，两个线协议、一套 Key / 计价 / 规则（共用部分在 `gateway/proxy.ts`）：
+  - OpenAI：`GET /api/gateway/openai/v1/models`、`POST …/chat/completions`（流式与非流式，tools / response_format 原样透传）。
+  - Anthropic（Claude Code 的 `ANTHROPIC_BASE_URL=<origin>/api/gateway/anthropic`）：`GET /v1/models`、`GET /v1/models/:id`、`POST /v1/messages`（流式与非流式，`?beta=true` 照转）、`POST /v1/messages/count_tokens`（本地估算 `{input_tokens}`，不调上游、不计价）。
+  - 没有 Responses / embeddings / images，别在文案里说有。当前 Codex（codex-cli 已删 `wire_api = "chat"`，只走 Responses）接不上，接入指南不给它配置。
+- 鉴权：ghgw Key，`Authorization: Bearer` 或 `x-api-key` 都收（Claude Code 的 ANTHROPIC_AUTH_TOKEN / ANTHROPIC_API_KEY）；库里只有 SHA-256 + 12 字符前缀。`/api/gateway/` 在 `isPublicPath` 里（带尾斜杠，别的路由不许叫 `/api/gateway…`）；CORS 在 `security.ts` 对它关闭；请求体上限 4 MB；限流走 `checkRateLimit`：每 IP 600/分，每 Key `GATEWAY_RATE_LIMIT_PER_MINUTE`（默认 300，Claude Code 一轮就有很多次调用）。上游有两只钟（`UpstreamLifetime`，每条路径结束都要 `done()`）：整次调用（等响应头 + 读 body）`GATEWAY_UPSTREAM_TIMEOUT_MS`（默认 10 分钟），流里两个 chunk 之间 `GATEWAY_UPSTREAM_IDLE_TIMEOUT_MS`（默认 2 分钟）；超时中止上游、预留按结果未知留着，还没开始流就回 504 `upstream_timeout`，流已开始就写一个线协议格式的错误事件再结束。流被上游打断（读出错，或没有 `[DONE]` / `message_stop` 就结束——无终止符时以「有 finish_reason + 末尾 usage」/「收到最终 message_delta」为完成）同样补一个 `upstream_interrupted` 错误事件（OpenAI 是 `data: {"error":…}`，Anthropic 是 `event: error`）；上游自己已经发过 error 事件就不再补。结算规则不变。
+- 工作区开关 `gateway.enabled`（`boolean` 型 workspace setting，按「库里的覆盖 → env `GATEWAY_ENABLED` → def `defaultValue`（缺省 false）」解析；`getWorkspaceFlagState` 给出 effective / override / fallback / source，设置视图的 `flag` 带 effective + fallback，管理界面一律显示生效值而不是「有没有存 true」，所有布尔开关通用）：关着时所有网关端点 403 `gateway_disabled`，成员也建不了 Key（撤销照常）。
+- 模型解析：只认目录 id（`getModelRegistry()`，没有别名）；Key 的 `allowed_models` 不含则 403；目录里没有 404；这条线协议上没有可用上游则 503。OpenAI 线 = 第一个配了 key 的 `openai` / `deepseek` / `openai-compatible` provider；Anthropic 线 = 第一个配了 key 且在 models.yaml 声明了 `anthropic_base_url`（或 `anthropic_base_url_env`，不含 `/v1`）的 provider，同一把凭证、同一个 model 名，上游 key 以 `x-api-key` 发出。不跨 provider 回退。转发只带上游 key、content-type / accept，以及（Anthropic 线）客户端的 `anthropic-version` / `anthropic-beta`——其余请求头（含 ghgw Key）一概不带。
+- 计价走 `reserveUserTokenBudget`（caller / profile `gateway`，client `gateway`，service `llm`，幂等键 `gateway:<keyId>:<uuid>`，预留 metadata 带 `gateway_key_id` 与 `wire`），事实行 `llm_usage.gateway_key_id` 记 Key（每把 Key 的本月花费从这里汇总）。预留 = 输入估算（×1.25，内联图片 / 文档按块 1500）+ 输出（OpenAI：请求的 max_tokens / max_completion_tokens，否则目录 max_tokens，否则 16k，× n；Anthropic：必填的 max_tokens；都不超过 context window）。结算：OpenAI 非流式读 `usage`，流式强制 `stream_options.include_usage` 从末尾 usage chunk 结算（客户端没要就去掉只含 usage 的 chunk）；Anthropic 读 `message_start` 的 usage + `message_delta` 的最终 usage（收到 `message_delta` 才算有结果），input = input_tokens + cache read + cache creation，cache read 按 `cached_input` 价、cache creation 按 input 价。上游 4xx 与连不上（ECONNREFUSED / ENOTFOUND）= 明确没花钱 → `releaseAfterProviderRefusal`；客户端断开（中止上游）、5xx、成功却没 usage = 结果未知 → 预留留给 sweeper 按预估计费。
+- 错误用各自线协议的形状：OpenAI `{error:{message,type,code,param}}`，Anthropic `{type:'error', error:{type,message}}`。超额 429，message 是 `budget-errors.ts` 的中英双语原文（OpenAI `type:'insufficient_quota'`、`code:'usage_budget_exceeded'`；Anthropic `rate_limit_error`——Claude Code 会按 429 重试几次再把原文显示出来）。上游错误文本（含流内 error 事件）经 `sanitizeUpstreamText` 才给成员；上游 401/403 不透传原文，只说「凭证被拒，找管理员」。
+- Key 管理：成员 `GET /api/agent-access/gateway`（含两个 base URL、每个模型在哪条线可用、每把 Key 本月花费）、`POST /gateway/keys`（密钥只在 201 响应里出现一次；每人最多 20 把可用的）、`DELETE /gateway/keys/:id`；super `GET / DELETE /api/admin/metering/gateway-keys`。审计：`createGatewayKey` / `revokeGatewayKey`（操作记录里本人的 mcp 改动）、`revokeMemberGatewayKey`（管理员改动），summary 只有名称、前缀、模型、过期时间，不含密钥。
+- 外部 Agent 以成员身份调用，没有审批关卡（产品规则）；用量出现在「服务与计价」与「设置 › 用量」的 client `gateway` 下。
+- **待办：Codex 需要的 `/responses`（OpenAI Responses API）转换**，设计要点：
+  - 端点 `POST /api/gateway/openai/v1/responses`，把 Responses 请求翻成 Chat Completions 发给现有上游：`instructions` → system，`input` 的 message / `function_call` / `function_call_output` 项 → messages 与 tool_calls / tool 消息；`tools` 里只有 `function` 能翻，`custom`（Codex 的 freeform apply_patch）、`web_search`、`local_shell` 等内置工具要么拒绝要么在网关侧另做，必须先列清 Codex 实际发的工具。
+  - 流式要把 Chat chunk 重新组装成 Responses 事件序列（`response.created` → `response.output_item.added` → `response.output_text.delta` / `response.function_call_arguments.delta` → `…done` → `response.completed` 带 usage），`item_id` / `output_index` / `sequence_number` 自己编号；reasoning 项（DeepSeek `reasoning_content`）可映射为 `reasoning` 输出项或丢弃。
+  - Codex 默认 `store:false` + 每轮回传完整 input（含 `encrypted_content` 的 reasoning 项）；网关不存状态，`previous_response_id` 一律 400。
+  - 计价照本节规则（Responses 的 usage 由 Chat usage 换算），用真实 codex-cli 跑端到端再写进接入指南。
+
 ### Agent Profiles
 - Profile YAML 文件放在 `profiles/` 目录
 - 架构、工具矩阵、设计决策详见 [agent-profiles.md](./profiles/agent-profiles.md)
