@@ -325,6 +325,7 @@ export const zh: Catalog = {
     busy: '助手还在回复。你的消息已放回输入框，等这条回复结束后再发送。',
     sendFailed: '消息没有发出去',
     notFound: '这段对话不可用',
+    streamFailed: '实时回复中断了。',
     unreconciled: '这段对话还没和工作站确认。',
     startHint: '问问团队里的事——这周有什么到期、某篇文档、某个项目。',
   },

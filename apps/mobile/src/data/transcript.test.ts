@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { holdsNewReply, knownIds, withLatest, withOlder, type MessagePage, type TranscriptMessage } from './transcript';
+import { exchangeStart, holdsNewReply, withLatest, withOlder, type MessagePage, type TranscriptMessage } from './transcript';
 
 const m = (seq: number, role = seq % 2 ? 'assistant' : 'user', content = `m${seq}`): TranscriptMessage => ({
   id: `msg_${seq}`,
@@ -68,19 +68,31 @@ describe('a conversation’s transcript', () => {
 
   it('keeps a streamed reply until the saved transcript holds it', () => {
     const before = withLatest(null, page([100, 101], false));
-    const known = knownIds(before);
+    const known = exchangeStart(before);
     expect(holdsNewReply(page([100, 101], false), known)).toBe(false);
     expect(holdsNewReply({ messages: [m(102, 'user')], has_more: false, next_before_seq: null }, known)).toBe(false);
     expect(holdsNewReply({ messages: [m(102, 'user'), m(103, 'assistant')], has_more: false, next_before_seq: null }, known)).toBe(true);
   });
 
   it('recognises a reply that replaced an assistant message under the same seq', () => {
-    const known = knownIds(withLatest(null, page([100, 101], false)));
+    const known = exchangeStart(withLatest(null, page([100, 101], false)));
     const replaced: MessagePage = {
       messages: [m(100, 'user'), { id: 'msg_101_regenerated', role: 'assistant', content: 'again', seq: 101 }],
       has_more: false,
       next_before_seq: null,
     };
     expect(holdsNewReply(replaced, known)).toBe(true);
+  });
+
+  it('never takes an older message that merely was not loaded for the reply', () => {
+    // loaded 50–99; the server's latest page now reaches back to 49, which was never loaded
+    const loaded = withLatest(null, page(Array.from({ length: 50 }, (_, i) => 50 + i), true));
+    const start = exchangeStart(loaded);
+    const truncated: MessagePage = {
+      messages: Array.from({ length: 50 }, (_, i) => m(49 + i)),
+      has_more: true,
+      next_before_seq: 49,
+    };
+    expect(holdsNewReply(truncated, start)).toBe(false);
   });
 });

@@ -209,4 +209,39 @@ describe('an open conversation', () => {
     expect(new Set(tails).size).toBeGreaterThan(1);
     expect(tailOf(c.state)).not.toBe(opened);
   });
+
+  it('keeps the live exchange, its error and the retry when a 409 follow breaks off without a saved reply', async () => {
+    // loaded 50–99; on the web the conversation is then cut at 98 and re-run, which is still writing
+    let saved = Array.from({ length: 100 }, (_, seq) => m(seq, seq % 2 ? 'assistant' : 'user'));
+    let active = false;
+    const latestPage = async () => {
+      const last = saved.slice(-50);
+      return ok<MessagePage>({ messages: last, has_more: true, next_before_seq: last[0]!.seq });
+    };
+    const deps: ConversationDeps = {
+      title: async () => ok({ title: 'Long' }),
+      latestPage,
+      olderPage: async () => ok<MessagePage>({ messages: [], has_more: false, next_before_seq: null }),
+      send: async () => miss(409) as StreamOutcome,
+      runActive: async () => ok({ active }),
+      follow: async (onEvent) => {
+        onEvent({ type: 'text-delta', text: 'Partial' });
+        active = false;
+        return { ok: false, status: 0, code: 'network', message: 'stream closed' };
+      },
+      stillCurrent: () => true,
+      wait: async () => {},
+    };
+    const c = new Conversation(deps);
+    await c.open();
+    expect(c.state.transcript?.messages[0]?.seq).toBe(50);
+    saved = saved.filter((x) => x.seq <= 98);
+    active = true;
+    const result = await c.send('Mine');
+    expect(result).toMatchObject({ sent: false, restore: 'Mine', notice: 'busy' });
+    await vi.waitFor(() => expect(c.state.busy).toBe(false));
+    expect(c.state.streamFailed).toBe(true);
+    expect(c.state.unreconciled).toBe(true);
+    expect(c.state.reply?.text).toBe('Partial');
+  });
 });

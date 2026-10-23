@@ -15,7 +15,7 @@
 
 import type { ApiMiss, ApiResult } from '../api/client';
 import { applyEvent, EMPTY_REPLY, type ChatEvent, type LiveReply } from './chat-stream';
-import { holdsNewReply, knownIds, withLatest, withOlder, type MessagePage, type Transcript, type TranscriptMessage } from './transcript';
+import { exchangeStart, holdsNewReply, withLatest, withOlder, type ExchangeStart, type MessagePage, type Transcript, type TranscriptMessage } from './transcript';
 
 export type StreamOutcome = { ok: true; finished: boolean } | ApiMiss;
 
@@ -46,6 +46,8 @@ export interface ConversationState<M extends TranscriptMessage = TranscriptMessa
   busy: boolean;
   /** The exchange on screen is not confirmed by the saved transcript yet; offer a retry. */
   unreconciled: boolean;
+  /** Following the reply being written broke off (the reply may still be saved later). */
+  streamFailed: boolean;
   loadingOlder: boolean;
 }
 
@@ -62,6 +64,7 @@ export const CLOSED_CONVERSATION: ConversationState<never> = {
   reply: null,
   busy: false,
   unreconciled: false,
+  streamFailed: false,
   loadingOlder: false,
 };
 
@@ -86,8 +89,8 @@ export class Conversation<M extends TranscriptMessage = TranscriptMessage> {
   state: ConversationState<M> = CLOSED_CONVERSATION;
   private listeners = new Set<() => void>();
   private abort = new AbortController();
-  /** The message ids loaded when the exchange on screen began. */
-  private known: ReadonlySet<string> = new Set();
+  /** What was loaded when the exchange on screen began. */
+  private start: ExchangeStart = exchangeStart(null);
   private disposed = false;
 
   constructor(private deps: ConversationDeps<M>) {}
@@ -158,8 +161,8 @@ export class Conversation<M extends TranscriptMessage = TranscriptMessage> {
   async send(text: string): Promise<SendResult> {
     const message = text.trim();
     if (!message || this.state.busy) return { sent: false, restore: text, notice: 'busy', message: '' };
-    this.known = knownIds(this.state.transcript);
-    this.set({ pending: message, reply: EMPTY_REPLY, busy: true, unreconciled: false });
+    this.start = exchangeStart(this.state.transcript);
+    this.set({ pending: message, reply: EMPTY_REPLY, busy: true, unreconciled: false, streamFailed: false });
     const outcome = await this.deps.send(message, this.onEvent, this.abort.signal);
     if (!this.live()) return { sent: true };
     if (!outcome.ok) {
@@ -182,13 +185,14 @@ export class Conversation<M extends TranscriptMessage = TranscriptMessage> {
     this.set({ busy: true });
     const page = await this.deps.latestPage();
     if (!this.live()) return;
-    if (page.ok && holdsNewReply(page.data, this.known)) {
+    if (page.ok && holdsNewReply(page.data, this.start)) {
       this.set({
         transcript: withLatest(this.state.transcript, page.data),
         pending: null,
         reply: null,
         busy: false,
         unreconciled: false,
+        streamFailed: false,
         loadFailed: false,
       });
       return;
@@ -200,10 +204,11 @@ export class Conversation<M extends TranscriptMessage = TranscriptMessage> {
   private async followActive(): Promise<void> {
     const run = await this.deps.runActive();
     if (!this.live() || !run.ok || !run.data.active || this.state.busy) return;
-    this.known = knownIds(this.state.transcript);
-    this.set({ reply: EMPTY_REPLY, busy: true, unreconciled: false });
+    this.start = exchangeStart(this.state.transcript);
+    this.set({ reply: EMPTY_REPLY, busy: true, unreconciled: false, streamFailed: false });
     const outcome = await this.deps.follow(this.onEvent, this.abort.signal);
     if (!this.live()) return;
+    if (!outcome.ok) this.set({ streamFailed: true });
     if (!outcome.ok || !outcome.finished) await this.waitForRun();
     await this.reconcile();
   }

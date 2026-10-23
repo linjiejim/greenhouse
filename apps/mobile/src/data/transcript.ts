@@ -57,16 +57,28 @@ export function withOlder<M extends TranscriptMessage>(current: Transcript<M>, p
   return { messages: merged(page.messages, current.messages), before: page.has_more ? page.next_before_seq : null };
 }
 
-/** The ids of the messages loaded, to recognise a reply among them later. */
-export function knownIds(transcript: Transcript | null): Set<string> {
-  return new Set((transcript?.messages ?? []).map((message) => message.id));
+/** What was loaded when an exchange began: the last seq and the id at each loaded seq. */
+export interface ExchangeStart {
+  lastSeq: number;
+  idAt: ReadonlyMap<number, string>;
+}
+
+export function exchangeStart(transcript: Transcript | null): ExchangeStart {
+  const messages = transcript?.messages ?? [];
+  return { lastSeq: messages.at(-1)?.seq ?? -1, idAt: new Map(messages.map((message) => [message.seq, message.id])) };
 }
 
 /**
- * Whether a saved page holds the reply to a message sent when the transcript held `known`: an
- * assistant message that was not there — after the last one, or in place of one (same seq, new
- * id, when the conversation was edited and re-run). Until then the streamed reply stays on screen.
+ * Whether a saved page holds the reply to an exchange that began at `start`: an assistant message
+ * newer than the exchange — after the last seq then loaded, or in place of a loaded message (same
+ * seq, new id: the conversation was edited and re-run). An older message that merely was not
+ * loaded (below the loaded range) is not a reply. Until one is there the streamed reply stays.
  */
-export function holdsNewReply(page: MessagePage, known: ReadonlySet<string>): boolean {
-  return page.messages.some((message) => message.role === 'assistant' && !known.has(message.id));
+export function holdsNewReply(page: MessagePage, start: ExchangeStart): boolean {
+  return page.messages.some((message) => {
+    if (message.role !== 'assistant') return false;
+    if (message.seq > start.lastSeq) return true;
+    const before = start.idAt.get(message.seq);
+    return before !== undefined && before !== message.id;
+  });
 }

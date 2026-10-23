@@ -331,6 +331,7 @@ export const en = {
     busy: 'The assistant is still replying. Your message is back in the box — send it once the reply ends.',
     sendFailed: 'Couldn’t send the message',
     notFound: 'This conversation isn’t available',
+    streamFailed: 'The live reply broke off.',
     unreconciled: 'This exchange isn’t confirmed by the station yet.',
     startHint: 'Ask about your team’s work — what’s due this week, a document, a project.',
   },

@@ -166,6 +166,7 @@ export default function Chat() {
                   </View>
                 ) : null}
                 {live.error ? <Text style={styles.error}>{live.error}</Text> : null}
+                {state.streamFailed ? <Text style={styles.error}>{t('assistant.streamFailed')}</Text> : null}
                 {state.unreconciled ? (
                   <View style={styles.unsynced}>
                     <Text style={styles.note}>{t('assistant.unreconciled')}</Text>
