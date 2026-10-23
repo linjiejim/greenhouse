@@ -12,7 +12,7 @@ import { ChatTopBarSessionActions, EditableChatTitle, TopBar } from './top-bar';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-function renderTopBar(route: 'chat' | 'projects' | 'executions' | 'tasks') {
+function renderTopBar(route: 'chat' | 'projects' | 'executions' | 'skillhub') {
   return renderToStaticMarkup(
     createElement(I18nProvider, {
       initialLocale: 'en',
@@ -49,8 +49,8 @@ describe('TopBar mobile chat actions', () => {
     expect(html).not.toContain('>Prompts<');
   });
 
-  it('names the independent prompt library Tasks', () => {
-    expect(renderTopBar('tasks')).toContain('>Tasks<');
+  it('names SkillHub, which now also hosts the prompt library', () => {
+    expect(renderTopBar('skillhub')).toContain('>SkillHub<');
   });
 
   it('renders sharing as an icon-only conversation action', () => {

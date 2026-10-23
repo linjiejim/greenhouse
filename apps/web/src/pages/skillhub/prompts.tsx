@@ -1,5 +1,6 @@
 /**
- * Quick Prompts management — Settings sub-page.
+ * My prompts — the prompt (Task) library, shown as a tab of SkillHub
+ * (`#/skillhub?tab=prompts`; the old `#/tasks` page redirects here).
  *
  * Rebuilt on @greenhouse/crud: one defineCrud schema drives the list, the add/edit
  * dialog, and delete-confirm. The data source adapts the existing hc-typed
@@ -8,16 +9,15 @@
  */
 
 import React, { useMemo, useState } from 'react';
-import { defineCrud, CrudPage, type CrudDataSource } from './settings/crud';
-import { Badge, Button, Checkbox, EmptyState, FilterPills, Input } from '../components/ui';
-import { Plus, Globe, MessageSquare } from '../lib/icons';
-import { fetchPrompts, createPrompt, updatePrompt, deletePrompt } from '../lib/api/prompts';
-import { useT } from '../lib/i18n';
-import { useAuthStore } from '../stores';
+import { defineCrud, CrudPage, type CrudDataSource } from '../settings/crud';
+import { Badge, Button, Checkbox, EmptyState, FilterPills, Input } from '../../components/ui';
+import { Plus, Globe, MessageSquare } from '../../lib/icons';
+import { fetchPrompts, createPrompt, updatePrompt, deletePrompt } from '../../lib/api/prompts';
+import { useT } from '../../lib/i18n';
+import { useAuthStore } from '../../stores';
 import type { PromptScope, UserPrompt } from '@greenhouse/types/api';
 import { parseExpectedTools, parseTaskVariables, placeholdersIn } from '@greenhouse/types/tasks';
-import { assetScopeItems, DEFAULT_ASSET_SCOPE, type AssetScope } from '../lib/asset-scopes';
-import { ModulePage } from '../components/app/module-page';
+import { assetScopeItems, DEFAULT_ASSET_SCOPE, type AssetScope } from '../../lib/asset-scopes';
 
 /** Trim + shape the form payload exactly like the legacy dialog did
  *  (empty shortcut → undefined; is_global only present when the field was visible). */
@@ -31,7 +31,7 @@ function shapePayload(data: Record<string, unknown>) {
   };
 }
 
-export function PromptsPage() {
+export function PromptsPanel() {
   const t = useT();
   const currentUser = useAuthStore((state) => state.currentUser);
   const isSuper = currentUser?.role === 'super';
@@ -247,9 +247,5 @@ export function PromptsPage() {
     [t, isSuper, currentUser?.id, dataSource, scope],
   );
 
-  return (
-    <ModulePage moduleId="workspace.tasks" layout="list">
-      <CrudPage key={scope} schema={schema} />
-    </ModulePage>
-  );
+  return <CrudPage key={scope} schema={schema} />;
 }

@@ -49,7 +49,6 @@ type Route =
   | 'knowledge'
   | 'tables'
   | 'skillhub'
-  | 'tasks'
   | 'executions';
 
 interface AppSidebarProps {

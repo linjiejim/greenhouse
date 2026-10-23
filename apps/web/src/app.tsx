@@ -22,7 +22,6 @@ const DesignPage = lazy(() => import('./pages/design').then((m) => ({ default: m
 const KnowledgePage = lazy(() => import('./pages/knowledge').then((m) => ({ default: m.KnowledgePage })));
 const AgentsPage = lazy(() => import('./pages/agents').then((m) => ({ default: m.AgentsPage })));
 const AutomationsPage = lazy(() => import('./pages/automations').then((m) => ({ default: m.AutomationsPanel })));
-const PersonalTasksPage = lazy(() => import('./pages/tasks').then((m) => ({ default: m.PromptsPage })));
 const SkillHubPage = lazy(() => import('./pages/skillhub').then((m) => ({ default: m.SkillHubPage })));
 const ExecutionCenterPage = lazy(() => import('./pages/executions').then((m) => ({ default: m.ExecutionsPage })));
 const TablesPage = lazy(() => import('./pages/tables').then((m) => ({ default: m.TablesPage })));
@@ -67,6 +66,7 @@ import { buildPrimaryNavigation } from './platform/navigation';
 import { usePlatformCatalog, usePlatformStore } from './stores/platform-store';
 import { useMobileKeyboardViewport } from './hooks/use-mobile-keyboard-viewport';
 import { legacyExecutionRedirect } from './lib/execution-route';
+import { retiredWorkspaceRedirect } from './lib/workspace-routes';
 
 // Initialize theme from localStorage on app load
 initTheme();
@@ -87,7 +87,6 @@ type Route =
   | 'knowledge'
   | 'tables'
   | 'skillhub'
-  | 'tasks'
   | 'executions';
 
 interface ParsedRoute {
@@ -183,7 +182,6 @@ const CORE_ROUTES: ReadonlySet<string> = new Set([
   'knowledge',
   'tables',
   'skillhub',
-  'tasks',
   'executions',
 ]);
 
@@ -199,29 +197,13 @@ function parseRoute(hash: string): ParsedRoute {
   const segments = path.split('/');
   const topLevel = segments[0] || 'chat';
 
-  // Chat utilities used to be in-memory workspace switches. Keep those links
-  // working, but canonicalize them to real pages so refresh/back/deep-links all
-  // describe the screen the user is actually looking at.
-  if (topLevel === 'chat') {
-    const legacyView = new URLSearchParams(query || '').get('view');
-    const destination =
-      legacyView === 'automations'
-        ? '#/automations'
-        : legacyView === 'prompts'
-          ? '#/tasks'
-          : legacyView === 'agents'
-            ? '#/agents'
-            : null;
-    if (destination) {
-      window.location.hash = destination;
-      return parseRoute(destination);
-    }
-  }
-
-  // Redirect the retired prompt alias into its canonical independent page.
-  if (topLevel === 'prompts') {
-    window.location.hash = '#/tasks';
-    return { route: 'tasks', subPath: '', params: new URLSearchParams() };
+  // Retired workspace pages (My prompts → SkillHub tab) and the legacy
+  // `#/chat?view=…` switches land on their canonical pages, so refresh/back/
+  // deep-links all describe the screen the user is actually looking at.
+  const workspaceRedirect = retiredWorkspaceRedirect(topLevel, new URLSearchParams(query || '').get('view'));
+  if (workspaceRedirect) {
+    window.location.hash = workspaceRedirect;
+    return parseRoute(workspaceRedirect);
   }
 
   if (topLevel === 'history') {
@@ -684,9 +666,8 @@ function AppShell({ route, subPath, params, extensionRoute }: AppShellProps) {
                   />
                 )}
                 {route === 'automations' && <AutomationsPage />}
-                {route === 'tasks' && <PersonalTasksPage />}
                 {route === 'agents' && <AgentsPage />}
-                {route === 'skillhub' && <SkillHubPage subPath={subPath} />}
+                {route === 'skillhub' && <SkillHubPage subPath={subPath} params={params} />}
                 {route === 'settings' && <SettingsPage subPath={subPath} />}
                 {route === 'administration' && <AdministrationPage subPath={subPath} />}
                 {route === 'projects' &&

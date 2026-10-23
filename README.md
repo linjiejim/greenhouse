@@ -100,7 +100,8 @@ same script doubles as an end-to-end smoke tour (see [Development](#development)
 - **Memory** — per-user memories with titles, pinning and lifecycle, plus the friction signals
   the agent logs when tooling gets in its way.
 - **Skill Center** — an org-wide library of agent skills (SKILL.md bundles) with immutable
-  versions, changelogs, security scanning, and first-party packs shipped from `skillhub/`.
+  versions, changelogs, security scanning, and first-party packs shipped from `skillhub/`. Its
+  *My prompts* tab holds your reusable prompts (Tasks), called from the chat composer with `/`.
 - **Email** *(optional)* — personal IMAP/SMTP mailboxes and a shared team mailbox; search,
   read, draft and send with a server-side draft confirmation.
 - **Notifications** — an in-app notification center with durable delivery to email, WeCom and
@@ -285,7 +286,8 @@ git pull && pnpm install && pnpm drizzle-kit migrate   # then restart the API
 > dropped in the next release. Sub-sessions (the `spawn_session` tool and its background
 > Subagent runs) are removed: Subagent runs still active at upgrade are closed on first boot,
 > historical ones stay readable in the Execution center, and `RUNTIME_SUBAGENT_DRIVER_ENABLED`
-> can be removed from `.env`.
+> can be removed from `.env`. *My prompts* (formerly the standalone Tasks page, `#/tasks`) moved
+> into SkillHub as its second tab; old links redirect.
 
 > **Upgrading to 1.4** — Evaluation, Missions (the cloud-agent sandbox), the team LLM relay
 > (`/api/llm`, relay keys, AI Gateway admin page) and Workflows are removed. There is no

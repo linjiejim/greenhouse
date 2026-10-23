@@ -602,7 +602,7 @@ await step('executions', async () => {
   await snap(page, 'execution-center', { wait: 1500 });
   await page.goto(`${BASE}/#/automations`);
   await snap(page, 'automations', { wait: 1200 });
-  await page.goto(`${BASE}/#/tasks`);
+  await page.goto(`${BASE}/#/skillhub?tab=prompts`);
   await snap(page, 'prompt-tasks', { wait: 1000 });
 });
 

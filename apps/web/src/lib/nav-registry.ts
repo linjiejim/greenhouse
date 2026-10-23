@@ -247,15 +247,6 @@ const KNOWLEDGE_MODULES: NavModule[] = [];
 // here lets them share ModulePage without creating a second header registry.
 const STANDALONE_MODULES: NavModule[] = [
   {
-    id: 'workspace.tasks',
-    label: 'Tasks',
-    icon: ClipboardList,
-    path: '#/tasks',
-    parent: 'standalone',
-    description: 'Reusable instructions available from the Chat composer',
-    pinnable: false,
-  },
-  {
     id: 'workspace.automations',
     label: 'Automation',
     icon: Zap,
@@ -348,7 +339,6 @@ const NAV_COPY: Record<string, { label: TranslationKey; description?: Translatio
   },
   'admin.frictions': { label: 'navigation.frictions', description: 'navigation.frictionsDesc' },
   'admin.mcp-keys': { label: 'navigation.mcpAccess', description: 'navigation.mcpAccessDesc' },
-  'workspace.tasks': { label: 'navigation.myPrompts', description: 'navigation.tasksDesc' },
   'workspace.automations': { label: 'navigation.automation', description: 'navigation.automationDesc' },
   'workspace.agents': { label: 'navigation.myAgents', description: 'navigation.myAgentsDesc' },
   'workspace.tables': { label: 'navigation.tables', description: 'navigation.tablesDesc' },

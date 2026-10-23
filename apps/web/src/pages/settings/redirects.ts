@@ -7,6 +7,8 @@
  * page component so the redirect map can be exercised without mounting React.
  */
 
+import { SKILLHUB_PROMPTS_HASH } from '../../lib/workspace-routes';
+
 /** Default settings module when the sub-path is empty. */
 export const DEFAULT_MODULE = 'preferences';
 
@@ -47,7 +49,7 @@ export function resolveSettingsRedirect(subPath: string): string | null {
 
   // Personal utilities are independent, refresh-safe pages now.
   if (moduleKey === 'automations') return '#/automations';
-  if (moduleKey === 'prompts') return '#/tasks';
+  if (moduleKey === 'prompts') return SKILLHUB_PROMPTS_HASH;
 
   const adminTarget = ADMIN_REDIRECTS[moduleKey];
   if (adminTarget) {

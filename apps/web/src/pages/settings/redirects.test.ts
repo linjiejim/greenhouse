@@ -16,7 +16,7 @@ describe('resolveSettingsRedirect', () => {
 
   it('sends retired personal-tool settings links to their independent pages', () => {
     expect(resolveSettingsRedirect('automations')).toBe('#/automations');
-    expect(resolveSettingsRedirect('prompts')).toBe('#/tasks');
+    expect(resolveSettingsRedirect('prompts')).toBe('#/skillhub?tab=prompts');
   });
 
   it('returns null for a real Settings module (stays put)', () => {

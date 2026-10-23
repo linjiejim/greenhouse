@@ -1,4 +1,4 @@
-import { Bot, MessageSquare, Zap, type LucideIcon } from '../../lib/icons';
+import { Bot, Zap, type LucideIcon } from '../../lib/icons';
 import type { TranslationKey } from '../../lib/i18n';
 import type { ChatWorkspaceView } from '../../stores';
 
@@ -9,11 +9,6 @@ export interface ChatWorkspaceNavigationItem {
 }
 
 export const CHAT_WORKSPACE_ITEMS: readonly ChatWorkspaceNavigationItem[] = [
-  {
-    id: 'prompts',
-    labelKey: 'navigation.myPrompts',
-    icon: MessageSquare,
-  },
   {
     id: 'automations',
     labelKey: 'navigation.automation',

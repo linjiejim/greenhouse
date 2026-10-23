@@ -399,7 +399,7 @@ const zh: Messages = {
     teamTasks: '团队',
     myTasks: '我的',
     noMatchingTasks: '没有匹配的 Task',
-    openTasks: '打开 Tasks 工作区',
+    openTasks: '打开我的提示词',
     agentProfile: 'Agent Profile',
     noMatchingAgentProfiles: '没有匹配的 Agent Profile',
     annotationsCount: '批注（{count}）',
@@ -702,8 +702,6 @@ const zh: Messages = {
     newChat: '新对话',
     automation: '自动化',
     automationDesc: '安排 Agent 定期执行重复工作',
-    myPrompts: '任务',
-    tasksDesc: '在对话输入框中随时调用的可复用任务指令',
     myAgents: '我的 Agent',
     myAgentsDesc: '创建和管理可复用的 Agent 配置',
     tables: '数据表',
@@ -1050,6 +1048,11 @@ const zh: Messages = {
 
   skillHub: {
     title: 'SkillHub',
+    tabs: {
+      label: 'SkillHub 分区',
+      skills: '技能',
+      prompts: '我的提示词',
+    },
     description:
       '面向全组织的 Agent 技能库。可以在这里直接上传，也可以从自己的 AI 工具经聊天或 MCP 发布；在这里浏览，并选择技能查看说明和版本历史。每次上传都会先经过安全扫描才可下载。',
     useInOwnTool: '在自己的 AI 工具中使用这些技能',

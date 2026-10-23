@@ -395,7 +395,7 @@ export default {
     teamTasks: 'Team',
     myTasks: 'Mine',
     noMatchingTasks: 'No matching Tasks',
-    openTasks: 'Open Tasks workspace',
+    openTasks: 'Open My prompts',
     agentProfile: 'Agent Profile',
     noMatchingAgentProfiles: 'No matching Agent Profiles',
     annotationsCount: 'Annotations ({count})',
@@ -705,8 +705,6 @@ export default {
     newChat: 'New Chat',
     automation: 'Automation',
     automationDesc: 'Schedule recurring work for Agents',
-    myPrompts: 'Tasks',
-    tasksDesc: 'Reusable instructions available from the Chat composer',
     myAgents: 'My Agents',
     myAgentsDesc: 'Create and manage reusable Agent configurations',
     tables: 'Tables',
@@ -1066,6 +1064,11 @@ export default {
 
   skillHub: {
     title: 'SkillHub',
+    tabs: {
+      label: 'SkillHub sections',
+      skills: 'Skills',
+      prompts: 'My prompts',
+    },
     description:
       'The organization-wide library of agent skills. Upload one here, or publish from your own AI tool through chat or MCP; browse them here and select one to read its guide and version history. Every upload is scanned before it becomes downloadable.',
     useInOwnTool: 'Use these skills in your own AI tool',

@@ -42,7 +42,6 @@ type Route =
   | 'knowledge'
   | 'tables'
   | 'skillhub'
-  | 'tasks'
   | 'executions';
 
 interface TopBarProps {
@@ -236,7 +235,6 @@ export function TopBar({
     knowledge: t('app.knowledge'),
     tables: 'Tables',
     skillhub: t('app.skillhub'),
-    tasks: t('navigation.myPrompts'),
     executions: t('taskCenter.title'),
   };
 
