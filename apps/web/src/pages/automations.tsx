@@ -47,7 +47,8 @@ import { assetScopeItems, DEFAULT_ASSET_SCOPE, filterAutomationsByScope, type As
 import { ModulePage } from '../components/app/module-page';
 import { AUTOMATIONS_PROFILES_HASH } from '../lib/workspace-routes';
 import { RunProfilesPanel } from './run-profiles';
-import { automationProfileChoices, pinnedProfileVersion, unpinnedProfileId } from '../lib/automation-profiles';
+import { pinnedProfileVersion, unpinnedProfileId } from '../lib/automation-profiles';
+import { AutomationProfileSelect } from './automation-profile-select';
 
 type Task = ScheduledTask & { schedule_desc?: string };
 
@@ -537,9 +538,6 @@ export function AutomationsPanel({ sectionTabs }: { sectionTabs?: React.ReactNod
       .then(setProfiles)
       .catch(() => {});
   }, []);
-  // System profiles, plus run profiles that are mine or shared with the team. The
-  // server pins the pick to its current version and re-checks access on every run.
-  const choices = useMemo(() => automationProfileChoices(profiles, currentUser?.id), [profiles, currentUser?.id]);
 
   const dataSource = useMemo<CrudDataSource<Task>>(
     () => ({
@@ -685,37 +683,16 @@ export function AutomationsPanel({ sectionTabs }: { sectionTabs?: React.ReactNod
             type: 'custom',
             width: 1,
             defaultValue: 'team',
-            render: ({ value, onChange }) => {
-              const current = String(value ?? 'team');
-              // An automation already pinned to a run profile version keeps showing it
-              // (saving without a change keeps the pin); picking the profile again
-              // re-pins it to the current version.
-              const pinned =
-                pinnedProfileVersion(current) !== null && !choices.runProfiles.some((p) => p.id === current) ? (
-                  <option value={current}>{profileName(current)}</option>
-                ) : null;
-              return (
-                <Select value={current} onChange={(e) => onChange(e.target.value)}>
-                  <optgroup label={t('automations.systemProfiles')}>
-                    {choices.system.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.name}
-                      </option>
-                    ))}
-                  </optgroup>
-                  {(choices.runProfiles.length > 0 || pinned) && (
-                    <optgroup label={t('automations.tabs.profiles')}>
-                      {pinned}
-                      {choices.runProfiles.map((p) => (
-                        <option key={p.id} value={p.id}>
-                          {p.name}
-                        </option>
-                      ))}
-                    </optgroup>
-                  )}
-                </Select>
-              );
-            },
+            render: ({ value, onChange, form, mode }) => (
+              <AutomationProfileSelect
+                value={String(value ?? 'team')}
+                onChange={onChange}
+                profiles={profiles}
+                currentUserId={currentUser?.id}
+                ownerId={mode === 'edit' && typeof form.user_id === 'string' ? form.user_id : undefined}
+                nameOf={profileName}
+              />
+            ),
           },
           {
             key: 'timezone',
@@ -914,7 +891,7 @@ export function AutomationsPanel({ sectionTabs }: { sectionTabs?: React.ReactNod
       }),
     // `wecom` arrives asynchronously; without it the schema never rebuilds
     // and the WeCom toggle stays disabled even after the binding loads.
-    [t, dataSource, choices, profileName, wecom, feishu, scope, isSuper],
+    [t, dataSource, profiles, currentUser?.id, profileName, wecom, feishu, scope, isSuper],
   );
 
   return (
