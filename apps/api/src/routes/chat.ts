@@ -444,7 +444,6 @@ export function createChatRoute(toolRegistry: ToolRegistry) {
                 sessionId,
                 workspaceId: body.workspace_id,
                 profileId: profile.id,
-                runtimeRunId: runtimeTrace?.runId ?? null,
                 toolRegistry,
               }),
             },

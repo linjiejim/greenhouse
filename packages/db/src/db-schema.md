@@ -60,9 +60,9 @@
 
 ### 统一 Runtime Kernel
 
-Chat、Automation 与 Subagent 共用的执行控制面（`workflow` / `mission` / `eval` 只剩 v1.4 前的历史 Run）（见 [平台收敛 spec](../../../docs/specs/20260812-trusted-execution-platform-convergence.md)）。Run/Step 的竞争迁移走 version CAS，worker 领取走 `FOR UPDATE SKIP LOCKED` + lease；heartbeat、状态迁移、永久 Event 与至少一次 Outbox 在同一事务提交。跨领域 Run command 的 `FOR UPDATE` 锁覆盖来源 side effect，再 CAS 推进 Runtime 并落 Event/Outbox，阻止同版本 pause/cancel 双执行。stale Step 只有 driver 提供安全 checkpoint 后才会把旧 attempt 终态化并排入新的 attempt，避免把不确定外部写静默重放。
+Chat 与 Automation 共用的执行控制面（`workflow` / `mission` / `eval` 只剩 v1.4 前的历史 Run，`subagent` 只剩 1.5 前的历史 Run）（见 [平台收敛 spec](../../../docs/specs/20260812-trusted-execution-platform-convergence.md)）。Run/Step 的竞争迁移走 version CAS，worker 领取走 `FOR UPDATE SKIP LOCKED` + lease；heartbeat、状态迁移、永久 Event 与至少一次 Outbox 在同一事务提交。跨领域 Run command 的 `FOR UPDATE` 锁覆盖来源 side effect，再 CAS 推进 Runtime 并落 Event/Outbox，阻止同版本 pause/cancel 双执行。stale Step 只有 driver 提供安全 checkpoint 后才会把旧 attempt 终态化并排入新的 attempt，避免把不确定外部写静默重放。
 
-Subagent 以 child session 作为唯一 `source_id`，完整请求保存在 Run/Step input；`parent_run_id/root_run_id` 串起 Chat、Automation 和嵌套 Subagent。`runtime.admitSubagent()` 以稳定 tool-call identity 派生的 child/message id 为幂等边界，在同一事务写 child session、seq=0 user message、Run 与 Step，失败整笔回滚，因此不需要 boot orphan reconciler。每父 active async child admission 由内部 `createRun` advisory lock + JSON input 的 parent/mode 计数原子裁决，无进程内计数事实。整轮 Agent turn 的 `max_attempts=1`：claim-only 崩溃可在 provider/工具边界前释放 Step lease恢复，`running` stale 终态失败且不自动重放。
+历史 Subagent Run（1.5 前）以 child session 作为唯一 `source_id`，`parent_run_id/root_run_id` 串起父 Chat / Automation；子会话已退役，不再产生新行。
 
 | 表 | 主键 / 唯一约束 | 关键字段与用途 |
 |---|---|---|
@@ -153,7 +153,7 @@ Subagent 以 child session 作为唯一 `source_id`，完整请求保存在 Run/
 
 | 表 | 主键 / 唯一约束 | 关键字段与用途 |
 |---|---|---|
-| `usage_counters` | 复合 PK `(day, kind, key, client)` | 每日用量计数：`tool_call`（key=工具 id）/ `page_open`（key=模块 id）× 客户端（工具调用：mcp / agent_api / web_chat / browser / mobile / feishu / automation / subagent；页面打开：web / desktop / mobile / browser）；只有计数，没有内容和用户 |
+| `usage_counters` | 复合 PK `(day, kind, key, client)` | 每日用量计数：`tool_call`（key=工具 id）/ `page_open`（key=模块 id）× 客户端（工具调用：mcp / agent_api / web_chat / browser / mobile / feishu / automation，历史行还有 subagent；页面打开：web / mobile，历史行还有 desktop / browser）；只有计数，没有内容和用户 |
 | `rate_limit_buckets` | PK `key` | 固定窗口限流计数（`<规则>:<主体>:<窗口起点>`），过期即清；进程重启或多实例不再重置限流 |
 | `oauth_login_states` | PK `id`（state/code 的 SHA-256） | 飞书 / 企微登录的 pending state 与一次性登录码；原值不入库，`consumed_at` 保证一次性，过期即清 |
 

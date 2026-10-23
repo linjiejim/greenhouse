@@ -212,7 +212,6 @@ export function TaskCenter({
           >
             <option value="all">{t('taskCenter.kind.all')}</option>
             <option value="automation">{t('taskCenter.kind.automation')}</option>
-            <option value="subagent">{t('taskCenter.kind.subagent')}</option>
             <option value="agent_write">{t('taskCenter.kind.agent_write')}</option>
           </Select>
           {isSuper && (

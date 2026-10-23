@@ -60,8 +60,8 @@ Write in English, but quote identifiers, field names, values and error strings E
   icon: 'MessageSquareWarning',
   runtime_risk: 'r1',
   // No `surface` for now: a write into a team-wide table from a stateless
-  // caller, with nothing for the per-call confirm gate to mean. Chat, scheduled
-  // tasks and subagents can log; /api/agent and /api/mcp cannot (revisit if the
+  // caller, with nothing for the per-call confirm gate to mean. Chat and
+  // scheduled tasks can log; /api/agent and /api/mcp cannot (revisit if the
   // sandbox's frictions turn out to be the ones worth having).
   sort_order: 38,
 };

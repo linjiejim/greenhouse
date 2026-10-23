@@ -2114,13 +2114,6 @@ export default {
     deleteFolderConfirm: '“{name}” will be deleted (the folder must be empty first)',
   },
 
-  toolSpawn: {
-    subSession: 'Sub-session',
-    running: 'Running…',
-    done: 'Done',
-    open: 'Open',
-  },
-
   // Chat message actions
   messageActions: {
     translateToChinese: 'Translate to Chinese',
@@ -2678,7 +2671,7 @@ export default {
 
   taskCenter: {
     title: 'Execution Center',
-    description: 'Track background work and outcomes: automations, subagents and your agents’ writes.',
+    description: 'Track background work and outcomes: automations and your agents’ writes.',
     filters: 'Execution filters',
     kindFilter: 'Execution type',
     scopeFilter: 'Execution ownership',
@@ -2686,7 +2679,7 @@ export default {
     unavailableTitle: 'Execution Center is unavailable',
     loadMore: 'Load more',
     emptyTitle: 'No executions in this view',
-    emptyDescription: 'Automations, subagents and your agents’ writes appear here when they start.',
+    emptyDescription: 'Automations and your agents’ writes appear here when they start.',
     notFound: 'Execution not found',
     openRun: 'Open execution: {title}',
     inboxTitle: 'Waiting for me',

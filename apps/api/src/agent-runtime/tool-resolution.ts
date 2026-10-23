@@ -13,7 +13,7 @@
 import type { DatabaseProvider } from '@greenhouse/db';
 import { fromExtensions } from '../extensions/index.js';
 import { normalizeAutomationOptInTools } from '@greenhouse/types/automation-tools';
-import { resolveUserTools, selectTools } from '../agent.js';
+import { resolveUserTools } from '../agent.js';
 import type { ToolRegistry } from '../agent.js';
 import { createFeatureRequestTool } from '../tools/feature-request.js';
 // Derived from the catalog (kind !== 'static' + route-constructed special metas) — see registry.
@@ -25,7 +25,6 @@ import {
   WORKBENCH_READ_TOOL_IDS,
 } from '../tools/registry.js';
 export { LAZY_TOOL_IDS };
-import { createSpawnSessionTool, MAX_SPAWN_DEPTH } from '../tools/spawn-session.js';
 import { createCallLlmTool } from '../tools/call-llm.js';
 import { createProjectQueryTool } from '../tools/project-query.js';
 import { createProjectMutationTool } from '../tools/project-mutation.js';
@@ -56,22 +55,11 @@ import type { AgentProfile } from '../profiles/profile.js';
 
 /**
  * Draft-only tools whose confirm surface is a card in a HUMAN conversation — a
- * Tables schema change, a captured task. A headless child session has no user
- * to press Confirm, so a draft made there would just strand. They are stripped
- * from every unattended tool face (scheduled runs, spawned sub-sessions).
+ * Tables schema change, a captured task. A headless run has no user to press
+ * Confirm, so a draft made there would just strand. They are stripped from every
+ * unattended tool face (scheduled runs).
  */
 export const DISPATCH_TOOL_IDS: readonly string[] = ['tables_schema_plan', 'task_capture'];
-
-/**
- * Tool ids a child session may hold at a given lineage depth. Dispatch tools
- * never reach a child (see above). spawn_session is additionally removed once
- * the depth cap is reached, so a sub-session can never spawn an endless chain
- * of grandchildren. call_llm has no recursion vector and is kept.
- */
-export function childSpawnToolIds(ids: string[], depth: number): string[] {
-  const kept = filterUnattendedToolIds(ids).filter((t) => !DISPATCH_TOOL_IDS.includes(t));
-  return depth >= MAX_SPAWN_DEPTH ? kept.filter((t) => t !== 'spawn_session') : kept;
-}
 
 export interface ResolveEffectiveToolsArgs {
   userId: string;
@@ -129,22 +117,19 @@ export interface LazyServerToolContext {
   workspaceId?: string | null;
   /** Bind workspace-aware tool inputs to workspaceId (proxy/task credentials). */
   lockWorkspace?: boolean;
-  /** Profile of the running session — used to pick the sub-call / child model. */
+  /** Profile of the running session — used to pick the sub-call model. */
   profileId?: string | null;
   /**
-   * The shared static tool registry. Required to wire `spawn_session` (it needs
-   * the registry to assemble a child session's tool set). Absent on the stateless
-   * proxy/MCP surfaces, so spawn_session simply doesn't activate there.
+   * The shared static tool registry, so workbench tools can evaluate cards that
+   * bind static tools. Absent on surfaces that don't pass it.
    */
   toolRegistry?: ToolRegistry;
   /**
-   * No human is present for the rest of the turn — scheduled-task runs and
-   * spawned sub-sessions. Tools that stay available here may still need to narrow what
-   * they will do. Dropping a tool outright is UNATTENDED_TOOL_DENYLIST's job instead.
+   * No human is present for the rest of the turn — scheduled-task runs. Tools
+   * that stay available here may still need to narrow what they will do.
+   * Dropping a tool outright is UNATTENDED_TOOL_DENYLIST's job instead.
    */
   unattended?: boolean;
-  /** Current durable parent Run; spawn_session uses it for root lineage. */
-  runtimeRunId?: string | null;
 }
 
 /**
@@ -155,8 +140,8 @@ export interface LazyServerToolContext {
  * include browser client actions (route-specific).
  */
 /**
- * Tools denied in every UNATTENDED context — scheduled-task runs and spawned
- * sub-sessions, where no human is present for the rest of the turn.
+ * Tools denied in every UNATTENDED context — scheduled-task runs, where no
+ * human is present for the rest of the turn.
  *
  * Today that is the automation writer: its real gate is the user agreeing to a
  * schedule, and nobody is there to give it. Worse, a scheduled run able to
@@ -193,10 +178,9 @@ function isAutomaticUnattendedTool(toolId: string): boolean {
  *
  * `optInToolIds` is the automation OWNER's explicit per-task grant (see
  * docs/specs/20260824-automation-optin-tools.md). It is an EXPLICIT parameter
- * rather than a default or an ambient context on purpose: this function has
- * two consumers — the scheduler executor and `childSpawnToolIds` (spawned
- * sub-sessions) — and only the first one has a human who ticked a box at
- * configuration time. A default value here would leak the grant into the other
+ * rather than a default or an ambient context on purpose: only a caller with a
+ * human who ticked a box at configuration time (the scheduler executor) may pass
+ * one, and a default value here would leak the grant into any other caller
  * silently.
  *
  * The two branches are a UNION, and the automatic branch is untouched: an
@@ -362,10 +346,10 @@ export function buildLazyServerTools(
     }
   }
 
-  // ── Session orchestration tools (session-scoped) ──
-  // call_llm and spawn_session only make sense inside a running session: call_llm
-  // audits to it, spawn_session links children to it. The stateless proxy/MCP
-  // surfaces pass no sessionId, so these never activate there.
+  // ── Session-scoped tools ──
+  // These only make sense inside a running session (call_llm audits to it,
+  // export_data / task_capture / read_attachment bind to it). The stateless
+  // proxy/MCP surfaces pass no sessionId, so these never activate there.
   if (sessionId) {
     const uid = userId;
     const parentSessionId = sessionId;
@@ -389,47 +373,6 @@ export function buildLazyServerTools(
         userId: uid,
         sessionId: parentSessionId,
         profileId: ctx.profileId ?? null,
-      });
-    }
-    if (effectiveTools.includes('spawn_session') && ctx.toolRegistry && (userRole === 'team' || userRole === 'super')) {
-      const toolRegistry = ctx.toolRegistry;
-      tools.spawn_session = createSpawnSessionTool(db, {
-        userId: uid,
-        userRole,
-        parentSessionId,
-        parentProfileId: ctx.profileId ?? null,
-        parentRuntimeRunId: ctx.runtimeRunId ?? null,
-        workspaceId: ctx.workspaceId ?? null,
-        // Assemble a child's tools through the SAME resolution path as a top-level
-        // session — so the child's set is always ⊆ the caller's permissions — and
-        // strip spawn_session once the depth cap is reached to bound recursion.
-        assembleChildTools: async ({ childSessionId, profile, depth, runtimeRunId }) => {
-          const { effectiveTools: childEff } = await resolveEffectiveTools({
-            userId: uid,
-            userRole,
-            profile,
-            profileId: profile.id,
-          });
-          const ids = childSpawnToolIds(childEff, depth);
-          const childTools = selectTools(
-            toolRegistry,
-            ids.filter((t) => !LAZY_TOOL_IDS.has(t)),
-          );
-          Object.assign(
-            childTools,
-            buildLazyServerTools(db, ids, {
-              userId: uid,
-              userRole,
-              sessionId: childSessionId,
-              workspaceId: ctx.workspaceId,
-              profileId: profile.id,
-              toolRegistry,
-              unattended: true,
-              runtimeRunId,
-            }),
-          );
-          return childTools;
-        },
       });
     }
   }

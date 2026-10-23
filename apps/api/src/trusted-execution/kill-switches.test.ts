@@ -5,7 +5,6 @@ import {
   requireTrustedExecutionSurface,
   resolveTrustedExecutionSwitches,
   runtimeAdapterEnabled,
-  runtimeDriverEnabled,
   trustedExecutionBootPlan,
   trustedExecutionHealthView,
 } from './kill-switches.js';
@@ -17,15 +16,12 @@ describe('trusted-execution kill switches', () => {
       chatAdapter: true,
       runtimeWorker: true,
       automationDriver: true,
-      subagentDriver: true,
       notificationProjector: true,
       taskCenter: true,
       approvalInbox: true,
       invalidEnv: [],
     });
     expect(runtimeAdapterEnabled('chat', switches)).toBe(true);
-    expect(runtimeDriverEnabled('automation', switches)).toBe(true);
-    expect(runtimeDriverEnabled('subagent', switches)).toBe(true);
   });
 
   it('accepts explicit booleans and fails closed on a typo', () => {
@@ -33,8 +29,7 @@ describe('trusted-execution kill switches', () => {
       RUNTIME_CHAT_ADAPTER_ENABLED: 'yes',
       RUNTIME_WORKER_ENABLED: 'FALSE',
       RUNTIME_AUTOMATION_DRIVER_ENABLED: 'no',
-      RUNTIME_SUBAGENT_DRIVER_ENABLED: 'bad-value',
-      RUNTIME_NOTIFICATION_PROJECTOR_ENABLED: 'yes',
+      RUNTIME_NOTIFICATION_PROJECTOR_ENABLED: 'bad-value',
       TASK_CENTER_ENABLED: 'tru',
       RUNTIME_APPROVAL_INBOX_ENABLED: '1',
     });
@@ -42,11 +37,10 @@ describe('trusted-execution kill switches', () => {
       chatAdapter: true,
       runtimeWorker: false,
       automationDriver: false,
-      subagentDriver: false,
-      notificationProjector: true,
+      notificationProjector: false,
       taskCenter: false,
       approvalInbox: true,
-      invalidEnv: ['RUNTIME_SUBAGENT_DRIVER_ENABLED', 'TASK_CENTER_ENABLED'],
+      invalidEnv: ['RUNTIME_NOTIFICATION_PROJECTOR_ENABLED', 'TASK_CENTER_ENABLED'],
     });
   });
 
@@ -55,7 +49,6 @@ describe('trusted-execution kill switches', () => {
       RUNTIME_CHAT_ADAPTER_ENABLED: '0',
       RUNTIME_WORKER_ENABLED: '0',
       RUNTIME_AUTOMATION_DRIVER_ENABLED: '1',
-      RUNTIME_SUBAGENT_DRIVER_ENABLED: '1',
       RUNTIME_NOTIFICATION_PROJECTOR_ENABLED: '1',
       TASK_CENTER_ENABLED: '0',
       RUNTIME_APPROVAL_INBOX_ENABLED: '1',
@@ -64,7 +57,6 @@ describe('trusted-execution kill switches', () => {
       runtimeWorker: false,
       chatAdapter: false,
       automationDriver: false,
-      subagentDriver: false,
       notificationProjector: false,
       taskCenter: false,
       approvalInbox: false,
@@ -74,7 +66,6 @@ describe('trusted-execution kill switches', () => {
       services: {
         runtime_worker: false,
         automation_driver: false,
-        subagent_driver: false,
         notification_projector: false,
         notification_delivery: false,
       },

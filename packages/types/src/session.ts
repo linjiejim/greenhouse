@@ -37,7 +37,7 @@ export interface SessionRow {
   user_id: string | null;
   app_id: string | null;
   channel: SessionChannel;
-  /** Set when this session was spawned by another session (spawn_session tool). */
+  /** Set when this session was spawned by another session (historical: the spawn_session tool, retired in 1.5). */
   parent_session_id: string | null;
   metadata: string;
   created_at: string;

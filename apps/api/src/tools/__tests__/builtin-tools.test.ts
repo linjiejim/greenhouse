@@ -44,7 +44,6 @@ describe('BUILTIN_AGENT_TOOL_IDS', () => {
       'email_mutation',
       'generate_image',
       'external_search',
-      'spawn_session',
       'tables_schema_plan',
     ];
     for (const id of forbidden) expect(BUILTIN_AGENT_TOOL_IDS.has(id)).toBe(false);

@@ -10,8 +10,8 @@ import {
 export { executionRunHref, parseExecutionSubPath } from '../../lib/execution-route';
 
 export type TaskCenterTab = 'attention' | 'active' | 'completed' | 'failed' | 'all';
-/** Retired kinds (Mission, Workflow) have no filter of their own; their history shows under All. */
-export type TaskCenterKindFilter = 'all' | Extract<RuntimeRunKind, 'automation' | 'subagent' | 'agent_write'>;
+/** Retired kinds (Mission, Workflow, Subagent) have no filter of their own; their history shows under All. */
+export type TaskCenterKindFilter = 'all' | Extract<RuntimeRunKind, 'automation' | 'agent_write'>;
 export type TaskCenterScope = 'own' | 'all';
 export type RuntimeConnectionState = 'disconnected' | 'connecting' | 'connected';
 

@@ -1,7 +1,8 @@
 /**
- * Runs of kinds retired in v1.4 (Eval, Mission, Workflow) can never be driven again, so
- * the boot settlement closes any that were still active — with their open steps
- * and pending interrupts — while leaving live kinds untouched.
+ * Runs of retired kinds (Eval, Mission, Workflow in v1.4; Subagent in 1.5) can never
+ * be driven again, so the boot settlement closes any that were still active — with
+ * their open tool calls, steps and pending interrupts — while leaving live kinds
+ * untouched.
  */
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -85,7 +86,7 @@ describe('settleRetiredRuntimeRuns', () => {
       source_id: unique('workflow'),
       input: {},
     });
-    const live = await db.runtime.createRun({
+    const subagentRun = await db.runtime.createRun({
       kind: 'subagent',
       owner_user_id: user.id,
       initiated_by_user_id: user.id,
@@ -93,8 +94,24 @@ describe('settleRetiredRuntimeRuns', () => {
       source_id: unique('child'),
       input: {},
     });
+    const openToolCall = await db.runtime.createToolCall({
+      run_id: subagentRun.id,
+      tool_name: 'knowledge_query',
+      input: {},
+      canonical_input_hash: unique('hash'),
+      risk_level: 'r0',
+      actor_user_id: user.id,
+    });
+    const live = await db.runtime.createRun({
+      kind: 'automation',
+      owner_user_id: user.id,
+      initiated_by_user_id: user.id,
+      source_kind: 'scheduled_task:1',
+      source_id: unique('occurrence'),
+      input: {},
+    });
 
-    expect(await settleRetiredRuntimeRuns(db)).toBeGreaterThanOrEqual(3);
+    expect(await settleRetiredRuntimeRuns(db)).toBeGreaterThanOrEqual(4);
 
     const settledMission = await db.runtime.getRun(mission.id);
     expect(settledMission).toMatchObject({ status: 'canceled', error_code: 'runtime_kind_retired' });
@@ -103,6 +120,9 @@ describe('settleRetiredRuntimeRuns', () => {
     expect((await db.runtime.getInterrupt(interrupt.id))?.status).toBe('canceled');
     expect((await db.runtime.getRun(evalRun.id))?.status).toBe('canceled');
     expect((await db.runtime.getRun(workflowRun.id))?.status).toBe('canceled');
+    expect((await db.runtime.getRun(subagentRun.id))?.status).toBe('canceled');
+    const settledCall = (await db.runtime.listToolCalls(subagentRun.id)).find((call) => call.id === openToolCall.id);
+    expect(settledCall?.status).toBe('canceled');
     expect((await db.runtime.getRun(live.id))?.status).toBe('queued');
 
     // Old runs never page their owner on the way out.

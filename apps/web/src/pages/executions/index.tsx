@@ -11,11 +11,7 @@ export function ExecutionsPage({ subPath, params }: { subPath: string; params: U
   const requestedTab = params.get('tab');
   return (
     <TaskCenter
-      initialKind={
-        requestedKind === 'automation' || requestedKind === 'subagent' || requestedKind === 'agent_write'
-          ? requestedKind
-          : 'all'
-      }
+      initialKind={requestedKind === 'automation' || requestedKind === 'agent_write' ? requestedKind : 'all'}
       initialTab={
         requestedTab === 'attention' ||
         requestedTab === 'active' ||

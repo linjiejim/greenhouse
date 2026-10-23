@@ -7,8 +7,6 @@ const mocks = vi.hoisted(() => ({
   getDb: vi.fn(),
   delegateAutomationRuntimeCancel: vi.fn(),
   settleQueuedAutomationCancellation: vi.fn(),
-  delegateSubagentRuntimeCancel: vi.fn(),
-  settleQueuedSubagentCancellation: vi.fn(),
 }));
 
 vi.mock('@greenhouse/db', () => {
@@ -25,10 +23,6 @@ vi.mock('@greenhouse/db', () => {
 vi.mock('../scheduler/runtime-driver.js', () => ({
   delegateAutomationRuntimeCancel: mocks.delegateAutomationRuntimeCancel,
   settleQueuedAutomationCancellation: mocks.settleQueuedAutomationCancellation,
-}));
-vi.mock('../runtime/subagent-driver.js', () => ({
-  delegateSubagentRuntimeCancel: mocks.delegateSubagentRuntimeCancel,
-  settleQueuedSubagentCancellation: mocks.settleQueuedSubagentCancellation,
 }));
 
 import runtimeRoutes from './runtime.js';
@@ -106,7 +100,6 @@ describe('Runtime API authorization and wire', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.settleQueuedAutomationCancellation.mockImplementation(async (_db, run) => run);
-    mocks.settleQueuedSubagentCancellation.mockImplementation(async (_db, run) => run);
   });
 
   it('lists only the caller task kinds by default and decodes complete JSON payloads', async () => {

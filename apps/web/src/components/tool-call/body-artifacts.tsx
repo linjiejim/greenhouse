@@ -18,8 +18,8 @@
 
 import { registeredToolCard } from '../../lib/extension-registries';
 import React from 'react';
-import { AlertTriangle, GitBranch, Image } from '../../lib/icons';
-import { Skeleton, Spinner } from '../ui';
+import { Image } from '../../lib/icons';
+import { Skeleton } from '../ui';
 import { useT } from '../../lib/i18n';
 import { AskUserCard, type AskUserData } from '../chat/ask-user-card';
 import { SchemaPlanCard, type TablesSchemaPlanArtifact } from '../tables/schema-plan-card';
@@ -59,8 +59,6 @@ export interface ArtifactCtx {
   streaming?: boolean;
   /** Message body text — used to skip a generated image already embedded in the markdown. */
   content?: string;
-  /** Open a session by id (spawn_session card → jump to the spawned child). */
-  onOpenSession?: (sessionId: string) => void;
   /** The conversation this message belongs to — action cards act on it. */
   sessionId?: string | null;
   messageId?: string;
@@ -76,7 +74,7 @@ export interface ArtifactCtx {
  * Keyed per-call on the output, not just the tool name, so that:
  *  - the ask_user FORM shape (returned by ask_user or another tool) always
  *    surfaces as a form regardless of which tool produced it;
- *  - a failed spawn_session / generate_image falls back to the trace block
+ *  - a failed generate_image falls back to the trace block
  *    instead of vanishing.
  */
 export function isArtifactCall(call: { name: string; output?: unknown }): boolean {
@@ -103,11 +101,6 @@ export function isArtifactCall(call: { name: string; output?: unknown }): boolea
       // stable image-shaped placeholder instead of making the transcript look
       // idle for up to a minute. Errors still fall back to the trace row.
       return !out || (!!out.success && !!out.url);
-    case 'spawn_session':
-      // Card while in-flight (no output yet) and once a child exists (incl. a
-      // failed/timed-out child, so its error is openable). Pre-creation
-      // rejections (depth/confirm/profile — error but no child) fall to trace.
-      return !out || !!out.child_session_id;
     case 'tables_schema_plan':
       // Only a validated plan becomes the Confirm card. A
       // rejected draft (bad ref, missing builder role) stays a trace row so the
@@ -127,7 +120,7 @@ export function isArtifactCall(call: { name: string; output?: unknown }): boolea
  * both places would just be noise.
  *
  * True for the cards that restate the whole call (the ask_user form,
- * a spawned session). NOT true for generate_image: its "card" is
+ * a draft card). NOT true for generate_image: its "card" is
  * only the picture, and it renders nothing at all once the URL is already embedded
  * in the prose — which used to erase the call from the UI completely, hiding both
  * that it happened and the fact that it was the slowest, costliest step of the turn.
@@ -253,9 +246,6 @@ function BodyArtifactItem({ call, ctx }: { call: ArtifactCall; ctx: ArtifactCtx 
       );
     }
 
-    case 'spawn_session':
-      return <SpawnSessionCard call={call} ctx={ctx} />;
-
     case 'tables_schema_plan':
       return out?.type === 'tables_schema_plan' ? (
         <SchemaPlanCard
@@ -277,95 +267,6 @@ function BodyArtifactItem({ call, ctx }: { call: ArtifactCall; ctx: ArtifactCtx 
       return <Card call={call} />;
     }
   }
-}
-
-// ─── Spawn-session card ──────────────────────────────────
-
-/** Pull a display title from the (possibly partial/streaming) tool input. */
-function readSpawnTitle(input: unknown): string | undefined {
-  let obj: unknown = input;
-  if (typeof input === 'string') {
-    try {
-      obj = JSON.parse(input);
-    } catch {
-      return undefined;
-    }
-  }
-  if (obj && typeof obj === 'object') {
-    const o = obj as Record<string, unknown>;
-    return (o.title as string) || (o.prompt as string) || undefined;
-  }
-  return undefined;
-}
-
-/** Live mm:ss timer counting up from when the card mounts (≈ spawn start). */
-function ElapsedTime() {
-  const [secs, setSecs] = React.useState(0);
-  React.useEffect(() => {
-    const start = Date.now();
-    const id = setInterval(() => setSecs(Math.floor((Date.now() - start) / 1000)), 1000);
-    return () => clearInterval(id);
-  }, []);
-  const mm = Math.floor(secs / 60);
-  const ss = secs % 60;
-  return (
-    <span className="tabular-nums">
-      {mm}:{ss.toString().padStart(2, '0')}
-    </span>
-  );
-}
-
-/**
- * A spawned child session. Shows live progress (spinner + elapsed time) while the
- * sub-session is still running, then flips to a done/failed state with a link to
- * open the child.
- */
-function SpawnSessionCard({ call, ctx }: { call: ArtifactCall; ctx: ArtifactCtx }) {
-  const t = useT();
-  const out = call.output as Record<string, unknown> | undefined;
-  const childId = out?.child_session_id as string | undefined;
-  const failed = !!out?.error;
-  const inFlight = !out; // tool hasn't returned yet
-  const title = (out?.title as string) || readSpawnTitle(call.input) || t('toolSpawn.subSession');
-
-  return (
-    <div className="flex items-center gap-2 rounded-lg border border-edge bg-surface-sunken px-3 py-2">
-      {inFlight ? (
-        <Spinner className="h-4 w-4 flex-shrink-0 text-fg-faint" />
-      ) : failed ? (
-        <AlertTriangle className="h-4 w-4 flex-shrink-0 text-danger" aria-hidden="true" />
-      ) : (
-        <GitBranch className="h-4 w-4 flex-shrink-0 text-fg-faint" />
-      )}
-      <div className="min-w-0 flex-1">
-        <div className="truncate text-xs font-medium text-fg">{title}</div>
-        <div className="flex items-center gap-1.5 text-[10px] text-fg-faint">
-          <span>{t('toolSpawn.subSession')}</span>
-          <span>·</span>
-          {inFlight ? (
-            <>
-              <span>{t('toolSpawn.running')}</span>
-              <ElapsedTime />
-            </>
-          ) : failed ? (
-            <span className="text-danger">{(out?.error as string) || t('toolSpawn.done')}</span>
-          ) : out?.status === 'started' ? (
-            <span>{t('toolSpawn.running')}</span>
-          ) : (
-            <span>{t('toolSpawn.done')}</span>
-          )}
-        </div>
-      </div>
-      {childId && ctx.onOpenSession && (
-        <button
-          onClick={() => ctx.onOpenSession!(childId)}
-          className="flex-shrink-0 rounded-md border border-edge px-2 py-1 text-[11px] font-medium text-fg-secondary transition-colors hover:bg-surface-muted hover:text-fg"
-        >
-          {t('toolSpawn.open')} →
-        </button>
-      )}
-    </div>
-  );
 }
 
 // ─── Generated image ─────────────────────────────────────

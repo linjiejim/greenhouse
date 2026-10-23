@@ -12,7 +12,11 @@
  * extension active on this deployment.
  */
 
-/** Surfaces that execute tools. */
+/**
+ * Surfaces that execute tools. `browser` still labels turns in conversations the
+ * browser extension started; `subagent` (sub-sessions, removed in 1.5) is kept
+ * so counts recorded before then still read back.
+ */
 export const TOOL_CALL_CLIENTS = [
   'mcp',
   'agent_api',

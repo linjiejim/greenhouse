@@ -1,8 +1,8 @@
 /**
  * Tests for the headless runner's pipeline extraction.
  *
- * Regression guard for the spawn_session "empty tool results" bug: a child (or
- * scheduled) session persists its tool calls via extractPipelineAndReferences,
+ * Regression guard for the "empty tool results" bug: a headless (scheduled)
+ * session persists its tool calls via extractPipelineAndReferences,
  * and the chat UI renders straight from that persisted `output`. Two ways it
  * silently went blank:
  *   1. it read the AI SDK v4 step fields (`args`/`result`) while the project is
@@ -124,7 +124,7 @@ describe('extractPipelineAndReferences', () => {
 });
 
 describe('runAgentInSession transcript persistence', () => {
-  const usageContext = { profileId: 'team', userId: 'owner-1', caller: 'spawn_session' };
+  const usageContext = { profileId: 'team', userId: 'owner-1', caller: 'scheduled-task' };
 
   function createRunnerFixture(options: { tailContent?: string; appendOk?: boolean } = {}) {
     const getLatestMessage = vi.fn().mockResolvedValue({
@@ -181,7 +181,7 @@ describe('runAgentInSession transcript persistence', () => {
       modelConfig: {} as never,
       maxSteps: 2,
       generate: fixture.generate,
-      toolCallClient: 'subagent',
+      toolCallClient: 'automation',
       usageContext,
     });
 
@@ -208,14 +208,14 @@ describe('runAgentInSession transcript persistence', () => {
       modelConfig: { id: 'flash', model: 'deepseek-v4-flash' } as never,
       maxSteps: 2,
       generate: fixture.generate,
-      toolCallClient: 'subagent',
+      toolCallClient: 'automation',
       usageContext,
     });
 
     expect(fixture.recordUsage).toHaveBeenCalledWith(
       expect.objectContaining({
         profile_id: 'team',
-        caller: 'spawn_session',
+        caller: 'scheduled-task',
         session_id: 'session-1',
         user_id: 'owner-1',
         model: 'flash',
@@ -240,7 +240,7 @@ describe('runAgentInSession transcript persistence', () => {
       modelConfig: {} as never,
       maxSteps: 2,
       generate: fixture.generate,
-      toolCallClient: 'subagent',
+      toolCallClient: 'automation',
       usageContext,
     });
 
@@ -261,7 +261,7 @@ describe('runAgentInSession transcript persistence', () => {
         modelConfig: {} as never,
         maxSteps: 2,
         generate: fixture.generate,
-        toolCallClient: 'subagent',
+        toolCallClient: 'automation',
         usageContext,
       }),
     ).rejects.toMatchObject({ code: 'usage_budget_unavailable', status: 503 });
@@ -280,7 +280,7 @@ describe('runAgentInSession transcript persistence', () => {
         modelConfig: {} as never,
         maxSteps: 2,
         generate: fixture.generate,
-        toolCallClient: 'subagent',
+        toolCallClient: 'automation',
         usageContext,
       }),
     ).rejects.toMatchObject({ name: 'SessionTranscriptChangedError' });
@@ -299,7 +299,7 @@ describe('runAgentInSession transcript persistence', () => {
         modelConfig: {} as never,
         maxSteps: 2,
         generate: fixture.generate,
-        toolCallClient: 'subagent',
+        toolCallClient: 'automation',
         usageContext,
       }),
     ).rejects.toThrow('Session transcript changed before agent generation');

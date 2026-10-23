@@ -6,7 +6,7 @@
  * or slow the tool call or page view it describes.
  *
  * Tool calls are counted at their real execution boundaries, once each:
- *   - `countToolCalls()` wraps a per-turn registry (Chat, Automation, Subagent,
+ *   - `countToolCalls()` wraps a per-turn registry (Chat, Automation,
  *     the Feishu bot) so the count fires when `execute` is entered;
  *   - `executeProxyTool({ usageClient })` counts MCP and Agent API calls after
  *     the proxy's reachability / confirm / schema checks pass.

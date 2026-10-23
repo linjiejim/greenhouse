@@ -2,7 +2,7 @@
  * Shared headless agent runner.
  *
  * The single "run an agent turn to completion in a session" loop, factored out so
- * BOTH the scheduled-task executor and the spawn_session tool drive the agent the
+ * the scheduled-task executor and the Feishu bot drive the agent the
  * same way — build model → generateText (bounded by maxSteps) → extract pipeline +
  * references → persist the assistant message. No scheduled-task specifics live
  * here, so it is reusable by any caller that already has a session + a prompt.
@@ -121,8 +121,7 @@ export interface RunAgentInSessionArgs {
   /**
    * Earlier turns of this conversation, oldest first, sent before `prompt`.
    * Only callers whose session really IS an ongoing conversation pass this
-   * (the Feishu bot); scheduled tasks and spawn_session are
-   * single-prompt by design. The caller owns windowing — use the same
+   * (the Feishu bot); scheduled tasks are single-prompt by design. The caller owns windowing — use the same
    * `resolveHistoryBudget` / `windowMessagesByBudget` budget as chat.
    */
   priorMessages?: HeadlessMessage[];
@@ -143,14 +142,14 @@ export interface RunAgentInSessionArgs {
   /**
    * Module usage attribution — REQUIRED like `usageContext`: every tool the
    * run executes counts one `tool_call` under this client (`automation`,
-   * `subagent`, `feishu`). Counting is fire-and-forget and never fails the run.
+   * `feishu`). Counting is fire-and-forget and never fails the run.
    */
   toolCallClient: ToolCallClient;
   /**
    * llm_usage attribution — REQUIRED so no headless caller can silently skip
    * usage accounting (and the owner's monthly quota) again. `userId` is the
    * account whose quota this run burns; `caller` labels the surface
-   * ('scheduled-task' | 'spawn_session' | 'feishu-bot' | …).
+   * ('scheduled-task' | 'feishu-bot' | …).
    */
   usageContext: { profileId: string; userId: string; caller: string };
 }
@@ -428,7 +427,7 @@ function summarizeInput(toolName: string, input: Record<string, unknown>): unkno
 }
 
 // Tool output summarization is shared with the streaming chat path
-// (`summarizeOutput` from @greenhouse/agent-core) so a child/scheduled session's
+// (`summarizeOutput` from @greenhouse/agent-core) so a scheduled session's
 // persisted pipeline carries the SAME full output the chat UI renders from —
-// otherwise non-whitelisted tools (eval/update_page/generate_image/spawn_session/…)
+// otherwise non-whitelisted tools (update_page/generate_image/…)
 // would collapse to `{ keys: [...] }` and show up blank when the session is opened.

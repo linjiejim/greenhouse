@@ -139,7 +139,7 @@ stateless Agent/MCP 不开放该文件工具。
 - **校验与配额不在工具里**：cron/时区合法性、每人 10 条上限、最小间隔 15 分钟、prompt 长度、
   hidden profile 门（create 与 update 同一道，防 create-then-switch）全部在
   `scheduler/task-center.ts`，与 HTTP 路由共用同一份实现。
-- **无人值守上下文禁用写工具**：定时任务执行与 spawn 子会话都过
+- **无人值守上下文禁用写工具**：定时任务执行都过
   `UNATTENDED_TOOL_DENYLIST`——那里没人能确认排期，且定时任务能创建定时任务会自我增殖。
   只读的 `automation_query` 保留。
 - 确认策略（先复述完整配置再落库）写在 `automation_mutation` 的 description 里，随 function
@@ -223,7 +223,7 @@ stateless Agent/MCP 不开放该文件工具。
 | --- | --- | --- | --- |
 | `task_capture` | 任意内部用户的**会话**（`is_global`，session-scoped） | 任务草稿卡（标题/说明/正文/变量，可编辑；工具清单由服务端从会话真实调用派生） | 卡片 Create → `POST /api/prompts` |
 
-- 它们都 **session-scoped**（无状态的 proxy/MCP 面不装配——那里没有可确认的卡片），都在 `DISPATCH_TOOL_IDS` 里（定时任务与 spawn 子会话都拿不到：headless 会话里没人能按按钮）。`tables_schema_plan` 的 Confirm 走 `POST /api/tables/schema-plan/apply`。
+- 它们都 **session-scoped**（无状态的 proxy/MCP 面不装配——那里没有可确认的卡片），都在 `DISPATCH_TOOL_IDS` 里（定时任务拿不到：headless 会话里没人能按按钮）。`tables_schema_plan` 的 Confirm 走 `POST /api/tables/schema-plan/apply`。
 - **"什么时候值得用"的口径写在工具 description**，不写进 profile prompt——description 随 function definition 下发，覆盖所有装配面；prompt 只覆盖那一个 profile——留在某个预设的 prompt 里等于只有选中它的人才拿得到。
 - 两个「模式预设」**均已退役**（2026-08-01）；`workflow_plan` 与 `mission_dispatch` 随 Workflows / Missions 在 v1.4 删除。
 
@@ -268,5 +268,5 @@ stateless Agent/MCP 不开放该文件工具。
 
 - **系统 profile 的 YAML `tools:` 运行时不读**——系统 Agent 跑的是用户完整 allow-set（所以上表 sprouty 那行写「工具由用户权限/分配控制」）。它只在 fork 时被读过一次，且读错了：见 api AGENTS.md 的 fork 修复条目。
 - **自建 Agent 的 `tools` 是交集过滤器**，另有 10 个 `builtin: true` 的工具无条件并入该过滤器（`BUILTIN_AGENT_TOOL_IDS`），使作者不必知道它们存在也能得到一个会追问、会读附件、会定时的 Agent。判据、清单与「必须并进过滤集而非结果集」的理由写在 api AGENTS.md「内置 Agent 工具」一节。
-- 内置只影响自建 Agent；系统 profile 本就拿全量 allow-set，不受影响。无人值守面（定时任务 / spawn 子会话）另有 fail-closed 白名单 `filterUnattendedToolIds` 收窄，内置不给它新增任何工具。
+- 内置只影响自建 Agent；系统 profile 本就拿全量 allow-set，不受影响。无人值守面（定时任务）另有 fail-closed 白名单 `filterUnattendedToolIds` 收窄，内置不给它新增任何工具。
 

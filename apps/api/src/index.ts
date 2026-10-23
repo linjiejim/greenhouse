@@ -114,7 +114,6 @@ import { reconcileInterruptedChatRuntimeRuns } from './chat/runtime.js';
 import { reconcileInterruptedAgentWrites } from './agent-access/governed-write.js';
 import { sweepExpiredToolOutputs } from './agent-runtime/tool-output-store.js';
 import { createAutomationRuntimeDriver } from './scheduler/runtime-driver.js';
-import { createSubagentRuntimeDriver, reconcileReclaimedSubagentRun } from './runtime/subagent-driver.js';
 import { createRuntimeNotificationProjector } from './notifications/runtime-projector.js';
 import { startNotificationDeliveryWorker } from './notifications/delivery-worker.js';
 import { createRuntimeDomainProjector } from './runtime/domain-projector.js';
@@ -417,7 +416,7 @@ async function main() {
   const toolRegistry = createToolRegistry(dbProvider);
   await runExtensionBootHooks(dbProvider);
 
-  // Runs of kinds retired in v1.4 (Eval, Mission, Workflow) can never progress again;
+  // Runs of retired kinds (Eval, Mission, Workflow in v1.4; Subagent in 1.5) can never progress again;
   // close any that were still active at upgrade so they render as finished.
   await settleRetiredRuntimeRuns(dbProvider).catch((error) => {
     logger.error('[runtime] retired-kind settlement unavailable', { error: String(error) });
@@ -507,16 +506,12 @@ async function main() {
         },
         drivers: {
           ...(trustedExecutionPlan.automationDriver ? { automation: createAutomationRuntimeDriver(toolRegistry) } : {}),
-          ...(trustedExecutionPlan.subagentDriver ? { subagent: createSubagentRuntimeDriver({ toolRegistry }) } : {}),
         },
-        driverConcurrency: { automation: 3, subagent: 5 },
+        driverConcurrency: { automation: 3 },
         // An Automation whose worker died mid-turn may have written something:
         // it ends interrupted / outcome unknown and the owner is told which
         // writes were in flight. It is never re-executed.
         outcomeUnknownKinds: ['automation'],
-        onRunReclaimed: async (run) => {
-          if (run.kind === 'subagent') await reconcileReclaimedSubagentRun(dbProvider, run);
-        },
       })
     : null;
 

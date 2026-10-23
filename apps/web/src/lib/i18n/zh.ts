@@ -2074,13 +2074,6 @@ const zh: Messages = {
     deleteFolderConfirm: '「{name}」将被删除（文件夹需先清空）',
   },
 
-  toolSpawn: {
-    subSession: '子会话',
-    running: '运行中…',
-    done: '已完成',
-    open: '打开',
-  },
-
   // 聊天消息操作
   messageActions: {
     translateToChinese: '翻译为中文',
@@ -2637,7 +2630,7 @@ const zh: Messages = {
 
   taskCenter: {
     title: '执行中心',
-    description: '统一查看自动化、子 Agent 和你的 Agent 写入的执行与结果。',
+    description: '统一查看自动化和你的 Agent 写入的执行与结果。',
     filters: '执行筛选',
     kindFilter: '执行类型',
     scopeFilter: '执行归属',
@@ -2645,7 +2638,7 @@ const zh: Messages = {
     unavailableTitle: '执行中心暂不可用',
     loadMore: '加载更多',
     emptyTitle: '当前没有执行',
-    emptyDescription: '自动化、子 Agent 和你的 Agent 写入开始后会出现在这里。',
+    emptyDescription: '自动化和你的 Agent 写入开始后会出现在这里。',
     notFound: '找不到该执行',
     openRun: '打开执行：{title}',
     inboxTitle: '待我处理',

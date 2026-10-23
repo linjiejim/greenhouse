@@ -2,7 +2,7 @@
  * 飞书机器人的一条消息 → 一轮 Agent。
  *
  * 这里只做「协议适配 + 身份 + 会话映射」，真正跑 agent 的是既有的
- * `runAgentInSession`（与定时任务、spawn_session 同一个 runner，spec D7）——
+ * `runAgentInSession`（与定时任务同一个 runner，spec D7）——
  * 别在这里长出第二条执行路径。
  *
  * 方案见 docs/specs/20260825-feishu-bot-conversation.md。
@@ -189,7 +189,6 @@ export async function dispatchFeishuMessage(message: FeishuIncomingMessage, deps
       toolRegistry: deps.toolRegistry,
       // 对面有真人在等回答——这不是无人值守（spec D6）。
       unattended: false,
-      runtimeRunId: null,
     }),
   );
 

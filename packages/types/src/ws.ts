@@ -46,9 +46,6 @@ export type ServerWsEvent =
   | { type: 'presence:snapshot'; users: OnlineUser[] }
   | { type: 'presence:join'; user: OnlineUser }
   | { type: 'presence:leave'; userId: string }
-  // A session was created server-side for this user (e.g. spawn_session) so the
-  // client can refresh its history list without a manual reload.
-  | { type: 'session:created'; sessionId: string; parentSessionId: string; title: string }
   // Chat generation lifecycle: a turn started/ended for one of the owner's
   // sessions. Carries no content — clients attach to the run's NDJSON stream
   // (GET /api/chat/runs/:sessionId/stream) or refetch messages on end.

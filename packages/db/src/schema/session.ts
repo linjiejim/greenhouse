@@ -19,7 +19,7 @@ export const sessions = pgTable(
     app_id: text('app_id'),
     channel: text('channel').notNull().default('web'), // SessionChannel (@greenhouse/types/session), e.g. 'web' | 'task' | 'subagent' | 'workflow' | 'feishu' | 'browser'
     // When this session was spawned by another session (via the spawn_session
-    // tool), this points at the parent. Top-level sessions leave it null. Lineage
+    // tool, retired in 1.5), this points at the parent. Top-level sessions leave it null. Lineage
     // depth is tracked in metadata.spawn_depth.
     parent_session_id: text('parent_session_id'),
     rating: integer('rating'),
