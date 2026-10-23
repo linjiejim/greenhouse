@@ -276,6 +276,18 @@ v1 只接 DeepSeek 与 OpenAI 兼容服务，它们**自动**缓存 prompt 前�
 - 管理端点 `POST /:name/scan-decision`（clean/blocked）与 `POST /:name/rescan`，super only，校验同样在 `center.ts`。`checkUpdates` 对被隔离技能返回 `quarantined` 而非 `update_available`，否则客户端会反复尝试下载一个必然被拒的技能。
 - **通知刻意只有企微 webhook + 页面内计数**：`SKILLS_WECOM_WEBHOOK_URL`（回退 `SYNC_WECOM_WEBHOOK_URL`），未配置就静默 no-op、不假装发过。站内未读收件箱是平台级基建（另行立项），不为这一个模块造半套。待审核计数是 Web 侧从已加载的全量目录**纯客户端推导**的，没有也不需要新端点。
 
+### 报告模板与渲染（`reports/` + `/api/report-templates` + `report_*` 工具，v1.7）
+
+- 模板 = 团队要求的报告 / 演示格式：有序章节（key、标题、撰写说明、必填、内容类型 markdown/bullets/table/figures）+ 封面字段（title/subtitle/author/date/period，可设必填）+ 允许的格式（report：pdf/docx；presentation：pptx/pdf，第一个是默认）。定义的校验只有一份 `checkReportTemplateDefinition`（`@greenhouse/types/reports`，网页编辑器与服务端共用限值）。表 `report_templates`（迁移 0013）。
+- 权限照技能中心发布口径，唯一实现在 `reports/templates.ts`：任何内部成员可发布团队模板或存个人草稿；团队模板作者或 super 可改删；草稿只有作者看得见（super 也看不见）；内置模板 `owner_user_id=NULL`，只有 super 能改，且不能改成草稿。删除是软删。
+- 内置两套（周报 / 项目汇报）只在**从未有过模板**时由 `seedDefaultReportTemplates` 写入（advisory 锁 + 计数含已删行），删掉的不会在下次启动回来。
+- 内容契约 `reports/content.ts` 的 `checkReportContent`：必填章节必须在且非空、未知章节 key 与未知封面字段拒绝、按内容类型校形状与大小，**一次列出全部问题**（path + problem + 一句改法）。`report_render` 被拒时把问题逐条写进 `error` 文本——MCP 上被拒的写入只把这一句字符串交给 Agent，结构化 `issues` 只在 Chat / Agent API 可见。`report_templates.validate` 是不落盘、不留痕的预检。
+- 渲染纯 JS、不起浏览器：PDF 用 pdfmake（报告 A4、演示 16:9 每页一张）、Word 用 `docx`、PPT 用 `pptxgenjs`；演示的切页（`reports/slides.ts`）PPT 与 PDF 共用。Markdown 经 marked lexer 转成共享块模型，只保留 http(s)/mailto 链接，图片只留 alt 文字。**pdfmake 的网络与本地文件读取都按策略关死**（字体走它的内存文件系统、logo 直接给字节）——内容永远不会被当成资源去取。
+- 中文：PDF 内嵌 Noto Sans SC（OFL）子集 `apps/api/assets/fonts/`（GB2312 + 拉丁 + 常用符号，两档字重各 ~2.4 MB，`scripts/build-report-fonts.sh` 重建），pdfkit 每份文档再子集化，PDF 通常几十 KB；子集外的字（emoji、生僻字）显示为空白，结果里给 `warnings` 点名。Word/PPT 不嵌字体，写 `Microsoft YaHei`，缺字体时由查看器替换。
+- 品牌取 Branding Studio：产品名、logo、`theme_tokens.brand`（缺省 V1 绿 `#2E8B3D`）。logo 能嵌就嵌：PDF 收 PNG/JPEG/SVG，Word 与 PPT 只收 PNG/JPEG（pptxgenjs 在服务端生成不了 SVG 预览图），嵌不了就换成产品名并给警告。
+- 存档：默认存成员个人架，可指定团队架或有写权限的文件夹，经 `uploadCabinetFile`（drive 审计照记、5 MB 上限）；返回 `file_id`、Files 深链与 5 分钟下载链接。本地渲染，**不计价**。Chat 同一实现（`buildLazyServerTools` 构造，非会话绑定）。
+- 网页：SkillHub › 报告模板（`#/skillhub?tab=reports`），预览 = `POST /api/report-templates/preview` 用示例内容渲染 PDF（已保存的按 id，编辑中的按表单定义），不保存。
+
 ### Agent 输出兜底
 - **工具参数 JSON 兜底（`experimental_repairToolCall`）**：模型在长参数上会写坏 JSON（未转义的引号、正文里的真换行、尾逗号、被截断），SDK 解析失败就把整次调用丢掉。2026-08-06 dev 上一次真实事故：三次连续的长参数草稿调用（长中文 brief，工具已于 v1.4 删除）全挂在 `Expected ',' or '}' after property value`，模型随即放弃编排改回手工做——**用户点名要的功能就这么没了**。现在 `chat-engine` 挂 `createToolCallRepair()`，调 `agent-core/repair-tool-json.ts` 的**本地确定性**修复（不再问一次模型：故障是机械的，多一轮往返既慢又可能再失败，且确定性修复才测得住）。**工具名错不修**（猜是哪个工具是更坏的赌），修复会 `logger.warn` 留痕——频繁触发说明某个工具 schema 太大或描述太糊，那该进 friction 队列而不是被静默吸收。
   - **修复器是两趟，loose 先跑、strict 兜底，且 strict 的产物必须解析得了才采用**（2026-08-18 加）。引号规则「`"` 后面跟 `,` 即字符串结束」在值里含未转义引号、其后正好是 `", ` 时会在句子中间收尾，逗号后那截散文于是落在「必须是 key」的位置——**报错 `Expected double-quoted property name` 是修复器造出来的，不是模型写的**（dev friction 59：一次 4 条的 `tables_mutation` 批量因此连挂两次，用户改成逐条发）。strict pass 要求逗号后**真的开始一个 JSON 值**（`"`/`{`/`[`/`-`/数字/`true`/`false`/`null`）才收尾。这个顺序是承重的：它只能把 `null`（整次调用被丢弃）变成一次救回的调用，**不可能**把本来修得好的变成修不好。
@@ -461,7 +473,7 @@ v1 只接 DeepSeek 与 OpenAI 兼容服务，它们**自动**缓存 prompt 前�
   - **存储不建表**：对象放在既有存储驱动的 `drive/mcp-output/<sha256(成员+客户端)>/<output_id>.json`。读取时用**调用方**的成员与 OAuth 客户端重算 key，别的成员或同一成员的另一个客户端只会拿到「not found or expired」——鉴权就是 key 本身，没有行可查也没有存在性可泄露。`chat_files` 不能用：每行必须挂在一个聊天会话上，而 MCP 调用没有会话。
   - `output_id` 自带创建时间：读取时先按它判 24 小时过期（不等清扫），清扫（`index.ts` 的五分钟 upkeep）只靠列举前缀删过期对象；前缀下形状不对的 key 一律不碰。单份存储上限 4,000,000 字符（超出时句柄带 `stored_chars`）。存储写失败不让调用失败（写入可能已执行）：照样返回句柄（`output_id:null`）+ 预览。
   - 只在 MCP 面；`/api/agent`（CLI）不截断。
-- **暴露范围**：`MCP_EXPOSED_TOOL_IDS`（由各工具 `meta.surface` 派生，见 `tools/registry.ts`）= knowledge + files + project + tables + chat + skills + automation（只读）+ feedback + 付费服务（`services`，见下）。工具须同时有 proxy 读/写 tier。
+- **暴露范围**：`MCP_EXPOSED_TOOL_IDS`（由各工具 `meta.surface` 派生，见 `tools/registry.ts`）= knowledge + files + project + tables + chat + skills + automation（只读）+ feedback + 付费服务（`services`，见下）+ 云电脑（`computer`）+ 报告（`reports`，v1.7）。工具须同时有 proxy 读/写 tier。
   - 付费服务（v1.6，资源组 `mcp:services`，存量 grant 重新授权才获得）：`web_search`（读，只搜不抓正文）、`read_url`（读，一个公开网页的正文）、`analyze_image`（读，`image_id` = 上传 id / 公开 https URL，或 `file_id` = 档案库文件，按 drive 读权限）、`generate_image`（**写**：图存进成员档案库的个人架，返回 `file_id` + 5 分钟下载链接；留痕、只新增，`destructiveHint:false`）。实现与 Chat 共用一份：搜索 / 读网页走 `external-search/index.ts` 的 `searchWeb` / `readPageMetered`，外部面的工具在 `agent-runtime/service-tools.ts` 里建（MCP 与 `/api/agent` 都叠在 `buildLazyServerTools` 之上，`generate_image` 在这里换成存档案库的版本），Chat 仍是 `external_search` + 内联生图。每次调用都按 MCP 的计价 scope 记到成员、client `mcp`、OAuth client id。
   - `read_url` 的 SSRF：先 `assertSafePublicPageUrl`（不预留、不抓），本机兜底抓取再走 `fetchPublicPage`（逐跳校验 + 连接时 DNS 校验）。
   - MCP 标注读 `meta.surface`：`openWorld:true` 的工具（三个联网服务、云电脑）报 `openWorldHint:true`；`additiveOnly:true` 的写工具（`generate_image`，没有 action 动词可判）报 `destructiveHint:false`。
@@ -471,6 +483,7 @@ v1 只接 DeepSeek 与 OpenAI 兼容服务，它们**自动**缓存 prompt 前�
   - skills：技能中心 `skill_query`(读：find/get/download/check_updates)/`skill_mutation`(写：publish/update_meta/archive/unarchive/delete)——owner/super 校验在 `skills/center.ts`，与 `/api/skills` 路由共用同一实现；外部 agent 可经 MCP 发布/同步团队技能。
   - feedback（v1.5，独立资源组 `mcp:feedback`，存量 grant 不自动获得）：问题与需求——`feature_request`（写：submit；super 另有 list/update，MCP 上同样记名）、`log_friction`（写）、`feedback_query`（读：本人提交的需求及管理员回复，super 可 `everyone`）。friction 仍然没有读动作。
   - files（v1.5，独立资源组 `mcp:files`，存量 grant 不自动获得）：档案库 `files_query`（读：files.list/search/get/read/download_url）/`files_mutation`（写：folders.create/update/delete、files.upload/update/delete）。只覆盖知识库档案（drive scope `kb`：团队架 + 本人个人架），实现只有一份 `drive/kb-cabinet.ts`，每个节点都过 `resolveDriveAccess`，移动不跨架；上传 ≤5MB（`drive/cabinet-limits.ts`）、改名同样过上传黑名单；下载链接只在配了对象存储时给（5 分钟预签名），本地存储明确报错并指向 files.read。删除类动作自动走预览 → confirm:true。
+  - reports（v1.7，独立资源组 `mcp:reports`，存量 grant 不自动获得）：`report_templates`（读：list/get/validate，`unattendedReplaySafe`）/`report_render`（写，`additiveOnly` → `destructiveHint:false`，无 confirm 往返）。详见「报告模板与渲染」。
 - 审计：每次 `tools/call` 经 `recordMcpAudit` 写 `api_audit_log`（`channel='a2a'` 枚举沿用、`app_id`=OAuth client id、绑定 `user_id`）；平台侧 actor `authMethod` 区分 `oauth`（人授权）/`oauth-client`（机器凭证）。
 - 机器客户端管理：`/api/admin/platform/oauth/machine-clients`（仅 super，routes/platform-admin.ts）：create（返回一次性 `lpoa_cs_` secret）/rotate-secret/disable（级联撤 grant+token，re-enable 自动恢复机器 grant）/delete/per-client audit；创建即校验被绑用户 active/内部并 upsert 机器 grant。DCR (`/oauth/register`) 保持 public-only，机器客户端不可自助注册。
 - 性能：用户的 effective 工具集（flag / user_tools）**每请求重新解析**（两次轻量 DB 读），60s 的 `CONTEXT_TTL_MS` 缓存只免注册表构建——cache key 含 effectiveTools 签名，任何权限变化即 miss；Platform 工具可见性与 OAuth token/grant/client/user 状态同样不缓存。**撤权（含 flag 关闭与 user_tools 收回）一律下一请求生效**。flag→工具的门控只在 `resolveUserTools` 一处（由 `FEATURE_POINTS` 派生），本路由不再二次门控——曾经手写的第二份 CRM/Tables 工具表与 feature-points 漂移过，跨渠道口径由 `tests/api/channel-tool-parity.db.test.ts` 钉住。

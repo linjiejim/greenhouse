@@ -127,6 +127,8 @@ const TOOL_MODULES: Record<string, string> = {
   files_mutation: 'files',
   // An agent's generated image is a new file on the member's personal shelf.
   generate_image: 'files',
+  // A rendered report (v1.7) is a new file in Files too.
+  report_render: 'files',
   project_mutation: 'projects',
   tables_mutation: 'tables',
   skill_mutation: 'skills',
@@ -234,6 +236,7 @@ const TOOL_ENTITIES: Record<string, string> = {
   log_friction: 'friction',
   email_mutation: 'email',
   generate_image: 'file',
+  report_render: 'file',
 };
 
 export interface WriteShape {
@@ -248,6 +251,8 @@ export function describeToolWrite(toolId: string, action: string | null): WriteS
   if (toolId === 'log_friction') return { verb: 'create', entity: 'friction' };
   // generate_image's `edit` makes a new image too; the original is untouched.
   if (toolId === 'generate_image') return { verb: 'create', entity: 'file' };
+  // report_render has no action: it always saves a new file.
+  if (toolId === 'report_render') return { verb: 'create', entity: 'file' };
   const dot = action ? action.lastIndexOf('.') : -1;
   const prefix = action && dot > 0 ? action.slice(0, dot) : null;
   const segment = action ? action.slice(dot + 1) : '';
@@ -679,8 +684,11 @@ async function agentWriteTarget(
     live = id ? await projectTarget(ctx, entity, id) : null;
     kept = text(field(result, entity, 'title'), creates ? field(input, 'title') : null);
     keptVisible = own || superReads;
-  } else if (toolId === 'files_mutation' && (shape.entity === 'file' || shape.entity === 'folder')) {
-    const entity = shape.entity;
+  } else if (
+    (toolId === 'files_mutation' && (shape.entity === 'file' || shape.entity === 'folder')) ||
+    toolId === 'report_render'
+  ) {
+    const entity = shape.entity === 'folder' ? 'folder' : 'file';
     id = idText(field(result, entity, 'id')) ?? idText(field(input, entity === 'file' ? 'file_id' : 'folder_id'));
     live = id ? await liveDriveTarget(ctx, entity, id) : null;
     kept = text(field(result, entity, 'name'), field(input, 'name'));

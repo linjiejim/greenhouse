@@ -1145,6 +1145,10 @@ export default {
       label: 'Cloud computer',
       description: 'Run commands and move files in your own cloud computer. Billed per minute while it runs.',
     },
+    reports: {
+      label: 'Reports',
+      description: "Read the team's report templates and render reports and decks into your Files.",
+    },
   },
 
   oauthConsent: {

@@ -424,6 +424,7 @@ describe('describeToolWrite', () => {
     expect(describeToolWrite('tables_mutation', 'records.batch_upsert')).toEqual({ verb: 'update', entity: 'record' });
     expect(describeToolWrite('automation_mutation', 'run_now')).toEqual({ verb: 'run', entity: 'automation' });
     expect(describeToolWrite('log_friction', 'wrong_params')).toEqual({ verb: 'create', entity: 'friction' });
+    expect(describeToolWrite('report_render', null)).toEqual({ verb: 'create', entity: 'file' });
     expect(describeToolWrite('crm_mutation', 'deals.frobnicate')).toEqual({ verb: 'other', entity: null });
   });
 });

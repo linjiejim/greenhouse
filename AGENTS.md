@@ -228,6 +228,7 @@ greenhouse/
 │   │       ├── email/        # IMAP/SMTP client, shared mailbox, security
 │   │       ├── wecom/ feishu/# optional IM integrations (binding, push, sign-in, bot)
 │   │       ├── skills/       # Skill Center — bundle validation, store, publish/download, scanner
+│   │       ├── reports/      # report templates + server-side PDF/DOCX/PPTX rendering into Files (fonts in apps/api/assets/fonts)
 │   │       ├── storage/      # upload storage (local disk / COS) + s3-lite (SigV4 client)
 │   │       ├── workbench/    # workbench card evaluation (shared by API + tools)
 │   │       └── cli/          # `pnpm cli` console: index.ts dispatcher + commands/*

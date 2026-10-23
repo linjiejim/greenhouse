@@ -60,6 +60,8 @@ describe('surface-derived exposure sets', () => {
         'read_url',
         // v1.6: list / read files in the member's own cloud computer.
         'computer_files',
+        // v1.7: the team's report templates (list / get / validate — no side effects).
+        'report_templates',
       ].sort(),
     );
   });
@@ -84,6 +86,8 @@ describe('surface-derived exposure sets', () => {
         'computer_exec',
         'computer_transfer',
         'computer_stop',
+        // v1.7: a rendered report is a new file in the member's Files — recorded, additive.
+        'report_render',
       ].sort(),
     );
   });
@@ -134,6 +138,9 @@ describe('surface-derived exposure sets', () => {
         'computer_files',
         'computer_transfer',
         'computer_stop',
+        // v1.7: report templates and rendering in their own `reports` group.
+        'report_templates',
+        'report_render',
       ].sort(),
     );
   });
@@ -223,6 +230,8 @@ describe('surface-derived exposure sets', () => {
         'computer_files',
         'computer_transfer',
         'computer_stop',
+        'report_templates',
+        'report_render',
       ].sort(),
     );
   });

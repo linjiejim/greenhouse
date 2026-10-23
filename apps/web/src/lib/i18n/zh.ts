@@ -1116,6 +1116,7 @@ const zh: Messages = {
       description: '联网搜索、读取网页、识别图片，以及生成图片并存入你的档案库。每次调用都会产生费用。',
     },
     computer: { label: '云电脑', description: '在你自己的云电脑里运行命令、传送文件。运行期间按分钟计费。' },
+    reports: { label: '报告', description: '读取团队的报告模板，渲染报告与演示稿并存入你的档案库。' },
   },
 
   oauthConsent: {
