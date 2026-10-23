@@ -14,7 +14,7 @@ import type { ActivityItem } from '@greenhouse/types/activity';
 import { ModulePage } from '../components/app/module-page';
 import { ActivityRow } from '../components/activity/activity-row';
 import { SettingsSection } from '../components/settings';
-import { Button, EmptyState, SkeletonRow } from '../components/ui';
+import { Button, EmptyState, Skeleton } from '../components/ui';
 import { WorkbenchPanel } from '../components/workbench/workbench-panel';
 import { WorkbenchTopBarActions } from '../components/workbench/workbench-topbar-actions';
 import { History, RefreshCw } from '../lib/icons';
@@ -68,10 +68,16 @@ export function HomePage() {
         }
       >
         {items === null ? (
-          <div className="space-y-2">
-            <SkeletonRow />
-            <SkeletonRow />
-            <SkeletonRow />
+          <div className="space-y-3" aria-busy="true">
+            {[0, 1, 2].map((i) => (
+              <div key={i} className="flex items-center gap-3">
+                <Skeleton className="h-7 w-7 rounded-full" />
+                <div className="flex-1 space-y-1.5">
+                  <Skeleton className="h-4 w-2/3" />
+                  <Skeleton className="h-3 w-1/3" />
+                </div>
+              </div>
+            ))}
           </div>
         ) : error && items.length === 0 ? (
           <EmptyState icon={History} variant="compact" tone="danger" title={t('home.feedFailed')} description={error} />
