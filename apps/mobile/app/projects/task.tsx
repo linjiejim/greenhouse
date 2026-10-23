@@ -1,7 +1,8 @@
 /**
  * One task (`/projects/task?project=&task=`): there is no task-by-id route, so it is read from its
- * project's tree. Its status changes from a menu, optimistically (only the latest change may
- * apply or roll back, src/data/latest.ts); assignee, due date, priority and the project are shown;
+ * project's tree. Its status changes from a menu, optimistically, one save at a time: the last
+ * choice is sent after the save in flight settles, so the server and the screen end on it
+ * (src/data/latest-choice.ts); assignee, due date, priority and the project are shown;
  * then the description and the comments, with a toolbar button to add one.
  */
 
@@ -11,14 +12,14 @@ import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { addTaskComment, getProject, listTaskComments, updateTaskStatus } from '../../src/api/projects';
 import { noAccess, notFound } from '../../src/data/access';
 import { captureIdentity } from '../../src/data/identity';
-import { Latest } from '../../src/data/latest';
+import { LatestChoice } from '../../src/data/latest-choice';
 import { dueBucket, findTask, localDay, TASK_STATUSES, withTaskPatched } from '../../src/data/tasks';
 import { useResource } from '../../src/data/use-resource';
 import { useT } from '../../src/lib/i18n';
 import { calendarDateLabel, relativeTimeNow } from '../../src/lib/time-words';
 import { Markdown } from '../../src/markdown';
 import { dueTone, statusIcon, statusTint } from '../../src/projects/look';
-import type { TaskComment, TaskStatus } from '../../src/shared/greenhouse-types';
+import type { ProjectTask, TaskComment, TaskStatus } from '../../src/shared/greenhouse-types';
 import { useAuth } from '../../src/store/auth';
 import { makeStyles, radius, space, squircle, typo, useTheme, weight } from '../../src/theme';
 import { alertError, promptText } from '../../src/ui/dialogs';
@@ -46,7 +47,6 @@ export default function TaskScreen() {
     () => (resource.data && taskId != null ? findTask(resource.data.tasks, taskId) : null),
     [resource.data, taskId],
   );
-  const latest = useRef(new Latest()).current;
   const me = useAuth((s) => s.user?.nickname ?? null);
 
   const [comments, setComments] = useState<TaskComment[] | null>(null);
@@ -62,24 +62,35 @@ export default function TaskScreen() {
     };
   }, [taskId]);
 
+  // one save in flight per task; the member's last choice is what the server ends on
+  const choices = useRef<{ taskId: number; choice: LatestChoice<TaskStatus, ProjectTask> } | null>(null);
   const changeStatus = useCallback(
     async (status: TaskStatus) => {
       if (!task || status === task.status) return;
-      const before = task.status;
-      const mine = latest.begin();
+      if (choices.current?.taskId !== task.id) {
+        const id = task.id;
+        choices.current = {
+          taskId: id,
+          choice: new LatestChoice<TaskStatus, ProjectTask>(task.status, async (value) => {
+            const result = await updateTaskStatus(id, value);
+            return result.ok ? { ok: true, data: result.data.task } : { ok: false, message: result.message };
+          }),
+        };
+      }
       const current = captureIdentity();
       selectionTick();
       setData((detail) => (detail ? { ...detail, tasks: withTaskPatched(detail.tasks, task.id, { status }) } : detail));
-      const result = await updateTaskStatus(task.id, status);
-      if (!current() || !mine()) return;
-      if (!result.ok) {
+      const outcome = await choices.current.choice.choose(status);
+      // a later choice took over, or the station / account changed
+      if (!outcome || !current()) return;
+      if (!outcome.ok) {
         setData((detail) =>
-          detail ? { ...detail, tasks: withTaskPatched(detail.tasks, task.id, { status: before }) } : detail,
+          detail ? { ...detail, tasks: withTaskPatched(detail.tasks, task.id, { status: outcome.rollbackTo }) } : detail,
         );
-        alertError(t('projects.statusFailed'), result.message || undefined);
+        alertError(t('projects.statusFailed'), outcome.message || undefined);
         return;
       }
-      const saved = result.data.task;
+      const saved = outcome.data;
       setData((detail) =>
         detail
           ? {
@@ -95,7 +106,7 @@ export default function TaskScreen() {
       notifySuccess();
       toast(t('projects.statusChanged', { status: t(`projects.status.${saved.status}`) }), 'check');
     },
-    [task, latest, setData, t],
+    [task, setData, t],
   );
 
   const comment = useCallback(async () => {
