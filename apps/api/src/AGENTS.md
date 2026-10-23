@@ -279,7 +279,7 @@ v1 只接 DeepSeek 与 OpenAI 兼容服务，它们**自动**缓存 prompt 前�
 ### 报告模板与渲染（`reports/` + `/api/report-templates` + `report_*` 工具，v1.7）
 
 - 模板 = 团队要求的报告 / 演示格式：有序章节（key、标题、撰写说明、必填、内容类型 markdown/bullets/table/figures）+ 封面字段（title/subtitle/author/date/period，可设必填）+ 允许的格式（report：pdf/docx；presentation：pptx/pdf，第一个是默认）。定义的校验只有一份 `checkReportTemplateDefinition`（`@greenhouse/types/reports`，网页编辑器与服务端共用限值）。表 `report_templates`（迁移 0013）。
-- 权限照技能中心发布口径，唯一实现在 `reports/templates.ts`：任何内部成员可发布团队模板或存个人草稿；团队模板作者或 super 可改删；草稿只有作者看得见（super 也看不见）；内置模板 `owner_user_id=NULL`，只有 super 能改，且不能改成草稿。删除是软删。
+- 权限照技能中心发布口径，唯一实现在 `reports/templates.ts`：任何内部成员可发布团队模板或存个人草稿；团队模板作者或 super 可改删；草稿只有作者看得见（super 也看不见）；内置模板 `owner_user_id=NULL`，只有 super 能改，且不能改成草稿；**只有作者本人能把团队模板改成草稿**（super 改别人的会被 403 拦在写入前——否则改完连 super 自己也看不见，表现为先成功再 404）。删除是软删。
 - 内置两套（周报 / 项目汇报）只在**从未有过模板**时由 `seedDefaultReportTemplates` 写入（advisory 锁 + 计数含已删行），删掉的不会在下次启动回来。
 - 内容契约 `reports/content.ts` 的 `checkReportContent`：必填章节必须在且非空、未知章节 key 与未知封面字段拒绝、按内容类型校形状与大小，**一次列出全部问题**（path + problem + 一句改法）。`report_render` 被拒时把问题逐条写进 `error` 文本——MCP 上被拒的写入只把这一句字符串交给 Agent，结构化 `issues` 只在 Chat / Agent API 可见。`report_templates.validate` 是不落盘、不留痕的预检。
 - 渲染纯 JS、不起浏览器：PDF 用 pdfmake（报告 A4、演示 16:9 每页一张）、Word 用 `docx`、PPT 用 `pptxgenjs`；演示的切页（`reports/slides.ts`）PPT 与 PDF 共用，**按渲染高度测量而不是数行数**：用内嵌字体的真实字宽与行高（`font.ts` 读 hhea/hmtx）在 `DECK` 的尺寸下折行，表格按列宽 × 折行行数算行高、表头每页重复，单行高过一页的行再切成几段；PDF 是两者里更紧的版式（PPT 正文框更宽、行距更小），所以计划按 PDF 量，`render.test.ts` 把 PDF 页数钉在计划上。Markdown 经 marked lexer 转成共享块模型，只保留 http(s)/mailto 链接，图片只留 alt 文字。**pdfmake 的网络与本地文件读取都按策略关死**（字体走它的内存文件系统、logo 直接给字节）——内容永远不会被当成资源去取。

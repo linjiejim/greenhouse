@@ -145,9 +145,19 @@ export async function updateTemplate(
   }
   const read = readInput(input);
   if (!read.ok) return fail('invalid', read.errors[0]!, read.errors);
-  // A shipped template has no owner; it must stay a team template, or no one could see it.
-  if (existing.owner_user_id === null && read.visibility === 'personal') {
-    return fail('invalid', 'A template shipped with Greenhouse stays a team template.');
+  // A draft is its owner's alone, so only the owner may turn a template into one: a super
+  // doing it to someone else's template would hide it from everyone, themselves included.
+  // A shipped template has no owner and stays a team template.
+  if (read.visibility === 'personal' && existing.visibility !== 'personal') {
+    if (existing.owner_user_id === null) {
+      return fail('invalid', 'A template shipped with Greenhouse stays a team template.');
+    }
+    if (existing.owner_user_id !== actor.userId) {
+      return fail(
+        'forbidden',
+        `Only the owner of "${existing.name}" can make it a personal draft; it stays a team template.`,
+      );
+    }
   }
   const updated = await db.reportTemplates.update(
     id,

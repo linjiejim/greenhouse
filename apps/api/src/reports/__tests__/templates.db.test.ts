@@ -117,6 +117,22 @@ describe('report templates: rights', () => {
     expect((await as(bob).list()).some((t) => t.id === draft.id)).toBe(true);
   });
 
+  it("refuses a super turning someone else's team template into a draft, and leaves it untouched", async () => {
+    const name = unique('Shared');
+    const template = await created(await as(alice).create(definition(name)));
+    const response = await as(admin).update(template.id, definition(`${name} hidden`, 'personal'));
+    expect(response.status).toBe(403);
+    expect(((await response.json()) as { error: string }).error).toBe(
+      `Only the owner of "${name}" can make it a personal draft; it stays a team template.`,
+    );
+    const after = (await as(bob).list()).find((t) => t.id === template.id);
+    expect(after).toMatchObject({ name, visibility: 'team', version: 1 });
+    // The owner may, and a super may still edit it as a team template.
+    expect((await as(admin).update(template.id, definition(`${name} edited`))).status).toBe(200);
+    expect((await as(alice).update(template.id, definition(name, 'personal'))).status).toBe(200);
+    expect((await as(bob).list()).some((t) => t.id === template.id)).toBe(false);
+  });
+
   it('refuses a malformed definition with every problem listed', async () => {
     const response = await as(alice).create({
       ...definition('Bad'),
