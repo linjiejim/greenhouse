@@ -29,7 +29,7 @@ import {
   type QueuedTurn,
 } from '../data/outbox';
 import { t } from '../lib/i18n';
-import { alertError } from '../ui/dialogs';
+import { alertError, confirmAction } from '../ui/dialogs';
 import { useAuth } from './auth';
 import { readOffline, writeOffline } from './offline';
 import { useStations } from './stations';
@@ -126,6 +126,30 @@ export async function deliverQueued(
   }
 }
 
+/**
+ * A first message the station refused to start a conversation for has no conversation to wait
+ * in, so the member decides: remove it, or keep it to try again later (asked again if refused).
+ */
+function askAboutRefused(id: string, message: string): void {
+  const current = captureIdentity();
+  const turn = queued(id);
+  if (!turn) return;
+  // held (not sent, not asked again) while the question is open
+  patch(id, { status: 'failed', error: message });
+  const words = turn.text.trim();
+  void confirmAction({
+    title: t('conversation.queuedFailed'),
+    message: [message, words ? `“${words.length > 120 ? `${words.slice(0, 120)}…` : words}”` : ''].filter(Boolean).join('\n\n'),
+    confirmLabel: t('conversation.removeQueued'),
+    cancelLabel: t('conversation.keepQueued'),
+    destructive: true,
+  }).then((remove) => {
+    if (!current() || !queued(id)) return;
+    if (remove) unqueueTurn(id);
+    else patch(id, { ...afterAttempt(queued(id)!, 'retry', ''), error: undefined });
+  });
+}
+
 let flushing = false;
 
 /** Send what waits, once; the station still unreachable leaves it queued. */
@@ -149,9 +173,11 @@ export async function flushOutbox(): Promise<void> {
         if (!current()) return;
         if (!queued(snapshot.id)) continue;
         if (!made.ok) {
-          if (made.status === 0) return;
-          unqueueTurn(snapshot.id);
-          alertError(t('conversation.queuedFailed'), made.message || undefined);
+          const outcome = deliveryOf(made);
+          // no answer: the rest would not get through either
+          if (outcome === 'unknown') return;
+          if (outcome === 'retry') patch(snapshot.id, afterAttempt(queued(snapshot.id)!, 'retry', made.message));
+          else askAboutRefused(snapshot.id, made.message);
           continue;
         }
         patch(snapshot.id, { sessionId: made.data.id });

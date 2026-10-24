@@ -108,4 +108,25 @@ describe('sending queued messages', () => {
     expect(api.send).toHaveBeenLastCalledWith('ses_1', 'words q-abc-123456', expect.any(Function), undefined, [], 'q-abc-123456');
   });
 
+  it('retries a first message when starting its conversation was briefly refused', async () => {
+    useOutbox.setState({ items: [turn('n', { sessionId: null })] });
+    session.answer = { ok: false, status: 503, code: 'unavailable', message: 'down' };
+    await flushOutbox();
+    expect(ids()).toEqual(['n']);
+    expect(useOutbox.getState().items[0]).toMatchObject({ attempts: 1, sessionId: null });
+    expect(useOutbox.getState().items[0]!.retryAt).toBeGreaterThan(Date.now());
+    expect(api.send).not.toHaveBeenCalled();
+  });
+
+  it('asks the member about a first message the station refused to start a conversation for', async () => {
+    useOutbox.setState({ items: [turn('n', { sessionId: null }), turn('m', { sessionId: null })] });
+    session.answer = { ok: false, status: 403, code: 'forbidden', message: 'Not allowed' };
+    confirm.answers = [true, false];
+    await flushOutbox();
+    await vi.waitFor(() => expect(ids()).toEqual(['m']));
+    // kept: tried again later
+    expect(useOutbox.getState().items[0]).toMatchObject({ attempts: 1 });
+    expect(useOutbox.getState().items[0]!.status).toBeUndefined();
+  });
+
 });

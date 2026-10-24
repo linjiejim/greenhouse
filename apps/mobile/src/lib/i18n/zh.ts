@@ -409,6 +409,7 @@ export const zh: Catalog = {
     queuedFailed: '离线时写的消息没发出去',
     queuedRefused: '未发出',
     removeQueued: '移除',
+    keepQueued: '保留，稍后再试',
     outboxFull: '待发送的消息太多了。这条还留在输入框里，等前面的发出去再试。',
   },
   cards: {

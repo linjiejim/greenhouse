@@ -415,6 +415,7 @@ export const en = {
     queuedFailed: 'A message you wrote offline couldn’t be sent',
     queuedRefused: 'Not sent',
     removeQueued: 'Remove',
+    keepQueued: 'Keep and Try Later',
     outboxFull: 'Too many messages are waiting to send. Your message is still in the box; try again once some have gone.',
   },
   cards: {
