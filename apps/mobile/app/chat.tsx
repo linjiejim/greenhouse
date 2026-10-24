@@ -160,6 +160,7 @@ export default function Chat() {
         return true;
       }
       if (result.notice === 'offline') {
+        setOffline(true);
         if (!queuedId && sessionId) queueTurn({ sessionId, text, images: [...images] });
         return false;
       }
@@ -201,12 +202,19 @@ export default function Chat() {
       void conversation?.refocus();
     }, [conversation]),
   );
+  // what waits goes once the station answers again (a page read that reached it clears `offline`)
   useEffect(() => {
     const next = queued[0];
-    if (!next || !conversation || state.busy || !state.transcript) return;
+    if (!next || !conversation || state.busy || !state.transcript || offline) return;
     void send(next.text, next.images, next.id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- retried when the queue or the conversation settles
-  }, [queued.length, conversation, state.busy, !!state.transcript]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- retried when the queue, the conversation or the station settles
+  }, [queued.length, conversation, state.busy, !!state.transcript, offline]);
+  // while something waits offline, ask the station again now and then
+  useEffect(() => {
+    if (!offline || !queued.length || !conversation) return;
+    const timer = setInterval(() => void conversation.refocus(), 15_000);
+    return () => clearInterval(timer);
+  }, [offline, queued.length, conversation]);
 
   // an html preview's sendPrompt fills the composer (never sends)
   const drafts = useComposerBridge((s) => s.drafts);
