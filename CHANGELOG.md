@@ -5,6 +5,62 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.0](https://github.com/linjiejim/greenhouse/compare/v1.4.0...v1.5.0) (2026-10-23)
+
+
+### Added
+
+* **activity:** turn the Execution Center into the Activity log (操作记录) ([4574d95](https://github.com/linjiejim/greenhouse/commit/4574d9555ab31dd61b779e01ce321c556057bae4))
+* **api:** deliver notifications to phones through the Expo Push Service ([4ae23ff](https://github.com/linjiejim/greenhouse/commit/4ae23ff78e2be0f9b51aeb114b6b7d59758b3eea))
+* **automations:** fold My Agents into Automations as Run profiles ([ccb07cf](https://github.com/linjiejim/greenhouse/commit/ccb07cf5b2ce9b283905a0b074c7f30037e8d3a1))
+* **automations:** run an automation as a run profile ([0bc9438](https://github.com/linjiejim/greenhouse/commit/0bc9438d9a8fb12d8578552075309dc2a1b961fb))
+* **chat:** keep the workbench cards on Home only ([12a8037](https://github.com/linjiejim/greenhouse/commit/12a80374dd89875a04e48528ce90bad1a49424b0))
+* **db:** push_devices for mobile push, and a suppressed delivery status ([f28bd14](https://github.com/linjiejim/greenhouse/commit/f28bd1402d057763cea58acce4dbd9c38523aff4))
+* **feedback:** merge requests and frictions into Issues & requests, open them to MCP ([92488cd](https://github.com/linjiejim/greenhouse/commit/92488cd88a16bc90a67a9ab192c957cd68177834))
+* **files:** add Files (档案库) page and files tools for members' agents ([f5f90fc](https://github.com/linjiejim/greenhouse/commit/f5f90fc1313ec20a6ab01f441bf986e55ef558f7))
+* **home:** make Home the team's recent changes (团队动态) ([370ab24](https://github.com/linjiejim/greenhouse/commit/370ab248a01c1fee5090560ced6fd8dce551ce54))
+* **mobile:** the team-hub app on Expo SDK 57, with notifications and push ([cf72adf](https://github.com/linjiejim/greenhouse/commit/cf72adf0e0b9596ef1cfb2f561f1dc0d2422be5f))
+* **skillhub:** fold My prompts into SkillHub as a tab ([a88cbb3](https://github.com/linjiejim/greenhouse/commit/a88cbb3af3f8f69f455d3eefa7379b7947acae83))
+* **web:** order the navigation by goal ([4182fbc](https://github.com/linjiejim/greenhouse/commit/4182fbc88d817cd58e5661bc47c6b7555864f394))
+
+
+### Fixed
+
+* **activity:** name a comment by the task it is on ([6495726](https://github.com/linjiejim/greenhouse/commit/6495726d7d542e67a78e3b48b7a16c55f5e75a89))
+* **activity:** name an agent write's document only for a viewer who may read it ([c97a120](https://github.com/linjiejim/greenhouse/commit/c97a1208e42ae17fc3c14259e2653d5666589a47))
+* **activity:** say what each change did to which object, the same on Home and in the Activity log ([750ae01](https://github.com/linjiejim/greenhouse/commit/750ae0114d20fe26e0147e3f3cb36bbec63283ed))
+* **automations:** make the Run profiles tab speak run profiles, with one tab row ([b82a3ef](https://github.com/linjiejim/greenhouse/commit/b82a3ef49d407921993017ec3d1824ea9ec078d4))
+* **automations:** offer the owner's run profiles when a super edits a member's automation ([dbc2042](https://github.com/linjiejim/greenhouse/commit/dbc204235b6f5a330430faf8dc6e77faf9f94c3e))
+* **automations:** say when the owner's run profiles fail to load and offer a retry ([a3c4df1](https://github.com/linjiejim/greenhouse/commit/a3c4df1a70d6bfb7fb8de76072cf86a77f069209))
+* **files:** label search hits by shelf and reopen a deep-linked preview ([dd819eb](https://github.com/linjiejim/greenhouse/commit/dd819eb2c477243d3ffa13998a356e1526c11dd9))
+* **home:** authorize only the tasks the feed names, with lookups made once ([1a1dd41](https://github.com/linjiejim/greenhouse/commit/1a1dd414b4d7558e04618ebdf65abb4b297f3f1c))
+* **home:** draw the feed's loading state with divs, not table rows ([fdf246e](https://github.com/linjiejim/greenhouse/commit/fdf246e1b5f54b66770905fadedba59fadc11081))
+* **home:** show task changes only through the task-aware listing ([aa8b094](https://github.com/linjiejim/greenhouse/commit/aa8b09467960571bd001421d1225c62d942125ab))
+* **mcp:** announce log_friction as destructive again and drop mcp_additive ([b447d5d](https://github.com/linjiejim/greenhouse/commit/b447d5d696cb244a31510d623961d67f4fc5b38c))
+* **mcp:** let an add-only write tool say so, and mark log_friction additive ([76a843d](https://github.com/linjiejim/greenhouse/commit/76a843d3a8004286fc94177aab1464f060617d6e))
+* **mobile:** a late member lookup never clears another station's sign-in ([cf9362b](https://github.com/linjiejim/greenhouse/commit/cf9362b1928ddaea4d5ad6a59fcfcc2be19bec84))
+* **mobile:** ask about pushes only after the app comes back from a sign-in ([19f0c92](https://github.com/linjiejim/greenhouse/commit/19f0c9240681926d2095fa948f05963f2c780882))
+* **mobile:** clear only the banners of notifications known to be read ([d0610d5](https://github.com/linjiejim/greenhouse/commit/d0610d50bf43a8a232d83c5c0e5f93a6c4a8354b))
+* **mobile:** keep loading and coming-soon states under the large title ([0e2aa5c](https://github.com/linjiejim/greenhouse/commit/0e2aa5ce5f11430083ccff36ea59d2410b3c25a8))
+* **mobile:** keep the banner and say so when opening cannot mark it read ([1abab94](https://github.com/linjiejim/greenhouse/commit/1abab9449383fbe25db5421c5af647da45f6350e))
+* **mobile:** page on after a refresh that replaces the offline copy ([9c31991](https://github.com/linjiejim/greenhouse/commit/9c31991d9f1d7fe007e0be595758f286b7d4c10f))
+* **mobile:** readable status tiles in dark mode ([f249fa4](https://github.com/linjiejim/greenhouse/commit/f249fa4a10e84a3aa648f5a9aa94f158c1aef3fb))
+* **mobile:** switching pushes off wins over a registration in flight ([55c1323](https://github.com/linjiejim/greenhouse/commit/55c1323722d4093edc96d9627b7512b01e32d4a8))
+* **notifications:** point runtime notices at the Activity log, in the reader's language ([25fdb12](https://github.com/linjiejim/greenhouse/commit/25fdb128be66386642760a015ddb2f464349cf34))
+* **skillhub:** call the My prompts tab's items prompts, not tasks ([b4abdaa](https://github.com/linjiejim/greenhouse/commit/b4abdaa15b423957ebf619224acb1eb323f37675))
+* **web:** one tab row and one rhythm across the new module pages ([082a59b](https://github.com/linjiejim/greenhouse/commit/082a59b189bc3e0cb019f5d2efda0f01c1f4a712))
+* **web:** resolve retired hashes in the router so the sidebar lights where you landed ([608eac3](https://github.com/linjiejim/greenhouse/commit/608eac30ab7f773133d988edbba09772372d93e9))
+* **web:** retire leftover copy for removed features and align wording with the agent hub ([332ad86](https://github.com/linjiejim/greenhouse/commit/332ad861abb87f8b0df902a0faa2c604cb44d8fb))
+* **web:** say 团队 Agent 中台 in the Chinese sidebar tagline ([42b2cb7](https://github.com/linjiejim/greenhouse/commit/42b2cb76b6d5c71668f41041f9e0151f002c0424))
+
+
+### Changed
+
+* **browser:** remove the browser extension ([5cd15f0](https://github.com/linjiejim/greenhouse/commit/5cd15f004b6daa331674f550c64c979e151b5fa0))
+* **desktop:** remove the desktop app ([d36d8dd](https://github.com/linjiejim/greenhouse/commit/d36d8dd4a02089bdadeba33f8ebcc7b2b7509a7c))
+* **runtime:** remove sub-sessions ([62da89e](https://github.com/linjiejim/greenhouse/commit/62da89e38adae3a184c7a4c2819ed9a443fb2336))
+* **sessions:** remove session tags and session groups ([9861570](https://github.com/linjiejim/greenhouse/commit/9861570ff8ad7d94aea8327f0343def9d2b2f712))
+
 ## [1.4.0](https://github.com/linjiejim/greenhouse/compare/v1.3.3...v1.4.0) (2026-10-23)
 
 
