@@ -157,7 +157,9 @@ export function TaskView({
     return (
       <View style={styles.root}>
         <ScreenChrome title={t('projects.tasks')} embedded={embedded} />
-        <EmptyState icon="checkCircle" title={t('projects.taskNotFound')} style={styles.state} />
+        <ScrollView contentInsetAdjustmentBehavior="automatic">
+          <EmptyState icon="checkCircle" title={t('projects.taskNotFound')} style={styles.state} />
+        </ScrollView>
       </View>
     );
   }

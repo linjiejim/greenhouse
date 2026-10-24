@@ -63,7 +63,9 @@ export function RecordView({
     return (
       <View style={styles.root}>
         <ScreenChrome title={t('tables.record')} embedded={embedded} />
-        <EmptyState icon="table" title={t('tables.recordNotFound')} style={styles.state} />
+        <ScrollView contentInsetAdjustmentBehavior="automatic">
+          <EmptyState icon="table" title={t('tables.recordNotFound')} style={styles.state} />
+        </ScrollView>
       </View>
     );
   }

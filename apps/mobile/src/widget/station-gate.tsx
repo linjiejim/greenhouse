@@ -5,7 +5,7 @@
  */
 
 import React from 'react';
-import { View } from 'react-native';
+import { ScrollView, View } from 'react-native';
 import { useT } from '../lib/i18n';
 import { useStations } from '../store/stations';
 import { makeStyles, space, useTheme } from '../theme';
@@ -25,16 +25,18 @@ export function WidgetStationGate({ station, children }: { station: string | und
   return (
     <View style={styles.root}>
       <ScreenChrome title="" />
-      {gate === 'wait' ? (
-        <LoadingState style={styles.state} />
-      ) : (
-        <EmptyState
-          icon="alert"
-          title={t('common.otherStation')}
-          message={name ? t('common.otherStationHint', { name }) : t('common.otherStationUnknown')}
-          style={styles.state}
-        />
-      )}
+      <ScrollView contentInsetAdjustmentBehavior="automatic">
+        {gate === 'wait' ? (
+          <LoadingState style={styles.state} />
+        ) : (
+          <EmptyState
+            icon="alert"
+            title={t('common.otherStation')}
+            message={name ? t('common.otherStationHint', { name }) : t('common.otherStationUnknown')}
+            style={styles.state}
+          />
+        )}
+      </ScrollView>
     </View>
   );
 }

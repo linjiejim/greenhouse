@@ -41,7 +41,9 @@ export default function MyAgents() {
     return (
       <View style={styles.root}>
         <Stack.Screen options={{ title: t('nav.agent') }} />
-        <EmptyState icon="hand" title={t('agent.loadFailed')} message={writes.error?.message || undefined} style={styles.state} />
+        <ScrollView contentInsetAdjustmentBehavior="automatic">
+          <EmptyState icon="hand" title={t('agent.loadFailed')} message={writes.error?.message || undefined} style={styles.state} />
+        </ScrollView>
       </View>
     );
   }

@@ -7,7 +7,7 @@
 import { RecordView } from '../../src/tables/record-view';
 import { SplitView, useSplit } from '../../src/ui/split';
 import React, { useCallback, useMemo, useRef, useState } from 'react';
-import { FlatList, View } from 'react-native';
+import { FlatList, ScrollView, View } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import type { ApiResult } from '../../src/api/client';
 import { getBase, getSchema, queryRecords } from '../../src/api/tables';
@@ -113,7 +113,9 @@ export default function TableScreen() {
     return (
       <View style={styles.root}>
         <Stack.Screen options={{ title: t('nav.tables') }} />
-        <EmptyState icon="table" title={noAccess(resource.error) ? t('tables.noAccess') : t('tables.notFound')} style={styles.state} />
+        <ScrollView contentInsetAdjustmentBehavior="automatic">
+          <EmptyState icon="table" title={noAccess(resource.error) ? t('tables.noAccess') : t('tables.notFound')} style={styles.state} />
+        </ScrollView>
       </View>
     );
   }

@@ -7,7 +7,7 @@
 import { TaskView } from '../../src/projects/task-view';
 import { SplitView, useSplit } from '../../src/ui/split';
 import React, { useCallback, useMemo, useState } from 'react';
-import { FlatList, Text, View } from 'react-native';
+import { FlatList, ScrollView, Text, View } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { getProject } from '../../src/api/projects';
 import { noAccess, notFound } from '../../src/data/access';
@@ -60,7 +60,9 @@ export default function ProjectDetailScreen() {
     return (
       <View style={styles.root}>
         <Stack.Screen options={{ title: t('nav.projects') }} />
-        <EmptyState icon="checkCircle" title={t('projects.notFound')} style={styles.state} />
+        <ScrollView contentInsetAdjustmentBehavior="automatic">
+          <EmptyState icon="checkCircle" title={t('projects.notFound')} style={styles.state} />
+        </ScrollView>
       </View>
     );
   }
