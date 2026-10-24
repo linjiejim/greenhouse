@@ -12,8 +12,8 @@ import React from 'react';
 import { X, Zap } from '../../lib/icons';
 import type { Profile } from '../../lib/api';
 import type { UserPrompt } from '@greenhouse/types/api';
-import { SproutyAvatar } from '../sprouty/index.js';
-import { profileToSprouty } from './profile-selector';
+import { PlantAvatar } from '@greenhouse/ui/components/plant-avatar';
+import { profileAvatarProps } from './profile-selector';
 import { useLocalized, useT } from '../../lib/i18n';
 
 interface ComposerChipsProps {
@@ -41,7 +41,7 @@ export function ComposerChips({ profile, onRemoveProfile, prompt, onRemovePrompt
             title={t('chat.agentChipTitle', { name: profileLabel })}
             removeLabel={t('chat.removeAgent', { name: profileLabel })}
           >
-            <SproutyAvatar {...profileToSprouty(profile)} state="idle" size="xs" animate={false} />
+            <PlantAvatar {...profileAvatarProps(profile)} size="xs" animate={false} />
           </Pill>
         </div>
       )}

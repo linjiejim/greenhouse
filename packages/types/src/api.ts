@@ -23,12 +23,23 @@
  */
 export type LocalizedText = Partial<Record<'en' | 'zh', string>>;
 
+/**
+ * Avatar JSON as the API returns it (see `avatarConfigSchema`). Render with `<PlantAvatar avatar>`:
+ * `plant` / `tint` win; legacy Sprouty keys resolve through `legacyToPlant`.
+ */
 export interface ProfileAvatar {
+  /** Plant species id (PLANT_IDS); absent on legacy avatars. */
+  plant?: string;
+  /** Legacy resting eyes (PLANT_MOODS) — read, never rendered. */
+  mood?: string;
+  /** Colour (PLANT_TINTS); absent = the species' own. */
+  tint?: string;
   color?: string;
   accessories?: string[];
   leafStyle?: 'normal' | 'big' | 'mini' | 'double';
   eyeStyle?: 'classic' | 'dot' | 'soft' | 'focused';
   faceStyle?: string;
+  palette?: { body: string; leaf: string };
 }
 
 export interface Profile {

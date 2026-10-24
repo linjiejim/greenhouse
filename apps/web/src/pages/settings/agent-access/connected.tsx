@@ -10,6 +10,7 @@ import { Key, Plug, Shield } from '../../../lib/icons';
 import { fetchOAuthGrants, revokeOAuthGrant, type OAuthGrant } from '../../../lib/api/oauth';
 import { formatDate } from '../../../lib/utils';
 import { useT } from '../../../lib/i18n';
+import { ClientAgentAvatar, connectionAvatar } from '../../../components/agents/client-agent-avatar';
 
 const grantsDataSource: CrudDataSource<OAuthGrant> = {
   async list(params) {
@@ -38,12 +39,15 @@ export function ConnectedAgents({ onConnect }: { onConnect: () => void }) {
             label: t('oauthGrants.client'),
             type: 'custom',
             render: (grant) => (
-              <div className="min-w-0">
-                <div className="text-sm font-medium text-fg truncate" title={grant.client.name}>
-                  {grant.client.name}
-                </div>
-                <div className="text-[10px] font-mono text-fg-faint truncate" title={grant.client.id}>
-                  {grant.client.id}
+              <div className="flex min-w-0 items-center gap-2">
+                <ClientAgentAvatar name={grant.client.name} avatar={connectionAvatar(grant.client)} size="sm" />
+                <div className="min-w-0">
+                  <div className="text-sm font-medium text-fg truncate" title={grant.client.name}>
+                    {grant.client.name}
+                  </div>
+                  <div className="text-[10px] font-mono text-fg-faint truncate" title={grant.client.id}>
+                    {grant.client.id}
+                  </div>
                 </div>
               </div>
             ),

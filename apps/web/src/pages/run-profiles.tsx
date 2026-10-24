@@ -18,8 +18,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Button, Badge, Tag, Spinner, ConfirmDialog, EmptyState, FilterPills, Toggle, toast } from '../components/ui';
 import { ArrowLeft, BarChart3, Bot, Plus, Pencil, Trash2, Globe, GitFork } from '../lib/icons';
-import { SproutyAvatar } from '../components/sprouty/index.js';
-import { profileToSprouty } from '../components/chat/profile-selector';
+import { PlantAvatar } from '@greenhouse/ui/components/plant-avatar';
+import { profileAvatarProps } from '../components/chat/profile-selector';
 import * as api from '../lib/api';
 import { useAuthStore, useProfileStore } from '../stores';
 import { ProfileEditorDrawer } from '../components/chat/profile-editor';
@@ -228,7 +228,7 @@ export function RunProfilesPanel({ sectionTabs }: { sectionTabs?: React.ReactNod
                     onClick={() => setForkTarget(p)}
                     className="group flex min-h-20 items-start gap-3 rounded-lg border border-edge bg-surface-raised px-3 py-3 text-left transition-colors hover:border-primary-edge hover:bg-primary-subtle/30"
                   >
-                    <SproutyAvatar {...profileToSprouty(p)} state="idle" size="sm" animate={false} />
+                    <PlantAvatar {...profileAvatarProps(p)} size="sm" animate={false} />
                     <div className="min-w-0 flex-1">
                       <div className="truncate text-xs font-medium text-fg-secondary">
                         {localized(p.name_i18n, p.name)}
@@ -279,16 +279,7 @@ export function RunProfilesPanel({ sectionTabs }: { sectionTabs?: React.ReactNod
                         <tr key={p.id} className="hover:bg-surface-sunken transition-colors">
                           <td className="px-4 py-2.5">
                             <div className="flex items-center gap-2">
-                              <SproutyAvatar
-                                variant="custom"
-                                color={p.avatar?.color}
-                                accessories={p.avatar?.accessories}
-                                leafStyle={p.avatar?.leafStyle}
-                                eyeStyle={p.avatar?.eyeStyle}
-                                state="idle"
-                                size="xs"
-                                animate={false}
-                              />
+                              <PlantAvatar {...profileAvatarProps(p)} size="xs" animate={false} />
                               <div className="min-w-0">
                                 <div className="font-medium text-fg-secondary truncate" title={p.name}>
                                   {p.name}

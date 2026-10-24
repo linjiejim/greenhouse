@@ -24,6 +24,7 @@
     "@greenhouse/crud": "workspace:*",
     "@greenhouse/knowledge-editor": "workspace:*",
     "@greenhouse/types": "workspace:*",
+    "@greenhouse/ui": "workspace:*",
     "@greenhouse/utils": "workspace:*",
     "@tiptap/core": "^3.24.0",
     "@tiptap/extension-placeholder": "^3.24.0",

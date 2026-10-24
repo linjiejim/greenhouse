@@ -9,7 +9,6 @@ import { ToolCallRenderer } from '../tool-call/index';
 import { BodyArtifacts, partitionCalls, splitArtifactsByPlacement } from '../tool-call/body-artifacts';
 import { ReasoningPanel, ReasoningToggle } from './reasoning-panel';
 import type { StreamingToolCall } from '../../lib/stream-events';
-import { useT } from '../../lib/i18n';
 
 interface StreamingMessageProps {
   text: string;
@@ -69,7 +68,6 @@ function useSmoothStreamedText(target: string, enabled: boolean): string {
 }
 
 export function StreamingMessageBubble({ text, reasoning, toolCalls, isStreaming }: StreamingMessageProps) {
-  const t = useT();
   const [showReasoning, setShowReasoning] = useState(false);
 
   // Smoothly eased reveal of the streamed answer.
@@ -138,14 +136,8 @@ export function StreamingMessageBubble({ text, reasoning, toolCalls, isStreaming
           <BodyArtifacts position="below" calls={artifactsBelow} ctx={{ content: displayText, streaming: true }} />
         )}
 
-        {/* Initial loading — a quiet status dot keeps the transcript aligned
-            without introducing a second Sprouty avatar into the message flow. */}
-        {isStreaming && !text && !reasoning && toolCalls.length === 0 && (
-          <div className="flex items-center gap-2 py-1">
-            <span className="h-2 w-2 animate-pulse rounded-full bg-primary-500" />
-            <span className="text-xs text-fg-faint animate-pulse">{t('chat.thinking')}</span>
-          </div>
-        )}
+        {/* Initial loading is shown by the conversation's AssistantPresence (the assistant's
+            plant in its thinking state + caption), not by a second indicator in the bubble. */}
       </div>
     </div>
   );

@@ -13,6 +13,7 @@ import { Bot, ShieldCheck, Zap } from '../../lib/icons';
 import { useT, type TranslationKey } from '../../lib/i18n';
 import { formatDate, timeAgo } from '../../lib/utils';
 import { executionRunHref } from '../../lib/execution-route';
+import { ClientAgentAvatar, connectionAvatar } from '../agents/client-agent-avatar';
 
 type Translate = ReturnType<typeof useT>;
 
@@ -70,7 +71,17 @@ export function ActivityRow({ item, compact = false }: { item: ActivityItem; com
 
   const body = (
     <>
-      <Avatar name={actor} icon={icon} size="sm" variant={item.source === 'person' ? 'default' : 'primary'} />
+      {item.agent ? (
+        // A member's agent did it: the agent's plant, not the person's initials.
+        <ClientAgentAvatar
+          name={item.agent.client_name}
+          avatar={connectionAvatar(item.agent)}
+          size={28}
+          className="flex-shrink-0"
+        />
+      ) : (
+        <Avatar name={actor} icon={icon} size="sm" variant={item.source === 'person' ? 'default' : 'primary'} />
+      )}
       <div className="min-w-0 flex-1">
         <p
           className="truncate text-sm text-fg"

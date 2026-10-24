@@ -73,6 +73,13 @@
 - `<AttachmentsBlock>` — 用户**输入**附件药丸（```attachments fence；```mission-attachments 是历史名，只读不再写），渲染在用户气泡内、正文与时间戳之间。用户消息**不过 `parseSegments`**，只用 `splitAttachments()` 摘出这一种 fence。两种 handle：`id`=`chat_files` 行（走鉴权下载端点）；`key`=v1.4 前 Mission 的暂存 blob，已无下载端点，只渲染为不可点击的药丸。图片/PDF 预览必须同时满足扩展名与响应 MIME allowlist（图片不含 SVG，PDF 仅 `application/pdf`）；文件名伪装成 png/pdf 但响应是 `text/html` 时拒绝预览。其它类型只下载。
 - 以上组件可独立使用，也可通过 `<RichMarkdown>` 自动解析 code fence 渲染
 
+### 植物形象（`@greenhouse/ui/components/plant-avatar`）
+- 助手与 Agent 的形象只有一种：v2 移植的几何植物（`packages/ui`，16 种 × 7 色调 × 8 状态）。id、旧 Sprouty 配置的兼容解析（`legacyToPlant`）与写入规则（`withPlant` / `withTint`）在 `@greenhouse/types` 的 `plant-avatar.ts`；渲染器不得复制到 web。旧的卡通 Sprouty 与 sprouty-lab 已删除。
+- 存储的 avatar JSON 从不改写：编辑器只经 `withPlant` / `withTint` 写，旧键原样保留。Profile 统一走 `profileAvatarProps(p)`（`chat/profile-selector.tsx`）。
+- 对话里只有一个助手形象：`AssistantPresence` 在对话末尾跟随回合状态（工具/未出字 thinking、出字 speaking、未答的 ask_user waiting、失败 error、观察到的完成播一次 done），空闲时不渲染。列表行一律 `animate={false}`。
+- 成员连接的 Agent（MCP / OAuth 客户端）用 `components/agents/client-agent-avatar.tsx`：连接自带 `avatar {plant, tint}` 优先，否则 `plantForClient(name)` 按客户端名确定（Claude Code → fern、Codex → opuntia、Cursor → clover，其余哈希）。人永远用首字母 `<Avatar>`，不用植物。
+- `plant-avatar-parity.test.ts` 的摘要钉住与 v2 / 手机端一致的输出；有意改动画面时才更新快照并写明原因。
+
 ### Markdown 渲染
 - `<Markdown>` (`components/markdown.tsx`) — 基础 Markdown 渲染，支持 `compact` prop
   - 默认使用 `prose-base` 样式（宽松，适用于 wiki/文档）
@@ -227,7 +234,7 @@ stores/
 ### 页面上下文注入
 - `components/conversation/conversation-pane.tsx` 是 full Chat 与右上角 Assistant overlay 的唯一会话 UI/控制器；新增 split-pane host 必须复用它，不得复制发送、上传、流恢复或消息 reconcile。
 - Surface 差异集中在 `components/conversation/surface-policy.ts`，只隐藏分享、评分、Profile 管理、翻译/引用等外围 affordance；附件、工具卡、ask_user、confirm、编辑/重试与错误恢复不得因 Surface 缩减。
-- **Thinking 与普通工具轨迹默认折叠且分层展示**：动态摘要只属于进行中状态——Thinking 在下一段开始后才把上一段首行提升为摘要，工具只显示当前 calling 项；完成后右侧摘要清空，Thinking 文案切成无省略号的完成态。初始等待只画绿色状态点，不在消息流重复 Sprouty 头像。禁止把原始 JSON 横铺在消息里；Thinking 展开看完整推理，单条工具点击开右侧 Drawer，以占满剩余高度的克制树形视图看 input/output 与耗时。artifact/确认卡仍按各自产品形态渲染，不塞进这套技术详情。
+- **Thinking 与普通工具轨迹默认折叠且分层展示**：动态摘要只属于进行中状态——Thinking 在下一段开始后才把上一段首行提升为摘要，工具只显示当前 calling 项；完成后右侧摘要清空，Thinking 文案切成无省略号的完成态。初始等待由 `chat/assistant-presence.tsx` 在对话末尾画助手的植物形象（thinking + 「Thinking…」），流式气泡里不再放第二个指示。禁止把原始 JSON 横铺在消息里；Thinking 展开看完整推理，单条工具点击开右侧 Drawer，以占满剩余高度的克制树形视图看 input/output 与耗时。artifact/确认卡仍按各自产品形态渲染，不塞进这套技术详情。
 - **附件按「文件类型」分流，不按会话类型**：picker / 粘贴 / 拖拽三个入口都走 `conversation-pane.tsx` 的同一个 `handleFileSelect`——图片进内联图片盘（模型直接看得见），其余进附件药丸并在发送时上传成 `chat_files`。历史 Mission 会话（`channel='mission'`）只读：不接收任何文件，composer 换成只读条。别在 `ChatInput` 里再分一次流：它只负责把文件交给宿主。
 - **模型选择器与 Profile 选择器互斥占用 Composer 同一槽位**：默认 `sprouty` 是隐式身份，不渲染 ProfileSelector，只显示 `chat/model-selector.tsx` 供每轮选引擎；经 `@` 选择任一非默认 Agent 后，隐藏模型选择器、显示该 Agent（其 `model_id` 随选择同步），避免同时出现两个相互约束的选项。模型偏好仍记在**用户**维度（`greenhouse_last_model:<userId>`），列表由 `GET /api/profiles` 的 `models` 下发，`models.length < 2` 时控件不渲染。选项显示裸 id（`flash`/`pro`/`deepseek-flash`）+ 目录 `name` 作副标题；localStorage 里记着的模型不在 `models` 中（已下线/key 已撤）时不发送，本轮走 Agent 默认模型（服务端同样回落）。`ProfileSelector` 对默认 Sprouty 在新旧会话都返回空——不要为了“完整”把默认身份标签补回来。
 - **聊天动作卡 = 一套协议，业务状态各自落地**：`ask_user`、`tables_schema_plan`、`task_capture` 都复用 `chat/artifact-card.tsx` 的 icon/title/meta/status/body/footer 骨架与密度；两种 confirm 卡都在 `BELOW_PROSE_TOOLS`（正文先解释，卡片再操作）。成功态折叠为单行回执，失败/部分失败保持展开，运行态锁按钮；共享只读会话保留卡片但不下发 mutation handle。`tables_schema_plan` 与 `task_capture` 由 assistant message id + pipeline 位置派生稳定 action id，服务端先原子 claim `chat_artifact_receipts` 再写业务，刷新读取持久回执，绝不重新武装会重复建表/建 Task 的按钮；Task 业务行另存同一 action id，覆盖「业务写成功、回执写失败」恢复窗。`ask_user` 与 markdown confirm 的完成态从紧随其后的持久 user message 恢复。历史转录里的 `mission_dispatch` / `workflow_plan` 调用（v1.4 退役）按普通工具轨迹行渲染。

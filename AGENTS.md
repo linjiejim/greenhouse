@@ -245,6 +245,7 @@ greenhouse/
 │   ├── db/               # database layer — Drizzle schema + domain services (types inferred)
 │   ├── knowledge-editor/ # Tiptap schema + server Markdown↔Tiptap JSON
 │   ├── crud/             # low-code CRUD framework (defineCrud + CrudPage / createCrudRoutes)
+│   ├── ui/               # shared React UI: the plant-avatar renderer (SVG builder + motion + <PlantAvatar>)
 │   └── contract/         # typed API contract — re-exports apps/api's AppType + hc (web client)
 ├── skillhub/             # first-party skill packs (synced into the Skill Center on boot)
 ├── drizzle/              # migration files (single source of truth for the schema)
@@ -264,6 +265,7 @@ greenhouse/
 | `@greenhouse/utils` | `packages/utils/` | Shared helpers |
 | `@greenhouse/db` | `packages/db/` | Database layer |
 | `@greenhouse/knowledge-editor` | `packages/knowledge-editor/` | KB editor: Tiptap schema + Markdown↔Tiptap JSON. Markdown is canonical; `content_json='{}'` is legal |
+| `@greenhouse/ui` | `packages/ui/` | Plant-avatar renderer (`./components/plant-avatar`, React-free `./components/plant-avatar/svg`); ids + legacy resolver live in `@greenhouse/types` |
 | `@greenhouse/crud` | `packages/crud/` | Low-code CRUD — `defineCrud` + `CrudPage` client, `createCrudRoutes` server, shared wire protocol |
 | `@greenhouse/contract` | `packages/contract/` | Typed API contract (AppType + hc; **type-only import of `@greenhouse/api`**) |
 | `@greenhouse/api` | `apps/api/` | Backend app |
