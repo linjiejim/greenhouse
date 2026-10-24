@@ -14,6 +14,6 @@ export function libraryChanged(): void {
 
 /** What a move picks a new folder for (the move sheet, app/move.tsx). */
 export type Movable =
-  | { kind: 'doc'; id: number; name: string; shelf: 'team' | 'personal' }
-  | { kind: 'file'; id: number; name: string; shelf: 'team' | 'personal' }
-  | { kind: 'folder'; id: number; name: string; shelf: 'team' | 'personal' };
+  | { kind: 'doc'; id: string; name: string; shelf: 'team' | 'personal' }
+  | { kind: 'file'; id: string; name: string; shelf: 'team' | 'personal' }
+  | { kind: 'folder'; id: string; name: string; shelf: 'team' | 'personal' };

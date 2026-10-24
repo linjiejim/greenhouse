@@ -23,17 +23,17 @@ export async function listProjects(stillCurrent: () => boolean): Promise<ApiResu
   );
 }
 
-export const getProject = (id: number) => get<ProjectDetail>(`/api/projects/${seg(String(id))}`);
+export const getProject = (id: string) => get<ProjectDetail>(`/api/projects/${seg(String(id))}`);
 
 /** Every readable, non-archived project with its task tree — the source of "my tasks". */
 export const gantt = () =>
   get<{ projects: (Project & { tasks: ProjectTask[] })[] }>('/api/projects/gantt');
 
-export const updateTaskStatus = (taskId: number, status: TaskStatus) =>
+export const updateTaskStatus = (taskId: string, status: TaskStatus) =>
   patch<{ task: ProjectTask }>(`/api/projects/tasks/${seg(String(taskId))}`, { status });
 
-export const listTaskComments = (taskId: number) =>
+export const listTaskComments = (taskId: string) =>
   get<{ comments: TaskComment[] }>(`/api/projects/tasks/${seg(String(taskId))}/comments`);
 
-export const addTaskComment = (taskId: number, content: string) =>
+export const addTaskComment = (taskId: string, content: string) =>
   post<{ comment: TaskComment }>(`/api/projects/tasks/${seg(String(taskId))}/comments`, { content });

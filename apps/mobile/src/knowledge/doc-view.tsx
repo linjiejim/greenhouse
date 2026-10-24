@@ -26,7 +26,7 @@ import { SheetScreen } from '../ui/screen';
 type Shown = Pick<KbDoc, 'id' | 'title' | 'content_markdown' | 'updated_at'>;
 
 /** One document, as an object sheet (app/sheet/doc.tsx). */
-export function DocView({ id }: { id: number | null }) {
+export function DocView({ id }: { id: string | null }) {
   const t = useT();
   const { colors: c } = useTheme();
   const styles = useStyles(c);

@@ -4,12 +4,13 @@
  * Markdown, never more). Stored per station + member by ../store/knowledge.ts.
  */
 
+import { objectId } from '../lib/object-id';
 import type { KbDoc } from '../shared/greenhouse-types';
 
 export const RECENT_MAX = 20;
 
 export interface RecentDoc {
-  id: number;
+  id: string;
   title: string;
   openedAt: number;
 }
@@ -28,22 +29,20 @@ export function withOpened(list: readonly RecentDoc[], doc: Pick<KbDoc, 'id' | '
 }
 
 /** The ids that fell off the list (their saved copies go). */
-export function dropped(before: readonly RecentDoc[], after: readonly RecentDoc[]): number[] {
+export function dropped(before: readonly RecentDoc[], after: readonly RecentDoc[]): string[] {
   const kept = new Set(after.map((entry) => entry.id));
   return before.filter((entry) => !kept.has(entry.id)).map((entry) => entry.id);
 }
 
+/** The saved list; entries saved before 3.0 hold numeric ids and read as their text. */
 export function parseRecent(value: unknown): RecentDoc[] {
   if (!Array.isArray(value)) return [];
   return value
-    .filter(
-      (entry): entry is RecentDoc =>
-        !!entry &&
-        typeof entry === 'object' &&
-        Number.isSafeInteger((entry as RecentDoc).id) &&
-        typeof (entry as RecentDoc).title === 'string' &&
-        typeof (entry as RecentDoc).openedAt === 'number',
-    )
+    .flatMap((entry): RecentDoc[] => {
+      const e = entry as { id?: unknown; title?: unknown; openedAt?: unknown } | null;
+      const id = objectId(e?.id);
+      return id && typeof e?.title === 'string' && typeof e.openedAt === 'number' ? [{ id, title: e.title, openedAt: e.openedAt }] : [];
+    })
     .slice(0, RECENT_MAX);
 }
 
@@ -52,11 +51,12 @@ export function toSaved(doc: KbDoc, now: number): SavedDoc {
   return { v: 1, doc: { id, slug, title, content_markdown, visibility, updated_at, folder_id }, savedAt: now };
 }
 
-export function parseSaved(value: unknown, id: number): SavedDoc | null {
+export function parseSaved(value: unknown, id: string): SavedDoc | null {
   const saved = value as Partial<SavedDoc> | null;
-  if (!saved || saved.v !== 1 || !saved.doc || saved.doc.id !== id) return null;
+  // copies saved before 3.0 hold numeric ids
+  if (!saved || saved.v !== 1 || !saved.doc || objectId(saved.doc.id) !== id) return null;
   if (typeof saved.doc.title !== 'string' || typeof saved.doc.content_markdown !== 'string') return null;
-  return saved as SavedDoc;
+  return { ...(saved as SavedDoc), doc: { ...saved.doc, id, folder_id: objectId(saved.doc.folder_id) } };
 }
 
 /**

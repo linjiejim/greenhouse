@@ -36,8 +36,8 @@ export function TaskView({
   taskId,
   onChanged,
 }: {
-  projectId: number | null;
-  taskId: number | null;
+  projectId: string | null;
+  taskId: string | null;
   /** A change was saved (the list beside it reloads). */
   onChanged?: () => void;
 }) {
@@ -45,7 +45,7 @@ export function TaskView({
   const openObject = useOpenObject();
   const { colors: c } = useTheme();
   const styles = useStyles(c);
-  const load = useCallback(() => getProject(projectId ?? 0), [projectId]);
+  const load = useCallback(() => getProject(projectId ?? '0'), [projectId]);
   const resource = useResource(load);
   const { setData } = resource;
   const task = useMemo(
@@ -69,7 +69,7 @@ export function TaskView({
 
   // one save in flight per task; the member's last choice is what the server ends on
   const choices = useRef<{
-    taskId: number;
+    taskId: string;
     current: () => boolean;
     choice: LatestChoice<TaskStatus, ProjectTask>;
   } | null>(null);

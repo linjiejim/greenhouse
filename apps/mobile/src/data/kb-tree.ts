@@ -13,7 +13,7 @@ const byOrderThenName = (a: DriveFolder, b: DriveFolder) =>
 export function levelOf(
   folders: readonly DriveFolder[],
   docs: readonly KbDoc[],
-  folderId: number | null,
+  folderId: string | null,
 ): { folders: DriveFolder[]; docs: KbDoc[] } {
   const known = new Set(folders.map((f) => f.id));
   // a document filed in a folder this shelf does not show (another shelf's, deleted) sits at the top
@@ -27,7 +27,7 @@ export function levelOf(
 }
 
 /** The folders from the shelf's top down to `folderId` (empty for the top, or an unknown id). */
-export function pathTo(folders: readonly DriveFolder[], folderId: number | null): DriveFolder[] {
+export function pathTo(folders: readonly DriveFolder[], folderId: string | null): DriveFolder[] {
   const byId = new Map(folders.map((f) => [f.id, f]));
   const path: DriveFolder[] = [];
   let current = folderId != null ? byId.get(folderId) : undefined;

@@ -9,15 +9,17 @@
  * open in Safari as they are.
  */
 
+import { objectId, type ObjectId } from './object-id';
+
 export type FilesShelf = 'team' | 'personal';
 
 export type AppTarget =
-  | { kind: 'doc'; id: number }
-  | { kind: 'files'; shelf: FilesShelf; folderId: number | null; fileId: number | null }
+  | { kind: 'doc'; id: ObjectId }
+  | { kind: 'files'; shelf: FilesShelf; folderId: ObjectId | null; fileId: ObjectId | null }
   /** The project list (`id` null) or one project; a task when `taskId` is set. */
-  | { kind: 'project'; id: number | null; taskId: number | null }
+  | { kind: 'project'; id: ObjectId | null; taskId: ObjectId | null }
   /** Tables: the bases, a base, a table, or one record of it. */
-  | { kind: 'tables'; baseId: number | null; tableId: number | null; recordId: number | null }
+  | { kind: 'tables'; baseId: ObjectId | null; tableId: ObjectId | null; recordId: ObjectId | null }
   /** The assistant: my conversations, or one. */
   | { kind: 'chat'; sessionId: string | null }
   /** My Agents: the writes of the agents I connected, this month's spend, my gateway keys. */
@@ -26,32 +28,27 @@ export type AppTarget =
   | { kind: 'web'; hash: string }
   | { kind: 'external'; url: string };
 
-function positiveInt(raw: string | null | undefined): number | null {
-  if (!raw || !/^[1-9][0-9]{0,15}$/.test(raw)) return null;
-  const value = Number(raw);
-  return Number.isSafeInteger(value) ? value : null;
-}
-
 /** A `#/…` route of the web app → the phone's target for it, or null when it is not a route. */
 export function parseHashRoute(hash: string): AppTarget | null {
   if (!hash.startsWith('#/')) return null;
   const [path, query = ''] = hash.slice(2).split('?', 2) as [string, string?];
   const segments = path.split('/').filter(Boolean);
   if (segments[0] === 'knowledge' && segments[1] === 'doc') {
-    const id = positiveInt(/^([0-9]+)/.exec(segments[2] ?? '')?.[1]);
+    // `<id>-<slug>` or a bare id; ULIDs carry `_`, never `-`
+    const id = objectId((segments[2] ?? '').split('-', 1)[0]);
     if (id) return { kind: 'doc', id };
   }
   const params = new URLSearchParams(query);
   if (segments[0] === 'projects' && segments.length <= 2) {
-    const id = segments.length === 2 ? positiveInt(segments[1]) : null;
-    if (segments.length === 1 || id) return { kind: 'project', id, taskId: id ? positiveInt(params.get('task')) : null };
+    const id = segments.length === 2 ? objectId(segments[1]) : null;
+    if (segments.length === 1 || id) return { kind: 'project', id, taskId: id ? objectId(params.get('task')) : null };
   }
   if (segments[0] === 'tables') {
     if (segments.length === 1) return { kind: 'tables', baseId: null, tableId: null, recordId: null };
-    const baseId = positiveInt(segments[1]);
+    const baseId = objectId(segments[1]);
     if (baseId && segments.length === 2) return { kind: 'tables', baseId, tableId: null, recordId: null };
-    const tableId = segments[2] === 'table' && segments.length === 4 ? positiveInt(segments[3]) : null;
-    if (baseId && tableId) return { kind: 'tables', baseId, tableId, recordId: positiveInt(params.get('record')) };
+    const tableId = segments[2] === 'table' && segments.length === 4 ? objectId(segments[3]) : null;
+    if (baseId && tableId) return { kind: 'tables', baseId, tableId, recordId: objectId(params.get('record')) };
   }
   if (segments[0] === 'chat' && segments.length === 1) {
     const session = params.get('session');
@@ -62,8 +59,8 @@ export function parseHashRoute(hash: string): AppTarget | null {
     return {
       kind: 'files',
       shelf: params.get('shelf') === 'personal' ? 'personal' : 'team',
-      folderId: positiveInt(params.get('folder')),
-      fileId: positiveInt(params.get('file')),
+      folderId: objectId(params.get('folder')),
+      fileId: objectId(params.get('file')),
     };
   }
   return { kind: 'web', hash };

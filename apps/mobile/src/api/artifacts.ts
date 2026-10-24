@@ -20,7 +20,7 @@ export const getReceipt = (actionId: string) =>
   get<{ receipt: ActionReceipt | null }>(`/api/artifact-actions/${seg(actionId)}`);
 
 export const saveCapturedTask = (capture: TaskCapture, actionId: string, sessionId: string) =>
-  post<{ id: number }>('/api/prompts', {
+  post<{ id: string }>('/api/prompts', {
     title: capture.title.trim(),
     content: capture.content.trim(),
     description: capture.description?.trim() || undefined,

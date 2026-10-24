@@ -24,10 +24,11 @@ import { EmptyState, LoadingState } from '../ui/empty';
 import { NativeButton } from '../ui/button';
 import { SheetScreen } from '../ui/screen';
 import { alertError } from '../ui/dialogs';
+import { isObjectId } from '../lib/object-id';
 
 /** A file path this sheet may download with the session: a 云盘 file or a conversation's file. */
 export function previewPath(id: string, path: string): string {
-  if (/^[0-9]+$/.test(id)) return `/api/drive/files/${id}/content`;
+  if (isObjectId(id)) return `/api/drive/files/${id}/content`;
   return /^\/api\/chat-files\/[A-Za-z0-9_-]+\/content$/.test(path) ? path : '';
 }
 
@@ -71,7 +72,7 @@ export function FilePreviewPane({ id, path: given = '', name }: { id: string; pa
         const status = typeof (error as { status?: unknown })?.status === 'number' ? (error as { status: number }).status : 0;
         setFailStatus(status);
         setFailed(true);
-        const fileId = Number(id);
+        const fileId = id;
         if (docMiss(status) === 'gone') {
           // revoked or deleted: its details stop showing offline too
           void forgetFile(fileId);

@@ -28,7 +28,7 @@ vi.mock('./client', async () => {
     },
     api: async (path: string) => {
       calls.push(`POST ${state.base}${path}`);
-      return new Response(JSON.stringify({ file: { id: 7 } }), { status: 200 });
+      return new Response(JSON.stringify({ file: { id: '7' } }), { status: 200 });
     },
   };
 });
@@ -51,7 +51,7 @@ beforeEach(() => {
   state.base = 'https://a.example';
   state.identity = 'a';
   calls.length = 0;
-  initAnswer = () => ({ file_id: 7, mode: 'cos', upload_url: 'https://cos.example/put' });
+  initAnswer = () => ({ file_id: '7', mode: 'cos', upload_url: 'https://cos.example/put' });
 });
 
 describe('a Files upload', () => {
@@ -75,7 +75,7 @@ describe('a Files upload', () => {
   it('sends no bytes, and no token, after a switch during init', async () => {
     initAnswer = () => {
       switchTo('b');
-      return { file_id: 7, mode: 'proxy', upload_url: '/api/drive/files/7/content' };
+      return { file_id: '7', mode: 'proxy', upload_url: '/api/drive/files/7/content' };
     };
     const put = vi.fn(async () => 200);
     const result = await uploadFile(target, source('a.png'), put, auth, capture());
@@ -84,7 +84,7 @@ describe('a Files upload', () => {
   });
 
   it('sends proxied bytes to the station it started on', async () => {
-    initAnswer = () => ({ file_id: 7, mode: 'proxy', upload_url: '/api/drive/files/7/content' });
+    initAnswer = () => ({ file_id: '7', mode: 'proxy', upload_url: '/api/drive/files/7/content' });
     const put = vi.fn(async () => 200);
     await uploadFile(target, source('a.png'), put, auth, capture());
     expect(put).toHaveBeenCalledWith('https://a.example/api/drive/files/7/content', 'file:///a.png', {

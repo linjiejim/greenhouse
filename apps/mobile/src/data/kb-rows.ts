@@ -15,7 +15,7 @@ export type Position = RowPosition;
 export type KbRow =
   | { key: string; type: 'header'; title: string }
   | { key: string; type: 'folder'; folder: DriveFolder; position: Position }
-  | { key: string; type: 'doc'; id: number; title: string; subtitle?: string; position: Position }
+  | { key: string; type: 'doc'; id: string; title: string; subtitle?: string; position: Position }
   | { key: string; type: 'loading' }
   | { key: string; type: 'failed' };
 

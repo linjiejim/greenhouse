@@ -17,6 +17,7 @@ import { useTheme } from '../theme';
 import { Chip } from '../ui/chip';
 import { Icon, type IconName } from '../ui/core';
 import { FileIcon } from '../ui/file-icon';
+import { isObjectId } from '../lib/object-id';
 
 const TYPE_ICON: Record<ObjectType, IconName> = {
   doc: 'file',
@@ -71,8 +72,8 @@ export function LinkChip({ chip }: { chip: ChipLink }) {
     text = name;
     tail = info?.size != null ? formatBytes(info.size) : '';
     onPress = () =>
-      chip.path.startsWith('/api/drive/')
-        ? openObject({ kind: 'file', id: Number(chip.id), name })
+      chip.path.startsWith('/api/drive/') && isObjectId(chip.id)
+        ? openObject({ kind: 'file', id: chip.id, name })
         : openObject({ kind: 'attachment', path: chip.path, name });
   } else {
     icon = <Icon name={TYPE_ICON[chip.type]} size={13} color={c.accentText} />;

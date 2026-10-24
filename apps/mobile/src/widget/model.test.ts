@@ -2,11 +2,11 @@ import { describe, expect, it } from 'vitest';
 import type { MyTask } from '../data/tasks';
 import { buildSnapshot, isWidgetItemPath, myTasksRefreshAction, widgetLinkPath, widgetStationGate } from './model';
 
-const task = (id: number, due: string | null): MyTask =>
+const task = (n: number, due: string | null): MyTask =>
   ({
-    id,
-    project_id: 2,
-    title: `Task ${id}`,
+    id: String(n),
+    project_id: '2',
+    title: `Task ${n}`,
     project_title: 'Launch',
     project_color: null,
     due_date: due,
@@ -22,10 +22,10 @@ describe('the widgets’ snapshot', () => {
       { bucket: 'soon', tasks: [task(2, '2026-10-26T09:00:00Z'), task(3, '2026-10-27'), task(4, '2026-10-28')] },
     ],
     recentDocs: [
-      { id: 7, title: 'Brand Voice', openedAt: 1_800_000_000_000 },
-      { id: 8, title: 'FAQ', openedAt: 1_700_000_000_000 },
-      { id: 9, title: 'Handbook', openedAt: 1 },
-      { id: 10, title: 'Old', openedAt: 0 },
+      { id: '7', title: 'Brand Voice', openedAt: 1_800_000_000_000 },
+      { id: '8', title: 'FAQ', openedAt: 1_700_000_000_000 },
+      { id: '9', title: 'Handbook', openedAt: 1 },
+      { id: '10', title: 'Old', openedAt: 0 },
     ],
     now: 1_800_000_001_000,
   });
@@ -145,7 +145,7 @@ describe('the widget and the bridge read the same snapshot', () => {
       station: { id: 's', name: 'S' },
       lang: 'en',
       myTasks: [{ bucket: 'today', tasks: [task(1, '2026-10-24')] }],
-      recentDocs: [{ id: 1, title: 'Doc', openedAt: 1 }],
+      recentDocs: [{ id: '1', title: 'Doc', openedAt: 1 }],
       now: 0,
     });
     const fields = (struct: string) =>

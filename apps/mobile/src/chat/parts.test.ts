@@ -34,7 +34,7 @@ describe('a reply’s cards', () => {
       { step: 5, tool: 'capture_task', output: { type: 'task_capture', title: 'Weekly', content: 'do it', variables: [], expected_tools: ['x'] } },
       { step: 6, tool: 'tables_plan', output: { type: 'tables_schema_plan', summary: 'Add a table', operations: [{}] } },
       { step: 7, tool: 'crm_lookup', output: { type: 'crm_customer', title: 'ACME', summary: '3 open deals' } },
-      { step: 8, tool: 'kb_create', output: { doc: { id: 12, title: '周报' } } },
+      { step: 8, tool: 'kb_create', output: { doc: { id: '12', title: '周报' } } },
     ]),
   );
 
@@ -51,7 +51,7 @@ describe('a reply’s cards', () => {
 
   it('finds the objects a reply cites or wrote, once each', () => {
     const refs = JSON.stringify([{ slug: 'w', title: '周报', type: 'kb_doc', url: '#/knowledge/doc/12-w' }]);
-    expect(citedObjects(refs, steps)).toEqual([{ type: 'doc', id: 12, title: '周报' }]);
+    expect(citedObjects(refs, steps)).toEqual([{ type: 'doc', id: '12', title: '周报' }]);
   });
 
   it('answers an ask_user card in the web’s words', () => {

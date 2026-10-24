@@ -22,6 +22,7 @@ import { EmptyState, LoadingState } from '../../src/ui/empty';
 import { Badge, Row, SectionHeader, rowPosition, type RowPosition } from '../../src/ui/list';
 import { SheetScreen } from '../../src/ui/screen';
 import { useOpenObject } from '../../src/shell/open-object';
+import { objectId } from '../../src/lib/object-id';
 
 type Item =
   | { key: string; type: 'header'; title: string }
@@ -29,12 +30,12 @@ type Item =
 
 export default function ProjectSheet() {
   const { id: raw } = useLocalSearchParams<{ id?: string }>();
-  const id = raw && /^[0-9]+$/.test(raw) ? Number(raw) : null;
+  const id = objectId(raw);
   const t = useT();
   const openObject = useOpenObject();
   const { colors: c } = useTheme();
   const styles = useStyles(c);
-  const load = useCallback(() => getProject(id ?? 0), [id]);
+  const load = useCallback(() => getProject(id ?? '0'), [id]);
   const resource = useResource(load);
   const detail = resource.data;
 

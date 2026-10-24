@@ -3,12 +3,12 @@ import type { DriveFolder, KbDoc } from '../shared/greenhouse-types';
 import { shelfRows } from './kb-rows';
 
 const recent = [
-  { id: 7, title: 'Brand Voice', openedAt: 2 },
-  { id: 3, title: 'Handbook', openedAt: 1 },
+  { id: '7', title: 'Brand Voice', openedAt: 2 },
+  { id: '3', title: 'Handbook', openedAt: 1 },
 ];
 const level = {
-  folders: [{ id: 1, name: 'Marketing', parent_id: null } as DriveFolder],
-  docs: [{ id: 9, title: 'FAQ', updated_at: '2026-06-22' } as KbDoc],
+  folders: [{ id: '1', name: 'Marketing', parent_id: null } as DriveFolder],
+  docs: [{ id: '9', title: 'FAQ', updated_at: '2026-06-22' } as KbDoc],
 };
 const base = { atTop: true, recent, level, loading: false, titles: { recent: 'Recent', shelf: 'Team' }, docSubtitle: () => undefined };
 const kinds = (rows: { type: string; key: string }[]) => rows.map((row) => row.key);

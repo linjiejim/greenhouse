@@ -6,6 +6,7 @@
  */
 
 import type { DriveFile, TableRecord, TableSchema } from '../shared/greenhouse-types';
+import { objectId } from '../lib/object-id';
 import type { DueBucket, MyTask } from './tasks';
 
 export const RECENT_ITEMS_MAX = 20;
@@ -13,11 +14,11 @@ export const RECENT_ITEMS_MAX = 20;
 // ─── files ───────────────────────────────────────────────
 
 export interface RecentFile {
-  id: number;
+  id: string;
   name: string;
   size: number;
   updated_at: string;
-  folder_id: number | null;
+  folder_id: string | null;
   shelf: 'team' | 'personal';
   openedAt: number;
 }
@@ -40,24 +41,30 @@ export function withOpenedFile(
   return [entry, ...list.filter((item) => item.id !== file.id)].slice(0, RECENT_ITEMS_MAX);
 }
 
-export function withoutFile(list: readonly RecentFile[], id: number): RecentFile[] {
+export function withoutFile(list: readonly RecentFile[], id: string): RecentFile[] {
   return list.filter((item) => item.id !== id);
 }
 
+/** The saved list; entries saved before 3.0 hold numeric ids and read as their text. */
 export function parseRecentFiles(value: unknown): RecentFile[] {
   if (!Array.isArray(value)) return [];
   return value
-    .filter((item): item is RecentFile => {
-      const f = item as Partial<RecentFile> | null;
-      return (
-        !!f &&
-        Number.isSafeInteger(f.id) &&
-        typeof f.name === 'string' &&
-        typeof f.size === 'number' &&
-        typeof f.updated_at === 'string' &&
-        (f.shelf === 'team' || f.shelf === 'personal') &&
-        typeof f.openedAt === 'number'
-      );
+    .flatMap((item): RecentFile[] => {
+      const f = item as { [K in keyof RecentFile]?: unknown } | null;
+      const id = objectId(f?.id);
+      if (
+        !f ||
+        !id ||
+        typeof f.name !== 'string' ||
+        typeof f.size !== 'number' ||
+        typeof f.updated_at !== 'string' ||
+        (f.shelf !== 'team' && f.shelf !== 'personal') ||
+        typeof f.openedAt !== 'number'
+      ) {
+        return [];
+      }
+      const folderId = objectId(f.folder_id);
+      return [{ id, name: f.name, size: f.size, updated_at: f.updated_at, folder_id: folderId, shelf: f.shelf, openedAt: f.openedAt }];
     })
     .slice(0, RECENT_ITEMS_MAX);
 }
@@ -65,14 +72,14 @@ export function parseRecentFiles(value: unknown): RecentFile[] {
 // ─── records ─────────────────────────────────────────────
 
 export interface RecentRecord {
-  tableId: number;
-  recordId: number;
+  tableId: string;
+  recordId: string;
   openedAt: number;
 }
 
-export const recordKind = (tableId: number, recordId: number) => `tbl-rec-${tableId}-${recordId}`;
+export const recordKind = (tableId: string, recordId: string) => `tbl-rec-${tableId}-${recordId}`;
 
-export function withOpenedRecord(list: readonly RecentRecord[], tableId: number, recordId: number, now: number): RecentRecord[] {
+export function withOpenedRecord(list: readonly RecentRecord[], tableId: string, recordId: string, now: number): RecentRecord[] {
   return [
     { tableId, recordId, openedAt: now },
     ...list.filter((item) => item.tableId !== tableId || item.recordId !== recordId),
@@ -85,12 +92,15 @@ export function droppedRecords(before: readonly RecentRecord[], after: readonly 
   return before.map((item) => recordKind(item.tableId, item.recordId)).filter((kind) => !kept.has(kind));
 }
 
+/** The saved list; entries saved before 3.0 hold numeric ids and read as their text. */
 export function parseRecentRecords(value: unknown): RecentRecord[] {
   if (!Array.isArray(value)) return [];
   return value
-    .filter((item): item is RecentRecord => {
-      const r = item as Partial<RecentRecord> | null;
-      return !!r && Number.isSafeInteger(r.tableId) && Number.isSafeInteger(r.recordId) && typeof r.openedAt === 'number';
+    .flatMap((item): RecentRecord[] => {
+      const r = item as { [K in keyof RecentRecord]?: unknown } | null;
+      const tableId = objectId(r?.tableId);
+      const recordId = objectId(r?.recordId);
+      return tableId && recordId && typeof r?.openedAt === 'number' ? [{ tableId, recordId, openedAt: r.openedAt }] : [];
     })
     .slice(0, RECENT_ITEMS_MAX);
 }
@@ -107,23 +117,27 @@ export interface SavedRecord {
  * A record's saved copy, or null when it is not this record's. Copies saved before names were
  * kept (or with a damaged name list) read with no names, so their user fields show ids.
  */
-export function parseSavedRecord(value: unknown, tableId: number, recordId: number): SavedRecord | null {
+export function parseSavedRecord(value: unknown, tableId: string, recordId: string): SavedRecord | null {
   const saved = value as { schema?: Partial<TableSchema>; record?: Partial<TableRecord>; users?: unknown } | null;
   if (!saved?.schema?.table || !Array.isArray(saved.schema.fields) || !saved.record) return null;
-  if (saved.record.id !== recordId || saved.record.table_id !== tableId) return null;
+  // copies saved before 3.0 hold numeric ids
+  if (objectId(saved.record.id) !== recordId || objectId(saved.record.table_id) !== tableId) return null;
   if (!saved.record.values || typeof saved.record.values !== 'object') return null;
   const users: Record<string, string> = {};
   if (saved.users && typeof saved.users === 'object' && !Array.isArray(saved.users)) {
     for (const [id, name] of Object.entries(saved.users)) if (typeof name === 'string') users[id] = name;
   }
-  return { schema: saved.schema as TableSchema, record: saved.record as TableRecord, users };
+  return { schema: saved.schema as TableSchema, record: { ...(saved.record as TableRecord), id: recordId, table_id: tableId }, users };
 }
 
 // ─── my tasks ────────────────────────────────────────────
 
 const BUCKETS: readonly DueBucket[] = ['overdue', 'today', 'soon', 'later', 'none'];
 
-/** The saved grouped list of my tasks, or null when it is not one. */
+/**
+ * The saved grouped list of my tasks, or null when it is not one. Lists saved before 3.0 hold
+ * numeric ids; they read as their text.
+ */
 export function parseMyTasks(value: unknown): { bucket: DueBucket; tasks: MyTask[] }[] | null {
   if (!Array.isArray(value)) return null;
   const groups = value.filter(
@@ -132,8 +146,19 @@ export function parseMyTasks(value: unknown): { bucket: DueBucket; tasks: MyTask
       BUCKETS.includes((group as { bucket: DueBucket }).bucket) &&
       Array.isArray((group as { tasks: unknown }).tasks) &&
       (group as { tasks: unknown[] }).tasks.every(
-        (task) => !!task && Number.isSafeInteger((task as MyTask).id) && typeof (task as MyTask).title === 'string',
+        (task) => !!task && objectId((task as { id?: unknown }).id) !== null && typeof (task as MyTask).title === 'string',
       ),
   );
-  return groups.length === value.length ? groups : null;
+  if (groups.length !== value.length) return null;
+  return groups.map((group) => ({ ...group, tasks: group.tasks.map(savedTask) }));
+}
+
+/** A saved task with its ids as text (numbers in copies saved before 3.0). */
+function savedTask(task: MyTask): MyTask {
+  const raw = task as unknown as Record<string, unknown>;
+  const out: Record<string, unknown> = { ...raw, id: objectId(raw.id) };
+  for (const key of ['project_id', 'parent_id'] as const) {
+    if (key in raw) out[key] = raw[key] == null ? raw[key] : objectId(raw[key]);
+  }
+  return out as unknown as MyTask;
 }

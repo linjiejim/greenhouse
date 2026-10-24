@@ -15,9 +15,9 @@ import type { Movable } from './changes';
 import { useLibraryActions } from './use-library-actions';
 
 export type LibraryItem =
-  | { kind: 'folder'; id: number; name: string; shelf: FilesShelf; scope: 'kb' | 'drive' }
-  | { kind: 'doc'; id: number; name: string; shelf: FilesShelf; subtitle?: string }
-  | { kind: 'file'; id: number; name: string; shelf: FilesShelf; subtitle?: string; contentType?: string | null };
+  | { kind: 'folder'; id: string; name: string; shelf: FilesShelf; scope: 'kb' | 'drive' }
+  | { kind: 'doc'; id: string; name: string; shelf: FilesShelf; subtitle?: string }
+  | { kind: 'file'; id: string; name: string; shelf: FilesShelf; subtitle?: string; contentType?: string | null };
 
 /** The question a new conversation starts with when asking about an item (a link the assistant can read). */
 function askAbout(item: LibraryItem, prompt: string): string {

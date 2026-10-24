@@ -13,6 +13,8 @@
  *  - the collapsed tool summary ("用了 3 个工具").
  */
 
+import { objectId } from '../lib/object-id';
+
 export interface ToolStep {
   /** A stable key within the reply. */
   id: string;
@@ -60,9 +62,9 @@ export interface SchemaPlan {
 /** An object a reply points at, as a card that opens its sheet. */
 export interface CitedObject {
   type: 'doc' | 'task' | 'project' | 'file';
-  id: number;
+  id: string;
   title: string;
-  projectId?: number;
+  projectId?: string;
 }
 
 export type ReplyCard =
@@ -221,10 +223,8 @@ export function replyCards(steps: readonly ToolStep[], messageId: string, text: 
   return cards;
 }
 
-const positive = (value: unknown): number | null => {
-  const n = typeof value === 'string' && /^[0-9]+$/.test(value) ? Number(value) : value;
-  return typeof n === 'number' && Number.isSafeInteger(n) && n > 0 ? n : null;
-};
+/** An id in a tool's output or a link (src/lib/object-id.ts); old outputs carry numbers. */
+const positive = objectId;
 
 /** Objects a tool wrote or read (`{ doc }`, `{ task }`, `{ project }`, `{ file }` in its output). */
 function objectsIn(output: unknown): CitedObject[] {
@@ -244,7 +244,7 @@ function objectsIn(output: unknown): CitedObject[] {
   return found;
 }
 
-const DOC_URL = /#\/knowledge\/doc\/([0-9]+)/;
+const DOC_URL = /#\/knowledge\/doc\/([A-Za-z0-9_]+)/;
 
 /** What a reply cites (its knowledge references) and what its tools wrote, once each. */
 export function citedObjects(references: unknown, steps: readonly ToolStep[]): CitedObject[] {

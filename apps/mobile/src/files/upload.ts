@@ -55,7 +55,7 @@ export async function pick(from: UploadFrom): Promise<UploadSource[]> {
  * picker opened); an identity change stops the batch (../api/drive.ts `uploadBatch`).
  */
 export function uploadAll(
-  target: { shelf: FilesShelf; folderId: number | null },
+  target: { shelf: FilesShelf; folderId: string | null },
   sources: UploadSource[],
   stillCurrent: () => boolean,
 ): Promise<BatchOutcome> {

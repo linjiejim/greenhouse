@@ -23,6 +23,7 @@ import { makeStyles, space, useTheme } from '../../src/theme';
 import { EmptyState, LoadingState } from '../../src/ui/empty';
 import { rowPosition } from '../../src/ui/list';
 import { SheetScreen } from '../../src/ui/screen';
+import { objectId } from '../../src/lib/object-id';
 
 interface Level {
   name: string;
@@ -31,7 +32,7 @@ interface Level {
 
 export default function FolderSheet() {
   const params = useLocalSearchParams<{ id?: string; scope?: string; shelf?: string }>();
-  const id = params.id && /^[0-9]+$/.test(params.id) ? Number(params.id) : null;
+  const id = objectId(params.id);
   const scope = params.scope === 'kb' ? 'kb' : 'drive';
   const shelf: FilesShelf = params.shelf === 'personal' ? 'personal' : 'team';
   const t = useT();

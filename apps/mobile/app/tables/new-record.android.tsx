@@ -21,6 +21,7 @@ import {
   useNativeState,
 } from '../../src/ui/native-form.android';
 import { FormChrome } from '../../src/ui/sheet-chrome';
+import { objectId } from '../../src/lib/object-id';
 
 function TextRow({
   field,
@@ -45,7 +46,7 @@ function TextRow({
 
 export default function NewRecord() {
   const { table } = useLocalSearchParams<{ table?: string }>();
-  const tableId = table && /^[0-9]+$/.test(table) ? Number(table) : null;
+  const tableId = objectId(table);
   const t = useT();
   const router = useRouter();
   const form = useNewRecord(tableId);

@@ -17,6 +17,7 @@ import { useNewRecord } from '../../src/tables/use-new-record';
 import { EmptyState } from '../../src/ui/empty';
 import { FormLoading, NativeForm } from '../../src/ui/native-form';
 import { FormChrome } from '../../src/ui/sheet-chrome';
+import { objectId } from '../../src/lib/object-id';
 
 function TextRow({ field, numeric, onChange }: { field: TableField; numeric?: boolean; onChange: (text: string) => void }) {
   const state = useNativeState('');
@@ -41,7 +42,7 @@ function parseDay(day: string | undefined): Date {
 
 export default function NewRecord() {
   const { table } = useLocalSearchParams<{ table?: string }>();
-  const tableId = table && /^[0-9]+$/.test(table) ? Number(table) : null;
+  const tableId = objectId(table);
   const t = useT();
   const router = useRouter();
   const form = useNewRecord(tableId);

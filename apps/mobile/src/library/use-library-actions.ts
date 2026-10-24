@@ -40,7 +40,7 @@ export function useLibraryActions() {
   );
 
   const newFolder = useCallback(
-    async (shelf: FilesShelf, parentId: number | null) => {
+    async (shelf: FilesShelf, parentId: string | null) => {
       const name = await promptText({ title: t('library.newFolder'), placeholder: t('library.folderName') });
       if (!name) return;
       await run(() => createFolder(shelf, parentId, name.slice(0, 120)), t('library.failed'));
@@ -97,7 +97,7 @@ export function useLibraryActions() {
   );
 
   const newDoc = useCallback(
-    (shelf: FilesShelf, folderId: number | null) => {
+    (shelf: FilesShelf, folderId: string | null) => {
       router.push({ pathname: '/doc-new', params: { shelf, ...(folderId ? { folder: String(folderId) } : {}) } });
     },
     [router],

@@ -27,13 +27,13 @@ import { SheetScreen } from '../ui/screen';
 const NAMES_TIMEOUT_MS = 8000;
 
 /** One record, as an object sheet (app/sheet/record.tsx). */
-export function RecordView({ tableId, recordId }: { tableId: number | null; recordId: number | null }) {
+export function RecordView({ tableId, recordId }: { tableId: string | null; recordId: string | null }) {
   const t = useT();
   const { colors: c } = useTheme();
   const styles = useStyles(c);
   const kind = tableId != null && recordId != null ? recordKind(tableId, recordId) : null;
   const load = useCallback(async (): Promise<ApiResult<SavedRecord>> => {
-    const [schema, record] = await Promise.all([getSchema(tableId ?? 0), getRecord(tableId ?? 0, recordId ?? 0)]);
+    const [schema, record] = await Promise.all([getSchema(tableId ?? '0'), getRecord(tableId ?? '0', recordId ?? '0')]);
     if (!schema.ok) return schema;
     if (!record.ok) return record;
     // names are not waited for (looked up below); the copy's names carry over so a new copy keeps them

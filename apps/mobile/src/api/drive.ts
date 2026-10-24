@@ -16,7 +16,7 @@ export const visibilityOfShelf = (shelf: FilesShelf): 'team' | 'private' => (she
 /** One level of a shelf: its folders and files (`folderId` null = the shelf's top). */
 export async function listLevel(
   shelf: FilesShelf,
-  folderId: number | null,
+  folderId: string | null,
 ): Promise<ApiResult<{ folders: DriveFolder[]; files: DriveFile[] }>> {
   const scope = { scope: 'kb', visibility: visibilityOfShelf(shelf) };
   const [folders, files] = await Promise.all([
@@ -29,23 +29,23 @@ export async function listLevel(
 }
 
 export interface CabinetHit {
-  id: number;
+  id: string;
   name: string;
   shelf: FilesShelf;
 }
 
 /** Name search over the team shelf and mine. */
 export const searchCabinet = (q: string) =>
-  get<{ folders: (CabinetHit & { parent_id: number | null })[]; files: (CabinetHit & { folder_id: number | null; size: number })[] }>(
+  get<{ folders: (CabinetHit & { parent_id: string | null })[]; files: (CabinetHit & { folder_id: string | null; size: number })[] }>(
     '/api/drive/search',
     { q, limit: 40 },
   );
 
-export const breadcrumb = (folderId: number) =>
+export const breadcrumb = (folderId: string) =>
   get<{ folders: DriveFolder[] }>('/api/drive/breadcrumb', { folder_id: folderId });
 
 /** The authenticated download address (302 to a signed URL, or the bytes). */
-export const contentUrl = (fileId: number) => `${getApiBase()}/api/drive/files/${seg(String(fileId))}/content`;
+export const contentUrl = (fileId: string) => `${getApiBase()}/api/drive/files/${seg(String(fileId))}/content`;
 
 export interface UploadSource {
   uri: string;
@@ -70,7 +70,7 @@ const identityChanged = (): ApiMiss => ({ ok: false, status: 0, code: IDENTITY_C
  * never go to the station that became active meanwhile, and its token never rides along.
  */
 export async function uploadFile(
-  target: { shelf: FilesShelf; folderId: number | null },
+  target: { shelf: FilesShelf; folderId: string | null },
   source: UploadSource,
   putBytes: (url: string, uri: string, headers: Record<string, string>) => Promise<number>,
   authHeader: () => string | null,
@@ -127,7 +127,7 @@ export interface BatchOutcome {
  * (`stillCurrent`): once it changes, the rest are skipped rather than sent to the new station.
  */
 export async function uploadBatch(
-  target: { shelf: FilesShelf; folderId: number | null },
+  target: { shelf: FilesShelf; folderId: string | null },
   sources: readonly UploadSource[],
   putBytes: (url: string, uri: string, headers: Record<string, string>) => Promise<number>,
   authHeader: () => string | null,
@@ -153,7 +153,7 @@ export async function uploadBatch(
 
 /* ── folders and files: create, rename, move, delete (the same kb tree as the knowledge base) ── */
 
-export const createFolder = (shelf: FilesShelf, parentId: number | null, name: string) =>
+export const createFolder = (shelf: FilesShelf, parentId: string | null, name: string) =>
   post<{ folder: DriveFolder }>('/api/drive/folders', {
     scope: 'kb',
     visibility: visibilityOfShelf(shelf),
@@ -162,22 +162,22 @@ export const createFolder = (shelf: FilesShelf, parentId: number | null, name: s
   });
 
 /** Rename and / or move a folder (`parentId` null = the shelf's top). A move never crosses shelves. */
-export const updateFolder = (id: number, change: { name?: string; parentId?: number | null }) =>
+export const updateFolder = (id: string, change: { name?: string; parentId?: string | null }) =>
   put<{ folder: DriveFolder }>(`/api/drive/folders/${seg(String(id))}`, {
     ...(change.name !== undefined ? { name: change.name } : {}),
     ...(change.parentId !== undefined ? { parent_id: change.parentId } : {}),
   });
 
 /** 409 `not_empty` while the folder still holds anything. */
-export const deleteFolder = (id: number) => del<{ ok: true }>(`/api/drive/folders/${seg(String(id))}`);
+export const deleteFolder = (id: string) => del<{ ok: true }>(`/api/drive/folders/${seg(String(id))}`);
 
-export const updateFile = (id: number, change: { name?: string; folderId?: number | null }) =>
+export const updateFile = (id: string, change: { name?: string; folderId?: string | null }) =>
   put<{ file: DriveFile }>(`/api/drive/files/${seg(String(id))}`, {
     ...(change.name !== undefined ? { name: change.name } : {}),
     ...(change.folderId !== undefined ? { folder_id: change.folderId } : {}),
   });
 
-export const deleteFile = (id: number) => del<{ ok: true }>(`/api/drive/files/${seg(String(id))}`);
+export const deleteFile = (id: string) => del<{ ok: true }>(`/api/drive/files/${seg(String(id))}`);
 
 /** Every folder of a shelf, flat (the folder picker builds the tree). */
 export const listFolders = (shelf: FilesShelf) =>

@@ -38,6 +38,7 @@ import { Row, SectionHeader, rowPosition, type RowPosition } from '../../../src/
 import { Segmented } from '../../../src/ui/segmented';
 import { toast } from '../../../src/ui/toast';
 import { toolbarIcon } from '../../../src/ui/toolbar-icon';
+import { objectId } from '../../../src/lib/object-id';
 
 type View = FilesShelf | 'tables';
 
@@ -57,7 +58,7 @@ export default function Drive() {
   const tablesOn = hasTables(user);
   const view: View = params.view === 'tables' && tablesOn ? 'tables' : params.shelf === 'personal' ? 'personal' : 'team';
   const shelf: FilesShelf = view === 'personal' ? 'personal' : 'team';
-  const folderId = params.folder && /^[0-9]+$/.test(params.folder) ? Number(params.folder) : null;
+  const folderId = objectId(params.folder);
   const { colors: c } = useTheme();
   const styles = useStyles(c);
   const filter = useDirectoryFilter();

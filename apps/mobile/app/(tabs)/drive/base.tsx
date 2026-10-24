@@ -11,15 +11,16 @@ import type { TableDef } from '../../../src/shared/greenhouse-types';
 import { makeStyles, space, useTheme } from '../../../src/theme';
 import { EmptyState, LoadingState } from '../../../src/ui/empty';
 import { Row, SectionFooter, rowPosition } from '../../../src/ui/list';
+import { objectId } from '../../../src/lib/object-id';
 
 export default function Base() {
   const { id: raw } = useLocalSearchParams<{ id?: string }>();
-  const id = raw && /^[0-9]+$/.test(raw) ? Number(raw) : null;
+  const id = objectId(raw);
   const t = useT();
   const router = useRouter();
   const { colors: c } = useTheme();
   const styles = useStyles(c);
-  const load = useCallback(() => getBase(id ?? 0), [id]);
+  const load = useCallback(() => getBase(id ?? '0'), [id]);
   const resource = useResource(load);
   const tables = (resource.data?.tables ?? []).filter((table) => !table.archived_at).sort((a, b) => a.position - b.position);
 

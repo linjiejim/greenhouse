@@ -7,6 +7,7 @@
  */
 
 import type { TableField, TableRecord, TableUser } from '../shared/greenhouse-types';
+import { compareIds } from '../lib/object-id';
 
 export interface SelectOption {
   id: string;
@@ -39,7 +40,7 @@ export function selectOptions(field: Pick<TableField, 'config'>): SelectOption[]
 export function liveFields(fields: readonly TableField[]): TableField[] {
   return fields
     .filter((field) => !field.archived_at)
-    .sort((a, b) => Number(b.is_primary) - Number(a.is_primary) || a.position - b.position || a.id - b.id);
+    .sort((a, b) => Number(b.is_primary) - Number(a.is_primary) || a.position - b.position || compareIds(a.id, b.id));
 }
 
 /** A field's value on a record: a computed result when there is one, else the stored value. */
@@ -88,8 +89,9 @@ export function displayValue(field: Pick<TableField, 'type' | 'config'>, value: 
         .join(', ');
     case 'relation':
       return list
-        .filter((id) => typeof id === 'number')
-        .map((id) => `#${id}`)
+        // record ids are text since 3.0; older values hold numbers
+        .filter((id) => typeof id === 'string' || typeof id === 'number')
+        .map((id) => `#${String(id)}`)
         .join(', ');
     case 'attachment':
       return list.length ? String(list.length) : '';

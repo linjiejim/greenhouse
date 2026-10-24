@@ -9,11 +9,12 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { createDoc } from '../api/knowledge';
 import { useT } from '../lib/i18n';
 import { useLibraryActions } from './use-library-actions';
+import { objectId } from '../lib/object-id';
 
 export function useNewDoc() {
   const params = useLocalSearchParams<{ shelf?: string; folder?: string }>();
   const shelf = params.shelf === 'personal' ? 'personal' : 'team';
-  const folderId = params.folder && /^[0-9]+$/.test(params.folder) ? Number(params.folder) : null;
+  const folderId = objectId(params.folder);
   const t = useT();
   const router = useRouter();
   const actions = useLibraryActions();

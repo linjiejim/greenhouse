@@ -7,13 +7,13 @@
 
 import type { ApiResult } from '../api/client';
 
-export async function collectPages<T extends { id: number }>(
+export async function collectPages<T extends { id: string }>(
   fetchPage: (offset: number, limit: number) => Promise<ApiResult<T[]>>,
   options: { pageSize: number; maxPages?: number; stillCurrent: () => boolean },
 ): Promise<ApiResult<T[]>> {
   const { pageSize, maxPages = 50, stillCurrent } = options;
   const items: T[] = [];
-  const seen = new Set<number>();
+  const seen = new Set<string>();
   for (let page = 0; page < maxPages; page += 1) {
     if (!stillCurrent()) return { ok: false, status: 0, code: 'identity_changed', message: '' };
     const result = await fetchPage(page * pageSize, pageSize);

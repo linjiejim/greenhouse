@@ -22,6 +22,7 @@ import { EmptyState, LoadingState } from '../../../src/ui/empty';
 import { Row, SectionFooter, rowPosition } from '../../../src/ui/list';
 import { useOpenObject } from '../../../src/shell/open-object';
 import { toolbarIcon } from '../../../src/ui/toolbar-icon';
+import { objectId } from '../../../src/lib/object-id';
 
 interface Head {
   schema: TableSchema;
@@ -31,12 +32,10 @@ interface Head {
   cursor: string | null;
 }
 
-const num = (raw: string | undefined) => (raw && /^[0-9]+$/.test(raw) ? Number(raw) : null);
-
 export default function TableScreen() {
   const params = useLocalSearchParams<{ base?: string; id?: string }>();
-  const baseId = num(params.base);
-  const tableId = num(params.id);
+  const baseId = objectId(params.base);
+  const tableId = objectId(params.id);
   const t = useT();
   const router = useRouter();
   const { colors: c } = useTheme();
@@ -45,9 +44,9 @@ export default function TableScreen() {
 
   const load = useCallback(async (): Promise<ApiResult<Head>> => {
     const [schema, base, page] = await Promise.all([
-      getSchema(tableId ?? 0),
+      getSchema(tableId ?? '0'),
       baseId != null ? getBase(baseId) : Promise.resolve(null),
-      queryRecords(tableId ?? 0, null),
+      queryRecords(tableId ?? '0', null),
     ]);
     if (!schema.ok) return schema;
     if (!page.ok) return page;
@@ -89,7 +88,7 @@ export default function TableScreen() {
   const fields = useMemo(() => (head ? liveFields(head.schema.fields) : []), [head]);
   const words = useFieldWords(fields);
   const records = useMemo(() => {
-    const seen = new Set<number>();
+    const seen = new Set<string>();
     return [...(head?.records ?? []), ...extra.records].filter((record) => !seen.has(record.id) && !!seen.add(record.id));
   }, [head, extra.records]);
 

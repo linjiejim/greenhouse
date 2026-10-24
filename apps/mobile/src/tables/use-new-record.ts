@@ -15,7 +15,7 @@ import { alertError } from '../ui/dialogs';
 import { notifySuccess } from '../ui/haptics';
 import { toast } from '../ui/toast';
 
-export function useNewRecord(tableId: number | null) {
+export function useNewRecord(tableId: string | null) {
   const t = useT();
   const [schema, setSchema] = useState<TableSchema | null>(null);
   const [error, setError] = useState<ApiMiss | null>(null);
@@ -44,7 +44,7 @@ export function useNewRecord(tableId: number | null) {
   const readOnlyCount = schema ? liveFields(schema.fields).length - fields.length : 0;
   const dirty = !saved && Object.values(draft).some((value) => value !== '' && value !== null && value !== undefined && value !== false);
 
-  const set = useCallback((fieldId: number, value: string | boolean | null) => {
+  const set = useCallback((fieldId: string, value: string | boolean | null) => {
     setDraft((before) => ({ ...before, [String(fieldId)]: value }));
   }, []);
 

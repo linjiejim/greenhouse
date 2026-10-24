@@ -36,19 +36,19 @@ export async function listDocs(shelf: KbShelf | 'shared', stillCurrent: () => bo
 export const listKbFolders = (shelf: KbShelf) =>
   get<{ folders: DriveFolder[] }>('/api/drive/folders', { scope: 'kb', visibility: visibilityOf(shelf), parent_id: 'all' });
 
-export const getDoc = (id: number) => get<{ doc: KbDoc }>(`/api/knowledge/docs/id/${seg(String(id))}`);
+export const getDoc = (id: string) => get<{ doc: KbDoc }>(`/api/knowledge/docs/id/${seg(String(id))}`);
 
 export const searchDocs = (q: string) =>
   get<{ results: KbSearchHit[]; query: string }>('/api/knowledge/search', { q, scope: 'all', limit: 30 });
 
-export const listComments = (docId: number) =>
+export const listComments = (docId: string) =>
   get<{ comments: KbComment[] }>(`/api/knowledge/docs/${seg(String(docId))}/comments`);
 
-export const addComment = (docId: number, content: string) =>
+export const addComment = (docId: string, content: string) =>
   post<{ comment: KbComment }>(`/api/knowledge/docs/${seg(String(docId))}/comments`, { content });
 
 /** A new document on a shelf, in a folder or at the top. */
-export const createDoc = (input: { title: string; content: string; shelf: KbShelf; folderId: number | null }) =>
+export const createDoc = (input: { title: string; content: string; shelf: KbShelf; folderId: string | null }) =>
   post<{ doc: KbDoc }>('/api/knowledge/docs', {
     title: input.title,
     content_markdown: input.content,
@@ -57,11 +57,11 @@ export const createDoc = (input: { title: string; content: string; shelf: KbShel
   });
 
 /** Rename and / or move a document (`folderId` null = the shelf's top). */
-export const updateDoc = (id: number, change: { title?: string; folderId?: number | null }) =>
+export const updateDoc = (id: string, change: { title?: string; folderId?: string | null }) =>
   put<{ doc: KbDoc }>(`/api/knowledge/docs/${seg(String(id))}`, {
     ...(change.title !== undefined ? { title: change.title } : {}),
     ...(change.folderId !== undefined ? { folder_id: change.folderId } : {}),
   });
 
 /** Archive a document (the owner's, or any team document). */
-export const deleteDoc = (id: number) => del<{ success: true }>(`/api/knowledge/docs/${seg(String(id))}`);
+export const deleteDoc = (id: string) => del<{ success: true }>(`/api/knowledge/docs/${seg(String(id))}`);

@@ -8,6 +8,7 @@
 import type { ObjectRef } from '../shell/object-ref';
 import type { SearchGroup } from '../shared/greenhouse-types';
 import type { MyTask } from './tasks';
+import { objectId } from '../lib/object-id';
 
 export type SearchSectionKind = 'session' | 'kb_doc' | 'project' | 'file' | 'task' | 'other';
 
@@ -24,10 +25,8 @@ export interface SearchSection {
   hits: SearchHitView[];
 }
 
-const positive = (value: unknown): number | null => {
-  const n = typeof value === 'string' && /^[0-9]+$/.test(value) ? Number(value) : value;
-  return typeof n === 'number' && Number.isSafeInteger(n) && n > 0 ? n : null;
-};
+/** A hit's id (src/lib/object-id.ts); older stations send numbers. */
+const positive = objectId;
 
 export function stationSections(groups: readonly SearchGroup[]): SearchSection[] {
   const out: SearchSection[] = [];
@@ -48,7 +47,7 @@ export function stationSections(groups: readonly SearchGroup[]): SearchSection[]
   return out;
 }
 
-export function fileSection(files: readonly { id: number; name: string; size?: number }[], detail: (size?: number) => string): SearchSection | null {
+export function fileSection(files: readonly { id: string; name: string; size?: number }[], detail: (size?: number) => string): SearchSection | null {
   if (!files.length) return null;
   return {
     kind: 'file',

@@ -3,10 +3,9 @@
 import React from 'react';
 import { useLocalSearchParams } from 'expo-router';
 import { RecordView } from '../../src/tables/record-view';
-
-const num = (raw: string | undefined) => (raw && /^[0-9]+$/.test(raw) ? Number(raw) : null);
+import { objectId } from '../../src/lib/object-id';
 
 export default function RecordScreen() {
   const params = useLocalSearchParams<{ table?: string; id?: string }>();
-  return <RecordView tableId={num(params.table)} recordId={num(params.id)} />;
+  return <RecordView tableId={objectId(params.table)} recordId={objectId(params.id)} />;
 }

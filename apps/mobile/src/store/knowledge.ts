@@ -12,7 +12,7 @@ import { notifyOfflineChanged } from './offline-events';
 import { useStations } from './stations';
 
 const RECENT = 'kb-recent';
-const docKind = (id: number) => `kb-doc-${id}`;
+const docKind = (id: string) => `kb-doc-${id}`;
 
 function who(): { station: string; member: string } | null {
   const station = useStations.getState().activeId;
@@ -25,7 +25,7 @@ export async function recentDocs(): Promise<RecentDoc[]> {
   return id ? parseRecent(await readCache(id.station, id.member, RECENT)) : [];
 }
 
-export async function savedDoc(docId: number): Promise<SavedDoc | null> {
+export async function savedDoc(docId: string): Promise<SavedDoc | null> {
   const id = who();
   return id ? parseSaved(await readCache(id.station, id.member, docKind(docId)), docId) : null;
 }
@@ -43,7 +43,7 @@ export async function rememberDoc(doc: KbDoc): Promise<void> {
 }
 
 /** The server says the document is gone or no longer readable: its copy goes too. */
-export async function forgetDoc(docId: number): Promise<void> {
+export async function forgetDoc(docId: string): Promise<void> {
   const id = who();
   if (!id) return;
   removeCache(id.station, id.member, docKind(docId));

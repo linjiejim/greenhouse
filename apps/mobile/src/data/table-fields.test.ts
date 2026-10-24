@@ -14,23 +14,23 @@ import {
   selectOptions,
 } from './table-fields';
 
-const field = (id: number, type: string, over: Partial<TableField> = {}): TableField => ({
-  id,
-  table_id: 1,
-  name: `F${id}`,
+const field = (n: number, type: string, over: Partial<TableField> = {}): TableField => ({
+  id: String(n),
+  table_id: '1',
+  name: `F${n}`,
   type,
   required: false,
   is_primary: false,
   config: null,
-  position: id,
+  position: n,
   archived_at: null,
   ...over,
 });
 const options = JSON.stringify({ options: [{ id: 'o1', label: 'Open' }, { id: 'o2', label: 'Won', color: '#0a0' }] });
 const words = { yes: 'Yes', no: 'No', date: (v: string) => `d:${v}`, user: (id: string) => (id === 'u1' ? 'Maya' : id) };
 const record = (values: Record<string, unknown>, computed: Record<string, unknown> = {}): TableRecord => ({
-  id: 7,
-  table_id: 1,
+  id: '7',
+  table_id: '1',
   values,
   computed_values: computed,
   revision: 1,
@@ -43,7 +43,7 @@ const record = (values: Record<string, unknown>, computed: Record<string, unknow
 describe('table fields', () => {
   it('orders live fields with the primary first', () => {
     const fields = [field(1, 'text', { position: 2 }), field(2, 'text', { is_primary: true, position: 5 }), field(3, 'text', { archived_at: 'x' })];
-    expect(liveFields(fields).map((f) => f.id)).toEqual([2, 1]);
+    expect(liveFields(fields).map((f) => f.id)).toEqual(['2', '1']);
   });
 
   it('reads select options and ignores broken config', () => {
@@ -60,7 +60,9 @@ describe('table fields', () => {
     expect(displayValue(field(1, 'single_select', { config: options }), 'o2', words)).toBe('Won');
     expect(displayValue(field(1, 'multi_select', { config: options }), ['o1', 'o2', 'gone'], words)).toBe('Open, Won');
     expect(displayValue(field(1, 'multi_user'), ['u1', 'u2'], words)).toBe('Maya, u2');
-    expect(displayValue(field(1, 'relation'), [3, 4], words)).toBe('#3, #4');
+    expect(displayValue(field(1, 'relation'), ['rec_01JB2Y8Z9QW3E4R5T6Y7V8H9P0', '4'], words)).toBe('#rec_01JB2Y8Z9QW3E4R5T6Y7V8H9P0, #4');
+    // values saved before 3.0 hold numbers
+    expect(displayValue(field(1, 'relation'), [3], words)).toBe('#3');
     expect(displayValue(field(1, 'text'), null, words)).toBe('');
     expect(displayValue(field(1, 'long_text'), { odd: true }, words)).toBe('');
   });
@@ -86,7 +88,7 @@ describe('quick add', () => {
   ];
 
   it('offers only the simple types', () => {
-    expect(quickAddFields(fields).map((f) => f.id)).toEqual([1, 2, 3, 4, 5]);
+    expect(quickAddFields(fields).map((f) => f.id)).toEqual(['1', '2', '3', '4', '5']);
   });
 
   it('builds values and leaves empty optional fields out', () => {

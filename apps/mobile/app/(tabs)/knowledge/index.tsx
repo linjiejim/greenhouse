@@ -34,13 +34,14 @@ import { EmptyState, LoadingState } from '../../../src/ui/empty';
 import { SectionHeader } from '../../../src/ui/list';
 import { Segmented } from '../../../src/ui/segmented';
 import { toolbarIcon } from '../../../src/ui/toolbar-icon';
+import { objectId } from '../../../src/lib/object-id';
 
 type ShelfName = KbShelf | 'shared';
 
 export default function Knowledge() {
   const params = useLocalSearchParams<{ shelf?: string; folder?: string }>();
   const shelf: ShelfName = params.shelf === 'personal' || params.shelf === 'shared' ? params.shelf : 'team';
-  const folderId = params.folder && /^[0-9]+$/.test(params.folder) ? Number(params.folder) : null;
+  const folderId = objectId(params.folder);
   const t = useT();
   const router = useRouter();
   const openObject = useOpenObject();

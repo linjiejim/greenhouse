@@ -102,13 +102,13 @@ export type KbAccess = 'owner' | 'editor' | 'reader';
 
 /** A document as `docToApi` answers it (routes/knowledge.ts). */
 export interface KbDoc {
-  id: number;
+  id: string;
   slug: string;
   title: string;
   content_markdown: string;
   summary: string;
   tags: string;
-  folder_id: number | null;
+  folder_id: string | null;
   visibility: 'team' | 'private';
   status: 'draft' | 'published' | 'archived';
   owner_user_id: string | null;
@@ -120,7 +120,7 @@ export interface KbDoc {
 
 /** `GET /api/knowledge/search` hits. */
 export interface KbSearchHit {
-  id: number;
+  id: string;
   slug: string;
   title: string;
   summary: string;
@@ -129,7 +129,7 @@ export interface KbSearchHit {
 }
 
 export interface KbComment {
-  id: number;
+  id: string;
   author_user_id: string;
   author_nickname: string;
   content: string;
@@ -140,8 +140,8 @@ export interface KbComment {
 // ─── drive: the knowledge cabinet (/api/drive, scope kb) ────────────
 
 export interface DriveFolder {
-  id: number;
-  parent_id: number | null;
+  id: string;
+  parent_id: string | null;
   name: string;
   visibility: 'team' | 'private' | null;
   sort_order?: number;
@@ -150,8 +150,8 @@ export interface DriveFolder {
 }
 
 export interface DriveFile {
-  id: number;
-  folder_id: number | null;
+  id: string;
+  folder_id: string | null;
   name: string;
   content_type: string | null;
   size: number;
@@ -164,7 +164,7 @@ export interface DriveFile {
 
 /** `POST /api/drive/files/init`: a presigned PUT (`cos`) or the API itself (`proxy`). */
 export interface DriveUploadInit {
-  file_id: number;
+  file_id: string;
   mode: 'cos' | 'proxy';
   upload_url: string;
   complete_url?: string;
@@ -186,7 +186,7 @@ export interface TaskStats {
 }
 
 export interface Project {
-  id: number;
+  id: string;
   title: string;
   description: string | null;
   status: ProjectStatus;
@@ -205,9 +205,9 @@ export interface Project {
 
 /** A task as the project routes answer it; `tags` / `dependencies` may be raw JSON strings. */
 export interface ProjectTask {
-  id: number;
-  project_id: number;
-  parent_id: number | null;
+  id: string;
+  project_id: string;
+  parent_id: string | null;
   title: string;
   description: string | null;
   status: TaskStatus;
@@ -228,8 +228,8 @@ export interface ProjectTask {
 }
 
 export interface ProjectMember {
-  id: number;
-  project_id: number;
+  id: string;
+  project_id: string;
   user_id: string;
   role: 'owner' | 'member';
   nickname: string | null;
@@ -245,8 +245,8 @@ export interface ProjectDetail {
 }
 
 export interface TaskComment {
-  id: number;
-  task_id: number;
+  id: string;
+  task_id: string;
   user_id: string;
   content: string;
   created_at: string;
@@ -258,7 +258,7 @@ export interface TaskComment {
 export type TableRole = 'owner' | 'builder' | 'editor' | 'viewer';
 
 export interface TableBase {
-  id: number;
+  id: string;
   name: string;
   description: string | null;
   visibility: 'private' | 'team';
@@ -270,8 +270,8 @@ export interface TableBase {
 }
 
 export interface TableDef {
-  id: number;
-  base_id: number;
+  id: string;
+  base_id: string;
   name: string;
   description: string | null;
   position: number;
@@ -299,8 +299,8 @@ export type TableFieldType =
   | 'rollup';
 
 export interface TableField {
-  id: number;
-  table_id: number;
+  id: string;
+  table_id: string;
   name: string;
   type: TableFieldType | string;
   required: boolean;
@@ -312,8 +312,8 @@ export interface TableField {
 }
 
 export interface TableRecord {
-  id: number;
-  table_id: number;
+  id: string;
+  table_id: string;
   /** Keyed by field id as a string. */
   values: Record<string, unknown>;
   computed_values?: Record<string, unknown> | null;
@@ -434,5 +434,5 @@ export interface ChatMessage {
 export interface SearchGroup {
   kind: string;
   hasMore: boolean;
-  items: { title: string; subtitle?: string | null; sessionId?: string; ref?: { kind: string; id: string | number; slug?: string } }[];
+  items: { title: string; subtitle?: string | null; sessionId?: string; ref?: { kind: string; id: string; slug?: string } }[];
 }

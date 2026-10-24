@@ -27,7 +27,7 @@ export function flattenTasks(tree: readonly ProjectTask[]): ProjectTask[] {
 }
 
 /** A task tree with one task found (or null). */
-export function findTask(tree: readonly ProjectTask[], id: number): ProjectTask | null {
+export function findTask(tree: readonly ProjectTask[], id: string): ProjectTask | null {
   for (const task of tree) {
     if (task.id === id) return task;
     const inner = task.children?.length ? findTask(task.children, id) : null;
@@ -37,7 +37,7 @@ export function findTask(tree: readonly ProjectTask[], id: number): ProjectTask 
 }
 
 /** The tree with one task's fields replaced (a new tree; the rest shared). */
-export function withTaskPatched(tree: readonly ProjectTask[], id: number, patch: Partial<ProjectTask>): ProjectTask[] {
+export function withTaskPatched(tree: readonly ProjectTask[], id: string, patch: Partial<ProjectTask>): ProjectTask[] {
   return tree.map((task) => {
     if (task.id === id) return { ...task, ...patch };
     if (!task.children?.length) return task;
@@ -93,7 +93,7 @@ export interface MyTask extends ProjectTask {
  * each group by due date then title. Empty groups are left out.
  */
 export function myTasks(
-  projects: readonly { id: number; title: string; color: string | null; tasks: readonly ProjectTask[] }[],
+  projects: readonly { id: string; title: string; color: string | null; tasks: readonly ProjectTask[] }[],
   userId: string,
   today: string,
 ): { bucket: DueBucket; tasks: MyTask[] }[] {

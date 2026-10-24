@@ -27,8 +27,8 @@ import { SheetScreen } from '../src/ui/screen';
 import { SheetActions } from '../src/ui/sheet-actions';
 
 /** The folder and everything under it (where a folder may not move). */
-function subtree(folders: readonly DriveFolder[], rootId: number): Set<number> {
-  const out = new Set<number>([rootId]);
+function subtree(folders: readonly DriveFolder[], rootId: string): Set<string> {
+  const out = new Set<string>([rootId]);
   let grew = true;
   while (grew) {
     grew = false;
@@ -50,11 +50,11 @@ export default function Move() {
   const actions = useLibraryActions();
   const { colors: c } = useTheme();
   const styles = useStyles(c);
-  const [level, setLevel] = useState<number | null>(null);
+  const [level, setLevel] = useState<string | null>(null);
   const [moving, setMoving] = useState(false);
   const resource = useResource(useCallback(() => listFolders(item?.shelf ?? 'team'), [item?.shelf]));
   const folders = useMemo(() => resource.data?.folders ?? [], [resource.data]);
-  const blocked = useMemo(() => (item?.kind === 'folder' ? subtree(folders, item.id) : new Set<number>()), [folders, item]);
+  const blocked = useMemo(() => (item?.kind === 'folder' ? subtree(folders, item.id) : new Set<string>()), [folders, item]);
   const here = folders.filter((f) => (f.parent_id ?? null) === level && !blocked.has(f.id)).sort((a, b) => a.name.localeCompare(b.name));
   const path = pathTo(folders, level);
 

@@ -11,14 +11,14 @@
 import type { AppTarget, FilesShelf } from '../lib/deep-links';
 
 export type ObjectRef =
-  | { kind: 'doc'; id: number }
-  | { kind: 'file'; id: number; name?: string }
+  | { kind: 'doc'; id: string }
+  | { kind: 'file'; id: string; name?: string }
   /** A file attached to or produced in a conversation (`/api/chat-files/<id>/content`). */
   | { kind: 'attachment'; path: string; name: string }
-  | { kind: 'folder'; scope: 'kb' | 'drive'; shelf: FilesShelf; id: number }
-  | { kind: 'project'; id: number }
-  | { kind: 'task'; projectId: number; id: number }
-  | { kind: 'record'; baseId: number | null; tableId: number; id: number }
+  | { kind: 'folder'; scope: 'kb' | 'drive'; shelf: FilesShelf; id: string }
+  | { kind: 'project'; id: string }
+  | { kind: 'task'; projectId: string; id: string }
+  | { kind: 'record'; baseId: string | null; tableId: string; id: string }
   | { kind: 'notification'; id: string }
   | { kind: 'run'; id: string }
   | { kind: 'write'; id: string }
@@ -105,8 +105,8 @@ export function openingOf(ref: ObjectRef): Opening {
 /** Where a link leads that is not one object: a tab, a place in a tab, or a web page. */
 export type Place =
   | { kind: 'tab'; href: '/' | '/knowledge' | '/drive' | '/projects' }
-  | { kind: 'drive'; shelf: FilesShelf; folderId: number | null }
-  | { kind: 'tables'; baseId: number | null; tableId: number | null }
+  | { kind: 'drive'; shelf: FilesShelf; folderId: string | null }
+  | { kind: 'tables'; baseId: string | null; tableId: string | null }
   | { kind: 'agents' }
   | { kind: 'web'; hash: string }
   | { kind: 'external'; url: string };

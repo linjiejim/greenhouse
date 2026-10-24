@@ -66,7 +66,7 @@ export async function rememberFile(
 }
 
 /** The station says the file is gone or no longer mine: its details go too. */
-export async function forgetFile(fileId: number): Promise<void> {
+export async function forgetFile(fileId: string): Promise<void> {
   const id = who();
   if (!id) return;
   const before = parseRecentFiles(await readCache(id.station, id.member, FILES));
@@ -74,7 +74,7 @@ export async function forgetFile(fileId: number): Promise<void> {
 }
 
 /** A record was read from the station: list it, and drop the copies that fell off the list. */
-export async function rememberRecord(tableId: number, recordId: number): Promise<void> {
+export async function rememberRecord(tableId: string, recordId: string): Promise<void> {
   const id = who();
   if (!id) return;
   const before = parseRecentRecords(await readCache(id.station, id.member, RECORDS));

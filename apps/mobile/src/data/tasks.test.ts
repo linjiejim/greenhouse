@@ -2,11 +2,11 @@ import { describe, expect, it } from 'vitest';
 import type { ProjectTask } from '../shared/greenhouse-types';
 import { addDays, dueBucket, findTask, flattenTasks, groupMyTasks, localDay, myTasks, parseTags, withTaskPatched, type MyTask } from './tasks';
 
-const task = (id: number, over: Partial<ProjectTask> = {}): ProjectTask => ({
-  id,
-  project_id: 1,
+const task = (n: number, over: Partial<ProjectTask> = {}): ProjectTask => ({
+  id: String(n),
+  project_id: '1',
   parent_id: null,
-  title: `Task ${id}`,
+  title: `Task ${n}`,
   description: null,
   status: 'todo',
   priority: 'normal',
@@ -14,7 +14,7 @@ const task = (id: number, over: Partial<ProjectTask> = {}): ProjectTask => ({
   start_date: null,
   due_date: null,
   completed_at: null,
-  sort_order: id,
+  sort_order: n,
   estimated_hours: null,
   created_by: 'me',
   created_at: '2026-10-01T00:00:00Z',
@@ -23,18 +23,18 @@ const task = (id: number, over: Partial<ProjectTask> = {}): ProjectTask => ({
 });
 
 describe('task trees', () => {
-  const tree = [task(1, { children: [task(2, { parent_id: 1, children: [task(3, { parent_id: 2 })] })] }), task(4)];
+  const tree = [task(1, { children: [task(2, { parent_id: '1', children: [task(3, { parent_id: '2' })] })] }), task(4)];
 
   it('flattens parents before children, without the children arrays', () => {
-    expect(flattenTasks(tree).map((t) => t.id)).toEqual([1, 2, 3, 4]);
+    expect(flattenTasks(tree).map((t) => t.id)).toEqual(['1', '2', '3', '4']);
     expect(flattenTasks(tree).every((t) => !('children' in t))).toBe(true);
   });
 
   it('finds and patches a nested task without touching the rest', () => {
-    expect(findTask(tree, 3)?.title).toBe('Task 3');
-    const patched = withTaskPatched(tree, 3, { status: 'done' });
-    expect(findTask(patched, 3)?.status).toBe('done');
-    expect(findTask(tree, 3)?.status).toBe('todo');
+    expect(findTask(tree, '3')?.title).toBe('Task 3');
+    const patched = withTaskPatched(tree, '3', { status: 'done' });
+    expect(findTask(patched, '3')?.status).toBe('done');
+    expect(findTask(tree, '3')?.status).toBe('todo');
     expect(patched[1]).toBe(tree[1]);
   });
 
@@ -68,7 +68,7 @@ describe('my tasks', () => {
   it('keeps my open tasks, grouped by due, soonest first', () => {
     const projects = [
       {
-        id: 1,
+        id: '1',
         title: 'Launch',
         color: null,
         tasks: [
@@ -77,21 +77,21 @@ describe('my tasks', () => {
           task(4, { assignee_id: 'sam', due_date: '2026-10-24' }),
         ],
       },
-      { id: 2, title: 'Ops', color: '#f00', tasks: [task(5), task(6, { due_date: '2026-10-26', status: 'in_review' })] },
+      { id: '2', title: 'Ops', color: '#f00', tasks: [task(5), task(6, { due_date: '2026-10-26', status: 'in_review' })] },
     ];
     const groups = myTasks(projects, 'me', '2026-10-24');
     expect(groups.map((g) => [g.bucket, g.tasks.map((t) => t.id)])).toEqual([
-      ['overdue', [2]],
-      ['soon', [6, 1]],
-      ['none', [5]],
+      ['overdue', ['2']],
+      ['soon', ['6', '1']],
+      ['none', ['5']],
     ]);
     expect(groups[1]!.tasks[0]!.project_title).toBe('Ops');
   });
 });
 
 describe('a saved list of my tasks shown on a later day', () => {
-  const task = (id: number, due: string | null): MyTask =>
-    ({ id, title: `T${id}`, due_date: due, project_id: 1, project_title: 'P', project_color: null }) as MyTask;
+  const task = (n: number, due: string | null): MyTask =>
+    ({ id: String(n), title: `T${n}`, due_date: due, project_id: '1', project_title: 'P', project_color: null }) as MyTask;
   const savedYesterday = [
     { bucket: 'today' as const, tasks: [task(1, '2026-10-23')] },
     { bucket: 'soon' as const, tasks: [task(2, '2026-10-24'), task(3, '2026-10-30')] },
@@ -104,10 +104,10 @@ describe('a saved list of my tasks shown on a later day', () => {
       '2026-10-24',
     );
     expect(groups.map((group) => [group.bucket, group.tasks.map((t) => t.id)])).toEqual([
-      ['overdue', [1]],
-      ['today', [2]],
-      ['soon', [3]],
-      ['none', [4]],
+      ['overdue', ['1']],
+      ['today', ['2']],
+      ['soon', ['3']],
+      ['none', ['4']],
     ]);
   });
 });
