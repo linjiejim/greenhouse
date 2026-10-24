@@ -114,6 +114,11 @@ export function widgetLinkPath(path: string, activeStation: string | null): stri
   return `${route}${query ? `?${query}` : ''}`;
 }
 
+/** Whether an app path (as `widgetLinkPath` returns it) opens a widget item: a task or a document. */
+export function isWidgetItemPath(path: string): boolean {
+  return /^\/(projects\/task|knowledge\/doc)(\?|$)/.test(path);
+}
+
 /**
  * Whether a screen opened from a widget link (its `station` parameter, if any) may show its item:
  * `wait` until the stations are read, `open` on the station the link came from (or a link without

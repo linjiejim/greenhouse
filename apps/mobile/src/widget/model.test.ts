@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { MyTask } from '../data/tasks';
-import { buildSnapshot, myTasksRefreshAction, widgetLinkPath, widgetStationGate } from './model';
+import { buildSnapshot, isWidgetItemPath, myTasksRefreshAction, widgetLinkPath, widgetStationGate } from './model';
 
 const task = (id: number, due: string | null): MyTask =>
   ({
@@ -94,6 +94,20 @@ describe('a widget link opening the app', () => {
   it('leaves other links alone', () => {
     expect(widgetLinkPath('/tables/record?table=1&id=2', 'local-3993')).toBe('/tables/record?table=1&id=2');
     expect(widgetLinkPath('greenhouse://auth/feishu?feishu_code=x', 'local-3993')).toBe('greenhouse://auth/feishu?feishu_code=x');
+  });
+});
+
+describe('which links open a widget item', () => {
+  it('are the task and document routes', () => {
+    expect(isWidgetItemPath('/projects/task?project=2&task=16')).toBe(true);
+    expect(isWidgetItemPath('/knowledge/doc?id=7&station=other')).toBe(true);
+    expect(isWidgetItemPath('/knowledge/doc')).toBe(true);
+  });
+
+  it('are not home, other pages or sign-in callbacks', () => {
+    for (const path of ['/', '/projects', '/projects/taskboard', '/knowledge', 'greenhouse://auth/feishu?feishu_code=x', '/tables/record?table=1&id=2']) {
+      expect(isWidgetItemPath(path)).toBe(false);
+    }
   });
 });
 
