@@ -6,14 +6,13 @@
  *
  * Both senders go through `deliverQueued`: a message is claimed for the one attempt (a second
  * sender skips it), is checked to still be queued right before it goes, and leaves the outbox only
- * when the station accepted it. A message sent without an answer is looked for in its conversation
- * before it goes again.
+ * when the station accepted it (or says it already saved that turn: `client_turn_id`).
  */
 
 import { useEffect } from 'react';
 import { AppState } from 'react-native';
 import { create } from 'zustand';
-import { chatRun, createSession, getMessages } from '../api/assistant';
+import { createSession } from '../api/assistant';
 import { sendMessage } from '../chat/send';
 import { captureIdentity } from '../data/identity';
 import {
@@ -22,7 +21,7 @@ import {
   dequeue,
   due,
   enqueue,
-  heldByStation,
+  newTurnId,
   nextToSend,
   parseOutbox,
   patchTurn,
@@ -61,13 +60,13 @@ function save(items: QueuedTurn[]): void {
 
 const queued = (id: string) => useOutbox.getState().items.find((item) => item.id === id);
 
-/** Queue a message; false when the outbox is full (nothing is dropped, the caller keeps the words). */
-export function queueTurn(turn: Omit<QueuedTurn, 'id' | 'createdAt'>): boolean {
-  const next = enqueue(useOutbox.getState().items, {
-    ...turn,
-    id: `q-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
-    createdAt: Date.now(),
-  });
+/**
+ * Queue a message; false when the outbox is full (nothing is dropped, the caller keeps the words).
+ * A send that falls back into the queue passes the turn id it was sent with, so a retry is the
+ * same turn to the station.
+ */
+export function queueTurn(turn: Omit<QueuedTurn, 'id' | 'createdAt'> & { id?: string }): boolean {
+  const next = enqueue(useOutbox.getState().items, { ...turn, id: turn.id ?? newTurnId(), createdAt: Date.now() });
   if (!next) return false;
   save(next);
   return true;
@@ -95,18 +94,8 @@ export function claimConversation(sessionId: string): () => void {
 /** Messages being sent right now, by whichever sender claimed them. */
 const inFlight = new Set<string>();
 
-export type SendAttempt = { ok: true } | { ok: false; status: number; message: string };
+export type SendAttempt = { ok: true } | { ok: false; status: number; code?: string; message: string };
 type Addressed = QueuedTurn & { sessionId: string };
-
-/** Whether an earlier send without an answer reached the station: yes, no, or can't tell yet. */
-async function arrived(turn: Addressed): Promise<'yes' | 'no' | 'unclear'> {
-  const page = await getMessages(turn.sessionId);
-  if (!page.ok) return 'unclear';
-  if (heldByStation(page.data, turn)) return 'yes';
-  const run = await chatRun(turn.sessionId);
-  // a reply being written may be the answer to it; look again once it ends
-  return run.ok && !run.data.active ? 'no' : 'unclear';
-}
 
 /**
  * Send one queued message through `send`, once. Skipped (`null`) when another sender has it, it
@@ -126,19 +115,6 @@ export async function deliverQueued(
   const target: Addressed = { ...turn, sessionId: turn.sessionId };
   inFlight.add(id);
   try {
-    if (turn.status === 'unknown') {
-      const seen = await arrived(target);
-      if (!current() || !queued(id)) return null;
-      if (seen === 'yes') {
-        unqueueTurn(id);
-        return 'sent';
-      }
-      if (seen === 'unclear') {
-        patch(id, { ...afterAttempt(turn, 'retry', ''), status: 'unknown' });
-        return 'retry';
-      }
-    }
-    if (options.background && claimed.has(target.sessionId)) return null;
     const attempt = await send(target);
     if (!current()) return null;
     const delivery = deliveryOf(attempt);
@@ -183,8 +159,8 @@ export async function flushOutbox(): Promise<void> {
       const delivery = await deliverQueued(
         snapshot.id,
         async (turn) => {
-          const outcome = await sendMessage(turn.sessionId, turn.text, () => {}, undefined, turn.images);
-          return outcome.ok ? { ok: true } : { ok: false, status: outcome.status, message: outcome.message };
+          const outcome = await sendMessage(turn.sessionId, turn.text, () => {}, undefined, turn.images, turn.id);
+          return outcome.ok ? { ok: true } : { ok: false, status: outcome.status, code: outcome.code, message: outcome.message };
         },
         { background: true },
       );

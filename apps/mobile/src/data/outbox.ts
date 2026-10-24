@@ -6,17 +6,21 @@
  *
  * - The outbox holds at most MAX_QUEUED; when it is full a new message is refused (the composer
  *   keeps the words), never the oldest dropped.
- * - A send that never got an answer may still have arrived (`status: 'unknown'`): the station has
- *   no per-turn dedup id, so before it goes again the conversation is read, and a last member
- *   message with the same words written since it was queued counts as delivered (`heldByStation`).
+ * - A send that never got an answer may still have arrived (`status: 'unknown'`). It simply goes
+ *   again: every attempt carries the message's id as `client_turn_id`, the station saves a turn
+ *   once, and answers a repeat with 409 `duplicate_turn`, which counts as delivered.
  * - A station that is busy or briefly unavailable (`RETRYABLE`) is tried again later, waiting
  *   longer each time (`retryAt`); a refusal that won't change keeps the message as `failed`, shown
  *   in its conversation with a retry, and holds back the messages after it in that conversation.
  */
 
-import type { MessagePage, TranscriptMessage } from './transcript';
+/** A turn id, sent as `client_turn_id` (8–64 of [A-Za-z0-9_-]) and kept while the turn is queued. */
+export function newTurnId(): string {
+  return `q-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8).padEnd(6, '0')}`;
+}
 
 export interface QueuedTurn {
+  /** Also the turn's `client_turn_id`, the same on every attempt. */
   id: string;
   sessionId: string | null;
   text: string;
@@ -37,8 +41,8 @@ export const MAX_QUEUED = 30;
 const RETRYABLE = new Set([408, 409, 425, 429, 500, 502, 503, 504]);
 const BACKOFF_MS = 5_000;
 const BACKOFF_MAX_MS = 5 * 60_000;
-/** Phone and station clocks differ; a match this much older than the queued message still counts. */
-const CLOCK_SKEW_MS = 2 * 60_000;
+/** The station already saved this turn (same `client_turn_id`): it was delivered. */
+export const DUPLICATE_TURN = 'duplicate_turn';
 
 export function parseOutbox(saved: unknown): QueuedTurn[] {
   if (!Array.isArray(saved)) return [];
@@ -106,8 +110,8 @@ export function nextToSend(list: readonly QueuedTurn[], skip: ReadonlySet<string
 /** How a send attempt ended for the message. `unknown`: no answer, it may have arrived. */
 export type Delivery = 'sent' | 'unknown' | 'retry' | 'rejected';
 
-export function deliveryOf(outcome: { ok: true } | { ok: false; status: number }): Delivery {
-  if (outcome.ok) return 'sent';
+export function deliveryOf(outcome: { ok: true } | { ok: false; status: number; code?: string }): Delivery {
+  if (outcome.ok || outcome.code === DUPLICATE_TURN) return 'sent';
   if (outcome.status === 0) return 'unknown';
   return RETRYABLE.has(outcome.status) ? 'retry' : 'rejected';
 }
@@ -118,12 +122,4 @@ export function afterAttempt(turn: QueuedTurn, delivery: Exclude<Delivery, 'sent
   if (delivery === 'rejected') return { status: 'failed', error: message, retryAt: undefined };
   const attempts = (turn.attempts ?? 0) + 1;
   return { status: undefined, attempts, retryAt: now + Math.min(BACKOFF_MAX_MS, BACKOFF_MS * 2 ** (attempts - 1)) };
-}
-
-/** Whether the conversation already holds a message that was sent without an answer. */
-export function heldByStation(page: MessagePage<TranscriptMessage & { created_at?: string }>, turn: QueuedTurn): boolean {
-  const last = [...page.messages].reverse().find((message) => message.role === 'user');
-  if (!last || last.content.trim() !== turn.text.trim()) return false;
-  const at = last.created_at ? Date.parse(last.created_at) : NaN;
-  return Number.isNaN(at) || at >= turn.createdAt - CLOCK_SKEW_MS;
 }

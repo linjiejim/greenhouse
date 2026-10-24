@@ -338,3 +338,12 @@ it('keeps body read failures and unreadable JSON out of successful API results',
   answer = async () => new Response('unreadable', { status: 200 });
   expect(await get('/api/me/push-devices')).toMatchObject({ ok: false, code: 'invalid_response' });
 });
+
+it('reads an error code from either envelope', async () => {
+  answer = async () => new Response(JSON.stringify({ error: 'Already saved', code: 'duplicate_turn' }), { status: 409 });
+  expect(await get('/api/x')).toMatchObject({ ok: false, status: 409, code: 'duplicate_turn', message: 'Already saved' });
+  answer = async () => new Response(JSON.stringify({ error: { code: 'duplicate_turn', message: 'Already saved' } }), { status: 409 });
+  expect(await get('/api/x')).toMatchObject({ ok: false, status: 409, code: 'duplicate_turn', message: 'Already saved' });
+  answer = async () => new Response(JSON.stringify({ error: 'busy' }), { status: 409 });
+  expect(await get('/api/x')).toMatchObject({ code: 'conflict' });
+});

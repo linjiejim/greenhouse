@@ -120,7 +120,7 @@ describe('an open conversation', () => {
     await c.open();
     s.setActive(true);
     const result = await c.send('Again');
-    expect(result).toEqual({ sent: false, restore: 'Again', notice: 'busy', message: 'busy', status: 409 });
+    expect(result).toEqual({ sent: false, restore: 'Again', notice: 'busy', message: 'busy', status: 409, code: 'x' });
     await vi.waitFor(() => expect(c.state.busy).toBe(false));
     expect(s.deps.follow).toHaveBeenCalledOnce();
     expect(c.state.transcript?.messages.at(-1)?.content).toBe('Still writing');
@@ -145,6 +145,21 @@ describe('an open conversation', () => {
     c.dispose();
     fail(miss(0) as StreamOutcome);
     expect(await sending).toMatchObject({ sent: false, notice: 'offline', status: 0 });
+  });
+
+  it('takes a turn the station already saved as sent, and reads the conversation again', async () => {
+    const s = station();
+    const c = new Conversation(s.deps);
+    await c.open();
+    const send = vi.fn(async (text: string) => {
+      s.deps.saved.push(m(5, 'user', text), m(6, 'assistant', 'Done'));
+      return { ok: false, status: 409, code: 'duplicate_turn', message: '' } as StreamOutcome;
+    });
+    s.deps.send = send;
+    expect(await c.send('Again', [], 'q-abc-123456')).toEqual({ sent: true });
+    expect(send).toHaveBeenCalledWith('Again', expect.any(Function), expect.any(AbortSignal), [], 'q-abc-123456');
+    expect(c.state.pending).toBeNull();
+    expect(c.state.transcript?.messages.at(-1)?.content).toBe('Done');
   });
 
   it('follows a reply being written when it opens, and reloads when it ends', async () => {

@@ -8,6 +8,9 @@
  * Every turn declares the rich blocks this app draws (`rich_blocks`, src/markdown/rich.ts), so the
  * model is only taught what renders here; a station that does not read it yet ignores it, and
  * the blocks still render.
+ *
+ * A turn carries a `client_turn_id` (the outbox id, reused on every retry); the station saves a
+ * turn once and answers a repeat with 409 `duplicate_turn` (src/data/outbox.ts treats it as sent).
  */
 
 import { fetch as expoFetch } from 'expo/fetch';
@@ -25,6 +28,8 @@ export async function sendMessage(
   onEvent: (event: ChatEvent) => void,
   signal?: AbortSignal,
   images: readonly SentImage[] = [],
+  /** Stable across retries: a turn the station already saved answers 409 `duplicate_turn`. */
+  clientTurnId?: string,
 ): Promise<SendOutcome> {
   return stream(
     '/api/chat',
@@ -34,7 +39,7 @@ export async function sendMessage(
       headers: { 'Content-Type': 'application/json', Accept: 'application/x-ndjson' },
       body: JSON.stringify({
         session_id: sessionId,
-        messages: [{ role: 'user', content, ...(images.length ? { images } : {}) }],
+        messages: [{ role: 'user', content, ...(images.length ? { images } : {}), ...(clientTurnId ? { client_turn_id: clientTurnId } : {}) }],
         rich_blocks: MOBILE_RICH_BLOCKS,
       }),
     },

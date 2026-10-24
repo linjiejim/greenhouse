@@ -6,7 +6,7 @@
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-const seen: { signal?: AbortSignal | null } = {};
+const seen: { signal?: AbortSignal | null; body?: string } = {};
 vi.mock('expo/fetch', () => ({ fetch: vi.fn() }));
 vi.mock('../api/client', () => ({
   seg: (id: string) => encodeURIComponent(id),
@@ -14,6 +14,7 @@ vi.mock('../api/client', () => ({
   api: (_path: string, init: RequestInit) =>
     new Promise<Response>((_, reject) => {
       seen.signal = init.signal;
+      seen.body = String(init.body);
       init.signal?.addEventListener('abort', () => reject(new Error('aborted')));
     }),
 }));
@@ -32,6 +33,14 @@ describe('sending a message', () => {
     await vi.advanceTimersByTimeAsync(CONNECTION_TIMEOUT_MS + 1);
     expect(await sending).toMatchObject({ ok: false, status: 0 });
     expect(seen.signal?.aborted).toBe(true);
+  });
+
+  it('names the turn so the station saves it once', async () => {
+    const outer = new AbortController();
+    const sending = sendMessage('ses_1', 'Hello', () => {}, outer.signal, [], 'q-abc-123456');
+    outer.abort();
+    await sending;
+    expect(JSON.parse(seen.body!).messages).toEqual([{ role: 'user', content: 'Hello', client_turn_id: 'q-abc-123456' }]);
   });
 
   it('cancels the request when the caller does', async () => {

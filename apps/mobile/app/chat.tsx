@@ -25,6 +25,7 @@ import { Composer } from '../src/chat/composer';
 import { sentParts } from '../src/chat/composer-files';
 import { AssistantReply, UserMessage } from '../src/chat/messages';
 import { attachmentsFence, messageImages, pipelineSteps, splitAttachments, type AttachedFile } from '../src/chat/parts';
+import { sendDirect } from '../src/chat/direct-send';
 import { followRun, sendMessage } from '../src/chat/send';
 import { useComposerBridge } from '../src/chat/composer-bridge';
 import { useComposerFiles } from '../src/chat/use-composer-files';
@@ -32,6 +33,7 @@ import { visibleMessages } from '../src/data/chat-stream';
 import { CLOSED_CONVERSATION, Conversation, headOf, tailOf, type ConversationState, type SentImage } from '../src/data/conversation';
 import { atEnd, shouldFollowEnd } from '../src/data/follow-end';
 import { captureIdentity } from '../src/data/identity';
+import { newTurnId } from '../src/data/outbox';
 import type { MessagePage } from '../src/data/transcript';
 import { getHandoff } from '../src/lib/handoff';
 import { useT } from '../src/lib/i18n';
@@ -131,7 +133,7 @@ export default function Chat() {
         return result;
       },
       olderPage: (before) => getMessages(sessionId, before),
-      send: (text, onEvent, signal, images) => sendMessage(sessionId, text.slice(0, 20_000), onEvent, signal, images),
+      send: (text, onEvent, signal, images, clientTurnId) => sendMessage(sessionId, text.slice(0, 20_000), onEvent, signal, images, clientTurnId),
       runActive: async () => {
         const result = await chatRun(sessionId);
         return result.ok ? { ok: true, data: { active: result.data.active } } : result;
@@ -154,18 +156,16 @@ export default function Chat() {
     async (text: string, images: readonly SentImage[]): Promise<boolean> => {
       if (!conversation) return false;
       pinned.current = true;
-      const result = await conversation.send(text, images);
-      if (result.sent) return true;
-      if (result.notice === 'offline') {
-        setOffline(true);
-        // no answer: it may have arrived, so the outbox looks for it before it goes again
-        if (sessionId && queueTurn({ sessionId, text, images: [...images], status: 'unknown' })) return false;
-      }
-      // my words come back to the box whatever refused them (or when the outbox is full)
-      setDraft((now) => now || result.restore);
-      const title = result.notice === 'offline' ? t('conversation.outboxFull') : result.notice === 'busy' ? t('assistant.busy') : t('assistant.sendFailed');
-      alertError(title, result.notice === 'offline' ? undefined : result.message || undefined);
-      return false;
+      return sendDirect(
+        { send: (turnId) => conversation.send(text, images, turnId), stillCurrent: captureIdentity(), sessionId, text, images, turnId: newTurnId() },
+        {
+          queue: (turn) => queueTurn(turn),
+          setOffline: () => setOffline(true),
+          // my words come back to the box whatever refused them (or when the outbox is full)
+          restoreDraft: (words) => setDraft((now) => now || words),
+          alert: (why, message) => alertError(why === 'full' ? t('conversation.outboxFull') : why === 'busy' ? t('assistant.busy') : t('assistant.sendFailed'), message),
+        },
+      );
     },
     [conversation, sessionId, t],
   );
@@ -178,8 +178,8 @@ export default function Chat() {
       const delivery = await deliverQueued(
         id,
         async (turn) => {
-          const result = await conversation.send(turn.text, turn.images);
-          return result.sent ? { ok: true } : { ok: false, status: result.status, message: result.message };
+          const result = await conversation.send(turn.text, turn.images, turn.id);
+          return result.sent ? { ok: true } : { ok: false, status: result.status, code: result.code, message: result.message };
         },
         { manual },
       );

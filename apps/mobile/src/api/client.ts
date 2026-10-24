@@ -188,12 +188,13 @@ export async function toResult<T>(res: Response): Promise<ApiResult<T>> {
       ? { ok: false, status: res.status, code: 'invalid_response', message: 'The server response could not be read.' }
       : { ok: true, data: body as T };
   const error = (body as { error?: unknown } | undefined)?.error;
-  // v1 answers `{ error: 'words' }`; a few routes answer `{ error: { code, message } }`.
+  // v1 answers `{ error: 'words' }` (some with a top-level `code`); a few routes answer `{ error: { code, message } }`.
   const envelope = error && typeof error === 'object' ? (error as { code?: unknown; message?: unknown }) : null;
+  const topCode = (body as { code?: unknown } | undefined)?.code;
   return {
     ok: false,
     status: res.status,
-    code: typeof envelope?.code === 'string' ? envelope.code : statusCode(res.status),
+    code: typeof envelope?.code === 'string' ? envelope.code : typeof topCode === 'string' ? topCode : statusCode(res.status),
     message: typeof error === 'string' ? error : typeof envelope?.message === 'string' ? envelope.message : '',
     details: (body as { details?: unknown } | undefined)?.details,
   };

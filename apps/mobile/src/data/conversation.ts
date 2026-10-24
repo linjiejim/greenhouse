@@ -16,6 +16,7 @@
  */
 
 import type { ApiMiss, ApiResult } from '../api/client';
+import { DUPLICATE_TURN } from './outbox';
 import { applyEvent, EMPTY_REPLY, type ChatEvent, type LiveReply } from './chat-stream';
 import { exchangeStart, holdsNewReply, withLatest, withOlder, type ExchangeStart, type MessagePage, type Transcript, type TranscriptMessage } from './transcript';
 
@@ -32,7 +33,7 @@ export interface ConversationDeps<M extends TranscriptMessage = TranscriptMessag
   title(): Promise<ApiResult<{ title: string | null }>>;
   latestPage(): Promise<ApiResult<MessagePage<M>>>;
   olderPage(before: number): Promise<ApiResult<MessagePage<M>>>;
-  send(text: string, onEvent: (event: ChatEvent) => void, signal: AbortSignal, images?: readonly SentImage[]): Promise<StreamOutcome>;
+  send(text: string, onEvent: (event: ChatEvent) => void, signal: AbortSignal, images?: readonly SentImage[], clientTurnId?: string): Promise<StreamOutcome>;
   /** Whether a reply is being written now. */
   runActive(): Promise<ApiResult<{ active: boolean }>>;
   /** Attach to the reply being written (replayed from its start). */
@@ -64,7 +65,7 @@ export interface ConversationState<M extends TranscriptMessage = TranscriptMessa
 /** What the composer should do after a send. */
 export type SendResult =
   | { sent: true }
-  | { sent: false; restore: string; notice: 'busy' | 'failed' | 'offline'; message: string; status: number };
+  | { sent: false; restore: string; notice: 'busy' | 'failed' | 'offline'; message: string; status: number; code?: string };
 
 /** The state before a conversation opens. */
 export const CLOSED_CONVERSATION: ConversationState<never> = {
@@ -177,16 +178,27 @@ export class Conversation<M extends TranscriptMessage = TranscriptMessage> {
     });
   }
 
-  async send(text: string, images: readonly SentImage[] = []): Promise<SendResult> {
+  /**
+   * `clientTurnId` names the turn to the station (the same on every retry of it): a turn it already
+   * saved answers 409 `duplicate_turn`, which is delivered — the conversation is read again.
+   */
+  async send(text: string, images: readonly SentImage[] = [], clientTurnId?: string): Promise<SendResult> {
     const message = text.trim();
     if ((!message && !images.length) || this.state.busy) return { sent: false, restore: text, notice: 'busy', message: '', status: 409 };
     this.start = exchangeStart(this.state.transcript);
     this.set({ pending: message, pendingImages: images, reply: EMPTY_REPLY, busy: true, unreconciled: false, streamFailed: false });
-    const outcome = await this.deps.send(message, this.onEvent, this.abort.signal, images);
+    const outcome = await this.deps.send(message, this.onEvent, this.abort.signal, images, clientTurnId);
+    if (!outcome.ok && outcome.code === DUPLICATE_TURN) {
+      if (this.live()) {
+        this.set({ pending: null, pendingImages: [], reply: null, busy: false });
+        await this.refocus();
+      }
+      return { sent: true };
+    }
     if (!outcome.ok) {
       // closed meanwhile: still say how the send ended, so a queued message is not taken as sent
       const notice = outcome.status === 0 ? 'offline' : outcome.status === 409 ? 'busy' : 'failed';
-      const failed = { sent: false, restore: text, notice, message: outcome.message, status: outcome.status } as const;
+      const failed = { sent: false, restore: text, notice, message: outcome.message, status: outcome.status, code: outcome.code } as const;
       if (!this.live()) return failed;
       this.set({ pending: null, pendingImages: [], reply: null, busy: false });
       // a reply is still being written: keep my words and follow that reply

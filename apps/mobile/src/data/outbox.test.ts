@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { afterAttempt, deliveryOf, dequeue, enqueue, heldByStation, MAX_QUEUED, nextToSend, parseOutbox, type QueuedTurn } from './outbox';
+import { afterAttempt, deliveryOf, dequeue, enqueue, MAX_QUEUED, newTurnId, nextToSend, parseOutbox, type QueuedTurn } from './outbox';
 
 const turn = (id: string, sessionId: string | null, createdAt: number): QueuedTurn => ({ id, sessionId, text: id, images: [], createdAt });
 
@@ -43,25 +43,15 @@ describe('the outbox', () => {
     expect(parseOutbox(list)).toEqual(list);
   });
 
-  it('finds a message sent without an answer in the conversation', () => {
-    const queued = { ...turn('q', 's', Date.parse('2026-10-25T10:00:00Z')), text: 'Ship it' };
-    const page = (content: string, at: string) => ({
-      messages: [
-        { id: 'm1', role: 'user', content, seq: 1, created_at: at },
-        { id: 'm2', role: 'assistant', content: 'ok', seq: 2, created_at: at },
-      ],
-      has_more: false,
-      next_before_seq: null,
-    });
-    expect(heldByStation(page('Ship it ', '2026-10-25T10:00:03Z'), queued)).toBe(true);
-    expect(heldByStation(page('Hold it', '2026-10-25T10:00:03Z'), queued)).toBe(false);
-    // the same words sent long before this one was written are another message
-    expect(heldByStation(page('Ship it', '2026-10-24T10:00:00Z'), queued)).toBe(false);
+  it('counts a turn the station already saved as delivered', () => {
+    expect(deliveryOf({ ok: false, status: 409, code: 'duplicate_turn' })).toBe('sent');
+    expect(deliveryOf({ ok: false, status: 409, code: 'conflict' })).toBe('retry');
   });
 
-  it('sends one message per conversation at a time, oldest first, skipping open ones', () => {
-    const list = [turn('b', 's1', 2), turn('a', 's1', 1), turn('n', null, 3), turn('c', 's2', 4)];
-    expect(nextToSend(list, new Set()).map((t) => t.id)).toEqual(['a', 'n', 'c']);
-    expect(nextToSend(list, new Set(['s1'])).map((t) => t.id)).toEqual(['n', 'c']);
+  it('makes turn ids the station accepts as client_turn_id', () => {
+    const ids = new Set(Array.from({ length: 50 }, () => newTurnId()));
+    expect(ids.size).toBe(50);
+    for (const id of ids) expect(id).toMatch(/^[A-Za-z0-9_-]{8,64}$/);
   });
+
 });

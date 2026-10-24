@@ -1,8 +1,8 @@
 /**
  * The outbox senders (./outbox.ts): the background flusher and an open conversation share one
- * per-message claim, a message is checked to still be queued right before it goes, leaves only
- * once the station accepted it, and a message sent without an answer is looked for before it goes
- * again. Runs in the ROOT vitest unit project: zustand, react-native and the APIs are mocked.
+ * per-message claim, a message is checked to still be queued right before it goes, and leaves
+ * only once the station accepted it (or says it already saved that turn). Runs in the ROOT
+ * vitest unit project: zustand, react-native and the APIs are mocked.
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -24,18 +24,12 @@ vi.mock('./stations', () => ({ useStations: { getState: () => ({ activeId: 's' }
 vi.mock('./offline', () => ({ readOffline: async () => [], writeOffline: () => {} }));
 vi.mock('../data/identity', () => ({ captureIdentity: () => () => true }));
 vi.mock('../lib/i18n', () => ({ t: (key: string) => key }));
-vi.mock('../ui/dialogs', () => ({ alertError: vi.fn() }));
+const confirm = { answers: [] as boolean[] };
+vi.mock('../ui/dialogs', () => ({ alertError: vi.fn(), confirmAction: async () => confirm.answers.shift() ?? false }));
 
-const api = {
-  messages: vi.fn(),
-  run: vi.fn(async () => ({ ok: true, data: { active: false } })),
-  send: vi.fn(),
-};
-vi.mock('../api/assistant', () => ({
-  getMessages: (...args: unknown[]) => api.messages(...args),
-  chatRun: (...args: unknown[]) => api.run(...args),
-  createSession: async () => ({ ok: true, data: { id: 'ses_new' } }),
-}));
+const api = { send: vi.fn() };
+const session: { answer: unknown } = { answer: { ok: true, data: { id: 'ses_new' } } };
+vi.mock('../api/assistant', () => ({ createSession: async () => session.answer }));
 vi.mock('../chat/send', () => ({ sendMessage: (...args: unknown[]) => api.send(...args) }));
 
 const { useOutbox, deliverQueued, flushOutbox, claimConversation, _resetOutbox } = await import('./outbox');
@@ -52,8 +46,9 @@ const ids = () => useOutbox.getState().items.map((item) => item.id);
 
 beforeEach(() => {
   _resetOutbox();
-  api.messages.mockReset();
   api.send.mockReset();
+  session.answer = { ok: true, data: { id: 'ses_new' } };
+  confirm.answers = [];
 });
 
 describe('sending queued messages', () => {
@@ -100,21 +95,17 @@ describe('sending queued messages', () => {
     expect(ids()).toEqual([]);
   });
 
-  it('looks for a message sent without an answer before sending it again', async () => {
-    const queued = turn('a', { status: 'unknown' });
-    useOutbox.setState({ items: [queued] });
-    const send = vi.fn(async () => ({ ok: true as const }));
-    api.messages.mockResolvedValueOnce({
-      ok: true,
-      data: { messages: [{ id: 'm', role: 'user', content: queued.text, seq: 1, created_at: new Date().toISOString() }], has_more: false, next_before_seq: null },
-    });
-    expect(await deliverQueued('a', send)).toBe('sent');
-    expect(send).not.toHaveBeenCalled();
+  it('dequeues a turn the station says it already saved', async () => {
+    useOutbox.setState({ items: [turn('a', { status: 'unknown' })] });
+    expect(await deliverQueued('a', async () => ({ ok: false, status: 409, code: 'duplicate_turn', message: '' }))).toBe('sent');
     expect(ids()).toEqual([]);
-
-    useOutbox.setState({ items: [turn('b', { status: 'unknown' })] });
-    api.messages.mockResolvedValueOnce({ ok: true, data: { messages: [], has_more: false, next_before_seq: null } });
-    expect(await deliverQueued('b', send)).toBe('sent');
-    expect(send).toHaveBeenCalledOnce();
   });
+
+  it('sends every attempt under the queued id', async () => {
+    useOutbox.setState({ items: [turn('q-abc-123456')] });
+    api.send.mockResolvedValue({ ok: false, status: 0, code: 'network', message: '' });
+    await flushOutbox();
+    expect(api.send).toHaveBeenLastCalledWith('ses_1', 'words q-abc-123456', expect.any(Function), undefined, [], 'q-abc-123456');
+  });
+
 });
