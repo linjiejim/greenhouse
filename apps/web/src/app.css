@@ -782,6 +782,56 @@ textarea,
   background-color: var(--t-primary-wash);
 }
 
+/* ── Link chips (components/markdown-chips.tsx) ──
+   Object, file and external links drawn as one-line chips: icon + label (+ meta).
+   Labels are cut in the middle in JS (CSS can only cut the end), so the chip never
+   wraps; `max-width` keeps a long one inside the column. The fallback span holds the
+   original link text until React has drawn the chip into the slot. */
+.prose-base a.md-chip,
+.prose-compact a.md-chip {
+  @apply inline-flex max-w-full items-center gap-1 rounded-md border border-edge bg-surface-muted px-1.5 align-middle font-medium text-fg no-underline;
+  line-height: 1.5;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.prose-compact a.md-chip {
+  @apply text-[0.92em];
+}
+.prose-base a.md-chip::before,
+.prose-compact a.md-chip::before {
+  content: none;
+}
+.prose-base a.md-chip:hover,
+.prose-compact a.md-chip:hover {
+  @apply border-primary-edge text-primary-fg-strong no-underline;
+  background-color: var(--t-primary-wash);
+}
+.md-chip-slot:not(:empty) + .md-chip-fallback {
+  display: none;
+}
+.md-chip-slot {
+  @apply inline-flex min-w-0 items-center gap-1;
+}
+.md-chip-icon {
+  @apply flex-shrink-0 text-fg-muted;
+}
+.md-chip-label {
+  @apply min-w-0 overflow-hidden text-ellipsis;
+}
+.md-chip-label-muted {
+  @apply text-fg-muted;
+}
+.md-chip-host {
+  @apply flex-shrink-0 text-fg-muted;
+}
+.md-chip-host::after {
+  content: '·';
+  @apply ml-1;
+}
+.md-chip-meta {
+  @apply flex-shrink-0 text-xs font-normal text-fg-muted;
+}
+
 /* ── @-mentions ──
    One rule for all three surfaces: the Tiptap mention NODE (doc editor + comment
    editor, class from the shared schema) and the rendered Markdown link

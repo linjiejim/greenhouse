@@ -199,6 +199,17 @@ const zh: Messages = {
     downloadFailed: '文件下载失败',
     rows: '{rows} 行',
   },
+  objectChip: {
+    type: {
+      doc: '文档',
+      file: '文件',
+      folder: '文件夹',
+      task: '任务',
+      project: '项目',
+      record: '记录',
+      conversation: '对话',
+    },
+  },
 
   // 应用外壳 / 导航
   app: {

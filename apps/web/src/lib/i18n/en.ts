@@ -191,6 +191,17 @@ export default {
     downloadFailed: 'File download failed',
     rows: '{rows} rows',
   },
+  objectChip: {
+    type: {
+      doc: 'Document',
+      file: 'File',
+      folder: 'Folder',
+      task: 'Task',
+      project: 'Project',
+      record: 'Record',
+      conversation: 'Conversation',
+    },
+  },
 
   // App shell / navigation
   app: {

@@ -202,6 +202,14 @@ import {
   Columns3,
   Workflow,
   Flag,
+  File as FileBlank,
+  FileSpreadsheet,
+  Presentation,
+  FileImage,
+  FileVideo,
+  FileAudio,
+  FileArchive,
+  FileCode,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -402,6 +410,14 @@ export {
   Columns3,
   Workflow,
   Flag,
+  FileBlank,
+  FileSpreadsheet,
+  Presentation,
+  FileImage,
+  FileVideo,
+  FileAudio,
+  FileArchive,
+  FileCode,
 };
 export type { LucideIcon };
 

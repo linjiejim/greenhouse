@@ -5,7 +5,7 @@
  * 子组件拆分到 components/project/ 目录下。
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Button, EmptyState, Select, Spinner, Dialog, Drawer } from '../components/ui';
 import { FormActions } from '../components/form';
 import { useAgentContext } from '../components/agent-context';
@@ -50,7 +50,7 @@ import {
 
 // ─── Project Detail Page ─────────────────────────────────
 
-export function ProjectDetailPage({ projectId }: { projectId: number }) {
+export function ProjectDetailPage({ projectId, initialTaskId }: { projectId: number; initialTaskId?: number }) {
   const inPeek = useInEntityPeek();
   const t = useT();
   const currentUser = useAuthStore((s) => s.currentUser);
@@ -181,6 +181,17 @@ export function ProjectDetailPage({ projectId }: { projectId: number }) {
       return fresh ? { ...fresh } : prev;
     });
   }, [allFlatTasks]);
+
+  // `#/projects/<id>?task=<taskId>` (a task link, `@greenhouse/types/object-refs`) opens that
+  // task's drawer once the tasks have loaded — once, so closing it stays closed.
+  const openedInitialTask = useRef(false);
+  useEffect(() => {
+    if (!initialTaskId || openedInitialTask.current) return;
+    const task = allFlatTasks.find((tk) => tk.id === initialTaskId);
+    if (!task) return;
+    openedInitialTask.current = true;
+    setSelectedTask(task);
+  }, [allFlatTasks, initialTaskId]);
 
   const handleSaveProject = async () => {
     if (!project) return;

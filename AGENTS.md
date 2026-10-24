@@ -261,7 +261,7 @@ greenhouse/
 |---|---|---|
 | `@greenhouse/agent-core` | `packages/agent-core/` | Agent kernel — chat-engine, model registry/factory, DSML interceptor |
 | `@greenhouse/platform-kernel` | `packages/platform-kernel/` | Manifest v2, actor context, authz, registry (`contract` / `dsl` / `authz` / `registry` subpaths) |
-| `@greenhouse/types` | `packages/types/` | Shared type definitions and registries (feature flags, workspace settings, entity links, workbench recipes) |
+| `@greenhouse/types` | `packages/types/` | Shared type definitions and registries (feature flags, workspace settings, entity links, object refs, workbench recipes) |
 | `@greenhouse/utils` | `packages/utils/` | Shared helpers |
 | `@greenhouse/db` | `packages/db/` | Database layer |
 | `@greenhouse/knowledge-editor` | `packages/knowledge-editor/` | KB editor: Tiptap schema + Markdown↔Tiptap JSON. Markdown is canonical; `content_json='{}'` is legal |

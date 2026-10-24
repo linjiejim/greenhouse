@@ -390,6 +390,14 @@ v1 只接 DeepSeek 与 OpenAI 兼容服务，它们**自动**缓存 prompt 前�
 - **不做跨域相关性排序**：项目/会话全是 ILIKE 无 relevance，知识库是 `ts_rank`(<1)，不可比；混排会让回退通道把真命中挤掉（知识库内部早踩过）。
 - **守卫写在路由文件内 `.use('*', requireInternal())`**，不是挂载点的 `.use('/api/search/*')`——`/*` 匹配不到裸路径本身，那样只剩全局 Bearer 兜底。
 
+### 对象链接解析（`POST /api/refs/resolve`）
+
+正文里的站内链接（网页地址或 App 深链）在客户端画成对象胶囊，标题从这里批量取回（`routes/refs.ts`）。
+- 认哪些 URL 只看 `@greenhouse/types/object-refs` 的 `parseObjectUrl`（网页、手机、服务端共用一份）；不认的 URL 直接不返回。绝对地址只认本站 origin（请求 origin / `Origin` / `PUBLIC_BASE_URL` / `WEB_BASE_URL`）。
+- 每一项用该对象自己读接口的那套鉴权：文档 `resolveKbAccess`、文件/文件夹 `resolveDriveAccess`（kb scope）、项目 dispatch `getProject`、任务 `taskReadAuthorizer` + `projects.execution.read`、记录 `tables` 开关 + dispatch `getRecord`（标题取主字段，值被遮蔽时退回 `#id`）、对话 `canAccessSession`。别在这里另写一套判定。
+- **读不到和不存在必须长得一样**：都返回 `title: null`，不报错、不区分，免得成为存在性探针。任务链接里的 project 与任务实际所属不符也按读不到处理。
+- 每次最多 50 条（`MAX_RESOLVE_URLS`），同一对象只查一次。项目、记录走 dispatch，和搜索一样会留读审计。
+
 ### 工具返回值里的站内深链（`url`）
 
 返回可点开的记录时，结果行带一个 `url` 字段，模型在正文里把它写成 Markdown 链接，用户点击就地浮出详情。方案见 [spec](../../../docs/specs/20260804-entity-references-and-peek.md)。

@@ -8,7 +8,7 @@
  * - Image lightbox: click any image to open the shared, dismissible media preview
  */
 
-import React, { useEffect, useMemo, useState, useCallback } from 'react';
+import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { marked } from 'marked';
 import { parseEntityUrl } from '@greenhouse/types/entity-links';
 import { apiUrl } from '../lib/api-base';
@@ -19,6 +19,7 @@ import { isSidePaneAvailable, openSidePane } from '../stores/side-pane-store';
 import { useT } from '../lib/i18n';
 import { MediaPreviewDialog } from './media-preview-dialog';
 import { Dialog, toast } from './ui';
+import { decorateMarkdownLinks, useMarkdownChips } from './markdown-chips';
 
 // Configure marked
 marked.setOptions({
@@ -365,11 +366,15 @@ function sanitizeMarkdownHtml(
   tableFullscreenLabel = 'View table fullscreen',
   tableCopyLabel = 'Copy table',
   codeFullscreenLabel = 'View code fullscreen',
+  chipOrigin: string | null = null,
 ): string {
   if (!html) return '';
   try {
     const doc = new DOMParser().parseFromString(`<body>${html}</body>`, 'text/html');
     sanitizeMarkdownNode(doc.body, linkTarget);
+    // On-screen only: links become chips (exports keep plain links). Before the heading
+    // anchors, which are links of our own.
+    if (chipOrigin !== null) decorateMarkdownLinks(doc.body, chipOrigin);
     wrapMarkdownTables(doc.body, tableExportAriaLabel, tableFullscreenLabel, tableCopyLabel);
     wrapMarkdownCodeBlocks(doc.body, codeFullscreenLabel);
     if (anchors) addHeadingAnchors(doc.body);
@@ -660,6 +665,7 @@ export const Markdown = React.memo(function Markdown({
         t('common.fullscreenTable'),
         t('common.copyTable'),
         t('common.fullscreenCode'),
+        typeof window === 'undefined' ? '' : window.location.origin,
       );
     } catch (_err) {
       return `<p>${sanitizeHtml(content)}</p>`;
@@ -730,10 +736,22 @@ export const Markdown = React.memo(function Markdown({
     [t],
   );
 
+  const containerRef = useRef<HTMLDivElement>(null);
+  const chips = useMarkdownChips(containerRef, html);
+  // Stable identity: React 19 re-assigns innerHTML whenever this object changes, which would
+  // wipe the chip slots the portals above render into on every re-render.
+  const innerHtml = useMemo(() => ({ __html: html }), [html]);
+
   const proseClass = compact ? 'prose-compact' : 'prose-base';
   return (
     <>
-      <div className={`${proseClass} ${className}`} dangerouslySetInnerHTML={{ __html: html }} onClick={handleClick} />
+      <div
+        ref={containerRef}
+        className={`${proseClass} ${className}`}
+        dangerouslySetInnerHTML={innerHtml}
+        onClick={handleClick}
+      />
+      {chips}
       <MediaPreviewDialog
         open={lightboxSrc !== null}
         files={lightboxSrc ? [{ src: lightboxSrc, type: 'image' }] : []}
