@@ -449,7 +449,8 @@ export function ToolSummary({ steps, toolName }: { steps: ToolStep[]; toolName: 
   const running = steps.some((step) => step.status === 'running');
   const label = useMemo(() => {
     const names = [...new Set(steps.map((step) => step.tool))];
-    return running ? t('cards.toolsRunning', { n: steps.length }) : t('cards.toolsUsed', { n: names.length });
+    if (running) return steps.length === 1 ? t('cards.toolRunning') : t('cards.toolsRunning', { n: steps.length });
+    return names.length === 1 ? t('cards.toolUsed') : t('cards.toolsUsed', { n: names.length });
   }, [steps, running, t]);
   if (!steps.length) return null;
   return (

@@ -428,7 +428,9 @@ export const zh: Catalog = {
     planMore: '……还有 {n} 项',
     applyFailed: '方案应用失败',
     openOnWeb: '在网页中打开',
+    toolUsed: '用了 1 个工具',
     toolsUsed: '用了 {n} 个工具',
+    toolRunning: '正在处理 · 1 步',
     toolsRunning: '正在处理 · {n} 步',
   },
   links: {

@@ -434,7 +434,9 @@ export const en = {
     planMore: '…and {n} more',
     applyFailed: 'Couldn’t apply the plan',
     openOnWeb: 'Opens on the web',
+    toolUsed: 'Used 1 tool',
     toolsUsed: 'Used {n} tools',
+    toolRunning: 'Working · 1 step',
     toolsRunning: 'Working · {n} steps',
   },
   links: {
