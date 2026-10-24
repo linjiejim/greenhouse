@@ -8,7 +8,6 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ScrollView, Text, View } from 'react-native';
-import { useRouter } from 'expo-router';
 import { addTaskComment, getProject, listTaskComments, updateTaskStatus } from '../api/projects';
 import { noAccess, notFound } from '../data/access';
 import { captureIdentity } from '../data/identity';
@@ -25,26 +24,25 @@ import { makeStyles, radius, space, squircle, typo, useTheme, weight } from '../
 import { alertError, promptText } from '../ui/dialogs';
 import { EmptyState, LoadingState } from '../ui/empty';
 import { notifySuccess, selectionTick } from '../ui/haptics';
-import { Badge, ListRow, ListSection } from '../ui/list';
+import { Badge, Row, Section } from '../ui/list';
 import { NativeMenu } from '../ui/menu';
 import { toast } from '../ui/toast';
-import { ScreenChrome } from '../ui/split';
+import { SheetScreen } from '../ui/screen';
+import { useOpenObject } from '../shell/open-object';
 
-/** One task; `embedded` when it is the detail pane of the iPad split view (src/ui/split.tsx). */
+/** One task, as an object sheet (app/sheet/task.tsx), often stacked on its project's sheet. */
 export function TaskView({
   projectId,
   taskId,
-  embedded,
   onChanged,
 }: {
   projectId: number | null;
   taskId: number | null;
-  embedded?: boolean;
   /** A change was saved (the list beside it reloads). */
   onChanged?: () => void;
 }) {
   const t = useT();
-  const router = useRouter();
+  const openObject = useOpenObject();
   const { colors: c } = useTheme();
   const styles = useStyles(c);
   const load = useCallback(() => getProject(projectId ?? 0), [projectId]);
@@ -155,24 +153,23 @@ export function TaskView({
     (!resource.loading && (resource.data ? !task : notFound(resource.error) || noAccess(resource.error)));
   if (gone) {
     return (
-      <View style={styles.root}>
-        <ScreenChrome title={t('projects.tasks')} embedded={embedded} />
-        <ScrollView contentInsetAdjustmentBehavior="automatic">
+      <>
+        <SheetScreen title={t('projects.tasks')} />
+        <ScrollView style={styles.root} contentInsetAdjustmentBehavior="automatic">
           <EmptyState icon="checkCircle" title={t('projects.taskNotFound')} style={styles.state} />
         </ScrollView>
-      </View>
+      </>
     );
   }
 
   const bucket = task ? dueBucket(task.due_date, localDay(new Date())) : 'none';
   return (
-    <View style={styles.root}>
-      <ScreenChrome
-        title={embedded ? (resource.data?.project.title ?? '') : ''}
-        embedded={embedded}
+    <>
+      <SheetScreen
+        title={resource.data?.project.title ?? ''}
         actions={task ? [{ icon: 'comment', label: t('projects.addComment'), onPress: () => void comment() }] : []}
       />
-      <ScrollView contentInsetAdjustmentBehavior="automatic" contentContainerStyle={styles.content}>
+      <ScrollView style={styles.root} contentInsetAdjustmentBehavior="automatic" contentContainerStyle={styles.content}>
         {!task ? (
           resource.loading ? (
             <LoadingState style={styles.state} />
@@ -184,7 +181,7 @@ export function TaskView({
             <Text style={styles.title} accessibilityRole="header" selectable>
               {task.title}
             </Text>
-            <ListSection>
+            <Section>
               <NativeMenu
                 items={TASK_STATUSES.map((status) => ({
                   id: status,
@@ -196,7 +193,7 @@ export function TaskView({
                 onSelect={(value) => void changeStatus(value as TaskStatus)}
                 fill
               >
-                <ListRow
+                <Row
                   title={t('projects.statusLabel')}
                   value={t(`projects.status.${task.status}`)}
                   icon={statusIcon(task.status)}
@@ -205,13 +202,13 @@ export function TaskView({
                   menuTrigger
                 />
               </NativeMenu>
-              <ListRow
+              <Row
                 title={t('projects.assignee')}
                 value={task.assignee_nickname || t('projects.unassigned')}
                 icon="person"
                 accessory="none"
               />
-              <ListRow
+              <Row
                 title={t('projects.due')}
                 value={task.due_date ? calendarDateLabel(task.due_date.slice(0, 10)) : t('projects.noDue')}
                 icon="clock"
@@ -223,20 +220,20 @@ export function TaskView({
                   )
                 }
               />
-              <ListRow
+              <Row
                 title={t('projects.priorityLabel')}
                 value={t(`projects.priority.${task.priority}`)}
                 icon="filter"
                 accessory="none"
               />
-              <ListRow
+              <Row
                 title={t('projects.project')}
                 value={resource.data?.project.title}
                 icon="checkCircle"
                 accessory="chevron"
-                onPress={() => router.push({ pathname: '/projects/detail', params: { id: String(task.project_id) } })}
+                onPress={() => openObject({ kind: 'project', id: task.project_id })}
               />
-            </ListSection>
+            </Section>
             {task.description ? (
               <View style={styles.block}>
                 <Text style={styles.blockTitle} accessibilityRole="header">
@@ -263,7 +260,7 @@ export function TaskView({
           </>
         )}
       </ScrollView>
-    </View>
+    </>
   );
 }
 

@@ -16,6 +16,7 @@ import * as Notifications from 'expo-notifications';
 import { useRouter } from 'expo-router';
 import { goHome } from '../shell/nav';
 import { openNotificationOrTarget } from '../shell/open-notification';
+import { useOpenObject, useOpenTarget } from '../shell/open-object';
 import { useAuth } from '../store/auth';
 import { useNotifications } from '../store/notifications';
 import { useStations } from '../store/stations';
@@ -25,6 +26,8 @@ import { softAskWhenSettled } from './soft-ask';
 
 export function usePushBridge(ready: boolean): void {
   const router = useRouter();
+  const openObject = useOpenObject();
+  const openTarget = useOpenTarget();
   const user = useAuth((s) => s.user);
   const loading = useAuth((s) => s.loading);
   const stationId = useStations((s) => s.activeId);
@@ -69,9 +72,9 @@ export function usePushBridge(ready: boolean): void {
     if (!PUSH_PLATFORM_READY || !ready || loading) return;
     const route = resolvePendingTap();
     if (!route) return;
-    if (route.kind === 'notification') void openNotificationOrTarget(router, route.id);
+    if (route.kind === 'notification') void openNotificationOrTarget(route.id, { object: openObject, target: openTarget });
     else goHome(router);
-  }, [ready, loading, user, identity, taps, router]);
+  }, [ready, loading, user, identity, taps, router, openObject, openTarget]);
 
   // The badge follows the unread count while the app runs; signed out → none.
   const unread = useNotifications((s) => s.unread);

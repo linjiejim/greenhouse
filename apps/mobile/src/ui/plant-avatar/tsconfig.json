@@ -1,0 +1,17 @@
+{
+  // The vendored builder in this folder is also compiled by the ROOT vitest (the parity tests),
+  // where apps/mobile's own install is absent, so `"extends": "expo/tsconfig.base"` in
+  // ../../../tsconfig.json cannot resolve there (CI failed with TSConfckParseError). Vite reads
+  // the NEAREST tsconfig for each file it compiles, so this one stops the lookup here: no
+  // `extends`, only what a transform needs. The app's own type check is unchanged —
+  // `tsc` in apps/mobile uses apps/mobile/tsconfig.json, which still includes these files.
+  "compilerOptions": {
+    "strict": true,
+    "target": "ESNext",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "jsx": "react-jsx",
+    "noEmit": true,
+    "skipLibCheck": true
+  }
+}

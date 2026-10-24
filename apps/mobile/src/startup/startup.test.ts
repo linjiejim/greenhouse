@@ -41,7 +41,7 @@ const test = await vi.hoisted(async () => {
     prefs: { hydrate: vi.fn() },
     station: { activeId: 'station-a' },
     fonts: [false, null] as [boolean, Error | null],
-    segments: ['(drawer)', '(main)'] as string[],
+    segments: ['(tabs)', '(home)'] as string[],
     router: { canDismiss: vi.fn(() => false), dismissAll: vi.fn(), replace: vi.fn() },
     renderRoute: (() => null) as () => ReturnType<typeof React.createElement> | null,
   };
@@ -157,6 +157,8 @@ vi.mock('../store/stations', () => ({
 }));
 vi.mock('../api/client', () => ({ setOnUnauthorized: vi.fn(), setTransport: vi.fn() }));
 vi.mock('../settings/account-language', () => ({ useAccountLanguage: () => {} }));
+vi.mock('../settings/text-size', () => ({ useAccountTextSize: () => {} }));
+vi.mock('../store/outbox', () => ({ useOutboxFlush: () => {} }));
 vi.mock('../push/use-push', () => ({ usePushBridge: () => {} }));
 vi.mock('../ui/loading-state', () => ({
   LoadingState: () => test.React.createElement('div', { role: 'progressbar' }),
@@ -262,7 +264,7 @@ beforeEach(() => {
   test.prefs.hydrate.mockClear();
   test.station.activeId = 'station-a';
   test.fonts = [false, null];
-  test.segments = ['(drawer)', '(main)'];
+  test.segments = ['(tabs)', '(home)'];
   test.router.canDismiss.mockReset().mockReturnValue(false);
   test.router.dismissAll.mockClear();
   test.router.replace.mockClear();

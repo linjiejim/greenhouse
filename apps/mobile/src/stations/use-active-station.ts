@@ -1,6 +1,6 @@
 /**
  * Active station record (reactive) — for the rows that show which server the
- * app is on (login server row, settings, the drawer's account row).
+ * app is on (login server row, 「我」).
  */
 
 import { useStations, type StationRecord } from '../store/stations';

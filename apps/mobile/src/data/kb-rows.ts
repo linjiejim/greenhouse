@@ -8,7 +8,9 @@
 import type { DriveFolder, KbDoc } from '../shared/greenhouse-types';
 import type { RecentDoc } from './recent-docs';
 
-export type Position = 'first' | 'middle' | 'last' | 'only';
+import { rowPosition, type RowPosition } from './row-position';
+
+export type Position = RowPosition;
 
 export type KbRow =
   | { key: string; type: 'header'; title: string }
@@ -22,7 +24,7 @@ export const RECENT_ON_SHELF = 5;
 
 export function positioned<T>(items: readonly T[], make: (item: T, position: Position) => KbRow): KbRow[] {
   return items.map((item, index) =>
-    make(item, items.length === 1 ? 'only' : index === 0 ? 'first' : index === items.length - 1 ? 'last' : 'middle'),
+    make(item, rowPosition(index, items.length)),
   );
 }
 
@@ -50,16 +52,19 @@ export function shelfRows(input: {
     return out;
   }
   if (recent.length) out.push({ key: 'h-shelf', type: 'header', title: input.titles.shelf });
-  out.push(...positioned(input.level.folders, (folder, position) => ({ key: `f-${folder.id}`, type: 'folder', folder, position })));
-  out.push(
-    ...positioned(input.level.docs, (doc, position) => ({
+  // folders and documents share one card
+  const level = input.level;
+  const count = level.folders.length + level.docs.length;
+  level.folders.forEach((folder, index) => out.push({ key: `f-${folder.id}`, type: 'folder', folder, position: rowPosition(index, count) }));
+  level.docs.forEach((doc, index) =>
+    out.push({
       key: `d-${doc.id}`,
       type: 'doc',
       id: doc.id,
       title: doc.title,
       subtitle: input.docSubtitle(doc),
-      position,
-    })),
+      position: rowPosition(level.folders.length + index, count),
+    }),
   );
   return out;
 }

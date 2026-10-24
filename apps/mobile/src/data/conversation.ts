@@ -1,6 +1,6 @@
 /**
  * One open conversation with the assistant. React-free (./conversation.test.ts); the screen
- * (app/assistant/chat.tsx) renders `state` and calls the methods, the network arrives through
+ * (app/chat.tsx) renders `state` and calls the methods, the network arrives through
  * `ConversationDeps`.
  *
  * - It opens on the latest page of messages and pages older history in front on demand
@@ -8,6 +8,8 @@
  * - A sent message shows at once, its reply streams in, and both stay on screen until the saved
  *   transcript holds the reply. When that read fails, or the reply is not saved yet, the exchange
  *   stays with a retry (`unreconciled`) instead of being replaced by a shorter transcript.
+ * - A send the station never answered (offline) says so (`notice: 'offline'`): the screen queues
+ *   it (src/store/outbox.ts) instead of giving the words back.
  * - A reply still being written when the conversation opens (or comes back into view, or when a
  *   send is refused with 409 because one is running) is followed until it ends, then reconciled.
  * - Everything stops quietly once `stillCurrent` says the station or account changed.
@@ -19,12 +21,18 @@ import { exchangeStart, holdsNewReply, withLatest, withOlder, type ExchangeStart
 
 export type StreamOutcome = { ok: true; finished: boolean } | ApiMiss;
 
+/** A picture sent with a message (uploaded first, `POST /api/upload`). */
+export interface SentImage {
+  id: string;
+  url: string;
+}
+
 export interface ConversationDeps<M extends TranscriptMessage = TranscriptMessage> {
   /** The session's title, or a miss (404 when it is gone or not mine). */
   title(): Promise<ApiResult<{ title: string | null }>>;
   latestPage(): Promise<ApiResult<MessagePage<M>>>;
   olderPage(before: number): Promise<ApiResult<MessagePage<M>>>;
-  send(text: string, onEvent: (event: ChatEvent) => void, signal: AbortSignal): Promise<StreamOutcome>;
+  send(text: string, onEvent: (event: ChatEvent) => void, signal: AbortSignal, images?: readonly SentImage[]): Promise<StreamOutcome>;
   /** Whether a reply is being written now. */
   runActive(): Promise<ApiResult<{ active: boolean }>>;
   /** Attach to the reply being written (replayed from its start). */
@@ -40,6 +48,8 @@ export interface ConversationState<M extends TranscriptMessage = TranscriptMessa
   loadFailed: boolean;
   /** My message on its way, shown until the saved transcript holds its reply. */
   pending: string | null;
+  /** The pictures sent with it. */
+  pendingImages: readonly SentImage[];
   /** The reply as it streams in. */
   reply: LiveReply | null;
   /** Sending, or following a reply being written. */
@@ -52,7 +62,9 @@ export interface ConversationState<M extends TranscriptMessage = TranscriptMessa
 }
 
 /** What the composer should do after a send. */
-export type SendResult = { sent: true } | { sent: false; restore: string; notice: 'busy' | 'failed'; message: string };
+export type SendResult =
+  | { sent: true }
+  | { sent: false; restore: string; notice: 'busy' | 'failed' | 'offline'; message: string };
 
 /** The state before a conversation opens. */
 export const CLOSED_CONVERSATION: ConversationState<never> = {
@@ -61,6 +73,7 @@ export const CLOSED_CONVERSATION: ConversationState<never> = {
   missing: false,
   loadFailed: false,
   pending: null,
+  pendingImages: [],
   reply: null,
   busy: false,
   unreconciled: false,
@@ -164,15 +177,16 @@ export class Conversation<M extends TranscriptMessage = TranscriptMessage> {
     });
   }
 
-  async send(text: string): Promise<SendResult> {
+  async send(text: string, images: readonly SentImage[] = []): Promise<SendResult> {
     const message = text.trim();
-    if (!message || this.state.busy) return { sent: false, restore: text, notice: 'busy', message: '' };
+    if ((!message && !images.length) || this.state.busy) return { sent: false, restore: text, notice: 'busy', message: '' };
     this.start = exchangeStart(this.state.transcript);
-    this.set({ pending: message, reply: EMPTY_REPLY, busy: true, unreconciled: false, streamFailed: false });
-    const outcome = await this.deps.send(message, this.onEvent, this.abort.signal);
+    this.set({ pending: message, pendingImages: images, reply: EMPTY_REPLY, busy: true, unreconciled: false, streamFailed: false });
+    const outcome = await this.deps.send(message, this.onEvent, this.abort.signal, images);
     if (!this.live()) return { sent: true };
     if (!outcome.ok) {
-      this.set({ pending: null, reply: null, busy: false });
+      this.set({ pending: null, pendingImages: [], reply: null, busy: false });
+      if (outcome.status === 0) return { sent: false, restore: text, notice: 'offline', message: outcome.message };
       if (outcome.status === 409) {
         // a reply is still being written: keep my words and follow that reply
         void this.followActive();
@@ -195,6 +209,7 @@ export class Conversation<M extends TranscriptMessage = TranscriptMessage> {
       this.set({
         transcript: withLatest(this.state.transcript, page.data),
         pending: null,
+        pendingImages: [],
         reply: null,
         busy: false,
         unreconciled: false,

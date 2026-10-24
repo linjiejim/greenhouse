@@ -28,7 +28,25 @@ describe('the reply stream', () => {
     const states = events.reduce<(typeof EMPTY_REPLY)[]>((all, e) => [...all, applyEvent(all.at(-1) ?? EMPTY_REPLY, e)], []);
     expect(states[1]!.tool).toBe('search_docs');
     expect(states[2]!.tool).toBeNull();
-    expect(states.at(-1)).toEqual({ text: 'Looking it up.', tool: null, finished: true, error: null, title: 'Q4' });
+    expect(states.at(-1)).toEqual({
+      text: 'Looking it up.',
+      tool: null,
+      steps: [{ id: '1', tool: 'search_docs', output: {}, status: 'done' }],
+      finished: true,
+      error: null,
+      title: 'Q4',
+    });
+  });
+
+  it('keeps each tool step with its input and output', () => {
+    let reply = applyEvent(EMPTY_REPLY, { type: 'tool-call-start', id: 'a', toolName: 'ask_user' });
+    reply = applyEvent(reply, { type: 'tool-call', id: 'a', toolName: 'ask_user', input: { q: 1 } });
+    expect(reply.steps).toEqual([{ id: 'a', tool: 'ask_user', input: { q: 1 }, status: 'running' }]);
+    reply = applyEvent(reply, { type: 'tool-result', id: 'a', toolName: 'ask_user', output: { error: 'nope' } });
+    expect(reply.steps[0]!.status).toBe('failed');
+    // a result whose start was never seen (a resumed stream) still lands
+    reply = applyEvent(reply, { type: 'tool-result', id: 'b', toolName: 'export_data', output: { ok: 1 } });
+    expect(reply.steps.map((step) => step.id)).toEqual(['a', 'b']);
   });
 
   it('keeps the error', () => {

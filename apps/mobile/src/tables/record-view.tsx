@@ -1,11 +1,11 @@
 /**
- * One record (`/tables/record?table=&id=`, or the detail pane on an iPad): every live field with its value as text (formula and
+ * One record (the `sheet/record` object sheet): every live field with its value as text (formula and
  * rollup results included). The last records opened are kept on the phone and read offline; a
  * record I cannot read any more (403 / 404) loses its copy. A masked record has no values.
  */
 
 import React, { useCallback, useEffect, useMemo, useRef } from 'react';
-import { ScrollView, Text, View } from 'react-native';
+import { ScrollView, Text } from 'react-native';
 import type { ApiResult } from '../api/client';
 import { getRecord, getSchema, tableUsers } from '../api/tables';
 import { noAccess, notFound } from '../data/access';
@@ -20,22 +20,14 @@ import { withTimeout } from '../lib/timeout';
 import { useFieldWords } from '../tables/use-field-words';
 import { makeStyles, space, typo, useTheme, weight } from '../theme';
 import { EmptyState, LoadingState } from '../ui/empty';
-import { ListRow, ListSection } from '../ui/list';
-import { ScreenChrome } from '../ui/split';
+import { Row, Section } from '../ui/list';
+import { SheetScreen } from '../ui/screen';
 
 /** How long the member lookup for people's names may take before the record keeps the names it has. */
 const NAMES_TIMEOUT_MS = 8000;
 
-/** One record; `embedded` when it is the detail pane of the iPad split view (src/ui/split.tsx). */
-export function RecordView({
-  tableId,
-  recordId,
-  embedded,
-}: {
-  tableId: number | null;
-  recordId: number | null;
-  embedded?: boolean;
-}) {
+/** One record, as an object sheet (app/sheet/record.tsx). */
+export function RecordView({ tableId, recordId }: { tableId: number | null; recordId: number | null }) {
   const t = useT();
   const { colors: c } = useTheme();
   const styles = useStyles(c);
@@ -86,20 +78,20 @@ export function RecordView({
 
   if (tableId == null || recordId == null || (!data && !resource.loading && (notFound(resource.error) || noAccess(resource.error)))) {
     return (
-      <View style={styles.root}>
-        <ScreenChrome title={t('tables.record')} embedded={embedded} />
-        <ScrollView contentInsetAdjustmentBehavior="automatic">
+      <>
+        <SheetScreen title={t('tables.record')} />
+        <ScrollView style={styles.root} contentInsetAdjustmentBehavior="automatic">
           <EmptyState icon="table" title={t('tables.recordNotFound')} style={styles.state} />
         </ScrollView>
-      </View>
+      </>
     );
   }
 
   const masked = !!data && Object.keys(data.record.values ?? {}).length === 0;
   return (
-    <View style={styles.root}>
-      <ScreenChrome title={data?.schema.table.name ?? ''} embedded={embedded} />
-      <ScrollView contentInsetAdjustmentBehavior="automatic" contentContainerStyle={styles.content}>
+    <>
+      <SheetScreen title={data?.schema.table.name ?? ''} />
+      <ScrollView style={styles.root} contentInsetAdjustmentBehavior="automatic" contentContainerStyle={styles.content}>
         {!data ? (
           resource.loading ? (
             <LoadingState style={styles.state} />
@@ -113,16 +105,16 @@ export function RecordView({
             </Text>
             {resource.offline ? <Text style={styles.meta}>{t('common.savedCopy')}</Text> : null}
             <Text style={styles.meta}>{t('tables.updated', { when: relativeTimeNow(data.record.updated_at) })}</Text>
-            <ListSection header={t('tables.fields')}>
+            <Section header={t('tables.fields')}>
               {fields.map((field) => {
                 const text = masked ? t('tables.masked') : displayValue(field, cellValue(field, data.record), words);
-                return <ListRow key={field.id} title={field.name} subtitle={text || '—'} subtitleLines={8} accessory="none" />;
+                return <Row key={field.id} title={field.name} subtitle={text || '—'} subtitleLines={8} accessory="none" />;
               })}
-            </ListSection>
+            </Section>
           </>
         )}
       </ScrollView>
-    </View>
+    </>
   );
 }
 

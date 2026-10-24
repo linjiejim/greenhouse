@@ -17,8 +17,9 @@ const blockRoot = new RegExp(`^${escaped}[\\\\/].*`);
 
 config.watchFolders = [__dirname];
 // Android toolbar icons are XML vector drawables (assets/icons/android, see
-// src/ui/toolbar-icon.android.ts) — @expo/ui's Compose Icon loads them as assets.
-config.resolver.assetExts = [...config.resolver.assetExts, 'xml'];
+// src/ui/toolbar-icon.android.ts) — @expo/ui's Compose Icon loads them as assets. Mermaid ships
+// as assets/web/mermaid.min.txt, read once and injected into the diagram WebView (no CDN).
+config.resolver.assetExts = [...config.resolver.assetExts, 'xml', 'txt'];
 config.resolver.blockList = config.resolver.blockList
   ? [].concat(config.resolver.blockList, blockRoot)
   : [blockRoot];

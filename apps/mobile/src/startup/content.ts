@@ -33,7 +33,7 @@ export class StartupContent {
 /** Other deep-linked pages keep their own loading UI; never wait for the home below them. */
 export function waitsForHome(segments: readonly string[]): boolean {
   const [group] = segments;
-  return !group || group === '(drawer)';
+  return !group || group === '(tabs)';
 }
 
 /** Extra grace after auth/fonts are ready, not a new minimum launch duration. */

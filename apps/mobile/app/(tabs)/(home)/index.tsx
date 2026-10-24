@@ -1,0 +1,260 @@
+/**
+ * 首页 — where a conversation starts:
+ *
+ *  - the bar: my avatar (→ 「我」 sheet: account, station, text size, my agents, settings) and
+ *    the bell with the unread count (→ the notifications sheet);
+ *  - the assistant's sprout (tap: it waves) and a greeting; a quiet line when something waits
+ *    for me;
+ *  - my five latest conversations, one line each, pinned first (swipe to pin), and 全部 (→ the
+ *    all-conversations sheet with search); kept on the phone, so they show at once and offline;
+ *  - the composer: words, + (photos, camera, files — uploaded as they are picked, into a
+ *    conversation made for them), hold-to-talk. Sending opens the conversation page with the
+ *    message on its way; offline it waits in the outbox.
+ *
+ * The launch splash waits for the first list (saved or fresh) under it.
+ */
+
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { ScrollView, Text, View, type TextInput } from 'react-native';
+import { Stack, useFocusEffect, useRouter } from 'expo-router';
+import { KeyboardStickyView } from 'react-native-keyboard-controller';
+import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { createSession } from '../../../src/api/assistant';
+import { Composer } from '../../../src/chat/composer';
+import { sentParts } from '../../../src/chat/composer-files';
+import { ConversationRow } from '../../../src/chat/conversation-row';
+import { useComposerFiles } from '../../../src/chat/use-composer-files';
+import { greetingFor, RECENT_ON_HOME } from '../../../src/data/home';
+import { captureIdentity } from '../../../src/data/identity';
+import { putHandoff } from '../../../src/lib/handoff';
+import { useT } from '../../../src/lib/i18n';
+import { softAskWhenSettled } from '../../../src/push/soft-ask';
+import { useStartupContent } from '../../../src/startup/context';
+import { useAuth } from '../../../src/store/auth';
+import { useNotifications } from '../../../src/store/notifications';
+import { queueTurn } from '../../../src/store/outbox';
+import { useSessions } from '../../../src/store/sessions';
+import { HIT, makeStyles, space, typo, useTheme, weight } from '../../../src/theme';
+import { AssistantAvatar, Avatar } from '../../../src/ui/avatar';
+import { Icon, Touchable } from '../../../src/ui/core';
+import { alertError, promptText } from '../../../src/ui/dialogs';
+import { EmptyState } from '../../../src/ui/empty';
+import { Skeleton } from '../../../src/ui/skeleton';
+import { rowPosition } from '../../../src/ui/list';
+import { toolbarIcon } from '../../../src/ui/toolbar-icon';
+import type { FirstTurn } from '../../chat';
+
+/**
+ * A provider of its own: inside the tab controller the screen's safe area includes the tab bar,
+ * so the composer sits on top of the bar instead of under it.
+ */
+export default function HomeScreen() {
+  return (
+    <SafeAreaProvider>
+      <Home />
+    </SafeAreaProvider>
+  );
+}
+
+function Home() {
+  const t = useT();
+  const router = useRouter();
+  const { colors: c } = useTheme();
+  const styles = useStyles(c);
+  const insets = useSafeAreaInsets();
+  const user = useAuth((s) => s.user);
+  const sessions = useSessions((s) => s.items);
+  const status = useSessions((s) => s.status);
+  const offline = useSessions((s) => s.offline);
+  const unread = useNotifications((s) => s.unread);
+  const needsYou = useNotifications((s) => s.items.filter((n) => !n.read_at && n.kind === 'runtime_attention').length);
+  const [draft, setDraft] = useState('');
+  const [composerHeight, setComposerHeight] = useState(64);
+  const [waves, setWaves] = useState(0);
+  const input = useRef<TextInput>(null);
+
+  // back on home (from a conversation, a sheet): the list catches up
+  useFocusEffect(
+    useCallback(() => {
+      if (!user?.id) return;
+      void useSessions.getState().refresh();
+      void useNotifications.getState().refresh();
+    }, [user?.id]),
+  );
+
+  // the splash leaves once a list (saved or fresh) or a failure is here
+  useStartupContent(status !== 'empty');
+  const notifications = useNotifications((s) => s.status);
+  useEffect(() => {
+    if (notifications === 'ready') void softAskWhenSettled();
+  }, [notifications]);
+
+  // a conversation is made the first time a file is picked; sending moves to its page
+  const made = useRef<string | null>(null);
+  const ensureSession = useCallback(async () => {
+    if (made.current) return made.current;
+    const current = captureIdentity();
+    const result = await createSession();
+    if (!current()) return null;
+    if (!result.ok) {
+      if (result.status !== 0) alertError(t('assistant.sendFailed'), result.message || undefined);
+      return null;
+    }
+    made.current = result.data.id;
+    return made.current;
+  }, [t]);
+  const files = useComposerFiles(ensureSession);
+
+  const send = async (spoken?: string) => {
+    const text = spoken ?? draft;
+    const parts = sentParts(files.files);
+    if (!text.trim() && !parts.images.length && !parts.attachments.length) return;
+    const sessionId = await ensureSession();
+    if (!sessionId) {
+      // the station cannot be reached: the message waits and goes once it can
+      if (parts.attachments.length) return;
+      queueTurn({ sessionId: null, text, images: parts.images });
+      setDraft('');
+      files.clear();
+      alertError(t('home.queuedTitle'), t('home.queuedHint'));
+      return;
+    }
+    const turn: FirstTurn = { text, images: parts.images, attachments: parts.attachments };
+    made.current = null;
+    setDraft('');
+    files.clear();
+    router.push({ pathname: '/chat', params: { session: sessionId, k: putHandoff('first-turn', turn) } });
+  };
+
+  const rename = async (id: string, title: string | null) => {
+    const next = await promptText({ title: t('home.rename'), defaultValue: title ?? '' });
+    if (next) void useSessions.getState().rename(id, next.slice(0, 200));
+  };
+
+  const name = user?.nickname?.trim() || '';
+  const recent = sessions.slice(0, RECENT_ON_HOME);
+
+  return (
+    <View style={styles.root}>
+      <Stack.Screen options={{ title: '', headerLargeTitleEnabled: false }} />
+      <Stack.Toolbar placement="left">
+        <Stack.Toolbar.View hidesSharedBackground>
+          <Touchable onPress={() => router.push('/me')} accessibilityRole="button" accessibilityLabel={t('me.title')} style={styles.me}>
+            <Avatar name={name || '?'} size={34} />
+          </Touchable>
+        </Stack.Toolbar.View>
+      </Stack.Toolbar>
+      <Stack.Toolbar placement="right">
+        <Stack.Toolbar.Button
+          icon={toolbarIcon('bell')}
+          accessibilityLabel={unread > 0 ? t('home.notificationsUnread', { n: unread }) : t('notifications.title')}
+          onPress={() => router.push('/notifications')}
+        >
+          {unread > 0 ? <Stack.Toolbar.Badge>{unread > 99 ? '99+' : String(unread)}</Stack.Toolbar.Badge> : null}
+        </Stack.Toolbar.Button>
+      </Stack.Toolbar>
+
+      <ScrollView
+        contentInsetAdjustmentBehavior="automatic"
+        keyboardDismissMode="interactive"
+        contentContainerStyle={[styles.content, { paddingBottom: composerHeight + space.xxl }]}
+      >
+        <Touchable onPress={() => setWaves((n) => n + 1)} accessibilityRole="image" accessibilityLabel={t('conversation.assistant')} style={styles.hero}>
+          <AssistantAvatar key={waves} size={88} state="hello" animate />
+        </Touchable>
+        <Text style={styles.greeting} accessibilityRole="header">
+          {t(`home.greeting.${greetingFor(new Date().getHours())}`, { name })}
+        </Text>
+        {needsYou > 0 ? (
+          <Touchable onPress={() => router.push('/notifications')} style={styles.waiting} accessibilityRole="button">
+            <Icon name="hand" size={14} color={c.orange} />
+            <Text style={styles.waitingText}>{t('home.needsYou', { n: needsYou })}</Text>
+          </Touchable>
+        ) : null}
+
+        <View style={styles.sectionHead}>
+          <Text style={styles.sectionTitle} accessibilityRole="header">
+            {t('home.recent')}
+          </Text>
+          {sessions.length ? (
+            <Touchable onPress={() => router.push('/conversations')} accessibilityRole="button" hitSlop={8} style={styles.all}>
+              <Text style={styles.allText}>{t('home.all')}</Text>
+            </Touchable>
+          ) : null}
+        </View>
+        {offline ? <Text style={styles.offline}>{t('common.savedCopy')}</Text> : null}
+        {recent.length ? (
+          <View>
+            {recent.map((session, index) => (
+              <ConversationRow
+                key={session.id}
+                session={session}
+                position={rowPosition(index, recent.length)}
+                onOpen={() => router.push({ pathname: '/chat', params: { session: session.id } })}
+                onPin={(pinned) => void useSessions.getState().pin(session.id, pinned)}
+                onRename={() => void rename(session.id, session.title)}
+              />
+            ))}
+          </View>
+        ) : status === 'empty' ? (
+          <Skeleton rows={RECENT_ON_HOME} />
+        ) : status === 'error' ? (
+          <EmptyState icon="alert" title={t('assistant.loadFailed')} onRetry={() => void useSessions.getState().refresh()} style={styles.state} />
+        ) : (
+          <Text style={styles.empty}>{t('home.noConversations')}</Text>
+        )}
+      </ScrollView>
+
+      <KeyboardStickyView offset={{ opened: insets.bottom }} style={[styles.composerWrap, { bottom: insets.bottom }]}>
+        <View style={styles.composerPad}>
+          <Composer
+            ref={input}
+            value={draft}
+            onChangeText={setDraft}
+            onSend={(spoken) => void send(spoken)}
+            onAttach={(from) => void files.attach(from)}
+            files={files.files}
+            onRemoveFile={files.remove}
+            onRetryFiles={files.retry}
+            placeholder={t('composer.placeholder')}
+            onHeight={setComposerHeight}
+          />
+        </View>
+      </KeyboardStickyView>
+    </View>
+  );
+}
+
+const useStyles = makeStyles((c) => ({
+  root: { flex: 1, backgroundColor: c.groupedBackground },
+  content: { paddingTop: space.md },
+  me: { width: HIT, height: HIT, alignItems: 'center', justifyContent: 'center' },
+  hero: { alignSelf: 'flex-start', marginHorizontal: space.margin + space.xs, marginBottom: space.md },
+  greeting: { ...typo.title1, color: c.label, marginHorizontal: space.margin + space.xs },
+  waiting: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: space.xs,
+    marginHorizontal: space.margin + space.xs,
+    marginTop: space.sm,
+    minHeight: HIT - space.sm,
+  },
+  waitingText: { ...typo.subheadline, color: c.orange },
+  sectionHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: space.xxl,
+    marginHorizontal: space.margin + space.xs,
+    marginBottom: space.sm,
+  },
+  sectionTitle: { ...typo.headline, color: c.label },
+  all: { minHeight: HIT, justifyContent: 'center' },
+  allText: { ...typo.body, fontWeight: weight.semibold, color: c.accent },
+  offline: { ...typo.footnote, color: c.secondaryLabel, marginHorizontal: space.margin + space.xs, marginBottom: space.sm },
+  state: { paddingTop: space.xl },
+  empty: { ...typo.subheadline, color: c.secondaryLabel, marginHorizontal: space.margin + space.xs },
+  composerWrap: { position: 'absolute', left: 0, right: 0, bottom: 0 },
+  composerPad: { paddingBottom: space.sm },
+}));

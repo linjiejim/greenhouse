@@ -96,6 +96,22 @@ const SOURCES: Record<IconName, ImageSourcePropType> = {
   bellSlash: require('../../assets/icons/android/notifications_off.xml'),
   runs: require('../../assets/icons/android/vital_signs.xml'),
   wand: require('../../assets/icons/android/auto_fix_high.xml'),
+  home: require('../../assets/icons/android/home.xml'),
+  cloud: require('../../assets/icons/android/cloud.xml'),
+  checklist: require('../../assets/icons/android/checklist.xml'),
+  folderPlus: require('../../assets/icons/android/create_new_folder.xml'),
+  docPlus: require('../../assets/icons/android/note_add.xml'),
+  moveTo: require('../../assets/icons/android/drive_file_move.xml'),
+  pdf: require('../../assets/icons/android/picture_as_pdf.xml'),
+  sheet: require('../../assets/icons/android/table_chart.xml'),
+  slides: require('../../assets/icons/android/slideshow.xml'),
+  video: require('../../assets/icons/android/movie.xml'),
+  audio: require('../../assets/icons/android/audio_file.xml'),
+  text: require('../../assets/icons/android/article.xml'),
+  fileOther: require('../../assets/icons/android/draft.xml'),
+  textSize: require('../../assets/icons/android/format_size.xml'),
+  chevL: require('../../assets/icons/android/chevron_left.xml'),
+  chevU: require('../../assets/icons/android/expand_less.xml'),
 };
 /* eslint-enable @typescript-eslint/no-require-imports */
 

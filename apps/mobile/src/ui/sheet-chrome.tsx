@@ -10,14 +10,11 @@ import { usePreventRemove } from 'expo-router/react-navigation';
  *    "done" button (disabled until `canSave`, and while `saving`), and the
  *    swipe-to-dismiss gesture is blocked while dirty so an accidental swipe
  *    never loses edits.
- *  - `useLeaveSheetTo()` — "open the full page" from a sheet: dismiss the
- *    sheet first, then push the page onto the stack underneath (pushing while
- *    the sheet is up would stack the page *inside* the sheet's presentation).
  */
 
 import React, { useCallback, useRef } from 'react';
 import { BackHandler, Keyboard, Platform } from 'react-native';
-import { Stack, useFocusEffect, useNavigation, useRouter, type Href } from 'expo-router';
+import { Stack, useFocusEffect, useNavigation, useRouter } from 'expo-router';
 import { useT } from '../lib/i18n';
 import { useAuth } from '../store/auth';
 import { useStations } from '../store/stations';
@@ -164,17 +161,5 @@ export function FormChrome({
         </SheetActions>
       )}
     </>
-  );
-}
-
-/** Dismiss the presented sheet, then push `href` onto the stack underneath. */
-export function useLeaveSheetTo(): (href: Href) => void {
-  const router = useRouter();
-  return useCallback(
-    (href: Href) => {
-      router.back();
-      setTimeout(() => router.push(href), 0);
-    },
-    [router],
   );
 }

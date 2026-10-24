@@ -12,3 +12,16 @@ export const listAgentWrites = () => get<{ writes: AgentWrite[] }>('/api/agent-a
 export const mySpend = () => get<MySpend>('/api/usage/spend');
 
 export const gatewayOverview = () => get<GatewayOverview>('/api/agent-access/gateway');
+
+/** An external agent I connected (OAuth / MCP), as `/api/agent-access/connections` lists it. */
+export interface AgentConnection {
+  client_id: string;
+  client_name: string;
+  kind: 'codex' | 'claude-code' | 'cursor' | 'other';
+  last_seen_at: string | null;
+  connected_at: string;
+  /** A plant the member chose for it, when the station keeps one. */
+  avatar?: { plant?: string; tint?: string } | null;
+}
+
+export const listConnections = () => get<{ now: string; connections: AgentConnection[] }>('/api/agent-access/connections');

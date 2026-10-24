@@ -87,7 +87,7 @@ export const lightHex = {
   codeString: '#FC6A5D',
   codeNumber: '#D0BF69',
 
-  /** Dimming layer under the drawer / custom overlays. */
+  /** Dimming layer under custom overlays. */
   scrim: 'rgba(0,0,0,0.22)',
 };
 

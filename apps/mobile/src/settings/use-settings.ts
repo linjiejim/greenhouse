@@ -1,5 +1,5 @@
 /**
- * Everything Settings shows and changes, shared by both platforms' views (app/settings/index.tsx
+ * Everything Settings shows and changes, shared by both platforms' views (app/me/index.tsx
  * — SwiftUI, index.android.tsx — Material): the member's account (name and email as the server
  * has them; the language is the account's, `PUT /api/auth/me/preferences`), this phone's theme,
  * the station, notifications, the version and which JS bundle runs, and sign-out (which first

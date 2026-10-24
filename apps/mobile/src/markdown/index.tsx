@@ -1,29 +1,68 @@
 /**
- * Native Markdown — knowledge documents, comments and notification bodies, set in the app's text
- * styles (headings, lists, quotes, code with highlighting, pipe tables, image rows). Not full
- * CommonMark: the block grammar is ./parse (pure, ported from the v2 app), inline marks are
- * ./inline. Rich Output fences (charts, diagrams, html previews) are not run here: they render as
- * code, so nothing executable reaches the phone.
+ * Rich markdown renderer — agent replies, knowledge documents, task notes.
+ * Set in iOS text styles (body 17 / 24-pt reading line, system label colors,
+ * accent-tinted links). Re-parses on each streaming flush (memoised on
+ * `source`); not full CommonMark, but covers what agent replies use.
  *
- *   <Markdown source={string} preview? />
- *     - `preview`: a list excerpt — tables flatten to lines, images drop.
+ * PUBLIC API (also used by the knowledge and projects areas — keep stable):
+ *   <Markdown source={string} animated?={boolean} />
+ *     - `source`   the markdown text.
+ *     - `animated` streaming replies only: each block mounts with a soft
+ *       fade-in, so the reply unfolds block by block (read only at a block's
+ *       mount, so rendered blocks never re-animate), and a rich fence that
+ *       hasn't closed yet shows a placeholder. Static renders omit it.
+ *   <RichContext value={{ reply, followUp }}>  around a chat reply: lets a
+ *       ```confirm send its pick (absent → inert buttons).
+ *   <TableGrid data big? avail? />  the bare table grid (the /table viewer).
+ *   type TableData                  a parsed pipe table.
  *
- * Links: `#/…` app links and same-station links open in the app when it has the screen
- * (../lib/deep-links.ts), otherwise the in-app Safari view; other http(s) links open in Safari.
+ * Links: entity deeplinks open native preview sheets, http(s) opens the
+ * in-app Safari view, chat files download into the share sheet (see
+ * ./inline); bare URLs are links. Tables pin an expand glyph that opens a
+ * full-screen modal (./blocks/table); image-only paragraphs become thumbnails.
+ *
+ * The pieces:
+ *   ./parse       — block grammar (pure data, no JSX)
+ *   ./inline      — inline marks (**bold**, `code`, links, autolinks, <br>)
+ *   ./registry    — custom ```<lang> blocks (the Rich Output fences: chart,
+ *                   datatable, mermaid, html-preview, confirm, mission-artifacts)
+ *   ./context     — what interactive blocks need from the reply (send a pick)
+ *   ./blocks/*    — per-block renderers
+ *
+ * Add a block: register it in ./registry — nothing here changes.
  */
-
-import { useMemo } from 'react';
+import { memo, useMemo } from 'react';
 import { View } from 'react-native';
+import { motion } from '../theme';
+import Animated, { FadeIn, ReduceMotion } from 'react-native-reanimated';
 import { CalmContext, PreviewContext } from './context';
 import { parseBlocks, type Block } from './parse';
+import { fenceBlocks } from './registry';
 import { CodeBlock } from './blocks/code';
+import { BlockBoundary, PendingBlock } from './blocks/frame';
+import { isEmptyRichBlock } from './rich';
 import { ImageRow } from './blocks/images';
 import { Table } from './blocks/table';
 import { BulletList, Heading, OrderedList, Paragraph, Quote, Rule } from './blocks/text';
 
+export { TableGrid } from './blocks/table';
+export { RichContext, type RichEnv } from './context';
 export type { TableData } from './parse';
 
-function renderBlock(b: Block, i: number, preview: boolean) {
+/** A registered fence — memoised on its body, so a finished block (a chart, a
+ *  diagram's WebView) isn't re-rendered by every streaming tick after it. */
+const Fence = memo(function Fence({ lang, raw }: { lang: string; raw: string }) {
+  const Custom = fenceBlocks[lang];
+  // A block with nothing in it is dropped (web parity), never shown as raw JSON.
+  if (isEmptyRichBlock(lang, raw)) return null;
+  return (
+    <BlockBoundary fallback={<CodeBlock lang={lang} code={raw} />}>
+      <Custom raw={raw} />
+    </BlockBoundary>
+  );
+});
+
+function renderBlock(b: Block, i: number, live: boolean, safe: boolean, preview: boolean) {
   switch (b.kind) {
     case 'heading':
       return <Heading key={i} level={b.level} text={b.text} />;
@@ -45,19 +84,46 @@ function renderBlock(b: Block, i: number, preview: boolean) {
       );
     case 'images':
       return preview ? null : <ImageRow key={i} images={b.images} />;
-    case 'code':
-      return <CodeBlock key={i} lang={b.lang} code={b.text} />;
+    case 'code': {
+      // Known fence langs (chart, …) render as their custom block; the rest
+      // are plain code. This is the whole extension surface.
+      if (preview || safe || !fenceBlocks[b.lang]) return <CodeBlock key={i} lang={b.lang} code={b.text} />;
+      // still streaming in: no half-written JSON / HTML (turn-input fences render nothing anyway)
+      if (b.open && live) return b.lang.endsWith('attachments') ? null : <PendingBlock key={i} lang={b.lang} />;
+      return <Fence key={i} lang={b.lang} raw={b.text} />;
+    }
     default:
       return null;
   }
 }
 
-export function Markdown({ source, preview = false }: { source: string; preview?: boolean }) {
+export function Markdown({
+  source,
+  animated = false,
+  safe = false,
+  preview = false,
+  calm = false,
+}: {
+  source: string;
+  animated?: boolean;
+  safe?: boolean;
+  preview?: boolean;
+  calm?: boolean;
+}) {
   const blocks = useMemo(() => parseBlocks(source), [source]);
   return (
-    <CalmContext.Provider value={false}>
+    <CalmContext.Provider value={calm}>
       <PreviewContext.Provider value={preview}>
-        <View>{blocks.map((b, i) => renderBlock(b, i, preview))}</View>
+        <View>
+          {blocks.map((b, i) => (
+            <Animated.View
+              key={i}
+              entering={animated ? FadeIn.duration(motion.base).reduceMotion(ReduceMotion.System) : undefined}
+            >
+              {renderBlock(b, i, animated, safe, preview)}
+            </Animated.View>
+          ))}
+        </View>
       </PreviewContext.Provider>
     </CalmContext.Provider>
   );

@@ -1,38 +1,17 @@
 /**
- * iOS list building blocks for React Native–rendered lists.
+ * List building blocks for React Native–rendered lists. They reproduce UIKit's inset-grouped
+ * geometry: 44-pt minimum rows, 16-pt margins, separators inset to the text, continuous-corner
+ * cards, `fill` press highlight, secondary text in `secondaryLabel`, chevrons in `tertiaryLabel`.
+ * Pure settings screens use SwiftUI instead (src/ui/native-form.tsx).
  *
- * Use these when a list needs RN content (pagination, rich rows, tag chips,
- * custom drawing) — they reproduce UIKit's inset-grouped / plain list
- * geometry exactly: 44-pt minimum rows, 16-pt margins, separators inset to the
- * text (not under the icon), continuous-corner sections, `systemFill` press
- * highlight, secondary text in `secondaryLabel`, disclosure chevrons in
- * `tertiaryLabel`.
- *
- * Pure settings-style screens (toggles, pickers, text fields, plain choices)
- * should use real SwiftUI instead — `@expo/ui/swift-ui` `Form` / `Section`
- * inside a `Host` (see src/ui/native-form.tsx).
- *
- *  - `ListSection` — a group with optional header/footer. `inset` (default)
- *    = rounded card on `groupedBackground`; `plain` = full-bleed rows.
- *  - `ListRow` — leading icon tile or custom view, title + optional subtitle,
- *    trailing value / chevron / checkmark / custom accessory, optional
- *    `footer` slot under the row (expanded details). Long-press menus come
- *    from wrapping in `NativeMenu trigger="longPress"` (mirror the menu's
- *    actions in `accessibilityActions` for VoiceOver); a row that is the
- *    trigger of a `NativeMenu trigger="tap"` sets `menuTrigger`. Only an
- *    explicit `disabled` reads as dimmed — a row without `onPress` is just
- *    not tappable here.
- *  - Virtualized lists (FlatList / SectionList) can't wrap rows in a
- *    `ListSection`: give each row its `position` ('first' | 'middle' | 'last'
- *    | 'only') and it draws its own slice of the inset card (outer corners,
- *    no separator under the last). Section titles: `ListSectionHeader` /
- *    `ListSectionFooter`; a free-form card: `ListCard`.
- *  - `IconTile` — the rounded colored square behind a row icon (Settings-style).
- *  - `Badge` — a small capsule label (状态, 当前, a category) in a system tone
- *    or a data-driven color. Don't restyle capsules per screen.
- *
- * Custom row layouts (Mail-style multi-line rows) should still use the same
- * constants: `LIST_TILE` leading width and `separatorInset()`.
+ *  - `Section` — a card of rows with an optional header and footer (`inset` or `plain`).
+ *  - `Row` — icon tile or custom leading view, title + subtitle, trailing value or accessory,
+ *    an optional `footer` under the row. Long-press menus wrap the row in
+ *    `NativeMenu trigger="longPress"` (mirror its actions in `accessibilityActions`).
+ *  - Virtualized lists give each row its `position` (`rowPosition(index, count)`) and it draws
+ *    its own slice of the card; titles come from `SectionHeader` / `SectionFooter`, free-form
+ *    content from `Card`.
+ *  - `IconTile` — the rounded square behind a row icon; `Badge` — a small status capsule.
  */
 
 import React, { Children, isValidElement } from 'react';
@@ -62,9 +41,10 @@ export function separatorInset(leadingWidth?: number): number {
   return leadingWidth ? space.margin + leadingWidth + space.md : space.margin;
 }
 
-export type RowPosition = 'first' | 'middle' | 'last' | 'only';
+export { rowPosition, type RowPosition } from '../data/row-position';
+import type { RowPosition } from '../data/row-position';
 
-export function ListSectionHeader({
+export function SectionHeader({
   title,
   variant = 'inset',
   style,
@@ -85,20 +65,20 @@ export function ListSectionHeader({
   );
 }
 
-export function ListSectionFooter({ text, style }: { text: string; style?: StyleProp<TextStyle> }) {
+export function SectionFooter({ text, style }: { text: string; style?: StyleProp<TextStyle> }) {
   const { colors: c } = useTheme();
   const styles = useStyles(c);
   return <Text style={[styles.footer, styles.outerInset, style]}>{text}</Text>;
 }
 
 /** The inset-grouped card surface for custom content (16-pt outer margin, group radius). */
-export function ListCard({ children, style }: { children: React.ReactNode; style?: StyleProp<ViewStyle> }) {
+export function Card({ children, style }: { children: React.ReactNode; style?: StyleProp<ViewStyle> }) {
   const { colors: c } = useTheme();
   const styles = useStyles(c);
   return <View style={[styles.insetCard, styles.outerInset, style]}>{children}</View>;
 }
 
-export function ListSection({
+export function Section({
   header,
   footer,
   children,
@@ -123,7 +103,7 @@ export function ListSection({
       ) : null}
       <View style={variant === 'inset' ? styles.insetCard : styles.plainCard}>
         {rows.map((row, i) =>
-          React.cloneElement(row as React.ReactElement<ListRowProps>, {
+          React.cloneElement(row as React.ReactElement<RowProps>, {
             key: row.key ?? i,
             last: i === rows.length - 1,
           }),
@@ -134,7 +114,7 @@ export function ListSection({
   );
 }
 
-export interface ListRowProps {
+export interface RowProps {
   title: string;
   subtitle?: string;
   /** Subtitle lines (default 2). */
@@ -158,6 +138,8 @@ export interface ListRowProps {
   disabled?: boolean;
   /** Title lines (default 1). */
   titleLines?: number;
+  /** Where a title too long for its lines is cut: file names keep their extension (`middle`). */
+  titleEllipsize?: 'tail' | 'middle';
   /**
    * The row is the trigger of a wrapping `NativeMenu trigger="tap"` (no
    * `onPress` of its own): it reads as a button, the menu being its action.
@@ -169,11 +151,11 @@ export interface ListRowProps {
   onAccessibilityAction?: (event: AccessibilityActionEvent) => void;
   /** Virtualized inset-grouped lists: this row's place in its card (draws its own corners). */
   position?: RowPosition;
-  /** Set by ListSection — hides the separator under the last row. */
+  /** Set by Section — hides the separator under the last row. */
   last?: boolean;
 }
 
-export function ListRow({
+export function Row({
   title,
   subtitle,
   subtitleLines = 2,
@@ -188,13 +170,14 @@ export function ListRow({
   destructive,
   disabled,
   titleLines = 1,
+  titleEllipsize = 'tail',
   menuTrigger,
   accessibilityLabel,
   accessibilityActions,
   onAccessibilityAction,
   position,
   last,
-}: ListRowProps) {
+}: RowProps) {
   const { colors: c } = useTheme();
   const styles = useStyles(c);
   const inset = separatorInset(icon ? TILE : leading ? (leadingWidth ?? TILE) : undefined);
@@ -213,7 +196,7 @@ export function ListRow({
           : undefined
       }
     >
-      <Row
+      <RowTarget
         onPress={onPress}
         disabled={disabled}
         menuTrigger={menuTrigger}
@@ -227,7 +210,7 @@ export function ListRow({
         <View style={[styles.body, large && { flexWrap: 'wrap' }]}>
           {/* keyed on the text size: re-measures when Dynamic Type changes (./font-scale.ts) */}
           <View key={fontKey} style={[styles.texts, large && { flexBasis: '100%' }]}>
-            <Text numberOfLines={large ? 0 : titleLines} style={[styles.title, destructive && { color: c.red }]}>
+            <Text numberOfLines={large ? 0 : titleLines} ellipsizeMode={titleEllipsize} style={[styles.title, destructive && { color: c.red }]}>
               {title}
             </Text>
             {subtitle ? (
@@ -249,7 +232,7 @@ export function ListRow({
             accessory
           )}
         </View>
-      </Row>
+      </RowTarget>
       {footer ? <View style={[styles.footerSlot, { paddingLeft: inset }]}>{footer}</View> : null}
       {/* separator runs from the text edge to the trailing edge, like UIKit */}
       {!isLast ? <View pointerEvents="none" style={[styles.sepLine, { left: inset }]} /> : null}
@@ -263,7 +246,7 @@ export function ListRow({
  * would read a menu trigger or a plain information row as "dimmed", the same
  * as a row that really is off (only `disabled` says that).
  */
-function Row({
+function RowTarget({
   onPress,
   disabled,
   menuTrigger,
@@ -274,7 +257,7 @@ function Row({
   style,
   children,
 }: Pick<
-  ListRowProps,
+  RowProps,
   'onPress' | 'disabled' | 'menuTrigger' | 'accessibilityLabel' | 'accessibilityActions' | 'onAccessibilityAction'
 > & { pressedColor: ColorValue; style: StyleProp<ViewStyle>; children: React.ReactNode }) {
   const a11y = {

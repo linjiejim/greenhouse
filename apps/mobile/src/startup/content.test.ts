@@ -50,7 +50,7 @@ describe('StartupContent', () => {
 });
 
 describe('waitsForHome', () => {
-  it.each([[], ['(drawer)'], ['(drawer)', '(main)'], ['(drawer)', '(main)', 'index']])(
+  it.each([[], ['(tabs)'], ['(tabs)', '(home)'], ['(tabs)', '(home)', 'index']])(
     'waits for the actual home surface: %j',
     (...segments) => {
       expect(waitsForHome(segments)).toBe(true);

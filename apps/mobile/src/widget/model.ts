@@ -91,7 +91,9 @@ export function myTasksRefreshAction(result: { ok: true } | { ok: false; status:
 }
 
 /**
- * Where a link from a widget goes in the app: a widget item keeps its route, with the `station`
+ * Where a link from a widget goes in the app: a widget item opens its object sheet (a task on
+ * `/sheet/task`, a document on `/sheet/doc`; the widget's own addresses stay as they are, so
+ * snapshots written by older builds still open), with the `station`
  * parameter removed only when it names the active station; anything else carrying `station` goes
  * home. While the stations are not read yet (cold start, `activeStation` null) and when it names
  * another station, `station` stays on the route and the item's screen decides once the stations
@@ -110,13 +112,19 @@ export function widgetLinkPath(path: string, activeStation: string | null): stri
   const route = `${url.host === 'app' ? '' : `/${url.host}`}${url.pathname}`.replace(/\/+/g, '/');
   if (route !== '/projects/task' && route !== '/knowledge/doc') return '/';
   if (activeStation !== null && station === activeStation) url.searchParams.delete('station');
-  const query = url.searchParams.toString();
-  return `${route}${query ? `?${query}` : ''}`;
+  const params = new URLSearchParams();
+  if (route === '/projects/task') {
+    params.set('project', url.searchParams.get('project') ?? '');
+    params.set('id', url.searchParams.get('task') ?? '');
+  } else params.set('id', url.searchParams.get('id') ?? '');
+  const rest = url.searchParams.get('station');
+  if (rest !== null) params.set('station', rest);
+  return `${route === '/projects/task' ? '/sheet/task' : '/sheet/doc'}?${params.toString()}`;
 }
 
 /** Whether an app path (as `widgetLinkPath` returns it) opens a widget item: a task or a document. */
 export function isWidgetItemPath(path: string): boolean {
-  return /^\/(projects\/task|knowledge\/doc)(\?|$)/.test(path);
+  return /^\/sheet\/(task|doc)(\?|$)/.test(path);
 }
 
 /**

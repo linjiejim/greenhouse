@@ -3,7 +3,7 @@
  * and dark like Xcode / GitHub), a header with the language label and a copy
  * button (system HUD confirmation), light syntax colors (../highlight —
  * keywords, strings, numbers, comments; web parity), and horizontal scrolling
- * for long lines (`HScroll` — keeps the swipe-anywhere drawer working).
+ * for long lines (`HScroll` — keeps the back gesture working).
  */
 import { useMemo } from 'react';
 import { Text, View } from 'react-native';

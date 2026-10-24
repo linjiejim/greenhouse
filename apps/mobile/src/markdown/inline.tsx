@@ -15,9 +15,9 @@
  * whitespace, a CJK character or trailing punctuation), and an HTML `<br>` —
  * models put them in table cells — is a line break.
  *
- * Links (iOS text-link styling: tinted, no underline) go through src/shell/open-target.ts:
- * documents and files open natively, other pages of the station in the in-app Safari view,
- * other sites in Safari; anything else says it cannot be opened.
+ * Links are chips (./link-chip.tsx, rules in src/lib/link-chip.ts): a Greenhouse object shows
+ * its type and title, a file its name and size, any other address its domain — never a raw URL.
+ * Mail and phone links stay tinted text. Previews (approval cards) show the words only.
  */
 import { type ReactNode, useCallback, useContext } from 'react';
 import { CalmContext, PreviewContext } from './context';
@@ -25,7 +25,8 @@ import { Text } from 'react-native';
 import { useT } from '../lib/i18n';
 import { makeStyles, mono, type ThemeColors, typo, useTheme, weight } from '../theme';
 import { alertError } from '../ui/dialogs';
-import { useOpenHref } from '../shell/open-target';
+import { useOpenHref } from '../shell/open-object';
+import { chipFor, LinkChip } from './link-chip';
 
 /** No-break space — keeps inline-code padding glued to the code when lines wrap. */
 const NBSP = '\u00a0';
@@ -80,14 +81,16 @@ const URL_STOP = '\\s<>"\'`\\u2e80-\\u9fff\\u3000-\\u303f\\uff00-\\uffef';
 const URL_TAIL = '.,;:!?)\\]}*_~';
 const BARE_URL = new RegExp(`^https?:\\/\\/[^${URL_STOP}]*[^${URL_STOP}${URL_TAIL}]`);
 
-const linkNode = (href: string, label: ReactNode, k: number, { s, open, preview }: Ctx, name?: string) =>
-  preview ? (
-    <Text key={k}>{label}</Text>
-  ) : (
+const linkNode = (href: string, label: ReactNode, k: number, { s, open, preview }: Ctx, name?: string) => {
+  if (preview) return <Text key={k}>{label}</Text>;
+  const chip = chipFor(href, name);
+  if (chip) return <LinkChip key={k} chip={chip} />;
+  return (
     <Text key={k} style={s.link} onPress={() => open(href, name)} accessibilityRole="link">
       {label}
     </Text>
   );
+};
 
 const INLINE_TOKENS: InlineTok[] = [
   {
@@ -158,13 +161,13 @@ const INLINE_TOKENS: InlineTok[] = [
   {
     // <https://…> — a CommonMark autolink
     re: /^<(https?:\/\/[^\s<>]+)>/,
-    node: (m, k, ctx) => linkNode(m[1], m[1], k, ctx),
+    node: (m, k, ctx) => linkNode(m[1], m[1], k, ctx, m[1]),
   },
   {
     // a bare URL (GFM autolink)
     re: BARE_URL,
     after: NOT_ALNUM,
-    node: (m, k, ctx) => linkNode(m[0], m[0], k, ctx),
+    node: (m, k, ctx) => linkNode(m[0], m[0], k, ctx, m[0]),
   },
 ];
 

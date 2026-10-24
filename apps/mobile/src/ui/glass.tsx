@@ -7,7 +7,7 @@
  * glass — group neighbouring glass elements in a `GlassGroup` so they blend and
  * morph as one surface instead.
  *
- * Native navigation chrome (headers, toolbars, sheets, menus, the drawer's
+ * Native navigation chrome (headers, toolbars, sheets, menus, the tab bar's
  * system controls) is already glass on iOS 26 — these components are only for
  * custom floating controls.
  *

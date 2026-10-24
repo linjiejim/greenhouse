@@ -6,7 +6,7 @@
 
 import type { DriveFolder, KbComment, KbDoc, KbSearchHit } from '../shared/greenhouse-types';
 import { collectPages } from '../data/paging';
-import { get, post, seg, type ApiResult } from './client';
+import { del, get, post, put, seg, type ApiResult } from './client';
 
 export type KbShelf = 'team' | 'personal';
 
@@ -46,3 +46,22 @@ export const listComments = (docId: number) =>
 
 export const addComment = (docId: number, content: string) =>
   post<{ comment: KbComment }>(`/api/knowledge/docs/${seg(String(docId))}/comments`, { content });
+
+/** A new document on a shelf, in a folder or at the top. */
+export const createDoc = (input: { title: string; content: string; shelf: KbShelf; folderId: number | null }) =>
+  post<{ doc: KbDoc }>('/api/knowledge/docs', {
+    title: input.title,
+    content_markdown: input.content,
+    visibility: visibilityOf(input.shelf),
+    ...(input.folderId ? { folder_id: input.folderId } : {}),
+  });
+
+/** Rename and / or move a document (`folderId` null = the shelf's top). */
+export const updateDoc = (id: number, change: { title?: string; folderId?: number | null }) =>
+  put<{ doc: KbDoc }>(`/api/knowledge/docs/${seg(String(id))}`, {
+    ...(change.title !== undefined ? { title: change.title } : {}),
+    ...(change.folderId !== undefined ? { folder_id: change.folderId } : {}),
+  });
+
+/** Archive a document (the owner's, or any team document). */
+export const deleteDoc = (id: number) => del<{ success: true }>(`/api/knowledge/docs/${seg(String(id))}`);

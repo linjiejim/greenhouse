@@ -1,12 +1,12 @@
 /**
- * Files (档案库): the knowledge cabinet over `/api/drive` (scope `kb`, apps/api/src/routes/drive.ts)
+ * 云盘: the knowledge cabinet over `/api/drive` (scope `kb`, apps/api/src/routes/drive.ts)
  * — the team shelf and my own. Listing a folder level, search, the authenticated download URL
  * and the three-step upload (init → bytes to the presigned URL or the API → complete).
  * Every call answers an `ApiResult`, never throws.
  */
 
 import type { DriveFile, DriveFolder, DriveUploadInit } from '../shared/greenhouse-types';
-import { api, get, post, seg, toResult, networkMiss, type ApiMiss, type ApiResult } from './client';
+import { api, del, get, post, put, seg, toResult, networkMiss, type ApiMiss, type ApiResult } from './client';
 import { getApiBase } from '../store/stations';
 
 export type FilesShelf = 'team' | 'personal';
@@ -150,3 +150,35 @@ export async function uploadBatch(
   }
   return outcome;
 }
+
+/* ── folders and files: create, rename, move, delete (the same kb tree as the knowledge base) ── */
+
+export const createFolder = (shelf: FilesShelf, parentId: number | null, name: string) =>
+  post<{ folder: DriveFolder }>('/api/drive/folders', {
+    scope: 'kb',
+    visibility: visibilityOfShelf(shelf),
+    ...(parentId ? { parent_id: parentId } : {}),
+    name,
+  });
+
+/** Rename and / or move a folder (`parentId` null = the shelf's top). A move never crosses shelves. */
+export const updateFolder = (id: number, change: { name?: string; parentId?: number | null }) =>
+  put<{ folder: DriveFolder }>(`/api/drive/folders/${seg(String(id))}`, {
+    ...(change.name !== undefined ? { name: change.name } : {}),
+    ...(change.parentId !== undefined ? { parent_id: change.parentId } : {}),
+  });
+
+/** 409 `not_empty` while the folder still holds anything. */
+export const deleteFolder = (id: number) => del<{ ok: true }>(`/api/drive/folders/${seg(String(id))}`);
+
+export const updateFile = (id: number, change: { name?: string; folderId?: number | null }) =>
+  put<{ file: DriveFile }>(`/api/drive/files/${seg(String(id))}`, {
+    ...(change.name !== undefined ? { name: change.name } : {}),
+    ...(change.folderId !== undefined ? { folder_id: change.folderId } : {}),
+  });
+
+export const deleteFile = (id: number) => del<{ ok: true }>(`/api/drive/files/${seg(String(id))}`);
+
+/** Every folder of a shelf, flat (the folder picker builds the tree). */
+export const listFolders = (shelf: FilesShelf) =>
+  get<{ folders: DriveFolder[] }>('/api/drive/folders', { scope: 'kb', visibility: visibilityOfShelf(shelf), parent_id: 'all' });

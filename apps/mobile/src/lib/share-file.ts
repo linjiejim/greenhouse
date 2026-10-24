@@ -4,6 +4,7 @@
  */
 
 import { Directory, File, Paths } from 'expo-file-system';
+import * as Sharing from 'expo-sharing';
 import { api } from '../api/client';
 import { getTokenStationId } from '../api/token-storage';
 
@@ -82,4 +83,34 @@ export async function downloadFile(path: string, fallbackName = 'download', sign
     previewTruncated,
     dispose,
   };
+}
+
+/** A file name from a title: control characters and path symbols become spaces, at most 80 characters. */
+export function fileStem(title: string | undefined, fallback: string): string {
+  const stem = [...(title ?? '')]
+    .map((ch) => ((ch.codePointAt(0) ?? 0) < 0x20 || '\\/:*?"<>|'.includes(ch) ? ' ' : ch))
+    .join('')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 80);
+  return stem || fallback;
+}
+
+/** Write `content` to the cache as `name` and open the share sheet; false when it could not. */
+export async function shareTextFile(name: string, content: string, mimeType: string): Promise<boolean> {
+  try {
+    const file = new File(Paths.cache, name.replace(/[\\/]/g, '_'));
+    if (file.exists) file.delete();
+    file.create();
+    file.write(content);
+    if (!(await Sharing.isAvailableAsync())) return false;
+    await Sharing.shareAsync(file.uri, {
+      mimeType,
+      dialogTitle: name,
+      UTI: mimeType === 'text/html' ? 'public.html' : undefined,
+    });
+    return true;
+  } catch {
+    return false;
+  }
 }
