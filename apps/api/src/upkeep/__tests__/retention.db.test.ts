@@ -108,7 +108,8 @@ describe('retention cleanup', () => {
     await db.executeRaw(sql`
       INSERT INTO notification_deliveries (id, notification_id, channel, recipient, status, available_at, updated_at) VALUES
         (${`done_${t}`}, ${`n_${t}`}, 'feishu', 'a', 'delivered', now(), ${daysAgo(8)}::timestamptz),
-        (${`pending_${t}`}, ${`n_${t}`}, 'wecom', 'a', 'pending', now(), ${daysAgo(8)}::timestamptz)`);
+        (${`pending_${t}`}, ${`n_${t}`}, 'wecom', 'a', 'pending', now(), ${daysAgo(8)}::timestamptz),
+        (${`gone_${t}`}, ${`n_${t}`}, 'mobile_push', 'a', 'failed', now(), ${daysAgo(8)}::timestamptz)`);
 
     await db.retention.run({ now: NOW });
 
@@ -120,6 +121,8 @@ describe('retention cleanup', () => {
     expect(await exists('budget_ledger', 'id', `new_${t}`)).toBe(true);
     expect(await exists('notification_deliveries', 'id', `done_${t}`)).toBe(false);
     expect(await exists('notification_deliveries', 'id', `pending_${t}`)).toBe(true);
+    // `failed` (recipient gone) is final, like delivered / dead_letter / suppressed.
+    expect(await exists('notification_deliveries', 'id', `gone_${t}`)).toBe(false);
   });
 
   it('removes expired credentials and leaves live ones', async () => {

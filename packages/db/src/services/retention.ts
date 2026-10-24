@@ -55,7 +55,7 @@ export interface RetentionOptions {
 
 const TERMINAL_RUNS = sql.raw(`('succeeded', 'failed', 'canceled', 'interrupted')`);
 const UNDELIVERED_OUTBOX = sql.raw(`('pending', 'claimed', 'failed')`);
-const TERMINAL_DELIVERIES = sql.raw(`('delivered', 'dead_letter', 'suppressed')`);
+const TERMINAL_DELIVERIES = sql.raw(`('delivered', 'failed', 'dead_letter', 'suppressed')`);
 
 function daysBefore(now: Date, days: number): string {
   return new Date(now.getTime() - days * 86_400_000).toISOString();
