@@ -124,6 +124,23 @@ const ICONS = {
   bellSlash: ['bell.slash', 'notifications_off'],
   runs: ['waveform.path.ecg', 'vital_signs'],
   wand: ['wand.and.stars', 'auto_fix_high'],
+  // ── 3.0: tabs, library actions, file kinds, text size ──
+  home: ['house', 'home'],
+  cloud: ['cloud', 'cloud'],
+  checklist: ['checklist', 'checklist'],
+  folderPlus: ['folder.badge.plus', 'create_new_folder'],
+  docPlus: ['doc.badge.plus', 'note_add'],
+  moveTo: ['arrow.turn.up.right', 'drive_file_move'],
+  pdf: ['doc.richtext', 'picture_as_pdf'],
+  sheet: ['tablecells', 'table_chart'],
+  slides: ['play.rectangle', 'slideshow'],
+  video: ['film', 'movie'],
+  audio: ['waveform', 'audio_file'],
+  text: ['doc.plaintext', 'article'],
+  fileOther: ['doc', 'draft'],
+  textSize: ['textformat.size', 'format_size'],
+  chevL: ['chevron.left', 'chevron_left'],
+  chevU: ['chevron.up', 'expand_less'],
 } as const satisfies Record<string, readonly [SFSymbol, AndroidSymbolName]>;
 
 export type IconName = keyof typeof ICONS;
