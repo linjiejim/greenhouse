@@ -20,7 +20,11 @@
     "production": {
       "channel": "production",
       "environment": "production",
-      "autoIncrement": true
+      "autoIncrement": true,
+      "env": {
+        "EXPO_PUBLIC_API_BASE_URL": "https://green.linjiejim.com",
+        "EXPO_PUBLIC_STATION_NAME": "Greenhouse"
+      }
     }
   },
   "submit": {
