@@ -37,7 +37,7 @@ import { getHandoff } from '../src/lib/handoff';
 import { useT } from '../src/lib/i18n';
 import type { ChatMessage } from '../src/shared/greenhouse-types';
 import { readChatCopy, saveChatCopy } from '../src/store/chat-copies';
-import { claimConversation, queueTurn, unqueueTurn, useOutbox } from '../src/store/outbox';
+import { claimConversation, deliverQueued, queueTurn, unqueueTurn, useOutbox } from '../src/store/outbox';
 import { makeStyles, space, typo, useTheme } from '../src/theme';
 import { alertError } from '../src/ui/dialogs';
 import { EmptyState, LoadingState } from '../src/ui/empty';
@@ -56,7 +56,7 @@ type Item =
   | { key: string; kind: 'message'; message: ChatMessage; index: number }
   | { key: string; kind: 'pending'; text: string; images: readonly SentImage[] }
   | { key: string; kind: 'reply' }
-  | { key: string; kind: 'queued'; id: string; text: string; images: SentImage[] };
+  | { key: string; kind: 'queued'; id: string; text: string; images: SentImage[]; failed: boolean };
 
 /** The navigation bar's height under the status bar; the list's top inset when following the end. */
 const NAV_BAR = 56;
@@ -151,26 +151,45 @@ export default function Chat() {
   const queued = useMemo(() => outbox.filter((item) => item.sessionId === sessionId), [outbox, sessionId]);
 
   const send = useCallback(
-    async (text: string, images: readonly SentImage[], queuedId?: string): Promise<boolean> => {
+    async (text: string, images: readonly SentImage[]): Promise<boolean> => {
       if (!conversation) return false;
       pinned.current = true;
       const result = await conversation.send(text, images);
-      if (result.sent) {
-        if (queuedId) unqueueTurn(queuedId);
-        return true;
-      }
+      if (result.sent) return true;
       if (result.notice === 'offline') {
         setOffline(true);
-        if (!queuedId && sessionId) queueTurn({ sessionId, text, images: [...images] });
-        return false;
+        // no answer: it may have arrived, so the outbox looks for it before it goes again
+        if (sessionId && queueTurn({ sessionId, text, images: [...images], status: 'unknown' })) return false;
       }
-      if (queuedId) unqueueTurn(queuedId);
-      // my words come back to the box whatever refused them
+      // my words come back to the box whatever refused them (or when the outbox is full)
       setDraft((now) => now || result.restore);
-      alertError(result.notice === 'busy' ? t('assistant.busy') : t('assistant.sendFailed'), result.message || undefined);
+      const title = result.notice === 'offline' ? t('conversation.outboxFull') : result.notice === 'busy' ? t('assistant.busy') : t('assistant.sendFailed');
+      alertError(title, result.notice === 'offline' ? undefined : result.message || undefined);
       return false;
     },
     [conversation, sessionId, t],
+  );
+
+  /** A queued message goes through the outbox (one sender at a time; it leaves once accepted). */
+  const sendQueued = useCallback(
+    async (id: string, manual = false) => {
+      if (!conversation) return;
+      pinned.current = true;
+      const delivery = await deliverQueued(
+        id,
+        async (turn) => {
+          const result = await conversation.send(turn.text, turn.images);
+          return result.sent ? { ok: true } : { ok: false, status: result.status, message: result.message };
+        },
+        { manual },
+      );
+      if (delivery === 'unknown') setOffline(true);
+      if (delivery === 'rejected') {
+        const error = useOutbox.getState().items.find((item) => item.id === id)?.error;
+        alertError(t('assistant.sendFailed'), error || undefined);
+      }
+    },
+    [conversation, t],
   );
 
   useEffect(() => {
@@ -202,13 +221,20 @@ export default function Chat() {
       void conversation?.refocus();
     }, [conversation]),
   );
-  // what waits goes once the station answers again (a page read that reached it clears `offline`)
+  // what waits goes once the station answers again (a page read that reached it clears `offline`);
+  // one the station refused waits for the member, one it was busy for waits out its retry
+  const [retryTick, setRetryTick] = useState(0);
+  const head = queued[0];
   useEffect(() => {
-    const next = queued[0];
-    if (!next || !conversation || state.busy || !state.transcript || offline) return;
-    void send(next.text, next.images, next.id);
+    if (!head || head.status === 'failed' || !conversation || state.busy || !state.transcript || offline) return;
+    const wait = (head.retryAt ?? 0) - Date.now();
+    if (wait > 0) {
+      const timer = setTimeout(() => setRetryTick((n) => n + 1), wait);
+      return () => clearTimeout(timer);
+    }
+    void sendQueued(head.id);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- retried when the queue, the conversation or the station settles
-  }, [queued.length, conversation, state.busy, !!state.transcript, offline]);
+  }, [head?.id, head?.status, head?.retryAt, conversation, state.busy, !!state.transcript, offline, retryTick]);
   // while something waits offline, ask the station again now and then
   useEffect(() => {
     if (!offline || !queued.length || !conversation) return;
@@ -239,7 +265,10 @@ export default function Chat() {
     if (!id) {
       // never reached the station: the message waits for it
       if (!parts.attachments.length) {
-        queueTurn({ sessionId: null, text, images: parts.images });
+        if (!queueTurn({ sessionId: null, text, images: parts.images })) {
+          alertError(t('conversation.outboxFull'));
+          return;
+        }
         setDraft('');
         files.clear();
       }
@@ -269,7 +298,7 @@ export default function Chat() {
     ...messages.map((message, index): Item => ({ key: `m-${message.seq}`, kind: 'message', message, index })),
     ...(state.pending !== null ? [{ key: 'pending', kind: 'pending', text: state.pending, images: state.pendingImages } as Item] : []),
     ...(state.reply ? [{ key: 'reply', kind: 'reply' } as Item] : []),
-    ...queued.map((turn): Item => ({ key: `q-${turn.id}`, kind: 'queued', id: turn.id, text: turn.text, images: turn.images })),
+    ...queued.map((turn): Item => ({ key: `q-${turn.id}`, kind: 'queued', id: turn.id, text: turn.text, images: turn.images, failed: turn.status === 'failed' })),
   ];
 
   // the sprout of the latest reply follows the turn
@@ -333,7 +362,17 @@ export default function Chat() {
     }
     if (item.kind === 'queued') {
       const { text, files: attached } = splitAttachments(item.text);
-      return <UserMessage text={text} images={item.images} files={attached} queued onRetry={() => void send(item.text, item.images, item.id)} />;
+      return (
+        <UserMessage
+          text={text}
+          images={item.images}
+          files={attached}
+          queued
+          failed={item.failed}
+          onRetry={() => void sendQueued(item.id, true)}
+          onRemove={item.failed ? () => unqueueTurn(item.id) : undefined}
+        />
+      );
     }
     const reply = state.reply!;
     return (

@@ -3,16 +3,32 @@
  * again when either changes. `useOutboxFlush()` (root layout) sends them when the app comes to the
  * foreground and every so often while any wait: a new conversation is made first when needed.
  * A conversation open on screen sends its own (`claimConversation`), so its reply streams there.
- * A message the station refuses (not just unreachable) is dropped with an alert.
+ *
+ * Both senders go through `deliverQueued`: a message is claimed for the one attempt (a second
+ * sender skips it), is checked to still be queued right before it goes, and leaves the outbox only
+ * when the station accepted it. A message sent without an answer is looked for in its conversation
+ * before it goes again.
  */
 
 import { useEffect } from 'react';
 import { AppState } from 'react-native';
 import { create } from 'zustand';
-import { createSession } from '../api/assistant';
+import { chatRun, createSession, getMessages } from '../api/assistant';
 import { sendMessage } from '../chat/send';
 import { captureIdentity } from '../data/identity';
-import { dequeue, enqueue, nextToSend, parseOutbox, type QueuedTurn } from '../data/outbox';
+import {
+  afterAttempt,
+  deliveryOf,
+  dequeue,
+  due,
+  enqueue,
+  heldByStation,
+  nextToSend,
+  parseOutbox,
+  patchTurn,
+  type Delivery,
+  type QueuedTurn,
+} from '../data/outbox';
 import { t } from '../lib/i18n';
 import { alertError } from '../ui/dialogs';
 import { useAuth } from './auth';
@@ -43,12 +59,26 @@ function save(items: QueuedTurn[]): void {
   writeOffline(KIND, items);
 }
 
-export function queueTurn(turn: Omit<QueuedTurn, 'id' | 'createdAt'>): void {
-  save(enqueue(useOutbox.getState().items, { ...turn, id: `q-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`, createdAt: Date.now() }));
+const queued = (id: string) => useOutbox.getState().items.find((item) => item.id === id);
+
+/** Queue a message; false when the outbox is full (nothing is dropped, the caller keeps the words). */
+export function queueTurn(turn: Omit<QueuedTurn, 'id' | 'createdAt'>): boolean {
+  const next = enqueue(useOutbox.getState().items, {
+    ...turn,
+    id: `q-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
+    createdAt: Date.now(),
+  });
+  if (!next) return false;
+  save(next);
+  return true;
 }
 
 export function unqueueTurn(id: string): void {
   save(dequeue(useOutbox.getState().items, id));
+}
+
+function patch(id: string, change: Partial<QueuedTurn>): void {
+  save(patchTurn(useOutbox.getState().items, id, change));
 }
 
 /** Conversations on screen send their own queued messages. */
@@ -62,6 +92,64 @@ export function claimConversation(sessionId: string): () => void {
   };
 }
 
+/** Messages being sent right now, by whichever sender claimed them. */
+const inFlight = new Set<string>();
+
+export type SendAttempt = { ok: true } | { ok: false; status: number; message: string };
+type Addressed = QueuedTurn & { sessionId: string };
+
+/** Whether an earlier send without an answer reached the station: yes, no, or can't tell yet. */
+async function arrived(turn: Addressed): Promise<'yes' | 'no' | 'unclear'> {
+  const page = await getMessages(turn.sessionId);
+  if (!page.ok) return 'unclear';
+  if (heldByStation(page.data, turn)) return 'yes';
+  const run = await chatRun(turn.sessionId);
+  // a reply being written may be the answer to it; look again once it ends
+  return run.ok && !run.data.active ? 'no' : 'unclear';
+}
+
+/**
+ * Send one queued message through `send`, once. Skipped (`null`) when another sender has it, it
+ * left the outbox, its conversation is on screen (for the background sender), or it is not due
+ * (unless `manual`: the member pressed retry). It leaves the outbox only once delivered.
+ */
+export async function deliverQueued(
+  id: string,
+  send: (turn: Addressed) => Promise<SendAttempt>,
+  options: { manual?: boolean; background?: boolean } = {},
+): Promise<Delivery | null> {
+  const turn = queued(id);
+  if (!turn?.sessionId || inFlight.has(id)) return null;
+  if (options.background && claimed.has(turn.sessionId)) return null;
+  if (!options.manual && !due(turn, Date.now())) return null;
+  const current = captureIdentity();
+  const target: Addressed = { ...turn, sessionId: turn.sessionId };
+  inFlight.add(id);
+  try {
+    if (turn.status === 'unknown') {
+      const seen = await arrived(target);
+      if (!current() || !queued(id)) return null;
+      if (seen === 'yes') {
+        unqueueTurn(id);
+        return 'sent';
+      }
+      if (seen === 'unclear') {
+        patch(id, { ...afterAttempt(turn, 'retry', ''), status: 'unknown' });
+        return 'retry';
+      }
+    }
+    if (options.background && claimed.has(target.sessionId)) return null;
+    const attempt = await send(target);
+    if (!current()) return null;
+    const delivery = deliveryOf(attempt);
+    if (delivery === 'sent') unqueueTurn(id);
+    else if (queued(id)) patch(id, afterAttempt(queued(id)!, delivery, attempt.ok ? '' : attempt.message));
+    return delivery;
+  } finally {
+    inFlight.delete(id);
+  }
+}
+
 let flushing = false;
 
 /** Send what waits, once; the station still unreachable leaves it queued. */
@@ -70,29 +158,40 @@ export async function flushOutbox(): Promise<void> {
   flushing = true;
   try {
     const current = captureIdentity();
-    for (const turn of nextToSend(useOutbox.getState().items, new Set(claimed.keys()))) {
+    for (const snapshot of nextToSend(useOutbox.getState().items, new Set(claimed.keys()))) {
       if (!current()) return;
-      let sessionId = turn.sessionId;
-      if (!sessionId) {
-        const made = await createSession();
+      if (!snapshot.sessionId) {
+        // a new conversation first; the message keeps it, so a retry never makes another
+        if (inFlight.has(snapshot.id) || !queued(snapshot.id)) continue;
+        inFlight.add(snapshot.id);
+        let made: Awaited<ReturnType<typeof createSession>>;
+        try {
+          made = await createSession();
+        } finally {
+          inFlight.delete(snapshot.id);
+        }
         if (!current()) return;
+        if (!queued(snapshot.id)) continue;
         if (!made.ok) {
           if (made.status === 0) return;
-          unqueueTurn(turn.id);
+          unqueueTurn(snapshot.id);
           alertError(t('conversation.queuedFailed'), made.message || undefined);
           continue;
         }
-        sessionId = made.data.id;
+        patch(snapshot.id, { sessionId: made.data.id });
       }
-      const outcome = await sendMessage(sessionId, turn.text, () => {}, undefined, turn.images);
+      const delivery = await deliverQueued(
+        snapshot.id,
+        async (turn) => {
+          const outcome = await sendMessage(turn.sessionId, turn.text, () => {}, undefined, turn.images);
+          return outcome.ok ? { ok: true } : { ok: false, status: outcome.status, message: outcome.message };
+        },
+        { background: true },
+      );
       if (!current()) return;
-      if (!outcome.ok && outcome.status === 0) {
-        // still offline: keep it, and keep the conversation it now has
-        if (!turn.sessionId) save(useOutbox.getState().items.map((item) => (item.id === turn.id ? { ...item, sessionId } : item)));
-        return;
-      }
-      unqueueTurn(turn.id);
-      if (!outcome.ok) alertError(t('conversation.queuedFailed'), outcome.message || undefined);
+      // no answer from the station: the rest would not get through either
+      if (delivery === 'unknown') return;
+      if (delivery === 'rejected') alertError(t('conversation.queuedFailed'), queued(snapshot.id)?.error || undefined);
     }
   } finally {
     flushing = false;
@@ -101,7 +200,7 @@ export async function flushOutbox(): Promise<void> {
 
 /** Root layout: send queued messages on foreground and every 20 s while any wait. */
 export function useOutboxFlush(): void {
-  const waiting = useOutbox((s) => s.items.length > 0);
+  const waiting = useOutbox((s) => s.items.some((item) => item.status !== 'failed'));
   const member = useAuth((s) => s.user?.id);
   useEffect(() => {
     if (!waiting || !member) return;
@@ -115,4 +214,12 @@ export function useOutboxFlush(): void {
       sub.remove();
     };
   }, [waiting, member]);
+}
+
+/** Test hook. */
+export function _resetOutbox(): void {
+  claimed.clear();
+  inFlight.clear();
+  flushing = false;
+  useOutbox.setState({ items: [] });
 }

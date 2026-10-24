@@ -413,6 +413,9 @@ export const en = {
     assistant: 'Assistant',
     queued: 'Waiting for the station',
     queuedFailed: 'A message you wrote offline couldn’t be sent',
+    queuedRefused: 'Not sent',
+    removeQueued: 'Remove',
+    outboxFull: 'Too many messages are waiting to send. Your message is still in the box; try again once some have gone.',
   },
   cards: {
     questions: 'A few questions',

@@ -113,7 +113,11 @@ function Home() {
     if (!sessionId) {
       // the station cannot be reached: the message waits and goes once it can
       if (parts.attachments.length) return;
-      queueTurn({ sessionId: null, text, images: parts.images });
+      if (!queueTurn({ sessionId: null, text, images: parts.images })) {
+        // the outbox is full: the words stay in the box
+        alertError(t('conversation.outboxFull'));
+        return;
+      }
       setDraft('');
       files.clear();
       alertError(t('home.queuedTitle'), t('home.queuedHint'));

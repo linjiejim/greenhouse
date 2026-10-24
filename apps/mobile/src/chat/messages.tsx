@@ -58,14 +58,19 @@ export const UserMessage = memo(function UserMessage({
   images,
   files,
   queued,
+  failed,
   onRetry,
+  onRemove,
 }: {
   text: string;
   images: { id: string; url: string }[];
   files: AttachedFile[];
   /** Waiting for the station (sent offline). */
   queued?: boolean;
+  /** Queued, and the station refused it: it waits for a retry or removal. */
+  failed?: boolean;
   onRetry?: () => void;
+  onRemove?: () => void;
 }) {
   const { colors: c } = useTheme();
   const styles = useStyles(c);
@@ -86,9 +91,10 @@ export const UserMessage = memo(function UserMessage({
       <AttachmentRow files={files} align="end" />
       {queued ? (
         <View style={styles.queuedLine}>
-          <Icon name="clock" size={12} color={c.secondaryLabel} />
-          <Text style={styles.queuedText}>{t('conversation.queued')}</Text>
+          <Icon name={failed ? 'alert' : 'clock'} size={12} color={failed ? c.red : c.secondaryLabel} />
+          <Text style={styles.queuedText}>{t(failed ? 'conversation.queuedRefused' : 'conversation.queued')}</Text>
           {onRetry ? <NativeButton label={t('common.retry')} size="small" onPress={onRetry} /> : null}
+          {onRemove ? <NativeButton label={t('conversation.removeQueued')} size="small" onPress={onRemove} /> : null}
         </View>
       ) : null}
     </View>

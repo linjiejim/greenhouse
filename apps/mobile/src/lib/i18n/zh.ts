@@ -407,6 +407,9 @@ export const zh: Catalog = {
     assistant: '助手',
     queued: '等待连上工作站',
     queuedFailed: '离线时写的消息没发出去',
+    queuedRefused: '未发出',
+    removeQueued: '移除',
+    outboxFull: '待发送的消息太多了。这条还留在输入框里，等前面的发出去再试。',
   },
   cards: {
     questions: '有几个问题',
