@@ -21,6 +21,14 @@ describe('parseObjectUrl — web hash routes', () => {
       { type: 'task', id: 'tsk_01JB2Y8Z9QW3E4R5T6Y7V8H9P1', projectId: 'prj_01JB2Y8Z9QW3E4R5T6Y7V8H9P0' },
     ],
     ['#/files?file=fil_01JB2Y8Z9QW3E4R5T6Y7V8H9P2', { type: 'file', id: 'fil_01JB2Y8Z9QW3E4R5T6Y7V8H9P2' }],
+    // The scope routes the address bar shows on a doc name it by slug.
+    ['#/knowledge/internal/general/api-style-guide', { type: 'doc', slug: 'api-style-guide' }],
+    ['#/knowledge/internal/general/api-style-guide/edit', { type: 'doc', slug: 'api-style-guide' }],
+    ['#/knowledge/internal/general/brand%2Fvoice', { type: 'doc', slug: 'brand/voice' }],
+    ['#/knowledge/internal/general/%E6%8C%87%E5%8D%97', { type: 'doc', slug: '指南' }],
+    ['#/knowledge/personal/my-notes', { type: 'doc', slug: 'my-notes' }],
+    ['#/knowledge/shared/their-notes', { type: 'doc', slug: 'their-notes' }],
+    ['#/knowledge/folder/5/legacy-slug', { type: 'doc', slug: 'legacy-slug' }],
   ])('%s', (url, expected) => {
     expect(parseObjectUrl(url)).toEqual(expected);
   });
@@ -32,7 +40,12 @@ describe('parseObjectUrl — web hash routes', () => {
     '#/knowledge',
     '#/knowledge/doc/',
     '#/knowledge/doc/abc-slug',
-    '#/knowledge/folder/5/legacy-slug',
+    '#/knowledge/internal',
+    '#/knowledge/internal/general',
+    '#/knowledge/personal',
+    '#/knowledge/shared',
+    '#/knowledge/new/personal',
+    '#/knowledge/folder/abc/slug',
     '#/projects/01',
     '#/projects/1.5',
     '#/projects/prj_short',
@@ -55,6 +68,12 @@ describe('parseObjectUrl — absolute URLs', () => {
   it('accepts the named origin only', () => {
     expect(parseObjectUrl('https://green.example.com/#/projects/4', { origins })).toEqual({ type: 'project', id: '4' });
     expect(parseObjectUrl('https://green.example.com#/projects/4', { origins })).toEqual({ type: 'project', id: '4' });
+    expect(
+      parseObjectUrl('https://green.example.com/#/knowledge/internal/general/api-style-guide', { origins }),
+    ).toEqual({
+      type: 'doc',
+      slug: 'api-style-guide',
+    });
     expect(parseObjectUrl('https://other.example.com/#/projects/4', { origins })).toBeNull();
     expect(parseObjectUrl('https://green.example.com/#/projects/4')).toBeNull();
   });

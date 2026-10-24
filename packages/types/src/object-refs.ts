@@ -21,7 +21,9 @@ export const OBJECT_REF_TYPES = ['doc', 'file', 'folder', 'task', 'project', 're
 export type ObjectRefType = (typeof OBJECT_REF_TYPES)[number];
 
 export type ObjectRef =
-  | { type: 'doc'; id: string }
+  | { type: 'doc'; id: string; slug?: undefined }
+  /** A doc named by its slug (`doc_id`), as the scope routes the address bar shows do. */
+  | { type: 'doc'; slug: string; id?: undefined }
   | { type: 'file'; id: string }
   | { type: 'folder'; id: string }
   | { type: 'task'; id: string; projectId: string }
@@ -43,6 +45,10 @@ export interface ResolveRefsRequest {
 export interface ResolvedObjectRef {
   url: string;
   type: ObjectRefType;
+  /**
+   * The object's id. A doc linked by slug gets its id only when the caller may read it;
+   * otherwise (forbidden or gone, indistinguishably) this is the slug from the link.
+   */
   id: string;
   title: string | null;
   meta?: { size?: number; contentType?: string | null };
@@ -90,22 +96,45 @@ function splitQuery(rest: string): { segments: string[]; params: URLSearchParams
   return { segments, params: new URLSearchParams(query) };
 }
 
+/**
+ * A doc slug from the route segments after the scope part, joined the way the web's
+ * knowledge page joins them (a slug may hold `/`); a trailing `edit` opens the editor
+ * there and is not part of the slug.
+ */
+function docSlug(parts: string[]): string | null {
+  const trimmed = parts.length > 1 && parts[parts.length - 1] === 'edit' ? parts.slice(0, -1) : parts;
+  const slug = trimmed.join('/');
+  // eslint-disable-next-line no-control-regex
+  return slug && slug.length <= 512 && !/[\u0000-\u001f]/.test(slug) ? slug : null;
+}
+
+function slugRef(parts: string[]): ObjectRef | null {
+  const slug = docSlug(parts);
+  return slug === null ? null : { type: 'doc', slug };
+}
+
 /** The web app's hash routes, given what follows `#/`. */
 function parseHashRoute(route: string): ObjectRef | null {
   const { segments, params } = splitQuery(route);
   const [head, a, b, c] = segments;
 
-  // #/knowledge/doc/<id>-<slug> (or a bare id) · #/knowledge/folder/<id>
-  if (head === 'knowledge' && segments.length === 3) {
-    if (a === 'doc') {
+  if (head === 'knowledge') {
+    // #/knowledge/doc/<id>-<slug> (or a bare id): the canonical, rename-proof link.
+    if (a === 'doc' && segments.length === 3) {
       const dash = b!.indexOf('-');
       const id = rowId(dash === -1 ? b : b!.slice(0, dash));
       return id === null ? null : { type: 'doc', id };
     }
+    // #/knowledge/folder/<id> · #/knowledge/folder/<id>/<slug> (legacy in-folder doc link)
     if (a === 'folder') {
       const id = rowId(b);
-      return id === null ? null : { type: 'folder', id };
+      if (id === null) return null;
+      return segments.length === 3 ? { type: 'folder', id } : slugRef(segments.slice(3));
     }
+    // What the address bar shows on a doc: #/knowledge/internal/<space>/<slug>,
+    // #/knowledge/personal/<slug>, #/knowledge/shared/<slug>. Without a slug they are lists.
+    if (a === 'internal' && segments.length >= 4) return slugRef(segments.slice(3));
+    if ((a === 'personal' || a === 'shared') && segments.length >= 3) return slugRef(segments.slice(2));
     return null;
   }
 
@@ -230,7 +259,7 @@ export function parseObjectUrl(raw: string, options: ParseObjectUrlOptions = {})
 
 /** The id as the resolve endpoint returns it. */
 export function objectRefId(ref: ObjectRef): string {
-  return String(ref.id);
+  return ref.type === 'doc' && ref.slug !== undefined ? ref.slug : String(ref.id);
 }
 
 // ─── Files: kind and display name ────────────────────────

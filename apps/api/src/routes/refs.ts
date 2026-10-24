@@ -12,6 +12,8 @@
  * - every item is authorized with the same helper its own read route uses; an object the
  *   caller may not read — or that does not exist — comes back with `title: null`, never an
  *   error, and the two cases look the same (no existence oracle);
+ * - a doc may be named by id (`#/knowledge/doc/<id>-…`) or by the slug the scope routes show
+ *   (`#/knowledge/internal/<space>/<slug>`); a slug link reports the doc's id only when readable;
  * - URLs that name no object are left out;
  * - absolute URLs count only on this workspace's own origin (request origin, `Origin`,
  *   `PUBLIC_BASE_URL`, `WEB_BASE_URL`): `#/projects/3` on another instance is another project.
@@ -45,7 +47,8 @@ import { getPlatformRuntime, type PlatformHandlerContext } from '../platform/run
 const RESOLVE_CONCURRENCY = 8;
 const TITLE_MAX = 200;
 
-type Resolved = Pick<ResolvedObjectRef, 'title' | 'meta'>;
+/** `id` replaces the link's own id (a doc linked by slug, once it is known to be readable). */
+type Resolved = Pick<ResolvedObjectRef, 'title' | 'meta'> & { id?: string };
 
 /** The origins whose absolute URLs are this workspace. */
 function workspaceOrigins(c: Context): string[] {
@@ -67,7 +70,9 @@ function refKey(ref: ObjectRef): string {
     ? `task:${ref.projectId}:${ref.id}`
     : ref.type === 'record'
       ? `record:${ref.baseId ?? ''}:${ref.tableId}:${ref.id}`
-      : `${ref.type}:${ref.id}`;
+      : ref.type === 'doc' && ref.slug !== undefined
+        ? `doc-slug:${ref.slug}`
+        : `${ref.type}:${ref.id}`;
 }
 
 /** Scalar → display text; anything else (arrays, objects, empty) → null. */
@@ -89,9 +94,14 @@ async function resolveRef(ref: ObjectRef, r: Resolver): Promise<Resolved> {
   switch (ref.type) {
     case 'doc': {
       if (!(await r.capability('knowledge.library.read'))) return hidden;
-      const doc = await r.db.knowledgeBase.getById(ref.id);
+      // By slug exactly like GET /api/knowledge/docs/:slug, the route the slug link opens.
+      const doc =
+        ref.slug !== undefined
+          ? await r.db.knowledgeBase.get(ref.slug, 'shared')
+          : await r.db.knowledgeBase.getById(ref.id);
       if (!doc || doc.status === 'archived') return hidden;
-      return canRead(await resolveKbAccess(r.db, doc, r.user.id)) ? { title: clip(doc.title) } : hidden;
+      if (!canRead(await resolveKbAccess(r.db, doc, r.user.id))) return hidden;
+      return ref.slug !== undefined ? { title: clip(doc.title), id: String(doc.id) } : { title: clip(doc.title) };
     }
     case 'folder': {
       const folder = await r.db.drive.getFolder(ref.id);
@@ -204,7 +214,13 @@ export function createRefsRoutes() {
 
     const items: ResolvedObjectRef[] = parsed.map(({ url, ref }) => {
       const hit = resolved.get(refKey(ref)) ?? { title: null };
-      return { url, type: ref.type, id: objectRefId(ref), title: hit.title, ...(hit.meta ? { meta: hit.meta } : {}) };
+      return {
+        url,
+        type: ref.type,
+        id: hit.id ?? objectRefId(ref),
+        title: hit.title,
+        ...(hit.meta ? { meta: hit.meta } : {}),
+      };
     });
     return c.json({ items } satisfies ResolveRefsResponse);
   });

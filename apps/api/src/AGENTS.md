@@ -395,6 +395,7 @@ v1 只接 DeepSeek 与 OpenAI 兼容服务，它们**自动**缓存 prompt 前�
 正文里的站内链接（网页地址或 App 深链）在客户端画成对象胶囊，标题从这里批量取回（`routes/refs.ts`）。
 - 认哪些 URL 只看 `@greenhouse/types/object-refs` 的 `parseObjectUrl`（网页、手机、服务端共用一份）；不认的 URL 直接不返回。绝对地址只认本站 origin（请求 origin / `Origin` / `PUBLIC_BASE_URL` / `WEB_BASE_URL`）。
 - 每一项用该对象自己读接口的那套鉴权：文档 `resolveKbAccess`、文件/文件夹 `resolveDriveAccess`（kb scope）、项目 dispatch `getProject`、任务 `taskReadAuthorizer` + `projects.execution.read`、记录 `tables` 开关 + dispatch `getRecord`（标题取主字段，值被遮蔽时退回 `#id`）、对话 `canAccessSession`。别在这里另写一套判定。
+- 文档两种链接都认：`#/knowledge/doc/<id>-…`（按 id）和地址栏上的 `#/knowledge/internal/<space>/<slug>`、`personal/<slug>`、`shared/<slug>`、`folder/<id>/<slug>`（按 slug，查法同 `GET /api/knowledge/docs/:slug`）。按 slug 的只在读得到时把 `id` 换成文档真 id，读不到时 `id` 原样是链接里的 slug。
 - **读不到和不存在必须长得一样**：都返回 `title: null`，不报错、不区分，免得成为存在性探针。任务链接里的 project 与任务实际所属不符也按读不到处理。
 - 每次最多 50 条（`MAX_RESOLVE_URLS`），同一对象只查一次。项目、记录走 dispatch，和搜索一样会留读审计。
 
