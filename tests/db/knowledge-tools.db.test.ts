@@ -69,37 +69,6 @@ describe('Knowledge tools round-trip', () => {
     expect(got.content).toContain('retro');
   });
 
-  it('agent-authored docs register and release backlinks like the HTTP save path', async () => {
-    const alice = await createUser(db, 'alice@test.com', 'Alice');
-    const mutate = createKnowledgeMutationTool(db, { userId: alice.id });
-
-    const target = await run(mutate, {
-      action: 'knowledge.create_doc',
-      scope: 'team',
-      title: 'Backlink target',
-      content: 'The document being linked to.',
-    });
-    const targetId = target.document.id as number;
-
-    // create_doc must register the canonical link it contains…
-    const source = await run(mutate, {
-      action: 'knowledge.create_doc',
-      scope: 'team',
-      title: 'Backlink source',
-      content: `See [target](#/knowledge/doc/${targetId}-backlink-target) for details.`,
-    });
-    expect((await db.knowledgeBase.listBacklinks(targetId)).map((d) => d.id)).toEqual([source.document.id]);
-
-    // …and update_doc must release it again when the link is removed.
-    await run(mutate, {
-      action: 'knowledge.update_doc',
-      scope: 'team',
-      doc_id: source.document.doc_id,
-      content: 'No longer references anything.',
-    });
-    expect(await db.knowledgeBase.listBacklinks(targetId)).toEqual([]);
-  });
-
   it('personal docs never leak across users', async () => {
     const alice = await createUser(db, 'alice@test.com', 'Alice');
     const bob = await createUser(db, 'bob@test.com', 'Bob');

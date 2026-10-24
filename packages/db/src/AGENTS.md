@@ -190,8 +190,6 @@
 
 - `knowledge_base.folder_id` → `drive_folders(id)` **ON DELETE SET NULL**:文档归属 kb 目录(null=根)。**文档永不因目录操作被删**;`drive.deleteFolder` 在 kb 域额外拒绝仍挂着非归档文档的目录(与子目录/活文件同等对待)。空间(`meta.space`)是历史组织维度,`pnpm cli knowledge migrate-spaces` 折叠进目录后仅作「未归目录」兜底;**2026-08-11 起没有任何写入方**——编辑器表单已删掉该字段,create 时服务端兜的 `'general'` 只为历史读者保留,别再把它当可用的分组维度。
 - 目录改名/移动走 `drive.updateFolder(id, {name?, parent_id?})`:**把目录移进自己或自己的后代返回 `{ok:false, reason:'cycle'}`**(祖先链上溯,64 层封顶)——否则整棵子树会脱离根变成不可达环。service 只管数据,scope/可见性/归属的跨域校验在路由层(`PUT /api/drive/folders/:id`)。
-- `kb_links{from_doc_id,to_doc_id}`(两端 CASCADE,unique(from,to)):出链在每次保存时由 `rebuildOutlinks(id, markdown)` 全量重建——扫描正文里的规范链接 `#/knowledge/doc/<id>`。反链读反方向,**必须逐条过 `resolveKbAccess`**(否则私有文档标题会经反链列表泄露)。
-- `kb_comments`(软删 `deleted_at`):文档级评论,读权限跟随文档。**不进 FTS / `knowledge_query` / `/search`**(spec D10)——讨论不是知识。
 - `knowledge_base.is_template`:显式布尔(不塞 meta JSON),`listTemplates()` 只列 team 可见模板。
 - 编辑态 presence 是**进程内存**(`apps/api/src/knowledge/presence.ts`,90s TTL),无表;与 `ws/connection-manager.ts` 的全局在线态是两回事。
 

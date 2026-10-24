@@ -15,9 +15,9 @@ import { getPlatformRuntime } from '../runtime.js';
 /**
  * What kind of change a route that shares an action with others makes, for the
  * Activity log: `presence` is an editor heartbeat (not a change, never shown),
- * `comment` / `uncomment` and `reorder` read better than "updated document".
+ * `reorder` reads better than "updated document".
  */
-export type KnowledgeHttpChange = 'presence' | 'comment' | 'uncomment' | 'reorder';
+export type KnowledgeHttpChange = 'presence' | 'reorder';
 
 interface KnowledgeHttpAction {
   actionId: KnowledgeActionId;
@@ -43,15 +43,8 @@ export function matchKnowledgeAction(method: string, fullPath: string): Knowledg
   let match = path.match(/^\/docs\/id\/(\d+)$/);
   if (match && method === 'GET') return { actionId: 'readDocument', documentId: match[1] };
 
-  match = path.match(/^\/docs\/(\d+)\/backlinks$/);
-  if (match && method === 'GET') return { actionId: 'readDocument', documentId: match[1] };
-  match = path.match(/^\/docs\/(\d+)\/comments$/);
-  if (match && method === 'GET') return { actionId: 'readDocument', documentId: match[1] };
-  if (match && method === 'POST') return { actionId: 'updateDocument', documentId: match[1], change: 'comment' };
   match = path.match(/^\/docs\/(\d+)\/editing-presence$/);
   if (match && method === 'POST') return { actionId: 'updateDocument', documentId: match[1], change: 'presence' };
-  match = path.match(/^\/comments\/\d+$/);
-  if (match && method === 'DELETE') return { actionId: 'updateDocument', change: 'uncomment' };
 
   match = path.match(/^\/docs\/(\d+)\/versions$/);
   if (match && method === 'GET') return { actionId: 'listVersions', documentId: match[1] };

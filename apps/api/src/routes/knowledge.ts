@@ -17,10 +17,6 @@
  * POST   /api/knowledge/docs/:id/shares               — 添加/更新共享（user/group, reader/editor）
  * DELETE /api/knowledge/docs/:id/shares/:target       — 撤销共享
  * GET    /api/knowledge/docs/templates                — team 可见模板列表（从模板新建）
- * GET    /api/knowledge/docs/:id/backlinks            — 反链（按调用者读权限过滤）
- * GET    /api/knowledge/docs/:id/comments             — 文档评论（读权限跟随文档）
- * POST   /api/knowledge/docs/:id/comments             — 新增评论（触发 WeCom 通知）
- * DELETE /api/knowledge/comments/:cid                 — 删除评论（作者或 super，软删）
  * POST   /api/knowledge/docs/:id/editing-presence     — 编辑心跳，返回其他在编辑者
  * POST   /api/knowledge/tree/reorder                  — 侧栏树同级手动排序（只写顺序，不移动）
  * GET    /api/knowledge/export                        — 整库导出为 Markdown zip（仅 super）
@@ -45,7 +41,6 @@ import { nowIso } from '@greenhouse/utils/date';
 import { checkPromptInjection, sanitizeForPrompt } from '../security/security.js';
 import { completeJson } from '../llm/complete.js';
 import { resolveKbAccess, canRead, canWrite, canArchive, canManageSharing } from '../knowledge/access.js';
-import { notifyKbComment } from '../knowledge/notify.js';
 import { KNOWLEDGE_SEARCH_SCOPES, searchKnowledgeScopes, type KnowledgeSearchScope } from '../knowledge/search.js';
 import { touchEditingPresence, listEditingPresence } from '../knowledge/presence.js';
 import type { AppEnv } from '../app-env.js';
@@ -398,7 +393,6 @@ const knowledgeRoutes = new Hono<AppEnv>()
       _questions: normalizeStringArray(body.questions),
       _topics: normalizeStringArray(body.topics),
     });
-    await getDb().knowledgeBase.rebuildOutlinks(row.id, content);
     return c.json({ doc: docToApi(row) }, 201);
   })
   .get('/docs/templates', async (c) => {
@@ -508,28 +502,7 @@ const knowledgeRoutes = new Hono<AppEnv>()
       String(body.change_reason || 'Updated from editor'),
     );
     if (!doc) return c.json({ error: 'Document not found' }, 404);
-    if (contentChanged) await getDb().knowledgeBase.rebuildOutlinks(doc.id, doc.content);
     return c.json({ doc: { ...docToApi(doc), access }, ...(conflicted ? { conflict: conflicted } : {}) });
-  })
-  .get('/docs/:id/backlinks', async (c) => {
-    const user = getAuthUser(c);
-    const id = parseInt(c.req.param('id'), 10);
-    if (!Number.isFinite(id)) return c.json({ error: 'Invalid id' }, 400);
-    const db = getDb();
-    const doc = await db.knowledgeBase.getById(id);
-    if (!doc) return c.json({ error: 'Document not found' }, 404);
-    // The caller must be able to read the doc itself to see its backlinks.
-    if (!canRead(await resolveKbAccess(db, doc, user.id))) return c.json({ error: 'Document not found' }, 404);
-    // Access-filter each source doc — a private doc the caller can't read must not
-    // leak its title through the backlink list.
-    const sources = await db.knowledgeBase.listBacklinks(id);
-    const visible = [];
-    for (const s of sources) {
-      if (canRead(await resolveKbAccess(db, s, user.id))) {
-        visible.push({ id: s.id, slug: s.doc_id, title: s.title });
-      }
-    }
-    return c.json({ backlinks: visible });
   })
   .delete('/docs/:id', async (c) => {
     const user = getAuthUser(c);
@@ -632,80 +605,6 @@ const knowledgeRoutes = new Hono<AppEnv>()
     const ok = await getDb().knowledgeShares.revoke(id, target);
     if (!ok) return c.json({ error: 'Share not found' }, 404);
     logger.info('[Knowledge] share revoked', { docId: id, by: user.id, target });
-    return c.json({ success: true });
-  })
-  // ─── Comments (doc-level; never enter FTS / tools — D10) ─
-
-  .get('/docs/:id/comments', async (c) => {
-    const user = getAuthUser(c);
-    const id = parseInt(c.req.param('id'), 10);
-    if (!Number.isFinite(id)) return c.json({ error: 'Invalid id' }, 400);
-    const db = getDb();
-    const doc = await db.knowledgeBase.getById(id);
-    if (!doc || !canRead(await resolveKbAccess(db, doc, user.id))) return c.json({ error: 'Document not found' }, 404);
-    const rows = await db.kbComments.list(id);
-    // Resolve author nicknames (small N; deduped).
-    const names = new Map<string, string>();
-    for (const uid of new Set(rows.map((r) => r.author_user_id))) {
-      const u = await db.users.getById(uid).catch(() => undefined);
-      if (u) names.set(uid, u.nickname);
-    }
-    return c.json({
-      comments: rows.map((r) => ({
-        id: r.id,
-        author_user_id: r.author_user_id,
-        author_nickname: names.get(r.author_user_id) ?? r.author_user_id,
-        content: r.content,
-        created_at: r.created_at,
-        can_delete: r.author_user_id === user.id || user.role === 'super',
-      })),
-    });
-  })
-  .post('/docs/:id/comments', async (c) => {
-    const user = getAuthUser(c);
-    const id = parseInt(c.req.param('id'), 10);
-    if (!Number.isFinite(id)) return c.json({ error: 'Invalid id' }, 400);
-    const db = getDb();
-    const doc = await db.knowledgeBase.getById(id);
-    if (!doc || !canRead(await resolveKbAccess(db, doc, user.id))) return c.json({ error: 'Document not found' }, 404);
-    const body = await c.req.json().catch(() => ({}));
-    const content = String(body.content ?? '').trim();
-    if (!content) return c.json({ error: 'content is required' }, 400);
-    if (content.length > 5000) return c.json({ error: 'comment too long' }, 400);
-    const row = await db.kbComments.create(id, user.id, content);
-    const nickname = await nicknameOf(user.id, user.nickname);
-    // Fire-and-forget notification (never blocks or fails the request).
-    notifyKbComment(db, {
-      doc,
-      actorUserId: user.id,
-      actorNickname: nickname,
-      commentContent: content,
-    }).catch((err) => logger.warn(`[Knowledge] comment notify error: ${err}`));
-    return c.json(
-      {
-        comment: {
-          id: row.id,
-          author_user_id: user.id,
-          author_nickname: nickname,
-          content: row.content,
-          created_at: row.created_at,
-          can_delete: true,
-        },
-      },
-      201,
-    );
-  })
-  .delete('/comments/:cid', async (c) => {
-    const user = getAuthUser(c);
-    const cid = parseInt(c.req.param('cid'), 10);
-    if (!Number.isFinite(cid)) return c.json({ error: 'Invalid id' }, 400);
-    const db = getDb();
-    const comment = await db.kbComments.getById(cid);
-    if (!comment || comment.deleted_at) return c.json({ error: 'Comment not found' }, 404);
-    if (comment.author_user_id !== user.id && user.role !== 'super') {
-      return c.json({ error: 'Only the author or a super admin can delete this comment' }, 403);
-    }
-    await db.kbComments.softDelete(cid);
     return c.json({ success: true });
   })
   // ─── Editing presence (in-memory; no table) ─────────────

@@ -587,8 +587,6 @@ function adminDetail(row: ActivityAuditRow, summary: Record<string, unknown>): s
 function auditShape(row: ActivityAuditRow, summary: Record<string, unknown>): WriteShape {
   const verb = verbOf(row.action_id);
   if (row.app_id === 'knowledge') {
-    if (summary.change === 'comment') return { verb: 'comment', entity: 'document' };
-    if (summary.change === 'uncomment') return { verb: 'delete', entity: 'comment' };
     if (summary.change === 'reorder') return { verb: 'move', entity: 'document' };
   }
   // A comment is filed against its task: "commented on task <title>".

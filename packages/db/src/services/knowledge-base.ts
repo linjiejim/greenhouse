@@ -11,24 +11,9 @@ import { nowIso } from '@greenhouse/utils/date';
 import type { KnowledgeDocChangeKind } from '@greenhouse/types/ws';
 
 import type { Db } from '../client.js';
-import { knowledgeBase, knowledgeBaseVersions, kbLinks } from '../schema/index.js';
+import { knowledgeBase, knowledgeBaseVersions } from '../schema/index.js';
 import type { KnowledgeDocRow, KnowledgeDocVersionRow } from '../schema/knowledge-base.js';
 import { segmentForFts, buildSegmentedTsQuery, buildSnippet, jsonArrayToText } from './fts.js';
-
-/**
- * Extract the target doc ids of canonical internal links
- * `#/knowledge/doc/<id>-<slug>` (the slug part is optional/decorative) from a
- * doc's Markdown. Used to rebuild a doc's outlinks on save.
- */
-export function extractDocLinkIds(content: string): number[] {
-  const ids = new Set<number>();
-  const re = /#\/knowledge\/doc\/(\d+)/g;
-  for (const m of content.matchAll(re)) {
-    const n = Number(m[1]);
-    if (Number.isFinite(n)) ids.add(n);
-  }
-  return [...ids];
-}
 
 /** Recompute the weighted jieba token columns from a doc's text fields. */
 function kbTokens(fields: {
@@ -628,45 +613,6 @@ export function createKnowledgeBaseService(db: Db) {
       const condition = scope ? sql`WHERE scope = ${scope}` : sql``;
       const result = await db.execute(sql`SELECT COUNT(*)::int as count FROM knowledge_base ${condition}`);
       return Number((result as any[])[0]?.count ?? 0);
-    },
-
-    /**
-     * Rebuild the outgoing links of a doc from its Markdown (the canonical
-     * `#/knowledge/doc/<id>` links). Deletes the doc's existing outlinks and
-     * inserts the current set — self-links and links to non-existent docs are
-     * dropped (the FK requires the target to exist). Idempotent.
-     */
-    async rebuildOutlinks(fromDocId: number, content: string): Promise<void> {
-      const targetIds = extractDocLinkIds(content).filter((id) => id !== fromDocId);
-      await db.delete(kbLinks).where(eq(kbLinks.from_doc_id, fromDocId));
-      if (targetIds.length === 0) return;
-      // Keep only targets that actually exist (FK safety).
-      const existing = await db
-        .select({ id: knowledgeBase.id })
-        .from(knowledgeBase)
-        .where(inArray(knowledgeBase.id, targetIds));
-      const valid = existing.map((r) => r.id);
-      if (valid.length === 0) return;
-      const now = nowIso();
-      await db
-        .insert(kbLinks)
-        .values(valid.map((toId) => ({ from_doc_id: fromDocId, to_doc_id: toId, created_at: now })))
-        .onConflictDoNothing();
-    },
-
-    /**
-     * Docs that link TO the given doc (backlinks). Returns the full source rows so
-     * the caller can access-filter them (a private doc's title must not leak to a
-     * reader who can't open it).
-     */
-    async listBacklinks(toDocId: number): Promise<KnowledgeDocRow[]> {
-      const rows = await db
-        .select({ doc: knowledgeBase })
-        .from(kbLinks)
-        .innerJoin(knowledgeBase, eq(kbLinks.from_doc_id, knowledgeBase.id))
-        .where(and(eq(kbLinks.to_doc_id, toDocId), sql`${knowledgeBase.status} <> 'archived'`))
-        .orderBy(desc(knowledgeBase.updated_at));
-      return rows.map((r) => r.doc);
     },
 
     /**

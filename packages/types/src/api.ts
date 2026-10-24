@@ -270,23 +270,6 @@ export interface KnowledgeDoc {
   access?: 'owner' | 'editor' | 'reader' | null;
 }
 
-/** A doc that links TO the current doc (backlink), access-filtered. */
-export interface KnowledgeBacklink {
-  id: number;
-  slug: string;
-  title: string;
-}
-
-/** A document-level comment. */
-export interface KnowledgeComment {
-  id: number;
-  author_user_id: string;
-  author_nickname: string;
-  content: string;
-  created_at: string | null;
-  can_delete: boolean;
-}
-
 /** A current editor of a doc (editing presence). */
 export interface KnowledgeEditor {
   userId: string;

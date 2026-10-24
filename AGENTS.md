@@ -207,7 +207,7 @@ greenhouse/
 │   │   └── src/
 │   │       ├── routes/       # HTTP routes (one file per resource)
 │   │       ├── chat/         # chat turn pipeline: turn, runtime, persist, runs, vision, ambient context
-│   │       ├── knowledge/    # knowledge base domain: access, search, folders, sections, export, notify, backfill
+│   │       ├── knowledge/    # knowledge base domain: access, search, folders, sections, export, backfill
 │   │       ├── sessions/     # session access rules + creation
 │   │       ├── drive/        # drive access + upload policy
 │   │       ├── auth/         # token, middleware, password, crypto, features, public paths

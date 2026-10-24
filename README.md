@@ -45,7 +45,7 @@ expose to Claude, Cursor, or any MCP client.
     </td>
     <td width="50%" valign="top">
       <img src="docs/assets/screens/knowledge-doc.webp" alt="Knowledge base document" />
-      <b>Knowledge base</b> — team, personal and shared documents with backlinks and full-text search.
+      <b>Knowledge base</b> — team, personal and shared documents with full-text search.
     </td>
   </tr>
   <tr>
@@ -86,7 +86,7 @@ same script doubles as an end-to-end smoke tour (see [Development](#development)
   a side pane for artifacts and records, session forking, background runs, sharing / grouping /
   tagging, and a global ⌘P search.
 - **Knowledge Base** — team, personal and shared documents with a Tiptap editor, Markdown-first
-  storage, folders plus a file cabinet, backlinks, comments and @-mentions, templates, version
+  storage, folders plus a file cabinet, templates, version
   history, fine-grained sharing via groups, and segmented full-text search (CJK-aware).
 - **Projects** — projects, tasks (board / gantt / tree views), members, comments, activity log.
 - **Tables** — multidimensional bases: typed fields, views, forms, record links, dashboards,

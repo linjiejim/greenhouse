@@ -6,8 +6,6 @@ import type {
   KnowledgeDoc,
   KnowledgeDocVersion,
   KnowledgeShare,
-  KnowledgeBacklink,
-  KnowledgeComment,
   KnowledgeConflict,
   KnowledgeEditor,
   KnowledgeTemplateSummary,
@@ -163,42 +161,6 @@ export async function getKnowledgeDocById(id: number): Promise<KnowledgeDoc> {
   if (!res.ok) throw new Error('getKnowledgeDocById failed: ' + res.status);
   const data = await res.json();
   return data.doc;
-}
-
-/** Docs that link TO this doc (access-filtered). */
-export async function listKnowledgeBacklinks(id: number): Promise<KnowledgeBacklink[]> {
-  const res = await rpc.api.knowledge.docs[':id'].backlinks.$get({ param: { id: String(id) } });
-  if (!res.ok) throw new Error('listKnowledgeBacklinks failed: ' + res.status);
-  const data = await res.json();
-  return data.backlinks;
-}
-
-// ─── Comments ───────────────────────────────────────────
-
-export async function listKnowledgeComments(id: number): Promise<KnowledgeComment[]> {
-  const res = await rpc.api.knowledge.docs[':id'].comments.$get({ param: { id: String(id) } });
-  if (!res.ok) throw new Error('listKnowledgeComments failed: ' + res.status);
-  const data = await res.json();
-  return data.comments;
-}
-
-export async function addKnowledgeComment(id: number, content: string): Promise<KnowledgeComment> {
-  const args = { param: { id: String(id) }, json: { content } };
-  const res = await rpc.api.knowledge.docs[':id'].comments.$post(args);
-  if (!res.ok) {
-    const data = await res.json().catch(() => null);
-    throw new Error((data && 'error' in data && data.error) || 'Failed to add comment');
-  }
-  const data = await res.json();
-  return data.comment;
-}
-
-export async function deleteKnowledgeComment(commentId: number): Promise<void> {
-  const res = await rpc.api.knowledge.comments[':cid'].$delete({ param: { cid: String(commentId) } });
-  if (!res.ok) {
-    const data = await res.json().catch(() => null);
-    throw new Error((data && 'error' in data && data.error) || 'Failed to delete comment');
-  }
 }
 
 // ─── Templates & presence ───────────────────────────────

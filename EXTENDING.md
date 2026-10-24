@@ -171,7 +171,7 @@ export const crmWebExtension = defineWebExtension({
 | `toolCards` / `toolIcons` | chat transcript, tool catalogs | A card replaces the trace row once the tool returned without error; `placement: 'below'` renders after the prose. |
 | `entityKinds` | peek / side-pane chrome and body for the kinds the API half registered | Same `kind` string on both halves; `render` is optional (without it the peek offers "open full page"). |
 | `mcpGroups` | consent screen and machine-client form | Display copy for a group the API half owns; the group only appears while the extension is active. |
-| `knowledgeDocPanels` | every knowledge document, between backlinks and comments | For things attached to documents — provenance, sync state. |
+| `knowledgeDocPanels` | every knowledge document, below the document body | For things attached to documents — provenance, sync state. |
 | `contextProvider` | the agent panel on your pages | Receives `{ type: 'extension', extension, route, subPath }`. |
 
 `apps/web/src/extension-kit.ts` re-exports `authFetch`, `useT`, the UI kit, `useAuthStore`,

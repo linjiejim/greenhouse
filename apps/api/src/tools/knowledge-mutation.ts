@@ -182,9 +182,6 @@ export function createKnowledgeMutationTool(db: DatabaseProvider, ctx: Knowledge
             updated_by: ctx.userId,
             _summary: input.summary,
           });
-          // Register this doc's outgoing canonical links so backlinks stay correct
-          // for agent-authored docs too (the HTTP route does the same on save).
-          await db.knowledgeBase.rebuildOutlinks(doc.id, input.content);
           return {
             action: input.action,
             status: 'created',
@@ -334,9 +331,6 @@ export function createKnowledgeMutationTool(db: DatabaseProvider, ctx: Knowledge
           input.change_reason ?? defaultReason,
         );
         if (!updated) return { action: input.action, error: `Document not found: ${input.doc_id}` };
-        // Content-changing actions must refresh outlinks, exactly like the HTTP save
-        // path — otherwise agent edits silently desync the backlink graph.
-        if (newContent !== undefined) await db.knowledgeBase.rebuildOutlinks(updated.id, updated.content);
         return {
           action: input.action,
           status: 'updated',

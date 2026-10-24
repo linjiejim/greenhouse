@@ -9,20 +9,12 @@
 import { registeredKnowledgeDocPanels } from '../../lib/extension-registries';
 import { useExtensionsStore } from '../../stores/extensions-store';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { KnowledgeDoc, KnowledgeDocVersion, KnowledgeBacklink, KnowledgeComment } from '@greenhouse/types/api';
-import { Badge, Button, Dialog, Select, Spinner, ConfirmDialog, toast } from '../ui';
-import { KnowledgeEditor, type KnowledgeEditorValue } from './knowledge-editor';
+import type { KnowledgeDoc, KnowledgeDocVersion } from '@greenhouse/types/api';
+import { Badge, Button, Dialog, Select, Spinner, toast } from '../ui';
 import { Markdown, useActiveHeading, useDocumentHeadings, type DocHeading } from '../markdown';
-import { ChevronRight, Eye, Files, HelpCircle, Pin, RotateCcw, Link, MessageSquare, Trash2 } from '../../lib/icons';
+import { ChevronRight, Eye, Files, HelpCircle, Pin, RotateCcw } from '../../lib/icons';
 import { safeParse, formatDate } from '../../lib/utils';
-import {
-  listKnowledgeVersions,
-  restoreKnowledgeVersion,
-  listKnowledgeBacklinks,
-  listKnowledgeComments,
-  addKnowledgeComment,
-  deleteKnowledgeComment,
-} from '../../lib/api/knowledge';
+import { listKnowledgeVersions, restoreKnowledgeVersion } from '../../lib/api/knowledge';
 import { computeLineDiffWithWords } from '../../lib/wiki-diff';
 import { renderDiffWords } from '../../lib/diff-words';
 import { useT } from '../../lib/i18n';
@@ -30,14 +22,6 @@ import { useHoverFlyout } from '../../hooks/use-hover-flyout';
 
 interface KnowledgeDetailProps {
   doc: KnowledgeDoc;
-}
-
-/** DOM id of the comment section, so the top bar can scroll to it. */
-export const KNOWLEDGE_COMMENTS_ANCHOR = 'knowledge-comments';
-
-/** Scroll the open document's comment section into view. */
-export function scrollToKnowledgeComments(): void {
-  document.getElementById(KNOWLEDGE_COMMENTS_ANCHOR)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 export function KnowledgeDetail({ doc }: KnowledgeDetailProps) {
@@ -95,9 +79,7 @@ export function KnowledgeDetail({ doc }: KnowledgeDetailProps) {
             </section>
           )}
 
-          <KnowledgeBacklinks docId={doc.id} />
           <ExtensionDocPanels docId={doc.id} />
-          <KnowledgeComments docId={doc.id} />
         </div>
       </main>
 
@@ -248,7 +230,7 @@ function DocOutline({
 
 /**
  * Sections an extension attached to every document (a content-sync extension's
- * "where this came from", say). Rendered between the backlinks and the comments;
+ * "where this came from", say). Rendered below the document body;
  * an extension that is compiled in but not active registers nothing.
  */
 function ExtensionDocPanels({ docId }: { docId: number }) {
@@ -263,157 +245,6 @@ function ExtensionDocPanels({ docId }: { docId: number }) {
         <Panel key={id} docId={docId} />
       ))}
     </>
-  );
-}
-
-/** Documents that link TO this one (backlinks). Hidden when there are none. */
-function KnowledgeBacklinks({ docId }: { docId: number }) {
-  const t = useT();
-  const [links, setLinks] = useState<KnowledgeBacklink[] | null>(null);
-  useEffect(() => {
-    let alive = true;
-    listKnowledgeBacklinks(docId)
-      .then((l) => alive && setLinks(l))
-      .catch(() => alive && setLinks([]));
-    return () => {
-      alive = false;
-    };
-  }, [docId]);
-  if (!links || links.length === 0) return null;
-  return (
-    <section className="mt-6 border-t border-edge pt-4">
-      <h3 className="text-sm font-semibold text-fg-secondary mb-2 flex items-center gap-1.5">
-        <Link size={14} /> {t('knowledge.backlinks')}
-      </h3>
-      <ul className="space-y-1 text-sm">
-        {links.map((l) => (
-          <li key={l.id}>
-            <a
-              className="text-primary-fg hover:underline"
-              href={`#/knowledge/doc/${l.id}-${encodeURIComponent(l.slug)}`}
-            >
-              {l.title}
-            </a>
-          </li>
-        ))}
-      </ul>
-    </section>
-  );
-}
-
-/** A cleared comment box. Shared constant so "reset" is always the same object shape. */
-const EMPTY_DRAFT: KnowledgeEditorValue = { markdown: '', json: '{}' };
-
-/** Document-level comments: list + add + delete (author/super). */
-function KnowledgeComments({ docId }: { docId: number }) {
-  const t = useT();
-  const [comments, setComments] = useState<KnowledgeComment[]>([]);
-  // Same shape the doc editor works in: Markdown is what we send (and what the
-  // mention-notification parser reads); the JSON drives the editor itself.
-  const [draft, setDraft] = useState<KnowledgeEditorValue>(EMPTY_DRAFT);
-  const [posting, setPosting] = useState(false);
-  const [confirmDelete, setConfirmDelete] = useState<number | null>(null);
-
-  const load = useCallback(() => {
-    listKnowledgeComments(docId)
-      .then(setComments)
-      .catch(() => setComments([]));
-  }, [docId]);
-  useEffect(() => load(), [load]);
-
-  // Leaving one doc for another must not carry the half-written comment over.
-  useEffect(() => setDraft(EMPTY_DRAFT), [docId]);
-
-  const post = async () => {
-    const content = draft.markdown.trim();
-    if (!content || posting) return;
-    setPosting(true);
-    try {
-      await addKnowledgeComment(docId, content);
-      setDraft(EMPTY_DRAFT);
-      toast(t('knowledge.commentPosted'), 'success');
-      load();
-    } catch (err) {
-      toast(err instanceof Error ? err.message : t('knowledge.commentFailed'), 'error');
-    } finally {
-      setPosting(false);
-    }
-  };
-
-  const remove = async (id: number) => {
-    try {
-      await deleteKnowledgeComment(id);
-      toast(t('knowledge.commentDeleted'), 'success');
-      setConfirmDelete(null);
-      load();
-    } catch (err) {
-      toast(err instanceof Error ? err.message : t('knowledge.commentFailed'), 'error');
-    }
-  };
-
-  return (
-    // Anchor for the top bar's comment button — it scrolls here rather than
-    // threading a ref up through the page for one jump.
-    <section id={KNOWLEDGE_COMMENTS_ANCHOR} className="mt-8 border-t border-edge pt-4 scroll-mt-4">
-      <h3 className="text-sm font-semibold text-fg-secondary mb-3 flex items-center gap-1.5">
-        <MessageSquare size={14} /> {t('knowledge.comments')}
-        {comments.length > 0 && <span className="text-fg-faint font-normal">· {comments.length}</span>}
-      </h3>
-
-      {comments.length === 0 ? (
-        <p className="text-sm text-fg-faint mb-3">{t('knowledge.noComments')}</p>
-      ) : (
-        <ul className="space-y-3 mb-4">
-          {comments.map((c) => (
-            <li key={c.id} className="text-sm">
-              <div className="flex items-center gap-2 text-xs text-fg-faint mb-0.5">
-                <span className="font-medium text-fg-muted">{c.author_nickname}</span>
-                <span>{formatDate(c.created_at ?? undefined)}</span>
-                {c.can_delete && (
-                  <button
-                    type="button"
-                    onClick={() => setConfirmDelete(c.id)}
-                    className="text-fg-faint hover:text-danger transition-colors"
-                    title={t('knowledge.deleteComment')}
-                  >
-                    <Trash2 size={12} />
-                  </button>
-                )}
-              </div>
-              <div className="text-fg-secondary [&_a]:text-primary-fg [&_a]:no-underline">
-                <Markdown content={c.content} compact />
-              </div>
-            </li>
-          ))}
-        </ul>
-      )}
-
-      <div className="space-y-2">
-        {/* Same editor as the document body (compact): `@` inserts a real mention
-            chip instead of raw `[@name](user:id)` markdown. */}
-        <KnowledgeEditor
-          value={draft}
-          onChange={setDraft}
-          placeholder={t('knowledge.addCommentPlaceholder')}
-          compact
-          onSubmit={post}
-        />
-        <div className="flex justify-end">
-          <Button size="sm" onClick={post} disabled={posting || !draft.markdown.trim()}>
-            {t('knowledge.postComment')}
-          </Button>
-        </div>
-      </div>
-
-      <ConfirmDialog
-        open={confirmDelete !== null}
-        onClose={() => setConfirmDelete(null)}
-        onConfirm={() => confirmDelete !== null && remove(confirmDelete)}
-        title={t('knowledge.deleteCommentConfirm')}
-        confirmLabel={t('knowledge.deleteComment')}
-        confirmVariant="destructive"
-      />
-    </section>
   );
 }
 

@@ -31,7 +31,6 @@ import {
   KnowledgeEditor,
   KnowledgeShareDialog,
   KnowledgeVersionsDialog,
-  scrollToKnowledgeComments,
   slugify,
   nextSlug,
   type KnowledgeEditorValue,
@@ -48,7 +47,6 @@ import {
   FileEdit,
   FolderOpen,
   History,
-  MessageSquare,
   Plus,
   RotateCcw,
   Save,
@@ -520,9 +518,6 @@ function DocsScopeView({
               Secondary actions are icon-only so the title keeps the width: Edit is
               the one that stays labelled, because it's the one readers reach for. */}
           <div className="order-3 sm:order-none ml-auto sm:ml-0 flex items-center gap-0.5 flex-shrink-0">
-            <IconButton label={t('knowledge.jumpToComments')} onClick={scrollToKnowledgeComments}>
-              <MessageSquare size={15} />
-            </IconButton>
             <IconButton label={t('knowledge.versionHistory')} onClick={() => setHistoryOpen(true)}>
               <History size={15} />
             </IconButton>
