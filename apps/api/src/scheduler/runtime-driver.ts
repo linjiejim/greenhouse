@@ -9,7 +9,13 @@
  */
 
 import { createHash, randomUUID } from 'node:crypto';
-import { RuntimeKernelError, type DatabaseProvider, type RuntimeRunRow, type ScheduledTaskRow } from '@greenhouse/db';
+import {
+  RuntimeKernelError,
+  stableId,
+  type DatabaseProvider,
+  type RuntimeRunRow,
+  type ScheduledTaskRow,
+} from '@greenhouse/db';
 import {
   RUNTIME_RUN_ACTIVE_STATUSES,
   isRuntimeRunActive,
@@ -91,7 +97,16 @@ function executionTrigger(trigger: AutomationTrigger): AutomationRuntimeInput['t
   return trigger === 'manual' ? 'manual' : 'scheduled';
 }
 
-function stableUuid(seed: string): string {
+/**
+ * An occurrence's conversation id: recomputable (admission is idempotent) and
+ * shaped like every other new conversation id (`cnv_…`).
+ */
+function automationSessionId(taskId: string, source: string): string {
+  return stableId('conversation', `automation-session:${taskId}:${source}`);
+}
+
+/** The 1.x formula: occurrences carried in flight from 1.x still carry a uuid session. */
+function legacySessionUuid(seed: string): string {
   const hex = createHash('sha256').update(seed).digest('hex').slice(0, 32).split('');
   hex[12] = '4';
   hex[16] = ['8', '9', 'a', 'b'][Number.parseInt(hex[16]!, 16) % 4]!;
@@ -248,7 +263,8 @@ function parseInput(run: RuntimeRunRow): AutomationRuntimeInput {
     run.source_id !== expectedSource ||
     run.id !== runtimeRunId(task.id, expectedSource) ||
     run.session_id !== input.session_id ||
-    input.session_id !== stableUuid(`automation-session:${task.id}:${expectedSource}`)
+    (input.session_id !== automationSessionId(task.id, expectedSource) &&
+      input.session_id !== legacySessionUuid(`automation-session:${task.id}:${expectedSource}`))
   ) {
     throw new Error(`Automation Runtime run ${run.id} task snapshot is inconsistent`);
   }
@@ -264,7 +280,7 @@ export async function enqueueAutomationRun(input: EnqueueAutomationInput): Promi
   const task = taskSnapshot(input.task);
   const source = sourceId(input.trigger, scheduledFor);
   const runId = runtimeRunId(task.id, source);
-  const sessionId = stableUuid(`automation-session:${task.id}:${source}`);
+  const sessionId = automationSessionId(task.id, source);
   const trigger = executionTrigger(input.trigger);
   const replay = await exactOccurrence(input.db, {
     runId,

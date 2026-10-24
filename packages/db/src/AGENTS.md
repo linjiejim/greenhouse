@@ -50,6 +50,7 @@
 
 - 列一律用 `_columns.ts` 的 helper：`id()`、`at()`、`day()`、`createdAt()`、`updatedAt()`、`json()`、`jsonOrNull()`、`oneOf()`、`searchColumns()`。
 - 主键是 `id()`（text）；新行 id 由 service 用 `newId(kind)`（`ids.ts`）生成，数据库不发号。
+- id 必须能按含义重算时（幂等准入，如 Automation 一次触发的对话）用 `stableId(kind, seed)`：同前缀、同 ULID 形状，不按时间排序；不要自己拼 uuid。
 - 新实体在 `ids.ts` 的 `ID_PREFIX` 登记三字母前缀；同一前缀不复用。
 - id 是不透明键：不解析形状，不按 id 排序。1.x 里是 serial 的表新旧 id 混排，`ORDER BY id` 没有时间含义，用 `created_at` / `seq` / `position` / `sort_order`。
 - 边界接受旧数字 id：路由与工具用 `toRowId()`（`@greenhouse/utils/id`）或 zod `z.coerce.string()` 规范成字符串，service 只收字符串。

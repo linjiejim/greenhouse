@@ -37,7 +37,7 @@ export type {
   ExtensionMigrationRunner,
 } from './extension-migrations.js';
 export { readCoreMigrations } from './core-migrations.js';
-export { newId, isNewId, ulid, ID_PREFIX } from './ids.js';
+export { newId, isNewId, stableId, ulid, ID_PREFIX } from './ids.js';
 export {
   applyMigrations,
   assertMigratableDatabase,

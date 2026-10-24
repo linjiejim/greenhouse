@@ -8,7 +8,7 @@
  * id's shape to decide anything; it is an opaque key.
  */
 
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 
 const CROCKFORD = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
 
@@ -126,6 +126,23 @@ export function ulid(time = Date.now()): string {
 
 export function newId(kind: IdKind, time?: number): string {
   return `${ID_PREFIX[kind]}_${ulid(time)}`;
+}
+
+/**
+ * A deterministic id with `kind`'s prefix and the ULID shape: 26 Crockford
+ * characters of sha256(`seed`). For rows whose id must be recomputable from
+ * what they stand for (an Automation occurrence's conversation, admitted
+ * idempotently); it does not sort by time. Everything else uses `newId`.
+ */
+export function stableId(kind: IdKind, seed: string): string {
+  const digest = createHash('sha256').update(seed).digest();
+  let body = '';
+  for (let index = 0; index < 26; index++) {
+    const bit = index * 5;
+    const pair = (digest[bit >> 3]! << 8) | digest[(bit >> 3) + 1]!;
+    body += CROCKFORD[(pair >> (11 - (bit & 7))) & 31];
+  }
+  return `${ID_PREFIX[kind]}_${body}`;
 }
 
 /** True when `id` was minted by `newId(kind)` (prefix and ULID shape). */

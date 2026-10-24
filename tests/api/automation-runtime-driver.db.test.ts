@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { _resetProvider, initDatabase, type DatabaseProvider, type ScheduledTaskRow } from '@greenhouse/db';
+import { _resetProvider, initDatabase, isNewId, type DatabaseProvider, type ScheduledTaskRow } from '@greenhouse/db';
 import { TEST_DATABASE_URL } from '@greenhouse/db/test-config';
 import {
   createAutomationRuntimeDriver,
@@ -164,6 +164,8 @@ describe('durable Automation Runtime driver', () => {
       profile_id: task.profile_id,
       channel: 'task',
     });
+    // A new conversation row like any other: `cnv_` + ULID shape, not a uuid.
+    expect(isNewId('conversation', queued.session_id)).toBe(true);
     expect((await db.scheduledTasks.getById(task.id))?.last_status).toBe('completed');
   });
 
