@@ -5,6 +5,13 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.0](https://github.com/linjiejim/greenhouse/compare/v1.5.0...v1.6.0) (2026-10-24)
+
+
+### Added
+
+* team agent hub 1.6 — services & pricing, model gateway, MCP services, cloud computer, report templates, team context, monthly retro, data catalog, native mobile app ([dffa2ed](https://github.com/linjiejim/greenhouse/commit/dffa2edfac681cda6b52a49caf476d5b60c1ee14))
+
 ## [1.5.0](https://github.com/linjiejim/greenhouse/compare/v1.4.0...v1.5.0) (2026-10-23)
 
 
