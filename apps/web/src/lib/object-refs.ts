@@ -6,10 +6,15 @@
  * transcript full of the same document link costs one lookup. A URL the server leaves out
  * (it names no object) is cached as `null`, like an object the member may not read; a
  * failed request is retried on the next ask after a short pause.
+ *
+ * Titles are private to the member who asked: the cache belongs to the signed-in member, is
+ * emptied when another member signs in (same tab), and an answer still in flight for the
+ * previous member is thrown away.
  */
 
 import { useEffect, useSyncExternalStore } from 'react';
 import { MAX_RESOLVE_URLS, type ResolvedObjectRef, type ResolveRefsResponse } from '@greenhouse/types/object-refs';
+import { useAuthStore } from '../stores/auth-store';
 import { authFetch } from './auth';
 
 const FRESH_MS = 5 * 60_000;
@@ -30,6 +35,9 @@ const cache = new Map<string, Entry>();
 const listeners = new Set<() => void>();
 const queue = new Set<string>();
 let timer: ReturnType<typeof setTimeout> | null = null;
+/** Who the cache belongs to, and a counter that outdates requests made for someone else. */
+let owner: string | null = null;
+let generation = 0;
 
 const LOADING: RefLookup = { status: 'loading' };
 
@@ -41,12 +49,33 @@ function settle(url: string, lookup: RefLookup): void {
   cache.set(url, { lookup, at: Date.now() });
 }
 
+function clearCache(): void {
+  generation += 1;
+  cache.clear();
+  queue.clear();
+  if (timer) clearTimeout(timer);
+  timer = null;
+}
+
+/** Empty the cache when the signed-in member is not the one it was filled for. */
+function followMember(): void {
+  const current = useAuthStore.getState().currentUser?.id ?? null;
+  if (current === owner) return;
+  owner = current;
+  clearCache();
+  notify();
+}
+useAuthStore.subscribe(followMember);
+
 async function flush(): Promise<void> {
   timer = null;
+  const asked = generation;
   const urls = [...queue];
   queue.clear();
   for (let i = 0; i < urls.length; i += MAX_RESOLVE_URLS) {
+    if (asked !== generation) return;
     const batch = urls.slice(i, i + MAX_RESOLVE_URLS);
+    let answers: RefLookup[];
     try {
       const res = await authFetch('/api/refs/resolve', {
         method: 'POST',
@@ -56,10 +85,13 @@ async function flush(): Promise<void> {
       if (!res.ok) throw new Error(`resolve ${res.status}`);
       const { items } = (await res.json()) as ResolveRefsResponse;
       const byUrl = new Map(items.map((item) => [item.url, item]));
-      for (const url of batch) settle(url, { status: 'done', item: byUrl.get(url) ?? null });
+      answers = batch.map((url) => ({ status: 'done', item: byUrl.get(url) ?? null }));
     } catch {
-      for (const url of batch) settle(url, { status: 'error' });
+      answers = batch.map(() => ({ status: 'error' }));
     }
+    // asked for a member who has since signed out
+    if (asked !== generation) return;
+    batch.forEach((url, index) => settle(url, answers[index]!));
     notify();
   }
 }
@@ -72,6 +104,7 @@ function stale(entry: Entry | undefined): boolean {
 
 /** Ask for a URL's title; the answer arrives through {@link useObjectRef}. */
 export function requestObjectRef(url: string): void {
+  followMember();
   if (!stale(cache.get(url))) return;
   cache.set(url, { lookup: LOADING, at: Date.now() });
   queue.add(url);
@@ -92,10 +125,12 @@ export function useObjectRef(url: string | null): RefLookup {
   return lookup ?? LOADING;
 }
 
-/** Test hook. */
+/** Test hooks. */
 export function _resetObjectRefCache(): void {
-  cache.clear();
-  queue.clear();
-  if (timer) clearTimeout(timer);
-  timer = null;
+  clearCache();
+  owner = useAuthStore.getState().currentUser?.id ?? null;
+}
+
+export function _readObjectRef(url: string): RefLookup | undefined {
+  return cache.get(url)?.lookup;
 }
