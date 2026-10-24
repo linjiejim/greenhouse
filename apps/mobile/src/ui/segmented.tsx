@@ -1,13 +1,14 @@
 /**
  * Native segmented control (SwiftUI `Picker` with `.segmented` style) for
  * switching between a few peer views or filters (知识库 scope, project view
- * mode). Sizes to its content height; give it a width via `style`.
+ * mode). Sizes to its content height; give it a width via `style`. At the largest text sizes it
+ * becomes a menu picker, tinted with the accent.
  */
 
 import React from 'react';
 import { useWindowDimensions, type StyleProp, type ViewStyle } from 'react-native';
 import { Host, Picker, Text } from '@expo/ui/swift-ui';
-import { controlSize, frame, pickerStyle, tag } from '@expo/ui/swift-ui/modifiers';
+import { controlSize, frame, pickerStyle, tag, tint } from '@expo/ui/swift-ui/modifiers';
 import { HIT, useTheme } from '../theme';
 import { useLocaleEnv } from './native-form';
 
@@ -22,7 +23,7 @@ export function Segmented<T extends string>({
   onChange: (v: T) => void;
   style?: StyleProp<ViewStyle>;
 }) {
-  const { isDark } = useTheme();
+  const { hex, isDark } = useTheme();
   const locale = useLocaleEnv();
   const { fontScale } = useWindowDimensions();
   return (
@@ -39,6 +40,8 @@ export function Segmented<T extends string>({
         modifiers={[
           pickerStyle(fontScale >= 1.5 ? 'menu' : 'segmented'),
           controlSize('large'),
+          // the menu picker at large text sizes draws its label in the tint: the V1 accent, not system blue
+          tint(hex.accent),
           frame({ minHeight: HIT }),
         ]}
       >
