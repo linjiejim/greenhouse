@@ -168,6 +168,20 @@ export function draftValues(
 /** Roles that may add records (editor and up). */
 export const canAddRecords = (role: string | null | undefined) => role === 'owner' || role === 'builder' || role === 'editor';
 
+/** The people (user ids) a record's user fields name, in field order, each once. */
+export function recordUserIds(
+  fields: readonly Pick<TableField, 'id' | 'type'>[],
+  record: Pick<TableRecord, 'values' | 'computed_values'>,
+): string[] {
+  const ids = new Set<string>();
+  for (const field of fields) {
+    if (field.type !== 'user' && field.type !== 'multi_user') continue;
+    const value = cellValue(field, record);
+    for (const id of Array.isArray(value) ? value : [value]) if (typeof id === 'string') ids.add(id);
+  }
+  return [...ids];
+}
+
 /**
  * The names of the people a record's user fields name, from the station's member lookup. Kept with
  * the record's offline copy so those fields read as names offline; only the people this record
@@ -178,13 +192,15 @@ export function recordUserNames(
   record: Pick<TableRecord, 'values' | 'computed_values'>,
   users: readonly TableUser[],
 ): Record<string, string> {
-  const wanted = new Set<string>();
-  for (const field of fields) {
-    if (field.type !== 'user' && field.type !== 'multi_user') continue;
-    const value = cellValue(field, record);
-    for (const id of Array.isArray(value) ? value : [value]) if (typeof id === 'string') wanted.add(id);
-  }
+  const wanted = new Set(recordUserIds(fields, record));
   const names: Record<string, string> = {};
   for (const user of users) if (wanted.has(user.id) && user.nickname) names[user.id] = user.nickname;
+  return names;
+}
+
+/** The names already known (an earlier copy's) for the people `ids` names, so a new copy keeps them. */
+export function keptUserNames(ids: readonly string[], known: Readonly<Record<string, string>>): Record<string, string> {
+  const names: Record<string, string> = {};
+  for (const id of ids) if (typeof known[id] === 'string') names[id] = known[id];
   return names;
 }
