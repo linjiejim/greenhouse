@@ -80,6 +80,7 @@ export function LibraryRow({
     <NativeMenu trigger="longPress" items={items} onSelect={select}>
       <Row
         title={item.name}
+        titleEllipsize={item.kind === 'file' ? 'middle' : 'tail'}
         subtitle={item.kind === 'folder' ? undefined : item.subtitle}
         icon={item.kind === 'folder' ? 'folder' : undefined}
         leading={

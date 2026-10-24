@@ -106,14 +106,14 @@
         {
           "photosPermission": "Greenhouse uploads the photos and videos you choose to Files.",
           "cameraPermission": "Greenhouse uploads the photos you take to Files.",
-          "microphonePermission": false
+          "microphonePermission": "Greenhouse listens while you hold the mic button and types what you say into the composer."
         }
       ],
       [
         "expo-speech-recognition",
         {
           "microphonePermission": "Greenhouse listens while you hold the mic button and types what you say into the composer.",
-          "speechRecognitionPermission": "Greenhouse turns what you say into text on this iPhone while you hold the mic button."
+          "speechRecognitionPermission": "Greenhouse turns what you say into text while you hold the mic button, on this iPhone when it can."
         }
       ]
     ],

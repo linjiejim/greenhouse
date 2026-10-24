@@ -138,6 +138,8 @@ export interface RowProps {
   disabled?: boolean;
   /** Title lines (default 1). */
   titleLines?: number;
+  /** Where a title too long for its lines is cut: file names keep their extension (`middle`). */
+  titleEllipsize?: 'tail' | 'middle';
   /**
    * The row is the trigger of a wrapping `NativeMenu trigger="tap"` (no
    * `onPress` of its own): it reads as a button, the menu being its action.
@@ -168,6 +170,7 @@ export function Row({
   destructive,
   disabled,
   titleLines = 1,
+  titleEllipsize = 'tail',
   menuTrigger,
   accessibilityLabel,
   accessibilityActions,
@@ -207,7 +210,7 @@ export function Row({
         <View style={[styles.body, large && { flexWrap: 'wrap' }]}>
           {/* keyed on the text size: re-measures when Dynamic Type changes (./font-scale.ts) */}
           <View key={fontKey} style={[styles.texts, large && { flexBasis: '100%' }]}>
-            <Text numberOfLines={large ? 0 : titleLines} style={[styles.title, destructive && { color: c.red }]}>
+            <Text numberOfLines={large ? 0 : titleLines} ellipsizeMode={titleEllipsize} style={[styles.title, destructive && { color: c.red }]}>
               {title}
             </Text>
             {subtitle ? (

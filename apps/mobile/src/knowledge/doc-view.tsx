@@ -105,22 +105,22 @@ export function DocView({ id }: { id: number | null }) {
 
   if (id == null || missing) {
     return (
-      <View style={styles.root}>
+      <>
         <SheetScreen title={t('nav.knowledge')} />
-        <ScrollView contentInsetAdjustmentBehavior="automatic" contentContainerStyle={styles.grow}>
+        <ScrollView style={styles.root} contentInsetAdjustmentBehavior="automatic" contentContainerStyle={styles.grow}>
           <EmptyState icon="book" title={t('knowledge.notFound')} style={styles.state} />
         </ScrollView>
-      </View>
+      </>
     );
   }
 
   return (
-    <View style={styles.root}>
+    <>
       <SheetScreen
         title={doc?.title ?? ''}
         actions={doc && !offline ? [{ icon: 'comment', label: t('knowledge.addComment'), onPress: () => void comment() }] : []}
       />
-      <ScrollView contentInsetAdjustmentBehavior="automatic" contentContainerStyle={styles.content}>
+      <ScrollView style={styles.root} contentInsetAdjustmentBehavior="automatic" contentContainerStyle={styles.content}>
         {!doc ? (
           failed ? (
             <EmptyState
@@ -158,7 +158,7 @@ export function DocView({ id }: { id: number | null }) {
           </>
         )}
       </ScrollView>
-    </View>
+    </>
   );
 }
 

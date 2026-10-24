@@ -70,7 +70,7 @@ export default function Settings() {
             label={t('station.title')}
             value={s.station?.name ?? '—'}
             icon="server"
-            onPress={() => router.push('/settings/stations')}
+            onPress={() => router.push('/me/stations')}
           />
         </FormSection>
 
@@ -79,7 +79,7 @@ export default function Settings() {
             label={t('settings.notifications')}
             value={push || undefined}
             icon="bell"
-            onPress={() => router.push('/settings/notifications')}
+            onPress={() => router.push('/me/notifications')}
           />
         </FormSection>
 

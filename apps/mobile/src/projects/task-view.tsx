@@ -153,23 +153,23 @@ export function TaskView({
     (!resource.loading && (resource.data ? !task : notFound(resource.error) || noAccess(resource.error)));
   if (gone) {
     return (
-      <View style={styles.root}>
+      <>
         <SheetScreen title={t('projects.tasks')} />
-        <ScrollView contentInsetAdjustmentBehavior="automatic">
+        <ScrollView style={styles.root} contentInsetAdjustmentBehavior="automatic">
           <EmptyState icon="checkCircle" title={t('projects.taskNotFound')} style={styles.state} />
         </ScrollView>
-      </View>
+      </>
     );
   }
 
   const bucket = task ? dueBucket(task.due_date, localDay(new Date())) : 'none';
   return (
-    <View style={styles.root}>
+    <>
       <SheetScreen
         title={resource.data?.project.title ?? ''}
         actions={task ? [{ icon: 'comment', label: t('projects.addComment'), onPress: () => void comment() }] : []}
       />
-      <ScrollView contentInsetAdjustmentBehavior="automatic" contentContainerStyle={styles.content}>
+      <ScrollView style={styles.root} contentInsetAdjustmentBehavior="automatic" contentContainerStyle={styles.content}>
         {!task ? (
           resource.loading ? (
             <LoadingState style={styles.state} />
@@ -260,7 +260,7 @@ export function TaskView({
           </>
         )}
       </ScrollView>
-    </View>
+    </>
   );
 }
 

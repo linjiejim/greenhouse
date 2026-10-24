@@ -37,7 +37,7 @@ export default function AgentWriteScreen() {
 
   if (!write) {
     return (
-      <View style={styles.root}>
+      <>
         <SheetScreen title={t('nav.agent')} />
         {resource.loading ? (
           <LoadingState style={styles.state} />
@@ -46,7 +46,7 @@ export default function AgentWriteScreen() {
         ) : (
           <EmptyState icon="alert" title={t('agent.loadFailed')} onRetry={() => void resource.refresh()} style={styles.state} />
         )}
-      </View>
+      </>
     );
   }
 
@@ -56,9 +56,9 @@ export default function AgentWriteScreen() {
     [t('agent.error'), write.error ?? ''],
   ];
   return (
-    <View style={styles.root}>
+    <>
       <SheetScreen title={write.client_name} />
-      <ScrollView contentInsetAdjustmentBehavior="automatic" contentContainerStyle={styles.content}>
+      <ScrollView style={styles.root} contentInsetAdjustmentBehavior="automatic" contentContainerStyle={styles.content}>
         <Section>
           <Row
             title={t('agent.action')}
@@ -91,7 +91,7 @@ export default function AgentWriteScreen() {
             </View>
           ))}
       </ScrollView>
-    </View>
+    </>
   );
 }
 

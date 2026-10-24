@@ -52,16 +52,19 @@ export function shelfRows(input: {
     return out;
   }
   if (recent.length) out.push({ key: 'h-shelf', type: 'header', title: input.titles.shelf });
-  out.push(...positioned(input.level.folders, (folder, position) => ({ key: `f-${folder.id}`, type: 'folder', folder, position })));
-  out.push(
-    ...positioned(input.level.docs, (doc, position) => ({
+  // folders and documents share one card
+  const level = input.level;
+  const count = level.folders.length + level.docs.length;
+  level.folders.forEach((folder, index) => out.push({ key: `f-${folder.id}`, type: 'folder', folder, position: rowPosition(index, count) }));
+  level.docs.forEach((doc, index) =>
+    out.push({
       key: `d-${doc.id}`,
       type: 'doc',
       id: doc.id,
       title: doc.title,
       subtitle: input.docSubtitle(doc),
-      position,
-    })),
+      position: rowPosition(level.folders.length + index, count),
+    }),
   );
   return out;
 }

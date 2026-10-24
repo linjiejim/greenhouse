@@ -99,10 +99,10 @@ export function NotificationView({ id }: { id: string }) {
   const openLabel = target ? t(OPEN_LABEL[target.kind]) : null;
 
   return (
-    <View style={styles.root}>
+    <>
       <SheetScreen title={t('notifications.detailTitle')} />
       {!item ? (
-        <ScrollView contentInsetAdjustmentBehavior="automatic" contentContainerStyle={styles.grow}>
+        <ScrollView style={styles.root} contentInsetAdjustmentBehavior="automatic" contentContainerStyle={styles.grow}>
           {failed || !id ? (
             <EmptyState icon="alert" title={t('notifications.notFound')} style={styles.state} />
           ) : (
@@ -138,7 +138,7 @@ export function NotificationView({ id }: { id: string }) {
           ) : null}
         </ScrollView>
       )}
-    </View>
+    </>
   );
 }
 

@@ -48,6 +48,7 @@ export default function Search() {
   const [query, setQuery] = useState('');
   const [sections, setSections] = useState<SearchSection[] | null>(null);
   const [searching, setSearching] = useState(false);
+  const [failed, setFailed] = useState(false);
   const q = query.trim();
 
   useEffect(() => {
@@ -60,6 +61,7 @@ export default function Search() {
       setSearching(true);
       void Promise.all([searchAll(q), searchCabinet(q), readOffline('my-tasks')]).then(([station, files, saved]) => {
         if (!alive) return;
+        setFailed(!station.ok && !files.ok);
         const tasks = (parseMyTasks(saved) ?? []).flatMap((group) => group.tasks);
         setSections(
           [
@@ -112,6 +114,8 @@ export default function Search() {
             <Text style={styles.hint}>{t('search.hint')}</Text>
           ) : searching || !sections ? (
             <LoadingState style={styles.state} />
+          ) : failed ? (
+            <EmptyState icon="alert" title={t('search.failed')} style={styles.state} />
           ) : (
             <EmptyState icon="search" title={t('common.noMatches')} style={styles.state} />
           )

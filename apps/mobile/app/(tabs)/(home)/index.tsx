@@ -16,7 +16,7 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ScrollView, Text, View, type TextInput } from 'react-native';
-import { Stack, useRouter } from 'expo-router';
+import { Stack, useFocusEffect, useRouter } from 'expo-router';
 import { KeyboardStickyView } from 'react-native-keyboard-controller';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { createSession } from '../../../src/api/assistant';
@@ -72,11 +72,14 @@ function Home() {
   const [waves, setWaves] = useState(0);
   const input = useRef<TextInput>(null);
 
-  useEffect(() => {
-    if (!user?.id) return;
-    void useSessions.getState().refresh();
-    void useNotifications.getState().refresh();
-  }, [user?.id]);
+  // back on home (from a conversation, a sheet): the list catches up
+  useFocusEffect(
+    useCallback(() => {
+      if (!user?.id) return;
+      void useSessions.getState().refresh();
+      void useNotifications.getState().refresh();
+    }, [user?.id]),
+  );
 
   // the splash leaves once a list (saved or fresh) or a failure is here
   useStartupContent(status !== 'empty');

@@ -24,20 +24,17 @@ export interface ScreenAction {
   disabled?: boolean;
 }
 
-function Actions({ actions }: { actions: readonly ScreenAction[] }) {
-  return (
-    <>
-      {actions.map((action) => (
-        <Stack.Toolbar.Button
-          key={action.label}
-          icon={toolbarIcon(action.icon)}
-          accessibilityLabel={action.label}
-          disabled={action.disabled}
-          onPress={action.onPress}
-        />
-      ))}
-    </>
-  );
+/** Toolbar buttons must be the toolbar's direct children (expo-router reads them as items). */
+function actionButtons(actions: readonly ScreenAction[]) {
+  return actions.map((action) => (
+    <Stack.Toolbar.Button
+      key={action.label}
+      icon={toolbarIcon(action.icon)}
+      accessibilityLabel={action.label}
+      disabled={action.disabled}
+      onPress={action.onPress}
+    />
+  ));
 }
 
 export function Screen({ title, actions = [] }: { title: string; actions?: readonly ScreenAction[] }) {
@@ -45,9 +42,7 @@ export function Screen({ title, actions = [] }: { title: string; actions?: reado
     <>
       <Stack.Screen options={{ title }} />
       {actions.length ? (
-        <Stack.Toolbar placement="right">
-          <Actions actions={actions} />
-        </Stack.Toolbar>
+        <Stack.Toolbar placement="right">{actionButtons(actions)}</Stack.Toolbar>
       ) : null}
     </>
   );
@@ -60,7 +55,7 @@ export function SheetScreen({ title, actions = [] }: { title: string; actions?: 
     <>
       <Stack.Screen options={{ title }} />
       <Stack.Toolbar placement="right">
-        <Actions actions={actions} />
+        {actionButtons(actions)}
         <Stack.Toolbar.Button icon={toolbarIcon('x')} accessibilityLabel={t('common.close')} onPress={() => router.back()} />
       </Stack.Toolbar>
     </>

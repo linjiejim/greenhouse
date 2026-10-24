@@ -409,6 +409,7 @@ export const en = {
     deniedTitle: 'Microphone or speech recognition is off',
     deniedHint: 'Allow Greenhouse to use the microphone and speech recognition in Settings.',
     failed: 'Couldn’t recognize speech',
+    failedHint: 'Speech recognition isn’t available right now. Type your message instead.',
   },
   conversation: {
     title: 'Conversation',
@@ -482,6 +483,7 @@ export const en = {
     files: 'Files',
     tasks: 'My Tasks',
     other: 'Other',
+    failed: 'Couldn’t reach the station. My tasks still search offline.',
   },
   runs: {
     title: 'Run',

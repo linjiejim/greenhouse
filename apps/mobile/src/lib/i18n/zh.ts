@@ -403,6 +403,7 @@ export const zh: Catalog = {
     deniedTitle: '麦克风或语音识别未开启',
     deniedHint: '请在系统设置中允许 Greenhouse 使用麦克风和语音识别。',
     failed: '没能识别语音',
+    failedHint: '现在用不了语音识别，先打字吧。',
   },
   conversation: {
     title: '对话',
@@ -476,6 +477,7 @@ export const zh: Catalog = {
     files: '文件',
     tasks: '我的任务',
     other: '其他',
+    failed: '连不上工作站，离线时只能搜我的任务。',
   },
   runs: {
     title: '运行',

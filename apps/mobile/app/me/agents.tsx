@@ -7,7 +7,8 @@
 
 import React, { useCallback } from 'react';
 import { RefreshControl, ScrollView, Text, View } from 'react-native';
-import { Stack, useRouter } from 'expo-router';
+import { Stack } from 'expo-router';
+import { useOpenObject } from '../../src/shell/open-object';
 import { gatewayOverview, listAgentWrites, mySpend } from '../../src/api/agent';
 import { WRITE_TONE } from '../../src/agent/look';
 import { noAccess } from '../../src/data/access';
@@ -24,7 +25,7 @@ const SERVICES = new Set(['llm', 'vision', 'web_search', 'page_read', 'image_gen
 
 export default function MyAgents() {
   const t = useT();
-  const router = useRouter();
+  const openObject = useOpenObject();
   const { colors: c } = useTheme();
   const styles = useStyles(c);
   const spend = useResource(useCallback(() => mySpend(), []));
@@ -115,7 +116,7 @@ export default function MyAgents() {
                   subtitle={[write.target_label ?? t('agent.targetHidden'), relativeTimeNow(write.created_at)].join(' · ')}
                   icon="sparkle"
                   accessory={<Badge label={t(`agent.status.${write.status}`)} tone={WRITE_TONE[write.status]} />}
-                  onPress={() => router.push({ pathname: '/agent/write', params: { id: write.request_id } })}
+                  onPress={() => openObject({ kind: 'write', id: write.request_id })}
                 />
               ))}
             </Section>

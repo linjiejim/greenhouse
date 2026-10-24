@@ -5,7 +5,7 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useRef } from 'react';
-import { ScrollView, Text, View } from 'react-native';
+import { ScrollView, Text } from 'react-native';
 import type { ApiResult } from '../api/client';
 import { getRecord, getSchema, tableUsers } from '../api/tables';
 import { noAccess, notFound } from '../data/access';
@@ -78,20 +78,20 @@ export function RecordView({ tableId, recordId }: { tableId: number | null; reco
 
   if (tableId == null || recordId == null || (!data && !resource.loading && (notFound(resource.error) || noAccess(resource.error)))) {
     return (
-      <View style={styles.root}>
+      <>
         <SheetScreen title={t('tables.record')} />
-        <ScrollView contentInsetAdjustmentBehavior="automatic">
+        <ScrollView style={styles.root} contentInsetAdjustmentBehavior="automatic">
           <EmptyState icon="table" title={t('tables.recordNotFound')} style={styles.state} />
         </ScrollView>
-      </View>
+      </>
     );
   }
 
   const masked = !!data && Object.keys(data.record.values ?? {}).length === 0;
   return (
-    <View style={styles.root}>
+    <>
       <SheetScreen title={data?.schema.table.name ?? ''} />
-      <ScrollView contentInsetAdjustmentBehavior="automatic" contentContainerStyle={styles.content}>
+      <ScrollView style={styles.root} contentInsetAdjustmentBehavior="automatic" contentContainerStyle={styles.content}>
         {!data ? (
           resource.loading ? (
             <LoadingState style={styles.state} />
@@ -114,7 +114,7 @@ export function RecordView({ tableId, recordId }: { tableId: number | null; reco
           </>
         )}
       </ScrollView>
-    </View>
+    </>
   );
 }
 
