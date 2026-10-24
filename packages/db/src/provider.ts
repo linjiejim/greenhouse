@@ -57,6 +57,7 @@ import { createReportTemplateService } from './services/report-templates.js';
 import { createMemberComputerService } from './services/member-computers.js';
 import { createWorkspaceSettingService } from './services/workspace-settings.js';
 import { createOAuthLoginStateService, createRateLimitService } from './services/security-state.js';
+import { createRetentionService } from './services/retention.js';
 
 /** Every table the core schema defines, except the migration bookkeeping it must keep. */
 function coreTableNames(): string[] {
@@ -116,6 +117,7 @@ function createDatabaseProvider(db: Db, client: DbClient['client'] | null) {
     memberComputers: createMemberComputerService(db),
     workspaceSettings: createWorkspaceSettingService(db),
     rateLimits: createRateLimitService(db),
+    retention: createRetentionService(db),
     oauthLoginStates: createOAuthLoginStateService(db),
 
     /** Health check — verifies DB connection is alive. */

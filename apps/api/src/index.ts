@@ -124,6 +124,7 @@ import { startRuntimeWorker } from './runtime/worker.js';
 import { reconcileInterruptedChatRuntimeRuns } from './chat/runtime.js';
 import { reconcileInterruptedAgentWrites } from './agent-access/governed-write.js';
 import { sweepExpiredToolOutputs } from './agent-runtime/tool-output-store.js';
+import { scheduleRetention } from './upkeep/retention.js';
 import { createAutomationRuntimeDriver } from './scheduler/runtime-driver.js';
 import { createRuntimeNotificationProjector } from './notifications/runtime-projector.js';
 import { AUTOMATION_DELIVERY_CHANNELS, startNotificationDeliveryWorker } from './notifications/delivery-worker.js';
@@ -577,6 +578,9 @@ async function main() {
       void sweep().catch((error) => logger.warn(`[upkeep] ${label} sweep failed`, { error: toErrorMessage(error) }));
     }
   }, 5 * 60_000);
+
+  // Daily retention cleanup of high-growth tables (upkeep/retention.ts).
+  scheduleRetention(dbProvider);
 
   // Cloud computers, every minute: stop idle ones (all of them while the
   // switch is off), roll per-minute billing blocks, close half-done starts and
