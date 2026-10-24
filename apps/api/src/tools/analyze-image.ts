@@ -65,7 +65,7 @@ export const analyzeImageSchema = z.object({
     .int()
     .positive()
     .optional()
-    .describe('An image in Files (档案库), by the id files_query returns. Pass this or image_id.'),
+    .describe('An image in Files (云盘), by the id files_query returns. Pass this or image_id.'),
   question: z
     .string()
     .max(MAX_VISION_QUESTION_CHARS, `Question must not exceed ${MAX_VISION_QUESTION_CHARS} characters`)

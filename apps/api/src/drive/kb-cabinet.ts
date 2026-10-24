@@ -1,5 +1,5 @@
 /**
- * The knowledge cabinet — what Files (档案库) shows: drive scope `kb`, the team's
+ * The knowledge cabinet — what Files (云盘) shows: drive scope `kb`, the team's
  * nodes plus the caller's own personal ones.
  *
  * This is the agent-facing half of /api/drive for that one scope, used by the

@@ -1,5 +1,5 @@
 /**
- * Files mutation — write side of the team's file cabinet (Files / 档案库):
+ * Files mutation — write side of the team's file cabinet (Files / 云盘):
  * folders, small uploads, rename / move, delete.
  *
  * Same rule as the browser: drive/kb-cabinet.ts authorizes every node with

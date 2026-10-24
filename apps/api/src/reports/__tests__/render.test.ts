@@ -274,7 +274,7 @@ describe('slides', () => {
   });
 
   it('cuts a single bullet longer than a slide, so planned slides equal rendered pages', async () => {
-    const long = cell('报告模板按团队要求的格式渲染成文件并存入档案库。', 780);
+    const long = cell('报告模板按团队要求的格式渲染成文件并存入云盘。', 780);
     const { slides, pdfPages, pptxSlides } = await planAndRender('要点', {
       kind: 'bullets',
       items: ['第一条', long, '最后一条'],

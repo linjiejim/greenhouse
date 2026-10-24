@@ -768,7 +768,7 @@ const zh: Messages = {
     // v1.5 按目标组织的导航
     home: '团队动态',
     homeDesc: '团队最近的改动，以及你自己的卡片',
-    files: '档案库',
+    files: '云盘',
     filesDesc: '团队的文件和你自己的文件——文件夹、上传与预览',
     activityLog: '操作记录',
     activityLogDesc: '你、你的 Agent 和你的自动化做过的改动',
@@ -883,7 +883,7 @@ const zh: Messages = {
     },
     module: {
       knowledge: '知识库',
-      files: '档案库',
+      files: '云盘',
       projects: '项目',
       tables: '表格',
       skills: '技能中心',
@@ -1160,9 +1160,9 @@ const zh: Messages = {
     notConfigured: '云电脑还没有配置好',
     notConfiguredHint: '需要管理员在「运行配置」里填写 E2B API key。',
     intro:
-      '给你的 Agent 用的一台云端 Linux 电脑：在里面运行命令，在它和档案库之间传文件。第一次使用时启动，空闲 {minutes} 分钟后自动停止。',
+      '给你的 Agent 用的一台云端 Linux 电脑：在里面运行命令，在它和云盘之间传文件。第一次使用时启动，空闲 {minutes} 分钟后自动停止。',
     filesLost:
-      '停止时（手动停止或空闲 {minutes} 分钟后）里面的文件会全部删除。要保留的内容，先让 Agent 存进档案库（computer_transfer）。',
+      '停止时（手动停止或空闲 {minutes} 分钟后）里面的文件会全部删除。要保留的内容，先让 Agent 存进云盘（computer_transfer）。',
     price: '运行期间每分钟 {price}',
     unpriced: '尚未定价',
     status: '状态',
@@ -1195,7 +1195,7 @@ const zh: Messages = {
 
   mcpGroups: {
     knowledge: { label: '知识库', description: '检索和阅读团队与个人文档。' },
-    files: { label: '档案库', description: '浏览、读取和上传团队与个人档案库中的文件。' },
+    files: { label: '云盘', description: '浏览、读取和上传团队与个人云盘中的文件。' },
     projects: { label: '项目', description: '读取项目及其任务。' },
     tables: { label: '表格', description: '读取团队表格中的记录。' },
     skills: { label: '技能中心', description: '浏览并下载团队共享的 Agent 技能。' },
@@ -1205,10 +1205,10 @@ const zh: Messages = {
     feedback: { label: '问题与需求', description: '提交功能需求，反馈工具使用中遇到的问题。' },
     services: {
       label: '付费服务',
-      description: '联网搜索、读取网页、识别图片，以及生成图片并存入你的档案库。每次调用都会产生费用。',
+      description: '联网搜索、读取网页、识别图片，以及生成图片并存入你的云盘。每次调用都会产生费用。',
     },
     computer: { label: '云电脑', description: '在你自己的云电脑里运行命令、传送文件。运行期间按分钟计费。' },
-    reports: { label: '报告', description: '读取团队的报告模板，渲染报告与演示稿并存入你的档案库。' },
+    reports: { label: '报告', description: '读取团队的报告模板，渲染报告与演示稿并存入你的云盘。' },
   },
 
   oauthConsent: {
@@ -1279,7 +1279,7 @@ const zh: Messages = {
     newTemplate: '新建模板',
     editTemplate: '编辑报告模板',
     notice:
-      '团队要求的报告与演示格式。Agent 经 MCP 读取模板（report_templates），按工作区品牌渲染并存入档案库（report_render）。',
+      '团队要求的报告与演示格式。Agent 经 MCP 读取模板（report_templates），按工作区品牌渲染并存入云盘（report_render）。',
     count: '{count} 个模板',
     emptyTitle: '还没有报告模板',
     emptyDescription: '建一个模板，让每个 Agent 都按同一格式写报告。',
@@ -1322,7 +1322,7 @@ const zh: Messages = {
     previewTitle: '模板预览',
     previewFailed: '预览渲染失败',
     deleteTitle: '删除 {name}？',
-    deleteDescription: 'Agent 将无法再用它渲染。已经渲染出的文件仍保留在档案库。',
+    deleteDescription: 'Agent 将无法再用它渲染。已经渲染出的文件仍保留在云盘。',
   },
 
   skillHub: {
@@ -1573,7 +1573,7 @@ const zh: Messages = {
     viewAllActivity: '操作记录',
     feedFailed: '最近的改动加载失败',
     feedEmpty: '最近没有改动',
-    feedEmptyHint: '知识库、项目、表格和档案库里的改动会出现在这里。',
+    feedEmptyHint: '知识库、项目、表格和云盘里的改动会出现在这里。',
     defaultTab: '概览',
     customize: '自定义',
     doneEditing: '完成',
@@ -1834,7 +1834,7 @@ const zh: Messages = {
         '支持 Streamable HTTP 和 OAuth 的客户端只需要上面的 MCP 地址，它会自己找到登录入口。只支持 stdio 的客户端，用 mcp-remote 转一层：',
       oauthOther: '两种方式第一次调用时都会打开浏览器，登录 Greenhouse 并批准这个 Agent 能访问的范围。',
       scopes:
-        '在批准页选择这个 Agent 能访问的数据（知识库、档案库、表格……）以及能否写入。只给你希望它改数据的 Agent 写权限；随时可以在「已连接」里断开。',
+        '在批准页选择这个 Agent 能访问的数据（知识库、云盘、表格……）以及能否写入。只给你希望它改数据的 Agent 写权限；随时可以在「已连接」里断开。',
       checkTitle: '检查连接',
       checkIntro: '让你的 Agent 用一次 Greenhouse（比如「调用 team_context」），再回到这里检查。',
       check: '检查连接',
@@ -1935,7 +1935,7 @@ const zh: Messages = {
         skillhub: 'SkillHub',
         activity: '操作记录',
         executions: '执行中心（已下线）',
-        files: '档案库',
+        files: '云盘',
         home: '团队动态',
         sessionTags: '会话标签（已下线）',
         sessionGroups: '会话分组（已下线）',
@@ -2270,7 +2270,7 @@ const zh: Messages = {
     tool_tables_mutation: '写 Tables 记录（可从回收站恢复）',
     tool_knowledge_mutation: '写知识库文档（保留版本历史）',
     tool_project_mutation: '写项目与任务',
-    tool_report_render: '按团队模板渲染报告存入档案库（你的个人架，或你能写的团队文件夹）',
+    tool_report_render: '按团队模板渲染报告存入云盘（你的个人架，或你能写的团队文件夹）',
     notifyEmailHint: '由共享的 Greenhouse 邮箱发送到你的账号邮箱。',
     quietWhenEmpty: '没有新内容时不通知',
     quietWhenEmptyHint: '某次运行没有发现新内容时，只在历史里记为“无更新”，不发送任何通知。',
