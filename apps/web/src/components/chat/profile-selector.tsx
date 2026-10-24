@@ -12,9 +12,9 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Bot, ChevronDown, Check, X } from '../../lib/icons';
 import { getToolIcon, getToolBrief } from '../../lib/icons';
 import type { Profile } from '../../lib/api';
-import { SproutyAvatar } from '../sprouty/index.js';
+import { PlantAvatar } from '@greenhouse/ui/components/plant-avatar';
+import type { ProfileAvatar } from '@greenhouse/types';
 import { OverlayPanel } from '../app/overlay-panel';
-import type { EyeStyle, SproutyVariant, LeafStyle } from '../sprouty/index.js';
 import { useLocalized, useT, type TranslationKey } from '../../lib/i18n';
 import { DEFAULT_AGENT_ID } from '../../lib/agent-constants';
 import { useHoverFlyout } from '../../hooks/use-hover-flyout';
@@ -54,26 +54,16 @@ function getProfilesByCategory(profiles: Profile[]): Record<ProfileCategory, Pro
   };
 }
 
-/** Resolve profile appearance fields to Sprouty props. */
-export function profileToSprouty(p: Profile): {
-  variant: SproutyVariant;
-  color?: string;
-  accessories?: string[];
-  leafStyle?: LeafStyle;
-  eyeStyle?: EyeStyle;
+/**
+ * A profile's plant-avatar props: custom Agents resolve their stored avatar (new `plant`/`tint`
+ * or legacy Sprouty keys) keyed by their id; system profiles carry no avatar, so the built-in
+ * `sprouty` lands on the sprout and any other system profile on a stable hash pick.
+ */
+export function profileAvatarProps(p: Pick<Profile, 'id' | 'avatar' | 'is_custom'>): {
+  avatar: ProfileAvatar | null;
+  stableId: string;
 } {
-  if (p.is_custom) {
-    const avatar = p.avatar;
-    return {
-      variant: 'custom',
-      color: avatar?.color,
-      accessories: avatar?.accessories,
-      leafStyle: avatar?.leafStyle,
-      eyeStyle: avatar?.eyeStyle,
-    };
-  }
-  if (p.id === 'team') return { variant: 'team' };
-  return { variant: 'default' };
+  return { avatar: p.is_custom ? (p.avatar ?? {}) : null, stableId: p.id };
 }
 
 // ─── Shared Profile Row Renderer ─────────────────────────
@@ -229,7 +219,7 @@ function renderProfileRow(
             : 'border border-transparent hover:bg-surface-sunken'
       }`}
     >
-      <SproutyAvatar {...profileToSprouty(p)} state="idle" size="xs" animate={isHovered} />
+      <PlantAvatar {...profileAvatarProps(p)} size="xs" animate={isHovered} />
       <span className="flex-1 min-w-0 overflow-hidden">
         <span
           className={`text-[13px] leading-tight font-medium truncate block ${isSelected ? 'text-primary-fg-strong' : 'text-fg-secondary'}`}
@@ -410,7 +400,7 @@ function ProfilePickerDrawer({
         }`}
       >
         <div className="mt-0.5 flex-shrink-0">
-          <SproutyAvatar {...profileToSprouty(p)} state="idle" size="sm" />
+          <PlantAvatar {...profileAvatarProps(p)} size="sm" animate={false} />
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center justify-between gap-2">
@@ -543,7 +533,7 @@ export function ProfileSelector({
           readonly ? 'text-fg-muted cursor-default' : 'text-primary-fg-strong hover:bg-primary-subtle cursor-pointer'
         }`}
       >
-        <SproutyAvatar {...profileToSprouty(selectedProfile)} state="idle" size="xs" animate={false} />
+        <PlantAvatar {...profileAvatarProps(selectedProfile)} size="xs" animate={false} />
         <span className="truncate max-w-[110px] sm:max-w-[200px]">{profileName(selectedProfile, localized)}</span>
         {!readonly && profiles.length > 1 && (
           <ChevronDown size={12} className={`flex-shrink-0 transition-transform ${showPicker ? 'rotate-180' : ''}`} />

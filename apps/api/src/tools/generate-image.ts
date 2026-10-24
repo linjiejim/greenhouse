@@ -246,7 +246,7 @@ const generateImageSchema = z.object({
     .max(4)
     .optional()
     .describe(
-      'Reference images in Files (档案库), by file id — e.g. the file_id a previous generate_image returned, ' +
+      'Reference images in Files (云盘), by file id — e.g. the file_id a previous generate_image returned, ' +
         'to edit it further. Used like `images`; at most 4 references in total.',
     ),
 });

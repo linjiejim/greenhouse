@@ -16,7 +16,8 @@ import { entityUrl } from '@greenhouse/types/entity-links';
 import type { DatabaseProvider } from '@greenhouse/db';
 import { defineTool, type ToolMeta } from './define.js';
 import { resolveKbAccess, canWrite, canArchive } from '../knowledge/access.js';
-import { resolveKbFolderPath } from '../knowledge/folders.js';
+import { resolveKbFolderPath, type KbFolderResolution } from '../knowledge/folders.js';
+import { delegatedAgentActor } from '../platform/actor.js';
 // Shared with knowledge_query's mode=outline|section: read and write must
 // address the same span, or a model edits something other than what it read.
 import { replaceSection } from '../knowledge/sections.js';
@@ -68,7 +69,13 @@ export const knowledgeMutationSchema = z.object({
     .string()
     .optional()
     .describe(
-      'Folder path to file the doc into, e.g. "指南/场景示例" ("/" = root). For create and content-update actions. The folder must already exist (team docs go into team folders, personal docs into your own).',
+      'Folder path to file the doc into, e.g. "指南/场景示例" ("/" = root). For create and content-update actions. The folder must already exist unless create_folders is true (team docs go into team folders, personal docs into your own). knowledge_query action=folders lists the tree.',
+    ),
+  create_folders: z
+    .boolean()
+    .optional()
+    .describe(
+      'With `folder`: create any missing folders on that path (team folders for team docs, your own personal folders for personal docs). Default false: a missing folder is an error.',
     ),
   tags: z.array(z.string()).optional(),
   summary: z
@@ -112,6 +119,13 @@ function makeDocId(title: string): string {
   return `${slug || 'doc'}-${randomUUID().slice(0, 8)}`;
 }
 
+/** Point a model that hit a missing folder at the flag that would have created it. */
+function folderError(folder: Extract<KbFolderResolution, { ok: false }>, createFolders: boolean | undefined): string {
+  return !createFolders && folder.error.startsWith('Folder not found')
+    ? `${folder.error}. Pass create_folders: true to create the missing folders.`
+    : folder.error;
+}
+
 function docScope(scope: 'team' | 'personal') {
   return {
     dbScope: 'shared',
@@ -137,6 +151,8 @@ Editors (granted editor role) may create/update/patch/append/restore; archiving 
 };
 
 export function createKnowledgeMutationTool(db: DatabaseProvider, ctx: KnowledgeMutationContext) {
+  // create_folders goes through the Files cabinet's folder create (drive access + audit), as the agent.
+  const folderCreator = { db, userId: ctx.userId, actor: delegatedAgentActor({ userId: ctx.userId }) };
   const legacyTool = tool({
     description: meta.description,
     inputSchema: knowledgeMutationSchema,
@@ -157,11 +173,18 @@ export function createKnowledgeMutationTool(db: DatabaseProvider, ctx: Knowledge
 
           let folderId: number | null = null;
           let folderPath: string | undefined;
+          let createdFolders: string[] | undefined;
           if (input.folder !== undefined) {
-            const folder = await resolveKbFolderPath(db, input.folder, { visibility, ownerUserId: ctx.userId });
-            if (!folder.ok) return { action: input.action, error: folder.error };
+            const folder = await resolveKbFolderPath(
+              db,
+              input.folder,
+              { visibility, ownerUserId: ctx.userId },
+              { create: input.create_folders ? folderCreator : undefined },
+            );
+            if (!folder.ok) return { action: input.action, error: folderError(folder, input.create_folders) };
             folderId = folder.folderId;
             if (folder.folderId != null) folderPath = folder.path;
+            createdFolders = folder.created;
           }
 
           const doc = await db.knowledgeBase.create({
@@ -197,6 +220,7 @@ export function createKnowledgeMutationTool(db: DatabaseProvider, ctx: Knowledge
               visibility: doc.visibility,
               ...(folderPath ? { folder: folderPath } : {}),
             },
+            ...(createdFolders ? { created_folders: createdFolders } : {}),
           };
         }
 
@@ -304,14 +328,16 @@ export function createKnowledgeMutationTool(db: DatabaseProvider, ctx: Knowledge
         // Optional folder move. Resolved against the DOC OWNER's tree (matches the
         // HTTP route's validateFolderTarget): an editor moving a doc shared with
         // them files it within the owner's folders, never their own.
-        let folderMove: { folderId: number | null; path: string } | undefined;
+        let folderMove: { folderId: number | null; path: string; created?: string[] } | undefined;
         if (input.folder !== undefined) {
-          const folder = await resolveKbFolderPath(db, input.folder, {
-            visibility,
-            ownerUserId: existing.owner_user_id ?? ctx.userId,
-          });
-          if (!folder.ok) return { action: input.action, error: folder.error };
-          folderMove = { folderId: folder.folderId, path: folder.path };
+          const folder = await resolveKbFolderPath(
+            db,
+            input.folder,
+            { visibility, ownerUserId: existing.owner_user_id ?? ctx.userId },
+            { create: input.create_folders ? folderCreator : undefined },
+          );
+          if (!folder.ok) return { action: input.action, error: folderError(folder, input.create_folders) };
+          folderMove = { folderId: folder.folderId, path: folder.path, created: folder.created };
         }
 
         // Keep Tiptap JSON in step with Markdown: whenever the body changed (and no
@@ -349,6 +375,7 @@ export function createKnowledgeMutationTool(db: DatabaseProvider, ctx: Knowledge
             tags: safeJsonParse(updated.tags, []),
             ...(folderMove && folderMove.folderId != null ? { folder: folderMove.path } : {}),
           },
+          ...(folderMove?.created ? { created_folders: folderMove.created } : {}),
         };
       } catch (err) {
         return { action: input.action, error: toErrorMessage(err) };

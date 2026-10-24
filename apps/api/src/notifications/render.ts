@@ -31,7 +31,16 @@
  */
 
 import { Marked, Renderer, type Tokens } from 'marked';
-import { parseSegments, type ChartData, type DataTableData, type Segment } from '@greenhouse/types/rich-output';
+import {
+  cardsMarkdown,
+  parseSegments,
+  statsMarkdown,
+  stepsMarkdown,
+  type ChartData,
+  type DataTableData,
+  type Segment,
+  type StepStatus,
+} from '@greenhouse/types/rich-output';
 import { escapeHtml } from '@greenhouse/utils/html';
 import { getProductName } from '@greenhouse/utils/brand';
 
@@ -44,6 +53,13 @@ const NOTE_DIAGRAM = '（图示无法在邮件中显示，请打开会话查看�
 const NOTE_PREVIEW = '（网页预览无法在邮件中显示，请打开会话查看）';
 const NOTE_CONFIRM = '（需要确认的操作，请打开会话处理）';
 const HEADING_ATTACHMENTS = '附件';
+const STEP_STATUS_WORDS: Record<StepStatus, string> = {
+  done: '已完成',
+  active: '进行中',
+  pending: '待开始',
+  blocked: '受阻',
+  skipped: '已跳过',
+};
 
 // ─── Markdown flattening ─────────────────────────────────
 
@@ -81,6 +97,12 @@ function flattenSegment(segment: Segment): string {
         HEADING_ATTACHMENTS,
         segment.data.map((item) => ({ name: item.name, sizeBytes: item.size_bytes })),
       );
+    case 'stats':
+      return statsMarkdown(segment.data);
+    case 'cards':
+      return cardsMarkdown(segment.data);
+    case 'steps':
+      return stepsMarkdown(segment.data, (status) => STEP_STATUS_WORDS[status]);
     case 'datatable-pending':
       // An unterminated fence: the turn was cut off before any rows existed, so
       // there is nothing to render and no reason to mention it.

@@ -40,11 +40,9 @@ export type Capability = z.infer<typeof capabilitySchema>;
 const HEX_COLOR_RE = /^#[0-9a-fA-F]{6}$/;
 
 // ─── Sprouty avatar DSL vocabulary ───────────────────────
-// Canonical option-id catalogs — the single source the renderer metadata
-// (apps/web sprouty-constants uses these ids for its records), the
-// designer UI and the design_sprouty_avatar tool all derive from. The zod
-// schema below deliberately stays permissive (plain strings) so forks can add
-// options and the renderer can ignore unknowns gracefully.
+// Legacy option-id catalogs of the retired cartoon Sprouty. Still the input
+// vocabulary of the plant-avatar legacy resolver (`legacyToPlant` /
+// `legacyToMood` in ./plant-avatar.ts), so stored configs keep rendering.
 
 export const SPROUTY_COLOR_IDS = [
   'forest',
@@ -81,26 +79,34 @@ export const SPROUTY_FACE_STYLE_IDS = ['default', 'happy', 'sparkle', 'sleepy'] 
 export type SproutyFaceStyleId = (typeof SPROUTY_FACE_STYLE_IDS)[number];
 
 /**
- * Sprouty avatar DSL — the "sculpt your own Sprouty" contract, shared by
- * per-profile avatars, the workspace default (`branding.team_avatar` setting)
- * and agent-generated configs (design_sprouty_avatar tool).
+ * Avatar DSL — shared by custom Agent avatars.
  *
- * `palette` overrides the preset `color` with free body/leaf hexes (derived
- * shades are computed by the renderer). Visual metadata (hexes, emoji, names)
- * lives with the renderer in apps/web sprouty-constants, keyed by the
- * id catalogs above.
+ * `plant` is the species id (PLANT_IDS in ./plant-avatar.ts) and `tint` its
+ * colour (PLANT_TINTS); `mood` (resting eyes) is legacy — still accepted, no
+ * longer rendered (a face follows state). Every legacy Sprouty key stays
+ * accepted and readable — `color`, `accessories`, `leafStyle`, `faceStyle`,
+ * the old editor's `eyeStyle` and the free `palette` hexes — and resolves to a
+ * plant at render time (`legacyToPlant` / `legacyToMood`); nothing is
+ * migrated. Writers store `plant` plus the nearest legacy `color`
+ * (PLANT_LEGACY_COLOR). Plain strings: unknown ids are kept and render through
+ * the resolver's fallbacks.
  */
 export const avatarConfigSchema = z.object({
+  plant: z.string().max(40).optional(),
+  mood: z.string().max(40).optional(),
   color: z.string().max(40).optional(),
   accessories: z.array(z.string().max(40)).max(10).optional(),
   leafStyle: z.string().max(40).optional(),
   faceStyle: z.string().max(40).optional(),
+  eyeStyle: z.string().max(40).optional(),
   palette: z
     .object({
       body: z.string().regex(HEX_COLOR_RE, 'body must be a #rrggbb hex color'),
       leaf: z.string().regex(HEX_COLOR_RE, 'leaf must be a #rrggbb hex color'),
     })
     .optional(),
+  /** Colour (PLANT_TINTS; absent = the species' own). */
+  tint: z.string().max(40).optional(),
 });
 export type AvatarConfig = z.infer<typeof avatarConfigSchema>;
 

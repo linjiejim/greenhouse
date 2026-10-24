@@ -24,7 +24,14 @@ import { entityUrl } from '@greenhouse/types/entity-links';
 import type { DatabaseProvider } from '@greenhouse/db';
 import { defineTool, type ToolMeta } from './define.js';
 import { CITE_URL_INSTRUCTION } from './cite-url.js';
-import { kbFolderPath, kbFolderPaths, kbFolderSubtreeIds, kbTree, resolveKbFolderPath } from '../knowledge/folders.js';
+import {
+  kbFolderPath,
+  kbFolderPaths,
+  kbFolderSubtreeIds,
+  kbFolderTree,
+  kbTree,
+  resolveKbFolderPath,
+} from '../knowledge/folders.js';
 import { outlineSections, readSection } from '../knowledge/sections.js';
 import { runKnowledgeAgentAction } from '../platform/knowledge/agent-adapter.js';
 import type { KnowledgeActionId } from '../platform/knowledge/adapter.js';
@@ -55,6 +62,11 @@ const WEAK_RELEVANCE_MAX = 0.2;
 /** Documents listed by one `tree` call before it says it truncated. */
 const TREE_DOC_LIMIT = 400;
 
+/** `folders`: listed nodes per call, and the default / maximum depth below the root. */
+const FOLDERS_NODE_LIMIT = 200;
+const FOLDERS_DEFAULT_DEPTH = 3;
+const FOLDERS_MAX_DEPTH = 8;
+
 /**
  * Above this, a full `get` also points at outline/section. Set where the
  * cheaper read actually wins: a 7k doc of six sections costs ~7k to read whole
@@ -66,9 +78,9 @@ const LONG_DOC_CHARS = 6_000;
 
 const knowledgeQuerySchema = z.object({
   action: z
-    .enum(['search', 'get', 'list', 'tree', 'versions'])
+    .enum(['search', 'get', 'list', 'tree', 'folders', 'versions'])
     .describe(
-      '"tree": browse folders and the docs filed in each (team/personal only) — use it first when you do not know what exists. "search": keyword search. "get": read one doc. "list": recent docs. "versions": a doc\'s change history.',
+      '"tree": browse folders and the docs filed in each (team/personal only) — use it first when you do not know what exists. "folders": the folder tree alone (id, path, doc count; bounded by `depth`) — use it to pick or plan where a doc goes. "search": keyword search. "get": read one doc. "list": recent docs. "versions": a doc\'s change history.',
     ),
   scope: z
     .enum(['team', 'personal', 'shared'])
@@ -85,7 +97,7 @@ const knowledgeQuerySchema = z.object({
     .string()
     .optional()
     .describe(
-      'Restrict to this folder and its subfolders, e.g. "Engineering" or "Guides/Onboarding" (team/personal only). For tree/search/list. Use action=tree to see which folders exist.',
+      'Restrict to this folder and its subfolders, e.g. "Engineering" or "Guides/Onboarding" (team/personal only). For tree/folders/search/list. Use action=folders to see which folders exist.',
     ),
   mode: z
     .enum(['full', 'outline', 'section'])
@@ -94,6 +106,13 @@ const knowledgeQuerySchema = z.object({
       'For get (default full). "outline": headings + section sizes only, no body — use for long docs. "section": just the section named by `section`.',
     ),
   section: z.string().optional().describe('For get with mode=section: the exact heading, e.g. "Specifications".'),
+  depth: z
+    .number()
+    .int()
+    .min(1)
+    .max(FOLDERS_MAX_DEPTH)
+    .optional()
+    .describe(`For folders: levels below the root to list (default ${FOLDERS_DEFAULT_DEPTH}).`),
   limit: z.number().min(1).max(50).optional().describe('Max results (default 10).'),
   offset: z.number().min(0).optional().describe('List offset.'),
 });
@@ -175,7 +194,7 @@ const meta: ToolMeta = {
   id: 'knowledge_query',
   name: 'Knowledge',
   brief: 'Browse, search and read team, personal and shared knowledge documents',
-  description: `Read-only knowledge base. Actions: tree, search, get, list, versions. Scopes: \`team\` (the shared team record — for anything it covers it is the authoritative source), \`personal\` (only the current user's own docs), \`shared\` (private docs other people shared with you).
+  description: `Read-only knowledge base. Actions: tree, folders, search, get, list, versions. Scopes: \`team\` (the shared team record — for anything it covers it is the authoritative source), \`personal\` (only the current user's own docs), \`shared\` (private docs other people shared with you).
 
 Work it like a filesystem: \`tree\` to see which folders exist, \`search\` to find documents (pass \`folder\` to scope the search to one folder and its subfolders), \`get\` to read one. Search in the language the documents are written in. For a long doc use mode=outline and then mode=section instead of pulling the whole body into context. If every hit comes back marked \`weak_match\`, say you found nothing authoritative rather than answering from it.
 
@@ -199,10 +218,9 @@ export function createKnowledgeQueryTool(db: DatabaseProvider, ctx: KnowledgeQue
 
         // ─── shared: private docs OTHERS shared with the caller ───
         if (input.scope === 'shared') {
-          if (input.action === 'tree') {
+          if (input.action === 'tree' || input.action === 'folders') {
             return {
-              error:
-                'tree is only available for team/personal scope — docs shared with you are a flat list, not a folder tree. Use action=list or action=search.',
+              error: `${input.action} is only available for team/personal scope — docs shared with you are a flat list, not a folder tree. Use action=list or action=search.`,
             };
           }
           if (input.action === 'search') {
@@ -303,6 +321,26 @@ export function createKnowledgeQueryTool(db: DatabaseProvider, ctx: KnowledgeQue
             folderIds = await kbFolderSubtreeIds(db, resolved.folderId, folderScope);
             folderPath = resolved.path;
           }
+        }
+
+        if (input.action === 'folders') {
+          const tree = await kbFolderTree(db, folderScope, {
+            rootId: folderIds ? folderIds[0] : null,
+            maxDepth: input.depth ?? FOLDERS_DEFAULT_DEPTH,
+            maxNodes: FOLDERS_NODE_LIMIT,
+          });
+          return {
+            scope: input.scope,
+            root: folderPath ?? '/',
+            folders: tree.folders,
+            total_folders: tree.total_folders,
+            ...(tree.truncated
+              ? {
+                  truncated: true,
+                  note: `Listed ${tree.folders.length} of ${tree.total_folders} folders. Pass \`folder\` to list a subtree, or a larger \`depth\` (max ${FOLDERS_MAX_DEPTH}).`,
+                }
+              : {}),
+          };
         }
 
         if (input.action === 'tree') {
@@ -442,7 +480,7 @@ export function createKnowledgeQueryTool(db: DatabaseProvider, ctx: KnowledgeQue
             ? 'readDocument'
             : input.action === 'search'
               ? 'searchDocuments'
-              : // `tree` is an ordinary library read — same capability as list.
+              : // `tree` / `folders` are ordinary library reads — same capability as list.
                 'listDocuments';
       return runKnowledgeAgentAction(ctx, actionId, input, () => legacyExecute(input, options), input.doc_id);
     },

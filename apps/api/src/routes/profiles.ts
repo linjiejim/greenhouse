@@ -98,7 +98,16 @@ function formatCustomProfile(
       : {};
   const leafStyle = avatarRecord.leafStyle;
   const eyeStyle = avatarRecord.eyeStyle;
+  const str = (key: string): string | undefined =>
+    typeof avatarRecord[key] === 'string' ? (avatarRecord[key] as string) : undefined;
+  const palette = avatarRecord.palette as { body?: unknown; leaf?: unknown } | undefined;
   const avatar: ProfileAvatar = {
+    ...(str('plant') ? { plant: str('plant') } : {}),
+    ...(str('tint') ? { tint: str('tint') } : {}),
+    ...(str('mood') ? { mood: str('mood') } : {}),
+    ...(palette && typeof palette.body === 'string' && typeof palette.leaf === 'string'
+      ? { palette: { body: palette.body, leaf: palette.leaf } }
+      : {}),
     ...(typeof avatarRecord.color === 'string' ? { color: avatarRecord.color } : {}),
     ...(Array.isArray(avatarRecord.accessories)
       ? { accessories: avatarRecord.accessories.filter((item): item is string => typeof item === 'string') }

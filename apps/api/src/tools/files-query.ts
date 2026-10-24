@@ -1,5 +1,5 @@
 /**
- * Files query — read side of the team's file cabinet (Files / 档案库): the
+ * Files query — read side of the team's file cabinet (Files / 云盘): the
  * knowledge cabinet's team shelf plus the caller's personal shelf.
  *
  * Every node is authorized with resolveDriveAccess inside drive/kb-cabinet.ts,

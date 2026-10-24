@@ -8,7 +8,12 @@
  * visibility disallows.
  */
 
-import type { DatabaseProvider } from '@greenhouse/db';
+import type { DatabaseProvider, DriveFolderRow } from '@greenhouse/db';
+import { shelfOfVisibility } from '@greenhouse/types/files';
+import { createCabinetFolder, type CabinetCaller } from '../drive/kb-cabinet.js';
+
+/** Guard against a cycle in drive_folders turning a walk into a hang. */
+const MAX_TREE_DEPTH = 16;
 
 export interface KbFolderScope {
   visibility: 'team' | 'private';
@@ -16,35 +21,77 @@ export interface KbFolderScope {
   ownerUserId?: string;
 }
 
-export type KbFolderResolution = { ok: true; folderId: number | null; path: string } | { ok: false; error: string };
+export type KbFolderResolution =
+  | {
+      ok: true;
+      folderId: number | null;
+      path: string;
+      /** Paths of the folders this call created (only with `create`). */
+      created?: string[];
+    }
+  | { ok: false; error: string };
 
 /**
  * Resolve a slash-separated folder path to a folder id. "" or "/" resolves to
- * the root (folderId null). Folders must already exist — a miss returns an
- * error that lists the siblings at the failed level so the model can correct
- * itself instead of guessing.
+ * the root (folderId null). By default folders must already exist — a miss
+ * returns an error that lists the siblings at the failed level so the model can
+ * correct itself instead of guessing.
+ *
+ * With `create`, each missing segment is created through the Files cabinet's
+ * own `createCabinetFolder` (same drive access rule, same name rules, same
+ * audit row as `files_mutation` folders.create and the browser). A caller can
+ * only ever create on its own shelves: team folders, or its OWN personal tree —
+ * resolving into another member's private tree (an editor filing a doc shared
+ * with them) never creates anything there.
  */
 export async function resolveKbFolderPath(
   db: DatabaseProvider,
   path: string,
   scope: KbFolderScope,
+  opts: { create?: CabinetCaller } = {},
 ): Promise<KbFolderResolution> {
   const segments = path
     .split('/')
     .map((s) => s.trim())
     .filter(Boolean);
   if (segments.length === 0) return { ok: true, folderId: null, path: '/' };
+  if (opts.create && segments.length > MAX_TREE_DEPTH) {
+    return { ok: false, error: `Folder path is deeper than ${MAX_TREE_DEPTH} levels.` };
+  }
 
   let parentId: number | null = null;
   const resolved: string[] = [];
+  const created: string[] = [];
   for (const name of segments) {
-    const siblings = await db.drive.listFolders({
-      scope: 'kb',
-      parent_id: parentId,
-      visibility: scope.visibility,
-      owner_user_id: scope.visibility === 'private' ? scope.ownerUserId : undefined,
-    });
+    // Below a folder this call just created there is nothing to list.
+    const siblings: DriveFolderRow[] = created.length
+      ? []
+      : await db.drive.listFolders({
+          scope: 'kb',
+          parent_id: parentId,
+          visibility: scope.visibility,
+          owner_user_id: scope.visibility === 'private' ? scope.ownerUserId : undefined,
+        });
     const matches = siblings.filter((f) => f.name === name);
+    if (matches.length === 0 && opts.create) {
+      const caller = opts.create;
+      if (scope.visibility === 'private' && scope.ownerUserId !== caller.userId) {
+        return {
+          ok: false,
+          error: `Folder not found: "${name}". Folders can only be created in your own personal tree, not in the document owner's — pick an existing folder.`,
+        };
+      }
+      const made = await createCabinetFolder(caller, {
+        shelf: shelfOfVisibility(scope.visibility),
+        parentId,
+        name,
+      });
+      if ('error' in made) return { ok: false, error: `Could not create folder "${name}": ${made.error}` };
+      parentId = made.folder.id;
+      resolved.push(made.folder.name);
+      created.push(resolved.join('/'));
+      continue;
+    }
     if (matches.length === 0) {
       const where = resolved.length ? `under "${resolved.join('/')}"` : 'at the root';
       const available = siblings.map((f) => f.name).join(', ') || '(none)';
@@ -63,7 +110,12 @@ export async function resolveKbFolderPath(
     parentId = matches[0].id;
     resolved.push(name);
   }
-  return { ok: true, folderId: parentId, path: resolved.join('/') };
+  return {
+    ok: true,
+    folderId: parentId,
+    path: resolved.join('/'),
+    ...(created.length ? { created } : {}),
+  };
 }
 
 /** Render a folder id back into its "a/b/c" path (for tool output). */
@@ -83,9 +135,6 @@ export async function kbFolderPaths(db: DatabaseProvider, folderIds: number[]): 
   }
   return out;
 }
-
-/** Guard against a cycle in drive_folders turning a walk into a hang. */
-const MAX_TREE_DEPTH = 16;
 
 /**
  * Every folder id in a subtree, root included — the expansion behind the
@@ -192,4 +241,74 @@ export async function kbTree(
     total_docs: shown.length,
     truncated,
   };
+}
+
+export interface KbFolderNode {
+  id: number;
+  /** "a/b/c" from the scope root. */
+  path: string;
+  /** 1 = a direct child of the listing root. */
+  depth: number;
+  /** Non-archived documents filed directly in this folder. */
+  docs: number;
+  /** Subfolders not listed because of `maxDepth` (only on nodes at the depth limit). */
+  more_subfolders?: number;
+}
+
+/**
+ * The folder tree alone — ids, paths and doc counts, no document titles — for
+ * deciding where to file something or what `create_folders` would add. One
+ * query for the whole scope (the caller's visible tree is filtered in SQL by
+ * visibility + owner, exactly like `resolveKbFolderPath`), walked in memory
+ * breadth-first so a node cap keeps the shallow levels, then one count per
+ * listed folder. Bounded by `maxDepth` and `maxNodes`; `truncated` says so.
+ */
+export async function kbFolderTree(
+  db: DatabaseProvider,
+  scope: KbFolderScope,
+  opts: { rootId?: number | null; maxDepth: number; maxNodes: number },
+): Promise<{ folders: KbFolderNode[]; total_folders: number; truncated: boolean }> {
+  const all = await db.drive.listFolders({
+    scope: 'kb',
+    visibility: scope.visibility,
+    owner_user_id: scope.visibility === 'private' ? scope.ownerUserId : undefined,
+  });
+  // listFolders orders by (sort_order, name), so children keep the sidebar order.
+  const children = new Map<number | null, typeof all>();
+  for (const folder of all) {
+    const list = children.get(folder.parent_id) ?? [];
+    list.push(folder);
+    children.set(folder.parent_id, list);
+  }
+
+  const rootId = opts.rootId ?? null;
+  const rootPath = rootId == null ? '' : await kbFolderPath(db, rootId);
+  const nodes: Array<Omit<KbFolderNode, 'docs'>> = [];
+  const seen = new Set<number>();
+  // Walk the whole subtree (it is already in memory) so `total_folders` is the
+  // real size; only the first `maxNodes` within `maxDepth` are listed.
+  let reachable = 0;
+  let frontier: Array<{ id: number | null; path: string }> = [{ id: rootId, path: rootPath }];
+  for (let depth = 1; frontier.length > 0 && depth <= MAX_TREE_DEPTH; depth++) {
+    const next: Array<{ id: number | null; path: string }> = [];
+    for (const parent of frontier) {
+      for (const child of children.get(parent.id) ?? []) {
+        if (seen.has(child.id)) continue;
+        seen.add(child.id);
+        reachable++;
+        const path = parent.path ? `${parent.path}/${child.name}` : child.name;
+        next.push({ id: child.id, path });
+        if (depth > opts.maxDepth || nodes.length >= opts.maxNodes) continue;
+        const hidden = depth === opts.maxDepth ? (children.get(child.id)?.length ?? 0) : 0;
+        nodes.push({ id: child.id, path, depth, ...(hidden ? { more_subfolders: hidden } : {}) });
+      }
+    }
+    frontier = next;
+  }
+
+  // Breadth-first picks which folders fit; path order makes the listing read as a tree.
+  nodes.sort((a, b) => a.path.localeCompare(b.path));
+  const folders: KbFolderNode[] = [];
+  for (const node of nodes) folders.push({ ...node, docs: await db.knowledgeBase.countInFolder(node.id) });
+  return { folders, total_folders: reachable, truncated: reachable > nodes.length };
 }

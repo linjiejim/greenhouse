@@ -11,6 +11,7 @@ import { formatDate } from '../../../lib/utils';
 import { useT } from '../../../lib/i18n';
 import { fetchRecentAgentWrites } from '../../../lib/api/agent-access';
 import { BasisLabel, InputFields, JsonBlock, OperationLabel, RiskTag, StatusTag, writeTarget } from './shared';
+import { ClientAgentAvatar, connectionAvatar } from '../../../components/agents/client-agent-avatar';
 
 type ActivityRow = AgentWriteView & { id: string };
 
@@ -47,7 +48,12 @@ export function AgentActivity() {
             label: t('agentAccess.colAgent'),
             type: 'custom',
             width: '9rem',
-            render: (row) => <span className="text-sm text-fg truncate">{row.client_name}</span>,
+            render: (row) => (
+              <span className="flex min-w-0 items-center gap-1.5">
+                <ClientAgentAvatar name={row.client_name} avatar={connectionAvatar(row)} />
+                <span className="text-sm text-fg truncate">{row.client_name}</span>
+              </span>
+            ),
           },
           {
             key: 'tool_id',

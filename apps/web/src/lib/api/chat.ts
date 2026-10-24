@@ -13,6 +13,7 @@
 import { authFetch } from '../auth';
 import { readNdjsonStream } from '../stream-utils';
 import { CLIENT_ACTION_RESULT_PATH, requireChatStreamFinish } from '@greenhouse/types/api';
+import { MODEL_FENCES } from '@greenhouse/types/rich-output';
 import type { StreamingEvent } from '../stream-events';
 import type {
   ChatRequestBody,
@@ -40,6 +41,8 @@ export async function* streamChat(
 ): AsyncGenerator<StreamEvent> {
   const body: ChatRequestBody = {
     session_id: sessionId,
+    // The web chat draws every rich block (components/rich-markdown.tsx).
+    rich_blocks: [...MODEL_FENCES],
   };
   if (message !== undefined) {
     const messagePayload: ChatRequestMessage = {

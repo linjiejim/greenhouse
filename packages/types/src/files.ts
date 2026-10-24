@@ -1,5 +1,5 @@
 /**
- * Files (档案库) page addresses — built by the Files tools for the model to cite,
+ * Files (云盘) page addresses — built by the Files tools for the model to cite,
  * parsed by the web page. One module so the two directions cannot drift.
  *
  * The page browses the knowledge cabinet (drive scope `kb`): the team's files

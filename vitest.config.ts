@@ -30,6 +30,7 @@ export default defineConfig({
       '@greenhouse/types/mcp': resolve(__dirname, 'packages/types/src/mcp.ts'),
       '@greenhouse/types/automation-tools': resolve(__dirname, 'packages/types/src/automation-tools.ts'),
       '@greenhouse/types/tables': resolve(__dirname, 'packages/types/src/tables.ts'),
+      '@greenhouse/types/object-refs': resolve(__dirname, 'packages/types/src/object-refs.ts'),
       '@greenhouse/types/rich-output': resolve(__dirname, 'packages/types/src/rich-output.ts'),
       '@greenhouse/types/tasks': resolve(__dirname, 'packages/types/src/tasks.ts'),
       '@greenhouse/types/workspace-settings': resolve(__dirname, 'packages/types/src/workspace-settings.ts'),

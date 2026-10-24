@@ -98,6 +98,22 @@ describe('extractPipelineAndReferences', () => {
     expect(JSON.stringify(pipeline[0].output)).not.toContain(body);
   });
 
+  it('summarizes a knowledge_query folder listing to its size, not the tree', () => {
+    const { pipeline } = extractPipelineAndReferences([
+      v6Step(
+        'knowledge_query',
+        { action: 'folders', scope: 'team' },
+        {
+          scope: 'team',
+          root: '/',
+          folders: [{ id: 1, path: '指南', depth: 1, docs: 3 }],
+          total_folders: 1,
+        },
+      ),
+    ]);
+    expect(pipeline[0].output).toEqual({ action: 'folders', scope: 'team', root: '/', folders: 1 });
+  });
+
   it('summarizes a knowledge_query search by shape, keeping the weak-match flag', () => {
     const { pipeline } = extractPipelineAndReferences([
       v6Step(

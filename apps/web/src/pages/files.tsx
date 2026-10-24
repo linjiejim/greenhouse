@@ -1,5 +1,5 @@
 /**
- * Files (档案库) — the team's file cabinet and my own, as a first-class page.
+ * Files (云盘) — the team's file cabinet and my own, as a first-class page.
  *
  * It is the knowledge cabinet (drive scope `kb`) seen from the files side: the
  * team shelf everyone shares and my personal shelf. Browsing, upload, preview,

@@ -2,7 +2,7 @@
  * DriveBrowser — a folder/file cabinet for one scope.
  *
  * Reused across surfaces via the `owner` prop:
- *   - Files (档案库):         <DriveBrowser owner={{ scope: 'kb', visibility }} folderId={…} onFolderChange={…} />
+ *   - Files (云盘):         <DriveBrowser owner={{ scope: 'kb', visibility }} folderId={…} onFolderChange={…} />
  *   - Tables Base files:     <DriveBrowser owner={{ scope: 'tables', base_id }} />
  *   - KB folder attachments: <DriveBrowser owner={{ scope: 'kb', visibility }} initialFolderId={id} />
  *   - an extension's cabinet:  <DriveBrowser owner={{ scope: 'crm', owner_key: String(companyId) }} />

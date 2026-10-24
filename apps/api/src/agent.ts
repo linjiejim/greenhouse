@@ -117,6 +117,8 @@ export function selectTools(registry: ToolRegistry, toolNames: string[]): ToolRe
 export interface AgentContext {
   /** Server-assembled user context (notes + memories) — never client-supplied. */
   userInfo?: string;
+  /** Rich blocks the requesting screen draws (admitted `rich_blocks`); absent = the default set. */
+  richBlocks?: readonly string[];
 }
 
 /**
@@ -125,7 +127,7 @@ export interface AgentContext {
  * server-assembled user info block.
  */
 export function buildSystemPrompt(profile: AgentProfile, context?: AgentContext): string {
-  const parts: string[] = [enrichSystemPrompt(profile)];
+  const parts: string[] = [enrichSystemPrompt(profile, context?.richBlocks)];
 
   if (context?.userInfo) {
     parts.push(`\n## User Context\n${context.userInfo}`);

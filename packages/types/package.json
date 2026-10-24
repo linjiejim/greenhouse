@@ -64,6 +64,10 @@
       "import": "./src/ws.ts",
       "types": "./src/ws.ts"
     },
+    "./object-refs": {
+      "import": "./src/object-refs.ts",
+      "types": "./src/object-refs.ts"
+    },
     "./rich-output": {
       "import": "./src/rich-output.ts",
       "types": "./src/rich-output.ts"

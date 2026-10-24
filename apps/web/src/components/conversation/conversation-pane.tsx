@@ -9,9 +9,10 @@ import { MessageBubble, StreamingMessageBubble } from '../chat/message';
 import { ChatInput } from '../chat/chat-input';
 import type { PendingImage } from '../chat/chat-input';
 import { composePromptMessage } from '../chat/prompt-selection';
-import { ProfileSelector, profileToSprouty } from '../chat/profile-selector';
+import { ProfileSelector, profileAvatarProps } from '../chat/profile-selector';
+import { AssistantPresence } from '../chat/assistant-presence';
 import { ModelSelector } from '../chat/model-selector';
-import { SproutyAvatar } from '../sprouty/index.js';
+import { PlantAvatar } from '@greenhouse/ui/components/plant-avatar';
 import { useAgentContext } from '../agent-context';
 import { useSessionManager } from '../../lib/session-manager';
 import { useUIStore, useAuthStore, useProfileStore } from '../../stores';
@@ -1322,6 +1323,25 @@ export function ConversationPane({
               />
             )}
 
+            {!isLoadingSession && (
+              <AssistantPresence
+                {...(activeProfile ? profileAvatarProps(activeProfile) : { avatar: null, stableId: DEFAULT_AGENT_ID })}
+                work={{
+                  streaming: effectiveRunActive,
+                  hasText: !!effectiveStreamText,
+                  toolRunning: effectiveStreamToolCalls.some((tc) => tc.status === 'calling'),
+                  waiting: !effectiveRunActive && lastAnswerAwaitsUser(messages),
+                  failed: managed?.status === 'error' || !!error,
+                }}
+                showThinkingLabel={
+                  effectiveIsStreaming &&
+                  !effectiveStreamText &&
+                  !effectiveStreamReasoning &&
+                  effectiveStreamToolCalls.length === 0
+                }
+              />
+            )}
+
             <div ref={messagesEndRef} />
 
             {/* Jump-to-latest — sticks to the bottom of the scroll viewport */}
@@ -1546,6 +1566,17 @@ function ConversationSuggestions({
   );
 }
 
+/** The transcript ends on an answer whose ask_user form nobody has answered yet. */
+function lastAnswerAwaitsUser(
+  messages: ReadonlyArray<{ role: string; pipeline?: Array<{ tool?: string; output?: unknown }> | null }>,
+): boolean {
+  const last = messages[messages.length - 1];
+  if (!last || last.role !== 'assistant') return false;
+  return !!last.pipeline?.some(
+    (s) => s.tool === 'ask_user' || (s.output as { type?: string } | null | undefined)?.type === 'ask_user',
+  );
+}
+
 // ─── Profile Empty State ───────────────────────────────
 
 /**
@@ -1565,11 +1596,10 @@ function ProfileEmptyState({ profile }: { profile?: api.Profile }) {
 
   return (
     <div className="mx-auto flex max-w-xl flex-col items-center gap-3 px-2 py-10 text-center md:py-16">
-      <SproutyAvatar
-        {...profileToSprouty(profile || ({ id: 'team', name: '', tools: [] } as any))}
-        state="idle"
+      <PlantAvatar
+        {...(profile ? profileAvatarProps(profile) : { avatar: null, stableId: DEFAULT_AGENT_ID })}
         size="xl"
-        animate
+        intro
       />
       <div>
         <h3 className="text-lg font-medium text-fg-secondary">

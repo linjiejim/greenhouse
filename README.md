@@ -150,7 +150,7 @@ same script doubles as an end-to-end smoke tour (see [Development](#development)
 - **Workspace branding & runtime config** — rebrand from the web (name, logo, theme tokens) and
   manage runtime credentials (LLM / media / search) in Administration; values live in the
   database with env-var fallback and apply without a restart, from the login screen on.
-- **Sprouty** — the mascot is a parametric SVG; members design their own agent look.
+- **Plant avatars** — the assistant and every agent are flat geometric plants (16 species, 7 tints) whose face follows what they are doing; members' connected agents get one by client.
 
 Roles: **super > team**, plus per-user feature flags and platform policies that gate optional
 modules. Auth is fail-closed — the server refuses to start without `TOKEN_SIGNING_KEY`, and
