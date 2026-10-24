@@ -20,7 +20,7 @@ import { withTimeout } from '../lib/timeout';
 import { useFieldWords } from '../tables/use-field-words';
 import { makeStyles, space, typo, useTheme, weight } from '../theme';
 import { EmptyState, LoadingState } from '../ui/empty';
-import { ListRow, ListSection } from '../ui/list';
+import { Row, Section } from '../ui/list';
 import { ScreenChrome } from '../ui/split';
 
 /** How long the member lookup for people's names may take before the record keeps the names it has. */
@@ -113,12 +113,12 @@ export function RecordView({
             </Text>
             {resource.offline ? <Text style={styles.meta}>{t('common.savedCopy')}</Text> : null}
             <Text style={styles.meta}>{t('tables.updated', { when: relativeTimeNow(data.record.updated_at) })}</Text>
-            <ListSection header={t('tables.fields')}>
+            <Section header={t('tables.fields')}>
               {fields.map((field) => {
                 const text = masked ? t('tables.masked') : displayValue(field, cellValue(field, data.record), words);
-                return <ListRow key={field.id} title={field.name} subtitle={text || '—'} subtitleLines={8} accessory="none" />;
+                return <Row key={field.id} title={field.name} subtitle={text || '—'} subtitleLines={8} accessory="none" />;
               })}
-            </ListSection>
+            </Section>
           </>
         )}
       </ScrollView>

@@ -14,7 +14,7 @@ import { useT } from '../../src/lib/i18n';
 import { relativeTimeNow } from '../../src/lib/time-words';
 import { makeStyles, mono, radius, space, squircle, typo, useTheme, weight } from '../../src/theme';
 import { EmptyState, LoadingState } from '../../src/ui/empty';
-import { Badge, ListRow, ListSection } from '../../src/ui/list';
+import { Badge, Row, Section } from '../../src/ui/list';
 
 function pretty(value: unknown): string {
   if (value === null || value === undefined) return '';
@@ -58,25 +58,25 @@ export default function AgentWriteScreen() {
     <View style={styles.root}>
       <Stack.Screen options={{ title: write.client_name }} />
       <ScrollView contentInsetAdjustmentBehavior="automatic" contentContainerStyle={styles.content}>
-        <ListSection>
-          <ListRow
+        <Section>
+          <Row
             title={t('agent.action')}
             value={write.action ?? write.tool_id}
             accessory={<Badge label={t(`agent.status.${write.status}`)} tone={WRITE_TONE[write.status]} />}
           />
-          <ListRow title={t('agent.target')} subtitle={write.target_label ?? t('agent.targetHidden')} accessory="none" />
-          <ListRow title={t('agent.client')} value={write.client_name} accessory="none" />
-          <ListRow title={t('agent.tool')} value={write.tool_id} accessory="none" />
-          <ListRow
+          <Row title={t('agent.target')} subtitle={write.target_label ?? t('agent.targetHidden')} accessory="none" />
+          <Row title={t('agent.client')} value={write.client_name} accessory="none" />
+          <Row title={t('agent.tool')} value={write.tool_id} accessory="none" />
+          <Row
             title={t('agent.risk')}
             value={[write.risk.toUpperCase(), write.basis ? t(`agent.basis.${write.basis}`) : ''].filter(Boolean).join(' · ')}
             accessory="none"
           />
-          <ListRow title={t('agent.started')} value={relativeTimeNow(write.created_at)} accessory="none" />
+          <Row title={t('agent.started')} value={relativeTimeNow(write.created_at)} accessory="none" />
           {write.settled_at ? (
-            <ListRow title={t('agent.settled')} value={relativeTimeNow(write.settled_at)} accessory="none" />
+            <Row title={t('agent.settled')} value={relativeTimeNow(write.settled_at)} accessory="none" />
           ) : null}
-        </ListSection>
+        </Section>
         {blocks
           .filter(([, text]) => text)
           .map(([title, text]) => (

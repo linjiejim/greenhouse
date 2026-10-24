@@ -25,7 +25,7 @@ import { alertError } from '../src/ui/dialogs';
 import { DirectorySearch, useDirectoryFilter } from '../src/ui/directory-search';
 import { EmptyState, LoadingState } from '../src/ui/empty';
 import { notifySuccess } from '../src/ui/haptics';
-import { ListRow, ListSectionHeader, type RowPosition } from '../src/ui/list';
+import { Row, SectionHeader, rowPosition, type RowPosition } from '../src/ui/list';
 import { Segmented } from '../src/ui/segmented';
 import { toast } from '../src/ui/toast';
 import { toolbarIcon } from '../src/ui/toolbar-icon';
@@ -35,9 +35,6 @@ type Row =
   | { key: string; type: 'failed' }
   | { key: string; type: 'folder'; id: number; name: string; shelf: FilesShelf; position: RowPosition }
   | { key: string; type: 'file'; id: number; name: string; subtitle: string; position: RowPosition };
-
-const position = (index: number, count: number): RowPosition =>
-  count === 1 ? 'only' : index === 0 ? 'first' : index === count - 1 ? 'last' : 'middle';
 
 export default function Files() {
   const params = useLocalSearchParams<{ shelf?: string; folder?: string; file?: string }>();
@@ -114,14 +111,14 @@ export default function Files() {
         setHits(
           all.map((hit, index) =>
             hit.kind === 'folder'
-              ? { key: `hf-${hit.id}`, type: 'folder', id: hit.id, name: hit.name, shelf: hit.shelf, position: position(index, all.length) }
+              ? { key: `hf-${hit.id}`, type: 'folder', id: hit.id, name: hit.name, shelf: hit.shelf, position: rowPosition(index, all.length) }
               : {
                   key: `hd-${hit.id}`,
                   type: 'file',
                   id: hit.id,
                   name: hit.name,
                   subtitle: `${t(`files.shelf.${hit.shelf}`)} · ${formatBytes(hit.size)}`,
-                  position: position(index, all.length),
+                  position: rowPosition(index, all.length),
                 },
           ),
         );
@@ -147,7 +144,7 @@ export default function Files() {
             id: f.id,
             name: f.name,
             subtitle: `${formatBytes(f.size)} · ${relativeTimeNow(f.updated_at)}`,
-            position: position(i, lately.length),
+            position: rowPosition(i, lately.length),
           }),
         ),
       );
@@ -162,7 +159,7 @@ export default function Files() {
     const count = folders.length + files.length;
     return [
       ...out,
-      ...folders.map((f, i): Row => ({ key: `f-${f.id}`, type: 'folder', id: f.id, name: f.name, shelf, position: position(i, count) })),
+      ...folders.map((f, i): Row => ({ key: `f-${f.id}`, type: 'folder', id: f.id, name: f.name, shelf, position: rowPosition(i, count) })),
       ...files.map(
         (f, i): Row => ({
           key: `d-${f.id}`,
@@ -170,7 +167,7 @@ export default function Files() {
           id: f.id,
           name: f.name,
           subtitle: `${formatBytes(f.size)} · ${relativeTimeNow(f.updated_at)}`,
-          position: position(folders.length + i, count),
+          position: rowPosition(folders.length + i, count),
         }),
       ),
     ];
@@ -238,7 +235,7 @@ export default function Files() {
         }
         renderItem={({ item }) =>
           item.type === 'header' ? (
-            <ListSectionHeader title={item.title} />
+            <SectionHeader title={item.title} />
           ) : item.type === 'failed' ? (
             <EmptyState
               icon="alert"
@@ -248,7 +245,7 @@ export default function Files() {
               style={styles.inline}
             />
           ) : item.type === 'folder' ? (
-            <ListRow
+            <Row
               title={item.name}
               icon="folder"
               accessory="chevron"
@@ -256,7 +253,7 @@ export default function Files() {
               onPress={() => router.push({ pathname: '/files', params: { shelf: item.shelf, folder: String(item.id) } })}
             />
           ) : (
-            <ListRow
+            <Row
               title={item.name}
               subtitle={item.subtitle}
               icon="file"

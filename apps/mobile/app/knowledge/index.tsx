@@ -25,7 +25,7 @@ import { recentDocs } from '../../src/store/knowledge';
 import { makeStyles, space, useTheme } from '../../src/theme';
 import { DirectorySearch, useDirectoryFilter } from '../../src/ui/directory-search';
 import { EmptyState, LoadingState } from '../../src/ui/empty';
-import { ListRow, ListSectionHeader } from '../../src/ui/list';
+import { Row, SectionHeader } from '../../src/ui/list';
 import { Segmented } from '../../src/ui/segmented';
 
 type Shelf = KbShelf | 'shared';
@@ -144,7 +144,7 @@ export default function Knowledge() {
         refreshing={resource.loading && !!resource.data}
         onRefresh={() => void resource.refresh()}
         renderItem={({ item }) => {
-          if (item.type === 'header') return <ListSectionHeader title={item.title} />;
+          if (item.type === 'header') return <SectionHeader title={item.title} />;
           if (item.type === 'loading') return <LoadingState style={styles.inline} />;
           if (item.type === 'failed')
             return (
@@ -158,7 +158,7 @@ export default function Knowledge() {
             );
           if (item.type === 'folder')
             return (
-              <ListRow
+              <Row
                 title={item.folder.name}
                 icon="folder"
                 accessory="chevron"
@@ -169,7 +169,7 @@ export default function Knowledge() {
               />
             );
           return (
-            <ListRow
+            <Row
               title={item.title}
               subtitle={item.subtitle}
               icon="file"

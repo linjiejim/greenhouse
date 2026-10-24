@@ -25,7 +25,7 @@ import type { Project } from '../../src/shared/greenhouse-types';
 import { useAuth } from '../../src/store/auth';
 import { makeStyles, space, typo, useTheme } from '../../src/theme';
 import { EmptyState, LoadingState } from '../../src/ui/empty';
-import { ListRow, ListSectionHeader, type RowPosition } from '../../src/ui/list';
+import { Row, SectionHeader, rowPosition, type RowPosition } from '../../src/ui/list';
 import { Segmented } from '../../src/ui/segmented';
 
 type Tab = 'mine' | 'all';
@@ -33,9 +33,6 @@ type Row =
   | { key: string; type: 'header'; title: string }
   | { key: string; type: 'task'; task: MyTask; bucket: DueBucket; position: RowPosition }
   | { key: string; type: 'project'; project: Project; position: RowPosition };
-
-const position = (index: number, count: number): RowPosition =>
-  count === 1 ? 'only' : index === 0 ? 'first' : index === count - 1 ? 'last' : 'middle';
 
 export default function Projects() {
   const params = useLocalSearchParams<{ tab?: string }>();
@@ -68,13 +65,13 @@ export default function Projects() {
       for (const group of groups) {
         out.push({ key: `h-${group.bucket}`, type: 'header', title: t(`projects.dueGroup.${group.bucket}`) });
         group.tasks.forEach((task, i) =>
-          out.push({ key: `t-${task.id}`, type: 'task', task, bucket: group.bucket, position: position(i, group.tasks.length) }),
+          out.push({ key: `t-${task.id}`, type: 'task', task, bucket: group.bucket, position: rowPosition(i, group.tasks.length) }),
         );
       }
       return out;
     }
     const projects = (all.data ?? []).filter((p) => p.status !== 'archived');
-    return projects.map((project, i) => ({ key: `p-${project.id}`, type: 'project', project, position: position(i, projects.length) }));
+    return projects.map((project, i) => ({ key: `p-${project.id}`, type: 'project', project, position: rowPosition(i, projects.length) }));
   }, [tab, mine.data, all.data, t]);
 
   const header = (
@@ -115,12 +112,12 @@ export default function Projects() {
         refreshing={resource.loading && !!resource.data}
         onRefresh={() => void resource.refresh()}
         renderItem={({ item }) => {
-          if (item.type === 'header') return <ListSectionHeader title={item.title} />;
+          if (item.type === 'header') return <SectionHeader title={item.title} />;
           if (item.type === 'task') {
             const { task } = item;
             const due = task.due_date ? calendarDateLabel(task.due_date.slice(0, 10)) : '';
             return (
-              <ListRow
+              <Row
                 title={task.title}
                 subtitle={[due, task.project_title].filter(Boolean).join(' · ')}
                 titleLines={2}
@@ -140,7 +137,7 @@ export default function Projects() {
           const { project } = item;
           const stats = project.stats;
           return (
-            <ListRow
+            <Row
               title={project.title}
               subtitle={[
                 t(`projects.projectStatus.${project.status}`),

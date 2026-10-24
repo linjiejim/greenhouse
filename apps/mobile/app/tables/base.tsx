@@ -10,10 +10,7 @@ import { useT } from '../../src/lib/i18n';
 import type { TableDef } from '../../src/shared/greenhouse-types';
 import { makeStyles, space, useTheme } from '../../src/theme';
 import { EmptyState, LoadingState } from '../../src/ui/empty';
-import { ListRow, ListSectionFooter, type RowPosition } from '../../src/ui/list';
-
-const position = (index: number, count: number): RowPosition =>
-  count === 1 ? 'only' : index === 0 ? 'first' : index === count - 1 ? 'last' : 'middle';
+import { Row, SectionFooter, rowPosition } from '../../src/ui/list';
 
 export default function Base() {
   const { id: raw } = useLocalSearchParams<{ id?: string }>();
@@ -52,17 +49,17 @@ export default function Base() {
         refreshing={resource.loading && !!resource.data}
         onRefresh={() => void resource.refresh()}
         renderItem={({ item, index }) => (
-          <ListRow
+          <Row
             title={item.name}
             subtitle={item.description || undefined}
             icon="table"
             accessory="chevron"
-            position={position(index, tables.length)}
+            position={rowPosition(index, tables.length)}
             onPress={() => router.push({ pathname: '/tables/table', params: { base: String(id), id: String(item.id) } })}
           />
         )}
         ListFooterComponent={
-          resource.data?.role ? <ListSectionFooter text={t('tables.yourRole', { role: t(`tables.role.${resource.data.role}`) })} /> : null
+          resource.data?.role ? <SectionFooter text={t('tables.yourRole', { role: t(`tables.role.${resource.data.role}`) })} /> : null
         }
         ListEmptyComponent={
           !resource.data ? (

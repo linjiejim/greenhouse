@@ -20,14 +20,11 @@ import { dueTone, statusIcon, statusTint } from '../../src/projects/look';
 import type { ProjectTask } from '../../src/shared/greenhouse-types';
 import { makeStyles, radius, space, squircle, typo, useTheme } from '../../src/theme';
 import { EmptyState, LoadingState } from '../../src/ui/empty';
-import { Badge, ListRow, ListSectionHeader, type RowPosition } from '../../src/ui/list';
+import { Badge, Row, SectionHeader, rowPosition, type RowPosition } from '../../src/ui/list';
 
 type Row =
   | { key: string; type: 'header'; title: string }
   | { key: string; type: 'task'; task: ProjectTask; position: RowPosition };
-
-const position = (index: number, count: number): RowPosition =>
-  count === 1 ? 'only' : index === 0 ? 'first' : index === count - 1 ? 'last' : 'middle';
 
 export default function ProjectDetailScreen() {
   const { id: raw } = useLocalSearchParams<{ id?: string }>();
@@ -51,7 +48,7 @@ export default function ProjectDetailScreen() {
       const group = tasks.filter((task) => task.status === status);
       if (!group.length) continue;
       out.push({ key: `h-${status}`, type: 'header', title: `${t(`projects.status.${status}`)} · ${group.length}` });
-      group.forEach((task, i) => out.push({ key: `t-${task.id}`, type: 'task', task, position: position(i, group.length) }));
+      group.forEach((task, i) => out.push({ key: `t-${task.id}`, type: 'task', task, position: rowPosition(i, group.length) }));
     }
     return out;
   }, [detail, t]);
@@ -108,11 +105,11 @@ export default function ProjectDetailScreen() {
         refreshing={resource.loading && !!detail}
         onRefresh={() => void resource.refresh()}
         renderItem={({ item }) => {
-          if (item.type === 'header') return <ListSectionHeader title={item.title} />;
+          if (item.type === 'header') return <SectionHeader title={item.title} />;
           const { task } = item;
           const bucket = dueBucket(task.due_date, today);
           return (
-            <ListRow
+            <Row
               title={task.title}
               subtitle={[task.assignee_nickname || t('projects.unassigned'), task.due_date ? calendarDateLabel(task.due_date.slice(0, 10)) : '']
                 .filter(Boolean)

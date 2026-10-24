@@ -16,7 +16,7 @@ import { formatBytes } from '../lib/format';
 import { downloadFile, type CachedFile } from '../lib/share-file';
 import { relativeTimeNow } from '../lib/time-words';
 import { forgetFile, recentFiles } from '../store/offline';
-import { ListRow, ListSection } from '../ui/list';
+import { Row, Section } from '../ui/list';
 import { useT } from '../lib/i18n';
 import { useStations } from '../store/stations';
 import { space, typo, useTheme } from '../theme';
@@ -108,12 +108,12 @@ export function FilePreviewPane({ id, name, embedded }: { id: string; name: stri
           <Text style={{ ...typo.footnote, color: colors.secondaryLabel, marginHorizontal: space.margin + space.xs, marginBottom: space.sm }}>
             {t('files.offlineDetails')}
           </Text>
-          <ListSection>
-            <ListRow title={saved.name} icon="file" accessory="none" titleLines={3} />
-            <ListRow title={t('files.size')} value={formatBytes(saved.size)} accessory="none" />
-            <ListRow title={t('files.updated')} value={relativeTimeNow(saved.updated_at)} accessory="none" />
-            <ListRow title={t('nav.files')} value={t(`files.shelf.${saved.shelf}`)} accessory="none" />
-          </ListSection>
+          <Section>
+            <Row title={saved.name} icon="file" accessory="none" titleLines={3} />
+            <Row title={t('files.size')} value={formatBytes(saved.size)} accessory="none" />
+            <Row title={t('files.updated')} value={relativeTimeNow(saved.updated_at)} accessory="none" />
+            <Row title={t('nav.files')} value={t(`files.shelf.${saved.shelf}`)} accessory="none" />
+          </Section>
           <View style={{ alignItems: 'center', marginTop: space.lg }}>
             <NativeButton label={t('common.retry')} icon="refresh" onPress={() => retry((n) => n + 1)} />
           </View>

@@ -20,7 +20,7 @@ import type { TableRecord, TableRole, TableSchema } from '../../src/shared/green
 import { useFieldWords } from '../../src/tables/use-field-words';
 import { makeStyles, space, useTheme } from '../../src/theme';
 import { EmptyState, LoadingState } from '../../src/ui/empty';
-import { ListRow, ListSectionFooter, type RowPosition } from '../../src/ui/list';
+import { Row, SectionFooter, type RowPosition } from '../../src/ui/list';
 import { toolbarIcon } from '../../src/ui/toolbar-icon';
 
 interface Head {
@@ -144,7 +144,7 @@ export default function TableScreen() {
         onEndReached={() => void loadMore()}
         onEndReachedThreshold={0.5}
         renderItem={({ item, index }) => (
-          <ListRow
+          <Row
             title={recordTitle(fields, item, words)}
             subtitle={subtitle(item)}
             accessory="chevron"
@@ -161,7 +161,7 @@ export default function TableScreen() {
         )}
         ListHeaderComponent={
           head ? (
-            <ListSectionFooter
+            <SectionFooter
               text={[t('tables.recordCount', { n: head.total }), canAddRecords(head.role) || !head.role ? '' : t('tables.viewerOnly')]
                 .filter(Boolean)
                 .join(' · ')}

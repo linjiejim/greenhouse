@@ -31,7 +31,7 @@ import type { IconName } from '../../../src/ui/core';
 import { alertError } from '../../../src/ui/dialogs';
 import { EmptyState, LoadingState } from '../../../src/ui/empty';
 import { selectionTick } from '../../../src/ui/haptics';
-import { ListRow, type RowPosition } from '../../../src/ui/list';
+import { Row, type RowPosition } from '../../../src/ui/list';
 import { toolbarIcon } from '../../../src/ui/toolbar-icon';
 
 /** The notification kinds the server writes, as icons (unknown kinds get the bell). */
@@ -153,7 +153,7 @@ export default function Home() {
         renderItem={({ item, index }) => {
           const body = plainText(item.body, { oneLine: true });
           return (
-            <ListRow
+            <Row
               title={item.title}
               titleLines={2}
               subtitle={body || undefined}

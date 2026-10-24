@@ -11,6 +11,7 @@ import { useEffect } from 'react';
 import { Appearance, Platform, StyleSheet, useColorScheme, type ColorValue, type TextStyle } from 'react-native';
 import { usePrefs } from './store/prefs';
 import { materialPalette } from './theme-m3';
+import { DEFAULT_TEXT_STEP, scaleText, TEXT_STEPS } from './theme/type-scale';
 
 /* ------------------------------ hex mirrors ------------------------------ */
 
@@ -29,12 +30,15 @@ const DARK = Platform.OS === 'android' ? materialPalette(darkHex, 'dark', SEED) 
 export type ThemeColors = { [K in keyof HexPalette]: ColorValue };
 
 /** Stable objects per appearance keep RN content and native Host colors in sync. */
-export function useTheme(): { colors: ThemeColors; hex: HexPalette; isDark: boolean } {
+export function useTheme(): { colors: ThemeColors; hex: HexPalette; isDark: boolean; textScale: number } {
   const scheme = useColorScheme();
   const pref = usePrefs((s) => s.theme);
+  // subscribing re-renders every themed component when the in-app text size changes, so its
+  // makeStyles sheet is rebuilt at the new size (see `typo` below)
+  const textScale = TEXT_STEPS[usePrefs((s) => s.textStep)];
   const isDark = pref === 'dark' || (pref === 'system' && scheme === 'dark');
   const hex = isDark ? DARK : LIGHT;
-  return { colors: hex, hex, isDark };
+  return { colors: hex, hex, isDark, textScale };
 }
 
 /**
@@ -58,12 +62,14 @@ export function useApplyAppearance(): void {
  * Sheets are created once per palette object and cached.
  */
 export function makeStyles<T extends StyleSheet.NamedStyles<T>>(fn: (c: ThemeColors) => T): (c: ThemeColors) => T {
-  const cache = new Map<ThemeColors, T>();
+  const cache = new Map<string, T>();
   return (c: ThemeColors): T => {
-    let s = cache.get(c);
+    // one sheet per palette and text size: `typo` reads the current size while `fn` runs
+    const key = `${c === DARK ? 'dark' : 'light'}:${currentScale}`;
+    let s = cache.get(key);
     if (!s) {
       s = StyleSheet.create(fn(c));
-      cache.set(c, s);
+      cache.set(key, s);
     }
     return s;
   };
@@ -110,12 +116,41 @@ const androidTypo: { [K in keyof typeof iosTypo]: TextStyle } = {
   caption2: { fontSize: 12, lineHeight: 16, fontWeight: '400' },
 };
 
-export const typo = Object.fromEntries(
+type Typo = { [K in keyof typeof iosTypo]: (typeof iosTypo)[K] & { fontFamily: string } };
+
+const baseTypo = Object.fromEntries(
   Object.entries(Platform.OS === 'android' ? androidTypo : iosTypo).map(([role, style]) => [
     role,
     { ...style, fontFamily: 'Nunito' },
   ]),
-) as { [K in keyof typeof iosTypo]: (typeof iosTypo)[K] & { fontFamily: string } };
+) as Typo;
+
+/** The in-app text size multiplier (src/theme/type-scale.ts), kept in step with the prefs store. */
+let currentScale: number = TEXT_STEPS[DEFAULT_TEXT_STEP];
+const scaledTypo = new Map<number, Typo>();
+function typoAt(scale: number): Typo {
+  let t = scaledTypo.get(scale);
+  if (!t) {
+    t = Object.fromEntries(Object.entries(baseTypo).map(([role, style]) => [role, scaleText(style, scale)])) as Typo;
+    scaledTypo.set(scale, t);
+  }
+  return t;
+}
+usePrefs.subscribe((state) => {
+  currentScale = TEXT_STEPS[state.textStep];
+});
+
+/**
+ * The type ramp at the member's in-app text size (React Native adds Dynamic Type on top). Read
+ * it inside makeStyles factories or render, never into module-scope constants: each read
+ * answers the current size. Native bars and SwiftUI forms do not use it and follow the system.
+ */
+export const typo: Typo = new Proxy(baseTypo, {
+  get: (_target, role: string) => typoAt(currentScale)[role as keyof Typo],
+});
+
+/** The ramp at the default size: chrome that follows only the system (tab and nav bar labels). */
+export const systemTypo: Typo = baseTypo;
 
 /** The only font weights in use — name them so call sites read intent. */
 export const weight = {

@@ -17,7 +17,7 @@ import type { ChatSession } from '../../src/shared/greenhouse-types';
 import { makeStyles, space, useTheme } from '../../src/theme';
 import { alertError } from '../../src/ui/dialogs';
 import { EmptyState, LoadingState } from '../../src/ui/empty';
-import { ListRow, type RowPosition } from '../../src/ui/list';
+import { Row, type RowPosition } from '../../src/ui/list';
 import { toolbarIcon } from '../../src/ui/toolbar-icon';
 
 export default function Assistant() {
@@ -106,7 +106,7 @@ export default function Assistant() {
         onEndReached={() => void loadMore()}
         onEndReachedThreshold={0.5}
         renderItem={({ item, index }) => (
-          <ListRow
+          <Row
             title={item.title?.trim() || t('assistant.untitled')}
             subtitle={relativeTimeNow(item.updated_at)}
             icon="msg"

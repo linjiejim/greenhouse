@@ -13,10 +13,7 @@ import { useT } from '../../src/lib/i18n';
 import type { TableBase } from '../../src/shared/greenhouse-types';
 import { makeStyles, space, useTheme } from '../../src/theme';
 import { EmptyState, LoadingState } from '../../src/ui/empty';
-import { ListRow, type RowPosition } from '../../src/ui/list';
-
-const position = (index: number, count: number): RowPosition =>
-  count === 1 ? 'only' : index === 0 ? 'first' : index === count - 1 ? 'last' : 'middle';
+import { Row, rowPosition } from '../../src/ui/list';
 
 export default function Tables() {
   const t = useT();
@@ -41,13 +38,13 @@ export default function Tables() {
         refreshing={resource.loading && !!resource.data}
         onRefresh={() => void resource.refresh()}
         renderItem={({ item, index }) => (
-          <ListRow
+          <Row
             title={item.name}
             subtitle={item.description || undefined}
             icon="table"
             value={item.role ? t(`tables.role.${item.role}`) : undefined}
             accessory="chevron"
-            position={position(index, bases.length)}
+            position={rowPosition(index, bases.length)}
             onPress={() => router.push({ pathname: '/tables/base', params: { id: String(item.id) } })}
           />
         )}

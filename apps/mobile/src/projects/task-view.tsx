@@ -25,7 +25,7 @@ import { makeStyles, radius, space, squircle, typo, useTheme, weight } from '../
 import { alertError, promptText } from '../ui/dialogs';
 import { EmptyState, LoadingState } from '../ui/empty';
 import { notifySuccess, selectionTick } from '../ui/haptics';
-import { Badge, ListRow, ListSection } from '../ui/list';
+import { Badge, Row, Section } from '../ui/list';
 import { NativeMenu } from '../ui/menu';
 import { toast } from '../ui/toast';
 import { ScreenChrome } from '../ui/split';
@@ -184,7 +184,7 @@ export function TaskView({
             <Text style={styles.title} accessibilityRole="header" selectable>
               {task.title}
             </Text>
-            <ListSection>
+            <Section>
               <NativeMenu
                 items={TASK_STATUSES.map((status) => ({
                   id: status,
@@ -196,7 +196,7 @@ export function TaskView({
                 onSelect={(value) => void changeStatus(value as TaskStatus)}
                 fill
               >
-                <ListRow
+                <Row
                   title={t('projects.statusLabel')}
                   value={t(`projects.status.${task.status}`)}
                   icon={statusIcon(task.status)}
@@ -205,13 +205,13 @@ export function TaskView({
                   menuTrigger
                 />
               </NativeMenu>
-              <ListRow
+              <Row
                 title={t('projects.assignee')}
                 value={task.assignee_nickname || t('projects.unassigned')}
                 icon="person"
                 accessory="none"
               />
-              <ListRow
+              <Row
                 title={t('projects.due')}
                 value={task.due_date ? calendarDateLabel(task.due_date.slice(0, 10)) : t('projects.noDue')}
                 icon="clock"
@@ -223,20 +223,20 @@ export function TaskView({
                   )
                 }
               />
-              <ListRow
+              <Row
                 title={t('projects.priorityLabel')}
                 value={t(`projects.priority.${task.priority}`)}
                 icon="filter"
                 accessory="none"
               />
-              <ListRow
+              <Row
                 title={t('projects.project')}
                 value={resource.data?.project.title}
                 icon="checkCircle"
                 accessory="chevron"
                 onPress={() => router.push({ pathname: '/projects/detail', params: { id: String(task.project_id) } })}
               />
-            </ListSection>
+            </Section>
             {task.description ? (
               <View style={styles.block}>
                 <Text style={styles.blockTitle} accessibilityRole="header">

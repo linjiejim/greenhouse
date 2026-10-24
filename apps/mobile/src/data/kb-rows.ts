@@ -8,7 +8,9 @@
 import type { DriveFolder, KbDoc } from '../shared/greenhouse-types';
 import type { RecentDoc } from './recent-docs';
 
-export type Position = 'first' | 'middle' | 'last' | 'only';
+import { rowPosition, type RowPosition } from './row-position';
+
+export type Position = RowPosition;
 
 export type KbRow =
   | { key: string; type: 'header'; title: string }
@@ -22,7 +24,7 @@ export const RECENT_ON_SHELF = 5;
 
 export function positioned<T>(items: readonly T[], make: (item: T, position: Position) => KbRow): KbRow[] {
   return items.map((item, index) =>
-    make(item, items.length === 1 ? 'only' : index === 0 ? 'first' : index === items.length - 1 ? 'last' : 'middle'),
+    make(item, rowPosition(index, items.length)),
   );
 }
 

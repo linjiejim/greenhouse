@@ -18,7 +18,7 @@ import { useT, type TranslationKey } from '../../src/lib/i18n';
 import { relativeTimeNow } from '../../src/lib/time-words';
 import { makeStyles, radius, space, squircle, typo, useTheme, weight } from '../../src/theme';
 import { EmptyState, LoadingState } from '../../src/ui/empty';
-import { Badge, ListRow, ListSection, ListSectionFooter, ListSectionHeader } from '../../src/ui/list';
+import { Badge, Row, Section, SectionFooter, SectionHeader } from '../../src/ui/list';
 
 const SERVICES = new Set(['llm', 'vision', 'web_search', 'page_read', 'image_generation', 'computer']);
 
@@ -91,9 +91,9 @@ export default function MyAgents() {
           <LoadingState style={styles.state} />
         )}
         {services.length ? (
-          <ListSection header={t('agent.byService')}>
+          <Section header={t('agent.byService')}>
             {services.map((row) => (
-              <ListRow
+              <Row
                 key={row.key}
                 title={SERVICES.has(row.key) ? t(`agent.service.${row.key}` as TranslationKey) : row.label || row.key}
                 subtitle={t('agent.calls', { n: row.calls })}
@@ -101,15 +101,15 @@ export default function MyAgents() {
                 accessory="none"
               />
             ))}
-          </ListSection>
+          </Section>
         ) : null}
 
         {/* ── recent writes ── */}
         {writes.data ? (
           writes.data.writes.length ? (
-            <ListSection header={t('agent.writes')}>
+            <Section header={t('agent.writes')}>
               {writes.data.writes.map((write) => (
-                <ListRow
+                <Row
                   key={write.request_id}
                   title={`${write.client_name} · ${write.action ?? write.tool_id}`}
                   subtitle={[write.target_label ?? t('agent.targetHidden'), relativeTimeNow(write.created_at)].join(' · ')}
@@ -118,7 +118,7 @@ export default function MyAgents() {
                   onPress={() => router.push({ pathname: '/agent/write', params: { id: write.request_id } })}
                 />
               ))}
-            </ListSection>
+            </Section>
           ) : (
             <EmptyState icon="sparkle" title={t('agent.writesEmpty')} message={t('agent.writesHint')} />
           )
@@ -129,10 +129,10 @@ export default function MyAgents() {
         {/* ── gateway keys ── */}
         {gateway.data ? (
           <>
-            <ListSection header={t('agent.keys')}>
+            <Section header={t('agent.keys')}>
               {gateway.data.keys.length ? (
                 gateway.data.keys.map((key) => (
-                  <ListRow
+                  <Row
                     key={key.id}
                     title={key.name}
                     subtitle={[
@@ -151,10 +151,10 @@ export default function MyAgents() {
                   />
                 ))
               ) : (
-                <ListRow title={t('agent.keysEmpty')} icon="key" accessory="none" />
+                <Row title={t('agent.keysEmpty')} icon="key" accessory="none" />
               )}
-            </ListSection>
-            <ListSectionFooter text={gateway.data.enabled ? t('agent.keysHint') : t('agent.gatewayOff')} />
+            </Section>
+            <SectionFooter text={gateway.data.enabled ? t('agent.keysHint') : t('agent.gatewayOff')} />
           </>
         ) : loadView(gateway) === 'failed' ? (
           <SectionFailed title={t('agent.keys')} onRetry={() => void gateway.refresh()} />
@@ -169,7 +169,7 @@ function SectionFailed({ title, onRetry }: { title: string; onRetry: () => void 
   const t = useT();
   return (
     <View>
-      <ListSectionHeader title={title} />
+      <SectionHeader title={title} />
       <EmptyState icon="alert" title={t('agent.partFailed')} onRetry={onRetry} style={{ paddingVertical: space.md }} />
     </View>
   );
