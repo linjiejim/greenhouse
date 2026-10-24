@@ -80,6 +80,29 @@ const record = (value: unknown): Record<string, unknown> | null =>
 
 const str = (value: unknown): string | undefined => (typeof value === 'string' && value.trim() ? value : undefined);
 
+const PART_COLUMNS = [
+  ['pipeline', 'pipeline'],
+  ['images', 'images'],
+  ['references', 'references_'],
+] as const;
+
+/**
+ * A saved message with its tool steps, pictures and cited knowledge in the columns this module
+ * reads. A 3.0 station keeps them in one `parts` object (`{ pipeline, images, references }`);
+ * an older one sends `pipeline`, `images` and `references_` as JSON text, which wins when present.
+ */
+export function withMessageParts<M extends { pipeline?: string | null; images?: string | null; references_?: string | null }>(
+  message: M & { parts?: unknown },
+): M {
+  const parts = record(message.parts);
+  if (!parts) return message;
+  const next: M = { ...message };
+  for (const [from, to] of PART_COLUMNS) {
+    if (next[to] == null && Array.isArray(parts[from])) next[to] = JSON.stringify(parts[from]) as M[typeof to];
+  }
+  return next;
+}
+
 /** A JSON-text column (or an already parsed value) as an array; anything else is empty. */
 export function jsonArray(value: unknown): unknown[] {
   if (Array.isArray(value)) return value;

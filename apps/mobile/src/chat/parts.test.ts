@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { askUserAnswer, attachmentsFence, citedObjects, messageImages, pipelineSteps, replyCards, splitAttachments } from './parts';
+import { askUserAnswer, attachmentsFence, citedObjects, messageImages, pipelineSteps, replyCards, splitAttachments, withMessageParts } from './parts';
 
 describe('a member’s message', () => {
   it('splits the attachments fence from the words', () => {
@@ -57,5 +57,26 @@ describe('a reply’s cards', () => {
   it('answers an ask_user card in the web’s words', () => {
     const ask = { title: 'Q', questions: [{ id: 'a', label: 'Size', type: 'single_choice' as const, options: [{ value: 'l', label: 'Large' }] }, { id: 'b', label: 'Note', type: 'text' as const }] };
     expect(askUserAnswer(ask, { a: 'l' })).toBe('Here are my answers to your questions:\n\n**1. Size**: Large (l)\n**2. Note**: (not answered)');
+  });
+});
+
+describe('a saved message', () => {
+  it('reads tool steps, pictures and references from a 3.0 station’s parts object', () => {
+    const step = { step: 1, tool: 'ask_user', input: {}, output: { type: 'ask_user', title: 'T', questions: [{ id: 'q', label: 'Q' }] } };
+    const message = withMessageParts({
+      id: 'm1',
+      content: 'hi',
+      parts: { pipeline: [step], images: [{ id: 'a', url: '/api/upload/a.jpg' }], references: [{ slug: 's', title: 'S', type: 'wiki' }] },
+    } as { id: string; content: string; pipeline?: string | null; images?: string | null; references_?: string | null; parts?: unknown });
+    expect(pipelineSteps(message.pipeline).map((s) => s.tool)).toEqual(['ask_user']);
+    expect(messageImages(message.images)).toEqual([{ id: 'a', url: '/api/upload/a.jpg' }]);
+    expect(JSON.parse(message.references_ ?? '[]')).toEqual([{ slug: 's', title: 'S', type: 'wiki' }]);
+  });
+
+  it('keeps the JSON-text columns an older station sends', () => {
+    const message = { id: 'm2', pipeline: '[]', parts: { pipeline: [{ step: 1, tool: 'x' }] } };
+    expect(withMessageParts(message).pipeline).toBe('[]');
+    const plain = { id: 'm3', pipeline: null };
+    expect(withMessageParts(plain)).toBe(plain);
   });
 });

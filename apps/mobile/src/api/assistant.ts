@@ -6,6 +6,7 @@
  * src/chat/send.ts. Every call answers an `ApiResult`.
  */
 
+import { withMessageParts } from '../chat/parts';
 import type { MessagePage } from '../data/transcript';
 import type { ChatMessage, ChatSession, SearchGroup } from '../shared/greenhouse-types';
 import { del, get, patch, post, seg } from './client';
@@ -28,8 +29,10 @@ export const getSessionInfo = (id: string) =>
   get<{ session: ChatSession }>(`/api/sessions/${seg(id)}`, { include_messages: 0 });
 
 /** The latest page of messages, or the page before `beforeSeq`. */
-export const getMessages = (id: string, beforeSeq?: number) =>
-  get<MessagePage<ChatMessage>>(`/api/sessions/${seg(id)}/messages`, { limit: 50, before_seq: beforeSeq });
+export const getMessages = async (id: string, beforeSeq?: number) => {
+  const result = await get<MessagePage<ChatMessage>>(`/api/sessions/${seg(id)}/messages`, { limit: 50, before_seq: beforeSeq });
+  return result.ok ? { ...result, data: { ...result.data, messages: result.data.messages.map(withMessageParts) } } : result;
+};
 
 /** Whether the session has a reply being written (generation outlives the request). */
 export const chatRun = (sessionId: string) =>
