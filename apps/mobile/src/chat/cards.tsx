@@ -31,6 +31,7 @@ import { HIT, makeStyles, radius, space, squircle, typo, useTheme, weight } from
 import { NativeButton } from '../ui/button';
 import { Icon, Spinner, Touchable, type IconName } from '../ui/core';
 import { alertError } from '../ui/dialogs';
+import { Chip } from '../ui/chip';
 import { FileIcon } from '../ui/file-icon';
 import { useFontScaleKey } from '../ui/font-scale';
 import { notifySuccess, selectionTick } from '../ui/haptics';
@@ -169,17 +170,7 @@ export function FileCard({ name, detail, onPress }: { name: string; detail?: str
 
 /** A file attached to a message of mine: a light capsule, same tap. */
 export function AttachmentChip({ name, size, onPress }: { name: string; size?: number; onPress: () => void }) {
-  const { colors: c } = useTheme();
-  const styles = useStyles(c);
-  return (
-    <Touchable onPress={onPress} style={styles.chip} accessibilityRole="button" accessibilityLabel={name}>
-      <FileIcon name={name} size={13} />
-      <Text numberOfLines={1} ellipsizeMode="middle" style={styles.chipName}>
-        {name}
-      </Text>
-      {size != null ? <Text style={styles.chipSize}>{formatBytes(size)}</Text> : null}
-    </Touchable>
-  );
+  return <Chip icon={<FileIcon name={name} size={13} />} label={name} tail={size != null ? formatBytes(size) : undefined} onPress={onPress} />;
 }
 
 /** A row of attached files under a message, scrolling sideways when they do not fit. */
@@ -429,8 +420,11 @@ export function ObjectCards({ objects }: { objects: CitedObject[] }) {
   return (
     <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.objects} style={styles.objectsRow}>
       {objects.map((object) => (
-        <Touchable
+        <Chip
           key={`${object.type}-${object.id}`}
+          tone="accent"
+          icon={object.type === 'file' ? <FileIcon name={object.title} size={14} /> : <Icon name={OBJECT_ICON[object.type]} size={14} color={c.accentText} />}
+          label={object.title}
           onPress={() =>
             object.type === 'task' && object.projectId
               ? openObject({ kind: 'task', projectId: object.projectId, id: object.id })
@@ -440,15 +434,7 @@ export function ObjectCards({ objects }: { objects: CitedObject[] }) {
                   ? openObject({ kind: 'file', id: object.id, name: object.title })
                   : openObject({ kind: 'doc', id: object.id })
           }
-          style={styles.object}
-          accessibilityRole="button"
-          accessibilityLabel={object.title}
-        >
-          {object.type === 'file' ? <FileIcon name={object.title} size={14} /> : <Icon name={OBJECT_ICON[object.type]} size={14} color={c.accentText} />}
-          <Text numberOfLines={1} ellipsizeMode="middle" style={styles.objectText}>
-            {object.title}
-          </Text>
-        </Touchable>
+        />
       ))}
     </ScrollView>
   );
@@ -537,18 +523,6 @@ const useStyles = makeStyles((c) => ({
   fileTexts: { flex: 1, minWidth: 0 },
   fileName: { ...typo.subheadline, fontWeight: weight.semibold, color: c.label },
   fileDetail: { ...typo.footnote, color: c.secondaryLabel, marginTop: space.xxs },
-  chip: {
-    minHeight: HIT - space.sm,
-    maxWidth: 260,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: space.xs,
-    paddingHorizontal: space.md,
-    borderRadius: radius.full,
-    backgroundColor: c.tertiaryFill,
-  },
-  chipName: { ...typo.footnote, color: c.label, flexShrink: 1 },
-  chipSize: { ...typo.caption1, color: c.secondaryLabel },
   attachRow: { marginTop: space.xs, flexGrow: 0 },
   attachInner: { gap: space.sm },
   images: { flexDirection: 'row', flexWrap: 'wrap', gap: space.xs, marginTop: space.xs },
@@ -559,18 +533,6 @@ const useStyles = makeStyles((c) => ({
   op: { ...typo.footnote, color: c.label },
   objectsRow: { flexGrow: 0, marginTop: space.sm },
   objects: { gap: space.sm },
-  object: {
-    maxWidth: 240,
-    minHeight: HIT - space.sm,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: space.xs,
-    paddingHorizontal: space.md,
-    borderRadius: radius.md,
-    backgroundColor: c.accentFill,
-    ...squircle,
-  },
-  objectText: { ...typo.footnote, fontWeight: weight.semibold, color: c.accentText, flexShrink: 1 },
   tools: { alignSelf: 'flex-start', marginBottom: space.sm, borderRadius: radius.md, backgroundColor: c.tertiaryFill, ...squircle },
   toolsHead: { flexDirection: 'row', alignItems: 'center', gap: space.xs, paddingHorizontal: space.md, minHeight: HIT - space.sm },
   toolsText: { ...typo.footnote, color: c.secondaryLabel },

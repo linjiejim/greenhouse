@@ -1,6 +1,6 @@
 /**
  * The notification center on the phone (Zustand): the list, the unread count (the app icon
- * badge and the drawer badge read it) and read marks.
+ * badge and the bell badge read it) and read marks.
  *
  * - Cache first: when a member signs in or the app starts, the offline copy of their list
  *   (../data/disk-cache.ts) is shown at once; the network answer replaces it and is saved again.

@@ -1,8 +1,7 @@
 /**
  * What the photo library and the camera are opened with for a Files upload. React-free
- * (./picker-options.test.ts). The camera takes photos only: recording video needs the microphone
- * permission, which the app does not ask for (app.json `microphonePermission: false`), and asking
- * the camera for videos then fails before it opens.
+ * (./picker-options.test.ts). The camera takes photos only (uploads are photos and files; the
+ * microphone permission in app.json is there for hold-to-talk dictation, never for recording).
  */
 
 export type MediaSource = 'photos' | 'camera';

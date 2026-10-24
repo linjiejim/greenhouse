@@ -55,5 +55,6 @@ export function formatTick(value: number): string {
   return `${sign}${trim(abs)}`;
 }
 
+// data colors: chart series must stay apart in both schemes (design guard: data colors are allowed)
 export const CHART_COLORS = ['#6c995e', '#3f6f8a', '#c8881f', '#9b6bd6', '#c4503e', '#3aa0a0', '#d6792e', '#5b6b82'];
 export const PLOT_H = 168;

@@ -1,5 +1,5 @@
 /**
- * Settings → 通知 (`/settings/notifications`, a large-title page in the settings stack). A SwiftUI
+ * 「我」 → 通知 (`/me/notifications`, a large-title page in the 「我」 stack). A SwiftUI
  * Form (the behaviour is src/settings/use-push-settings.ts):
  *
  *  - 这台手机: pushes on this station (off unregisters the phone here; each station is set

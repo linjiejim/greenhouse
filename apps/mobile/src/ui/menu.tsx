@@ -69,7 +69,7 @@ export function NativeMenu({
    */
   fill?: boolean;
   /**
-   * Known trigger width (e.g. drawer rows, full-width bubbles). Skips the
+   * Known trigger width (e.g. full-width bubbles). Skips the
    * measure-then-reparent pass, so the child subtree mounts once.
    */
   width?: number;

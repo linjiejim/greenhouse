@@ -17,7 +17,8 @@ import { useSessions } from '../src/store/sessions';
 import { makeStyles, space, typo, useTheme } from '../src/theme';
 import { promptText } from '../src/ui/dialogs';
 import { DirectorySearch, useDirectoryFilter } from '../src/ui/directory-search';
-import { EmptyState, LoadingState } from '../src/ui/empty';
+import { EmptyState } from '../src/ui/empty';
+import { Skeleton } from '../src/ui/skeleton';
 import { Row, rowPosition } from '../src/ui/list';
 import { SheetScreen } from '../src/ui/screen';
 
@@ -68,7 +69,7 @@ export default function Conversations() {
   const empty = useMemo(
     () =>
       status === 'empty' ? (
-        <LoadingState style={styles.state} />
+        <Skeleton rows={8} />
       ) : status === 'error' ? (
         <EmptyState icon="alert" title={t('assistant.loadFailed')} onRetry={() => void useSessions.getState().refresh()} style={styles.state} />
       ) : (

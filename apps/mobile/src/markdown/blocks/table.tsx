@@ -4,7 +4,7 @@
  * quiet expand glyph pinned to the header row's trailing corner that opens the
  * whole grid on the `/table` modal (handed over in memory via
  * src/lib/handoff.ts, kind `table`). Wide grids scroll horizontally in an
- * `HScroll` (keeps the swipe-anywhere drawer working); the header row is an
+ * `HScroll` (keeps the back gesture working); the header row is an
  * opaque fill, so the pinned glyph sits on a matching backdrop (a short fade on
  * its leading edge) that scrolled header text slides under, and the last
  * column's header keeps room for it at the end of the scroll.
@@ -139,7 +139,7 @@ export function TableGrid({
           </View>
         ))}
       </View>
-      <HScroll yieldToDrawer={!big}>
+      <HScroll yieldAtStart={!big}>
         <View>
           <View style={[styles.tr, styles.trHead]} onLayout={(e) => onHeadHeight?.(e.nativeEvent.layout.height)}>
             {Array.from({ length: cols }, (_, j) => {

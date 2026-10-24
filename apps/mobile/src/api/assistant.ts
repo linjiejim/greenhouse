@@ -3,7 +3,7 @@
  * starting one (the default assistant, `sprouty`), a conversation's title, its messages newest
  * page first (`/messages`, each page in transcript order with a cursor for the page before), and
  * whether a reply is being written. Sending and following a reply stream NDJSON — see
- * src/assistant/send.ts. Every call answers an `ApiResult`.
+ * src/chat/send.ts. Every call answers an `ApiResult`.
  */
 
 import type { MessagePage } from '../data/transcript';

@@ -1,7 +1,7 @@
 /**
  * StationsForm — the body of the stations screen (saved Greenhouse servers),
  * shared by the login screen's sheet (/sheets/stations) and the pushed
- * Settings page (/settings/stations). The behaviour is the shared
+ * 「我」 page (/me/stations). The behaviour is the shared
  * ./use-stations-form.ts; this is the iOS view (Android:
  * ./stations-form.android.tsx). A real SwiftUI Form:
  *

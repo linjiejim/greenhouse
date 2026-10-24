@@ -12,7 +12,7 @@ import { BrandText as Text } from './brand-text.android';
  *    row components in it: `FormNavRow` (drills in), `FormCheckRow` (single
  *    choice, radio button), `FormSwitchRow`, `FormSelectRow` (dropdown menu),
  *    `FormValueRow` (read-only label · value), `FormSegmentedRow`,
- *    `FormActionRow` (an action as a row — 退出登录, 删除), `FormSwatchRow`.
+ *    `FormActionRow` (an action as a row — 退出登录, 删除).
  *    Each row is a whole Compose `ListItem`: the ripple covers the row and
  *    TalkBack reads it as one element.
  *  - `FormTextField` — a Material outlined text field (floating label,
@@ -32,7 +32,6 @@ import {
   Column,
   DropdownMenu,
   DropdownMenuItem,
-  FlowRow,
   Icon,
   LazyColumn,
   ListItem,
@@ -506,70 +505,6 @@ export function FormActionRow({
   );
 }
 
-const SWATCH = 36;
-
-/**
- * A color palette row (data colors only — tag / project palettes): circles in a
- * wrapping row, the selected one marked with a check (Material's color-picker
- * convention). Tapping the selected swatch clears it when `allowNone`.
- */
-export function FormSwatchRow({
-  colors,
-  value,
-  onChange,
-  nameOf,
-  allowNone = false,
-}: {
-  colors: readonly string[];
-  value: string | null;
-  onChange: (color: string | null) => void;
-  nameOf?: (color: string) => string | null | undefined;
-  allowNone?: boolean;
-}) {
-  const m = useM3();
-  const same = (a: string | null, b: string) => !!a && a.toLowerCase() === b.toLowerCase();
-  return (
-    <ListItem colors={{ containerColor: m.surfaceContainer }} modifiers={[fillMaxWidth()]}>
-      <ListItem.HeadlineContent>
-        <FlowRow
-          horizontalArrangement={{ spacedBy: 14 }}
-          verticalArrangement={{ spacedBy: 14 }}
-          modifiers={[padding(0, 4, 0, 4)]}
-        >
-          {colors.map((col) => {
-            const selected = same(value, col);
-            return (
-              <Box
-                key={col}
-                contentAlignment="center"
-                modifiers={[
-                  size(SWATCH, SWATCH),
-                  clip(Shapes.Circle),
-                  background(col),
-                  semantics({ contentDescription: `${nameOf?.(col) || col}${selected ? ' ✓' : ''}` }),
-                  clickable(() => {
-                    if (selected) {
-                      if (!allowNone) return;
-                      selectionTick();
-                      onChange(null);
-                      return;
-                    }
-                    selectionTick();
-                    onChange(col);
-                  }),
-                ]}
-              >
-                {selected ? <Icon source={toolbarIcon('check')} size={22} tint="#FFFFFF" /> : null}
-              </Box>
-            );
-          })}
-        </FlowRow>
-      </ListItem.HeadlineContent>
-    </ListItem>
-  );
-}
-
-/* ------------------------------ text fields ------------------------------ */
 
 export type FormTextFieldRef = TextFieldRef;
 

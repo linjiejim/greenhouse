@@ -26,9 +26,7 @@ import { brandFont as font } from './brand-font';
  * Host the app owns gets `useLocaleEnv()` so date pickers etc. follow the
  * in-app language (zh UI → "2026年6月1日", not "Jun 1, 2026"). Hosts you create
  * yourself (a bare `Host` around a `DatePicker`) must add it too.
- *
- * Also here: `ColorSwatchPicker` — the palette row for data-driven colors (tag
- * / project colors) inside a Form section.
+
  */
 
 import React from 'react';
@@ -37,21 +35,18 @@ import { Button, Form, HStack, Host, Image, Spacer, Text, VStack } from '@expo/u
 import {
   accessibilityAddTraits,
   accessibilityHidden,
-  accessibilityLabel,
   environment,
   frame,
   foregroundStyle,
   lineLimit,
   listRowBackground,
-  opacity,
   redacted,
   tint,
 } from '@expo/ui/swift-ui/modifiers';
 import type { SymbolViewProps } from 'expo-symbols';
 import { useT } from '../lib/i18n';
 import { usePrefs } from '../store/prefs';
-import { HIT, space, useTheme } from '../theme';
-import { selectionTick } from './haptics';
+import { space, useTheme } from '../theme';
 
 /**
  * SwiftUI `locale` environment for the app language — add to every `Host`'s
@@ -74,79 +69,6 @@ export function NativeForm({ children, style }: { children: React.ReactNode; sty
     >
       <Form>{children}</Form>
     </Host>
-  );
-}
-
-const SWATCH = HIT;
-
-/**
- * A color palette for a Form row (put it straight inside a `Section`): SF
- * Symbol swatches — a filled circle, the selected one ringed — evenly spread
- * in rows of `perRow`. Each swatch is a VoiceOver button with a spoken color
- * name (`nameOf`, falling back to the hex) and the selected trait. For
- * data-driven colors only (tag / project palettes), never UI colors.
- */
-export function ColorSwatchPicker({
-  colors,
-  value,
-  onChange,
-  nameOf,
-  perRow = 5,
-  allowNone = false,
-}: {
-  colors: readonly string[];
-  value: string | null;
-  onChange: (color: string | null) => void;
-  /** Spoken name of a swatch ("绿色"); falls back to the hex. */
-  nameOf?: (color: string) => string | null | undefined;
-  perRow?: number;
-  /** Tapping the selected swatch clears the value (an optional color). */
-  allowNone?: boolean;
-}) {
-  const same = (a: string | null, b: string) => !!a && a.toLowerCase() === b.toLowerCase();
-  const rows: string[][] = [];
-  for (let i = 0; i < colors.length; i += perRow) rows.push(colors.slice(i, i + perRow));
-  const pick = (col: string) => {
-    if (same(value, col)) {
-      if (!allowNone) return;
-      selectionTick();
-      onChange(null);
-      return;
-    }
-    selectionTick();
-    onChange(col);
-  };
-  return (
-    <VStack spacing={14}>
-      {rows.map((row, r) => (
-        <HStack key={r}>
-          {Array.from({ length: perRow }, (_, j) => {
-            const col = row[j];
-            const selected = col ? same(value, col) : false;
-            return (
-              <React.Fragment key={col ?? `pad-${j}`}>
-                {j > 0 ? <Spacer /> : null}
-                {col ? (
-                  <Image
-                    systemName={selected ? 'largecircle.fill.circle' : 'circle.fill'}
-                    size={SWATCH}
-                    color={col}
-                    onPress={() => pick(col)}
-                    modifiers={[
-                      accessibilityLabel(nameOf?.(col) || col),
-                      accessibilityAddTraits(selected ? ['isButton', 'isSelected'] : ['isButton']),
-                    ]}
-                  />
-                ) : (
-                  // keeps a short last row on the same grid as the rows above
-                  <Image systemName="circle.fill" size={SWATCH} modifiers={[opacity(0), accessibilityHidden(true)]} />
-                )}
-              </React.Fragment>
-            );
-          })}
-        </HStack>
-      ))}
-    </VStack>
   );
 }
 

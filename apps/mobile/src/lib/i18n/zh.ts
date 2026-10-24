@@ -84,9 +84,6 @@ export const zh: Catalog = {
     agent: '我的 Agent',
     assistant: '助手',
   },
-  shell: {
-    openDrawer: '打开菜单',
-  },
   markdown: {
     image: '图片',
     copy: '复制',
@@ -118,7 +115,7 @@ export const zh: Catalog = {
     notAvailable: '这个文件不可用',
     empty: '这里还没有文件',
     emptyHint: '点 + 从照片、相机或文件上传。',
-    loadFailed: '档案库加载失败',
+    loadFailed: '云盘加载失败',
     upload: '上传',
     fromPhotos: '照片图库',
     fromCamera: '拍照',

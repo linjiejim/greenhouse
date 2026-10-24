@@ -38,7 +38,8 @@ import { HIT, makeStyles, space, typo, useTheme, weight } from '../../../src/the
 import { AssistantAvatar, Avatar } from '../../../src/ui/avatar';
 import { Icon, Touchable } from '../../../src/ui/core';
 import { alertError, promptText } from '../../../src/ui/dialogs';
-import { EmptyState, LoadingState } from '../../../src/ui/empty';
+import { EmptyState } from '../../../src/ui/empty';
+import { Skeleton } from '../../../src/ui/skeleton';
 import { rowPosition } from '../../../src/ui/list';
 import { toolbarIcon } from '../../../src/ui/toolbar-icon';
 import type { FirstTurn } from '../../chat';
@@ -196,7 +197,7 @@ function Home() {
             ))}
           </View>
         ) : status === 'empty' ? (
-          <LoadingState style={styles.state} />
+          <Skeleton rows={RECENT_ON_HOME} />
         ) : status === 'error' ? (
           <EmptyState icon="alert" title={t('assistant.loadFailed')} onRetry={() => void useSessions.getState().refresh()} style={styles.state} />
         ) : (

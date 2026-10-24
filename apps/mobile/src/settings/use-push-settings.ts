@@ -1,5 +1,5 @@
 /**
- * Settings → 通知, shared by both platforms' pages (app/settings/notifications.tsx — SwiftUI,
+ * Settings → 通知, shared by both platforms' pages (app/me/notifications.tsx — SwiftUI,
  * notifications.android.tsx — Material): this phone on the active station (../push/register.ts)
  * — pushes on or off here, its own switches per kind of notification and previews (off: a push
  * says only what kind of thing happened), and a test push. The in-app list always has

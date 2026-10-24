@@ -6,16 +6,16 @@
  */
 
 import React from 'react';
-import { Text, View } from 'react-native';
 import { formatBytes } from '../lib/format';
-import { classifyLink, type LinkChip as Chip, type ObjectType } from '../lib/link-chip';
+import { classifyLink, type LinkChip as LinkTarget, type ObjectType } from '../lib/link-chip';
 import { useT, type TranslationKey } from '../lib/i18n';
 import { openLink } from '../lib/links';
 import { useOpenObject, useOpenTarget } from '../shell/open-object';
 import { useLinkRef } from '../store/refs';
 import { getApiBase } from '../store/stations';
-import { makeStyles, radius, space, typo, useTheme, weight } from '../theme';
-import { Icon, Touchable, type IconName } from '../ui/core';
+import { useTheme } from '../theme';
+import { Chip } from '../ui/chip';
+import { Icon, type IconName } from '../ui/core';
 import { FileIcon } from '../ui/file-icon';
 
 const TYPE_ICON: Record<ObjectType, IconName> = {
@@ -43,7 +43,7 @@ const TYPE_LABEL: Record<ObjectType, TranslationKey> = {
 };
 
 /** The chip for a link, or null when it stays a plain text link. */
-export type ChipLink = Exclude<Chip, { kind: 'plain' }>;
+export type ChipLink = Exclude<LinkTarget, { kind: 'plain' }>;
 
 export function chipFor(href: string, label: string | undefined): ChipLink | null {
   const chip = classifyLink(href, label, getApiBase());
@@ -52,7 +52,6 @@ export function chipFor(href: string, label: string | undefined): ChipLink | nul
 
 export function LinkChip({ chip }: { chip: ChipLink }) {
   const { colors: c, hex } = useTheme();
-  const styles = useStyles(c);
   const t = useT();
   const openObject = useOpenObject();
   const openTarget = useOpenTarget();
@@ -82,38 +81,5 @@ export function LinkChip({ chip }: { chip: ChipLink }) {
     onPress = () => openTarget(chip.target);
   }
 
-  return (
-    <View style={styles.wrap}>
-      <Touchable
-        onPress={onPress}
-        style={[styles.chip, chip.kind === 'object' ? styles.object : styles.other]}
-        accessibilityRole="link"
-        accessibilityLabel={tail ? `${text}, ${tail}` : text}
-      >
-        {icon}
-        <Text numberOfLines={1} ellipsizeMode="middle" style={[styles.text, chip.kind === 'object' && styles.objectText]}>
-          {text}
-        </Text>
-        {tail ? <Text style={styles.tail}>{tail}</Text> : null}
-      </Touchable>
-    </View>
-  );
+  return <Chip inline icon={icon} label={text} tail={tail} tone={chip.kind === 'object' ? 'accent' : 'neutral'} onPress={onPress} />;
 }
-
-const useStyles = makeStyles((c) => ({
-  // sits on the text's baseline like a word; never wider than most of the column
-  wrap: { maxWidth: 280, transform: [{ translateY: 4 }] },
-  chip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: space.xs,
-    paddingHorizontal: space.sm,
-    paddingVertical: space.xxs,
-    borderRadius: radius.sm,
-  },
-  object: { backgroundColor: c.accentFill },
-  other: { backgroundColor: c.tertiaryFill },
-  text: { ...typo.subheadline, color: c.label, flexShrink: 1 },
-  objectText: { color: c.accentText, fontWeight: weight.semibold },
-  tail: { ...typo.caption1, color: c.secondaryLabel },
-}));

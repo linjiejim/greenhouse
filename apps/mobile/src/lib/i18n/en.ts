@@ -90,9 +90,6 @@ export const en = {
     agent: 'My Agents',
     assistant: 'Assistant',
   },
-  shell: {
-    openDrawer: 'Open the menu',
-  },
   markdown: {
     image: 'Image',
     copy: 'Copy',

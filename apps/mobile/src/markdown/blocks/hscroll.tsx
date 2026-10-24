@@ -1,21 +1,16 @@
 /**
- * HScroll — the horizontal scroller for wide markdown blocks (tables, code,
- * charts) that keeps the conversation's swipe-right-from-anywhere drawer
- * working when the swipe starts on the block:
+ * HScroll — the horizontal scroller for wide markdown blocks (tables, code, charts) that keeps
+ * the conversation's full-width back gesture working when the swipe starts on the block:
  *
- *  - content that fits doesn't scroll at all (`scrollEnabled` off), so the
- *    drawer's pan simply gets the swipe;
- *  - at the leading edge the scroller recognizes *together* with the drawer's
- *    pan (`simultaneousHandlers={drawerPanRef}`, src/chat/drawer-gesture.ts)
- *    and doesn't bounce: a rightward swipe there has nothing to scroll and
- *    opens the drawer, a leftward one scrolls the block (the closed drawer
- *    can't move further left);
- *  - once scrolled away from the edge it's a plain scroller (bounces, owns the
- *    swipe): a rightward swipe first scrolls back to the start — the next one
- *    opens the drawer, like nested pagers in system apps.
+ *  - content that fits doesn't scroll at all (`scrollEnabled` off), so the back gesture gets
+ *    the swipe;
+ *  - at the leading edge it doesn't bounce: a rightward swipe there has nothing to scroll and
+ *    goes back, a leftward one scrolls the block;
+ *  - once scrolled away from the edge it's a plain scroller (bounces, owns the swipe): a
+ *    rightward swipe first scrolls back to the start, like nested pagers in system apps.
  *
- * gesture-handler's ScrollView, so a sideways swipe is claimed even inside the
- * vertical conversation scroll (and so it can name the drawer's gesture).
+ * gesture-handler's ScrollView, so a sideways swipe is claimed even inside the vertical
+ * conversation scroll.
  */
 import React, { useCallback, useRef, useState } from 'react';
 import type { NativeScrollEvent, NativeSyntheticEvent, StyleProp, ViewStyle } from 'react-native';
@@ -24,12 +19,12 @@ import { ScrollView } from 'react-native-gesture-handler';
 export function HScroll({
   children,
   contentContainerStyle,
-  yieldToDrawer = true,
+  yieldAtStart = true,
 }: {
   children: React.ReactNode;
   contentContainerStyle?: StyleProp<ViewStyle>;
-  /** Off where there's no drawer behind (the full-screen table): bounce at both edges. */
-  yieldToDrawer?: boolean;
+  /** Off where nothing is behind (the full-screen table): bounce at both edges. */
+  yieldAtStart?: boolean;
 }) {
   const [viewportW, setViewportW] = useState(0);
   const [contentW, setContentW] = useState(0);
@@ -51,7 +46,7 @@ export function HScroll({
       nestedScrollEnabled
       showsHorizontalScrollIndicator={false}
       scrollEnabled={scrollable}
-      bounces={!yieldToDrawer || !atStart}
+      bounces={!yieldAtStart || !atStart}
       alwaysBounceHorizontal={false}
       scrollEventThrottle={16}
       onScroll={onScroll}

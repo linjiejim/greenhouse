@@ -1,5 +1,5 @@
 /**
- * One record (`/tables/record?table=&id=`, or the detail pane on an iPad): every live field with its value as text (formula and
+ * One record (the `sheet/record` object sheet): every live field with its value as text (formula and
  * rollup results included). The last records opened are kept on the phone and read offline; a
  * record I cannot read any more (403 / 404) loses its copy. A masked record has no values.
  */
