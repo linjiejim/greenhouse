@@ -199,7 +199,7 @@
         </button>
         <button type="button" class="tour-tab shrink-0 rounded-xl border bg-white px-4 py-3 text-left transition hover:bg-brand-50/60 lg:w-full" role="tab" aria-selected="false" data-tour-tab="tables">
           <span class="tour-tab-title block text-sm font-semibold text-ink" data-i18n="tour.t4">Tables</span>
-          <span class="mt-0.5 hidden text-[12.5px] leading-snug text-ink-mut lg:block" data-i18n="tour.d4">Typed fields, views and forms — structured data with an agent attached.</span>
+          <span class="mt-0.5 hidden text-[12.5px] leading-snug text-ink-mut lg:block" data-i18n="tour.d4">Typed fields, views and record links — structured data with an agent attached.</span>
         </button>
         <button type="button" class="tour-tab shrink-0 rounded-xl border bg-white px-4 py-3 text-left transition hover:bg-brand-50/60 lg:w-full" role="tab" aria-selected="false" data-tour-tab="projects">
           <span class="tour-tab-title block text-sm font-semibold text-ink" data-i18n="tour.t5">Projects</span>
@@ -247,7 +247,7 @@
             <img src="./assets/screens/tables-grid.webp" alt="Tables grid with select, number, date, user and checkbox fields" width="1440" height="900" class="block w-full" loading="lazy" />
           </div>
           <figcaption class="mt-3 text-sm leading-relaxed text-ink-mut" data-i18n="tour.c4">
-        Spreadsheet-like tables with real field types, views, forms and links between records.
+        Spreadsheet-like tables with real field types, views and links between records.
               Describe what you need in chat and the agent drafts it for you to approve.
       </figcaption>
         </figure>
@@ -501,8 +501,8 @@
       <div class="mb-4 grid h-10 w-10 place-items-center rounded-xl bg-brand-50 text-brand-600"><svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M9 4v16" stroke-linecap="round"/></svg></div>
       <h3 class="text-base font-semibold text-ink" data-i18n="feat.tablesT">Tables</h3>
       <p class="mt-1.5 text-sm leading-relaxed text-ink-mut" data-i18n="feat.tablesB">
-        Spreadsheet-like tables with real field types, views, forms, links between records,
-          dashboards and automations — designed by talking to the agent.
+        Spreadsheet-like tables with real field types, views and links between records —
+          designed by talking to the agent.
       </p>
     </div>
     <div class="group rounded-2xl border border-edge bg-white p-6 soft-shadow transition hover:border-brand-300">
@@ -848,7 +848,7 @@ docker compose exec api pnpm admin:create
     'tour.t3': '知识库',
     'tour.d3': '团队、个人与共享文档，Agent 都能引用。',
     'tour.t4': '多维表格',
-    'tour.d4': '类型化字段、视图与表单——自带 Agent 的结构化数据。',
+    'tour.d4': '类型化字段、视图与记录关联——自带 Agent 的结构化数据。',
     'tour.t5': '项目',
     'tour.d5': '组合时间线、看板与任务树。',
     'tour.t6': '执行中心',
@@ -860,7 +860,7 @@ docker compose exec api pnpm admin:create
     'tour.c1': '一天的工作，一屏看完。每张卡片都是一次带保存配方的工具调用——拖拽重排，或者直接让 Agent 帮你改布局。',
     'tour.c2': '“哪些反馈是负面的？各渠道平均分是多少？”——Agent 查询多维表格，用可排序、可导出的表格作答，并指出真正需要行动的缺口。',
     'tour.c3': '像样的编辑器、文件夹、页面互链、版本历史，还有认得中文的搜索——Agent 在对话里引用的就是这里。',
-    'tour.c4': '像表格一样的多维表：真正的字段类型、视图、表单、记录关联。在对话里说清楚要什么，Agent 先起个草给你确认。',
+    'tour.c4': '像表格一样的多维表：真正的字段类型、视图、记录关联。在对话里说清楚要什么，Agent 先起个草给你确认。',
     'tour.c5': '组合时间线、看板与任务树，带成员、评论和活动日志——Agent 还能直接从对话里创建任务。',
     'tour.c6': '所有在后台跑的东西都在一屏里——定时任务和子 Agent——每一步、每次工具调用和事件都有记录。',
     'tour.c7': '可复用的经验，Agent 随手就能拿来用；版本化保存，更新不会改写历史。项目自带一套入门包。',
@@ -915,7 +915,7 @@ docker compose exec api pnpm admin:create
     'feat.projT': '项目',
     'feat.projB': '项目和任务，支持看板、甘特图、树状三种视图，带成员、评论和活动日志。',
     'feat.tablesT': '多维表格',
-    'feat.tablesB': '像表格一样的多维表：真正的字段类型、视图、表单、记录关联、仪表盘和自动化——跟 Agent 聊着就设计好了。',
+    'feat.tablesB': '像表格一样的多维表：真正的字段类型、视图和记录关联——跟 Agent 聊着就设计好了。',
     'feat.wbT': '首页工作台',
     'feat.wbB': '由同一套工具驱动的个人实时仪表盘——配方与模板，拖拽即可编辑，或者直接让 Agent 来改。',
     'feat.execT': '执行中心 + 自动化',

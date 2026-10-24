@@ -96,7 +96,6 @@ describe('Tables compact grid controls', () => {
         onOpenFilters={vi.fn()}
         onSaveView={vi.fn()}
         onOpenRecycleBin={vi.fn()}
-        onOpenForms={vi.fn()}
         onAddField={vi.fn()}
         onAddRecord={vi.fn()}
       />,
@@ -105,10 +104,9 @@ describe('Tables compact grid controls', () => {
     expect(html).toContain('aria-label="Filter records · 2"');
     expect(html).toContain('aria-label="Save view"');
     expect(html).toContain('aria-label="Recycle bin"');
-    expect(html).toContain('aria-label="Manage forms"');
     expect(html).toContain('aria-label="Add field"');
     expect(html).toContain('aria-label="Add record"');
-    expect(html.match(/bottom-full mb-1\.5/g)).toHaveLength(6);
+    expect(html.match(/bottom-full mb-1\.5/g)).toHaveLength(5);
     expect(html).toContain('bg-primary-500');
   });
 

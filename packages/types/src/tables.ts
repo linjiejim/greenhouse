@@ -3,7 +3,7 @@
  *
  * These are deliberately transport-neutral. Database rows stay inferred in
  * @greenhouse/db; REST, Web, Agent Proxy, and MCP share only the dynamic-field
- * values and bounded query/dashboard contracts defined here.
+ * values and bounded query/aggregate contracts defined here.
  */
 
 export const TABLE_FIELD_TYPES = [
@@ -148,29 +148,13 @@ export interface TableViewConfig {
   query?: Omit<TableQuery, 'cursor' | 'limit'>;
 }
 
+// Still referenced by the legacy Drizzle schema (table_dashboard_widgets); the
+// feature is gone, drop these with the schema rebuild.
 export const TABLE_DASHBOARD_WIDGET_TYPES = ['kpi', 'bar', 'line', 'pie', 'records', 'text'] as const;
 export type TableDashboardWidgetType = (typeof TABLE_DASHBOARD_WIDGET_TYPES)[number];
 
 export const TABLE_AGGREGATIONS = ['count', 'sum', 'avg', 'min', 'max'] as const;
 export type TableAggregation = (typeof TABLE_AGGREGATIONS)[number];
-
-export interface TableDashboardWidgetConfig {
-  version?: number;
-  operation?: TableAggregation;
-  valueFieldId?: number;
-  groupByFieldId?: number;
-  query?: Omit<TableQuery, 'cursor' | 'limit'>;
-  limit?: number;
-  text?: string;
-}
-
-export interface TableDashboardWidgetLayout {
-  version?: number;
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-}
 
 export const TABLE_SCHEMA_CHANGE_TYPES = ['created', 'field_created', 'field_updated', 'field_archived'] as const;
 export type TableSchemaChangeType = (typeof TABLE_SCHEMA_CHANGE_TYPES)[number];
@@ -200,6 +184,9 @@ export interface TableBatchValidationResult {
   current?: number;
 }
 
+// Form and automation config types are still referenced by the legacy Drizzle
+// schema (table_forms / table_automation_rules); the features are gone, drop
+// these with the schema rebuild.
 export interface TableFormConfig {
   version?: number;
   title?: string;

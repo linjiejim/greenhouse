@@ -59,7 +59,7 @@ export const FEATURE_FLAGS = [
   {
     key: 'tables',
     label: 'Tables',
-    description: 'Internal multidimensional tables, shared grid views, dashboards, REST, and MCP access',
+    description: 'Internal multidimensional tables, shared grid views, REST, and MCP access',
     // Baseline capability (2026-08-14): on for every internal user; super can
     // still disable it per user in the permissions modal.
     defaultEnabled: true,

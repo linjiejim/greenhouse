@@ -7,14 +7,8 @@ import type {
   SchemaPlanOperation,
   TableBaseRole,
   TableBaseVisibility,
-  TableDashboardWidgetConfig,
-  TableDashboardWidgetLayout,
-  TableDashboardWidgetType,
-  TableAutomationConfig,
-  TableAutomationTrigger,
   TableFieldConfig,
   TableFieldType,
-  TableFormConfig,
   TableQuery,
   TableRecordValues,
   TableSchemaSnapshot,
@@ -94,84 +88,6 @@ export interface TableRecord {
   deleted_at: string | null;
 }
 
-export interface TableForm {
-  id: number;
-  table_id: number;
-  name: string;
-  status: 'draft' | 'published';
-  config: TableFormConfig;
-  revision: number;
-  created_by: string;
-  updated_by: string;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface TableAutomation {
-  id: number;
-  base_id: number;
-  table_id: number;
-  name: string;
-  status: 'disabled' | 'enabled';
-  trigger: TableAutomationTrigger;
-  config: TableAutomationConfig;
-  execution_user_id: string;
-  revision: number;
-  created_by: string;
-  updated_by: string;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface TableAutomationRun {
-  id: number;
-  rule_id: number;
-  outbox_id: number | null;
-  status: 'running' | 'succeeded' | 'failed';
-  actions_completed: number;
-  error: string | null;
-  started_at: string;
-  finished_at: string | null;
-}
-
-export interface TableNotification {
-  id: number;
-  user_id: string;
-  base_id: number;
-  rule_id: number | null;
-  record_id: number | null;
-  title: string;
-  message: string;
-  read_at: string | null;
-  created_at: string;
-}
-
-export interface TableDashboard {
-  id: number;
-  base_id: number;
-  name: string;
-  description: string | null;
-  revision: number;
-  created_by: string;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface TableDashboardWidget {
-  id: number;
-  dashboard_id: number;
-  table_id: number | null;
-  type: TableDashboardWidgetType;
-  title: string;
-  config: string;
-  layout: string;
-  position: number;
-  revision: number;
-  created_by: string;
-  created_at: string;
-  updated_at: string;
-}
-
 export interface TableSchema {
   table: TableDefinition;
   fields: TableField[];
@@ -232,7 +148,6 @@ export interface TableBaseWorkspace {
   base: TableBase;
   role: TableBaseRole;
   tables: TableDefinition[];
-  dashboards: TableDashboard[];
   members: Array<{
     id: number;
     base_id: number;
@@ -432,54 +347,6 @@ export async function updateTableView(
   return (await response.json()).view;
 }
 
-export async function listTableForms(tableId: number): Promise<TableForm[]> {
-  const response = await authFetch(`/api/tables/tables/${tableId}/forms`);
-  if (!response.ok) throw await responseError(response, 'Unable to load forms');
-  return ((await response.json()) as { forms: TableForm[] }).forms;
-}
-
-export async function getTableForm(formId: number): Promise<{ form: TableForm; fields: TableField[] }> {
-  const response = await authFetch(`/api/tables/forms/${formId}`);
-  if (!response.ok) throw await responseError(response, 'Unable to load form');
-  return response.json() as Promise<{ form: TableForm; fields: TableField[] }>;
-}
-
-export async function createTableForm(
-  tableId: number,
-  input: { name: string; status?: 'draft' | 'published'; config: TableFormConfig },
-): Promise<TableForm> {
-  const response = await authFetch(`/api/tables/tables/${tableId}/forms`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(input),
-  });
-  if (!response.ok) throw await responseError(response, 'Unable to create form');
-  return ((await response.json()) as { form: TableForm }).form;
-}
-
-export async function updateTableForm(
-  formId: number,
-  input: { revision: number; name?: string; status?: 'draft' | 'published'; config?: TableFormConfig },
-): Promise<TableForm> {
-  const response = await authFetch(`/api/tables/forms/${formId}`, {
-    method: 'PATCH',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(input),
-  });
-  if (!response.ok) throw await responseError(response, 'Unable to update form');
-  return ((await response.json()) as { form: TableForm }).form;
-}
-
-export async function submitTableForm(formId: number, values: TableRecordValues): Promise<TableRecord> {
-  const response = await authFetch(`/api/tables/forms/${formId}/submit`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ values }),
-  });
-  if (!response.ok) throw await responseError(response, 'Unable to submit form');
-  return ((await response.json()) as { record: TableRecord }).record;
-}
-
 export async function queryTableRecords(tableId: number, query: TableQuery): Promise<TableRecordPage> {
   const args = { param: { tableId: String(tableId) }, json: query };
   const response = await rpc.api.tables.tables[':tableId'].records.query.$post(args);
@@ -559,154 +426,4 @@ export async function restoreTableRecord(tableId: number, recordId: number): Pro
   const response = await rpc.api.tables.tables[':tableId'].records[':recordId'].restore.$post(args);
   if (!response.ok) throw await responseError(response, 'Unable to restore record');
   return (await response.json()).record;
-}
-
-export async function listTableAutomations(baseId: number): Promise<TableAutomation[]> {
-  const response = await authFetch(`/api/tables/bases/${baseId}/automations`);
-  if (!response.ok) throw await responseError(response, 'Unable to load automations');
-  return ((await response.json()) as { automations: TableAutomation[] }).automations;
-}
-
-export async function createTableAutomation(
-  baseId: number,
-  input: {
-    tableId: number;
-    name: string;
-    status?: 'disabled' | 'enabled';
-    trigger: TableAutomationTrigger;
-    config: TableAutomationConfig;
-  },
-): Promise<TableAutomation> {
-  const response = await authFetch(`/api/tables/bases/${baseId}/automations`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(input),
-  });
-  if (!response.ok) throw await responseError(response, 'Unable to create automation');
-  return ((await response.json()) as { automation: TableAutomation }).automation;
-}
-
-export async function updateTableAutomation(
-  automationId: number,
-  input: {
-    revision: number;
-    name?: string;
-    status?: 'disabled' | 'enabled';
-    trigger?: TableAutomationTrigger;
-    config?: TableAutomationConfig;
-  },
-): Promise<TableAutomation> {
-  const response = await authFetch(`/api/tables/automations/${automationId}`, {
-    method: 'PATCH',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(input),
-  });
-  if (!response.ok) throw await responseError(response, 'Unable to update automation');
-  return ((await response.json()) as { automation: TableAutomation }).automation;
-}
-
-export async function listTableAutomationRuns(automationId: number, limit = 20): Promise<TableAutomationRun[]> {
-  const response = await authFetch(`/api/tables/automations/${automationId}/runs?limit=${limit}`);
-  if (!response.ok) throw await responseError(response, 'Unable to load automation runs');
-  return ((await response.json()) as { runs: TableAutomationRun[] }).runs;
-}
-
-export async function listTableNotifications(limit = 100): Promise<TableNotification[]> {
-  const response = await authFetch(`/api/tables/notifications?limit=${limit}`);
-  if (!response.ok) throw await responseError(response, 'Unable to load notifications');
-  return ((await response.json()) as { notifications: TableNotification[] }).notifications;
-}
-
-export async function markTableNotificationRead(notificationId: number): Promise<TableNotification> {
-  const response = await authFetch(`/api/tables/notifications/${notificationId}/read`, { method: 'POST' });
-  if (!response.ok) throw await responseError(response, 'Unable to update notification');
-  return ((await response.json()) as { notification: TableNotification }).notification;
-}
-
-export async function createTableDashboard(baseId: number, name: string): Promise<TableDashboard> {
-  const args = { param: { baseId: String(baseId) }, json: { name } };
-  const response = await rpc.api.tables.bases[':baseId'].dashboards.$post(args);
-  if (!response.ok) throw await responseError(response, 'Unable to create dashboard');
-  return (await response.json()).dashboard;
-}
-
-export async function updateTableDashboard(
-  dashboardId: number,
-  input: { revision: number; name?: string; description?: string | null },
-): Promise<TableDashboard> {
-  const args = { param: { dashboardId: String(dashboardId) }, json: input };
-  const response = await rpc.api.tables.dashboards[':dashboardId'].$patch(args);
-  if (!response.ok) throw await responseError(response, 'Unable to update dashboard');
-  return (await response.json()).dashboard;
-}
-
-/** Unlike Bases and tables, a dashboard is pure configuration and really goes (spec D4). */
-export async function deleteTableDashboard(dashboardId: number): Promise<void> {
-  const response = await rpc.api.tables.dashboards[':dashboardId'].$delete({
-    param: { dashboardId: String(dashboardId) },
-  });
-  if (!response.ok) throw await responseError(response, 'Unable to delete dashboard');
-}
-
-export async function getTableDashboard(
-  dashboardId: number,
-): Promise<{ dashboard: TableDashboard; widgets: TableDashboardWidget[] }> {
-  const response = await rpc.api.tables.dashboards[':dashboardId'].$get({
-    param: { dashboardId: String(dashboardId) },
-  });
-  if (!response.ok) throw await responseError(response, 'Unable to load dashboard');
-  return response.json();
-}
-
-export async function createTableDashboardWidget(
-  dashboardId: number,
-  input: {
-    tableId?: number;
-    type: TableDashboardWidgetType;
-    title: string;
-    config?: TableDashboardWidgetConfig;
-    layout?: TableDashboardWidgetLayout;
-  },
-): Promise<TableDashboardWidget> {
-  const args = { param: { dashboardId: String(dashboardId) }, json: input };
-  const response = await rpc.api.tables.dashboards[':dashboardId'].widgets.$post(args);
-  if (!response.ok) throw await responseError(response, 'Unable to create widget');
-  return (await response.json()).widget;
-}
-
-export async function updateTableDashboardWidget(
-  widgetId: number,
-  input: {
-    revision: number;
-    tableId?: number | null;
-    title?: string;
-    config?: TableDashboardWidgetConfig;
-    layout?: TableDashboardWidgetLayout;
-    position?: number;
-  },
-): Promise<TableDashboardWidget> {
-  const args = { param: { widgetId: String(widgetId) }, json: input };
-  const response = await rpc.api.tables['dashboard-widgets'][':widgetId'].$patch(args);
-  if (!response.ok) throw await responseError(response, 'Unable to update widget');
-  return (await response.json()).widget;
-}
-
-export async function deleteTableDashboardWidget(widgetId: number): Promise<void> {
-  const response = await rpc.api.tables['dashboard-widgets'][':widgetId'].$delete({
-    param: { widgetId: String(widgetId) },
-  });
-  if (!response.ok) throw await responseError(response, 'Unable to delete widget');
-}
-
-export async function queryTableDashboardWidget(widgetId: number): Promise<{
-  widget: TableDashboardWidget;
-  text?: string;
-  rows?: Array<{ group: string | number | boolean | null; value: number }>;
-  records?: TableRecordPage;
-}> {
-  const response = await rpc.api.tables['dashboard-widgets'][':widgetId'].query.$post({
-    param: { widgetId: String(widgetId) },
-  });
-  if (!response.ok) throw await responseError(response, 'Unable to query widget');
-  return response.json();
 }

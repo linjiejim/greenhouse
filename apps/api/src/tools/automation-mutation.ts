@@ -90,7 +90,7 @@ Before create, update or delete, state the configuration back in plain language 
 
 Runs are unattended and get read-only tools. To write (tables, CRM, knowledge, projects) or make images, tell the user to tick it in Settings → Automations → edit → Tools; you cannot grant it.
 
-Limit ${MAX_TASKS_PER_USER} per user; check the count with automation_query when near it. You can only manage your own. Unrelated to Tables automation rules, which fire on record changes.`,
+Limit ${MAX_TASKS_PER_USER} per user; check the count with automation_query when near it. You can only manage your own.`,
   category: 'core',
   is_global: true,
   builtin: true,

@@ -41,7 +41,7 @@ expose to Claude, Cursor, or any MCP client.
   <tr>
     <td width="50%" valign="top">
       <img src="docs/assets/screens/tables-grid.webp" alt="Tables grid with typed fields" />
-      <b>Tables</b> — typed fields, views, forms and record links; the agent plans schemas conversationally.
+      <b>Tables</b> — typed fields, views and record links; the agent plans schemas conversationally.
     </td>
     <td width="50%" valign="top">
       <img src="docs/assets/screens/knowledge-doc.webp" alt="Knowledge base document" />
@@ -89,8 +89,8 @@ same script doubles as an end-to-end smoke tour (see [Development](#development)
   storage, folders plus a file cabinet, templates, version
   history, per-person sharing, and segmented full-text search (CJK-aware).
 - **Projects** — projects, tasks (board / gantt / tree views), members, comments, activity log.
-- **Tables** — multidimensional bases: typed fields, views, forms, record links, dashboards,
-  rule automations, and conversational schema planning (the agent drafts a base, you confirm).
+- **Tables** — multidimensional bases: typed fields, views, record links, formulas and rollups,
+  and conversational schema planning (the agent drafts a base, you confirm).
 - **Files** — the team's file cabinet and your own: folders, upload, preview (images, PDF,
   text), rename / move / delete and name search; members' agents reach it over MCP too.
 - **Home** — the team's recent changes (knowledge edits, project and table changes, new files,

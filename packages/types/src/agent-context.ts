@@ -57,8 +57,6 @@ export interface TablesContext {
   tableName?: string;
   /** Same for the open table; field names alone routinely mislead. */
   tableDescription?: string;
-  dashboardId?: number;
-  dashboardName?: string;
 }
 
 /** Durable cross-domain execution list or one Runtime run detail. */

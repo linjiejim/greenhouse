@@ -9,7 +9,7 @@ export function pageContextKey(context: PageContext | null): string {
     case 'project-detail':
       return `${context.type}:${context.projectId}`;
     case 'tables':
-      return `${context.type}:${context.baseId || ''}:${context.tableId || ''}:${context.dashboardId || ''}`;
+      return `${context.type}:${context.baseId || ''}:${context.tableId || ''}`;
     case 'execution-center':
       return `${context.type}:${context.runKind || ''}:${context.runId || ''}`;
     default:

@@ -13,11 +13,7 @@ const provider: ContextProviderDescriptor<'tables'> = {
   type: 'tables',
 
   label: (context: TablesContext) =>
-    context.tableName
-      ? `${context.baseName ?? 'Tables'} · ${context.tableName}`
-      : context.dashboardName
-        ? `${context.baseName ?? 'Tables'} · ${context.dashboardName}`
-        : (context.baseName ?? 'Tables'),
+    context.tableName ? `${context.baseName ?? 'Tables'} · ${context.tableName}` : (context.baseName ?? 'Tables'),
 
   emptyMessage: () => 'Ask me to inspect a schema, query records, summarize data, or maintain records.',
 
@@ -39,10 +35,7 @@ const provider: ContextProviderDescriptor<'tables'> = {
     const parts = ['Current Context: internal Tables application'];
     if (context.baseId) parts.push(`Base ${context.baseId}${context.baseName ? ` (${context.baseName})` : ''}`);
     if (context.tableId) parts.push(`Table ${context.tableId}${context.tableName ? ` (${context.tableName})` : ''}`);
-    if (context.dashboardId) {
-      parts.push(`Dashboard ${context.dashboardId}${context.dashboardName ? ` (${context.dashboardName})` : ''}`);
-    }
-    parts.push('The page shows internal table schemas, records, or dashboards identified above');
+    parts.push('The page shows internal table schemas or records identified above');
     // The descriptions are the team's own usage notes. They come last and
     // truncated: this is page reference, not a licence to act on them.
     if (context.baseDescription) parts.push(`Base description: ${describe(context.baseDescription)}`);

@@ -405,12 +405,12 @@ v1 只接 DeepSeek 与 OpenAI 兼容服务，它们**自动**缓存 prompt 前�
 
 方案与决策见 [spec](../../../docs/specs/20260803-tables-lifecycle-and-grid-interaction.md)。
 
-- **删除一律软删，恢复分层**：Base / 表 / 记录都只写 `archived_at`（记录是 `deleted_at`），**恢复入口刻意不对称**——记录有表内回收站（`GET /tables/:id/records/deleted` + `POST .../restore`，editor 自助），Base 与表只能由管理员 `pnpm cli tables list-archived | restore-base | restore-table`。误删一行是高频低风险，误删一张表影响所有成员，多一道人工摩擦是特性（D2）。**Dashboard 是唯一的例外：硬删**——纯 widget 配置、无业务数据，为它建一套归档货架是为对称付钱（D4）。
-- **record 字段策略是真实边界**：所有 record query/aggregate/widget/read/write/batch/form submit 都必须在 `requireTableData` 检查 `record.values` 的 read/write policy；masked 单条读取只回空 values，查询与聚合必须 full-read，防止用筛选/聚合反推。个人 view 的 get/update 在 DB service 接收 userId，不能因为调用者是 Base builder 就读改别人的 personal view。attachment 值只接受同 Base 的数字 Drive file id；发布表单禁止 attachment 字段，避免把完整内部文件柜暴露成表单上传器。
+- **删除一律软删，恢复分层**：Base / 表 / 记录都只写 `archived_at`（记录是 `deleted_at`），**恢复入口刻意不对称**——记录有表内回收站（`GET /tables/:id/records/deleted` + `POST .../restore`，editor 自助），Base 与表只能由管理员 `pnpm cli tables list-archived | restore-base | restore-table`。误删一行是高频低风险，误删一张表影响所有成员，多一道人工摩擦是特性（D2）。
+- **record 字段策略是真实边界**：所有 record query/aggregate/read/write/batch 都必须在 `requireTableData` 检查 `record.values` 的 read/write policy；masked 单条读取只回空 values，查询与聚合必须 full-read，防止用筛选/聚合反推。个人 view 的 get/update 在 DB service 接收 userId，不能因为调用者是 Base builder 就读改别人的 personal view。attachment 值只接受同 Base 的数字 Drive file id。
 - **删表 / 删 Base 要 `owner`，与「建表/改表只要 builder」刻意不对称**（D3）。归档一张表**不动**任何记录、字段或 relation 链接：指向已归档表的新链接由既有校验拒绝，存量链接保留、rollup 停止刷新。
 - **模型永远不能删表或删 Base**：`tables_schema_plan` 没有、也不要加 `table.archive`/`base.archive` op（D5）。工具描述里写的是"这件事只能用户在侧栏手动做"，改动时别把那句路径提示弄丢——否则模型只会说做不到，不会告诉用户怎么做。
 - **`archived_at` 过滤已经在查询层**（`listTables`/`getSchema`/`listBasesForUser`），新增读路径别忘了它；`getRecordById` 刻意不过滤 `deleted_at`（回收站与审计要看得见已删行）。
-- 新增的四个 action（`archiveTable`/`deleteDashboard`/`listDeletedRecords`/`restoreRecord`）已 bump manifest 到 `1.2.0`——**改 action 表必须 bump**，否则 API 启动即 fatal。
+- Tables 的表单、仪表盘、表内自动化与通知已在 3.0 删除（manifest `1.3.0`）——**改 action 表必须 bump**，否则 API 启动即 fatal。
 
 ### Platform Kernel v2
 - `platform/` 是内部应用的统一运行时：应用以确定性 Manifest v2 声明 module/entity/field/action/navigation，运行时代码只放在 registration/adapter，不写入 Manifest。`bootstrap.ts` 负责发布 release、建立受保护的 `super/team` baseline roles，并只同步 active 内部用户绑定；历史 `external` 用户不再建立 Platform role。

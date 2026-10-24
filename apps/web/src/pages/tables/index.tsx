@@ -11,29 +11,13 @@ import {
   type TableBaseWorkspace,
 } from '../../lib/api/tables';
 import { Button, Dialog, EmptyState, IconButton, SearchInput, Select, Spinner, Tag } from '../../components/ui';
-import {
-  ArrowLeft,
-  BarChart3,
-  Database,
-  History,
-  Inbox,
-  LayoutDashboard,
-  Plus,
-  Share2,
-  Table2,
-  Trash2,
-  Zap,
-} from '../../lib/icons';
+import { ArrowLeft, Database, History, Plus, Share2, Table2, Trash2 } from '../../lib/icons';
 import { formatDay } from '../../lib/utils';
 import { useAgentContext } from '../../components/agent-context';
 import { BaseDialog } from '../../components/tables/base-dialog';
 import { ResourceDialog } from '../../components/tables/resource-dialog';
 import { TablesGridView } from './grid-view';
-import { TablesDashboardView } from './dashboard-view';
 import { TablesAuditDialog } from './audit-dialog';
-import { TablesAutomationDialog } from './automation-dialog';
-import { TablesFormPage } from './form-page';
-import { TablesNotificationsDialog } from './notifications-dialog';
 import { DataCatalogPage } from './data-catalog';
 import { useT, type TranslationKey } from '../../lib/i18n';
 import { ModulePage } from '../../components/app/module-page';
@@ -357,7 +341,7 @@ function BaseWorkspace({
   resourceId,
 }: {
   baseId: number;
-  resourceType?: 'table' | 'dashboard';
+  resourceType?: 'table';
   resourceId?: number;
 }) {
   const t = useT();
@@ -366,11 +350,9 @@ function BaseWorkspace({
   const [users, setUsers] = useState<AssignableUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [newResource, setNewResource] = useState<'table' | 'dashboard' | null>(null);
+  const [newResource, setNewResource] = useState<'table' | null>(null);
   const [share, setShare] = useState(false);
   const [audit, setAudit] = useState(false);
-  const [automations, setAutomations] = useState(false);
-  const [notifications, setNotifications] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -379,17 +361,11 @@ function BaseWorkspace({
       setWorkspace(nextWorkspace);
       setUsers(nextUsers);
       const selectedResourceExists =
-        !resourceType ||
-        !resourceId ||
-        (resourceType === 'table'
-          ? nextWorkspace.tables.some((table) => table.id === resourceId)
-          : nextWorkspace.dashboards.some((dashboard) => dashboard.id === resourceId));
+        !resourceType || !resourceId || nextWorkspace.tables.some((table) => table.id === resourceId);
       setError(selectedResourceExists ? '' : t('tables.home.resourceNotFound'));
       if (!resourceType) {
         const firstTable = nextWorkspace.tables[0];
-        const firstDashboard = nextWorkspace.dashboards[0];
         if (firstTable) window.location.hash = `#/tables/${baseId}/table/${firstTable.id}`;
-        else if (firstDashboard) window.location.hash = `#/tables/${baseId}/dashboard/${firstDashboard.id}`;
       }
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : t('tables.home.loadBaseFailed'));
@@ -404,8 +380,6 @@ function BaseWorkspace({
 
   const selectedTable =
     resourceType === 'table' ? workspace?.tables.find((table) => table.id === resourceId) : undefined;
-  const selectedDashboard =
-    resourceType === 'dashboard' ? workspace?.dashboards.find((dashboard) => dashboard.id === resourceId) : undefined;
 
   useEffect(() => {
     if (!workspace) return;
@@ -414,10 +388,9 @@ function BaseWorkspace({
       baseDescription: workspace.base.description ?? undefined,
       tableName: selectedTable?.name,
       tableDescription: selectedTable?.description ?? undefined,
-      dashboardName: selectedDashboard?.name,
     });
     return () => enrichPageContext(null);
-  }, [enrichPageContext, selectedDashboard?.name, selectedTable?.description, selectedTable?.name, workspace]);
+  }, [enrichPageContext, selectedTable?.description, selectedTable?.name, workspace]);
 
   if (loading && !workspace)
     return (
@@ -454,16 +427,6 @@ function BaseWorkspace({
             {t(`tables.home.role.${workspace.role}`)}
           </p>
         </div>
-        <Button variant="ghost" size="sm" onClick={() => setNotifications(true)}>
-          <Inbox size={13} />
-          {t('tables.home.notifications')}
-        </Button>
-        {canBuild && (
-          <Button variant="outline" size="sm" onClick={() => setAutomations(true)}>
-            <Zap size={13} />
-            {t('tables.automations.title')}
-          </Button>
-        )}
         {workspace.role === 'owner' && (
           <>
             <Button variant="outline" size="sm" onClick={() => setAudit(true)}>
@@ -494,16 +457,6 @@ function BaseWorkspace({
               {table.name}
             </a>
           ))}
-          {workspace.dashboards.map((dashboard) => (
-            <a
-              key={dashboard.id}
-              href={`#/tables/${baseId}/dashboard/${dashboard.id}`}
-              className={`flex min-w-max items-center gap-2 rounded-md px-2.5 py-2 text-xs transition-colors ${selectedDashboard?.id === dashboard.id ? 'bg-primary-subtle font-medium text-primary-fg-strong' : 'text-fg-muted hover:bg-surface-muted hover:text-fg'}`}
-            >
-              <LayoutDashboard size={14} />
-              {dashboard.name}
-            </a>
-          ))}
           {canBuild && (
             <div className="ml-auto flex gap-1">
               <IconButton
@@ -515,26 +468,15 @@ function BaseWorkspace({
               >
                 <Table2 size={14} />
               </IconButton>
-              <IconButton
-                label={t('tables.home.createDashboard')}
-                tooltip="top"
-                tooltipMode="portal"
-                className="h-9 w-9 border border-edge sm:h-9 sm:w-9"
-                onClick={() => setNewResource('dashboard')}
-              >
-                <BarChart3 size={14} />
-              </IconButton>
             </div>
           )}
         </nav>
         <main className="min-h-0 min-w-0 flex-1">
           {selectedTable ? (
             <TablesGridView table={selectedTable} tables={workspace.tables} role={workspace.role} users={users} />
-          ) : selectedDashboard ? (
-            <TablesDashboardView dashboardId={selectedDashboard.id} tables={workspace.tables} role={workspace.role} />
           ) : (
             <EmptyState
-              icon={workspace.tables.length === 0 ? Table2 : LayoutDashboard}
+              icon={Table2}
               title={t('tables.home.chooseResource')}
               description={canBuild && workspace.tables.length === 0 ? t('tables.home.createTableHint') : undefined}
             />
@@ -553,14 +495,6 @@ function BaseWorkspace({
       />
       <ShareDialog open={share} workspace={workspace} users={users} onClose={() => setShare(false)} onChanged={load} />
       <TablesAuditDialog open={audit} baseId={baseId} users={users} onClose={() => setAudit(false)} />
-      <TablesAutomationDialog
-        open={automations}
-        baseId={baseId}
-        tables={workspace.tables}
-        users={users}
-        onClose={() => setAutomations(false)}
-      />
-      <TablesNotificationsDialog open={notifications} onClose={() => setNotifications(false)} />
     </div>
   );
 }
@@ -570,18 +504,8 @@ export function TablesPage({ subPath = '' }: TablesPageProps) {
   const segments = subPath.split('/').filter(Boolean);
   if (segments.length === 0) return <TablesHome />;
   if (segments[0] === 'catalog') return <DataCatalogPage />;
-  if (segments[0] === 'form') {
-    const formId = Number(segments[1]);
-    return Number.isInteger(formId) && formId > 0 ? (
-      <TablesFormPage formId={formId} />
-    ) : (
-      <div className="flex h-full items-center justify-center text-sm text-fg-faint">
-        {t('tables.home.invalidFormRoute')}
-      </div>
-    );
-  }
   const baseId = Number(segments[0]);
-  const resourceType = segments[1] === 'table' || segments[1] === 'dashboard' ? segments[1] : undefined;
+  const resourceType = segments[1] === 'table' ? segments[1] : undefined;
   const resourceId = segments[2] ? Number(segments[2]) : undefined;
   if (
     !Number.isInteger(baseId) ||

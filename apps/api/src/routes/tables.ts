@@ -34,15 +34,6 @@
  * DELETE /tables/:tableId/records/:recordId          — revision 软删除
  * GET    /tables/:tableId/records/deleted            — 回收站（已软删记录）
  * POST   /tables/:tableId/records/:recordId/restore  — 从回收站恢复记录
- * GET    /bases/:baseId/dashboards                   — Dashboard 列表
- * POST   /bases/:baseId/dashboards                   — 创建 Dashboard
- * GET    /dashboards/:dashboardId                    — Dashboard + widgets
- * PATCH  /dashboards/:dashboardId                    — 更新 Dashboard
- * DELETE /dashboards/:dashboardId                    — 删除 Dashboard（仅 owner，硬删不可恢复）
- * POST   /dashboards/:dashboardId/widgets            — 创建 widget
- * PATCH  /dashboard-widgets/:widgetId                — 更新 widget
- * DELETE /dashboard-widgets/:widgetId                — 删除 widget
- * POST   /dashboard-widgets/:widgetId/query          — 服务端 widget 查询
  */
 
 import { Hono, type Context } from 'hono';
@@ -50,15 +41,8 @@ import {
   getDb,
   type TableBaseMemberRow,
   type TableBaseRow,
-  type TableDashboardResult,
-  type TableDashboardRow,
-  type TableDashboardWidgetRow,
   type TableDefinitionRow,
   type TableFieldRow,
-  type TableFormRow,
-  type TableAutomationRuleRow,
-  type TableAutomationRunRow,
-  type TableNotificationRow,
   type TableRecordQueryResult,
   type TableRecordRow,
   type TableSchemaResult,
@@ -171,7 +155,6 @@ const tablesRoutes = new Hono<AppEnv>()
         base: TableBaseRow;
         role: TableBaseRole;
         tables: TableDefinitionRow[];
-        dashboards: TableDashboardRow[];
         members: TableBaseMemberRow[];
       },
     );
@@ -346,36 +329,6 @@ const tablesRoutes = new Hono<AppEnv>()
     if (!result.ok) return actionError(c, result);
     return c.json(result.data as { view: TableViewRow });
   })
-  .get('/tables/:tableId/forms', async (c) => {
-    const tableId = numberParam(c, 'tableId');
-    const result = await dispatch(c, 'listForms', { tableId }, { tableId });
-    if (!result.ok) return actionError(c, result);
-    return c.json(result.data as { forms: TableFormRow[] });
-  })
-  .post('/tables/:tableId/forms', async (c) => {
-    const tableId = numberParam(c, 'tableId');
-    const result = await dispatch(c, 'createForm', { ...(await jsonBody(c)), tableId }, { tableId });
-    if (!result.ok) return actionError(c, result);
-    return c.json(result.data as { form: TableFormRow }, 201);
-  })
-  .get('/forms/:formId', async (c) => {
-    const formId = numberParam(c, 'formId');
-    const result = await dispatch(c, 'getForm', { formId }, { formId });
-    if (!result.ok) return actionError(c, result);
-    return c.json(result.data as { form: TableFormRow; fields: TableFieldRow[] });
-  })
-  .patch('/forms/:formId', async (c) => {
-    const formId = numberParam(c, 'formId');
-    const result = await dispatch(c, 'updateForm', { ...(await jsonBody(c)), formId }, { formId });
-    if (!result.ok) return actionError(c, result);
-    return c.json(result.data as { form: TableFormRow });
-  })
-  .post('/forms/:formId/submit', async (c) => {
-    const formId = numberParam(c, 'formId');
-    const result = await dispatch(c, 'submitForm', { ...(await jsonBody(c)), formId }, { formId });
-    if (!result.ok) return actionError(c, result);
-    return c.json(result.data as { record: TableRecordRow }, 201);
-  })
   .post('/tables/:tableId/records/query', async (c) => {
     const tableId = numberParam(c, 'tableId');
     const result = await dispatch(c, 'queryRecords', { tableId, query: await jsonBody(c) }, { tableId });
@@ -457,104 +410,6 @@ const tablesRoutes = new Hono<AppEnv>()
     const result = await dispatch(c, 'deleteRecord', { tableId, recordId, revision }, { tableId, recordId });
     if (!result.ok) return actionError(c, result);
     return c.json(result.data as { record: TableRecordRow });
-  })
-  .get('/bases/:baseId/automations', async (c) => {
-    const baseId = numberParam(c, 'baseId');
-    const result = await dispatch(c, 'listAutomations', { baseId }, { baseId });
-    if (!result.ok) return actionError(c, result);
-    return c.json(result.data as { automations: TableAutomationRuleRow[] });
-  })
-  .post('/bases/:baseId/automations', async (c) => {
-    const baseId = numberParam(c, 'baseId');
-    const result = await dispatch(c, 'createAutomation', { ...(await jsonBody(c)), baseId }, { baseId });
-    if (!result.ok) return actionError(c, result);
-    return c.json(result.data as { automation: TableAutomationRuleRow }, 201);
-  })
-  .patch('/automations/:automationId', async (c) => {
-    const automationId = numberParam(c, 'automationId');
-    const result = await dispatch(c, 'updateAutomation', { ...(await jsonBody(c)), automationId }, { automationId });
-    if (!result.ok) return actionError(c, result);
-    return c.json(result.data as { automation: TableAutomationRuleRow });
-  })
-  .get('/automations/:automationId/runs', async (c) => {
-    const automationId = numberParam(c, 'automationId');
-    const limit = Number(c.req.query('limit')) || undefined;
-    const result = await dispatch(c, 'listAutomationRuns', { automationId, limit }, { automationId });
-    if (!result.ok) return actionError(c, result);
-    return c.json(result.data as { runs: TableAutomationRunRow[] });
-  })
-  .get('/notifications', async (c) => {
-    const limit = Number(c.req.query('limit')) || undefined;
-    const result = await dispatch(c, 'listNotifications', { limit });
-    if (!result.ok) return actionError(c, result);
-    return c.json(result.data as { notifications: TableNotificationRow[] });
-  })
-  .post('/notifications/:notificationId/read', async (c) => {
-    const notificationId = numberParam(c, 'notificationId');
-    const result = await dispatch(c, 'markNotificationRead', { notificationId }, { notificationId });
-    if (!result.ok) return actionError(c, result);
-    return c.json(result.data as { notification: TableNotificationRow });
-  })
-  .get('/bases/:baseId/dashboards', async (c) => {
-    const baseId = numberParam(c, 'baseId');
-    const result = await dispatch(c, 'listDashboards', { baseId }, { baseId });
-    if (!result.ok) return actionError(c, result);
-    return c.json(result.data as { dashboards: TableDashboardRow[] });
-  })
-  .post('/bases/:baseId/dashboards', async (c) => {
-    const baseId = numberParam(c, 'baseId');
-    const result = await dispatch(c, 'createDashboard', { ...(await jsonBody(c)), baseId }, { baseId });
-    if (!result.ok) return actionError(c, result);
-    return c.json(result.data as { dashboard: TableDashboardRow }, 201);
-  })
-  .get('/dashboards/:dashboardId', async (c) => {
-    const dashboardId = numberParam(c, 'dashboardId');
-    const result = await dispatch(c, 'getDashboard', { dashboardId }, { dashboardId });
-    if (!result.ok) return actionError(c, result);
-    return c.json(result.data as TableDashboardResult);
-  })
-  .patch('/dashboards/:dashboardId', async (c) => {
-    const dashboardId = numberParam(c, 'dashboardId');
-    const result = await dispatch(c, 'updateDashboard', { ...(await jsonBody(c)), dashboardId }, { dashboardId });
-    if (!result.ok) return actionError(c, result);
-    return c.json(result.data as { dashboard: TableDashboardRow });
-  })
-  .delete('/dashboards/:dashboardId', async (c) => {
-    const dashboardId = numberParam(c, 'dashboardId');
-    const result = await dispatch(c, 'deleteDashboard', { dashboardId }, { dashboardId });
-    if (!result.ok) return actionError(c, result);
-    return c.json(result.data as { success: true });
-  })
-  .post('/dashboards/:dashboardId/widgets', async (c) => {
-    const dashboardId = numberParam(c, 'dashboardId');
-    const result = await dispatch(c, 'createDashboardWidget', { ...(await jsonBody(c)), dashboardId }, { dashboardId });
-    if (!result.ok) return actionError(c, result);
-    return c.json(result.data as { widget: TableDashboardWidgetRow }, 201);
-  })
-  .patch('/dashboard-widgets/:widgetId', async (c) => {
-    const widgetId = numberParam(c, 'widgetId');
-    const result = await dispatch(c, 'updateDashboardWidget', { ...(await jsonBody(c)), widgetId }, { widgetId });
-    if (!result.ok) return actionError(c, result);
-    return c.json(result.data as { widget: TableDashboardWidgetRow });
-  })
-  .delete('/dashboard-widgets/:widgetId', async (c) => {
-    const widgetId = numberParam(c, 'widgetId');
-    const result = await dispatch(c, 'deleteDashboardWidget', { widgetId }, { widgetId });
-    if (!result.ok) return actionError(c, result);
-    return c.json(result.data as { success: true });
-  })
-  .post('/dashboard-widgets/:widgetId/query', async (c) => {
-    const widgetId = numberParam(c, 'widgetId');
-    const result = await dispatch(c, 'queryDashboardWidget', { widgetId }, { widgetId });
-    if (!result.ok) return actionError(c, result);
-    return c.json(
-      result.data as {
-        widget: TableDashboardWidgetRow;
-        text?: string;
-        rows?: Array<{ group: string | number | boolean | null; value: number }>;
-        records?: TableRecordQueryResult;
-      },
-    );
   });
 
 export default tablesRoutes;

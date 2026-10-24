@@ -1,16 +1,14 @@
 /**
  * Tables domain service — fixed-schema metadata, validated dynamic records,
- * bounded query AST, optimistic concurrency, and dashboard aggregation.
+ * bounded query AST, optimistic concurrency, and record aggregation.
  */
 
 import { createHash } from 'node:crypto';
 import { and, asc, desc, eq, inArray, isNotNull, isNull, or, sql, type SQL } from 'drizzle-orm';
 import { nowIso } from '@greenhouse/utils/date';
 import { safeJsonParse } from '@greenhouse/utils/json';
-import { resolveCapability } from '@greenhouse/platform-kernel';
 import {
   TABLE_AGGREGATIONS,
-  TABLE_DASHBOARD_WIDGET_TYPES,
   TABLE_FIELD_TYPES,
   TABLE_FILTER_OPERATORS,
   TABLE_FORMULA_BINARY_OPERATORS,
@@ -19,20 +17,12 @@ import {
 import type {
   TableAggregateInput,
   TableAggregateRow,
-  TableAutomationAction,
-  TableAutomationConfig,
-  TableAutomationTrigger,
   TableBaseRole,
   TableBaseVisibility,
   TableBatchValidationResult,
-  TableDashboardWidgetConfig,
-  TableDashboardWidgetLayout,
-  TableDashboardWidgetType,
   TableFieldConfig,
   TableFieldType,
   TableFilterClause,
-  TableFilterGroup,
-  TableFormConfig,
   TableFormulaExpression,
   TableQuery,
   TableRecordValues,
@@ -45,15 +35,8 @@ import type { Db } from '../client.js';
 import {
   tableBaseMembers,
   tableBases,
-  tableAutomationOutbox,
-  tableAutomationRules,
-  tableAutomationRuns,
-  tableDashboardWidgets,
-  tableDashboards,
   tableFieldDependencies,
   tableFields,
-  tableForms,
-  tableNotifications,
   tableRecordAttachments,
   tableRecordLinks,
   tableRecords,
@@ -67,15 +50,9 @@ import {
 import type {
   TableBaseMemberRow,
   TableBaseRow,
-  TableAutomationRuleRow,
-  TableAutomationRunRow,
-  TableDashboardRow,
-  TableDashboardWidgetRow,
   TableDefinitionRow,
   TableFieldDependencyRow,
   TableFieldRow,
-  TableFormRow,
-  TableNotificationRow,
   TableRecomputeJobRow,
   TableRecordAttachmentRow,
   TableRecordLinkRow,
@@ -83,7 +60,6 @@ import type {
   TableSchemaVersionRow,
   TableViewRow,
 } from '../schema/tables.js';
-import { createPlatformService } from './platform.js';
 
 type TablesTransaction = Parameters<Parameters<Db['transaction']>[0]>[0];
 
@@ -156,43 +132,6 @@ export interface CreateTableViewInput {
   created_by: string;
 }
 
-export interface CreateTableFormInput {
-  table_id: number;
-  name: string;
-  status?: 'draft' | 'published';
-  config: TableFormConfig;
-  user_id: string;
-}
-
-export interface UpdateTableFormInput {
-  revision: number;
-  name?: string;
-  status?: 'draft' | 'published';
-  config?: TableFormConfig;
-  user_id: string;
-}
-
-export interface CreateTableAutomationInput {
-  base_id: number;
-  table_id: number;
-  name: string;
-  status?: 'disabled' | 'enabled';
-  trigger: TableAutomationTrigger;
-  config: TableAutomationConfig;
-  execution_user_id: string;
-  user_id: string;
-}
-
-export interface UpdateTableAutomationInput {
-  revision: number;
-  name?: string;
-  status?: 'disabled' | 'enabled';
-  trigger?: TableAutomationTrigger;
-  config?: TableAutomationConfig;
-  execution_user_id?: string;
-  user_id: string;
-}
-
 export interface CreateTableRecordInput {
   table_id: number;
   values: TableRecordValues;
@@ -213,39 +152,6 @@ export interface BatchUpsertTableRecordItem {
   values: TableRecordValues;
 }
 
-export interface CreateTableDashboardInput {
-  base_id: number;
-  name: string;
-  description?: string | null;
-  created_by: string;
-}
-
-export interface CreateTableDashboardWidgetInput {
-  dashboard_id: number;
-  table_id?: number | null;
-  type: TableDashboardWidgetType;
-  title: string;
-  config?: TableDashboardWidgetConfig;
-  layout?: TableDashboardWidgetLayout;
-  position?: number;
-  created_by: string;
-}
-
-export interface UpdateTableDashboardInput {
-  revision: number;
-  name?: string;
-  description?: string | null;
-}
-
-export interface UpdateTableDashboardWidgetInput {
-  revision: number;
-  table_id?: number | null;
-  title?: string;
-  config?: TableDashboardWidgetConfig;
-  layout?: TableDashboardWidgetLayout;
-  position?: number;
-}
-
 export type TableRevisionResult<T> =
   | { ok: true; value: T }
   | { ok: false; reason: 'not_found' | 'conflict'; current?: number };
@@ -262,11 +168,6 @@ export interface TableSchemaResult {
   views: TableViewRow[];
 }
 
-export interface TableDashboardResult {
-  dashboard: TableDashboardRow;
-  widgets: TableDashboardWidgetRow[];
-}
-
 function trimmed(value: string, field: string, max: number): string {
   const result = value.trim();
   if (!result) throw new TablesValidationError(`${field} is required`);
@@ -280,12 +181,6 @@ function isPositiveInteger(value: unknown): value is number {
 
 function validateFieldType(type: TableFieldType): void {
   if (!TABLE_FIELD_TYPES.includes(type)) throw new TablesValidationError(`Unsupported field type "${type}"`);
-}
-
-function validateWidgetType(type: TableDashboardWidgetType): void {
-  if (!TABLE_DASHBOARD_WIDGET_TYPES.includes(type)) {
-    throw new TablesValidationError(`Unsupported dashboard widget type "${type}"`);
-  }
 }
 
 function validateQueryShape(query: TableQuery): void {
@@ -334,62 +229,6 @@ function validateQueryShape(query: TableQuery): void {
       }
     }
   }
-}
-
-function normalizeWidgetConfig(
-  type: TableDashboardWidgetType,
-  input: TableDashboardWidgetConfig = {},
-): TableDashboardWidgetConfig {
-  if (!input || typeof input !== 'object' || Array.isArray(input)) {
-    throw new TablesValidationError('Widget config must be an object');
-  }
-  if (type === 'text') {
-    if (input.text !== undefined && typeof input.text !== 'string') {
-      throw new TablesValidationError('Text widget content must be text');
-    }
-    if ((input.text?.length ?? 0) > 100_000) throw new TablesValidationError('Text widget exceeds 100,000 characters');
-    return { version: 1, text: input.text ?? '' };
-  }
-  const operation = input.operation ?? 'count';
-  if (!TABLE_AGGREGATIONS.includes(operation)) {
-    throw new TablesValidationError(`Unsupported aggregation "${operation}"`);
-  }
-  if (input.valueFieldId !== undefined && !isPositiveInteger(input.valueFieldId)) {
-    throw new TablesValidationError('valueFieldId must be a positive integer');
-  }
-  if (input.groupByFieldId !== undefined && !isPositiveInteger(input.groupByFieldId)) {
-    throw new TablesValidationError('groupByFieldId must be a positive integer');
-  }
-  if (input.limit !== undefined && (!Number.isInteger(input.limit) || input.limit < 1 || input.limit > 100)) {
-    throw new TablesValidationError('Widget limit must be between 1 and 100');
-  }
-  if (input.query !== undefined) validateQueryShape(input.query);
-  return {
-    version: 1,
-    operation,
-    ...(input.valueFieldId ? { valueFieldId: input.valueFieldId } : {}),
-    ...(input.groupByFieldId ? { groupByFieldId: input.groupByFieldId } : {}),
-    ...(input.query ? { query: input.query } : {}),
-    ...(input.limit ? { limit: input.limit } : {}),
-  };
-}
-
-function normalizeWidgetLayout(input?: TableDashboardWidgetLayout): TableDashboardWidgetLayout {
-  const layout = input ?? { version: 1, x: 0, y: 0, w: 6, h: 4 };
-  if (
-    !layout ||
-    typeof layout !== 'object' ||
-    ![layout.x, layout.y, layout.w, layout.h].every((value) => Number.isInteger(value)) ||
-    layout.x < 0 ||
-    layout.y < 0 ||
-    layout.w < 1 ||
-    layout.h < 1 ||
-    layout.w > 24 ||
-    layout.h > 24
-  ) {
-    throw new TablesValidationError('Widget layout requires integer x/y >= 0 and w/h between 1 and 24');
-  }
-  return { ...layout, version: 1 };
 }
 
 function parseDate(value: string): boolean {
@@ -826,47 +665,7 @@ function validateValuesWithContext(
   return normalized;
 }
 
-function automationConditionMatches(
-  condition: TableFilterGroup | undefined,
-  fields: TableFieldRow[],
-  values: TableRecordValues,
-): boolean {
-  if (!condition || condition.clauses.length === 0) return true;
-  const byId = new Map(fields.map((field) => [field.id, field]));
-  const matches = condition.clauses.map((clause) => {
-    if (!byId.has(clause.fieldId)) return false;
-    const value = values[String(clause.fieldId)];
-    if (clause.operator === 'is_empty') {
-      return value === null || value === undefined || value === '' || (Array.isArray(value) && value.length === 0);
-    }
-    if (clause.operator === 'is_not_empty') {
-      return !(value === null || value === undefined || value === '' || (Array.isArray(value) && value.length === 0));
-    }
-    if (clause.operator === 'contains' || clause.operator === 'not_contains') {
-      const contains = Array.isArray(value)
-        ? value.includes(clause.value)
-        : String(value ?? '')
-            .toLocaleLowerCase()
-            .includes(String(clause.value ?? '').toLocaleLowerCase());
-      return clause.operator === 'contains' ? contains : !contains;
-    }
-    if (clause.operator === 'in') {
-      return Array.isArray(clause.value) && clause.value.includes(value);
-    }
-    if (clause.operator === 'eq') return value === clause.value;
-    if (clause.operator === 'neq') return value !== clause.value;
-    const left = typeof value === 'number' ? value : String(value ?? '');
-    const right = typeof clause.value === 'number' ? clause.value : String(clause.value ?? '');
-    if (clause.operator === 'gt') return left > right;
-    if (clause.operator === 'gte') return left >= right;
-    if (clause.operator === 'lt') return left < right;
-    return left <= right;
-  });
-  return condition.combinator === 'and' ? matches.every(Boolean) : matches.some(Boolean);
-}
-
 export function createTablesService(db: Db) {
-  const platform = createPlatformService(db);
   const loadValidationContext = async (tableId: number): Promise<TableValidationContext> => {
     const fields = await db
       .select()
@@ -940,103 +739,6 @@ export function createTablesService(db: Db) {
       ),
       attachmentFileIds,
     };
-  };
-
-  const normalizeFormConfig = async (tableId: number, input: TableFormConfig): Promise<TableFormConfig> => {
-    if (!input || typeof input !== 'object' || !Array.isArray(input.fieldIds)) {
-      throw new TablesValidationError('Form config requires fieldIds');
-    }
-    const fieldIds = [...new Set(input.fieldIds)];
-    if (fieldIds.length < 1 || fieldIds.length > MAX_FIELDS || !fieldIds.every(isPositiveInteger)) {
-      throw new TablesValidationError(`Form requires 1-${MAX_FIELDS} valid field ids`);
-    }
-    const fields = await db
-      .select()
-      .from(tableFields)
-      .where(
-        and(eq(tableFields.table_id, tableId), inArray(tableFields.id, fieldIds), isNull(tableFields.archived_at)),
-      );
-    if (
-      fields.length !== fieldIds.length ||
-      fields.some((field) => field.type === 'formula' || field.type === 'rollup' || field.type === 'attachment')
-    ) {
-      throw new TablesValidationError(
-        'Form fields must be active, writable, non-attachment fields on the target table',
-      );
-    }
-    const text = (value: string | undefined, fallback: string, max: number) =>
-      value === undefined ? fallback : value.trim().slice(0, max);
-    return {
-      version: 1,
-      title: text(input.title, '', 120),
-      description: text(input.description, '', 2_000),
-      fieldIds,
-      submitLabel: text(input.submitLabel, 'Submit', 60),
-      successMessage: text(input.successMessage, 'Submitted successfully.', 500),
-    };
-  };
-
-  const normalizeAutomationConfig = async (
-    baseId: number,
-    tableId: number,
-    input: TableAutomationConfig,
-  ): Promise<TableAutomationConfig> => {
-    if (!input || typeof input !== 'object' || !Array.isArray(input.actions)) {
-      throw new TablesValidationError('Automation config requires actions');
-    }
-    if (input.actions.length < 1 || input.actions.length > 10) {
-      throw new TablesValidationError('Automation supports 1-10 actions');
-    }
-    if (input.condition) {
-      validateQueryShape({ where: input.condition });
-      if (input.condition.clauses.length > MAX_QUERY_CLAUSES) {
-        throw new TablesValidationError(`Automation condition supports at most ${MAX_QUERY_CLAUSES} clauses`);
-      }
-      const fields = await db
-        .select()
-        .from(tableFields)
-        .where(and(eq(tableFields.table_id, tableId), isNull(tableFields.archived_at)));
-      const fieldIds = new Set(fields.map((field) => field.id));
-      if (input.condition.clauses.some((clause) => !fieldIds.has(clause.fieldId))) {
-        throw new TablesValidationError('Automation condition references an unavailable field');
-      }
-    }
-    const actions: TableAutomationAction[] = [];
-    for (const action of input.actions) {
-      if (action.type === 'update_record') {
-        if (!action.values || typeof action.values !== 'object' || Array.isArray(action.values)) {
-          throw new TablesValidationError('update_record action requires values');
-        }
-        actions.push({ type: 'update_record', values: action.values });
-      } else if (action.type === 'create_record') {
-        const [targetTable] = await db.select().from(tableTables).where(eq(tableTables.id, action.tableId)).limit(1);
-        if (!targetTable || targetTable.base_id !== baseId || targetTable.archived_at) {
-          throw new TablesValidationError('create_record target must be an active table in the same Base');
-        }
-        actions.push({ type: 'create_record', tableId: action.tableId, values: action.values });
-      } else if (action.type === 'notify') {
-        const userIds = [...new Set(action.userIds)];
-        if (userIds.length < 1 || userIds.length > 50) {
-          throw new TablesValidationError('notify action requires 1-50 recipients');
-        }
-        const recipients = await db
-          .select({ id: users.id })
-          .from(users)
-          .where(and(inArray(users.id, userIds), eq(users.status, 'active'), inArray(users.role, ['team', 'super'])));
-        if (recipients.length !== userIds.length) {
-          throw new TablesValidationError('notify recipients must be active internal users');
-        }
-        actions.push({
-          type: 'notify',
-          userIds,
-          title: trimmed(action.title, 'Notification title', 120),
-          message: trimmed(action.message, 'Notification message', 2_000),
-        });
-      } else {
-        throw new TablesValidationError('Unsupported automation action');
-      }
-    }
-    return { version: 1, ...(input.condition ? { condition: input.condition } : {}), actions };
   };
 
   const writeSchemaVersion = async (
@@ -1515,165 +1217,6 @@ export function createTablesService(db: Db) {
     return latest[0]
       ? { ok: false, reason: 'conflict', current: latest[0].revision }
       : { ok: false, reason: 'not_found' };
-  };
-
-  const canUserEditBase = async (baseId: number, userId: string): Promise<boolean> => {
-    const [user, base, member, authorization] = await Promise.all([
-      db.select().from(users).where(eq(users.id, userId)).limit(1),
-      db.select().from(tableBases).where(eq(tableBases.id, baseId)).limit(1),
-      db
-        .select()
-        .from(tableBaseMembers)
-        .where(and(eq(tableBaseMembers.base_id, baseId), eq(tableBaseMembers.user_id, userId)))
-        .limit(1),
-      platform.getAuthorizationSnapshot(userId, 'default'),
-    ]);
-    if (
-      !user[0] ||
-      user[0].status !== 'active' ||
-      (user[0].role !== 'team' && user[0].role !== 'super') ||
-      !base[0] ||
-      base[0].archived_at
-    ) {
-      return false;
-    }
-    if (!resolveCapability({ capability: 'tables.data.update', ...authorization }).allowed) return false;
-    if (user[0].role === 'super' || base[0].owner_id === user[0].id) return true;
-    return member[0]?.role === 'owner' || member[0]?.role === 'builder' || member[0]?.role === 'editor';
-  };
-
-  const canExecuteAutomation = (rule: TableAutomationRuleRow): Promise<boolean> =>
-    canUserEditBase(rule.base_id, rule.execution_user_id);
-
-  const runAutomations = async (eventType: TableAutomationTrigger, record: TableRecordRow): Promise<void> => {
-    const [rules, fields] = await Promise.all([
-      db
-        .select()
-        .from(tableAutomationRules)
-        .where(
-          and(
-            eq(tableAutomationRules.table_id, record.table_id),
-            eq(tableAutomationRules.status, 'enabled'),
-            eq(tableAutomationRules.trigger, eventType),
-          ),
-        ),
-      db
-        .select()
-        .from(tableFields)
-        .where(and(eq(tableFields.table_id, record.table_id), isNull(tableFields.archived_at))),
-    ]);
-    const recordValues = { ...record.values, ...record.computed_values };
-    for (const rule of rules) {
-      if (!automationConditionMatches(rule.config.condition, fields, recordValues)) continue;
-      const now = nowIso();
-      const [outbox] = await db
-        .insert(tableAutomationOutbox)
-        .values({
-          rule_id: rule.id,
-          record_id: record.id,
-          event_type: eventType,
-          payload: { tableId: record.table_id, revision: record.revision },
-          status: 'pending',
-          idempotency_key: `rule:${rule.id}:${eventType}:${record.id}:${record.revision}`,
-          recursion_depth: 0,
-          created_at: now,
-        })
-        .onConflictDoNothing()
-        .returning();
-      if (!outbox) continue;
-      const [run] = await db
-        .insert(tableAutomationRuns)
-        .values({
-          rule_id: rule.id,
-          outbox_id: outbox.id,
-          status: 'running',
-          actions_completed: 0,
-          started_at: now,
-        })
-        .returning();
-      await db
-        .update(tableAutomationOutbox)
-        .set({ status: 'processing' })
-        .where(eq(tableAutomationOutbox.id, outbox.id));
-      let actionsCompleted = 0;
-      try {
-        if (!(await canExecuteAutomation(rule))) {
-          throw new TablesValidationError('Automation execution user is inactive or lacks Base edit access');
-        }
-        for (const action of rule.config.actions) {
-          if (action.type === 'notify') {
-            await db.insert(tableNotifications).values(
-              action.userIds.map((userId) => ({
-                base_id: rule.base_id,
-                user_id: userId,
-                rule_id: rule.id,
-                record_id: record.id,
-                title: action.title,
-                message: action.message,
-                created_at: nowIso(),
-              })),
-            );
-          } else if (action.type === 'update_record') {
-            const currentRows = await db
-              .select()
-              .from(tableRecords)
-              .where(and(eq(tableRecords.id, record.id), isNull(tableRecords.deleted_at)))
-              .limit(1);
-            if (!currentRows[0]) throw new TablesValidationError('Automation record is unavailable');
-            const context = await loadValidationContext(currentRows[0].table_id);
-            const result = await updateRecordWithContext(
-              {
-                table_id: currentRows[0].table_id,
-                record_id: currentRows[0].id,
-                revision: currentRows[0].revision,
-                values: action.values,
-                user_id: rule.execution_user_id,
-              },
-              context,
-            );
-            if (!result.ok) throw new TablesValidationError(`Automation update failed: ${result.reason}`);
-          } else {
-            const context = await loadValidationContext(action.tableId);
-            await createRecordWithContext(
-              {
-                table_id: action.tableId,
-                values: action.values,
-                user_id: rule.execution_user_id,
-              },
-              context,
-            );
-          }
-          actionsCompleted += 1;
-        }
-        await Promise.all([
-          db
-            .update(tableAutomationOutbox)
-            .set({ status: 'succeeded', processed_at: nowIso() })
-            .where(eq(tableAutomationOutbox.id, outbox.id)),
-          db
-            .update(tableAutomationRuns)
-            .set({ status: 'succeeded', actions_completed: actionsCompleted, finished_at: nowIso() })
-            .where(eq(tableAutomationRuns.id, run!.id)),
-        ]);
-      } catch (error) {
-        const message = error instanceof Error ? error.message.slice(0, 2_000) : 'Unknown automation error';
-        await Promise.all([
-          db
-            .update(tableAutomationOutbox)
-            .set({ status: 'failed', processed_at: nowIso() })
-            .where(eq(tableAutomationOutbox.id, outbox.id)),
-          db
-            .update(tableAutomationRuns)
-            .set({
-              status: 'failed',
-              actions_completed: actionsCompleted,
-              error: message,
-              finished_at: nowIso(),
-            })
-            .where(eq(tableAutomationRuns.id, run!.id)),
-        ]);
-      }
-    }
   };
 
   const service = {
@@ -2167,177 +1710,6 @@ export function createTablesService(db: Db) {
       return { table, fields, views };
     },
 
-    async listForms(tableId: number): Promise<TableFormRow[]> {
-      return db.select().from(tableForms).where(eq(tableForms.table_id, tableId)).orderBy(asc(tableForms.id));
-    },
-
-    async getForm(id: number): Promise<TableFormRow | undefined> {
-      const rows = await db.select().from(tableForms).where(eq(tableForms.id, id)).limit(1);
-      return rows[0];
-    },
-
-    async createForm(input: CreateTableFormInput): Promise<TableFormRow> {
-      const now = nowIso();
-      const config = await normalizeFormConfig(input.table_id, input.config);
-      const [row] = await db
-        .insert(tableForms)
-        .values({
-          table_id: input.table_id,
-          name: trimmed(input.name, 'Form name', 120),
-          status: input.status ?? 'draft',
-          config,
-          revision: 1,
-          created_by: input.user_id,
-          updated_by: input.user_id,
-          created_at: now,
-          updated_at: now,
-        })
-        .returning();
-      return row!;
-    },
-
-    async updateForm(id: number, patch: UpdateTableFormInput): Promise<TableRevisionResult<TableFormRow>> {
-      const current = await service.getForm(id);
-      if (!current) return { ok: false, reason: 'not_found' };
-      if (current.revision !== patch.revision) {
-        return { ok: false, reason: 'conflict', current: current.revision };
-      }
-      const values: Partial<TableFormRow> = {
-        revision: patch.revision + 1,
-        updated_by: patch.user_id,
-        updated_at: nowIso(),
-      };
-      if (patch.name !== undefined) values.name = trimmed(patch.name, 'Form name', 120);
-      if (patch.status !== undefined) values.status = patch.status;
-      if (patch.config !== undefined) values.config = await normalizeFormConfig(current.table_id, patch.config);
-      const rows = await db
-        .update(tableForms)
-        .set(values)
-        .where(and(eq(tableForms.id, id), eq(tableForms.revision, patch.revision)))
-        .returning();
-      if (rows[0]) return { ok: true, value: rows[0] };
-      const latest = await service.getForm(id);
-      return latest ? { ok: false, reason: 'conflict', current: latest.revision } : { ok: false, reason: 'not_found' };
-    },
-
-    async submitForm(formId: number, values: TableRecordValues, userId: string): Promise<TableRecordRow> {
-      const form = await service.getForm(formId);
-      if (!form || form.status !== 'published') throw new TablesValidationError('Form is not published');
-      const allowed = new Set(form.config.fieldIds.map(String));
-      if (Object.keys(values).some((fieldId) => !allowed.has(fieldId))) {
-        throw new TablesValidationError('Form submission contains a field that is not published');
-      }
-      return service.createRecord({ table_id: form.table_id, values, user_id: userId });
-    },
-
-    async listAutomationRules(baseId: number): Promise<TableAutomationRuleRow[]> {
-      return db
-        .select()
-        .from(tableAutomationRules)
-        .where(eq(tableAutomationRules.base_id, baseId))
-        .orderBy(asc(tableAutomationRules.id));
-    },
-
-    async getAutomationRule(id: number): Promise<TableAutomationRuleRow | undefined> {
-      const rows = await db.select().from(tableAutomationRules).where(eq(tableAutomationRules.id, id)).limit(1);
-      return rows[0];
-    },
-
-    async createAutomationRule(input: CreateTableAutomationInput): Promise<TableAutomationRuleRow> {
-      if (!['record_created', 'record_updated'].includes(input.trigger)) {
-        throw new TablesValidationError('Unsupported automation trigger');
-      }
-      const [table] = await db.select().from(tableTables).where(eq(tableTables.id, input.table_id)).limit(1);
-      if (!table || table.base_id !== input.base_id || table.archived_at) {
-        throw new TablesValidationError('Automation table must belong to this Base');
-      }
-      if (!(await canUserEditBase(input.base_id, input.execution_user_id))) {
-        throw new TablesValidationError('Automation execution user must have Base edit access');
-      }
-      const config = await normalizeAutomationConfig(input.base_id, input.table_id, input.config);
-      const now = nowIso();
-      const [row] = await db
-        .insert(tableAutomationRules)
-        .values({
-          base_id: input.base_id,
-          table_id: input.table_id,
-          name: trimmed(input.name, 'Automation name', 120),
-          status: input.status ?? 'disabled',
-          trigger: input.trigger,
-          config,
-          execution_user_id: input.execution_user_id,
-          revision: 1,
-          created_by: input.user_id,
-          updated_by: input.user_id,
-          created_at: now,
-          updated_at: now,
-        })
-        .returning();
-      return row!;
-    },
-
-    async updateAutomationRule(
-      id: number,
-      patch: UpdateTableAutomationInput,
-    ): Promise<TableRevisionResult<TableAutomationRuleRow>> {
-      const current = await service.getAutomationRule(id);
-      if (!current) return { ok: false, reason: 'not_found' };
-      if (current.revision !== patch.revision) {
-        return { ok: false, reason: 'conflict', current: current.revision };
-      }
-      const executionUserId = patch.execution_user_id ?? current.execution_user_id;
-      if (!(await canUserEditBase(current.base_id, executionUserId))) {
-        throw new TablesValidationError('Automation execution user must have Base edit access');
-      }
-      const values: Partial<TableAutomationRuleRow> = {
-        revision: patch.revision + 1,
-        updated_by: patch.user_id,
-        updated_at: nowIso(),
-      };
-      if (patch.name !== undefined) values.name = trimmed(patch.name, 'Automation name', 120);
-      if (patch.status !== undefined) values.status = patch.status;
-      if (patch.trigger !== undefined) values.trigger = patch.trigger;
-      if (patch.execution_user_id !== undefined) values.execution_user_id = patch.execution_user_id;
-      if (patch.config !== undefined) {
-        values.config = await normalizeAutomationConfig(current.base_id, current.table_id, patch.config);
-      }
-      const rows = await db
-        .update(tableAutomationRules)
-        .set(values)
-        .where(and(eq(tableAutomationRules.id, id), eq(tableAutomationRules.revision, patch.revision)))
-        .returning();
-      if (rows[0]) return { ok: true, value: rows[0] };
-      const latest = await service.getAutomationRule(id);
-      return latest ? { ok: false, reason: 'conflict', current: latest.revision } : { ok: false, reason: 'not_found' };
-    },
-
-    async listAutomationRuns(ruleId: number, limit = 50): Promise<TableAutomationRunRow[]> {
-      return db
-        .select()
-        .from(tableAutomationRuns)
-        .where(eq(tableAutomationRuns.rule_id, ruleId))
-        .orderBy(desc(tableAutomationRuns.started_at))
-        .limit(Math.min(Math.max(limit, 1), 200));
-    },
-
-    async listNotifications(userId: string, limit = 100): Promise<TableNotificationRow[]> {
-      return db
-        .select()
-        .from(tableNotifications)
-        .where(eq(tableNotifications.user_id, userId))
-        .orderBy(desc(tableNotifications.created_at))
-        .limit(Math.min(Math.max(limit, 1), 200));
-    },
-
-    async markNotificationRead(id: number, userId: string): Promise<TableNotificationRow | undefined> {
-      const rows = await db
-        .update(tableNotifications)
-        .set({ read_at: nowIso() })
-        .where(and(eq(tableNotifications.id, id), eq(tableNotifications.user_id, userId)))
-        .returning();
-      return rows[0];
-    },
-
     async validatedValues(
       tableId: number,
       values: TableRecordValues,
@@ -2347,9 +1719,7 @@ export function createTablesService(db: Db) {
     },
 
     async createRecord(input: CreateTableRecordInput): Promise<TableRecordRow> {
-      const record = await createRecordWithContext(input, await loadValidationContext(input.table_id));
-      await runAutomations('record_created', record);
-      return record;
+      return createRecordWithContext(input, await loadValidationContext(input.table_id));
     },
 
     async getRecord(tableId: number, recordId: number): Promise<TableRecordRow | undefined> {
@@ -2395,9 +1765,7 @@ export function createTablesService(db: Db) {
     ): Promise<
       { ok: true; record: TableRecordRow } | { ok: false; reason: 'not_found' | 'conflict'; current?: number }
     > {
-      const result = await updateRecordWithContext(input, await loadValidationContext(input.table_id));
-      if (result.ok) await runAutomations('record_updated', result.record);
-      return result;
+      return updateRecordWithContext(input, await loadValidationContext(input.table_id));
     },
 
     async deleteRecord(input: {
@@ -2669,7 +2037,6 @@ export function createTablesService(db: Db) {
               },
               context,
             );
-            await runAutomations('record_created', record);
             results.push({ index, ok: true as const, record });
             continue;
           }
@@ -2687,7 +2054,6 @@ export function createTablesService(db: Db) {
             },
             context,
           );
-          if (result.ok) await runAutomations('record_updated', result.record);
           results.push(result.ok ? { index, ok: true as const, record: result.record } : { index, ...result });
         } catch (error) {
           results.push({
@@ -2699,145 +2065,6 @@ export function createTablesService(db: Db) {
         }
       }
       return results;
-    },
-
-    async createDashboard(input: CreateTableDashboardInput): Promise<TableDashboardRow> {
-      const now = nowIso();
-      const [row] = await db
-        .insert(tableDashboards)
-        .values({
-          base_id: input.base_id,
-          name: trimmed(input.name, 'Dashboard name', 120),
-          description: input.description?.trim() || null,
-          created_by: input.created_by,
-          created_at: now,
-          updated_at: now,
-        })
-        .returning();
-      return row!;
-    },
-
-    async listDashboards(baseId: number): Promise<TableDashboardRow[]> {
-      return db
-        .select()
-        .from(tableDashboards)
-        .where(eq(tableDashboards.base_id, baseId))
-        .orderBy(asc(tableDashboards.id));
-    },
-
-    async getDashboard(id: number): Promise<TableDashboardResult | undefined> {
-      const rows = await db.select().from(tableDashboards).where(eq(tableDashboards.id, id)).limit(1);
-      if (!rows[0]) return undefined;
-      const widgets = await db
-        .select()
-        .from(tableDashboardWidgets)
-        .where(eq(tableDashboardWidgets.dashboard_id, id))
-        .orderBy(asc(tableDashboardWidgets.position), asc(tableDashboardWidgets.id));
-      return { dashboard: rows[0], widgets };
-    },
-
-    async updateDashboard(
-      id: number,
-      patch: UpdateTableDashboardInput,
-    ): Promise<TableRevisionResult<TableDashboardRow>> {
-      const current = await db.select().from(tableDashboards).where(eq(tableDashboards.id, id)).limit(1);
-      if (!current[0]) return { ok: false, reason: 'not_found' };
-      if (current[0].revision !== patch.revision) {
-        return { ok: false, reason: 'conflict', current: current[0].revision };
-      }
-      const values: Partial<TableDashboardRow> = {
-        revision: patch.revision + 1,
-        updated_at: nowIso(),
-      };
-      if (patch.name !== undefined) values.name = trimmed(patch.name, 'Dashboard name', 120);
-      if (patch.description !== undefined) values.description = patch.description?.trim() || null;
-      const rows = await db
-        .update(tableDashboards)
-        .set(values)
-        .where(and(eq(tableDashboards.id, id), eq(tableDashboards.revision, patch.revision)))
-        .returning();
-      if (rows[0]) return { ok: true, value: rows[0] };
-      const latest = await db.select().from(tableDashboards).where(eq(tableDashboards.id, id)).limit(1);
-      return latest[0]
-        ? { ok: false, reason: 'conflict', current: latest[0].revision }
-        : { ok: false, reason: 'not_found' };
-    },
-
-    /**
-     * Dashboards are pure configuration — widgets cascade and no business data
-     * lives here — so this is a real delete rather than the archive used for
-     * bases, tables and records (spec D4).
-     */
-    async deleteDashboard(id: number): Promise<boolean> {
-      const rows = await db.delete(tableDashboards).where(eq(tableDashboards.id, id)).returning();
-      return rows.length > 0;
-    },
-
-    async getDashboardWidget(id: number): Promise<TableDashboardWidgetRow | undefined> {
-      const rows = await db.select().from(tableDashboardWidgets).where(eq(tableDashboardWidgets.id, id)).limit(1);
-      return rows[0];
-    },
-
-    async createDashboardWidget(input: CreateTableDashboardWidgetInput): Promise<TableDashboardWidgetRow> {
-      validateWidgetType(input.type);
-      if (input.type !== 'text' && !input.table_id) {
-        throw new TablesValidationError(`${input.type} widgets require table_id`);
-      }
-      const config = normalizeWidgetConfig(input.type, input.config);
-      const layout = normalizeWidgetLayout(input.layout);
-      const now = nowIso();
-      const [row] = await db
-        .insert(tableDashboardWidgets)
-        .values({
-          dashboard_id: input.dashboard_id,
-          table_id: input.table_id ?? null,
-          type: input.type,
-          title: trimmed(input.title, 'Widget title', 120),
-          config: JSON.stringify(config),
-          layout: JSON.stringify(layout),
-          position: input.position ?? 0,
-          created_by: input.created_by,
-          created_at: now,
-          updated_at: now,
-        })
-        .returning();
-      return row!;
-    },
-
-    async updateDashboardWidget(
-      id: number,
-      patch: UpdateTableDashboardWidgetInput,
-    ): Promise<TableRevisionResult<TableDashboardWidgetRow>> {
-      const current = await service.getDashboardWidget(id);
-      if (!current) return { ok: false, reason: 'not_found' };
-      if (current.revision !== patch.revision) {
-        return { ok: false, reason: 'conflict', current: current.revision };
-      }
-      const values: Partial<TableDashboardWidgetRow> = {
-        revision: patch.revision + 1,
-        updated_at: nowIso(),
-      };
-      if (patch.table_id !== undefined) values.table_id = patch.table_id;
-      if (patch.title !== undefined) values.title = trimmed(patch.title, 'Widget title', 120);
-      if (patch.config !== undefined) values.config = JSON.stringify(normalizeWidgetConfig(current.type, patch.config));
-      if (patch.layout !== undefined) values.layout = JSON.stringify(normalizeWidgetLayout(patch.layout));
-      if (patch.position !== undefined) values.position = patch.position;
-      const rows = await db
-        .update(tableDashboardWidgets)
-        .set(values)
-        .where(and(eq(tableDashboardWidgets.id, id), eq(tableDashboardWidgets.revision, patch.revision)))
-        .returning();
-      if (rows[0]) return { ok: true, value: rows[0] };
-      const latest = await service.getDashboardWidget(id);
-      return latest ? { ok: false, reason: 'conflict', current: latest.revision } : { ok: false, reason: 'not_found' };
-    },
-
-    async deleteDashboardWidget(id: number): Promise<boolean> {
-      const rows = await db
-        .delete(tableDashboardWidgets)
-        .where(eq(tableDashboardWidgets.id, id))
-        .returning({ id: tableDashboardWidgets.id });
-      return rows.length > 0;
     },
 
     async aggregateRecords(tableId: number, input: TableAggregateInput): Promise<TableAggregateRow[]> {

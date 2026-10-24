@@ -28,11 +28,6 @@ const ACTION_LABELS: Record<string, TranslationKey> = {
   updateRecord: 'tables.audit.updateRecord',
   batchUpsertRecords: 'tables.audit.batchUpsertRecords',
   deleteRecord: 'tables.audit.deleteRecord',
-  createDashboard: 'tables.audit.createDashboard',
-  updateDashboard: 'tables.audit.updateDashboard',
-  createDashboardWidget: 'tables.audit.createDashboardWidget',
-  updateDashboardWidget: 'tables.audit.updateDashboardWidget',
-  deleteDashboardWidget: 'tables.audit.deleteDashboardWidget',
   listBaseAudit: 'tables.audit.listBaseAudit',
 };
 

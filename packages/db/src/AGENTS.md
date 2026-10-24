@@ -204,7 +204,7 @@
 - `table_bases.archived_at` / `table_tables.archived_at` / `table_records.deleted_at` 是三层软删；`listBasesForUser`/`listTables`/`getSchema`/`queryRecords` 都已过滤，新增读路径别漏。
 - 配套方法：`archiveTable`/`restoreTable`/`listArchivedTables`、`restoreBase`/`listArchivedBases`、`listDeletedRecords`/`restoreRecord`。`restoreRecord` 与 `deleteRecord` 一样 bump `revision`（拿着旧 revision 的客户端不能静默覆盖），并 `refreshDependentRollups`。
 - `getRecordById` **刻意不过滤 `deleted_at`**（回收站与审计要看得见已删行），`getRecord` 过滤——两个都要用对。
-- `deleteDashboard` 是**真删**（widgets 级联），Tables 里唯一的硬删。权限口径与用户面语义见 [spec](../../../docs/specs/20260803-tables-lifecycle-and-grid-interaction.md)。
+- 权限口径与用户面语义见 [spec](../../../docs/specs/20260803-tables-lifecycle-and-grid-interaction.md)。
 
 ### 技能中心的安全扫描列
 

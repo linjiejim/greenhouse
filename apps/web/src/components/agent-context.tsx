@@ -82,7 +82,6 @@ export function resolveUrlContext(hash: string): PageContext | null {
         type: 'tables',
         baseId: Number.isInteger(baseId) && baseId > 0 ? baseId : undefined,
         tableId: segments[2] === 'table' && Number.isInteger(itemId) && itemId > 0 ? itemId : undefined,
-        dashboardId: segments[2] === 'dashboard' && Number.isInteger(itemId) && itemId > 0 ? itemId : undefined,
       };
     }
 

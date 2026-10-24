@@ -1,5 +1,5 @@
 import { IconButton, SearchInput, Select } from '../../components/ui';
-import { ClipboardList, Columns3, Filter, Plus, Save, Trash2 } from '../../lib/icons';
+import { Columns3, Filter, Plus, Save, Trash2 } from '../../lib/icons';
 import type { TableView } from '../../lib/api/tables';
 import { useT } from '../../lib/i18n';
 
@@ -16,7 +16,6 @@ interface TablesGridToolbarProps {
   onOpenFilters: () => void;
   onSaveView: () => void;
   onOpenRecycleBin: () => void;
-  onOpenForms: () => void;
   onAddField: () => void;
   onAddRecord: () => void;
 }
@@ -34,7 +33,6 @@ export function TablesGridToolbar({
   onOpenFilters,
   onSaveView,
   onOpenRecycleBin,
-  onOpenForms,
   onAddField,
   onAddRecord,
 }: TablesGridToolbarProps) {
@@ -83,14 +81,9 @@ export function TablesGridToolbar({
           </IconButton>
         )}
         {canBuild && (
-          <>
-            <IconButton label={t('tables.manageForms')} tooltip="top" onClick={onOpenForms} className="sm:h-8 sm:w-8">
-              <ClipboardList size={14} />
-            </IconButton>
-            <IconButton label={t('tables.addField')} tooltip="top" onClick={onAddField} className="sm:h-8 sm:w-8">
-              <Columns3 size={14} />
-            </IconButton>
-          </>
+          <IconButton label={t('tables.addField')} tooltip="top" onClick={onAddField} className="sm:h-8 sm:w-8">
+            <Columns3 size={14} />
+          </IconButton>
         )}
         {canEdit && (
           <IconButton

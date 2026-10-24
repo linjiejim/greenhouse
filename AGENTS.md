@@ -48,13 +48,11 @@ what exists." These rules are as binding as the "add" rules:
 - **Check for an existing implementation first.** Before adding a "second" retrieval / chart /
   editor / etc., register in the relevant AGENTS.md why the existing one can't be reused or
   extended. Parallel implementations without a recorded reason are not accepted.
-  - Registered: **the Home workbench does not reuse the `table_dashboard_widgets` storage** —
-    that table is Base-scoped with a single-table data source; the workbench is user-scoped
-    and spans every tool. It reuses the *components and query semantics* (`ChartBlock`,
+  - Registered: **the Home workbench reuses the *components and query semantics*** (`ChartBlock`,
     `TableQuery` filter AST, "one card = one persisted query") and stores its config in
-    `platform_user_workbench_preferences` (zero migrations). Conversely the drag grid
-    `components/workbench/widget-grid.tsx` is shared by Home and Tables dashboards — the
-    recorded reason for `react-grid-layout`.
+    `platform_user_workbench_preferences`. Its drag grid `components/workbench/widget-grid.tsx`
+    (Home only since Tables dashboards were removed in 3.0) is the recorded reason for
+    `react-grid-layout`: collision handling and vertical compaction.
   - Registered: **mermaid in chat uses the third-party `mermaid` library rather than a
     hand-drawn SVG renderer** — chat mermaid is read-only rendering of arbitrary diagram types,
     which no in-house drawing code could match (the interactive workflow SVG DAG it was once

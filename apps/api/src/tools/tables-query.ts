@@ -41,22 +41,11 @@ export const tableQuerySchema = z.object({
 
 const tablesQuerySchema = z.object({
   action: z
-    .enum([
-      'bases.list',
-      'base.get',
-      'tables.list',
-      'schema.get',
-      'records.get',
-      'records.query',
-      'records.aggregate',
-      'dashboards.list',
-      'dashboard.get',
-    ])
+    .enum(['bases.list', 'base.get', 'tables.list', 'schema.get', 'records.get', 'records.query', 'records.aggregate'])
     .describe('Read action to execute.'),
-  base_id: z.number().int().positive().optional().describe('Base ID for base/tables/dashboards actions.'),
+  base_id: z.number().int().positive().optional().describe('Base ID for base/tables actions.'),
   table_id: z.number().int().positive().optional().describe('Table ID for schema and record actions.'),
   record_id: z.number().int().positive().optional().describe('Record ID for records.get.'),
-  dashboard_id: z.number().int().positive().optional().describe('Dashboard ID for dashboard.get.'),
   search: z.string().max(200).optional().describe('Base name search for bases.list.'),
   query: tableQuerySchema.optional().describe('Bounded record query for records.query/aggregate.'),
   operation: z.enum(['count', 'sum', 'avg', 'min', 'max']).optional().describe('Aggregate operation.'),
@@ -147,41 +136,22 @@ export function createTablesQueryTool(ctx: TablesQueryContext) {
         );
         return result.ok ? result.data : { error: result.message };
       }
-      if (input.action === 'records.aggregate') {
-        if (!input.table_id) return { error: 'table_id is required' };
-        const result = await dispatchTablesAgentAction(
-          context,
-          'aggregateRecords',
-          {
-            tableId: input.table_id,
-            input: {
-              operation: input.operation ?? 'count',
-              valueFieldId: input.value_field_id,
-              groupByFieldId: input.group_by_field_id,
-              query: input.query,
-              limit: input.aggregate_limit,
-            },
-          },
-          { tableId: input.table_id },
-        );
-        return result.ok ? result.data : { error: result.message };
-      }
-      if (input.action === 'dashboards.list') {
-        if (!input.base_id) return { error: 'base_id is required' };
-        const result = await dispatchTablesAgentAction(
-          context,
-          'listDashboards',
-          { baseId: input.base_id },
-          { baseId: input.base_id },
-        );
-        return result.ok ? result.data : { error: result.message };
-      }
-      if (!input.dashboard_id) return { error: 'dashboard_id is required' };
+      // records.aggregate
+      if (!input.table_id) return { error: 'table_id is required' };
       const result = await dispatchTablesAgentAction(
         context,
-        'getDashboard',
-        { dashboardId: input.dashboard_id },
-        { dashboardId: input.dashboard_id },
+        'aggregateRecords',
+        {
+          tableId: input.table_id,
+          input: {
+            operation: input.operation ?? 'count',
+            valueFieldId: input.value_field_id,
+            groupByFieldId: input.group_by_field_id,
+            query: input.query,
+            limit: input.aggregate_limit,
+          },
+        },
+        { tableId: input.table_id },
       );
       return result.ok ? result.data : { error: result.message };
     },

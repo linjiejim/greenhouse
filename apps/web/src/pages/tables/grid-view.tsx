@@ -57,7 +57,6 @@ import { RecordRowActions } from './record-row-actions';
 import { InlineCell } from './inline-cell';
 import { buildPasteBatch, parseClipboardMatrix, parsePastedCell } from './grid-utils';
 import { TablesGridToolbar } from './grid-toolbar';
-import { TablesFormsDialog } from './forms-dialog';
 import { renderTableFieldValue } from './field-value';
 import { useT, type TranslationKey } from '../../lib/i18n';
 
@@ -201,7 +200,6 @@ export function TablesGridView({ table, tables, role, users }: TablesGridViewPro
   /** Carried into the Save view dialog when freezing without a saved view. */
   const [pendingFrozenCount, setPendingFrozenCount] = useState<number | null>(null);
   const [recycleBin, setRecycleBin] = useState(false);
-  const [formsDialog, setFormsDialog] = useState(false);
   const [viewName, setViewName] = useState('');
   const [viewScope, setViewScope] = useState<'personal' | 'shared'>('personal');
   const [filterDialog, setFilterDialog] = useState(false);
@@ -590,7 +588,6 @@ export function TablesGridView({ table, tables, role, users }: TablesGridViewPro
         onOpenFilters={openFilters}
         onSaveView={() => setViewDialog(true)}
         onOpenRecycleBin={() => setRecycleBin(true)}
-        onOpenForms={() => setFormsDialog(true)}
         onAddField={() => openFieldDialog('new')}
         onAddRecord={() => setRecordDialog('new')}
       />
@@ -783,12 +780,6 @@ export function TablesGridView({ table, tables, role, users }: TablesGridViewPro
               setRecordDialog(detailRecord);
               setDetailRecord(null);
             }}
-          />
-          <TablesFormsDialog
-            open={formsDialog}
-            tableId={table.id}
-            fields={schema.fields}
-            onClose={() => setFormsDialog(false)}
           />
         </>
       )}

@@ -42,7 +42,7 @@ const meta: ToolMeta = {
   brief: 'Create, update, upsert, and delete table records',
   description: `Confirm-gated record maintenance for the internal Tables application.
 
-Supported actions are records.create, records.update, records.upsert, records.batch_upsert, and records.delete. Read schema and the current record with tables_query first. Updates/deletes require the current revision and fail on conflicts; never retry by overwriting an unknown newer revision. Values use stable field ID strings, not field names. Schema, Base membership, views, and dashboards cannot be changed with this tool.`,
+Supported actions are records.create, records.update, records.upsert, records.batch_upsert, and records.delete. Read schema and the current record with tables_query first. Updates/deletes require the current revision and fail on conflicts; never retry by overwriting an unknown newer revision. Values use stable field ID strings, not field names. Schema, Base membership, and views cannot be changed with this tool.`,
   category: 'team',
   is_global: false,
   surface: { proxy: 'write', mcp: 'tables' },

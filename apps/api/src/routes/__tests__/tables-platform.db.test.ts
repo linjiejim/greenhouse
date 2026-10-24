@@ -395,72 +395,6 @@ describe('Tables Platform application', () => {
     expect(create.status).toBe(404);
   });
 
-  it('publishes authenticated forms and exposes automation notifications through governed routes', async () => {
-    await setupEditor();
-    const app = createHttpApp([owner, editor]);
-    const created = await createBase(app);
-    await app.request(`/api/tables/bases/${created.base.id}/members/${editor.id}`, {
-      method: 'PUT',
-      headers: { 'content-type': 'application/json', 'x-test-user': owner.id },
-      body: JSON.stringify({ role: 'editor' }),
-    });
-    const primaryId = created.schema.fields[0]!.id;
-    const formResponse = await app.request(`/api/tables/tables/${created.schema.table.id}/forms`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', 'x-test-user': owner.id },
-      body: JSON.stringify({
-        name: 'Internal intake',
-        status: 'published',
-        config: { title: 'Internal intake', fieldIds: [primaryId] },
-      }),
-    });
-    expect(formResponse.status).toBe(201);
-    const form = (await formResponse.json()).form as { id: number };
-    const submission = await app.request(`/api/tables/forms/${form.id}/submit`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', 'x-test-user': editor.id },
-      body: JSON.stringify({ values: { [primaryId]: 'Submitted by form' } }),
-    });
-    expect(submission.status).toBe(201);
-
-    const ruleResponse = await app.request(`/api/tables/bases/${created.base.id}/automations`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', 'x-test-user': owner.id },
-      body: JSON.stringify({
-        tableId: created.schema.table.id,
-        name: 'Notify editor',
-        status: 'enabled',
-        trigger: 'record_created',
-        config: {
-          actions: [{ type: 'notify', userIds: [editor.id], title: 'New item', message: 'A record was created.' }],
-        },
-      }),
-    });
-    expect(ruleResponse.status).toBe(201);
-    const rule = (await ruleResponse.json()).automation as { id: number };
-    const recordResponse = await app.request(`/api/tables/tables/${created.schema.table.id}/records`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', 'x-test-user': owner.id },
-      body: JSON.stringify({ values: { [primaryId]: 'Triggers notification' } }),
-    });
-    expect(recordResponse.status).toBe(201);
-
-    const runs = await app.request(`/api/tables/automations/${rule.id}/runs`, {
-      headers: { 'x-test-user': owner.id },
-    });
-    expect(runs.status).toBe(200);
-    expect((await runs.json()).runs).toEqual([
-      expect.objectContaining({ rule_id: rule.id, status: 'succeeded', actions_completed: 1 }),
-    ]);
-    const notifications = await app.request('/api/tables/notifications', {
-      headers: { 'x-test-user': editor.id },
-    });
-    expect(notifications.status).toBe(200);
-    expect((await notifications.json()).notifications).toEqual([
-      expect.objectContaining({ user_id: editor.id, title: 'New item', read_at: null }),
-    ]);
-  });
-
   it('archives a table only for the Base creator and leaves its records recoverable', async () => {
     await Promise.all([setupEditor(), setupOutsider()]);
     const app = createHttpApp([owner, editor, outsider]);
@@ -551,39 +485,5 @@ describe('Tables Platform application', () => {
     expect(await db.tables.queryRecords(tableId)).toMatchObject({ total: 1 });
     // Restoring bumps the revision, so a stale client cannot silently overwrite.
     expect((await restored.json()).record.revision).toBeGreaterThan(record.revision);
-  });
-
-  it('deletes a dashboard for the creator only, and really deletes it', async () => {
-    await setupEditor();
-    const app = createHttpApp([owner, editor]);
-    const created = await createBase(app);
-    const promoted = await app.request(`/api/tables/bases/${created.base.id}/members/${editor.id}`, {
-      method: 'PUT',
-      headers: { 'content-type': 'application/json', 'x-test-user': owner.id },
-      body: JSON.stringify({ role: 'builder' }),
-    });
-    expect(promoted.status).toBe(200);
-
-    const dashboardResponse = await app.request(`/api/tables/bases/${created.base.id}/dashboards`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', 'x-test-user': owner.id },
-      body: JSON.stringify({ name: 'Weekly numbers' }),
-    });
-    expect(dashboardResponse.status).toBe(201);
-    const dashboard = (await dashboardResponse.json()).dashboard as { id: number };
-
-    const builderAttempt = await app.request(`/api/tables/dashboards/${dashboard.id}`, {
-      method: 'DELETE',
-      headers: { 'x-test-user': editor.id },
-    });
-    expect(builderAttempt.status).toBe(404);
-    expect(await db.tables.getDashboard(dashboard.id)).toBeTruthy();
-
-    const removed = await app.request(`/api/tables/dashboards/${dashboard.id}`, {
-      method: 'DELETE',
-      headers: { 'x-test-user': owner.id },
-    });
-    expect(removed.status).toBe(200);
-    expect(await db.tables.getDashboard(dashboard.id)).toBeUndefined();
   });
 });
