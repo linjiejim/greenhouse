@@ -60,7 +60,7 @@
 | 表 | 主键 / 唯一 | 用途与关键列 |
 |---|---|---|
 | `conversations` | PK `id` | 会话；`profile_id` 默认 `team`、`user_id`（逻辑）、`app_id`、`channel`（web / task / feishu / mobile…）、`metadata`；`pinned_at` + `pin_position` 为 owner 的置顶；`digest` / `digest_upto_seq` / `digest_updated_at` 滚动摘要 |
-| `messages` | PK `id`；UK `(session_id, seq)` | 消息；`content` 为 Markdown 正文，`parts` jsonb `{references, images, pipeline}`（引用、图片、工具步骤与富卡片），`reasoning`、`model`、token 与耗时 |
+| `messages` | PK `id`；UK `(session_id, seq)`；部分 UK `(session_id, client_turn_id) WHERE client_turn_id IS NOT NULL` | 消息；`content` 为 Markdown 正文，`parts` jsonb `{references, images, pipeline}`（引用、图片、工具步骤与富卡片），`reasoning`、`model`、token 与耗时；`client_turn_id` 是客户端给 user 轮次的 id，重发同一轮被拒（`POST /api/chat` 409 `duplicate_turn`） |
 | `conversation_shares` | PK `id`；UK `(session_id, shared_with)` | 会话共享；`shared_with` = 成员 id 或 `__team__` |
 | `conversation_share_reads` | PK `id`；UK `(session_id, user_id)` | 收件人在共享会话上的状态：`read_at`，以及自己的置顶 `pinned_at` / `pin_position` |
 | `card_action_receipts` | PK `id` | 卡片按钮的 exactly-once 回执（`tables_schema_plan` / `task_capture`）；`request_hash`、`status`、`result` |

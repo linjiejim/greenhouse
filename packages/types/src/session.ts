@@ -74,6 +74,8 @@ export interface MessageRow {
   duration_ms: number | null;
   created_at: string;
   seq: number;
+  /** The client's id for this user turn (`POST /api/chat` `client_turn_id`); null otherwise. */
+  client_turn_id?: string | null;
 }
 
 /** Cursor-paginated session transcript page, ordered by ascending message sequence. */
@@ -122,4 +124,6 @@ export interface MessageInput {
   cached_tokens?: number;
   reasoning_tokens?: number;
   duration_ms?: number;
+  /** A user turn's client id; write it through `sessions.addUserTurn`, which refuses a repeat. */
+  client_turn_id?: string;
 }

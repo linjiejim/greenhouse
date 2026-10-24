@@ -275,6 +275,7 @@ CREATE TABLE "messages" (
 	"reasoning_tokens" integer,
 	"duration_ms" integer,
 	"seq" integer NOT NULL,
+	"client_turn_id" text,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
@@ -1314,6 +1315,7 @@ CREATE INDEX "idx_conversations_app_id" ON "conversations" USING btree ("app_id"
 CREATE INDEX "idx_conversations_channel" ON "conversations" USING btree ("channel");--> statement-breakpoint
 CREATE INDEX "idx_conversations_pinned" ON "conversations" USING btree ("user_id","pinned_at");--> statement-breakpoint
 CREATE UNIQUE INDEX "uq_messages_session_seq" ON "messages" USING btree ("session_id","seq");--> statement-breakpoint
+CREATE UNIQUE INDEX "uq_messages_session_client_turn" ON "messages" USING btree ("session_id","client_turn_id") WHERE "messages"."client_turn_id" IS NOT NULL;--> statement-breakpoint
 CREATE UNIQUE INDEX "uq_run_events_run_seq" ON "run_events" USING btree ("run_id","seq");--> statement-breakpoint
 CREATE UNIQUE INDEX "uq_run_events_run_idempotency" ON "run_events" USING btree ("run_id","idempotency_key") WHERE "run_events"."idempotency_key" IS NOT NULL;--> statement-breakpoint
 CREATE INDEX "idx_run_events_run_created" ON "run_events" USING btree ("run_id","created_at");--> statement-breakpoint

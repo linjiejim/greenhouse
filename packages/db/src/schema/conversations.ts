@@ -6,6 +6,7 @@
  * card_action_receipts
  */
 
+import { sql } from 'drizzle-orm';
 import { index, integer, pgTable, text, uniqueIndex, unique } from 'drizzle-orm/pg-core';
 import { at, createdAt, id, json, oneOf, updatedAt } from './_columns.js';
 
@@ -79,9 +80,19 @@ export const messages = pgTable(
     reasoning_tokens: integer('reasoning_tokens'),
     duration_ms: integer('duration_ms'),
     seq: integer('seq').notNull(),
+    /**
+     * The client's id for a user turn (`POST /api/chat` `client_turn_id`): a resend
+     * of the same turn is refused as a duplicate instead of saved and run twice.
+     */
+    client_turn_id: text('client_turn_id'),
     created_at: createdAt(),
   },
-  (table) => [uniqueIndex('uq_messages_session_seq').on(table.session_id, table.seq)],
+  (table) => [
+    uniqueIndex('uq_messages_session_seq').on(table.session_id, table.seq),
+    uniqueIndex('uq_messages_session_client_turn')
+      .on(table.session_id, table.client_turn_id)
+      .where(sql`${table.client_turn_id} IS NOT NULL`),
+  ],
 );
 
 // ─── conversation_shares ──────────────────────────────────

@@ -480,6 +480,23 @@ export interface ChatRequestMessage {
   role: string;
   content: string;
   images?: Array<{ id: string; url: string }>;
+  /**
+   * The client's id for this user turn (8–64 chars of `[A-Za-z0-9_-]`), session mode
+   * only. A turn whose id this session already has is refused with 409
+   * `{ error, code: 'duplicate_turn', message_id }` and starts no run.
+   */
+  client_turn_id?: string;
+}
+
+/** `client_turn_id` format accepted by POST /api/chat. */
+export const CLIENT_TURN_ID_PATTERN = /^[A-Za-z0-9_-]{8,64}$/;
+
+/** 409 body of POST /api/chat for a turn this session already has. */
+export interface DuplicateTurnError {
+  error: string;
+  code: 'duplicate_turn';
+  /** The message the earlier send saved. */
+  message_id: string;
 }
 
 /**

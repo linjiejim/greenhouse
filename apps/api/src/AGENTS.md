@@ -60,6 +60,7 @@ Automation、Tasks、Agents 的 `Mine / Shared / Team` 口径见 [personal asset
 - **要传 `dispatcher`（undici `Agent`/`ProxyAgent`）时，`fetch` 必须从同一个 `undici` 包导入**，不能用全局 `fetch`。Node 内置 fetch 自带钉死的 undici（`process.versions.undici`，Node 22 = 6.x），会用那份构建的 handler 接口校验 dispatcher，于是本仓依赖的 undici 8 dispatcher 一律被拒：`UND_ERR_INVALID_ARG: invalid onRequestStart method`，对外只表现为一句无信息量的 `TypeError: fetch failed`，且在联网前就失败。2026-07-27 生图全线挂掉就是这个原因（上游返回图片 URL，下载那步必挂）。单测若 mock `globalThis.fetch` 测不出来——要么 mock `undici` 的 `fetch`，要么 mock `fetchPublicImage` 这一层。
 
 ### Chat 的 Ambient Context 与 Client Actions
+- `POST /api/chat` 的 user 消息可带 `client_turn_id`（8–64 位 `[A-Za-z0-9_-]`，仅会话模式）：同一会话已有该 id 的消息时不落库、不起 run，回 409 `{ error, code: 'duplicate_turn', message_id }`；写入走 `sessions.addUserTurn`（会话行锁 + `uq_messages_session_client_turn` 兜底，唯一冲突也映射成同一个 409）。不带 id 的行为不变。客户端靠它去重重发，别再按文本比对。
 - `POST /api/chat` 可接收逐轮 `ambient_context`；它是浏览器当前页面的可选参考，不持久化到 Session，不代表用户意图，也不能授予 Profile、Tool、Platform、record 或 field 权限。
 - `chat/ambient-context.ts` 是通用 envelope 的唯一校验/提示格式化入口：校验 `version/source/scope_id/label/route/hint`、限制长度并经 `sanitizeForPrompt()`；无效 Context 必须静默丢弃，让 Chat 正常继续。
 - 固定提示必须明确 Context 可能无关或过期、不是用户请求/指令/授权；只有与当前用户消息自然相关时才使用，歧义时先询问。

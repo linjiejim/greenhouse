@@ -283,8 +283,31 @@ function messageValues(input: MessageInput, seq: number, now = nowIso(), id: str
     reasoning_tokens: input.reasoning_tokens ?? null,
     duration_ms: input.duration_ms ?? null,
     seq,
+    client_turn_id: input.client_turn_id ?? null,
     created_at: now,
   };
+}
+
+async function findClientTurn(
+  reader: Pick<Db, 'select'>,
+  sessionId: string,
+  clientTurnId: string,
+): Promise<MessageRow | undefined> {
+  const [row] = await reader
+    .select()
+    .from(messages)
+    .where(and(eq(messages.session_id, sessionId), eq(messages.client_turn_id, clientTurnId)))
+    .limit(1);
+  return row as MessageRow | undefined;
+}
+
+/** True when `error` is the unique-index violation for a repeated client turn id. */
+function isDuplicateClientTurn(error: unknown): boolean {
+  for (let current = error; current && typeof current === 'object'; current = (current as { cause?: unknown }).cause) {
+    const pg = current as { code?: unknown; constraint_name?: unknown; constraint?: unknown };
+    if (pg.code === '23505' && (pg.constraint_name ?? pg.constraint) === 'uq_messages_session_client_turn') return true;
+  }
+  return false;
 }
 
 function parsePersistedImages(parts: MessageParts | null | undefined): PersistedChatImage[] {
@@ -854,6 +877,51 @@ export function createSessionService(db: Db) {
         await tx.update(sessions).set({ updated_at: nowIso() }).where(eq(sessions.id, input.session_id));
         return inserted[0] as MessageRow;
       });
+    },
+
+    /** The message this session saved for a client turn id, if any. */
+    async getMessageByClientTurn(sessionId: string, clientTurnId: string): Promise<MessageRow | undefined> {
+      return findClientTurn(db, sessionId, clientTurnId);
+    },
+
+    /**
+     * Append a user turn that carries the client's `client_turn_id`, unless this
+     * session already has a message with that id: then nothing is written and
+     * the earlier message comes back as `duplicate`. The session row lock
+     * serializes writers; uq_messages_session_client_turn backs it up.
+     */
+    async addUserTurn(
+      input: MessageInput & { client_turn_id: string },
+    ): Promise<{ ok: true; message: MessageRow } | { ok: false; duplicate: MessageRow }> {
+      const findTurn = (reader: Pick<Db, 'select'>) => findClientTurn(reader, input.session_id, input.client_turn_id);
+      try {
+        return await db.transaction(async (tx) => {
+          const [lockedSession] = await tx
+            .select({ id: sessions.id })
+            .from(sessions)
+            .where(eq(sessions.id, input.session_id))
+            .limit(1)
+            .for('update');
+          if (!lockedSession) throw new Error('Session not found');
+          const existing = await findTurn(tx);
+          if (existing) return { ok: false as const, duplicate: existing };
+          const [next] = await tx
+            .select({ seq: sql<number>`COALESCE(MAX(${messages.seq}), -1) + 1` })
+            .from(messages)
+            .where(eq(messages.session_id, input.session_id));
+          const [inserted] = await tx
+            .insert(messages)
+            .values(messageValues(input, Number(next?.seq ?? 0)))
+            .returning();
+          await tx.update(sessions).set({ updated_at: nowIso() }).where(eq(sessions.id, input.session_id));
+          return { ok: true as const, message: inserted as MessageRow };
+        });
+      } catch (error) {
+        if (!isDuplicateClientTurn(error)) throw error;
+        const existing = await findTurn(db);
+        if (!existing) throw error;
+        return { ok: false, duplicate: existing };
+      }
     },
 
     /**

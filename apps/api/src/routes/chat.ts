@@ -27,7 +27,12 @@ import {
 import { createClientActionBridge } from '../tools/client-action-bridge.js';
 import type { ClientActionBridge } from '../tools/client-action-bridge.js';
 import { createClientActionTools } from '../tools/client-actions.js';
-import type { ChatRequestBody, ChatRequestMessage } from '@greenhouse/types/api';
+import {
+  CLIENT_TURN_ID_PATTERN,
+  type ChatRequestBody,
+  type ChatRequestMessage,
+  type DuplicateTurnError,
+} from '@greenhouse/types/api';
 import { admitRichBlocks } from '@greenhouse/types/rich-output';
 import { readSessionDigest } from '@greenhouse/db';
 import { BROWSER_SESSION_CHANNEL, type SessionChannel } from '@greenhouse/types/session';
@@ -75,6 +80,8 @@ export function createChatRoute(toolRegistry: ToolRegistry) {
   /**
    * POST /api/chat
    * Body: { session_id?: string, messages: Message[], profile_id?: string }
+   * The last user message may carry `client_turn_id`: a turn the session already
+   * has → 409 { error, code: 'duplicate_turn', message_id }, nothing saved or run.
    *
    * Returns: NDJSON stream
    */
@@ -97,6 +104,25 @@ export function createChatRoute(toolRegistry: ToolRegistry) {
         if (regenerationTargetId && !sessionId) {
           return c.json({ error: 'Regeneration requires session_id' }, 400);
         }
+        // The client's id for this user turn: a resend of a turn the session
+        // already has is refused (409 duplicate_turn) instead of saved and run twice.
+        const rawClientTurnId = body.messages?.at(-1)?.client_turn_id;
+        if (
+          rawClientTurnId !== undefined &&
+          (typeof rawClientTurnId !== 'string' || !CLIENT_TURN_ID_PATTERN.test(rawClientTurnId))
+        ) {
+          return c.json({ error: 'client_turn_id must be 8–64 characters of A-Z, a-z, 0-9, _ or -' }, 400);
+        }
+        const clientTurnId = sessionId && body.messages?.at(-1)?.role === 'user' ? rawClientTurnId : undefined;
+        const duplicateTurn = (messageId: string) =>
+          c.json(
+            {
+              error: 'This turn was already sent',
+              code: 'duplicate_turn',
+              message_id: messageId,
+            } satisfies DuplicateTurnError,
+            409,
+          );
         let chatMessages: ChatRequestMessage[];
         let profileId = body.profile_id || 'team';
 
@@ -211,8 +237,17 @@ export function createChatRoute(toolRegistry: ToolRegistry) {
               return c.json({ error: sessionAccess.error }, 403);
             }
 
+            if (clientTurnId) {
+              const earlier = await getDb().sessions.getMessageByClientTurn(sessionId, clientTurnId);
+              if (earlier) return duplicateTurn(earlier.id);
+            }
             run = chatRunRegistry.claim(sessionId, userId);
             if (!run) {
+              // The busy run may be this very turn, sent twice at once.
+              const earlier = clientTurnId
+                ? await getDb().sessions.getMessageByClientTurn(sessionId, clientTurnId)
+                : undefined;
+              if (earlier) return duplicateTurn(earlier.id);
               return c.json({ error: 'A response is already being generated for this session' }, 409);
             }
 
@@ -239,12 +274,24 @@ export function createChatRoute(toolRegistry: ToolRegistry) {
                 // The permanent transcript keeps the exact authored message.
                 // Sanitisation/truncation is applied later to the model-only
                 // projection, so audit and super review never lose content.
-                const persistedUser = await getDb().sessions.addMessage({
+                const userTurn = {
                   session_id: sessionId,
-                  role: 'user',
+                  role: 'user' as const,
                   content: lastUserMsg.content,
                   images: lastUserMsg.images,
-                });
+                };
+                let persistedUser;
+                if (clientTurnId) {
+                  // Race-safe: the session lock and the unique index admit one copy.
+                  const added = await getDb().sessions.addUserTurn({ ...userTurn, client_turn_id: clientTurnId });
+                  if (!added.ok) {
+                    releaseClaim();
+                    return duplicateTurn(added.duplicate.id);
+                  }
+                  persistedUser = added.message;
+                } else {
+                  persistedUser = await getDb().sessions.addMessage(userTurn);
+                }
                 expectedAssistantTail = {
                   id: persistedUser.id,
                   content: persistedUser.content,
