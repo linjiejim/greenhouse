@@ -4,7 +4,7 @@
  * sheet over the shelf.
  */
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { createDoc } from '../api/knowledge';
 import { useT } from '../lib/i18n';
@@ -21,6 +21,16 @@ export function useNewDoc() {
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
   const [saving, setSaving] = useState(false);
+  const [created, setCreated] = useState<string | null>(null);
+  const closed = useRef(false);
+
+  // close once the new document cleared the discard guard (dirty turns off on the next render)
+  useEffect(() => {
+    if (!created || closed.current) return;
+    closed.current = true;
+    router.back();
+    setTimeout(() => router.push({ pathname: '/sheet/doc', params: { id: created } }), 0);
+  }, [created, router]);
 
   const save = async () => {
     setSaving(true);
@@ -30,10 +40,8 @@ export function useNewDoc() {
       t('library.docCreated'),
     );
     setSaving(false);
-    if (!doc) return;
-    router.back();
-    setTimeout(() => router.push({ pathname: '/sheet/doc', params: { id: String(doc.doc.id) } }), 0);
+    if (doc) setCreated(String(doc.doc.id));
   };
 
-  return { title, setTitle, body, setBody, saving, save, dirty: !!(title.trim() || body.trim()), canSave: !!title.trim() };
+  return { title, setTitle, body, setBody, saving, save, dirty: !created && !!(title.trim() || body.trim()), canSave: !!title.trim() };
 }
