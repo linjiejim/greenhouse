@@ -184,21 +184,31 @@ export function createScheduledTaskService(db: Db) {
       if (updates.timezone !== undefined) set.timezone = updates.timezone;
       if (updates.max_steps !== undefined) set.max_steps = updates.max_steps;
       if (updates.enabled !== undefined) set.enabled = updates.enabled;
-      if (updates.notify !== undefined) {
-        const [current] = await db
-          .select({ notify: scheduledTasks.notify })
-          .from(scheduledTasks)
-          .where(eq(scheduledTasks.id, id))
-          .limit(1);
-        if (!current) return undefined;
-        set.notify = normalizeNotify({ ...current.notify, ...updates.notify });
-      }
       if (updates.quiet_when_empty !== undefined) set.quiet_when_empty = updates.quiet_when_empty;
       if (updates.unattended_tools !== undefined) set.unattended_tools = updates.unattended_tools;
       if (updates.enabled === false) set.next_run_at = null;
 
-      const [updated] = await db.update(scheduledTasks).set(set).where(eq(scheduledTasks.id, id)).returning();
-      return updated;
+      if (updates.notify === undefined) {
+        const [updated] = await db.update(scheduledTasks).set(set).where(eq(scheduledTasks.id, id)).returning();
+        return updated;
+      }
+      const patch = updates.notify;
+      // A partial notify merges into the stored one: lock the row so two concurrent
+      // merges both land instead of the later write dropping the earlier one.
+      return await db.transaction(async (tx) => {
+        const [current] = await tx
+          .select({ notify: scheduledTasks.notify })
+          .from(scheduledTasks)
+          .where(eq(scheduledTasks.id, id))
+          .for('update');
+        if (!current) return undefined;
+        const [updated] = await tx
+          .update(scheduledTasks)
+          .set({ ...set, notify: normalizeNotify({ ...current.notify, ...patch }) })
+          .where(eq(scheduledTasks.id, id))
+          .returning();
+        return updated;
+      });
     },
 
     async updateRunStatus(id: string, status: string, nextRunAt?: string | null): Promise<void> {

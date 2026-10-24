@@ -178,3 +178,9 @@ export async function startIntegrationTestTransaction(connectionString = TEST_DA
 }
 
 export { buildV1Database, dropDatabase, queryRows, recreateDatabase, siblingUrl } from './carry/v1-fixture.js';
+
+/** A raw single-connection client on the test database (lock-holding race tests). */
+export function openTestConnection(connectionString = TEST_DATABASE_URL): DbClient['client'] {
+  assertSafeTestDatabase(connectionString);
+  return createDbClient(connectionString).client;
+}
