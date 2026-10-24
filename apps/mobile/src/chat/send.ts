@@ -49,16 +49,32 @@ export function followRun(sessionId: string, onEvent: (event: ChatEvent) => void
 
 async function stream(path: string, init: RequestInit, onEvent: (event: ChatEvent) => void): Promise<SendOutcome> {
   let res: Response;
+  // the station has CONNECTION_TIMEOUT_MS to start answering; a station out of reach is offline
+  // (the message waits in the outbox) instead of a send that hangs. The request is cancelled too,
+  // so a slow one cannot still land after the message was queued; whether it reached the station
+  // first is unknown (status 0), which the outbox checks before sending it again.
+  const controller = new AbortController();
+  const outer = init.signal;
+  const cancel = () => controller.abort(outer?.reason);
+  if (outer?.aborted) cancel();
+  else outer?.addEventListener('abort', cancel, { once: true });
+  let timer: ReturnType<typeof setTimeout> | undefined;
   try {
-    // the station has CONNECTION_TIMEOUT_MS to start answering; a station out of reach is offline
-    // (the message waits in the outbox) instead of a send that hangs
-    const answered = api(path, init, expoFetch as unknown as typeof fetch);
+    const answered = api(path, { ...init, signal: controller.signal }, expoFetch as unknown as typeof fetch);
     res = await Promise.race([
       answered,
-      new Promise<never>((_, reject) => setTimeout(() => reject(new ConnectionTimeoutError()), CONNECTION_TIMEOUT_MS)),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => {
+          const error = new ConnectionTimeoutError();
+          controller.abort(error);
+          reject(error);
+        }, CONNECTION_TIMEOUT_MS);
+      }),
     ]);
   } catch (error) {
     return { ok: false, status: 0, code: 'network', message: error instanceof Error ? error.message : String(error) };
+  } finally {
+    clearTimeout(timer);
   }
   if (!res.ok) {
     const miss = await toResult<never>(res);
