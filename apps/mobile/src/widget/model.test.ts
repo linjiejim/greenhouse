@@ -71,13 +71,13 @@ describe('the foreground refresh of my tasks for the widget', () => {
 describe('a widget link opening the app', () => {
   it('opens the item on the station it came from', () => {
     expect(widgetLinkPath('greenhouse://projects/task?project=2&task=1&station=local-3993', 'local-3993')).toBe(
-      '/projects/task?project=2&task=1',
+      '/sheet/task?project=2&id=1',
     );
-    expect(widgetLinkPath('/knowledge/doc?id=7&station=local-3993', 'local-3993')).toBe('/knowledge/doc?id=7');
+    expect(widgetLinkPath('/knowledge/doc?id=7&station=local-3993', 'local-3993')).toBe('/sheet/doc?id=7');
   });
 
   it('keeps the station on an item from another station, so the item says it is not here', () => {
-    expect(widgetLinkPath('greenhouse://knowledge/doc?id=7&station=other', 'local-3993')).toBe('/knowledge/doc?id=7&station=other');
+    expect(widgetLinkPath('greenhouse://knowledge/doc?id=7&station=other', 'local-3993')).toBe('/sheet/doc?id=7&station=other');
   });
 
   it('goes home for anything with a station that is not a widget item', () => {
@@ -85,9 +85,9 @@ describe('a widget link opening the app', () => {
   });
 
   it('keeps the station on a cold start, before the active station is read', () => {
-    expect(widgetLinkPath('greenhouse://knowledge/doc?id=7&station=local-3993', null)).toBe('/knowledge/doc?id=7&station=local-3993');
+    expect(widgetLinkPath('greenhouse://knowledge/doc?id=7&station=local-3993', null)).toBe('/sheet/doc?id=7&station=local-3993');
     expect(widgetLinkPath('greenhouse://projects/task?project=2&task=1&station=other', null)).toBe(
-      '/projects/task?project=2&task=1&station=other',
+      '/sheet/task?project=2&id=1&station=other',
     );
   });
 
@@ -98,14 +98,14 @@ describe('a widget link opening the app', () => {
 });
 
 describe('which links open a widget item', () => {
-  it('are the task and document routes', () => {
-    expect(isWidgetItemPath('/projects/task?project=2&task=16')).toBe(true);
-    expect(isWidgetItemPath('/knowledge/doc?id=7&station=other')).toBe(true);
-    expect(isWidgetItemPath('/knowledge/doc')).toBe(true);
+  it('are the task and document sheets', () => {
+    expect(isWidgetItemPath('/sheet/task?project=2&id=16')).toBe(true);
+    expect(isWidgetItemPath('/sheet/doc?id=7&station=other')).toBe(true);
+    expect(isWidgetItemPath('/sheet/doc')).toBe(true);
   });
 
   it('are not home, other pages or sign-in callbacks', () => {
-    for (const path of ['/', '/projects', '/projects/taskboard', '/knowledge', 'greenhouse://auth/feishu?feishu_code=x', '/tables/record?table=1&id=2']) {
+    for (const path of ['/', '/projects', '/sheet/taskboard', '/knowledge', '/sheet/project?id=1', 'greenhouse://auth/feishu?feishu_code=x', '/tables/record?table=1&id=2']) {
       expect(isWidgetItemPath(path)).toBe(false);
     }
   });

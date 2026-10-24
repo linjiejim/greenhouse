@@ -3,21 +3,23 @@ import { clearHandoffs } from '../src/lib/handoff';
  * Root layout — bootstraps auth + prefs, applies the appearance, gates routes, and declares the
  * app's native navigation map:
  *
- *  - `(drawer)`        home (动态 / 通知) behind the left drawer with the hub's places
- *  - `notification`    one notification (push taps and Home rows land here), an inline-title page
- *  - `knowledge/*`     the knowledge base (shelves, folders, search) and one document
- *  - `files`, `file-preview`   Files (档案库): shelves, folders, upload; Quick Look with share
- *  - `module/[id]`     the hub's places not on the phone yet (Projects, Tables)
- *  - `settings`        a page-sheet modal with its own stack (account, stations, notifications)
- *  - `sheets/stations` the stations sheet the sign-in page opens
- *  - `login`           full screen, shown when signed out
+ *  - `(tabs)`            the system tab bar: 首页 · 知识库 · 云盘 · 项目 and the search tab
+ *                        (a sidebar on iPad); each tab has its own stack
+ *  - `chat`              one conversation, a full pushed page (the only object that is not a sheet)
+ *  - `sheet/*`           every other object, opened by openObject (src/shell/open-object.ts) as a
+ *                        form sheet; sheets stack on sheets up to three deep
+ *  - `me`                「我」: account, station, text size, My Agents, settings (page sheet with
+ *                        its own stack)
+ *  - `notifications`, `conversations`, `move`, `tables/new-record`, `sheets/stations`  sheets
+ *  - `peek/*`, `table`   full-screen viewers for rich blocks (html preview, diagram, table)
+ *  - `login`             full screen, shown when signed out
  *
  * Presentation (push / sheet / modal) is decided here, because it must be known before a screen
  * mounts; titles and toolbar buttons are declared by each screen with `Stack.Screen` /
  * `Stack.Toolbar`.
  *
  * Deep links and push taps may land on any route at cold start: `initialRouteName` anchors the
- * root stack on home, so a page / sheet / modal always has home underneath.
+ * root stack on the tabs, so a page / sheet / modal always has home underneath.
  *
  * Auth gate: signed out on any route but /login and the stations sheet it opens → everything
  * above the root is dismissed, then /login replaces it; signed in on /login → home. A station
@@ -46,6 +48,8 @@ import { StartupContent, waitsForHome } from '../src/startup/content';
 import { StartupContext } from '../src/startup/context';
 import { setOnUnauthorized } from '../src/api/client';
 import { useAccountLanguage } from '../src/settings/account-language';
+import { useAccountTextSize } from '../src/settings/text-size';
+import { useOutboxFlush } from '../src/store/outbox';
 import { usePushBridge } from '../src/push/use-push';
 import { useApplyAppearance, useTheme } from '../src/theme';
 import { Splash } from '../src/ui/splash';
@@ -55,7 +59,7 @@ import { MenuHost } from '../src/ui/menu';
 import { ToastHost } from '../src/ui/toast';
 import { useT } from '../src/lib/i18n';
 import { MismatchScreen } from '../src/shell/mismatch';
-import { detailScreen, modalScreen, pageScreen, sheetScreen, stackDefaults } from '../src/ui/nav';
+import { detailScreen, modalScreen, sheetScreen, stackDefaults } from '../src/ui/nav';
 import { sheetEdgeLayout } from '../src/ui/sheet-edge';
 import nunitoRegular from '../assets/fonts/Nunito-Regular.ttf';
 import nunitoMedium from '../assets/fonts/Nunito-Medium.ttf';
@@ -74,7 +78,7 @@ const followHandoffs = () => {
 useAuth.subscribe(followHandoffs);
 useStations.subscribe(followHandoffs);
 
-export const unstable_settings = { initialRouteName: '(drawer)' };
+export const unstable_settings = { initialRouteName: '(tabs)' };
 
 /** Routes a signed-out member may be on: the login page and the stations sheet it opens. */
 const SIGNED_OUT_ROUTES = new Set(['login', 'sheets/stations']);
@@ -142,8 +146,11 @@ export default function RootLayout() {
     }
   }, [routesReady, mismatch, user, segments, router]);
 
-  // The app speaks the account's language (src/settings/account-language.ts).
+  // The app speaks the account's language (src/settings/account-language.ts) and reads at its
+  // text size (src/settings/text-size.ts); messages written offline go once the station answers.
   useAccountLanguage();
+  useAccountTextSize();
+  useOutboxFlush();
 
   // Pushes (src/push): this phone's registration per signed-in station, opening a tapped
   // notification once the routes are up (switching station first when it came from
@@ -167,34 +174,39 @@ export default function RootLayout() {
                 screenOptions={{ ...stackDefaults(c, hex, isDark), headerShown: false }}
                 screenLayout={sheetEdgeLayout}
               >
-                {/* home is the stack's root: never popped by the back gesture (the drawer owns horizontal swipes) */}
-                <Stack.Screen name="(drawer)" options={{ title: t('nav.home'), gestureEnabled: false }} />
+                {/* the tabs are the stack's root: never popped by the back gesture */}
+                <Stack.Screen name="(tabs)" options={{ title: t('nav.home'), gestureEnabled: false }} />
                 <Stack.Screen name="login" options={{ animation: 'fade', gestureEnabled: false }} />
 
-                {/* ── pages over home ── */}
-                <Stack.Screen name="notification" options={detailScreen(c, { grouped: true })} />
-                <Stack.Screen name="knowledge/index" options={pageScreen(c, { grouped: true })} />
-                <Stack.Screen name="knowledge/doc" options={detailScreen(c)} />
-                <Stack.Screen name="files" options={pageScreen(c, { grouped: true })} />
-                <Stack.Screen name="file-preview" options={{ ...detailScreen(c), presentation: 'modal' }} />
-                <Stack.Screen name="projects/index" options={pageScreen(c, { grouped: true })} />
-                <Stack.Screen name="projects/detail" options={pageScreen(c, { grouped: true })} />
-                <Stack.Screen name="projects/task" options={detailScreen(c, { grouped: true })} />
-                <Stack.Screen name="tables/index" options={pageScreen(c, { grouped: true })} />
-                <Stack.Screen name="tables/base" options={pageScreen(c, { grouped: true })} />
-                <Stack.Screen name="tables/table" options={pageScreen(c, { grouped: true })} />
-                <Stack.Screen name="tables/record" options={detailScreen(c, { grouped: true })} />
-                <Stack.Screen name="agent/index" options={pageScreen(c, { grouped: true })} />
-                <Stack.Screen name="agent/write" options={detailScreen(c, { grouped: true })} />
-                <Stack.Screen name="assistant/index" options={pageScreen(c, { grouped: true })} />
-                <Stack.Screen name="assistant/chat" options={detailScreen(c)} />
+                {/* ── the conversation: the one full pushed page ── */}
+                <Stack.Screen name="chat" options={detailScreen(c)} />
 
-                {/* ── sheets ── */}
+                {/* ── object sheets (openObject): documents and files read full height ── */}
+                <Stack.Screen name="sheet/doc" options={sheetScreen([1], { header: true })} />
+                <Stack.Screen name="sheet/file" options={sheetScreen([1], { header: true })} />
+                <Stack.Screen name="sheet/folder" options={sheetScreen([0.75, 1], { header: true })} />
+                <Stack.Screen name="sheet/project" options={sheetScreen([1], { header: true })} />
+                <Stack.Screen name="sheet/task" options={sheetScreen([0.6, 1], { header: true })} />
+                <Stack.Screen name="sheet/record" options={sheetScreen([0.6, 1], { header: true })} />
+                <Stack.Screen name="sheet/notification" options={sheetScreen([0.6, 1], { header: true })} />
+                <Stack.Screen name="sheet/run" options={sheetScreen([0.6, 1], { header: true })} />
+                <Stack.Screen name="sheet/write" options={sheetScreen([0.6, 1], { header: true })} />
+
+                {/* ── home's sheets and pickers ── */}
+                <Stack.Screen name="notifications" options={sheetScreen([0.7, 1], { header: true })} />
+                <Stack.Screen name="conversations" options={sheetScreen([1], { header: true })} />
+                <Stack.Screen name="move" options={sheetScreen([0.7, 1], { header: true })} />
+                <Stack.Screen name="doc-new" options={sheetScreen([1], { header: true })} />
                 <Stack.Screen name="sheets/stations" options={sheetScreen([0.6, 1], { header: true })} />
                 <Stack.Screen name="tables/new-record" options={sheetScreen([1], { header: true })} />
 
-                {/* ── modals with their own stack ── */}
-                <Stack.Screen name="settings" options={modalScreen()} />
+                {/* ── full-screen viewers of rich blocks ── */}
+                <Stack.Screen name="peek/html" options={{ ...detailScreen(c), presentation: 'fullScreenModal' }} />
+                <Stack.Screen name="peek/diagram" options={{ ...detailScreen(c), presentation: 'modal' }} />
+                <Stack.Screen name="table" options={{ ...detailScreen(c), presentation: 'modal' }} />
+
+                {/* ── 「我」: a page sheet with its own stack ── */}
+                <Stack.Screen name="me" options={modalScreen()} />
               </Stack>
             )}
           </StartupContext.Provider>

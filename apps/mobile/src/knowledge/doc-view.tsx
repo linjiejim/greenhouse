@@ -1,5 +1,5 @@
 /**
- * One knowledge document (`/knowledge/doc?id=`, or the detail pane on an iPad), read-only: its saved copy opens at once when the
+ * One knowledge document (the `sheet/doc` object sheet), read-only: its saved copy opens at once when the
  * phone has one (offline reading), the server's version replaces it and is saved again
  * (src/store/knowledge.ts); a document that is gone or no longer readable (403 / 404) loses its
  * copy at once — only an unreachable station falls back to it (src/data/recent-docs.ts `docMiss`).
@@ -21,12 +21,12 @@ import { alertError, promptText } from '../ui/dialogs';
 import { EmptyState, LoadingState } from '../ui/empty';
 import { notifySuccess } from '../ui/haptics';
 import { toast } from '../ui/toast';
-import { ScreenChrome } from '../ui/split';
+import { SheetScreen } from '../ui/screen';
 
 type Shown = Pick<KbDoc, 'id' | 'title' | 'content_markdown' | 'updated_at'>;
 
-/** One document; `embedded` when it is the detail pane of the iPad split view (src/ui/split.tsx). */
-export function DocView({ id, embedded }: { id: number | null; embedded?: boolean }) {
+/** One document, as an object sheet (app/sheet/doc.tsx). */
+export function DocView({ id }: { id: number | null }) {
   const t = useT();
   const { colors: c } = useTheme();
   const styles = useStyles(c);
@@ -106,7 +106,7 @@ export function DocView({ id, embedded }: { id: number | null; embedded?: boolea
   if (id == null || missing) {
     return (
       <View style={styles.root}>
-        <ScreenChrome title={t('nav.knowledge')} embedded={embedded} />
+        <SheetScreen title={t('nav.knowledge')} />
         <ScrollView contentInsetAdjustmentBehavior="automatic" contentContainerStyle={styles.grow}>
           <EmptyState icon="book" title={t('knowledge.notFound')} style={styles.state} />
         </ScrollView>
@@ -116,9 +116,8 @@ export function DocView({ id, embedded }: { id: number | null; embedded?: boolea
 
   return (
     <View style={styles.root}>
-      <ScreenChrome
+      <SheetScreen
         title={doc?.title ?? ''}
-        embedded={embedded}
         actions={doc && !offline ? [{ icon: 'comment', label: t('knowledge.addComment'), onPress: () => void comment() }] : []}
       />
       <ScrollView contentInsetAdjustmentBehavior="automatic" contentContainerStyle={styles.content}>

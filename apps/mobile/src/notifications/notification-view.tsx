@@ -1,5 +1,5 @@
 /**
- * One notification (`/notification?id=`) — opened from a Home row or a push tap. Shows what it is,
+ * One notification (the `sheet/notification` object sheet) — opened from the notifications sheet or a push tap. Shows what it is,
  * when, and its whole text (selectable); opening it marks it read (optimistic — the row turns
  * read at once) and clears its banner. While it is on screen its own pushes stay quiet
  * (src/shell/surface.ts). A notification not in the list yet (a push for something newer) is
@@ -10,13 +10,12 @@
 
 import React, { useEffect, useState } from 'react';
 import { ScrollView, Text, View } from 'react-native';
-import { useRouter } from 'expo-router';
 import { useT, type TranslationKey } from '../lib/i18n';
 import { plainText } from '../lib/plain-text';
 import { relativeTimeNow } from '../lib/time-words';
 import { readOnOpen } from '../data/read-on-open';
 import { notificationTarget, type AppTarget } from '../lib/deep-links';
-import { openTarget } from '../shell/open-target';
+import { useOpenTarget } from '../shell/open-object';
 import { getApiBase } from '../store/stations';
 import { NativeButton } from '../ui/button';
 import { clearReadBanners } from '../push/handler';
@@ -27,7 +26,7 @@ import { makeStyles, radius, space, squircle, typo, useTheme, weight } from '../
 import { alertError } from '../ui/dialogs';
 import { EmptyState, LoadingState } from '../ui/empty';
 import { IconTile } from '../ui/list';
-import { ScreenChrome } from '../ui/split';
+import { SheetScreen } from '../ui/screen';
 import type { IconName } from '../ui/core';
 
 const OPEN_LABEL: Record<AppTarget['kind'], TranslationKey> = {
@@ -48,10 +47,10 @@ const KIND: Record<string, { icon: IconName; label: TranslationKey }> = {
   runtime_failed: { icon: 'alert', label: 'notifications.kindFailed' },
 };
 
-/** One notification; `embedded` when it is the detail pane of the iPad split view (src/ui/split.tsx). */
-export function NotificationView({ id, embedded }: { id: string; embedded?: boolean }) {
-  const { colors: c, hex } = useTheme();
-  const router = useRouter();
+/** One notification, as an object sheet (app/sheet/notification.tsx). */
+export function NotificationView({ id }: { id: string }) {
+  const { colors: c } = useTheme();
+  const openTarget = useOpenTarget();
   const styles = useStyles(c);
   const t = useT();
   const listed = useNotifications((s) => s.items.find((item) => item.id === id) ?? null);
@@ -101,7 +100,7 @@ export function NotificationView({ id, embedded }: { id: string; embedded?: bool
 
   return (
     <View style={styles.root}>
-      <ScreenChrome title={t('notifications.detailTitle')} embedded={embedded} />
+      <SheetScreen title={t('notifications.detailTitle')} />
       {!item ? (
         <ScrollView contentInsetAdjustmentBehavior="automatic" contentContainerStyle={styles.grow}>
           {failed || !id ? (
@@ -133,7 +132,7 @@ export function NotificationView({ id, embedded }: { id: string; embedded?: bool
               icon={target.kind === 'web' || target.kind === 'external' ? 'open' : 'chevR'}
               variant="prominent"
               fullWidth
-              onPress={() => openTarget(router, target, hex.accent)}
+              onPress={() => openTarget(target)}
               style={styles.action}
             />
           ) : null}

@@ -1,5 +1,5 @@
 /**
- * A Files file in Quick Look (`/file-preview?id=&name=`): downloaded with this station's session
+ * A 云盘 file (or a conversation's file) in Quick Look (`/sheet/file?id=&name=` or `?path=`): downloaded with this station's session
  * into a private cache directory that goes when the page closes (src/lib/share-file.ts); text
  * formats read as plain selectable text. Share opens the system sheet (save to Files, AirDrop…).
  * Offline, a file opened before shows its kept details (name, size, when, shelf); a file the
@@ -22,12 +22,18 @@ import { useStations } from '../store/stations';
 import { space, typo, useTheme } from '../theme';
 import { EmptyState, LoadingState } from '../ui/empty';
 import { NativeButton } from '../ui/button';
-import { ScreenChrome } from '../ui/split';
+import { SheetScreen } from '../ui/screen';
 import { alertError } from '../ui/dialogs';
 
-/** One file; `embedded` when it is the detail pane of the iPad split view (src/ui/split.tsx). */
-export function FilePreviewPane({ id, name, embedded }: { id: string; name: string; embedded?: boolean }) {
-  const path = /^[0-9]+$/.test(id) ? `/api/drive/files/${id}/content` : '';
+/** A file path this sheet may download with the session: a 云盘 file or a conversation's file. */
+export function previewPath(id: string, path: string): string {
+  if (/^[0-9]+$/.test(id)) return `/api/drive/files/${id}/content`;
+  return /^\/api\/chat-files\/[A-Za-z0-9_-]+\/content$/.test(path) ? path : '';
+}
+
+/** One file, as an object sheet (app/sheet/file.tsx). */
+export function FilePreviewPane({ id, path: given = '', name }: { id: string; path?: string; name: string }) {
+  const path = previewPath(id, given);
   const station = useStations((s) => s.activeId);
   const [owner] = useState(station);
   const [file, setFile] = useState<CachedFile | null>(null);
@@ -94,9 +100,8 @@ export function FilePreviewPane({ id, name, embedded }: { id: string; name: stri
   };
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
-      <ScreenChrome
+      <SheetScreen
         title={file?.name ?? name}
-        embedded={embedded}
         actions={
           file && station === owner
             ? [{ icon: 'share', label: t('files.share'), onPress: () => void share(), disabled: sharing }]

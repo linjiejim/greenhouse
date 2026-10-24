@@ -21,21 +21,13 @@ import { useFieldWords } from '../tables/use-field-words';
 import { makeStyles, space, typo, useTheme, weight } from '../theme';
 import { EmptyState, LoadingState } from '../ui/empty';
 import { Row, Section } from '../ui/list';
-import { ScreenChrome } from '../ui/split';
+import { SheetScreen } from '../ui/screen';
 
 /** How long the member lookup for people's names may take before the record keeps the names it has. */
 const NAMES_TIMEOUT_MS = 8000;
 
-/** One record; `embedded` when it is the detail pane of the iPad split view (src/ui/split.tsx). */
-export function RecordView({
-  tableId,
-  recordId,
-  embedded,
-}: {
-  tableId: number | null;
-  recordId: number | null;
-  embedded?: boolean;
-}) {
+/** One record, as an object sheet (app/sheet/record.tsx). */
+export function RecordView({ tableId, recordId }: { tableId: number | null; recordId: number | null }) {
   const t = useT();
   const { colors: c } = useTheme();
   const styles = useStyles(c);
@@ -87,7 +79,7 @@ export function RecordView({
   if (tableId == null || recordId == null || (!data && !resource.loading && (notFound(resource.error) || noAccess(resource.error)))) {
     return (
       <View style={styles.root}>
-        <ScreenChrome title={t('tables.record')} embedded={embedded} />
+        <SheetScreen title={t('tables.record')} />
         <ScrollView contentInsetAdjustmentBehavior="automatic">
           <EmptyState icon="table" title={t('tables.recordNotFound')} style={styles.state} />
         </ScrollView>
@@ -98,7 +90,7 @@ export function RecordView({
   const masked = !!data && Object.keys(data.record.values ?? {}).length === 0;
   return (
     <View style={styles.root}>
-      <ScreenChrome title={data?.schema.table.name ?? ''} embedded={embedded} />
+      <SheetScreen title={data?.schema.table.name ?? ''} />
       <ScrollView contentInsetAdjustmentBehavior="automatic" contentContainerStyle={styles.content}>
         {!data ? (
           resource.loading ? (

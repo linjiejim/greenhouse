@@ -10,7 +10,7 @@ import { useT } from '../lib/i18n';
 import { useStations } from '../store/stations';
 import { makeStyles, space, useTheme } from '../theme';
 import { EmptyState, LoadingState } from '../ui/empty';
-import { ScreenChrome } from '../ui/split';
+import { SheetScreen } from '../ui/screen';
 import { widgetStationGate } from './model';
 
 export function WidgetStationGate({ station, children }: { station: string | undefined; children: React.ReactNode }) {
@@ -24,7 +24,7 @@ export function WidgetStationGate({ station, children }: { station: string | und
   if (gate === 'open') return <>{children}</>;
   return (
     <View style={styles.root}>
-      <ScreenChrome title="" />
+      <SheetScreen title="" />
       <ScrollView contentInsetAdjustmentBehavior="automatic">
         {gate === 'wait' ? (
           <LoadingState style={styles.state} />

@@ -8,7 +8,6 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ScrollView, Text, View } from 'react-native';
-import { useRouter } from 'expo-router';
 import { addTaskComment, getProject, listTaskComments, updateTaskStatus } from '../api/projects';
 import { noAccess, notFound } from '../data/access';
 import { captureIdentity } from '../data/identity';
@@ -28,23 +27,22 @@ import { notifySuccess, selectionTick } from '../ui/haptics';
 import { Badge, Row, Section } from '../ui/list';
 import { NativeMenu } from '../ui/menu';
 import { toast } from '../ui/toast';
-import { ScreenChrome } from '../ui/split';
+import { SheetScreen } from '../ui/screen';
+import { useOpenObject } from '../shell/open-object';
 
-/** One task; `embedded` when it is the detail pane of the iPad split view (src/ui/split.tsx). */
+/** One task, as an object sheet (app/sheet/task.tsx), often stacked on its project's sheet. */
 export function TaskView({
   projectId,
   taskId,
-  embedded,
   onChanged,
 }: {
   projectId: number | null;
   taskId: number | null;
-  embedded?: boolean;
   /** A change was saved (the list beside it reloads). */
   onChanged?: () => void;
 }) {
   const t = useT();
-  const router = useRouter();
+  const openObject = useOpenObject();
   const { colors: c } = useTheme();
   const styles = useStyles(c);
   const load = useCallback(() => getProject(projectId ?? 0), [projectId]);
@@ -156,7 +154,7 @@ export function TaskView({
   if (gone) {
     return (
       <View style={styles.root}>
-        <ScreenChrome title={t('projects.tasks')} embedded={embedded} />
+        <SheetScreen title={t('projects.tasks')} />
         <ScrollView contentInsetAdjustmentBehavior="automatic">
           <EmptyState icon="checkCircle" title={t('projects.taskNotFound')} style={styles.state} />
         </ScrollView>
@@ -167,9 +165,8 @@ export function TaskView({
   const bucket = task ? dueBucket(task.due_date, localDay(new Date())) : 'none';
   return (
     <View style={styles.root}>
-      <ScreenChrome
-        title={embedded ? (resource.data?.project.title ?? '') : ''}
-        embedded={embedded}
+      <SheetScreen
+        title={resource.data?.project.title ?? ''}
         actions={task ? [{ icon: 'comment', label: t('projects.addComment'), onPress: () => void comment() }] : []}
       />
       <ScrollView contentInsetAdjustmentBehavior="automatic" contentContainerStyle={styles.content}>
@@ -234,7 +231,7 @@ export function TaskView({
                 value={resource.data?.project.title}
                 icon="checkCircle"
                 accessory="chevron"
-                onPress={() => router.push({ pathname: '/projects/detail', params: { id: String(task.project_id) } })}
+                onPress={() => openObject({ kind: 'project', id: task.project_id })}
               />
             </Section>
             {task.description ? (
