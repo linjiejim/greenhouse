@@ -328,7 +328,8 @@ describe('E2E: Unified access view', () => {
     expect(Array.isArray(tables.capabilities)).toBe(true);
 
     const knowledge = data.featurePoints.find((p: { key: string }) => p.key === 'knowledge');
-    expect(knowledge.mainControl).toEqual({ type: 'capability', capability: 'knowledge.*' });
+    // Per-user capability overrides were retired in 3.0: app access follows the role.
+    expect(knowledge.mainControl).toBeNull();
 
     // Baseline is read-only context: the always-on global tools. (The raw team-role
     // capability list was dropped 2026-08-14 — the app cards carry that information.)
@@ -339,10 +340,8 @@ describe('E2E: Unified access view', () => {
     expect(new Set(data.featurePoints.map((p: { group: string }) => p.group))).toEqual(
       new Set(['basic', 'apps', 'advanced']),
     );
-    // daily_message_limit retired 2026-08-07: column kept for storage compat,
-    // but the access view exposes monthly_token_limit only.
-    expect(data.limits).toHaveProperty('monthly_token_limit');
-    expect(data.limits).not.toHaveProperty('daily_message_limit');
+    // The per-member quotas are gone in 3.0 (member spend is a USD budget).
+    expect(data).not.toHaveProperty('limits');
   });
 
   it('member cannot access the aggregate view', async () => {

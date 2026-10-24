@@ -40,7 +40,7 @@ export interface RenderReportInput extends ReportContentInput {
   template_id: string;
   file_name?: string;
   shelf?: FilesShelf;
-  folder_id?: number | null;
+  folder_id?: string | null;
 }
 
 /** A refusal names at most this many problems (each is one line). */
@@ -103,7 +103,7 @@ export function reportFileName(document: ReportDocument, extension: string, requ
 export type RenderReportResult =
   | {
       success: true;
-      file_id: number;
+      file_id: string;
       file: CabinetFileView;
       format: string;
       template: { id: string; name: string; version: number };

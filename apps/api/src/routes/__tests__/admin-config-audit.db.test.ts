@@ -63,7 +63,7 @@ describe('admin configuration audit', () => {
     const [event] = await auditEvents('updateWorkspaceSettings');
     expect(event).toBeDefined();
     expect(event!.capability).toBe('platform.settings.manage');
-    expect(JSON.parse(event!.summary)).toEqual({
+    expect(event!.summary).toEqual({
       set: ['search.tavily_api_key', 'branding.product_name'],
       cleared: ['llm.model_pro'],
       secret_keys: ['search.tavily_api_key'],
@@ -105,7 +105,7 @@ describe('admin configuration audit', () => {
     expect(res.status).toBe(200);
     const [event] = await auditEvents('setUserFeature');
     expect(event!.record_id).toBe(member.id);
-    expect(JSON.parse(event!.summary)).toEqual({ feature: 'memory', enabled: false, config_keys: ['quota'] });
-    expect(event!.summary).not.toContain('12345');
+    expect(event!.summary).toEqual({ feature: 'memory', enabled: false, config_keys: ['quota'] });
+    expect(JSON.stringify(event!.summary)).not.toContain('12345');
   });
 });

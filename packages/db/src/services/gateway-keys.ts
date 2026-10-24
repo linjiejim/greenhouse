@@ -7,13 +7,14 @@
  * internal member) is the caller's decision — `usability` says which.
  */
 
-import { createHash, randomBytes } from 'node:crypto';
+import { createHash } from 'node:crypto';
 import { and, desc, eq, gte, isNotNull, isNull, lt, or, sql } from 'drizzle-orm';
 import { nowIso } from '@greenhouse/utils/date';
 
 import type { Db } from '../client.js';
-import { gatewayKeys, llmUsage, users } from '../schema/index.js';
-import type { GatewayKeyRow } from '../schema/gateway-key.js';
+import { newId } from '../ids.js';
+import { gatewayKeys, usageEvents, users } from '../schema/index.js';
+import type { GatewayKeyRow } from '../schema/oauth.js';
 
 /** Visible head of a secret: enough to tell keys apart, far too little to use. */
 export const GATEWAY_KEY_PREFIX_LENGTH = 12;
@@ -50,16 +51,12 @@ export function gatewayKeyUsability(
 
 /** The stored allow-list, or null for "every model". A malformed value allows nothing. */
 export function gatewayKeyAllowedModels(row: Pick<GatewayKeyRow, 'allowed_models'>): string[] | null {
-  if (row.allowed_models === null) return null;
-  try {
-    const parsed = JSON.parse(row.allowed_models) as unknown;
-    return Array.isArray(parsed) ? parsed.filter((value): value is string => typeof value === 'string') : [];
-  } catch {
-    return [];
-  }
+  const value = row.allowed_models as unknown;
+  if (value === null || value === undefined) return null;
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
 }
 
-/** One key's settled spend in a window (llm_usage facts carrying its id). */
+/** One key's settled spend in a window (model usage events carrying its id). */
 export interface GatewayKeySpend {
   cost_usd_micros: number;
   calls: number;
@@ -70,10 +67,6 @@ export interface GatewayKeyWithOwner extends GatewayKeyRow {
   owner_email: string | null;
 }
 
-function newKeyId(): string {
-  return `gwk_${randomBytes(8).toString('hex')}`;
-}
-
 export function createGatewayKeyService(db: Db) {
   const service = {
     async create(input: CreateGatewayKeyInput): Promise<GatewayKeyRow> {
@@ -82,12 +75,12 @@ export function createGatewayKeyService(db: Db) {
       const rows = await db
         .insert(gatewayKeys)
         .values({
-          id: newKeyId(),
+          id: newId('gatewayKey'),
           user_id: input.user_id,
           name: input.name,
           key_hash: hashGatewaySecret(input.secret),
           key_prefix: input.secret.slice(0, GATEWAY_KEY_PREFIX_LENGTH),
-          allowed_models: models ? JSON.stringify(models) : null,
+          allowed_models: models,
           expires_at: input.expires_at ?? null,
           created_at: input.at ?? nowIso(),
         })
@@ -179,20 +172,21 @@ export function createGatewayKeyService(db: Db) {
     async spendByKey(input: { since: string; until: string; user_id?: string }): Promise<Map<string, GatewayKeySpend>> {
       const rows = await db
         .select({
-          key: llmUsage.gateway_key_id,
-          cost: sql<number>`COALESCE(SUM(${llmUsage.cost_usd_micros}), 0)::bigint`,
+          key: usageEvents.gateway_key_id,
+          cost: sql<number>`COALESCE(SUM(${usageEvents.cost_usd_micros}), 0)::bigint`,
           calls: sql<number>`count(*)::int`,
         })
-        .from(llmUsage)
+        .from(usageEvents)
         .where(
           and(
-            isNotNull(llmUsage.gateway_key_id),
-            gte(llmUsage.created_at, input.since),
-            lt(llmUsage.created_at, input.until),
-            input.user_id ? eq(llmUsage.user_id, input.user_id) : undefined,
+            eq(usageEvents.kind, 'model'),
+            isNotNull(usageEvents.gateway_key_id),
+            gte(usageEvents.created_at, input.since),
+            lt(usageEvents.created_at, input.until),
+            input.user_id ? eq(usageEvents.user_id, input.user_id) : undefined,
           ),
         )
-        .groupBy(llmUsage.gateway_key_id);
+        .groupBy(usageEvents.gateway_key_id);
       return new Map(
         rows
           .filter((row): row is typeof row & { key: string } => row.key !== null)

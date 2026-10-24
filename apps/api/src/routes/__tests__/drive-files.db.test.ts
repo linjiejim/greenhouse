@@ -28,7 +28,7 @@ function app(user: UserRow) {
     .route('/api/drive', drive);
 }
 
-async function activeFile(owner: UserRow, visibility: 'team' | 'private', folderId: number | null = null) {
+async function activeFile(owner: UserRow, visibility: 'team' | 'private', folderId: string | null = null) {
   const row = await db.drive.initFile({
     scope: 'kb',
     folder_id: folderId,
@@ -42,7 +42,7 @@ async function activeFile(owner: UserRow, visibility: 'team' | 'private', folder
   return (await db.drive.completeFile(row.id, { size: 3 }))!;
 }
 
-const put = (user: UserRow, id: number, body: unknown) =>
+const put = (user: UserRow, id: string, body: unknown) =>
   app(user).request(`/api/drive/files/${id}`, {
     method: 'PUT',
     headers: { 'content-type': 'application/json' },
@@ -129,11 +129,11 @@ describe('drive search', () => {
 
     const res = await app(bob).request(`/api/drive/search?q=${encodeURIComponent(marker)}`);
     expect(res.status).toBe(200);
-    const { files } = (await res.json()) as { files: Array<{ id: number }> };
+    const { files } = (await res.json()) as { files: Array<{ id: string }> };
     expect(files.map((f) => f.id)).toEqual([team.id]);
 
     const own = (await (await app(alice).request(`/api/drive/search?q=${marker}`)).json()) as {
-      files: Array<{ id: number }>;
+      files: Array<{ id: string }>;
     };
     expect(own.files.map((f) => f.id).sort()).toEqual([team.id, hidden.id].sort());
   });

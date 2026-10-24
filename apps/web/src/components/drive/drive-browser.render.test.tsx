@@ -15,8 +15,8 @@ vi.mock('../../lib/api/drive', async (importOriginal) => {
 
 function folder(id: number, parent_id: number | null, name = `f${id}`): DriveFolder {
   return {
-    id,
-    parent_id,
+    id: String(id),
+    parent_id: parent_id == null ? null : String(parent_id),
     name,
     scope: 'kb',
     visibility: 'team',
@@ -44,10 +44,10 @@ describe('drive preview kinds', () => {
 
 describe('move targets', () => {
   it('lists the tree depth-first and leaves out the moving folder and its subtree', () => {
-    const rows = folderTreeRows([folder(1, null), folder(2, 1), folder(3, 2), folder(4, null)], 2);
+    const rows = folderTreeRows([folder(1, null), folder(2, 1), folder(3, 2), folder(4, null)], '2');
     expect(rows.map((row) => [row.folder.id, row.depth])).toEqual([
-      [1, 0],
-      [4, 0],
+      ['1', 0],
+      ['4', 0],
     ]);
     expect(folderTreeRows([folder(1, null), folder(2, 1)], null).map((row) => row.depth)).toEqual([0, 1]);
   });
@@ -55,15 +55,15 @@ describe('move targets', () => {
 
 describe('Files page addresses', () => {
   it('round-trips shelf, folder and file through the hash', () => {
-    const href = filesPageHref({ shelf: 'personal', folderId: 7, fileId: 9 });
+    const href = filesPageHref({ shelf: 'personal', folderId: '7', fileId: '9' });
     expect(href).toBe('#/files?shelf=personal&folder=7&file=9');
     expect(parseFilesLocation(new URLSearchParams(href.split('?')[1]))).toEqual({
       shelf: 'personal',
-      folderId: 7,
-      fileId: 9,
+      folderId: '7',
+      fileId: '9',
     });
     expect(filesPageHref({ shelf: 'team' })).toBe('#/files');
-    expect(parseFilesLocation(new URLSearchParams('folder=abc&file=-1'))).toEqual({
+    expect(parseFilesLocation(new URLSearchParams('folder=a%20b&file=-1'))).toEqual({
       shelf: 'team',
       folderId: null,
       fileId: null,
@@ -72,20 +72,20 @@ describe('Files page addresses', () => {
 });
 
 describe('deep-linked preview', () => {
-  const file = { id: 9, name: 'notes.md', size: 10 } as DriveFile;
+  const file = { id: '9', name: 'notes.md', size: 10 } as DriveFile;
   it('opens once per visit and again after the link clears and returns', () => {
-    const first = deepLinkPreview(null, 9, [file]);
-    expect(first.open?.id).toBe(9);
-    expect(deepLinkPreview(first.handled, 9, [file]).open).toBeNull();
+    const first = deepLinkPreview(null, '9', [file]);
+    expect(first.open?.id).toBe('9');
+    expect(deepLinkPreview(first.handled, '9', [file]).open).toBeNull();
     const cleared = deepLinkPreview(first.handled, null, [file]);
     expect(cleared.handled).toBeNull();
     // Back to the same deep link reopens the preview.
-    expect(deepLinkPreview(cleared.handled, 9, [file]).open?.id).toBe(9);
+    expect(deepLinkPreview(cleared.handled, '9', [file]).open?.id).toBe('9');
   });
 
   it('waits for the file to be listed and never previews what it cannot', () => {
-    expect(deepLinkPreview(null, 9, [])).toEqual({ handled: null, open: null });
-    expect(deepLinkPreview(null, 9, [{ ...file, name: 'a.zip' }]).open).toBeNull();
+    expect(deepLinkPreview(null, '9', [])).toEqual({ handled: null, open: null });
+    expect(deepLinkPreview(null, '9', [{ ...file, name: 'a.zip' }]).open).toBeNull();
   });
 });
 
@@ -100,16 +100,16 @@ describe('Files search hits', () => {
             folders: [],
             files: [
               {
-                id: 3,
+                id: '3',
                 name: 'mine.txt',
                 shelf: 'personal',
-                folder_id: 5,
+                folder_id: '5',
                 size: 1,
                 content_type: null,
                 uploaded_by: 'u1',
                 created_at: '2026-10-01T00:00:00.000Z',
                 updated_at: '2026-10-01T00:00:00.000Z',
-                url: filesPageHref({ shelf: 'personal', folderId: 5, fileId: 3 }),
+                url: filesPageHref({ shelf: 'personal', folderId: '5', fileId: '3' }),
               },
             ],
           },

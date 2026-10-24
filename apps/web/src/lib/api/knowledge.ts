@@ -6,8 +6,6 @@ import type {
   KnowledgeDoc,
   KnowledgeDocVersion,
   KnowledgeShare,
-  KnowledgeBacklink,
-  KnowledgeComment,
   KnowledgeConflict,
   KnowledgeEditor,
   KnowledgeTemplateSummary,
@@ -32,7 +30,8 @@ export interface KnowledgeDocInput {
   title: string;
   slug?: string;
   content_markdown: string;
-  content_json?: string;
+  /** Tiptap JSON (the editor's serialized string is accepted too). */
+  content_json?: Record<string, unknown> | string;
   space?: string;
   visibility?: 'team' | 'private';
   status?: 'draft' | 'published' | 'archived';
@@ -42,7 +41,7 @@ export interface KnowledgeDocInput {
   topics?: string[];
   change_reason?: string;
   /** kb drive folder to move the doc into (null = root). */
-  folder_id?: number | null;
+  folder_id?: string | null;
   is_template?: boolean;
   /** The updated_at the editor loaded — set on save so the server can flag LWW conflicts. */
   base_updated_at?: string;
@@ -96,8 +95,8 @@ export async function listAllKnowledgeDocs(
  */
 export async function reorderKnowledgeTree(
   kind: 'doc' | 'folder',
-  parentId: number | null,
-  ids: number[],
+  parentId: string | null,
+  ids: string[],
 ): Promise<void> {
   const args = { json: { kind, parent_id: parentId, ids } };
   const res = await rpc.api.knowledge.tree.reorder.$post(args);
@@ -142,7 +141,7 @@ export async function createKnowledgeDoc(input: KnowledgeDocInput): Promise<Know
 }
 
 export async function updateKnowledgeDoc(
-  id: number,
+  id: string,
   input: Partial<KnowledgeDocInput>,
 ): Promise<{ doc: KnowledgeDoc; conflict?: KnowledgeConflict }> {
   // Non-literal arg: hc only types `json` for validator-backed routes (none yet);
@@ -158,47 +157,11 @@ export async function updateKnowledgeDoc(
 }
 
 /** Fetch a doc by numeric id (backs the canonical #/knowledge/doc/<id>-<slug> deeplink). */
-export async function getKnowledgeDocById(id: number): Promise<KnowledgeDoc> {
+export async function getKnowledgeDocById(id: string): Promise<KnowledgeDoc> {
   const res = await rpc.api.knowledge.docs.id[':id'].$get({ param: { id: String(id) } });
   if (!res.ok) throw new Error('getKnowledgeDocById failed: ' + res.status);
   const data = await res.json();
   return data.doc;
-}
-
-/** Docs that link TO this doc (access-filtered). */
-export async function listKnowledgeBacklinks(id: number): Promise<KnowledgeBacklink[]> {
-  const res = await rpc.api.knowledge.docs[':id'].backlinks.$get({ param: { id: String(id) } });
-  if (!res.ok) throw new Error('listKnowledgeBacklinks failed: ' + res.status);
-  const data = await res.json();
-  return data.backlinks;
-}
-
-// ─── Comments ───────────────────────────────────────────
-
-export async function listKnowledgeComments(id: number): Promise<KnowledgeComment[]> {
-  const res = await rpc.api.knowledge.docs[':id'].comments.$get({ param: { id: String(id) } });
-  if (!res.ok) throw new Error('listKnowledgeComments failed: ' + res.status);
-  const data = await res.json();
-  return data.comments;
-}
-
-export async function addKnowledgeComment(id: number, content: string): Promise<KnowledgeComment> {
-  const args = { param: { id: String(id) }, json: { content } };
-  const res = await rpc.api.knowledge.docs[':id'].comments.$post(args);
-  if (!res.ok) {
-    const data = await res.json().catch(() => null);
-    throw new Error((data && 'error' in data && data.error) || 'Failed to add comment');
-  }
-  const data = await res.json();
-  return data.comment;
-}
-
-export async function deleteKnowledgeComment(commentId: number): Promise<void> {
-  const res = await rpc.api.knowledge.comments[':cid'].$delete({ param: { cid: String(commentId) } });
-  if (!res.ok) {
-    const data = await res.json().catch(() => null);
-    throw new Error((data && 'error' in data && data.error) || 'Failed to delete comment');
-  }
 }
 
 // ─── Templates & presence ───────────────────────────────
@@ -211,14 +174,14 @@ export async function listKnowledgeTemplates(): Promise<KnowledgeTemplateSummary
 }
 
 /** Heartbeat that the caller is editing a doc; returns the OTHER current editors. */
-export async function pingEditingPresence(id: number): Promise<KnowledgeEditor[]> {
+export async function pingEditingPresence(id: string): Promise<KnowledgeEditor[]> {
   const res = await rpc.api.knowledge.docs[':id']['editing-presence'].$post({ param: { id: String(id) } });
   if (!res.ok) return [];
   const data = await res.json();
   return data.editors;
 }
 
-export async function archiveKnowledgeDoc(id: number): Promise<void> {
+export async function archiveKnowledgeDoc(id: string): Promise<void> {
   const res = await rpc.api.knowledge.docs[':id'].$delete({ param: { id: String(id) } });
   if (!res.ok) {
     const data = await res.json().catch(() => null);
@@ -226,7 +189,7 @@ export async function archiveKnowledgeDoc(id: number): Promise<void> {
   }
 }
 
-export async function listKnowledgeVersions(id: number): Promise<KnowledgeDocVersion[]> {
+export async function listKnowledgeVersions(id: string): Promise<KnowledgeDocVersion[]> {
   const res = await rpc.api.knowledge.docs[':id'].versions.$get({ param: { id: String(id) } });
   if (!res.ok) throw new Error('listKnowledgeVersions failed: ' + res.status);
   const data = await res.json();
@@ -234,7 +197,7 @@ export async function listKnowledgeVersions(id: number): Promise<KnowledgeDocVer
 }
 
 /** Roll a doc back to a prior version. The restore is recorded as a new version. */
-export async function restoreKnowledgeVersion(id: number, version: number): Promise<KnowledgeDoc> {
+export async function restoreKnowledgeVersion(id: string, version: number): Promise<KnowledgeDoc> {
   const res = await rpc.api.knowledge.docs[':id'].versions[':version'].restore.$post({
     param: { id: String(id), version: String(version) },
   });
@@ -248,7 +211,7 @@ export async function restoreKnowledgeVersion(id: number, version: number): Prom
 
 // ─── Sharing (private docs) ─────────────────────────────
 
-export async function listKnowledgeShares(id: number): Promise<KnowledgeShare[]> {
+export async function listKnowledgeShares(id: string): Promise<KnowledgeShare[]> {
   const res = await rpc.api.knowledge.docs[':id'].shares.$get({ param: { id: String(id) } });
   if (!res.ok) {
     const data = await res.json().catch(() => null);
@@ -259,8 +222,8 @@ export async function listKnowledgeShares(id: number): Promise<KnowledgeShare[]>
 }
 
 export async function shareKnowledgeDoc(
-  id: number,
-  input: { user_ids?: string[]; group_ids?: number[]; role: 'reader' | 'editor'; message?: string },
+  id: string,
+  input: { user_ids: string[]; role: 'reader' | 'editor'; message?: string },
 ): Promise<void> {
   const args = { param: { id: String(id) }, json: input };
   const res = await rpc.api.knowledge.docs[':id'].shares.$post(args);
@@ -270,8 +233,8 @@ export async function shareKnowledgeDoc(
   }
 }
 
-/** Revoke a grant. `target` is a user id or 'group:<id>'. */
-export async function revokeKnowledgeShare(id: number, target: string): Promise<void> {
+/** Revoke a grant. `target` is a user id. */
+export async function revokeKnowledgeShare(id: string, target: string): Promise<void> {
   // encodeURIComponent matches the previous hand-built URL byte-for-byte
   // (the server decodeURIComponent()s the param on top of router decoding).
   const res = await rpc.api.knowledge.docs[':id'].shares[':target'].$delete({

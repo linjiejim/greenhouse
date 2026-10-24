@@ -3,6 +3,7 @@
  *
  * GET    /api/agent-access/overview              the MCP endpoint to connect to
  * GET    /api/agent-access/connections           my connected agents and when each last reached MCP (connect wizard)
+ * PATCH  /api/agent-access/connections/:clientId {avatar: {plant, tint} | null} — pick a plant avatar for one of them
  * GET    /api/agent-access/writes                my agents' recent writes, newest first
  * GET    /api/agent-access/gateway               the model gateway: on/off, base URLs, models, my keys + this month's spend
  * POST   /api/agent-access/gateway/keys          create a key {name, allowed_models?, expires_at?} → the secret, once
@@ -24,6 +25,7 @@ import { getMcpResourceUrl } from '../platform/oauth.js';
 import { agentWriteView } from '../agent-access/governed-write.js';
 import { checkAgentConnections } from '../hub-context/connections.js';
 import type { AgentConnectionsCheck } from '@greenhouse/types/hub-context';
+import { agentConnectionPatchSchema } from '@greenhouse/types/agent-avatar';
 import {
   gatewayAnthropicBaseUrl,
   gatewayBaseUrl,
@@ -47,6 +49,21 @@ export function createAgentAccessRoutes() {
       const user = getAuthUser(c);
       const check: AgentConnectionsCheck = await checkAgentConnections(getDb(), user.id);
       return c.json(check);
+    })
+
+    .patch('/connections/:clientId', async (c) => {
+      const user = getAuthUser(c);
+      const parsed = agentConnectionPatchSchema.safeParse(await c.req.json().catch(() => null));
+      if (!parsed.success) {
+        return c.json({ error: parsed.error.issues[0]?.message ?? 'Invalid avatar' }, 400);
+      }
+      const changed = await getDb().platformOAuth.setUserClientAvatar(
+        user.id,
+        c.req.param('clientId'),
+        parsed.data.avatar,
+      );
+      if (changed === 0) return c.json({ error: 'Connected agent not found' }, 404);
+      return c.json({ client_id: c.req.param('clientId'), avatar: parsed.data.avatar });
     })
 
     .get('/writes', async (c) => {

@@ -1,14 +1,13 @@
 import React, { useEffect, useState } from 'react';
-import type { TableFieldConfig, TableRecordValues } from '@greenhouse/types/tables';
+import type { TableRecordValues } from '@greenhouse/types/tables';
 import { Button, Checkbox, Dialog, Input, Select, Textarea } from '../../components/ui';
-import { safeParse } from '../../lib/utils';
 import type { TableField, TableRecord } from '../../lib/api/tables';
 import { AttachmentPicker } from './attachment-picker';
 import { useT } from '../../lib/i18n';
 
 interface RecordDialogProps {
   open: boolean;
-  baseId: number;
+  baseId: string;
   fields: TableField[];
   record?: TableRecord | null;
   users: Array<{ id: string; nickname: string; email: string }>;
@@ -24,7 +23,7 @@ function initialValue(field: TableField, value: unknown): unknown {
   }
   if (field.type === 'boolean') return value === true;
   if (field.type === 'relation') {
-    const config = safeParse<TableFieldConfig>(field.config, {});
+    const config = field.config ?? {};
     return config.relation?.multiple ? (Array.isArray(value) ? value : []) : (value ?? '');
   }
   return value ?? '';
@@ -62,11 +61,11 @@ export function RecordDialog({ open, baseId, fields, record, users, saving, onCl
     setError('');
   }, [fields, open, record]);
 
-  const setValue = (fieldId: number, value: unknown) => {
-    setValues((current) => ({ ...current, [String(fieldId)]: value }));
+  const setValue = (fieldId: string, value: unknown) => {
+    setValues((current) => ({ ...current, [fieldId]: value }));
   };
 
-  const toggleArrayValue = (fieldId: number, value: string, checked: boolean) => {
+  const toggleArrayValue = (fieldId: string, value: string, checked: boolean) => {
     const key = String(fieldId);
     const current = Array.isArray(values[key]) ? (values[key] as string[]) : [];
     setValue(fieldId, checked ? [...new Set([...current, value])] : current.filter((entry) => entry !== value));
@@ -87,9 +86,9 @@ export function RecordDialog({ open, baseId, fields, record, users, saving, onCl
       } else if (field.type === 'attachment') {
         result[key] = Array.isArray(value) ? value : [];
       } else if (field.type === 'relation') {
-        const config = safeParse<TableFieldConfig>(field.config, {});
+        const config = field.config ?? {};
         if (config.relation?.multiple) result[key] = Array.isArray(value) ? value : [];
-        else if (value !== '') result[key] = Number(value);
+        else if (typeof value === 'string' && value.trim()) result[key] = value.trim().replace(/^#/, '');
         else if (record) result[key] = null;
       } else if (field.type === 'boolean') {
         result[key] = value === true;
@@ -122,7 +121,7 @@ export function RecordDialog({ open, baseId, fields, record, users, saving, onCl
         {fields.map((field) => {
           const key = String(field.id);
           const value = values[key];
-          const config = safeParse<TableFieldConfig>(field.config, {});
+          const config = field.config ?? {};
 
           if (field.type === 'formula' || field.type === 'rollup') {
             return (
@@ -244,7 +243,7 @@ export function RecordDialog({ open, baseId, fields, record, users, saving, onCl
           }
 
           if (field.type === 'attachment') {
-            const attachments = Array.isArray(value) ? (value as Array<number | string>) : [];
+            const attachments = Array.isArray(value) ? (value as Array<string | number>) : [];
             return (
               <div key={field.id}>
                 <FieldLabel field={field} />
@@ -277,8 +276,8 @@ export function RecordDialog({ open, baseId, fields, record, users, saving, onCl
                       field.id,
                       event.target.value
                         .split(',')
-                        .map((entry) => Number(entry.trim().replace(/^#/, '')))
-                        .filter((entry) => Number.isInteger(entry) && entry > 0),
+                        .map((entry) => entry.trim().replace(/^#/, ''))
+                        .filter(Boolean),
                     );
                   }}
                 />

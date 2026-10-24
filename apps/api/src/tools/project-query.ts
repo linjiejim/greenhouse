@@ -13,8 +13,8 @@ import { dispatchProjectAgentAction } from '../platform/projects/agent-adapter.j
 
 const projectQuerySchema = z.object({
   action: z.enum(['list', 'get', 'tasks', 'query_tasks', 'summary']).describe('Read-only project query action.'),
-  project_id: z.number().optional().describe('Project ID for get/tasks/summary.'),
-  task_id: z.number().optional().describe('Task ID for querying one task when supported.'),
+  project_id: z.coerce.string().optional().describe('Project ID for get/tasks/summary.'),
+  task_id: z.coerce.string().optional().describe('Task ID for querying one task when supported.'),
   search: z.string().optional().describe('Search keyword.'),
   status: z.string().optional().describe('Project/task status filter.'),
   priority: z.enum(['low', 'normal', 'high', 'urgent']).optional(),
@@ -28,14 +28,8 @@ export interface ProjectQueryContext {
   userId: string;
 }
 
-function parseTags(tags: string | null | undefined): string[] {
-  if (!tags) return [];
-  try {
-    const parsed = JSON.parse(tags);
-    return Array.isArray(parsed) ? parsed.filter((v): v is string => typeof v === 'string') : [];
-  } catch {
-    return [];
-  }
+function parseTags(tags: unknown): string[] {
+  return Array.isArray(tags) ? tags.filter((v): v is string => typeof v === 'string') : [];
 }
 
 // ─── Metadata (co-located with the implementation) ───────

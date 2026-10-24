@@ -8,20 +8,57 @@
  */
 
 import { createHash } from 'node:crypto';
-import { and, asc, desc, eq, gte, inArray, isNull, lt, lte, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, lte, sql } from 'drizzle-orm';
 import { nowIso } from '@greenhouse/utils/date';
-import { safeJsonParse } from '@greenhouse/utils/json';
 
 import type { Db } from '../client.js';
-import { llmUsage, usageBudgetAccounts, usageBudgetLedger, usageBudgetReservations, users } from '../schema/index.js';
+import { newId } from '../ids.js';
+import { budgetLedger, budgetReservations, budgets } from '../schema/index.js';
 import type {
-  UsageBudgetAccountRow,
+  BudgetRow,
   UsageBudgetAccountStatus,
   UsageBudgetLedgerRow,
   UsageBudgetReservationRow,
   UsageBudgetScopeType,
   UsageBudgetUnit,
 } from '../schema/usage.js';
+
+/** A `budgets` row of kind `account`: one balance for one scope and one half-open period. */
+export interface UsageBudgetAccountRow {
+  id: string;
+  scope_type: UsageBudgetScopeType;
+  scope_id: string;
+  unit: UsageBudgetUnit;
+  status: UsageBudgetAccountStatus;
+  period_start: string;
+  period_end: string;
+  limit_units: number;
+  reserved_units: number;
+  spent_units: number;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Narrow a `budgets` row to an account (the CHECK guarantees both period bounds). */
+export function toUsageBudgetAccount(row: BudgetRow): UsageBudgetAccountRow {
+  if (row.kind !== 'account' || row.period_start === null || row.period_end === null) {
+    throw new UsageBudgetError('usage_budget_invariant_violation', `Budget ${row.id} is not an account`);
+  }
+  return {
+    id: row.id,
+    scope_type: row.scope_type,
+    scope_id: row.scope_id,
+    unit: row.unit,
+    status: row.status,
+    period_start: row.period_start,
+    period_end: row.period_end,
+    limit_units: row.limit_units,
+    reserved_units: row.reserved_units,
+    spent_units: row.spent_units,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+  };
+}
 
 export type UsageBudgetErrorCode =
   | 'usage_budget_invalid_input'
@@ -66,19 +103,9 @@ export interface UsageBudgetAccountInput {
   limit_units: number;
   /** Only used when the account is first materialized. */
   initial_spent_units?: number;
-  /** Legacy llm_usage projection included in initial_spent_units. */
-  initial_legacy_spent_units?: number;
   bootstrap_metadata?: Readonly<Record<string, unknown>>;
   /** Existing accounts keep their limit unless an explicit control-plane sync asks to change it. */
   update_existing_limit?: boolean;
-}
-
-export interface MonthlyUserBudgetInput {
-  user_id: string;
-  limit_tokens: number;
-  at?: string | Date;
-  /** Control-plane only: synchronize an already-materialized account from the live users row. */
-  sync_limit?: boolean;
 }
 
 export interface UsageBudgetReserveInput {
@@ -93,16 +120,6 @@ export interface UsageBudgetReserveInput {
   metadata?: Readonly<Record<string, unknown>>;
   ttl_ms: number;
   at?: string | Date;
-}
-
-export interface MonthlyUserBudgetReserveInput extends Omit<UsageBudgetReserveInput, 'account_ids' | 'user_id'> {
-  user_id: string;
-  limit_tokens: number;
-  /**
-   * Organization/Eval/provider accounts charged atomically with the user.
-   * All entries must use the same unit as the monthly user account (`tokens`).
-   */
-  additional_accounts?: readonly UsageBudgetAccountInput[];
 }
 
 export interface UsageBudgetSettleInput {
@@ -215,6 +232,27 @@ function encodeMetadata(value: Readonly<Record<string, unknown>> | undefined): s
   }
 }
 
+/** Metadata as stored in jsonb: the JSON round trip of the caller's value. */
+function metadataValue(value: Readonly<Record<string, unknown>> | undefined): Record<string, unknown> {
+  return JSON.parse(encodeMetadata(value)) as Record<string, unknown>;
+}
+
+/** Key-order independent JSON (jsonb reorders object keys). */
+function canonicalJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
+  if (value && typeof value === 'object') {
+    const entries = Object.entries(value as Record<string, unknown>)
+      .filter(([, v]) => v !== undefined)
+      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+    return `{${entries.map(([k, v]) => `${JSON.stringify(k)}:${canonicalJson(v)}`).join(',')}}`;
+  }
+  return JSON.stringify(value ?? null);
+}
+
+function sameMetadata(left: unknown, right: unknown): boolean {
+  return canonicalJson(left) === canonicalJson(right);
+}
+
 function stableId(prefix: string, value: string): string {
   return `${prefix}_${createHash('sha256').update(value).digest('hex').slice(0, 32)}`;
 }
@@ -230,10 +268,6 @@ export function usageBudgetAccountId(input: {
     'uba',
     [input.scope_type, input.scope_id, input.unit, input.period_start, input.period_end].join('\u0000'),
   );
-}
-
-function reservationId(accountId: string, idempotencyKey: string): string {
-  return stableId('ubr', `${accountId}\u0000${idempotencyKey}`);
 }
 
 function reservationRequestHash(input: {
@@ -289,7 +323,7 @@ export function createUsageBudgetService(db: Db) {
     const idempotencyKey = assertIdentifier(input.idempotency_key, 'idempotency_key');
     const reason = assertIdentifier(input.reason, 'reason');
     const at = asIso(input.at);
-    const metadata = encodeMetadata({ ...input.metadata, reason });
+    const metadata = metadataValue({ ...input.metadata, reason });
 
     return db.transaction(async (tx) => {
       const lockKey = `usage-budget-reservation:${idempotencyKey}`;
@@ -297,9 +331,9 @@ export function createUsageBudgetService(db: Db) {
 
       const reservations = await tx
         .select()
-        .from(usageBudgetReservations)
-        .where(eq(usageBudgetReservations.idempotency_key, idempotencyKey))
-        .orderBy(asc(usageBudgetReservations.account_id))
+        .from(budgetReservations)
+        .where(eq(budgetReservations.idempotency_key, idempotencyKey))
+        .orderBy(asc(budgetReservations.account_id))
         .for('update');
       if (reservations.length === 0) {
         fail('usage_budget_reservation_not_found', 'Usage budget reservation was not found');
@@ -309,21 +343,21 @@ export function createUsageBudgetService(db: Db) {
       if (pending.length === 0) {
         if (reservations.every((row) => row.status === terminalStatus)) {
           const terminalLedger = await tx
-            .select({ metadata: usageBudgetLedger.metadata })
-            .from(usageBudgetLedger)
+            .select({ metadata: budgetLedger.metadata })
+            .from(budgetLedger)
             .where(
               and(
                 inArray(
-                  usageBudgetLedger.account_id,
+                  budgetLedger.account_id,
                   reservations.map((row) => row.account_id),
                 ),
-                eq(usageBudgetLedger.operation_key, `${idempotencyKey}:${terminalStatus}`),
+                eq(budgetLedger.operation_key, `${idempotencyKey}:${terminalStatus}`),
               ),
             );
           if (terminalLedger.length !== reservations.length) {
             fail('usage_budget_invariant_violation', 'Reservation terminal state is missing ledger history');
           }
-          if (terminalLedger.some((row) => row.metadata !== metadata)) {
+          if (terminalLedger.some((row) => !sameMetadata(row.metadata, metadata))) {
             fail(
               'usage_budget_idempotency_conflict',
               `${terminalStatus} was already recorded with different audit metadata`,
@@ -343,14 +377,14 @@ export function createUsageBudgetService(db: Db) {
       const accountIds = pending.map((row) => row.account_id).sort();
       const accounts = await tx
         .select()
-        .from(usageBudgetAccounts)
-        .where(inArray(usageBudgetAccounts.id, accountIds))
-        .orderBy(asc(usageBudgetAccounts.id))
+        .from(budgets)
+        .where(inArray(budgets.id, accountIds))
+        .orderBy(asc(budgets.id))
         .for('update');
       if (accounts.length !== accountIds.length) {
         fail('usage_budget_invariant_violation', 'A reserved budget account is missing');
       }
-      const byId = new Map(accounts.map((row) => [row.id, row]));
+      const byId = new Map(accounts.map((row) => [row.id, toUsageBudgetAccount(row)]));
 
       for (const reservation of pending) {
         const account = byId.get(reservation.account_id)!;
@@ -361,12 +395,12 @@ export function createUsageBudgetService(db: Db) {
         const spentDelta = terminalStatus === 'expired' ? reservation.estimated_units : 0;
         const spentAfter = account.spent_units + spentDelta;
         const [updatedAccount] = await tx
-          .update(usageBudgetAccounts)
+          .update(budgets)
           .set({ reserved_units: reservedAfter, spent_units: spentAfter, updated_at: at })
-          .where(eq(usageBudgetAccounts.id, account.id))
+          .where(eq(budgets.id, account.id))
           .returning();
         await tx
-          .update(usageBudgetReservations)
+          .update(budgetReservations)
           .set({
             status: terminalStatus,
             actual_units: terminalStatus === 'expired' ? reservation.estimated_units : null,
@@ -374,8 +408,9 @@ export function createUsageBudgetService(db: Db) {
             released_at: terminalStatus === 'released' ? at : null,
             updated_at: at,
           })
-          .where(eq(usageBudgetReservations.id, reservation.id));
-        await tx.insert(usageBudgetLedger).values({
+          .where(eq(budgetReservations.id, reservation.id));
+        await tx.insert(budgetLedger).values({
+          id: newId('ledgerEntry'),
           account_id: account.id,
           reservation_id: reservation.id,
           operation_key: `${idempotencyKey}:${terminalStatus}`,
@@ -387,14 +422,14 @@ export function createUsageBudgetService(db: Db) {
           metadata,
           created_at: at,
         });
-        byId.set(account.id, updatedAccount!);
+        byId.set(account.id, toUsageBudgetAccount(updatedAccount!));
       }
 
       const updated = await tx
         .select()
-        .from(usageBudgetReservations)
-        .where(eq(usageBudgetReservations.idempotency_key, idempotencyKey))
-        .orderBy(asc(usageBudgetReservations.account_id));
+        .from(budgetReservations)
+        .where(eq(budgetReservations.idempotency_key, idempotencyKey))
+        .orderBy(asc(budgetReservations.account_id));
       return { reservations: updated, changed: true };
     });
   }
@@ -404,10 +439,6 @@ export function createUsageBudgetService(db: Db) {
       const scopeId = assertIdentifier(input.scope_id, 'scope_id');
       const limitUnits = assertUnits(input.limit_units, 'limit_units', true);
       const initialSpent = assertUnits(input.initial_spent_units ?? 0, 'initial_spent_units', true);
-      const initialLegacySpent = assertUnits(input.initial_legacy_spent_units ?? 0, 'initial_legacy_spent_units', true);
-      if (initialLegacySpent > initialSpent) {
-        fail('usage_budget_invalid_input', 'initial_legacy_spent_units cannot exceed initial_spent_units');
-      }
       const unit = input.unit ?? 'tokens';
       const periodStart = asIso(input.period_start);
       const periodEnd = asIso(input.period_end);
@@ -419,18 +450,14 @@ export function createUsageBudgetService(db: Db) {
         period_start: periodStart,
         period_end: periodEnd,
       });
-      const bootstrapMetadata = encodeMetadata(input.bootstrap_metadata);
+      const bootstrapMetadata = metadataValue(input.bootstrap_metadata);
 
       return db.transaction(async (tx) => {
         const lockKey = `usage-budget-account:${id}`;
         await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`);
-        const [existing] = await tx
-          .select()
-          .from(usageBudgetAccounts)
-          .where(eq(usageBudgetAccounts.id, id))
-          .limit(1)
-          .for('update');
-        if (existing) {
+        const [existingRow] = await tx.select().from(budgets).where(eq(budgets.id, id)).limit(1).for('update');
+        if (existingRow) {
+          const existing = toUsageBudgetAccount(existingRow);
           if (
             existing.scope_type !== input.scope_type ||
             existing.scope_id !== scopeId ||
@@ -444,11 +471,12 @@ export function createUsageBudgetService(db: Db) {
 
           const at = nowIso();
           const [updated] = await tx
-            .update(usageBudgetAccounts)
+            .update(budgets)
             .set({ limit_units: limitUnits, updated_at: at })
-            .where(eq(usageBudgetAccounts.id, id))
+            .where(eq(budgets.id, id))
             .returning();
-          await tx.insert(usageBudgetLedger).values({
+          await tx.insert(budgetLedger).values({
+            id: newId('ledgerEntry'),
             account_id: id,
             reservation_id: null,
             operation_key: `limit:${existing.limit_units}:${limitUnits}:${existing.updated_at}`,
@@ -457,17 +485,18 @@ export function createUsageBudgetService(db: Db) {
             delta_spent_units: 0,
             reserved_units_after: updated!.reserved_units,
             spent_units_after: updated!.spent_units,
-            metadata: encodeMetadata({ previous_limit_units: existing.limit_units, limit_units: limitUnits }),
+            metadata: metadataValue({ previous_limit_units: existing.limit_units, limit_units: limitUnits }),
             created_at: at,
           });
-          return updated!;
+          return toUsageBudgetAccount(updated!);
         }
 
         const at = nowIso();
         const [created] = await tx
-          .insert(usageBudgetAccounts)
+          .insert(budgets)
           .values({
             id,
+            kind: 'account',
             scope_type: input.scope_type,
             scope_id: scopeId,
             unit,
@@ -475,12 +504,12 @@ export function createUsageBudgetService(db: Db) {
             period_end: periodEnd,
             limit_units: limitUnits,
             spent_units: initialSpent,
-            legacy_spent_units: initialLegacySpent,
             created_at: at,
             updated_at: at,
           })
           .returning();
-        await tx.insert(usageBudgetLedger).values({
+        await tx.insert(budgetLedger).values({
+          id: newId('ledgerEntry'),
           account_id: id,
           reservation_id: null,
           operation_key: 'bootstrap',
@@ -492,51 +521,7 @@ export function createUsageBudgetService(db: Db) {
           metadata: bootstrapMetadata,
           created_at: at,
         });
-        return created!;
-      });
-    },
-
-    async ensureMonthlyUserAccount(input: MonthlyUserBudgetInput): Promise<UsageBudgetAccountRow> {
-      const userId = assertIdentifier(input.user_id, 'user_id');
-      const period = getUtcMonthPeriod(input.at);
-      // `users.monthly_token_limit` is the live administrative source of truth.
-      // Never trust the caller's previously-read copy here: an in-flight
-      // request could otherwise restore an old, higher limit after an admin
-      // lowered it. Normal request admission is create-only for account limits;
-      // only the control plane may explicitly synchronize an existing account.
-      const currentLimit = await db.transaction(async (tx) => {
-        const [user] = await tx
-          .select({ monthly_token_limit: users.monthly_token_limit })
-          .from(users)
-          .where(eq(users.id, userId))
-          .limit(1)
-          .for('share');
-        if (!user) fail('usage_budget_account_unavailable', 'Usage budget user does not exist');
-        return user.monthly_token_limit;
-      });
-      const rows = await db
-        .select({ total: sql<number>`COALESCE(SUM(${llmUsage.input_tokens} + ${llmUsage.output_tokens}), 0)` })
-        .from(llmUsage)
-        .where(
-          and(
-            eq(llmUsage.user_id, userId),
-            gte(llmUsage.created_at, period.start),
-            lt(llmUsage.created_at, period.end),
-            isNull(llmUsage.budget_idempotency_key),
-          ),
-        );
-      const historicalUsage = Number(rows[0]?.total ?? 0);
-      assertUnits(historicalUsage, 'historical_usage', true);
-      return service.ensureAccount({
-        scope_type: 'user',
-        scope_id: userId,
-        period_start: period.start,
-        period_end: period.end,
-        limit_units: currentLimit,
-        initial_spent_units: historicalUsage,
-        initial_legacy_spent_units: historicalUsage,
-        bootstrap_metadata: { source: 'llm_usage', historical_usage_units: historicalUsage },
-        update_existing_limit: input.sync_limit === true,
+        return toUsageBudgetAccount(created!);
       });
     },
 
@@ -550,6 +535,7 @@ export function createUsageBudgetService(db: Db) {
       const at = asIso(input.at);
       const expiresAt = new Date(Date.parse(at) + ttlMs).toISOString();
       const metadata = encodeMetadata(input.metadata);
+      const storedMetadata = metadataValue(input.metadata);
       const requestHash = reservationRequestHash({
         account_ids: accountIds,
         estimated_units: estimatedUnits,
@@ -568,9 +554,9 @@ export function createUsageBudgetService(db: Db) {
 
         const existing = await tx
           .select()
-          .from(usageBudgetReservations)
-          .where(eq(usageBudgetReservations.idempotency_key, idempotencyKey))
-          .orderBy(asc(usageBudgetReservations.account_id));
+          .from(budgetReservations)
+          .where(eq(budgetReservations.idempotency_key, idempotencyKey))
+          .orderBy(asc(budgetReservations.account_id));
         if (existing.length > 0) {
           const existingAccountIds = existing.map((row) => row.account_id);
           if (
@@ -585,9 +571,9 @@ export function createUsageBudgetService(db: Db) {
 
         const locked = await tx
           .select()
-          .from(usageBudgetAccounts)
-          .where(inArray(usageBudgetAccounts.id, accountIds))
-          .orderBy(asc(usageBudgetAccounts.id))
+          .from(budgets)
+          .where(inArray(budgets.id, accountIds))
+          .orderBy(asc(budgets.id))
           .for('update');
         if (locked.length !== accountIds.length) {
           fail('usage_budget_account_unavailable', 'One or more required budget accounts do not exist');
@@ -595,52 +581,7 @@ export function createUsageBudgetService(db: Db) {
         if (new Set(locked.map((account) => account.unit)).size !== 1) {
           fail('usage_budget_invalid_input', 'One reservation group can only charge accounts with the same unit');
         }
-        const byId = new Map(locked.map((row) => [row.id, row]));
-
-        // During rollout, reconcile the user account with the legacy immutable
-        // usage facts. Once every caller is budget-aware this remains a cheap
-        // equality check and catches any out-of-band usage writer fail-closed.
-        for (const accountId of accountIds) {
-          const account = byId.get(accountId)!;
-          if (account.scope_type !== 'user' || account.unit !== 'tokens') continue;
-          const rows = await tx
-            .select({ total: sql<number>`COALESCE(SUM(${llmUsage.input_tokens} + ${llmUsage.output_tokens}), 0)` })
-            .from(llmUsage)
-            .where(
-              and(
-                eq(llmUsage.user_id, account.scope_id),
-                gte(llmUsage.created_at, account.period_start),
-                lt(llmUsage.created_at, account.period_end),
-                isNull(llmUsage.budget_idempotency_key),
-              ),
-            );
-          const historicalUsage = Number(rows[0]?.total ?? 0);
-          if (!Number.isSafeInteger(historicalUsage) || historicalUsage <= account.legacy_spent_units) continue;
-          const legacyDelta = historicalUsage - account.legacy_spent_units;
-
-          const [reconciled] = await tx
-            .update(usageBudgetAccounts)
-            .set({
-              spent_units: account.spent_units + legacyDelta,
-              legacy_spent_units: historicalUsage,
-              updated_at: at,
-            })
-            .where(eq(usageBudgetAccounts.id, account.id))
-            .returning();
-          await tx.insert(usageBudgetLedger).values({
-            account_id: account.id,
-            reservation_id: null,
-            operation_key: `reconcile:${account.legacy_spent_units}:${historicalUsage}`,
-            entry_type: 'reconcile',
-            delta_reserved_units: 0,
-            delta_spent_units: legacyDelta,
-            reserved_units_after: reconciled!.reserved_units,
-            spent_units_after: reconciled!.spent_units,
-            metadata: encodeMetadata({ source: 'llm_usage' }),
-            created_at: at,
-          });
-          byId.set(account.id, reconciled!);
-        }
+        const byId = new Map(locked.map((row) => [row.id, toUsageBudgetAccount(row)]));
 
         const exceeded: UsageBudgetExceededAccount[] = [];
         const atMs = Date.parse(at);
@@ -666,7 +607,7 @@ export function createUsageBudgetService(db: Db) {
         if (exceeded.length > 0) throw new UsageBudgetExceededError(exceeded);
 
         const values = accountIds.map((accountId) => ({
-          id: reservationId(accountId, idempotencyKey),
+          id: newId('reservation'),
           account_id: accountId,
           idempotency_key: idempotencyKey,
           request_hash: requestHash,
@@ -676,24 +617,25 @@ export function createUsageBudgetService(db: Db) {
           run_id: input.run_id ?? null,
           provider_id: input.provider_id ?? null,
           model_id: input.model_id ?? null,
-          metadata,
+          metadata: storedMetadata,
           expires_at: expiresAt,
           created_at: at,
           updated_at: at,
         }));
-        const reservations = await tx.insert(usageBudgetReservations).values(values).returning();
+        const reservations = await tx.insert(budgetReservations).values(values).returning();
         const reservationByAccount = new Map(reservations.map((row) => [row.account_id, row]));
 
         for (const accountId of accountIds) {
           const account = byId.get(accountId)!;
           const reservedAfter = account.reserved_units + estimatedUnits;
           const [updated] = await tx
-            .update(usageBudgetAccounts)
+            .update(budgets)
             .set({ reserved_units: reservedAfter, updated_at: at })
-            .where(eq(usageBudgetAccounts.id, accountId))
+            .where(eq(budgets.id, accountId))
             .returning();
           const reservation = reservationByAccount.get(accountId)!;
-          await tx.insert(usageBudgetLedger).values({
+          await tx.insert(budgetLedger).values({
+            id: newId('ledgerEntry'),
             account_id: accountId,
             reservation_id: reservation.id,
             operation_key: `${idempotencyKey}:reserve`,
@@ -702,39 +644,12 @@ export function createUsageBudgetService(db: Db) {
             delta_spent_units: 0,
             reserved_units_after: updated!.reserved_units,
             spent_units_after: updated!.spent_units,
-            metadata: encodeMetadata({ idempotency_key: idempotencyKey, caller }),
+            metadata: metadataValue({ idempotency_key: idempotencyKey, caller }),
             created_at: at,
           });
-          byId.set(accountId, updated!);
+          byId.set(accountId, toUsageBudgetAccount(updated!));
         }
         return reservations.sort((a, b) => a.account_id.localeCompare(b.account_id));
-      });
-    },
-
-    async reserveMonthlyUser(input: MonthlyUserBudgetReserveInput): Promise<UsageBudgetReservationRow[]> {
-      const { limit_tokens: limitTokens, additional_accounts: additionalAccounts = [], ...reserveInput } = input;
-      const account = await service.ensureMonthlyUserAccount({
-        user_id: input.user_id,
-        // Backwards-compatible input field; ensureMonthlyUserAccount reads the
-        // current users row under a lock and deliberately ignores stale copies.
-        limit_tokens: limitTokens,
-        at: input.at,
-      });
-      const additional = await Promise.all(
-        additionalAccounts.map((candidate) => {
-          if ((candidate.unit ?? 'tokens') !== 'tokens') {
-            fail('usage_budget_invalid_input', 'Monthly user reservation can only include token accounts');
-          }
-          if (candidate.scope_type === 'user' && candidate.scope_id === input.user_id) {
-            fail('usage_budget_invalid_input', 'Monthly user account must not be duplicated in additional_accounts');
-          }
-          return service.ensureAccount(candidate);
-        }),
-      );
-      return service.reserve({
-        ...reserveInput,
-        account_ids: [account.id, ...additional.map((row) => row.id)],
-        user_id: input.user_id,
       });
     },
 
@@ -748,9 +663,9 @@ export function createUsageBudgetService(db: Db) {
         await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`);
         const reservations = await tx
           .select()
-          .from(usageBudgetReservations)
-          .where(eq(usageBudgetReservations.idempotency_key, idempotencyKey))
-          .orderBy(asc(usageBudgetReservations.account_id))
+          .from(budgetReservations)
+          .where(eq(budgetReservations.idempotency_key, idempotencyKey))
+          .orderBy(asc(budgetReservations.account_id))
           .for('update');
         if (reservations.length === 0) {
           fail('usage_budget_reservation_not_found', 'Usage budget reservation was not found');
@@ -769,14 +684,14 @@ export function createUsageBudgetService(db: Db) {
         const accountIds = unsettled.map((row) => row.account_id).sort();
         const accounts = await tx
           .select()
-          .from(usageBudgetAccounts)
-          .where(inArray(usageBudgetAccounts.id, accountIds))
-          .orderBy(asc(usageBudgetAccounts.id))
+          .from(budgets)
+          .where(inArray(budgets.id, accountIds))
+          .orderBy(asc(budgets.id))
           .for('update');
         if (accounts.length !== accountIds.length) {
           fail('usage_budget_invariant_violation', 'A settlement budget account is missing');
         }
-        const byId = new Map(accounts.map((row) => [row.id, row]));
+        const byId = new Map(accounts.map((row) => [row.id, toUsageBudgetAccount(row)]));
 
         for (const reservation of unsettled) {
           const account = byId.get(reservation.account_id)!;
@@ -789,19 +704,20 @@ export function createUsageBudgetService(db: Db) {
             reservation.status === 'expired' ? (reservation.actual_units ?? reservation.estimated_units) : 0;
           const spentDelta = actualUnits - previouslyAccountedUnits;
           const spentAfter = account.spent_units + spentDelta;
-          if (!Number.isSafeInteger(spentAfter) || spentAfter < account.legacy_spent_units) {
-            fail('usage_budget_invariant_violation', 'Account spent balance would violate its legacy projection');
+          if (!Number.isSafeInteger(spentAfter) || spentAfter < 0) {
+            fail('usage_budget_invariant_violation', 'Account spent balance would become negative');
           }
           const [updatedAccount] = await tx
-            .update(usageBudgetAccounts)
+            .update(budgets)
             .set({ reserved_units: reservedAfter, spent_units: spentAfter, updated_at: at })
-            .where(eq(usageBudgetAccounts.id, account.id))
+            .where(eq(budgets.id, account.id))
             .returning();
           await tx
-            .update(usageBudgetReservations)
+            .update(budgetReservations)
             .set({ status: 'settled', actual_units: actualUnits, settled_at: at, updated_at: at })
-            .where(eq(usageBudgetReservations.id, reservation.id));
-          await tx.insert(usageBudgetLedger).values({
+            .where(eq(budgetReservations.id, reservation.id));
+          await tx.insert(budgetLedger).values({
+            id: newId('ledgerEntry'),
             account_id: account.id,
             reservation_id: reservation.id,
             operation_key: `${idempotencyKey}:settle`,
@@ -810,17 +726,17 @@ export function createUsageBudgetService(db: Db) {
             delta_spent_units: spentDelta,
             reserved_units_after: updatedAccount!.reserved_units,
             spent_units_after: updatedAccount!.spent_units,
-            metadata: encodeMetadata({ ...input.metadata, previous_status: reservation.status }),
+            metadata: metadataValue({ ...input.metadata, previous_status: reservation.status }),
             created_at: at,
           });
-          byId.set(account.id, updatedAccount!);
+          byId.set(account.id, toUsageBudgetAccount(updatedAccount!));
         }
 
         return tx
           .select()
-          .from(usageBudgetReservations)
-          .where(eq(usageBudgetReservations.idempotency_key, idempotencyKey))
-          .orderBy(asc(usageBudgetReservations.account_id));
+          .from(budgetReservations)
+          .where(eq(budgetReservations.idempotency_key, idempotencyKey))
+          .orderBy(asc(budgetReservations.account_id));
       });
     },
 
@@ -832,6 +748,7 @@ export function createUsageBudgetService(db: Db) {
       const caller = assertIdentifier(input.caller, 'caller');
       const at = asIso(input.at);
       const metadata = encodeMetadata({ ...input.metadata, unreserved: true });
+      const storedMetadata = metadataValue({ ...input.metadata, unreserved: true });
       const requestHash = reservationRequestHash({
         account_ids: accountIds,
         estimated_units: actualUnits,
@@ -849,9 +766,9 @@ export function createUsageBudgetService(db: Db) {
         await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`);
         const existing = await tx
           .select()
-          .from(usageBudgetReservations)
-          .where(eq(usageBudgetReservations.idempotency_key, idempotencyKey))
-          .orderBy(asc(usageBudgetReservations.account_id));
+          .from(budgetReservations)
+          .where(eq(budgetReservations.idempotency_key, idempotencyKey))
+          .orderBy(asc(budgetReservations.account_id));
         if (existing.length > 0) {
           if (existing.some((row) => row.request_hash !== requestHash)) {
             fail('usage_budget_idempotency_conflict', 'Idempotency key was already used for a different charge');
@@ -861,9 +778,9 @@ export function createUsageBudgetService(db: Db) {
 
         const accounts = await tx
           .select()
-          .from(usageBudgetAccounts)
-          .where(inArray(usageBudgetAccounts.id, accountIds))
-          .orderBy(asc(usageBudgetAccounts.id))
+          .from(budgets)
+          .where(inArray(budgets.id, accountIds))
+          .orderBy(asc(budgets.id))
           .for('update');
         if (accounts.length !== accountIds.length) {
           fail('usage_budget_account_unavailable', 'One or more required budget accounts do not exist');
@@ -873,10 +790,10 @@ export function createUsageBudgetService(db: Db) {
         }
 
         const reservations = await tx
-          .insert(usageBudgetReservations)
+          .insert(budgetReservations)
           .values(
             accounts.map((account) => ({
-              id: reservationId(account.id, idempotencyKey),
+              id: newId('reservation'),
               account_id: account.id,
               idempotency_key: idempotencyKey,
               request_hash: requestHash,
@@ -888,7 +805,7 @@ export function createUsageBudgetService(db: Db) {
               run_id: input.run_id ?? null,
               provider_id: input.provider_id ?? null,
               model_id: input.model_id ?? null,
-              metadata,
+              metadata: storedMetadata,
               expires_at: at,
               settled_at: at,
               created_at: at,
@@ -899,11 +816,12 @@ export function createUsageBudgetService(db: Db) {
         const byAccount = new Map(reservations.map((row) => [row.account_id, row]));
         for (const account of accounts) {
           const [updated] = await tx
-            .update(usageBudgetAccounts)
+            .update(budgets)
             .set({ spent_units: account.spent_units + actualUnits, updated_at: at })
-            .where(eq(usageBudgetAccounts.id, account.id))
+            .where(eq(budgets.id, account.id))
             .returning();
-          await tx.insert(usageBudgetLedger).values({
+          await tx.insert(budgetLedger).values({
+            id: newId('ledgerEntry'),
             account_id: account.id,
             reservation_id: byAccount.get(account.id)!.id,
             operation_key: `${idempotencyKey}:settle`,
@@ -912,7 +830,7 @@ export function createUsageBudgetService(db: Db) {
             delta_spent_units: actualUnits,
             reserved_units_after: updated!.reserved_units,
             spent_units_after: updated!.spent_units,
-            metadata,
+            metadata: storedMetadata,
             created_at: at,
           });
         }
@@ -928,9 +846,9 @@ export function createUsageBudgetService(db: Db) {
       const expiresAt = asIso(at);
       const safeLimit = Math.min(Math.max(assertUnits(limit, 'limit', false), 1), 1_000);
       const candidates = await db
-        .selectDistinct({ idempotency_key: usageBudgetReservations.idempotency_key })
-        .from(usageBudgetReservations)
-        .where(and(eq(usageBudgetReservations.status, 'reserved'), lte(usageBudgetReservations.expires_at, expiresAt)))
+        .selectDistinct({ idempotency_key: budgetReservations.idempotency_key })
+        .from(budgetReservations)
+        .where(and(eq(budgetReservations.status, 'reserved'), lte(budgetReservations.expires_at, expiresAt)))
         .limit(safeLimit);
       let expired = 0;
       for (const candidate of candidates) {
@@ -956,44 +874,43 @@ export function createUsageBudgetService(db: Db) {
       const reason = assertIdentifier(input.reason, 'reason');
       const at = asIso(input.at);
       const operationKey = `adjust:${idempotencyKey}`;
-      const adjustmentMetadata = encodeMetadata({ reason, actor_id: input.actor_id ?? null });
+      const adjustmentMetadata = metadataValue({ reason, actor_id: input.actor_id ?? null });
 
       return db.transaction(async (tx) => {
         const lockKey = `usage-budget-adjustment:${accountId}:${idempotencyKey}`;
         await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`);
-        const [account] = await tx
-          .select()
-          .from(usageBudgetAccounts)
-          .where(eq(usageBudgetAccounts.id, accountId))
-          .limit(1)
-          .for('update');
+        const [account] = await tx.select().from(budgets).where(eq(budgets.id, accountId)).limit(1).for('update');
         if (!account) fail('usage_budget_account_unavailable', 'Budget account does not exist');
         const [existing] = await tx
           .select({
-            id: usageBudgetLedger.id,
-            delta_spent_units: usageBudgetLedger.delta_spent_units,
-            metadata: usageBudgetLedger.metadata,
+            id: budgetLedger.id,
+            delta_spent_units: budgetLedger.delta_spent_units,
+            metadata: budgetLedger.metadata,
           })
-          .from(usageBudgetLedger)
-          .where(and(eq(usageBudgetLedger.account_id, accountId), eq(usageBudgetLedger.operation_key, operationKey)))
+          .from(budgetLedger)
+          .where(and(eq(budgetLedger.account_id, accountId), eq(budgetLedger.operation_key, operationKey)))
           .limit(1);
         if (existing) {
-          if (existing.delta_spent_units !== input.delta_spent_units || existing.metadata !== adjustmentMetadata) {
+          if (
+            existing.delta_spent_units !== input.delta_spent_units ||
+            !sameMetadata(existing.metadata, adjustmentMetadata)
+          ) {
             fail('usage_budget_idempotency_conflict', 'Adjustment key was already used for a different operation');
           }
-          return account;
+          return toUsageBudgetAccount(account);
         }
 
         const spentAfter = account.spent_units + input.delta_spent_units;
-        if (!Number.isSafeInteger(spentAfter) || spentAfter < account.legacy_spent_units) {
+        if (!Number.isSafeInteger(spentAfter) || spentAfter < 0) {
           fail('usage_budget_invalid_input', 'Adjustment would make the spent balance invalid');
         }
         const [updated] = await tx
-          .update(usageBudgetAccounts)
+          .update(budgets)
           .set({ spent_units: spentAfter, updated_at: at })
-          .where(eq(usageBudgetAccounts.id, accountId))
+          .where(eq(budgets.id, accountId))
           .returning();
-        await tx.insert(usageBudgetLedger).values({
+        await tx.insert(budgetLedger).values({
+          id: newId('ledgerEntry'),
           account_id: accountId,
           reservation_id: null,
           operation_key: operationKey,
@@ -1005,7 +922,7 @@ export function createUsageBudgetService(db: Db) {
           metadata: adjustmentMetadata,
           created_at: at,
         });
-        return updated!;
+        return toUsageBudgetAccount(updated!);
       });
     },
 
@@ -1024,21 +941,16 @@ export function createUsageBudgetService(db: Db) {
       return db.transaction(async (tx) => {
         const lockKey = `usage-budget-status:${accountId}:${idempotencyKey}`;
         await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`);
-        const [account] = await tx
-          .select()
-          .from(usageBudgetAccounts)
-          .where(eq(usageBudgetAccounts.id, accountId))
-          .limit(1)
-          .for('update');
+        const [account] = await tx.select().from(budgets).where(eq(budgets.id, accountId)).limit(1).for('update');
         if (!account) fail('usage_budget_account_unavailable', 'Budget account does not exist');
 
         const [existing] = await tx
-          .select({ metadata: usageBudgetLedger.metadata })
-          .from(usageBudgetLedger)
-          .where(and(eq(usageBudgetLedger.account_id, accountId), eq(usageBudgetLedger.operation_key, operationKey)))
+          .select({ metadata: budgetLedger.metadata })
+          .from(budgetLedger)
+          .where(and(eq(budgetLedger.account_id, accountId), eq(budgetLedger.operation_key, operationKey)))
           .limit(1);
         if (existing) {
-          const stored = safeJsonParse(existing.metadata, {}) as Partial<typeof requestMetadata>;
+          const stored = existing.metadata as Partial<typeof requestMetadata>;
           if (
             stored.status !== requestMetadata.status ||
             stored.reason !== requestMetadata.reason ||
@@ -1046,15 +958,16 @@ export function createUsageBudgetService(db: Db) {
           ) {
             fail('usage_budget_idempotency_conflict', 'Status key was already used for a different operation');
           }
-          return account;
+          return toUsageBudgetAccount(account);
         }
 
         const [updated] = await tx
-          .update(usageBudgetAccounts)
+          .update(budgets)
           .set({ status: input.status, updated_at: at })
-          .where(eq(usageBudgetAccounts.id, accountId))
+          .where(eq(budgets.id, accountId))
           .returning();
-        await tx.insert(usageBudgetLedger).values({
+        await tx.insert(budgetLedger).values({
+          id: newId('ledgerEntry'),
           account_id: accountId,
           reservation_id: null,
           operation_key: operationKey,
@@ -1063,20 +976,20 @@ export function createUsageBudgetService(db: Db) {
           delta_spent_units: 0,
           reserved_units_after: updated!.reserved_units,
           spent_units_after: updated!.spent_units,
-          metadata: encodeMetadata({ ...requestMetadata, previous_status: account.status }),
+          metadata: metadataValue({ ...requestMetadata, previous_status: account.status }),
           created_at: at,
         });
-        return updated!;
+        return toUsageBudgetAccount(updated!);
       });
     },
 
     async getAccount(accountId: string): Promise<UsageBudgetAccountRow | undefined> {
       const rows = await db
         .select()
-        .from(usageBudgetAccounts)
-        .where(eq(usageBudgetAccounts.id, assertIdentifier(accountId, 'account_id')))
+        .from(budgets)
+        .where(and(eq(budgets.id, assertIdentifier(accountId, 'account_id')), eq(budgets.kind, 'account')))
         .limit(1);
-      return rows[0];
+      return rows[0] ? toUsageBudgetAccount(rows[0]) : undefined;
     },
 
     async getAccountSnapshot(accountId: string): Promise<UsageBudgetAccountSnapshot | undefined> {
@@ -1087,18 +1000,18 @@ export function createUsageBudgetService(db: Db) {
     async getReservationGroup(idempotencyKey: string): Promise<UsageBudgetReservationRow[]> {
       return db
         .select()
-        .from(usageBudgetReservations)
-        .where(eq(usageBudgetReservations.idempotency_key, assertIdentifier(idempotencyKey, 'idempotency_key')))
-        .orderBy(asc(usageBudgetReservations.account_id));
+        .from(budgetReservations)
+        .where(eq(budgetReservations.idempotency_key, assertIdentifier(idempotencyKey, 'idempotency_key')))
+        .orderBy(asc(budgetReservations.account_id));
     },
 
     async listLedger(accountId: string, limit = 100): Promise<UsageBudgetLedgerRow[]> {
       const safeLimit = Math.min(Math.max(assertUnits(limit, 'limit', false), 1), 1_000);
       return db
         .select()
-        .from(usageBudgetLedger)
-        .where(eq(usageBudgetLedger.account_id, assertIdentifier(accountId, 'account_id')))
-        .orderBy(desc(usageBudgetLedger.id))
+        .from(budgetLedger)
+        .where(eq(budgetLedger.account_id, assertIdentifier(accountId, 'account_id')))
+        .orderBy(desc(budgetLedger.created_at), desc(budgetLedger.id))
         .limit(safeLimit);
     },
   };

@@ -17,26 +17,28 @@ import type {
   RuntimeStep,
   RuntimeToolCall,
 } from '@greenhouse/types/runtime';
-import { safeJsonParse } from '@greenhouse/utils/json';
-
-export function runtimePayloadView(raw: string | null): RuntimeJsonValue | null {
-  return raw === null ? null : (safeJsonParse(raw, { raw }) as RuntimeJsonValue);
+/**
+ * Stored runtime JSON is jsonb and reads back as a value. A 1.x row whose text
+ * was not JSON was carried as a JSON string; it passes through unchanged.
+ */
+export function runtimePayloadView(raw: unknown): RuntimeJsonValue | null {
+  return raw === null || raw === undefined ? null : (raw as RuntimeJsonValue);
 }
 
 export function runtimeRunView(row: RuntimeRunRow): RuntimeRun {
-  return { ...row, input: runtimePayloadView(row.input)!, output: runtimePayloadView(row.output) };
+  return { ...row, input: runtimePayloadView(row.input) ?? {}, output: runtimePayloadView(row.output) };
 }
 
 export function runtimeEventView(row: RuntimeEventRow): RuntimeEvent {
-  return { ...row, payload: runtimePayloadView(row.payload)! };
+  return { ...row, payload: runtimePayloadView(row.payload) ?? {} };
 }
 
 export function runtimeStepView(row: RuntimeStepRow): RuntimeStep {
-  return { ...row, input: runtimePayloadView(row.input)!, output: runtimePayloadView(row.output) };
+  return { ...row, input: runtimePayloadView(row.input) ?? {}, output: runtimePayloadView(row.output) };
 }
 
 export function runtimeToolCallView(row: RuntimeToolCallRow): RuntimeToolCall {
-  return { ...row, input: runtimePayloadView(row.input)!, output: runtimePayloadView(row.output) };
+  return { ...row, input: runtimePayloadView(row.input) ?? {}, output: runtimePayloadView(row.output) };
 }
 
 export function runtimeArtifactView(row: RuntimeArtifactRow): RuntimeArtifact {
@@ -44,5 +46,5 @@ export function runtimeArtifactView(row: RuntimeArtifactRow): RuntimeArtifact {
 }
 
 export function runtimeInterruptView(row: RuntimeInterruptRow): RuntimeInterrupt {
-  return { ...row, payload: runtimePayloadView(row.payload)!, decision: runtimePayloadView(row.decision) };
+  return { ...row, payload: runtimePayloadView(row.payload) ?? {}, decision: runtimePayloadView(row.decision) };
 }

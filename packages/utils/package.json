@@ -12,6 +12,10 @@
       "import": "./src/json.ts",
       "types": "./src/json.ts"
     },
+    "./id": {
+      "import": "./src/id.ts",
+      "types": "./src/id.ts"
+    },
     "./concurrency": {
       "import": "./src/concurrency.ts",
       "types": "./src/concurrency.ts"

@@ -7,7 +7,7 @@ import { compileApp, defineApp } from '@greenhouse/platform-kernel';
 export const knowledgeManifest = compileApp(
   defineApp({
     id: 'knowledge',
-    version: '1.0.1',
+    version: '1.1.0',
     title: 'Knowledge',
     description: 'Team and personal knowledge documents, versions, sharing, and AI-assisted editing.',
     modules: {
@@ -31,10 +31,10 @@ export const knowledgeManifest = compileApp(
       document: {
         title: 'Knowledge document',
         module: 'library',
-        table: 'knowledge_base',
+        table: 'kb_documents',
         accessScopes: ['own', 'collaborating', 'all'],
         fields: {
-          id: { kind: 'integer', title: 'ID', classification: 'internal' },
+          id: { kind: 'text', title: 'ID', classification: 'internal' },
           slug: { kind: 'text', title: 'Slug', required: true, unique: true, searchable: true },
           title: { kind: 'text', title: 'Title', required: true, searchable: true, sortable: true },
           content: { kind: 'longText', title: 'Markdown', required: true, searchable: true },
@@ -67,10 +67,10 @@ export const knowledgeManifest = compileApp(
       version: {
         title: 'Document version',
         module: 'library',
-        table: 'knowledge_base_versions',
+        table: 'kb_versions',
         accessScopes: ['collaborating', 'all'],
         fields: {
-          id: { kind: 'integer', title: 'ID', classification: 'internal' },
+          id: { kind: 'text', title: 'ID', classification: 'internal' },
           documentId: { kind: 'relation', title: 'Document', target: 'document', required: true },
           version: { kind: 'integer', title: 'Version', required: true, sortable: true },
           title: { kind: 'text', title: 'Title', required: true },
@@ -83,10 +83,10 @@ export const knowledgeManifest = compileApp(
       share: {
         title: 'Knowledge share',
         module: 'collaboration',
-        table: 'knowledge_base_shares',
+        table: 'shares',
         accessScopes: ['own', 'all'],
         fields: {
-          id: { kind: 'integer', title: 'ID', classification: 'internal' },
+          id: { kind: 'text', title: 'ID', classification: 'internal' },
           documentId: { kind: 'relation', title: 'Document', target: 'document', required: true },
           sharedWith: { kind: 'text', title: 'User or group', required: true, classification: 'confidential' },
           role: {

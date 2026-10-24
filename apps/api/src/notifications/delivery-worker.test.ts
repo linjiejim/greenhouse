@@ -23,7 +23,8 @@ function notification(): NotificationRow {
     kind: 'runtime_completed',
     title: 'Daily report completed',
     body: 'All good',
-    payload: JSON.stringify({
+    // A 1.x payload: the numeric task id is still accepted.
+    payload: {
       schema: 1,
       type: 'automation_result',
       task_id: 42,
@@ -31,7 +32,7 @@ function notification(): NotificationRow {
       session_id: 'session-1',
       status: 'completed',
       summary: 'All good',
-    }),
+    },
     run_id: null,
     interrupt_id: null,
     event_id: null,
@@ -118,7 +119,7 @@ describe('notification delivery worker', () => {
       db,
       { address: 'owner@example.test', name: 'Owner' },
       expect.objectContaining({ subject: '✅ Daily report' }),
-      { userId: 'owner-1', origin: 'automation', sessionId: 'session-1', taskId: 42 },
+      { userId: 'owner-1', origin: 'automation', sessionId: 'session-1', taskId: '42' },
     );
   });
 

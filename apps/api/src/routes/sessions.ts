@@ -6,7 +6,7 @@
  * GET    /api/sessions/:id                             — 获取会话详情（include_messages=0 可只取元数据）
  * GET    /api/sessions/:id/messages                    — 分页获取会话消息
  * POST   /api/sessions/:id/fork                        — 复制完整会话或复制到指定 Agent 回复
- * PATCH  /api/sessions/:id                             — 更新会话（status/rating/comment/title）
+ * PATCH  /api/sessions/:id                             — 更新会话（status/title/metadata）
  * DELETE /api/sessions/:id                             — 删除会话
  * GET    /api/sessions/:id/shares                       — 获取会话的分享列表
  * DELETE /api/sessions/:id/shares                       — 移除会话的所有分享
@@ -352,7 +352,7 @@ const sessions = new Hono<AppEnv>()
       // with you forks onto the Agent's current version (an older one may never
       // have been shared with you).
       const ownSource = source.user_id === authUser.id;
-      const reference = ownSource ? source.profile_id : source.profile_id?.replace(/^(custom:\d+)@\d+$/, '$1');
+      const reference = ownSource ? source.profile_id : source.profile_id?.replace(/^(custom:[^@]+)@\d+$/, '$1');
       profileId = await pinProfileIdForUser(authUser, reference, undefined, { existingPin: ownSource });
     } catch (err) {
       if (err instanceof ProfileAccessError) return c.json({ error: err.message }, err.status);
@@ -384,7 +384,7 @@ const sessions = new Hono<AppEnv>()
     if (!fork) return c.json({ error: 'Session not found' }, 404);
     return c.json(fork, 201);
   })
-  /** PATCH /api/sessions/:id — update session (status, rating, comment, title) */
+  /** PATCH /api/sessions/:id — update session (status, title, metadata) */
   .patch('/:id', async (c) => {
     const authUser = getAuthUser(c);
     const id = c.req.param('id');
@@ -398,21 +398,26 @@ const sessions = new Hono<AppEnv>()
       return c.json({ error: 'Forbidden' }, 403);
     }
 
-    const body = (await c.req.json()) as {
-      status?: string;
-      rating?: number;
-      comment?: string;
-      title?: string;
-      feedback?: string | null;
-      metadata?: string;
-    };
+    const body = (await c.req.json()) as { status?: unknown; title?: unknown; metadata?: unknown };
+    const updates: { status?: string; title?: string; metadata?: Record<string, unknown> } = {};
     if (body.status !== undefined) {
       const userWritableStatuses = new Set(['active', 'archived', 'completed', 'deleted']);
-      if (!userWritableStatuses.has(body.status)) {
+      if (typeof body.status !== 'string' || !userWritableStatuses.has(body.status)) {
         return c.json({ error: 'Invalid session status' }, 400);
       }
+      updates.status = body.status;
     }
-    const session = await getDb().sessions.update(id, body);
+    if (body.title !== undefined) {
+      if (typeof body.title !== 'string') return c.json({ error: 'Invalid title' }, 400);
+      updates.title = body.title;
+    }
+    if (body.metadata !== undefined) {
+      if (body.metadata === null || typeof body.metadata !== 'object' || Array.isArray(body.metadata)) {
+        return c.json({ error: 'metadata must be an object' }, 400);
+      }
+      updates.metadata = body.metadata as Record<string, unknown>;
+    }
+    const session = await getDb().sessions.update(id, updates);
     if (!session) return c.json({ error: 'Session not found' }, 404);
     return c.json(session);
   })
@@ -574,8 +579,7 @@ const sessions = new Hono<AppEnv>()
   .delete('/:id/shares/:shareId', async (c) => {
     const authUser = getAuthUser(c);
     const sessionId = c.req.param('id');
-    const shareId = parseInt(c.req.param('shareId'), 10);
-    if (isNaN(shareId)) return c.json({ error: 'Invalid share id' }, 400);
+    const shareId = c.req.param('shareId');
 
     const session = await getDb().sessions.getById(sessionId);
     if (!session) return c.json({ error: 'Session not found' }, 404);

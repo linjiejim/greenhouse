@@ -2,8 +2,8 @@
  * FullHistoryModal — full-screen session history browser.
  *
  * This file is the shell: it loads the data, owns the filter/page state and the
- * write handlers. Rendering lives in `components/history/` (filter bar, list,
- * edit dialog) so no single file has to hold all of it at once.
+ * write handlers. Rendering lives in `components/history/` (filter bar, list)
+ * so no single file has to hold all of it at once.
  */
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
@@ -13,7 +13,6 @@ import { useT } from '../lib/i18n';
 import { usePersistedPageSize } from '../hooks/use-persisted-page-size';
 import {
   DEFAULT_HISTORY_FILTERS,
-  countByFeedback,
   countByStatus,
   filterSessions,
   type HistoryFilters,
@@ -21,7 +20,6 @@ import {
 } from './history/filter-model';
 import { HistoryFiltersBar } from './history/history-filters';
 import { HistoryList } from './history/history-list';
-import { HistoryEditDialog } from './history/history-edit-dialog';
 
 export function FullHistoryModal({
   open,
@@ -41,7 +39,6 @@ export function FullHistoryModal({
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = usePersistedPageSize('chat.history', 20);
 
-  const [editSession, setEditSession] = useState<HistorySession | null>(null);
   const [pendingDeleteSession, setPendingDeleteSession] = useState<HistorySession | null>(null);
 
   const loadSessions = useCallback(async () => {
@@ -61,7 +58,6 @@ export function FullHistoryModal({
   }, [open, loadSessions]);
 
   const statusCounts = useMemo(() => countByStatus(allSessions), [allSessions]);
-  const feedbackCounts = useMemo(() => countByFeedback(allSessions), [allSessions]);
   const filteredSessions = useMemo(() => filterSessions(allSessions, filters), [allSessions, filters]);
 
   // Any filter change resets to the first page — otherwise a narrower result set
@@ -86,15 +82,6 @@ export function FullHistoryModal({
     patchSession(session.id, { status });
   };
 
-  const handleSaveEdit = async (session: HistorySession, values: { rating: number; comment: string }) => {
-    await api.updateSession(session.id, {
-      comment: values.comment || undefined,
-      rating: values.rating || undefined,
-    });
-    patchSession(session.id, { comment: values.comment, rating: values.rating });
-    setEditSession(null);
-  };
-
   const handleDelete = async (session: HistorySession) => {
     if (session.status === 'deleted') {
       setPendingDeleteSession(session);
@@ -116,7 +103,6 @@ export function FullHistoryModal({
           filters={filters}
           onChange={updateFilters}
           statusCounts={statusCounts}
-          feedbackCounts={feedbackCounts}
           profiles={profiles}
           searchPlaceholder={t('chat.searchConversations')}
         />
@@ -134,19 +120,9 @@ export function FullHistoryModal({
           loading={loading}
           status={filters.status}
           onOpen={(session) => onSelectSession(session.id)}
-          onEdit={setEditSession}
           onStatusChange={handleStatusChange}
           onDelete={handleDelete}
         />
-
-        {editSession && (
-          <HistoryEditDialog
-            key={editSession.id}
-            session={editSession}
-            onClose={() => setEditSession(null)}
-            onSave={handleSaveEdit}
-          />
-        )}
       </Dialog>
 
       <ConfirmDialog

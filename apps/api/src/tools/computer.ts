@@ -266,7 +266,7 @@ const transferSchema = z.object({
       'files.copy_to_computer: copy a file from Files into the computer (starts one if needed). ' +
         'computer.save_to_files: save a file from the computer as a new file in Files.',
     ),
-  file_id: z.number().int().positive().optional().describe('files.copy_to_computer: the file in Files.'),
+  file_id: z.coerce.string().optional().describe('files.copy_to_computer: the file in Files.'),
   path: z
     .string()
     .max(4096)
@@ -278,12 +278,7 @@ const transferSchema = z.object({
     .enum(['personal', 'team'])
     .optional()
     .describe('save_to_files: your personal shelf (default) or the team shelf.'),
-  folder_id: z
-    .number()
-    .int()
-    .positive()
-    .optional()
-    .describe('save_to_files: the folder in Files (default the shelf root).'),
+  folder_id: z.coerce.string().optional().describe('save_to_files: the folder in Files (default the shelf root).'),
   name: z.string().max(255).optional().describe('save_to_files: the name in Files (default the file name).'),
 });
 

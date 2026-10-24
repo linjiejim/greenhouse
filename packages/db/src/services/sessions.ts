@@ -1,19 +1,22 @@
 /**
- * Session service — conversation session & message persistence (PostgreSQL).
+ * Session service — conversation & message persistence (PostgreSQL tables
+ * `conversations` / `messages`; the facade keeps the historical "session" name).
  */
 
-import { randomUUID } from 'node:crypto';
 import { eq, and, sql, ne, desc, notInArray, lt, lte, inArray, or, getTableColumns } from 'drizzle-orm';
 import { nowIso } from '@greenhouse/utils/date';
-import { safeJsonParse } from '@greenhouse/utils/json';
+import { toRowId } from '@greenhouse/utils/id';
 
 import type { Db } from '../client.js';
-import { sessions, messages, runtimeRuns } from '../schema/index.js';
+import { newId } from '../ids.js';
+import { conversations as sessions, messages, conversationShares, runs as runtimeRuns } from '../schema/index.js';
 import { segmentForFts, buildSnippet } from './fts.js';
 import type {
   SessionRow,
   MessageRow,
   MessageInput,
+  MessageImage,
+  MessageParts,
   SessionChannel,
   SessionMessagePage,
 } from '@greenhouse/types/session';
@@ -65,7 +68,8 @@ export interface SessionListOpts {
    * in v1.4) are not user-facing objects, so list consumers exclude them by default.
    */
   excludeChannels?: string[];
-  taskId?: number; // filter by scheduled task (via metadata)
+  /** Filter by automation (via `metadata.task_id`); a legacy number is accepted. */
+  taskId?: string | number;
 }
 
 /** Sentinel recipient meaning "shared with every internal user". */
@@ -189,10 +193,7 @@ export function messageSearchTerms(query: string): { all: string[]; recall: stri
   return { all, recall: long.length > 0 ? long : all };
 }
 
-export interface PersistedChatImage {
-  id: string;
-  url: string;
-}
+export type PersistedChatImage = MessageImage;
 
 export interface PersistedChatMessage {
   role: string;
@@ -245,19 +246,37 @@ export type EditUserMessageResult =
       reason: 'session_not_found' | 'message_not_found' | 'not_user';
     };
 
-function messageValues(input: MessageInput, seq: number, now = nowIso(), id: string = randomUUID()) {
+/**
+ * jsonb cannot hold U+0000, and one tool output carrying it (a UTF-16 file read
+ * as UTF-8) would make the whole message insert fail. Drop it from every string.
+ */
+function stripNul(value: unknown): unknown {
+  if (typeof value === 'string') return value.includes('\u0000') ? value.replaceAll('\u0000', '') : value;
+  if (Array.isArray(value)) return value.map(stripNul);
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(Object.entries(value).map(([key, item]) => [stripNul(key) as string, stripNul(item)]));
+  }
+  return value;
+}
+
+/** The `parts` column for a new message; empty parts are left out. */
+function messageParts(input: MessageInput): MessageParts {
+  const parts: MessageParts = {};
+  if (input.references?.length) parts.references = input.references;
+  if (input.images?.length) parts.images = input.images;
+  if (input.pipeline?.length) parts.pipeline = input.pipeline;
+  return stripNul(parts) as MessageParts;
+}
+
+function messageValues(input: MessageInput, seq: number, now = nowIso(), id: string = newId('message')) {
   return {
     id,
     session_id: input.session_id,
     role: input.role,
     content: input.content,
-    references_: JSON.stringify(input.references ?? []),
-    pipeline: JSON.stringify(input.pipeline ?? []),
+    parts: messageParts(input),
     reasoning: input.reasoning ?? null,
     model: input.model ?? null,
-    images: JSON.stringify(input.images ?? []),
-    confidence: input.confidence ?? null,
-    grounded: input.grounded != null ? (input.grounded ? 1 : 0) : null,
     input_tokens: input.input_tokens ?? null,
     output_tokens: input.output_tokens ?? null,
     cached_tokens: input.cached_tokens ?? null,
@@ -268,8 +287,8 @@ function messageValues(input: MessageInput, seq: number, now = nowIso(), id: str
   };
 }
 
-function parsePersistedImages(raw: string): PersistedChatImage[] {
-  const parsed = safeJsonParse(raw, []);
+function parsePersistedImages(parts: MessageParts | null | undefined): PersistedChatImage[] {
+  const parsed: unknown = parts?.images;
   if (!Array.isArray(parsed)) return [];
 
   return parsed.flatMap((value) => {
@@ -304,7 +323,9 @@ function sessionListConditions(opts: SessionListOpts) {
   if (excludeUserId) conditions.push(sql`${sessions.user_id} IS DISTINCT FROM ${excludeUserId}`);
   if (channel) conditions.push(eq(sessions.channel, channel));
   if (excludeChannels?.length) conditions.push(notInArray(sessions.channel, excludeChannels));
-  if (taskId) conditions.push(sql`${sessions.metadata}::jsonb @> ${JSON.stringify({ task_id: taskId })}::jsonb`);
+  // `->>` reads a number and a string alike: carried 1.x rows store the
+  // automation id as a number, new ones as text.
+  if (taskId != null && taskId !== '') conditions.push(sql`${sessions.metadata} ->> 'task_id' = ${toRowId(taskId)}`);
   if (status && status !== 'all') {
     conditions.push(eq(sessions.status, status));
   } else if (!includeEval) {
@@ -359,29 +380,25 @@ export function createSessionService(db: Db) {
       userId?: string,
       appId?: string,
       channel?: SessionChannel,
-      parentSessionId?: string,
-      options?: { id?: string; metadata?: string },
+      options?: { id?: string; metadata?: Record<string, unknown> },
     ): Promise<SessionRow> {
       const now = nowIso();
-      const session: SessionRow = {
-        id: options?.id ?? randomUUID(),
-        title: title ?? null,
-        status: 'active',
-        rating: null,
-        comment: null,
-        feedback: null,
-        profile_id: profileId ?? 'team',
-        user_id: userId ?? null,
-        app_id: appId ?? null,
-        channel: channel ?? 'web',
-        parent_session_id: parentSessionId ?? null,
-        metadata: options?.metadata ?? '{}',
-        created_at: now,
-        updated_at: now,
-      };
-
-      await db.insert(sessions).values(session);
-      return session;
+      const [row] = await db
+        .insert(sessions)
+        .values({
+          id: options?.id ?? newId('conversation'),
+          title: title ?? null,
+          status: 'active',
+          profile_id: profileId ?? 'team',
+          user_id: userId ?? null,
+          app_id: appId ?? null,
+          channel: channel ?? 'web',
+          metadata: options?.metadata ?? {},
+          created_at: now,
+          updated_at: now,
+        })
+        .returning(sessionListColumns);
+      return row as SessionRow;
     },
 
     async getById(id: string): Promise<SessionRecord | undefined> {
@@ -403,25 +420,23 @@ export function createSessionService(db: Db) {
         if (!source) return undefined;
 
         const now = nowIso();
-        const fork: SessionRow = {
-          id: randomUUID(),
+        const fork = {
+          id: newId('conversation'),
           title: source.title ? `${source.title} (Fork)` : 'Forked conversation',
           status: 'active',
-          rating: null,
-          comment: null,
-          feedback: null,
           profile_id: source.profile_id,
           user_id: input.userId,
           app_id: null,
-          channel: 'web',
-          parent_session_id: source.id,
-          metadata: JSON.stringify({
+          channel: 'web' as SessionChannel,
+          metadata: {
             forked_from_session_id: source.id,
             ...(input.sourceMessageId ? { forked_from_message_id: input.sourceMessageId } : {}),
-          }),
+          },
+          pinned_at: null,
+          pin_position: 0,
           created_at: now,
           updated_at: now,
-        };
+        } satisfies SessionRow;
         // A fork that keeps everything the source's digest folded carries the
         // digest along — message seqs are copied verbatim, so it still lines up.
         const sourceDigest = readSessionDigest(source);
@@ -444,7 +459,7 @@ export function createSessionService(db: Db) {
           await tx.insert(messages).values(
             sourceMessages.map((message) => ({
               ...message,
-              id: randomUUID(),
+              id: newId('message'),
               session_id: fork.id,
             })),
           );
@@ -479,7 +494,7 @@ export function createSessionService(db: Db) {
         ...sessionListConditions(opts),
         sql`${sessions.user_id} IS DISTINCT FROM ${userId}`,
         sql`EXISTS (
-          SELECT 1 FROM session_shares ss
+          SELECT 1 FROM ${conversationShares} ss
           WHERE ss.session_id = ${sessions.id}
             AND (ss.shared_with = ${userId} OR ss.shared_with = ${TEAM_SHARE_RECIPIENT})
         )`,
@@ -510,19 +525,13 @@ export function createSessionService(db: Db) {
       id: string,
       updates: {
         status?: string;
-        rating?: number | null;
-        comment?: string | null;
         title?: string | null;
-        feedback?: string | null;
-        metadata?: string;
+        metadata?: Record<string, unknown>;
       },
     ): Promise<SessionRow | undefined> {
-      const set: Record<string, unknown> = { updated_at: nowIso() };
+      const set: Partial<typeof sessions.$inferInsert> = { updated_at: nowIso() };
       if (updates.status !== undefined) set.status = updates.status;
-      if (updates.rating !== undefined) set.rating = updates.rating;
-      if (updates.comment !== undefined) set.comment = updates.comment;
       if (updates.title !== undefined) set.title = updates.title;
-      if (updates.feedback !== undefined) set.feedback = updates.feedback;
       if (updates.metadata !== undefined) set.metadata = updates.metadata;
 
       await db.update(sessions).set(set).where(eq(sessions.id, id));
@@ -532,8 +541,8 @@ export function createSessionService(db: Db) {
     /**
      * Hard-delete a session.
      *
-     * session_shares / session_share_reads are cleaned up by their FK cascade
-     * (migration 0052) — don't add an application-level delete for them, the
+     * conversation_shares / conversation_share_reads, files and receipts are
+     * cleaned up by their FK cascade — don't add an application-level delete for them, the
      * whole point of the constraint is that no caller has to remember.
      */
     async delete(id: string): Promise<void> {
@@ -556,7 +565,7 @@ export function createSessionService(db: Db) {
                 and(
                   eq(runtimeRuns.kind, 'subagent'),
                   eq(runtimeRuns.source_kind, 'spawned_session'),
-                  or(eq(runtimeRuns.session_id, id), sql`${runtimeRuns.input}::jsonb ->> 'parent_session_id' = ${id}`),
+                  or(eq(runtimeRuns.session_id, id), sql`${runtimeRuns.input} ->> 'parent_session_id' = ${id}`),
                 ),
               ),
             ),
@@ -609,7 +618,7 @@ export function createSessionService(db: Db) {
           .select({
             id: messages.id,
             content: messages.content,
-            images: messages.images,
+            parts: messages.parts,
           })
           .from(messages)
           .where(and(eq(messages.session_id, sessionId), eq(messages.role, 'user'), lt(messages.seq, lastMessage.seq)))
@@ -622,7 +631,7 @@ export function createSessionService(db: Db) {
             ? {
                 id: lastUser.id,
                 content: lastUser.content,
-                images: parsePersistedImages(lastUser.images),
+                images: parsePersistedImages(lastUser.parts as MessageParts),
               }
             : null,
         };
@@ -688,7 +697,7 @@ export function createSessionService(db: Db) {
         await resetDigestIfFolded(tx, sessionId, lastMessage.seq);
         const [inserted] = await tx
           .insert(messages)
-          .values(messageValues(input, lastMessage.seq, nowIso(), replacementMessageId ?? randomUUID()))
+          .values(messageValues(input, lastMessage.seq, nowIso(), replacementMessageId ?? newId('message')))
           .returning();
         await tx.update(sessions).set({ updated_at: nowIso() }).where(eq(sessions.id, sessionId));
 
@@ -749,7 +758,7 @@ export function createSessionService(db: Db) {
 
         const [inserted] = await tx
           .insert(messages)
-          .values(messageValues(input, lastMessage.seq + 1, nowIso(), messageId ?? randomUUID()))
+          .values(messageValues(input, lastMessage.seq + 1, nowIso(), messageId ?? newId('message')))
           .returning();
         await tx.update(sessions).set({ updated_at: nowIso() }).where(eq(sessions.id, sessionId));
 
@@ -939,14 +948,14 @@ export function createSessionService(db: Db) {
           role: messages.role,
           content: messages.content,
           created_at: messages.created_at,
-          images: messages.images,
+          parts: messages.parts,
         })
         .from(messages)
         .where(and(...conditions))
         .orderBy(messages.seq);
-      return rows.map((row) => ({
+      return rows.map(({ parts, ...row }) => ({
         ...row,
-        images: parsePersistedImages(row.images),
+        images: parsePersistedImages(parts as MessageParts),
       }));
     },
 
@@ -1176,11 +1185,11 @@ export function createSessionService(db: Db) {
     /**
      * Whether an image id was produced or attached in this conversation.
      *
-     * Images do not get a `chat_files` row — they live on the flat public-read
+     * Images do not get a `files` row — they live on the flat public-read
      * `/api/upload/:id` path because `<img src>` cannot send a bearer token — so
      * "is this image part of this conversation" has no handle table to ask. The
-     * transcript is the record: a user upload lands in `messages.images`, and a
-     * generated one lands in the assistant `pipeline` as the tool's output URL.
+     * transcript is the record: a user upload lands in `parts.images`, and a
+     * generated one lands in `parts.pipeline` as the tool's output URL.
      *
      * This is an authorization check, not a convenience lookup: the id comes
      * from the model, so without the session bound a copied id would let one
@@ -1194,8 +1203,8 @@ export function createSessionService(db: Db) {
         FROM ${messages}
         WHERE session_id = ${sessionId}
           AND (
-            position(${imageId} in coalesce(images, '')) > 0
-            OR position(${imageId} in coalesce(pipeline, '')) > 0
+            position(${imageId} in coalesce(parts -> 'images', '[]'::jsonb)::text) > 0
+            OR position(${imageId} in coalesce(parts -> 'pipeline', '[]'::jsonb)::text) > 0
             OR position(${imageId} in coalesce(content, '')) > 0
           )
         LIMIT 1
@@ -1204,23 +1213,14 @@ export function createSessionService(db: Db) {
     },
 
     /**
-     * Every failed tool call recorded in `messages.pipeline` since `sinceIso`.
+     * Every failed tool call recorded in `messages.parts.pipeline` since `sinceIso`.
      *
      * Feeds the friction miner: agents stumble far more often than anyone
      * reports, and the pipeline column already holds the evidence. Read-only and
      * capped — this is a signal source, not an audit ledger.
      *
-     * Rows whose pipeline serialised a NUL character are skipped: PostgreSQL
-     * jsonb cannot represent NUL, so the `::jsonb` cast on ONE such row would
-     * abort the whole sweep — a day of frictions lost to a single mojibake
-     * attachment (seen live 2026-08-11 with a UTF-16 CSV read as UTF-8).
-     * The extract layer no longer emits NULs, but historical rows remain and
-     * this query must not trust every future writer.
      */
     async scanToolErrors(sinceIso: string, limit = 2000): Promise<ToolErrorSample[]> {
-      // The exact six characters JSON.stringify writes for a NUL — derived, not
-      // typed, so no reader has to count backslashes.
-      const jsonNulEscape = JSON.stringify(String.fromCharCode(0)).slice(1, -1);
       const rows = await db.execute<{
         session_id: string;
         created_at: string;
@@ -1234,11 +1234,9 @@ export function createSessionService(db: Db) {
                elem->'output'->>'error' AS error,
                elem->>'input'           AS input
         FROM ${messages} m,
-             LATERAL jsonb_array_elements(m.pipeline::jsonb) AS elem
+             LATERAL jsonb_array_elements(m.parts -> 'pipeline') AS elem
         WHERE m.role = 'assistant'
-          AND m.pipeline LIKE '[%'
-          AND m.pipeline <> '[]'
-          AND strpos(m.pipeline, ${jsonNulEscape}) = 0
+          AND jsonb_typeof(m.parts -> 'pipeline') = 'array'
           AND m.created_at > ${sinceIso}
           AND jsonb_typeof(elem->'output') = 'object'
           AND jsonb_exists(elem->'output', 'error')
@@ -1266,7 +1264,6 @@ export function createSessionService(db: Db) {
      * retrieval; this query just finds the shape.
      */
     async scanEmptyResults(sinceIso: string, limit = 2000): Promise<EmptyResultSample[]> {
-      const jsonNulEscape = JSON.stringify(String.fromCharCode(0)).slice(1, -1);
       const rows = await db.execute<{
         session_id: string;
         created_at: string;
@@ -1278,11 +1275,9 @@ export function createSessionService(db: Db) {
                elem->>'tool'  AS tool,
                elem->>'input' AS input
         FROM ${messages} m,
-             LATERAL jsonb_array_elements(m.pipeline::jsonb) AS elem
+             LATERAL jsonb_array_elements(m.parts -> 'pipeline') AS elem
         WHERE m.role = 'assistant'
-          AND m.pipeline LIKE '[%'
-          AND m.pipeline <> '[]'
-          AND strpos(m.pipeline, ${jsonNulEscape}) = 0
+          AND jsonb_typeof(m.parts -> 'pipeline') = 'array'
           AND m.created_at > ${sinceIso}
           AND jsonb_typeof(elem->'output') = 'object'
           AND NOT jsonb_exists(elem->'output', 'error')

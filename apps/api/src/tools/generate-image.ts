@@ -181,7 +181,7 @@ async function loadReferenceImage(ref: string): Promise<ReferenceImage> {
  * generate_image on MCP) returned — only a file the caller may read under
  * drive access (team shelf or their own).
  */
-async function loadFilesReference(ctx: GenerateImageToolContext, fileId: number): Promise<ReferenceImage> {
+async function loadFilesReference(ctx: GenerateImageToolContext, fileId: string): Promise<ReferenceImage> {
   const read = await readCabinetFileBytes(ctx, { fileId, maxBytes: MAX_REFERENCE_FILE_BYTES });
   if ('error' in read) throw new Error(read.error);
   const mime = detectImageContentType(read.bytes);
@@ -242,7 +242,7 @@ const generateImageSchema = z.object({
         'instead of describing that asset in the prompt and letting the model redraw it.',
     ),
   file_ids: z
-    .array(z.number().int().positive())
+    .array(z.coerce.string())
     .max(4)
     .optional()
     .describe(

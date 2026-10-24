@@ -15,7 +15,7 @@ import type { Profile } from '../../lib/api';
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 const task: UserPrompt = {
-  id: 7,
+  id: '7',
   user_id: 'user-1',
   title: 'Prompt improver',
   content: 'Act as {{role}} and improve {{prompt}}.',
@@ -23,11 +23,11 @@ const task: UserPrompt = {
   sort_order: 0,
   is_global: false,
   description: 'Improve an initial prompt.',
-  variables: JSON.stringify([
+  variables: [
     { key: 'role', label: 'Role', required: true },
     { key: 'prompt', label: 'Prompt', required: true },
-  ]),
-  expected_tools: '[]',
+  ],
+  expected_tools: [],
   source_session_id: null,
   created_via: 'manual',
   created_at: '2026-08-10T00:00:00.000Z',
@@ -36,7 +36,7 @@ const task: UserPrompt = {
 
 const secondTask: UserPrompt = {
   ...task,
-  id: 8,
+  id: '8',
   title: 'Research brief',
   shortcut: 'research',
   description: 'This description must stay out of the compact picker row.',

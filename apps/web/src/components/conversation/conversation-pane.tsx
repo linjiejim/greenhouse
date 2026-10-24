@@ -30,12 +30,10 @@ const sessionDrafts = new Map<string, SessionDraft>();
 const DRAFT_KEY_NEW = '__new_session__';
 /** Stable empty tool-call array so the streaming overlay deps don't change every render. */
 const EMPTY_TOOL_CALLS: StreamingToolCall[] = [];
-import { safeParse } from '../../lib/utils';
 import { AlertTriangle, Image, Share2, Eye, X, ChevronDown, GitFork } from '../../lib/icons';
 import type { LucideIcon } from '../../lib/icons';
 import * as api from '../../lib/api';
 import { ShareDialog } from '../chat/share-dialog';
-import { ProfileEditorDrawer } from '../chat/profile-editor';
 import { Button, ErrorBoundary, Skeleton, toast } from '../ui';
 import { MAX_IMAGES } from '../../lib/constants';
 import { DEFAULT_AGENT_ID, LEGACY_AGENT_IDS } from '../../lib/agent-constants';
@@ -160,12 +158,8 @@ export function ConversationPane({
   const [pendingAutoSend, setPendingAutoSend] = useState<string | null>(null);
   const [sessionTitle, setSessionTitle] = useState('');
   const [sessionProfileId, setSessionProfileId] = useState(DEFAULT_AGENT_ID);
-  const [sessionRating, setSessionRating] = useState<number | null>(null);
-  const [sessionComment, setSessionComment] = useState<string | null>(null);
-  // Retired channels (Mission conversations, Workflow node transcripts) open
-  // read-only; workflow nodes keep a link back to the orchestrating session.
+  // Retired channels (Mission conversations, Workflow node transcripts) open read-only.
   const [sessionChannel, setSessionChannel] = useState<string>('web');
-  const [parentSessionId, setParentSessionId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   // /slash command state
@@ -313,9 +307,6 @@ export function ConversationPane({
   const preferenceKey = currentUser?.id || '__anonymous__';
   const preferredProfileId = preferredProfileIds[preferenceKey];
 
-  // Tool list for profile editor (fork)
-  const { availableTools, fetchTools: loadTools } = useProfileStore();
-
   // Update profile selection (don't override user's thinking mode preference)
   const handleModelChange = useCallback(
     (modelId: string) => {
@@ -376,34 +367,6 @@ export function ConversationPane({
     modelBeforeMentionRef.current = null;
   }, [currentUser?.id, preferredProfileId]);
 
-  // Fork profile state
-  const [forkDrawerOpen, setForkDrawerOpen] = useState(false);
-  const [forkedProfile, setForkedProfile] = useState<api.Profile | null>(null);
-
-  const handleFork = useCallback(async (profileId: string) => {
-    try {
-      const forked = await api.forkProfile(profileId);
-      setForkedProfile(forked);
-      setForkDrawerOpen(true);
-    } catch (err: any) {
-      toast(err.message || 'Failed to fork Agent', 'error');
-    }
-  }, []);
-
-  const handleForkSave = useCallback(
-    async (input: api.CustomProfileInput, editId?: number) => {
-      if (editId !== undefined) {
-        await api.updateCustomProfile(editId, input);
-      }
-      setForkDrawerOpen(false);
-      setForkedProfile(null);
-      toast('Agent forked successfully', 'success');
-      // Refresh profiles and switch to the forked one
-      loadProfiles();
-    },
-    [loadProfiles],
-  );
-
   const messagesEndRef = useRef<HTMLDivElement>(null);
   // Ref to the composer textarea — used to focus after "quote & follow up"
   const chatInputRef = useRef<HTMLTextAreaElement | null>(null);
@@ -415,11 +378,10 @@ export function ConversationPane({
     setTimeout(() => chatInputRef.current?.focus(), 100);
   }, []);
 
-  // Load profiles on mount (tools loaded lazily by profile store for fork editor)
+  // Load profiles on mount
   useEffect(() => {
     loadProfiles();
-    if (policy.showProfileManagement) loadTools();
-  }, [loadProfiles, loadTools, policy.showProfileManagement]);
+  }, [loadProfiles]);
 
   useEffect(() => {
     const persisted = hydratePreferredProfile(currentUser?.id);
@@ -441,14 +403,8 @@ export function ConversationPane({
 
   // Track current viewing session for unread logic
   // Sync session info to global UI store (for TopBar display)
-  const {
-    setCurrentSessionInfo,
-    setCurrentChatSessionId,
-    bumpSessionListVersion,
-    setChatShare,
-    setChatFeedback,
-    setChatTitleEdit,
-  } = useUIStore();
+  const { setCurrentSessionInfo, setCurrentChatSessionId, bumpSessionListVersion, setChatShare, setChatTitleEdit } =
+    useUIStore();
   const handleRenameSessionTitle = useCallback(
     async (nextTitle: string) => {
       const title = nextTitle.trim();
@@ -489,36 +445,11 @@ export function ConversationPane({
   // Sync the Share affordance to the store so the TopBar can render the Share
   // button beside the session tags. Mirrors the old in-page button's condition.
   const canShare = !!sessionId && messages.length > 0;
-  const hasAssistantMessage = messages.some((message) => message.role === 'assistant');
   useEffect(() => {
     if (!policy.showShare) return;
     setChatShare(canShare ? { shareCount, onOpen: () => setShareDialogOpen(true) } : null);
     return () => setChatShare(null);
   }, [canShare, policy.showShare, shareCount, setChatShare]);
-
-  useEffect(() => {
-    if (!policy.publishGlobalChatUi || !policy.showFeedback) return;
-    setChatFeedback(
-      sessionId && hasAssistantMessage
-        ? {
-            sessionId,
-            initialRating: sessionRating,
-            initialComment: sessionComment,
-            readonly: !isOwner,
-          }
-        : null,
-    );
-    return () => setChatFeedback(null);
-  }, [
-    hasAssistantMessage,
-    isOwner,
-    policy.publishGlobalChatUi,
-    policy.showFeedback,
-    sessionComment,
-    sessionId,
-    sessionRating,
-    setChatFeedback,
-  ]);
 
   useEffect(() => {
     if (!policy.publishGlobalChatUi) return;
@@ -579,10 +510,7 @@ export function ConversationPane({
           setSessionTitle(data.session.title || '');
           const pid = normalizeSelectedProfileId(data.session.profile_id);
           setSessionProfileId(pid);
-          setSessionRating(data.session.rating ?? null);
-          setSessionComment(data.session.comment ?? null);
           setSessionChannel(data.session.channel ?? 'web');
-          setParentSessionId(data.session.parent_session_id ?? null);
           setMessages(data.messages.map(parseMessage));
           // Share context
           setIsOwner(data.session.is_owner !== false);
@@ -601,10 +529,7 @@ export function ConversationPane({
       setMessages([]);
       setSessionTitle('');
       setSessionProfileId(DEFAULT_AGENT_ID);
-      setSessionRating(null);
-      setSessionComment(null);
       setSessionChannel('web');
-      setParentSessionId(null);
       setIsOwner(true);
       setShareCount(0);
       setShareInfo(null);
@@ -635,8 +560,6 @@ export function ConversationPane({
       try {
         const data = await api.getSession(sessionId);
         setSessionTitle(data.session.title || '');
-        setSessionRating(data.session.rating ?? null);
-        setSessionComment(data.session.comment ?? null);
         const serverMessages = data.messages.map(parseMessage);
         setMessages((prev) => reconcileMessages(prev, serverMessages));
         bumpSessionListVersion();
@@ -1374,7 +1297,6 @@ export function ConversationPane({
         {sessionId && isRetiredChannel ? (
           <ReadOnlySessionBar
             message={t(sessionChannel === 'workflow' ? 'chat.workflowSessionReadOnly' : 'chat.missionSessionReadOnly')}
-            backToSessionId={sessionChannel === 'workflow' ? parentSessionId : null}
           />
         ) : sessionId && !isOwner ? (
           <ChatInput
@@ -1474,7 +1396,6 @@ export function ConversationPane({
                   selectedProfileId={sessionId ? sessionProfileId : selectedProfileId}
                   onSelectProfile={handleProfileChange}
                   readonly={!!sessionId}
-                  onFork={policy.showProfileManagement && !sessionId ? handleFork : undefined}
                 />
                 {activeProfile?.id === DEFAULT_AGENT_ID && (
                   <ModelSelector
@@ -1517,20 +1438,6 @@ export function ConversationPane({
         onClose={() => setPendingFork(null)}
         onConfirm={confirmForkSession}
       />
-
-      {/* Fork Profile Editor */}
-      {policy.showProfileManagement && (
-        <ProfileEditorDrawer
-          open={forkDrawerOpen}
-          onClose={() => {
-            setForkDrawerOpen(false);
-            setForkedProfile(null);
-          }}
-          profile={forkedProfile}
-          availableTools={availableTools}
-          onSave={handleForkSave}
-        />
-      )}
     </div>
   );
 }
@@ -1613,26 +1520,14 @@ function ProfileEmptyState({ profile }: { profile?: api.Profile }) {
 
 /**
  * Composer replacement for a conversation that can be read but not continued
- * (a retired Mission conversation or Workflow node transcript). A workflow node
- * links back to the conversation that orchestrated it.
+ * (a retired Mission conversation or Workflow node transcript).
  */
-function ReadOnlySessionBar({ message, backToSessionId }: { message: string; backToSessionId?: string | null }) {
-  const t = useT();
+function ReadOnlySessionBar({ message }: { message: string }) {
   return (
     <div className="flex-shrink-0 border-t border-edge bg-surface-muted px-3 py-3 md:px-4">
       <div className="mx-auto flex w-full max-w-5xl flex-wrap items-center justify-center gap-2 py-1 text-sm text-fg-muted">
         <Eye size={14} />
         <span>{message}</span>
-        {backToSessionId && (
-          <button
-            onClick={() => {
-              window.location.hash = `#/chat?session=${backToSessionId}`;
-            }}
-            className="rounded-md border border-edge bg-surface-raised px-2 py-1 text-xs text-fg-secondary transition-colors hover:bg-surface-muted hover:text-fg"
-          >
-            ← {t('chat.backToConversation')}
-          </button>
-        )}
       </div>
     </div>
   );
@@ -1644,9 +1539,9 @@ function parseMessage(m: api.Message): ParsedMessage {
   return {
     ...m,
     clientKey: m.id,
-    pipeline: safeParse(m.pipeline, []),
-    references: safeParse(m.references_, []),
-    images: safeParse(m.images, []),
+    pipeline: Array.isArray(m.parts?.pipeline) ? m.parts.pipeline : [],
+    references: Array.isArray(m.parts?.references) ? m.parts.references : [],
+    images: Array.isArray(m.parts?.images) ? m.parts.images : [],
   };
 }
 

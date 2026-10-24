@@ -122,16 +122,16 @@ async function projectChanges(
   // Project activity is what listActivities serves: a readable project AND the
   // collaboration read capability.
   if (!(await runtime.authorize(actor, 'projects.collaboration.read')).allowed) return [];
-  const projects = (listed.data as { projects: Array<{ id: number; title: string }> }).projects;
-  const titles = new Map(projects.map((project) => [project.id, project.title]));
+  const projects = (listed.data as { projects: Array<{ id: string | number; title: string }> }).projects;
+  const titles = new Map(projects.map((project) => [String(project.id), project.title]));
   const fetched = await db.activity.recentProjectActivities({ projectIds: [...titles.keys()], since, limit });
 
   // A row about a task shows only when that task is readable: the execution
   // read capability, then the same task rule listTasks applies (project
   // readability + task entity policy), for just the tasks these rows name, with
   // the user / policy / project lookups made once for the whole request.
-  const taskTitles = new Map<number, string>();
-  const taskIds = [...new Set(fetched.map((row) => row.task_id).filter((id): id is number => id !== null))];
+  const taskTitles = new Map<string, string>();
+  const taskIds = [...new Set(fetched.map((row) => row.task_id).filter((id): id is string => id !== null))];
   if (taskIds.length > 0 && (await runtime.authorize(actor, 'projects.execution.read')).allowed) {
     const canRead = taskReadAuthorizer({ db }, actor);
     for (const id of taskIds) {
@@ -177,8 +177,8 @@ async function tableChanges(
     payload: {},
   });
   if (!listed.ok) return [];
-  const bases = (listed.data as { bases: Array<{ id: number }> }).bases.slice(0, MAX_BASES);
-  const tables = new Map<number, { baseId: number; name: string }>();
+  const bases = (listed.data as { bases: Array<{ id: string }> }).bases.slice(0, MAX_BASES);
+  const tables = new Map<string, { baseId: string; name: string }>();
   for (const base of bases) {
     for (const table of await db.tables.listTables(base.id)) {
       if (tables.size >= MAX_TABLES) break;

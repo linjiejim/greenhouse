@@ -49,6 +49,7 @@ import {
 
 // Route modules
 import authRoutes from './routes/auth.js';
+import meRoutes from './routes/me.js';
 import profileRoutes from './routes/profiles.js';
 import sessionRoutes from './routes/sessions.js';
 import { createChatRoute } from './routes/chat.js';
@@ -95,7 +96,6 @@ import knowledgeRoutes from './routes/knowledge.js';
 import { createSearchRoute } from './routes/search.js';
 import { createRefsRoutes } from './routes/refs.js';
 import { createActivityRoutes } from './routes/activity.js';
-import groupRoutes from './routes/groups.js';
 import shareRoutes from './routes/shares.js';
 import { createNotificationRoutes } from './routes/notifications.js';
 import pushDeviceRoutes from './routes/push-devices.js';
@@ -125,6 +125,7 @@ import { startRuntimeWorker } from './runtime/worker.js';
 import { reconcileInterruptedChatRuntimeRuns } from './chat/runtime.js';
 import { reconcileInterruptedAgentWrites } from './agent-access/governed-write.js';
 import { sweepExpiredToolOutputs } from './agent-runtime/tool-output-store.js';
+import { scheduleRetention } from './upkeep/retention.js';
 import { createAutomationRuntimeDriver } from './scheduler/runtime-driver.js';
 import { createRuntimeNotificationProjector } from './notifications/runtime-projector.js';
 import { AUTOMATION_DELIVERY_CHANNELS, startNotificationDeliveryWorker } from './notifications/delivery-worker.js';
@@ -267,6 +268,7 @@ function mountRoutes(toolRegistry: ToolRegistry) {
       // router must be mounted before narrower application routes.
       .route('/', oauthRoutes)
       .route('/api/auth', authRoutes)
+      .route('/api/me', meRoutes)
       .route('/api/profiles', profileRoutes)
       .route('/api/sessions', sessionRoutes)
       .route('/health', healthRoutes)
@@ -326,8 +328,6 @@ function mountRoutes(toolRegistry: ToolRegistry) {
       .route('/api/chat-files', chatFileRoutes)
       .use('/api/artifact-actions/*', requireInternal())
       .route('/api/artifact-actions', artifactActionRoutes)
-      .use('/api/groups/*', requireInternal())
-      .route('/api/groups', groupRoutes)
       .use('/api/shares/*', requireInternal())
       .route('/api/shares', shareRoutes)
       .use('/api/notifications', requireInternal())
@@ -434,7 +434,6 @@ async function main() {
     ...extensionApplicationRegistrations(),
   ]);
   if (
-    platformBootstrap.appReleasesActivated.length > 0 ||
     platformBootstrap.rolesCreated.length > 0 ||
     platformBootstrap.capabilitiesAdded > 0 ||
     platformBootstrap.entityPoliciesAdded > 0
@@ -582,6 +581,9 @@ async function main() {
       void sweep().catch((error) => logger.warn(`[upkeep] ${label} sweep failed`, { error: toErrorMessage(error) }));
     }
   }, 5 * 60_000);
+
+  // Daily retention cleanup of high-growth tables (upkeep/retention.ts).
+  scheduleRetention(dbProvider);
 
   // Cloud computers, every minute: stop idle ones (all of them while the
   // switch is off), roll per-minute billing blocks, close half-done starts and

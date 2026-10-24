@@ -12,6 +12,8 @@
  *   it gives us freedom to diverge without breaking clients.
  */
 
+import type { MessageParts } from './session.js';
+
 // ─── Profile Types ───────────────────────────────────────
 
 /**
@@ -67,11 +69,10 @@ export interface Profile {
   /** Present when the custom Agent belongs to another internal user. */
   owner_nickname?: string;
   slug?: string;
-  forked_from?: string | null;
   avatar?: ProfileAvatar;
   created_at?: string;
   updated_at?: string;
-  /** Latest immutable version — what anyone who picks this Agent now runs. */
+  /** Configuration edit counter; every pin up to it runs the current configuration. */
   current_version?: number;
   manifest_hash?: string;
   change_log?: string;
@@ -108,7 +109,7 @@ export interface ProfileDetail {
     last_7d: { calls: number; input_tokens: number; output_tokens: number } | null;
   };
   recent_calls: Array<{
-    id: number;
+    id: string;
     profile_id: string;
     caller: string;
     session_id?: string;
@@ -164,14 +165,9 @@ export interface Session {
   id: string;
   title: string | null;
   status: string;
-  rating: number | null;
-  comment: string | null;
-  feedback: string | null;
   profile_id: string;
   channel?: string;
-  /** Set when the session was spawned by another one (historical: retired sub-sessions and workflow nodes). */
-  parent_session_id?: string | null;
-  metadata: string;
+  metadata: Record<string, unknown>;
   created_at: string;
   updated_at: string;
   /** Whether the authenticated user owns this session. */
@@ -196,14 +192,11 @@ export interface Message {
   session_id: string;
   role: string;
   content: string;
-  references_: string;
-  pipeline: string;
+  /** Knowledge references, attached / generated images and the tool pipeline. */
+  parts: MessageParts;
   reasoning: string | null;
   /** Registry model id that produced this assistant turn; null for user turns. */
   model: string | null;
-  images: string;
-  confidence: number | null;
-  grounded: number | null;
   input_tokens: number | null;
   output_tokens: number | null;
   cached_tokens: number | null;
@@ -242,30 +235,31 @@ export interface UploadResult {
  * + `access` say which channel matched and the caller's effective role.
  */
 export interface KnowledgeSearchHit {
-  id: number;
+  id: string;
   slug: string;
   title: string;
   summary: string;
   snippet: string;
-  tags: string;
+  tags: string[];
   relevance: number;
   scope: 'team' | 'personal' | 'shared';
   access: 'owner' | 'editor' | 'reader';
 }
 
 export interface KnowledgeDoc {
-  id: number;
+  id: string;
   slug: string;
   title: string;
   content_markdown: string;
-  content_json: string;
+  /** Tiptap JSON state (`{}` when only Markdown exists). */
+  content_json: Record<string, unknown>;
   summary: string;
-  questions: string;
-  topics: string;
-  tags: string;
+  questions: string[];
+  topics: string[];
+  tags: string[];
   space: string;
   /** kb drive folder this doc lives in (null = root). */
-  folder_id: number | null;
+  folder_id: string | null;
   /** Manual order among siblings in the sidebar tree; 0 = never dragged (alphabetical). */
   sort_order: number;
   /** Whether this doc is a reusable template ("new from template"). */
@@ -279,23 +273,6 @@ export interface KnowledgeDoc {
   updated_at: string | null;
   /** The current viewer's effective role on this doc (when the API resolved it). */
   access?: 'owner' | 'editor' | 'reader' | null;
-}
-
-/** A doc that links TO the current doc (backlink), access-filtered. */
-export interface KnowledgeBacklink {
-  id: number;
-  slug: string;
-  title: string;
-}
-
-/** A document-level comment. */
-export interface KnowledgeComment {
-  id: number;
-  author_user_id: string;
-  author_nickname: string;
-  content: string;
-  created_at: string | null;
-  can_delete: boolean;
 }
 
 /** A current editor of a doc (editing presence). */
@@ -312,43 +289,25 @@ export interface KnowledgeConflict {
 }
 
 export interface KnowledgeTemplateSummary {
-  id: number;
+  id: string;
   slug: string;
   title: string;
 }
 
 export interface KnowledgeShare {
-  /** user id, or 'group:<id>' for a group grant. */
+  /** The user id the doc is shared with. */
   target: string;
-  kind: 'user' | 'group';
   name: string;
   role: 'reader' | 'editor';
 }
 
-export interface UserGroup {
-  id: number;
-  name: string;
-  description: string;
-  created_by: string;
-  member_count?: number;
-  created_at: string | null;
-  updated_at: string | null;
-}
-
-export interface GroupMember {
-  user_id: string;
-  nickname: string;
-  email?: string;
-  added_at: string | null;
-}
-
 export interface KnowledgeDocVersion {
-  id: number;
-  doc_id: number;
+  id: string;
+  doc_id: string;
   version: number;
   title: string;
   content_markdown: string;
-  content_json: string;
+  content_json: Record<string, unknown>;
   summary: string;
   changed_by: string | null;
   change_reason: string | null;
@@ -367,7 +326,7 @@ export interface ApplyResult {
 // ─── Feature Request Types ───────────────────────────────
 
 export interface FeatureRequest {
-  id: number;
+  id: string;
   title: string;
   description: string;
   submitted_by: string;
@@ -412,7 +371,7 @@ export interface ShareableUser {
  * client to change for nothing.
  */
 export interface UserPrompt {
-  id: number;
+  id: string;
   user_id: string;
   title: string;
   content: string;
@@ -420,10 +379,10 @@ export interface UserPrompt {
   sort_order: number;
   is_global: boolean;
   description: string | null;
-  /** JSON-encoded `TaskVariable[]` — parse with `parseTaskVariables`. */
-  variables: string;
-  /** JSON-encoded `string[]` of tool ids the captured flow used. Display only. */
-  expected_tools: string;
+  /** `TaskVariable[]` — read with `parseTaskVariables`. */
+  variables: unknown[];
+  /** Tool ids the captured flow used. Display only. */
+  expected_tools: string[];
   source_session_id: string | null;
   created_via: 'manual' | 'capture';
   created_at: string;
@@ -438,7 +397,7 @@ export type PromptScope = (typeof PROMPT_SCOPES)[number];
 // ─── Share Types ─────────────────────────────────────────
 
 export interface ShareItem {
-  id: number;
+  id: string;
   session_id: string;
   shared_with: string;
   shared_by: string;
@@ -471,7 +430,6 @@ export interface AuthenticatedUser {
   email?: string;
   nickname: string;
   role: Exclude<UserRole, 'external'>;
-  monthly_token_limit?: number;
   notes?: string | null;
   locale?: string;
   /** Feature flags enabled for this user (e.g. { memory: true }). */
@@ -849,8 +807,20 @@ export function handleStreamEvent(event: StreamingEvent, cbs: StreamEventCallbac
 
 // ─── Scheduled Tasks ─────────────────────────────────────
 
+/** Where an automation reports a finished run (`automations.notify`). */
+export interface AutomationNotify {
+  /** Optional WeCom / Feishu group-bot webhook the scheduler posts run summaries to. */
+  webhook: string | null;
+  /** Email the run summary to the owner's own account address. */
+  email: boolean;
+  /** Deliver the run summary as a WeCom app message to the owner (recipient derived from their binding). */
+  wecom: boolean;
+  /** Deliver the run summary as a Feishu card DM to the owner (recipient derived from their binding). */
+  feishu: boolean;
+}
+
 export interface ScheduledTask {
-  id: number;
+  id: string;
   /** Owner id is required for Mine / Team administration views. */
   user_id: string;
   /** Present when a super views another user's Automation. */
@@ -862,25 +832,18 @@ export interface ScheduledTask {
   timezone: string;
   enabled: boolean;
   max_steps: number;
-  /** Optional WeCom group-bot webhook the scheduler posts run summaries to. */
-  notify_webhook: string | null;
-  /** Email the run summary to the owner's own account address. */
-  notify_email: boolean;
-  /** Deliver the run summary as a WeCom app message to the owner (recipient derived from their binding). */
-  notify_wecom: boolean;
-  /** Deliver the run summary as a Feishu card DM to the owner (recipient derived from their binding). */
-  notify_feishu: boolean;
+  notify: AutomationNotify;
   /**
    * Quiet automation: a run that finds nothing new answers `NO_UPDATE`, is kept
    * in history as "no update" and notifies no channel.
    */
   quiet_when_empty: boolean;
   /**
-   * JSON string array of tools the owner granted to this automation's
-   * unattended runs, beyond the read-only baseline. Catalog and parsing live in
+   * Tools the owner granted to this automation's unattended runs, beyond the
+   * read-only baseline. Catalog and normalization live in
    * `@greenhouse/types/automation-tools`; the value is a filter, never a grant.
    */
-  unattended_tools: string;
+  unattended_tools: string[];
   last_run_at: string | null;
   last_status: string | null;
   next_run_at: string | null;
@@ -897,11 +860,11 @@ export interface ScheduledTaskInput {
   timezone?: string;
   max_steps?: number;
   enabled?: boolean;
-  notify_webhook?: string | null;
-  notify_email?: boolean;
-  notify_wecom?: boolean;
-  notify_feishu?: boolean;
+  /** Only the keys given change on update. (1.x flat `notify_*` fields are still accepted by the API.) */
+  notify?: Partial<AutomationNotify>;
   quiet_when_empty?: boolean;
+  /** Console only: tools granted to unattended runs. */
+  unattended_tools?: string[];
 }
 
 /**

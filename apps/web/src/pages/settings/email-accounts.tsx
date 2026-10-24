@@ -38,7 +38,7 @@ interface ConnectionValue {
 
 /** The dialog edits a flat draft; `password` is write-only and never read back. */
 interface AccountDraft extends Record<string, unknown> {
-  id: number;
+  id: string;
   email_address: string;
   display_name: string | null;
   username: string;
@@ -193,7 +193,7 @@ export function EmailAccountsPanel() {
     available: false,
     address: null,
   });
-  const [testingId, setTestingId] = useState<number | null>(null);
+  const [testingId, setTestingId] = useState<string | null>(null);
 
   useEffect(() => {
     api
@@ -229,7 +229,7 @@ export function EmailAccountsPanel() {
       async update(id, input) {
         const draft = input as Partial<AccountDraft>;
         const conn = draft.connection;
-        const result = await api.updateEmailAccount(Number(id), {
+        const result = await api.updateEmailAccount(String(id), {
           display_name: draft.display_name ? String(draft.display_name) : null,
           imap_host: conn?.imap_host,
           imap_port: conn?.imap_port,
@@ -244,7 +244,7 @@ export function EmailAccountsPanel() {
         return toDraft(result.account);
       },
       async remove(id) {
-        await api.deleteEmailAccount(Number(id));
+        await api.deleteEmailAccount(String(id));
       },
     }),
     [t],

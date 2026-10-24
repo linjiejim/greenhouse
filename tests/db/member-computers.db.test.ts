@@ -32,7 +32,7 @@ describe('member computers', () => {
     expect(first.status).toBe('claimed');
     if (first.status !== 'claimed') throw new Error('expected a claim');
     expect(first.row).toMatchObject({ status: 'starting', user_id: member.id, client: 'mcp', minutes_billed: 0 });
-    expect(first.row.id).toMatch(/^cmp_[0-9a-f]{16}$/);
+    expect(first.row.id).toMatch(/^cmp_[0-9A-HJKMNP-TV-Z]{26}$/);
 
     const again = await db.memberComputers.claimStart({ user_id: member.id, max_running: 100, client: 'web' });
     expect(again).toMatchObject({ status: 'exists', row: { id: first.row.id } });

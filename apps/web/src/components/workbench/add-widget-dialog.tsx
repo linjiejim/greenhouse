@@ -8,9 +8,9 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { toRowId } from '@greenhouse/utils/id';
 import type { EntityKind } from '@greenhouse/types/entity-links';
 import type { EntitySearchHit } from '@greenhouse/types/search';
-import type { TableViewConfig } from '@greenhouse/types/tables';
 import {
   PINNABLE_ENTITY_KINDS,
   WORKBENCH_LIMITS,
@@ -27,7 +27,6 @@ import { globalSearch } from '../../lib/api/search';
 import { getTableBase, getTableSchema, listTableBases } from '../../lib/api/tables';
 import type { TableDefinition, TableField, TableView } from '../../lib/api/tables';
 import { availableRecipes, recipeLabels, type WidgetRecipe } from '../../lib/workbench/recipes';
-import { safeParse } from '../../lib/utils';
 import type { PlatformApplication } from '../../platform/catalog';
 import { platformApplicationHref } from '../../platform/catalog';
 
@@ -264,17 +263,15 @@ function TablesBuilder({
   ) => void;
 }) {
   const t = useT();
-  const [bases, setBases] = useState<Array<{ id: number; name: string }>>([]);
-  const [baseId, setBaseId] = useState<number | null>(null);
+  const [bases, setBases] = useState<Array<{ id: string; name: string }>>([]);
+  const [baseId, setBaseId] = useState<string | null>(null);
   const [tables, setTables] = useState<TableDefinition[]>([]);
-  const initialTableId =
-    typeof initial?.source.input.table_id === 'number' && Number.isFinite(initial.source.input.table_id)
-      ? initial.source.input.table_id
-      : null;
-  const [tableId, setTableId] = useState<number | null>(initialTableId);
+  // Cards saved before ids became text hold a number; it is the same id as a string.
+  const initialTableId = toRowId(initial?.source.input.table_id);
+  const [tableId, setTableId] = useState<string | null>(initialTableId);
   const [views, setViews] = useState<TableView[]>([]);
   const [fields, setFields] = useState<TableField[]>([]);
-  const [viewId, setViewId] = useState<number | null>(null);
+  const [viewId, setViewId] = useState<string | null>(null);
   const [display, setDisplay] = useState<'table' | 'kpi'>(initial?.display === 'kpi' ? 'kpi' : 'table');
   const [loading, setLoading] = useState(false);
 
@@ -292,7 +289,7 @@ function TablesBuilder({
         setViews(schema.views);
         const savedQuery = initial?.source.input.query;
         const matching = schema.views.find((view) => {
-          const config = safeParse<TableViewConfig>(view.config, {} as TableViewConfig);
+          const config = view.config ?? {};
           return JSON.stringify(config.query) === JSON.stringify(savedQuery);
         });
         setViewId(matching?.id ?? null);
@@ -331,7 +328,7 @@ function TablesBuilder({
     if (tableId === null) return;
     const table = tables.find((candidate) => candidate.id === tableId);
     const view = views.find((candidate) => candidate.id === viewId);
-    const config = view ? safeParse<TableViewConfig>(view.config, {} as TableViewConfig) : undefined;
+    const config = view ? (view.config ?? {}) : undefined;
     const query = config?.query;
     const defaultTitle = view ? `${table?.name ?? ''} · ${view.name}` : (table?.name ?? 'Table');
 
@@ -350,7 +347,7 @@ function TablesBuilder({
 
     // Records come back as rows with a `values` map keyed by field id, so a
     // column path is `values.<fieldId>`.
-    const visible: number[] = (config?.fieldIds ?? fields.map((field) => field.id)).slice(0, 6);
+    const visible: string[] = (config?.fieldIds ?? fields.map((field) => field.id)).slice(0, 6);
     onSave(
       {
         toolId: 'tables_query',
@@ -360,7 +357,7 @@ function TablesBuilder({
         rows: 'records',
         columns: visible.map((fieldId) => ({
           key: `values.${fieldId}`,
-          label: fields.find((field) => field.id === fieldId)?.name ?? String(fieldId),
+          label: fields.find((field) => field.id === fieldId)?.name ?? fieldId,
         })),
       },
       'table',
@@ -373,11 +370,7 @@ function TablesBuilder({
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
         <label className="block">
           <span className="mb-1 block text-xs font-medium text-fg-muted">{t('home.tablesBase')}</span>
-          <Select
-            size="sm"
-            value={baseId ?? ''}
-            onChange={(event) => setBaseId(event.target.value ? Number(event.target.value) : null)}
-          >
+          <Select size="sm" value={baseId ?? ''} onChange={(event) => setBaseId(event.target.value || null)}>
             <option value="">{t('common.select')}</option>
             {bases.map((base) => (
               <option key={base.id} value={base.id}>
@@ -391,7 +384,7 @@ function TablesBuilder({
           <Select
             size="sm"
             value={tableId ?? ''}
-            onChange={(event) => setTableId(event.target.value ? Number(event.target.value) : null)}
+            onChange={(event) => setTableId(event.target.value || null)}
             disabled={tables.length === 0}
           >
             {tables.map((table) => (
@@ -406,7 +399,7 @@ function TablesBuilder({
           <Select
             size="sm"
             value={viewId ?? ''}
-            onChange={(event) => setViewId(event.target.value ? Number(event.target.value) : null)}
+            onChange={(event) => setViewId(event.target.value || null)}
             disabled={views.length === 0}
           >
             <option value="">{t('home.tablesNoView')}</option>

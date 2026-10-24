@@ -16,8 +16,8 @@ const projectMutationSchema = z.object({
   action: z
     .enum(['project.create', 'project.update', 'task.create', 'task.update', 'comment.add'])
     .describe('Bounded mutation action.'),
-  project_id: z.number().optional().describe('Project id for project.update/task.create.'),
-  task_id: z.number().optional().describe('Task id for task.update.'),
+  project_id: z.coerce.string().optional().describe('Project id for project.update/task.create.'),
+  task_id: z.coerce.string().optional().describe('Task id for task.update.'),
   title: z.string().optional().describe('Project/task title.'),
   description: z.string().optional().describe('Markdown description.'),
   status: z
@@ -38,7 +38,7 @@ const projectMutationSchema = z.object({
   priority: z.enum(['low', 'normal', 'high', 'urgent']).optional(),
   owner_id: z.string().optional().describe('Project owner user id.'),
   visibility: z.enum(['public', 'private']).optional().describe('Project visibility.'),
-  parent_id: z.number().optional().describe('Parent task id for subtasks.'),
+  parent_id: z.coerce.string().optional().describe('Parent task id for subtasks.'),
   assignee_id: z.string().optional().describe('Task assignee user id.'),
   start_date: z.string().optional().describe('YYYY-MM-DD.'),
   end_date: z.string().optional().describe('Project end date or task due date, YYYY-MM-DD.'),
@@ -162,7 +162,7 @@ export function createProjectMutationTool(ctx: ProjectMutationContext) {
           if (!result.ok) return { action: input.action, error: result.message };
           const task = (
             result.data as {
-              task: { id: number; project_id: number; title: string; status: string };
+              task: { id: string; project_id: string; title: string; status: string };
             }
           ).task;
           return {
@@ -184,7 +184,7 @@ export function createProjectMutationTool(ctx: ProjectMutationContext) {
           if (!result.ok) return { action: input.action, error: result.message };
           const comment = (
             result.data as {
-              comment: { id: number; task_id: number; created_at: string };
+              comment: { id: string; task_id: string; created_at: string };
             }
           ).comment;
           return {
@@ -218,7 +218,7 @@ export function createProjectMutationTool(ctx: ProjectMutationContext) {
         if (!result.ok) return { action: input.action, error: result.message };
         const task = (
           result.data as {
-            task: { id: number; project_id: number; title: string; status: string };
+            task: { id: string; project_id: string; title: string; status: string };
           }
         ).task;
         return {

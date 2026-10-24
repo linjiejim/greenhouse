@@ -103,7 +103,7 @@ export function createSearchRoute() {
             if (!result.ok) return [];
             const rows = (result.data as { projects?: Record<string, unknown>[] }).projects ?? [];
             return rows.map((row) => ({
-              ref: { kind: 'project' as const, id: Number(row.id) },
+              ref: { kind: 'project' as const, id: String(row.id) },
               title: text(row.title),
               subtitle: subtitle(row.status, row.priority),
             }));

@@ -23,14 +23,14 @@ type FrictionStatus = 'new' | 'acknowledged' | 'resolved' | 'archived';
 type FrictionKind = 'tool_error' | 'wrong_params' | 'detour' | 'data_quirk' | 'capability_gap';
 
 interface Friction {
-  id: number;
+  id: string;
   fingerprint: string;
   tool_id: string | null;
   kind: FrictionKind;
   summary: string;
   detail: string | null;
   occurrence_count: number;
-  sample_sessions: string;
+  sample_sessions: string[];
   status: FrictionStatus;
   resolution_note: string | null;
   first_seen_at: string;

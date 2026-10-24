@@ -18,7 +18,7 @@
  */
 
 import { zipSync, type Zippable } from 'fflate';
-import type { DatabaseProvider, DriveFolderRow, KnowledgeDocRow } from '@greenhouse/db';
+import type { DatabaseProvider, DriveFolderRow, KnowledgeDoc } from '@greenhouse/db';
 import { logger } from '@greenhouse/utils/logger';
 import { toErrorMessage } from '@greenhouse/utils/error';
 import { getUpload } from '../storage/uploads.js';
@@ -46,8 +46,8 @@ export interface KnowledgeExportResult {
  * the visibility filter below applies identically in all three cases.
  */
 export interface KnowledgeExportScope {
-  folderId?: number;
-  docId?: number;
+  folderId?: string;
+  docId?: string;
 }
 
 /**
@@ -69,9 +69,9 @@ export function safeSegment(name: string, fallback: string): string {
 }
 
 /** Resolve each folder id to its slash path, deduplicating sibling name clashes. */
-function folderPaths(folders: DriveFolderRow[]): Map<number, string> {
+function folderPaths(folders: DriveFolderRow[]): Map<string, string> {
   const byId = new Map(folders.map((f) => [f.id, f]));
-  const paths = new Map<number, string>();
+  const paths = new Map<string, string>();
   const takenPerParent = new Map<string, Set<string>>();
 
   const segmentFor = (folder: DriveFolderRow): string => {
@@ -102,8 +102,8 @@ function folderPaths(folders: DriveFolderRow[]): Map<number, string> {
 }
 
 /** Folder id plus every folder beneath it (bounded sweep, cycle-safe). */
-function subtreeFolderIds(folders: DriveFolderRow[], rootId: number): Set<number> {
-  const ids = new Set<number>([rootId]);
+function subtreeFolderIds(folders: DriveFolderRow[], rootId: string): Set<string> {
+  const ids = new Set<string>([rootId]);
   for (let i = 0; i < MAX_FOLDER_DEPTH; i++) {
     const before = ids.size;
     for (const f of folders) if (f.parent_id != null && ids.has(f.parent_id)) ids.add(f.id);
@@ -120,7 +120,7 @@ export async function buildKnowledgeExport(
 ): Promise<KnowledgeExportResult> {
   const notes: string[] = [];
 
-  let docs: KnowledgeDocRow[] = await db.knowledgeBase.list({
+  let docs: KnowledgeDoc[] = await db.knowledgeBase.list({
     scope: 'shared',
     visibility: 'team',
     status: 'published',
@@ -141,7 +141,7 @@ export async function buildKnowledgeExport(
     docs = docs.map((d) => ({ ...d, folder_id: null }));
   } else if (scope.folderId != null) {
     const root = folders.find((f) => f.id === scope.folderId);
-    const wanted = root ? subtreeFolderIds(folders, root.id) : new Set<number>();
+    const wanted = root ? subtreeFolderIds(folders, root.id) : new Set<string>();
     folders = folders.filter((f) => wanted.has(f.id));
     docs = docs.filter((d) => d.folder_id != null && wanted.has(d.folder_id));
     label = root ? safeSegment(root.name, '目录') : '目录';
@@ -154,7 +154,7 @@ export async function buildKnowledgeExport(
 
   // Doc file names, deduplicated within their directory.
   const takenPerDir = new Map<string, Set<string>>();
-  const fileNameFor = (doc: KnowledgeDocRow, dir: string): string => {
+  const fileNameFor = (doc: KnowledgeDoc, dir: string): string => {
     const taken = takenPerDir.get(dir) ?? new Set<string>();
     takenPerDir.set(dir, taken);
     const base = safeSegment(doc.title, doc.doc_id.replace(/\//g, '-') || `doc-${doc.id}`);

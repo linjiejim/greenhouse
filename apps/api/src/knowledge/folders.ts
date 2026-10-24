@@ -1,6 +1,6 @@
 /**
  * KB folder path helpers — translate between "指南/场景示例" style paths and
- * drive_folders rows (scope='kb') for the knowledge agent tools.
+ * `folders` rows (scope='kb') for the knowledge agent tools.
  *
  * Resolution is scoped the same way routes/knowledge.ts#validateFolderTarget
  * guards moves: team docs only see team folders, personal docs only see the
@@ -24,7 +24,7 @@ export interface KbFolderScope {
 export type KbFolderResolution =
   | {
       ok: true;
-      folderId: number | null;
+      folderId: string | null;
       path: string;
       /** Paths of the folders this call created (only with `create`). */
       created?: string[];
@@ -59,7 +59,7 @@ export async function resolveKbFolderPath(
     return { ok: false, error: `Folder path is deeper than ${MAX_TREE_DEPTH} levels.` };
   }
 
-  let parentId: number | null = null;
+  let parentId: string | null = null;
   const resolved: string[] = [];
   const created: string[] = [];
   for (const name of segments) {
@@ -119,7 +119,7 @@ export async function resolveKbFolderPath(
 }
 
 /** Render a folder id back into its "a/b/c" path (for tool output). */
-export async function kbFolderPath(db: DatabaseProvider, folderId: number): Promise<string> {
+export async function kbFolderPath(db: DatabaseProvider, folderId: string): Promise<string> {
   const chain = await db.drive.breadcrumb(folderId);
   return chain.map((f) => f.name).join('/');
 }
@@ -128,8 +128,8 @@ export async function kbFolderPath(db: DatabaseProvider, folderId: number): Prom
  * Resolve several folder ids to paths in one pass, memoised per call — search
  * and list results routinely share folders, and breadcrumb() is a query each.
  */
-export async function kbFolderPaths(db: DatabaseProvider, folderIds: number[]): Promise<Map<number, string>> {
-  const out = new Map<number, string>();
+export async function kbFolderPaths(db: DatabaseProvider, folderIds: string[]): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
   for (const id of new Set(folderIds)) {
     out.set(id, await kbFolderPath(db, id));
   }
@@ -144,13 +144,13 @@ export async function kbFolderPaths(db: DatabaseProvider, folderIds: number[]): 
  */
 export async function kbFolderSubtreeIds(
   db: DatabaseProvider,
-  rootId: number,
+  rootId: string,
   scope: KbFolderScope,
-): Promise<number[]> {
+): Promise<string[]> {
   const ids = [rootId];
   let frontier = [rootId];
   for (let depth = 0; depth < MAX_TREE_DEPTH && frontier.length > 0; depth++) {
-    const next: number[] = [];
+    const next: string[] = [];
     for (const parentId of frontier) {
       const children = await db.drive.listFolders({
         scope: 'kb',
@@ -172,7 +172,7 @@ export async function kbFolderSubtreeIds(
 export interface KbTreeFolder {
   /** "a/b/c"; "/" is the root. */
   path: string;
-  docs: Array<{ id: number; title: string }>;
+  docs: Array<{ id: string; title: string }>;
 }
 
 /**
@@ -184,17 +184,17 @@ export interface KbTreeFolder {
 export async function kbTree(
   db: DatabaseProvider,
   scope: KbFolderScope,
-  opts: { rootId?: number | null; docLimit: number },
+  opts: { rootId?: string | null; docLimit: number },
 ): Promise<{ folders: KbTreeFolder[]; total_docs: number; truncated: boolean }> {
   // One flat pass over the folders, so a doc's path is a lookup rather than a
   // breadcrumb query per document.
-  const pathById = new Map<number, string>();
+  const pathById = new Map<string, string>();
   const rootId = opts.rootId ?? null;
   const rootPath = rootId == null ? '' : await kbFolderPath(db, rootId);
 
-  let frontier: Array<{ id: number | null; path: string }> = [{ id: rootId, path: rootPath }];
+  let frontier: Array<{ id: string | null; path: string }> = [{ id: rootId, path: rootPath }];
   for (let depth = 0; depth < MAX_TREE_DEPTH && frontier.length > 0; depth++) {
-    const next: Array<{ id: number | null; path: string }> = [];
+    const next: Array<{ id: string | null; path: string }> = [];
     for (const node of frontier) {
       const children = await db.drive.listFolders({
         scope: 'kb',
@@ -244,7 +244,7 @@ export async function kbTree(
 }
 
 export interface KbFolderNode {
-  id: number;
+  id: string;
   /** "a/b/c" from the scope root. */
   path: string;
   /** 1 = a direct child of the listing root. */
@@ -266,7 +266,7 @@ export interface KbFolderNode {
 export async function kbFolderTree(
   db: DatabaseProvider,
   scope: KbFolderScope,
-  opts: { rootId?: number | null; maxDepth: number; maxNodes: number },
+  opts: { rootId?: string | null; maxDepth: number; maxNodes: number },
 ): Promise<{ folders: KbFolderNode[]; total_folders: number; truncated: boolean }> {
   const all = await db.drive.listFolders({
     scope: 'kb',
@@ -274,7 +274,7 @@ export async function kbFolderTree(
     owner_user_id: scope.visibility === 'private' ? scope.ownerUserId : undefined,
   });
   // listFolders orders by (sort_order, name), so children keep the sidebar order.
-  const children = new Map<number | null, typeof all>();
+  const children = new Map<string | null, typeof all>();
   for (const folder of all) {
     const list = children.get(folder.parent_id) ?? [];
     list.push(folder);
@@ -284,13 +284,13 @@ export async function kbFolderTree(
   const rootId = opts.rootId ?? null;
   const rootPath = rootId == null ? '' : await kbFolderPath(db, rootId);
   const nodes: Array<Omit<KbFolderNode, 'docs'>> = [];
-  const seen = new Set<number>();
+  const seen = new Set<string>();
   // Walk the whole subtree (it is already in memory) so `total_folders` is the
   // real size; only the first `maxNodes` within `maxDepth` are listed.
   let reachable = 0;
-  let frontier: Array<{ id: number | null; path: string }> = [{ id: rootId, path: rootPath }];
+  let frontier: Array<{ id: string | null; path: string }> = [{ id: rootId, path: rootPath }];
   for (let depth = 1; frontier.length > 0 && depth <= MAX_TREE_DEPTH; depth++) {
-    const next: Array<{ id: number | null; path: string }> = [];
+    const next: Array<{ id: string | null; path: string }> = [];
     for (const parent of frontier) {
       for (const child of children.get(parent.id) ?? []) {
         if (seen.has(child.id)) continue;

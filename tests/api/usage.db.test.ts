@@ -39,7 +39,7 @@ describe('Usage Repository: record & read', () => {
     expect(recent[0].output_tokens).toBe(500);
     expect(recent[0].cached_tokens).toBe(200);
     expect(recent[0].duration_ms).toBe(2000);
-    expect(recent[0].id).toBeGreaterThan(0);
+    expect(recent[0].id).toMatch(/^use_/);
     expect(recent[0].created_at).toBeTruthy();
   });
 

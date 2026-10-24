@@ -16,10 +16,10 @@ interface Beat {
 }
 
 // docId → (userId → beat)
-const presence = new Map<number, Map<string, Beat>>();
+const presence = new Map<string, Map<string, Beat>>();
 
 /** Record/refresh a user's editing heartbeat for a doc. */
-export function touchEditingPresence(docId: number, userId: string, nickname: string): void {
+export function touchEditingPresence(docId: string, userId: string, nickname: string): void {
   let doc = presence.get(docId);
   if (!doc) {
     doc = new Map();
@@ -29,7 +29,7 @@ export function touchEditingPresence(docId: number, userId: string, nickname: st
 }
 
 /** Current (non-expired) editors of a doc. Prunes expired entries as it goes. */
-export function listEditingPresence(docId: number): Array<{ userId: string; nickname: string }> {
+export function listEditingPresence(docId: string): Array<{ userId: string; nickname: string }> {
   const doc = presence.get(docId);
   if (!doc) return [];
   const now = Date.now();

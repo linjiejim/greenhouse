@@ -27,9 +27,9 @@ export type ExtensionEntityKind = `ext:${string}`;
 export type EntityKind = CoreEntityKind | ExtensionEntityKind;
 
 export type EntityRef =
-  | { kind: 'project'; id: number }
-  | { kind: 'kb_doc'; id: number; slug: string }
-  | { kind: 'tables_record'; baseId: number; tableId: number; id: number }
+  | { kind: 'project'; id: string }
+  | { kind: 'kb_doc'; id: string; slug: string }
+  | { kind: 'tables_record'; baseId: string; tableId: string; id: string }
   | { kind: ExtensionEntityKind; id: string | number };
 
 /** Every core kind, in a stable order — useful for exhaustiveness tests and UI menus. */
@@ -107,6 +107,11 @@ function toId(raw: string | undefined): number | null {
   return Number.isSafeInteger(n) ? n : null;
 }
 
+/** A Tables row id segment (opaque text: a prefixed ULID, or a carried 1.x number as a string), or null. */
+function toRowIdSegment(raw: string | undefined | null): string | null {
+  return raw && /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$/.test(raw) ? raw : null;
+}
+
 /**
  * Strict inverse of {@link entityUrl}: returns null for anything that is not an
  * entity deeplink.
@@ -125,24 +130,24 @@ export function parseEntityUrl(href: string): EntityRef | null {
 
   // #/projects/<id>
   if (segments[0] === 'projects' && segments.length === 2) {
-    const id = toId(segments[1]);
+    const id = toRowIdSegment(segments[1]);
     return id === null ? null : { kind: 'project', id };
   }
 
-  // #/knowledge/doc/<id>-<slug> — the slug may itself contain dashes.
+  // #/knowledge/doc/<id>-<slug> — ids never contain a dash; the slug may.
   if (segments[0] === 'knowledge' && segments[1] === 'doc' && segments.length === 3) {
     const dash = segments[2].indexOf('-');
     if (dash <= 0) return null;
-    const id = toId(segments[2].slice(0, dash));
+    const id = toRowIdSegment(segments[2].slice(0, dash));
     const slug = segments[2].slice(dash + 1);
     return id === null || slug === '' ? null : { kind: 'kb_doc', id, slug };
   }
 
   // #/tables/<baseId>/table/<tableId>?record=<id>
   if (segments[0] === 'tables' && segments[2] === 'table' && segments.length === 4) {
-    const baseId = toId(segments[1]);
-    const tableId = toId(segments[3]);
-    const recordId = toId(new URLSearchParams(query).get('record') ?? undefined);
+    const baseId = toRowIdSegment(segments[1]);
+    const tableId = toRowIdSegment(segments[3]);
+    const recordId = toRowIdSegment(new URLSearchParams(query).get('record'));
     if (baseId === null || tableId === null || recordId === null) return null;
     return { kind: 'tables_record', baseId, tableId, id: recordId };
   }

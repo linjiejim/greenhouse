@@ -4,7 +4,6 @@ export interface ConversationSurfacePolicy {
   compactMessages: boolean;
   publishGlobalChatUi: boolean;
   enrichPageContext: boolean;
-  showFeedback: boolean;
   showShare: boolean;
   showProfileManagement: boolean;
   allowTranslate: boolean;
@@ -21,7 +20,6 @@ export const CONVERSATION_SURFACE_POLICIES: Record<ConversationSurface, Conversa
     compactMessages: false,
     publishGlobalChatUi: true,
     enrichPageContext: true,
-    showFeedback: true,
     showShare: true,
     showProfileManagement: true,
     allowTranslate: true,
@@ -31,7 +29,6 @@ export const CONVERSATION_SURFACE_POLICIES: Record<ConversationSurface, Conversa
     compactMessages: true,
     publishGlobalChatUi: false,
     enrichPageContext: false,
-    showFeedback: false,
     showShare: false,
     showProfileManagement: false,
     allowTranslate: false,

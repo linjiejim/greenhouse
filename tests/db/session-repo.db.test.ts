@@ -87,14 +87,14 @@ describe('Session Repository', () => {
   it('updates session with multiple fields', async () => {
     const session = await db.sessions.create('Test', 'team');
     const updated = await db.sessions.update(session.id, {
-      rating: 5,
-      comment: 'Great session',
+      title: 'Renamed',
+      metadata: { task_id: 'task-1' },
       status: 'completed',
     });
 
     expect(updated).toBeDefined();
-    expect(updated!.rating).toBe(5);
-    expect(updated!.comment).toBe('Great session');
+    expect(updated!.title).toBe('Renamed');
+    expect(updated!.metadata).toEqual({ task_id: 'task-1' });
     expect(updated!.status).toBe('completed');
   });
 
@@ -452,9 +452,8 @@ describe('Session Repository', () => {
       user_id: 'fork-owner',
       profile_id: 'team',
       channel: 'web',
-      parent_session_id: source.id,
     });
-    expect(JSON.parse(fork!.metadata)).toEqual({
+    expect(fork!.metadata).toEqual({
       forked_from_session_id: source.id,
       forked_from_message_id: firstReply.id,
     });
@@ -463,7 +462,7 @@ describe('Session Repository', () => {
     expect(forkMessages.map((message) => message.content)).toEqual(['Question 1', 'Answer 1']);
     expect(forkMessages.map((message) => message.id)).not.toContain(firstReply.id);
     expect(forkMessages[1].reasoning).toBe('Reasoning 1');
-    expect(JSON.parse(forkMessages[1].pipeline)).toEqual([
+    expect(forkMessages[1].parts.pipeline).toEqual([
       { step: 1, tool: 'knowledge_query', input: {}, output: { ok: true }, duration_ms: 12 },
     ]);
   });

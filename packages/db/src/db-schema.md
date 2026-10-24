@@ -1,518 +1,441 @@
-# 数据库结构（PostgreSQL）
+# 数据库结构（PostgreSQL，3.0）
 
-> 事实源：`packages/db/src/schema/*.ts`。本文只描述当前 schema，不保留已删除表的历史定义。
+> 事实源：`packages/db/src/schema/*.ts`（每个域一个文件，文件头写着本域的表）。迁移链从 `drizzle/0000_v3_baseline.sql` 起步；1.x 的 0000–0013 归档在 `drizzle/archive-1x/`，只用来识别 1.x 库。
 >
-> 当前共 **137 张表**。字段类型、默认值、索引的最终解释以 Drizzle schema 与最新 migration snapshot 为准。
+> 当前共 **72 张表**。字段类型、默认值、索引以 schema 与最新 snapshot 为准；本文只写用途、关键列和关系。
 
 ## 设计约定
 
-- 数据访问统一通过 `getDb()` 返回的域 service；业务代码不直接写 SQL。
-- 内部有效用户角色只有 `team` 与 `super`。数据库仍允许读取历史 `external` 角色值以完成迁移兼容，但这类账号必须为 `disabled`，中央鉴权必须拒绝其 token。
-- Agent Profile 的持久化默认值是 `team`：`sessions.profile_id`、`scheduled_tasks.profile_id` 与 `custom_profiles.base_profile_id`。
-- 域内强所有权使用 FK，并明确 `CASCADE` / `SET NULL`；审计、统计、跨域主体引用通常保持逻辑关联，避免主体删除时丢失历史。
-- `tags`、`meta`、`config`、`scopes` 等 JSON 数据目前以 `TEXT NOT NULL` 保存，默认值为 `[]` 或 `{}`。
-- `table_records.values/computed_values` 是动态字段检索的真实数据库路径查询需求，按列例外使用 `JSONB NOT NULL DEFAULT '{}'`；Tables 的 field/view/widget 配置使用 JSON 文本，Form/Automation 配置使用类型化 JSONB。
-- 所有时间点使用 `TIMESTAMPTZ`；仅业务日期（如 `due_date`、`deal_date`）使用 `TEXT` 保存 `YYYY-MM-DD`。
-- `messages.seq` 由写入事务锁定对应 `sessions` 行后分配，并以 UK `(session_id, seq)` 兜底；游标分页因此不会因跨端并发写入出现重复序号或漏读。普通 assistant 写入还会在同一锁内比较生成前的 tail `id + content`（流式聊天与 Scheduler/subagent headless runner 一致）；用户消息编辑与后续 turn 截断同样是单事务，避免持久化基于旧 prompt 的回复。
-- Runtime Kernel 的 Run/Step/ToolCall/Artifact/Interrupt/Event/Outbox 保存完整参数与结果，生产 Service 不提供删除方法，也没有 TTL、截断或定时清理；显式删除 Runtime 根 Run（仅测试 fixture/未来明确的用户删除语义）才按域内 FK 级联。
-- Usage Budget 的账户、预留和账本都永久保留，不设自动过期删除；TTL 只结束“占用中”状态，结果未知的 stale 预留按估算量记入 spent，只有明确未开始 provider I/O 的调用才可 release。
+- 主键一律 `text`。新行用 `newId(kind)`（`ids.ts`，类型前缀 + ULID，如 `doc_01J…`）；从 1.x 搬来的行保留原 id，整数变成十进制字符串。id 是不透明键，不按形状判断任何事。
+- 1.x 里是 serial 的表（会话、消息、项目、任务、文档……）新旧 id 混排，`ORDER BY id` 没有时间含义；按 `created_at`（或 `seq` / `position` / `sort_order`）排序。
+- 边界（路由、工具、MCP）接受旧的数字 id：`toRowId()`（`@greenhouse/utils/id`）或 zod `z.coerce.string()` 规范成字符串。
+- JSON 一律 `jsonb NOT NULL`，默认 `{}` / `[]`（`_columns.ts` 的 `json()`）；只有「null 本身有含义」才用可空的 `jsonOrNull()`。
+- 时间点 `timestamptz`，按 ISO 字符串读；`created_at` / `updated_at` 为 `NOT NULL DEFAULT now()`。业务日期（项目 / 任务的 start / end / due）用 `date`（`YYYY-MM-DD`）。
+- 枚举是 `text` + CHECK 约束（`oneOf()`），类型层同时用 `text(..., { enum })` 标注。
+- 外键只用于同域强归属，并写明 `CASCADE` / `SET NULL`；审计、用量、通知、运行类表只存逻辑引用，主体删除后记录照留。
+- 单组织：没有 organizations 表、没有 `org_id` 列。platform kernel 的 `ActorContext.orgId` 保留，宿主固定传 `'default'`。
+- 一个概念一张表，合并来源用判别列区分（见「合并表与判别列」）。
+- 软删分三种：`archived_at`（可见可恢复）、`deleted_at`（带回收站）、其余硬删 + 级联。
+- 密钥在 `_enc` 列（AES-256-GCM，`PROVIDER_TOKEN_ENCRYPTION_KEY`）；令牌、授权码、网关 Key、设密链接只存 SHA-256。
+- `messages.seq` 在锁定对应 `conversations` 行后分配，UK `(session_id, seq)` 兜底。
+- 高增长表有保留期，由每日清理执行（见「保留期」）。
 
 ## 表目录
 
-### 身份、用户配置与团队
+### 身份（identity.ts）
 
-| 表 | 主键 / 唯一约束 | 关键字段与用途 |
+| 表 | 主键 / 唯一 | 用途与关键列 |
 |---|---|---|
-| `users` | PK `id`；UK `email` | 内部账号；`role=team/super` 为有效角色，`status=invited/active/reset_required/disabled`；只有 active 可认证，`auth_version` 在密码设置/重置时原子递增以撤销既有凭证；新账号月度 token 限额默认 100M，另含兼容消息限额、locale、备注与登录时间 |
-| `user_tools` | 复合 PK `(user_id, tool_id)` | 每用户工具授权；`user_id` FK 到 users |
-| `refresh_tokens` | PK `id`；索引 `token_hash`、`user_id` | 刷新令牌只存 hash、有效期与签发时 `auth_version`；单次消费且必须匹配用户当前版本，用户删除时级联 |
-| `account_password_links` | PK `id`；UK `token_hash`；部分 UK `user_id WHERE consumed_at/revoked_at IS NULL` | super 签发的邀请/重置设密凭证；只存 32-byte 随机 token 的 SHA-256 hash、签发代数、过期/消费/撤销时间与邮件投递结果。邀请 72h、重置 30m；目标用户删除时级联 |
-| `user_features` | PK `id`；UK `(user_id, feature)` | 用户级 feature flag；`enabled`、JSON `config`、授权人 |
-| `feishu_conversations` | PK `id`；UK `feishu_key` | 飞书对话 ↔ Greenhouse 会话映射（迁移 0066）。`feishu_key` = `thread_id ?? root_id ?? message_id` 的回退结果：话题群命中 thread_id（每个话题一个会话）、普通回复链命中 root_id、首次发言用自己的 message_id。**实测 `root_id` 在整条回复链里恒定**，所以用户回复链上任意一条旧消息都续同一个会话。唯一键同时是并发仲裁者——同一串对话的两条消息同时到达时，`DO NOTHING` 让先到的赢，绝不会建出两个会话 |
-| `feishu_message_receipts` | PK `message_id` | 已处理的飞书消息 id（迁移 0066）。飞书会重投事件，而处理一条消息 = 跑一轮 agent = 花钱且会回消息；**先写回执再干活**，写冲突即丢弃。回执只为去重，保留 7 天足够覆盖任何重投窗口 |
-| `user_provider_tokens` | PK `id`；UK `(user_id, provider, workspace_id)`，NULLS NOT DISTINCT | 通用外部 provider 绑定；access/refresh/credential 为加密文本，含 scope、过期时间与 metadata。**`access_token` 自 0056 起可空**——企微这类绑定存的是**身份**而非凭证（应用 token 是 corp 全局、进程内缓存），塞一个空串会让该列自己的契约变成假的；`provider_user_id` 即企微 UserId（`provider='wecom'`）或飞书 open_id（`provider='feishu'`），是个人消息推送的收件人来源；飞书绑定同时是扫码登录的查表键 |
-| `custom_profiles` | PK `id`；UK `(user_id, slug)` | 自定义 Agent 稳定资产身份；owner 与 current version 指针。`is_shared` 为真才对团队可用（只有 super 能切换），否则仅 owner 可见；backup owner FK SET NULL。v1.4 起 `lifecycle_status` / `lifecycle_note` / `published_version` / `reviewed_*` / `next_review_at` 为退役列 |
-| `custom_profile_versions` | PK `id`；UK `(profile_id, version)` | 不可变可执行 manifest；模型、tools、prompt、外观与 purpose/audience/risk/budget 一起版本化，含 change log、SHA-256 manifest hash 与创建人；生产 service 无 update，随 Agent 删除级联删除 |
-| `user_memories` | PK `id` | 用户长期记忆；`title`（注入 prompt 的召回索引行）+ `content` + 类别、状态机（active/dormant/archived/superseded）、pinned、来源、`superseded_by` 自引用、`last_used_at` |
-| `tool_frictions` | PK `id`, UNIQUE `fingerprint` | Agent 踩坑信号（团队级，永不注入 prompt）；工具/类型/摘要/证据、`occurrence_count` 聚合计数、样本会话、复盘状态与解决备注 |
-| `user_prompts` | PK `id`；UK `artifact_action_id` | **Tasks**（可复用任务，用户面已改叫 Tasks，表名保留）；`description` 一句话用途说明（选择器里展示）、`variables` JSON 存 `{{占位符}}` 定义、`expected_tools` JSON 存该流程实际用过的工具（**仅展示，不做权限判定**）、`source_session_id` 逻辑指向固化来源会话（无 FK，任务比会话活得久）、`created_via` 区分手写与会话固化。聊天固化时 `artifact_action_id` 是 exactly-once 恢复键；无变量无工具的行 = 原来的快捷 Prompt，行为逐字段不变 |
-| `user_groups` | PK `id` | 用户创建的小组；`created_by` 为逻辑用户引用 |
-| `group_members` | PK `id`；UK `(group_id, user_id)` | 小组成员；同时 FK 到 user_groups 与 users |
+| `users` | PK `id`；UK `email` | 内部账号。`role` super / team（`external` 只出现在搬来的 disabled 行，鉴权拒绝）；`status` invited / active / reset_required / disabled；`auth_version` 凭证代数（改密、停用时递增，令牌与推送设备比对）；`locale`；`preferences` jsonb（字号 `fontScale`、Home 工作台 `workbench`） |
+| `auth_refresh_tokens` | PK `id` | 刷新令牌 hash、签发代数、过期时间；FK `user_id` CASCADE |
+| `password_links` | PK `id`；UK `token_hash`；部分 UK `user_id`（未消费未撤销） | 邀请 / 重置设密链接，只存 token 的 SHA-256；`purpose`、`issued_auth_version`、过期 / 消费 / 撤销、邮件投递状态；`created_by` 逻辑 |
+| `login_states` | PK `id`（= 值的 SHA-256） | 飞书 / 企微登录的待回调 `state` 与一次性登录码；`provider`、`kind` pending / login_code、`payload`、`expires_at`、`consumed_at` |
+| `rate_limits` | PK `key` | 固定窗口计数，`key` = `<规则>:<主体>:<窗口起点 ms>`；`count`、`expires_at` |
 
-### 会话、Agent 运行时与个人整理
+### 权限（access.ts）
 
-| 表 | 主键 / 唯一约束 | 关键字段与用途 |
+| 表 | 主键 / 唯一 | 用途与关键列 |
 |---|---|---|
-| `sessions` | PK `id` | 会话；`profile_id` 默认 `team`，记录 user/app/channel、父会话谱系、评分、反馈与 JSON metadata；`digest` / `digest_upto_seq` / `digest_updated_at`（v1.4）是滚动摘要：`seq ≤ digest_upto_seq` 的消息在 prompt 里由摘要代替，转录本身不变 |
-| `messages` | PK `id`；UK `(session_id, seq)`；索引 `session_id` | 会话消息；含 role/content、引用、pipeline、reasoning、图片、置信度、token 与耗时；`seq` 为会话内唯一顺序；普通回复以 tail revision CAS 追加，编辑与截断为原子事务；重新生成在成功后以同一 `seq` 原子替换末尾 assistant，失败保留旧回复。`model` 记产出该轮的 registry 模型 id（`flash`/`pro`/…，模型改为每轮可选后新增）——user 轮、服务端写的终态消息与历史消息均为 null |
-| `chat_files` | PK `id`；UK `storage_key`；索引 session/creator | Chat 会话的私有文件 handle（两个方向）；字节在对象存储，记录 session、文件名/MIME/size、服务端 storage key 与创建人。`source`：`agent`=工具产物（如 `export_data`，存量行的默认值）/ `user`=用户上传的附件。**图片不进这张表**——`<img src>` 带不了 Bearer，图片走 `/api/upload` 的扁平 id + 公开读 |
-| `chat_artifact_receipts` | PK `id`；索引 session/user | 聊天动作卡的持久回执；稳定 action id 原子 claim，绑定 session/user/kind/request hash，保存 processing/succeeded/failed 与原始结果。用于 Schema Plan 与 Task Capture 的刷新恢复和 exactly-once 执行，不替代业务表 |
-| `session_shares` | PK `id`；UK `(session_id, shared_with)`；FK `session_id` CASCADE | 会话共享；目标为 user id 或 `__team__`；已读状态独立存于 `session_share_reads` |
-| `session_share_reads` | PK `id`；UK `(session_id, user_id)`；FK `session_id` CASCADE | 团队共享的逐用户已读状态 |
-| `session_tags` | PK `id`；UK `(user_id, name)` | 用户私有会话标签（功能 1.5 移除，表保留到 1.6 删除，无读写方） |
-| `session_tag_links` | PK `id`；UK `(session_id, tag_id)` | 会话与标签关联；标签删除时级联（同上，1.6 删除） |
-| `session_groups` | PK `id`；UK `(user_id, name)` | `kind=pinned` 为每用户的置顶系统组（`services/session-pins.ts` 唯一读写方）；`kind=custom` 文件夹功能 1.5 移除，存量行不读不改 |
-| `session_group_members` | PK `id`；UK `(user_id, group_id, session_id)`；部分 UK `(user_id, session_id) WHERE kind='custom'` | 每用户的置顶成员（`sort_order` 为置顶区顺序）；`kind=custom` 的存量文件夹归档行 1.5 起无读写方 |
-| `llm_calls` | PK `id`；索引 `session_id` | `call_llm` 子调用审计；保存输入、输出、模型、状态、token 与耗时 |
-| `llm_usage` | PK `id`；索引 profile/caller/user/created_at/budget key/(user_id, created_at) | LLM 用量统计；按 profile、caller、session、user、model 记录 token 与耗时；`budget_idempotency_key` 关联统一预算预留，NULL 表示迁移前或尚未接入预算的 legacy 调用。计价列（迁移 0010，全部可空，旧行照常有效）：`cost_usd_micros`（NULL = 未定价或计价前写入，按 0 计）、`client`（web/mobile/mcp/agent_api/automation/feishu/gateway/system）、`oauth_client_id`（成员的 Agent 经 MCP 调用时的 OAuth client）、`service`（`llm` / `vision`；NULL 的旧行按 caller 推断）、`price_applied`（结算时用的价，JSON；NULL = 未定价或旧行）；`gateway_key_id`（迁移 0011：经模型网关的调用记下 Key，索引 `(gateway_key_id, created_at)` 供每把 Key 的月花费） |
-| `service_usage` | PK `id`（`svu_<hex>`）；索引 (user_id, created_at)/(service, created_at)/created_at/budget key | 非模型付费调用的事实（迁移 0010）：网页搜索、网页读取、生图，日后云电脑分钟。`service`/`provider`/`model`、`units` + `unit_kind`（call/image/minute/token）、`cost_usd_micros`（NULL = 未定价）、`client`、`oauth_client_id`、`caller`、`run_id`/`session_id`、`budget_idempotency_key`、`price_applied`（结算时用的价，JSON：来源 + 费率）、`metadata`。append-only，主体均为逻辑引用 |
-| `usage_price_overrides` | PK `id`（`upo_<hash>`，按 kind+target+provider 确定）；UK `(kind, target, provider)`；CHECK 价格 ≥ 0 | super 在服务与计价页定的价（迁移 0010），覆盖 models.yaml / services.yaml：`kind='model'` + 模型 id，或 `kind='service'` + 服务 id + provider。token 价 `input_per_mtok` / `output_per_mtok` / `cached_input_per_mtok`（每百万 token 美元），按次 / 张 / 分钟 `unit_price`（美元）。改价只影响之后结算的调用 |
-| `scheduled_tasks` | PK `id` | 用户定时 Agent 任务；profile 默认 `team`，保存 cron、时区、执行状态与计数；`notify_webhook`（可选企微/飞书**群**机器人地址，host 白名单二选一、按 host 分派 payload 格式）、`notify_email`（布尔，发到 owner 账号邮箱）、`notify_wecom`（布尔，以企微应用消息发给 owner 本人，收件人取自其 `user_provider_tokens(provider='wecom')` 绑定）与 `notify_feishu`（布尔，以飞书卡片 DM 发给 owner 本人，收件人取自 `provider='feishu'` 绑定，迁移 0064）四条送达通道，均由 scheduler（非 Agent）在跑完后推送摘要——布尔通道**没有任何可供瞄准的收件人字段**，这正是它们免确认的原因；`unattended_tools`（JSON 字符串数组，迁移 0065）是 owner 逐任务勾选的额外工具，目录在 `@greenhouse/types/automation-tools`——它是**过滤器不是授权**（运行时取 `勾选 ∩ 目录 ∩ owner 当前 effectiveTools`），且只有用户自己的控制台请求能写，`automation_mutation` 一律拒绝；`quiet_when_empty`（v1.4）为真时，回答 `NO_UPDATE` 的运行照常记历史但不推送任何渠道 |
-| `scheduled_task_runtime_occurrences` | PK `runtime_run_id`；task/owner 索引 | Automation Runtime 终态的永久幂等投影水位；冻结 task/owner/status/version/planned time，保证成功计数只增一次、旧 occurrence 不覆盖新状态；外部通知按渠道由 `notification_delivery_attempts` 独立持久化与重试 |
+| `roles` | PK `id`；UK `code` | 角色；`status`、`system_protected` |
+| `role_members` | PK `(role_id, user_id)` | 角色成员；两列都 FK CASCADE |
+| `role_capabilities` | PK `(role_id, capability)` | 角色授予的能力（由核心与扩展 manifest 声明） |
+| `role_entity_policies` | PK `id`；UK `(role_id, app_id, entity_id)` | 角色的实体策略：`scopes`（own / assigned / all）、`field_policies`；CRM 经 `db.platform` 求值 |
+| `user_grants` | PK `(user_id, kind, key)` | 每成员开关：`kind=feature`（FEATURE_FLAGS 键，`enabled=false` = 显式关闭默认开启的 flag）/ `kind=tool`（可选工具，有行即授予）；`config` |
 
-### 统一 Runtime Kernel
+权限判定：角色 allow > 默认 deny。没有个人级能力 / 实体策略覆盖。
 
-Chat 与 Automation 共用的执行控制面（`workflow` / `mission` / `eval` 只剩 v1.4 前的历史 Run，`subagent` 只剩 1.5 前的历史 Run）（见 [平台收敛 spec](../../../docs/specs/20260812-trusted-execution-platform-convergence.md)）。Run/Step 的竞争迁移走 version CAS，worker 领取走 `FOR UPDATE SKIP LOCKED` + lease；heartbeat、状态迁移、永久 Event 与至少一次 Outbox 在同一事务提交。跨领域 Run command 的 `FOR UPDATE` 锁覆盖来源 side effect，再 CAS 推进 Runtime 并落 Event/Outbox，阻止同版本 pause/cancel 双执行。stale Step 只有 driver 提供安全 checkpoint 后才会把旧 attempt 终态化并排入新的 attempt，避免把不确定外部写静默重放。
+### 外部 Agent 与第三方连接（oauth.ts）
 
-历史 Subagent Run（1.5 前）以 child session 作为唯一 `source_id`，`parent_run_id/root_run_id` 串起父 Chat / Automation；子会话已退役，不再产生新行。
-
-| 表 | 主键 / 唯一约束 | 关键字段与用途 |
+| 表 | 主键 / 唯一 | 用途与关键列 |
 |---|---|---|
-| `runtime_runs` | PK `id`；UK `(kind, source_kind, source_id)`；部分 UK `(owner_user_id, kind, idempotency_key)`；claim/stale/owner/root 索引 | 公共执行 envelope；保存 kind、主体/来源/父根谱系、desired state、优先级/时限、lease/heartbeat、attempt、完整 input/output/error 与 version CAS |
-| `runtime_steps` | PK `id`；UK `(run_id, step_key, attempt)`；run/parent/claim 索引 | 最小领取与重试单位；完整 input/output/error、lease、用量和耗时；stale recovery 保留旧 attempt 并创建新 attempt |
-| `runtime_tool_calls` | PK `id`；部分 UK `(run_id, idempotency_key)`；run/step/interrupt 索引 | 工具完整参数/结果、canonical input hash、风险、状态、Interrupt backlink 与 Platform Audit 逻辑关联；不确定外部结果使用 `uncertain` |
-| `runtime_artifacts` | PK `id`；run/step/tool 索引 | 产物 provenance：方向、kind/name/path、MIME、size、sha256、storage key、状态与来源 |
-| `runtime_interrupts` | PK `id`；run/assignee/step/tool 索引 | 审批、人工输入、预算、外部依赖与未知结果等外部决定；保存完整 payload、hash、风险、负责人、期限、完整决议与 version CAS |
-| `runtime_events` | PK `id`；UK `(run_id, seq)`；部分 UK `(run_id, idempotency_key)` | 永久 append-only 时间线；按锁定 Run 分配 seq，不提供 update/delete Service，完整 payload 不自动截断或过期 |
-| `runtime_outbox` | PK `id`；UK `(event_id, topic)`；delivery 索引 | Event 的独立投递状态；SKIP LOCKED 独占 claim、lease/attempt、失败重试/dead letter；送达失败不反向改业务 Run 终态 |
+| `oauth_clients` | PK `id` | MCP / Agent 代理的 OAuth 2.1 客户端；`redirect_uris`、认证方式、`client_secret_hash`、`bound_user_id`（机器客户端代表的成员，FK CASCADE）、`allowed_scopes`、`status` |
+| `oauth_grants` | PK `id`；UK `(user_id, client_id, resource)` | 成员对客户端的授权；`scopes`（实际授予，读时不放宽）、`status`、`avatar`（成员给这个 Agent 选的植物头像 `{plant, tint}`，null = 客户端默认） |
+| `oauth_codes` | PK `code_hash` | 授权码（只存 hash）；PKCE S256、`redirect_uri`、`resource`、`scopes`、`used_at` |
+| `oauth_tokens` | PK `id`；UK `token_hash` | access / refresh 令牌 hash；`resource`、`scopes`、过期 / 撤销 / 最近使用 |
+| `gateway_keys` | PK `id`；UK `key_hash` | 成员的模型网关 Key；`key_prefix`、`allowed_models`（null = 全部）、过期、撤销（只打 `revoked_at`） |
+| `provider_connections` | PK `id`；UK `(user_id, provider, workspace_id)` NULLS NOT DISTINCT | 成员与飞书 / 企微等的绑定；`access_token_enc` / `refresh_token_enc` / `credential_enc`（身份型绑定为 null）、`provider_user_id`（企微 UserId / 飞书 open_id，个人推送收件人与扫码登录查表键）、`metadata` |
 
-### 统一 Notification Center
+### 对话（conversations.ts）
 
-站内通知是永久产品事实；企微、邮件、桌面和移动推送是独立的送达尝试。Runtime/Agent 业务结果先提交，通知或外部渠道失败只进入自己的重试/dead-letter 状态，绝不反向篡改 Run 或 Agent 生命周期。
-
-| 表 | 主键 / 唯一约束 | 关键字段与用途 |
+| 表 | 主键 / 唯一 | 用途与关键列 |
 |---|---|---|
-| `notifications` | PK `id`；UK `(user_id, dedupe_key)`；user/read/created 与 provenance 索引 | 用户站内收件箱；保存 kind、完整正文/payload、Run/Interrupt/Event/Agent 逻辑来源与 read_at。除已读状态外为永久事实，无生产删除 Service |
-| `notification_delivery_attempts` | PK `id`；UK `(notification_id, channel, recipient)`；claim 索引 | 可选外部渠道的 durable lease/attempt/retry/dead-letter/suppressed；FK 到 notification CASCADE 只服务显式根事实删除语义，常规生产没有删除入口 |
-| `push_devices` | PK `id`（`pdv_`）；UK `token`；`user_id` 部分索引（未停用） | 手机推送设备（迁移 0009）：Expo token、平台、Expo project、站点 `client_ref`、偏好 JSON（needs_you/done/other/preview）、注册时的 `auth_version`、`last_seen_at`；只停用（`disabled_at` + reason）不删除 |
-| `gateway_keys` | PK `id`（`gwk_`）；UK `key_hash`；索引 `(user_id, created_at)` | 模型网关的成员个人 Key（迁移 0011）：只存密钥（`ghgw_…`）的 SHA-256 与开头 12 个字符 `key_prefix`；`allowed_models` 是目录模型 id 的 JSON 数组（NULL = 全部）；`expires_at`、`last_used_at`（每分钟最多写一次）；撤销只写 `revoked_at` / `revoked_by`，不删行 |
-| `member_computers` | PK `id`（`cmp_`）；部分 UK `user_id`（status ∈ starting/running/stopping）；`status`、`(user_id, started_at)` 索引 | 成员的云电脑（迁移 0012，v1.6）：E2B 沙箱 id、状态（starting/running/stopping/stopped/failed/lost）、started/last_used/stopped 时间、停止原因、已结算分钟数、当前计费块的预留键与起点、发起方 client / OAuth client id；只改状态不删行 |
-| `report_templates` | PK `id`（`rtpl_`）；索引 `(visibility, updated_at)`、`(owner_user_id, updated_at)` | 报告 / 演示模板（迁移 0013，v1.7）：名称、说明、`kind`（report/presentation）、`formats` / `sections` / `cover_fields`（JSON 文本）、`visibility`（team/personal 草稿）、`is_default`（内置）、`version`（每次编辑 +1）、`created_by` / `updated_by`；软删 `deleted_at` |
+| `conversations` | PK `id` | 会话；`profile_id` 默认 `team`、`user_id`（逻辑）、`app_id`、`channel`（web / task / feishu / mobile…）、`metadata`；`pinned_at` + `pin_position` 为 owner 的置顶；`digest` / `digest_upto_seq` / `digest_updated_at` 滚动摘要 |
+| `messages` | PK `id`；UK `(session_id, seq)` | 消息；`content` 为 Markdown 正文，`parts` jsonb `{references, images, pipeline}`（引用、图片、工具步骤与富卡片），`reasoning`、`model`、token 与耗时 |
+| `conversation_shares` | PK `id`；UK `(session_id, shared_with)` | 会话共享；`shared_with` = 成员 id 或 `__team__` |
+| `conversation_share_reads` | PK `id`；UK `(session_id, user_id)` | 收件人在共享会话上的状态：`read_at`，以及自己的置顶 `pinned_at` / `pin_position` |
+| `card_action_receipts` | PK `id` | 卡片按钮的 exactly-once 回执（`tables_schema_plan` / `task_capture`）；`request_hash`、`status`、`result` |
 
-### 统一 Usage Budget
+### 运行（runs.ts）
 
-模型调用前的硬预算控制（见 [平台收敛 spec](../../../docs/specs/20260812-trusted-execution-platform-convergence.md)）。账户锁按 ID 稳定排序，预留、结算、释放、TTL 未知结算和人工调整都在短事务中同步更新余额与 append-only ledger；缺账户、停用、错 period 或额度不足一律 fail-closed。
+Chat 与 Automation 共用的执行内核：Run / Step 走 version CAS，worker 用 `FOR UPDATE SKIP LOCKED` + lease 领取，状态变化与 Event + Outbox 同事务提交。`kind` 里 workflow / mission / subagent / eval 只剩历史行。
 
-| 表 | 主键 / 唯一约束 | 关键字段与用途 |
+| 表 | 主键 / 唯一 | 用途与关键列 |
 |---|---|---|
-| `usage_budget_accounts` | PK `id`；UK `(scope_type, scope_id, unit, period_start, period_end)` | `user/organization/agent/run/eval/provider/service` 多态额度账户（`service` 为 1.6 USD 计价的服务级账户，scope_id = 服务 id）；支持 `tokens/requests/usd_micros`，period 为 `[start,end)`；保存 hard limit、reserved/spent 和 legacy usage 投影。scope 是逻辑关联、无 FK，账户永久保留 |
-| `usage_budget_reservations` | PK `id`；UK `(account_id, idempotency_key)`；索引 key/status+expiry/user/run | 一次模型调用对每个账户一行；同 key 组成原子预留组，`request_hash` 防参数漂移。状态 `reserved/settled/released/expired`；`expired` 表示 provider 结果未知并已按估算量计费，不是免费释放 |
-| `usage_budget_ledger` | BIGSERIAL PK `id`；UK `(account_id, operation_key)`；索引 account+created/reservation | 永久 append-only 账本；记录 bootstrap/reconcile/reserve/settle/release/expire/adjustment/status 的 reserved/spent delta 与变更后余额。账户、预留、主体都为逻辑关联，避免审计随业务记录删除 |
-| `usage_budget_limits` | PK `id`（`ubl_<hash>`，按 scope 确定）；UK `(scope_type, scope_id, unit)`；CHECK limit ≥ 0 | 管理员设的跨周期 USD 月度上限（迁移 0010）：`organization`、`service`（服务 id）、`user` + `scope_id='*'`（成员默认）、`user` + 用户 id（成员覆盖）。每次计价调用按「本表 → env → 内置默认」解析并写入当月账户；删行即回落 |
+| `runs` | PK `id`；UK `(kind, source_kind, source_id)`；部分 UK `(owner_user_id, kind, idempotency_key)` | 执行 envelope；主体 / 来源 / `parent_run_id` / `root_run_id`、`status`、`desired_state`、优先级与时限、lease / heartbeat、attempt、`input` / `output` / error、`version` |
+| `run_steps` | PK `id`；UK `(run_id, step_key, attempt)` | 领取与重试单位；lease、用量（tokens / requests / cost_micros）、耗时 |
+| `run_tool_calls` | PK `id`；部分 UK `(run_id, idempotency_key)` | 工具调用；完整参数 / 结果、`canonical_input_hash`、`risk_level`、`status`（含 `uncertain`）、`interrupt_id` / `platform_audit_event_id`（逻辑） |
+| `run_interrupts` | PK `id` | 审批、ask_user、预算、外部依赖、未知结果等外部决定；`assignee_user_id`、`decision`、`decided_by_user_id` |
+| `run_events` | PK `id`；UK `(run_id, seq)`；部分 UK `(run_id, idempotency_key)` | append-only 时间线；`seq` 锁 Run 后分配；`step_id` / `actor_user_id` 逻辑 |
+| `run_outbox` | PK `id`；UK `(event_id, topic)` | Event 的投递状态；lease、attempts、dead_letter |
 
-月度账户以 **UTC 自然月**为周期；文本模型一次原子预留 user + organization（Eval/Judge 走隔离的 `organization:eval` 池）+ provider 三层 token 账户（1.6 起与 USD 并行保留一版），并另起一组 `<key>:usd` 原子预留 member（`user`）+ `service` + `organization` 三层 `usd_micros` 账户（USD 是主限额）；生图、搜索、读网页只走这三层 USD 账户。未定价调用不预留，只做准入检查（账户已用完即拒绝）。首次建账与后续预留只投影 `llm_usage.budget_idempotency_key IS NULL` 的 legacy 行到 `legacy_spent_units`，budget-aware 调用只由 reservation/ledger 结算，防止双计。一个 reservation group 内账户必须使用同一 unit；不同 unit 使用各自的幂等子键。显式 `release` 仅用于确认 provider I/O 尚未开始的失败，或模型网关收到上游明确拒绝（4xx / 连接被拒）的调用；一旦结果未知，TTL sweep 把 estimated 从 reserved 转 spent，迟到的真实 usage 再只结算差额。
+运行产出的文件在 `files`（`source='run'`）。
 
-### 知识库、云盘与技能
+### 自动化与 Agent 配置（automations.ts）
 
-| 表 | 主键 / 唯一约束 | 关键字段与用途 |
+| 表 | 主键 / 唯一 | 用途与关键列 |
 |---|---|---|
-| `knowledge_base` | PK `id`；UK `(doc_id, scope)` | 内部知识文档；Markdown + Tiptap JSON，team/private 可见性、状态、owner、AI 增强字段；`sort_order` 为侧栏树同级手工顺序（0 = 从没排过，读侧排最后） |
-| `knowledge_base_versions` | PK `id`；UK `(doc_id, version)` | 知识文档不可变版本快照；标题、正文、编辑器 JSON、摘要、变更人/原因 |
-| `knowledge_base_shares` | PK `id`；UK `(doc_id, shared_with)` | private 文档共享；目标为 user id 或 `group:<id>`，角色 reader/editor |
-| `drive_folders` | PK `id` | `kb/crm/tables` 三 scope 文件夹树；自引用 parent；KB 用 visibility/owner，CRM 用 company，Tables 用 Base；`sort_order` 同 `knowledge_base`（同级手工顺序，0 排最后） |
-| `drive_files` | PK `id`；UK `cos_key` | 文件元数据；folder、对象存储 key、content type、size、pending/active/deleted 状态与 scope 权属；scope-owner check 防止跨域混挂 |
-| `email_accounts` | PK `id`；UK `(user_id, email_address)`；IDX `user_id` | per-user IMAP/SMTP 邮箱绑定；连接配置为明文列（便于运维排查），**仅 `password_encrypted` 是 AES-256-GCM 密文**；`preset` 只作 UI 提示不参与分支；`use_proxy` 决定是否走 `MAIL_EGRESS_PROXY`。共享的 greenhouse@ 邮箱**不在此表**，只从 env 读（运维所有物，无 owner） |
-| `email_send_log` | PK `id`；IDX `(user_id, created_at)`、`(account_scope, created_at)` | 发信审计 + 日限计数源；`account_scope` 区分 personal/shared，`origin` 区分 chat/automation/account-security，成功与失败都记。**无 FK 指向 `email_accounts`**：审计必须比它描述的绑定活得久（跨域松散关联） |
-| `agent_skills` | PK `id`；UK `name`；IDX `scan_status` | 团队技能目录；名称、描述、tags、latest version、状态、owner 与下载次数。另含技能级安全扫描列：`scan_status`(`pending`/`clean`/`suspicious`/`blocked`)、`scan_findings`(JSON-as-text 命中明细)、`scan_version`(被扫版本，NULL=从未扫过)、`scanned_at`，以及 super 判定留痕 `scan_reviewed_by`/`scan_reviewed_at`/`scan_note`（松散 ref users） |
-| `agent_skill_versions` | PK `id`；UK `(skill_id, version)` | 技能不可变 semver 版本；changelog、文件数、大小、内容 hash 与 storage key |
+| `automations` | PK `id` | 成员的定时任务；`profile_id`、`task_prompt`、cron `schedule` + `timezone`、`notify` jsonb `{webhook, email, wecom, feishu}`、`quiet_when_empty`、`unattended_tools`、`last_status` / `next_run_at` / `run_count` |
+| `automation_occurrences` | PK `runtime_run_id` | 自动化 Run 终态的一次性投影（幂等键 = run id）；`task_id` / `owner_user_id` 逻辑 |
+| `run_profiles` | PK `id`；UK `(user_id, slug)` | 成员的自定义 Agent（`custom:<id>`）：`base_profile_id`、`model_id`、`tools`、`system_prompt`、`is_shared`（只有 super 能开）、`avatar`、purpose / audience / `risk_level` / `budget_policy`、`owner_backup_user_id`（FK SET NULL）；`version` 只计编辑次数，`custom:<id>@<n>` 解析到当前配置 |
 
-### 项目管理
+### 知识库（knowledge.ts）
 
-| 表 | 主键 / 唯一约束 | 关键字段与用途 |
+| 表 | 主键 / 唯一 | 用途与关键列 |
 |---|---|---|
-| `projects` | PK `id` | 项目；状态、优先级、owner、业务日期、可见性与创建人 |
-| `project_members` | PK `id`；UK `(project_id, user_id)` | 项目成员及 owner/member 角色 |
-| `tasks` | PK `id` | 项目任务；支持自引用父任务，含状态、优先级、assignee、日期、标签、依赖与排序 |
-| `task_comments` | PK `id` | 任务评论；作者为逻辑用户引用 |
-| `project_activities` | PK `id` | 项目/任务操作历史；删任务时仅清空 `task_id` |
+| `kb_documents` | PK `id`；UK `(doc_id, scope)` | 文档；`content`（Markdown 为准）+ `content_json`（Tiptap）、`visibility` team / private + `owner_user_id`、`status`、`is_template`、`tags`、`meta`、`folder_id`（FK SET NULL，`folders.scope='kb'`）、`sort_order`；`_summary` / `_questions` / `_topics` 富化；检索列 `search_a/b/c` + 生成列 `search_tsv`（GIN） |
+| `kb_versions` | PK `id`；UK `(doc_id, version)` | 不可变版本历史；FK `doc_id` CASCADE |
 
-### 内部多维表格 Tables
+文档的单人分享在 `shares`（`resource_type='kb_document'`）。
 
-| 表 | 主键 / 唯一约束 | 关键字段与用途 |
+### 目录、文件与共享（files.ts）
+
+| 表 | 主键 / 唯一 | 用途与关键列 |
 |---|---|---|
-| `table_bases` | PK `id` | 多维表格 Base；`private/team` 可见性、owner、软归档与审计时间 |
-| `table_base_members` | PK `id`；UK `(base_id, user_id)` | Base 成员；`owner/builder/editor/viewer` 业务 ACL |
-| `table_tables` | PK `id`；UK `(base_id, name)` | Base 内的用户 Table 元数据；固定物理表，不做 runtime DDL；`schema_revision` 标识当前结构版本；`archived_at` = 软删（列表与 schema 查询已过滤，记录/字段/链接一律保留，恢复走 `pnpm cli tables restore-table`） |
-| `table_schema_versions` | PK `id`；UK `(table_id, version)` | Table 结构的不可变 JSONB 快照；字段创建/修改/归档时同事务递增，记录变更类型与操作者 |
-| `table_fields` | PK `id`；UK `(table_id, name)`；每 Table 一条 active primary 部分 UK | 稳定字段 ID、常用字段类型、required/primary、JSON 文本 config 与位置；支持 Relation/Formula/Rollup |
-| `table_field_dependencies` | 复合 PK `(field_id, depends_on_field_id)` | Formula/Rollup 字段依赖边，支持反向影响分析和级联重算 |
-| `table_views` | PK `id` | shared/personal Grid 视图；筛选、排序、显示字段和宽度存 config JSON 文本；revision 乐观并发 |
-| `table_forms` | PK `id`；UK `(table_id, name)` | 内部认证表单；draft/published、字段白名单、文案 config 与 revision |
-| `table_records` | PK `id` | 动态记录；用户值在 `values JSONB`，Formula/Rollup 在 `computed_values JSONB`；用户 revision 与计算 revision 分离；`deleted_at` = 软删，表内回收站可自助恢复（恢复同样 bump revision） |
-| `table_record_links` | PK `id`；UK `(field_id, source_record_id, target_record_id)` | Relation canonical 边；保持顺序并支持 target 反查 |
-| `table_record_attachments` | PK `id`；UK `(record_id, field_id, drive_file_id)` | Record/Field 到 Tables-scope Drive 文件的规范化附件边 |
-| `table_recompute_jobs` | PK `id`；UK `idempotency_key` | Rollup 持久重算状态；queued/running/succeeded/failed、attempt/error 与时间戳 |
-| `table_automation_rules` | PK `id`；UK `(base_id, name)` | Record 事件规则；条件、确定性动作、执行用户与 revision |
-| `table_automation_outbox` | PK `id`；UK `idempotency_key` | 自动化待处理/执行去重事件；pending/processing/succeeded/failed |
-| `table_automation_runs` | PK `id` | 每次规则执行状态、完成动作数、错误与耗时审计 |
-| `table_notifications` | PK `id` | 自动化产生的站内通知；按用户读取并记录 read_at |
-| `table_dashboards` | PK `id`；UK `(base_id, name)` | Base 自定义仪表盘；revision 乐观并发 |
-| `table_dashboard_widgets` | PK `id` | KPI/Chart/records/text 组件；配置与布局是 JSON 文本，单组件最多绑定一张 Table；revision 乐观并发 |
+| `folders` | PK `id` | 每个 scope 一棵树：`kb`（`visibility` + `owner_user_id`）、`tables`（`base_id`）、扩展 scope（`owner_key`，由扩展鉴权）；`parent_id` 自引用 CASCADE；`sort_order`（0 = 没手排过）。CHECK `chk_folders_scope_owner` 约束三种形状 |
+| `files` | PK `id`；部分 UK `storage_key` | 所有存储对象的唯一登记处。`source`：`drive`（scope / folder / visibility / owner / base / owner_key）、`chat_upload` / `chat_output`（`session_id` FK CASCADE）、`run`（`run_id` 逻辑，`meta` 记方向 / kind / path / step）；`status` pending / active / failed / skipped / deleted；`size`、`sha256`、`storage_key`。CHECK `chk_files_source_owner` |
+| `file_links` | PK `(file_id, target_type, target_id, slot)` | 附件关系；`target_type` table_record / message / task / kb_document（逻辑），`slot` = 表格字段 id 或 `''`；FK `file_id` CASCADE |
+| `shares` | PK `id`；UK `(resource_type, resource_id, principal_type, principal_id)` NULLS NOT DISTINCT | 单独分享：`resource_type` kb_document / folder / file / table_base，`principal_type` user / team，`role` reader / editor（kb）或 owner / builder / editor / viewer（表格库） |
 
-### 内部集成与反馈
+### 项目（projects.ts）
 
-| 表 | 主键 / 唯一约束 | 关键字段与用途 |
+| 表 | 主键 / 唯一 | 用途与关键列 |
 |---|---|---|
-| `api_audit_log` | PK `id` | 集成调用审计（MCP `a2a`、Agent 代理 `cli`）；app、endpoint、method、user、状态、token、IP、错误与 metadata；`api` / `relay` 只是已删除入口的历史行 |
-| `feature_requests` | PK `id` | 内部需求反馈；标题、描述、提交人、状态、优先级、管理员备注与来源会话 |
+| `projects` | PK `id` | 项目；`status`、`priority`、`owner_id`（逻辑）、`start_date` / `end_date`（date）、`visibility` |
+| `project_members` | PK `id`；UK `(project_id, user_id)` | 成员与角色；FK `project_id` CASCADE |
+| `tasks` | PK `id` | 任务；`parent_id` 自引用 SET NULL、`status`、`priority`、`assignee_id`（逻辑）、`start_date` / `due_date`（date）、`tags`、`dependencies`（任务 id 数组） |
+| `task_comments` | PK `id` | 任务评论；FK `task_id` CASCADE |
 
-### Agent 接入与平台治理（v1.4）
+项目与任务的动态写在 `audit_events`（`app_id='projects'`）。
 
-| 表 | 主键 / 唯一约束 | 关键字段与用途 |
+### 表格（tables.ts）
+
+| 表 | 主键 / 唯一 | 用途与关键列 |
 |---|---|---|
-| `usage_counters` | 复合 PK `(day, kind, key, client)` | 每日用量计数：`tool_call`（key=工具 id）/ `page_open`（key=模块 id）× 客户端（工具调用：mcp / agent_api / web_chat / browser / mobile / feishu / automation，历史行还有 subagent；页面打开：web / mobile，历史行还有 desktop / browser）；只有计数，没有内容和用户 |
-| `rate_limit_buckets` | PK `key` | 固定窗口限流计数（`<规则>:<主体>:<窗口起点>`），过期即清；进程重启或多实例不再重置限流 |
-| `oauth_login_states` | PK `id`（state/code 的 SHA-256） | 飞书 / 企微登录的 pending state 与一次性登录码；原值不入库，`consumed_at` 保证一次性，过期即清 |
+| `table_bases` | PK `id` | 表格库；`visibility` private / team、`owner_id`、`archived_at`；成员在 `shares`（`resource_type='table_base'`） |
+| `table_tables` | PK `id`；UK `(base_id, name)` | 数据表；`position`、`schema_revision`、`archived_at` |
+| `table_fields` | PK `id`；UK `(table_id, name)`；部分 UK 主字段 | 字段；`type`（17 种）、`required`、`is_primary`、`config`、`archived_at` |
+| `table_field_dependencies` | PK `(field_id, depends_on_field_id)` | 公式 / lookup / rollup 依赖 |
+| `table_views` | PK `id` | 视图（grid）；`scope` shared / personal + `owner_id`、`config`、`revision` |
+| `table_records` | PK `id` | 记录；`values` / `computed_values` jsonb、`revision`、`deleted_at`（回收站） |
+| `table_record_links` | PK `id`；UK `(field_id, source_record_id, target_record_id)` | 关联字段的记录连线 |
+| `table_schema_versions` | PK `id`；UK `(table_id, version)` | 表结构快照与变更类型 |
+| `table_recompute_jobs` | PK `id`；UK `idempotency_key` | 公式 / 汇总重算任务 |
 
-### Platform Kernel v2
+记录附件在 `file_links`（`target_type='table_record'`，`slot` = 字段 id）。
 
-| 表 | 主键 / 唯一约束 | 关键字段与用途 |
+### 通知（notifications.ts）
+
+| 表 | 主键 / 唯一 | 用途与关键列 |
 |---|---|---|
-| `platform_organizations` | PK `id`；UK `code` | 平台组织边界及状态 |
-| `platform_roles` | PK `id`；UK `(org_id, code)` | 组织角色；含状态、system protected 与创建人 |
-| `platform_role_bindings` | 复合 PK `(role_id, user_id)` | 角色到 users 的绑定 |
-| `platform_role_capabilities` | 复合 PK `(role_id, capability)` | 角色 capability allow 集合 |
-| `platform_role_entity_policies` | PK `id`；UK `(role_id, app_id, entity_id)` | 角色 record scopes 与 field policies |
-| `platform_user_capability_overrides` | 复合 PK `(org_id, user_id, capability)` | 用户 capability allow/deny 覆盖 |
-| `platform_user_entity_policy_overrides` | PK `id`；UK `(org_id, user_id, app_id, entity_id)` | 用户实体策略 allow/deny 覆盖 |
-| `platform_user_workbench_preferences` | 复合 PK `(org_id, user_id)` | 版本化工作台偏好 JSON；不承载授权 |
-| `platform_app_releases` | PK `id`；UK `(app_id, version)`；每 app 至多一条 active（部分 UK） | Manifest release、hash、状态、git commit 与激活时间 |
-| `platform_audit_events` | PK `id` | 平台 action 审计；多态 actor、请求链路、app/module/entity/record/action/capability、结果与脱敏摘要 |
+| `notifications` | PK `id`；UK `(user_id, dedupe_key)` | 永久站内通知；`kind`、title / body / payload；`run_id` / `interrupt_id` / `event_id` / `agent_id` 逻辑；只改 `read_at` |
+| `notification_deliveries` | PK `id`；UK `(notification_id, channel, recipient)` | 外部投递队列（desktop / wecom / feishu / email / mobile_push）；lease、retry、dead_letter、suppressed |
+| `push_devices` | PK `id`；UK `token` | 手机推送设备；`platform`、`prefs`、`auth_version`、`last_seen_at`、`disabled_at` / `disabled_reason`（不物理删） |
 
-### Platform OAuth 2.1
+### 用量与预算（usage.ts）
 
-| 表 | 主键 / 唯一约束 | 关键字段与用途 |
+| 表 | 主键 / 唯一 | 用途与关键列 |
 |---|---|---|
-| `platform_oauth_clients` | PK `id` | OAuth 客户端；auth method `none`=公共（精确 redirect URI JSON）、`client_secret_post`=机器客户端（`client_secret_hash` + `bound_user_id`(FK users, CASCADE) + `allowed_scopes` 上限）；状态与创建人 |
-| `platform_oauth_grants` | PK `id`；UK `(user_id, client_id, resource)` | 用户对客户端 resource/scopes 的授权与撤销状态 |
-| `platform_oauth_authorization_codes` | PK `code_hash` | Authorization Code + PKCE S256；只存 hash、challenge、有效期与一次性使用时间 |
-| `platform_oauth_tokens` | PK `id`；UK `token_hash` | access/refresh token 状态；只存 hash、resource/scopes、有效期、撤销与最后使用时间 |
+| `usage_events` | PK `id` | 一次计费调用一行。`kind`：`model`（模型调用，token）/ `service`（搜索、生图、云电脑分钟等）/ `audit`（`call_llm` 子调用的输入输出记录，无单位，不计花费）；`service`、`provider`、`model`、`profile_id`、`caller`、`units` + `unit_kind`、token 列、`cost_usd_micros`（null = 未定价）、`price_applied`、`client`、`oauth_client_id`、`gateway_key_id`、`session_id`、`run_id`、`budget_idempotency_key`、`detail` |
+| `budgets` | PK `id`；部分 UK account `(scope_type, scope_id, unit, period_start, period_end)`、limit `(scope_type, scope_id, unit)` | `kind=account`：一个 scope 一个半开周期的硬额度余额（reserved / spent 只经账本变动）；`kind=limit`：管理员 USD 上限（organization / service / `user` + `*` 默认 / `user` + 成员 id），按月物化出 account |
+| `budget_reservations` | PK `id`；UK `(account_id, idempotency_key)` | 预留；同一 `idempotency_key` 的多行是一个预留组（成员 + 组织 + 服务原子扣）；`request_hash`、estimated / actual、`expires_at` |
+| `budget_ledger` | PK `id`；UK `(account_id, operation_key)` | append-only 账本；delta 与 after 余额 |
+| `prices` | PK `id`；UK `(kind, target, provider)` | super 定的价，覆盖 models.yaml / services.yaml；每百万 token 价或 `unit_price` |
+| `module_usage_daily` | PK `(day, kind, key, client)` | 每日模块计数（`tool_call` / `page_open`），不带成员与内容 |
 
-### 退役表（v1.4 起无代码读写，下一个版本 DROP）
+### 审计（audit.ts）
 
-定义在 `schema/retired.ts`，只为蓝绿回滚到 v1.3.x 保留；不要为它们写新代码。
-
-| 表 | 原模块 | 说明 |
+| 表 | 主键 / 唯一 | 用途与关键列 |
 |---|---|---|
-| `eval_datasets` | 评测 | 题库（含 Trace → Dataset 写入的 `source='agent'` 行） |
-| `eval_runs` | 评测 | 评测批次 |
-| `eval_results` | 评测 | 单题结果；FK `run_id → eval_runs` CASCADE、`dataset_id → eval_datasets` NO ACTION |
-| `chat_eval_results` | 评测 | 单条回答的 LLM judge 结果；逻辑关联 `messages.id` / `sessions.id` |
-| `agent_workspaces` | Missions | 每用户沙箱工作区；FK `user_id → users` CASCADE |
-| `agent_runs` | Missions | 一次沙箱任务；FK `user_id → users`、`workspace_id → agent_workspaces` CASCADE；逻辑关联 session 与 `relay_client_id` |
-| `agent_run_events` | Missions | 步骤事件时间线；FK `run_id → agent_runs` CASCADE |
-| `agent_artifacts` | Missions | 交付产物登记（字节在上传存储）；FK `run_id → agent_runs` CASCADE |
-| `agent_run_approvals` | Missions | 沙箱写工具审批租约；FK `run_id → agent_runs`、`user_id → users` CASCADE，`decided_by → users` SET NULL |
-| `agent_run_outbox` | Missions | 终态会话回写；PK/FK `run_id → agent_runs` CASCADE |
-| `workflows` | Workflows | 图定义；FK `user_id → users` CASCADE；逻辑关联起草会话 |
-| `workflow_runs` | Workflows | 一次执行（冻结图快照）；FK `workflow_id → workflows`、`user_id → users` CASCADE |
-| `workflow_node_runs` | Workflows | 节点 × 尝试；FK `run_id → workflow_runs` CASCADE；逻辑关联 channel='workflow' 节点会话 |
-| `workflow_gates` | Workflows | 人工门；FK `run_id → workflow_runs` CASCADE |
-| `api_clients` | LLM 中转 | 中转 / 旧 A2A key（只存 hash）；FK `user_id → users` CASCADE。`api_audit_log` 是活表，与它只有逻辑 `app_id` 关联 |
+| `audit_events` | PK `id` | 唯一的「谁改了什么」流，操作记录读它。`app_id` 区分来源：platform 动作与云盘写入、`projects`（项目 / 任务动态）、`email`（`action_id='send'`，日发信限额数它的 success 行）、扩展 app；actor / on_behalf_of / client / request、module / entity / record、`capability`、`result`、`summary`（不存内容与密钥） |
+| `request_log` | PK `id` | MCP（`a2a`）与 Agent 代理（`cli`）请求日志；`api` / `relay` 只是搬来的历史 |
 
-退役列：`custom_profile_versions.eval_refs`（不再写入，默认 `[]`）、`custom_profile_versions.review_due_at`；`custom_profiles.lifecycle_status` / `lifecycle_note` / `published_version` / `reviewed_by` / `reviewed_at` / `next_review_at`（v1.4，不再读写）。
+### 复盘（feedback.ts）
+
+| 表 | 主键 / 唯一 | 用途与关键列 |
+|---|---|---|
+| `feedback` | PK `id`；部分 UK `fingerprint` | `kind=request`：成员提的需求（pending / accepted / rejected / done、`priority`、`submitted_by`）；`kind=friction`：Agent 踩坑信号（new / acknowledged / resolved / archived、`fingerprint`、`tool_id`、`friction_kind`、`occurrence_count`、`sample_sessions` 最近 5 个会话 id），永不进 prompt。CHECK `chk_feedback_shape` |
+
+### 其他
+
+| 表 | 主键 / 唯一 | 用途与关键列 |
+|---|---|---|
+| `email_accounts` | PK `id`；UK `(user_id, email_address)` | 成员自己的 IMAP / SMTP 邮箱；连接配置明文，只有 `password_enc` 加密；`preset` 只是 UI 提示 |
+| `feishu_conversations` | PK `id`；UK `feishu_key` | 飞书对话 ↔ 会话映射；`feishu_key` = thread_id ?? root_id ?? message_id，UK 兼做并发仲裁 |
+| `feishu_receipts` | PK `message_id` | 飞书事件去重回执，先写回执再干活 |
+| `member_computers` | PK `id`；部分 UK `user_id`（starting / running / stopping） | 成员云电脑；状态只经 service 的 CAS 改；`sandbox_id`、`minutes_billed`、`budget_key` |
+| `report_templates` | PK `id` | 报告模板（report / presentation）；`formats` / `sections` / `cover_fields`、`visibility`、`owner_user_id`（逻辑，null = 内置）、`deleted_at` |
+| `skills` | PK `id`；UK `name` | 技能中心；`latest_version`、`download_count`、安全扫描列（`scan_status`、`scanned_at` null = 从没扫过、人工裁定列） |
+| `skill_versions` | PK `id`；UK `(skill_id, version)` | 不可变、带内容 hash 的技能版本；FK CASCADE |
+| `prompts` | PK `id`；UK `artifact_action_id` | 保存的任务 / Prompt（个人或 super 发布的全局）；`variables`、`expected_tools`（只展示）、`source_session_id`（逻辑）、`created_via` |
+| `memories` | PK `id` | 成员的 Agent 记忆；`status` active / dormant / archived / superseded 是真相，`superseded_by` 自引用 SET NULL，`title` 是唯一进 prompt 的部分 |
+| `workspace_settings` | PK `key` | 管理员可改的部署设置；`value` jsonb 或 `value_enc` 密文 |
+| `extension_migrations` | PK `(extension_id, name)` | 扩展迁移车道的记账（带 checksum） |
+
+## 合并表与判别列
+
+| 表 | 判别列 | 取值 |
+|---|---|---|
+| `files` | `source` | drive / chat_upload / chat_output / run |
+| `usage_events` | `kind` | model / service / audit |
+| `budgets` | `kind` | account / limit |
+| `audit_events` | `app_id` | platform、projects、email、扩展 app… |
+| `feedback` | `kind` | request / friction |
+| `user_grants` | `kind` | feature / tool |
+| `shares` | `resource_type` | kb_document / folder / file / table_base |
+| `file_links` | `target_type` | table_record / message / task / kb_document |
+
+## 保留期
+
+每日清理（`services/retention.ts` + `apps/api/src/upkeep/retention.ts`）：
+
+- `run_events`：已结算 Run 的事件 30 天，仍有未投递 outbox 的事件不删
+- `run_outbox`：投递后 7 天
+- `request_log`：30 天
+- `feishu_receipts`：7 天
+- `budget_ledger`：13 个月
+- `notification_deliveries`：终态后 7 天
+- 过期凭证：`auth_refresh_tokens`、`oauth_codes`、`oauth_tokens`、`login_states`、`rate_limits`；`password_links` 过期 30 天后
+
+其余表（会话、Run、通知、审计、用量事实）不自动删除。
 
 ## FK 约束总览
 
-`NO ACTION` 表示 schema 未显式指定 `onDelete`，由 PostgreSQL 默认阻止破坏引用完整性的删除。
-
 | 子表.列 | 父表.列 | onDelete |
 |---|---|---|
-| `user_tools.user_id` | `users.id` | CASCADE |
-| `refresh_tokens.user_id` | `users.id` | CASCADE |
-| `account_password_links.user_id` | `users.id` | CASCADE |
-| `user_features.user_id` | `users.id` | CASCADE |
-| `user_provider_tokens.user_id` | `users.id` | CASCADE |
-| `custom_profiles.user_id` | `users.id` | CASCADE |
-| `custom_profiles.owner_backup_user_id` | `users.id` | SET NULL |
-| `custom_profile_versions.profile_id` | `custom_profiles.id` | CASCADE |
-| `user_memories.user_id` | `users.id` | CASCADE |
-| `group_members.group_id` | `user_groups.id` | CASCADE |
-| `group_members.user_id` | `users.id` | CASCADE |
-| `messages.session_id` | `sessions.id` | CASCADE |
-| `chat_files.session_id` | `sessions.id` | CASCADE |
-| `chat_artifact_receipts.session_id` | `sessions.id` | CASCADE |
-| `session_tag_links.tag_id` | `session_tags.id` | CASCADE |
-| `session_group_members.group_id` | `session_groups.id` | CASCADE |
-| `session_group_members.session_id` | `sessions.id` | CASCADE |
-| `llm_calls.session_id` | `sessions.id` | CASCADE |
-| `scheduled_tasks.user_id` | `users.id` | CASCADE |
-| `runtime_runs.parent_run_id` | `runtime_runs.id` | CASCADE |
-| `runtime_steps.run_id` / `.parent_step_id` | `runtime_runs.id` / `runtime_steps.id` | CASCADE / SET NULL |
-| `runtime_tool_calls.run_id` / `.step_id` | `runtime_runs.id` / `runtime_steps.id` | CASCADE / SET NULL |
-| `runtime_artifacts.run_id` / `.step_id` / `.tool_call_id` | `runtime_runs.id` / `runtime_steps.id` / `runtime_tool_calls.id` | CASCADE / SET NULL / SET NULL |
-| `runtime_interrupts.run_id` / `.step_id` / `.tool_call_id` | `runtime_runs.id` / `runtime_steps.id` / `runtime_tool_calls.id` | CASCADE / SET NULL / SET NULL |
-| `runtime_events.run_id` | `runtime_runs.id` | CASCADE |
-| `runtime_outbox.event_id` | `runtime_events.id` | CASCADE |
-| `knowledge_base_versions.doc_id` | `knowledge_base.id` | CASCADE |
-| `knowledge_base_shares.doc_id` | `knowledge_base.id` | CASCADE |
-| `drive_folders.parent_id` | `drive_folders.id` | CASCADE |
-| `email_accounts.user_id` | `users.id` | CASCADE |
-| `drive_files.folder_id` | `drive_folders.id` | CASCADE |
-| `agent_skill_versions.skill_id` | `agent_skills.id` | CASCADE |
+| `auth_refresh_tokens.user_id` | `users.id` | CASCADE |
+| `password_links.user_id` | `users.id` | CASCADE |
+| `role_members.role_id` | `roles.id` | CASCADE |
+| `role_members.user_id` | `users.id` | CASCADE |
+| `role_capabilities.role_id` | `roles.id` | CASCADE |
+| `role_entity_policies.role_id` | `roles.id` | CASCADE |
+| `user_grants.user_id` | `users.id` | CASCADE |
+| `oauth_clients.bound_user_id` | `users.id` | CASCADE |
+| `oauth_grants.user_id` | `users.id` | CASCADE |
+| `oauth_grants.client_id` | `oauth_clients.id` | CASCADE |
+| `oauth_codes.grant_id` | `oauth_grants.id` | CASCADE |
+| `oauth_codes.client_id` | `oauth_clients.id` | CASCADE |
+| `oauth_tokens.grant_id` | `oauth_grants.id` | CASCADE |
+| `gateway_keys.user_id` | `users.id` | CASCADE |
+| `provider_connections.user_id` | `users.id` | CASCADE |
+| `messages.session_id` | `conversations.id` | CASCADE |
+| `conversation_shares.session_id` | `conversations.id` | CASCADE |
+| `conversation_share_reads.session_id` | `conversations.id` | CASCADE |
+| `card_action_receipts.session_id` | `conversations.id` | CASCADE |
+| `runs.parent_run_id` | `runs.id` | CASCADE |
+| `run_steps.run_id` | `runs.id` | CASCADE |
+| `run_steps.parent_step_id` | `run_steps.id` | SET NULL |
+| `run_tool_calls.run_id` | `runs.id` | CASCADE |
+| `run_tool_calls.step_id` | `run_steps.id` | SET NULL |
+| `run_interrupts.run_id` | `runs.id` | CASCADE |
+| `run_interrupts.step_id` | `run_steps.id` | SET NULL |
+| `run_interrupts.tool_call_id` | `run_tool_calls.id` | SET NULL |
+| `run_events.run_id` | `runs.id` | CASCADE |
+| `run_outbox.event_id` | `run_events.id` | CASCADE |
+| `automations.user_id` | `users.id` | CASCADE |
+| `run_profiles.user_id` | `users.id` | CASCADE |
+| `run_profiles.owner_backup_user_id` | `users.id` | SET NULL |
+| `kb_documents.folder_id` | `folders.id` | SET NULL |
+| `kb_versions.doc_id` | `kb_documents.id` | CASCADE |
+| `folders.parent_id` | `folders.id` | CASCADE |
+| `files.folder_id` | `folders.id` | CASCADE |
+| `files.session_id` | `conversations.id` | CASCADE |
+| `file_links.file_id` | `files.id` | CASCADE |
 | `project_members.project_id` | `projects.id` | CASCADE |
 | `tasks.project_id` | `projects.id` | CASCADE |
 | `tasks.parent_id` | `tasks.id` | SET NULL |
 | `task_comments.task_id` | `tasks.id` | CASCADE |
-| `project_activities.project_id` | `projects.id` | CASCADE |
-| `project_activities.task_id` | `tasks.id` | SET NULL |
-| `platform_roles.org_id` | `platform_organizations.id` | CASCADE |
-| `platform_role_bindings.role_id` | `platform_roles.id` | CASCADE |
-| `platform_role_bindings.user_id` | `users.id` | CASCADE |
-| `platform_role_capabilities.role_id` | `platform_roles.id` | CASCADE |
-| `platform_role_entity_policies.role_id` | `platform_roles.id` | CASCADE |
-| `platform_user_capability_overrides.org_id` | `platform_organizations.id` | CASCADE |
-| `platform_user_capability_overrides.user_id` | `users.id` | CASCADE |
-| `platform_user_entity_policy_overrides.org_id` | `platform_organizations.id` | CASCADE |
-| `platform_user_entity_policy_overrides.user_id` | `users.id` | CASCADE |
-| `platform_user_workbench_preferences.org_id` | `platform_organizations.id` | CASCADE |
-| `platform_user_workbench_preferences.user_id` | `users.id` | CASCADE |
-| `platform_oauth_grants.user_id` | `users.id` | CASCADE |
-| `platform_oauth_grants.client_id` | `platform_oauth_clients.id` | CASCADE |
-| `platform_oauth_authorization_codes.grant_id` | `platform_oauth_grants.id` | CASCADE |
-| `platform_oauth_authorization_codes.client_id` | `platform_oauth_clients.id` | CASCADE |
-| `platform_oauth_tokens.grant_id` | `platform_oauth_grants.id` | CASCADE |
-| `table_base_members.base_id` | `table_bases.id` | CASCADE |
 | `table_tables.base_id` | `table_bases.id` | CASCADE |
-| `table_schema_versions.table_id` | `table_tables.id` | CASCADE |
 | `table_fields.table_id` | `table_tables.id` | CASCADE |
-| `table_field_dependencies.field_id` / `.depends_on_field_id` | `table_fields.id` | CASCADE |
+| `table_field_dependencies.field_id` / `depends_on_field_id` | `table_fields.id` | CASCADE |
 | `table_views.table_id` | `table_tables.id` | CASCADE |
-| `table_forms.table_id` | `table_tables.id` | CASCADE |
 | `table_records.table_id` | `table_tables.id` | CASCADE |
 | `table_record_links.field_id` | `table_fields.id` | CASCADE |
-| `table_record_links.source_record_id` / `.target_record_id` | `table_records.id` | CASCADE |
-| `table_record_attachments.record_id` | `table_records.id` | CASCADE |
-| `table_record_attachments.field_id` | `table_fields.id` | CASCADE |
-| `table_record_attachments.drive_file_id` | `drive_files.id` | CASCADE |
-| `table_recompute_jobs.table_id` / `.field_id` / `.record_id` | `table_tables.id` / `table_fields.id` / `table_records.id` | CASCADE |
-| `table_automation_rules.base_id` / `.table_id` | `table_bases.id` / `table_tables.id` | CASCADE |
-| `table_automation_outbox.rule_id` / `.record_id` | `table_automation_rules.id` / `table_records.id` | CASCADE |
-| `table_automation_runs.rule_id` | `table_automation_rules.id` | CASCADE |
-| `table_automation_runs.outbox_id` | `table_automation_outbox.id` | SET NULL |
-| `table_notifications.base_id` | `table_bases.id` | CASCADE |
-| `table_notifications.rule_id` / `.record_id` | `table_automation_rules.id` / `table_records.id` | SET NULL |
-| `table_dashboards.base_id` | `table_bases.id` | CASCADE |
-| `table_dashboard_widgets.dashboard_id` | `table_dashboards.id` | CASCADE |
-| `table_dashboard_widgets.table_id` | `table_tables.id` | CASCADE |
-| `session_shares.session_id` / `session_share_reads.session_id` | `sessions.id` | CASCADE（迁移 0052 补；此前是逻辑关联，删会话会留下孤儿 share 与清不掉的未读角标） |
+| `table_record_links.source_record_id` / `target_record_id` | `table_records.id` | CASCADE |
+| `table_schema_versions.table_id` | `table_tables.id` | CASCADE |
+| `table_recompute_jobs.table_id` | `table_tables.id` | CASCADE |
+| `table_recompute_jobs.field_id` | `table_fields.id` | CASCADE |
+| `table_recompute_jobs.record_id` | `table_records.id` | CASCADE |
+| `notification_deliveries.notification_id` | `notifications.id` | CASCADE |
+| `push_devices.user_id` | `users.id` | CASCADE |
+| `email_accounts.user_id` | `users.id` | CASCADE |
+| `feishu_conversations.session_id` | `conversations.id` | CASCADE |
+| `feishu_conversations.user_id` | `users.id` | CASCADE |
+| `member_computers.user_id` | `users.id` | CASCADE |
+| `skill_versions.skill_id` | `skills.id` | CASCADE |
+| `memories.user_id` | `users.id` | CASCADE |
+| `memories.superseded_by` | `memories.id` | SET NULL |
 
 ## 逻辑关联总览（无 FK）
 
-下表列出需要跨表理解的逻辑引用；`created_by`、`updated_by`、`assigned_by`、`granted_by`、`shared_by`、`uploaded_by` 等审计字段若存 user id，统一视为到 `users.id` 的松散关联。
+`created_by`、`updated_by`、`assigned_by`、`granted_by`、`shared_by`、`added_by`、`changed_by`、`revoked_by`、`decided_by_user_id` 等存 user id 的列一律视为到 `users.id` 的逻辑关联，下表不再逐条列出。
 
 | 字段 | 逻辑目标 | 说明 |
 |---|---|---|
-| `users.created_by` | `users.id` | 账号创建者；删除创建者不影响账号 |
-| `account_password_links.created_by` | `users.id` | 邀请/重置签发者；刻意无 FK，管理员离职不应销毁目标账号的安全历史 |
-| `sessions.user_id` | `users.id` | 会话必须由中央鉴权绑定真实内部用户；无 FK 以保留历史 |
-| `sessions.app_id` | 集成来源标识 | 历史行可能指向已退役的 `api_clients.app_id` |
-| `sessions.parent_session_id` | `sessions.id` | 派生会话谱系；父会话删除不级联 |
-| `chat_files.created_by` | `users.id` | 生成会话文件的内部用户；元数据随 session 级联，主体关系保持松散 |
-| `chat_artifact_receipts.user_id` | `users.id` | 动作回执的执行人；会话删除级联回执，主体关系保持松散 |
-| `session_shares.shared_with` / `session_share_reads.user_id` | `users.id` 或 `__team__` | 指定用户或全团队目标 |
-| `session_tags.user_id` / `session_tag_links.session_id` | `users.id` / `sessions.id` | 用户私有标签及会话链接 |
-| `session_groups.user_id` / `session_group_members.user_id` | `users.id` | 文件夹与归档均为逐用户私有 |
-| `llm_usage.session_id` / `llm_usage.user_id` | `sessions.id` / `users.id` | 用量统计独立保留 |
-| `llm_usage.budget_idempotency_key` | `usage_budget_reservations.idempotency_key` | budget-aware 调用的逻辑结算键；NULL 为 legacy/unbudgeted 行 |
-| `usage_budget_accounts.(scope_type, scope_id)` | user/org/agent/run/eval/provider 对应主体 | 多态额度主体；无 FK，账户与账本永久保留 |
-| `usage_budget_reservations.account_id` | `usage_budget_accounts.id` | 逻辑归属；预留审计不随账户或主体生命周期删除 |
-| `usage_budget_reservations.user_id/run_id/provider_id` | `users.id` / runtime run id / provider id | 调用上下文逻辑引用 |
-| `usage_budget_ledger.account_id/reservation_id` | `usage_budget_accounts.id` / `usage_budget_reservations.id` | append-only 永久账本逻辑引用 |
-| `llm_usage.oauth_client_id` / `service_usage.oauth_client_id` | `platform_oauth_clients.id` | 成员 Agent 的 OAuth client；计价事实独立保留 |
-| `service_usage.user_id/session_id/run_id` | `users.id` / `sessions.id` / runtime run id | 非模型计价事实的逻辑归属 |
-| `service_usage.budget_idempotency_key` | `usage_budget_reservations.idempotency_key` | USD 预留组的逻辑结算键；未定价调用为 NULL |
-| `usage_budget_limits.(scope_type, scope_id)` | organization scope / 服务 id / `users.id`（`*` = 成员默认） | 管理员上限；无 FK |
-| `user_memories.source_session_id` | `sessions.id` | 记忆来源会话 |
-| `user_prompts.source_session_id` | `sessions.id` | 任务固化的来源会话；无 FK，任务比会话活得久 |
-| `user_prompts.artifact_action_id` | `chat_artifact_receipts.id` | 聊天固化 Task 的 exactly-once 恢复键；唯一但无 FK，Task 比会话回执活得久 |
-| `user_memories.superseded_by` | `user_memories.id` | FK SET NULL（自引用）——consolidation 合并后指向取代者 |
-| `tool_frictions.sample_sessions` | `sessions.id` | JSON 数组，最多 5 个可回溯会话（运维遥测，刻意无 FK） |
-| `runtime_runs.owner_user_id` / `.initiated_by_user_id` | `users.id` | 执行归属与发起人；无 FK，永久运行历史不随账号删除 |
-| `runtime_runs.session_id` | `sessions.id` | 可选会话来源；删会话不删除 Runtime 时间线 |
-| `runtime_runs.root_run_id` | `runtime_runs.id` | 根谱系查询；父子实际删除所有权由 `parent_run_id` FK CASCADE 表达 |
-| `runtime_runs.(source_kind, source_id)` | 各领域 run/session/task 表 | Adapter 对领域事实的多态引用；无跨域 FK |
-| `runtime_tool_calls.platform_audit_event_id` | `platform_audit_events.id` | 权限/action 审计逻辑 backlink；两套永久事实各自保留 |
-| `notifications.user_id` / provenance ids | `users.id` / Runtime Run、Interrupt、Event、Agent | 永久逻辑引用；账号或来源退役不删除站内通知 |
-| `notification_delivery_attempts.notification_id` | `notifications.id` | FK CASCADE；送达状态独立于业务结果，只随显式通知根删除 |
-| `notification_delivery_attempts.recipient`（`mobile_push`） | `push_devices.id` | 逻辑引用；设备停用后投递在复核时 suppressed |
-| `push_devices.user_id` | `users.id` | FK CASCADE；账号删除即删除其设备 |
-| `gateway_keys.user_id` | `users.id` | FK CASCADE；账号删除即删除其网关 Key（审计里留着 Key 名与前缀） |
-| `gateway_keys.revoked_by` | `users.id` | 逻辑引用：本人或撤销它的 super |
-| `usage_budget_reservations.idempotency_key`（`gateway:<keyId>:<uuid>`） | `gateway_keys.id` | 网关调用的预留键里带 Key id，预留 metadata 另记 `gateway_key_id`；`llm_usage.budget_idempotency_key` 同键 |
-| `llm_usage.gateway_key_id` | `gateway_keys.id` | 逻辑引用；Key 撤销或随账号删除后，用量事实照常保留 |
-| `member_computers.user_id` | `users.id` | FK CASCADE；账号删除即删除其云电脑记录 |
-| `report_templates.owner_user_id` | `users.id` | 逻辑引用（无 FK）：团队模板比作者长寿；NULL = 内置模板 |
-| `runtime_events.actor_user_id` | `users.id` | Event actor 审计；账号删除后 Event 仍保留 |
-| `runtime_interrupts.assignee_user_id` / `.decided_by_user_id` | `users.id` | 决策负责人和决定人；完整决议独立保留 |
-| `custom_profiles.forked_from` | 系统或自定义 profile id | profile 谱系，不是数据库 FK |
-| `custom_profiles.reviewed_by` | `users.id` 或 `system:agent-governance` | v1.4 退役列：历史审查 actor，不再读写 |
-| `custom_profile_versions.created_by` / `.owner_backup_user_id` | `users.id` | 不可变版本快照中的逻辑引用，账号删除不改写证据 |
-| `knowledge_base.owner_user_id` | `users.id` | private 文档所有者 |
-| `knowledge_base_shares.shared_with` | `users.id` 或 `group:<user_groups.id>` | 用户/小组复合共享目标 |
-| `email_send_log.user_id` | `users.id` | 发起人；审计独立于账号生命周期，刻意无 FK |
-| `email_send_log.account_id` | `email_accounts.id` | personal 发信的来源绑定；绑定被解除后审计仍需可读，故无 FK |
-| `email_send_log.task_id` | `scheduled_tasks.id` | automation 送达的来源任务 |
-| `drive_folders.owner_user_id` / `drive_files.owner_user_id` | `users.id` | KB private scope 所有者 |
-| `drive_folders.base_id` / `drive_files.base_id` | `table_bases.id` | Tables scope Base；受 scope-owner CHECK 与 Service ACL 约束，因 schema 模块环依赖不设物理 FK |
-| `agent_skills.owner_user_id` | `users.id` | 技能需独立于成员生命周期 |
-| `projects.owner_id` / `project_members.user_id` | `users.id` | 项目 owner 与成员 |
-| `tasks.assignee_id` / `task_comments.user_id` / `project_activities.user_id` | `users.id` | 项目协作主体 |
-| `tasks.dependencies` | `tasks.id[]` | JSON 文本中的任务依赖 |
-| `table_bases.owner_id` / `table_base_members.user_id` | `users.id` | Base owner 与显式成员；team 可见性还会给全体 active 内部用户 viewer |
-| `table_views.owner_id` | `users.id` | personal Grid 视图所有者 |
-| Tables 各表的 `created_by/updated_by/added_by/execution_user_id/user_id` | `users.id` | Base 协作、自动化执行与通知主体，跨域松散关联；运行前校验 active internal user |
-| `table_records.values` 中 user/multi_user 值 | `users.id` | 动态用户字段；写入时校验 active internal user |
-| `api_audit_log.app_id` / `user_id` | `platform_oauth_clients.id`（MCP）或 `agent:<user>`（代理）/ `users.id` | 审计独立于主体生命周期，允许保留已删除客户端/用户的历史 |
-| `feature_requests.submitted_by` / `session_id` | `users.id` / `sessions.id` | 需求提出者与上下文 |
-| `platform_app_releases.created_by` | `users.id` | release 发布者 |
-| `platform_audit_events.org_id` | `platform_organizations.id` | 审计不随组织删除 |
-| `platform_audit_events.actor_id` / `on_behalf_of_user_id` | user/service/client principal | 多态审计主体 |
-| `platform_audit_events.client_id` | `platform_oauth_clients.id`（历史行可能是 `api_clients.app_id`） | 多类客户端逻辑标识 |
-| `platform_oauth_clients.created_by` | `users.id` | 动态注册时可空 |
+| `conversations.user_id` | `users.id` | 成员删除后转录留作审计 |
+| `conversation_shares.shared_with` / `conversation_share_reads.user_id` | `users.id` 或 `__team__` | 共享目标 |
+| `card_action_receipts.user_id` | `users.id` | 点按钮的人 |
+| `runs.owner_user_id` / `initiated_by_user_id` | `users.id` | 执行历史比主体长寿 |
+| `runs.session_id` / `source_id` / `root_run_id` | `conversations.id` / 来源对象 / `runs.id` | 来源与根 |
+| `run_events.step_id` / `actor_user_id` | `run_steps.id` / `users.id` | 保留原始标识 |
+| `run_tool_calls.interrupt_id` / `platform_audit_event_id` | `run_interrupts.id` / `audit_events.id` | 反向链接与审计 |
+| `run_interrupts.assignee_user_id` | `users.id` | 决定人 |
+| `automation_occurrences.runtime_run_id` / `task_id` / `owner_user_id` | `runs.id` / `automations.id` / `users.id` | 历史比任务长寿 |
+| `kb_documents.owner_user_id` | `users.id` | 私有文档的主人 |
+| `folders.owner_user_id` / `base_id` / `owner_key` | `users.id` / `table_bases.id` / 扩展对象 | 按 scope 三选一 |
+| `files.owner_user_id` / `base_id` / `owner_key` / `run_id` | `users.id` / `table_bases.id` / 扩展对象 / `runs.id` | 按 source 与 scope |
+| `file_links.target_id` | `table_records.id` / `messages.id` / `tasks.id` / `kb_documents.id` | 按 `target_type`；硬删目标的 service 负责删链接 |
+| `shares.resource_id` / `principal_id` | 按 `resource_type` / `users.id` | 单独分享 |
+| `projects.owner_id`、`project_members.user_id`、`tasks.assignee_id`、`task_comments.user_id` | `users.id` | 项目参与者 |
+| `table_bases.owner_id`、`table_views.owner_id` | `users.id` | 表格库主人、个人视图主人 |
+| `notifications.user_id` / `run_id` / `interrupt_id` / `event_id` / `agent_id` | `users.id` / runs 域 / Agent 标识 | 通知比来源长寿 |
+| `notification_deliveries.recipient` | 渠道收件人（`push_devices.id`、企微 UserId、邮箱…） | 按 `channel` |
+| `usage_events.user_id` / `session_id` / `run_id` / `oauth_client_id` / `gateway_key_id` | 对应主体 | 用量事实独立保留 |
+| `usage_events.budget_idempotency_key` | `budget_reservations.idempotency_key` | 结算键 |
+| `budgets.(scope_type, scope_id)` | user / organization / agent / run / provider / service | 多态额度主体 |
+| `budget_reservations.account_id` / `user_id` / `run_id` | `budgets.id` / `users.id` / `runs.id` | 预留审计不随主体删除 |
+| `budget_ledger.account_id` / `reservation_id` | `budgets.id` / `budget_reservations.id` | append-only |
+| `audit_events.actor_id` / `on_behalf_of_user_id` / `client_id` / `record_id` | 主体 / `users.id` / `oauth_clients.id` / 业务记录 | 审计比主体长寿 |
+| `request_log.user_id` | `users.id` | 请求日志 |
+| `feedback.submitted_by` / `session_id` / `sample_sessions[]` | `users.id` / `conversations.id` | 遥测比会话长寿 |
+| `member_computers.oauth_client_id` / `budget_key` | `oauth_clients.id` / 预留键 | 开机来源与计费 |
+| `report_templates.owner_user_id` | `users.id` | 团队模板比作者长寿 |
+| `skills.owner_user_id` | `users.id` | 技能作者 |
+| `prompts.user_id` / `source_session_id` | `users.id` / `conversations.id` | 任务比来源会话长寿 |
+| `memories.source_session_id` | `conversations.id` | 记忆来源 |
 
-## ER 关系图
+## 关系图
 
-图中 `FK ...` 为数据库约束，`逻辑 ...` 为应用层关联。为保持可读性按域拆图；上方两张关系表是完整、可审查的事实清单。
+`FK` 为数据库约束，`逻辑` 为应用层关联。按域拆图；完整清单以上面两张表为准。
 
-### 用户与会话
+### 身份、权限与外部 Agent
 
 ```mermaid
 erDiagram
-    users ||--o{ user_tools : "FK CASCADE"
-    users ||--o{ refresh_tokens : "FK CASCADE"
-    users ||--o{ account_password_links : "FK CASCADE"
-    users ||--o{ user_features : "FK CASCADE"
-    users ||--o{ user_provider_tokens : "FK CASCADE"
-    users ||--o{ custom_profiles : "FK CASCADE"
-    users ||--o{ custom_profiles : "backup owner SET NULL"
-    custom_profiles ||--o{ custom_profile_versions : "FK CASCADE"
-    users ||--o{ user_memories : "FK CASCADE"
-    users ||--o{ group_members : "FK CASCADE"
-    user_groups ||--o{ group_members : "FK CASCADE"
-    users ||--o{ user_groups : "逻辑 created_by"
-    users ||--o{ user_prompts : "逻辑 user_id"
-    sessions ||--o{ user_prompts : "逻辑 source_session_id"
-    users ||--o{ sessions : "逻辑 user_id"
-    sessions ||--o{ messages : "FK CASCADE"
-    sessions ||--o{ chat_files : "FK CASCADE"
-    sessions ||--o{ chat_artifact_receipts : "FK CASCADE"
-    sessions ||--o{ llm_calls : "FK CASCADE"
-    sessions ||--o{ sessions : "逻辑 parent"
-    sessions ||--o{ session_shares : "FK CASCADE"
-    sessions ||--o{ session_share_reads : "FK CASCADE"
-    users ||--o{ session_tags : "逻辑 user_id"
-    session_tags ||--o{ session_tag_links : "FK CASCADE"
-    sessions ||--o{ session_tag_links : "逻辑 session_id"
-    users ||--o{ session_groups : "逻辑 user_id"
-    session_groups ||--o{ session_group_members : "FK CASCADE"
-    sessions ||--o{ session_group_members : "FK CASCADE"
-    sessions ||--o{ llm_usage : "逻辑 session_id"
-    users ||--o{ llm_usage : "逻辑 user_id"
-    usage_budget_accounts ||--o{ usage_budget_reservations : "逻辑 account_id"
-    usage_budget_accounts ||--o{ usage_budget_ledger : "逻辑 account_id"
-    usage_budget_reservations ||--o{ usage_budget_ledger : "逻辑 reservation_id"
-    usage_budget_reservations ||--o{ llm_usage : "逻辑 idempotency_key"
-    usage_budget_reservations ||--o{ service_usage : "逻辑 idempotency_key"
-    users ||--o{ service_usage : "逻辑 user_id"
-    platform_oauth_clients ||--o{ service_usage : "逻辑 oauth_client_id"
-    users ||--o{ usage_budget_limits : "逻辑 scope_id"
-    users ||--o{ runtime_runs : "逻辑 owner / initiated_by"
-    sessions ||--o{ runtime_runs : "逻辑 session_id"
-    runtime_runs ||--o{ runtime_runs : "FK CASCADE parent"
-    runtime_runs ||--o{ runtime_steps : "FK CASCADE"
-    runtime_steps ||--o{ runtime_steps : "FK SET NULL parent"
-    runtime_runs ||--o{ runtime_tool_calls : "FK CASCADE"
-    runtime_steps ||--o{ runtime_tool_calls : "FK SET NULL"
-    runtime_runs ||--o{ runtime_artifacts : "FK CASCADE"
-    runtime_steps ||--o{ runtime_artifacts : "FK SET NULL"
-    runtime_tool_calls ||--o{ runtime_artifacts : "FK SET NULL"
-    runtime_runs ||--o{ runtime_interrupts : "FK CASCADE"
-    runtime_steps ||--o{ runtime_interrupts : "FK SET NULL"
-    runtime_tool_calls ||--o{ runtime_interrupts : "FK SET NULL"
-    runtime_runs ||--o{ runtime_events : "FK CASCADE"
-    runtime_events ||--o{ runtime_outbox : "FK CASCADE"
-    users ||--o{ notifications : "逻辑 user_id"
-    runtime_runs ||--o{ notifications : "逻辑 run_id"
-    runtime_interrupts ||--o{ notifications : "逻辑 interrupt_id"
-    runtime_events ||--o{ notifications : "逻辑 event_id"
-    notifications ||--o{ notification_delivery_attempts : "FK CASCADE"
-    users ||--o{ scheduled_tasks : "FK CASCADE"
+    users ||--o{ auth_refresh_tokens : "FK CASCADE"
+    users ||--o{ password_links : "FK CASCADE"
+    users ||--o{ role_members : "FK CASCADE"
+    roles ||--o{ role_members : "FK CASCADE"
+    roles ||--o{ role_capabilities : "FK CASCADE"
+    roles ||--o{ role_entity_policies : "FK CASCADE"
+    users ||--o{ user_grants : "FK CASCADE"
+    users ||--o{ oauth_clients : "FK CASCADE bound_user_id"
+    users ||--o{ oauth_grants : "FK CASCADE"
+    oauth_clients ||--o{ oauth_grants : "FK CASCADE"
+    oauth_grants ||--o{ oauth_codes : "FK CASCADE"
+    oauth_clients ||--o{ oauth_codes : "FK CASCADE"
+    oauth_grants ||--o{ oauth_tokens : "FK CASCADE"
+    users ||--o{ gateway_keys : "FK CASCADE"
+    users ||--o{ provider_connections : "FK CASCADE"
+    users ||--o{ push_devices : "FK CASCADE"
     users ||--o{ email_accounts : "FK CASCADE"
+    users ||--o{ member_computers : "FK CASCADE"
+    users ||--o{ memories : "FK CASCADE"
+    memories ||--o{ memories : "FK SET NULL superseded_by"
 ```
 
-### 内容与项目
+### 对话、运行与自动化
 
 ```mermaid
 erDiagram
-    knowledge_base ||--o{ knowledge_base_versions : "FK CASCADE"
-    knowledge_base ||--o{ knowledge_base_shares : "FK CASCADE"
-    user_groups ||--o{ knowledge_base_shares : "逻辑 group target"
-    drive_folders ||--o{ drive_folders : "FK CASCADE parent"
-    drive_folders ||--o{ drive_files : "FK CASCADE"
-    agent_skills ||--o{ agent_skill_versions : "FK CASCADE"
+    users ||--o{ conversations : "逻辑 user_id"
+    conversations ||--o{ messages : "FK CASCADE"
+    conversations ||--o{ conversation_shares : "FK CASCADE"
+    conversations ||--o{ conversation_share_reads : "FK CASCADE"
+    conversations ||--o{ card_action_receipts : "FK CASCADE"
+    conversations ||--o{ files : "FK CASCADE session_id"
+    conversations ||--o{ feishu_conversations : "FK CASCADE"
+    users ||--o{ feishu_conversations : "FK CASCADE"
+    conversations ||--o{ runs : "逻辑 session_id"
+    runs ||--o{ runs : "FK CASCADE parent_run_id"
+    runs ||--o{ run_steps : "FK CASCADE"
+    run_steps ||--o{ run_steps : "FK SET NULL parent_step_id"
+    runs ||--o{ run_tool_calls : "FK CASCADE"
+    run_steps ||--o{ run_tool_calls : "FK SET NULL"
+    runs ||--o{ run_interrupts : "FK CASCADE"
+    run_steps ||--o{ run_interrupts : "FK SET NULL"
+    run_tool_calls ||--o{ run_interrupts : "FK SET NULL"
+    runs ||--o{ run_events : "FK CASCADE"
+    run_events ||--o{ run_outbox : "FK CASCADE"
+    runs ||--o{ files : "逻辑 run_id"
+    users ||--o{ automations : "FK CASCADE"
+    automations ||--o{ automation_occurrences : "逻辑 task_id"
+    runs ||--|| automation_occurrences : "逻辑 runtime_run_id"
+    users ||--o{ run_profiles : "FK CASCADE"
+    users ||--o{ run_profiles : "FK SET NULL owner_backup_user_id"
+    notifications ||--o{ notification_deliveries : "FK CASCADE"
+    runs ||--o{ notifications : "逻辑 run_id"
+    push_devices ||--o{ notification_deliveries : "逻辑 recipient"
+```
+
+### 内容：知识库、文件、项目、表格
+
+```mermaid
+erDiagram
+    folders ||--o{ folders : "FK CASCADE parent_id"
+    folders ||--o{ kb_documents : "FK SET NULL"
+    kb_documents ||--o{ kb_versions : "FK CASCADE"
+    folders ||--o{ files : "FK CASCADE"
+    files ||--o{ file_links : "FK CASCADE"
+    table_records ||--o{ file_links : "逻辑 target_id"
+    tasks ||--o{ file_links : "逻辑 target_id"
+    kb_documents ||--o{ shares : "逻辑 resource_id"
+    table_bases ||--o{ shares : "逻辑 resource_id"
+    table_bases ||--o{ folders : "逻辑 base_id"
     projects ||--o{ project_members : "FK CASCADE"
     projects ||--o{ tasks : "FK CASCADE"
-    tasks ||--o{ tasks : "FK SET NULL parent"
+    tasks ||--o{ tasks : "FK SET NULL parent_id"
     tasks ||--o{ task_comments : "FK CASCADE"
-    projects ||--o{ project_activities : "FK CASCADE"
-    tasks ||--o{ project_activities : "FK SET NULL"
-    table_bases ||--o{ table_base_members : "FK CASCADE"
     table_bases ||--o{ table_tables : "FK CASCADE"
-    table_tables ||--o{ table_schema_versions : "FK CASCADE"
     table_tables ||--o{ table_fields : "FK CASCADE"
-    table_fields ||--o{ table_field_dependencies : "FK CASCADE"
     table_tables ||--o{ table_views : "FK CASCADE"
-    table_tables ||--o{ table_forms : "FK CASCADE"
     table_tables ||--o{ table_records : "FK CASCADE"
-    table_fields ||--o{ table_record_links : "FK CASCADE"
-    table_records ||--o{ table_record_links : "source/target FK CASCADE"
-    table_records ||--o{ table_record_attachments : "FK CASCADE"
-    drive_files ||--o{ table_record_attachments : "FK CASCADE"
+    table_tables ||--o{ table_schema_versions : "FK CASCADE"
     table_tables ||--o{ table_recompute_jobs : "FK CASCADE"
-    table_bases ||--o{ table_automation_rules : "FK CASCADE"
-    table_automation_rules ||--o{ table_automation_outbox : "FK CASCADE"
-    table_automation_rules ||--o{ table_automation_runs : "FK CASCADE"
-    table_bases ||--o{ table_notifications : "FK CASCADE"
-    table_bases ||--o{ table_dashboards : "FK CASCADE"
-    table_dashboards ||--o{ table_dashboard_widgets : "FK CASCADE"
-    table_tables ||--o{ table_dashboard_widgets : "FK CASCADE"
+    table_fields ||--o{ table_field_dependencies : "FK CASCADE"
+    table_fields ||--o{ table_record_links : "FK CASCADE"
+    table_records ||--o{ table_record_links : "FK CASCADE source/target"
+    skills ||--o{ skill_versions : "FK CASCADE"
 ```
 
-### 内部集成与 Platform
+### 用量、预算与审计
 
 ```mermaid
 erDiagram
-    users ||--o{ feature_requests : "逻辑 submitted_by"
-    platform_organizations ||--o{ platform_roles : "FK CASCADE"
-    platform_roles ||--o{ platform_role_bindings : "FK CASCADE"
-    users ||--o{ platform_role_bindings : "FK CASCADE"
-    platform_roles ||--o{ platform_role_capabilities : "FK CASCADE"
-    platform_roles ||--o{ platform_role_entity_policies : "FK CASCADE"
-    platform_organizations ||--o{ platform_user_capability_overrides : "FK CASCADE"
-    users ||--o{ platform_user_capability_overrides : "FK CASCADE"
-    platform_organizations ||--o{ platform_user_entity_policy_overrides : "FK CASCADE"
-    users ||--o{ platform_user_entity_policy_overrides : "FK CASCADE"
-    platform_organizations ||--o{ platform_user_workbench_preferences : "FK CASCADE"
-    users ||--o{ platform_user_workbench_preferences : "FK CASCADE"
-    users ||--o{ platform_app_releases : "逻辑 created_by"
-    platform_organizations ||--o{ platform_audit_events : "逻辑 org_id"
-    users ||--o{ platform_oauth_grants : "FK CASCADE"
-    platform_oauth_clients ||--o{ platform_oauth_grants : "FK CASCADE"
-    platform_oauth_grants ||--o{ platform_oauth_authorization_codes : "FK CASCADE"
-    platform_oauth_clients ||--o{ platform_oauth_authorization_codes : "FK CASCADE"
-    platform_oauth_grants ||--o{ platform_oauth_tokens : "FK CASCADE"
+    budgets ||--o{ budget_reservations : "逻辑 account_id"
+    budgets ||--o{ budget_ledger : "逻辑 account_id"
+    budget_reservations ||--o{ budget_ledger : "逻辑 reservation_id"
+    budget_reservations ||--o{ usage_events : "逻辑 budget_idempotency_key"
+    users ||--o{ usage_events : "逻辑 user_id"
+    runs ||--o{ usage_events : "逻辑 run_id"
+    gateway_keys ||--o{ usage_events : "逻辑 gateway_key_id"
+    users ||--o{ audit_events : "逻辑 actor_id / on_behalf_of_user_id"
+    oauth_clients ||--o{ audit_events : "逻辑 client_id"
+    run_tool_calls ||--o| audit_events : "逻辑 platform_audit_event_id"
+    users ||--o{ request_log : "逻辑 user_id"
+    conversations ||--o{ feedback : "逻辑 session_id / sample_sessions"
 ```
 
-## 全文搜索与数据流
+## 全文搜索
 
-- 查询先 AND、再 OR、最后 `ILIKE`；含设备型号时执行设备硬过滤。
+- `kb_documents`：应用层用 jieba 分词（`segmentForFts`，`services/fts.ts`）写 `search_a`（title + tags）、`search_b`（summary + questions）、`search_c`（content + topics）；`search_tsv` 是生成列，GIN 索引 `idx_kb_documents_search`，配置 `simple`。
+- 查询侧同一个 `segmentForFts`，AND → OR 补位 → `ILIKE` 兜底。
+- 消息正文没有分词列：查询词分词后对 `content` 做 `strpos` 子串匹配。
 
 ## 维护检查
 
-每次 schema 变化都必须：
+每次 schema 变化：
 
-1. 在仓库根目录运行 `drizzle-kit generate`，审查 SQL 的数据丢失、类型转换和回填风险。
-2. 确认 `drizzle/meta/_journal.json` 与 snapshot 的 `id/prevId` 连续。
-3. 运行 `./node_modules/.bin/drizzle-kit check`。
-4. 更新本文的表目录、FK、逻辑关联与 ER 图。
+1. 改 `schema/*.ts`，在仓库根目录 `pnpm drizzle-kit generate`，审查生成的 SQL。
+2. `./node_modules/.bin/drizzle-kit check` 校验 journal 与 snapshot。
+3. `pnpm db:migrate` 应用到本地库。
+4. 更新本文的表目录、FK、逻辑关联与关系图；新表在 `ids.ts` 登记前缀。

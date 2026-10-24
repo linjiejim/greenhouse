@@ -16,9 +16,6 @@ const mocks = vi.hoisted(() => ({
     syncLegacyRoleBinding: vi.fn(),
     recordAudit: vi.fn(),
   },
-  usageBudget: {
-    ensureMonthlyUserAccount: vi.fn(),
-  },
 }));
 
 vi.mock('@greenhouse/db', async (importOriginal) => ({
@@ -41,7 +38,6 @@ function createApp() {
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.users.resetPasswordAndRevokeSessions.mockResolvedValue({ id: 'retired-user', auth_version: 1 });
-  mocks.usageBudget.ensureMonthlyUserAccount.mockResolvedValue(undefined);
   mocks.users.getById.mockResolvedValue({
     id: 'retired-user',
     role: 'external',
@@ -134,7 +130,7 @@ describe('retired external account conversion', () => {
     expect(mocks.refreshTokens.revokeAllForUser).not.toHaveBeenCalled();
   });
 
-  it('ignores the retired daily-message limit while accepting the monthly token cap', async () => {
+  it('ignores the retired per-member quota keys', async () => {
     const existing = {
       id: 'team-user',
       email: 'team@example.com',
@@ -142,20 +138,18 @@ describe('retired external account conversion', () => {
       role: 'team',
       status: 'active',
       password_hash: 'hash',
-      daily_message_limit: 200,
-      monthly_token_limit: 20_000_000,
     };
     mocks.users.getById.mockResolvedValue(existing);
-    mocks.users.update.mockResolvedValue({ ...existing, monthly_token_limit: 5_000_000 });
+    mocks.users.update.mockResolvedValue({ ...existing, nickname: 'Renamed' });
 
     const response = await createApp().request('/api/admin/users/team-user', {
       method: 'PATCH',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ daily_message_limit: 1, monthly_token_limit: 5_000_000 }),
+      body: JSON.stringify({ nickname: 'Renamed', daily_message_limit: 1, monthly_token_limit: 5_000_000 }),
     });
 
     expect(response.status).toBe(200);
-    expect(mocks.users.update).toHaveBeenCalledWith('team-user', { monthly_token_limit: 5_000_000 });
+    expect(mocks.users.update).toHaveBeenCalledWith('team-user', { nickname: 'Renamed' });
   });
 
   it('resets the password through the atomic credential-revocation operation', async () => {

@@ -1,154 +1,156 @@
 /**
  * Session pin service — per-user pinned conversations (PostgreSQL).
  *
- * Pins live in the `session_groups` / `session_group_members` tables as a
- * built-in system group (`kind = 'pinned'`, auto-provisioned per user). Custom
- * folders (`kind = 'custom'`) were removed in 1.5; their rows stay in the same
- * tables untouched, and every query here is scoped to the user's Pinned group.
+ * A pin lives where the pinning person's state on the conversation lives:
+ * the owner pins on `conversations` (`pinned_at` / `pin_position`); anyone
+ * else — the recipient of a share — pins on their own
+ * `conversation_share_reads` row, which is upserted (its `read_at` may stay
+ * null). Every user's pins are therefore private and independent.
  *
- * Membership rows carry `user_id`, so every user's pins are private and
- * independent — including on sessions shared to them by someone else.
+ * `pin_position` orders one user's pins ascending across both places; a new pin
+ * goes after the user's last one.
  */
 
-import { eq, and, desc, inArray } from 'drizzle-orm';
+import { and, eq, inArray, isNotNull, sql } from 'drizzle-orm';
 import { nowIso } from '@greenhouse/utils/date';
-import { isUniqueViolation } from '@greenhouse/utils/error';
 
 import type { Db } from '../client.js';
-import { sessionGroups, sessionGroupMembers } from '../schema/index.js';
-import type { SessionGroupRow } from '../schema/session-group.js';
-
-const PINNED_KIND = 'pinned';
-const PINNED_GROUP_NAME = 'Pinned';
+import { newId } from '../ids.js';
+import { conversations, conversationShareReads } from '../schema/index.js';
 
 export function createSessionPinService(db: Db) {
-  async function findPinnedGroup(userId: string): Promise<SessionGroupRow | undefined> {
-    const rows = await db
-      .select()
-      .from(sessionGroups)
-      .where(and(eq(sessionGroups.user_id, userId), eq(sessionGroups.kind, PINNED_KIND)))
+  /** Whether `userId` owns the conversation; undefined when it does not exist. */
+  async function ownsSession(userId: string, sessionId: string): Promise<boolean | undefined> {
+    const [row] = await db
+      .select({ user_id: conversations.user_id })
+      .from(conversations)
+      .where(eq(conversations.id, sessionId))
       .limit(1);
-    return rows[0];
+    if (!row) return undefined;
+    return row.user_id === userId;
   }
 
-  /** Lazily provision (or fetch) this user's built-in Pinned group. */
-  async function getOrCreatePinnedGroup(userId: string): Promise<SessionGroupRow> {
-    const existing = await findPinnedGroup(userId);
-    if (existing) return existing;
-    const now = nowIso();
-    try {
-      const rows = await db
-        .insert(sessionGroups)
-        .values({
-          user_id: userId,
-          name: PINNED_GROUP_NAME,
-          color: '#F59E0B',
-          icon: 'pin',
-          kind: PINNED_KIND,
-          sort_order: -1,
-          created_at: now,
-          updated_at: now,
-        })
-        .returning();
-      return rows[0]!;
-    } catch (err) {
-      // A concurrent pin provisioned it first, or a legacy folder is named "Pinned".
-      if (isUniqueViolation(err)) {
-        const again = await findPinnedGroup(userId);
-        if (again) return again;
-      }
-      throw err;
-    }
+  async function nextPinPosition(userId: string): Promise<number> {
+    const rows = await db.execute<{ max: number | null }>(sql`
+      SELECT max(pos)::int AS max FROM (
+        SELECT ${conversations.pin_position} AS pos FROM ${conversations}
+        WHERE ${conversations.user_id} = ${userId} AND ${conversations.pinned_at} IS NOT NULL
+        UNION ALL
+        SELECT ${conversationShareReads.pin_position} AS pos FROM ${conversationShareReads}
+        WHERE ${conversationShareReads.user_id} = ${userId} AND ${conversationShareReads.pinned_at} IS NOT NULL
+      ) pins
+    `);
+    const max = rows[0]?.max;
+    return max == null ? 0 : Number(max) + 1;
   }
 
-  async function maxPinSort(groupId: number): Promise<number> {
-    const rows = await db
-      .select({ sort_order: sessionGroupMembers.sort_order })
-      .from(sessionGroupMembers)
-      .where(eq(sessionGroupMembers.group_id, groupId))
-      .orderBy(desc(sessionGroupMembers.sort_order))
-      .limit(1);
-    return rows[0]?.sort_order ?? -1;
+  /** Pinned session ids (with positions) of this user, optionally narrowed to `sessionIds`. */
+  async function pinsOf(
+    userId: string,
+    sessionIds?: string[],
+  ): Promise<Array<{ session_id: string; position: number }>> {
+    const owned = await db
+      .select({ session_id: conversations.id, position: conversations.pin_position })
+      .from(conversations)
+      .where(
+        and(
+          eq(conversations.user_id, userId),
+          isNotNull(conversations.pinned_at),
+          ...(sessionIds ? [inArray(conversations.id, sessionIds)] : []),
+        ),
+      );
+    const received = await db
+      .select({ session_id: conversationShareReads.session_id, position: conversationShareReads.pin_position })
+      .from(conversationShareReads)
+      .where(
+        and(
+          eq(conversationShareReads.user_id, userId),
+          isNotNull(conversationShareReads.pinned_at),
+          ...(sessionIds ? [inArray(conversationShareReads.session_id, sessionIds)] : []),
+        ),
+      );
+    return [...owned, ...received];
   }
 
   return {
+    /** Pin a conversation for this user; pinning an already pinned one is a no-op. */
     async pin(userId: string, sessionId: string): Promise<void> {
-      const pinned = await getOrCreatePinnedGroup(userId);
-      const sort = (await maxPinSort(pinned.id)) + 1;
+      const owner = await ownsSession(userId, sessionId);
+      if (owner === undefined) return;
+      const position = await nextPinPosition(userId);
+      const now = nowIso();
+      if (owner) {
+        await db
+          .update(conversations)
+          .set({ pinned_at: now, pin_position: position })
+          .where(and(eq(conversations.id, sessionId), sql`${conversations.pinned_at} IS NULL`));
+        return;
+      }
       await db
-        .insert(sessionGroupMembers)
+        .insert(conversationShareReads)
         .values({
-          user_id: userId,
-          group_id: pinned.id,
+          id: newId('conversationShareRead'),
           session_id: sessionId,
-          kind: PINNED_KIND,
-          sort_order: sort,
-          created_at: nowIso(),
+          user_id: userId,
+          read_at: null,
+          pinned_at: now,
+          pin_position: position,
         })
-        .onConflictDoNothing();
+        .onConflictDoUpdate({
+          target: [conversationShareReads.session_id, conversationShareReads.user_id],
+          set: { pinned_at: now, pin_position: position },
+          setWhere: sql`${conversationShareReads.pinned_at} IS NULL`,
+        });
     },
 
     async unpin(userId: string, sessionId: string): Promise<void> {
-      const pinned = await findPinnedGroup(userId);
-      if (!pinned) return;
       await db
-        .delete(sessionGroupMembers)
-        .where(
-          and(
-            eq(sessionGroupMembers.user_id, userId),
-            eq(sessionGroupMembers.group_id, pinned.id),
-            eq(sessionGroupMembers.session_id, sessionId),
-          ),
-        );
+        .update(conversations)
+        .set({ pinned_at: null, pin_position: 0 })
+        .where(and(eq(conversations.id, sessionId), eq(conversations.user_id, userId)));
+      await db
+        .update(conversationShareReads)
+        .set({ pinned_at: null, pin_position: 0 })
+        .where(and(eq(conversationShareReads.session_id, sessionId), eq(conversationShareReads.user_id, userId)));
     },
 
     /** Reorder the user's pinned sessions. Ids that are not pinned are ignored. */
     async reorder(userId: string, updates: Array<{ session_id: string; sort_order: number }>): Promise<void> {
-      const pinned = await findPinnedGroup(userId);
-      if (!pinned) return;
       await Promise.all(
-        updates.map((u) =>
+        updates.flatMap((u) => [
           db
-            .update(sessionGroupMembers)
-            .set({ sort_order: u.sort_order })
+            .update(conversations)
+            .set({ pin_position: u.sort_order })
             .where(
               and(
-                eq(sessionGroupMembers.user_id, userId),
-                eq(sessionGroupMembers.group_id, pinned.id),
-                eq(sessionGroupMembers.session_id, u.session_id),
+                eq(conversations.id, u.session_id),
+                eq(conversations.user_id, userId),
+                isNotNull(conversations.pinned_at),
               ),
             ),
-        ),
+          db
+            .update(conversationShareReads)
+            .set({ pin_position: u.sort_order })
+            .where(
+              and(
+                eq(conversationShareReads.session_id, u.session_id),
+                eq(conversationShareReads.user_id, userId),
+                isNotNull(conversationShareReads.pinned_at),
+              ),
+            ),
+        ]),
       );
     },
 
     /** Session ids the user has pinned. */
     async getPinnedSessionIds(userId: string): Promise<string[]> {
-      const pinned = await findPinnedGroup(userId);
-      if (!pinned) return [];
-      const rows = await db
-        .select({ session_id: sessionGroupMembers.session_id })
-        .from(sessionGroupMembers)
-        .where(and(eq(sessionGroupMembers.user_id, userId), eq(sessionGroupMembers.group_id, pinned.id)));
-      return rows.map((r) => r.session_id);
+      return (await pinsOf(userId)).map((pin) => pin.session_id);
     },
 
     /** Pin sort order per pinned session among `sessionIds`; unpinned sessions are absent. */
     async getPinSortsForUser(userId: string, sessionIds: string[]): Promise<Map<string, number>> {
       if (sessionIds.length === 0) return new Map();
-      const pinned = await findPinnedGroup(userId);
-      if (!pinned) return new Map();
-      const rows = await db
-        .select({ session_id: sessionGroupMembers.session_id, sort_order: sessionGroupMembers.sort_order })
-        .from(sessionGroupMembers)
-        .where(
-          and(
-            eq(sessionGroupMembers.user_id, userId),
-            eq(sessionGroupMembers.group_id, pinned.id),
-            inArray(sessionGroupMembers.session_id, sessionIds),
-          ),
-        );
-      return new Map(rows.map((r) => [r.session_id, r.sort_order]));
+      return new Map((await pinsOf(userId, sessionIds)).map((pin) => [pin.session_id, pin.position]));
     },
   };
 }

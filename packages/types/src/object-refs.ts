@@ -21,12 +21,12 @@ export const OBJECT_REF_TYPES = ['doc', 'file', 'folder', 'task', 'project', 're
 export type ObjectRefType = (typeof OBJECT_REF_TYPES)[number];
 
 export type ObjectRef =
-  | { type: 'doc'; id: number }
-  | { type: 'file'; id: number }
-  | { type: 'folder'; id: number }
-  | { type: 'task'; id: number; projectId: number }
-  | { type: 'project'; id: number }
-  | { type: 'record'; id: number; baseId: number | null; tableId: number }
+  | { type: 'doc'; id: string }
+  | { type: 'file'; id: string }
+  | { type: 'folder'; id: string }
+  | { type: 'task'; id: string; projectId: string }
+  | { type: 'project'; id: string }
+  | { type: 'record'; id: string; baseId: string | null; tableId: string }
   | { type: 'conversation'; id: string };
 
 /** The app's URL scheme (apps/mobile/app.json `scheme`). */
@@ -58,11 +58,15 @@ export interface ParseObjectUrlOptions {
   origins?: readonly string[];
 }
 
-/** A positive integer, or null. Rejects `01`, `1.5`, `1e3`, `-1`, ``. */
-function positiveInt(raw: string | null | undefined): number | null {
-  if (!raw || !/^[1-9][0-9]*$/.test(raw)) return null;
-  const n = Number(raw);
-  return Number.isSafeInteger(n) ? n : null;
+/**
+ * A row id, or null. Ids are text since 3.0: a prefixed ULID for new rows
+ * (`doc_01J…`) or the decimal string of a carried 1.x row (`12`). Rejects `01`,
+ * `1.5`, `1e3`, `-1`, `` and anything else.
+ */
+function rowId(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  if (/^[1-9][0-9]{0,15}$/.test(raw)) return raw;
+  return /^[a-z]{2,4}_[0-9A-HJKMNP-TV-Z]{26}$/.test(raw) ? raw : null;
 }
 
 /** Conversation ids are opaque strings (uuid today). */
@@ -95,11 +99,11 @@ function parseHashRoute(route: string): ObjectRef | null {
   if (head === 'knowledge' && segments.length === 3) {
     if (a === 'doc') {
       const dash = b!.indexOf('-');
-      const id = positiveInt(dash === -1 ? b : b!.slice(0, dash));
+      const id = rowId(dash === -1 ? b : b!.slice(0, dash));
       return id === null ? null : { type: 'doc', id };
     }
     if (a === 'folder') {
-      const id = positiveInt(b);
+      const id = rowId(b);
       return id === null ? null : { type: 'folder', id };
     }
     return null;
@@ -107,25 +111,25 @@ function parseHashRoute(route: string): ObjectRef | null {
 
   // #/files?file=<id> · #/files?folder=<id> — a file wins over its folder.
   if (head === 'files' && segments.length === 1) {
-    const file = positiveInt(params.get('file'));
+    const file = rowId(params.get('file'));
     if (file !== null) return { type: 'file', id: file };
-    const folder = positiveInt(params.get('folder'));
+    const folder = rowId(params.get('folder'));
     return folder === null ? null : { type: 'folder', id: folder };
   }
 
   // #/projects/<id> · #/projects/<id>?task=<taskId>
   if (head === 'projects' && segments.length === 2) {
-    const id = positiveInt(a);
+    const id = rowId(a);
     if (id === null) return null;
-    const task = positiveInt(params.get('task'));
+    const task = rowId(params.get('task'));
     return task === null ? { type: 'project', id } : { type: 'task', id: task, projectId: id };
   }
 
   // #/tables/<baseId>/table/<tableId>?record=<id>
   if (head === 'tables' && b === 'table' && segments.length === 4) {
-    const baseId = positiveInt(a);
-    const tableId = positiveInt(c);
-    const record = positiveInt(params.get('record'));
+    const baseId = rowId(a);
+    const tableId = rowId(c);
+    const record = rowId(params.get('record'));
     if (baseId === null || tableId === null || record === null) return null;
     return { type: 'record', id: record, baseId, tableId };
   }
@@ -145,37 +149,37 @@ function parseAppLink(rest: string): ObjectRef | null {
   const route = segments.join('/');
   switch (route) {
     case 'knowledge/doc': {
-      const id = positiveInt(params.get('id'));
+      const id = rowId(params.get('id'));
       return id === null ? null : { type: 'doc', id };
     }
     case 'knowledge': {
-      const id = positiveInt(params.get('folder'));
+      const id = rowId(params.get('folder'));
       return id === null ? null : { type: 'folder', id };
     }
     case 'files': {
-      const file = positiveInt(params.get('file'));
+      const file = rowId(params.get('file'));
       if (file !== null) return { type: 'file', id: file };
-      const folder = positiveInt(params.get('folder'));
+      const folder = rowId(params.get('folder'));
       return folder === null ? null : { type: 'folder', id: folder };
     }
     case 'file-preview': {
-      const id = positiveInt(params.get('id'));
+      const id = rowId(params.get('id'));
       return id === null ? null : { type: 'file', id };
     }
     case 'projects/detail': {
-      const id = positiveInt(params.get('id'));
+      const id = rowId(params.get('id'));
       return id === null ? null : { type: 'project', id };
     }
     case 'projects/task': {
-      const id = positiveInt(params.get('task'));
-      const projectId = positiveInt(params.get('project'));
+      const id = rowId(params.get('task'));
+      const projectId = rowId(params.get('project'));
       return id === null || projectId === null ? null : { type: 'task', id, projectId };
     }
     case 'tables/record': {
-      const id = positiveInt(params.get('record') ?? params.get('id'));
-      const tableId = positiveInt(params.get('table'));
+      const id = rowId(params.get('record') ?? params.get('id'));
+      const tableId = rowId(params.get('table'));
       if (id === null || tableId === null) return null;
-      return { type: 'record', id, tableId, baseId: positiveInt(params.get('base')) };
+      return { type: 'record', id, tableId, baseId: rowId(params.get('base')) };
     }
     case 'chat': {
       const id = conversationId(params.get('session'));

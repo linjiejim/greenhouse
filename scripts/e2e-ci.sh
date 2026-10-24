@@ -12,7 +12,7 @@
 #   docker run -d --name greenhouse-e2e-pg -e POSTGRES_DB=greenhouse_e2e \
 #     -e POSTGRES_USER=greenhouse -e POSTGRES_PASSWORD=greenhouse \
 #     -p 127.0.0.1:5439:5432 postgres:16-alpine
-#   DATABASE_URL=postgresql://greenhouse:greenhouse@localhost:5439/greenhouse_e2e npx drizzle-kit migrate
+#   DATABASE_URL=postgresql://greenhouse:greenhouse@localhost:5439/greenhouse_e2e pnpm db:migrate
 #
 # Usage:
 #   pnpm test:e2e:ci                 # defaults below

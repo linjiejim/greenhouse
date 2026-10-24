@@ -60,10 +60,8 @@ export const analyzeImageSchema = z.object({
     .string()
     .optional()
     .describe('The uploaded image ID or a public HTTPS image URL to analyze. Pass this or file_id.'),
-  file_id: z
-    .number()
-    .int()
-    .positive()
+  file_id: z.coerce
+    .string()
     .optional()
     .describe('An image in Files (云盘), by the id files_query returns. Pass this or image_id.'),
   question: z
@@ -147,7 +145,7 @@ async function loadStoredImage(ref: string): Promise<LoadedImage | null> {
 }
 
 /** An image in Files the caller may read (team shelf or their own), by drive access. */
-async function resolveFilesImage(ctx: AnalyzeImageContext, fileId: number): Promise<ImageResolution> {
+async function resolveFilesImage(ctx: AnalyzeImageContext, fileId: string): Promise<ImageResolution> {
   const read = await readCabinetFileBytes(ctx, { fileId, maxBytes: MAX_FILES_IMAGE_BYTES });
   if ('error' in read) throw new Error(read.error);
   const contentType = detectImageContentType(read.bytes);

@@ -160,7 +160,8 @@ export function normalizeProfileId(profileId?: string | null): string | undefine
 }
 
 export interface CustomProfileReference {
-  profileId: number;
+  /** The run profile row id (text; 1.x rows keep their old number as a string). */
+  profileId: string;
   version?: number;
 }
 
@@ -169,21 +170,24 @@ export interface ProfileExecutionActor {
   role: 'team' | 'super';
 }
 
-/** Parse the canonical mutable (`custom:7`) or immutable (`custom:7@3`) reference. */
+/**
+ * Parse the canonical mutable (`custom:<id>`) or pinned (`custom:<id>@3`)
+ * reference. Ids are opaque text (`rpf_01J…`, or `7` for a 1.x Agent).
+ */
 export function parseCustomProfileReference(profileId: string): CustomProfileReference | null {
-  const match = /^custom:(\d+)(?:@(\d+))?$/.exec(profileId);
+  const match = /^custom:([A-Za-z0-9][A-Za-z0-9_.-]{0,127})(?:@(\d+))?$/.exec(profileId);
   if (!match) return null;
   const version = match[2] ? Number(match[2]) : undefined;
-  return { profileId: Number(match[1]), ...(version ? { version } : {}) };
+  return { profileId: match[1]!, ...(version ? { version } : {}) };
 }
 
 /**
  * Revalidate a pinned custom Agent at the execution boundary.
  *
- * Resolving an immutable manifest proves what will run, but not whether the
- * current actor may still run it. Owners/super always may; everyone else only
- * while the Agent is shared with the team. The pinned version itself keeps
- * resolving after later edits — unsharing is what revokes access.
+ * Resolving the manifest proves what will run, but not whether the current
+ * actor may still run it. Owners/super always may; everyone else only while
+ * the Agent is shared with the team. A pin keeps resolving after later edits
+ * (to the current configuration since 3.0) — unsharing is what revokes access.
  */
 export async function assertPinnedProfileExecutionAccess(
   database: DatabaseProvider,
@@ -197,7 +201,7 @@ export async function assertPinnedProfileExecutionAccess(
   // Each reason is the run's error message: an automation whose run profile
   // went away fails saying why, never falls back to another profile.
   if (!reference?.version) {
-    throw new Error(`${surface} run profile reference is not pinned to an immutable version`);
+    throw new Error(`${surface} run profile reference is not pinned to a version`);
   }
   const asset = await database.customProfiles.getById(reference.profileId);
   if (!asset) throw new Error(`${surface} run profile no longer exists — pick another one`);
@@ -351,7 +355,7 @@ export async function resolveProfileAsync(
       // instructions and cost policy while presenting the missing Agent's id.
       throw new Error(`Custom profile not found: "${normalized}"`);
     }
-    const versionNumber = reference.version ?? row.current_version;
+    const versionNumber = reference.version ?? row.version;
     const version = await db.customProfiles.getVersion(reference.profileId, versionNumber);
     if (!version) throw new Error(`Custom profile version not found: "custom:${reference.profileId}@${versionNumber}"`);
 
@@ -370,7 +374,7 @@ export async function resolveProfileAsync(
     } catch {
       baseProfile = getDefaultProfile();
     }
-    const tools: string[] = JSON.parse(version.tools);
+    const tools: string[] = Array.isArray(version.tools) ? version.tools : [];
 
     return {
       id: `custom:${reference.profileId}@${versionNumber}`,

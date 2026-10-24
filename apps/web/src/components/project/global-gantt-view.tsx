@@ -44,7 +44,7 @@ export interface GlobalGanttFilter {
 }
 
 interface GanttProject {
-  id: number;
+  id: string;
   title: string;
   description: string | null;
   status: string;
@@ -75,7 +75,7 @@ export function GlobalGanttView({
   zoom?: GlobalGanttZoom;
   filter?: GlobalGanttFilter;
   users?: Array<{ id: string; nickname: string }>;
-  onNavigateToProject?: (projectId: number) => void;
+  onNavigateToProject?: (projectId: string) => void;
   onRefresh?: () => void;
 }) {
   const t = useT();
@@ -83,19 +83,19 @@ export function GlobalGanttView({
 
   const [projects, setProjects] = useState<GanttProject[]>([]);
   const [loading, setLoading] = useState(true);
-  const [expandedProjects, setExpandedProjects] = useState<Set<number>>(() => {
+  const [expandedProjects, setExpandedProjects] = useState<Set<string>>(() => {
     try {
       const saved = localStorage.getItem('global-gantt-expanded-projects');
-      if (saved) return new Set(JSON.parse(saved) as number[]);
+      if (saved) return new Set((JSON.parse(saved) as Array<string | number>).map(String));
     } catch (_err) {
       /* ignore */
     }
     return new Set();
   });
-  const [expandedTasks, setExpandedTasks] = useState<Set<number>>(() => {
+  const [expandedTasks, setExpandedTasks] = useState<Set<string>>(() => {
     try {
       const saved = localStorage.getItem('global-gantt-expanded-tasks');
-      if (saved) return new Set(JSON.parse(saved) as number[]);
+      if (saved) return new Set((JSON.parse(saved) as Array<string | number>).map(String));
     } catch (_err) {
       /* ignore */
     }
@@ -107,8 +107,8 @@ export function GlobalGanttView({
 
   // Create task dialog
   const [showCreate, setShowCreate] = useState(false);
-  const [createProjectId, setCreateProjectId] = useState<number | undefined>();
-  const [createParentId, setCreateParentId] = useState<number | undefined>();
+  const [createProjectId, setCreateProjectId] = useState<string | undefined>();
+  const [createParentId, setCreateParentId] = useState<string | undefined>();
   const [createDates, setCreateDates] = useState<{ start?: string; end?: string }>({});
 
   // Pending delete
@@ -160,7 +160,7 @@ export function GlobalGanttView({
 
   // ── Optimistic task update helper ─────────────────────
 
-  const optimisticUpdateTask = useCallback((taskId: number, updates: Record<string, any>) => {
+  const optimisticUpdateTask = useCallback((taskId: string, updates: Record<string, any>) => {
     setProjects((prev) =>
       prev.map((p) => ({
         ...p,
@@ -171,7 +171,7 @@ export function GlobalGanttView({
 
   // ── Toggle Helpers ─────────────────────────────────────
 
-  const toggleProject = useCallback((id: number) => {
+  const toggleProject = useCallback((id: string) => {
     setExpandedProjects((prev) => {
       const next = new Set(prev);
       next.has(id) ? next.delete(id) : next.add(id);
@@ -184,7 +184,7 @@ export function GlobalGanttView({
     });
   }, []);
 
-  const toggleTask = useCallback((id: number) => {
+  const toggleTask = useCallback((id: string) => {
     setExpandedTasks((prev) => {
       const next = new Set(prev);
       next.has(id) ? next.delete(id) : next.add(id);
@@ -198,8 +198,8 @@ export function GlobalGanttView({
   }, []);
 
   const handleExpandAll = useCallback(() => {
-    const pIds = new Set<number>();
-    const tIds = new Set<number>();
+    const pIds = new Set<string>();
+    const tIds = new Set<string>();
     for (const p of projects) {
       pIds.add(p.id);
       collectParentIds(p.tasks, tIds);
@@ -346,11 +346,10 @@ export function GlobalGanttView({
   // ── Batch actions ───────────────────────────────────────
 
   const handleBatchAction = useCallback(
-    async (action: string, value: string | undefined, ids: number[], clear: () => void) => {
+    async (action: string, value: string | undefined, ids: string[], clear: () => void) => {
       // Batch move to another project
       if (action === 'move' && value) {
-        const targetProjectId = parseInt(value, 10);
-        if (isNaN(targetProjectId)) return;
+        const targetProjectId = value;
         for (const id of ids) optimisticUpdateTask(id, { project_id: targetProjectId });
         await Promise.all(ids.map((id) => moveTask(id, targetProjectId)));
         const targetName = projects.find((p) => p.id === targetProjectId)?.title || t('common.selectProject');
@@ -381,7 +380,7 @@ export function GlobalGanttView({
   // ── Drag sort ───────────────────────────────────────────
 
   const handleSortDrop = useCallback(
-    async (sourceId: number, targetIdx: number) => {
+    async (sourceId: string, targetIdx: number) => {
       // Get target row info
       const targetRow = rows[targetIdx];
       if (!targetRow || targetRow.kind !== 'task') return;
@@ -782,7 +781,7 @@ export function GlobalGanttView({
 
 // ── Helper: recursively update a task in nested tree ─────
 
-function updateTasksRecursive(tasks: Task[], taskId: number, updates: Record<string, any>): Task[] {
+function updateTasksRecursive(tasks: Task[], taskId: string, updates: Record<string, any>): Task[] {
   return tasks.map((t) => {
     if (t.id === taskId) return { ...t, ...updates };
     if (t.children?.length) return { ...t, children: updateTasksRecursive(t.children, taskId, updates) };

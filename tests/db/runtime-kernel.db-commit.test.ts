@@ -115,9 +115,9 @@ describe('Runtime Kernel concurrency', () => {
         timezone: task.timezone,
         enabled: task.enabled,
         max_steps: task.max_steps,
-        notify_webhook: task.notify_webhook,
-        notify_email: task.notify_email,
-        notify_wecom: task.notify_wecom,
+        notify: task.notify,
+        quiet_when_empty: task.quiet_when_empty,
+        unattended_tools: task.unattended_tools,
       },
       run: {
         id: runId,

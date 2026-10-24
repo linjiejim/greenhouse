@@ -40,6 +40,7 @@ import { bodyLimit } from 'hono/body-limit';
 import { z } from 'zod';
 import { getDb } from '@greenhouse/db';
 import type { DriveScope, DriveFolderRow } from '@greenhouse/db';
+import { toRowId } from '@greenhouse/utils/id';
 import { logger } from '@greenhouse/utils/logger';
 import { toErrorMessage } from '@greenhouse/utils/error';
 import { getAuthUser } from '../auth/middleware.js';
@@ -74,7 +75,7 @@ interface ScopeKeys {
   scope: DriveScope;
   visibility: 'team' | 'private' | null;
   owner_user_id: string | null;
-  base_id: number | null;
+  base_id: string | null;
   owner_key: string | null;
 }
 
@@ -90,7 +91,7 @@ function isCoreScope(scope: string): scope is 'kb' | 'tables' {
 function buildScopeKeys(
   c: Context<AppEnv>,
   scope: DriveScope,
-  input: { base_id?: number | null; visibility?: 'team' | 'private'; owner_key?: string | null },
+  input: { base_id?: string | null; visibility?: 'team' | 'private'; owner_key?: string | null },
 ): ScopeKeys | { error: string } {
   if (!isCoreScope(scope)) {
     if (!input.owner_key) return { error: `owner_key is required for the ${scope} scope` };
@@ -150,11 +151,22 @@ function parseScopeParam(v?: string): DriveScope | null {
   return v && isKnownDriveScope(v) ? v : null;
 }
 
+/** A row id from the query string, or null (absent or malformed). */
+function idOrNull(v?: string | null): string | null {
+  return v == null || v === '' ? null : toRowId(v);
+}
+
 function parseIntOrNull(v?: string | null): number | null {
   if (v == null || v === '') return null;
   const n = Number(v);
   return Number.isInteger(n) ? n : null;
 }
+
+/** A row id in a JSON body: text, or a legacy number. Stays a string in the schema. */
+const rowIdSchema = z.coerce
+  .string()
+  .trim()
+  .regex(/^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$/, 'Invalid id');
 
 /** Any registered scope — `isKnownDriveScope` is the gate, not a fixed enum. */
 const scopeEnum = z.string().refine(isKnownDriveScope, { message: 'unknown scope' });
@@ -162,10 +174,10 @@ const visibilityEnum = z.enum(['team', 'private']);
 
 const folderCreateSchema = z.object({
   scope: scopeEnum,
-  base_id: z.number().int().positive().optional(),
+  base_id: rowIdSchema.optional(),
   owner_key: z.string().min(1).max(128).optional(),
   visibility: visibilityEnum.optional(),
-  parent_id: z.number().int().positive().optional(),
+  parent_id: rowIdSchema.optional(),
   name: z
     .string()
     .min(1)
@@ -181,16 +193,16 @@ const folderUpdateSchema = z
       .transform((s) => s.trim())
       .refine((s) => s.length > 0, 'name is required')
       .optional(),
-    parent_id: z.number().int().positive().nullable().optional(),
+    parent_id: rowIdSchema.nullable().optional(),
   })
   .refine((v) => v.name !== undefined || v.parent_id !== undefined, 'nothing to update');
 
 const fileInitSchema = z.object({
   scope: scopeEnum,
-  base_id: z.number().int().positive().optional(),
+  base_id: rowIdSchema.optional(),
   owner_key: z.string().min(1).max(128).optional(),
   visibility: visibilityEnum.optional(),
-  folder_id: z.number().int().positive().optional(),
+  folder_id: rowIdSchema.optional(),
   name: z.string().min(1),
   size: z.number().int().nonnegative(),
   content_type: z.string().optional(),
@@ -205,7 +217,7 @@ const fileUpdateSchema = z
       .transform((s) => s.trim())
       .refine((s) => s.length > 0, 'name is required')
       .optional(),
-    folder_id: z.number().int().positive().nullable().optional(),
+    folder_id: rowIdSchema.nullable().optional(),
   })
   .refine((v) => v.name !== undefined || v.folder_id !== undefined, 'nothing to update');
 
@@ -218,7 +230,7 @@ const drive = new Hono<AppEnv>()
     if (!scope) return c.json({ error: 'invalid scope' }, 400);
     const visRaw = c.req.query('visibility');
     const keys = buildScopeKeys(c, scope, {
-      base_id: parseIntOrNull(c.req.query('base_id')),
+      base_id: idOrNull(c.req.query('base_id')),
       owner_key: c.req.query('owner_key') ?? null,
       visibility: visRaw === 'team' || visRaw === 'private' ? visRaw : undefined,
     });
@@ -235,7 +247,7 @@ const drive = new Hono<AppEnv>()
       owner_key: keys.owner_key ?? undefined,
       visibility: keys.visibility ?? undefined,
       owner_user_id: keys.owner_user_id ?? undefined,
-      parent_id: parentParam === 'all' ? undefined : parseIntOrNull(parentParam),
+      parent_id: parentParam === 'all' ? undefined : idOrNull(parentParam),
     });
     return c.json({ folders });
   })
@@ -275,7 +287,7 @@ const drive = new Hono<AppEnv>()
     return c.json({ folder });
   })
   .put('/folders/:id', async (c) => {
-    const id = Number(c.req.param('id'));
+    const id = c.req.param('id');
     const parsed = folderUpdateSchema.safeParse(await c.req.json().catch(() => null));
     if (!parsed.success) return c.json({ error: 'invalid input' }, 400);
 
@@ -307,7 +319,7 @@ const drive = new Hono<AppEnv>()
     return c.json({ folder: result.folder });
   })
   .delete('/folders/:id', async (c) => {
-    const id = Number(c.req.param('id'));
+    const id = c.req.param('id');
     const db = getDb();
     const folder = await db.drive.getFolder(id);
     if (!folder) return c.json({ error: 'not found' }, 404);
@@ -318,7 +330,7 @@ const drive = new Hono<AppEnv>()
     return c.json({ ok: true });
   })
   .get('/breadcrumb', async (c) => {
-    const folderId = parseIntOrNull(c.req.query('folder_id'));
+    const folderId = idOrNull(c.req.query('folder_id'));
     if (folderId == null) return c.json({ folders: [] });
     const db = getDb();
     const folder = await db.drive.getFolder(folderId);
@@ -342,7 +354,7 @@ const drive = new Hono<AppEnv>()
     if (!scope) return c.json({ error: 'invalid scope' }, 400);
     const visRaw = c.req.query('visibility');
     const keys = buildScopeKeys(c, scope, {
-      base_id: parseIntOrNull(c.req.query('base_id')),
+      base_id: idOrNull(c.req.query('base_id')),
       owner_key: c.req.query('owner_key') ?? null,
       visibility: visRaw === 'team' || visRaw === 'private' ? visRaw : undefined,
     });
@@ -355,7 +367,7 @@ const drive = new Hono<AppEnv>()
       owner_key: keys.owner_key ?? undefined,
       visibility: keys.visibility ?? undefined,
       owner_user_id: keys.owner_user_id ?? undefined,
-      folder_id: parseIntOrNull(c.req.query('folder_id')),
+      folder_id: idOrNull(c.req.query('folder_id')),
     });
     return c.json({ files });
   })
@@ -412,7 +424,7 @@ const drive = new Hono<AppEnv>()
     return c.json({ file_id: file.id, mode: 'proxy', upload_url: `/api/drive/files/${file.id}/content` });
   })
   .post('/files/:id/complete', async (c) => {
-    const id = Number(c.req.param('id'));
+    const id = c.req.param('id');
     const db = getDb();
     const file = await db.drive.getFile(id);
     if (!file) return c.json({ error: 'not found' }, 404);
@@ -445,7 +457,7 @@ const drive = new Hono<AppEnv>()
       onError: (c) => c.json({ error: 'file too large' }, 413),
     }),
     async (c) => {
-      const id = Number(c.req.param('id'));
+      const id = c.req.param('id');
       const db = getDb();
       const file = await db.drive.getFile(id);
       if (!file) return c.json({ error: 'not found' }, 404);
@@ -469,7 +481,7 @@ const drive = new Hono<AppEnv>()
     },
   )
   .get('/files/:id/content', async (c) => {
-    const id = Number(c.req.param('id'));
+    const id = c.req.param('id');
     const file = await getDb().drive.getFile(id);
     if (!file || file.status !== 'active') return c.json({ error: 'not found' }, 404);
     if (!canReadDrive(await accessFor(c, toNode(file), 'read'))) return c.json({ error: 'forbidden' }, 403);
@@ -492,7 +504,7 @@ const drive = new Hono<AppEnv>()
     return c.body(Uint8Array.from(obj.buffer).buffer);
   })
   .put('/files/:id', async (c) => {
-    const id = Number(c.req.param('id'));
+    const id = c.req.param('id');
     const parsed = fileUpdateSchema.safeParse(await c.req.json().catch(() => null));
     if (!parsed.success) return c.json({ error: 'invalid input' }, 400);
 
@@ -523,7 +535,7 @@ const drive = new Hono<AppEnv>()
     return c.json({ file: updated });
   })
   .delete('/files/:id', async (c) => {
-    const id = Number(c.req.param('id'));
+    const id = c.req.param('id');
     const db = getDb();
     const file = await db.drive.getFile(id);
     if (!file) return c.json({ error: 'not found' }, 404);

@@ -9,7 +9,6 @@ interface ModulePageContract {
 
 const MODULE_PAGES: ModulePageContract[] = [
   { file: './preferences.tsx', moduleId: 'settings.preferences', layout: 'form' },
-  { file: './groups.tsx', moduleId: 'settings.groups', layout: 'list' },
   { file: './agent-access/index.tsx', moduleId: 'settings.agent-connections', layout: 'list' },
   { file: './provider-bindings.tsx', moduleId: 'settings.provider-bindings', layout: 'form' },
   { file: './email-accounts.tsx', moduleId: 'settings.email-accounts', layout: 'list' },

@@ -35,6 +35,16 @@ export const SCHEMA_PLAN_ROLE_RANK: Record<TableBaseRole, number> = {
 
 // ─── Wire schema (shared by the chat tool and the apply route) ───
 
+/**
+ * A Tables row id (Base, table, field, view, record). Ids are opaque strings;
+ * an agent that remembered an old numeric id may still send a number, so it is
+ * coerced. Stays a plain string in the JSON Schema the model sees.
+ */
+export const tableRowIdSchema = z.coerce
+  .string()
+  .trim()
+  .regex(/^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$/, 'Invalid id');
+
 const refSchema = z
   .string()
   .min(1)
@@ -55,7 +65,7 @@ const fieldConfigSchema = z.object({
   options: z.array(selectOptionSchema).max(100).optional().describe('Choices for single_select / multi_select.'),
   relation: z
     .object({
-      targetTableId: z.number().int().positive().describe('Linked table. Must be in the SAME Base.'),
+      targetTableId: tableRowIdSchema.describe('Linked table id. Must be in the SAME Base.'),
       multiple: z.boolean().optional().describe('Allow linking several records.'),
     })
     .optional(),
@@ -67,8 +77,8 @@ const fieldConfigSchema = z.object({
     .optional(),
   rollup: z
     .object({
-      relationFieldId: z.number().int().positive().describe('A relation field in THIS table.'),
-      targetFieldId: z.number().int().positive().describe('A field in the related table.'),
+      relationFieldId: tableRowIdSchema.describe('A relation field in THIS table.'),
+      targetFieldId: tableRowIdSchema.describe('A field in the related table.'),
       aggregation: z.enum(['count', 'sum', 'avg', 'min', 'max', 'join']),
     })
     .optional(),
@@ -91,7 +101,7 @@ export const schemaPlanOperationSchema = z.discriminatedUnion('op', [
   }),
   z.object({
     op: z.literal('base.update'),
-    baseId: z.number().int().positive(),
+    baseId: tableRowIdSchema,
     name: z.string().min(1).max(200).optional(),
     description: z.string().max(2000).nullable().optional(),
     visibility: z.enum(['private', 'team']).optional(),
@@ -100,20 +110,20 @@ export const schemaPlanOperationSchema = z.discriminatedUnion('op', [
     op: z.literal('table.create'),
     ref: refSchema.optional().describe('Plan-local name, needed only if later operations add fields to it.'),
     baseRef: refSchema.optional().describe('A Base this plan creates. Exactly one of baseRef / baseId.'),
-    baseId: z.number().int().positive().optional().describe('An existing Base. Exactly one of baseRef / baseId.'),
+    baseId: tableRowIdSchema.optional().describe('An existing Base. Exactly one of baseRef / baseId.'),
     name: z.string().min(1).max(200),
     description: z.string().max(2000).optional(),
   }),
   z.object({
     op: z.literal('table.update'),
-    tableId: z.number().int().positive(),
+    tableId: tableRowIdSchema,
     name: z.string().min(1).max(200).optional(),
     description: z.string().max(2000).nullable().optional(),
   }),
   z.object({
     op: z.literal('field.create'),
     tableRef: refSchema.optional().describe('A table this plan creates. Exactly one of tableRef / tableId.'),
-    tableId: z.number().int().positive().optional().describe('An existing table. Exactly one of tableRef / tableId.'),
+    tableId: tableRowIdSchema.optional().describe('An existing table. Exactly one of tableRef / tableId.'),
     name: z.string().min(1).max(200),
     type: z.enum(TABLE_FIELD_TYPES),
     required: z.boolean().optional(),
@@ -123,16 +133,16 @@ export const schemaPlanOperationSchema = z.discriminatedUnion('op', [
   }),
   z.object({
     op: z.literal('field.update'),
-    tableId: z.number().int().positive().describe('The table this field belongs to.'),
-    fieldId: z.number().int().positive(),
+    tableId: tableRowIdSchema.describe('The table this field belongs to.'),
+    fieldId: tableRowIdSchema,
     name: z.string().min(1).max(200).optional(),
     required: z.boolean().optional(),
     config: fieldConfigSchema.optional().describe('Replaces the whole config — resend every select option you keep.'),
   }),
   z.object({
     op: z.literal('field.archive'),
-    tableId: z.number().int().positive().describe('The table this field belongs to.'),
-    fieldId: z.number().int().positive(),
+    tableId: tableRowIdSchema.describe('The table this field belongs to.'),
+    fieldId: tableRowIdSchema,
   }),
 ]);
 
@@ -144,11 +154,11 @@ export const schemaPlanApplySchema = z.object({
 
 export interface SchemaPlanShape {
   /** Existing Base ids the plan touches → the role it needs on each. */
-  baseRequirements: Map<number, TableBaseRole>;
+  baseRequirements: Map<string, TableBaseRole>;
   /** Existing table ids the plan touches → the role it needs on their Base. */
-  tableRequirements: Map<number, TableBaseRole>;
+  tableRequirements: Map<string, TableBaseRole>;
   /** field.update / field.archive targets, checked against their table's real schema. */
-  fieldTargets: Array<{ tableId: number; fieldId: number }>;
+  fieldTargets: Array<{ tableId: string; fieldId: string }>;
 }
 
 function raise(role: TableBaseRole, current: TableBaseRole | undefined): TableBaseRole {
@@ -252,29 +262,29 @@ export type SchemaPlanDispatch = (
 ) => Promise<PlatformActionResult>;
 
 /** Reads `data.base.id`, `data.table.id`, `data.field.id` … without trusting the shape. */
-function nestedId(data: unknown, key: string): number | undefined {
+function nestedId(data: unknown, key: string): string | undefined {
   if (!data || typeof data !== 'object') return undefined;
   const nested = (data as Record<string, unknown>)[key];
   if (!nested || typeof nested !== 'object') return undefined;
   const id = (nested as { id?: unknown }).id;
-  return typeof id === 'number' ? id : undefined;
+  return typeof id === 'string' && id ? id : undefined;
 }
 
 export async function applySchemaPlan(
   operations: SchemaPlanOperation[],
   dispatch: SchemaPlanDispatch,
 ): Promise<SchemaPlanApplyResult> {
-  const baseIds = new Map<string, number>();
-  const tableIds = new Map<string, number>();
+  const baseIds = new Map<string, string>();
+  const tableIds = new Map<string, string>();
   /** Refs whose object was never created, so anything hanging off them is skipped rather than misapplied. */
   const unresolved = new Map<string, string>();
   const results: SchemaPlanOperationResult[] = [];
-  const touchedBases = new Set<number>();
+  const touchedBases = new Set<string>();
 
   for (const [index, operation] of operations.entries()) {
     const skip = (message: string) => results.push({ index, op: operation.op, status: 'skipped', message });
     const fail = (message: string) => results.push({ index, op: operation.op, status: 'failed', message });
-    const applied = (id?: number) =>
+    const applied = (id?: string) =>
       results.push({ index, op: operation.op, status: 'applied', ...(id === undefined ? {} : { id }) });
 
     switch (operation.op) {

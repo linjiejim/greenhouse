@@ -47,3 +47,17 @@ export function fakeMeteringServices() {
   };
   return { accounts, ensureAccount, reserve, metering };
 }
+
+/**
+ * A `usageBudget.reserve` double that sends token reservations (the
+ * organization / provider token accounts, ids ending `:tokens` in
+ * `fakeMeteringServices`) to `tokens` and every other (USD) reservation to `usd`.
+ */
+export function routeReserve(
+  tokens: (input: { account_ids: readonly string[] }) => unknown,
+  usd: (input: { account_ids: readonly string[] }) => unknown,
+) {
+  return vi.fn(async (input: { account_ids: readonly string[] }) =>
+    input.account_ids.every((id) => id.endsWith(':tokens')) ? tokens(input) : usd(input),
+  );
+}

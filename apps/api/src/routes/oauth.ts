@@ -175,14 +175,14 @@ async function issueTokenPair(grantId: string, resource: string, scopes: OAuthSc
       token_hash: hashOAuthCredential(accessToken),
       token_type: 'access',
       resource,
-      scopes: JSON.stringify(scopes),
+      scopes: scopes,
       expires_at: expiresAt(OAUTH_ACCESS_TOKEN_TTL_SECONDS),
     },
     {
       token_hash: hashOAuthCredential(refreshToken),
       token_type: 'refresh',
       resource,
-      scopes: JSON.stringify(scopes),
+      scopes: scopes,
       expires_at: expiresAt(OAUTH_REFRESH_TOKEN_TTL_SECONDS),
     },
   );
@@ -241,7 +241,7 @@ const oauthRoutes = new Hono<AppEnv>()
     const client = await getDb().platformOAuth.registerClient({
       id: generateOAuthClientId(),
       client_name: parsed.data.client_name,
-      redirect_uris: JSON.stringify(redirectUris),
+      redirect_uris: redirectUris,
     });
     noStore(c);
     return c.json(
@@ -440,7 +440,7 @@ const oauthRoutes = new Hono<AppEnv>()
         token_hash: hashOAuthCredential(accessToken),
         token_type: 'access',
         resource: getMcpResourceUrl(),
-        scopes: JSON.stringify(scopes),
+        scopes: scopes,
         expires_at: expiresAt(OAUTH_ACCESS_TOKEN_TTL_SECONDS),
       });
       if (!created) return oauthError(c, 400, 'invalid_grant', 'The current grant no longer permits token issuance');
@@ -536,7 +536,7 @@ const oauthRoutes = new Hono<AppEnv>()
       user_id: user.id,
       client_id: validated.value.client.id,
       resource: validated.value.resource,
-      scopes: JSON.stringify(grantedScopes),
+      scopes: grantedScopes,
     });
     const rawCode = generateAuthorizationCode();
     await getDb().platformOAuth.createAuthorizationCode({
@@ -545,7 +545,7 @@ const oauthRoutes = new Hono<AppEnv>()
       client_id: validated.value.client.id,
       redirect_uri: validated.value.redirectUri,
       resource: validated.value.resource,
-      scopes: JSON.stringify(grantedScopes),
+      scopes: grantedScopes,
       code_challenge: validated.value.input.code_challenge,
       expires_at: expiresAt(OAUTH_AUTHORIZATION_CODE_TTL_SECONDS),
     });

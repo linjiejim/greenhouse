@@ -182,7 +182,7 @@ export function ExampleNotePeek({ id }: { id: string }) {
 }
 
 /** A section every knowledge document gets while this extension is active. */
-export function ExampleDocPanel(_props: { docId: number }) {
+export function ExampleDocPanel(_props: { docId: string }) {
   const t = useT();
   return (
     <section className="mt-6 rounded-xl border border-dashed border-edge px-4 py-3">

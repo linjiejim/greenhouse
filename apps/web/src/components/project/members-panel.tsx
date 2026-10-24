@@ -12,7 +12,7 @@ import { useT } from '../../lib/i18n';
 interface MembersPanelProps {
   open: boolean;
   onClose: () => void;
-  projectId: number;
+  projectId: string;
   members: ProjectMember[];
   users: Array<{ id: string; nickname: string }>;
   onUpdate: () => void;

@@ -17,7 +17,7 @@ import { getTask, listTasks, type TaskActor } from '../scheduler/task-center.js'
 
 const automationQuerySchema = z.object({
   action: z.enum(['list', 'get']).describe('list: all of my automations. get: one automation plus its recent runs.'),
-  id: z.number().int().optional().describe('Automation id — required for get.'),
+  id: z.coerce.string().optional().describe('Automation id — required for get.'),
 });
 
 type AutomationQueryInput = z.infer<typeof automationQuerySchema>;

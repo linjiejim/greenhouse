@@ -177,7 +177,7 @@ export const DocReference = Extension.create({
             hint: d.slug,
             // Insert a real Link MARK, not raw markdown text: the serializer
             // escapes `[` in plain text (`\[title\]`), which would break the link
-            // in canonical Markdown and stop backlinks from being detected.
+            // in canonical Markdown.
             run: (e: Editor, r: Range) =>
               e
                 .chain()

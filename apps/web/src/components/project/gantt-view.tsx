@@ -57,12 +57,12 @@ export function GanttView({
   onDragCreate?: (startDate: string, endDate: string) => void;
   onContextAction?: (action: string, task: Task) => void;
   users?: Array<{ id: string; nickname: string }>;
-  onBatchUpdate?: (taskIds: number[], updates: Record<string, any>) => void;
+  onBatchUpdate?: (taskIds: string[], updates: Record<string, any>) => void;
 }) {
   const t = useT();
 
   // Expand/Collapse state for Gantt
-  const [ganttExpanded, setGanttExpanded] = useState<Set<number>>(new Set());
+  const [ganttExpanded, setGanttExpanded] = useState<Set<string>>(new Set());
 
   const [pendingDeleteTask, setPendingDeleteTask] = useState<Task | null>(null);
 
@@ -105,7 +105,7 @@ export function GanttView({
 
   // ── Toggle expand/collapse ──────────────────────────────
 
-  const handleGanttToggle = useCallback((id: number) => {
+  const handleGanttToggle = useCallback((id: string) => {
     setGanttExpanded((prev) => {
       const next = new Set(prev);
       next.has(id) ? next.delete(id) : next.add(id);
@@ -124,7 +124,7 @@ export function GanttView({
   // ── Batch actions ───────────────────────────────────────
 
   const handleBatchAction = useCallback(
-    async (action: string, value: string | undefined, ids: number[], clear: () => void) => {
+    async (action: string, value: string | undefined, ids: string[], clear: () => void) => {
       const updates: Record<string, string | null> = {};
 
       if (action === 'status' && value) updates.status = value;
@@ -183,7 +183,7 @@ export function GanttView({
   // ── Drag Sort ───────────────────────────────────────────
 
   const handleSortDrop = useCallback(
-    async (sourceId: number, targetIdx: number) => {
+    async (sourceId: string, targetIdx: number) => {
       const sourceTask = filteredTasks.find((t) => t.id === sourceId);
       if (!sourceTask) return;
       const targetTask = filteredTasks[targetIdx];

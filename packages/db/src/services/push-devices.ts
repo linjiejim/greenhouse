@@ -13,14 +13,14 @@
  * credential generation, and seen in the last 90 days.
  */
 
-import { randomBytes } from 'node:crypto';
 import { and, asc, desc, eq, gte, isNull, ne, sql } from 'drizzle-orm';
 import { normalizePushPrefs, type PushPrefs } from '@greenhouse/types/push';
 import { nowIso } from '@greenhouse/utils/date';
 
 import type { Db } from '../client.js';
+import { newId } from '../ids.js';
 import { pushDevices } from '../schema/index.js';
-import type { PushDeviceDisabledReason, PushDeviceRow } from '../schema/push-device.js';
+import type { PushDeviceDisabledReason, PushDeviceRow } from '../schema/index.js';
 
 /** A device not refreshed for this long gets nothing. */
 export const PUSH_DEVICE_STALE_MS = 90 * 24 * 60 * 60 * 1000;
@@ -43,18 +43,12 @@ export interface RegisterPushDeviceInput {
 }
 
 function newDeviceId(): string {
-  return `pdv_${randomBytes(8).toString('hex')}`;
+  return newId('pushDevice');
 }
 
 /** The row's prefs, complete (stored JSON is never trusted to be). */
 export function pushDevicePrefs(row: Pick<PushDeviceRow, 'prefs'>): PushPrefs {
-  let parsed: unknown = {};
-  try {
-    parsed = JSON.parse(row.prefs);
-  } catch {
-    // A broken value reads as the defaults.
-  }
-  return normalizePushPrefs(parsed);
+  return normalizePushPrefs(row.prefs ?? {});
 }
 
 /**
@@ -96,7 +90,7 @@ export function createPushDeviceService(db: Db) {
               platform: input.platform,
               project_id: input.project_id,
               client_ref: input.client_ref,
-              prefs: JSON.stringify(normalizePushPrefs(input.prefs ?? {})),
+              prefs: { ...normalizePushPrefs(input.prefs ?? {}) },
               auth_version: input.auth_version,
               created_at: now,
               last_seen_at: now,
@@ -114,7 +108,7 @@ export function createPushDeviceService(db: Db) {
               platform: input.platform,
               project_id: input.project_id,
               client_ref: input.client_ref,
-              prefs: JSON.stringify(normalizePushPrefs(input.prefs ?? {}, base)),
+              prefs: { ...normalizePushPrefs(input.prefs ?? {}, base) },
               auth_version: input.auth_version,
               last_seen_at: now,
               disabled_at: null,
@@ -199,7 +193,7 @@ export function createPushDeviceService(db: Db) {
         if (!row) return undefined;
         const [updated] = await tx
           .update(pushDevices)
-          .set({ prefs: JSON.stringify(normalizePushPrefs(prefs, pushDevicePrefs(row))) })
+          .set({ prefs: { ...normalizePushPrefs(prefs, pushDevicePrefs(row)) } })
           .where(eq(pushDevices.id, row.id))
           .returning();
         return updated;

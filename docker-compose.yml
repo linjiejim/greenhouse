@@ -34,7 +34,7 @@ services:
   # One-shot: applies the migration chain, then exits. The API waits for it.
   migrate:
     build: .
-    command: ['./node_modules/.bin/drizzle-kit', 'migrate']
+    command: ['./node_modules/.bin/tsx', 'apps/api/src/cli/index.ts', 'db', 'migrate']
     restart: 'no'
     depends_on:
       postgres:

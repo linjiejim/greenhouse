@@ -184,7 +184,7 @@ describe('Knowledge Base Repository — content_json staleness safety net', () =
     // must not survive, or the editor would render the previous content.
     const updated = await db.knowledgeBase.update(doc.id, { content: 'new body' }, alice.id);
     expect(updated!.content).toBe('new body');
-    expect(updated!.content_json).toBe('{}');
+    expect(updated!.content_json).toEqual({});
   });
 
   it('leaves content_json untouched on metadata-only updates', async () => {
@@ -202,7 +202,7 @@ describe('Knowledge Base Repository — content_json staleness safety net', () =
     });
 
     const updated = await db.knowledgeBase.update(doc.id, { tags: ['x'] }, alice.id);
-    expect(updated!.content_json).toBe(json);
+    expect(updated!.content_json).toEqual(JSON.parse(json));
   });
 });
 

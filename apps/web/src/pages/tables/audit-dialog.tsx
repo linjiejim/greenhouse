@@ -7,7 +7,7 @@ import { useT, type TranslationKey } from '../../lib/i18n';
 
 interface TablesAuditDialogProps {
   open: boolean;
-  baseId: number;
+  baseId: string;
   users: Array<{ id: string; nickname: string; email: string }>;
   onClose: () => void;
 }
@@ -28,11 +28,6 @@ const ACTION_LABELS: Record<string, TranslationKey> = {
   updateRecord: 'tables.audit.updateRecord',
   batchUpsertRecords: 'tables.audit.batchUpsertRecords',
   deleteRecord: 'tables.audit.deleteRecord',
-  createDashboard: 'tables.audit.createDashboard',
-  updateDashboard: 'tables.audit.updateDashboard',
-  createDashboardWidget: 'tables.audit.createDashboardWidget',
-  updateDashboardWidget: 'tables.audit.updateDashboardWidget',
-  deleteDashboardWidget: 'tables.audit.deleteDashboardWidget',
   listBaseAudit: 'tables.audit.listBaseAudit',
 };
 

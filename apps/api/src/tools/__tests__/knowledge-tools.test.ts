@@ -20,17 +20,17 @@ vi.mock('../../platform/knowledge/agent-adapter.js', () => ({
 const { createKnowledgeQueryTool } = await import('../knowledge-query.js');
 
 interface Doc {
-  id: number;
+  id: string;
   doc_id: string;
   scope: string;
   title: string;
   content: string;
-  tags: string | null;
+  tags: string[] | null;
   _summary: string | null;
   status: string;
   visibility: string;
   owner_user_id: string | null;
-  folder_id: number | null;
+  folder_id: string | null;
 }
 
 function fakeDb(docs: Record<string, Doc>, searchResults: unknown[] = []): DatabaseProvider {
@@ -46,14 +46,14 @@ function fakeDb(docs: Record<string, Doc>, searchResults: unknown[] = []): Datab
       async list() {
         return rows;
       },
-      async listByIds(ids: number[]) {
+      async listByIds(ids: string[]) {
         return rows.filter((d) => ids.includes(d.id));
       },
       async get(docId: string, scope: string) {
         const doc = docs[docId];
         return doc && doc.scope === scope ? doc : undefined;
       },
-      async getById(id: number) {
+      async getById(id: string) {
         return rows.find((d) => d.id === id);
       },
     },
@@ -83,7 +83,7 @@ const base: Omit<Doc, 'id' | 'doc_id' | 'title' | 'content' | 'visibility' | 'ow
 
 const teamDoc: Doc = {
   ...base,
-  id: 37,
+  id: '37',
   doc_id: 'team-1',
   title: 'SOP',
   content: 'team content',
@@ -92,7 +92,7 @@ const teamDoc: Doc = {
 };
 const myDoc: Doc = {
   ...base,
-  id: 41,
+  id: '41',
   doc_id: 'mine-1',
   title: 'My note',
   content: 'private content',
@@ -101,7 +101,7 @@ const myDoc: Doc = {
 };
 const otherDoc: Doc = {
   ...base,
-  id: 42,
+  id: '42',
   doc_id: 'other-1',
   title: 'Other note',
   content: 'secret',
@@ -134,7 +134,7 @@ describe('knowledge_query team scope guard', () => {
  * from the retired scoped tools (knowledge_query did NOT have it), so these
  * cases are the ones proving the merge did not regress.
  */
-describe('knowledge_query get by numeric id', () => {
+describe('knowledge_query get by row id', () => {
   const t = createKnowledgeQueryTool(fakeDb({ 'team-1': teamDoc, 'mine-1': myDoc }), ctx);
 
   it('resolves a numeric row id', async () => {
@@ -147,8 +147,8 @@ describe('knowledge_query get by numeric id', () => {
   });
 
   it('prefers a digits-only text doc_id over the numeric fallback', async () => {
-    const collision: Doc = { ...teamDoc, id: 88, doc_id: '37', content: 'keyed by digits' };
-    const shadowed: Doc = { ...teamDoc, id: 37, doc_id: 'unrelated', content: 'row 37' };
+    const collision: Doc = { ...teamDoc, id: '88', doc_id: '37', content: 'keyed by digits' };
+    const shadowed: Doc = { ...teamDoc, id: '37', doc_id: 'unrelated', content: 'row 37' };
     const tool = createKnowledgeQueryTool(fakeDb({ '37': collision, unrelated: shadowed }), ctx);
     const r = (await tool.execute({ action: 'get', scope: 'team', doc_id: '37' }, opts)) as { content?: string };
     expect(r.content).toBe('keyed by digits');
@@ -161,7 +161,7 @@ describe('knowledge_query get by numeric id', () => {
   });
 
   it('refuses a numeric id whose row is outside the shared scope', async () => {
-    const foreign: Doc = { ...teamDoc, id: 55, doc_id: 'foreign-1', scope: 'archive' };
+    const foreign: Doc = { ...teamDoc, id: '55', doc_id: 'foreign-1', scope: 'archive' };
     const tool = createKnowledgeQueryTool(fakeDb({ 'foreign-1': foreign }), ctx);
     const r = (await tool.execute({ action: 'get', scope: 'team', doc_id: '55' }, opts)) as { error?: string };
     expect(r.error).toContain('not found');
@@ -240,12 +240,12 @@ describe('knowledge_query read modes', () => {
  */
 describe('knowledge_query weak-match honesty', () => {
   const hit = (relevance: number) => ({
-    id: 37,
+    id: '37',
     doc_id: 'team-1',
     title: 'SOP',
     _summary: '',
     snippet: '…',
-    tags: '[]',
+    tags: [],
     relevance,
     folder_id: null,
   });

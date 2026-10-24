@@ -9,7 +9,6 @@
 import { randomUUID } from 'node:crypto';
 import { tool } from 'ai';
 import { z } from 'zod';
-import { safeJsonParse } from '@greenhouse/utils/json';
 import { toErrorMessage } from '@greenhouse/utils/error';
 import { markdownToTiptapJson } from '@greenhouse/knowledge-editor/markdown';
 import { entityUrl } from '@greenhouse/types/entity-links';
@@ -40,7 +39,7 @@ export const knowledgeMutationSchema = z.object({
     ])
     .describe('Bounded knowledge mutation action.'),
   scope: z.enum(['team', 'personal']).default('team').describe('Team shared doc or current-user personal doc.'),
-  doc_id: z
+  doc_id: z.coerce
     .string()
     .optional()
     .describe('Document id. Required for update/archive/restore/share; optional for create.'),
@@ -96,10 +95,7 @@ export const knowledgeMutationSchema = z.object({
     .enum(['reader', 'editor'])
     .optional()
     .describe('Role to grant on share_doc (default reader). reader = read-only, editor = read+write.'),
-  share_targets: z
-    .array(z.string())
-    .optional()
-    .describe('share/unshare targets: user ids, or "group:<id>" for a whole group. Personal docs only.'),
+  share_targets: z.array(z.string()).optional().describe('share/unshare targets: user ids. Personal docs only.'),
   change_reason: z.string().optional().describe('Reason stored in version history for updates.'),
   meta: z.record(z.string(), z.unknown()).optional(),
 });
@@ -138,11 +134,11 @@ const meta: ToolMeta = {
   id: 'knowledge_mutation',
   name: 'Knowledge Mutation',
   brief: 'Create/update/patch/archive/restore/share team or personal knowledge docs with confirmation',
-  description: `Controlled knowledge mutation tool. Actions: knowledge.create_doc, knowledge.update_doc (replace the FULL body), knowledge.patch_doc (targeted edit — replace an exact unique substring via find/replace; prefer this for small edits to long docs instead of resending the whole body), knowledge.append_doc (add content to the end via the content field), knowledge.update_section (replace one Markdown section's body, addressed by its heading), knowledge.archive_doc, knowledge.restore_version (roll back to a prior version number from knowledge_query versions), and knowledge.share_doc / knowledge.unshare_doc (grant or revoke access to a PERSONAL doc for specific users or groups via share_targets = user ids or "group:<id>", with share_role reader|editor — owner only).
+  description: `Controlled knowledge mutation tool. Actions: knowledge.create_doc, knowledge.update_doc (replace the FULL body), knowledge.patch_doc (targeted edit — replace an exact unique substring via find/replace; prefer this for small edits to long docs instead of resending the whole body), knowledge.append_doc (add content to the end via the content field), knowledge.update_section (replace one Markdown section's body, addressed by its heading), knowledge.archive_doc, knowledge.restore_version (roll back to a prior version number from knowledge_query versions), and knowledge.share_doc / knowledge.unshare_doc (grant or revoke access to a PERSONAL doc for specific users via share_targets = user ids, with share_role reader|editor — owner only).
 
 For large docs, patch_doc/append_doc/update_section are strongly preferred over update_doc: you send only the change, not the entire document, which is cheaper and avoids accidentally altering untouched sections. find (patch_doc) and heading (update_section) must match exactly once — read the doc with knowledge_query first to copy the exact text.
 
-Editors (granted editor role) may create/update/patch/append/restore; archiving and sharing are owner-only. Every change is recorded in version history and every call requires explicit user confirmation via the cloud proxy (confirm:true) and is audited. Always read/search existing docs with knowledge_query first (use action=versions before a restore), explain the intended change, and wait for user approval before calling. Personal scope is limited to the current user's own documents. Use personal docs to durably capture the user's business/project context and preferences so it can be recalled in future sessions — and share them with specific colleagues or groups when context should be shared.`,
+Editors (granted editor role) may create/update/patch/append/restore; archiving and sharing are owner-only. Every change is recorded in version history and every call requires explicit user confirmation via the cloud proxy (confirm:true) and is audited. Always read/search existing docs with knowledge_query first (use action=versions before a restore), explain the intended change, and wait for user approval before calling. Personal scope is limited to the current user's own documents. Use personal docs to durably capture the user's business/project context and preferences so it can be recalled in future sessions — and share them with specific colleagues when context should be shared.`,
   category: 'team',
   is_global: true,
   surface: { proxy: 'write', mcp: 'knowledge' },
@@ -171,7 +167,7 @@ export function createKnowledgeMutationTool(db: DatabaseProvider, ctx: Knowledge
           const existing = await db.knowledgeBase.get(docId, dbScope);
           if (existing) return { action: input.action, error: `Document already exists: ${docId}` };
 
-          let folderId: number | null = null;
+          let folderId: string | null = null;
           let folderPath: string | undefined;
           let createdFolders: string[] | undefined;
           if (input.folder !== undefined) {
@@ -205,9 +201,6 @@ export function createKnowledgeMutationTool(db: DatabaseProvider, ctx: Knowledge
             updated_by: ctx.userId,
             _summary: input.summary,
           });
-          // Register this doc's outgoing canonical links so backlinks stay correct
-          // for agent-authored docs too (the HTTP route does the same on save).
-          await db.knowledgeBase.rebuildOutlinks(doc.id, input.content);
           return {
             action: input.action,
             status: 'created',
@@ -231,7 +224,7 @@ export function createKnowledgeMutationTool(db: DatabaseProvider, ctx: Knowledge
         if (!existing || existing.status === 'archived' || existing.visibility !== visibility) {
           return { action: input.action, error: `Document not found: ${input.doc_id}` };
         }
-        // Access folds in owner / team-collaborative / editor+reader grants (incl. groups).
+        // Access folds in owner / team-collaborative / editor+reader grants.
         const access = await resolveKbAccess(db, existing, ctx.userId);
         if (!canWrite(access)) {
           return { action: input.action, error: `Document not found: ${input.doc_id}` };
@@ -328,7 +321,7 @@ export function createKnowledgeMutationTool(db: DatabaseProvider, ctx: Knowledge
         // Optional folder move. Resolved against the DOC OWNER's tree (matches the
         // HTTP route's validateFolderTarget): an editor moving a doc shared with
         // them files it within the owner's folders, never their own.
-        let folderMove: { folderId: number | null; path: string; created?: string[] } | undefined;
+        let folderMove: { folderId: string | null; path: string; created?: string[] } | undefined;
         if (input.folder !== undefined) {
           const folder = await resolveKbFolderPath(
             db,
@@ -360,9 +353,6 @@ export function createKnowledgeMutationTool(db: DatabaseProvider, ctx: Knowledge
           input.change_reason ?? defaultReason,
         );
         if (!updated) return { action: input.action, error: `Document not found: ${input.doc_id}` };
-        // Content-changing actions must refresh outlinks, exactly like the HTTP save
-        // path — otherwise agent edits silently desync the backlink graph.
-        if (newContent !== undefined) await db.knowledgeBase.rebuildOutlinks(updated.id, updated.content);
         return {
           action: input.action,
           status: 'updated',
@@ -372,7 +362,7 @@ export function createKnowledgeMutationTool(db: DatabaseProvider, ctx: Knowledge
             doc_id: updated.doc_id,
             title: updated.title,
             visibility: updated.visibility,
-            tags: safeJsonParse(updated.tags, []),
+            tags: updated.tags,
             ...(folderMove && folderMove.folderId != null ? { folder: folderMove.path } : {}),
           },
           ...(folderMove?.created ? { created_folders: folderMove.created } : {}),

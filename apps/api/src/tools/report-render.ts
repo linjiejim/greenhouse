@@ -39,7 +39,7 @@ const schema = z.object({
     .enum(['personal', 'team'])
     .optional()
     .describe('Where in Files: your personal shelf (default) or the team shelf.'),
-  folder_id: z.number().int().positive().optional().describe('A folder on that shelf you may write to.'),
+  folder_id: z.coerce.string().optional().describe('A folder on that shelf you may write to.'),
 });
 
 type Input = z.infer<typeof schema>;

@@ -5,7 +5,7 @@
  * the separate Administration surface (see pages/administration).
  *
  * Sections (see `settingsSections` in nav-registry):
- * - Preferences + Cloud (one flat block): Preferences, Groups, Agent Connections,
+ * - Preferences + Cloud (one flat block): Preferences, Agent Connections,
  *   Connections, Email Accounts, Usage (my month's spend and limit)
  * - Labs (feature-gated): Memory
  *
@@ -27,7 +27,6 @@ import { PreferencesPanel } from './preferences';
 import { ProviderBindingsPanel } from './provider-bindings';
 import { EmailAccountsPanel } from './email-accounts';
 import { MemoryPanel } from './memory';
-import { GroupsPanel } from './groups';
 import { AgentAccessPanel } from './agent-access';
 import { MyUsagePanel } from './my-usage';
 import { ComputerPanel } from './computer';
@@ -83,7 +82,6 @@ export function SettingsPage({ subPath }: { subPath: string }) {
       {effectiveModule === 'agent-connections' && <AgentAccessPanel subPath={subPath} />}
       {effectiveModule === 'provider-bindings' && <ProviderBindingsPanel />}
       {effectiveModule === 'email-accounts' && <EmailAccountsPanel />}
-      {effectiveModule === 'groups' && <GroupsPanel />}
       {effectiveModule === 'memory' && <MemoryPanel />}
       {effectiveModule === 'my-usage' && <MyUsagePanel />}
       {effectiveModule === 'computer' && <ComputerPanel />}

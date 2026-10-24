@@ -82,6 +82,10 @@ describe('jsonArrayToText', () => {
     expect(jsonArrayToText('not json')).toBe('not json');
   });
 
+  it('joins a jsonb array value', () => {
+    expect(jsonArrayToText(['LPH64', 1, '报警'])).toBe('LPH64 报警');
+  });
+
   it('returns empty for nullish', () => {
     expect(jsonArrayToText(null)).toBe('');
     expect(jsonArrayToText('')).toBe('');

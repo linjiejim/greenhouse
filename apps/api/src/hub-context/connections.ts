@@ -32,6 +32,7 @@ export async function checkAgentConnections(
         kind: agentClientKind(row.client_name),
         last_seen_at: row.last_used_at,
         connected_at: row.connected_at,
+        avatar: row.avatar ?? null,
       }))
       .sort((a, b) => (b.last_seen_at ?? '').localeCompare(a.last_seen_at ?? '')),
   };

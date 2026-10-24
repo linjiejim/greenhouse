@@ -41,11 +41,11 @@ expose to Claude, Cursor, or any MCP client.
   <tr>
     <td width="50%" valign="top">
       <img src="docs/assets/screens/tables-grid.webp" alt="Tables grid with typed fields" />
-      <b>Tables</b> — typed fields, views, forms and record links; the agent plans schemas conversationally.
+      <b>Tables</b> — typed fields, views and record links; the agent plans schemas conversationally.
     </td>
     <td width="50%" valign="top">
       <img src="docs/assets/screens/knowledge-doc.webp" alt="Knowledge base document" />
-      <b>Knowledge base</b> — team, personal and shared documents with backlinks and full-text search.
+      <b>Knowledge base</b> — team, personal and shared documents with full-text search.
     </td>
   </tr>
   <tr>
@@ -86,11 +86,11 @@ same script doubles as an end-to-end smoke tour (see [Development](#development)
   a side pane for artifacts and records, session forking, background runs, sharing / grouping /
   tagging, and a global ⌘P search.
 - **Knowledge Base** — team, personal and shared documents with a Tiptap editor, Markdown-first
-  storage, folders plus a file cabinet, backlinks, comments and @-mentions, templates, version
-  history, fine-grained sharing via groups, and segmented full-text search (CJK-aware).
+  storage, folders plus a file cabinet, templates, version
+  history, per-person sharing, and segmented full-text search (CJK-aware).
 - **Projects** — projects, tasks (board / gantt / tree views), members, comments, activity log.
-- **Tables** — multidimensional bases: typed fields, views, forms, record links, dashboards,
-  rule automations, and conversational schema planning (the agent drafts a base, you confirm).
+- **Tables** — multidimensional bases: typed fields, views, record links, formulas and rollups,
+  and conversational schema planning (the agent drafts a base, you confirm).
 - **Files** — the team's file cabinet and your own: folders, upload, preview (images, PDF,
   text), rename / move / delete and name search; members' agents reach it over MCP too.
 - **Home** — the team's recent changes (knowledge edits, project and table changes, new files,
@@ -138,7 +138,7 @@ same script doubles as an end-to-end smoke tour (see [Development](#development)
   budget refuses the call with a message the agent can read. Administration → Services &
   pricing shows spend, prices (a banner while anything in use is unpriced) and budgets — review the
   default limits ($50 per member, $2,000 for the team); Settings → Usage shows a
-  member their own month. Token budgets per user, organization and provider still run alongside.
+  member their own month. Organization and provider monthly token budgets still run alongside.
 - **Module usage** — Administration → Usage → By Modules shows tool calls by tool and client
   (MCP, Agent API, web chat, mobile, Feishu, automations), page
   opens by module and app (web, mobile) and the prompt-cache hit
@@ -207,8 +207,8 @@ pnpm install
 cp .env.example .env && ./scripts/gen-secrets.sh   # fills the required random secrets
 #   then edit .env and set LLM_BASE_URL / LLM_API_KEY / LLM_MODEL
 
-# 4. Apply the migration chain
-pnpm drizzle-kit migrate
+# 4. Apply the migration chain (refuses a 1.x / 2.x database — see "Upgrading from 1.x to 3.0")
+pnpm db:migrate
 
 # 5. Create the first super-admin — or skip to step 6 to load the demo dataset instead
 pnpm admin:create
@@ -293,6 +293,10 @@ service **before** the API starts — an upgraded deployment never runs new code
 against an old schema, and already-applied migrations are skipped. Optional but
 wise before a big jump: `./scripts/backup-db.sh`.
 
+**Coming from 1.x?** 3.0 does not upgrade a 1.x database in place — the `migrate`
+service and the API refuse it. Follow [Upgrading from 1.x to 3.0](#upgrading-from-1x-to-30)
+instead of the commands below.
+
 ```bash
 # Docker, published image (docker-compose.ghcr.yml):
 docker compose -f docker-compose.ghcr.yml pull
@@ -302,7 +306,7 @@ docker compose -f docker-compose.ghcr.yml up -d
 git pull && docker compose up -d --build
 
 # Bare-metal source checkout:
-git pull && pnpm install && pnpm drizzle-kit migrate   # then restart the API
+git pull && pnpm install && pnpm db:migrate   # then restart the API
 ```
 
 > **Upgrading to 1.5** — Greenhouse narrows to a team agent hub: members bring their own
@@ -342,6 +346,57 @@ git pull && pnpm install && pnpm drizzle-kit migrate   # then restart the API
 > Settings → Email with explicit IMAP/SMTP settings). Existing custom agents become
 > immutable draft v1 and stay unshared until a super publishes them. Knowledge documents are
 > re-tokenized for search on the first boot.
+
+### Upgrading from 1.x to 3.0
+
+3.0 rebuilds the database schema (72 tables, text ids, jsonb, one table per concept), so a
+1.x database is never migrated in place. You create a **new, empty database** and carry the
+data into it with one command; the old database is only read, never written, and stays your
+rollback path.
+
+- The source must be on **1.6.x** (its migrations through `0013_report_templates`). Upgrade an
+  older 1.x install to 1.6 first.
+- **2.x databases are refused** — 3.0 can neither run on nor carry a 2.x database.
+- Ids are kept (old numeric ids become strings), so links, extension rows that store a user id
+  and ids an external agent remembered keep working; connected agents don't re-authorize.
+- Extension tables (`crm_*`, …) and `extension_migrations` are copied verbatim.
+- Not carried: retired and removed features (evaluation, Missions, Workflows, session tags,
+  user groups, document comments / backlinks, table forms / dashboards / in-table automations),
+  run events older than 30 days, delivered outbox rows, expired tokens, rate-limit counters and
+  request logs older than 30 days. Every skipped row is counted in the report.
+- The command is repeatable: a non-empty target is emptied first, so you can re-run it until the
+  reconciliation report is clean.
+
+Bare-metal / source checkout:
+
+```bash
+./scripts/backup-db.sh                                   # 1. back up the 1.x database
+createdb greenhouse_v3                                   # 2. a new, empty database
+pnpm cli migrate-from-1x --dry-run \
+  --from postgresql://greenhouse:greenhouse@localhost:5432/greenhouse   # 3. report only
+pnpm cli migrate-from-1x \
+  --from postgresql://greenhouse:greenhouse@localhost:5432/greenhouse \
+  --to   postgresql://greenhouse:greenhouse@localhost:5432/greenhouse_v3   # 4. carry
+# 5. point DATABASE_URL at greenhouse_v3 and start the 3.0 API
+```
+
+Docker (the `migrate` service of the 3.0 image runs the command; stop the API first):
+
+```bash
+docker compose stop api
+PG_CONTAINER=<your postgres container> ./scripts/backup-db.sh
+docker compose exec postgres createdb -U greenhouse greenhouse_v3
+docker compose run --rm migrate ./node_modules/.bin/tsx apps/api/src/cli/index.ts migrate-from-1x \
+  --from postgresql://greenhouse:greenhouse@postgres:5432/greenhouse \
+  --to   postgresql://greenhouse:greenhouse@postgres:5432/greenhouse_v3 --dry-run
+# drop --dry-run to carry, then set DATABASE_URL on the migrate and api services to
+# …/greenhouse_v3 and `docker compose up -d`
+```
+
+Add `--json` for a machine-readable report. The command exits with code 2 when it refuses (a
+2.x or pre-1.6 source, a 1.x or foreign target, the same database twice). To roll back, point
+the 1.x deployment at the untouched old database; anything written in 3.0 afterwards stays in
+the new one.
 
 ## Configuration
 
@@ -601,11 +656,14 @@ files. CI (`.github/workflows/ci.yml`) runs lint → typecheck → test → e2e 
 
 ### Database migrations
 
-Migration files (`drizzle-kit generate` → `migrate`) are the single source of truth for the
-schema. Edit `packages/db/src/schema/*.ts`, run `pnpm drizzle-kit generate`, review the
-generated SQL, and commit it. **On persistent / shared databases use `migrate` only — never
-`push`** (`push` is for throwaway local scratch DBs). See
-[packages/db/src/AGENTS.md](./packages/db/src/AGENTS.md).
+Migration files are the single source of truth for the schema. The chain starts at the 3.0
+baseline `drizzle/0000_v3_baseline.sql`; the 1.x chain lives in `drizzle/archive-1x/` and is
+only read to recognize a 1.x database. Edit `packages/db/src/schema/*.ts`, run
+`pnpm drizzle-kit generate`, review the generated SQL, commit it, and apply it with
+`pnpm db:migrate` (it refuses 1.x and 2.x databases). **On persistent / shared databases use
+`pnpm db:migrate` only — never `push`** (`push` is for throwaway local scratch DBs). See
+[packages/db/src/AGENTS.md](./packages/db/src/AGENTS.md) and the table map in
+[packages/db/src/db-schema.md](./packages/db/src/db-schema.md).
 
 ### Backups
 

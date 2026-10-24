@@ -79,8 +79,8 @@ describe('ordinary Chat Runtime trace', () => {
       status: 'succeeded',
       max_attempts: 1,
     });
-    expect(JSON.parse(detail.run.input)).toEqual(input);
-    expect(JSON.parse(detail.run.output).raw_tool_evidence[0].output).toEqual(rawToolOutput);
+    expect(detail.run.input).toEqual(input);
+    expect((detail.run.output as any).raw_tool_evidence[0].output).toEqual(rawToolOutput);
     expect(detail.steps).toHaveLength(1);
     expect(detail.steps[0]).toMatchObject({
       step_key: 'chat_turn',
@@ -89,9 +89,9 @@ describe('ordinary Chat Runtime trace', () => {
       tokens_used: 321,
       duration_ms: 456,
     });
-    expect(JSON.parse(detail.steps[0]!.output!).raw_tool_evidence[0].output).toEqual(rawToolOutput);
+    expect((detail.steps[0]!.output as any).raw_tool_evidence[0].output).toEqual(rawToolOutput);
     const providerEvent = detail.events.find((event) => event.type === 'chat.provider_input');
-    expect(JSON.parse(providerEvent!.payload)).toEqual(providerEnvelope);
+    expect(providerEvent!.payload).toEqual(providerEnvelope);
   });
 
   it('interrupts orphaned Chat traces at boot without claiming or replaying them', async () => {
@@ -135,7 +135,7 @@ describe('ordinary Chat Runtime trace', () => {
       error_code: 'chat_process_restarted',
     });
     expect(step).toMatchObject({ status: 'interrupted', lease_owner: null });
-    expect(JSON.parse(after.output!)).toEqual(
+    expect(after.output).toEqual(
       expect.objectContaining({
         reason: 'api_process_restart',
         replay_policy: 'never',

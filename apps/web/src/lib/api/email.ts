@@ -66,21 +66,21 @@ export async function createEmailAccount(input: EmailAccountInput): Promise<Emai
   return (await res.json()) as EmailAccountResult;
 }
 
-export async function updateEmailAccount(id: number, input: EmailAccountUpdate): Promise<EmailAccountResult> {
+export async function updateEmailAccount(id: string, input: EmailAccountUpdate): Promise<EmailAccountResult> {
   // Non-literal arg: hc only types `json` for validator-backed routes.
-  const args = { param: { id: String(id) }, json: input };
+  const args = { param: { id }, json: input };
   const res = await rpc.api.email.accounts[':id'].$put(args);
   if (!res.ok) await readError(res);
   return (await res.json()) as EmailAccountResult;
 }
 
-export async function deleteEmailAccount(id: number): Promise<void> {
-  const res = await rpc.api.email.accounts[':id'].$delete({ param: { id: String(id) } });
+export async function deleteEmailAccount(id: string): Promise<void> {
+  const res = await rpc.api.email.accounts[':id'].$delete({ param: { id } });
   if (!res.ok) await readError(res);
 }
 
-export async function testEmailAccount(id: number): Promise<EmailAccountResult> {
-  const res = await rpc.api.email.accounts[':id'].test.$post({ param: { id: String(id) } });
+export async function testEmailAccount(id: string): Promise<EmailAccountResult> {
+  const res = await rpc.api.email.accounts[':id'].test.$post({ param: { id } });
   if (!res.ok) await readError(res);
   return (await res.json()) as EmailAccountResult;
 }

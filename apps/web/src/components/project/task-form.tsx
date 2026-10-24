@@ -13,7 +13,7 @@ export interface TaskFormValue {
   due_date: string;
   estimated_hours: string;
   tags: string;
-  dependencies: number[];
+  dependencies: string[];
 }
 
 export const EMPTY_TASK_FORM: TaskFormValue = {

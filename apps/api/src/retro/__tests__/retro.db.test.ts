@@ -191,7 +191,7 @@ describe('monthly retro', () => {
   it('writes the month into the team folder 复盘, aggregates only', async () => {
     const result = await generateMonthlyRetro({ db, actorId: admin.id });
     expect(result).toMatchObject({ month, doc_id: retroDocId(month), created: true, suggestions: 'included' });
-    expect(result.url).toMatch(/^#\/knowledge\/doc\/\d+-team-retro-/);
+    expect(result.url).toMatch(/^#\/knowledge\/doc\/doc_[0-9A-Z]+-team-retro-/);
 
     const doc = (await retroDoc())!;
     expect(doc.title).toBe(`${month} 复盘`);
@@ -235,7 +235,7 @@ describe('monthly retro', () => {
   it('meters the suggestions to the organization as client system', async () => {
     await generateMonthlyRetro({ db, actorId: admin.id });
     const rows = (await db.executeRaw(
-      sql`SELECT user_id, client, caller, service FROM llm_usage WHERE caller = ${RETRO_CALLER}`,
+      sql`SELECT user_id, client, caller, service FROM usage_events WHERE kind = 'model' AND caller = ${RETRO_CALLER}`,
     )) as Array<Record<string, unknown>>;
     expect(rows).toEqual([{ user_id: null, client: 'system', caller: RETRO_CALLER, service: 'llm' }]);
   });
@@ -277,7 +277,7 @@ describe('monthly retro', () => {
     const { items } = await db.notifications.listForUser({ user_id: admin.id });
     const notice = items.find((item) => item.kind === 'system' && item.title.includes(month));
     expect(notice).toBeDefined();
-    expect(JSON.parse(notice!.payload)).toMatchObject({ url: result.url, retro_month: month });
+    expect(notice!.payload).toMatchObject({ url: result.url, retro_month: month });
     expect((await db.notifications.listForUser({ user_id: member.id })).items).toEqual([]);
   });
 
@@ -296,12 +296,12 @@ describe('monthly retro', () => {
     });
     // Seen in September, then again just after September closed.
     await db.executeRaw(
-      sql`UPDATE tool_frictions SET first_seen_at = '2026-09-10T08:00:00Z', last_seen_at = '2026-10-01T00:30:00Z'
+      sql`UPDATE feedback SET first_seen_at = '2026-09-10T08:00:00Z', last_seen_at = '2026-10-01T00:30:00Z'
           WHERE id = ${recurring.id}`,
     );
     // Over before September began.
     await db.executeRaw(
-      sql`UPDATE tool_frictions SET first_seen_at = '2026-08-01T08:00:00Z', last_seen_at = '2026-08-20T08:00:00Z'
+      sql`UPDATE feedback SET first_seen_at = '2026-08-01T08:00:00Z', last_seen_at = '2026-08-20T08:00:00Z'
           WHERE id = ${earlier.id}`,
     );
     const september = await collectRetroAggregates(db, retroMonth('2026-09')!);
@@ -316,8 +316,8 @@ describe('monthly retro', () => {
   it('groups every active friction, not the first page of them', async () => {
     const tool = unique('bulk_tool');
     await db.executeRaw(sql`
-      INSERT INTO tool_frictions (fingerprint, tool_id, kind, summary, occurrence_count, first_seen_at, last_seen_at, created_at, updated_at)
-      SELECT ${tool} || '-' || n, ${tool}, 'tool_error', 'record not found', 2,
+      INSERT INTO feedback (id, kind, status, fingerprint, tool_id, friction_kind, title, occurrence_count, first_seen_at, last_seen_at, created_at, updated_at)
+      SELECT 'fbk_' || ${tool} || '_' || n, 'friction', 'new', ${tool} || '-' || n, ${tool}, 'tool_error', 'record not found', 2,
              '2026-08-05T08:00:00Z', '2026-08-06T08:00:00Z', now(), now()
       FROM generate_series(1, 501) AS n
     `);

@@ -24,7 +24,7 @@ export function BoardColumn({
   status: string;
   tasks: Task[];
   onSelect: (t: Task) => void;
-  onStatusChange: (taskId: number, status: string) => void;
+  onStatusChange: (taskId: string, status: string) => void;
 }) {
   const t = useT();
   const cfg = statusConfig[status] ?? statusConfig.todo;

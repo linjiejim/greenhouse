@@ -1,30 +1,19 @@
 /**
  * The one place Tables structure gets deleted.
  *
- * Three targets, deliberately not three dialogs: they differ only in what is
- * at stake, and that difference is the whole point of the copy. A Base swallows
+ * Two targets, deliberately not two dialogs: they differ only in what is at
+ * stake, and that difference is the whole point of the copy. A Base swallows
  * every table inside it, so it asks you to type its name; a table archives and
- * can be brought back by an administrator; a dashboard is configuration and
- * really goes.
+ * can be brought back by an administrator.
  */
 
 import React, { useEffect, useState } from 'react';
-import {
-  archiveTableBase,
-  archiveTableDefinition,
-  deleteTableDashboard,
-  type TableBase,
-  type TableDashboard,
-  type TableDefinition,
-} from '../../lib/api/tables';
+import { archiveTableBase, archiveTableDefinition, type TableBase, type TableDefinition } from '../../lib/api/tables';
 import { Button, Dialog, Input } from '../ui';
 import { FormActions, FormError, FormField } from '../form';
 import { useT } from '../../lib/i18n';
 
-export type DeletionTarget =
-  | { kind: 'base'; value: TableBase }
-  | { kind: 'table'; value: TableDefinition }
-  | { kind: 'dashboard'; value: TableDashboard };
+export type DeletionTarget = { kind: 'base'; value: TableBase } | { kind: 'table'; value: TableDefinition };
 
 interface DeleteDialogProps {
   target: DeletionTarget | null;
@@ -57,9 +46,7 @@ export function DeleteDialog({ target, baseTableCount = 0, onClose, onDeleted }:
   const body =
     shown.kind === 'base'
       ? t('tables.delete.baseDescription', { name, count: baseTableCount })
-      : shown.kind === 'table'
-        ? t('tables.delete.tableDescription', { name })
-        : t('tables.delete.dashboardDescription', { name });
+      : t('tables.delete.tableDescription', { name });
 
   const remove = async () => {
     if (!target) return;
@@ -67,8 +54,7 @@ export function DeleteDialog({ target, baseTableCount = 0, onClose, onDeleted }:
     setError('');
     try {
       if (target.kind === 'base') await archiveTableBase(target.value.id);
-      else if (target.kind === 'table') await archiveTableDefinition(target.value.id);
-      else await deleteTableDashboard(target.value.id);
+      else await archiveTableDefinition(target.value.id);
       onDeleted(target);
     } catch (deleteError) {
       setError(deleteError instanceof Error ? deleteError.message : t('tables.delete.failed'));

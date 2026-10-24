@@ -1,6 +1,6 @@
 /**
  * Upkeep jobs — system-level crons that maintain agent memory and collect
- * tool frictions. Not rows in `scheduled_tasks`; these belong to the platform.
+ * tool frictions. Not rows in `automations`; these belong to the platform.
  *
  * Replaces v1's daily memory-extraction cron (deleted): memories are now written
  * explicitly by the `memory` tool, so the background pass only tidies what is

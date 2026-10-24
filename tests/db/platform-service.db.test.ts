@@ -1,18 +1,17 @@
 /**
  * Platform Kernel v2 control-plane integration tests (real PostgreSQL).
  *
- * Requires: PostgreSQL at localhost:5432 with a migrated greenhouse_test database.
+ * Single organization, role grants only: per-user overrides and stored app
+ * releases were retired in 3.0.
  */
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { _resetProvider, initDatabase, type DatabaseProvider } from '@greenhouse/db';
 import {
   canAccessRecord,
-  compileApp,
   resolveCapability,
   resolveEntityPolicy,
   type ActorContext,
-  type ApplicationDefinition,
 } from '@greenhouse/platform-kernel';
 import { TEST_DATABASE_URL } from '@greenhouse/db/test-config';
 
@@ -38,41 +37,9 @@ async function createRole(userId: string) {
   return role;
 }
 
-function projectsManifest(version = '1.0.0', title = 'Projects') {
-  const definition: ApplicationDefinition = {
-    id: 'platformTestProjects',
-    version,
-    title,
-    modules: { project: { title: 'Projects' } },
-    entities: {
-      project: {
-        title: 'Project',
-        module: 'project',
-        table: 'projects',
-        accessScopes: ['own', 'collaborating', 'all'],
-        fields: {
-          title: { kind: 'text', title: 'Title' },
-        },
-      },
-    },
-    actions: {
-      listProjects: {
-        title: 'List projects',
-        module: 'project',
-        entity: 'project',
-        kind: 'query',
-        capability: 'platformTestProjects.project.read',
-        risk: 'read',
-      },
-    },
-  };
-  return compileApp(definition);
-}
-
 describe('Platform control-plane service', () => {
   beforeEach(async () => {
     db = await initDatabase({ type: 'pg', pgConnectionString: TEST_DATABASE_URL });
-    await db.platform.ensureOrganization({ id: 'default', code: 'default', name: 'Greenhouse' });
   });
 
   afterEach(async () => {
@@ -80,35 +47,23 @@ describe('Platform control-plane service', () => {
     _resetProvider();
   });
 
-  it('persists role grants and applies a user deny override first', async () => {
+  it('resolves capabilities from role grants alone (no per-user overrides)', async () => {
     const user = await createUser();
     const role = await createRole(user.id);
     await db.platform.replaceRoleCapabilities(role.id, ['projects.project.*'], user.id);
-    await db.platform.setUserCapabilityOverride({
-      org_id: 'default',
-      user_id: user.id,
-      capability: 'projects.project.read',
-      effect: 'deny',
-      granted_by: user.id,
-      reason: 'Temporary restriction',
-    });
 
     const snapshot = await db.platform.getAuthorizationSnapshot(user.id, 'default');
-    expect(
-      resolveCapability({
-        capability: 'projects.project.read',
-        ...snapshot,
-      }),
-    ).toMatchObject({ allowed: false, reason: 'user-deny' });
-    expect(
-      resolveCapability({
-        capability: 'projects.project.update',
-        ...snapshot,
-      }),
-    ).toMatchObject({ allowed: true, reason: 'role-allow' });
+    expect(snapshot.userOverrides).toEqual([]);
+    expect(resolveCapability({ capability: 'projects.project.read', ...snapshot })).toMatchObject({
+      allowed: true,
+      reason: 'role-allow',
+    });
+    expect(resolveCapability({ capability: 'knowledge.document.read', ...snapshot })).toMatchObject({
+      allowed: false,
+    });
   });
 
-  it('round-trips entity policies and user replacement semantics', async () => {
+  it('round-trips role entity policies', async () => {
     const user = await createUser();
     const role = await createRole(user.id);
     await db.platform.upsertRoleEntityPolicy(role.id, {
@@ -137,78 +92,14 @@ describe('Platform control-plane service', () => {
     };
     expect(canAccessRecord(actor, { ownerId: user.id }, rolePolicy)).toBe(true);
 
-    await db.platform.setUserEntityPolicyOverride({
-      org_id: 'default',
-      user_id: user.id,
-      effect: 'deny',
-      policy: {
-        app_id: 'projects',
-        module_id: 'project',
-        entity_id: 'project',
-        scopes: [],
-        field_policies: {},
-      },
-      granted_by: user.id,
-    });
-    const deniedSnapshot = await db.platform.getEntityPolicySnapshot({
-      orgId: 'default',
-      userId: user.id,
-      appId: 'projects',
-      entityId: 'project',
-    });
-    expect(resolveEntityPolicy(deniedSnapshot.rolePolicies, deniedSnapshot.userOverride)).toEqual({
-      scopes: [],
-      fields: {},
-    });
-
-    expect(await db.platform.listUserEntityPolicyOverrides('default', user.id)).toEqual([
-      expect.objectContaining({
-        org_id: 'default',
-        user_id: user.id,
-        app_id: 'projects',
-        entity_id: 'project',
-        effect: 'deny',
-      }),
-    ]);
-    expect(await db.platform.clearUserEntityPolicyOverride('default', user.id, 'projects', 'project')).toBe(true);
-    expect(await db.platform.listUserEntityPolicyOverrides('default', user.id)).toEqual([]);
-    expect(await db.platform.clearUserEntityPolicyOverride('default', user.id, 'projects', 'project')).toBe(false);
-  });
-
-  it('keeps app versions immutable and allows only one active release', async () => {
-    const user = await createUser();
-    const first = await db.platform.publishAppRelease({
-      manifest: projectsManifest('1.0.0'),
-      created_by: user.id,
-    });
-    await db.platform.activateAppRelease(first.id);
-
-    await expect(
-      db.platform.publishAppRelease({
-        manifest: projectsManifest('1.0.0', 'Changed without a version bump'),
-        created_by: user.id,
-      }),
-    ).rejects.toThrow(/different manifest hash/);
-
-    const second = await db.platform.publishAppRelease({
-      manifest: projectsManifest('1.1.0'),
-      created_by: user.id,
-    });
-    await db.platform.activateAppRelease(second.id);
-
-    const active = (await db.platform.listActiveAppReleases()).filter(
-      (release) => release.app_id === 'platformTestProjects',
-    );
-    expect(active).toHaveLength(1);
-    expect(active[0]).toMatchObject({
-      app_id: 'platformTestProjects',
-      version: '1.1.0',
-      status: 'active',
-      parsedManifest: { id: 'platformTestProjects', schemaVersion: 2 },
+    expect(roleSnapshot.userOverride).toBeUndefined();
+    expect((await db.platform.listRoleEntityPolicies([role.id]))[0]).toMatchObject({
+      scopes: [{ kind: 'own' }],
+      field_policies: { title: { read: 'full', write: true, export: false } },
     });
   });
 
-  it('stores versioned workbench preferences and returns safe defaults', async () => {
+  it('stores versioned workbench preferences in users.preferences and returns safe defaults', async () => {
     const user = await createUser();
     expect(await db.platform.getUserWorkbenchPreferences('default', user.id)).toEqual({
       version: 2,

@@ -7,13 +7,14 @@
  * links for one user.
  */
 
-import { createHash, randomBytes, randomUUID } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { and, desc, eq, isNull, sql } from 'drizzle-orm';
 import { nowIso } from '@greenhouse/utils/date';
 
 import type { Db } from '../client.js';
-import { accountPasswordLinks, refreshTokens, users } from '../schema/index.js';
-import type { AccountPasswordLinkPurpose, AccountPasswordLinkRow, UserRow } from '../schema/user.js';
+import { newId } from '../ids.js';
+import { passwordLinks as accountPasswordLinks, authRefreshTokens as refreshTokens, users } from '../schema/index.js';
+import type { AccountPasswordLinkPurpose, AccountPasswordLinkRow, UserRow } from '../schema/identity.js';
 
 export const UNSET_ACCOUNT_PASSWORD_HASH = '!account-password-not-set!';
 export const INVITE_LINK_TTL_MS = 72 * 60 * 60 * 1000;
@@ -96,7 +97,7 @@ export function createAccountPasswordLinkService(db: Db) {
     const rows = await tx
       .insert(accountPasswordLinks)
       .values({
-        id: randomUUID(),
+        id: newId('passwordLink'),
         user_id: user.id,
         purpose,
         token_hash: hashAccountPasswordToken(token)!,

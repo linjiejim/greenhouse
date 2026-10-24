@@ -20,7 +20,6 @@ import {
   PinOff,
   ChevronDown,
   ChevronRight,
-  Star,
   CheckSquare,
 } from '../../../lib/icons';
 import { relativeTime } from '../../../lib/utils';
@@ -282,7 +281,7 @@ export function ChatHistoryPanel({ currentSessionId, onSelectSession, collapsed 
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const longPressFired = useRef(false);
 
-  const { activeSessions, unreadSessions, importantSessions, remoteStreamingSessions } = useSessionManager();
+  const { activeSessions, unreadSessions, remoteStreamingSessions } = useSessionManager();
   const { sessionListVersion, bumpSessionListVersion } = useUIStore();
   const currentUser = useAuthStore((s) => s.currentUser);
   // Same unread number the inbox shows — one server-pushed count, not a second tally.
@@ -704,7 +703,6 @@ export function ChatHistoryPanel({ currentSessionId, onSelectSession, collapsed 
     // The selected row is already being viewed, so never paint a stale unread
     // state while the SessionManager's read update is settling.
     const isUnread = !isActive && unreadSessions.has(session.id);
-    const isImportant = importantSessions.has(session.id);
     const isRenaming = renamingId === session.id;
     const isTypewriting = typewriterIds.has(session.id);
     const isSelected = selectedIds.has(session.id);
@@ -802,14 +800,9 @@ export function ChatHistoryPanel({ currentSessionId, onSelectSession, collapsed 
               <StatusDot color="info" />
             </span>
           )}
-          {isImportant && !isUnread && !isSessionStreaming && (
-            <span className="text-star" title={t('common.important')}>
-              <Star size={10} aria-hidden="true" />
-            </span>
-          )}
           {/* Session type marker (mission cloud / workflow graph) — lowest
               priority in the shared indicator slot. */}
-          {!isSessionStreaming && !isUnread && !isImportant && <SessionTypeIcon profileId={session.profile_id} />}
+          {!isSessionStreaming && !isUnread && <SessionTypeIcon profileId={session.profile_id} />}
         </span>
         {isRenaming ? (
           <input

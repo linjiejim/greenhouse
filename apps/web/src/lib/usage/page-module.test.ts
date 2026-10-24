@@ -42,7 +42,7 @@ describe('pageModuleForRoute', () => {
     expect(pageModuleForRoute({ route: 'settings', subPath: 'no-such-module' })).toBe('settings.preferences');
     expect(pageModuleForRoute({ route: 'administration', subPath: '' })).toBe('admin.users');
     expect(pageModuleForRoute({ route: 'administration', subPath: 'profiles' })).toBe('admin.usage');
-    expect(pageModuleForRoute({ route: 'settings', subPath: 'groups/42' })).toBe('settings.groups');
+    expect(pageModuleForRoute({ route: 'settings', subPath: 'my-usage/42' })).toBe('settings.my-usage');
   });
 
   it('counts an extension page as its extension', () => {

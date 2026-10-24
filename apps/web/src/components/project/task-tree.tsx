@@ -28,8 +28,8 @@ export function TaskTreeItem({
   task: Task;
   depth: number;
   onSelect: (t: Task) => void;
-  expanded: Set<number>;
-  onToggle: (id: number) => void;
+  expanded: Set<string>;
+  onToggle: (id: string) => void;
 }) {
   const t = useT();
   const hasChildren = task.children && task.children.length > 0;

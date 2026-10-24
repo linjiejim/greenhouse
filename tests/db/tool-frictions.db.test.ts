@@ -26,8 +26,8 @@ const base = {
   summary: 'crm_query rejected a call that omitted the required type argument',
 };
 
-function samplesOf(row: { sample_sessions: string }): string[] {
-  return JSON.parse(row.sample_sessions) as string[];
+function samplesOf(row: { sample_sessions: string[] }): string[] {
+  return row.sample_sessions;
 }
 
 describe('Tool frictions', () => {
@@ -233,15 +233,13 @@ describe('scanToolErrors', () => {
     expect(samples.filter((s) => s.session_id === session.id)).toHaveLength(0);
   });
 
-  it('survives a pipeline that serialised a NUL character, and still mines the rest', async () => {
-    // The incident this pins: a UTF-16 CSV decoded as UTF-8 put NULs into a
-    // tool output; JSON.stringify wrote them as escape sequences the ::jsonb
-    // cast rejects ("unsupported Unicode escape sequence"), and that ONE row
-    // aborted the entire sweep. The poisoned row may be skipped; the healthy
-    // row in the same window must still come back.
+  it('stores a tool output that carried a NUL character, and still mines it', async () => {
+    // A UTF-16 CSV decoded as UTF-8 puts NULs into a tool output. jsonb cannot
+    // hold U+0000, so the write drops it rather than losing the whole message.
     const session = await db.sessions.create('miner nul', 'team', 'user-miner');
+    const nul = String.fromCharCode(0);
     await assistantMessage(session.id, [
-      step({ tool: 'read_attachment', output: { text: `garbage${String.fromCharCode(0)}text` } }),
+      step({ tool: 'read_attachment', output: { error: `garbage${nul}text` } }),
     ]);
     await assistantMessage(session.id, [step({ tool: 'crm_query', output: { error: 'still minable' } })]);
 
@@ -249,8 +247,7 @@ describe('scanToolErrors', () => {
     const samples = await db.sessions.scanToolErrors(since);
     const mine = samples.filter((s) => s.session_id === session.id);
 
-    expect(mine).toHaveLength(1);
-    expect(mine[0]!.error).toBe('still minable');
+    expect(mine.map((s) => s.error).sort()).toEqual(['garbagetext', 'still minable']);
   });
 
   it('honours the time window and the row cap', async () => {

@@ -17,10 +17,16 @@
 
 import { Cron } from 'croner';
 import { logger } from '@greenhouse/utils/logger';
-import { safeJsonParse } from '@greenhouse/utils/json';
+import { toRowId } from '@greenhouse/utils/id';
 import type { AutomationRunEntry } from '@greenhouse/types/api';
 import { AUTOMATION_OPT_IN_TOOLS, isAutomationOptInTool } from '@greenhouse/types/automation-tools';
-import { ScheduledTaskActiveRunError, type DatabaseProvider, type ScheduledTaskRow } from '@greenhouse/db';
+import {
+  ScheduledTaskActiveRunError,
+  type AutomationNotify,
+  type DatabaseProvider,
+  type ScheduledTaskRow,
+  type ScheduledTaskUpdateInput,
+} from '@greenhouse/db';
 import { resolveProfileAsync } from '../profiles/profile.js';
 import { pinProfileIdForUser, ProfileAccessError } from '../profiles/access.js';
 import { sanitizeForPrompt } from '../security/security.js';
@@ -92,14 +98,20 @@ export interface CreateTaskInput {
   timezone?: string;
   max_steps?: number;
   enabled?: boolean;
-  /** Optional WeCom / Feishu group-bot webhook the scheduler posts a run summary to. */
-  notify_webhook?: string | null;
   /**
-   * Email the run summary to the OWNER's account address. A boolean, not an
-   * address — the recipient is derived, so this channel cannot be aimed.
+   * Where a finished run is reported (stored as one object). `webhook` is an
+   * optional WeCom / Feishu group-bot URL; `email` / `wecom` / `feishu` deliver
+   * to the OWNER (recipients are derived, so those channels cannot be aimed).
+   * On update only the keys given change.
    */
+  notify?: Partial<AutomationNotify> | null;
+  /** Legacy flat form of `notify.webhook` (1.x clients); `notify` wins when both are sent. */
+  notify_webhook?: string | null;
+  /** Legacy flat form of `notify.email`. */
   notify_email?: boolean;
+  /** Legacy flat form of `notify.wecom`. */
   notify_wecom?: boolean;
+  /** Legacy flat form of `notify.feishu`. */
   notify_feishu?: boolean;
   /**
    * Stay quiet when a run has nothing new: the run prompt asks for exactly
@@ -210,11 +222,45 @@ export function validateNotifyWebhook(raw: string | null | undefined): TaskError
 }
 
 /**
- * Validate an `unattended_tools` grant and return the canonical JSON to store.
+ * The notify keys a request supplied, from `notify` and/or the legacy flat
+ * fields (`notify` wins), or `undefined` when it supplied none. Values are type
+ * checked; the webhook URL is validated by `validateNotifyWebhook`.
+ */
+export function notifyFromInput(input: CreateTaskInput): Partial<AutomationNotify> | TaskError | undefined {
+  const out: Partial<AutomationNotify> = {};
+  if (input.notify_webhook !== undefined) out.webhook = input.notify_webhook || null;
+  if (input.notify_email !== undefined) out.email = input.notify_email;
+  if (input.notify_wecom !== undefined) out.wecom = input.notify_wecom;
+  if (input.notify_feishu !== undefined) out.feishu = input.notify_feishu;
+  if (input.notify !== undefined && input.notify !== null) {
+    if (typeof input.notify !== 'object' || Array.isArray(input.notify)) {
+      return err(
+        'invalid',
+        'notify must be an object like {"webhook": null, "email": true, "wecom": false, "feishu": false}',
+      );
+    }
+    const notify = input.notify;
+    if (notify.webhook !== undefined) out.webhook = notify.webhook || null;
+    if (notify.email !== undefined) out.email = notify.email;
+    if (notify.wecom !== undefined) out.wecom = notify.wecom;
+    if (notify.feishu !== undefined) out.feishu = notify.feishu;
+  }
+  if (out.webhook !== undefined && out.webhook !== null && typeof out.webhook !== 'string') {
+    return err('invalid', 'notify.webhook must be a URL string or null');
+  }
+  for (const key of ['email', 'wecom', 'feishu'] as const) {
+    if (out[key] !== undefined && typeof out[key] !== 'boolean')
+      return err('invalid', `notify.${key} must be true or false`);
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
+/**
+ * Validate an `unattended_tools` grant and return the canonical list to store.
  *
  * Returns `undefined` when the caller did not supply the field at all (so
  * `update` leaves the stored grant alone), a `TaskError` when it is refused,
- * and `{ json }` otherwise.
+ * and `{ tools }` otherwise.
  *
  * Unknown ids are REFUSED rather than dropped: a checkbox we silently ignored
  * is a checkbox that lies about what the automation may do. The message quotes
@@ -224,7 +270,7 @@ export function validateNotifyWebhook(raw: string | null | undefined): TaskError
 export function validateUnattendedTools(
   raw: string[] | undefined,
   actor: TaskActor,
-): { json: string } | TaskError | undefined {
+): { tools: string[] } | TaskError | undefined {
   if (raw === undefined) return undefined;
   if (!actor.canGrantTools) {
     return err(
@@ -248,7 +294,7 @@ export function validateUnattendedTools(
   // Store in catalog order with duplicates collapsed, so the value the
   // admission check compares against is canonical.
   const picked = new Set(raw);
-  return { json: JSON.stringify(grantable.filter((id) => picked.has(id))) };
+  return { tools: grantable.filter((id) => picked.has(id)) };
 }
 
 /** Owner-or-(super in 'any' scope). Agent tools stay owner-only by construction. */
@@ -303,8 +349,9 @@ export async function listTasks(db: DatabaseProvider, actor: TaskActor): Promise
 }
 
 /** Get one task plus its recent execution sessions. */
-export async function getTask(db: DatabaseProvider, actor: TaskActor, id: number): Promise<GetTaskResult> {
-  if (!Number.isInteger(id)) return err('invalid', 'Invalid task ID');
+export async function getTask(db: DatabaseProvider, actor: TaskActor, rawId: string | number): Promise<GetTaskResult> {
+  const id = toRowId(rawId);
+  if (!id) return err('invalid', 'Invalid task ID');
 
   const task = await db.scheduledTasks.getById(id);
   if (!task) return err('not_found', 'Task not found');
@@ -330,10 +377,11 @@ export async function getTask(db: DatabaseProvider, actor: TaskActor, id: number
 export async function listTaskRuns(
   db: DatabaseProvider,
   actor: TaskActor,
-  id: number,
+  rawId: string | number,
   limit = 50,
 ): Promise<ListTaskRunsResult> {
-  if (!Number.isInteger(id)) return err('invalid', 'Invalid task ID');
+  const id = toRowId(rawId);
+  if (!id) return err('invalid', 'Invalid task ID');
 
   const task = await db.scheduledTasks.getById(id);
   if (!task) return err('not_found', 'Task not found');
@@ -373,10 +421,8 @@ export async function listTaskRuns(
 }
 
 /** Read one boolean flag off a Runtime run's JSON output; anything malformed reads as false. */
-function runOutputFlag(output: string | null, key: string): boolean {
-  if (!output) return false;
-  const parsed: unknown = safeJsonParse(output, null);
-  return !!parsed && typeof parsed === 'object' && (parsed as Record<string, unknown>)[key] === true;
+function runOutputFlag(output: unknown, key: string): boolean {
+  return !!output && typeof output === 'object' && (output as Record<string, unknown>)[key] === true;
 }
 
 /**
@@ -417,7 +463,9 @@ export async function createTask(
     return err('invalid', maxStepsError(max_steps));
   }
 
-  const webhookCheck = validateNotifyWebhook(input.notify_webhook);
+  const notify = notifyFromInput(input);
+  if (notify && 'ok' in notify) return notify;
+  const webhookCheck = validateNotifyWebhook(notify?.webhook);
   if (webhookCheck) return webhookCheck;
 
   const toolGrant = validateUnattendedTools(input.unattended_tools, actor);
@@ -442,12 +490,9 @@ export async function createTask(
     timezone: tz,
     max_steps: max_steps ?? 15,
     enabled: enabled ?? true,
-    notify_webhook: input.notify_webhook || null,
-    notify_email: input.notify_email ?? false,
-    notify_wecom: input.notify_wecom ?? false,
-    notify_feishu: input.notify_feishu ?? false,
+    ...(notify ? { notify } : {}),
     quiet_when_empty: input.quiet_when_empty === true,
-    ...(toolGrant ? { unattended_tools: toolGrant.json } : {}),
+    ...(toolGrant ? { unattended_tools: toolGrant.tools } : {}),
   });
 
   const scheduler = getScheduler();
@@ -462,16 +507,17 @@ export async function createTask(
 export async function updateTask(
   db: DatabaseProvider,
   actor: TaskActor,
-  id: number,
+  rawId: string | number,
   input: UpdateTaskInput,
 ): Promise<MutateTaskResult> {
-  if (!Number.isInteger(id)) return err('invalid', 'Invalid task ID');
+  const id = toRowId(rawId);
+  if (!id) return err('invalid', 'Invalid task ID');
 
   const existing = await db.scheduledTasks.getById(id);
   if (!existing) return err('not_found', 'Task not found');
   if (!canAccess(existing, actor)) return err('forbidden', 'Not authorized');
 
-  const updates: Record<string, unknown> = {};
+  const updates: ScheduledTaskUpdateInput = {};
 
   if (input.name !== undefined) {
     if (input.name.length < MIN_NAME_LENGTH || input.name.length > MAX_NAME_LENGTH) {
@@ -524,20 +570,14 @@ export async function updateTask(
     updates.enabled = input.enabled;
   }
 
-  if (input.notify_webhook !== undefined) {
-    const webhookCheck = validateNotifyWebhook(input.notify_webhook);
-    if (webhookCheck) return webhookCheck;
-    updates.notify_webhook = input.notify_webhook || null;
-  }
-
-  if (input.notify_wecom !== undefined) {
-    updates.notify_wecom = input.notify_wecom;
-  }
-  if (input.notify_feishu !== undefined) {
-    updates.notify_feishu = input.notify_feishu;
-  }
-  if (input.notify_email !== undefined) {
-    updates.notify_email = input.notify_email;
+  const notify = notifyFromInput(input);
+  if (notify && 'ok' in notify) return notify;
+  if (notify) {
+    if (notify.webhook !== undefined) {
+      const webhookCheck = validateNotifyWebhook(notify.webhook);
+      if (webhookCheck) return webhookCheck;
+    }
+    updates.notify = notify;
   }
   if (input.quiet_when_empty !== undefined) {
     if (typeof input.quiet_when_empty !== 'boolean') return err('invalid', 'quiet_when_empty must be true or false');
@@ -546,7 +586,7 @@ export async function updateTask(
 
   const toolGrant = validateUnattendedTools(input.unattended_tools, actor);
   if (toolGrant && 'ok' in toolGrant) return toolGrant;
-  if (toolGrant) updates.unattended_tools = toolGrant.json;
+  if (toolGrant) updates.unattended_tools = toolGrant.tools;
 
   const updated = await db.scheduledTasks.update(id, updates);
   if (!updated) return err('internal', 'Update failed');
@@ -561,8 +601,13 @@ export async function updateTask(
 }
 
 /** Delete a task definition. Historical sessions are kept. */
-export async function deleteTask(db: DatabaseProvider, actor: TaskActor, id: number): Promise<DeleteTaskResult> {
-  if (!Number.isInteger(id)) return err('invalid', 'Invalid task ID');
+export async function deleteTask(
+  db: DatabaseProvider,
+  actor: TaskActor,
+  rawId: string | number,
+): Promise<DeleteTaskResult> {
+  const id = toRowId(rawId);
+  if (!id) return err('invalid', 'Invalid task ID');
 
   const existing = await db.scheduledTasks.getById(id);
   if (!existing) return err('not_found', 'Task not found');
@@ -590,8 +635,13 @@ export async function deleteTask(db: DatabaseProvider, actor: TaskActor, id: num
  * launch are one scheduler operation, so concurrent requests cannot create
  * orphan sessions; a task already running returns a conflict.
  */
-export async function runTaskNow(db: DatabaseProvider, actor: TaskActor, id: number): Promise<RunTaskResult> {
-  if (!Number.isInteger(id)) return err('invalid', 'Invalid task ID');
+export async function runTaskNow(
+  db: DatabaseProvider,
+  actor: TaskActor,
+  rawId: string | number,
+): Promise<RunTaskResult> {
+  const id = toRowId(rawId);
+  if (!id) return err('invalid', 'Invalid task ID');
 
   const task = await db.scheduledTasks.getById(id);
   if (!task) return err('not_found', 'Task not found');

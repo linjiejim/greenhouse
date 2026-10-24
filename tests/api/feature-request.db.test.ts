@@ -32,7 +32,7 @@ describe('FeatureRequestRepository', () => {
       session_id: 'sess-abc',
     });
 
-    expect(request.id).toBeGreaterThan(0);
+    expect(request.id).toBeTruthy();
     expect(request.title).toBe('Add PDF export');
     expect(request.description).toBe('I need a button to export chat as PDF');
     expect(request.submitted_by).toBe('user-123');
@@ -139,7 +139,7 @@ describe('FeatureRequestTool', () => {
     );
 
     expect((result as any).success).toBe(true);
-    expect((result as any).request.id).toBeGreaterThan(0);
+    expect((result as any).request.id).toBeTruthy();
     expect((result as any).request.status).toBe('pending');
   });
 

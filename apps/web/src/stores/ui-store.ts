@@ -54,14 +54,6 @@ interface UIStore {
   // Share affordance synced from ChatPage so the TopBar can render the Share
   // button next to the session title (null = not shareable / hidden).
   chatShare: { shareCount: number; onOpen: () => void } | null;
-  // Session-level response feedback belongs with the other conversation
-  // actions in the TopBar, not in the composer chrome.
-  chatFeedback: {
-    sessionId: string;
-    initialRating: number | null;
-    initialComment: string | null;
-    readonly: boolean;
-  } | null;
   // The mounted full Chat pane owns session mutations; this callback lets the
   // global TopBar edit the title without creating a second session state.
   chatTitleEdit: { readonly: boolean; onRename: (title: string) => Promise<void> } | null;
@@ -87,7 +79,6 @@ interface UIStore {
   setCurrentSessionInfo: (title: string, profileId: string) => void;
   setCurrentChatSessionId: (id: string | null) => void;
   setChatShare: (v: { shareCount: number; onOpen: () => void } | null) => void;
-  setChatFeedback: (v: UIStore['chatFeedback']) => void;
   setChatTitleEdit: (v: UIStore['chatTitleEdit']) => void;
   setHomeWorkbench: (v: { editing: boolean; onToggleEdit: () => void } | null) => void;
   bumpSessionListVersion: () => void;
@@ -107,7 +98,6 @@ export const useUIStore = create<UIStore>((set) => ({
   currentSessionProfileId: 'team',
   currentChatSessionId: null,
   chatShare: null,
-  chatFeedback: null,
   chatTitleEdit: null,
   homeWorkbench: null,
   sessionListVersion: 0,
@@ -133,7 +123,6 @@ export const useUIStore = create<UIStore>((set) => ({
     set({ currentSessionTitle, currentSessionProfileId }),
   setCurrentChatSessionId: (currentChatSessionId) => set({ currentChatSessionId }),
   setChatShare: (chatShare) => set({ chatShare }),
-  setChatFeedback: (chatFeedback) => set({ chatFeedback }),
   setChatTitleEdit: (chatTitleEdit) => set({ chatTitleEdit }),
   setHomeWorkbench: (homeWorkbench) => set({ homeWorkbench }),
   bumpSessionListVersion: () => set((state) => ({ sessionListVersion: state.sessionListVersion + 1 })),

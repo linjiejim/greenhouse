@@ -1,16 +1,17 @@
 /**
  * Platform control-plane service.
  *
- * This service owns persistence for Kernel v2 roles, user overrides, entity
- * policies, app release manifests, and immutable action audits. It does not
- * mutate existing feature flags or business-domain authorization.
+ * Persistence for Kernel v2 roles (capabilities + entity policies + members)
+ * and the immutable action audit. Single organization: every `orgId`
+ * parameter is kept for the kernel's interface and ignored. Per-user
+ * capability / entity-policy overrides and stored app releases were retired in
+ * 3.0 — precedence is role allow > default deny, and the manifest golden-hash
+ * test guards releases. The Home workbench layout lives in
+ * `users.preferences.workbench`; the workbench methods here are its facade.
  */
 
-import { createHash, randomUUID } from 'node:crypto';
-import { and, desc, eq, inArray, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray } from 'drizzle-orm';
 import type {
-  ApplicationManifest,
-  ApplicationDefinition,
   DataScope,
   EntityPolicy,
   FieldPolicy,
@@ -19,48 +20,33 @@ import type {
   UserCapabilityOverride,
   UserEntityPolicyOverride,
 } from '@greenhouse/platform-kernel';
-import { compileApp, isCapabilityPattern, isStableId, validateEntityPolicy } from '@greenhouse/platform-kernel';
+import { isCapabilityPattern, isStableId, validateEntityPolicy } from '@greenhouse/platform-kernel';
 import { DEFAULT_WORKBENCH_CONFIG, parseWorkbenchConfig, type WorkbenchConfig } from '@greenhouse/types/workbench';
 import { nowIso } from '@greenhouse/utils/date';
-import { safeJsonParse } from '@greenhouse/utils/json';
 
 import type { Db } from '../client.js';
+import { newId } from '../ids.js';
 import {
-  platformAppReleases,
-  platformAuditEvents,
-  platformOrganizations,
-  platformRoleBindings,
-  platformRoleCapabilities,
-  platformRoleEntityPolicies,
-  platformRoles,
-  platformUserCapabilityOverrides,
-  platformUserEntityPolicyOverrides,
-  platformUserWorkbenchPreferences,
+  auditEvents as platformAuditEvents,
+  roleMembers as platformRoleBindings,
+  roleCapabilities as platformRoleCapabilities,
+  roleEntityPolicies as platformRoleEntityPolicies,
+  roles as platformRoles,
+  users,
 } from '../schema/index.js';
 import type {
-  PlatformAppReleaseRow,
-  PlatformAuditEventRow,
-  PlatformCapabilityEffect,
-  PlatformOrganizationRow,
   PlatformRoleBindingRow,
   PlatformRoleCapabilityRow,
   PlatformRoleEntityPolicyRow,
   PlatformRoleRow,
   PlatformRoleStatus,
-  PlatformUserCapabilityOverrideRow,
-  PlatformUserEntityPolicyOverrideRow,
-  PlatformUserWorkbenchPreferencesRow,
-} from '../schema/platform.js';
-import type { UserRole } from '../schema/user.js';
-
-export interface PlatformOrganizationInput {
-  id: string;
-  code: string;
-  name: string;
-}
+} from '../schema/access.js';
+import type { PlatformAuditEventRow } from '../schema/audit.js';
+import type { UserRole } from '../schema/identity.js';
 
 export interface PlatformRoleInput {
-  org_id: string;
+  /** Ignored (single organization); kept so callers written for 1.x compile. */
+  org_id?: string;
   code: string;
   name: string;
   description?: string;
@@ -92,23 +78,8 @@ export interface PlatformEntityPolicySnapshot {
   userOverride?: UserEntityPolicyOverride;
 }
 
-function parseJson<T>(value: string, fallback: T): T {
-  return safeJsonParse(value, fallback) as T;
-}
-
-function parseStoredEntityPolicy(scopes: string, fields: string): EntityPolicy {
-  return validateEntityPolicy({
-    scopes: parseJson<unknown>(scopes, []),
-    fields: parseJson<unknown>(fields, {}),
-  });
-}
-
-function manifestPayload(manifest: ApplicationManifest): { json: string; hash: string } {
-  const json = JSON.stringify(compileApp(manifest));
-  return {
-    json,
-    hash: createHash('sha256').update(json).digest('hex'),
-  };
+function parseStoredEntityPolicy(scopes: unknown, fields: unknown): EntityPolicy {
+  return validateEntityPolicy({ scopes: scopes ?? [], fields: fields ?? {} });
 }
 
 function assertResourceIds(input: { app_id: string; module_id: string; entity_id: string }): void {
@@ -121,54 +92,14 @@ function assertResourceIds(input: { app_id: string; module_id: string; entity_id
   }
 }
 
-function parseStoredManifest(row: PlatformAppReleaseRow): ApplicationManifest {
-  const expectedHash = createHash('sha256').update(row.manifest).digest('hex');
-  if (expectedHash !== row.manifest_hash) {
-    throw new Error(`Application ${row.app_id}@${row.version}: manifest hash mismatch`);
-  }
-  const parsed = safeJsonParse(row.manifest, null);
-  if (!parsed || typeof parsed !== 'object') {
-    throw new Error(`Application ${row.app_id}@${row.version}: manifest JSON is invalid`);
-  }
-  const compiled = compileApp(parsed as ApplicationDefinition);
-  if (compiled.id !== row.app_id || compiled.version !== row.version) {
-    throw new Error(`Application ${row.app_id}@${row.version}: release metadata does not match the manifest`);
-  }
-  return compiled;
-}
-
 export function createPlatformService(db: Db) {
   const service = {
-    async ensureOrganization(input: PlatformOrganizationInput): Promise<PlatformOrganizationRow> {
-      const now = nowIso();
-      const rows = await db
-        .insert(platformOrganizations)
-        .values({
-          id: input.id,
-          code: input.code,
-          name: input.name,
-          created_at: now,
-          updated_at: now,
-        })
-        .onConflictDoUpdate({
-          target: platformOrganizations.id,
-          set: {
-            code: input.code,
-            name: input.name,
-            updated_at: now,
-          },
-        })
-        .returning();
-      return rows[0]!;
-    },
-
     async createRole(input: PlatformRoleInput): Promise<PlatformRoleRow> {
       const now = nowIso();
       const rows = await db
         .insert(platformRoles)
         .values({
-          id: randomUUID(),
-          org_id: input.org_id,
+          id: newId('role'),
           code: input.code,
           name: input.name,
           description: input.description ?? '',
@@ -186,8 +117,7 @@ export function createPlatformService(db: Db) {
       const rows = await db
         .insert(platformRoles)
         .values({
-          id: randomUUID(),
-          org_id: input.org_id,
+          id: newId('role'),
           code: input.code,
           name: input.name,
           description: input.description ?? '',
@@ -197,7 +127,7 @@ export function createPlatformService(db: Db) {
           updated_at: now,
         })
         .onConflictDoUpdate({
-          target: [platformRoles.org_id, platformRoles.code],
+          target: platformRoles.code,
           set: {
             name: input.name,
             description: input.description ?? '',
@@ -214,12 +144,8 @@ export function createPlatformService(db: Db) {
       return rows[0];
     },
 
-    async getRoleByCode(orgId: string, code: string): Promise<PlatformRoleRow | undefined> {
-      const rows = await db
-        .select()
-        .from(platformRoles)
-        .where(and(eq(platformRoles.org_id, orgId), eq(platformRoles.code, code)))
-        .limit(1);
+    async getRoleByCode(_orgId: string, code: string): Promise<PlatformRoleRow | undefined> {
+      const rows = await db.select().from(platformRoles).where(eq(platformRoles.code, code)).limit(1);
       return rows[0];
     },
 
@@ -238,8 +164,8 @@ export function createPlatformService(db: Db) {
       return rows[0];
     },
 
-    async listRoles(orgId: string): Promise<PlatformRoleRow[]> {
-      return db.select().from(platformRoles).where(eq(platformRoles.org_id, orgId)).orderBy(platformRoles.code);
+    async listRoles(_orgId?: string): Promise<PlatformRoleRow[]> {
+      return db.select().from(platformRoles).orderBy(platformRoles.code);
     },
 
     async deleteRole(id: string): Promise<boolean> {
@@ -289,7 +215,7 @@ export function createPlatformService(db: Db) {
       const systemRoles = await db
         .select()
         .from(platformRoles)
-        .where(and(eq(platformRoles.org_id, 'default'), inArray(platformRoles.code, ['super', 'team'])));
+        .where(inArray(platformRoles.code, ['super', 'team']));
       if (systemRoles.length === 0) return;
       const target = systemRoles.find((item) => item.code === role);
       if (!target) throw new Error(`Platform system role "${role}" has not been bootstrapped`);
@@ -352,76 +278,7 @@ export function createPlatformService(db: Db) {
         .orderBy(platformRoleCapabilities.role_id, platformRoleCapabilities.capability);
     },
 
-    async setUserCapabilityOverride(input: {
-      org_id: string;
-      user_id: string;
-      capability: string;
-      effect: PlatformCapabilityEffect;
-      granted_by?: string;
-      reason?: string;
-    }): Promise<PlatformUserCapabilityOverrideRow> {
-      if (!isCapabilityPattern(input.capability)) {
-        throw new Error(`Invalid capability pattern: ${input.capability}`);
-      }
-      const now = nowIso();
-      const rows = await db
-        .insert(platformUserCapabilityOverrides)
-        .values({
-          org_id: input.org_id,
-          user_id: input.user_id,
-          capability: input.capability,
-          effect: input.effect,
-          granted_by: input.granted_by ?? null,
-          reason: input.reason ?? null,
-          created_at: now,
-          updated_at: now,
-        })
-        .onConflictDoUpdate({
-          target: [
-            platformUserCapabilityOverrides.org_id,
-            platformUserCapabilityOverrides.user_id,
-            platformUserCapabilityOverrides.capability,
-          ],
-          set: {
-            effect: input.effect,
-            granted_by: input.granted_by ?? null,
-            reason: input.reason ?? null,
-            updated_at: now,
-          },
-        })
-        .returning();
-      return rows[0]!;
-    },
-
-    async clearUserCapabilityOverride(orgId: string, userId: string, capability: string): Promise<boolean> {
-      const deleted = await db
-        .delete(platformUserCapabilityOverrides)
-        .where(
-          and(
-            eq(platformUserCapabilityOverrides.org_id, orgId),
-            eq(platformUserCapabilityOverrides.user_id, userId),
-            eq(platformUserCapabilityOverrides.capability, capability),
-          ),
-        )
-        .returning({ user_id: platformUserCapabilityOverrides.user_id });
-      return deleted.length > 0;
-    },
-
-    async listUserCapabilityOverrides(orgId: string, userId?: string): Promise<PlatformUserCapabilityOverrideRow[]> {
-      const query = db.select().from(platformUserCapabilityOverrides);
-      return query
-        .where(
-          userId
-            ? and(
-                eq(platformUserCapabilityOverrides.org_id, orgId),
-                eq(platformUserCapabilityOverrides.user_id, userId),
-              )
-            : eq(platformUserCapabilityOverrides.org_id, orgId),
-        )
-        .orderBy(platformUserCapabilityOverrides.user_id, platformUserCapabilityOverrides.capability);
-    },
-
-    async getAuthorizationSnapshot(userId: string, orgId: string): Promise<PlatformAuthorizationSnapshot> {
+    async getAuthorizationSnapshot(userId: string, _orgId?: string): Promise<PlatformAuthorizationSnapshot> {
       const roleRows = await db
         .select({
           role_id: platformRoleCapabilities.role_id,
@@ -430,19 +287,7 @@ export function createPlatformService(db: Db) {
         .from(platformRoleBindings)
         .innerJoin(platformRoles, eq(platformRoles.id, platformRoleBindings.role_id))
         .innerJoin(platformRoleCapabilities, eq(platformRoleCapabilities.role_id, platformRoles.id))
-        .where(
-          and(
-            eq(platformRoleBindings.user_id, userId),
-            eq(platformRoles.org_id, orgId),
-            eq(platformRoles.status, 'active'),
-          ),
-        );
-      const overrideRows = await db
-        .select()
-        .from(platformUserCapabilityOverrides)
-        .where(
-          and(eq(platformUserCapabilityOverrides.user_id, userId), eq(platformUserCapabilityOverrides.org_id, orgId)),
-        );
+        .where(and(eq(platformRoleBindings.user_id, userId), eq(platformRoles.status, 'active')));
 
       return {
         roleGrants: roleRows.map((row) => ({
@@ -450,11 +295,7 @@ export function createPlatformService(db: Db) {
           roleId: row.role_id,
           capability: row.capability,
         })),
-        userOverrides: overrideRows.map((row) => ({
-          source: 'user',
-          capability: row.capability,
-          effect: row.effect,
-        })),
+        userOverrides: [],
       };
     },
 
@@ -465,13 +306,13 @@ export function createPlatformService(db: Db) {
       await db
         .insert(platformRoleEntityPolicies)
         .values({
-          id: randomUUID(),
+          id: newId('rolePolicy'),
           role_id: roleId,
           app_id: input.app_id,
           module_id: input.module_id,
           entity_id: input.entity_id,
-          scopes: JSON.stringify(policy.scopes),
-          field_policies: JSON.stringify(policy.fields),
+          scopes: [...policy.scopes],
+          field_policies: { ...policy.fields },
           created_at: now,
           updated_at: now,
         })
@@ -483,8 +324,8 @@ export function createPlatformService(db: Db) {
           ],
           set: {
             module_id: input.module_id,
-            scopes: JSON.stringify(policy.scopes),
-            field_policies: JSON.stringify(policy.fields),
+            scopes: [...policy.scopes],
+            field_policies: { ...policy.fields },
             updated_at: now,
           },
         });
@@ -509,97 +350,9 @@ export function createPlatformService(db: Db) {
         );
     },
 
-    async setUserEntityPolicyOverride(input: {
-      org_id: string;
-      user_id: string;
-      effect: PlatformCapabilityEffect;
-      policy: PlatformEntityPolicyInput;
-      granted_by?: string;
-      reason?: string;
-    }): Promise<PlatformUserEntityPolicyOverrideRow> {
-      assertResourceIds(input.policy);
-      const policy = validateEntityPolicy({
-        scopes: input.policy.scopes,
-        fields: input.policy.field_policies,
-      });
-      const now = nowIso();
-      const rows = await db
-        .insert(platformUserEntityPolicyOverrides)
-        .values({
-          id: randomUUID(),
-          org_id: input.org_id,
-          user_id: input.user_id,
-          app_id: input.policy.app_id,
-          module_id: input.policy.module_id,
-          entity_id: input.policy.entity_id,
-          effect: input.effect,
-          scopes: JSON.stringify(policy.scopes),
-          field_policies: JSON.stringify(policy.fields),
-          granted_by: input.granted_by ?? null,
-          reason: input.reason ?? null,
-          created_at: now,
-          updated_at: now,
-        })
-        .onConflictDoUpdate({
-          target: [
-            platformUserEntityPolicyOverrides.org_id,
-            platformUserEntityPolicyOverrides.user_id,
-            platformUserEntityPolicyOverrides.app_id,
-            platformUserEntityPolicyOverrides.entity_id,
-          ],
-          set: {
-            module_id: input.policy.module_id,
-            effect: input.effect,
-            scopes: JSON.stringify(policy.scopes),
-            field_policies: JSON.stringify(policy.fields),
-            granted_by: input.granted_by ?? null,
-            reason: input.reason ?? null,
-            updated_at: now,
-          },
-        })
-        .returning();
-      return rows[0]!;
-    },
-
-    async listUserEntityPolicyOverrides(
-      orgId: string,
-      userId?: string,
-    ): Promise<PlatformUserEntityPolicyOverrideRow[]> {
-      const conditions = [eq(platformUserEntityPolicyOverrides.org_id, orgId)];
-      if (userId) conditions.push(eq(platformUserEntityPolicyOverrides.user_id, userId));
-      return db
-        .select()
-        .from(platformUserEntityPolicyOverrides)
-        .where(and(...conditions))
-        .orderBy(
-          platformUserEntityPolicyOverrides.user_id,
-          platformUserEntityPolicyOverrides.app_id,
-          platformUserEntityPolicyOverrides.entity_id,
-        );
-    },
-
-    async clearUserEntityPolicyOverride(
-      orgId: string,
-      userId: string,
-      appId: string,
-      entityId: string,
-    ): Promise<boolean> {
-      const deleted = await db
-        .delete(platformUserEntityPolicyOverrides)
-        .where(
-          and(
-            eq(platformUserEntityPolicyOverrides.org_id, orgId),
-            eq(platformUserEntityPolicyOverrides.user_id, userId),
-            eq(platformUserEntityPolicyOverrides.app_id, appId),
-            eq(platformUserEntityPolicyOverrides.entity_id, entityId),
-          ),
-        )
-        .returning({ id: platformUserEntityPolicyOverrides.id });
-      return deleted.length > 0;
-    },
-
     async getEntityPolicySnapshot(input: {
-      orgId: string;
+      /** Ignored (single organization). */
+      orgId?: string;
       userId: string;
       appId: string;
       entityId: string;
@@ -615,216 +368,65 @@ export function createPlatformService(db: Db) {
         .where(
           and(
             eq(platformRoleBindings.user_id, input.userId),
-            eq(platformRoles.org_id, input.orgId),
             eq(platformRoles.status, 'active'),
             eq(platformRoleEntityPolicies.app_id, input.appId),
             eq(platformRoleEntityPolicies.entity_id, input.entityId),
           ),
         );
-      const overrideRows = await db
-        .select()
-        .from(platformUserEntityPolicyOverrides)
-        .where(
-          and(
-            eq(platformUserEntityPolicyOverrides.org_id, input.orgId),
-            eq(platformUserEntityPolicyOverrides.user_id, input.userId),
-            eq(platformUserEntityPolicyOverrides.app_id, input.appId),
-            eq(platformUserEntityPolicyOverrides.entity_id, input.entityId),
-          ),
-        )
-        .limit(1);
-
-      const override = overrideRows[0];
       return {
         rolePolicies: roleRows.map((row) => parseStoredEntityPolicy(row.scopes, row.field_policies)),
-        userOverride: override
-          ? {
-              effect: override.effect,
-              policy: parseStoredEntityPolicy(override.scopes, override.field_policies),
-            }
-          : undefined,
       };
     },
 
-    async getUserWorkbenchPreferences(orgId: string, userId: string): Promise<WorkbenchConfig> {
-      const rows = await db
-        .select({ preferences: platformUserWorkbenchPreferences.preferences })
-        .from(platformUserWorkbenchPreferences)
-        .where(
-          and(eq(platformUserWorkbenchPreferences.org_id, orgId), eq(platformUserWorkbenchPreferences.user_id, userId)),
-        )
-        .limit(1);
-      return rows[0] ? parseWorkbenchConfig(rows[0].preferences) : { ...DEFAULT_WORKBENCH_CONFIG };
+    async getUserWorkbenchPreferences(_orgId: string, userId: string): Promise<WorkbenchConfig> {
+      const rows = await db.select({ preferences: users.preferences }).from(users).where(eq(users.id, userId)).limit(1);
+      const stored = rows[0]?.preferences?.workbench;
+      return stored ? parseWorkbenchConfig(stored) : { ...DEFAULT_WORKBENCH_CONFIG };
     },
 
     async setUserWorkbenchPreferences(
-      orgId: string,
+      _orgId: string,
       userId: string,
       preferences: WorkbenchConfig,
-    ): Promise<PlatformUserWorkbenchPreferencesRow> {
-      const normalized = parseWorkbenchConfig(preferences);
-      const now = nowIso();
-      const rows = await db
-        .insert(platformUserWorkbenchPreferences)
-        .values({
-          org_id: orgId,
-          user_id: userId,
-          preferences: JSON.stringify(normalized),
-          created_at: now,
-          updated_at: now,
-        })
-        .onConflictDoUpdate({
-          target: [platformUserWorkbenchPreferences.org_id, platformUserWorkbenchPreferences.user_id],
-          set: {
-            preferences: JSON.stringify(normalized),
-            updated_at: now,
-          },
-        })
-        .returning();
-      return rows[0]!;
+    ): Promise<WorkbenchConfig> {
+      return service.mutateUserWorkbenchPreferences(_orgId, userId, () => preferences);
     },
 
     /**
-     * Serialize a read-modify-write of one user's JSON workbench blob.
-     *
-     * Agent calls, browser tabs and the Home editor can all update the same row.
-     * A plain get + set loses whichever write arrives first. The transaction-level
-     * advisory lock also covers the first write, when there is no row available
-     * for `FOR UPDATE` yet, and remains compatible with the test harness savepoint.
+     * Serialize a read-modify-write of one user's workbench layout. Agent
+     * calls, browser tabs and the Home editor can all update it; the user row
+     * lock makes concurrent writers queue instead of dropping each other's
+     * change (other preference keys are preserved).
      */
     async mutateUserWorkbenchPreferences(
-      orgId: string,
+      _orgId: string,
       userId: string,
       mutate: (current: WorkbenchConfig) => WorkbenchConfig,
     ): Promise<WorkbenchConfig> {
       return db.transaction(async (tx) => {
-        const lockKey = `platform-workbench:${orgId}:${userId}`;
-        await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`);
         const rows = await tx
-          .select({ preferences: platformUserWorkbenchPreferences.preferences })
-          .from(platformUserWorkbenchPreferences)
-          .where(
-            and(
-              eq(platformUserWorkbenchPreferences.org_id, orgId),
-              eq(platformUserWorkbenchPreferences.user_id, userId),
-            ),
-          )
-          .limit(1);
-        const current = rows[0] ? parseWorkbenchConfig(rows[0].preferences) : { ...DEFAULT_WORKBENCH_CONFIG };
+          .select({ preferences: users.preferences })
+          .from(users)
+          .where(eq(users.id, userId))
+          .for('update');
+        const stored = rows[0]?.preferences ?? {};
+        const current = stored.workbench ? parseWorkbenchConfig(stored.workbench) : { ...DEFAULT_WORKBENCH_CONFIG };
         const normalized = parseWorkbenchConfig(mutate(current));
-        const now = nowIso();
-        await tx
-          .insert(platformUserWorkbenchPreferences)
-          .values({
-            org_id: orgId,
-            user_id: userId,
-            preferences: JSON.stringify(normalized),
-            created_at: now,
-            updated_at: now,
-          })
-          .onConflictDoUpdate({
-            target: [platformUserWorkbenchPreferences.org_id, platformUserWorkbenchPreferences.user_id],
-            set: { preferences: JSON.stringify(normalized), updated_at: now },
-          });
+        if (rows[0]) {
+          await tx
+            .update(users)
+            .set({ preferences: { ...stored, workbench: normalized }, updated_at: nowIso() })
+            .where(eq(users.id, userId));
+        }
         return normalized;
       });
-    },
-
-    async publishAppRelease(input: {
-      manifest: ApplicationManifest;
-      git_commit?: string;
-      created_by?: string;
-    }): Promise<PlatformAppReleaseRow> {
-      const payload = manifestPayload(input.manifest);
-      const existing = await db
-        .select()
-        .from(platformAppReleases)
-        .where(
-          and(
-            eq(platformAppReleases.app_id, input.manifest.id),
-            eq(platformAppReleases.version, input.manifest.version),
-          ),
-        )
-        .limit(1);
-      if (existing[0]) {
-        if (existing[0].manifest_hash !== payload.hash) {
-          throw new Error(
-            `Application ${input.manifest.id}@${input.manifest.version} already exists with a different manifest hash`,
-          );
-        }
-        return existing[0];
-      }
-
-      const now = nowIso();
-      const rows = await db
-        .insert(platformAppReleases)
-        .values({
-          id: randomUUID(),
-          app_id: input.manifest.id,
-          version: input.manifest.version,
-          manifest: payload.json,
-          manifest_hash: payload.hash,
-          git_commit: input.git_commit ?? null,
-          created_by: input.created_by ?? null,
-          created_at: now,
-          updated_at: now,
-        })
-        .returning();
-      return rows[0]!;
-    },
-
-    async activateAppRelease(id: string): Promise<PlatformAppReleaseRow | undefined> {
-      return db.transaction(async (tx) => {
-        const target = await tx.select().from(platformAppReleases).where(eq(platformAppReleases.id, id)).limit(1);
-        if (!target[0]) return undefined;
-        parseStoredManifest(target[0]);
-        const now = nowIso();
-        await tx
-          .update(platformAppReleases)
-          .set({ status: 'retired', updated_at: now })
-          .where(and(eq(platformAppReleases.app_id, target[0].app_id), eq(platformAppReleases.status, 'active')));
-        const rows = await tx
-          .update(platformAppReleases)
-          .set({ status: 'active', activated_at: now, updated_at: now })
-          .where(eq(platformAppReleases.id, id))
-          .returning();
-        return rows[0];
-      });
-    },
-
-    async listActiveAppReleases(): Promise<Array<PlatformAppReleaseRow & { parsedManifest: ApplicationManifest }>> {
-      const rows = await db
-        .select()
-        .from(platformAppReleases)
-        .where(eq(platformAppReleases.status, 'active'))
-        .orderBy(platformAppReleases.app_id);
-      return rows.map((row) => ({
-        ...row,
-        parsedManifest: parseStoredManifest(row),
-      }));
-    },
-
-    async listAppReleases(
-      appId?: string,
-    ): Promise<Array<PlatformAppReleaseRow & { parsedManifest: ApplicationManifest }>> {
-      const query = db.select().from(platformAppReleases);
-      const rows = appId
-        ? await query
-            .where(eq(platformAppReleases.app_id, appId))
-            .orderBy(platformAppReleases.app_id, desc(platformAppReleases.created_at))
-        : await query.orderBy(platformAppReleases.app_id, desc(platformAppReleases.created_at));
-      return rows.map((row) => ({
-        ...row,
-        parsedManifest: parseStoredManifest(row),
-      }));
     },
 
     async recordAudit(event: PlatformAuditEvent): Promise<PlatformAuditEventRow> {
       const rows = await db
         .insert(platformAuditEvents)
         .values({
-          id: event.id ?? randomUUID(),
-          org_id: event.orgId,
+          id: event.id ?? newId('auditEvent'),
           actor_id: event.actorId,
           actor_type: event.actorType,
           on_behalf_of_user_id: event.onBehalfOfUserId ?? null,
@@ -837,27 +439,26 @@ export function createPlatformService(db: Db) {
           action_id: event.actionId,
           capability: event.capability,
           result: event.result,
-          summary: JSON.stringify(event.summary ?? {}),
+          summary: { ...(event.summary ?? {}) },
           created_at: event.createdAt ?? nowIso(),
         })
         .returning();
       return rows[0]!;
     },
 
-    async listAuditEvents(orgId: string, limit = 100): Promise<PlatformAuditEventRow[]> {
+    async listAuditEvents(_orgId: string, limit = 100): Promise<PlatformAuditEventRow[]> {
       return db
         .select()
         .from(platformAuditEvents)
-        .where(eq(platformAuditEvents.org_id, orgId))
         .orderBy(desc(platformAuditEvents.created_at))
         .limit(Math.min(Math.max(limit, 1), 500));
     },
 
-    async listAuditEventsForApp(orgId: string, appId: string, limit = 100): Promise<PlatformAuditEventRow[]> {
+    async listAuditEventsForApp(_orgId: string, appId: string, limit = 100): Promise<PlatformAuditEventRow[]> {
       return db
         .select()
         .from(platformAuditEvents)
-        .where(and(eq(platformAuditEvents.org_id, orgId), eq(platformAuditEvents.app_id, appId)))
+        .where(eq(platformAuditEvents.app_id, appId))
         .orderBy(desc(platformAuditEvents.created_at))
         .limit(Math.min(Math.max(limit, 1), 500));
     },

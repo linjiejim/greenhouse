@@ -18,9 +18,9 @@
 
 import { tool } from 'ai';
 import { z } from 'zod';
-import { safeJsonParse } from '@greenhouse/utils/json';
 import { toErrorMessage } from '@greenhouse/utils/error';
 import { entityUrl } from '@greenhouse/types/entity-links';
+import { isRowId } from '@greenhouse/utils/id';
 import type { DatabaseProvider } from '@greenhouse/db';
 import { defineTool, type ToolMeta } from './define.js';
 import { CITE_URL_INSTRUCTION } from './cite-url.js';
@@ -87,11 +87,11 @@ const knowledgeQuerySchema = z.object({
     .default('team')
     .describe('Knowledge scope: team docs, your own personal docs, or docs others shared with you.'),
   query: z.string().optional().describe('Search query for search/list filtering.'),
-  doc_id: z
+  doc_id: z.coerce
     .string()
     .optional()
     .describe(
-      'Document id for get/versions. Accepts either the numeric `id` or the string `doc_id`, exactly as returned by search/tree results or a document link.',
+      'Document id for get/versions. Accepts either the row `id` or the `doc_id` slug, exactly as returned by search/tree results or a document link.',
     ),
   folder: z
     .string()
@@ -127,25 +127,25 @@ export interface KnowledgeQueryContext {
  * Canonical in-app deeplink for a KB doc. Cite this in answers so the link never
  * breaks (spec D16); the format itself lives in `@greenhouse/types/entity-links`.
  */
-function kbDocUrl(id: number, slug: string): string {
+function kbDocUrl(id: string, slug: string): string {
   return entityUrl({ kind: 'kb_doc', id, slug });
 }
 
 /**
- * Two id namespaces reach this tool: the string `doc_id` key and the numeric
- * row `id` that search results, tree results and deep links
- * (#/knowledge/doc/<id>-…) expose. Models legitimately arrive with the numeric
- * one; refusing it produced a steady stream of false "not found"s for docs that
- * existed (dev frictions, 2026-08). The text key is tried first so a
- * digits-only doc_id keeps winning, and the numeric fallback re-imposes the
- * scope the text lookup enforces — it widens the key format, not the pool.
+ * Two id namespaces reach this tool: the `doc_id` slug and the row `id` that
+ * search results, tree results and deep links (#/knowledge/doc/<id>-…) expose.
+ * Models legitimately arrive with the row id; refusing it produced a steady
+ * stream of false "not found"s for docs that existed (dev frictions, 2026-08).
+ * The slug is tried first so a slug that looks like an id keeps winning, and
+ * the row-id fallback re-imposes the scope the slug lookup enforces — it widens
+ * the key format, not the pool.
  */
 async function resolveDoc(db: DatabaseProvider, docId: string, scope: string) {
   const key = docId.trim();
   const doc = await db.knowledgeBase.get(key, scope);
   if (doc) return doc;
-  if (!/^\d+$/.test(key)) return undefined;
-  const byId = await db.knowledgeBase.getById(Number(key));
+  if (!isRowId(key)) return undefined;
+  const byId = await db.knowledgeBase.getById(key);
   return byId && byId.scope === scope ? byId : undefined;
 }
 
@@ -230,7 +230,7 @@ export function createKnowledgeQueryTool(db: DatabaseProvider, ctx: KnowledgeQue
             const results = await db.knowledgeBase.searchShared(input.query, ctx.userId, { limit });
             const paths = await kbFolderPaths(
               db,
-              results.map((r) => r.folder_id).filter((id): id is number => id != null),
+              results.map((r) => r.folder_id).filter((id): id is string => id != null),
             );
             return {
               scope: 'shared',
@@ -281,7 +281,7 @@ export function createKnowledgeQueryTool(db: DatabaseProvider, ctx: KnowledgeQue
               url: kbDocUrl(doc.id, doc.doc_id),
               title: doc.title,
               ...renderBody(input, doc.content),
-              tags: safeJsonParse(doc.tags, []),
+              tags: doc.tags,
               summary: doc._summary || '',
             };
           }
@@ -297,7 +297,7 @@ export function createKnowledgeQueryTool(db: DatabaseProvider, ctx: KnowledgeQue
               url: kbDocUrl(d.id, d.doc_id),
               title: d.title,
               summary: d._summary || '',
-              tags: safeJsonParse(d.tags, []),
+              tags: d.tags,
               updated_at: d.updated_at,
             })),
           };
@@ -312,7 +312,7 @@ export function createKnowledgeQueryTool(db: DatabaseProvider, ctx: KnowledgeQue
         // Folder → subtree ids, shared by tree/search/list. Resolution is scoped
         // exactly like a move is guarded: a team doc only ever sees team folders,
         // a personal doc only the owner's own.
-        let folderIds: number[] | undefined;
+        let folderIds: string[] | undefined;
         let folderPath: string | undefined;
         if (input.folder !== undefined && input.action !== 'get' && input.action !== 'versions') {
           const resolved = await resolveKbFolderPath(db, input.folder, folderScope);
@@ -374,7 +374,7 @@ export function createKnowledgeQueryTool(db: DatabaseProvider, ctx: KnowledgeQue
           });
           const paths = await kbFolderPaths(
             db,
-            results.map((r) => r.folder_id).filter((id): id is number => id != null),
+            results.map((r) => r.folder_id).filter((id): id is string => id != null),
           );
           return {
             scope: input.scope,
@@ -388,7 +388,7 @@ export function createKnowledgeQueryTool(db: DatabaseProvider, ctx: KnowledgeQue
               title: r.title,
               summary: r._summary || '',
               snippet: r.snippet,
-              tags: safeJsonParse(r.tags, []),
+              tags: r.tags,
               relevance: Math.round(r.relevance * 100) / 100,
               ...(r.folder_id != null ? { folder: paths.get(r.folder_id) } : {}),
             })),
@@ -429,7 +429,7 @@ export function createKnowledgeQueryTool(db: DatabaseProvider, ctx: KnowledgeQue
             url: kbDocUrl(doc.id, doc.doc_id),
             title: doc.title,
             ...renderBody(input, doc.content),
-            tags: safeJsonParse(doc.tags, []),
+            tags: doc.tags,
             summary: doc._summary || '',
             ...(doc.folder_id != null ? { folder: await kbFolderPath(db, doc.folder_id) } : {}),
           };
@@ -447,7 +447,7 @@ export function createKnowledgeQueryTool(db: DatabaseProvider, ctx: KnowledgeQue
         });
         const paths = await kbFolderPaths(
           db,
-          docs.map((d) => d.folder_id).filter((id): id is number => id != null),
+          docs.map((d) => d.folder_id).filter((id): id is string => id != null),
         );
         return {
           scope: input.scope,
@@ -459,7 +459,7 @@ export function createKnowledgeQueryTool(db: DatabaseProvider, ctx: KnowledgeQue
             url: kbDocUrl(d.id, d.doc_id),
             title: d.title,
             summary: d._summary || '',
-            tags: safeJsonParse(d.tags, []),
+            tags: d.tags,
             updated_at: d.updated_at,
             ...(d.folder_id != null ? { folder: paths.get(d.folder_id) } : {}),
           })),

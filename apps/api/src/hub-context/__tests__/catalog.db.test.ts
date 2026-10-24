@@ -23,6 +23,8 @@ import { _resetProvider, initDatabase, type DatabaseProvider, type UserRow } fro
 import { TEST_DATABASE_URL } from '@greenhouse/db/test-config';
 import type { DataCatalog } from '@greenhouse/types/hub-context';
 import { createInternalTestUser } from '../../../../../tests/helpers/internal-user.js';
+import { moveToRestrictedRole, withoutCapability } from '../../../../../tests/helpers/restricted-role.js';
+import { tablesManifest } from '../../platform/manifests/tables.js';
 import { buildMcpServer, composeMcpContext } from '../../routes/mcp.js';
 import { identityFromOAuthScopes } from '../../agent-runtime/mcp-auth.js';
 import { memberMcpToolIds } from '../../agent-runtime/mcp-tool-visibility.js';
@@ -39,9 +41,9 @@ vi.setConfig({ testTimeout: 20_000 });
 let db: DatabaseProvider;
 let owner: UserRow;
 let member: UserRow;
-let teamBaseId: number;
-let ownBaseId: number;
-let foreignBaseId: number;
+let teamBaseId: string;
+let ownBaseId: string;
+let foreignBaseId: string;
 
 function unique(label: string): string {
   return `${label}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -131,12 +133,10 @@ describe('data catalog: Tables bases', () => {
   });
 
   it('leaves row counts and record activity out where the member may not read records', async () => {
-    await db.platform.setUserCapabilityOverride({
-      org_id: 'default',
-      user_id: member.id,
-      capability: 'tables.data.read',
-      effect: 'deny',
-      reason: 'catalog record policy test',
+    await moveToRestrictedRole(db, member.id, {
+      capabilities: withoutCapability('tables.data.read', {
+        'tables.*': [...new Set(Object.values(tablesManifest.actions).map((action) => action.capability))],
+      }),
     });
     for (const catalog of [await webCatalog(member), await mcpCatalog(member, ['mcp:read', 'mcp:tables'])]) {
       const team = catalog.bases.find((entry) => entry.id === teamBaseId)!;

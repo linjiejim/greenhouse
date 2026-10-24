@@ -41,7 +41,7 @@ const featureRequestSchema = z.object({
   offset: z.number().optional().describe('Pagination offset (for list)'),
 
   // update params
-  id: z.number().optional().describe('Feature request ID (for update)'),
+  id: z.coerce.string().optional().describe('Feature request ID (for update)'),
   new_status: z.enum(['pending', 'accepted', 'rejected', 'done']).optional().describe('New status (for update)'),
   new_priority: z.enum(['low', 'normal', 'high']).optional().describe('New priority (for update)'),
   admin_note: z.string().optional().describe('Super-user note/comment (for update)'),

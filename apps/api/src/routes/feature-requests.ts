@@ -5,6 +5,7 @@
  * PATCH  /api/admin/feature-requests/:id      — 更新状态/优先级/备注
  */
 
+import { toRowId } from '@greenhouse/utils/id';
 import { Hono } from 'hono';
 import { getDb } from '@greenhouse/db';
 import type { FeatureRequestStatus } from '@greenhouse/db';
@@ -34,8 +35,8 @@ const featureRequests = new Hono<AppEnv>()
   })
   /** PATCH /:id — update a feature request */
   .patch('/:id', async (c) => {
-    const id = parseInt(c.req.param('id'), 10);
-    if (isNaN(id)) return c.json({ error: 'Invalid ID' }, 400);
+    const id = toRowId(c.req.param('id'));
+    if (!id) return c.json({ error: 'Invalid ID' }, 400);
 
     const body = (await c.req.json()) as {
       status?: FeatureRequestStatus;

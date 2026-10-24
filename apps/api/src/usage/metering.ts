@@ -14,7 +14,7 @@
  *      model, client and — for a member's agent over MCP — the OAuth client.
  *
  * Model calls enter through `reserveUserTokenBudget` (llm/usage-budget.ts),
- * which keeps the older token accounts in parallel and reserves USD here.
+ * which also reserves the organization / provider token accounts and USD here.
  * Everything else uses `reserveSpend` / `meterServiceCall` directly.
  *
  * Attribution rides an AsyncLocalStorage scope (`runWithMeteringScope`): set

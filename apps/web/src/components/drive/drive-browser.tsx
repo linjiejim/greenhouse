@@ -50,7 +50,7 @@ import { DriveMoveDialog, DriveRenameDialog } from './drive-dialogs';
 interface Props {
   owner: DriveOwner;
   /** Start inside a specific folder instead of the scope root (kb folder pages). */
-  initialFolderId?: number | null;
+  initialFolderId?: string | null;
   /**
    * Called after the cabinet's contents change (upload / delete / new folder /
    * rename / move), so a host that shows a file count can refresh it. Must be
@@ -61,10 +61,10 @@ interface Props {
    * Controlled mode: the host owns the open folder (Files keeps it in the URL).
    * When `onFolderChange` is set, `folderId` is the source of truth.
    */
-  folderId?: number | null;
-  onFolderChange?: (folderId: number | null) => void;
+  folderId?: string | null;
+  onFolderChange?: (folderId: string | null) => void;
   /** Open this file's preview once it is listed (a deep link), and say when it closes. */
-  previewFileId?: number | null;
+  previewFileId?: string | null;
   onPreviewClose?: () => void;
 }
 
@@ -76,10 +76,10 @@ type Target = { kind: 'file'; item: DriveFile } | { kind: 'folder'; item: DriveF
  * coming Back to the same link opens the preview again.
  */
 export function deepLinkPreview(
-  handled: number | null,
-  previewFileId: number | null,
+  handled: string | null,
+  previewFileId: string | null,
   files: readonly DriveFile[],
-): { handled: number | null; open: DriveFile | null } {
+): { handled: string | null; open: DriveFile | null } {
   if (!previewFileId) return { handled: null, open: null };
   if (handled === previewFileId) return { handled, open: null };
   const file = files.find((candidate) => candidate.id === previewFileId);
@@ -101,10 +101,10 @@ export function DriveBrowser({
 }: Props) {
   const t = useT();
   const controlled = onFolderChange !== undefined;
-  const [ownFolderId, setOwnFolderId] = useState<number | null>(initialFolderId);
+  const [ownFolderId, setOwnFolderId] = useState<string | null>(initialFolderId);
   const folderId = controlled ? (controlledFolderId ?? null) : ownFolderId;
   const openFolder = useCallback(
-    (id: number | null) => (controlled ? onFolderChange?.(id) : setOwnFolderId(id)),
+    (id: string | null) => (controlled ? onFolderChange?.(id) : setOwnFolderId(id)),
     [controlled, onFolderChange],
   );
   const [folders, setFolders] = useState<DriveFolder[]>([]);
@@ -114,11 +114,11 @@ export function DriveBrowser({
   const [uploading, setUploading] = useState(false);
   const [newFolderOpen, setNewFolderOpen] = useState(false);
   const [newFolderName, setNewFolderName] = useState('');
-  const [confirm, setConfirm] = useState<{ kind: 'file' | 'folder'; id: number; name: string } | null>(null);
+  const [confirm, setConfirm] = useState<{ kind: 'file' | 'folder'; id: string; name: string } | null>(null);
   const [renaming, setRenaming] = useState<Target | null>(null);
   const [moving, setMoving] = useState<Target | null>(null);
   const [preview, setPreview] = useState<DriveFile | null>(null);
-  const deepLinkHandled = useRef<number | null>(null);
+  const deepLinkHandled = useRef<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // owner is stable per surface; collapse to a primitive for the effect dep.
@@ -220,7 +220,7 @@ export function DriveBrowser({
     );
   };
 
-  const onMove = async (destination: number | null) => {
+  const onMove = async (destination: string | null) => {
     const target = moving;
     setMoving(null);
     if (!target) return;

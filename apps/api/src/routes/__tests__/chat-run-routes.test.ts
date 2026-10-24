@@ -51,15 +51,11 @@ function makeSession(id: string, ownerId = 'owner'): SessionRow {
     id,
     title: 'Existing title',
     status: 'active',
-    rating: null,
-    comment: null,
-    feedback: null,
     profile_id: 'team',
     user_id: ownerId,
     app_id: null,
     channel: 'web',
-    parent_session_id: null,
-    metadata: '{}',
+    metadata: {},
     created_at: '2026-07-31T00:00:00.000Z',
     updated_at: '2026-07-31T00:00:00.000Z',
   };
@@ -96,7 +92,6 @@ beforeEach(() => {
     id: 'owner',
     role: 'team',
     status: 'active',
-    monthly_token_limit: 20_000_000,
   });
 });
 

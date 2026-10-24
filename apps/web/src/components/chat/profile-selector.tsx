@@ -503,7 +503,6 @@ interface ProfileSelectorProps {
   selectedProfileId: string;
   onSelectProfile: (id: string) => void;
   readonly?: boolean;
-  onFork?: (profileId: string) => void;
 }
 
 export function ProfileSelector({

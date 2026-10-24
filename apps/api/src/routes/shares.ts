@@ -142,8 +142,7 @@ const shares = new Hono<AppEnv>()
   .patch('/:id/read', async (c) => {
     const user = getAuthUser(c);
 
-    const id = parseInt(c.req.param('id'), 10);
-    if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+    const id = c.req.param('id');
 
     const marked = await getDb().sessionShares.markReadForUser(id, user.id);
     if (!marked) return c.json({ error: 'Share not found' }, 404);

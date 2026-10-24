@@ -11,9 +11,9 @@ export type FilesShelf = 'team' | 'personal';
 
 export interface FilesLocation {
   shelf: FilesShelf;
-  folderId?: number | null;
+  folderId?: string | null;
   /** Open this file's preview once the folder has loaded. */
-  fileId?: number | null;
+  fileId?: string | null;
 }
 
 export const FILES_ROOT_HASH = '#/files';
@@ -27,17 +27,16 @@ export function filesPageHref(location: FilesLocation): string {
   return query ? `${FILES_ROOT_HASH}?${query}` : FILES_ROOT_HASH;
 }
 
-function positiveInt(raw: string | null): number | null {
-  if (!raw || !/^[1-9][0-9]*$/.test(raw)) return null;
-  const value = Number(raw);
-  return Number.isSafeInteger(value) ? value : null;
+/** A row id from the query string (opaque text; carried 1.x ids are digits), or null. */
+function rowId(raw: string | null): string | null {
+  return raw && /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$/.test(raw) ? raw : null;
 }
 
 export function parseFilesLocation(params: URLSearchParams): FilesLocation {
   return {
     shelf: params.get('shelf') === 'personal' ? 'personal' : 'team',
-    folderId: positiveInt(params.get('folder')),
-    fileId: positiveInt(params.get('file')),
+    folderId: rowId(params.get('folder')),
+    fileId: rowId(params.get('file')),
   };
 }
 
@@ -46,18 +45,18 @@ export function parseFilesLocation(params: URLSearchParams): FilesLocation {
  * and from `GET /api/drive/search`. `url` is this page's address for it.
  */
 export interface CabinetFolderView {
-  id: number;
+  id: string;
   name: string;
   shelf: FilesShelf;
-  parent_id: number | null;
+  parent_id: string | null;
   url: string;
 }
 
 export interface CabinetFileView {
-  id: number;
+  id: string;
   name: string;
   shelf: FilesShelf;
-  folder_id: number | null;
+  folder_id: string | null;
   size: number;
   content_type: string | null;
   uploaded_by: string | null;

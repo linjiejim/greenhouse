@@ -60,7 +60,7 @@ describe('markdown link classification', () => {
   });
 
   it('leaves list routes and other in-app links alone', () => {
-    for (const href of ['#/projects', '#/knowledge', '#/projects/abc']) {
+    for (const href of ['#/projects', '#/knowledge', '#/projects/42/edit']) {
       const tag = anchor(render(`[x](${href})`));
       expect(tag).not.toContain('entity-link');
       expect(tag).not.toContain('data-entity-kind');
@@ -93,10 +93,10 @@ describe('entity peek stack', () => {
 
   it('pushes, drills down, and pops back', () => {
     const { openEntity, back } = useEntityPeekStore.getState();
-    openEntity({ ref: { kind: 'project', id: 1 }, label: 'Acme' });
+    openEntity({ ref: { kind: 'project', id: '1' }, label: 'Acme' });
     expect(useEntityPeekStore.getState().stack).toHaveLength(1);
 
-    openEntity({ ref: { kind: 'kb_doc', id: 9, slug: 'notes' } });
+    openEntity({ ref: { kind: 'kb_doc', id: '9', slug: 'notes' } });
     expect(useEntityPeekStore.getState().stack).toHaveLength(2);
 
     back();
@@ -106,15 +106,15 @@ describe('entity peek stack', () => {
 
   it('ignores a re-click on the record already on top', () => {
     const { openEntity } = useEntityPeekStore.getState();
-    openEntity({ ref: { kind: 'project', id: 3 } });
-    openEntity({ ref: { kind: 'project', id: 3 } });
+    openEntity({ ref: { kind: 'project', id: '3' } });
+    openEntity({ ref: { kind: 'project', id: '3' } });
     expect(useEntityPeekStore.getState().stack).toHaveLength(1);
   });
 
   it('closing clears the whole stack', () => {
     const { openEntity, close } = useEntityPeekStore.getState();
-    openEntity({ ref: { kind: 'project', id: 1 } });
-    openEntity({ ref: { kind: 'project', id: 2 } });
+    openEntity({ ref: { kind: 'project', id: '1' } });
+    openEntity({ ref: { kind: 'project', id: '2' } });
     close();
     expect(useEntityPeekStore.getState().stack).toEqual([]);
   });

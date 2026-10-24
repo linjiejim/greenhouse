@@ -69,37 +69,6 @@ describe('Knowledge tools round-trip', () => {
     expect(got.content).toContain('retro');
   });
 
-  it('agent-authored docs register and release backlinks like the HTTP save path', async () => {
-    const alice = await createUser(db, 'alice@test.com', 'Alice');
-    const mutate = createKnowledgeMutationTool(db, { userId: alice.id });
-
-    const target = await run(mutate, {
-      action: 'knowledge.create_doc',
-      scope: 'team',
-      title: 'Backlink target',
-      content: 'The document being linked to.',
-    });
-    const targetId = target.document.id as number;
-
-    // create_doc must register the canonical link it contains…
-    const source = await run(mutate, {
-      action: 'knowledge.create_doc',
-      scope: 'team',
-      title: 'Backlink source',
-      content: `See [target](#/knowledge/doc/${targetId}-backlink-target) for details.`,
-    });
-    expect((await db.knowledgeBase.listBacklinks(targetId)).map((d) => d.id)).toEqual([source.document.id]);
-
-    // …and update_doc must release it again when the link is removed.
-    await run(mutate, {
-      action: 'knowledge.update_doc',
-      scope: 'team',
-      doc_id: source.document.doc_id,
-      content: 'No longer references anything.',
-    });
-    expect(await db.knowledgeBase.listBacklinks(targetId)).toEqual([]);
-  });
-
   it('personal docs never leak across users', async () => {
     const alice = await createUser(db, 'alice@test.com', 'Alice');
     const bob = await createUser(db, 'bob@test.com', 'Bob');
@@ -190,9 +159,9 @@ describe('Knowledge tools round-trip', () => {
     const docId = created.document.doc_id as string;
 
     const afterCreate = await db.knowledgeBase.get(docId, 'shared', null);
-    const createdJson = JSON.parse(afterCreate!.content_json ?? '{}');
+    const createdJson = afterCreate!.content_json as { content?: unknown };
     expect(Array.isArray(createdJson.content)).toBe(true); // real Tiptap doc, not '{}'
-    expect(afterCreate!.content_json).toContain('Original heading');
+    expect(JSON.stringify(afterCreate!.content_json)).toContain('Original heading');
 
     // Update Markdown ONLY — the exact bug repro (agent edits MD, sends no JSON).
     await run(mutate, {
@@ -205,9 +174,9 @@ describe('Knowledge tools round-trip', () => {
     const afterUpdate = await db.knowledgeBase.get(docId, 'shared', null);
     expect(afterUpdate!.content).toContain('Updated heading');
     // content_json now reflects the NEW Markdown — not stale, not empty.
-    expect(afterUpdate!.content_json).toContain('Updated heading');
-    expect(afterUpdate!.content_json).not.toContain('Original heading');
-    expect(Array.isArray(JSON.parse(afterUpdate!.content_json ?? '{}').content)).toBe(true);
+    expect(JSON.stringify(afterUpdate!.content_json)).toContain('Updated heading');
+    expect(JSON.stringify(afterUpdate!.content_json)).not.toContain('Original heading');
+    expect(Array.isArray((afterUpdate!.content_json as { content?: unknown }).content)).toBe(true);
   });
 
   it('patch_doc replaces a unique substring without touching the rest, and rejects bad finds', async () => {
@@ -236,7 +205,7 @@ describe('Knowledge tools round-trip', () => {
     expect(doc!.content).toContain('The price is $79 today.');
     expect(doc!.content).toContain('More unrelated text.'); // rest untouched
     expect(doc!.content).not.toContain('$99');
-    expect(doc!.content_json).toContain('$79'); // Tiptap kept in sync
+    expect(JSON.stringify(doc!.content_json)).toContain('$79'); // Tiptap kept in sync
 
     // Not found → error.
     const notFound = await run(mutate, {

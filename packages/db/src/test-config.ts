@@ -101,16 +101,17 @@ export async function closeIntegrationTestConnection(): Promise<void> {
  * that invariant without leaking ORM primitives to application code.
  */
 export async function cleanupUsageBudgetTestAccount(db: DatabaseProvider, accountId: string): Promise<void> {
-  await db.executeRaw(sql`DELETE FROM usage_budget_ledger WHERE account_id = ${accountId}`);
-  await db.executeRaw(sql`DELETE FROM usage_budget_reservations WHERE account_id = ${accountId}`);
-  await db.executeRaw(sql`DELETE FROM usage_budget_accounts WHERE id = ${accountId}`);
+  await db.executeRaw(sql`DELETE FROM budget_ledger WHERE account_id = ${accountId}`);
+  await db.executeRaw(sql`DELETE FROM budget_reservations WHERE account_id = ${accountId}`);
+  await db.executeRaw(sql`DELETE FROM budgets WHERE id = ${accountId}`);
 }
 
 /** Directional cleanup for Runtime Kernel db-commit concurrency tests only. */
 export async function cleanupRuntimeTestRun(db: DatabaseProvider, runId: string): Promise<void> {
-  // All runtime child rows use FK CASCADE from runtime_runs. Production exposes
-  // no deletion path; this helper is intentionally test-only.
-  await db.executeRaw(sql`DELETE FROM runtime_runs WHERE id = ${runId}`);
+  // All run child rows use FK CASCADE from runs; run files are logical links.
+  // Production exposes no deletion path; this helper is intentionally test-only.
+  await db.executeRaw(sql`DELETE FROM files WHERE source = 'run' AND run_id = ${runId}`);
+  await db.executeRaw(sql`DELETE FROM runs WHERE id = ${runId}`);
 }
 
 /**
@@ -175,3 +176,5 @@ export async function startIntegrationTestTransaction(connectionString = TEST_DA
     },
   };
 }
+
+export { buildV1Database, dropDatabase, queryRows, recreateDatabase, siblingUrl } from './carry/v1-fixture.js';

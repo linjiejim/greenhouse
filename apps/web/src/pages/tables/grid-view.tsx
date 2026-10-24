@@ -12,7 +12,6 @@ import {
   type TableQuery,
   type TableRecordValues,
   type TableRollupAggregation,
-  type TableViewConfig,
 } from '@greenhouse/types/tables';
 import {
   archiveTableField,
@@ -46,7 +45,6 @@ import {
   Textarea,
 } from '../../components/ui';
 import { Archive, ArrowDown, ArrowUp, Edit3, LayoutGrid, MoreHorizontal, Pin, PinOff, Plus, X } from '../../lib/icons';
-import { safeParse } from '../../lib/utils';
 import { usePersistedPageSize } from '../../hooks/use-persisted-page-size';
 import { useAuthStore } from '../../stores';
 import { ContextMenu, useContextMenu, type ContextMenuItem } from '../../components/app/context-menu';
@@ -57,7 +55,6 @@ import { RecordRowActions } from './record-row-actions';
 import { InlineCell } from './inline-cell';
 import { buildPasteBatch, parseClipboardMatrix, parsePastedCell } from './grid-utils';
 import { TablesGridToolbar } from './grid-toolbar';
-import { TablesFormsDialog } from './forms-dialog';
 import { renderTableFieldValue } from './field-value';
 import { useT, type TranslationKey } from '../../lib/i18n';
 
@@ -107,7 +104,7 @@ const FILTER_LABEL_KEYS: Partial<Record<TableFilterOperator, TranslationKey>> = 
 };
 
 interface FilterDraft {
-  fieldId: number;
+  fieldId: string;
   operator: TableFilterOperator;
   value: string;
 }
@@ -157,8 +154,8 @@ function optionConfig(text: string, current: TableFieldConfig = {}): TableFieldC
   };
 }
 
-function optionsText(config: string): string {
-  return (safeParse<TableFieldConfig>(config, {}).options ?? []).map((option) => option.label).join('\n');
+function optionsText(config: TableFieldConfig): string {
+  return (config.options ?? []).map((option) => option.label).join('\n');
 }
 
 export function TablesGridView({ table, tables, role, users }: TablesGridViewProps) {
@@ -185,14 +182,14 @@ export function TablesGridView({ table, tables, role, users }: TablesGridViewPro
   const [fieldType, setFieldType] = useState<TableFieldType>('text');
   const [fieldRequired, setFieldRequired] = useState(false);
   const [fieldOptions, setFieldOptions] = useState('');
-  const [relationTargetTableId, setRelationTargetTableId] = useState<number | ''>('');
+  const [relationTargetTableId, setRelationTargetTableId] = useState<string>('');
   const [relationMultiple, setRelationMultiple] = useState(false);
-  const [formulaLeftFieldId, setFormulaLeftFieldId] = useState<number | ''>('');
+  const [formulaLeftFieldId, setFormulaLeftFieldId] = useState<string>('');
   const [formulaOperator, setFormulaOperator] = useState<TableFormulaBinaryOperator>('concat');
-  const [formulaRightFieldId, setFormulaRightFieldId] = useState<number | ''>('');
+  const [formulaRightFieldId, setFormulaRightFieldId] = useState<string>('');
   const [formulaResultType, setFormulaResultType] = useState<TableFormulaResultType>('text');
-  const [rollupRelationFieldId, setRollupRelationFieldId] = useState<number | ''>('');
-  const [rollupTargetFieldId, setRollupTargetFieldId] = useState<number | ''>('');
+  const [rollupRelationFieldId, setRollupRelationFieldId] = useState<string>('');
+  const [rollupTargetFieldId, setRollupTargetFieldId] = useState<string>('');
   const [rollupAggregation, setRollupAggregation] = useState<TableRollupAggregation>('count');
   const [modelTargetFields, setModelTargetFields] = useState<TableField[]>([]);
   const [savingField, setSavingField] = useState(false);
@@ -201,7 +198,6 @@ export function TablesGridView({ table, tables, role, users }: TablesGridViewPro
   /** Carried into the Save view dialog when freezing without a saved view. */
   const [pendingFrozenCount, setPendingFrozenCount] = useState<number | null>(null);
   const [recycleBin, setRecycleBin] = useState(false);
-  const [formsDialog, setFormsDialog] = useState(false);
   const [viewName, setViewName] = useState('');
   const [viewScope, setViewScope] = useState<'personal' | 'shared'>('personal');
   const [filterDialog, setFilterDialog] = useState(false);
@@ -287,7 +283,7 @@ export function TablesGridView({ table, tables, role, users }: TablesGridViewPro
   };
 
   const openFieldDialog = (field: TableField | 'new') => {
-    const config = field === 'new' ? {} : safeParse<TableFieldConfig>(field.config, {});
+    const config = field === 'new' ? {} : (field.config ?? {});
     const formula = config.formula?.expression;
     setFieldDialog(field);
     setFieldName(field === 'new' ? '' : field.name);
@@ -315,7 +311,7 @@ export function TablesGridView({ table, tables, role, users }: TablesGridViewPro
   );
   const rollupTargetTableId = useMemo(() => {
     const relationField = relationFields.find((field) => field.id === rollupRelationFieldId);
-    return relationField ? safeParse<TableFieldConfig>(relationField.config, {}).relation?.targetTableId : undefined;
+    return relationField ? (relationField.config ?? {}).relation?.targetTableId : undefined;
   }, [relationFields, rollupRelationFieldId]);
 
   useEffect(() => {
@@ -339,7 +335,7 @@ export function TablesGridView({ table, tables, role, users }: TablesGridViewPro
     try {
       const config: TableFieldConfig | undefined =
         fieldType === 'single_select' || fieldType === 'multi_select'
-          ? optionConfig(fieldOptions, fieldDialog === 'new' ? {} : safeParse<TableFieldConfig>(fieldDialog.config, {}))
+          ? optionConfig(fieldOptions, fieldDialog === 'new' ? {} : (fieldDialog.config ?? {}))
           : fieldType === 'relation' && relationTargetTableId !== ''
             ? { relation: { targetTableId: relationTargetTableId, multiple: relationMultiple } }
             : fieldType === 'formula' && formulaLeftFieldId !== '' && formulaRightFieldId !== ''
@@ -402,7 +398,7 @@ export function TablesGridView({ table, tables, role, users }: TablesGridViewPro
     setSelectedViewId(viewId);
     const view = schema?.views.find((entry) => String(entry.id) === viewId);
     if (!view) return resetQuery('', [{ systemField: 'updated_at', direction: 'desc' }], undefined);
-    const config = safeParse<TableViewConfig>(view.config, {});
+    const config = view.config ?? {};
     resetQuery(
       config.query?.search ?? '',
       config.query?.sort ?? [{ systemField: 'updated_at', direction: 'desc' }],
@@ -485,10 +481,7 @@ export function TablesGridView({ table, tables, role, users }: TablesGridViewPro
     () => schema?.views.find((entry) => String(entry.id) === selectedViewId) ?? null,
     [schema, selectedViewId],
   );
-  const selectedViewConfig = useMemo(
-    () => (selectedView ? safeParse<TableViewConfig>(selectedView.config, {}) : {}),
-    [selectedView],
-  );
+  const selectedViewConfig = useMemo(() => (selectedView ? (selectedView.config ?? {}) : {}), [selectedView]);
 
   const visibleFields = useMemo(() => {
     const ids = selectedViewConfig.fieldIds?.length ? new Set(selectedViewConfig.fieldIds) : null;
@@ -590,7 +583,6 @@ export function TablesGridView({ table, tables, role, users }: TablesGridViewPro
         onOpenFilters={openFilters}
         onSaveView={() => setViewDialog(true)}
         onOpenRecycleBin={() => setRecycleBin(true)}
-        onOpenForms={() => setFormsDialog(true)}
         onAddField={() => openFieldDialog('new')}
         onAddRecord={() => setRecordDialog('new')}
       />
@@ -784,12 +776,6 @@ export function TablesGridView({ table, tables, role, users }: TablesGridViewPro
               setDetailRecord(null);
             }}
           />
-          <TablesFormsDialog
-            open={formsDialog}
-            tableId={table.id}
-            fields={schema.fields}
-            onClose={() => setFormsDialog(false)}
-          />
         </>
       )}
 
@@ -835,7 +821,7 @@ export function TablesGridView({ table, tables, role, users }: TablesGridViewPro
                 <label className="mb-1 block text-xs font-medium text-fg-muted">{t('tables.relatedTable')}</label>
                 <Select
                   value={relationTargetTableId}
-                  onChange={(event) => setRelationTargetTableId(event.target.value ? Number(event.target.value) : '')}
+                  onChange={(event) => setRelationTargetTableId(event.target.value)}
                 >
                   <option value="">{t('tables.chooseTable')}</option>
                   {tables.map((entry) => (
@@ -856,10 +842,7 @@ export function TablesGridView({ table, tables, role, users }: TablesGridViewPro
             <div className="grid grid-cols-1 gap-3 rounded-md border border-edge bg-surface-sunken p-3 sm:grid-cols-2">
               <div>
                 <label className="mb-1 block text-xs font-medium text-fg-muted">{t('tables.leftField')}</label>
-                <Select
-                  value={formulaLeftFieldId}
-                  onChange={(event) => setFormulaLeftFieldId(event.target.value ? Number(event.target.value) : '')}
-                >
+                <Select value={formulaLeftFieldId} onChange={(event) => setFormulaLeftFieldId(event.target.value)}>
                   <option value="">{t('tables.chooseField')}</option>
                   {formulaFields.map((entry) => (
                     <option key={entry.id} value={entry.id}>
@@ -891,10 +874,7 @@ export function TablesGridView({ table, tables, role, users }: TablesGridViewPro
               </div>
               <div>
                 <label className="mb-1 block text-xs font-medium text-fg-muted">{t('tables.rightField')}</label>
-                <Select
-                  value={formulaRightFieldId}
-                  onChange={(event) => setFormulaRightFieldId(event.target.value ? Number(event.target.value) : '')}
-                >
+                <Select value={formulaRightFieldId} onChange={(event) => setFormulaRightFieldId(event.target.value)}>
                   <option value="">{t('tables.chooseField')}</option>
                   {formulaFields.map((entry) => (
                     <option key={entry.id} value={entry.id}>
@@ -926,7 +906,7 @@ export function TablesGridView({ table, tables, role, users }: TablesGridViewPro
                 <Select
                   value={rollupRelationFieldId}
                   onChange={(event) => {
-                    setRollupRelationFieldId(event.target.value ? Number(event.target.value) : '');
+                    setRollupRelationFieldId(event.target.value);
                     setRollupTargetFieldId('');
                   }}
                 >
@@ -943,7 +923,7 @@ export function TablesGridView({ table, tables, role, users }: TablesGridViewPro
                 <Select
                   value={rollupTargetFieldId}
                   disabled={!rollupTargetTableId}
-                  onChange={(event) => setRollupTargetFieldId(event.target.value ? Number(event.target.value) : '')}
+                  onChange={(event) => setRollupTargetFieldId(event.target.value)}
                 >
                   <option value="">{t('tables.chooseTargetField')}</option>
                   {modelTargetFields.map((entry) => (
@@ -1090,7 +1070,7 @@ export function TablesGridView({ table, tables, role, users }: TablesGridViewPro
                   <Select
                     value={draft.fieldId || ''}
                     onChange={(event) => {
-                      const fieldId = Number(event.target.value);
+                      const fieldId = event.target.value;
                       setFilterDrafts((current) =>
                         current.map((entry, entryIndex) =>
                           entryIndex === index ? { ...entry, fieldId, operator: 'eq', value: '' } : entry,
@@ -1159,7 +1139,7 @@ export function TablesGridView({ table, tables, role, users }: TablesGridViewPro
               onClick={() =>
                 setFilterDrafts((current) => [
                   ...current,
-                  { fieldId: schema?.fields[0]?.id ?? 0, operator: 'eq', value: '' },
+                  { fieldId: schema?.fields[0]?.id ?? '', operator: 'eq', value: '' },
                 ])
               }
               disabled={!schema?.fields.length || filterDrafts.length >= 20}

@@ -1,16 +1,14 @@
 /**
  * Tables domain service — fixed-schema metadata, validated dynamic records,
- * bounded query AST, optimistic concurrency, and dashboard aggregation.
+ * bounded query AST, optimistic concurrency, and record aggregation.
  */
 
 import { createHash } from 'node:crypto';
 import { and, asc, desc, eq, inArray, isNotNull, isNull, or, sql, type SQL } from 'drizzle-orm';
 import { nowIso } from '@greenhouse/utils/date';
-import { safeJsonParse } from '@greenhouse/utils/json';
-import { resolveCapability } from '@greenhouse/platform-kernel';
+import { isRowId, toRowId } from '@greenhouse/utils/id';
 import {
   TABLE_AGGREGATIONS,
-  TABLE_DASHBOARD_WIDGET_TYPES,
   TABLE_FIELD_TYPES,
   TABLE_FILTER_OPERATORS,
   TABLE_FORMULA_BINARY_OPERATORS,
@@ -19,20 +17,12 @@ import {
 import type {
   TableAggregateInput,
   TableAggregateRow,
-  TableAutomationAction,
-  TableAutomationConfig,
-  TableAutomationTrigger,
   TableBaseRole,
   TableBaseVisibility,
   TableBatchValidationResult,
-  TableDashboardWidgetConfig,
-  TableDashboardWidgetLayout,
-  TableDashboardWidgetType,
   TableFieldConfig,
   TableFieldType,
   TableFilterClause,
-  TableFilterGroup,
-  TableFormConfig,
   TableFormulaExpression,
   TableQuery,
   TableRecordValues,
@@ -42,48 +32,91 @@ import type {
   TableViewScope,
 } from '@greenhouse/types/tables';
 import type { Db } from '../client.js';
+import { newId } from '../ids.js';
 import {
-  tableBaseMembers,
+  fileLinks,
+  files,
+  shares,
   tableBases,
-  tableAutomationOutbox,
-  tableAutomationRules,
-  tableAutomationRuns,
-  tableDashboardWidgets,
-  tableDashboards,
   tableFieldDependencies,
   tableFields,
-  tableForms,
-  tableNotifications,
-  tableRecordAttachments,
   tableRecordLinks,
   tableRecords,
   tableRecomputeJobs,
   tableSchemaVersions,
   tableTables,
   tableViews,
-  driveFiles,
   users,
 } from '../schema/index.js';
+import type { FileLinkRow, ShareRow } from '../schema/files.js';
 import type {
-  TableBaseMemberRow,
   TableBaseRow,
-  TableAutomationRuleRow,
-  TableAutomationRunRow,
-  TableDashboardRow,
-  TableDashboardWidgetRow,
   TableDefinitionRow,
   TableFieldDependencyRow,
   TableFieldRow,
-  TableFormRow,
-  TableNotificationRow,
   TableRecomputeJobRow,
-  TableRecordAttachmentRow,
   TableRecordLinkRow,
   TableRecordRow,
   TableSchemaVersionRow,
   TableViewRow,
 } from '../schema/tables.js';
-import { createPlatformService } from './platform.js';
+
+/** A Base member: a `shares` row with resource_type = 'table_base' and a user principal. */
+export interface TableBaseMemberRow {
+  id: string;
+  base_id: string;
+  user_id: string;
+  role: TableBaseRole;
+  added_by: string;
+  created_at: string;
+  updated_at: string;
+}
+
+/** A file in a record's attachment field: a `file_links` row (target_type = 'table_record', slot = field id). */
+export interface TableRecordAttachmentRow {
+  record_id: string;
+  field_id: string;
+  drive_file_id: string;
+  position: number;
+  created_by: string;
+  created_at: string;
+}
+
+const BASE_SHARE = 'table_base' as const;
+const RECORD_LINK_TARGET = 'table_record' as const;
+
+function memberFromShare(row: ShareRow): TableBaseMemberRow {
+  return {
+    id: row.id,
+    base_id: row.resource_id,
+    user_id: row.principal_id ?? '',
+    role: row.role as TableBaseRole,
+    added_by: row.created_by ?? '',
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+  };
+}
+
+function attachmentFromLink(row: FileLinkRow): TableRecordAttachmentRow {
+  return {
+    record_id: row.target_id,
+    field_id: row.slot,
+    drive_file_id: row.file_id,
+    position: row.position,
+    created_by: row.created_by ?? '',
+    created_at: row.created_at,
+  };
+}
+
+/** Members are user-principal shares on the Base. */
+function baseMemberWhere(baseId: string, userId?: string): SQL {
+  return and(
+    eq(shares.resource_type, BASE_SHARE),
+    eq(shares.resource_id, baseId),
+    eq(shares.principal_type, 'user'),
+    ...(userId === undefined ? [] : [eq(shares.principal_id, userId)]),
+  )!;
+}
 
 type TablesTransaction = Parameters<Parameters<Db['transaction']>[0]>[0];
 
@@ -92,6 +125,9 @@ const MAX_QUERY_CLAUSES = 20;
 const MAX_QUERY_SORTS = 3;
 const MAX_QUERY_LIMIT = 500;
 const MAX_BATCH_RECORDS = 100;
+
+/** Ids are opaque strings (carried 1.x rows keep "42"), so ties break on creation time, never on id order alone. */
+const FIELD_ORDER = [asc(tableFields.position), asc(tableFields.created_at), asc(tableFields.id)];
 
 export class TablesValidationError extends Error {
   constructor(message: string) {
@@ -115,14 +151,14 @@ export interface UpdateTableBaseInput {
 }
 
 export interface CreateTableDefinitionInput {
-  base_id: number;
+  base_id: string;
   name: string;
   description?: string | null;
   created_by: string;
 }
 
 export interface CreateTableFieldInput {
-  table_id: number;
+  table_id: string;
   name: string;
   type: TableFieldType;
   required?: boolean;
@@ -147,7 +183,7 @@ export interface UpdateTableViewInput {
 }
 
 export interface CreateTableViewInput {
-  table_id: number;
+  table_id: string;
   name: string;
   scope?: TableViewScope;
   owner_id?: string | null;
@@ -156,94 +192,24 @@ export interface CreateTableViewInput {
   created_by: string;
 }
 
-export interface CreateTableFormInput {
-  table_id: number;
-  name: string;
-  status?: 'draft' | 'published';
-  config: TableFormConfig;
-  user_id: string;
-}
-
-export interface UpdateTableFormInput {
-  revision: number;
-  name?: string;
-  status?: 'draft' | 'published';
-  config?: TableFormConfig;
-  user_id: string;
-}
-
-export interface CreateTableAutomationInput {
-  base_id: number;
-  table_id: number;
-  name: string;
-  status?: 'disabled' | 'enabled';
-  trigger: TableAutomationTrigger;
-  config: TableAutomationConfig;
-  execution_user_id: string;
-  user_id: string;
-}
-
-export interface UpdateTableAutomationInput {
-  revision: number;
-  name?: string;
-  status?: 'disabled' | 'enabled';
-  trigger?: TableAutomationTrigger;
-  config?: TableAutomationConfig;
-  execution_user_id?: string;
-  user_id: string;
-}
-
 export interface CreateTableRecordInput {
-  table_id: number;
+  table_id: string;
   values: TableRecordValues;
   user_id: string;
 }
 
 export interface UpdateTableRecordInput {
-  table_id: number;
-  record_id: number;
+  table_id: string;
+  record_id: string;
   revision: number;
   values: TableRecordValues;
   user_id: string;
 }
 
 export interface BatchUpsertTableRecordItem {
-  record_id?: number;
+  record_id?: string;
   revision?: number;
   values: TableRecordValues;
-}
-
-export interface CreateTableDashboardInput {
-  base_id: number;
-  name: string;
-  description?: string | null;
-  created_by: string;
-}
-
-export interface CreateTableDashboardWidgetInput {
-  dashboard_id: number;
-  table_id?: number | null;
-  type: TableDashboardWidgetType;
-  title: string;
-  config?: TableDashboardWidgetConfig;
-  layout?: TableDashboardWidgetLayout;
-  position?: number;
-  created_by: string;
-}
-
-export interface UpdateTableDashboardInput {
-  revision: number;
-  name?: string;
-  description?: string | null;
-}
-
-export interface UpdateTableDashboardWidgetInput {
-  revision: number;
-  table_id?: number | null;
-  title?: string;
-  config?: TableDashboardWidgetConfig;
-  layout?: TableDashboardWidgetLayout;
-  position?: number;
 }
 
 export type TableRevisionResult<T> =
@@ -262,11 +228,6 @@ export interface TableSchemaResult {
   views: TableViewRow[];
 }
 
-export interface TableDashboardResult {
-  dashboard: TableDashboardRow;
-  widgets: TableDashboardWidgetRow[];
-}
-
 function trimmed(value: string, field: string, max: number): string {
   const result = value.trim();
   if (!result) throw new TablesValidationError(`${field} is required`);
@@ -274,21 +235,23 @@ function trimmed(value: string, field: string, max: number): string {
   return result;
 }
 
-function isPositiveInteger(value: unknown): value is number {
-  return typeof value === 'number' && Number.isInteger(value) && value > 0;
+/** A well-formed id, or a legacy numeric id normalized to its string form; undefined otherwise. */
+function idOf(value: unknown): string | undefined {
+  return toRowId(value) ?? undefined;
+}
+
+/** Record ids held in a relation value (single or multiple); legacy numbers become strings. */
+function relationIds(value: unknown): string[] {
+  const entries = Array.isArray(value) ? value : value === null || value === undefined ? [] : [value];
+  return entries.map(idOf).filter((entry): entry is string => entry !== undefined);
 }
 
 function validateFieldType(type: TableFieldType): void {
   if (!TABLE_FIELD_TYPES.includes(type)) throw new TablesValidationError(`Unsupported field type "${type}"`);
 }
 
-function validateWidgetType(type: TableDashboardWidgetType): void {
-  if (!TABLE_DASHBOARD_WIDGET_TYPES.includes(type)) {
-    throw new TablesValidationError(`Unsupported dashboard widget type "${type}"`);
-  }
-}
-
-function validateQueryShape(query: TableQuery): void {
+/** Validates a query's shape and returns it with field ids normalized to strings (legacy numbers accepted). */
+function normalizeQueryShape(query: TableQuery): TableQuery {
   if (!query || typeof query !== 'object' || Array.isArray(query)) {
     throw new TablesValidationError('query must be an object');
   }
@@ -311,7 +274,7 @@ function validateQueryShape(query: TableQuery): void {
       if (
         !clause ||
         typeof clause !== 'object' ||
-        !isPositiveInteger(clause.fieldId) ||
+        !idOf(clause.fieldId) ||
         !TABLE_FILTER_OPERATORS.includes(clause.operator)
       ) {
         throw new TablesValidationError('Each filter clause requires a valid fieldId and operator');
@@ -325,7 +288,7 @@ function validateQueryShape(query: TableQuery): void {
         !sort ||
         typeof sort !== 'object' ||
         (sort.direction !== 'asc' && sort.direction !== 'desc') ||
-        (sort.fieldId !== undefined && !isPositiveInteger(sort.fieldId)) ||
+        (sort.fieldId !== undefined && !idOf(sort.fieldId)) ||
         (sort.systemField !== undefined && sort.systemField !== 'created_at' && sort.systemField !== 'updated_at') ||
         (sort.fieldId === undefined && sort.systemField === undefined) ||
         (sort.fieldId !== undefined && sort.systemField !== undefined)
@@ -334,62 +297,34 @@ function validateQueryShape(query: TableQuery): void {
       }
     }
   }
-}
-
-function normalizeWidgetConfig(
-  type: TableDashboardWidgetType,
-  input: TableDashboardWidgetConfig = {},
-): TableDashboardWidgetConfig {
-  if (!input || typeof input !== 'object' || Array.isArray(input)) {
-    throw new TablesValidationError('Widget config must be an object');
-  }
-  if (type === 'text') {
-    if (input.text !== undefined && typeof input.text !== 'string') {
-      throw new TablesValidationError('Text widget content must be text');
-    }
-    if ((input.text?.length ?? 0) > 100_000) throw new TablesValidationError('Text widget exceeds 100,000 characters');
-    return { version: 1, text: input.text ?? '' };
-  }
-  const operation = input.operation ?? 'count';
-  if (!TABLE_AGGREGATIONS.includes(operation)) {
-    throw new TablesValidationError(`Unsupported aggregation "${operation}"`);
-  }
-  if (input.valueFieldId !== undefined && !isPositiveInteger(input.valueFieldId)) {
-    throw new TablesValidationError('valueFieldId must be a positive integer');
-  }
-  if (input.groupByFieldId !== undefined && !isPositiveInteger(input.groupByFieldId)) {
-    throw new TablesValidationError('groupByFieldId must be a positive integer');
-  }
-  if (input.limit !== undefined && (!Number.isInteger(input.limit) || input.limit < 1 || input.limit > 100)) {
-    throw new TablesValidationError('Widget limit must be between 1 and 100');
-  }
-  if (input.query !== undefined) validateQueryShape(input.query);
   return {
-    version: 1,
-    operation,
-    ...(input.valueFieldId ? { valueFieldId: input.valueFieldId } : {}),
-    ...(input.groupByFieldId ? { groupByFieldId: input.groupByFieldId } : {}),
-    ...(input.query ? { query: input.query } : {}),
-    ...(input.limit ? { limit: input.limit } : {}),
+    ...query,
+    ...(query.where
+      ? {
+          where: {
+            ...query.where,
+            clauses: query.where.clauses.map((clause) => ({ ...clause, fieldId: idOf(clause.fieldId)! })),
+          },
+        }
+      : {}),
+    ...(query.sort
+      ? {
+          sort: query.sort.map((sort) =>
+            sort.fieldId === undefined ? sort : { ...sort, fieldId: idOf(sort.fieldId)! },
+          ),
+        }
+      : {}),
   };
 }
 
-function normalizeWidgetLayout(input?: TableDashboardWidgetLayout): TableDashboardWidgetLayout {
-  const layout = input ?? { version: 1, x: 0, y: 0, w: 6, h: 4 };
-  if (
-    !layout ||
-    typeof layout !== 'object' ||
-    ![layout.x, layout.y, layout.w, layout.h].every((value) => Number.isInteger(value)) ||
-    layout.x < 0 ||
-    layout.y < 0 ||
-    layout.w < 1 ||
-    layout.h < 1 ||
-    layout.w > 24 ||
-    layout.h > 24
-  ) {
-    throw new TablesValidationError('Widget layout requires integer x/y >= 0 and w/h between 1 and 24');
+/** View config as stored: version 1, column ids as strings (legacy numbers accepted). */
+function normalizeViewConfig(config: TableViewConfig | undefined): TableViewConfig {
+  const next: TableViewConfig = { ...(config ?? {}), version: 1 };
+  if (Array.isArray(config?.fieldIds)) {
+    next.fieldIds = config.fieldIds.map(idOf).filter((entry): entry is string => entry !== undefined);
   }
-  return { ...layout, version: 1 };
+  if (config?.query) next.query = normalizeQueryShape(config.query);
+  return next;
 }
 
 function parseDate(value: string): boolean {
@@ -409,12 +344,43 @@ function optionIds(config: TableFieldConfig): Set<string> {
   return new Set((config.options ?? []).map((option) => option.id));
 }
 
-export function parseTableFieldConfig(field: Pick<TableFieldRow, 'config'>): TableFieldConfig {
-  const parsed = safeJsonParse(field.config, {});
-  return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? (parsed as TableFieldConfig) : {};
+function readFormulaIds(expression: TableFormulaExpression): TableFormulaExpression {
+  if (!expression || typeof expression !== 'object') return expression;
+  if (expression.type === 'field') return { ...expression, fieldId: idOf(expression.fieldId) ?? '' };
+  if (expression.type === 'binary') {
+    return { ...expression, left: readFormulaIds(expression.left), right: readFormulaIds(expression.right) };
+  }
+  if (expression.type === 'function' && Array.isArray(expression.args)) {
+    return { ...expression, args: expression.args.map(readFormulaIds) };
+  }
+  return expression;
 }
 
-function buildSchemaSnapshot(tableId: number, fields: TableFieldRow[]): TableSchemaSnapshot {
+/**
+ * A field's stored config with every id it holds as a string: configs written
+ * before ids became text (carried 1.x rows) may still hold numbers.
+ */
+export function parseTableFieldConfig(field: Pick<TableFieldRow, 'config'>): TableFieldConfig {
+  const raw = field.config as unknown;
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+  const config = raw as TableFieldConfig;
+  if (!config.relation && !config.rollup && !config.formula) return config;
+  const next: TableFieldConfig = { ...config };
+  if (config.relation) {
+    next.relation = { ...config.relation, targetTableId: idOf(config.relation.targetTableId) ?? '' };
+  }
+  if (config.rollup) {
+    next.rollup = {
+      ...config.rollup,
+      relationFieldId: idOf(config.rollup.relationFieldId) ?? '',
+      targetFieldId: idOf(config.rollup.targetFieldId) ?? '',
+    };
+  }
+  if (config.formula) next.formula = { ...config.formula, expression: readFormulaIds(config.formula.expression) };
+  return next;
+}
+
+function buildSchemaSnapshot(tableId: string, fields: TableFieldRow[]): TableSchemaSnapshot {
   return {
     version: 1,
     tableId,
@@ -453,8 +419,9 @@ function normalizeFormulaExpression(
     return { type: 'literal', value: expression.value };
   }
   if (expression.type === 'field') {
-    if (!isPositiveInteger(expression.fieldId)) throw new TablesValidationError('Formula fieldId is invalid');
-    return { type: 'field', fieldId: expression.fieldId };
+    const fieldId = idOf(expression.fieldId);
+    if (!fieldId) throw new TablesValidationError('Formula fieldId is invalid');
+    return { type: 'field', fieldId };
   }
   if (expression.type === 'binary') {
     if (!TABLE_FORMULA_BINARY_OPERATORS.includes(expression.operator)) {
@@ -483,9 +450,11 @@ function normalizeFormulaExpression(
   throw new TablesValidationError('Formula expression type is invalid');
 }
 
-function formulaFieldIds(expression: TableFormulaExpression, result = new Set<number>()): Set<number> {
-  if (expression.type === 'field') result.add(expression.fieldId);
-  else if (expression.type === 'binary') {
+function formulaFieldIds(expression: TableFormulaExpression, result = new Set<string>()): Set<string> {
+  if (expression.type === 'field') {
+    const fieldId = idOf(expression.fieldId);
+    if (fieldId) result.add(fieldId);
+  } else if (expression.type === 'binary') {
     formulaFieldIds(expression.left, result);
     formulaFieldIds(expression.right, result);
   } else if (expression.type === 'function') {
@@ -497,14 +466,15 @@ function formulaFieldIds(expression: TableFormulaExpression, result = new Set<nu
 export function validateTableFieldConfig(type: TableFieldType, config: TableFieldConfig): TableFieldConfig {
   validateFieldType(type);
   if (type === 'relation') {
-    if (!isPositiveInteger(config.relation?.targetTableId)) {
+    const targetTableId = idOf(config.relation?.targetTableId);
+    if (!targetTableId) {
       throw new TablesValidationError('Relation fields require targetTableId');
     }
     return {
       version: 1,
       relation: {
-        targetTableId: config.relation.targetTableId,
-        multiple: config.relation.multiple === true,
+        targetTableId,
+        multiple: config.relation?.multiple === true,
       },
     };
   }
@@ -522,15 +492,17 @@ export function validateTableFieldConfig(type: TableFieldType, config: TableFiel
   }
   if (type === 'rollup') {
     const rollup = config.rollup;
+    const relationFieldId = idOf(rollup?.relationFieldId);
+    const targetFieldId = idOf(rollup?.targetFieldId);
     if (
       !rollup ||
-      !isPositiveInteger(rollup.relationFieldId) ||
-      !isPositiveInteger(rollup.targetFieldId) ||
+      !relationFieldId ||
+      !targetFieldId ||
       !['count', 'sum', 'avg', 'min', 'max', 'join'].includes(rollup.aggregation)
     ) {
       throw new TablesValidationError('Rollup fields require relationFieldId, targetFieldId, and aggregation');
     }
-    return { version: 1, rollup: { ...rollup } };
+    return { version: 1, rollup: { relationFieldId, targetFieldId, aggregation: rollup.aggregation } };
   }
   if (type !== 'single_select' && type !== 'multi_select') return { version: 1 };
   const options = config.options ?? [];
@@ -616,21 +588,17 @@ export function validateTableFieldValue(
       return typeof value === 'string' && value.length <= 64 ? value : invalid('a phone string up to 64 characters');
     case 'attachment': {
       if (!Array.isArray(value) || value.length > 100) return invalid('Drive file ids');
-      const values = [...new Set(value)];
-      return values.every((entry) => typeof entry === 'number' && Number.isInteger(entry) && entry > 0)
-        ? values
-        : invalid('Drive file ids');
+      const ids = value.map(idOf);
+      return ids.every((entry): entry is string => entry !== undefined) ? [...new Set(ids)] : invalid('Drive file ids');
     }
     case 'relation': {
       const multiple = config.relation?.multiple === true;
       if (multiple) {
-        return Array.isArray(value) &&
-          value.length <= 500 &&
-          value.every((entry) => typeof entry === 'number' && Number.isInteger(entry) && entry > 0)
-          ? [...new Set(value as number[])]
-          : invalid('record ids');
+        if (!Array.isArray(value) || value.length > 500) return invalid('record ids');
+        const ids = value.map(idOf);
+        return ids.every((entry): entry is string => entry !== undefined) ? [...new Set(ids)] : invalid('record ids');
       }
-      return typeof value === 'number' && Number.isInteger(value) && value > 0 ? value : invalid('a record id');
+      return idOf(value) ?? invalid('a record id');
     }
     case 'formula':
     case 'rollup':
@@ -638,7 +606,7 @@ export function validateTableFieldValue(
   }
 }
 
-function queryFingerprint(tableId: number, query: TableQuery): string {
+function queryFingerprint(tableId: string, query: TableQuery): string {
   return createHash('sha256')
     .update(
       JSON.stringify({
@@ -778,8 +746,8 @@ interface TableValidationContext {
   fields: TableFieldRow[];
   byId: Map<string, TableFieldRow>;
   activeUserIds: Set<string>;
-  relationTargets: Map<string, Set<number>>;
-  attachmentFileIds: Set<number>;
+  relationTargets: Map<string, Set<string>>;
+  attachmentFileIds: Set<string>;
 }
 
 function validateValuesWithContext(
@@ -792,7 +760,7 @@ function validateValuesWithContext(
   }
   const normalized: TableRecordValues = {};
   for (const [key, value] of Object.entries(values)) {
-    if (!/^\d+$/.test(key)) throw new TablesValidationError(`Invalid field id "${key}"`);
+    if (!isRowId(key)) throw new TablesValidationError(`Invalid field id "${key}"`);
     const field = context.byId.get(key);
     if (!field) throw new TablesValidationError(`Field ${key} is unavailable`);
     if (field.type === 'formula' || field.type === 'rollup') {
@@ -800,15 +768,14 @@ function validateValuesWithContext(
     }
     const nextValue = validateTableFieldValue(field, value, context.activeUserIds);
     if (field.type === 'relation' && nextValue !== null) {
-      const validIds = context.relationTargets.get(key) ?? new Set<number>();
-      const ids = Array.isArray(nextValue) ? (nextValue as number[]) : [nextValue as number];
+      const validIds = context.relationTargets.get(key) ?? new Set<string>();
+      const ids = relationIds(nextValue);
       if (ids.some((id) => !validIds.has(id))) {
         throw new TablesValidationError(`Field "${field.name}" references an unavailable record`);
       }
     }
     if (field.type === 'attachment' && Array.isArray(nextValue)) {
-      const numericIds = nextValue.filter((entry): entry is number => typeof entry === 'number');
-      if (numericIds.some((id) => !context.attachmentFileIds.has(id))) {
+      if ((nextValue as string[]).some((id) => !context.attachmentFileIds.has(id))) {
         throw new TablesValidationError(`Field "${field.name}" references an unavailable Base file`);
       }
     }
@@ -826,53 +793,13 @@ function validateValuesWithContext(
   return normalized;
 }
 
-function automationConditionMatches(
-  condition: TableFilterGroup | undefined,
-  fields: TableFieldRow[],
-  values: TableRecordValues,
-): boolean {
-  if (!condition || condition.clauses.length === 0) return true;
-  const byId = new Map(fields.map((field) => [field.id, field]));
-  const matches = condition.clauses.map((clause) => {
-    if (!byId.has(clause.fieldId)) return false;
-    const value = values[String(clause.fieldId)];
-    if (clause.operator === 'is_empty') {
-      return value === null || value === undefined || value === '' || (Array.isArray(value) && value.length === 0);
-    }
-    if (clause.operator === 'is_not_empty') {
-      return !(value === null || value === undefined || value === '' || (Array.isArray(value) && value.length === 0));
-    }
-    if (clause.operator === 'contains' || clause.operator === 'not_contains') {
-      const contains = Array.isArray(value)
-        ? value.includes(clause.value)
-        : String(value ?? '')
-            .toLocaleLowerCase()
-            .includes(String(clause.value ?? '').toLocaleLowerCase());
-      return clause.operator === 'contains' ? contains : !contains;
-    }
-    if (clause.operator === 'in') {
-      return Array.isArray(clause.value) && clause.value.includes(value);
-    }
-    if (clause.operator === 'eq') return value === clause.value;
-    if (clause.operator === 'neq') return value !== clause.value;
-    const left = typeof value === 'number' ? value : String(value ?? '');
-    const right = typeof clause.value === 'number' ? clause.value : String(clause.value ?? '');
-    if (clause.operator === 'gt') return left > right;
-    if (clause.operator === 'gte') return left >= right;
-    if (clause.operator === 'lt') return left < right;
-    return left <= right;
-  });
-  return condition.combinator === 'and' ? matches.every(Boolean) : matches.some(Boolean);
-}
-
 export function createTablesService(db: Db) {
-  const platform = createPlatformService(db);
-  const loadValidationContext = async (tableId: number): Promise<TableValidationContext> => {
+  const loadValidationContext = async (tableId: string): Promise<TableValidationContext> => {
     const fields = await db
       .select()
       .from(tableFields)
       .where(and(eq(tableFields.table_id, tableId), isNull(tableFields.archived_at)))
-      .orderBy(asc(tableFields.position), asc(tableFields.id));
+      .orderBy(...FIELD_ORDER);
     const needsUsers = fields.some((field) => field.type === 'user' || field.type === 'multi_user');
     const needsAttachments = fields.some((field) => field.type === 'attachment');
     const activeUserIds = needsUsers
@@ -887,14 +814,9 @@ export function createTablesService(db: Db) {
       : new Set<string>();
     const relationFields = fields
       .filter((field) => field.type === 'relation')
-      .map((field) => ({ field, config: parseTableFieldConfig(field) }))
-      .filter(
-        (
-          entry,
-        ): entry is { field: TableFieldRow; config: TableFieldConfig & { relation: { targetTableId: number } } } =>
-          isPositiveInteger(entry.config.relation?.targetTableId),
-      );
-    const targetTableIds = [...new Set(relationFields.map((entry) => entry.config.relation.targetTableId))];
+      .map((field) => ({ field, targetTableId: idOf(parseTableFieldConfig(field).relation?.targetTableId) }))
+      .filter((entry): entry is { field: TableFieldRow; targetTableId: string } => entry.targetTableId !== undefined);
+    const targetTableIds = [...new Set(relationFields.map((entry) => entry.targetTableId))];
     const targetRows =
       targetTableIds.length === 0
         ? []
@@ -902,9 +824,9 @@ export function createTablesService(db: Db) {
             .select({ id: tableRecords.id, table_id: tableRecords.table_id })
             .from(tableRecords)
             .where(and(inArray(tableRecords.table_id, targetTableIds), isNull(tableRecords.deleted_at)));
-    const idsByTable = new Map<number, Set<number>>();
+    const idsByTable = new Map<string, Set<string>>();
     for (const record of targetRows) {
-      const ids = idsByTable.get(record.table_id) ?? new Set<number>();
+      const ids = idsByTable.get(record.table_id) ?? new Set<string>();
       ids.add(record.id);
       idsByTable.set(record.table_id, ids);
     }
@@ -916,132 +838,36 @@ export function createTablesService(db: Db) {
         ? new Set(
             (
               await db
-                .select({ id: driveFiles.id })
-                .from(driveFiles)
+                .select({ id: files.id })
+                .from(files)
                 .where(
                   and(
-                    eq(driveFiles.scope, 'tables'),
-                    eq(driveFiles.base_id, table.base_id),
-                    eq(driveFiles.status, 'active'),
+                    eq(files.source, 'drive'),
+                    eq(files.scope, 'tables'),
+                    eq(files.base_id, table.base_id),
+                    eq(files.status, 'active'),
                   ),
                 )
             ).map((file) => file.id),
           )
-        : new Set<number>();
+        : new Set<string>();
     return {
       fields,
       byId: new Map(fields.map((field) => [String(field.id), field])),
       activeUserIds,
       relationTargets: new Map(
-        relationFields.map(({ field, config }) => [
+        relationFields.map(({ field, targetTableId }) => [
           String(field.id),
-          idsByTable.get(config.relation.targetTableId) ?? new Set<number>(),
+          idsByTable.get(targetTableId) ?? new Set<string>(),
         ]),
       ),
       attachmentFileIds,
     };
   };
 
-  const normalizeFormConfig = async (tableId: number, input: TableFormConfig): Promise<TableFormConfig> => {
-    if (!input || typeof input !== 'object' || !Array.isArray(input.fieldIds)) {
-      throw new TablesValidationError('Form config requires fieldIds');
-    }
-    const fieldIds = [...new Set(input.fieldIds)];
-    if (fieldIds.length < 1 || fieldIds.length > MAX_FIELDS || !fieldIds.every(isPositiveInteger)) {
-      throw new TablesValidationError(`Form requires 1-${MAX_FIELDS} valid field ids`);
-    }
-    const fields = await db
-      .select()
-      .from(tableFields)
-      .where(
-        and(eq(tableFields.table_id, tableId), inArray(tableFields.id, fieldIds), isNull(tableFields.archived_at)),
-      );
-    if (
-      fields.length !== fieldIds.length ||
-      fields.some((field) => field.type === 'formula' || field.type === 'rollup' || field.type === 'attachment')
-    ) {
-      throw new TablesValidationError(
-        'Form fields must be active, writable, non-attachment fields on the target table',
-      );
-    }
-    const text = (value: string | undefined, fallback: string, max: number) =>
-      value === undefined ? fallback : value.trim().slice(0, max);
-    return {
-      version: 1,
-      title: text(input.title, '', 120),
-      description: text(input.description, '', 2_000),
-      fieldIds,
-      submitLabel: text(input.submitLabel, 'Submit', 60),
-      successMessage: text(input.successMessage, 'Submitted successfully.', 500),
-    };
-  };
-
-  const normalizeAutomationConfig = async (
-    baseId: number,
-    tableId: number,
-    input: TableAutomationConfig,
-  ): Promise<TableAutomationConfig> => {
-    if (!input || typeof input !== 'object' || !Array.isArray(input.actions)) {
-      throw new TablesValidationError('Automation config requires actions');
-    }
-    if (input.actions.length < 1 || input.actions.length > 10) {
-      throw new TablesValidationError('Automation supports 1-10 actions');
-    }
-    if (input.condition) {
-      validateQueryShape({ where: input.condition });
-      if (input.condition.clauses.length > MAX_QUERY_CLAUSES) {
-        throw new TablesValidationError(`Automation condition supports at most ${MAX_QUERY_CLAUSES} clauses`);
-      }
-      const fields = await db
-        .select()
-        .from(tableFields)
-        .where(and(eq(tableFields.table_id, tableId), isNull(tableFields.archived_at)));
-      const fieldIds = new Set(fields.map((field) => field.id));
-      if (input.condition.clauses.some((clause) => !fieldIds.has(clause.fieldId))) {
-        throw new TablesValidationError('Automation condition references an unavailable field');
-      }
-    }
-    const actions: TableAutomationAction[] = [];
-    for (const action of input.actions) {
-      if (action.type === 'update_record') {
-        if (!action.values || typeof action.values !== 'object' || Array.isArray(action.values)) {
-          throw new TablesValidationError('update_record action requires values');
-        }
-        actions.push({ type: 'update_record', values: action.values });
-      } else if (action.type === 'create_record') {
-        const [targetTable] = await db.select().from(tableTables).where(eq(tableTables.id, action.tableId)).limit(1);
-        if (!targetTable || targetTable.base_id !== baseId || targetTable.archived_at) {
-          throw new TablesValidationError('create_record target must be an active table in the same Base');
-        }
-        actions.push({ type: 'create_record', tableId: action.tableId, values: action.values });
-      } else if (action.type === 'notify') {
-        const userIds = [...new Set(action.userIds)];
-        if (userIds.length < 1 || userIds.length > 50) {
-          throw new TablesValidationError('notify action requires 1-50 recipients');
-        }
-        const recipients = await db
-          .select({ id: users.id })
-          .from(users)
-          .where(and(inArray(users.id, userIds), eq(users.status, 'active'), inArray(users.role, ['team', 'super'])));
-        if (recipients.length !== userIds.length) {
-          throw new TablesValidationError('notify recipients must be active internal users');
-        }
-        actions.push({
-          type: 'notify',
-          userIds,
-          title: trimmed(action.title, 'Notification title', 120),
-          message: trimmed(action.message, 'Notification message', 2_000),
-        });
-      } else {
-        throw new TablesValidationError('Unsupported automation action');
-      }
-    }
-    return { version: 1, ...(input.condition ? { condition: input.condition } : {}), actions };
-  };
-
   const writeSchemaVersion = async (
     tx: TablesTransaction,
-    tableId: number,
+    tableId: string,
     changeType: TableSchemaChangeType,
     changedBy: string,
   ): Promise<number> => {
@@ -1056,7 +882,7 @@ export function createTablesService(db: Db) {
       .select()
       .from(tableFields)
       .where(eq(tableFields.table_id, tableId))
-      .orderBy(asc(tableFields.position), asc(tableFields.id));
+      .orderBy(...FIELD_ORDER);
     const nextVersion = table.schema_revision + 1;
     const now = nowIso();
     await tx
@@ -1064,6 +890,7 @@ export function createTablesService(db: Db) {
       .set({ schema_revision: nextVersion, updated_at: now })
       .where(eq(tableTables.id, tableId));
     await tx.insert(tableSchemaVersions).values({
+      id: newId('schemaVersion'),
       table_id: tableId,
       version: nextVersion,
       schema_snapshot: buildSchemaSnapshot(tableId, fields),
@@ -1099,23 +926,24 @@ export function createTablesService(db: Db) {
 
   const syncRecordEdges = async (
     tx: TablesTransaction,
-    recordId: number,
+    recordId: string,
     values: TableRecordValues,
     fields: TableFieldRow[],
     userId: string,
   ): Promise<void> => {
     await tx.delete(tableRecordLinks).where(eq(tableRecordLinks.source_record_id, recordId));
-    await tx.delete(tableRecordAttachments).where(eq(tableRecordAttachments.record_id, recordId));
+    await tx
+      .delete(fileLinks)
+      .where(and(eq(fileLinks.target_type, RECORD_LINK_TARGET), eq(fileLinks.target_id, recordId)));
     const now = nowIso();
     const links: Array<typeof tableRecordLinks.$inferInsert> = [];
-    const attachments: Array<typeof tableRecordAttachments.$inferInsert> = [];
+    const attachments: Array<typeof fileLinks.$inferInsert> = [];
     for (const field of fields) {
       const value = values[String(field.id)];
       if (field.type === 'relation') {
-        const ids = Array.isArray(value) ? value : typeof value === 'number' ? [value] : [];
-        ids.forEach((targetRecordId, position) => {
-          if (typeof targetRecordId !== 'number') return;
+        relationIds(value).forEach((targetRecordId, position) => {
           links.push({
+            id: newId('recordLink'),
             field_id: field.id,
             source_record_id: recordId,
             target_record_id: targetRecordId,
@@ -1125,12 +953,12 @@ export function createTablesService(db: Db) {
           });
         });
       } else if (field.type === 'attachment' && Array.isArray(value)) {
-        value.forEach((driveFileId, position) => {
-          if (typeof driveFileId !== 'number') return;
+        relationIds(value).forEach((fileId, position) => {
           attachments.push({
-            record_id: recordId,
-            field_id: field.id,
-            drive_file_id: driveFileId,
+            file_id: fileId,
+            target_type: RECORD_LINK_TARGET,
+            target_id: recordId,
+            slot: field.id,
             position,
             created_by: userId,
             created_at: now,
@@ -1139,14 +967,14 @@ export function createTablesService(db: Db) {
       }
     }
     if (links.length > 0) await tx.insert(tableRecordLinks).values(links);
-    if (attachments.length > 0) await tx.insert(tableRecordAttachments).values(attachments);
+    if (attachments.length > 0) await tx.insert(fileLinks).values(attachments).onConflictDoNothing();
   };
 
   const validateModelConfig = async (
-    tableId: number,
+    tableId: string,
     type: TableFieldType,
     config: TableFieldConfig,
-    fieldId?: number,
+    fieldId?: string,
   ): Promise<void> => {
     if (type === 'relation') {
       const [source, target] = await Promise.all([
@@ -1266,12 +1094,12 @@ export function createTablesService(db: Db) {
     return Number.isNaN(date.valueOf()) ? null : date.toISOString();
   };
 
-  const computeRecordValues = async (tableId: number, values: TableRecordValues): Promise<TableRecordValues> => {
+  const computeRecordValues = async (tableId: string, values: TableRecordValues): Promise<TableRecordValues> => {
     const fields = await db
       .select()
       .from(tableFields)
       .where(and(eq(tableFields.table_id, tableId), isNull(tableFields.archived_at)))
-      .orderBy(asc(tableFields.position), asc(tableFields.id));
+      .orderBy(...FIELD_ORDER);
     const fieldsById = new Map(fields.map((field) => [field.id, field]));
     const computed: TableRecordValues = {};
     for (const field of fields) {
@@ -1284,11 +1112,7 @@ export function createTablesService(db: Db) {
       } else if (field.type === 'rollup' && config.rollup) {
         const relationField = fieldsById.get(config.rollup.relationFieldId);
         const relationValue = values[String(config.rollup.relationFieldId)];
-        const recordIds = Array.isArray(relationValue)
-          ? relationValue.filter((value): value is number => typeof value === 'number')
-          : typeof relationValue === 'number'
-            ? [relationValue]
-            : [];
+        const recordIds = relationIds(relationValue);
         const targetTableId = relationField ? parseTableFieldConfig(relationField).relation?.targetTableId : undefined;
         const targetRecords =
           !targetTableId || recordIds.length === 0
@@ -1348,7 +1172,7 @@ export function createTablesService(db: Db) {
     return updated ?? record;
   };
 
-  const recomputeTable = async (tableId: number): Promise<void> => {
+  const recomputeTable = async (tableId: string): Promise<void> => {
     const records = await db
       .select()
       .from(tableRecords)
@@ -1356,7 +1180,7 @@ export function createTablesService(db: Db) {
     for (const record of records) await recomputeRecord(record);
   };
 
-  const refreshDependentRollups = async (targetTableId: number, targetRecordId: number): Promise<void> => {
+  const refreshDependentRollups = async (targetTableId: string, targetRecordId: string): Promise<void> => {
     const [targetRecord] = await db
       .select({ revision: tableRecords.revision, deleted_at: tableRecords.deleted_at })
       .from(tableRecords)
@@ -1375,21 +1199,20 @@ export function createTablesService(db: Db) {
         .from(tableFields)
         .where(and(eq(tableFields.id, rollup.relationFieldId), isNull(tableFields.archived_at)))
         .limit(1);
-      if (!relationField || parseTableFieldConfig(relationField).relation?.targetTableId !== targetTableId) continue;
+      if (!relationField || idOf(parseTableFieldConfig(relationField).relation?.targetTableId) !== targetTableId) {
+        continue;
+      }
       const records = await db
         .select()
         .from(tableRecords)
         .where(and(eq(tableRecords.table_id, rollupField.table_id), isNull(tableRecords.deleted_at)));
       for (const record of records) {
-        const relationValue = record.values[String(relationField.id)];
-        if (
-          relationValue === targetRecordId ||
-          (Array.isArray(relationValue) && relationValue.includes(targetRecordId))
-        ) {
+        if (relationIds(record.values[String(relationField.id)]).includes(targetRecordId)) {
           const now = nowIso();
           const [job] = await db
             .insert(tableRecomputeJobs)
             .values({
+              id: newId('recomputeJob'),
               table_id: record.table_id,
               field_id: rollupField.id,
               record_id: record.id,
@@ -1436,6 +1259,7 @@ export function createTablesService(db: Db) {
       const [created] = await tx
         .insert(tableRecords)
         .values({
+          id: newId('record'),
           table_id: input.table_id,
           values,
           revision: 1,
@@ -1517,165 +1341,6 @@ export function createTablesService(db: Db) {
       : { ok: false, reason: 'not_found' };
   };
 
-  const canUserEditBase = async (baseId: number, userId: string): Promise<boolean> => {
-    const [user, base, member, authorization] = await Promise.all([
-      db.select().from(users).where(eq(users.id, userId)).limit(1),
-      db.select().from(tableBases).where(eq(tableBases.id, baseId)).limit(1),
-      db
-        .select()
-        .from(tableBaseMembers)
-        .where(and(eq(tableBaseMembers.base_id, baseId), eq(tableBaseMembers.user_id, userId)))
-        .limit(1),
-      platform.getAuthorizationSnapshot(userId, 'default'),
-    ]);
-    if (
-      !user[0] ||
-      user[0].status !== 'active' ||
-      (user[0].role !== 'team' && user[0].role !== 'super') ||
-      !base[0] ||
-      base[0].archived_at
-    ) {
-      return false;
-    }
-    if (!resolveCapability({ capability: 'tables.data.update', ...authorization }).allowed) return false;
-    if (user[0].role === 'super' || base[0].owner_id === user[0].id) return true;
-    return member[0]?.role === 'owner' || member[0]?.role === 'builder' || member[0]?.role === 'editor';
-  };
-
-  const canExecuteAutomation = (rule: TableAutomationRuleRow): Promise<boolean> =>
-    canUserEditBase(rule.base_id, rule.execution_user_id);
-
-  const runAutomations = async (eventType: TableAutomationTrigger, record: TableRecordRow): Promise<void> => {
-    const [rules, fields] = await Promise.all([
-      db
-        .select()
-        .from(tableAutomationRules)
-        .where(
-          and(
-            eq(tableAutomationRules.table_id, record.table_id),
-            eq(tableAutomationRules.status, 'enabled'),
-            eq(tableAutomationRules.trigger, eventType),
-          ),
-        ),
-      db
-        .select()
-        .from(tableFields)
-        .where(and(eq(tableFields.table_id, record.table_id), isNull(tableFields.archived_at))),
-    ]);
-    const recordValues = { ...record.values, ...record.computed_values };
-    for (const rule of rules) {
-      if (!automationConditionMatches(rule.config.condition, fields, recordValues)) continue;
-      const now = nowIso();
-      const [outbox] = await db
-        .insert(tableAutomationOutbox)
-        .values({
-          rule_id: rule.id,
-          record_id: record.id,
-          event_type: eventType,
-          payload: { tableId: record.table_id, revision: record.revision },
-          status: 'pending',
-          idempotency_key: `rule:${rule.id}:${eventType}:${record.id}:${record.revision}`,
-          recursion_depth: 0,
-          created_at: now,
-        })
-        .onConflictDoNothing()
-        .returning();
-      if (!outbox) continue;
-      const [run] = await db
-        .insert(tableAutomationRuns)
-        .values({
-          rule_id: rule.id,
-          outbox_id: outbox.id,
-          status: 'running',
-          actions_completed: 0,
-          started_at: now,
-        })
-        .returning();
-      await db
-        .update(tableAutomationOutbox)
-        .set({ status: 'processing' })
-        .where(eq(tableAutomationOutbox.id, outbox.id));
-      let actionsCompleted = 0;
-      try {
-        if (!(await canExecuteAutomation(rule))) {
-          throw new TablesValidationError('Automation execution user is inactive or lacks Base edit access');
-        }
-        for (const action of rule.config.actions) {
-          if (action.type === 'notify') {
-            await db.insert(tableNotifications).values(
-              action.userIds.map((userId) => ({
-                base_id: rule.base_id,
-                user_id: userId,
-                rule_id: rule.id,
-                record_id: record.id,
-                title: action.title,
-                message: action.message,
-                created_at: nowIso(),
-              })),
-            );
-          } else if (action.type === 'update_record') {
-            const currentRows = await db
-              .select()
-              .from(tableRecords)
-              .where(and(eq(tableRecords.id, record.id), isNull(tableRecords.deleted_at)))
-              .limit(1);
-            if (!currentRows[0]) throw new TablesValidationError('Automation record is unavailable');
-            const context = await loadValidationContext(currentRows[0].table_id);
-            const result = await updateRecordWithContext(
-              {
-                table_id: currentRows[0].table_id,
-                record_id: currentRows[0].id,
-                revision: currentRows[0].revision,
-                values: action.values,
-                user_id: rule.execution_user_id,
-              },
-              context,
-            );
-            if (!result.ok) throw new TablesValidationError(`Automation update failed: ${result.reason}`);
-          } else {
-            const context = await loadValidationContext(action.tableId);
-            await createRecordWithContext(
-              {
-                table_id: action.tableId,
-                values: action.values,
-                user_id: rule.execution_user_id,
-              },
-              context,
-            );
-          }
-          actionsCompleted += 1;
-        }
-        await Promise.all([
-          db
-            .update(tableAutomationOutbox)
-            .set({ status: 'succeeded', processed_at: nowIso() })
-            .where(eq(tableAutomationOutbox.id, outbox.id)),
-          db
-            .update(tableAutomationRuns)
-            .set({ status: 'succeeded', actions_completed: actionsCompleted, finished_at: nowIso() })
-            .where(eq(tableAutomationRuns.id, run!.id)),
-        ]);
-      } catch (error) {
-        const message = error instanceof Error ? error.message.slice(0, 2_000) : 'Unknown automation error';
-        await Promise.all([
-          db
-            .update(tableAutomationOutbox)
-            .set({ status: 'failed', processed_at: nowIso() })
-            .where(eq(tableAutomationOutbox.id, outbox.id)),
-          db
-            .update(tableAutomationRuns)
-            .set({
-              status: 'failed',
-              actions_completed: actionsCompleted,
-              error: message,
-              finished_at: nowIso(),
-            })
-            .where(eq(tableAutomationRuns.id, run!.id)),
-        ]);
-      }
-    }
-  };
-
   const service = {
     async activeInternalUserIds(): Promise<Set<string>> {
       const rows = await db
@@ -1685,7 +1350,7 @@ export function createTablesService(db: Db) {
       return new Set(rows.map((row) => row.id));
     },
 
-    async getBase(id: number): Promise<TableBaseRow | undefined> {
+    async getBase(id: string): Promise<TableBaseRow | undefined> {
       const rows = await db.select().from(tableBases).where(eq(tableBases.id, id)).limit(1);
       return rows[0];
     },
@@ -1697,9 +1362,11 @@ export function createTablesService(db: Db) {
           eq(tableBases.owner_id, userId),
           eq(tableBases.visibility, 'team'),
           sql`EXISTS (
-            SELECT 1 FROM table_base_members
-            WHERE table_base_members.base_id = ${tableBases.id}
-              AND table_base_members.user_id = ${userId}
+            SELECT 1 FROM ${shares}
+            WHERE ${shares.resource_type} = ${BASE_SHARE}
+              AND ${shares.resource_id} = ${tableBases.id}
+              AND ${shares.principal_type} = 'user'
+              AND ${shares.principal_id} = ${userId}
           )`,
         )!,
       ];
@@ -1719,6 +1386,7 @@ export function createTablesService(db: Db) {
         const [base] = await tx
           .insert(tableBases)
           .values({
+            id: newId('base'),
             name: trimmed(input.name, 'Base name', 120),
             description: input.description?.trim() || null,
             visibility: input.visibility ?? 'private',
@@ -1728,11 +1396,14 @@ export function createTablesService(db: Db) {
             updated_at: now,
           })
           .returning();
-        await tx.insert(tableBaseMembers).values({
-          base_id: base!.id,
-          user_id: input.owner_id,
+        await tx.insert(shares).values({
+          id: newId('share'),
+          resource_type: BASE_SHARE,
+          resource_id: base!.id,
+          principal_type: 'user',
+          principal_id: input.owner_id,
           role: 'owner',
-          added_by: input.created_by,
+          created_by: input.created_by,
           created_at: now,
           updated_at: now,
         });
@@ -1740,7 +1411,7 @@ export function createTablesService(db: Db) {
       });
     },
 
-    async updateBase(id: number, patch: UpdateTableBaseInput): Promise<TableBaseRow | undefined> {
+    async updateBase(id: string, patch: UpdateTableBaseInput): Promise<TableBaseRow | undefined> {
       const values: Partial<TableBaseRow> = { updated_at: nowIso() };
       if (patch.name !== undefined) values.name = trimmed(patch.name, 'Base name', 120);
       if (patch.description !== undefined) values.description = patch.description?.trim() || null;
@@ -1749,7 +1420,7 @@ export function createTablesService(db: Db) {
       return rows[0];
     },
 
-    async archiveBase(id: number): Promise<TableBaseRow | undefined> {
+    async archiveBase(id: string): Promise<TableBaseRow | undefined> {
       const now = nowIso();
       const rows = await db
         .update(tableBases)
@@ -1759,7 +1430,7 @@ export function createTablesService(db: Db) {
       return rows[0];
     },
 
-    async restoreBase(id: number): Promise<TableBaseRow | undefined> {
+    async restoreBase(id: string): Promise<TableBaseRow | undefined> {
       const rows = await db
         .update(tableBases)
         .set({ archived_at: null, updated_at: nowIso() })
@@ -1776,60 +1447,64 @@ export function createTablesService(db: Db) {
         .orderBy(desc(tableBases.archived_at));
     },
 
-    async getBaseMember(baseId: number, userId: string): Promise<TableBaseMemberRow | undefined> {
-      const rows = await db
-        .select()
-        .from(tableBaseMembers)
-        .where(and(eq(tableBaseMembers.base_id, baseId), eq(tableBaseMembers.user_id, userId)))
-        .limit(1);
-      return rows[0];
+    async getBaseMember(baseId: string, userId: string): Promise<TableBaseMemberRow | undefined> {
+      const rows = await db.select().from(shares).where(baseMemberWhere(baseId, userId)).limit(1);
+      return rows[0] ? memberFromShare(rows[0]) : undefined;
     },
 
-    async listBaseMembers(baseId: number): Promise<TableBaseMemberRow[]> {
-      return db
+    async listBaseMembers(baseId: string): Promise<TableBaseMemberRow[]> {
+      const rows = await db
         .select()
-        .from(tableBaseMembers)
-        .where(eq(tableBaseMembers.base_id, baseId))
-        .orderBy(asc(tableBaseMembers.created_at));
+        .from(shares)
+        .where(baseMemberWhere(baseId))
+        .orderBy(asc(shares.created_at), asc(shares.id));
+      return rows.map(memberFromShare);
     },
 
     async upsertBaseMember(input: {
-      base_id: number;
+      base_id: string;
       user_id: string;
       role: TableBaseRole;
       added_by: string;
     }): Promise<TableBaseMemberRow> {
       const now = nowIso();
       const [row] = await db
-        .insert(tableBaseMembers)
-        .values({ ...input, created_at: now, updated_at: now })
+        .insert(shares)
+        .values({
+          id: newId('share'),
+          resource_type: BASE_SHARE,
+          resource_id: input.base_id,
+          principal_type: 'user',
+          principal_id: input.user_id,
+          role: input.role,
+          created_by: input.added_by,
+          created_at: now,
+          updated_at: now,
+        })
         .onConflictDoUpdate({
-          target: [tableBaseMembers.base_id, tableBaseMembers.user_id],
-          set: { role: input.role, added_by: input.added_by, updated_at: now },
+          target: [shares.resource_type, shares.resource_id, shares.principal_type, shares.principal_id],
+          set: { role: input.role, created_by: input.added_by, updated_at: now },
         })
         .returning();
-      return row!;
+      return memberFromShare(row!);
     },
 
-    async removeBaseMember(baseId: number, userId: string): Promise<boolean> {
-      const rows = await db
-        .delete(tableBaseMembers)
-        .where(and(eq(tableBaseMembers.base_id, baseId), eq(tableBaseMembers.user_id, userId)))
-        .returning({ id: tableBaseMembers.id });
+    async removeBaseMember(baseId: string, userId: string): Promise<boolean> {
+      const rows = await db.delete(shares).where(baseMemberWhere(baseId, userId)).returning({ id: shares.id });
       return rows.length > 0;
     },
 
-    async getTable(id: number): Promise<TableDefinitionRow | undefined> {
+    async getTable(id: string): Promise<TableDefinitionRow | undefined> {
       const rows = await db.select().from(tableTables).where(eq(tableTables.id, id)).limit(1);
       return rows[0];
     },
 
-    async listTables(baseId: number): Promise<TableDefinitionRow[]> {
+    async listTables(baseId: string): Promise<TableDefinitionRow[]> {
       return db
         .select()
         .from(tableTables)
         .where(and(eq(tableTables.base_id, baseId), isNull(tableTables.archived_at)))
-        .orderBy(asc(tableTables.position), asc(tableTables.id));
+        .orderBy(asc(tableTables.position), asc(tableTables.created_at), asc(tableTables.id));
     },
 
     /**
@@ -1837,8 +1512,8 @@ export function createTablesService(db: Db) {
      * a record value (the data catalog). Tables without records are absent.
      */
     async recordStats(
-      tableIds: readonly number[],
-    ): Promise<Array<{ table_id: number; row_count: number; last_changed_at: string | null }>> {
+      tableIds: readonly string[],
+    ): Promise<Array<{ table_id: string; row_count: number; last_changed_at: string | null }>> {
       if (tableIds.length === 0) return [];
       const rows = await db
         .select({
@@ -1866,6 +1541,7 @@ export function createTablesService(db: Db) {
         const [table] = await tx
           .insert(tableTables)
           .values({
+            id: newId('baseTable'),
             base_id: input.base_id,
             name: trimmed(input.name, 'Table name', 120),
             description: input.description?.trim() || null,
@@ -1878,12 +1554,13 @@ export function createTablesService(db: Db) {
         const [field] = await tx
           .insert(tableFields)
           .values({
+            id: newId('field'),
             table_id: table!.id,
             name: 'Name',
             type: 'text',
             required: true,
             is_primary: true,
-            config: JSON.stringify({ version: 1 } satisfies TableFieldConfig),
+            config: { version: 1 } satisfies TableFieldConfig,
             position: 0,
             created_by: input.created_by,
             created_at: now,
@@ -1893,11 +1570,12 @@ export function createTablesService(db: Db) {
         const [view] = await tx
           .insert(tableViews)
           .values({
+            id: newId('view'),
             table_id: table!.id,
             name: 'Grid',
             type: 'grid',
             scope: 'shared',
-            config: JSON.stringify({ version: 1, fieldIds: [field!.id] } satisfies TableViewConfig),
+            config: { version: 1, fieldIds: [field!.id] } satisfies TableViewConfig,
             position: 0,
             created_by: input.created_by,
             created_at: now,
@@ -1905,6 +1583,7 @@ export function createTablesService(db: Db) {
           })
           .returning();
         await tx.insert(tableSchemaVersions).values({
+          id: newId('schemaVersion'),
           table_id: table!.id,
           version: 1,
           schema_snapshot: buildSchemaSnapshot(table!.id, [field!]),
@@ -1917,7 +1596,7 @@ export function createTablesService(db: Db) {
     },
 
     async updateTable(
-      id: number,
+      id: string,
       patch: { name?: string; description?: string | null; position?: number },
     ): Promise<TableDefinitionRow | undefined> {
       const values: Partial<TableDefinitionRow> = { updated_at: nowIso() };
@@ -1934,7 +1613,7 @@ export function createTablesService(db: Db) {
      * at it keep their rows; creating new links to an archived table is already
      * refused upstream, and its rollups simply stop refreshing.
      */
-    async archiveTable(id: number): Promise<TableDefinitionRow | undefined> {
+    async archiveTable(id: string): Promise<TableDefinitionRow | undefined> {
       const now = nowIso();
       const rows = await db
         .update(tableTables)
@@ -1944,7 +1623,7 @@ export function createTablesService(db: Db) {
       return rows[0];
     },
 
-    async restoreTable(id: number): Promise<TableDefinitionRow | undefined> {
+    async restoreTable(id: string): Promise<TableDefinitionRow | undefined> {
       const rows = await db
         .update(tableTables)
         .set({ archived_at: null, updated_at: nowIso() })
@@ -1953,7 +1632,7 @@ export function createTablesService(db: Db) {
       return rows[0];
     },
 
-    async listArchivedTables(baseId?: number): Promise<TableDefinitionRow[]> {
+    async listArchivedTables(baseId?: string): Promise<TableDefinitionRow[]> {
       const conditions: SQL[] = [isNotNull(tableTables.archived_at)];
       if (baseId !== undefined) conditions.push(eq(tableTables.base_id, baseId));
       return db
@@ -1963,12 +1642,12 @@ export function createTablesService(db: Db) {
         .orderBy(desc(tableTables.archived_at));
     },
 
-    async getField(id: number): Promise<TableFieldRow | undefined> {
+    async getField(id: string): Promise<TableFieldRow | undefined> {
       const rows = await db.select().from(tableFields).where(eq(tableFields.id, id)).limit(1);
       return rows[0];
     },
 
-    async listSchemaVersions(tableId: number): Promise<TableSchemaVersionRow[]> {
+    async listSchemaVersions(tableId: string): Promise<TableSchemaVersionRow[]> {
       return db
         .select()
         .from(tableSchemaVersions)
@@ -1976,7 +1655,7 @@ export function createTablesService(db: Db) {
         .orderBy(desc(tableSchemaVersions.version));
     },
 
-    async getSchemaVersion(tableId: number, version: number): Promise<TableSchemaVersionRow | undefined> {
+    async getSchemaVersion(tableId: string, version: number): Promise<TableSchemaVersionRow | undefined> {
       const rows = await db
         .select()
         .from(tableSchemaVersions)
@@ -1985,17 +1664,17 @@ export function createTablesService(db: Db) {
       return rows[0];
     },
 
-    async listFields(tableId: number, includeArchived = false): Promise<TableFieldRow[]> {
+    async listFields(tableId: string, includeArchived = false): Promise<TableFieldRow[]> {
       const conditions = [eq(tableFields.table_id, tableId)];
       if (!includeArchived) conditions.push(isNull(tableFields.archived_at));
       return db
         .select()
         .from(tableFields)
         .where(and(...conditions))
-        .orderBy(asc(tableFields.position), asc(tableFields.id));
+        .orderBy(...FIELD_ORDER);
     },
 
-    async listFieldDependencies(fieldId: number): Promise<TableFieldDependencyRow[]> {
+    async listFieldDependencies(fieldId: string): Promise<TableFieldDependencyRow[]> {
       return db
         .select()
         .from(tableFieldDependencies)
@@ -2013,7 +1692,7 @@ export function createTablesService(db: Db) {
           .select()
           .from(tableFields)
           .where(and(eq(tableFields.table_id, input.table_id), isNull(tableFields.archived_at)))
-          .orderBy(asc(tableFields.position), asc(tableFields.id));
+          .orderBy(...FIELD_ORDER);
         if (current.length >= MAX_FIELDS) {
           throw new TablesValidationError(`A table supports at most ${MAX_FIELDS} fields`);
         }
@@ -2021,11 +1700,12 @@ export function createTablesService(db: Db) {
         const [row] = await tx
           .insert(tableFields)
           .values({
+            id: newId('field'),
             table_id: input.table_id,
             name: trimmed(input.name, 'Field name', 120),
             type: input.type,
             required: input.required ?? false,
-            config: JSON.stringify(config),
+            config,
             position: nextPosition,
             created_by: input.created_by,
             created_at: now,
@@ -2040,7 +1720,7 @@ export function createTablesService(db: Db) {
       return row;
     },
 
-    async updateField(id: number, patch: UpdateTableFieldInput): Promise<TableFieldRow | undefined> {
+    async updateField(id: string, patch: UpdateTableFieldInput): Promise<TableFieldRow | undefined> {
       const existing = await service.getField(id);
       if (!existing || existing.archived_at) return undefined;
       const normalizedConfig =
@@ -2054,7 +1734,7 @@ export function createTablesService(db: Db) {
         const values: Partial<TableFieldRow> = { updated_at: nowIso() };
         if (patch.name !== undefined) values.name = trimmed(patch.name, 'Field name', 120);
         if (patch.required !== undefined) values.required = field.is_primary ? true : patch.required;
-        if (normalizedConfig !== undefined) values.config = JSON.stringify(normalizedConfig);
+        if (normalizedConfig !== undefined) values.config = normalizedConfig;
         if (patch.position !== undefined) values.position = patch.position;
         const rows = await tx.update(tableFields).set(values).where(eq(tableFields.id, id)).returning();
         await syncFieldDependencies(tx, rows[0]!, normalizedConfig ?? parseTableFieldConfig(rows[0]!));
@@ -2065,7 +1745,7 @@ export function createTablesService(db: Db) {
       return row;
     },
 
-    async archiveField(id: number, userId: string): Promise<TableFieldRow | undefined> {
+    async archiveField(id: string, userId: string): Promise<TableFieldRow | undefined> {
       const row = await db.transaction(async (tx) => {
         const [field] = await tx.select().from(tableFields).where(eq(tableFields.id, id)).limit(1);
         if (!field || field.archived_at || field.is_primary) return undefined;
@@ -2087,7 +1767,7 @@ export function createTablesService(db: Db) {
       return row;
     },
 
-    async listViews(tableId: number, userId?: string): Promise<TableViewRow[]> {
+    async listViews(tableId: string, userId?: string): Promise<TableViewRow[]> {
       const visibility = userId
         ? or(eq(tableViews.scope, 'shared'), eq(tableViews.owner_id, userId))
         : eq(tableViews.scope, 'shared');
@@ -2095,10 +1775,10 @@ export function createTablesService(db: Db) {
         .select()
         .from(tableViews)
         .where(and(eq(tableViews.table_id, tableId), visibility))
-        .orderBy(asc(tableViews.position), asc(tableViews.id));
+        .orderBy(asc(tableViews.position), asc(tableViews.created_at), asc(tableViews.id));
     },
 
-    async getView(id: number, userId?: string): Promise<TableViewRow | undefined> {
+    async getView(id: string, userId?: string): Promise<TableViewRow | undefined> {
       const visibility = userId ? or(eq(tableViews.scope, 'shared'), eq(tableViews.owner_id, userId)) : undefined;
       const rows = await db
         .select()
@@ -2116,12 +1796,13 @@ export function createTablesService(db: Db) {
       const [row] = await db
         .insert(tableViews)
         .values({
+          id: newId('view'),
           table_id: input.table_id,
           name: trimmed(input.name, 'View name', 120),
           type: 'grid',
           scope: input.scope ?? 'shared',
           owner_id: input.scope === 'personal' ? input.owner_id : null,
-          config: JSON.stringify({ ...(input.config ?? {}), version: 1 } satisfies TableViewConfig),
+          config: normalizeViewConfig(input.config),
           position: input.position ?? 0,
           created_by: input.created_by,
           created_at: now,
@@ -2132,7 +1813,7 @@ export function createTablesService(db: Db) {
     },
 
     async updateView(
-      id: number,
+      id: string,
       patch: UpdateTableViewInput,
       userId?: string,
     ): Promise<TableRevisionResult<TableViewRow>> {
@@ -2147,7 +1828,7 @@ export function createTablesService(db: Db) {
       };
       if (patch.name !== undefined) values.name = trimmed(patch.name, 'View name', 120);
       if (patch.config !== undefined) {
-        values.config = JSON.stringify({ ...patch.config, version: 1 } satisfies TableViewConfig);
+        values.config = normalizeViewConfig(patch.config);
       }
       if (patch.position !== undefined) values.position = patch.position;
       const rows = await db
@@ -2160,186 +1841,15 @@ export function createTablesService(db: Db) {
       return latest ? { ok: false, reason: 'conflict', current: latest.revision } : { ok: false, reason: 'not_found' };
     },
 
-    async getSchema(tableId: number, userId?: string): Promise<TableSchemaResult | undefined> {
+    async getSchema(tableId: string, userId?: string): Promise<TableSchemaResult | undefined> {
       const table = await service.getTable(tableId);
       if (!table || table.archived_at) return undefined;
       const [fields, views] = await Promise.all([service.listFields(tableId), service.listViews(tableId, userId)]);
       return { table, fields, views };
     },
 
-    async listForms(tableId: number): Promise<TableFormRow[]> {
-      return db.select().from(tableForms).where(eq(tableForms.table_id, tableId)).orderBy(asc(tableForms.id));
-    },
-
-    async getForm(id: number): Promise<TableFormRow | undefined> {
-      const rows = await db.select().from(tableForms).where(eq(tableForms.id, id)).limit(1);
-      return rows[0];
-    },
-
-    async createForm(input: CreateTableFormInput): Promise<TableFormRow> {
-      const now = nowIso();
-      const config = await normalizeFormConfig(input.table_id, input.config);
-      const [row] = await db
-        .insert(tableForms)
-        .values({
-          table_id: input.table_id,
-          name: trimmed(input.name, 'Form name', 120),
-          status: input.status ?? 'draft',
-          config,
-          revision: 1,
-          created_by: input.user_id,
-          updated_by: input.user_id,
-          created_at: now,
-          updated_at: now,
-        })
-        .returning();
-      return row!;
-    },
-
-    async updateForm(id: number, patch: UpdateTableFormInput): Promise<TableRevisionResult<TableFormRow>> {
-      const current = await service.getForm(id);
-      if (!current) return { ok: false, reason: 'not_found' };
-      if (current.revision !== patch.revision) {
-        return { ok: false, reason: 'conflict', current: current.revision };
-      }
-      const values: Partial<TableFormRow> = {
-        revision: patch.revision + 1,
-        updated_by: patch.user_id,
-        updated_at: nowIso(),
-      };
-      if (patch.name !== undefined) values.name = trimmed(patch.name, 'Form name', 120);
-      if (patch.status !== undefined) values.status = patch.status;
-      if (patch.config !== undefined) values.config = await normalizeFormConfig(current.table_id, patch.config);
-      const rows = await db
-        .update(tableForms)
-        .set(values)
-        .where(and(eq(tableForms.id, id), eq(tableForms.revision, patch.revision)))
-        .returning();
-      if (rows[0]) return { ok: true, value: rows[0] };
-      const latest = await service.getForm(id);
-      return latest ? { ok: false, reason: 'conflict', current: latest.revision } : { ok: false, reason: 'not_found' };
-    },
-
-    async submitForm(formId: number, values: TableRecordValues, userId: string): Promise<TableRecordRow> {
-      const form = await service.getForm(formId);
-      if (!form || form.status !== 'published') throw new TablesValidationError('Form is not published');
-      const allowed = new Set(form.config.fieldIds.map(String));
-      if (Object.keys(values).some((fieldId) => !allowed.has(fieldId))) {
-        throw new TablesValidationError('Form submission contains a field that is not published');
-      }
-      return service.createRecord({ table_id: form.table_id, values, user_id: userId });
-    },
-
-    async listAutomationRules(baseId: number): Promise<TableAutomationRuleRow[]> {
-      return db
-        .select()
-        .from(tableAutomationRules)
-        .where(eq(tableAutomationRules.base_id, baseId))
-        .orderBy(asc(tableAutomationRules.id));
-    },
-
-    async getAutomationRule(id: number): Promise<TableAutomationRuleRow | undefined> {
-      const rows = await db.select().from(tableAutomationRules).where(eq(tableAutomationRules.id, id)).limit(1);
-      return rows[0];
-    },
-
-    async createAutomationRule(input: CreateTableAutomationInput): Promise<TableAutomationRuleRow> {
-      if (!['record_created', 'record_updated'].includes(input.trigger)) {
-        throw new TablesValidationError('Unsupported automation trigger');
-      }
-      const [table] = await db.select().from(tableTables).where(eq(tableTables.id, input.table_id)).limit(1);
-      if (!table || table.base_id !== input.base_id || table.archived_at) {
-        throw new TablesValidationError('Automation table must belong to this Base');
-      }
-      if (!(await canUserEditBase(input.base_id, input.execution_user_id))) {
-        throw new TablesValidationError('Automation execution user must have Base edit access');
-      }
-      const config = await normalizeAutomationConfig(input.base_id, input.table_id, input.config);
-      const now = nowIso();
-      const [row] = await db
-        .insert(tableAutomationRules)
-        .values({
-          base_id: input.base_id,
-          table_id: input.table_id,
-          name: trimmed(input.name, 'Automation name', 120),
-          status: input.status ?? 'disabled',
-          trigger: input.trigger,
-          config,
-          execution_user_id: input.execution_user_id,
-          revision: 1,
-          created_by: input.user_id,
-          updated_by: input.user_id,
-          created_at: now,
-          updated_at: now,
-        })
-        .returning();
-      return row!;
-    },
-
-    async updateAutomationRule(
-      id: number,
-      patch: UpdateTableAutomationInput,
-    ): Promise<TableRevisionResult<TableAutomationRuleRow>> {
-      const current = await service.getAutomationRule(id);
-      if (!current) return { ok: false, reason: 'not_found' };
-      if (current.revision !== patch.revision) {
-        return { ok: false, reason: 'conflict', current: current.revision };
-      }
-      const executionUserId = patch.execution_user_id ?? current.execution_user_id;
-      if (!(await canUserEditBase(current.base_id, executionUserId))) {
-        throw new TablesValidationError('Automation execution user must have Base edit access');
-      }
-      const values: Partial<TableAutomationRuleRow> = {
-        revision: patch.revision + 1,
-        updated_by: patch.user_id,
-        updated_at: nowIso(),
-      };
-      if (patch.name !== undefined) values.name = trimmed(patch.name, 'Automation name', 120);
-      if (patch.status !== undefined) values.status = patch.status;
-      if (patch.trigger !== undefined) values.trigger = patch.trigger;
-      if (patch.execution_user_id !== undefined) values.execution_user_id = patch.execution_user_id;
-      if (patch.config !== undefined) {
-        values.config = await normalizeAutomationConfig(current.base_id, current.table_id, patch.config);
-      }
-      const rows = await db
-        .update(tableAutomationRules)
-        .set(values)
-        .where(and(eq(tableAutomationRules.id, id), eq(tableAutomationRules.revision, patch.revision)))
-        .returning();
-      if (rows[0]) return { ok: true, value: rows[0] };
-      const latest = await service.getAutomationRule(id);
-      return latest ? { ok: false, reason: 'conflict', current: latest.revision } : { ok: false, reason: 'not_found' };
-    },
-
-    async listAutomationRuns(ruleId: number, limit = 50): Promise<TableAutomationRunRow[]> {
-      return db
-        .select()
-        .from(tableAutomationRuns)
-        .where(eq(tableAutomationRuns.rule_id, ruleId))
-        .orderBy(desc(tableAutomationRuns.started_at))
-        .limit(Math.min(Math.max(limit, 1), 200));
-    },
-
-    async listNotifications(userId: string, limit = 100): Promise<TableNotificationRow[]> {
-      return db
-        .select()
-        .from(tableNotifications)
-        .where(eq(tableNotifications.user_id, userId))
-        .orderBy(desc(tableNotifications.created_at))
-        .limit(Math.min(Math.max(limit, 1), 200));
-    },
-
-    async markNotificationRead(id: number, userId: string): Promise<TableNotificationRow | undefined> {
-      const rows = await db
-        .update(tableNotifications)
-        .set({ read_at: nowIso() })
-        .where(and(eq(tableNotifications.id, id), eq(tableNotifications.user_id, userId)))
-        .returning();
-      return rows[0];
-    },
-
     async validatedValues(
-      tableId: number,
+      tableId: string,
       values: TableRecordValues,
       options: { requireAll: boolean },
     ): Promise<TableRecordValues> {
@@ -2347,12 +1857,10 @@ export function createTablesService(db: Db) {
     },
 
     async createRecord(input: CreateTableRecordInput): Promise<TableRecordRow> {
-      const record = await createRecordWithContext(input, await loadValidationContext(input.table_id));
-      await runAutomations('record_created', record);
-      return record;
+      return createRecordWithContext(input, await loadValidationContext(input.table_id));
     },
 
-    async getRecord(tableId: number, recordId: number): Promise<TableRecordRow | undefined> {
+    async getRecord(tableId: string, recordId: string): Promise<TableRecordRow | undefined> {
       const rows = await db
         .select()
         .from(tableRecords)
@@ -2361,12 +1869,12 @@ export function createTablesService(db: Db) {
       return rows[0];
     },
 
-    async getRecordById(recordId: number): Promise<TableRecordRow | undefined> {
+    async getRecordById(recordId: string): Promise<TableRecordRow | undefined> {
       const rows = await db.select().from(tableRecords).where(eq(tableRecords.id, recordId)).limit(1);
       return rows[0];
     },
 
-    async listRecordLinks(fieldId: number, sourceRecordId: number): Promise<TableRecordLinkRow[]> {
+    async listRecordLinks(fieldId: string, sourceRecordId: string): Promise<TableRecordLinkRow[]> {
       return db
         .select()
         .from(tableRecordLinks)
@@ -2374,15 +1882,22 @@ export function createTablesService(db: Db) {
         .orderBy(asc(tableRecordLinks.position));
     },
 
-    async listRecordAttachments(recordId: number, fieldId: number): Promise<TableRecordAttachmentRow[]> {
-      return db
+    async listRecordAttachments(recordId: string, fieldId: string): Promise<TableRecordAttachmentRow[]> {
+      const rows = await db
         .select()
-        .from(tableRecordAttachments)
-        .where(and(eq(tableRecordAttachments.record_id, recordId), eq(tableRecordAttachments.field_id, fieldId)))
-        .orderBy(asc(tableRecordAttachments.position));
+        .from(fileLinks)
+        .where(
+          and(
+            eq(fileLinks.target_type, RECORD_LINK_TARGET),
+            eq(fileLinks.target_id, recordId),
+            eq(fileLinks.slot, fieldId),
+          ),
+        )
+        .orderBy(asc(fileLinks.position));
+      return rows.map(attachmentFromLink);
     },
 
-    async listRecomputeJobs(recordId: number): Promise<TableRecomputeJobRow[]> {
+    async listRecomputeJobs(recordId: string): Promise<TableRecomputeJobRow[]> {
       return db
         .select()
         .from(tableRecomputeJobs)
@@ -2395,14 +1910,12 @@ export function createTablesService(db: Db) {
     ): Promise<
       { ok: true; record: TableRecordRow } | { ok: false; reason: 'not_found' | 'conflict'; current?: number }
     > {
-      const result = await updateRecordWithContext(input, await loadValidationContext(input.table_id));
-      if (result.ok) await runAutomations('record_updated', result.record);
-      return result;
+      return updateRecordWithContext(input, await loadValidationContext(input.table_id));
     },
 
     async deleteRecord(input: {
-      table_id: number;
-      record_id: number;
+      table_id: string;
+      record_id: string;
       revision: number;
       user_id: string;
     }): Promise<
@@ -2442,7 +1955,7 @@ export function createTablesService(db: Db) {
      * AST: deleted rows are a maintenance view, not data anyone should filter,
      * sort or hand to an agent.
      */
-    async listDeletedRecords(tableId: number, limit = 100): Promise<TableRecordRow[]> {
+    async listDeletedRecords(tableId: string, limit = 100): Promise<TableRecordRow[]> {
       return db
         .select()
         .from(tableRecords)
@@ -2452,8 +1965,8 @@ export function createTablesService(db: Db) {
     },
 
     async restoreRecord(input: {
-      table_id: number;
-      record_id: number;
+      table_id: string;
+      record_id: string;
       user_id: string;
     }): Promise<{ ok: true; record: TableRecordRow } | { ok: false; reason: 'not_found' }> {
       const now = nowIso();
@@ -2479,8 +1992,8 @@ export function createTablesService(db: Db) {
     },
 
     async recordQueryParts(
-      tableId: number,
-      query: TableQuery,
+      tableId: string,
+      rawQuery: TableQuery,
     ): Promise<{
       where: SQL;
       order: SQL[];
@@ -2488,7 +2001,7 @@ export function createTablesService(db: Db) {
       offset: number;
       fingerprint: string;
     }> {
-      validateQueryShape(query);
+      const query = normalizeQueryShape(rawQuery);
       const limit = query.limit ?? 50;
       if (!Number.isInteger(limit) || limit < 1 || limit > MAX_QUERY_LIMIT) {
         throw new TablesValidationError(`limit must be between 1 and ${MAX_QUERY_LIMIT}`);
@@ -2551,7 +2064,7 @@ export function createTablesService(db: Db) {
         }
         order.push(sort.direction === 'desc' ? desc(expression) : asc(expression));
       }
-      order.push(asc(tableRecords.id));
+      order.push(asc(tableRecords.created_at), asc(tableRecords.id));
       const fingerprint = queryFingerprint(tableId, query);
       return {
         where: and(...conditions)!,
@@ -2562,7 +2075,7 @@ export function createTablesService(db: Db) {
       };
     },
 
-    async queryRecords(tableId: number, query: TableQuery = {}): Promise<TableRecordQueryResult> {
+    async queryRecords(tableId: string, query: TableQuery = {}): Promise<TableRecordQueryResult> {
       const parts = await service.recordQueryParts(tableId, query);
       const [records, countRows] = await Promise.all([
         db
@@ -2587,7 +2100,7 @@ export function createTablesService(db: Db) {
     },
 
     async validateBatchRecords(input: {
-      table_id: number;
+      table_id: string;
       items: BatchUpsertTableRecordItem[];
     }): Promise<TableBatchValidationResult[]> {
       if (input.items.length < 1 || input.items.length > MAX_BATCH_RECORDS) {
@@ -2597,8 +2110,8 @@ export function createTablesService(db: Db) {
       const recordIds = [
         ...new Set(
           input.items
-            .map((item) => item.record_id)
-            .filter((recordId): recordId is number => typeof recordId === 'number'),
+            .map((item) => idOf(item.record_id))
+            .filter((recordId): recordId is string => recordId !== undefined),
         ),
       ];
       const existing =
@@ -2621,7 +2134,7 @@ export function createTablesService(db: Db) {
             validateValuesWithContext(context, item.values, { requireAll: true });
             return { index, ok: true };
           }
-          const current = byRecordId.get(item.record_id);
+          const current = byRecordId.get(idOf(item.record_id) ?? '');
           if (!current) return { index, ok: false, reason: 'not_found' };
           if (!item.revision) {
             return { index, ok: false, reason: 'invalid', message: 'revision is required' };
@@ -2644,7 +2157,7 @@ export function createTablesService(db: Db) {
     },
 
     async batchUpsertRecords(input: {
-      table_id: number;
+      table_id: string;
       items: BatchUpsertTableRecordItem[];
       user_id: string;
     }): Promise<
@@ -2669,7 +2182,6 @@ export function createTablesService(db: Db) {
               },
               context,
             );
-            await runAutomations('record_created', record);
             results.push({ index, ok: true as const, record });
             continue;
           }
@@ -2680,14 +2192,13 @@ export function createTablesService(db: Db) {
           const result = await updateRecordWithContext(
             {
               table_id: input.table_id,
-              record_id: item.record_id,
+              record_id: idOf(item.record_id) ?? String(item.record_id),
               revision: item.revision,
               values: item.values,
               user_id: input.user_id,
             },
             context,
           );
-          if (result.ok) await runAutomations('record_updated', result.record);
           results.push(result.ok ? { index, ok: true as const, record: result.record } : { index, ...result });
         } catch (error) {
           results.push({
@@ -2701,146 +2212,7 @@ export function createTablesService(db: Db) {
       return results;
     },
 
-    async createDashboard(input: CreateTableDashboardInput): Promise<TableDashboardRow> {
-      const now = nowIso();
-      const [row] = await db
-        .insert(tableDashboards)
-        .values({
-          base_id: input.base_id,
-          name: trimmed(input.name, 'Dashboard name', 120),
-          description: input.description?.trim() || null,
-          created_by: input.created_by,
-          created_at: now,
-          updated_at: now,
-        })
-        .returning();
-      return row!;
-    },
-
-    async listDashboards(baseId: number): Promise<TableDashboardRow[]> {
-      return db
-        .select()
-        .from(tableDashboards)
-        .where(eq(tableDashboards.base_id, baseId))
-        .orderBy(asc(tableDashboards.id));
-    },
-
-    async getDashboard(id: number): Promise<TableDashboardResult | undefined> {
-      const rows = await db.select().from(tableDashboards).where(eq(tableDashboards.id, id)).limit(1);
-      if (!rows[0]) return undefined;
-      const widgets = await db
-        .select()
-        .from(tableDashboardWidgets)
-        .where(eq(tableDashboardWidgets.dashboard_id, id))
-        .orderBy(asc(tableDashboardWidgets.position), asc(tableDashboardWidgets.id));
-      return { dashboard: rows[0], widgets };
-    },
-
-    async updateDashboard(
-      id: number,
-      patch: UpdateTableDashboardInput,
-    ): Promise<TableRevisionResult<TableDashboardRow>> {
-      const current = await db.select().from(tableDashboards).where(eq(tableDashboards.id, id)).limit(1);
-      if (!current[0]) return { ok: false, reason: 'not_found' };
-      if (current[0].revision !== patch.revision) {
-        return { ok: false, reason: 'conflict', current: current[0].revision };
-      }
-      const values: Partial<TableDashboardRow> = {
-        revision: patch.revision + 1,
-        updated_at: nowIso(),
-      };
-      if (patch.name !== undefined) values.name = trimmed(patch.name, 'Dashboard name', 120);
-      if (patch.description !== undefined) values.description = patch.description?.trim() || null;
-      const rows = await db
-        .update(tableDashboards)
-        .set(values)
-        .where(and(eq(tableDashboards.id, id), eq(tableDashboards.revision, patch.revision)))
-        .returning();
-      if (rows[0]) return { ok: true, value: rows[0] };
-      const latest = await db.select().from(tableDashboards).where(eq(tableDashboards.id, id)).limit(1);
-      return latest[0]
-        ? { ok: false, reason: 'conflict', current: latest[0].revision }
-        : { ok: false, reason: 'not_found' };
-    },
-
-    /**
-     * Dashboards are pure configuration — widgets cascade and no business data
-     * lives here — so this is a real delete rather than the archive used for
-     * bases, tables and records (spec D4).
-     */
-    async deleteDashboard(id: number): Promise<boolean> {
-      const rows = await db.delete(tableDashboards).where(eq(tableDashboards.id, id)).returning();
-      return rows.length > 0;
-    },
-
-    async getDashboardWidget(id: number): Promise<TableDashboardWidgetRow | undefined> {
-      const rows = await db.select().from(tableDashboardWidgets).where(eq(tableDashboardWidgets.id, id)).limit(1);
-      return rows[0];
-    },
-
-    async createDashboardWidget(input: CreateTableDashboardWidgetInput): Promise<TableDashboardWidgetRow> {
-      validateWidgetType(input.type);
-      if (input.type !== 'text' && !input.table_id) {
-        throw new TablesValidationError(`${input.type} widgets require table_id`);
-      }
-      const config = normalizeWidgetConfig(input.type, input.config);
-      const layout = normalizeWidgetLayout(input.layout);
-      const now = nowIso();
-      const [row] = await db
-        .insert(tableDashboardWidgets)
-        .values({
-          dashboard_id: input.dashboard_id,
-          table_id: input.table_id ?? null,
-          type: input.type,
-          title: trimmed(input.title, 'Widget title', 120),
-          config: JSON.stringify(config),
-          layout: JSON.stringify(layout),
-          position: input.position ?? 0,
-          created_by: input.created_by,
-          created_at: now,
-          updated_at: now,
-        })
-        .returning();
-      return row!;
-    },
-
-    async updateDashboardWidget(
-      id: number,
-      patch: UpdateTableDashboardWidgetInput,
-    ): Promise<TableRevisionResult<TableDashboardWidgetRow>> {
-      const current = await service.getDashboardWidget(id);
-      if (!current) return { ok: false, reason: 'not_found' };
-      if (current.revision !== patch.revision) {
-        return { ok: false, reason: 'conflict', current: current.revision };
-      }
-      const values: Partial<TableDashboardWidgetRow> = {
-        revision: patch.revision + 1,
-        updated_at: nowIso(),
-      };
-      if (patch.table_id !== undefined) values.table_id = patch.table_id;
-      if (patch.title !== undefined) values.title = trimmed(patch.title, 'Widget title', 120);
-      if (patch.config !== undefined) values.config = JSON.stringify(normalizeWidgetConfig(current.type, patch.config));
-      if (patch.layout !== undefined) values.layout = JSON.stringify(normalizeWidgetLayout(patch.layout));
-      if (patch.position !== undefined) values.position = patch.position;
-      const rows = await db
-        .update(tableDashboardWidgets)
-        .set(values)
-        .where(and(eq(tableDashboardWidgets.id, id), eq(tableDashboardWidgets.revision, patch.revision)))
-        .returning();
-      if (rows[0]) return { ok: true, value: rows[0] };
-      const latest = await service.getDashboardWidget(id);
-      return latest ? { ok: false, reason: 'conflict', current: latest.revision } : { ok: false, reason: 'not_found' };
-    },
-
-    async deleteDashboardWidget(id: number): Promise<boolean> {
-      const rows = await db
-        .delete(tableDashboardWidgets)
-        .where(eq(tableDashboardWidgets.id, id))
-        .returning({ id: tableDashboardWidgets.id });
-      return rows.length > 0;
-    },
-
-    async aggregateRecords(tableId: number, input: TableAggregateInput): Promise<TableAggregateRow[]> {
+    async aggregateRecords(tableId: string, input: TableAggregateInput): Promise<TableAggregateRow[]> {
       if (!TABLE_AGGREGATIONS.includes(input.operation)) {
         throw new TablesValidationError(`Unsupported aggregation "${input.operation}"`);
       }
@@ -2848,18 +2220,20 @@ export function createTablesService(db: Db) {
       const parts = await service.recordQueryParts(tableId, query);
       const fields = await service.listFields(tableId);
       const byId = new Map(fields.map((field) => [field.id, field]));
+      const valueFieldId = idOf(input.valueFieldId);
+      const groupByFieldId = idOf(input.groupByFieldId);
       if (input.operation !== 'count') {
-        const valueField = input.valueFieldId ? byId.get(input.valueFieldId) : undefined;
+        const valueField = valueFieldId ? byId.get(valueFieldId) : undefined;
         if (!valueField || queryValueField(valueField).type !== 'number') {
           throw new TablesValidationError(`${input.operation} requires a numeric valueFieldId`);
         }
       }
-      const groupField = input.groupByFieldId ? byId.get(input.groupByFieldId) : undefined;
+      const groupField = groupByFieldId ? byId.get(groupByFieldId) : undefined;
       if (input.groupByFieldId && !groupField) {
         throw new TablesValidationError('groupByFieldId is unavailable');
       }
       const groupExpr = groupField ? recordFieldText(String(groupField.id)) : sql<string | null>`NULL`;
-      const valueField = input.valueFieldId ? byId.get(input.valueFieldId) : undefined;
+      const valueField = valueFieldId ? byId.get(valueFieldId) : undefined;
       const numberExpr = valueField ? sql`NULLIF(${recordFieldText(String(valueField.id))}, '')::numeric` : sql`1`;
       let aggregate: SQL<number>;
       if (input.operation === 'sum') aggregate = sql<number>`coalesce(sum(${numberExpr}), 0)`;

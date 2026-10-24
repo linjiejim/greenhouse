@@ -2,8 +2,8 @@
  * Administration › Usage › Modules — which modules and clients are actually used.
  *
  * Reads `GET /api/admin/usage/modules`: tool calls by tool × client, page opens
- * by module × client (both from `usage_counters`, counted since v1.4) and the
- * prompt-cache hit rate per model from `llm_usage`.
+ * by module × client (both from `module_usage_daily`, counted since v1.4) and the
+ * prompt-cache hit rate per model from the model usage events.
  */
 
 import { useEffect, useState, type ReactNode } from 'react';

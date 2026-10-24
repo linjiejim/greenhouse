@@ -47,7 +47,7 @@ import { budgetExceededMessage, UsageBudgetAdmissionError } from '../../usage/bu
 
 function task(overrides: Partial<ScheduledTaskRow> = {}): ScheduledTaskRow {
   return {
-    id: 1,
+    id: '1',
     user_id: 'owner-1',
     name: 'Weekly review',
     profile_id: 'sprouty',
@@ -56,12 +56,9 @@ function task(overrides: Partial<ScheduledTaskRow> = {}): ScheduledTaskRow {
     timezone: 'UTC',
     enabled: true,
     max_steps: 10,
-    notify_webhook: null,
-    notify_email: false,
-    notify_wecom: false,
-    notify_feishu: false,
+    notify: { webhook: null, email: false, wecom: false, feishu: false },
     quiet_when_empty: false,
-    unattended_tools: '[]',
+    unattended_tools: [],
     last_run_at: null,
     last_status: null,
     next_run_at: null,

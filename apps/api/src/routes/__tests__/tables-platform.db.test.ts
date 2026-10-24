@@ -17,6 +17,9 @@ import { createExportDataTool } from '../../tools/export-data.js';
 import { TEST_DATABASE_URL } from '@greenhouse/db/test-config';
 import { deleteObjectAtKey, getObjectAtKey } from '../../storage/uploads.js';
 import { createInternalTestUser } from '../../../../../tests/helpers/internal-user.js';
+import { moveToRestrictedRole, withoutCapability } from '../../../../../tests/helpers/restricted-role.js';
+
+const TABLES_CAPABILITIES = [...new Set(Object.values(tablesManifest.actions).map((action) => action.capability))];
 
 let db: DatabaseProvider;
 let owner: UserRow;
@@ -73,11 +76,11 @@ async function createBase(app: ReturnType<typeof createHttpApp>) {
   });
   expect(response.status).toBe(201);
   return (await response.json()) as {
-    base: { id: number };
+    base: { id: string };
     schema: {
-      table: { id: number; schema_revision: number };
-      fields: Array<{ id: number }>;
-      views: Array<{ id: number; revision: number }>;
+      table: { id: string; schema_revision: number };
+      fields: Array<{ id: string }>;
+      views: Array<{ id: string; revision: number }>;
     };
   };
 }
@@ -148,13 +151,10 @@ describe('Tables Platform application', () => {
   it('applies Platform deny before owner/editor Base permissions and audits the denial', async () => {
     const app = createHttpApp([owner]);
     const created = await createBase(app);
-    await db.platform.setUserCapabilityOverride({
-      org_id: 'default',
-      user_id: owner.id,
-      capability: 'tables.data.create',
-      effect: 'deny',
-      granted_by: owner.id,
-      reason: 'Test deny',
+    // No per-user overrides any more: move the owner to a role that has every
+    // Tables capability except creating records.
+    await moveToRestrictedRole(db, owner.id, {
+      capabilities: withoutCapability('tables.data.create', { 'tables.*': TABLES_CAPABILITIES }),
     });
 
     const response = await app.request(`/api/tables/tables/${created.schema.table.id}/records`, {
@@ -193,13 +193,13 @@ describe('Tables Platform application', () => {
       action: 'records.create',
       table_id: created.schema.table.id,
       values: { [primaryId]: 'Agent-created' },
-    })) as { record: { id: number; revision: number } };
+    })) as { record: { id: string; revision: number } };
     expect(mutation.record).toMatchObject({ revision: 1 });
 
     const query = (await executeTool(createTablesQueryTool({ userId: owner.id }), {
       action: 'records.query',
       table_id: created.schema.table.id,
-    })) as { records: Array<{ id: number; values: Record<string, unknown> }> };
+    })) as { records: Array<{ id: string; values: Record<string, unknown> }> };
     expect(query.records).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -266,7 +266,7 @@ describe('Tables Platform application', () => {
       }),
     });
     expect(fieldResponse.status).toBe(201);
-    const field = (await fieldResponse.json()).field as { id: number };
+    const field = (await fieldResponse.json()).field as { id: string };
 
     const versionsResponse = await app.request(`/api/tables/tables/${created.schema.table.id}/schema/versions`, {
       headers: { 'x-test-user': owner.id },
@@ -338,7 +338,7 @@ describe('Tables Platform application', () => {
       body: JSON.stringify({ name: 'Owner only', scope: 'personal' }),
     });
     expect(personalResponse.status).toBe(201);
-    const personal = (await personalResponse.json()).view as { id: number; revision: number };
+    const personal = (await personalResponse.json()).view as { id: string; revision: number };
 
     const denied = await app.request(`/api/tables/views/${personal.id}`, {
       method: 'PATCH',
@@ -368,18 +368,14 @@ describe('Tables Platform application', () => {
         } satisfies FieldPolicy,
       ]),
     );
-    await db.platform.setUserEntityPolicyOverride({
-      org_id: 'default',
-      user_id: editor.id,
-      effect: 'allow',
-      policy: {
+    await moveToRestrictedRole(db, editor.id, {
+      entityPolicy: {
         app_id: 'tables',
         module_id: 'data',
         entity_id: 'record',
         scopes: [{ kind: 'all' }],
         field_policies: fields,
       },
-      granted_by: owner.id,
     });
     const primaryId = created.schema.fields[0]!.id;
 
@@ -393,72 +389,6 @@ describe('Tables Platform application', () => {
       body: JSON.stringify({ values: { [primaryId]: 'Must not write' } }),
     });
     expect(create.status).toBe(404);
-  });
-
-  it('publishes authenticated forms and exposes automation notifications through governed routes', async () => {
-    await setupEditor();
-    const app = createHttpApp([owner, editor]);
-    const created = await createBase(app);
-    await app.request(`/api/tables/bases/${created.base.id}/members/${editor.id}`, {
-      method: 'PUT',
-      headers: { 'content-type': 'application/json', 'x-test-user': owner.id },
-      body: JSON.stringify({ role: 'editor' }),
-    });
-    const primaryId = created.schema.fields[0]!.id;
-    const formResponse = await app.request(`/api/tables/tables/${created.schema.table.id}/forms`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', 'x-test-user': owner.id },
-      body: JSON.stringify({
-        name: 'Internal intake',
-        status: 'published',
-        config: { title: 'Internal intake', fieldIds: [primaryId] },
-      }),
-    });
-    expect(formResponse.status).toBe(201);
-    const form = (await formResponse.json()).form as { id: number };
-    const submission = await app.request(`/api/tables/forms/${form.id}/submit`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', 'x-test-user': editor.id },
-      body: JSON.stringify({ values: { [primaryId]: 'Submitted by form' } }),
-    });
-    expect(submission.status).toBe(201);
-
-    const ruleResponse = await app.request(`/api/tables/bases/${created.base.id}/automations`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', 'x-test-user': owner.id },
-      body: JSON.stringify({
-        tableId: created.schema.table.id,
-        name: 'Notify editor',
-        status: 'enabled',
-        trigger: 'record_created',
-        config: {
-          actions: [{ type: 'notify', userIds: [editor.id], title: 'New item', message: 'A record was created.' }],
-        },
-      }),
-    });
-    expect(ruleResponse.status).toBe(201);
-    const rule = (await ruleResponse.json()).automation as { id: number };
-    const recordResponse = await app.request(`/api/tables/tables/${created.schema.table.id}/records`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', 'x-test-user': owner.id },
-      body: JSON.stringify({ values: { [primaryId]: 'Triggers notification' } }),
-    });
-    expect(recordResponse.status).toBe(201);
-
-    const runs = await app.request(`/api/tables/automations/${rule.id}/runs`, {
-      headers: { 'x-test-user': owner.id },
-    });
-    expect(runs.status).toBe(200);
-    expect((await runs.json()).runs).toEqual([
-      expect.objectContaining({ rule_id: rule.id, status: 'succeeded', actions_completed: 1 }),
-    ]);
-    const notifications = await app.request('/api/tables/notifications', {
-      headers: { 'x-test-user': editor.id },
-    });
-    expect(notifications.status).toBe(200);
-    expect((await notifications.json()).notifications).toEqual([
-      expect.objectContaining({ user_id: editor.id, title: 'New item', read_at: null }),
-    ]);
   });
 
   it('archives a table only for the Base creator and leaves its records recoverable', async () => {
@@ -528,7 +458,7 @@ describe('Tables Platform application', () => {
       headers: { 'content-type': 'application/json', 'x-test-user': editor.id },
       body: JSON.stringify({ values: { [primaryId]: 'Deleted by mistake' } }),
     });
-    const record = (await created1.json()).record as { id: number; revision: number };
+    const record = (await created1.json()).record as { id: string; revision: number };
 
     const deleted = await app.request(
       `/api/tables/tables/${tableId}/records/${record.id}?revision=${record.revision}`,
@@ -551,39 +481,5 @@ describe('Tables Platform application', () => {
     expect(await db.tables.queryRecords(tableId)).toMatchObject({ total: 1 });
     // Restoring bumps the revision, so a stale client cannot silently overwrite.
     expect((await restored.json()).record.revision).toBeGreaterThan(record.revision);
-  });
-
-  it('deletes a dashboard for the creator only, and really deletes it', async () => {
-    await setupEditor();
-    const app = createHttpApp([owner, editor]);
-    const created = await createBase(app);
-    const promoted = await app.request(`/api/tables/bases/${created.base.id}/members/${editor.id}`, {
-      method: 'PUT',
-      headers: { 'content-type': 'application/json', 'x-test-user': owner.id },
-      body: JSON.stringify({ role: 'builder' }),
-    });
-    expect(promoted.status).toBe(200);
-
-    const dashboardResponse = await app.request(`/api/tables/bases/${created.base.id}/dashboards`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', 'x-test-user': owner.id },
-      body: JSON.stringify({ name: 'Weekly numbers' }),
-    });
-    expect(dashboardResponse.status).toBe(201);
-    const dashboard = (await dashboardResponse.json()).dashboard as { id: number };
-
-    const builderAttempt = await app.request(`/api/tables/dashboards/${dashboard.id}`, {
-      method: 'DELETE',
-      headers: { 'x-test-user': editor.id },
-    });
-    expect(builderAttempt.status).toBe(404);
-    expect(await db.tables.getDashboard(dashboard.id)).toBeTruthy();
-
-    const removed = await app.request(`/api/tables/dashboards/${dashboard.id}`, {
-      method: 'DELETE',
-      headers: { 'x-test-user': owner.id },
-    });
-    expect(removed.status).toBe(200);
-    expect(await db.tables.getDashboard(dashboard.id)).toBeUndefined();
   });
 });

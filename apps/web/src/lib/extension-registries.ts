@@ -79,7 +79,7 @@ export function registeredMcpGroups(): readonly RegisteredMcpGroup[] {
 export interface RegisteredKnowledgeDocPanel {
   id: string;
   extensionId: string;
-  component: ComponentType<{ docId: number }>;
+  component: ComponentType<{ docId: string }>;
 }
 
 const knowledgeDocPanels: RegisteredKnowledgeDocPanel[] = [];

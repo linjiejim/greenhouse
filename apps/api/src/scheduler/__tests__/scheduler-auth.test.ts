@@ -53,7 +53,7 @@ import { TaskScheduler } from '../index.js';
 
 function task(overrides: Partial<ScheduledTaskRow> = {}): ScheduledTaskRow {
   return {
-    id: 1,
+    id: '1',
     user_id: 'owner-1',
     name: 'Hourly check',
     profile_id: 'team',
@@ -62,12 +62,9 @@ function task(overrides: Partial<ScheduledTaskRow> = {}): ScheduledTaskRow {
     timezone: 'UTC',
     enabled: true,
     max_steps: 10,
-    notify_webhook: null,
-    notify_email: false,
-    notify_wecom: false,
-    notify_feishu: false,
+    notify: { webhook: null, email: false, wecom: false, feishu: false },
     quiet_when_empty: false,
-    unattended_tools: '[]',
+    unattended_tools: [],
     last_run_at: null,
     last_status: null,
     next_run_at: null,
@@ -117,9 +114,9 @@ describe('TaskScheduler owner authorization', () => {
   }
 
   it('only registers enabled tasks whose current owner is active team/super at startup', async () => {
-    const allowed = task({ id: 1, user_id: 'active-team' });
-    const disabled = task({ id: 2, user_id: 'disabled-team' });
-    const external = task({ id: 3, user_id: 'legacy-external' });
+    const allowed = task({ id: '1', user_id: 'active-team' });
+    const disabled = task({ id: '2', user_id: 'disabled-team' });
+    const external = task({ id: '3', user_id: 'legacy-external' });
     mocks.db.scheduledTasks.listEnabled.mockResolvedValue([allowed, disabled, external]);
     mocks.db.users.getById.mockImplementation(async (id: string) => {
       if (id === 'active-team') return { id, status: 'active', role: 'team' };
@@ -175,7 +172,7 @@ describe('TaskScheduler owner authorization', () => {
   });
 
   it('pauses reset-required owners without disabling their automation configuration', async () => {
-    const paused = task({ id: 4, user_id: 'resetting-team' });
+    const paused = task({ id: '4', user_id: 'resetting-team' });
     mocks.db.scheduledTasks.listEnabled.mockResolvedValue([paused]);
     mocks.db.users.getById.mockResolvedValue({ id: paused.user_id, status: 'reset_required', role: 'team' });
 
@@ -237,7 +234,7 @@ describe('TaskScheduler owner authorization', () => {
     const scheduler = createScheduler();
     mocks.db.scheduledTasks.getById.mockResolvedValue(task({ enabled: false }));
 
-    await expect(scheduler.runTask(1)).resolves.toBeNull();
+    await expect(scheduler.runTask('1')).resolves.toBeNull();
     expect(mocks.db.users.getById).not.toHaveBeenCalled();
     expect(mocks.enqueueAutomationRun).not.toHaveBeenCalled();
   });

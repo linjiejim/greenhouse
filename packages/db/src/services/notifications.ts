@@ -7,18 +7,18 @@
  * Run, Interrupt or Agent lifecycle row.
  */
 
-import { randomUUID } from 'node:crypto';
 import { and, asc, desc, eq, gt, inArray, isNull, lt, lte, or, sql } from 'drizzle-orm';
 import { nowIso } from '@greenhouse/utils/date';
 
 import type { Db } from '../client.js';
-import { notificationDeliveryAttempts, notifications } from '../schema/index.js';
+import { newId, type IdKind } from '../ids.js';
+import { notificationDeliveries as notificationDeliveryAttempts, notifications } from '../schema/index.js';
 import type {
   NotificationDeliveryAttemptRow,
   NotificationDeliveryChannel,
   NotificationKind,
   NotificationRow,
-} from '../schema/notification.js';
+} from '../schema/index.js';
 
 export class NotificationError extends Error {
   constructor(
@@ -89,19 +89,30 @@ function timestamp(value: string | Date | undefined, label = 'timestamp'): strin
   return parsed.toISOString();
 }
 
-function json(value: unknown): string {
+/** Validate the payload is JSON and return the exact value jsonb will hold. */
+function json(value: unknown): Record<string, unknown> {
+  let encoded: string | undefined;
   try {
-    const encoded = JSON.stringify(value ?? {});
-    if (encoded === undefined) invalid('payload must be JSON serializable');
-    return encoded;
-  } catch (error) {
-    if (error instanceof NotificationError) throw error;
+    encoded = JSON.stringify(value ?? {});
+  } catch {
     invalid('payload must be JSON serializable');
   }
+  if (encoded === undefined) invalid('payload must be JSON serializable');
+  return JSON.parse(encoded) as Record<string, unknown>;
 }
 
-function id(prefix: string): string {
-  return `${prefix}_${randomUUID().replaceAll('-', '')}`;
+/** Key-order-independent encoding: jsonb does not keep the key order it was given. */
+function canonical(value: unknown): string {
+  if (value === null || typeof value !== 'object') return JSON.stringify(value) ?? 'null';
+  if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`;
+  const entries = Object.entries(value as Record<string, unknown>)
+    .filter(([, item]) => item !== undefined)
+    .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0));
+  return `{${entries.map(([key, item]) => `${JSON.stringify(key)}:${canonical(item)}`).join(',')}}`;
+}
+
+function id(kind: IdKind): string {
+  return newId(kind);
 }
 
 function sameInstant(left: string, right: string): boolean {
@@ -113,7 +124,7 @@ export function createNotificationService(db: Db) {
     async createWithStatus(
       input: CreateNotificationInput,
     ): Promise<{ notification: NotificationRow; created: boolean }> {
-      const rowId = input.id ? identifier(input.id, 'id') : id('ntf');
+      const rowId = input.id ? identifier(input.id, 'id') : id('notification');
       const userId = identifier(input.user_id, 'user_id');
       const dedupeKey = identifier(input.dedupe_key, 'dedupe_key');
       const title = identifier(input.title, 'title', 512);
@@ -136,7 +147,7 @@ export function createNotificationService(db: Db) {
             existing.kind === input.kind &&
             existing.title === title &&
             existing.body === body &&
-            existing.payload === payload &&
+            canonical(existing.payload) === canonical(payload) &&
             existing.run_id === (input.run_id ?? null) &&
             existing.interrupt_id === (input.interrupt_id ?? null) &&
             existing.event_id === (input.event_id ?? null) &&
@@ -288,7 +299,7 @@ export function createNotificationService(db: Db) {
     async createDelivery(input: CreateNotificationDeliveryInput): Promise<NotificationDeliveryAttemptRow> {
       const notificationId = identifier(input.notification_id, 'notification_id');
       const recipient = identifier(input.recipient, 'recipient', 2048);
-      const rowId = input.id ? identifier(input.id, 'id') : id('nda');
+      const rowId = input.id ? identifier(input.id, 'id') : id('delivery');
       const availableAt = timestamp(input.available_at, 'available_at');
       const maxAttempts = positiveInt(input.max_attempts ?? 5, 'max_attempts');
       return db.transaction(async (tx) => {

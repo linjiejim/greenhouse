@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import type { TableBaseRole } from '@greenhouse/types/tables';
 import { getTableBase, listTableBases, type TableBaseWithRole, type TableBaseWorkspace } from '../../../lib/api/tables';
-import { LayoutDashboard, MoreHorizontal, Pencil, Plus, Table2, Trash2 } from '../../../lib/icons';
+import { MoreHorizontal, Pencil, Plus, Table2, Trash2 } from '../../../lib/icons';
 import { BaseDialog } from '../../tables/base-dialog';
 import { ResourceDialog, type TableResource } from '../../tables/resource-dialog';
 import { DeleteDialog, type DeletionTarget } from '../../tables/delete-dialog';
@@ -18,16 +18,16 @@ const ROLE_RANK: Record<TableBaseRole, number> = { viewer: 0, editor: 1, builder
 export function TablesNavPanel({ subPath }: TablesNavPanelProps) {
   const t = useT();
   const segments = useMemo(() => subPath.split('/').filter(Boolean), [subPath]);
-  const selectedBaseId = Number(segments[0]) || null;
-  const selectedType = segments[1] === 'table' || segments[1] === 'dashboard' ? segments[1] : null;
-  const selectedResourceId = Number(segments[2]) || null;
+  const selectedBaseId = segments[0] || null;
+  const selectedType = segments[1] === 'table' ? segments[1] : null;
+  const selectedResourceId = segments[2] || null;
   const [bases, setBases] = useState<TableBaseWithRole[]>([]);
   const [workspace, setWorkspace] = useState<TableBaseWorkspace | null>(null);
   const [loadingBases, setLoadingBases] = useState(true);
   const [loadingWorkspace, setLoadingWorkspace] = useState(false);
   const [baseDialog, setBaseDialog] = useState(false);
   const [editingBase, setEditingBase] = useState<TableBaseWithRole | null>(null);
-  const [resourceDialog, setResourceDialog] = useState<'table' | 'dashboard' | null>(null);
+  const [resourceDialog, setResourceDialog] = useState<'table' | null>(null);
   const [editingResource, setEditingResource] = useState<TableResource | null>(null);
   const [deleting, setDeleting] = useState<DeletionTarget | null>(null);
   const [error, setError] = useState('');
@@ -99,7 +99,7 @@ export function TablesNavPanel({ subPath }: TablesNavPanelProps) {
       const items: ContextMenuItem[] = [
         {
           label: t('common.open'),
-          icon: resource.kind === 'table' ? Table2 : LayoutDashboard,
+          icon: Table2,
           onClick: () => (window.location.hash = `#/tables/${selectedBaseId}/${resource.kind}/${resource.value.id}`),
         },
       ];
@@ -245,44 +245,6 @@ export function TablesNavPanel({ subPath }: TablesNavPanelProps) {
                       {table.name}
                     </span>
                     {rowMenuButton(t('tables.sidebar.actionsFor', { name: table.name }), items)}
-                  </a>
-                );
-              })}
-              <div className="mx-3 my-1 border-t border-edge" />
-              <div className="flex items-center justify-between px-3 py-1">
-                <span className="text-[10px] font-semibold uppercase tracking-wider text-fg-faint">
-                  {t('tables.sidebar.dashboards')}
-                </span>
-                {canBuild && (
-                  <IconButton
-                    label={t('tables.home.createDashboard')}
-                    tooltip="top"
-                    tooltipMode="portal"
-                    className="h-7 w-7 sm:h-7 sm:w-7"
-                    onClick={() => setResourceDialog('dashboard')}
-                  >
-                    <Plus size={13} />
-                  </IconButton>
-                )}
-              </div>
-              {workspace.dashboards.map((dashboard) => {
-                const items = resourceMenu({ kind: 'dashboard', value: dashboard });
-                return (
-                  <a
-                    key={dashboard.id}
-                    href={`#/tables/${workspace.base.id}/dashboard/${dashboard.id}`}
-                    onContextMenu={(event) => openMenu(event, items)}
-                    className={`group flex items-center gap-2 px-3 py-2 text-xs transition-colors ${
-                      selectedType === 'dashboard' && selectedResourceId === dashboard.id
-                        ? 'bg-primary-subtle font-medium text-primary-fg-strong'
-                        : 'text-fg-muted hover:bg-surface-muted hover:text-fg'
-                    }`}
-                  >
-                    <LayoutDashboard size={14} className="flex-shrink-0" />
-                    <span className="min-w-0 flex-1 truncate" title={dashboard.description || dashboard.name}>
-                      {dashboard.name}
-                    </span>
-                    {rowMenuButton(t('tables.sidebar.actionsFor', { name: dashboard.name }), items)}
                   </a>
                 );
               })}

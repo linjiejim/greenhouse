@@ -7,7 +7,16 @@
  */
 
 // DB row types & input contracts
-export type { SessionRow, SessionChannel, MessageRow, MessageInput, PipelineStep, Reference } from './session.js';
+export type {
+  SessionRow,
+  SessionChannel,
+  MessageRow,
+  MessageInput,
+  MessageParts,
+  MessageImage,
+  PipelineStep,
+  Reference,
+} from './session.js';
 
 // API response types & shared client types
 export type {

@@ -1,15 +1,25 @@
 /**
- * User feature service — generic per-user feature gate (PostgreSQL).
+ * Per-member feature switches — `user_grants` rows with kind = 'feature'.
+ *
+ * Resolution (super → all on; row → row.enabled; no row → the flag's default)
+ * lives in `apps/api/src/auth/features.ts`; this service only stores rows.
  */
 
-import { eq, and } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { nowIso } from '@greenhouse/utils/date';
 
 import type { Db } from '../client.js';
-import { userFeatures } from '../schema/index.js';
+import { userGrants } from '../schema/index.js';
 
-// config is NOT NULL since migration 0004 — the row derives cleanly now.
-export type UserFeatureRow = typeof userFeatures.$inferSelect;
+export interface UserFeatureRow {
+  user_id: string;
+  feature: string;
+  enabled: boolean;
+  config: Record<string, unknown>;
+  granted_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
 
 export interface UserFeatureInput {
   user_id: string;
@@ -19,82 +29,82 @@ export interface UserFeatureInput {
   granted_by?: string;
 }
 
+const featureColumns = {
+  user_id: userGrants.user_id,
+  feature: userGrants.key,
+  enabled: userGrants.enabled,
+  config: userGrants.config,
+  granted_by: userGrants.granted_by,
+  created_at: userGrants.created_at,
+  updated_at: userGrants.updated_at,
+};
+
+const isFeature = eq(userGrants.kind, 'feature');
+
 export function createUserFeatureService(db: Db) {
   const service = {
-    /** Set a user's feature toggle (upsert: create or update). */
     async upsert(input: UserFeatureInput): Promise<UserFeatureRow> {
       const now = nowIso();
-      const config = input.config ? JSON.stringify(input.config) : '{}';
-
-      // Try update first
-      const existing = await db
-        .select()
-        .from(userFeatures)
-        .where(and(eq(userFeatures.user_id, input.user_id), eq(userFeatures.feature, input.feature)));
-
-      if (existing.length > 0) {
-        const rows = await db
-          .update(userFeatures)
-          .set({
-            enabled: input.enabled ?? true,
-            config,
-            granted_by: input.granted_by ?? existing[0].granted_by,
-            updated_at: now,
-          })
-          .where(and(eq(userFeatures.user_id, input.user_id), eq(userFeatures.feature, input.feature)))
-          .returning();
-        return rows[0]!;
-      }
-
       const rows = await db
-        .insert(userFeatures)
+        .insert(userGrants)
         .values({
           user_id: input.user_id,
-          feature: input.feature,
+          kind: 'feature',
+          key: input.feature,
           enabled: input.enabled ?? true,
-          config,
+          config: input.config ?? {},
           granted_by: input.granted_by ?? null,
           created_at: now,
           updated_at: now,
         })
-        .returning();
+        .onConflictDoUpdate({
+          target: [userGrants.user_id, userGrants.kind, userGrants.key],
+          set: {
+            enabled: input.enabled ?? true,
+            config: input.config ?? {},
+            ...(input.granted_by !== undefined ? { granted_by: input.granted_by } : {}),
+            updated_at: now,
+          },
+        })
+        .returning(featureColumns);
       return rows[0]!;
     },
 
-    /** Check if a user has a specific feature enabled. */
     async isEnabled(userId: string, feature: string): Promise<boolean> {
       const rows = await db
-        .select({ enabled: userFeatures.enabled })
-        .from(userFeatures)
-        .where(and(eq(userFeatures.user_id, userId), eq(userFeatures.feature, feature)));
-      return rows.length > 0 && rows[0].enabled;
+        .select({ enabled: userGrants.enabled })
+        .from(userGrants)
+        .where(and(eq(userGrants.user_id, userId), isFeature, eq(userGrants.key, feature)));
+      return rows.length > 0 && rows[0]!.enabled;
     },
 
-    /** Get all user IDs that have a feature enabled. */
     async listEnabledUsers(feature: string): Promise<string[]> {
       const rows = await db
-        .select({ user_id: userFeatures.user_id })
-        .from(userFeatures)
-        .where(and(eq(userFeatures.feature, feature), eq(userFeatures.enabled, true)));
+        .select({ user_id: userGrants.user_id })
+        .from(userGrants)
+        .where(and(isFeature, eq(userGrants.key, feature), eq(userGrants.enabled, true)));
       return rows.map((r) => r.user_id);
     },
 
-    /** Get all feature toggles for a user. */
     async listByUser(userId: string): Promise<UserFeatureRow[]> {
-      return db.select().from(userFeatures).where(eq(userFeatures.user_id, userId));
+      return db
+        .select(featureColumns)
+        .from(userGrants)
+        .where(and(eq(userGrants.user_id, userId), isFeature));
     },
 
-    /** Get all user states for a feature (admin view). */
     async listByFeature(feature: string): Promise<UserFeatureRow[]> {
-      return db.select().from(userFeatures).where(eq(userFeatures.feature, feature));
+      return db
+        .select(featureColumns)
+        .from(userGrants)
+        .where(and(isFeature, eq(userGrants.key, feature)));
     },
 
-    /** Delete a user's feature toggle. */
     async delete(userId: string, feature: string): Promise<boolean> {
       const result = await db
-        .delete(userFeatures)
-        .where(and(eq(userFeatures.user_id, userId), eq(userFeatures.feature, feature)))
-        .returning();
+        .delete(userGrants)
+        .where(and(eq(userGrants.user_id, userId), isFeature, eq(userGrants.key, feature)))
+        .returning({ key: userGrants.key });
       return result.length > 0;
     },
   };

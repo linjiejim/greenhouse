@@ -1,26 +1,19 @@
 import React, { useEffect, useState } from 'react';
-import {
-  createTableDashboard,
-  createTableDefinition,
-  updateTableDashboard,
-  updateTableDefinition,
-  type TableDashboard,
-  type TableDefinition,
-} from '../../lib/api/tables';
+import { createTableDefinition, updateTableDefinition, type TableDefinition } from '../../lib/api/tables';
 import { Button, Dialog, Input, Textarea } from '../ui';
 import { FormActions, FormError, FormField } from '../form';
 import { useT } from '../../lib/i18n';
 
-export type TableResource = { kind: 'table'; value: TableDefinition } | { kind: 'dashboard'; value: TableDashboard };
+export type TableResource = { kind: 'table'; value: TableDefinition };
 
 interface ResourceDialogProps {
-  baseId: number;
-  /** Create mode: which kind to create. Ignored when `resource` is set. */
-  type: 'table' | 'dashboard' | null;
-  /** Edit mode: the existing table or dashboard. */
+  baseId: string;
+  /** Create mode: open the dialog to create a table. Ignored when `resource` is set. */
+  type: 'table' | null;
+  /** Edit mode: the existing table. */
   resource?: TableResource | null;
   onClose: () => void;
-  onCreated?: (type: 'table' | 'dashboard', resourceId: number) => void;
+  onCreated?: (type: 'table', resourceId: string) => void;
   onSaved?: () => void;
 }
 
@@ -46,31 +39,21 @@ export function ResourceDialog({ baseId, type, resource = null, onClose, onCreat
     setError('');
     try {
       if (resource) {
-        if (resource.kind === 'table') {
-          await updateTableDefinition(resource.value.id, {
-            name: name.trim(),
-            description: description.trim() || null,
-          });
-        } else {
-          await updateTableDashboard(resource.value.id, {
-            revision: resource.value.revision,
-            name: name.trim(),
-            description: description.trim() || null,
-          });
-        }
+        await updateTableDefinition(resource.value.id, {
+          name: name.trim(),
+          description: description.trim() || null,
+        });
         onSaved?.();
       } else {
-        const resourceId =
-          kind === 'table'
-            ? (await createTableDefinition(baseId, { name: name.trim(), description: description.trim() || undefined }))
-                .table.id
-            : (await createTableDashboard(baseId, name.trim())).id;
+        const resourceId = (
+          await createTableDefinition(baseId, { name: name.trim(), description: description.trim() || undefined })
+        ).table.id;
         setName('');
         setDescription('');
         onCreated?.(kind, resourceId);
       }
     } catch (saveError) {
-      const kindLabel = t(kind === 'dashboard' ? 'tables.resource.dashboardKind' : 'tables.resource.tableKind');
+      const kindLabel = t('tables.resource.tableKind');
       setError(
         saveError instanceof Error
           ? saveError.message
@@ -81,15 +64,7 @@ export function ResourceDialog({ baseId, type, resource = null, onClose, onCreat
     }
   };
 
-  const title = t(
-    kind === 'dashboard'
-      ? editing
-        ? 'tables.resource.editDashboard'
-        : 'tables.resource.createDashboard'
-      : editing
-        ? 'tables.resource.editTable'
-        : 'tables.resource.createTable',
-  );
+  const title = t(editing ? 'tables.resource.editTable' : 'tables.resource.createTable');
 
   return (
     <Dialog open={kind !== null} onClose={onClose} title={title}>
@@ -103,20 +78,12 @@ export function ResourceDialog({ baseId, type, resource = null, onClose, onCreat
         <FormField label={t('common.name')} required>
           <Input value={name} onChange={(event) => setName(event.target.value)} autoFocus />
         </FormField>
-        {/* Dashboards get one too — a chart set benefits from "what am I looking at" just as much. */}
-        <FormField
-          label={t('common.description')}
-          help={kind !== 'dashboard' ? t('tables.resource.tableDescriptionHelp') : undefined}
-        >
+        <FormField label={t('common.description')} help={t('tables.resource.tableDescriptionHelp')}>
           <Textarea
             rows={3}
             value={description}
             onChange={(event) => setDescription(event.target.value)}
-            placeholder={
-              kind === 'dashboard'
-                ? t('tables.resource.dashboardDescriptionPlaceholder')
-                : t('tables.resource.tableDescriptionPlaceholder')
-            }
+            placeholder={t('tables.resource.tableDescriptionPlaceholder')}
           />
         </FormField>
         <FormError>{error}</FormError>

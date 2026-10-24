@@ -12,7 +12,7 @@
  * just ended) and the super-only "生成本月复盘" button (the current month).
  */
 
-import type { DatabaseProvider, KnowledgeDocRow, UserRow } from '@greenhouse/db';
+import type { DatabaseProvider, KnowledgeDoc, UserRow } from '@greenhouse/db';
 import { entityUrl } from '@greenhouse/types/entity-links';
 import type { RetroResult } from '@greenhouse/types/hub-context';
 import { logger } from '@greenhouse/utils/logger';
@@ -47,7 +47,7 @@ async function activeSupers(db: DatabaseProvider): Promise<UserRow[]> {
     .sort((a, b) => a.created_at.localeCompare(b.created_at));
 }
 
-async function ensureRetroFolder(db: DatabaseProvider, authorId: string | null): Promise<number> {
+async function ensureRetroFolder(db: DatabaseProvider, authorId: string | null): Promise<string> {
   const roots = await db.drive.listFolders({ scope: 'kb', parent_id: null, visibility: 'team' });
   const existing = roots.find((folder) => folder.name === RETRO_FOLDER_NAME);
   if (existing) return existing.id;
@@ -64,7 +64,7 @@ async function ensureRetroFolder(db: DatabaseProvider, authorId: string | null):
 async function writeDoc(
   db: DatabaseProvider,
   input: { month: string; content: string; authorId: string | null },
-): Promise<{ doc: KnowledgeDocRow; created: boolean }> {
+): Promise<{ doc: KnowledgeDoc; created: boolean }> {
   const docId = retroDocId(input.month);
   const title = retroTitle(input.month);
   const existing = await db.knowledgeBase.get(docId, 'shared');
@@ -94,7 +94,7 @@ async function writeDoc(
   return { doc, created: true };
 }
 
-async function notifySupers(db: DatabaseProvider, supers: UserRow[], result: RetroResult, doc: KnowledgeDocRow) {
+async function notifySupers(db: DatabaseProvider, supers: UserRow[], result: RetroResult, doc: KnowledgeDoc) {
   for (const recipient of supers) {
     try {
       const en = recipient.locale === 'en';

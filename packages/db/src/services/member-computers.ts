@@ -10,22 +10,22 @@
  * transaction.
  */
 
-import { randomBytes } from 'node:crypto';
 import { and, desc, eq, gte, inArray, lt, lte, sql } from 'drizzle-orm';
 import { nowIso } from '@greenhouse/utils/date';
 
 import type { Db } from '../client.js';
+import { newId } from '../ids.js';
 import { memberComputers } from '../schema/index.js';
 import {
   ACTIVE_MEMBER_COMPUTER_STATUSES,
   type MemberComputerRow,
   type MemberComputerStatus,
-} from '../schema/member-computer.js';
+} from '../schema/member-computers.js';
 
 const START_LOCK = 'member-computers:start';
 
 function newComputerId(): string {
-  return `cmp_${randomBytes(8).toString('hex')}`;
+  return newId('computer');
 }
 
 export interface ClaimComputerInput {

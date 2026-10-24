@@ -110,7 +110,7 @@ describe('Skill service', () => {
     );
     const updated = await db.skills.updateMeta(skill.id, { description: 'better', tags: ['a', 'b'] });
     expect(updated!.description).toBe('better');
-    expect(JSON.parse(updated!.tags)).toEqual(['a', 'b']);
+    expect(updated!.tags).toEqual(['a', 'b']);
     expect(updated!.name).toBe('pdf-report');
   });
 
@@ -130,7 +130,7 @@ describe('Skill service', () => {
       versionInput('0.1.0'),
     );
     expect(skill.scan_status).toBe('pending');
-    expect(skill.scan_findings).toBe('[]');
+    expect(skill.scan_findings).toEqual([]);
     expect(skill.scan_version).toBeNull();
     expect(skill.scanned_at).toBeNull();
     expect(skill.scan_reviewed_by).toBeNull();
@@ -148,7 +148,7 @@ describe('Skill service', () => {
       version: '0.1.0',
     });
     expect(updated!.scan_status).toBe('suspicious');
-    expect(JSON.parse(updated!.scan_findings)).toEqual(findings);
+    expect(updated!.scan_findings).toEqual(findings);
     expect(updated!.scan_version).toBe('0.1.0');
     expect(updated!.scanned_at).not.toBeNull();
     // updated_at orders the catalog — a background rescan must not reshuffle it.
@@ -232,7 +232,7 @@ describe('Skill service', () => {
 
     expect(stale!.scan_status).toBe('suspicious');
     expect(stale!.scan_version).toBe('0.2.0');
-    expect(JSON.parse(stale!.scan_findings)).toHaveLength(1);
+    expect(stale!.scan_findings).toHaveLength(1);
 
     // …and the guard is a predicate, not a blanket refusal: a verdict for the
     // version that is actually current still applies.

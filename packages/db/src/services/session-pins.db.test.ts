@@ -1,13 +1,11 @@
 /**
  * Session pins against a real PostgreSQL database.
  *
- * Pins live in `session_groups` as the per-user system group `kind='pinned'`.
- * Custom folders were removed in 1.5 but their rows remain, so the service must
- * keep reading only the Pinned group and never surface a filed-only session.
+ * The owner's pin lives on `conversations`; a share recipient's pin lives on
+ * their `conversation_share_reads` row, so pins stay private per user.
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { sql } from 'drizzle-orm';
 import { _resetProvider, initDatabase, type DatabaseProvider } from '../index.js';
 import { TEST_DATABASE_URL } from '../test-config.js';
 
@@ -15,19 +13,6 @@ let db: DatabaseProvider;
 
 async function createUser(email: string) {
   return db.users.create({ email, password_hash: 'h', nickname: email, role: 'team' });
-}
-
-/** A pre-1.5 custom folder holding `sessionId`, written the way the old service did. */
-async function legacyFolderWith(userId: string, sessionId: string) {
-  const now = new Date().toISOString();
-  const [group] = await db.executeRaw(
-    sql`INSERT INTO session_groups (user_id, name, color, kind, sort_order, created_at, updated_at)
-        VALUES (${userId}, 'Old folder', '#6B7280', 'custom', 0, ${now}, ${now}) RETURNING id`,
-  );
-  await db.executeRaw(
-    sql`INSERT INTO session_group_members (user_id, group_id, session_id, kind, sort_order, created_at)
-        VALUES (${userId}, ${group.id}, ${sessionId}, 'custom', 0, ${now})`,
-  );
 }
 
 describe('session pins', () => {
@@ -71,23 +56,25 @@ describe('session pins', () => {
     expect(await db.sessionPins.getPinnedSessionIds(alice.id)).toEqual([second.id]);
   });
 
-  it('ignores sessions that only sit in a legacy custom folder', async () => {
-    const carol = await createUser('carol@pins.test');
-    const filed = await db.sessions.create('filed', 'team', carol.id);
-    const pinned = await db.sessions.create('pinned', 'team', carol.id);
-    await legacyFolderWith(carol.id, filed.id);
-    await db.sessionPins.pin(carol.id, pinned.id);
+  it('keeps a recipient pin on their read row, independent of the owner and of read state', async () => {
+    const owner = await createUser('owner@pins.test');
+    const reader = await createUser('reader@pins.test');
+    const shared = await db.sessions.create('shared', 'team', owner.id);
+    await db.sessionShares.createMany([{ session_id: shared.id, shared_with: reader.id, shared_by: owner.id }]);
 
-    expect(await db.sessionPins.getPinnedSessionIds(carol.id)).toEqual([pinned.id]);
-    const sorts = await db.sessionPins.getPinSortsForUser(carol.id, [filed.id, pinned.id]);
-    expect(sorts.has(filed.id)).toBe(false);
-    expect(sorts.has(pinned.id)).toBe(true);
+    await db.sessionPins.pin(reader.id, shared.id);
+    expect(await db.sessionPins.getPinnedSessionIds(reader.id)).toEqual([shared.id]);
+    expect(await db.sessionPins.getPinnedSessionIds(owner.id)).toEqual([]);
+    expect((await db.sessions.getById(shared.id))?.pinned_at).toBeNull();
 
-    // Unpinning never touches the folder row either.
-    await db.sessionPins.unpin(carol.id, filed.id);
-    const [{ count }] = await db.executeRaw(
-      sql`SELECT count(*)::int AS count FROM session_group_members WHERE session_id = ${filed.id}`,
-    );
-    expect(count).toBe(1);
+    // Pinning does not count as reading; reading later keeps the pin.
+    expect(await db.sessionShares.countUnread(reader.id)).toBe(1);
+    expect(await db.sessionShares.markAllReadInSession(reader.id, shared.id)).toBe(true);
+    expect(await db.sessionShares.countUnread(reader.id)).toBe(0);
+    expect(await db.sessionPins.getPinnedSessionIds(reader.id)).toEqual([shared.id]);
+
+    await db.sessionPins.unpin(reader.id, shared.id);
+    expect(await db.sessionPins.getPinnedSessionIds(reader.id)).toEqual([]);
+    expect(await db.sessionShares.countUnread(reader.id)).toBe(0);
   });
 });

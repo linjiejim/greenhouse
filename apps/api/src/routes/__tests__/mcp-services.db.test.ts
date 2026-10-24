@@ -126,8 +126,8 @@ async function call(client: Client, name: string, args: Record<string, unknown>)
 
 async function serviceFacts(service: string) {
   return (await db.executeRaw(
-    sql`SELECT service, provider, client, oauth_client_id, units, cost_usd_micros FROM service_usage
-        WHERE user_id = ${member.id} AND service = ${service} ORDER BY created_at`,
+    sql`SELECT service, provider, client, oauth_client_id, units, cost_usd_micros FROM usage_events
+        WHERE kind = 'service' AND user_id = ${member.id} AND service = ${service} ORDER BY created_at, id`,
   )) as Array<Record<string, unknown>>;
 }
 
@@ -147,7 +147,7 @@ beforeEach(async () => {
   await db.platformOAuth.registerClient({
     id: clientId,
     client_name: 'Codex',
-    redirect_uris: '[]',
+    redirect_uris: [],
     created_by: member.id,
   });
   fakes.objects.clear();
@@ -272,7 +272,7 @@ describe('MCP service tools: metering', () => {
     const result = await call(client, 'analyze_image', { file_id: uploaded.file.id, question: 'What is it?' });
     expect(JSON.parse(result.content[0]!.text)).toMatchObject({ description: 'A tiny dot.' });
     const rows = (await db.executeRaw(
-      sql`SELECT service, client, oauth_client_id FROM llm_usage WHERE user_id = ${member.id}`,
+      sql`SELECT service, client, oauth_client_id FROM usage_events WHERE kind = 'model' AND user_id = ${member.id}`,
     )) as Array<Record<string, unknown>>;
     expect(rows).toEqual([{ service: 'vision', client: 'mcp', oauth_client_id: clientId }]);
   });
@@ -308,7 +308,7 @@ describe('MCP service tools: metering', () => {
 
     const runs = (await db.runtime.listRuns({ owner_user_id: member.id, kinds: ['agent_write'], limit: 10 })).items;
     expect(runs).toHaveLength(1);
-    expect(JSON.parse(runs[0]!.input)).toMatchObject({ tool_id: 'generate_image', client_id: clientId, risk: 'r2' });
+    expect(runs[0]!.input).toMatchObject({ tool_id: 'generate_image', client_id: clientId, risk: 'r2' });
     expect(runs[0]!.status).toBe('succeeded');
 
     const facts = await serviceFacts('image_generation');

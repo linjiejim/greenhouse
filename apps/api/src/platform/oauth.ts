@@ -7,7 +7,6 @@
  */
 
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
-import { safeJsonParse } from '@greenhouse/utils/json';
 import { MCP_RESOURCE_GROUP_IDS, allMcpResourceGroups } from '@greenhouse/types/mcp';
 
 export const OAUTH_ACCESS_TOKEN_TTL_SECONDS = 60 * 60;
@@ -187,9 +186,8 @@ export function normalizeRedirectUri(raw: string): string {
   return url.href;
 }
 
-export function parseStoredStringArray(value: string): string[] {
-  const parsed = safeJsonParse(value, []);
-  return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === 'string') : [];
+export function parseStoredStringArray(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
 }
 
 /**
@@ -224,8 +222,8 @@ function orderScopes(scopes: ReadonlySet<OAuthScope>): OAuthScope[] {
  * the highest-risk edit in this module. Grants written before resource scopes
  * existed were backfilled by migration precisely so no such branch is needed.
  */
-export function parseStoredOAuthScopes(value: string): OAuthScope[] {
-  const parsed = safeJsonParse(value, null);
+export function parseStoredOAuthScopes(value: unknown): OAuthScope[] {
+  const parsed: unknown = value;
   if (!Array.isArray(parsed) || parsed.length === 0 || parsed.some((item) => typeof item !== 'string')) {
     throw new Error('Stored OAuth scopes are invalid');
   }

@@ -44,15 +44,15 @@ export function TaskCaptureCard({
   const [description, setDescription] = useState(data.description ?? '');
   const [content, setContent] = useState(data.content);
   const [saving, setSaving] = useState(false);
-  const [createdId, setCreatedId] = useState<number | null>(null);
+  const [createdId, setCreatedId] = useState<string | null>(null);
   const [open, setOpen] = useState(true);
   const { receipt, loading: receiptLoading, refresh: refreshReceipt } = useArtifactReceipt(actionId);
 
   useEffect(() => {
     if (receipt?.status !== 'succeeded' || !receipt.result || typeof receipt.result !== 'object') return;
     const id = (receipt.result as { id?: unknown }).id;
-    if (typeof id === 'number') {
-      setCreatedId(id);
+    if (typeof id === 'string' || typeof id === 'number') {
+      setCreatedId(String(id));
       setOpen(false);
     }
   }, [receipt]);

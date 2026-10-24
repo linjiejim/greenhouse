@@ -401,7 +401,7 @@ export async function reconcileInterruptedChatRuntimeRuns(db: DatabaseProvider):
         const finalToolCalls = toolCalls.map(
           (call) => reconciledToolCalls.find((candidate) => candidate.id === call.id) ?? call,
         );
-        const checkpoint = checkpointEvent ? (JSON.parse(checkpointEvent.payload) as { text?: unknown }) : null;
+        const checkpoint = checkpointEvent ? (checkpointEvent.payload as { text?: unknown } | null) : null;
         const committedResults = run.session_id
           ? await Promise.all(
               (['succeeded', 'canceled', 'interrupted'] as const).map(async (status) => ({
@@ -423,13 +423,13 @@ export async function reconcileInterruptedChatRuntimeRuns(db: DatabaseProvider):
                 message_id: committed.message.id,
                 content: committed.message.content,
                 reasoning: committed.message.reasoning,
-                pipeline: JSON.parse(committed.message.pipeline),
+                pipeline: committed.message.parts.pipeline ?? [],
                 tool_evidence: finalToolCalls.map((call) => ({
                   id: call.id,
                   tool_name: call.tool_name,
                   status: call.status,
-                  input: JSON.parse(call.input),
-                  output: call.output ? JSON.parse(call.output) : null,
+                  input: call.input,
+                  output: call.output ?? null,
                 })),
               },
               tokensUsed:
@@ -462,8 +462,8 @@ export async function reconcileInterruptedChatRuntimeRuns(db: DatabaseProvider):
                 id: call.id,
                 tool_name: call.tool_name,
                 status: call.status,
-                input: JSON.parse(call.input),
-                output: call.output ? JSON.parse(call.output) : null,
+                input: call.input,
+                output: call.output ?? null,
               })),
             },
             errorCode: 'chat_process_restarted',

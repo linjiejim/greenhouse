@@ -359,25 +359,30 @@ function parseFieldMap(value: unknown): FieldMap | undefined {
   return Object.keys(map).length ? map : undefined;
 }
 
+/** A Tables row id: opaque text, or a legacy positive integer normalized to its string. */
+function tablesRowId(value: unknown): string | null {
+  if (typeof value === 'number') return Number.isSafeInteger(value) && value > 0 ? String(value) : null;
+  return typeof value === 'string' && /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$/.test(value) ? value : null;
+}
+
 function parseEntityRef(value: unknown): EntityRef | null {
   if (!isRecord(value)) return null;
-  const id = typeof value.id === 'number' && Number.isSafeInteger(value.id) && value.id > 0 ? value.id : null;
-  if (id === null) return null;
-  switch (value.kind) {
-    case 'project':
-      return { kind: value.kind, id };
-    case 'kb_doc': {
-      const slug = typeof value.slug === 'string' && value.slug.trim() ? value.slug.trim().slice(0, 120) : null;
-      return slug ? { kind: 'kb_doc', id, slug } : null;
-    }
-    case 'tables_record': {
-      const baseId = typeof value.baseId === 'number' && value.baseId > 0 ? Math.round(value.baseId) : null;
-      const tableId = typeof value.tableId === 'number' && value.tableId > 0 ? Math.round(value.tableId) : null;
-      return baseId && tableId ? { kind: 'tables_record', baseId, tableId, id } : null;
-    }
-    default:
-      return null;
+  if (value.kind === 'tables_record') {
+    const baseId = tablesRowId(value.baseId);
+    const tableId = tablesRowId(value.tableId);
+    const recordId = tablesRowId(value.id);
+    return baseId && tableId && recordId ? { kind: 'tables_record', baseId, tableId, id: recordId } : null;
   }
+  if (value.kind === 'project') {
+    const id = tablesRowId(value.id);
+    return id ? { kind: 'project', id } : null;
+  }
+  if (value.kind === 'kb_doc') {
+    const id = tablesRowId(value.id);
+    const slug = typeof value.slug === 'string' && value.slug.trim() ? value.slug.trim().slice(0, 120) : null;
+    return id && slug ? { kind: 'kb_doc', id, slug } : null;
+  }
+  return null;
 }
 
 function parseNavTarget(value: unknown): NavTarget | null {

@@ -39,15 +39,11 @@ function makeSession(id = 'session-a'): SessionRow {
     id,
     title: 'Session',
     status: 'active',
-    rating: null,
-    comment: null,
-    feedback: null,
     profile_id: 'team',
     user_id: 'owner',
     app_id: null,
     channel: 'web',
-    parent_session_id: null,
-    metadata: '{}',
+    metadata: {},
     created_at: '2026-07-21T00:00:00.000Z',
     updated_at: '2026-07-21T00:00:00.000Z',
   };
@@ -74,13 +70,13 @@ describe('session nested-resource authorization', () => {
   it('does not delete a share row that belongs to another session', async () => {
     mocks.sessionShares.deleteOne.mockResolvedValue(false);
 
-    const response = await createApp().request('/api/sessions/session-a/shares/99', {
+    const response = await createApp().request('/api/sessions/session-a/shares/csh_other', {
       method: 'DELETE',
     });
 
     expect(response.status).toBe(404);
     await expect(response.json()).resolves.toEqual({ error: 'Share not found' });
-    expect(mocks.sessionShares.deleteOne).toHaveBeenCalledWith(99, 'session-a');
+    expect(mocks.sessionShares.deleteOne).toHaveBeenCalledWith('csh_other', 'session-a');
   });
 
   it('lets a read-only share recipient fork through an Agent reply into an owned session', async () => {
@@ -138,21 +134,21 @@ describe('session nested-resource authorization', () => {
 
   it('keeps your own pinned Agent version when you fork, and checks a shared one against the current version', async () => {
     mocks.customProfiles.getById.mockResolvedValue({
-      id: 7,
+      id: '7',
       user_id: 'agent-owner',
       is_shared: true,
-      current_version: 3,
+      version: 3,
     });
-    mocks.customProfiles.getVersion.mockImplementation(async (_id: number, version: number) => ({ version }));
+    mocks.customProfiles.getVersion.mockImplementation(async (_id: string, version: number) => ({ version }));
     mocks.sessions.getById.mockResolvedValue({ ...makeSession(), profile_id: 'custom:7@1' });
 
     const own = await createApp('owner').request('/api/sessions/session-a/fork', { method: 'POST' });
     expect(own.status).toBe(201);
-    expect(mocks.customProfiles.getVersion).toHaveBeenLastCalledWith(7, 1);
+    expect(mocks.customProfiles.getVersion).toHaveBeenLastCalledWith('7', 1);
 
     mocks.sessionShares.getSharedSessionIds.mockResolvedValue(['session-a']);
     const shared = await createApp('reader').request('/api/sessions/session-a/fork', { method: 'POST' });
     expect(shared.status).toBe(201);
-    expect(mocks.customProfiles.getVersion).toHaveBeenLastCalledWith(7, 3);
+    expect(mocks.customProfiles.getVersion).toHaveBeenLastCalledWith('7', 3);
   });
 });

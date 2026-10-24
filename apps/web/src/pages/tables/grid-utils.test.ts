@@ -4,10 +4,10 @@ import { buildPasteBatch, parseClipboardMatrix, parsePastedCell } from './grid-u
 
 const users = [{ id: 'user-1', nickname: 'Jim', email: 'jim@example.com' }];
 
-function field(id: number, type: TableField['type'], config = '{}'): TableField {
+function field(id: number, type: TableField['type'], config: TableField['config'] = {}): TableField {
   return {
-    id,
-    table_id: 1,
+    id: String(id),
+    table_id: '1',
     name: `Field ${id}`,
     type,
     required: false,
@@ -31,11 +31,7 @@ describe('Tables Grid clipboard helpers', () => {
 
   it('normalizes typed select, user, number and boolean values', () => {
     expect(
-      parsePastedCell(
-        field(1, 'single_select', JSON.stringify({ options: [{ id: 'planned', label: 'Planned' }] })),
-        'Planned',
-        users,
-      ),
+      parsePastedCell(field(1, 'single_select', { options: [{ id: 'planned', label: 'Planned' }] }), 'Planned', users),
     ).toBe('planned');
     expect(parsePastedCell(field(2, 'user'), 'jim@example.com', users)).toBe('user-1');
     expect(parsePastedCell(field(3, 'number'), '1,250.5', users)).toBe(1250.5);
@@ -45,8 +41,8 @@ describe('Tables Grid clipboard helpers', () => {
   it('builds revision-safe updates and creates rows after the current page', () => {
     const records = [
       {
-        id: 9,
-        table_id: 1,
+        id: '9',
+        table_id: '1',
         values: {},
         computed_values: {},
         revision: 3,
@@ -70,7 +66,7 @@ describe('Tables Grid clipboard helpers', () => {
         users,
       }),
     ).toEqual([
-      { record_id: 9, revision: 3, values: { '10': 'First', '11': 5 } },
+      { record_id: '9', revision: 3, values: { '10': 'First', '11': 5 } },
       { values: { '10': 'Second', '11': 6 } },
     ]);
   });

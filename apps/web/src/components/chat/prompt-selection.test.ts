@@ -3,7 +3,7 @@ import type { UserPrompt } from '@greenhouse/types/api';
 import { composePromptMessage } from './prompt-selection';
 
 const base = {
-  id: 1,
+  id: '1',
   user_id: 'user-1',
   title: 'Market research',
   content: 'Research the supplied market in depth.',
@@ -11,8 +11,8 @@ const base = {
   sort_order: 0,
   is_global: false,
   description: null,
-  variables: '[]',
-  expected_tools: '[]',
+  variables: [],
+  expected_tools: [],
   source_session_id: null,
   created_via: 'manual',
   created_at: '2026-08-07T00:00:00.000Z',

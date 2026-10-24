@@ -20,6 +20,8 @@ import { knowledgeRegistration } from '../../platform/knowledge/registration.js'
 import { listRecentChanges } from '../recent-changes.js';
 import type { ToolRegistry } from '../../agent.js';
 import { governProxyWrite } from '../../agent-access/governed-write.js';
+import { moveToRestrictedRole, withoutCapability } from '../../../../../tests/helpers/restricted-role.js';
+import { projectsManifest } from '../../platform/manifests/projects.js';
 
 let db: DatabaseProvider;
 let runtime: PlatformRuntime;
@@ -103,13 +105,11 @@ describe('recent changes', () => {
     expect((await feed(bob)).map((item) => item.target?.label)).toContain(task.title);
 
     // Bob may read the project but not its tasks: the task row disappears, the project row stays.
-    await db.platform.setUserCapabilityOverride({
-      org_id: 'default',
-      user_id: bob.id,
-      capability: 'projects.execution.read',
-      effect: 'deny',
-      granted_by: alice.id,
-      reason: 'Test restriction',
+    const projectCapabilities = [
+      ...new Set(Object.values(projectsManifest.actions).map((action) => action.capability)),
+    ];
+    await moveToRestrictedRole(db, bob.id, {
+      capabilities: withoutCapability('projects.execution.read', { 'projects.*': projectCapabilities }),
     });
     const labels = (await feed(bob)).map((item) => item.target?.label);
     expect(labels).not.toContain(task.title);
@@ -175,7 +175,7 @@ describe('recent changes', () => {
     const client = await db.platformOAuth.registerClient({
       id: unique('client'),
       client_name: 'Claude Code',
-      redirect_uris: '[]',
+      redirect_uris: [],
       created_by: alice.id,
     });
     let title = '';

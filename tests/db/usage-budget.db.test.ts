@@ -19,12 +19,17 @@ function key(label: string): string {
   return `${label}:${Date.now()}:${Math.random()}`;
 }
 
+/** A token account for this test's member in the current UTC month (control-plane sync on). */
 async function monthlyAccount(limitTokens = 1_000) {
-  user = (await db.users.update(user.id, { monthly_token_limit: limitTokens }))!;
-  return db.usageBudget.ensureMonthlyUserAccount({
-    user_id: user.id,
-    limit_tokens: limitTokens,
-    sync_limit: true,
+  const period = getUtcMonthPeriod();
+  return db.usageBudget.ensureAccount({
+    scope_type: 'user',
+    scope_id: user.id,
+    unit: 'tokens',
+    period_start: period.start,
+    period_end: period.end,
+    limit_units: limitTokens,
+    update_existing_limit: true,
   });
 }
 
@@ -39,49 +44,24 @@ describe('Usage Budget Service', () => {
     _resetProvider();
   });
 
-  it('materializes the monthly user account from permanent legacy usage', async () => {
-    await db.usage.record({
-      profile_id: 'team',
-      caller: 'chat',
-      user_id: user.id,
-      model: 'pro',
-      input_tokens: 120,
-      output_tokens: 30,
-    });
-
+  it('materializes an account once and syncs its limit through the ledger', async () => {
     const account = await monthlyAccount(1_000);
     expect(account.scope_type).toBe('user');
     expect(account.scope_id).toBe(user.id);
-    expect(account.spent_units).toBe(150);
+    expect(account.spent_units).toBe(0);
     expect(account.reserved_units).toBe(0);
 
     const ledger = await db.usageBudget.listLedger(account.id);
     expect(ledger).toHaveLength(1);
-    expect(ledger[0]).toMatchObject({ entry_type: 'bootstrap', delta_spent_units: 150 });
+    expect(ledger[0]).toMatchObject({ entry_type: 'bootstrap', delta_spent_units: 0 });
 
     const updatedLimit = await monthlyAccount(900);
     expect(updatedLimit.id).toBe(account.id);
     expect(updatedLimit.limit_units).toBe(900);
-    expect((await db.usageBudget.listLedger(account.id))[0]?.entry_type).toBe('adjustment');
-  });
-
-  it('does not let a stale request copy raise an administrator-lowered limit', async () => {
-    const account = await monthlyAccount(1_000);
-    user = (await db.users.update(user.id, { monthly_token_limit: 400 }))!;
-    const lowered = await db.usageBudget.ensureMonthlyUserAccount({
-      user_id: user.id,
-      limit_tokens: 400,
-      sync_limit: true,
+    expect((await db.usageBudget.listLedger(account.id))[0]).toMatchObject({
+      entry_type: 'adjustment',
+      metadata: { previous_limit_units: 1_000, limit_units: 900 },
     });
-    expect(lowered.limit_units).toBe(400);
-
-    const staleRequest = await db.usageBudget.ensureMonthlyUserAccount({
-      user_id: user.id,
-      limit_tokens: 1_000,
-    });
-    expect(staleRequest.id).toBe(account.id);
-    expect(staleRequest.limit_units).toBe(400);
-    expect((await db.usageBudget.getAccount(account.id))?.limit_units).toBe(400);
   });
 
   it('keeps generic account limits create-only unless control-plane sync is explicit', async () => {
@@ -311,7 +291,11 @@ describe('Usage Budget Service', () => {
     await expect(
       db.usageBudget.release({ idempotency_key: idempotencyKey, reason: 'too_late_to_release' }),
     ).rejects.toMatchObject({ code: 'usage_budget_invalid_state' });
-    await db.usageBudget.settle({ idempotency_key: idempotencyKey, actual_units: 50 });
+    await db.usageBudget.settle({
+      idempotency_key: idempotencyKey,
+      actual_units: 50,
+      at: new Date(at.getTime() + 3_000),
+    });
     expect((await db.usageBudget.getAccount(account.id))?.spent_units).toBe(50);
     expect((await db.usageBudget.listLedger(account.id))[0]).toMatchObject({
       entry_type: 'settle',
@@ -349,52 +333,6 @@ describe('Usage Budget Service', () => {
         actor_id: user.id,
       }),
     ).rejects.toMatchObject({ code: 'usage_budget_idempotency_conflict' });
-  });
-
-  it('keeps linked budget-aware usage out of the legacy projection', async () => {
-    await db.usage.record({
-      profile_id: 'team',
-      caller: 'chat',
-      user_id: user.id,
-      model: 'pro',
-      input_tokens: 80,
-      output_tokens: 20,
-    });
-    const account = await monthlyAccount(1_000);
-    const firstKey = key('linked');
-    await db.usageBudget.reserve({
-      account_ids: [account.id],
-      idempotency_key: firstKey,
-      estimated_units: 200,
-      caller: 'chat',
-      user_id: user.id,
-      ttl_ms: 60_000,
-    });
-    await db.usage.record({
-      profile_id: 'team',
-      caller: 'chat',
-      user_id: user.id,
-      model: 'pro',
-      input_tokens: 120,
-      output_tokens: 30,
-      budget_idempotency_key: firstKey,
-    });
-    await db.usageBudget.settle({ idempotency_key: firstKey, actual_units: 150 });
-
-    const secondKey = key('after-linked');
-    await db.usageBudget.reserve({
-      account_ids: [account.id],
-      idempotency_key: secondKey,
-      estimated_units: 10,
-      caller: 'chat',
-      user_id: user.id,
-      ttl_ms: 60_000,
-    });
-    expect(await db.usageBudget.getAccount(account.id)).toMatchObject({
-      spent_units: 250,
-      legacy_spent_units: 100,
-      reserved_units: 10,
-    });
   });
 
   it('audits idempotent account status changes and rejects drift', async () => {

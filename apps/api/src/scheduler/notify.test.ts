@@ -8,7 +8,7 @@ import { buildTaskEmail, buildTaskNotification, notifyTaskResult } from './notif
 
 function task(): ScheduledTaskRow {
   return {
-    id: 42,
+    id: '42',
     user_id: 'owner-1',
     name: 'Daily report',
     profile_id: 'team',
@@ -17,12 +17,14 @@ function task(): ScheduledTaskRow {
     timezone: 'Asia/Hong_Kong',
     enabled: true,
     max_steps: 15,
-    notify_webhook: 'https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=super-secret',
-    notify_email: true,
-    notify_wecom: true,
-    notify_feishu: false,
+    notify: {
+      webhook: 'https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=super-secret',
+      email: true,
+      wecom: true,
+      feishu: false,
+    },
     quiet_when_empty: false,
-    unattended_tools: '[]',
+    unattended_tools: [],
     last_run_at: null,
     last_status: null,
     next_run_at: null,
@@ -77,7 +79,7 @@ describe('durable scheduled-task notifications', () => {
         payload: {
           schema: 1,
           type: 'automation_result',
-          task_id: 42,
+          task_id: '42',
           task_name: 'Daily report',
           session_id: 'session-1',
           status: 'completed',
@@ -204,7 +206,7 @@ describe('write receipt', () => {
     tool_name: 'tables_mutation',
     risk_level: 'r1',
     status: 'succeeded',
-    input: '{"action":"batch_upsert"}',
+    input: { action: 'batch_upsert' },
     ...over,
   });
 

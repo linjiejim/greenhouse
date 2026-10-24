@@ -26,12 +26,12 @@ export async function createTask(input: ScheduledTaskInput): Promise<ScheduledTa
 }
 
 export async function updateTask(
-  id: number,
+  id: string,
   updates: Partial<ScheduledTaskInput> & { enabled?: boolean },
 ): Promise<ScheduledTask> {
   // Non-literal arg: hc only types `json` for validator-backed routes (none yet);
   // the indirection passes the body while keeping param/response typing.
-  const args = { param: { id: String(id) }, json: updates };
+  const args = { param: { id }, json: updates };
   const res = await rpc.api.tasks[':id'].$put(args);
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: 'Update failed' }));
@@ -41,16 +41,16 @@ export async function updateTask(
   return data.task;
 }
 
-export async function deleteTask(id: number): Promise<void> {
-  const res = await rpc.api.tasks[':id'].$delete({ param: { id: String(id) } });
+export async function deleteTask(id: string): Promise<void> {
+  const res = await rpc.api.tasks[':id'].$delete({ param: { id } });
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: 'Delete failed' }));
     throw new Error(('error' in err && err.error) || `Delete failed: ${res.status}`);
   }
 }
 
-export async function listTaskRuns(id: number): Promise<AutomationRunEntry[]> {
-  const res = await rpc.api.tasks[':id'].runs.$get({ param: { id: String(id) } });
+export async function listTaskRuns(id: string): Promise<AutomationRunEntry[]> {
+  const res = await rpc.api.tasks[':id'].runs.$get({ param: { id } });
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: 'Load history failed' }));
     throw new Error(('error' in err && err.error) || `Load history failed: ${res.status}`);
@@ -58,8 +58,8 @@ export async function listTaskRuns(id: number): Promise<AutomationRunEntry[]> {
   return (await res.json()).entries ?? [];
 }
 
-export async function runTask(id: number): Promise<{ session_id: string }> {
-  const res = await rpc.api.tasks[':id'].run.$post({ param: { id: String(id) } });
+export async function runTask(id: string): Promise<{ session_id: string }> {
+  const res = await rpc.api.tasks[':id'].run.$post({ param: { id } });
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: 'Run failed' }));
     throw new Error(('error' in err && err.error) || `Run failed: ${res.status}`);

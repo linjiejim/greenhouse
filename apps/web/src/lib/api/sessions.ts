@@ -66,7 +66,7 @@ export async function forkSession(id: string, messageId?: string): Promise<Sessi
 
 export async function updateSession(
   id: string,
-  updates: Partial<Pick<Session, 'status' | 'rating' | 'comment' | 'title' | 'feedback'>>,
+  updates: Partial<Pick<Session, 'status' | 'title' | 'metadata'>>,
 ): Promise<Session> {
   // Non-literal arg: hc only types `json` for validator-backed routes (none yet);
   // the indirection passes the body while keeping param/response typing.
@@ -175,9 +175,9 @@ export async function unshareSession(sessionId: string): Promise<void> {
   if (!res.ok) throw new Error(`unshareSession failed: ${res.status}`);
 }
 
-export async function deleteOneShare(sessionId: string, shareId: number): Promise<void> {
+export async function deleteOneShare(sessionId: string, shareId: string): Promise<void> {
   const res = await rpc.api.sessions[':id'].shares[':shareId'].$delete({
-    param: { id: sessionId, shareId: String(shareId) },
+    param: { id: sessionId, shareId },
   });
   if (!res.ok) throw new Error(`deleteOneShare failed: ${res.status}`);
 }

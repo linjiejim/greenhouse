@@ -2,7 +2,7 @@
  * Knowledge Platform migration parity/security tests (real PostgreSQL).
  *
  * Web, Agent Tool and MCP Resource projections must resolve the same team,
- * owner, direct-share and group-share access without leaking private slugs.
+ * owner, reader-share and editor-share access without leaking private slugs.
  */
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -10,13 +10,7 @@ import { Hono } from 'hono';
 import type { Context } from 'hono';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
-import {
-  _resetProvider,
-  initDatabase,
-  type DatabaseProvider,
-  type KnowledgeDocRow,
-  type UserRow,
-} from '@greenhouse/db';
+import { _resetProvider, initDatabase, type DatabaseProvider, type KnowledgeDoc, type UserRow } from '@greenhouse/db';
 import type { AppEnv } from '../../app-env.js';
 import knowledgeRoutes from '../knowledge.js';
 import { knowledgeRegistration } from '../../platform/knowledge/registration.js';
@@ -26,24 +20,25 @@ import { createKnowledgeMutationTool } from '../../tools/knowledge-mutation.js';
 import { buildMcpServer, filterMcpToolIdsByPlatform } from '../mcp.js';
 import { TEST_DATABASE_URL } from '@greenhouse/db/test-config';
 import { createInternalTestUser } from '../../../../../tests/helpers/internal-user.js';
+import { moveToRestrictedRole } from '../../../../../tests/helpers/restricted-role.js';
 
 let db: DatabaseProvider;
 let owner: UserRow;
 let directReader: UserRow;
-let groupEditor: UserRow;
+let sharedEditor: UserRow;
 let outsider: UserRow;
-let teamDoc: KnowledgeDocRow;
-let directDoc: KnowledgeDocRow;
-let groupDoc: KnowledgeDocRow;
+let teamDoc: KnowledgeDoc;
+let directDoc: KnowledgeDoc;
+let editorDoc: KnowledgeDoc;
 let ownerReady: Promise<UserRow> | undefined;
 let directReaderReady: Promise<UserRow> | undefined;
-let groupEditorReady: Promise<UserRow> | undefined;
+let sharedEditorReady: Promise<UserRow> | undefined;
 let outsiderReady: Promise<UserRow> | undefined;
-let teamDocReady: Promise<KnowledgeDocRow> | undefined;
-let directDocReady: Promise<KnowledgeDocRow> | undefined;
-let groupDocReady: Promise<KnowledgeDocRow> | undefined;
+let teamDocReady: Promise<KnowledgeDoc> | undefined;
+let directDocReady: Promise<KnowledgeDoc> | undefined;
+let editorDocReady: Promise<KnowledgeDoc> | undefined;
 let directShareReady: Promise<void> | undefined;
-let groupShareReady: Promise<void> | undefined;
+let editorShareReady: Promise<void> | undefined;
 
 async function createUser(email: string) {
   return createInternalTestUser(db, { email });
@@ -65,12 +60,12 @@ function setupDirectReader(): Promise<UserRow> {
   return directReaderReady;
 }
 
-function setupGroupEditor(): Promise<UserRow> {
-  groupEditorReady ??= createUser('knowledge-group@test.com').then((created) => {
-    groupEditor = created;
+function setupSharedEditor(): Promise<UserRow> {
+  sharedEditorReady ??= createUser('knowledge-editor@test.com').then((created) => {
+    sharedEditor = created;
     return created;
   });
-  return groupEditorReady;
+  return sharedEditorReady;
 }
 
 function setupOutsider(): Promise<UserRow> {
@@ -94,7 +89,7 @@ async function createDoc(slug: string, visibility: 'team' | 'private') {
   });
 }
 
-function setupTeamDoc(): Promise<KnowledgeDocRow> {
+function setupTeamDoc(): Promise<KnowledgeDoc> {
   teamDocReady ??= createDoc('team-handbook', 'team').then((created) => {
     teamDoc = created;
     return created;
@@ -102,7 +97,7 @@ function setupTeamDoc(): Promise<KnowledgeDocRow> {
   return teamDocReady;
 }
 
-function setupDirectDoc(): Promise<KnowledgeDocRow> {
+function setupDirectDoc(): Promise<KnowledgeDoc> {
   directDocReady ??= createDoc('direct-secret', 'private').then((created) => {
     directDoc = created;
     return created;
@@ -110,12 +105,12 @@ function setupDirectDoc(): Promise<KnowledgeDocRow> {
   return directDocReady;
 }
 
-function setupGroupDoc(): Promise<KnowledgeDocRow> {
-  groupDocReady ??= createDoc('group-secret', 'private').then((created) => {
-    groupDoc = created;
+function setupEditorDoc(): Promise<KnowledgeDoc> {
+  editorDocReady ??= createDoc('editor-secret', 'private').then((created) => {
+    editorDoc = created;
     return created;
   });
-  return groupDocReady;
+  return editorDocReady;
 }
 
 function setupDirectShare(): Promise<void> {
@@ -125,17 +120,15 @@ function setupDirectShare(): Promise<void> {
   return directShareReady;
 }
 
-function setupGroupShare(): Promise<void> {
-  groupShareReady ??= Promise.all([setupGroupDoc(), setupGroupEditor(), setupOwner()]).then(async () => {
-    const group = await db.groups.create({ name: 'Knowledge editors', created_by: owner.id });
-    await db.groups.addMembers(group.id, [groupEditor.id], owner.id);
-    await db.knowledgeShares.grant(groupDoc.id, `group:${group.id}`, 'editor', owner.id);
+function setupEditorShare(): Promise<void> {
+  editorShareReady ??= Promise.all([setupEditorDoc(), setupSharedEditor(), setupOwner()]).then(async () => {
+    await db.knowledgeShares.grant(editorDoc.id, sharedEditor.id, 'editor', owner.id);
   });
-  return groupShareReady;
+  return editorShareReady;
 }
 
 async function setupFullSharingScenario(): Promise<void> {
-  await Promise.all([setupTeamDoc(), setupDirectShare(), setupGroupShare(), setupOutsider()]);
+  await Promise.all([setupTeamDoc(), setupDirectShare(), setupEditorShare(), setupOutsider()]);
 }
 
 function createHttpApp(users: UserRow[]) {
@@ -191,13 +184,13 @@ describe('Knowledge Platform migration', () => {
     db = await initDatabase({ type: 'pg', pgConnectionString: TEST_DATABASE_URL });
     ownerReady = undefined;
     directReaderReady = undefined;
-    groupEditorReady = undefined;
+    sharedEditorReady = undefined;
     outsiderReady = undefined;
     teamDocReady = undefined;
     directDocReady = undefined;
-    groupDocReady = undefined;
+    editorDocReady = undefined;
     directShareReady = undefined;
-    groupShareReady = undefined;
+    editorShareReady = undefined;
     initializePlatformRuntime(db, [knowledgeRegistration]);
   });
 
@@ -207,23 +200,23 @@ describe('Knowledge Platform migration', () => {
     _resetProvider();
   });
 
-  it('keeps direct and group sharing consistent across Web, Tool and MCP Resources', async () => {
+  it('keeps reader and editor sharing consistent across Web, Tool and MCP Resources', async () => {
     await setupFullSharingScenario();
-    const app = createHttpApp([owner, directReader, groupEditor, outsider]);
+    const app = createHttpApp([owner, directReader, sharedEditor, outsider]);
     const directList = await app.request('/api/knowledge/docs', {
       headers: { 'x-test-user': directReader.id },
     });
     expect(directList.status).toBe(200);
     const directSlugs = ((await directList.json()) as { docs: Array<{ slug: string }> }).docs.map((doc) => doc.slug);
     expect(directSlugs).toEqual(expect.arrayContaining([teamDoc.doc_id, directDoc.doc_id]));
-    expect(directSlugs).not.toContain(groupDoc.doc_id);
+    expect(directSlugs).not.toContain(editorDoc.doc_id);
 
-    const groupList = await app.request('/api/knowledge/docs', {
-      headers: { 'x-test-user': groupEditor.id },
+    const editorList = await app.request('/api/knowledge/docs', {
+      headers: { 'x-test-user': sharedEditor.id },
     });
-    const groupSlugs = ((await groupList.json()) as { docs: Array<{ slug: string }> }).docs.map((doc) => doc.slug);
-    expect(groupSlugs).toEqual(expect.arrayContaining([teamDoc.doc_id, groupDoc.doc_id]));
-    expect(groupSlugs).not.toContain(directDoc.doc_id);
+    const editorSlugs = ((await editorList.json()) as { docs: Array<{ slug: string }> }).docs.map((doc) => doc.slug);
+    expect(editorSlugs).toEqual(expect.arrayContaining([teamDoc.doc_id, editorDoc.doc_id]));
+    expect(editorSlugs).not.toContain(directDoc.doc_id);
 
     const directTool = await executeTool(createKnowledgeQueryTool(db, { userId: directReader.id }), {
       action: 'list',
@@ -234,20 +227,20 @@ describe('Knowledge Platform migration', () => {
       results: [expect.objectContaining({ doc_id: directDoc.doc_id })],
     });
 
-    const { client, server } = await connectResources(groupEditor);
+    const { client, server } = await connectResources(sharedEditor);
     const resources = await client.listResources();
     expect(resources.resources.map((resource) => resource.uri)).toEqual(
       expect.arrayContaining([
         `greenhouse://knowledge/doc/${teamDoc.doc_id}`,
-        `greenhouse://knowledge/doc/${groupDoc.doc_id}`,
+        `greenhouse://knowledge/doc/${editorDoc.doc_id}`,
       ]),
     );
     expect(resources.resources.map((resource) => resource.uri)).not.toContain(
       `greenhouse://knowledge/doc/${directDoc.doc_id}`,
     );
-    const read = await client.readResource({ uri: `greenhouse://knowledge/doc/${groupDoc.doc_id}` });
+    const read = await client.readResource({ uri: `greenhouse://knowledge/doc/${editorDoc.doc_id}` });
     expect(read.contents[0]).toMatchObject({ mimeType: 'text/markdown' });
-    expect((read.contents[0] as { text?: string }).text).toContain(`private marker ${groupDoc.doc_id}`);
+    expect((read.contents[0] as { text?: string }).text).toContain(`private marker ${editorDoc.doc_id}`);
     await client.close();
     await server.close();
   });
@@ -272,12 +265,8 @@ describe('Knowledge Platform migration', () => {
 
   it('intersects platform capability denial with every transport', async () => {
     await setupDirectReader();
-    await db.platform.setUserCapabilityOverride({
-      org_id: 'default',
-      user_id: directReader.id,
-      capability: 'knowledge.*',
-      effect: 'deny',
-      reason: 'Knowledge transport parity test',
+    await moveToRestrictedRole(db, directReader.id, {
+      capabilities: (team) => team.filter((capability) => !capability.startsWith('knowledge.')),
     });
     const app = createHttpApp([directReader]);
     const http = await app.request('/api/knowledge/docs', {
@@ -329,7 +318,7 @@ describe('Knowledge Platform migration', () => {
       body: JSON.stringify({ title: `Audit me ${Date.now()}`, content: 'x' }),
     });
     expect(created.status).toBe(201);
-    const docId = ((await created.json()) as { doc: { id: number } }).doc.id;
+    const docId = ((await created.json()) as { doc: { id: string } }).doc.id;
     await app.request(`/api/knowledge/docs/${docId}/editing-presence`, {
       method: 'POST',
       headers: { 'x-test-user': owner.id },
@@ -338,13 +327,13 @@ describe('Knowledge Platform migration', () => {
     const audits = (await db.platform.listAuditEvents('default', 50)).filter((event) => event.actor_id === owner.id);
     const create = audits.find((event) => event.action_id === 'createDocument' && event.result === 'success');
     expect(create?.record_id).toBe(String(docId));
-    const beat = audits.find((event) => JSON.parse(event.summary).change === 'presence');
-    expect(JSON.parse(beat!.summary)).toMatchObject({ activity: false });
+    const beat = audits.find((event) => (event.summary as Record<string, unknown>).change === 'presence');
+    expect(beat!.summary).toMatchObject({ activity: false });
   });
 
-  it('allows group editors to write while reader grants remain read-only', async () => {
-    await Promise.all([setupDirectShare(), setupGroupShare()]);
-    const app = createHttpApp([directReader, groupEditor]);
+  it('allows shared editors to write while reader grants remain read-only', async () => {
+    await Promise.all([setupDirectShare(), setupEditorShare()]);
+    const app = createHttpApp([directReader, sharedEditor]);
     const denied = await app.request(`/api/knowledge/docs/${directDoc.id}`, {
       method: 'PUT',
       headers: { 'content-type': 'application/json', 'x-test-user': directReader.id },
@@ -352,15 +341,15 @@ describe('Knowledge Platform migration', () => {
     });
     expect(denied.status).toBe(404);
 
-    const updated = await executeTool(createKnowledgeMutationTool(db, { userId: groupEditor.id }), {
+    const updated = await executeTool(createKnowledgeMutationTool(db, { userId: sharedEditor.id }), {
       action: 'knowledge.update_doc',
       scope: 'personal',
-      doc_id: groupDoc.doc_id,
-      title: 'Updated by group editor',
+      doc_id: editorDoc.doc_id,
+      title: 'Updated by shared editor',
     });
     expect(updated).toMatchObject({
       status: 'updated',
-      document: expect.objectContaining({ title: 'Updated by group editor' }),
+      document: expect.objectContaining({ title: 'Updated by shared editor' }),
     });
 
     const readerTool = await executeTool(createKnowledgeMutationTool(db, { userId: directReader.id }), {
@@ -373,8 +362,8 @@ describe('Knowledge Platform migration', () => {
   });
 
   it('scopes unified search to shared-with-me and never leaks ungranted private docs', async () => {
-    await Promise.all([setupDirectShare(), setupGroupShare(), setupOutsider()]);
-    const app = createHttpApp([owner, directReader, groupEditor, outsider]);
+    await Promise.all([setupDirectShare(), setupEditorShare(), setupOutsider()]);
+    const app = createHttpApp([owner, directReader, sharedEditor, outsider]);
     const search = async (user: UserRow, scope: string) => {
       const res = await app.request(`/api/knowledge/search?q=secret&scope=${scope}`, {
         headers: { 'x-test-user': user.id },
@@ -388,10 +377,10 @@ describe('Knowledge Platform migration', () => {
     expect(readerHits.map((r) => r.slug)).toEqual([directDoc.doc_id]);
     expect(readerHits[0]).toMatchObject({ scope: 'shared', access: 'reader' });
 
-    // Group editor: the group-shared doc, resolved to the editor role.
-    const groupHits = await search(groupEditor, 'shared');
-    expect(groupHits.map((r) => r.slug)).toEqual([groupDoc.doc_id]);
-    expect(groupHits[0]).toMatchObject({ scope: 'shared', access: 'editor' });
+    // Shared editor: the editor-shared doc, resolved to the editor role.
+    const editorHits = await search(sharedEditor, 'shared');
+    expect(editorHits.map((r) => r.slug)).toEqual([editorDoc.doc_id]);
+    expect(editorHits[0]).toMatchObject({ scope: 'shared', access: 'editor' });
 
     // Outsider with no grant → empty shared channel (the leak guard).
     expect(await search(outsider, 'shared')).toEqual([]);

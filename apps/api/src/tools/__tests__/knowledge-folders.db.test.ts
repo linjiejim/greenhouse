@@ -30,7 +30,7 @@ async function execute(tool: unknown, input: unknown): Promise<Record<string, un
   })) as Record<string, unknown>;
 }
 
-async function teamFolder(name: string, parentId?: number) {
+async function teamFolder(name: string, parentId?: string) {
   return db.drive.createFolder({
     scope: 'kb',
     name,
@@ -230,7 +230,7 @@ describe('knowledge_query folder navigation', () => {
 
     const query = createKnowledgeQueryTool(db, { userId: user.id });
     const res = await execute(query, { action: 'tree', scope: 'team' });
-    const folders = res.folders as Array<{ path: string; docs: Array<{ id: number; title: string }> }>;
+    const folders = res.folders as Array<{ path: string; docs: Array<{ id: string; title: string }> }>;
     const byPath = new Map(folders.map((f) => [f.path, f]));
 
     expect(byPath.get(`${prefix}产品`)?.docs.map((d) => d.title)).toEqual([`${prefix}产品总览`]);
@@ -358,7 +358,7 @@ describe('knowledge_mutation create_folders', () => {
     _resetProvider();
   });
 
-  async function childNames(parentId: number | null, visibility: 'team' | 'private', ownerUserId?: string) {
+  async function childNames(parentId: string | null, visibility: 'team' | 'private', ownerUserId?: string) {
     const rows = await db.drive.listFolders({
       scope: 'kb',
       parent_id: parentId,
@@ -489,7 +489,7 @@ describe('knowledge_query folders', () => {
     _resetProvider();
   });
 
-  type Node = { id: number; path: string; depth: number; docs: number; more_subfolders?: number };
+  type Node = { id: string; path: string; depth: number; docs: number; more_subfolders?: number };
 
   it('lists ids, paths and doc counts, and cuts at depth with a truncated flag', async () => {
     const prefix = `fl${Date.now()}`;

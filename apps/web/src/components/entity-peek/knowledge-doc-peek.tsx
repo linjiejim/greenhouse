@@ -17,10 +17,10 @@ import type { KnowledgeDoc } from '@greenhouse/types/api';
 import { getKnowledgeDocById } from '../../lib/api/knowledge';
 import { KnowledgeDetail } from '../knowledge/knowledge-detail';
 import { Spinner, TagList } from '../ui';
-import { safeParse, formatDate } from '../../lib/utils';
+import { formatDate } from '../../lib/utils';
 import { useT } from '../../lib/i18n';
 
-export function KnowledgeDocPeek({ id }: { id: number }) {
+export function KnowledgeDocPeek({ id }: { id: string }) {
   const t = useT();
   const [doc, setDoc] = useState<KnowledgeDoc | null>(null);
   const [failed, setFailed] = useState(false);
@@ -52,7 +52,7 @@ export function KnowledgeDocPeek({ id }: { id: number }) {
     );
   }
 
-  const tags = safeParse<string[]>(doc.tags, []);
+  const tags = doc.tags ?? [];
   return (
     <div className="h-full min-h-0 flex flex-col">
       <div className="flex-shrink-0 border-b border-edge px-4 md:px-6 py-3">

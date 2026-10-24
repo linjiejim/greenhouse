@@ -19,19 +19,19 @@ export type TreeNodeKind = 'doc' | 'folder';
 /** A row's identity: what it is, and where it sits among its siblings. */
 export interface TreeNodeRef {
   kind: TreeNodeKind;
-  id: number;
-  parentId: number | null;
+  id: string;
+  parentId: string | null;
   index: number;
 }
 
 /** An insertion point between siblings: "position `index` of this parent's `group`". */
 export interface DropEdge {
-  parentId: number | null;
+  parentId: string | null;
   group: TreeNodeKind;
   index: number;
 }
 
-export type DropState = { type: 'into'; folderId: number } | { type: 'edge'; edge: DropEdge } | null;
+export type DropState = { type: 'into'; folderId: string } | { type: 'edge'; edge: DropEdge } | null;
 
 /** Middle band of a folder row means "drop inside"; the outer thirds mean "next to". */
 const INTO_BAND = 0.32;
@@ -57,7 +57,7 @@ export function resolveIntent(rect: { top: number; height: number }, clientY: nu
  * index bookkeeping (removing an item shifts every later position by one) is
  * the part that silently produces an off-by-one.
  */
-export function computeOrder(siblingIds: number[], draggedId: number, index: number): number[] {
+export function computeOrder(siblingIds: string[], draggedId: string, index: number): string[] {
   const ids = siblingIds.filter((id) => id !== draggedId);
   const from = siblingIds.indexOf(draggedId);
   const target = from >= 0 && from < index ? index - 1 : index;
@@ -66,43 +66,47 @@ export function computeOrder(siblingIds: number[], draggedId: number, index: num
 }
 
 /** True when `next` is the order the list already had (so: don't write). */
-export function isSameOrder(current: number[], next: number[]): boolean {
+export function isSameOrder(current: string[], next: string[]): boolean {
   return current.length === next.length && current.every((id, i) => id === next[i]);
 }
 
 interface ParsedRow {
   node: TreeNodeRef;
   /** Folder id when this row can be dropped INTO, else null. */
-  into: number | null;
+  into: string | null;
   element: HTMLElement;
 }
 
 function parseRow(target: Element | null): ParsedRow | null {
   const row = target?.closest(`[${NODE_ATTR}]`);
   if (!(row instanceof HTMLElement)) return null;
-  const [kind, rawId] = (row.getAttribute(NODE_ATTR) ?? '').split(':');
+  // `<kind>:<id>` — split on the first colon only (an id is opaque text).
+  const attr = row.getAttribute(NODE_ATTR) ?? '';
+  const colon = attr.indexOf(':');
+  const kind = colon >= 0 ? attr.slice(0, colon) : attr;
+  const rawId = colon >= 0 ? attr.slice(colon + 1) : '';
   if ((kind !== 'doc' && kind !== 'folder') || !rawId) return null;
   const parentRaw = row.getAttribute('data-tree-parent');
   const intoRaw = row.getAttribute('data-tree-into');
   return {
     node: {
       kind,
-      id: Number(rawId),
-      parentId: parentRaw ? Number(parentRaw) : null,
+      id: rawId,
+      parentId: parentRaw || null,
       index: Number(row.getAttribute('data-tree-index') ?? 0),
     },
-    into: intoRaw ? Number(intoRaw) : null,
+    into: intoRaw || null,
     element: row,
   };
 }
 
 export interface TreeDragHandlers {
   /** May the dragged node land inside this folder? */
-  canDropInto: (dragged: TreeNodeRef, folderId: number) => boolean;
-  onDropInto: (dragged: TreeNodeRef, folderId: number) => void;
+  canDropInto: (dragged: TreeNodeRef, folderId: string) => boolean;
+  onDropInto: (dragged: TreeNodeRef, folderId: string) => void;
   onDropEdge: (dragged: TreeNodeRef, edge: DropEdge) => void;
   /** Hovering a folder mid-drag, so the caller can auto-expand it. */
-  onHoverFolder?: (folderId: number) => void;
+  onHoverFolder?: (folderId: string) => void;
   onDragEnd?: () => void;
 }
 
@@ -110,7 +114,7 @@ export interface TreeDrag {
   dragging: TreeNodeRef | null;
   drop: DropState;
   /** Spread onto a row: makes it both a drag source and a drop target. */
-  rowProps: (node: TreeNodeRef, opts?: { into?: number }) => Record<string, unknown>;
+  rowProps: (node: TreeNodeRef, opts?: { into?: string }) => Record<string, unknown>;
   /** True if a drag just finished, so the row's click can be swallowed. */
   didDrag: () => boolean;
 }
@@ -168,7 +172,7 @@ export function useTreeDrag(handlers: TreeDragHandlers): TreeDrag {
   });
 
   const rowProps = useCallback(
-    (node: TreeNodeRef, opts: { into?: number } = {}) => ({
+    (node: TreeNodeRef, opts: { into?: string } = {}) => ({
       [NODE_ATTR]: `${node.kind}:${node.id}`,
       'data-tree-parent': node.parentId == null ? '' : String(node.parentId),
       'data-tree-index': String(node.index),

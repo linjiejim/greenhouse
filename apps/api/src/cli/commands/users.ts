@@ -123,7 +123,6 @@ async function show(args: string[]): Promise<number> {
       ['Role', roleColor(user.role)],
       ['Status', user.status === 'active' ? chalk.green('active') : chalk.red(user.status)],
       ['Locale', user.locale],
-      ['Monthly token limit', String(user.monthly_token_limit)],
       ['Sessions', String(sessions.length)],
       ['Notes', user.notes ?? dim('—')],
       ['Created', user.created_at],

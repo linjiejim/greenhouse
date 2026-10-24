@@ -6,7 +6,6 @@ describe('conversation surface policy', () => {
   it('lets the full surface publish page chrome and management affordances', () => {
     expect(CONVERSATION_SURFACE_POLICIES.full).toMatchObject({
       publishGlobalChatUi: true,
-      showFeedback: true,
       showShare: true,
       showProfileManagement: true,
       allowTranslate: true,
@@ -19,7 +18,6 @@ describe('conversation surface policy', () => {
       compactMessages: true,
       publishGlobalChatUi: false,
       enrichPageContext: false,
-      showFeedback: false,
       showShare: false,
       showProfileManagement: false,
       allowTranslate: false,

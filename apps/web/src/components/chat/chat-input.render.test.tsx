@@ -6,7 +6,7 @@ import type { UserPrompt } from '@greenhouse/types/api';
 import { ChatInput } from './chat-input';
 
 const task: UserPrompt = {
-  id: 1,
+  id: '1',
   user_id: 'user-1',
   title: 'Market research',
   content: 'Research {{market}} for {{region}}.',
@@ -14,11 +14,11 @@ const task: UserPrompt = {
   sort_order: 0,
   is_global: false,
   description: 'Research a market in depth.',
-  variables: JSON.stringify([
+  variables: [
     { key: 'market', label: 'Market', required: true, example: 'Smart gardens' },
     { key: 'region', label: 'Region', required: false, example: 'Europe' },
-  ]),
-  expected_tools: '[]',
+  ],
+  expected_tools: [],
   source_session_id: null,
   created_via: 'manual',
   created_at: '2026-08-07T00:00:00.000Z',

@@ -66,8 +66,9 @@ Agent 上下文，全部从**激活的扩展集**里聚合。
 
 → [add-db-table](../add-db-table/SKILL.md)
 
-schema → 域 service → `provider.ts` 注册 → `pnpm drizzle-kit generate`（仓库根）→
-review SQL → `db-schema.md`。**持久库只 `migrate` 永不 `push`。**
+schema（`_columns.ts` helper + `ids.ts` 前缀）→ 域 service → `provider.ts` 注册 →
+`pnpm drizzle-kit generate`（仓库根）→ review SQL → `pnpm db:migrate` → `db-schema.md`。
+**持久库只 `pnpm db:migrate` 永不 `push`。**
 
 ## Phase 2：共享类型
 

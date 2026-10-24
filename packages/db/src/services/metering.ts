@@ -3,25 +3,94 @@
  * month-bounded spend reads behind Administration › Services & pricing and
  * Settings › Usage.
  *
- * Model facts stay in llm_usage (written by `usage.record`); this service owns
- * `service_usage` and `usage_budget_limits`, and reads both fact tables
- * together. Every read is bounded to one half-open period and served by a
- * `(…, created_at)` index.
+ * Model facts are `usage_events` of kind `model` (written by `usage.record`);
+ * this service writes kind `service`, owns the `limit` rows of `budgets` and
+ * the `prices` table, and reads both spend kinds together (never `audit`, which
+ * carries no units). Every read is bounded to one half-open period and served
+ * by a `(…, created_at)` index.
  */
 
-import { createHash, randomUUID } from 'node:crypto';
-import { and, asc, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, or, sql } from 'drizzle-orm';
 import { nowIso } from '@greenhouse/utils/date';
 
 import type { Db } from '../client.js';
-import { serviceUsage, usageBudgetAccounts, usageBudgetLimits, usagePriceOverrides } from '../schema/index.js';
-import type {
-  ServiceUsageRow,
-  UsageBudgetAccountRow,
-  UsageBudgetLimitRow,
-  UsageBudgetLimitScopeType,
-  UsagePriceOverrideRow,
-} from '../schema/usage.js';
+import { newId } from '../ids.js';
+import { budgets, prices, usageEvents } from '../schema/index.js';
+import type { BudgetRow, UsageEventRow, UsagePriceOverrideRow } from '../schema/usage.js';
+import { toUsageBudgetAccount, type UsageBudgetAccountRow } from './usage-budget.js';
+
+/** A non-model usage fact: a `usage_events` row of kind `service`. */
+export interface ServiceUsageRow {
+  id: string;
+  user_id: string | null;
+  service: string;
+  provider: string;
+  model: string | null;
+  units: number;
+  unit_kind: UsageEventRow['unit_kind'];
+  cost_usd_micros: number | null;
+  client: string | null;
+  oauth_client_id: string | null;
+  caller: string;
+  run_id: string | null;
+  session_id: string | null;
+  budget_idempotency_key: string | null;
+  price_applied: Record<string, unknown> | null;
+  metadata: Record<string, unknown>;
+  created_at: string;
+}
+
+function toServiceUsageRow(row: UsageEventRow): ServiceUsageRow {
+  return {
+    id: row.id,
+    user_id: row.user_id,
+    service: row.service ?? '',
+    provider: row.provider ?? '',
+    model: row.model,
+    units: row.units,
+    unit_kind: row.unit_kind,
+    cost_usd_micros: row.cost_usd_micros,
+    client: row.client,
+    oauth_client_id: row.oauth_client_id,
+    caller: row.caller,
+    run_id: row.run_id,
+    session_id: row.session_id,
+    budget_idempotency_key: row.budget_idempotency_key,
+    price_applied: row.price_applied ?? null,
+    metadata: row.detail,
+    created_at: row.created_at,
+  };
+}
+
+export type UsageBudgetLimitScopeType = 'organization' | 'service' | 'user';
+const LIMIT_SCOPE_TYPES: readonly UsageBudgetLimitScopeType[] = ['organization', 'service', 'user'];
+
+/** An administrative USD limit: a `budgets` row of kind `limit` (no period). */
+export interface UsageBudgetLimitRow {
+  id: string;
+  scope_type: UsageBudgetLimitScopeType;
+  scope_id: string;
+  unit: 'usd_micros';
+  limit_units: number;
+  updated_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+function toLimitRow(row: BudgetRow): UsageBudgetLimitRow {
+  return {
+    id: row.id,
+    scope_type: row.scope_type as UsageBudgetLimitScopeType,
+    scope_id: row.scope_id,
+    unit: 'usd_micros',
+    limit_units: row.limit_units,
+    updated_by: row.updated_by,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+  };
+}
+
+const isLimit = and(eq(budgets.kind, 'limit'), eq(budgets.unit, 'usd_micros'));
 
 export interface ServiceUsageInput {
   user_id?: string | null;
@@ -54,11 +123,6 @@ export interface UsagePriceOverrideInput {
   cached_input_per_mtok?: number | null;
   unit_price?: number | null;
   actor_id?: string | null;
-}
-
-export function usagePriceOverrideId(kind: UsagePriceOverrideRow['kind'], target: string, provider = ''): string {
-  const digest = createHash('sha256').update(`${kind}\u0000${target}\u0000${provider}`).digest('hex');
-  return `upo_${digest.slice(0, 32)}`;
 }
 
 function assertRate(value: number | null | undefined, label: string): number | null {
@@ -102,34 +166,25 @@ export interface UsageBudgetLimitInput {
 /** The member-default limit row's scope id. */
 export const MEMBER_DEFAULT_SCOPE_ID = '*';
 
-export function usageBudgetLimitId(scopeType: UsageBudgetLimitScopeType, scopeId: string): string {
-  const digest = createHash('sha256').update(`${scopeType}\u0000${scopeId}\u0000usd_micros`).digest('hex');
-  return `ubl_${digest.slice(0, 32)}`;
-}
-
 function assertNonNegativeInteger(value: number, label: string): number {
   if (!Number.isSafeInteger(value) || value < 0) throw new Error(`${label} must be a non-negative safe integer`);
   return value;
 }
 
 /**
- * Both fact tables as one relation: (user_id, service, client, oauth_client_id,
- * cost, created_at). llm_usage rows written before metering carry no service;
- * their caller says which one it was.
+ * The spend facts (model + service events) as one relation: (user_id, service,
+ * client, oauth_client_id, cost). Model rows written before metering carry no
+ * service; their caller says which one it was. `audit` rows never count.
  */
 function factsWithin(since: string, until: string, userId?: string) {
-  const llmUser = userId ? sql`AND user_id = ${userId}` : sql``;
-  const svcUser = userId ? sql`AND user_id = ${userId}` : sql``;
+  const user = userId ? sql`AND user_id = ${userId}` : sql``;
   return sql`(
     SELECT user_id,
            COALESCE(service, CASE caller WHEN 'vision' THEN 'vision' WHEN 'generate-image' THEN 'image_generation' ELSE 'llm' END) AS service,
            client, oauth_client_id, cost_usd_micros
-      FROM llm_usage
-     WHERE created_at >= ${since} AND created_at < ${until} ${llmUser}
-    UNION ALL
-    SELECT user_id, service, client, oauth_client_id, cost_usd_micros
-      FROM service_usage
-     WHERE created_at >= ${since} AND created_at < ${until} ${svcUser}
+      FROM usage_events
+     WHERE kind IN ('model', 'service')
+       AND created_at >= ${since} AND created_at < ${until} ${user}
   ) AS facts`;
 }
 
@@ -158,9 +213,10 @@ export function createMeteringService(db: Db) {
       const units = assertNonNegativeInteger(input.units, 'units');
       if (input.cost_usd_micros !== null) assertNonNegativeInteger(input.cost_usd_micros, 'cost_usd_micros');
       const [row] = await db
-        .insert(serviceUsage)
+        .insert(usageEvents)
         .values({
-          id: `svu_${randomUUID().replaceAll('-', '')}`,
+          id: newId('usageEvent'),
+          kind: 'service',
           user_id: input.user_id ?? null,
           service: input.service,
           provider: input.provider,
@@ -174,29 +230,32 @@ export function createMeteringService(db: Db) {
           run_id: input.run_id ?? null,
           session_id: input.session_id ?? null,
           budget_idempotency_key: input.budget_idempotency_key ?? null,
-          price_applied: input.price_applied ? JSON.stringify(input.price_applied) : null,
-          metadata: JSON.stringify(input.metadata ?? {}),
+          price_applied: input.price_applied ? { ...input.price_applied } : null,
+          detail: { ...input.metadata },
           created_at: input.created_at ?? nowIso(),
         })
         .returning();
-      return row!;
+      return toServiceUsageRow(row!);
     },
 
     async listServiceUsageByKey(budgetIdempotencyKey: string): Promise<ServiceUsageRow[]> {
-      return db
+      const rows = await db
         .select()
-        .from(serviceUsage)
-        .where(eq(serviceUsage.budget_idempotency_key, budgetIdempotencyKey))
-        .orderBy(asc(serviceUsage.created_at));
+        .from(usageEvents)
+        .where(and(eq(usageEvents.kind, 'service'), eq(usageEvents.budget_idempotency_key, budgetIdempotencyKey)))
+        .orderBy(asc(usageEvents.created_at), asc(usageEvents.id));
+      return rows.map(toServiceUsageRow);
     },
 
     // ─── Limits ────────────────────────────────────────────
 
     async listLimits(): Promise<UsageBudgetLimitRow[]> {
-      return db
+      const rows = await db
         .select()
-        .from(usageBudgetLimits)
-        .orderBy(asc(usageBudgetLimits.scope_type), asc(usageBudgetLimits.scope_id));
+        .from(budgets)
+        .where(and(isLimit, inArray(budgets.scope_type, [...LIMIT_SCOPE_TYPES])))
+        .orderBy(asc(budgets.scope_type), asc(budgets.scope_id));
+      return rows.map(toLimitRow);
     },
 
     /** The limit rows that could apply to one call: organization, a service, the member default and one member. */
@@ -204,8 +263,20 @@ export function createMeteringService(db: Db) {
       scopes: ReadonlyArray<{ scope_type: UsageBudgetLimitScopeType; scope_id: string }>,
     ): Promise<UsageBudgetLimitRow[]> {
       if (scopes.length === 0) return [];
-      const ids = scopes.map((scope) => usageBudgetLimitId(scope.scope_type, scope.scope_id));
-      return db.select().from(usageBudgetLimits).where(inArray(usageBudgetLimits.id, ids));
+      const rows = await db
+        .select()
+        .from(budgets)
+        .where(
+          and(
+            isLimit,
+            or(
+              ...scopes.map((scope) =>
+                and(eq(budgets.scope_type, scope.scope_type), eq(budgets.scope_id, scope.scope_id)),
+              ),
+            ),
+          ),
+        );
+      return rows.map(toLimitRow);
     },
 
     async setLimit(input: UsageBudgetLimitInput): Promise<UsageBudgetLimitRow> {
@@ -214,9 +285,10 @@ export function createMeteringService(db: Db) {
       const limit = assertNonNegativeInteger(input.limit_units, 'limit_units');
       const at = nowIso();
       const [row] = await db
-        .insert(usageBudgetLimits)
+        .insert(budgets)
         .values({
-          id: usageBudgetLimitId(input.scope_type, scopeId),
+          id: newId('budget'),
+          kind: 'limit',
           scope_type: input.scope_type,
           scope_id: scopeId,
           unit: 'usd_micros',
@@ -226,29 +298,27 @@ export function createMeteringService(db: Db) {
           updated_at: at,
         })
         .onConflictDoUpdate({
-          target: usageBudgetLimits.id,
+          target: [budgets.scope_type, budgets.scope_id, budgets.unit],
+          targetWhere: sql`kind = 'limit'`,
           set: { limit_units: limit, updated_by: input.actor_id ?? null, updated_at: at },
         })
         .returning();
-      return row!;
+      return toLimitRow(row!);
     },
 
     /** Drop an override so the env / default limit applies again. */
     async deleteLimit(scopeType: UsageBudgetLimitScopeType, scopeId: string): Promise<boolean> {
       const rows = await db
-        .delete(usageBudgetLimits)
-        .where(eq(usageBudgetLimits.id, usageBudgetLimitId(scopeType, scopeId.trim())))
-        .returning({ id: usageBudgetLimits.id });
+        .delete(budgets)
+        .where(and(isLimit, eq(budgets.scope_type, scopeType), eq(budgets.scope_id, scopeId.trim())))
+        .returning({ id: budgets.id });
       return rows.length > 0;
     },
 
     // ─── Price overrides ───────────────────────────────────
 
     async listPriceOverrides(): Promise<UsagePriceOverrideRow[]> {
-      return db
-        .select()
-        .from(usagePriceOverrides)
-        .orderBy(asc(usagePriceOverrides.kind), asc(usagePriceOverrides.target), asc(usagePriceOverrides.provider));
+      return db.select().from(prices).orderBy(asc(prices.kind), asc(prices.target), asc(prices.provider));
     },
 
     /** Replace the whole override for one model or service × provider (fields left out become null). */
@@ -264,9 +334,9 @@ export function createMeteringService(db: Db) {
       };
       const at = nowIso();
       const [row] = await db
-        .insert(usagePriceOverrides)
+        .insert(prices)
         .values({
-          id: usagePriceOverrideId(input.kind, target, provider),
+          id: newId('price'),
           kind: input.kind,
           target,
           provider,
@@ -276,7 +346,7 @@ export function createMeteringService(db: Db) {
           updated_at: at,
         })
         .onConflictDoUpdate({
-          target: usagePriceOverrides.id,
+          target: [prices.kind, prices.target, prices.provider],
           set: { ...values, updated_by: input.actor_id ?? null, updated_at: at },
         })
         .returning();
@@ -285,9 +355,9 @@ export function createMeteringService(db: Db) {
 
     async deletePriceOverride(kind: UsagePriceOverrideRow['kind'], target: string, provider = ''): Promise<boolean> {
       const rows = await db
-        .delete(usagePriceOverrides)
-        .where(eq(usagePriceOverrides.id, usagePriceOverrideId(kind, target.trim(), provider.trim())))
-        .returning({ id: usagePriceOverrides.id });
+        .delete(prices)
+        .where(and(eq(prices.kind, kind), eq(prices.target, target.trim()), eq(prices.provider, provider.trim())))
+        .returning({ id: prices.id });
       return rows.length > 0;
     },
 
@@ -346,7 +416,7 @@ export function createMeteringService(db: Db) {
           statement = sql`
             SELECT facts.oauth_client_id AS key, MAX(c.client_name) AS label, ${aggregates}
               FROM ${facts}
-              LEFT JOIN platform_oauth_clients c ON c.id = facts.oauth_client_id
+              LEFT JOIN oauth_clients c ON c.id = facts.oauth_client_id
              WHERE facts.oauth_client_id IS NOT NULL
              GROUP BY facts.oauth_client_id
              ORDER BY 3 DESC, 4 DESC
@@ -372,9 +442,10 @@ export function createMeteringService(db: Db) {
       const scope = input.scope_id ? sql`AND a.scope_id = ${input.scope_id}` : sql``;
       const rows = (await db.execute(sql`
         SELECT COALESCE(SUM(COALESCE(r.actual_units, r.estimated_units)), 0) AS total
-          FROM usage_budget_reservations r
-          JOIN usage_budget_accounts a ON a.id = r.account_id
+          FROM budget_reservations r
+          JOIN budgets a ON a.id = r.account_id
          WHERE r.status = 'expired'
+           AND a.kind = 'account'
            AND a.unit = 'usd_micros'
            AND a.scope_type = ${input.scope_type}
            AND a.period_start = ${input.period_start}
@@ -386,28 +457,31 @@ export function createMeteringService(db: Db) {
 
     /** This period's USD accounts at the metered levels (member / service / organization). */
     async listUsdAccounts(input: { period_start: string; period_end: string }): Promise<UsageBudgetAccountRow[]> {
-      return db
+      const rows = await db
         .select()
-        .from(usageBudgetAccounts)
+        .from(budgets)
         .where(
           and(
-            eq(usageBudgetAccounts.unit, 'usd_micros'),
-            eq(usageBudgetAccounts.period_start, input.period_start),
-            eq(usageBudgetAccounts.period_end, input.period_end),
-            inArray(usageBudgetAccounts.scope_type, ['user', 'service', 'organization']),
+            eq(budgets.kind, 'account'),
+            eq(budgets.unit, 'usd_micros'),
+            eq(budgets.period_start, input.period_start),
+            eq(budgets.period_end, input.period_end),
+            inArray(budgets.scope_type, ['user', 'service', 'organization']),
           ),
         )
-        .orderBy(asc(usageBudgetAccounts.scope_type), asc(usageBudgetAccounts.scope_id));
+        .orderBy(asc(budgets.scope_type), asc(budgets.scope_id));
+      return rows.map(toUsageBudgetAccount);
     },
 
     /** Several accounts by id (snapshot reads for admission and alerts). */
     async getAccounts(ids: readonly string[]): Promise<UsageBudgetAccountRow[]> {
       if (ids.length === 0) return [];
-      return db
+      const rows = await db
         .select()
-        .from(usageBudgetAccounts)
-        .where(inArray(usageBudgetAccounts.id, [...ids]))
-        .orderBy(asc(usageBudgetAccounts.id));
+        .from(budgets)
+        .where(and(eq(budgets.kind, 'account'), inArray(budgets.id, [...ids])))
+        .orderBy(asc(budgets.id));
+      return rows.map(toUsageBudgetAccount);
     },
   };
   return service;

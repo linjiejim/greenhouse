@@ -10,7 +10,7 @@ const OPERATIONS: SchemaPlanOperation[] = [
   { op: 'base.create', ref: 'b', name: 'Customer follow-up', defaultTableRef: 'leads', defaultTableName: 'Leads' },
   { op: 'field.create', tableRef: 'leads', name: 'Company', type: 'text', required: true },
   { op: 'field.create', tableRef: 'leads', name: 'Stage', type: 'single_select' },
-  { op: 'field.archive', tableId: 4, fieldId: 9 },
+  { op: 'field.archive', tableId: '4', fieldId: '9' },
 ];
 
 function render(locale: 'en' | 'zh') {

@@ -1,14 +1,22 @@
 /**
- * Scheduled task service — automated Agent task definitions CRUD (PostgreSQL).
+ * Scheduled task service — automation definitions (`automations`) and their
+ * terminal-outcome ledger (`automation_occurrences`).
+ *
+ * Where a finished run is reported lives in one `notify` object
+ * (`AutomationNotify`); updates merge into it key by key.
  */
 
 import { and, desc, eq, gt, inArray, or, sql } from 'drizzle-orm';
 import { nowIso } from '@greenhouse/utils/date';
 
 import type { Db } from '../client.js';
-import { runtimeRuns, scheduledTaskRuntimeOccurrences, scheduledTasks } from '../schema/index.js';
-import type { ScheduledTaskRow } from '../schema/scheduled-task.js';
-import type { RuntimeRunRow, RuntimeStepRow } from '../schema/runtime.js';
+import { newId } from '../ids.js';
+import {
+  automationOccurrences as scheduledTaskRuntimeOccurrences,
+  automations as scheduledTasks,
+  runs as runtimeRuns,
+} from '../schema/index.js';
+import type { AutomationNotify, RuntimeRunRow, RuntimeStepRow, ScheduledTaskRow } from '../schema/index.js';
 import { createRuntimeService, type RuntimeRunCreateInput, type RuntimeStepCreateInput } from './runtime.js';
 
 export interface ScheduledTaskInput {
@@ -20,13 +28,10 @@ export interface ScheduledTaskInput {
   timezone?: string;
   max_steps?: number;
   enabled?: boolean;
-  notify_webhook?: string | null;
-  notify_email?: boolean;
-  notify_wecom?: boolean;
-  notify_feishu?: boolean;
+  notify?: Partial<AutomationNotify>;
   quiet_when_empty?: boolean;
-  /** JSON string array — see the column comment in schema/scheduled-task.ts. */
-  unattended_tools?: string;
+  /** Tool ids granted to unattended runs (a filter, never a grant; see automation-tools). */
+  unattended_tools?: string[];
 }
 
 export interface ScheduledTaskUpdateInput {
@@ -37,12 +42,10 @@ export interface ScheduledTaskUpdateInput {
   timezone?: string;
   max_steps?: number;
   enabled?: boolean;
-  notify_webhook?: string | null;
-  notify_email?: boolean;
-  notify_wecom?: boolean;
-  notify_feishu?: boolean;
+  /** Merged into the stored object: only the keys given change. */
+  notify?: Partial<AutomationNotify>;
   quiet_when_empty?: boolean;
-  unattended_tools?: string;
+  unattended_tools?: string[];
 }
 
 export class ScheduledTaskActiveRunError extends Error {
@@ -60,7 +63,7 @@ export class ScheduledTaskAdmissionError extends Error {
 }
 
 export interface ScheduledTaskRuntimeAdmissionInput {
-  task_id: number;
+  task_id: string;
   expected_user_id: string;
   expected_profile_id: string;
   expected_definition: Pick<
@@ -71,10 +74,7 @@ export interface ScheduledTaskRuntimeAdmissionInput {
     | 'timezone'
     | 'enabled'
     | 'max_steps'
-    | 'notify_webhook'
-    | 'notify_email'
-    | 'notify_wecom'
-    | 'notify_feishu'
+    | 'notify'
     | 'quiet_when_empty'
     | 'unattended_tools'
   >;
@@ -91,12 +91,38 @@ export interface ScheduledTaskRuntimeAdmissionResult {
 export interface ProjectScheduledTaskRuntimeOutcomeInput {
   runtime_run_id: string;
   runtime_version: number;
-  task_id: number;
+  task_id: string;
   owner_user_id: string;
   source_kind: string;
   status: 'succeeded' | 'failed' | 'canceled' | 'interrupted';
   scheduled_for: string;
   run_created_at: string;
+}
+
+/** A complete notify object: missing keys take their defaults, a blank webhook is none. */
+export function normalizeNotify(value: Partial<AutomationNotify> | null | undefined): AutomationNotify {
+  const webhook = typeof value?.webhook === 'string' && value.webhook.trim() ? value.webhook.trim() : null;
+  return {
+    webhook,
+    email: value?.email === true,
+    wecom: value?.wecom === true,
+    feishu: value?.feishu === true,
+  };
+}
+
+function sameNotify(left: AutomationNotify, right: AutomationNotify): boolean {
+  const a = normalizeNotify(left);
+  const b = normalizeNotify(right);
+  return a.webhook === b.webhook && a.email === b.email && a.wecom === b.wecom && a.feishu === b.feishu;
+}
+
+function sameToolList(
+  left: readonly string[] | null | undefined,
+  right: readonly string[] | null | undefined,
+): boolean {
+  const a = left ?? [];
+  const b = right ?? [];
+  return a.length === b.length && a.every((value, index) => value === b[index]);
 }
 
 export function createScheduledTaskService(db: Db) {
@@ -106,6 +132,7 @@ export function createScheduledTaskService(db: Db) {
       const [inserted] = await db
         .insert(scheduledTasks)
         .values({
+          id: newId('automation'),
           user_id: input.user_id,
           name: input.name,
           profile_id: input.profile_id ?? 'team',
@@ -114,12 +141,9 @@ export function createScheduledTaskService(db: Db) {
           timezone: input.timezone ?? 'UTC',
           max_steps: input.max_steps ?? 15,
           enabled: input.enabled ?? true,
-          notify_webhook: input.notify_webhook ?? null,
-          notify_email: input.notify_email ?? false,
-          notify_wecom: input.notify_wecom ?? false,
-          notify_feishu: input.notify_feishu ?? false,
+          notify: normalizeNotify(input.notify),
           quiet_when_empty: input.quiet_when_empty ?? false,
-          unattended_tools: input.unattended_tools ?? '[]',
+          unattended_tools: input.unattended_tools ?? [],
           created_at: now,
           updated_at: now,
         })
@@ -127,7 +151,7 @@ export function createScheduledTaskService(db: Db) {
       return inserted!;
     },
 
-    async getById(id: number): Promise<ScheduledTaskRow | undefined> {
+    async getById(id: string): Promise<ScheduledTaskRow | undefined> {
       const rows = await db.select().from(scheduledTasks).where(eq(scheduledTasks.id, id));
       return rows[0];
     },
@@ -151,7 +175,7 @@ export function createScheduledTaskService(db: Db) {
         .orderBy(desc(scheduledTasks.created_at));
     },
 
-    async update(id: number, updates: ScheduledTaskUpdateInput): Promise<ScheduledTaskRow | undefined> {
+    async update(id: string, updates: ScheduledTaskUpdateInput): Promise<ScheduledTaskRow | undefined> {
       const set: Record<string, unknown> = { updated_at: nowIso() };
       if (updates.name !== undefined) set.name = updates.name;
       if (updates.profile_id !== undefined) set.profile_id = updates.profile_id;
@@ -160,10 +184,15 @@ export function createScheduledTaskService(db: Db) {
       if (updates.timezone !== undefined) set.timezone = updates.timezone;
       if (updates.max_steps !== undefined) set.max_steps = updates.max_steps;
       if (updates.enabled !== undefined) set.enabled = updates.enabled;
-      if (updates.notify_webhook !== undefined) set.notify_webhook = updates.notify_webhook;
-      if (updates.notify_email !== undefined) set.notify_email = updates.notify_email;
-      if (updates.notify_wecom !== undefined) set.notify_wecom = updates.notify_wecom;
-      if (updates.notify_feishu !== undefined) set.notify_feishu = updates.notify_feishu;
+      if (updates.notify !== undefined) {
+        const [current] = await db
+          .select({ notify: scheduledTasks.notify })
+          .from(scheduledTasks)
+          .where(eq(scheduledTasks.id, id))
+          .limit(1);
+        if (!current) return undefined;
+        set.notify = normalizeNotify({ ...current.notify, ...updates.notify });
+      }
       if (updates.quiet_when_empty !== undefined) set.quiet_when_empty = updates.quiet_when_empty;
       if (updates.unattended_tools !== undefined) set.unattended_tools = updates.unattended_tools;
       if (updates.enabled === false) set.next_run_at = null;
@@ -172,7 +201,7 @@ export function createScheduledTaskService(db: Db) {
       return updated;
     },
 
-    async updateRunStatus(id: number, status: string, nextRunAt?: string | null): Promise<void> {
+    async updateRunStatus(id: string, status: string, nextRunAt?: string | null): Promise<void> {
       const set: Record<string, unknown> = {
         last_status: status,
         updated_at: nowIso(),
@@ -180,16 +209,12 @@ export function createScheduledTaskService(db: Db) {
       if (status === 'completed' || status === 'failed') {
         set.last_run_at = nowIso();
       }
-      if (status === 'completed') {
-        set.run_count = scheduledTasks.run_count;
-      }
       if (nextRunAt !== undefined) {
         set.next_run_at = nextRunAt;
       }
 
       // For run_count increment, use raw SQL
       if (status === 'completed') {
-        const { sql } = await import('drizzle-orm');
         await db
           .update(scheduledTasks)
           .set({
@@ -203,7 +228,7 @@ export function createScheduledTaskService(db: Db) {
     },
 
     /** Advance only the cron cursor without rewriting or recounting a terminal run. */
-    async updateNextRunAt(id: number, nextRunAt: string | null): Promise<void> {
+    async updateNextRunAt(id: string, nextRunAt: string | null): Promise<void> {
       await db
         .update(scheduledTasks)
         .set({ next_run_at: nextRunAt, updated_at: nowIso() })
@@ -314,15 +339,12 @@ export function createScheduledTaskService(db: Db) {
           task.timezone !== input.expected_definition.timezone ||
           task.enabled !== input.expected_definition.enabled ||
           task.max_steps !== input.expected_definition.max_steps ||
-          task.notify_webhook !== input.expected_definition.notify_webhook ||
-          task.notify_email !== input.expected_definition.notify_email ||
-          task.notify_wecom !== input.expected_definition.notify_wecom ||
-          task.notify_feishu !== input.expected_definition.notify_feishu ||
+          !sameNotify(task.notify, input.expected_definition.notify) ||
           task.quiet_when_empty !== input.expected_definition.quiet_when_empty ||
           // The granted tool set is part of the definition being executed: an
           // occurrence admitted against an older grant must not run with a
           // newer one (in either direction).
-          task.unattended_tools !== input.expected_definition.unattended_tools ||
+          !sameToolList(task.unattended_tools, input.expected_definition.unattended_tools) ||
           input.run.kind !== 'automation' ||
           input.run.owner_user_id !== input.expected_user_id ||
           input.run.source_kind !== `scheduled_task:${input.task_id}`
@@ -337,7 +359,7 @@ export function createScheduledTaskService(db: Db) {
       });
     },
 
-    async delete(id: number): Promise<boolean> {
+    async delete(id: string): Promise<boolean> {
       return db.transaction(async (tx) => {
         const [task] = await tx
           .select({ id: scheduledTasks.id })
@@ -365,7 +387,6 @@ export function createScheduledTaskService(db: Db) {
     },
 
     async countByUser(userId: string): Promise<number> {
-      const { sql } = await import('drizzle-orm');
       const rows = await db
         .select({ count: sql<number>`count(*)::int` })
         .from(scheduledTasks)

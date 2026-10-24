@@ -2,7 +2,7 @@
  * Read models for Administration › Services & pricing and Settings › Usage.
  *
  * Prices come from the two config files overridden by a super's prices, spend from the per-call facts
- * (llm_usage + service_usage, one month, indexed), budgets from the admin
+ * (model + service usage events, one month, indexed), budgets from the admin
  * limit rows resolved exactly as metering resolves them, with this month's
  * account balance next to each.
  */

@@ -61,7 +61,7 @@ jobs:
       # exercised on every run — a broken/incomplete chain fails CI here
       # instead of silently diverging from push.
       - name: Apply migrations to test database
-        run: npx drizzle-kit migrate
+        run: pnpm db:migrate
         env:
           DATABASE_URL: postgresql://greenhouse:greenhouse@localhost:5432/greenhouse_test
       - run: pnpm test
@@ -92,7 +92,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup
       - name: Apply migrations to test database
-        run: npx drizzle-kit migrate
+        run: pnpm db:migrate
         env:
           DATABASE_URL: postgresql://greenhouse:greenhouse@localhost:5432/greenhouse_test
       - name: Run live-server E2E suite
@@ -138,7 +138,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup
       - name: Apply migrations to test database
-        run: npx drizzle-kit migrate
+        run: pnpm db:migrate
       - name: Install Chromium
         run: pnpm exec playwright install --with-deps chromium
       - name: Run browser suite

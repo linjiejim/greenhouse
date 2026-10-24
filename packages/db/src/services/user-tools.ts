@@ -1,34 +1,40 @@
 /**
- * User tool service — user ↔ tool assignment (Super assigns tools to users) (PostgreSQL).
+ * Opt-in tool assignments — `user_grants` rows with kind = 'tool'.
  */
 
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { nowIso } from '@greenhouse/utils/date';
 
 import type { Db } from '../client.js';
-import { userTools } from '../schema/index.js';
+import { userGrants } from '../schema/index.js';
 
 export function createUserToolService(db: Db) {
   const service = {
-    /** Get tool IDs assigned to a user. */
     async getTools(userId: string): Promise<string[]> {
-      const rows = await db.select({ tool_id: userTools.tool_id }).from(userTools).where(eq(userTools.user_id, userId));
-      return rows.map((r: any) => r.tool_id);
+      const rows = await db
+        .select({ key: userGrants.key })
+        .from(userGrants)
+        .where(and(eq(userGrants.user_id, userId), eq(userGrants.kind, 'tool'), eq(userGrants.enabled, true)));
+      return rows.map((row) => row.key);
     },
 
-    /** Replace all tool assignments for a user. */
     async setTools(userId: string, toolIds: string[], assignedBy: string): Promise<void> {
       const now = nowIso();
-      await db.transaction(async (tx: any) => {
-        await tx.delete(userTools).where(eq(userTools.user_id, userId));
-        for (const toolId of toolIds) {
-          await tx.insert(userTools).values({
+      await db.transaction(async (tx) => {
+        await tx.delete(userGrants).where(and(eq(userGrants.user_id, userId), eq(userGrants.kind, 'tool')));
+        const unique = [...new Set(toolIds)];
+        if (unique.length === 0) return;
+        await tx.insert(userGrants).values(
+          unique.map((toolId) => ({
             user_id: userId,
-            tool_id: toolId,
-            assigned_by: assignedBy,
-            assigned_at: now,
-          });
-        }
+            kind: 'tool' as const,
+            key: toolId,
+            enabled: true,
+            granted_by: assignedBy,
+            created_at: now,
+            updated_at: now,
+          })),
+        );
       });
     },
   };

@@ -37,12 +37,11 @@ description: >-
 
 ### custom Agent（绝大多数情况的答案）
 
-- 存 `custom_profiles`（身份 / owner / 发布指针）+ `custom_profile_versions`（不可变可执行 manifest）
-- 引用形态 `custom:<id>@<version>`；会话、定时任务、Eval 创建时必须先 pin
+- 存 `run_profiles` 一行（完整当前配置；`version` 只是编辑计数，没有不可变版本表）
+- 引用形态 `custom:<id>@<version>`；会话、定时任务创建时先 pin，pin 一律解析为当前配置
 - `base_profile_id` **只能是预设之一**（`CUSTOM_BASE_PROFILE_IDS = PRESET_PROFILE_IDS = ['sprouty']`）；
   base **只**提供 `access.rich_output` 与 model fallback
-- **编辑即撤销原审查**：任何新版本把资产恢复为 `draft`，清空 published/reviewer 并停止共享；
-  只有 super 可发布 `pilot` / `verified`
+- 私有，除非 super 打开 `is_shared`（团队可用）；编辑不改变共享状态，没有审核 / 发布生命周期
 - 工具只能**收窄**（`profile.tools ∩ 用户有效工具`），永远放大不了权限
 - 用户面入口：`#/agents`（My Agents）
 

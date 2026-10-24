@@ -1,7 +1,7 @@
 /**
  * Boot-time backfill of segmented FTS tokens for knowledge documents.
  *
- * The `_tokens_*` columns arrived with empty defaults; rows that predate them
+ * The `search_a/b/c` columns default to empty; rows carried in without them
  * would never match a search until re-tokenized. Runs only when such rows
  * exist, never blocks boot, and only warns on failure — the CLI
  * (`pnpm cli knowledge reindex`) remains the manual path.

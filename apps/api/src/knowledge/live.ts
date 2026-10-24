@@ -9,7 +9,7 @@
  * Audience = who can see the document (knowledge/access.ts), before or after
  * the change: a team doc goes to every connected member (all sockets belong to
  * internal accounts); a private doc goes to its owner and the users it is
- * shared with, directly or through a group. The event carries ids only — the
+ * shared with. The event carries ids only — the
  * receiver refetches through the authenticated API, which re-checks access.
  */
 

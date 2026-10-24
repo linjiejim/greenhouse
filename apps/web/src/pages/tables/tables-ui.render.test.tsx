@@ -6,8 +6,8 @@ import { RecordDetailContent } from './record-detail-drawer';
 import { RecordRowActions } from './record-row-actions';
 
 const record: TableRecord = {
-  id: 42,
-  table_id: 7,
+  id: '42',
+  table_id: '7',
   values: { '1': 'Launch review', '2': 'planned' },
   computed_values: { '3': 'Launch review · Planned' },
   revision: 3,
@@ -20,13 +20,13 @@ const record: TableRecord = {
 
 const fields: TableField[] = [
   {
-    id: 1,
-    table_id: 7,
+    id: '1',
+    table_id: '7',
     name: 'Name',
     type: 'text',
     required: true,
     is_primary: true,
-    config: '{}',
+    config: {},
     position: 0,
     created_by: 'user-1',
     created_at: record.created_at,
@@ -34,13 +34,13 @@ const fields: TableField[] = [
     archived_at: null,
   },
   {
-    id: 2,
-    table_id: 7,
+    id: '2',
+    table_id: '7',
     name: 'Status',
     type: 'single_select',
     required: false,
     is_primary: false,
-    config: JSON.stringify({ options: [{ id: 'planned', label: 'Planned' }] }),
+    config: { options: [{ id: 'planned', label: 'Planned' }] },
     position: 1,
     created_by: 'user-1',
     created_at: record.created_at,
@@ -48,13 +48,13 @@ const fields: TableField[] = [
     archived_at: null,
   },
   {
-    id: 3,
-    table_id: 7,
+    id: '3',
+    table_id: '7',
     name: 'Launch label',
     type: 'formula',
     required: false,
     is_primary: false,
-    config: '{}',
+    config: {},
     position: 2,
     created_by: 'user-1',
     created_at: record.created_at,
@@ -65,13 +65,13 @@ const fields: TableField[] = [
 
 const views: TableView[] = [
   {
-    id: 9,
-    table_id: 7,
+    id: '9',
+    table_id: '7',
     name: 'Launch work',
     type: 'grid',
     scope: 'shared',
     owner_id: null,
-    config: '{}',
+    config: {},
     position: 0,
     revision: 1,
     created_by: 'user-1',
@@ -96,7 +96,6 @@ describe('Tables compact grid controls', () => {
         onOpenFilters={vi.fn()}
         onSaveView={vi.fn()}
         onOpenRecycleBin={vi.fn()}
-        onOpenForms={vi.fn()}
         onAddField={vi.fn()}
         onAddRecord={vi.fn()}
       />,
@@ -105,10 +104,9 @@ describe('Tables compact grid controls', () => {
     expect(html).toContain('aria-label="Filter records · 2"');
     expect(html).toContain('aria-label="Save view"');
     expect(html).toContain('aria-label="Recycle bin"');
-    expect(html).toContain('aria-label="Manage forms"');
     expect(html).toContain('aria-label="Add field"');
     expect(html).toContain('aria-label="Add record"');
-    expect(html.match(/bottom-full mb-1\.5/g)).toHaveLength(6);
+    expect(html.match(/bottom-full mb-1\.5/g)).toHaveLength(5);
     expect(html).toContain('bg-primary-500');
   });
 

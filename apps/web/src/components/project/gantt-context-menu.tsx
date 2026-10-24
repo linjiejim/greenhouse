@@ -12,7 +12,7 @@ import { parseDeps } from './gantt-utils';
 import { useT } from '../../lib/i18n';
 
 export interface GanttContextMenuProject {
-  id: number;
+  id: string;
   title: string;
   color: string;
 }
@@ -62,8 +62,8 @@ export function GanttContextMenu({
   const otherProjects = projects?.filter((p) => p.id !== task.project_id) || [];
 
   // Available tasks for setting as predecessor (exclude self and descendants)
-  const descendantIds = new Set<number>();
-  function collectDescendants(parentId: number) {
+  const descendantIds = new Set<string>();
+  function collectDescendants(parentId: string) {
     for (const t of allTasks || []) {
       if (t.parent_id === parentId) {
         descendantIds.add(t.id);

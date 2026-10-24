@@ -7,7 +7,7 @@
  *   - reserve before any provider I/O (reserveUserTokenBudget, client
  *     `gateway`, service `llm`, the member as owner, idempotency key
  *     `gateway:<keyId>:<uuid>`, `gateway_key_id` in the reservation metadata
- *     and on the llm_usage fact);
+ *     and on the model usage event);
  *   - settle from the provider's usage (non-stream body, or the stream's final
  *     usage event);
  *   - release on a definite refusal: an upstream 4xx, or a connection that was

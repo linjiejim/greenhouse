@@ -1,0 +1,5 @@
+{"user_id":"usr_maya","kind":"feature","key":"memory","enabled":true,"config":{},"granted_by":"usr_maya","created_at":"2026-05-01T09:00:00Z","updated_at":"2026-05-01T09:00:00Z"}
+{"user_id":"usr_leo","kind":"feature","key":"memory","enabled":true,"config":{},"granted_by":"usr_maya","created_at":"2026-05-01T09:00:00Z","updated_at":"2026-05-01T09:00:00Z"}
+{"user_id":"usr_sam","kind":"feature","key":"memory","enabled":true,"config":{},"granted_by":"usr_maya","created_at":"2026-05-15T10:00:00Z","updated_at":"2026-05-15T10:00:00Z"}
+{"user_id":"usr_priya","kind":"feature","key":"memory","enabled":true,"config":{},"granted_by":"usr_maya","created_at":"2026-05-05T10:00:00Z","updated_at":"2026-05-05T10:00:00Z"}
+{"user_id":"usr_leo","kind":"feature","key":"sync","enabled":true,"config":{},"granted_by":"usr_maya","created_at":"2026-06-01T09:00:00Z","updated_at":"2026-06-01T09:00:00Z"}

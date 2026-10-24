@@ -7,11 +7,14 @@
  */
 
 import { sql } from 'drizzle-orm';
+import { getTableName, isTable } from 'drizzle-orm';
+import * as schema from './schema/index.js';
 import { buildExtensionServices, extensionResetTables } from './extensions.js';
 import { createExtensionMigrationRunner } from './extension-migrations.js';
 import { createCoreMigrationBaseline } from './core-migrations.js';
 
 import { createDbClient, type Db, type DbClient } from './client.js';
+import { refusalFor } from './migrate.js';
 import { createSessionService } from './services/sessions.js';
 import { createLlmCallService } from './services/llm-calls.js';
 import { createUsageService } from './services/usage.js';
@@ -34,8 +37,6 @@ import { createCustomProfileService } from './services/custom-profiles.js';
 import { createSessionPinService } from './services/session-pins.js';
 import { createKnowledgeBaseService } from './services/knowledge-base.js';
 import { createKnowledgeShareService } from './services/knowledge-shares.js';
-import { createKbCommentService } from './services/kb-comments.js';
-import { createGroupService } from './services/groups.js';
 import { createUserFeatureService } from './services/user-features.js';
 import { createUserMemoryService } from './services/user-memories.js';
 import { createToolFrictionService } from './services/tool-frictions.js';
@@ -56,6 +57,15 @@ import { createReportTemplateService } from './services/report-templates.js';
 import { createMemberComputerService } from './services/member-computers.js';
 import { createWorkspaceSettingService } from './services/workspace-settings.js';
 import { createOAuthLoginStateService, createRateLimitService } from './services/security-state.js';
+import { createRetentionService } from './services/retention.js';
+
+/** Every table the core schema defines, except the migration bookkeeping it must keep. */
+function coreTableNames(): string[] {
+  return Object.values(schema)
+    .filter((value) => isTable(value))
+    .map((table) => getTableName(table as Parameters<typeof getTableName>[0]))
+    .filter((name) => name !== 'extension_migrations');
+}
 
 function createDatabaseProvider(db: Db, client: DbClient['client'] | null) {
   return {
@@ -87,8 +97,6 @@ function createDatabaseProvider(db: Db, client: DbClient['client'] | null) {
     sessionPins: createSessionPinService(db),
     knowledgeBase: createKnowledgeBaseService(db),
     knowledgeShares: createKnowledgeShareService(db),
-    kbComments: createKbCommentService(db),
-    groups: createGroupService(db),
     userFeatures: createUserFeatureService(db),
     userMemories: createUserMemoryService(db),
     toolFrictions: createToolFrictionService(db),
@@ -109,6 +117,7 @@ function createDatabaseProvider(db: Db, client: DbClient['client'] | null) {
     memberComputers: createMemberComputerService(db),
     workspaceSettings: createWorkspaceSettingService(db),
     rateLimits: createRateLimitService(db),
+    retention: createRetentionService(db),
     oauthLoginStates: createOAuthLoginStateService(db),
 
     /** Health check — verifies DB connection is alive. */
@@ -130,16 +139,22 @@ function createDatabaseProvider(db: Db, client: DbClient['client'] | null) {
 
     async initSchema(): Promise<void> {
       // Schema DDL is owned EXCLUSIVELY by the migration chain (drizzle/*.sql,
-      // applied via `npx drizzle-kit migrate` by CI and the deploy script).
-      // This method only fail-fasts on an unmigrated database — it must never
-      // create or alter anything. The old per-boot "shadow migration" (~640
-      // lines of safeDDL CREATE/ALTER/backfills) was a second source of truth
-      // that had already drifted from the real chain; removed 2026-06-10
-      // (audit defect #2).
-      try {
-        await db.execute(sql`SELECT 1 FROM users LIMIT 0`);
-      } catch {
-        throw new Error('Database tables not found. Run `npx drizzle-kit migrate` to apply the schema.');
+      // applied by `pnpm db:migrate`). This method only fail-fasts — on an
+      // unmigrated database, and on a 1.x / 2.x database that 3.0 must never
+      // run against — and never creates or alters anything.
+      const [shape] = (await db.execute(sql`
+        SELECT to_regclass('public.users')::text AS users,
+               to_regclass('public.members')::text AS members,
+               to_regclass('public.sessions')::text AS sessions,
+               to_regclass('public.conversations')::text AS conversations`)) as unknown as Array<
+        Record<'users' | 'members' | 'sessions' | 'conversations', string | null>
+      >;
+      if (shape?.users && shape.sessions && !shape.conversations) {
+        throw new Error(refusalFor({ kind: 'v1', applied: [], latest: null, current: false })!);
+      }
+      if (shape?.members && !shape.users) throw new Error(refusalFor({ kind: 'v2' })!);
+      if (!shape?.users || !shape.conversations) {
+        throw new Error('Database tables not found. Run `pnpm db:migrate` to apply the schema.');
       }
     },
 
@@ -149,122 +164,10 @@ function createDatabaseProvider(db: Db, client: DbClient['client'] | null) {
       // client, so repeating this whole-database TRUNCATE would only add work.
       if (!client) return;
 
-      // TRUNCATE is much faster than DROP+CREATE for tests.
-      // Filter to only tables that exist in the current database.
-      const tables = [
-        ...extensionResetTables(),
-        'workspace_settings',
-        'usage_counters',
-        'rate_limit_buckets',
-        'oauth_login_states',
-        'notification_delivery_attempts',
-        'notifications',
-        'push_devices',
-        'gateway_keys',
-        'member_computers',
-        'report_templates',
-        'runtime_outbox',
-        'runtime_events',
-        'runtime_interrupts',
-        'runtime_artifacts',
-        'runtime_tool_calls',
-        'runtime_steps',
-        'runtime_runs',
-        'service_usage',
-        'usage_budget_limits',
-        'usage_price_overrides',
-        'usage_budget_ledger',
-        'usage_budget_reservations',
-        'usage_budget_accounts',
-        'agent_run_outbox',
-        'agent_run_approvals',
-        'agent_artifacts',
-        'agent_run_events',
-        'agent_runs',
-        'agent_workspaces',
-        'table_dashboard_widgets',
-        'table_dashboards',
-        'table_notifications',
-        'table_automation_runs',
-        'table_automation_outbox',
-        'table_automation_rules',
-        'table_recompute_jobs',
-        'table_record_attachments',
-        'table_record_links',
-        'table_records',
-        'table_forms',
-        'table_views',
-        'table_field_dependencies',
-        'table_schema_versions',
-        'table_fields',
-        'table_tables',
-        'table_base_members',
-        'table_bases',
-        'workflow_gates',
-        'workflow_node_runs',
-        'workflow_runs',
-        'workflows',
-        'platform_oauth_tokens',
-        'platform_oauth_authorization_codes',
-        'platform_oauth_grants',
-        'platform_oauth_clients',
-        'platform_audit_events',
-        'platform_app_releases',
-        'platform_user_workbench_preferences',
-        'platform_user_entity_policy_overrides',
-        'platform_user_capability_overrides',
-        'platform_role_entity_policies',
-        'platform_role_capabilities',
-        'platform_role_bindings',
-        'platform_roles',
-        'platform_organizations',
-        'agent_skill_versions',
-        'agent_skills',
-        'drive_files',
-        'drive_folders',
-        'email_send_log',
-        'email_accounts',
-        'llm_calls',
-        'chat_artifact_receipts',
-        'user_memories',
-        'tool_frictions',
-        'user_features',
-        'session_share_reads',
-        'group_members',
-        'user_groups',
-        'knowledge_base_shares',
-        'knowledge_base_versions',
-        'knowledge_base',
-        'session_group_members',
-        'session_groups',
-        'session_tag_links',
-        'session_tags',
-        'session_shares',
-        'scheduled_tasks',
-        'custom_profiles',
-        'user_provider_tokens',
-        'user_prompts',
-        'api_audit_log',
-        'api_clients',
-        'project_activities',
-        'task_comments',
-        'project_members',
-        'tasks',
-        'projects',
-        'feature_requests',
-        'account_password_links',
-        'refresh_tokens',
-        'user_tools',
-        'users',
-        'llm_usage',
-        'chat_eval_results',
-        'eval_results',
-        'eval_runs',
-        'eval_datasets',
-        'messages',
-        'chat_files',
-        'sessions',
-      ];
+      // TRUNCATE is much faster than DROP+CREATE for tests. Every core table
+      // (derived from the schema, so a new table can't be forgotten) plus the
+      // tables extensions registered; filtered to what exists in this database.
+      const tables = [...extensionResetTables(), ...coreTableNames()];
       const rows = (await db.execute(sql`SELECT tablename FROM pg_tables WHERE schemaname = 'public'`)) as any[];
       const existingSet = new Set((rows as any[]).map((r: any) => r.tablename));
       const toTruncate = tables.filter((t) => existingSet.has(t));

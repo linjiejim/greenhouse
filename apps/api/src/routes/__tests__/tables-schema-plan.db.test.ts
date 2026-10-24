@@ -65,7 +65,7 @@ async function createBase(app: TestApp, name: string) {
     body: JSON.stringify({ name, visibility: 'private' }),
   });
   expect(response.status).toBe(201);
-  return (await response.json()) as { base: { id: number }; schema: { table: { id: number } } };
+  return (await response.json()) as { base: { id: string }; schema: { table: { id: string } } };
 }
 
 async function executeTool(tool: unknown, input: unknown): Promise<unknown> {
@@ -116,7 +116,7 @@ describe('Tables schema plan apply', () => {
     expect(body.baseId).toBeDefined();
 
     const workspace = await app.request(`/api/tables/bases/${body.baseId}`, { headers: { 'x-test-user': owner.id } });
-    const loaded = (await workspace.json()) as { tables: Array<{ id: number; name: string }> };
+    const loaded = (await workspace.json()) as { tables: Array<{ id: string; name: string }> };
     // The Base's mandatory first table was NAMED and used, not left as a stray "Table 1".
     expect(loaded.tables.map((table) => table.name).sort()).toEqual(['Leads', 'Notes']);
 

@@ -32,9 +32,14 @@ tokens.)
 - Update `apps/api/src/profiles/agent-profiles.md` when agent profiles change.
 - Update this file when project structure, conventions, or domain rules change.
 - DB schema changes require a migration script and an update to
-  [packages/db/src/AGENTS.md](./packages/db/src/AGENTS.md). The source of truth is `migrate`:
-  edit schema → `drizzle-kit generate` → review SQL → commit → CI/deploy applies `migrate`.
-  **Persistent / shared DBs: `migrate` only, never `push`** (`push` is for throwaway local DBs).
+  [packages/db/src/AGENTS.md](./packages/db/src/AGENTS.md) and
+  [db-schema.md](./packages/db/src/db-schema.md). The source of truth is the migration chain,
+  which starts at the 3.0 baseline `drizzle/0000_v3_baseline.sql` (the 1.x chain is archived in
+  `drizzle/archive-1x/` for version detection only): edit schema → `pnpm drizzle-kit generate`
+  → review SQL → commit → CI/deploy applies `pnpm db:migrate`.
+  **Persistent / shared DBs: `pnpm db:migrate` only, never `push`** (`push` is for throwaway
+  local DBs). `pnpm db:migrate` and the API boot refuse 1.x and 2.x databases; a 1.x database
+  moves to 3.0 only through `pnpm cli migrate-from-1x` into a new database.
 
 ### Delete & reuse discipline (anti-entropy)
 
@@ -48,13 +53,11 @@ what exists." These rules are as binding as the "add" rules:
 - **Check for an existing implementation first.** Before adding a "second" retrieval / chart /
   editor / etc., register in the relevant AGENTS.md why the existing one can't be reused or
   extended. Parallel implementations without a recorded reason are not accepted.
-  - Registered: **the Home workbench does not reuse the `table_dashboard_widgets` storage** —
-    that table is Base-scoped with a single-table data source; the workbench is user-scoped
-    and spans every tool. It reuses the *components and query semantics* (`ChartBlock`,
+  - Registered: **the Home workbench reuses the *components and query semantics*** (`ChartBlock`,
     `TableQuery` filter AST, "one card = one persisted query") and stores its config in
-    `platform_user_workbench_preferences` (zero migrations). Conversely the drag grid
-    `components/workbench/widget-grid.tsx` is shared by Home and Tables dashboards — the
-    recorded reason for `react-grid-layout`.
+    `users.preferences.workbench`. Its drag grid `components/workbench/widget-grid.tsx`
+    (Home only since Tables dashboards were removed in 3.0) is the recorded reason for
+    `react-grid-layout`: collision handling and vertical compaction.
   - Registered: **mermaid in chat uses the third-party `mermaid` library rather than a
     hand-drawn SVG renderer** — chat mermaid is read-only rendering of arbitrary diagram types,
     which no in-house drawing code could match (the interactive workflow SVG DAG it was once
@@ -77,8 +80,8 @@ what exists." These rules are as binding as the "add" rules:
   files.
 - **CI gate**: `.github/workflows/ci.yml` runs lint → typecheck → test → **e2e** → **e2e-ui** →
   **secret-scan** on `main` and every PR (shared pnpm/Node setup lives in `.github/actions/setup`).
-  The test/e2e/e2e-ui jobs build the CI database via `migrate` (not push) so the whole migration
-  chain is exercised on every run.
+  The test/e2e/e2e-ui jobs build the CI database via `pnpm db:migrate` (not push) so the whole
+  migration chain is exercised on every run.
 - **Secret scanning**: the `secret-scan` job runs [gitleaks](https://github.com/gitleaks/gitleaks)
   over incoming commits. Rules + allowlist live in `.gitleaks.toml`. Never commit real
   credentials; if the scanner flags a **confirmed** non-secret (a token alphabet, a test JWT
@@ -121,12 +124,14 @@ what exists." These rules are as binding as the "add" rules:
   + web together, shifts ports by +10 on conflict, writes every log under `.run-dev/logs/`,
   and `stop` tears it all down. **A git worktree automatically gets its own database
   `greenhouse_wt_<dir>`** (cloned from the local `greenhouse` DB as a template, then
-  migrated) — never run migrations against the main DB from a worktree, and let the engine
-  arbitrate port conflicts instead of hand-killing processes.
+  migrated; when the main DB is still 1.x it starts empty instead — carry data into it with
+  `pnpm migrate-from-1x`) — never run migrations against the main DB from a worktree, and let
+  the engine arbitrate port conflicts instead of hand-killing processes.
 
 ## Deploy (one-command Docker)
 
-`docker-compose.yml` is the supported self-host path: Postgres + a one-shot `migrate` job + the
+`docker-compose.yml` is the supported self-host path: Postgres + a one-shot `migrate` job
+(`db migrate`, i.e. `pnpm db:migrate`; it refuses a 1.x / 2.x database) + the
 API (which serves the SPA) as a single self-contained image (`Dockerfile`, Debian base — the
 `compute` tool's isolated-vm native addon needs glibc; `NODE_ENV=production` is baked in so the
 fail-closed auth guard is always active).
@@ -146,6 +151,11 @@ For local dev you can start only Postgres from the same file: `docker compose up
 instead of building from source — the pull-based upgrade path for self-hosters. Keep the two
 compose files' service topology in sync.
 
+Upgrading a 1.x install to 3.0 is not an in-place migration: create a new empty database and
+run `migrate-from-1x --from <1.6 url> --to <new url>` (`--dry-run` first) through the image's
+`migrate` service; README.md → "Upgrading from 1.x to 3.0" has the commands. The old
+database is only read and stays the rollback path.
+
 ### Example dataset (`pnpm seed`)
 
 `data/examples/` holds a de-identified reference dataset (fictional company "Greenhouse") —
@@ -155,8 +165,9 @@ prints the choices: `--reset` (wipes all rows first — gated behind typing the 
 `--yes`) or `--keep` (load on top). When you add/rename a table or change a column that the
 dataset populates, update the matching `data/examples/<table>.json` and its
 [`README.md`](data/examples/README.md), and add the table to `LOAD_ORDER` (FK-safe order).
-Custom agents load through `db.customProfiles.create()` so they get their immutable v1.
-Auth secrets are never baked in: `users.json` carries a plaintext `password` hashed at load;
+Files use the 3.0 table names (`conversations`, `conversation_shares`,
+`conversation_share_reads`, `kb_documents`, `run_profiles`, `user_grants`, `audit_events`, …);
+ids are text and jsonb columns are authored as native arrays / objects. Auth secrets are never baked in: `users.json` carries a plaintext `password` hashed at load;
 `email_accounts` (instance-secret-encrypted) are not seeded.
 
 ## Releasing & versioning
@@ -207,7 +218,7 @@ greenhouse/
 │   │   └── src/
 │   │       ├── routes/       # HTTP routes (one file per resource)
 │   │       ├── chat/         # chat turn pipeline: turn, runtime, persist, runs, vision, ambient context
-│   │       ├── knowledge/    # knowledge base domain: access, search, folders, sections, export, notify, backfill
+│   │       ├── knowledge/    # knowledge base domain: access, search, folders, sections, export, backfill
 │   │       ├── sessions/     # session access rules + creation
 │   │       ├── drive/        # drive access + upload policy
 │   │       ├── auth/         # token, middleware, password, crypto, features, public paths
@@ -222,6 +233,7 @@ greenhouse/
 │   │       ├── llm/          # completion / title / memory / usage budgets / media provider
 │   │       ├── profiles/     # agent profile loader + access rules, the YAML presets, agent-profiles.md
 │   │       ├── scheduler/    # cron scheduler + executor (automations)
+│   │       ├── upkeep/       # daily retention cleanup (rules in packages/db/src/services/retention.ts)
 │   │       ├── runtime/      # unified runtime kernel: runs, steps, interrupts, outbox, read models
 │   │       ├── trusted-execution/ # deployment kill switches for the runtime layers
 │   │       ├── notifications/# notification center + durable delivery
@@ -242,13 +254,15 @@ greenhouse/
 │   ├── platform-kernel/  # Manifest v2, ActorContext, authorization, guarded registry (no DB/Hono/React)
 │   ├── types/            # shared types (FEATURE_FLAGS, WORKSPACE_SETTINGS, entity links, workbench…)
 │   ├── utils/            # shared helpers (date, json, concurrency, logger, crypto, semver, webhooks)
-│   ├── db/               # database layer — Drizzle schema + domain services (types inferred)
+│   ├── db/               # database layer — Drizzle schema + domain services (types inferred),
+│   │                     #   migrate / version detection, carry/ (migrate-from-1x), db-schema.md
 │   ├── knowledge-editor/ # Tiptap schema + server Markdown↔Tiptap JSON
 │   ├── crud/             # low-code CRUD framework (defineCrud + CrudPage / createCrudRoutes)
 │   ├── ui/               # shared React UI: the plant-avatar renderer (SVG builder + motion + <PlantAvatar>)
 │   └── contract/         # typed API contract — re-exports apps/api's AppType + hc (web client)
 ├── skillhub/             # first-party skill packs (synced into the Skill Center on boot)
-├── drizzle/              # migration files (single source of truth for the schema)
+├── drizzle/              # migration files (single source of truth): 0000_v3_baseline + later;
+│                         #   archive-1x/ = the 1.x chain, read only for version detection
 ├── scripts/              # gen-secrets, backup-db, run-dev, e2e-ci, capture-screens, …
 ├── tests/                # unit / db / e2e (API, HTTP) / e2e-ui (Playwright)
 ├── pnpm-workspace.yaml
@@ -320,11 +334,12 @@ greenhouse/
   - **Adopting an existing database** (an instance moving onto this codebase): `pnpm cli db baseline`
     records the core chain (drizzle's own journal, identical hashes) and every enabled extension's
     migrations as applied without executing them. Always `--dry-run` first and compare against
-    `drizzle-kit generate` output. `--through` stops short of the end of a chain
-    (`--through 0006_x,crm/0001_baseline.sql`), so a migration written specifically to finish
-    the adoption still runs instead of being recorded away.
+    `drizzle-kit generate` output. `--through` stops short of the end of a chain, so a migration
+    written specifically to finish the adoption still runs instead of being recorded away.
+    It is not for 1.x databases: 1.x data moves through `migrate-from-1x` into a new database,
+    which copies extension tables and `extension_migrations` verbatim.
   - A database no server has booted against (a fresh test database) gets the core chain from
-    `drizzle-kit migrate` and the extension lane from
+    `pnpm db:migrate` and the extension lane from
     `DATABASE_URL=… pnpm tsx scripts/apply-ext-migrations.mjs`.
 - **Client stations**: `clients.stations` (`multi` | `single` + `defaults`) describes how client
   builds treat servers. Since the browser extension (its build-time reader) was removed in 1.5,
@@ -390,7 +405,8 @@ per-user by a super in Settings → Users → (user) → Permissions.
 - **Registry (single source)**: `FEATURE_FLAGS` in `packages/types/src/features.ts`
   (`{ key, label, description, defaultEnabled? }`). Today: `memory`, `tables` (both
   `defaultEnabled: true` = opt-out). Stored rows of retired flags (`cloud-agent`) are ignored.
-- **Storage**: `user_features` table (`user_id × feature`, `enabled` boolean).
+- **Storage**: `user_grants` rows with `kind='feature'` (`user_id × key`, `enabled` boolean);
+  opt-in tools are `kind='tool'` rows in the same table.
 - **Resolution** (`resolveUserFeatures` in `apps/api/src/auth/features.ts`): `super → all on`;
   explicit row → `row.enabled`; no row → `flag.defaultEnabled`.
 - **Frontend**: `/api/auth/me` returns resolved `user.features`; UI gates with
@@ -416,19 +432,22 @@ dialog (`apps/web/src/pages/administration/user-permissions-modal.tsx`) renders 
 
 - `@greenhouse/platform-kernel` is the base for applications: Manifest v2, ActorContext,
   capability / entity / field authorization and a guarded registry. The API host
-  (`apps/api/src/platform/`) persists organizations, roles, bindings, user allow/deny,
-  entity policies, app releases, workbench preferences and action audit in `db.platform`;
-  OAuth state lives in `db.platformOAuth`.
-- Precedence is fixed: **user deny > user allow > role allow > default deny**; roles never
-  store denies. Capabilities are `<app>.<module>.<action>` with exact, `*` and trailing
+  (`apps/api/src/platform/`) persists roles, role members, role capabilities, role entity
+  policies and action audit (`audit_events`) in `db.platform`, plus the workbench layout in
+  `users.preferences`; OAuth state lives in `db.platformOAuth`. Single organization: there is
+  no organizations table or `org_id`; `ActorContext.orgId` stays and the host passes
+  `'default'`.
+- Precedence is fixed: **role allow > default deny**. 3.0 stores no per-user allow/deny
+  overrides (the kernel still accepts them; the host passes none) and roles never store denies.
+  To narrow one member, move them to a narrower role (tests: `tests/helpers/restricted-role.ts`). Capabilities are `<app>.<module>.<action>` with exact, `*` and trailing
   wildcard matching.
 - Manifests must be JSON-serializable — no handlers, DB clients, components or closures;
   handlers are registered separately and must match actions one-to-one.
 - ⚠️ **Any change to a manifest's serialized form must bump its `version`** (even a key
-  reorder). `publishAppRelease` compares the hash per `<app>@<version>` at boot and throws on
-  mismatch — the API won't start on an already-deployed database. The golden-hash test in
-  `apps/api/src/platform/__tests__/manifest-hash.test.ts` guards this: when it goes red, bump
-  the version and update the hash in the same commit.
+  reorder): clients, extensions and audit summaries read `<app>@<version>` as a promise about
+  what the app declares. App releases are no longer stored, so nothing fails at boot; the
+  golden-hash test in `apps/api/src/platform/__tests__/manifest-hash.test.ts` is the guard —
+  when it goes red, bump the version and update the hash in the same commit.
 - `runtime.dispatch()` is the only entry for protected actions: capability → record/field
   policy → handler → audit. HTTP, chat tools, the agent proxy and MCP only adapt protocol.
 - Projects, Knowledge and Tables are registered applications. New applications start from
@@ -505,7 +524,7 @@ is parsed; the generic OpenAI client drops both (that is how auto-titles went bl
   protected roles and baseline policies; after that every test is isolated by rollback.
   Create internal test users with `tests/helpers/internal-user.ts`.
 - Every test builds its own fixtures and asserts on ids returned by `create`; never rely on
-  fixed serial ids (sequences don't roll back).
+  fixed ids (new ids are prefixed ULIDs).
 - Set `TEST_DATABASE_URL` for every local DB test run (parallel worktrees use
   `.../greenhouse_test_<slug>`); without it the run fails, only CI defaults to
   `localhost:5432/greenhouse_test`. The safety check only accepts loopback targets whose name

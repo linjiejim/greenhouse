@@ -1,24 +1,23 @@
 /**
- * KnowledgeShareDialog — share a PRIVATE knowledge doc with specific people or
- * groups, at reader or editor level. Owner-only (the page gates the entry point).
+ * KnowledgeShareDialog — share a PRIVATE knowledge doc with specific people, at
+ * reader or editor level. Owner-only (the page gates the entry point).
  *
- * Mirrors the session ShareDialog but adds role + group targets, matching the
- * knowledge_base_shares model (shared_with = user_id | 'group:<id>').
+ * Mirrors the session ShareDialog but adds a role, matching the
+ * `shares` model (one kb_document grant per user).
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { Dialog, Button, Input, Spinner, Badge, Select, toast } from '../ui';
-import { Share2, X, Users, Check, Lock } from '../../lib/icons';
+import { Share2, X, Check, Lock } from '../../lib/icons';
 import { fetchShareableUsers } from '../../lib/api';
-import { listGroups } from '../../lib/api/groups';
 import { listKnowledgeShares, shareKnowledgeDoc, revokeKnowledgeShare } from '../../lib/api/knowledge';
 import { useT } from '../../lib/i18n';
-import type { ShareableUser, UserGroup, KnowledgeShare } from '@greenhouse/types/api';
+import type { ShareableUser, KnowledgeShare } from '@greenhouse/types/api';
 
 interface KnowledgeShareDialogProps {
   open: boolean;
   onClose: () => void;
-  docId: number;
+  docId: string;
   docTitle: string;
   onChanged?: () => void;
 }
@@ -26,10 +25,8 @@ interface KnowledgeShareDialogProps {
 export function KnowledgeShareDialog({ open, onClose, docId, docTitle, onChanged }: KnowledgeShareDialogProps) {
   const t = useT();
   const [users, setUsers] = useState<ShareableUser[]>([]);
-  const [groups, setGroups] = useState<UserGroup[]>([]);
   const [shares, setShares] = useState<KnowledgeShare[]>([]);
   const [selectedUsers, setSelectedUsers] = useState<Set<string>>(new Set());
-  const [selectedGroups, setSelectedGroups] = useState<Set<number>>(new Set());
   const [role, setRole] = useState<'reader' | 'editor'>('reader');
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
@@ -45,13 +42,11 @@ export function KnowledgeShareDialog({ open, onClose, docId, docTitle, onChanged
     if (!open) return;
     setLoading(true);
     setSelectedUsers(new Set());
-    setSelectedGroups(new Set());
     setRole('reader');
     setSearch('');
-    Promise.all([fetchShareableUsers(), listGroups(), listKnowledgeShares(docId)])
-      .then(([u, g, s]) => {
+    Promise.all([fetchShareableUsers(), listKnowledgeShares(docId)])
+      .then(([u, s]) => {
         setUsers(u);
-        setGroups(g);
         setShares(s);
       })
       .catch(() => toast(t('knowledge.loadShareFailed'), 'error'))
@@ -61,17 +56,15 @@ export function KnowledgeShareDialog({ open, onClose, docId, docTitle, onChanged
   const sharedTargets = new Set(shares.map((s) => s.target));
 
   const handleShare = async () => {
-    if (selectedUsers.size === 0 && selectedGroups.size === 0) return;
+    if (selectedUsers.size === 0) return;
     setSubmitting(true);
     try {
       await shareKnowledgeDoc(docId, {
-        user_ids: selectedUsers.size > 0 ? Array.from(selectedUsers) : undefined,
-        group_ids: selectedGroups.size > 0 ? Array.from(selectedGroups) : undefined,
+        user_ids: Array.from(selectedUsers),
         role,
       });
       toast(t('knowledge.shareSuccess'), 'success');
       setSelectedUsers(new Set());
-      setSelectedGroups(new Set());
       reloadShares();
       onChanged?.();
     } catch (err) {
@@ -127,10 +120,7 @@ export function KnowledgeShareDialog({ open, onClose, docId, docTitle, onChanged
               {shares.map((s) => (
                 <div key={s.target} className="flex items-center justify-between py-1">
                   <div className="flex items-center gap-2 min-w-0">
-                    <Badge variant={s.kind === 'group' ? 'secondary' : 'default'}>
-                      {s.kind === 'group' && <Users size={10} className="mr-1" />}
-                      {s.name}
-                    </Badge>
+                    <Badge variant="default">{s.name}</Badge>
                     <span className="text-[10px] text-fg-faint">
                       {s.role === 'editor' ? t('knowledge.editable') : t('knowledge.readOnly')}
                     </span>
@@ -155,38 +145,6 @@ export function KnowledgeShareDialog({ open, onClose, docId, docTitle, onChanged
               <option value="editor">{t('knowledge.roleEditor')}</option>
             </Select>
           </div>
-
-          {/* Groups */}
-          {groups.length > 0 && (
-            <div>
-              <span className="text-xs font-medium text-fg-muted">{t('knowledge.groups')}</span>
-              <div className="mt-1 flex flex-wrap gap-1.5">
-                {groups.map((g) => {
-                  const target = `group:${g.id}`;
-                  const already = sharedTargets.has(target);
-                  const selected = selectedGroups.has(g.id);
-                  return (
-                    <button
-                      key={g.id}
-                      disabled={already}
-                      onClick={() => toggle(selectedGroups, g.id, setSelectedGroups)}
-                      className={`text-xs px-2 py-1 rounded-full border transition-colors flex items-center gap-1 ${
-                        already
-                          ? 'opacity-40 cursor-default border-edge'
-                          : selected
-                            ? 'bg-primary-subtle border-primary-300 text-primary-fg-strong'
-                            : 'border-edge hover:bg-surface-muted'
-                      }`}
-                    >
-                      <Users size={11} />
-                      {g.name}
-                      {g.member_count !== undefined && <span className="text-fg-faint">({g.member_count})</span>}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          )}
 
           {/* Users */}
           <div>
@@ -234,10 +192,7 @@ export function KnowledgeShareDialog({ open, onClose, docId, docTitle, onChanged
             <Button variant="ghost" onClick={onClose}>
               {t('common.close')}
             </Button>
-            <Button
-              onClick={handleShare}
-              disabled={submitting || (selectedUsers.size === 0 && selectedGroups.size === 0)}
-            >
+            <Button onClick={handleShare} disabled={submitting || selectedUsers.size === 0}>
               {submitting ? <Spinner className="w-4 h-4" /> : <Share2 size={14} />}
               {t('knowledge.share')}
             </Button>

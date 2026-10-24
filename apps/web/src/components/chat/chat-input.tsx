@@ -185,7 +185,7 @@ export function ChatInput({
   const attachmentsUploading = pendingAttachments.some((a) => a.uploading);
   const inputAreaRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const pendingTaskFocusRef = useRef<{ promptId: number; fallbackCaret: number } | null>(null);
+  const pendingTaskFocusRef = useRef<{ promptId: string; fallbackCaret: number } | null>(null);
   const [isMobileComposer, setIsMobileComposer] = useState(false);
   // Track IME composition manually so Enter confirms a candidate instead of
   // accidentally sending the message.

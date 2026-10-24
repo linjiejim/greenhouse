@@ -1,10 +1,8 @@
 /**
- * Draggable widget grid — shared by the Home workbench and the Tables dashboard.
+ * Draggable widget grid for the Home workbench.
  *
- * Two consumers is the whole reason this is a component rather than page-local
- * code (and the reason the dependency is justified at all): collision handling
- * and vertical compaction are exactly the parts of a dashboard grid that are
- * tedious to get right twice.
+ * `react-grid-layout` is here for collision handling and vertical compaction —
+ * exactly the parts of a dashboard grid that are tedious to hand-roll.
  *
  * Below the `md` breakpoint the grid degrades to a single column ordered by the
  * saved `y`, and dragging is off — a 12-column drag target on a phone is not a

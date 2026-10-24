@@ -1,17 +1,18 @@
 /**
- * LLM Call service — audit log for one-shot `call_llm` sub-calls.
+ * LLM Call service — audit record for one-shot `call_llm` sub-calls.
  *
  * Records the full prompt + output of tool-less LLM calls made from within a
  * session, so they can be retrospected later without being reloaded into the
- * calling session's context.
+ * calling session's context. Stored as a `usage_events` row of kind `audit`:
+ * it carries no units and no cost (the call's spend is metered separately), so
+ * it never adds to usage totals.
  */
 
-import { randomUUID } from 'node:crypto';
 import { nowIso } from '@greenhouse/utils/date';
 
 import type { Db } from '../client.js';
-import { llmCalls } from '../schema/index.js';
-import type { LlmCallRow } from '../schema/llm-call.js';
+import { newId } from '../ids.js';
+import { usageEvents } from '../schema/index.js';
 
 export interface LlmCallInput {
   session_id: string;
@@ -27,27 +28,36 @@ export interface LlmCallInput {
   duration_ms?: number | null;
 }
 
+const LLM_CALL_SERVICE = 'call_llm';
+
 export function createLlmCallService(db: Db) {
   return {
-    /** Record one call_llm invocation. Returns the persisted row. */
-    async record(input: LlmCallInput): Promise<LlmCallRow> {
-      const row = {
-        id: randomUUID(),
-        session_id: input.session_id,
-        user_id: input.user_id ?? null,
+    /** Record one call_llm invocation. Returns the id of the audit row. */
+    async record(input: LlmCallInput): Promise<{ id: string }> {
+      const id = newId('usageEvent');
+      await db.insert(usageEvents).values({
+        id,
+        kind: 'audit',
+        service: LLM_CALL_SERVICE,
+        caller: LLM_CALL_SERVICE,
         model: input.model,
-        system: input.system ?? null,
-        input: input.input,
-        output: input.output ?? null,
-        status: input.status ?? 'ok',
-        error: input.error ?? null,
-        input_tokens: input.input_tokens ?? null,
-        output_tokens: input.output_tokens ?? null,
+        units: 0,
+        cost_usd_micros: null,
+        user_id: input.user_id ?? null,
+        session_id: input.session_id,
         duration_ms: input.duration_ms ?? null,
+        detail: {
+          system: input.system ?? null,
+          input: input.input,
+          output: input.output ?? null,
+          status: input.status ?? 'ok',
+          error: input.error ?? null,
+          input_tokens: input.input_tokens ?? null,
+          output_tokens: input.output_tokens ?? null,
+        },
         created_at: nowIso(),
-      };
-      const inserted = await db.insert(llmCalls).values(row).returning();
-      return inserted[0] as LlmCallRow;
+      });
+      return { id };
     },
   };
 }

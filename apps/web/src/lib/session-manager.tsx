@@ -39,9 +39,6 @@ export interface SessionManagerContextValue {
   /** Session IDs that have new responses the user hasn't seen */
   unreadSessions: Set<string>;
 
-  /** Session IDs marked as important by the user */
-  importantSessions: Set<string>;
-
   /**
    * Sessions the server reports as generating (via WS chat:run + the runs
    * seed). Survives refresh — the sidebar dot and auto-attach read this.
@@ -71,9 +68,6 @@ export interface SessionManagerContextValue {
   /** Mark a session as read (clear unread status) */
   markRead: (sessionId: string) => void;
 
-  /** Toggle important status for a session */
-  markImportant: (sessionId: string, important: boolean) => void;
-
   /** Check if a session is currently streaming */
   isSessionStreaming: (sessionId: string) => boolean;
 
@@ -99,15 +93,6 @@ const MAX_RESUME_ATTEMPTS = 5;
 export function SessionManagerProvider({ children }: { children: React.ReactNode }) {
   const [activeSessions, setActiveSessions] = useState<Map<string, ManagedSession>>(new Map());
   const [unreadSessions, setUnreadSessions] = useState<Set<string>>(new Set());
-  const [importantSessions, setImportantSessions] = useState<Set<string>>(() => {
-    // Restore from localStorage
-    try {
-      const stored = localStorage.getItem('greenhouse:important-sessions');
-      return stored ? new Set(JSON.parse(stored)) : new Set();
-    } catch (_err) {
-      return new Set();
-    }
-  });
   const [remoteStreamingSessions, setRemoteStreamingSessions] = useState<Set<string>>(new Set());
   const [visibleSessions, setVisibleSessions] = useState<Set<string>>(new Set());
   const viewportsRef = useRef<Map<string, { sessionId: string | null; visible: boolean }>>(new Map());
@@ -124,11 +109,6 @@ export function SessionManagerProvider({ children }: { children: React.ReactNode
     new Map(),
   );
   const rafRef = useRef<Map<string, number>>(new Map());
-
-  // Persist important sessions to localStorage
-  useEffect(() => {
-    localStorage.setItem('greenhouse:important-sessions', JSON.stringify([...importantSessions]));
-  }, [importantSessions]);
 
   const scheduleUpdate = useCallback((sessionId: string) => {
     if (rafRef.current.has(sessionId)) return;
@@ -567,20 +547,6 @@ export function SessionManagerProvider({ children }: { children: React.ReactNode
     [syncVisibleSessions],
   );
 
-  const markImportant = useCallback((sessionId: string, important: boolean) => {
-    setImportantSessions((prev) => {
-      const next = new Set(prev);
-      if (important) {
-        next.add(sessionId);
-      } else {
-        next.delete(sessionId);
-      }
-      return next;
-    });
-    // Also persist to server via feedback field
-    api.updateSession(sessionId, { feedback: important ? 'starred' : null }).catch(() => {});
-  }, []);
-
   const isSessionStreaming = useCallback(
     (sessionId: string) => {
       return activeSessions.get(sessionId)?.status === 'streaming';
@@ -603,7 +569,6 @@ export function SessionManagerProvider({ children }: { children: React.ReactNode
   const value: SessionManagerContextValue = {
     activeSessions,
     unreadSessions,
-    importantSessions,
     remoteStreamingSessions,
     visibleSessions,
     registerViewport,
@@ -612,7 +577,6 @@ export function SessionManagerProvider({ children }: { children: React.ReactNode
     attachSession,
     stopSession,
     markRead,
-    markImportant,
     isSessionStreaming,
     clearSession,
   };

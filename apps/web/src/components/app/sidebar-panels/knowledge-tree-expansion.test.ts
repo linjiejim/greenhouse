@@ -32,7 +32,7 @@ describe('loadExpanded', () => {
 
   it('parses the stored ids', () => {
     localStorage.setItem(expandedKey('team'), JSON.stringify([3, 7]));
-    expect(loadExpanded('team')).toEqual(new Set([3, 7]));
+    expect(loadExpanded('team')).toEqual(new Set(['3', '7']));
   });
 
   it.each([
@@ -44,9 +44,9 @@ describe('loadExpanded', () => {
     expect(loadExpanded('team')).toEqual(new Set());
   });
 
-  it('drops non-numeric entries', () => {
-    localStorage.setItem(expandedKey('team'), JSON.stringify([1, 'two', null, 3]));
-    expect(loadExpanded('team')).toEqual(new Set([1, 3]));
+  it('keeps string ids, reads legacy numeric ids as strings and drops anything else', () => {
+    localStorage.setItem(expandedKey('team'), JSON.stringify([1, 'fld_two', null, 3, { id: 4 }]));
+    expect(loadExpanded('team')).toEqual(new Set(['1', 'fld_two', '3']));
   });
 
   it('reports a pending migration when only the legacy key exists', () => {
@@ -57,59 +57,59 @@ describe('loadExpanded', () => {
   it('ignores the legacy key once the new one exists', () => {
     localStorage.setItem(legacyCollapsedKey('team'), JSON.stringify([5]));
     localStorage.setItem(expandedKey('team'), JSON.stringify([9]));
-    expect(loadExpanded('team')).toEqual(new Set([9]));
+    expect(loadExpanded('team')).toEqual(new Set(['9']));
   });
 
   it('keeps the two scopes independent', () => {
     localStorage.setItem(expandedKey('team'), JSON.stringify([1]));
     localStorage.setItem(legacyCollapsedKey('private'), JSON.stringify([2]));
 
-    expect(loadExpanded('team')).toEqual(new Set([1]));
+    expect(loadExpanded('team')).toEqual(new Set(['1']));
     expect(loadExpanded('private')).toBeNull();
 
-    saveExpanded('private', new Set([4]));
-    expect(loadExpanded('team')).toEqual(new Set([1]));
-    expect(loadExpanded('private')).toEqual(new Set([4]));
+    saveExpanded('private', new Set(['4']));
+    expect(loadExpanded('team')).toEqual(new Set(['1']));
+    expect(loadExpanded('private')).toEqual(new Set(['4']));
   });
 });
 
 describe('saveExpanded', () => {
   it('round-trips through storage', () => {
-    saveExpanded('private', new Set([2, 8]));
-    expect(JSON.parse(localStorage.getItem(expandedKey('private'))!)).toEqual([2, 8]);
-    expect(loadExpanded('private')).toEqual(new Set([2, 8]));
+    saveExpanded('private', new Set(['2', '8']));
+    expect(JSON.parse(localStorage.getItem(expandedKey('private'))!)).toEqual(['2', '8']);
+    expect(loadExpanded('private')).toEqual(new Set(['2', '8']));
   });
 });
 
 describe('migrateLegacyExpanded', () => {
   it('expands everything except the folders stored as collapsed', () => {
     localStorage.setItem(legacyCollapsedKey('team'), JSON.stringify([2]));
-    expect(migrateLegacyExpanded('team', [1, 2, 3])).toEqual(new Set([1, 3]));
+    expect(migrateLegacyExpanded('team', ['1', '2', '3'])).toEqual(new Set(['1', '3']));
   });
 
   it('ignores collapsed ids for folders that no longer exist', () => {
     localStorage.setItem(legacyCollapsedKey('team'), JSON.stringify([2, 99]));
-    expect(migrateLegacyExpanded('team', [1, 2])).toEqual(new Set([1]));
+    expect(migrateLegacyExpanded('team', ['1', '2'])).toEqual(new Set(['1']));
   });
 
   it('treats a missing or corrupt legacy key as "nothing was collapsed"', () => {
-    expect(migrateLegacyExpanded('team', [1, 2])).toEqual(new Set([1, 2]));
+    expect(migrateLegacyExpanded('team', ['1', '2'])).toEqual(new Set(['1', '2']));
     localStorage.setItem(legacyCollapsedKey('team'), '{oops');
-    expect(migrateLegacyExpanded('team', [1, 2])).toEqual(new Set([1, 2]));
+    expect(migrateLegacyExpanded('team', ['1', '2'])).toEqual(new Set(['1', '2']));
   });
 
   it('runs once: after the migration lands, a reload reads the new key', () => {
     localStorage.setItem(legacyCollapsedKey('team'), JSON.stringify([2]));
     expect(loadExpanded('team')).toBeNull();
 
-    saveExpanded('team', migrateLegacyExpanded('team', [1, 2, 3]));
+    saveExpanded('team', migrateLegacyExpanded('team', ['1', '2', '3']));
     dropLegacyKey('team');
 
     expect(localStorage.getItem(legacyCollapsedKey('team'))).toBeNull();
-    expect(loadExpanded('team')).toEqual(new Set([1, 3]));
+    expect(loadExpanded('team')).toEqual(new Set(['1', '3']));
     // A later collapse survives: the second run must not re-migrate.
-    saveExpanded('team', new Set([1]));
-    expect(loadExpanded('team')).toEqual(new Set([1]));
+    saveExpanded('team', new Set(['1']));
+    expect(loadExpanded('team')).toEqual(new Set(['1']));
   });
 });
 
@@ -125,8 +125,8 @@ describe('unavailable storage', () => {
     // No stored state is readable, so the tree falls back to its default rather
     // than to a migration it could never finish.
     expect(loadExpanded('team')).toEqual(new Set());
-    expect(migrateLegacyExpanded('team', [1, 2])).toEqual(new Set([1, 2]));
-    expect(() => saveExpanded('team', new Set([1]))).not.toThrow();
+    expect(migrateLegacyExpanded('team', ['1', '2'])).toEqual(new Set(['1', '2']));
+    expect(() => saveExpanded('team', new Set(['1']))).not.toThrow();
     expect(() => dropLegacyKey('team')).not.toThrow();
   });
 });

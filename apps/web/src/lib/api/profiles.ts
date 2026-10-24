@@ -86,12 +86,11 @@ export interface CustomProfileInput {
   risk_level?: 'low' | 'medium' | 'high';
   budget_policy?: Record<string, unknown>;
   owner_backup_user_id?: string | null;
-  change_log?: string;
 }
 
 /** Switch whether a custom Agent is available to the whole team. Super only. */
-export async function setCustomProfileSharing(id: number, isShared: boolean): Promise<Profile> {
-  const args = { param: { id: String(id) }, json: { is_shared: isShared } };
+export async function setCustomProfileSharing(id: string, isShared: boolean): Promise<Profile> {
+  const args = { param: { id }, json: { is_shared: isShared } };
   const res = await rpc.api.profiles.custom[':id'].sharing.$put(args);
   if (!res.ok) {
     const data = await res.json();
@@ -119,10 +118,10 @@ export async function createCustomProfile(input: CustomProfileInput): Promise<Pr
   return res.json();
 }
 
-export async function updateCustomProfile(id: number, input: Partial<CustomProfileInput>): Promise<Profile> {
+export async function updateCustomProfile(id: string, input: Partial<CustomProfileInput>): Promise<Profile> {
   // Non-literal arg: hc only types `json` for validator-backed routes (none yet);
   // the indirection passes the body while keeping param/response typing.
-  const args = { param: { id: String(id) }, json: input };
+  const args = { param: { id }, json: input };
   const res = await rpc.api.profiles.custom[':id'].$put(args);
   if (!res.ok) {
     const data = await res.json();
@@ -131,21 +130,10 @@ export async function updateCustomProfile(id: number, input: Partial<CustomProfi
   return res.json();
 }
 
-export async function deleteCustomProfile(id: number): Promise<void> {
-  const res = await rpc.api.profiles.custom[':id'].$delete({ param: { id: String(id) } });
+export async function deleteCustomProfile(id: string): Promise<void> {
+  const res = await rpc.api.profiles.custom[':id'].$delete({ param: { id } });
   if (!res.ok) {
     const data = await res.json();
     throw new Error(('error' in data && data.error) || 'Failed to delete profile');
   }
-}
-
-export async function forkProfile(sourceProfileId: string, name?: string): Promise<Profile> {
-  const res = await rpc.api.profiles.custom.fork.$post({
-    json: { source_profile_id: sourceProfileId, ...(name ? { name } : {}) },
-  });
-  if (!res.ok) {
-    const data = await res.json();
-    throw new Error(('error' in data && data.error) || 'Failed to fork Agent');
-  }
-  return res.json();
 }

@@ -6,7 +6,14 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { _resetProvider, initDatabase, TablesValidationError, type DatabaseProvider } from '@greenhouse/db';
+import {
+  _resetProvider,
+  initDatabase,
+  parseTableFieldConfig,
+  TablesValidationError,
+  validateTableFieldConfig,
+  type DatabaseProvider,
+} from '@greenhouse/db';
 import { TEST_DATABASE_URL } from '@greenhouse/db/test-config';
 import { createInternalTestUser } from '../helpers/internal-user.js';
 
@@ -44,7 +51,7 @@ async function fixture() {
   return { base, schema, primary: schema.fields[0]! };
 }
 
-async function createStatusField(tableId: number) {
+async function createStatusField(tableId: string) {
   return db.tables.createField({
     table_id: tableId,
     name: 'Status',
@@ -59,7 +66,7 @@ async function createStatusField(tableId: number) {
   });
 }
 
-async function createScoreField(tableId: number) {
+async function createScoreField(tableId: string) {
   return db.tables.createField({
     table_id: tableId,
     name: 'Score',
@@ -68,7 +75,7 @@ async function createScoreField(tableId: number) {
   });
 }
 
-async function createAssigneeField(tableId: number) {
+async function createAssigneeField(tableId: string) {
   return db.tables.createField({
     table_id: tableId,
     name: 'Assignee',
@@ -131,29 +138,6 @@ describe('Tables domain service', () => {
       reason: 'conflict',
       current: 2,
     });
-
-    const dashboard = await db.tables.createDashboard({
-      base_id: base.id,
-      name: 'Version dashboard',
-      created_by: ownerId,
-    });
-    const dashboardUpdated = await db.tables.updateDashboard(dashboard.id, {
-      revision: dashboard.revision,
-      name: 'Version dashboard 2',
-    });
-    expect(dashboardUpdated).toMatchObject({ ok: true, value: { revision: 2 } });
-    const widget = await db.tables.createDashboardWidget({
-      dashboard_id: dashboard.id,
-      table_id: schema.table.id,
-      type: 'kpi',
-      title: 'Count',
-      created_by: ownerId,
-    });
-    const widgetUpdated = await db.tables.updateDashboardWidget(widget.id, {
-      revision: widget.revision,
-      title: 'Total',
-    });
-    expect(widgetUpdated).toMatchObject({ ok: true, value: { revision: 2, title: 'Total' } });
   });
 
   it('supports same-Base relations, safe formulas, and refreshed rollups', async () => {
@@ -403,7 +387,7 @@ describe('Tables domain service', () => {
     ).rejects.toBeInstanceOf(TablesValidationError);
   });
 
-  it('persists members, personal/shared views, and validated dashboard widgets', async () => {
+  it('persists members and personal/shared views', async () => {
     const { base, schema, primary } = await fixture();
     const status = await createStatusField(schema.table.id);
     const member = await db.tables.upsertBaseMember({
@@ -427,94 +411,66 @@ describe('Tables domain service', () => {
     });
     expect((await db.tables.listViews(schema.table.id, teammateId)).map((view) => view.id)).toContain(personal.id);
     expect((await db.tables.listViews(schema.table.id, ownerId)).map((view) => view.id)).not.toContain(personal.id);
-
-    const dashboard = await db.tables.createDashboard({
-      base_id: base.id,
-      name: 'Launch pulse',
-      created_by: ownerId,
-    });
-    const widget = await db.tables.createDashboardWidget({
-      dashboard_id: dashboard.id,
-      table_id: schema.table.id,
-      type: 'bar',
-      title: 'By status',
-      config: { operation: 'count', groupByFieldId: status.id },
-      created_by: ownerId,
-    });
-    expect(widget.type).toBe('bar');
-    await expect(
-      db.tables.createDashboardWidget({
-        dashboard_id: dashboard.id,
-        table_id: schema.table.id,
-        type: 'unknown' as never,
-        title: 'Invalid',
-        created_by: ownerId,
-      }),
-    ).rejects.toThrow(/Unsupported dashboard widget type/);
   });
 
-  it('publishes internal forms and executes idempotent notification automations', async () => {
-    const { base, schema, primary } = await fixture();
-    const status = await createStatusField(schema.table.id);
-    const form = await db.tables.createForm({
-      table_id: schema.table.id,
-      name: 'Launch intake',
-      status: 'published',
-      config: {
-        title: 'Launch request',
-        fieldIds: [primary.id, status.id],
-        successMessage: 'Request recorded.',
-      },
-      user_id: ownerId,
-    });
-    const submitted = await db.tables.submitForm(
-      form.id,
-      { [primary.id]: 'Form-created work', [status.id]: 'todo' },
-      teammateId,
-    );
-    expect(submitted.created_by).toBe(teammateId);
-    await expect(
-      db.tables.submitForm(form.id, { [primary.id]: 'Unexpected', 999999: 'blocked' }, teammateId),
-    ).rejects.toThrow(/not published/);
+  it('keeps Base members as shares rows', async () => {
+    const { base } = await fixture();
+    expect(base.id).toMatch(/^bas_/);
+    expect(await db.tables.listBaseMembers(base.id)).toEqual([
+      expect.objectContaining({ base_id: base.id, user_id: ownerId, role: 'owner', added_by: ownerId }),
+    ]);
+    expect((await db.tables.listBasesForUser(teammateId)).map((row) => row.id)).not.toContain(base.id);
 
-    const automation = await db.tables.createAutomationRule({
+    await db.tables.upsertBaseMember({ base_id: base.id, user_id: teammateId, role: 'viewer', added_by: ownerId });
+    const promoted = await db.tables.upsertBaseMember({
       base_id: base.id,
-      table_id: schema.table.id,
-      name: 'Notify teammate',
-      status: 'enabled',
-      trigger: 'record_created',
-      config: {
-        actions: [
-          {
-            type: 'notify',
-            userIds: [teammateId],
-            title: 'New launch item',
-            message: 'A launch item was created.',
-          },
-        ],
-      },
-      execution_user_id: ownerId,
+      user_id: teammateId,
+      role: 'builder',
+      added_by: ownerId,
+    });
+    expect(promoted).toMatchObject({ base_id: base.id, user_id: teammateId, role: 'builder' });
+    expect(await db.tables.listBaseMembers(base.id)).toHaveLength(2);
+    expect(await db.tables.getBaseMember(base.id, teammateId)).toMatchObject({ role: 'builder' });
+    expect((await db.tables.listBasesForUser(teammateId)).map((row) => row.id)).toContain(base.id);
+
+    expect(await db.tables.removeBaseMember(base.id, teammateId)).toBe(true);
+    expect(await db.tables.getBaseMember(base.id, teammateId)).toBeUndefined();
+    expect(await db.tables.removeBaseMember(base.id, teammateId)).toBe(false);
+  });
+
+  it('stores relation values as record id strings and normalizes legacy numeric ids', async () => {
+    const base = await db.tables.createBase({ name: 'Legacy ids', owner_id: ownerId, created_by: ownerId });
+    const people = await db.tables.createTable({ base_id: base.id, name: 'People', created_by: ownerId });
+    const teams = await db.tables.createTable({ base_id: base.id, name: 'Teams', created_by: ownerId });
+    const lead = await db.tables.createField({
+      table_id: teams.table.id,
+      name: 'Lead',
+      type: 'relation',
+      config: { relation: { targetTableId: people.table.id } },
+      created_by: ownerId,
+    });
+    const person = await db.tables.createRecord({
+      table_id: people.table.id,
+      values: { [people.fields[0]!.id]: 'Ada' },
       user_id: ownerId,
     });
-    const created = await db.tables.createRecord({
-      table_id: schema.table.id,
-      values: { [primary.id]: 'Automated item', [status.id]: 'todo' },
+    const team = await db.tables.createRecord({
+      table_id: teams.table.id,
+      values: { [teams.fields[0]!.id]: 'Core', [lead.id]: person.id },
       user_id: ownerId,
     });
-    expect(await db.tables.listAutomationRuns(automation.id)).toEqual([
-      expect.objectContaining({ rule_id: automation.id, status: 'succeeded', actions_completed: 1 }),
+    expect(team.values[lead.id]).toBe(person.id);
+    expect(await db.tables.listRecordLinks(lead.id, team.id)).toEqual([
+      expect.objectContaining({ target_record_id: person.id, position: 0 }),
     ]);
-    expect(await db.tables.listNotifications(teammateId)).toEqual([
-      expect.objectContaining({
-        base_id: base.id,
-        record_id: created.id,
-        title: 'New launch item',
-        read_at: null,
-      }),
-    ]);
-    const notification = (await db.tables.listNotifications(teammateId))[0]!;
-    expect((await db.tables.markNotificationRead(notification.id, teammateId))?.read_at).toEqual(expect.any(String));
-    expect(await db.tables.markNotificationRead(notification.id, ownerId)).toBeUndefined();
+    // Rows carried from 1.x keep "42"-style ids; a client may still send them as numbers.
+    expect(validateTableFieldConfig('relation', { relation: { targetTableId: 42 as never } })).toEqual({
+      version: 1,
+      relation: { targetTableId: '42', multiple: false },
+    });
+    expect(parseTableFieldConfig({ config: { rollup: { relationFieldId: 7, targetFieldId: 8 } } as never })).toEqual({
+      rollup: { relationFieldId: '7', targetFieldId: '8' },
+    });
   });
 
   it('accepts only active Drive files from the same Base and persists attachment edges', async () => {
@@ -577,16 +533,13 @@ describe('Tables domain service', () => {
         },
         user_id: ownerId,
       }),
-    ).rejects.toThrow(/expects Drive file ids/);
-
+    ).rejects.toThrow(/unavailable Base file/);
     await expect(
-      db.tables.createForm({
+      db.tables.createRecord({
         table_id: schema.table.id,
-        name: 'Unsafe upload form',
-        status: 'published',
-        config: { fieldIds: [primary.id, attachments.id] },
+        values: { [primary.id]: 'Not an id', [attachments.id]: [{ id: pending.id }] },
         user_id: ownerId,
       }),
-    ).rejects.toThrow(/non-attachment/);
+    ).rejects.toThrow(/expects Drive file ids/);
   });
 });

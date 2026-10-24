@@ -42,23 +42,21 @@ export interface ProjectListContext {
 
 export interface ProjectDetailContext {
   type: 'project-detail';
-  projectId: number;
+  projectId: string;
   /** Filled by page enrichment after the project loads. */
   projectTitle?: string;
 }
 
 export interface TablesContext {
   type: 'tables';
-  baseId?: number;
+  baseId?: string;
   baseName?: string;
   /** The team's own usage note for this Base — what it holds and how to use it. */
   baseDescription?: string;
-  tableId?: number;
+  tableId?: string;
   tableName?: string;
   /** Same for the open table; field names alone routinely mislead. */
   tableDescription?: string;
-  dashboardId?: number;
-  dashboardName?: string;
 }
 
 /** Durable cross-domain execution list or one Runtime run detail. */

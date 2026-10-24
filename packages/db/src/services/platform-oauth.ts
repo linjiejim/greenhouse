@@ -6,17 +6,17 @@
  * consumption and durable grant revocation.
  */
 
-import { randomUUID } from 'node:crypto';
 import { and, desc, eq, gt, inArray, isNull, sql } from 'drizzle-orm';
 import { nowIso } from '@greenhouse/utils/date';
-import { safeJsonParse } from '@greenhouse/utils/json';
+import type { AgentAvatar } from '@greenhouse/types/agent-avatar';
 
 import type { Db } from '../client.js';
+import { newId } from '../ids.js';
 import {
-  platformOAuthAuthorizationCodes,
-  platformOAuthClients,
-  platformOAuthGrants,
-  platformOAuthTokens,
+  oauthCodes as platformOAuthAuthorizationCodes,
+  oauthClients as platformOAuthClients,
+  oauthGrants as platformOAuthGrants,
+  oauthTokens as platformOAuthTokens,
 } from '../schema/index.js';
 import type {
   PlatformOAuthAuthorizationCodeRow,
@@ -24,12 +24,12 @@ import type {
   PlatformOAuthClientStatus,
   PlatformOAuthGrantRow,
   PlatformOAuthTokenRow,
-} from '../schema/platform-oauth.js';
+} from '../schema/oauth.js';
 
 export interface PlatformOAuthClientInput {
   id: string;
   client_name: string;
-  redirect_uris: string;
+  redirect_uris: string[];
   created_by?: string;
 }
 
@@ -38,7 +38,7 @@ export interface PlatformOAuthMachineClientInput {
   client_name: string;
   client_secret_hash: string;
   bound_user_id: string;
-  allowed_scopes: string;
+  allowed_scopes: string[];
   created_by?: string;
 }
 
@@ -46,7 +46,7 @@ export interface PlatformOAuthGrantInput {
   user_id: string;
   client_id: string;
   resource: string;
-  scopes: string;
+  scopes: string[];
 }
 
 export interface PlatformOAuthAuthorizationCodeInput {
@@ -55,7 +55,7 @@ export interface PlatformOAuthAuthorizationCodeInput {
   client_id: string;
   redirect_uri: string;
   resource: string;
-  scopes: string;
+  scopes: string[];
   code_challenge: string;
   expires_at: string;
 }
@@ -72,7 +72,7 @@ export interface PlatformOAuthTokenInput {
   token_hash: string;
   token_type: PlatformOAuthTokenRow['token_type'];
   resource: string;
-  scopes: string;
+  scopes: string[];
   expires_at: string;
 }
 
@@ -89,22 +89,21 @@ export interface PlatformOAuthResolvedToken extends PlatformOAuthGrantWithClient
   token: PlatformOAuthTokenRow;
 }
 
-function parseStoredStringSet(value: string): Set<string> | undefined {
-  const parsed = safeJsonParse(value, null);
-  if (!Array.isArray(parsed) || parsed.length === 0 || parsed.some((item) => typeof item !== 'string')) {
+function parseStoredStringSet(value: unknown): Set<string> | undefined {
+  if (!Array.isArray(value) || value.length === 0 || value.some((item) => typeof item !== 'string')) {
     return undefined;
   }
-  return new Set(parsed);
+  return new Set(value as string[]);
 }
 
-function storedStringSetsEqual(left: string, right: string): boolean {
+function storedStringSetsEqual(left: readonly string[], right: readonly string[]): boolean {
   const leftSet = parseStoredStringSet(left);
   const rightSet = parseStoredStringSet(right);
   if (!leftSet || !rightSet || leftSet.size !== rightSet.size) return false;
   return [...leftSet].every((item) => rightSet.has(item));
 }
 
-function storedStringSetIsSubset(requested: string, granted: string): boolean {
+function storedStringSetIsSubset(requested: readonly string[], granted: readonly string[]): boolean {
   const requestedSet = parseStoredStringSet(requested);
   const grantedSet = parseStoredStringSet(granted);
   if (!requestedSet || !grantedSet) return false;
@@ -137,7 +136,7 @@ export function createPlatformOAuthService(db: Db) {
         .values({
           id: input.id,
           client_name: input.client_name,
-          redirect_uris: '[]',
+          redirect_uris: [],
           token_endpoint_auth_method: 'client_secret_post',
           client_secret_hash: input.client_secret_hash,
           bound_user_id: input.bound_user_id,
@@ -262,7 +261,7 @@ export function createPlatformOAuthService(db: Db) {
         const rows = await tx
           .insert(platformOAuthGrants)
           .values({
-            id: randomUUID(),
+            id: newId('oauthGrant'),
             user_id: input.user_id,
             client_id: input.client_id,
             resource: input.resource,
@@ -320,14 +319,21 @@ export function createPlatformOAuthService(db: Db) {
      * reached the MCP server (`touchAccessToken` runs on every request) — what
      * the connect wizard's "check connection" reads.
      */
-    async listUserGrantActivity(
-      userId: string,
-    ): Promise<Array<{ client_id: string; client_name: string; connected_at: string; last_used_at: string | null }>> {
+    async listUserGrantActivity(userId: string): Promise<
+      Array<{
+        client_id: string;
+        client_name: string;
+        connected_at: string;
+        last_used_at: string | null;
+        avatar: AgentAvatar | null;
+      }>
+    > {
       const rows = await db
         .select({
           client_id: platformOAuthClients.id,
           client_name: platformOAuthClients.client_name,
           connected_at: platformOAuthGrants.created_at,
+          avatar: platformOAuthGrants.avatar,
           last_used_at: sql<string | null>`max(${platformOAuthTokens.last_used_at})`,
         })
         .from(platformOAuthGrants)
@@ -343,12 +349,27 @@ export function createPlatformOAuthService(db: Db) {
             eq(platformOAuthClients.status, 'active'),
           ),
         )
-        .groupBy(platformOAuthClients.id, platformOAuthClients.client_name, platformOAuthGrants.created_at);
+        .groupBy(platformOAuthGrants.id, platformOAuthClients.id, platformOAuthClients.client_name);
       return rows.map((row) => ({
         ...row,
         connected_at: new Date(row.connected_at).toISOString(),
         last_used_at: row.last_used_at ? new Date(row.last_used_at).toISOString() : null,
       }));
+    },
+
+    /**
+     * Set (or with null, clear) the plant avatar a member picked for one of
+     * their connected agents — on every grant they hold for that client, so a
+     * reconnect to another resource keeps it. Returns how many grants changed;
+     * 0 means the member has no grant for the client.
+     */
+    async setUserClientAvatar(userId: string, clientId: string, avatar: AgentAvatar | null): Promise<number> {
+      const rows = await db
+        .update(platformOAuthGrants)
+        .set({ avatar, updated_at: nowIso() })
+        .where(and(eq(platformOAuthGrants.user_id, userId), eq(platformOAuthGrants.client_id, clientId)))
+        .returning({ id: platformOAuthGrants.id });
+      return rows.length;
     },
 
     async revokeGrant(id: string, userId?: string): Promise<boolean> {
@@ -451,8 +472,8 @@ export function createPlatformOAuthService(db: Db) {
         const rows = await tx
           .insert(platformOAuthTokens)
           .values([
-            { id: randomUUID(), grant_id: grantId, ...access, created_at: now },
-            { id: randomUUID(), grant_id: grantId, ...refresh, created_at: now },
+            { id: newId('oauthToken'), grant_id: grantId, ...access, created_at: now },
+            { id: newId('oauthToken'), grant_id: grantId, ...refresh, created_at: now },
           ])
           .returning();
         return {
@@ -490,7 +511,7 @@ export function createPlatformOAuthService(db: Db) {
         }
         const rows = await tx
           .insert(platformOAuthTokens)
-          .values({ id: randomUUID(), grant_id: grantId, ...access, created_at: nowIso() })
+          .values({ id: newId('oauthToken'), grant_id: grantId, ...access, created_at: nowIso() })
           .returning();
         return rows[0];
       });

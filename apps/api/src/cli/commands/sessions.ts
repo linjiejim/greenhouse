@@ -131,7 +131,7 @@ async function show(args: string[]): Promise<number> {
           : chalk.magenta.bold(m.role);
     console.log(`\n${chalk.dim(`#${m.seq}`)} ${who}${tokenNote(m)}`);
     console.log(verbose ? m.content : truncate(m.content, 1200));
-    const tools = toolNames(m.pipeline);
+    const tools = toolNames(m.parts.pipeline);
     if (tools.length) console.log(dim(`  ⚙ tools: ${tools.join(', ')}`));
   }
   return 0;
@@ -143,16 +143,11 @@ function tokenNote(m: MessageLike): string {
   return dim(`  (${m.input_tokens ?? 0}→${m.output_tokens ?? 0} tok${dur})`);
 }
 
-/** Best-effort extraction of tool names from a message's serialized pipeline. */
-function toolNames(pipeline: string | null): string[] {
-  if (!pipeline || pipeline === '[]') return [];
-  try {
-    const steps = JSON.parse(pipeline) as Array<Record<string, unknown>>;
-    const names = steps
-      .map((s) => (s.tool ?? s.name ?? (s.type === 'tool' ? s.id : undefined)) as string | undefined)
-      .filter((n): n is string => typeof n === 'string');
-    return [...new Set(names)];
-  } catch {
-    return [];
-  }
+/** Best-effort extraction of tool names from a message's pipeline. */
+function toolNames(pipeline: unknown): string[] {
+  if (!Array.isArray(pipeline)) return [];
+  const names = (pipeline as Array<Record<string, unknown> | null>)
+    .map((s) => (s?.tool ?? s?.name ?? (s?.type === 'tool' ? s?.id : undefined)) as string | undefined)
+    .filter((n): n is string => typeof n === 'string');
+  return [...new Set(names)];
 }

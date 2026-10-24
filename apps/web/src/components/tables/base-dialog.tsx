@@ -9,7 +9,7 @@ interface BaseDialogProps {
   /** Omit to create; pass a Base to edit it in place. */
   base?: TableBase | null;
   onClose: () => void;
-  onCreated?: (baseId: number) => void;
+  onCreated?: (baseId: string) => void;
   onSaved?: (base: TableBase) => void;
 }
 

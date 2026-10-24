@@ -7,7 +7,7 @@ import type { UserPrompt } from '@greenhouse/types/api';
 
 function prompt(id: number, title: string): UserPrompt {
   return {
-    id,
+    id: String(id),
     user_id: 'u1',
     title,
     content: 'Do the thing',
@@ -15,8 +15,8 @@ function prompt(id: number, title: string): UserPrompt {
     sort_order: id,
     is_global: false,
     description: null,
-    variables: '[]',
-    expected_tools: '[]',
+    variables: [],
+    expected_tools: [],
     source_session_id: null,
     created_via: 'manual',
     created_at: '2026-10-01T00:00:00Z',

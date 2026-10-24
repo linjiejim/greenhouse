@@ -26,7 +26,6 @@
 
 import { Hono, type Context } from 'hono';
 import { getDb, type ProjectMemberRow, type ProjectRow, type TaskRow } from '@greenhouse/db';
-import { safeJsonParse } from '@greenhouse/utils/json';
 import type { AppEnv } from '../app-env.js';
 import { getAuthUser } from '../auth/middleware.js';
 import { humanActor } from '../platform/actor.js';
@@ -69,7 +68,7 @@ async function dispatch(
   c: Context,
   actionId: ProjectActionId,
   payload: unknown,
-  ids: { projectId?: number; taskId?: number; commentId?: number } = {},
+  ids: { projectId?: string | number; taskId?: string | number; commentId?: string | number } = {},
 ) {
   return getPlatformRuntime().dispatch({
     actor: humanActor(getAuthUser(c), c),
@@ -86,7 +85,7 @@ async function getUserMap() {
 }
 
 function buildTaskTree(tasks: TaskRow[], userMap: Awaited<ReturnType<typeof getUserMap>>): TaskTreeNode[] {
-  const taskMap = new Map<number, TaskTreeNode>();
+  const taskMap = new Map<string, TaskTreeNode>();
   for (const task of tasks) {
     taskMap.set(task.id, {
       ...task,
@@ -146,7 +145,7 @@ const projects = new Hono<AppEnv>()
   })
   .patch('/tasks-reorder', async (c) => {
     const body = (await c.req.json()) as {
-      updates?: Array<{ id: number; sort_order: number; project_id?: number }>;
+      updates?: Array<{ id: string | number; sort_order: number; project_id?: string | number }>;
     };
     const result = await dispatch(c, 'reorderTasks', {
       updates: body.updates?.map((update) => ({
@@ -159,8 +158,8 @@ const projects = new Hono<AppEnv>()
     return c.json({ success: true });
   })
   .patch('/tasks/:taskId/move', async (c) => {
-    const taskId = Number(c.req.param('taskId'));
-    const body = (await c.req.json()) as { project_id?: number };
+    const taskId = c.req.param('taskId');
+    const body = (await c.req.json()) as { project_id?: string | number };
     const result = await dispatch(
       c,
       'moveTask',
@@ -211,7 +210,7 @@ const projects = new Hono<AppEnv>()
     return c.json(result.data as { project: ProjectRow }, 201);
   })
   .get('/:id', async (c) => {
-    const projectId = Number(c.req.param('id'));
+    const projectId = c.req.param('id');
     const projectResult = await dispatch(c, 'getProject', { projectId }, { projectId });
     if (!projectResult.ok) return actionError(c, projectResult);
     const project = (projectResult.data as { project: ProjectRow }).project;
@@ -240,7 +239,7 @@ const projects = new Hono<AppEnv>()
     });
   })
   .patch('/:id', async (c) => {
-    const projectId = Number(c.req.param('id'));
+    const projectId = c.req.param('id');
     const body = (await c.req.json()) as Record<string, unknown>;
     const result = await dispatch(
       c,
@@ -265,13 +264,13 @@ const projects = new Hono<AppEnv>()
     return c.json(result.data as { project: ProjectRow });
   })
   .delete('/:id', async (c) => {
-    const projectId = Number(c.req.param('id'));
+    const projectId = c.req.param('id');
     const result = await dispatch(c, 'deleteProject', { projectId }, { projectId });
     if (!result.ok) return actionError(c, result);
     return c.json({ success: true });
   })
   .get('/:id/tasks', async (c) => {
-    const projectId = Number(c.req.param('id'));
+    const projectId = c.req.param('id');
     const result = await dispatch(
       c,
       'listTasks',
@@ -287,12 +286,11 @@ const projects = new Hono<AppEnv>()
     const tasks = (result.data as { tasks: TaskRow[] }).tasks.map((task) => ({
       ...task,
       assignee_nickname: userMap.get(task.assignee_id ?? '')?.nickname ?? task.assignee_id,
-      tags: safeJsonParse(task.tags, []) as string[],
     }));
     return c.json({ tasks });
   })
   .post('/:id/tasks', async (c) => {
-    const projectId = Number(c.req.param('id'));
+    const projectId = c.req.param('id');
     const body = (await c.req.json()) as Record<string, unknown>;
     const result = await dispatch(
       c,
@@ -318,7 +316,7 @@ const projects = new Hono<AppEnv>()
     return c.json(result.data as { task: TaskRow }, 201);
   })
   .patch('/tasks/:taskId', async (c) => {
-    const taskId = Number(c.req.param('taskId'));
+    const taskId = c.req.param('taskId');
     const body = (await c.req.json()) as Record<string, unknown>;
     const result = await dispatch(
       c,
@@ -348,19 +346,19 @@ const projects = new Hono<AppEnv>()
     return c.json(result.data as { task: TaskRow });
   })
   .delete('/tasks/:taskId', async (c) => {
-    const taskId = Number(c.req.param('taskId'));
+    const taskId = c.req.param('taskId');
     const result = await dispatch(c, 'deleteTask', { taskId }, { taskId });
     if (!result.ok) return actionError(c, result);
     return c.json({ success: true });
   })
   .get('/tasks/:taskId/comments', async (c) => {
-    const taskId = Number(c.req.param('taskId'));
+    const taskId = c.req.param('taskId');
     const result = await dispatch(c, 'listComments', { taskId }, { taskId });
     if (!result.ok) return actionError(c, result);
     const userMap = await getUserMap();
     const comments = (
       result.data as {
-        comments: Array<{ id: number; task_id: number; user_id: string; content: string; created_at: string }>;
+        comments: Array<{ id: string; task_id: string; user_id: string; content: string; created_at: string }>;
       }
     ).comments;
     return c.json({
@@ -371,25 +369,25 @@ const projects = new Hono<AppEnv>()
     });
   })
   .post('/tasks/:taskId/comments', async (c) => {
-    const taskId = Number(c.req.param('taskId'));
+    const taskId = c.req.param('taskId');
     const body = (await c.req.json()) as { content?: string };
     const result = await dispatch(c, 'addComment', { taskId, content: body.content }, { taskId });
     if (!result.ok) return actionError(c, result);
     return c.json(
       result.data as {
-        comment: { id: number; task_id: number; user_id: string; content: string; created_at: string };
+        comment: { id: string; task_id: string; user_id: string; content: string; created_at: string };
       },
       201,
     );
   })
   .delete('/comments/:commentId', async (c) => {
-    const commentId = Number(c.req.param('commentId'));
+    const commentId = c.req.param('commentId');
     const result = await dispatch(c, 'deleteComment', { commentId }, { commentId });
     if (!result.ok) return actionError(c, result);
     return c.json({ success: true });
   })
   .get('/:id/activities', async (c) => {
-    const projectId = Number(c.req.param('id'));
+    const projectId = c.req.param('id');
     const result = await dispatch(
       c,
       'listActivities',
@@ -405,9 +403,9 @@ const projects = new Hono<AppEnv>()
     const activities = (
       result.data as {
         activities: Array<{
-          id: number;
-          project_id: number;
-          task_id: number | null;
+          id: string;
+          project_id: string;
+          task_id: string | null;
           user_id: string;
           action: string;
           detail: string | null;
@@ -428,7 +426,7 @@ const projects = new Hono<AppEnv>()
     return c.json(result.data as { users: Array<{ id: string; nickname: string; role: string }> });
   })
   .get('/:id/members', async (c) => {
-    const projectId = Number(c.req.param('id'));
+    const projectId = c.req.param('id');
     const result = await dispatch(c, 'listMembers', { projectId }, { projectId });
     if (!result.ok) return actionError(c, result);
     const userMap = await getUserMap();
@@ -441,7 +439,7 @@ const projects = new Hono<AppEnv>()
     });
   })
   .post('/:id/members', async (c) => {
-    const projectId = Number(c.req.param('id'));
+    const projectId = c.req.param('id');
     const body = (await c.req.json()) as { user_id?: string; role?: 'owner' | 'member' };
     const result = await dispatch(
       c,
@@ -455,7 +453,7 @@ const projects = new Hono<AppEnv>()
     return c.json({ member: { ...member, nickname: user?.nickname ?? member.user_id } }, 201);
   })
   .patch('/:id/members/:userId', async (c) => {
-    const projectId = Number(c.req.param('id'));
+    const projectId = c.req.param('id');
     const body = (await c.req.json()) as { role?: 'owner' | 'member' };
     const result = await dispatch(
       c,
@@ -467,7 +465,7 @@ const projects = new Hono<AppEnv>()
     return c.json(result.data as { member: ProjectMemberRow });
   })
   .delete('/:id/members/:userId', async (c) => {
-    const projectId = Number(c.req.param('id'));
+    const projectId = c.req.param('id');
     const result = await dispatch(
       c,
       'manageMembers',

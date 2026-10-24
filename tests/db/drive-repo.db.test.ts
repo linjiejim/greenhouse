@@ -48,7 +48,7 @@ describe('Drive — private knowledge folders', () => {
       created_by: alice.id,
     });
 
-    expect(folder.id).toBeGreaterThan(0);
+    expect(folder.id).toMatch(/^fld_/);
     expect(folder.scope).toBe('kb');
     expect(folder.visibility).toBe('private');
     expect(folder.owner_user_id).toBe(alice.id);
@@ -83,7 +83,7 @@ describe('Drive — file lifecycle', () => {
       uploaded_by: alice.id,
     });
 
-    expect(file.id).toBeGreaterThan(0);
+    expect(file.id).toMatch(/^fil_/);
     expect(file.status).toBe('pending');
     expect(file.cos_key).toBe('drive/kb/test/contract-abc123.pdf');
 

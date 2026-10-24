@@ -2,13 +2,14 @@
  * User service — internal user account CRUD (PostgreSQL).
  */
 
-import { randomUUID } from 'node:crypto';
 import { eq, sql } from 'drizzle-orm';
 import { nowIso } from '@greenhouse/utils/date';
 
 import type { Db } from '../client.js';
-import { accountPasswordLinks, refreshTokens, users } from '../schema/index.js';
-import type { UserRow, UserRole, UserStatus } from '../schema/user.js';
+import type { UserPreferences } from '@greenhouse/types/preferences';
+import { newId } from '../ids.js';
+import { passwordLinks as accountPasswordLinks, authRefreshTokens as refreshTokens, users } from '../schema/index.js';
+import type { UserRow, UserRole, UserStatus } from '../schema/identity.js';
 
 export interface UserInput {
   email: string;
@@ -16,8 +17,6 @@ export interface UserInput {
   nickname: string;
   role: UserRole;
   status?: UserStatus;
-  daily_message_limit?: number;
-  monthly_token_limit?: number;
   created_by?: string;
 }
 
@@ -25,8 +24,6 @@ export interface UserUpdateInput {
   nickname?: string;
   role?: UserRole;
   status?: UserStatus;
-  daily_message_limit?: number;
-  monthly_token_limit?: number;
   notes?: string | null;
   locale?: string;
 }
@@ -36,8 +33,6 @@ function userUpdateSet(updates: UserUpdateInput): Record<string, unknown> {
   if (updates.nickname !== undefined) set.nickname = updates.nickname;
   if (updates.role !== undefined) set.role = updates.role;
   if (updates.status !== undefined) set.status = updates.status;
-  if (updates.daily_message_limit !== undefined) set.daily_message_limit = updates.daily_message_limit;
-  if (updates.monthly_token_limit !== undefined) set.monthly_token_limit = updates.monthly_token_limit;
   if (updates.notes !== undefined) set.notes = updates.notes;
   if (updates.locale !== undefined) set.locale = updates.locale;
   return set;
@@ -47,7 +42,7 @@ export function createUserService(db: Db) {
   const service = {
     async create(input: UserInput): Promise<UserRow> {
       const now = nowIso();
-      const id = randomUUID();
+      const id = newId('user');
       await db.insert(users).values({
         id,
         email: input.email,
@@ -55,8 +50,6 @@ export function createUserService(db: Db) {
         nickname: input.nickname,
         role: input.role,
         status: input.status ?? 'active',
-        daily_message_limit: input.daily_message_limit ?? 200,
-        monthly_token_limit: input.monthly_token_limit ?? 20000000,
         created_by: input.created_by ?? null,
         created_at: now,
         updated_at: now,
@@ -147,6 +140,34 @@ export function createUserService(db: Db) {
             sql`${accountPasswordLinks.user_id} = ${id} AND ${accountPasswordLinks.consumed_at} IS NULL AND ${accountPasswordLinks.revoked_at} IS NULL`,
           );
         return updated;
+      });
+    },
+
+    /** The stored preferences blob (font scale, workbench layout); `{}` for an unknown user. */
+    async getPreferences(id: string): Promise<UserPreferences> {
+      const rows = await db.select({ preferences: users.preferences }).from(users).where(eq(users.id, id));
+      return rows[0]?.preferences ?? {};
+    },
+
+    /**
+     * Read-modify-write the preferences blob under the user's row lock, so a
+     * browser and an agent writing different keys at once never drop each
+     * other's change. `mutate` gets the current blob and returns the next one.
+     */
+    async mutatePreferences(
+      id: string,
+      mutate: (current: UserPreferences) => UserPreferences,
+    ): Promise<UserPreferences | undefined> {
+      return db.transaction(async (tx) => {
+        const rows = await tx
+          .select({ preferences: users.preferences })
+          .from(users)
+          .where(eq(users.id, id))
+          .for('update');
+        if (!rows[0]) return undefined;
+        const next = mutate({ ...(rows[0].preferences ?? {}) });
+        await tx.update(users).set({ preferences: next, updated_at: nowIso() }).where(eq(users.id, id));
+        return next;
       });
     },
 

@@ -2,10 +2,10 @@
  * Activity service — the two durable change records the Activity log reads,
  * paged on one shared order.
  *
- *   • platform_audit_events — successful writes by people (and admin setting
- *     changes), as recorded by the platform kernel and the drive routes;
- *   • runtime_runs — writes made by members' agents (`agent_write`) and
- *     automation runs.
+ *   • audit_events — successful writes by people (and admin setting changes),
+ *     as recorded by the platform kernel and the drive routes;
+ *   • runs — writes made by members' agents (`agent_write`) and automation
+ *     runs.
  *
  * Both readers page newest-first on (created_at, sort key) where the sort key
  * is `<prefix>:<id>` compared byte-wise (`COLLATE "C"`), so the API can merge
@@ -19,6 +19,10 @@
 
 import { sql, type SQL } from 'drizzle-orm';
 import type { Db } from '../client.js';
+import type { RuntimeJson } from '../schema/index.js';
+
+/** Project / task history rows share `audit_events`; they are not platform actions. */
+const PROJECT_ACTIVITY_CAPABILITY = 'projects.activity';
 
 export interface ActivityCursor {
   /** Fixed-width UTC ISO timestamp with microseconds (as returned in `at`). */
@@ -49,7 +53,7 @@ export interface ActivityAuditRow {
   entity_id: string | null;
   record_id: string | null;
   action_id: string;
-  summary: string;
+  summary: Record<string, unknown>;
 }
 
 export interface ActivityRunRow {
@@ -60,8 +64,8 @@ export interface ActivityRunRow {
   owner_user_id: string;
   source_kind: string;
   status: string;
-  input: string;
-  output: string | null;
+  input: RuntimeJson;
+  output: RuntimeJson | null;
   error_code: string | null;
   error_message: string | null;
   settled_at: string | null;
@@ -79,13 +83,6 @@ function cursorClause(createdAt: SQL, key: SQL, cursor: ActivityCursor | null | 
   return sql`(${createdAt} < ${cursor.at}::timestamptz OR (${createdAt} = ${cursor.at}::timestamptz AND ${key} COLLATE "C" < ${cursor.key} COLLATE "C"))`;
 }
 
-function inNumbers(column: SQL, values: readonly number[]): SQL {
-  return sql`${column} IN (${sql.join(
-    values.map((value) => sql`${Math.trunc(value)}`),
-    sql`, `,
-  )})`;
-}
-
 function inList(column: SQL, values: readonly string[]): SQL {
   return sql`${column} IN (${sql.join(
     values.map((value) => sql`${value}`),
@@ -94,28 +91,28 @@ function inList(column: SQL, values: readonly string[]): SQL {
 }
 
 export interface RecentKnowledgeEditRow {
-  version_id: number;
-  doc_pk: number;
+  version_id: string;
+  doc_pk: string;
   slug: string;
   title: string;
   version: number;
   changed_by: string | null;
-  visibility: string;
+  visibility: 'team' | 'private';
   owner_user_id: string | null;
   at: string;
 }
 
 export interface RecentProjectActivityRow {
-  id: number;
-  project_id: number;
-  task_id: number | null;
+  id: string;
+  project_id: string;
+  task_id: string | null;
   user_id: string;
   action: string;
   at: string;
 }
 
 export interface RecentTableChangeRow {
-  table_id: number;
+  table_id: string;
   updated_by: string;
   records: number;
   at: string;
@@ -140,7 +137,6 @@ export function createActivityService(db: Db) {
      */
     async listAuditChanges(
       input: ActivityWindow & {
-        orgId: string;
         actions: ReadonlyArray<{ appId: string; actionIds: readonly string[]; moduleId?: string | null }>;
         actorType?: 'human' | 'agent';
         userId?: string | null;
@@ -168,14 +164,14 @@ export function createActivityService(db: Db) {
       const rows = await db.execute(sql`
         SELECT ${key} AS key, ${ISO(created)} AS at, e.id, e.actor_id, e.actor_type, e.on_behalf_of_user_id,
                e.client_id, e.app_id, e.module_id, e.entity_id, e.record_id, e.action_id, e.summary
-        FROM platform_audit_events e
-        WHERE e.org_id = ${input.orgId}
-          AND e.result = 'success'
+        FROM audit_events e
+        WHERE e.result = 'success'
+          AND e.capability <> ${PROJECT_ACTIVITY_CAPABILITY}
           AND ${created} >= ${input.from}::timestamptz
           AND ${created} < ${input.to}::timestamptz
           AND (${actionMatch})
           -- A write audited for access but marked as no change (an editor heartbeat).
-          AND e.summary NOT LIKE '%"activity":false%'
+          AND NOT (e.summary @> '{"activity":false}'::jsonb)
           AND ${input.actorType ? sql`e.actor_type = ${input.actorType}` : sql`TRUE`}
           AND ${person}
           AND ${cursorClause(created, key, input.cursor)}
@@ -205,12 +201,12 @@ export function createActivityService(db: Db) {
         SELECT ${key} AS key, ${ISO(created)} AS at, r.id, r.kind, r.owner_user_id, r.source_kind, r.status,
                r.input, r.output, r.error_code, r.error_message,
                ${ISO(sql`r.settled_at`)} AS settled_at, ${ISO(created)} AS created_at
-        FROM runtime_runs r
+        FROM runs r
         WHERE ${inList(sql`r.kind`, input.kinds)}
           AND ${created} >= ${input.from}::timestamptz
           AND ${created} < ${input.to}::timestamptz
           AND ${input.ownerUserId ? sql`r.owner_user_id = ${input.ownerUserId}` : sql`TRUE`}
-          AND ${input.toolIds ? inList(sql`(r.input::jsonb ->> 'tool_id')`, input.toolIds) : sql`TRUE`}
+          AND ${input.toolIds ? inList(sql`(r.input ->> 'tool_id')`, input.toolIds) : sql`TRUE`}
           AND ${cursorClause(created, key, input.cursor)}
         ORDER BY ${created} DESC, ${key} COLLATE "C" DESC
         LIMIT ${bound(input.limit)}
@@ -235,29 +231,32 @@ export function createActivityService(db: Db) {
       const rows = await db.execute(sql`
         SELECT v.id AS version_id, kb.id AS doc_pk, kb.doc_id AS slug, kb.title, v.version, v.changed_by,
                kb.visibility, kb.owner_user_id, ${ISO(sql`v.created_at`)} AS at
-        FROM knowledge_base_versions v
-        JOIN knowledge_base kb ON kb.id = v.doc_id
+        FROM kb_versions v
+        JOIN kb_documents kb ON kb.id = v.doc_id
         WHERE v.created_at >= ${input.since}::timestamptz
           AND kb.status <> 'archived'
           AND (kb.visibility = 'team' OR kb.owner_user_id = ${input.userId}
-               OR EXISTS (SELECT 1 FROM knowledge_base_shares s WHERE s.doc_id = kb.id))
+               OR EXISTS (SELECT 1 FROM shares s WHERE s.resource_type = 'kb_document' AND s.resource_id = kb.id))
         ORDER BY v.created_at DESC, v.id DESC
         LIMIT ${bound(input.limit)}
       `);
       return rows as unknown as RecentKnowledgeEditRow[];
     },
 
-    /** Project activity rows of the given (already authorized) projects. */
+    /** Project activity rows (audit_events, capability `projects.activity`) of the given (already authorized) projects. */
     async recentProjectActivities(input: {
-      projectIds: readonly number[];
+      projectIds: readonly string[];
       since: string;
       limit: number;
     }): Promise<RecentProjectActivityRow[]> {
       if (input.projectIds.length === 0) return [];
       const rows = await db.execute(sql`
-        SELECT a.id, a.project_id, a.task_id, a.user_id, a.action, ${ISO(sql`a.created_at`)} AS at
-        FROM project_activities a
-        WHERE ${inNumbers(sql`a.project_id`, input.projectIds)}
+        SELECT a.id, (a.summary ->> 'project_id') AS project_id, (a.summary ->> 'task_id') AS task_id,
+               a.actor_id AS user_id, a.action_id AS action, ${ISO(sql`a.created_at`)} AS at
+        FROM audit_events a
+        WHERE a.app_id = 'projects'
+          AND a.capability = ${PROJECT_ACTIVITY_CAPABILITY}
+          AND ${inList(sql`(a.summary ->> 'project_id')`, input.projectIds.map(String))}
           AND a.created_at >= ${input.since}::timestamptz
         ORDER BY a.created_at DESC, a.id DESC
         LIMIT ${bound(input.limit)}
@@ -271,7 +270,7 @@ export function createActivityService(db: Db) {
      * never read.
      */
     async recentTableChanges(input: {
-      tableIds: readonly number[];
+      tableIds: readonly string[];
       since: string;
       limit: number;
     }): Promise<RecentTableChangeRow[]> {
@@ -279,7 +278,10 @@ export function createActivityService(db: Db) {
       const rows = await db.execute(sql`
         SELECT r.table_id, r.updated_by, count(*)::int AS records, ${ISO(sql`max(r.updated_at)`)} AS at
         FROM table_records r
-        WHERE ${inNumbers(sql`r.table_id`, input.tableIds)}
+        WHERE r.table_id IN (${sql.join(
+          input.tableIds.map((id) => sql`${id}`),
+          sql`, `,
+        )})
           AND r.updated_at >= ${input.since}::timestamptz
           AND r.deleted_at IS NULL
         GROUP BY r.table_id, r.updated_by
@@ -299,9 +301,9 @@ export function createActivityService(db: Db) {
       to: string;
     }): Promise<Array<{ client_name: string | null; status: string; writes: number; members: number }>> {
       const rows = await db.execute(sql`
-        SELECT (r.input::jsonb ->> 'client_name') AS client_name, r.status,
+        SELECT (r.input ->> 'client_name') AS client_name, r.status,
                count(*)::int AS writes, count(DISTINCT r.owner_user_id)::int AS members
-        FROM runtime_runs r
+        FROM runs r
         WHERE r.kind = 'agent_write'
           AND r.created_at >= ${input.from}::timestamptz
           AND r.created_at < ${input.to}::timestamptz
@@ -317,7 +319,7 @@ export function createActivityService(db: Db) {
     async agentWriteMembers(input: { from: string; to: string }): Promise<number> {
       const rows = await db.execute(sql`
         SELECT count(DISTINCT r.owner_user_id)::int AS members
-        FROM runtime_runs r
+        FROM runs r
         WHERE r.kind = 'agent_write'
           AND r.created_at >= ${input.from}::timestamptz
           AND r.created_at < ${input.to}::timestamptz
@@ -334,10 +336,10 @@ export function createActivityService(db: Db) {
     }): Promise<AgentWriteWindowRow[]> {
       if (input.ownerIds.length === 0) return [];
       const rows = await db.execute(sql`
-        SELECT r.owner_user_id, (r.input::jsonb ->> 'tool_id') AS tool_id,
-               (r.input::jsonb ->> 'client_name') AS client_name,
+        SELECT r.owner_user_id, (r.input ->> 'tool_id') AS tool_id,
+               (r.input ->> 'client_name') AS client_name,
                ${ISO(sql`r.created_at`)} AS "from", ${ISO(sql`coalesce(r.settled_at, r.updated_at)`)} AS "to"
-        FROM runtime_runs r
+        FROM runs r
         WHERE r.kind = 'agent_write'
           AND r.status = 'succeeded'
           AND ${inList(sql`r.owner_user_id`, input.ownerIds)}

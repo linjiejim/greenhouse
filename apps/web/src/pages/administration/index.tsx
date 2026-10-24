@@ -24,7 +24,7 @@ import { UsagePanelWithUsers } from './usage';
 import { ServicesPricingPanel } from './services-pricing';
 import { IssuesPanel } from './issues';
 import { resolveAdministrationRedirect } from '../settings/redirects';
-import { UsersAndGroupsPanel } from './users-and-groups';
+import { UserManagementPanel } from './users';
 import { McpKeysPanel } from './mcp-keys';
 import { RuntimeConfigPanel } from './runtime-config';
 import { BrandingStudioPanel } from './branding-studio';
@@ -65,7 +65,7 @@ export function AdministrationPage({ subPath }: { subPath: string }) {
   const extensionModule = extensionModuleComponent('administration', activeModule);
   return (
     <ModulePageShell activeKey={activeModule} mobileItems={visibleModules} contentClassName="bg-surface-canvas">
-      {activeModule === 'users' && <UsersAndGroupsPanel subPath={subPath} />}
+      {activeModule === 'users' && <UserManagementPanel />}
       {activeModule === 'usage' && <UsagePanelWithUsers />}
       {activeModule === 'services' && <ServicesPricingPanel />}
       {activeModule === 'issues' && <IssuesPanel subPath={subPath} />}

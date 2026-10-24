@@ -45,6 +45,7 @@ import {
 } from '@greenhouse/types/workbench';
 import { defineTool, type ToolMeta } from './define.js';
 import { PLATFORM_ORG_ID } from '../platform/runtime.js';
+import { tableRowIdSchema } from '../platform/tables/schema-plan.js';
 import type { SourceOutcome } from '../workbench/evaluate.js';
 
 export interface WorkbenchToolContext {
@@ -86,10 +87,10 @@ const navSchema = z
   .object({
     app_id: z.string().optional().describe('Application id from the catalog, e.g. "projects" — links to its home.'),
     entity_kind: z.enum(['crm_company', 'crm_deal', 'project', 'kb_doc', 'tables_record']).optional(),
-    entity_id: z.number().int().optional(),
+    entity_id: z.union([z.number().int(), z.string()]).optional().describe('Record id. Tables record ids are strings.'),
     slug: z.string().optional().describe('kb_doc only.'),
-    base_id: z.number().int().optional().describe('tables_record only.'),
-    table_id: z.number().int().optional().describe('tables_record only.'),
+    base_id: tableRowIdSchema.optional().describe('tables_record only.'),
+    table_id: tableRowIdSchema.optional().describe('tables_record only.'),
   })
   .describe('Shortcut target. Give either app_id or entity_kind + entity_id.');
 

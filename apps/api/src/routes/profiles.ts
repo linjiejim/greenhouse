@@ -4,12 +4,11 @@
  * GET  /api/profiles                  — 获取所有可用 Profile 列表（系统 + 自定义，含 usage）
  * GET  /api/profiles/custom           — 列出当前用户的自定义 Profile + 他人共享的
  * POST /api/profiles/custom           — 创建自定义 Profile
- * POST /api/profiles/custom/fork      — Fork 一个系统或自定义 Profile
  * GET  /api/profiles/custom/:id       — 获取自定义 Profile 详情
- * GET  /api/profiles/custom/:id/versions — 获取不可变版本历史
- * PUT  /api/profiles/custom/:id       — 追加自定义 Profile 不可变版本（共享状态不变）
+ * GET  /api/profiles/custom/:id/versions — 当前配置（3.0 起不再保存历史版本）
+ * PUT  /api/profiles/custom/:id       — 修改配置，版本号 +1（共享状态不变）
  * PUT  /api/profiles/custom/:id/sharing — 切换团队可用（仅 super）
- * DELETE /api/profiles/custom/:id     — 删除自定义 Profile 及其版本
+ * DELETE /api/profiles/custom/:id     — 删除自定义 Profile
  * GET  /api/profiles/:id              — 获取 Profile 详情（含 24h/7d 分时段用量）
  * POST /api/profiles/reload           — 清除缓存并重新加载所有 Profile 配置
  * GET  /api/profiles/usage/summary    — 全局 LLM 用量汇总（按 profile/caller 维度）
@@ -26,21 +25,25 @@ import {
   loadAllProfiles,
   loadProfile,
   normalizeProfileId,
-  parseCustomProfileReference,
   resolveProfileAsync,
   type AgentProfile,
 } from '../profiles/profile.js';
 import { getModelEntry, getModelRegistry } from '@greenhouse/agent-core';
 import { listChatModels } from '../config/models.js';
 import { getDb } from '@greenhouse/db';
-import type { CustomProfileRiskLevel, CustomProfileRow, CustomProfileVersionRow } from '@greenhouse/db';
+import type {
+  CustomProfileRiskLevel,
+  CustomProfileRow,
+  CustomProfileUpdateInput,
+  CustomProfileVersionRow,
+} from '@greenhouse/db';
 import { getAuthUser, requireSuper } from '../auth/middleware.js';
-import { assertCustomProfileAccess, pinProfileIdForUser, ProfileAccessError } from '../profiles/access.js';
+import { assertCustomProfileAccess, ProfileAccessError } from '../profiles/access.js';
 import { getInAppToolIds } from '../tools/registry.js';
 import { resolveUserTools } from '../agent.js';
 import { sanitizeForPrompt } from '../security/security.js';
 import { logger } from '@greenhouse/utils/logger';
-import { safeJsonParse } from '@greenhouse/utils/json';
+import { toRowId } from '@greenhouse/utils/id';
 import type { AppEnv } from '../app-env.js';
 import { withOwnerNicknames } from '../user-display.js';
 import type { ProfileAvatar } from '@greenhouse/types/api';
@@ -91,7 +94,7 @@ function formatCustomProfile(
       model = { provider: base.model.provider, model: base.model.model };
     }
   }
-  const rawAvatar = safeJsonParse(manifest.avatar, {});
+  const rawAvatar: unknown = manifest.avatar;
   const avatarRecord =
     rawAvatar && typeof rawAvatar === 'object' && !Array.isArray(rawAvatar)
       ? Object.fromEntries(Object.entries(rawAvatar))
@@ -126,16 +129,16 @@ function formatCustomProfile(
     name: manifest.name,
     description: manifest.description,
     base_profile_id: manifest.base_profile_id,
-    tools: safeJsonParse(manifest.tools, []) as string[],
+    tools: Array.isArray(manifest.tools) ? manifest.tools : [],
     system_prompt: manifest.system_prompt,
     max_steps: manifest.max_steps,
     is_shared: row.is_shared,
     is_custom: true,
     user_id: row.user_id,
-    forked_from: row.forked_from || null,
     created_at: row.created_at,
     updated_at: row.updated_at,
-    current_version: row.current_version,
+    /** Configuration edit counter (`run_profiles.version`); kept under its 1.x name on the wire. */
+    current_version: row.version,
     owner_backup_user_id: row.owner_backup_user_id,
     ...(version
       ? {
@@ -144,7 +147,7 @@ function formatCustomProfile(
           purpose: version.purpose,
           audience: version.audience,
           risk_level: version.risk_level,
-          budget_policy: safeJsonParse(version.budget_policy, {}) as Record<string, unknown>,
+          budget_policy: version.budget_policy ?? {},
         }
       : {}),
     avatar,
@@ -153,9 +156,9 @@ function formatCustomProfile(
   };
 }
 
-/** Everyone who may see an Agent sees its current version — there is no separate published channel. */
+/** Everyone who may see an Agent sees its current configuration — there is no separate published channel. */
 async function currentVersionOf(row: CustomProfileRow) {
-  return getDb().customProfiles.getVersion(row.id, row.current_version);
+  return getDb().customProfiles.getVersion(row.id, row.version);
 }
 
 const SHARING_IS_SUPER_ONLY =
@@ -251,7 +254,6 @@ const profiles = new Hono<AppEnv>()
       risk_level,
       budget_policy,
       owner_backup_user_id,
-      change_log,
     } = body;
 
     // Validation
@@ -344,144 +346,26 @@ const profiles = new Hono<AppEnv>()
         budget_policy:
           budget_policy && typeof budget_policy === 'object' && !Array.isArray(budget_policy) ? budget_policy : {},
         owner_backup_user_id: typeof owner_backup_user_id === 'string' ? owner_backup_user_id : null,
-        change_log: typeof change_log === 'string' ? change_log : 'Initial version',
-        created_by: authUser.id,
       });
 
       logger.info(`[Profile] ✅ Custom profile created: custom:${row.id} (${row.name}) by ${authUser.id}`);
       const version = await getDb().customProfiles.getCurrentVersion(row.id);
       return c.json(formatCustomProfile(row, undefined, version), 201);
     } catch (err: any) {
-      if (err.message?.includes('uq_custom_profiles_user_slug') || err.code === '23505') {
+      if (err.message?.includes('uq_run_profiles_user_slug') || err.code === '23505') {
         return c.json({ error: `A profile with slug "${slug}" already exists` }, 409);
       }
       throw err;
     }
   })
-  /** POST /api/profiles/custom/fork — fork a system or custom profile */
-  .post('/custom/fork', async (c) => {
-    const authUser = getAuthUser(c);
-
-    const body = await c.req.json();
-    const { source_profile_id, name } = body;
-
-    if (!source_profile_id || typeof source_profile_id !== 'string') {
-      return c.json({ error: 'source_profile_id is required' }, 400);
-    }
-
-    // Load source profile
-    let sourcePrompt: string;
-    let sourceTools: string[];
-    let sourceMaxSteps: number;
-    let sourceName: string;
-    let baseProfileId: string;
-    let sourceModelId: string | null;
-    let sourceReference: string;
-
-    const forkedFromSystemProfile = !source_profile_id.startsWith('custom:');
-    if (source_profile_id.startsWith('custom:')) {
-      // Fork from another custom profile
-      let pinnedSourceReference: string;
-      try {
-        pinnedSourceReference = await pinProfileIdForUser(authUser, source_profile_id);
-      } catch (err) {
-        if (err instanceof ProfileAccessError) return c.json({ error: err.message }, err.status);
-        throw err;
-      }
-      const reference = parseCustomProfileReference(pinnedSourceReference);
-      if (!reference?.version) return c.json({ error: 'Invalid source custom profile ID' }, 400);
-      const sourceRow = await getDb().customProfiles.getById(reference.profileId);
-      if (!sourceRow) {
-        return c.json({ error: 'Source custom profile not found' }, 404);
-      }
-      const sourceVersionNumber = reference.version;
-      const sourceVersion = await getDb().customProfiles.getVersion(sourceRow.id, sourceVersionNumber);
-      if (!sourceVersion) return c.json({ error: 'Source custom profile version not found' }, 409);
-      sourceReference = pinnedSourceReference;
-      sourcePrompt = sourceVersion.system_prompt;
-      sourceTools = safeJsonParse(sourceVersion.tools, []) as string[];
-      sourceMaxSteps = sourceVersion.max_steps;
-      sourceName = sourceVersion.name;
-      baseProfileId = isValidCustomBaseProfileId(normalizeProfileId(sourceVersion.base_profile_id) ?? '')
-        ? (normalizeProfileId(sourceVersion.base_profile_id) as string)
-        : DEFAULT_PROFILE_ID;
-      sourceModelId = sourceVersion.model_id ?? loadProfile(baseProfileId).model.id ?? null;
-    } else {
-      // Fork from system profile
-      const allProfiles = loadAllProfiles();
-      const normalizedSourceId = normalizeProfileId(source_profile_id) ?? source_profile_id;
-      const source = allProfiles.find((p) => p.id === normalizedSourceId && !p.hidden);
-      if (!source) {
-        return c.json({ error: `Source system profile not found: ${source_profile_id}` }, 404);
-      }
-      sourcePrompt = source.system_prompt;
-      sourceTools = source.tools;
-      sourceMaxSteps = source.max_steps ?? 12;
-      sourceName = source.name;
-      baseProfileId = isValidCustomBaseProfileId(source.id) ? source.id : DEFAULT_PROFILE_ID;
-      // A fork starts on the model it was forked from, then owns it.
-      sourceModelId = source.model.id ?? null;
-      sourceReference = normalizedSourceId;
-    }
-
-    // Filter tools to only those the user has access to.
-    //
-    // For a system source, `sourceTools` is the profile YAML's `tools:` list —
-    // which the runtime never reads (a system profile runs on the user's whole
-    // allow-set, see resolveEffectiveTools). Seeding a fork from it produced an
-    // Agent strictly weaker than the one it was forked from, with no email,
-    // knowledge, attachments or memory, and nothing on screen saying so. A fork
-    // of a system Agent therefore starts from what that Agent really runs with:
-    // everything this user is allowed.
-    const { allowedTools } = await resolveUserTools(authUser.id, authUser.role);
-    const userAllowed = new Set(allowedTools);
-    const effectiveTools = (forkedFromSystemProfile ? allowedTools : sourceTools).filter((t) => userAllowed.has(t));
-
-    // Check profile count limit
-    const count = await getDb().customProfiles.countByUser(authUser.id);
-    if (count >= MAX_CUSTOM_PROFILES_PER_USER) {
-      return c.json({ error: `Maximum ${MAX_CUSTOM_PROFILES_PER_USER} custom profiles per user` }, 400);
-    }
-
-    // Generate name and slug
-    const forkName = name?.trim() || `${sourceName} (Fork)`;
-    const slug = slugify(forkName);
-
-    try {
-      const row = await getDb().customProfiles.create({
-        slug,
-        user_id: authUser.id,
-        name: forkName,
-        description: `Forked from ${source_profile_id}`,
-        base_profile_id: baseProfileId,
-        model_id: sourceModelId,
-        tools: effectiveTools,
-        system_prompt: sourcePrompt,
-        max_steps: sourceMaxSteps,
-        is_shared: false,
-        forked_from: sourceReference,
-        change_log: `Forked from ${sourceReference}`,
-        created_by: authUser.id,
-      });
-
-      logger.info(
-        `[Profile] \u2699\uFE0F Custom profile forked: custom:${row.id} (${row.name}) from ${source_profile_id} by ${authUser.id}`,
-      );
-      const baseMap = new Map(loadAllProfiles().map((p) => [p.id, p]));
-      const version = await getDb().customProfiles.getCurrentVersion(row.id);
-      return c.json(formatCustomProfile(row, baseMap, version), 201);
-    } catch (err: any) {
-      if (err.message?.includes('uq_custom_profiles_user_slug') || err.code === '23505') {
-        return c.json({ error: `A profile with slug "${slug}" already exists. Try a different name.` }, 409);
-      }
-      throw err;
-    }
-  })
-  /** GET /api/profiles/custom/:id/versions — immutable manifest history */
+  /**
+   * GET /api/profiles/custom/:id/versions — the current configuration as the
+   * only version (history is no longer stored; older pins run the current one).
+   */
   .get('/custom/:id/versions', async (c) => {
     const authUser = getAuthUser(c);
-    const id = Number.parseInt(c.req.param('id'), 10);
-    if (!Number.isInteger(id)) return c.json({ error: 'Invalid profile ID' }, 400);
+    const id = toRowId(c.req.param('id'));
+    if (!id) return c.json({ error: 'Invalid profile ID' }, 400);
     const row = await getDb().customProfiles.getById(id);
     if (!row) return c.json({ error: 'Custom profile not found' }, 404);
 
@@ -495,25 +379,18 @@ const profiles = new Hono<AppEnv>()
       }
     }
     const versions = await getDb().customProfiles.listVersions(id);
-    // Non-owners run the current version, so that is the one they may inspect.
-    const visible = ownsAsset ? versions : versions.filter((version) => version.version === row.current_version);
     return c.json({
       profile_id: `custom:${id}`,
-      current_version: row.current_version,
-      versions: visible.map((version) => ({
-        ...version,
-        tools: safeJsonParse(version.tools, []) as string[],
-        avatar: safeJsonParse(version.avatar, {}) as Record<string, unknown>,
-        budget_policy: safeJsonParse(version.budget_policy, {}) as Record<string, unknown>,
-      })),
+      current_version: row.version,
+      versions,
     });
   })
   /** PUT /api/profiles/custom/:id/sharing — switch team availability (super only) */
   .put('/custom/:id/sharing', async (c) => {
     const authUser = getAuthUser(c);
     if (authUser.role !== 'super') return c.json({ error: SHARING_IS_SUPER_ONLY }, 403);
-    const id = Number.parseInt(c.req.param('id'), 10);
-    if (!Number.isInteger(id)) return c.json({ error: 'Invalid profile ID' }, 400);
+    const id = toRowId(c.req.param('id'));
+    if (!id) return c.json({ error: 'Invalid profile ID' }, 400);
     const body = (await c.req.json().catch(() => ({}))) as { is_shared?: unknown };
     if (typeof body.is_shared !== 'boolean') return c.json({ error: 'is_shared must be true or false' }, 400);
 
@@ -525,8 +402,8 @@ const profiles = new Hono<AppEnv>()
   /** GET /api/profiles/custom/:id — get custom profile detail */
   .get('/custom/:id', async (c) => {
     const authUser = getAuthUser(c);
-    const id = parseInt(c.req.param('id'), 10);
-    if (isNaN(id)) return c.json({ error: 'Invalid profile ID' }, 400);
+    const id = toRowId(c.req.param('id'));
+    if (!id) return c.json({ error: 'Invalid profile ID' }, 400);
 
     const row = await getDb().customProfiles.getById(id);
     if (!row) return c.json({ error: 'Custom profile not found' }, 404);
@@ -542,11 +419,11 @@ const profiles = new Hono<AppEnv>()
 
     return c.json(formatCustomProfile(row, undefined, await currentVersionOf(row)));
   })
-  /** PUT /api/profiles/custom/:id — append an immutable version (team availability unchanged) */
+  /** PUT /api/profiles/custom/:id — edit the configuration and bump its version (team availability unchanged) */
   .put('/custom/:id', async (c) => {
     const authUser = getAuthUser(c);
-    const id = parseInt(c.req.param('id'), 10);
-    if (isNaN(id)) return c.json({ error: 'Invalid profile ID' }, 400);
+    const id = toRowId(c.req.param('id'));
+    if (!id) return c.json({ error: 'Invalid profile ID' }, 400);
 
     const row = await getDb().customProfiles.getById(id);
     if (!row) return c.json({ error: 'Custom profile not found' }, 404);
@@ -558,7 +435,7 @@ const profiles = new Hono<AppEnv>()
     }
 
     const body = await c.req.json();
-    const updates: any = {};
+    const updates: CustomProfileUpdateInput = {};
 
     if (body.name !== undefined) updates.name = body.name.trim();
     if (body.description !== undefined) updates.description = body.description?.trim() || null;
@@ -634,23 +511,19 @@ const profiles = new Hono<AppEnv>()
     if (body.owner_backup_user_id !== undefined) {
       updates.owner_backup_user_id = body.owner_backup_user_id || null;
     }
-    updates.change_log = typeof body.change_log === 'string' ? body.change_log.trim() : '';
-    updates.created_by = authUser.id;
 
     const updated = await getDb().customProfiles.update(id, updates);
     if (!updated) return c.json({ error: 'Update failed' }, 500);
 
-    logger.info(
-      `[Profile] ✏️ Custom profile version created: custom:${id}@${updated.current_version} by ${authUser.id}`,
-    );
+    logger.info(`[Profile] ✏️ Custom profile updated: custom:${id}@${updated.version} by ${authUser.id}`);
     const version = await getDb().customProfiles.getCurrentVersion(id);
     return c.json(formatCustomProfile(updated, undefined, version));
   })
-  /** DELETE /api/profiles/custom/:id — delete the Agent and its versions */
+  /** DELETE /api/profiles/custom/:id — delete the Agent */
   .delete('/custom/:id', async (c) => {
     const authUser = getAuthUser(c);
-    const id = parseInt(c.req.param('id'), 10);
-    if (isNaN(id)) return c.json({ error: 'Invalid profile ID' }, 400);
+    const id = toRowId(c.req.param('id'));
+    if (!id) return c.json({ error: 'Invalid profile ID' }, 400);
 
     const row = await getDb().customProfiles.getById(id);
     if (!row) return c.json({ error: 'Custom profile not found' }, 404);

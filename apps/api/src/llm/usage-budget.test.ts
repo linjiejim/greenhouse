@@ -11,10 +11,17 @@ import {
 } from './usage-budget.js';
 
 function fixture() {
-  const reserveMonthlyUser = vi.fn().mockResolvedValue([]);
+  // Token reservations (organization + provider token accounts) and USD
+  // reservations share usageBudget.reserve; route them apart by account unit.
+  const tokenReserve = vi.fn().mockResolvedValue([]);
   const settle = vi.fn().mockResolvedValue([]);
   const release = vi.fn().mockResolvedValue([]);
   const { ensureAccount, reserve, metering, accounts } = fakeMeteringServices();
+  const routedReserve = vi.fn(async (input: { account_ids: readonly string[] }) =>
+    input.account_ids.every((id) => id.endsWith(':tokens'))
+      ? tokenReserve(input)
+      : (reserve as unknown as (i: unknown) => Promise<unknown[]>)(input),
+  );
   const record = vi.fn().mockResolvedValue(undefined);
   const db = {
     users: {
@@ -22,15 +29,14 @@ function fixture() {
         id: 'user-1',
         role: 'team',
         status: 'active',
-        monthly_token_limit: 20_000_000,
       }),
     },
-    usageBudget: { ensureAccount, reserve, reserveMonthlyUser, settle, release },
+    usageBudget: { ensureAccount, reserve: routedReserve, settle, release },
     metering,
     usage: { record },
     notifications: { createWithStatus: vi.fn(), countUnread: vi.fn(async () => 0) },
   };
-  return { accounts, db, ensureAccount, metering, record, release, reserve, reserveMonthlyUser, settle };
+  return { accounts, db, ensureAccount, metering, record, release, reserve, settle, tokenReserve };
 }
 
 describe('provider usage-budget guard', () => {
@@ -53,13 +59,11 @@ describe('provider usage-budget guard', () => {
       output_tokens: 20,
     });
 
-    expect(f.reserveMonthlyUser).toHaveBeenCalledWith(expect.objectContaining({ idempotency_key: 'test:key' }));
-    expect(f.reserveMonthlyUser).toHaveBeenCalledWith(
+    expect(f.tokenReserve).toHaveBeenCalledWith(
       expect.objectContaining({
-        additional_accounts: expect.arrayContaining([
-          expect.objectContaining({ scope_type: 'organization', scope_id: 'default', unit: 'tokens' }),
-          expect.objectContaining({ scope_type: 'provider', scope_id: 'unattributed', unit: 'tokens' }),
-        ]),
+        idempotency_key: 'test:key',
+        user_id: 'user-1',
+        account_ids: ['organization:default:tokens', 'provider:unattributed:tokens'],
       }),
     );
     expect(f.settle).toHaveBeenCalledWith(expect.objectContaining({ idempotency_key: 'test:key', actual_units: 60 }));
@@ -103,7 +107,7 @@ describe('provider usage-budget guard', () => {
       status: 503,
       code: 'usage_budget_unavailable',
     } satisfies Partial<UsageBudgetAdmissionError>);
-    expect(f.reserveMonthlyUser).not.toHaveBeenCalled();
+    expect(f.tokenReserve).not.toHaveBeenCalled();
   });
 
   it('uses conservative declared upper bounds for loops and retries', () => {
@@ -141,16 +145,11 @@ describe('provider usage-budget guard', () => {
         estimatedTokens: 10,
         modelId: 'flash',
       });
-      const input = f.reserveMonthlyUser.mock.calls[0]![0] as {
-        additional_accounts: Array<{ scope_type: string; scope_id: string }>;
-      };
-      expect(input.additional_accounts).toEqual(
+      const input = f.tokenReserve.mock.calls[0]![0] as { account_ids: string[] };
+      expect(input.account_ids).toEqual(
         expect.arrayContaining([
-          expect.objectContaining({ scope_type: 'provider', scope_id: 'LLM_API_KEY:openai-compatible:default' }),
-          expect.objectContaining({
-            scope_type: 'provider',
-            scope_id: 'FALLBACK_API_KEY:openai-compatible:https://fallback.example.com/v1',
-          }),
+          'provider:LLM_API_KEY:openai-compatible:default:tokens',
+          'provider:FALLBACK_API_KEY:openai-compatible:https://fallback.example.com/v1:tokens',
         ]),
       );
     } finally {
@@ -187,15 +186,10 @@ describe('provider usage-budget guard', () => {
       },
     });
 
-    const reservation = f.reserveMonthlyUser.mock.calls[0]![0] as {
-      estimated_units: number;
-      additional_accounts: Array<{ scope_type: string; scope_id: string }>;
-    };
+    const reservation = f.tokenReserve.mock.calls[0]![0] as { estimated_units: number; account_ids: string[] };
     expect(reservation.estimated_units).toBeGreaterThan(200);
-    expect(reservation.additional_accounts.filter((account) => account.scope_type === 'provider')).toEqual([
-      expect.objectContaining({
-        scope_id: 'SILICONFLOW_API_KEY:openai-compatible:https://api.siliconflow.cn/v1',
-      }),
+    expect(reservation.account_ids.filter((id) => id.startsWith('provider:'))).toEqual([
+      'provider:SILICONFLOW_API_KEY:openai-compatible:https://api.siliconflow.cn/v1:tokens',
     ]);
 
     attempt.markProviderIoStarted();
@@ -236,7 +230,7 @@ describe('provider usage-budget guard', () => {
       },
     });
 
-    const { estimated_units: estimate } = f.reserveMonthlyUser.mock.calls[0]![0] as { estimated_units: number };
+    const { estimated_units: estimate } = f.tokenReserve.mock.calls[0]![0] as { estimated_units: number };
     // Admission compares this against free headroom, so an inflated estimate
     // locks a user out well before the limit is actually spent.
     expect(estimate).toBeLessThan(20_000);

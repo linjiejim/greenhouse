@@ -21,7 +21,7 @@ export function dispatchProjectAgentAction(
   context: ProjectAgentContext,
   actionId: ProjectActionId,
   payload: unknown,
-  ids: { projectId?: number; taskId?: number; commentId?: number } = {},
+  ids: { projectId?: string | number; taskId?: string | number; commentId?: string | number } = {},
 ): Promise<PlatformActionResult> {
   return getPlatformRuntime().dispatch({
     actor: delegatedAgentActor({

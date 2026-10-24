@@ -377,7 +377,7 @@ describe('activity log', () => {
     });
   });
 
-  it('leaves editor heartbeats out and reads a knowledge comment as a comment', async () => {
+  it('leaves editor heartbeats out and reads a knowledge reorder as a move', async () => {
     const doc = await db.knowledgeBase.create({
       doc_id: unique('team-doc'),
       title: 'Team handbook',
@@ -392,10 +392,10 @@ describe('activity log', () => {
       summary: { change: 'presence', activity: false },
       at: minutesAgo(3),
     });
-    await audit({ ...common, recordId: String(doc.id), summary: { change: 'comment' }, at: minutesAgo(2) });
+    await audit({ ...common, recordId: String(doc.id), summary: { change: 'reorder' }, at: minutesAgo(2) });
     const rows = (await all(alice, { module: 'knowledge' })).filter((item) => item.target?.id === String(doc.id));
     expect(rows).toHaveLength(1);
-    expect(rows[0]).toMatchObject({ verb: 'comment', entity: 'document', target: { label: 'Team handbook' } });
+    expect(rows[0]).toMatchObject({ verb: 'move', entity: 'document', target: { label: 'Team handbook' } });
   });
 
   it('bounds the time window', async () => {

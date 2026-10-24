@@ -116,7 +116,7 @@ describe('resolveMailbox', () => {
     const account = await bindMailbox(owner);
 
     const foreign = await resolveMailbox(db, { userId: other.id, userRole: other.role }, account.id);
-    const missing = await resolveMailbox(db, { userId: other.id, userRole: other.role }, 999_999);
+    const missing = await resolveMailbox(db, { userId: other.id, userRole: other.role }, '999999');
 
     expect(foreign.ok).toBe(false);
     expect(missing.ok).toBe(false);
@@ -217,7 +217,7 @@ describe('sendMail guardrails', () => {
     const log = await db.email.listSendLog({ userId: user.id });
     expect(log).toHaveLength(1);
     expect(log[0]!.status).toBe('sent');
-    expect(JSON.parse(log[0]!.recipients)).toEqual(['someone@example.com']);
+    expect(log[0]!.recipients).toEqual(['someone@example.com']);
     expect(log[0]!.session_id).toBe('s-1');
   });
 
@@ -282,7 +282,7 @@ describe('sendMail guardrails', () => {
       await db.email.logSend({
         user_id: user.id,
         account_scope: 'personal',
-        account_id: 1,
+        account_id: '1',
         from_address: user.email,
         subject: 'earlier',
         recipients: ['x@example.com'],
@@ -305,7 +305,7 @@ describe('sendMail guardrails', () => {
       await db.email.logSend({
         user_id: user.id,
         account_scope: 'personal',
-        account_id: 1,
+        account_id: '1',
         from_address: user.email,
         subject: 'bounced',
         recipients: ['x@example.com'],

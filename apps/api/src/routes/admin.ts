@@ -130,7 +130,6 @@ const admin = new Hono<AppEnv>()
       nickname?: string;
       role?: 'team';
       credential_mode?: 'email_link' | 'direct_password';
-      monthly_token_limit?: number;
     };
 
     if (!body.email || !body.nickname) {
@@ -172,7 +171,6 @@ const admin = new Hono<AppEnv>()
       nickname: body.nickname,
       role,
       status: credentialMode === 'email_link' ? 'invited' : 'active',
-      monthly_token_limit: body.monthly_token_limit,
       created_by: currentUser.id,
     });
     await getDb().platform.syncLegacyRoleBinding(user.id, user.role, currentUser.id);
@@ -192,7 +190,6 @@ const admin = new Hono<AppEnv>()
           nickname: user.nickname,
           role: user.role,
           status: user.status,
-          monthly_token_limit: user.monthly_token_limit,
           created_at: user.created_at,
         },
         ...(linkResult ?? {}),
@@ -220,8 +217,8 @@ const admin = new Hono<AppEnv>()
           COUNT(*) as total_calls,
           COALESCE(SUM(input_tokens + output_tokens), 0) as total_tokens,
           MAX(created_at) as last_used_at
-        FROM llm_usage
-        WHERE user_id IS NOT NULL
+        FROM usage_events
+        WHERE kind = 'model' AND user_id IS NOT NULL
         GROUP BY user_id
       `);
 
@@ -236,7 +233,7 @@ const admin = new Hono<AppEnv>()
 
       const monthRows = await execSql(sql`
         SELECT user_id, COALESCE(SUM(input_tokens + output_tokens), 0) as month_tokens
-        FROM llm_usage WHERE user_id IS NOT NULL AND created_at >= ${monthStart}
+        FROM usage_events WHERE kind = 'model' AND user_id IS NOT NULL AND created_at >= ${monthStart}
         GROUP BY user_id
       `);
       for (const row of monthRows) {
@@ -246,7 +243,7 @@ const admin = new Hono<AppEnv>()
 
       const msgRows = await execSql(sql`
         SELECT s.user_id, COUNT(*) as cnt
-        FROM messages m JOIN sessions s ON m.session_id = s.id
+        FROM messages m JOIN conversations s ON m.session_id = s.id
         WHERE s.user_id IS NOT NULL AND m.role = 'user' AND m.created_at >= ${todayStart}
         GROUP BY s.user_id
       `);
@@ -274,7 +271,6 @@ const admin = new Hono<AppEnv>()
           nickname: u.nickname,
           role: u.role,
           status: u.status,
-          monthly_token_limit: u.monthly_token_limit,
           created_by: u.created_by,
           created_at: u.created_at,
           updated_at: u.updated_at,
@@ -308,14 +304,14 @@ const admin = new Hono<AppEnv>()
     try {
       const msgRows = await execSql(sql`
         SELECT COUNT(*) as cnt FROM messages m
-        JOIN sessions s ON m.session_id = s.id
+        JOIN conversations s ON m.session_id = s.id
         WHERE s.user_id = ${id} AND m.role = 'user' AND m.created_at >= ${todayStart}
       `);
       todayMessages = Number(msgRows[0]?.cnt ?? 0);
 
       const tokenRows = await execSql(sql`
         SELECT COALESCE(SUM(input_tokens + output_tokens), 0) as total
-        FROM llm_usage WHERE user_id = ${id} AND created_at >= ${monthStart}
+        FROM usage_events WHERE kind = 'model' AND user_id = ${id} AND created_at >= ${monthStart}
       `);
       monthTokens = Number(tokenRows[0]?.total ?? 0);
     } catch {
@@ -329,7 +325,6 @@ const admin = new Hono<AppEnv>()
         nickname: user.nickname,
         role: user.role,
         status: user.status,
-        monthly_token_limit: user.monthly_token_limit,
         created_by: user.created_by,
         created_at: user.created_at,
         updated_at: user.updated_at,
@@ -339,7 +334,6 @@ const admin = new Hono<AppEnv>()
       usage: {
         today_messages: todayMessages,
         month_tokens: monthTokens,
-        monthly_limit: user.monthly_token_limit,
       },
     });
   })
@@ -351,7 +345,6 @@ const admin = new Hono<AppEnv>()
       nickname?: string;
       role?: 'team';
       status?: 'active' | 'disabled';
-      monthly_token_limit?: number;
     };
 
     const user = await getDb().users.getById(id);
@@ -386,14 +379,13 @@ const admin = new Hono<AppEnv>()
       return c.json({ error: 'Set a password before activating this account' }, 409);
     }
 
-    // Build the public update surface explicitly. The retired
-    // daily_message_limit column remains in storage for compatibility, but an
-    // old client must not be able to keep mutating it by sending an extra key.
+    // Build the public update surface explicitly: an old client sending the
+    // retired per-member quota keys (daily_message_limit / monthly_token_limit)
+    // must not reach the users row. Member spend is capped by the USD budget.
     const updates = {
       ...(body.nickname !== undefined ? { nickname: body.nickname } : {}),
       ...(body.role !== undefined ? { role: body.role } : {}),
       ...(body.status !== undefined ? { status: body.status } : {}),
-      ...(body.monthly_token_limit !== undefined ? { monthly_token_limit: body.monthly_token_limit } : {}),
     };
     const db = getDb();
     const credentialsRevoked = body.status === 'disabled' && user.status !== 'disabled';
@@ -403,16 +395,6 @@ const admin = new Hono<AppEnv>()
     if (!updated) return c.json({ error: 'User not found' }, 404);
     if (body.role !== undefined) {
       await getDb().platform.syncLegacyRoleBinding(updated.id, updated.role, currentUser.id);
-    }
-    if (body.monthly_token_limit !== undefined) {
-      // Keep the materialized current-month hard-budget account in sync for
-      // immediate admin visibility. The service re-reads users under a lock,
-      // so stale request copies cannot raise this limit again.
-      await db.usageBudget.ensureMonthlyUserAccount({
-        user_id: updated.id,
-        limit_tokens: updated.monthly_token_limit,
-        sync_limit: true,
-      });
     }
     if (credentialsRevoked) await suspendUserRuntime(id);
     if (body.status === 'active' && user.status === 'disabled') await resumeUserRuntime(id);
@@ -424,7 +406,6 @@ const admin = new Hono<AppEnv>()
         nickname: updated.nickname,
         role: updated.role,
         status: updated.status,
-        monthly_token_limit: updated.monthly_token_limit,
       },
     });
   })
@@ -616,17 +597,17 @@ const admin = new Hono<AppEnv>()
           COALESCE(SUM(cached_tokens), 0) as total_cached_tokens,
           COALESCE(SUM(reasoning_tokens), 0) as total_reasoning_tokens,
           COALESCE(SUM(duration_ms), 0) as total_duration_ms
-        FROM llm_usage
-        WHERE user_id = ${id} ${sinceClause}
+        FROM usage_events
+        WHERE kind = 'model' AND user_id = ${id} ${sinceClause}
       `);
 
       const recentRows = await execSql(sql`
         SELECT id, profile_id, caller, session_id, model,
                input_tokens, output_tokens, cached_tokens,
                reasoning_tokens, duration_ms, created_at
-        FROM llm_usage
-        WHERE user_id = ${id}
-        ORDER BY created_at DESC LIMIT 20
+        FROM usage_events
+        WHERE kind = 'model' AND user_id = ${id}
+        ORDER BY created_at DESC, id DESC LIMIT 20
       `);
 
       return c.json({ stats: statsRows[0] ?? null, recent: recentRows });
@@ -647,8 +628,8 @@ const admin = new Hono<AppEnv>()
           COALESCE(SUM(input_tokens), 0) as total_input_tokens,
           COALESCE(SUM(output_tokens), 0) as total_output_tokens,
           MAX(created_at) as last_used_at
-        FROM llm_usage
-        WHERE user_id IS NOT NULL ${sinceClause}
+        FROM usage_events
+        WHERE kind = 'model' AND user_id IS NOT NULL ${sinceClause}
         GROUP BY user_id
         ORDER BY total_calls DESC
       `);

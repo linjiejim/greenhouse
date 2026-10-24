@@ -42,7 +42,7 @@ services:
   # The API waits for it, so an upgraded image never runs against an old schema.
   migrate:
     image: ${GREENHOUSE_IMAGE:-ghcr.io/linjiejim/greenhouse:latest}
-    command: ['./node_modules/.bin/drizzle-kit', 'migrate']
+    command: ['./node_modules/.bin/tsx', 'apps/api/src/cli/index.ts', 'db', 'migrate']
     restart: 'no'
     depends_on:
       postgres:

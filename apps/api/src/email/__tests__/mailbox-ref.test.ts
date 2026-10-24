@@ -1,7 +1,7 @@
 /**
  * How a mailbox reference written by the model is read.
  *
- * `list_accounts` returns a numeric `mailbox` and an `email_address`, so both
+ * `list_accounts` returns a `mailbox` id and an `email_address`, so both
  * forms show up in calls. The address form used to fail the numeric parse and
  * come back as "mailbox is required" — the one thing that was demonstrably not
  * true about a call that passed one.
@@ -12,8 +12,9 @@ import { mailboxRefError, parseMailboxRef } from '../service.js';
 
 describe('parseMailboxRef', () => {
   it('reads account ids, "shared" and addresses', () => {
-    expect(parseMailboxRef('7')).toBe(7);
-    expect(parseMailboxRef(7)).toBe(7);
+    expect(parseMailboxRef('7')).toBe('7');
+    expect(parseMailboxRef(7)).toBe('7');
+    expect(parseMailboxRef('eml_01JABCDEFGHJKMNPQRSTVWXYZ0')).toBe('eml_01JABCDEFGHJKMNPQRSTVWXYZ0');
     expect(parseMailboxRef('shared')).toBe('shared');
     expect(parseMailboxRef('Jim@Example.com')).toEqual({ address: 'jim@example.com' });
   });
@@ -22,7 +23,7 @@ describe('parseMailboxRef', () => {
     expect(parseMailboxRef(undefined)).toBeNull();
     expect(parseMailboxRef('')).toBeNull();
     expect(parseMailboxRef('   ')).toBeNull();
-    expect(parseMailboxRef('INBOX')).toBeNull();
+    expect(parseMailboxRef('not an id')).toBeNull();
     expect(parseMailboxRef(0)).toBeNull();
     expect(parseMailboxRef(-2)).toBeNull();
   });

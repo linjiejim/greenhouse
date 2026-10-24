@@ -11,9 +11,9 @@
  * channel it could aim anywhere. Both channels here are aimed by construction:
  *   • WeCom  — the webhook is validated as a qyapi.weixin.qq.com endpoint at
  *              write time (task-center.validateNotifyWebhook).
- *   • Email  — `notify_email` is a BOOLEAN. The recipient is looked up from the
+ *   • Email  — `notify.email` is a BOOLEAN. The recipient is looked up from the
  *              task owner, so there is no address for anyone to supply.
- *   • WeCom DM — `notify_wecom` is a BOOLEAN too. `touser` comes from the
+ *   • WeCom DM — `notify.wecom` is a BOOLEAN too. `touser` comes from the
  *              owner's stored WeCom binding, so the same property holds: there
  *              is no recipient field for anyone to point elsewhere.
  *
@@ -25,6 +25,7 @@
  */
 
 import { logger } from '@greenhouse/utils/logger';
+import { toRowId } from '@greenhouse/utils/id';
 import type { DatabaseProvider, ScheduledTaskRow } from '@greenhouse/db';
 import { flattenRichOutput, renderNotificationEmail } from '../notifications/render.js';
 import { notifyWebhookKind } from './task-limits.js';
@@ -141,15 +142,10 @@ function listWrites(writes: readonly AutomationWriteRecord[]): string[] {
 }
 
 /** Most mutation tools dispatch on a top-level `action`; show it when present. */
-function actionOf(rawInput: string): string | null {
-  try {
-    const parsed: unknown = JSON.parse(rawInput);
-    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-      const action = (parsed as { action?: unknown }).action;
-      if (typeof action === 'string' && action) return action;
-    }
-  } catch {
-    // Not our problem here — the full input is permanently in the ToolCall row.
+function actionOf(input: unknown): string | null {
+  if (input && typeof input === 'object' && !Array.isArray(input)) {
+    const action = (input as { action?: unknown }).action;
+    if (typeof action === 'string' && action) return action;
   }
   return null;
 }
@@ -168,7 +164,7 @@ export interface AutomationWriteRecord {
 export interface AutomationResultNotificationPayload {
   schema: 1;
   type: 'automation_result';
-  task_id: number;
+  task_id: string;
   task_name: string;
   session_id: string;
   status: TaskNotification['status'];
@@ -240,8 +236,7 @@ export function parseAutomationResultNotificationPayload(value: unknown): Automa
   if (
     payload.schema !== 1 ||
     payload.type !== 'automation_result' ||
-    !Number.isSafeInteger(payload.task_id) ||
-    Number(payload.task_id) <= 0 ||
+    toRowId(payload.task_id) === null ||
     typeof payload.task_name !== 'string' ||
     !payload.task_name.trim() ||
     typeof payload.session_id !== 'string' ||
@@ -259,7 +254,12 @@ export function parseAutomationResultNotificationPayload(value: unknown): Automa
     : [];
   // A malformed receipt must not cost the reader the answer it was appended to,
   // so bad entries are dropped instead of rejecting the whole payload.
-  return { ...(payload as AutomationResultNotificationPayload), ...(writes.length ? { writes } : {}) };
+  return {
+    ...(payload as AutomationResultNotificationPayload),
+    // Payloads written by 1.x carry the old numeric task id.
+    task_id: toRowId(payload.task_id)!,
+    ...(writes.length ? { writes } : {}),
+  };
 }
 
 /**
@@ -356,21 +356,22 @@ export async function notifyTaskResult(
   const queued = { wecom: false, email: false, wecomDm: false, feishuDm: false };
   await queueMobilePush(db, result.notification);
 
-  if (task.notify_webhook) {
+  const notify = task.notify ?? { webhook: null, email: false, wecom: false, feishu: false };
+  if (notify.webhook) {
     // The webhook family is derived from the (write-time validated) URL host,
-    // so one field serves both group-bot flavours without a second column.
-    const feishu = notifyWebhookKind(task.notify_webhook) === 'feishu';
+    // so one field serves both group-bot flavours without a second key.
+    const feishu = notifyWebhookKind(notify.webhook) === 'feishu';
     await db.notifications.createDelivery({
       notification_id: result.notification.id,
       channel: feishu ? 'feishu' : 'wecom',
       recipient: feishu
-        ? automationDeliveryRecipient.feishuWebhook(task.notify_webhook)
-        : automationDeliveryRecipient.wecomWebhook(task.notify_webhook),
+        ? automationDeliveryRecipient.feishuWebhook(notify.webhook)
+        : automationDeliveryRecipient.wecomWebhook(notify.webhook),
     });
     queued.wecom = true;
   }
 
-  if (task.notify_email) {
+  if (notify.email) {
     await db.notifications.createDelivery({
       notification_id: result.notification.id,
       channel: 'email',
@@ -379,7 +380,7 @@ export async function notifyTaskResult(
     queued.email = true;
   }
 
-  if (task.notify_wecom) {
+  if (notify.wecom) {
     await db.notifications.createDelivery({
       notification_id: result.notification.id,
       channel: 'wecom',
@@ -388,7 +389,7 @@ export async function notifyTaskResult(
     queued.wecomDm = true;
   }
 
-  if (task.notify_feishu) {
+  if (notify.feishu) {
     await db.notifications.createDelivery({
       notification_id: result.notification.id,
       channel: 'feishu',

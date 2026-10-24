@@ -58,7 +58,7 @@ describe('Runtime Kernel service', () => {
     const duplicate = await db.runtime.createRun(request);
 
     expect(duplicate.id).toBe(first.id);
-    expect(JSON.parse(first.input)).toEqual(request.input);
+    expect(first.input).toEqual(request.input);
     expect(first.root_run_id).toBe(first.id);
     expect(first.version).toBe(1);
 
@@ -269,7 +269,7 @@ describe('Runtime Kernel service', () => {
     const tool = await db.runtime.beginToolCallWithAuthority(request);
 
     expect(tool).toMatchObject({ status: 'running', run_id: run.id, step_id: step.id, version: 2 });
-    expect(JSON.parse(tool.input)).toEqual(request.input);
+    expect(tool.input).toEqual(request.input);
     await expect(db.runtime.beginToolCallWithAuthority(request)).rejects.toMatchObject({
       code: 'runtime_idempotency_conflict',
     });
@@ -448,7 +448,7 @@ describe('Runtime Kernel service', () => {
     expect(result.interrupted).toMatchObject({ id: step.id, status: 'interrupted', attempt: 1 });
     expect(result.replacement).toMatchObject({ status: 'queued', attempt: 2, step_key: step.step_key });
     expect(result.replacement.id).not.toBe(step.id);
-    expect(result.replacement.input).toBe(step.input);
+    expect(result.replacement.input).toEqual(step.input);
     const events = await db.runtime.listEvents(run.id);
     expect(events.slice(-2).map((event) => event.type)).toEqual(['step.status_changed', 'step.created']);
     expect(await db.runtime.listOutboxForEvent(events.at(-1)!.id)).toHaveLength(1);
@@ -685,7 +685,7 @@ describe('Runtime Kernel service', () => {
     });
 
     expect(resolved).toMatchObject({ status: 'resolved', decided_by_user_id: user.id });
-    expect(JSON.parse(resolved.decision!)).toEqual({ approved: true, note: 'reviewed exactly' });
+    expect(resolved.decision).toEqual({ approved: true, note: 'reviewed exactly' });
     expect(available).toMatchObject({ status: 'available', size_bytes: 321, sha256: 'abc123' });
     const timeline = await db.runtime.listEvents(run.id);
     expect(timeline.map((event) => event.type)).toEqual([
@@ -784,7 +784,7 @@ describe('Runtime Kernel service', () => {
 
     expect(expired).toHaveLength(1);
     expect(expired[0]).toMatchObject({ id: interrupt.id, status: 'expired', version: interrupt.version + 1 });
-    expect(JSON.parse(expired[0]!.payload)).toEqual({
+    expect(expired[0]!.payload).toEqual({
       dependency: { full_request: 'do not truncate', parameters: [1, 2, 3] },
     });
     const events = await db.runtime.listEvents(run.id);
@@ -894,5 +894,50 @@ describe('Runtime Kernel service', () => {
     expect(detail?.events.map((event) => event.type)).toEqual(['run.created']);
     expect(detail?.steps).toEqual([]);
     expect(await db.runtime.getRunDetail('runtime-missing')).toBeUndefined();
+  });
+
+  it('treats jsonb key order as insignificant when replaying idempotent creates', async () => {
+    // PostgreSQL normalizes jsonb key order: a replay with the same payload in
+    // another key order is the same command, a different value is not.
+    const sourceId = unique('jsonb-order');
+    const key = unique('jsonb-order-key');
+    const first = await createRun({
+      source_id: sourceId,
+      idempotency_key: key,
+      input: { zeta: 1, alpha: { second: 2, first: [1, { b: true, a: null }] } },
+    });
+    const replay = await createRun({
+      source_id: sourceId,
+      idempotency_key: key,
+      input: { alpha: { first: [1, { a: null, b: true }], second: 2 }, zeta: 1 },
+    });
+    expect(replay.id).toBe(first.id);
+    await expect(
+      createRun({ source_id: sourceId, idempotency_key: key, input: { zeta: 2, alpha: {} } }),
+    ).rejects.toMatchObject({ code: 'runtime_idempotency_conflict' });
+
+    const step = await db.runtime.createStep({
+      run_id: first.id,
+      step_key: 'order',
+      kind: 'test',
+      input: { b: 1, a: 2 },
+    });
+    await expect(
+      db.runtime.createStep({ run_id: first.id, step_key: 'order', kind: 'test', input: { a: 2, b: 1 } }),
+    ).resolves.toMatchObject({ id: step.id });
+    const event = await db.runtime.appendEvent({
+      run_id: first.id,
+      type: 'test.ordered',
+      payload: { y: 1, x: { d: 4, c: 3 } },
+      idempotency_key: 'ordered-event',
+    });
+    await expect(
+      db.runtime.appendEvent({
+        run_id: first.id,
+        type: 'test.ordered',
+        payload: { x: { c: 3, d: 4 }, y: 1 },
+        idempotency_key: 'ordered-event',
+      }),
+    ).resolves.toMatchObject({ id: event.id, seq: event.seq });
   });
 });

@@ -32,6 +32,6 @@ describe('nextSlug', () => {
   });
 
   it('never rewrites a saved doc’s slug — that would repoint every link to it', () => {
-    expect(nextSlug({ id: 7, title: 'Hello', slug: 'hello' }, 'Hello world')).toBe('hello');
+    expect(nextSlug({ id: '7', title: 'Hello', slug: 'hello' }, 'Hello world')).toBe('hello');
   });
 });

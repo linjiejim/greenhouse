@@ -10,7 +10,7 @@ feature.
 ```bash
 # 1. Bring up Postgres and apply the schema (fresh DB — migrate, never push)
 docker compose up -d postgres
-npx drizzle-kit migrate
+pnpm db:migrate
 
 # 2. Load the example dataset (wipes existing rows first)
 pnpm seed
@@ -44,12 +44,11 @@ shared demo password.
 ### Authoring conventions
 
 - **Explicit ids.** Rows carry explicit primary keys so cross-table references
-  line up (`tasks.project_id`, `messages.session_id`, `knowledge_base_shares.doc_id`,
-  …). After loading a serial-PK table the importer realigns the sequence so the
-  app's own inserts don't collide.
-- **JSON-as-text columns** (`tags`, `dependencies`, `pipeline`, `references_`,
-  `_questions`, `capabilities`, …) are authored as **native arrays/objects**; the
-  importer stringifies them for the underlying `text` columns. Custom agents (`custom_profiles.json`) are loaded through the service so each one also gets its immutable v1 version row.
+  line up (`tasks.project_id`, `messages.session_id`, `shares.resource_id`,
+  …). Every id is text; a number in a file is stored as its string (the app's
+  own rows get prefixed ULIDs, so they never collide).
+- **jsonb columns** (`tags`, `dependencies`, `parts`, `meta`, `_questions`,
+  `notify`, …) are authored as **native arrays/objects**. Custom agents (`run_profiles.json`) and automations (`automations.json`, with a `notify` object) are plain rows.
 - **Secrets are never baked in.** `users.json` rows carry a plaintext `password`
   (not `password_hash`); the importer scrypt-hashes it at load. Tables whose
   values are encrypted/hashed with the instance secret (`email_accounts`) are
@@ -60,28 +59,30 @@ shared demo password.
 
 ## What's covered (Tiers 1–3)
 
-**Identity & access** — 5 users (super / team / disabled), 2 groups + membership.
+**Identity & access** — 5 users (super / team / disabled).
 
 **Knowledge base** — 12 docs spanning team vs private visibility,
 published / draft / archived status, AI enrichment (`_summary` / `_questions` /
 `_topics`), tags, version history (roadmap + handbook), and private-doc sharing
-with a user and a group.
+with two users (reader and editor).
 
 **Projects** — 3 projects (Website Relaunch, Q3 Product Launch, SOC 2), members,
 14 tasks with subtasks / dependencies / mixed status, comments, and an activity
-log.
+log (`audit_events` rows with `app_id='projects'`).
 
-**Chat** — 5 sessions on the `web` channel, showing tool pipelines
-(`knowledge_query`, `external_search`, `project_query`, `analyze_image`), KB
-citations, reasoning, ratings, and a shared session.
+**Chat** — 5 conversations (`conversations.json`) on the `web` channel, showing tool
+pipelines (`knowledge_query`, `external_search`, `project_query`, `analyze_image`)
+and KB citations in `messages.parts`, reasoning, and a shared conversation
+(`conversation_shares.json` + `conversation_share_reads.json`).
 
-**Power features** — quick prompts (global + personal), user memories, scheduled
-automations (cron), feature requests (all statuses), one custom agent (loaded as an
-immutable v1), and per-user feature flags.
+**Power features** — quick prompts (`prompts`, global + personal), user memories
+(`memories`), scheduled automations (`automations`, cron), feature requests
+(`feedback` with `kind='request'`, all statuses), one custom agent (`run_profiles`),
+and per-user feature flags (`user_grants` with `kind='feature'`).
 
 ## Not seeded (and why)
 
-- `refresh_tokens` — ephemeral, minted at login.
+- `auth_refresh_tokens` — ephemeral, minted at login.
 - `email_accounts` — values are encrypted with the instance secret;
   bind mailboxes in Settings → Email.
-- `llm_calls`, `llm_usage`, `api_audit_log` — telemetry, produced by real usage.
+- `usage_events`, `request_log`, `runs` — telemetry, produced by real usage.

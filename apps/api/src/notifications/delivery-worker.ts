@@ -8,7 +8,6 @@ import { randomUUID } from 'node:crypto';
 
 import type { DatabaseProvider, NotificationDeliveryAttemptRow, NotificationDeliveryChannel } from '@greenhouse/db';
 import { toErrorMessage } from '@greenhouse/utils/error';
-import { safeJsonParse } from '@greenhouse/utils/json';
 import { logger } from '@greenhouse/utils/logger';
 import { sendWeComMarkdown } from '@greenhouse/utils/wecom';
 import { sendFeishuMarkdown } from '@greenhouse/utils/feishu';
@@ -83,7 +82,7 @@ export async function deliverNotificationAttempt(
   const notification = await db.notifications.get(attempt.notification_id);
   if (!notification) return { ok: false, error: 'Permanent notification no longer exists' };
 
-  const payload = parseAutomationResultNotificationPayload(safeJsonParse(notification.payload, null));
+  const payload = parseAutomationResultNotificationPayload(notification.payload);
   if (!payload) return { ok: false, error: 'Notification has no supported durable delivery payload' };
   const recipient = automationDeliveryRecipient.parse(attempt.recipient);
   if (!recipient) return { ok: false, error: 'Notification delivery recipient envelope is invalid' };

@@ -58,7 +58,7 @@ describe('recorded external-agent writes', () => {
     const client = await db.platformOAuth.registerClient({
       id: unique('client'),
       client_name: 'Codex',
-      redirect_uris: '[]',
+      redirect_uris: [],
       created_by: member.id,
     });
     calls = [];
@@ -94,7 +94,7 @@ describe('recorded external-agent writes', () => {
 
     const [run] = await writeRuns();
     expect(run).toMatchObject({ id: result.view.request_id, status: 'succeeded', owner_user_id: member.id });
-    expect(JSON.parse(run!.input)).toMatchObject({ tool_id: TOOL, action: 'records.update', risk: 'r2' });
+    expect(run!.input).toMatchObject({ tool_id: TOOL, action: 'records.update', risk: 'r2' });
     const [call] = await db.runtime.listToolCalls(run!.id);
     expect(call).toMatchObject({ status: 'succeeded' });
   });

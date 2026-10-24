@@ -33,15 +33,10 @@ const filesQuerySchema = z.object({
     .enum(['team', 'personal'])
     .optional()
     .describe('files.list: the team shelf (shared with everyone) or your personal shelf. Default team.'),
-  folder_id: z
-    .number()
-    .int()
-    .positive()
-    .optional()
-    .describe('files.list: the folder to open; omit for the shelf root.'),
+  folder_id: z.coerce.string().optional().describe('files.list: the folder to open; omit for the shelf root.'),
   query: z.string().optional().describe('files.search: part of a file or folder name.'),
   limit: z.number().int().min(1).max(50).optional().describe('files.search: max results per kind (default 20).'),
-  file_id: z.number().int().positive().optional().describe('files.get / files.read / files.download_url: the file.'),
+  file_id: z.coerce.string().optional().describe('files.get / files.read / files.download_url: the file.'),
   max_chars: z
     .number()
     .int()

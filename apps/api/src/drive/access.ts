@@ -21,7 +21,7 @@ export interface DriveAccessNode {
   scope: string;
   visibility?: 'team' | 'private' | null;
   owner_user_id?: string | null;
-  base_id?: number | null;
+  base_id?: string | null;
   /** Owner of an extension scope, e.g. a CRM company id as text. */
   owner_key?: string | null;
 }
@@ -37,7 +37,7 @@ export interface DriveScopeContext {
 
 /** A drive scope owned by an extension: its id and the rule that guards it. */
 export interface DriveScopeDef {
-  /** Stored in `drive_folders.scope` / `drive_files.scope`; namespace it with your id. */
+  /** Stored in `folders.scope` / `files.scope`; namespace it with your id. */
   scope: string;
   /** `owner_key` is whatever the extension put there; return null to deny. */
   authorize: (ownerKey: string | null, ctx: DriveScopeContext) => Promise<DriveAccess>;

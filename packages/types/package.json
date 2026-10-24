@@ -12,6 +12,14 @@
       "import": "./src/reports.ts",
       "types": "./src/reports.ts"
     },
+    "./preferences": {
+      "import": "./src/preferences.ts",
+      "types": "./src/preferences.ts"
+    },
+    "./agent-avatar": {
+      "import": "./src/agent-avatar.ts",
+      "types": "./src/agent-avatar.ts"
+    },
     "./metering": {
       "import": "./src/metering.ts",
       "types": "./src/metering.ts"
