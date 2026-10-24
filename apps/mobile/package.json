@@ -16,6 +16,7 @@
     "@expo/metro-runtime": "~57.0.16",
     "@expo/ui": "~57.0.21",
     "expo": "~57.0.26",
+    "expo-asset": "~57.0.18",
     "expo-build-properties": "~57.0.22",
     "expo-clipboard": "~57.0.2",
     "expo-constants": "~57.0.20",

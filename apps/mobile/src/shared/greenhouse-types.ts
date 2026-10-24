@@ -412,6 +412,7 @@ export interface ChatSession {
   updated_at: string;
   is_owner?: boolean;
   pinned?: boolean;
+  pin_sort?: number;
 }
 
 export interface ChatMessage {
@@ -421,4 +422,17 @@ export interface ChatMessage {
   content: string;
   seq: number;
   created_at: string;
+  /** JSON text of the turn's tool steps `[{ step, tool, input, output, duration_ms }]` (src/chat/parts.ts). */
+  pipeline?: string | null;
+  /** JSON text of the pictures sent with a member's message `[{ id, url }]`. */
+  images?: string | null;
+  /** JSON text of the knowledge the reply cites `[{ slug, title, type, url? }]`. */
+  references_?: string | null;
+}
+
+/** `GET /api/search` (packages/types/src/search.ts): matches grouped by kind, five each. */
+export interface SearchGroup {
+  kind: string;
+  hasMore: boolean;
+  items: { title: string; subtitle?: string | null; sessionId?: string; ref?: { kind: string; id: string | number; slug?: string } }[];
 }

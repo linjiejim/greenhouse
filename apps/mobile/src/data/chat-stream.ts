@@ -40,26 +40,73 @@ function parseLine(line: string): ChatEvent[] {
   }
 }
 
+/** A tool step of the reply being written (src/chat/parts.ts renders its card once it has an output). */
+export interface LiveStep {
+  id: string;
+  tool: string;
+  input?: unknown;
+  output?: unknown;
+  status: 'running' | 'done' | 'failed';
+}
+
 export interface LiveReply {
   text: string;
   /** The tool being used right now, if any. */
   tool: string | null;
+  /** Every tool step so far, in order. */
+  steps: LiveStep[];
   finished: boolean;
   error: string | null;
   /** A title the server gave the conversation. */
   title: string | null;
 }
 
-export const EMPTY_REPLY: LiveReply = { text: '', tool: null, finished: false, error: null, title: null };
+export const EMPTY_REPLY: LiveReply = { text: '', tool: null, steps: [], finished: false, error: null, title: null };
+
+const stepId = (event: ChatEvent, fallback: number) => (typeof event.id === 'string' && event.id ? event.id : `live-${fallback}`);
+
+function failed(output: unknown): boolean {
+  const value = output && typeof output === 'object' ? (output as Record<string, unknown>) : null;
+  return !!value && !!value.error && !value.success;
+}
 
 export function applyEvent(reply: LiveReply, event: ChatEvent): LiveReply {
   switch (event.type) {
     case 'text-delta':
       return typeof event.text === 'string' ? { ...reply, text: reply.text + event.text, tool: null } : reply;
-    case 'tool-call-start':
-    case 'tool-call':
-      return typeof event.toolName === 'string' ? { ...reply, tool: event.toolName } : reply;
-    case 'tool-result':
+    case 'tool-call-start': {
+      if (typeof event.toolName !== 'string') return reply;
+      const id = stepId(event, reply.steps.length);
+      const known = reply.steps.some((step) => step.id === id);
+      return {
+        ...reply,
+        tool: event.toolName,
+        steps: known ? reply.steps : [...reply.steps, { id, tool: event.toolName, status: 'running' }],
+      };
+    }
+    case 'tool-call': {
+      if (typeof event.toolName !== 'string') return reply;
+      const id = stepId(event, reply.steps.length);
+      const known = reply.steps.some((step) => step.id === id);
+      return {
+        ...reply,
+        tool: event.toolName,
+        steps: known
+          ? reply.steps.map((step) => (step.id === id ? { ...step, input: event.input } : step))
+          : [...reply.steps, { id, tool: event.toolName, input: event.input, status: 'running' }],
+      };
+    }
+    case 'tool-result': {
+      const id = typeof event.id === 'string' ? event.id : '';
+      const status: LiveStep['status'] = failed(event.output) ? 'failed' : 'done';
+      const known = reply.steps.some((step) => step.id === id);
+      const steps = known
+        ? reply.steps.map((step) => (step.id === id ? { ...step, output: event.output, status } : step))
+        : typeof event.toolName === 'string'
+          ? [...reply.steps, { id: id || `live-${reply.steps.length}`, tool: event.toolName, output: event.output, status }]
+          : reply.steps;
+      return { ...reply, tool: null, steps };
+    }
     case 'tool-call-end':
       return { ...reply, tool: null };
     case 'title':

@@ -4,12 +4,17 @@
  * (src/data/chat-stream.ts); Expo's fetch exposes the body as a stream, so each event reaches
  * `onEvent` as it arrives. Where the body cannot be streamed it is read whole at the end. Both
  * answer how the stream ended; src/data/conversation.ts re-reads the saved messages afterwards.
+ *
+ * Every turn declares the rich blocks this app draws (`rich_blocks`, src/markdown/rich.ts), so the
+ * model is only taught what renders here; a station that does not read it yet ignores it, and
+ * the blocks still render.
  */
 
 import { fetch as expoFetch } from 'expo/fetch';
 import { api, seg, toResult } from '../api/client';
 import { NdjsonLines, type ChatEvent } from '../data/chat-stream';
-import type { StreamOutcome } from '../data/conversation';
+import type { SentImage, StreamOutcome } from '../data/conversation';
+import { MOBILE_RICH_BLOCKS } from '../markdown/rich';
 
 export type SendOutcome = StreamOutcome;
 
@@ -18,6 +23,7 @@ export async function sendMessage(
   content: string,
   onEvent: (event: ChatEvent) => void,
   signal?: AbortSignal,
+  images: readonly SentImage[] = [],
 ): Promise<SendOutcome> {
   return stream(
     '/api/chat',
@@ -25,7 +31,11 @@ export async function sendMessage(
       method: 'POST',
       signal,
       headers: { 'Content-Type': 'application/json', Accept: 'application/x-ndjson' },
-      body: JSON.stringify({ session_id: sessionId, messages: [{ role: 'user', content }] }),
+      body: JSON.stringify({
+        session_id: sessionId,
+        messages: [{ role: 'user', content, ...(images.length ? { images } : {}) }],
+        rich_blocks: MOBILE_RICH_BLOCKS,
+      }),
     },
     onEvent,
   );

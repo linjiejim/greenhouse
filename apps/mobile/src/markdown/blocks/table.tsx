@@ -11,7 +11,12 @@
  */
 import { useCallback, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useRouter } from 'expo-router';
+import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
+import { putHandoff } from '../../lib/handoff';
+import { useT } from '../../lib/i18n';
 import { makeStyles, radius, space, squircle, typo, useTheme, weight } from '../../theme';
+import { Icon, Touchable } from '../../ui/core';
 import { plainText } from '../../lib/plain-text';
 import { Inline } from '../inline';
 import type { Align, TableData } from '../parse';
@@ -21,6 +26,8 @@ import { HScroll } from './hscroll';
 const CELL_PAD = space.md;
 /** Room the pinned expand glyph takes at the header's trailing end. */
 const EXPAND_W = 34;
+/** Its leading fade (scrolled header text dissolves into the backdrop). */
+const FADE_W = 14;
 
 /** Rough rendered width (pt) of a cell — CJK/emoji count wide, ASCII narrow.
  *  Only the first frame's guess: the real widths are measured (see TableGrid). */
@@ -196,16 +203,71 @@ export function TableRecords({ data, limit }: { data: TableData; limit?: number 
   );
 }
 
-/** Inline table: the grid in a rounded card, scrolling sideways when it is wider than the page. */
-export function Table({ data }: { data: TableData }) {
-  const { colors: c } = useTheme();
+/** Inline table: the grid in a rounded card, the expand glyph pinned to its header. */
+export function Table({
+  data,
+  title,
+  onHeadPress,
+}: {
+  data: TableData;
+  /** Names the full-screen page (a ```datatable's title). */
+  title?: string;
+  onHeadPress?: (col: number) => void;
+}) {
+  const { colors: c, hex } = useTheme();
   const styles = useStyles(c);
+  const t = useT();
+  const router = useRouter();
   // Width the grid may use — measured so a narrow table stretches to fill it.
   const [avail, setAvail] = useState(0);
+  const [headH, setHeadH] = useState(0);
+  const open = () => {
+    const k = putHandoff('table', data);
+    router.push({ pathname: '/table', params: title ? { k, title } : { k } });
+  };
+  if (!onHeadPress && data.head.length > 4)
+    return (
+      <View style={styles.wrap}>
+        <View style={styles.card}>
+          <TableRecords data={data} limit={2} />
+          <Touchable onPress={open} accessibilityRole="button" style={styles.record}>
+            <Text style={{ ...typo.subheadline, color: c.accent }}>{t('chat.tableMore', { n: data.rows.length })}</Text>
+          </Touchable>
+        </View>
+      </View>
+    );
   return (
     <View style={styles.wrap}>
       <View style={styles.card} onLayout={(e) => setAvail(Math.floor(e.nativeEvent.layout.width))}>
-        <TableGrid data={data} avail={avail || undefined} />
+        <TableGrid
+          data={data}
+          avail={avail || undefined}
+          headEnd={EXPAND_W + FADE_W - CELL_PAD}
+          onHeadPress={onHeadPress}
+          onHeadHeight={setHeadH}
+        />
+        {headH ? (
+          <View style={[styles.pin, { height: headH }]} pointerEvents="box-none">
+            <Svg width={FADE_W} height={headH} pointerEvents="none">
+              <Defs>
+                <LinearGradient id="fade" x1="0" y1="0" x2="1" y2="0">
+                  <Stop offset="0" stopColor={hex.secondaryBackground} stopOpacity={0} />
+                  <Stop offset="1" stopColor={hex.secondaryBackground} stopOpacity={1} />
+                </LinearGradient>
+              </Defs>
+              <Rect x={0} y={0} width={FADE_W} height={headH} fill="url(#fade)" />
+            </Svg>
+            <Touchable
+              onPress={open}
+              hitSlop={{ top: 6, bottom: 6, left: 4, right: 6 }}
+              style={styles.expand}
+              accessibilityRole="button"
+              accessibilityLabel={t('chat.fullscreen')}
+            >
+              <Icon name="expand" size={14} weight="medium" color={c.secondaryLabel} />
+            </Touchable>
+          </View>
+        ) : null}
       </View>
     </View>
   );
