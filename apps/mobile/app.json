@@ -108,6 +108,13 @@
           "cameraPermission": "Greenhouse uploads the photos you take to Files.",
           "microphonePermission": false
         }
+      ],
+      [
+        "expo-speech-recognition",
+        {
+          "microphonePermission": "Greenhouse listens while you hold the mic button and types what you say into the composer.",
+          "speechRecognitionPermission": "Greenhouse turns what you say into text on this iPhone while you hold the mic button."
+        }
       ]
     ],
     "experiments": {
