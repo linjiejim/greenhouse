@@ -484,7 +484,7 @@ export function ToolSummary({ steps, toolName }: { steps: ToolStep[]; toolName: 
 }
 
 const useStyles = makeStyles((c) => ({
-  card: { gap: space.sm, marginVertical: space.xs },
+  card: { gap: space.sm, marginVertical: space.xs, padding: space.lg },
   head: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
   title: { ...typo.headline, color: c.label, flex: 1 },
   body: { ...typo.subheadline, color: c.secondaryLabel },
@@ -499,7 +499,7 @@ const useStyles = makeStyles((c) => ({
     gap: space.xs,
     paddingHorizontal: space.md,
     borderRadius: radius.full,
-    backgroundColor: c.secondaryGroupedBackground,
+    backgroundColor: c.tertiaryFill,
   },
   optionOn: { backgroundColor: c.accent },
   optionText: { ...typo.subheadline, color: c.label },
@@ -510,7 +510,7 @@ const useStyles = makeStyles((c) => ({
     paddingHorizontal: space.md,
     paddingVertical: space.sm,
     borderRadius: radius.md,
-    backgroundColor: c.secondaryGroupedBackground,
+    backgroundColor: c.tertiaryFill,
     ...squircle,
   },
   area: { minHeight: HIT * 2, textAlignVertical: 'top' },
@@ -518,7 +518,7 @@ const useStyles = makeStyles((c) => ({
   doneText: { ...typo.subheadline, fontWeight: weight.semibold, color: c.green },
   quietLine: { flexDirection: 'row', alignItems: 'center', gap: space.xs, paddingVertical: space.xs },
   quietText: { ...typo.footnote, color: c.secondaryLabel },
-  fileCard: { marginVertical: space.xs },
+  fileCard: { marginVertical: space.xs, padding: space.md },
   fileRow: { flexDirection: 'row', alignItems: 'center', gap: space.md },
   fileTexts: { flex: 1, minWidth: 0 },
   fileName: { ...typo.subheadline, fontWeight: weight.semibold, color: c.label },

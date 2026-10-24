@@ -123,23 +123,11 @@ export const AssistantReply = memo(function AssistantReply({
   const openObject = useOpenObject();
   const cards = useMemo(() => replyCards(steps, messageId, text), [steps, messageId, text]);
   const objects = useMemo(() => citedObjects(references, steps), [references, steps]);
-  return (
-    <View style={styles.reply}>
-      <View style={styles.author}>
-        <AssistantAvatar size={28} state={state} animate={state !== 'idle'} />
-        <Text style={styles.authorName}>{t('conversation.assistant')}</Text>
-      </View>
-      <ToolSummary steps={steps} toolName={toolLabel} />
-      <RichContext.Provider value={env}>
-        {text ? (
-          <CopyMenu text={text}>
-            <View>
-              <Markdown source={text} animated={live} />
-            </View>
-          </CopyMenu>
-        ) : null}
-      </RichContext.Provider>
-      {cards.map((card) => {
+  // web order: most cards sit above the words; things to save or apply come after them
+  const below = (card: (typeof cards)[number]) => card.kind === 'task_capture' || card.kind === 'schema_plan';
+  const renderCards = (list: typeof cards) => (
+    <>
+      {list.map((card) => {
         switch (card.kind) {
           case 'ask_user':
             return <AskUserCard key={card.key} ask={card.ask} answered={answered} onAnswer={env.reply} />;
@@ -164,6 +152,26 @@ export const AssistantReply = memo(function AssistantReply({
             return <ExtensionCard key={card.key} title={card.title} summary={card.summary} url={card.url} />;
         }
       })}
+    </>
+  );
+  return (
+    <View style={styles.reply}>
+      <View style={styles.author}>
+        <AssistantAvatar size={28} state={state} animate={state !== 'idle'} />
+        <Text style={styles.authorName}>{t('conversation.assistant')}</Text>
+      </View>
+      <ToolSummary steps={steps} toolName={toolLabel} />
+      {renderCards(cards.filter((card) => !below(card)))}
+      <RichContext.Provider value={env}>
+        {text ? (
+          <CopyMenu text={text}>
+            <View>
+              <Markdown source={text} animated={live} />
+            </View>
+          </CopyMenu>
+        ) : null}
+      </RichContext.Provider>
+      {renderCards(cards.filter(below))}
       <ObjectCards objects={objects} />
     </View>
   );

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { agentPlant } from './agent-plant';
+import { agentPlant, clientKindOf } from './agent-plant';
 
 describe('a connected agent’s plant', () => {
   it('follows the client by default', () => {
@@ -16,5 +16,11 @@ describe('a connected agent’s plant', () => {
     const first = agentPlant('other', 'My Script');
     expect(agentPlant('other', 'My Script').plant).toBe(first.plant);
     expect(first.plant).not.toBe('sprout');
+  });
+
+  it('guesses the client from a write’s client name', () => {
+    expect(clientKindOf('Claude Code · MacBook')).toBe('claude-code');
+    expect(clientKindOf('codex-cli')).toBe('codex');
+    expect(clientKindOf('My script')).toBe('other');
   });
 });

@@ -121,7 +121,7 @@ export default function Me() {
                 </RNHostView>
                 <VStack alignment="leading" spacing={2}>
                   <Text modifiers={[font({ textStyle: 'body' }), foregroundStyle(hex.label), lineLimit(1)]}>{agent.client_name}</Text>
-                  <Text modifiers={[font({ textStyle: 'footnote' }), SECONDARY, lineLimit(1)]}>
+                  <Text modifiers={[font({ textStyle: 'footnote' }), foregroundStyle(hex.secondaryLabel), lineLimit(1)]}>
                     {agent.last_seen_at ? t('me.agentSeen', { when: relativeTimeNow(agent.last_seen_at) }) : t('me.agentConnected')}
                   </Text>
                 </VStack>

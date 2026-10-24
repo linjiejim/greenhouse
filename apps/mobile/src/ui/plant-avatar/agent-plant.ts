@@ -24,3 +24,12 @@ export function agentPlant(
   const byClient = kind in BY_CLIENT ? BY_CLIENT[kind as keyof typeof BY_CLIENT] : null;
   return resolvePlantAvatar(stored ?? byClient, { stableId: `agent:${name || kind}` });
 }
+
+/** The client kind a write's client name suggests (writes carry the name only). */
+export function clientKindOf(name: string): AgentClientKind {
+  const n = name.toLowerCase();
+  if (n.includes('claude')) return 'claude-code';
+  if (n.includes('codex')) return 'codex';
+  if (n.includes('cursor')) return 'cursor';
+  return 'other';
+}

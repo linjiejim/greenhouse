@@ -9,6 +9,8 @@ import React, { useCallback } from 'react';
 import { RefreshControl, ScrollView, Text, View } from 'react-native';
 import { Stack } from 'expo-router';
 import { useOpenObject } from '../../src/shell/open-object';
+import { AgentAvatar } from '../../src/ui/avatar';
+import { clientKindOf } from '../../src/ui/plant-avatar/agent-plant';
 import { gatewayOverview, listAgentWrites, mySpend } from '../../src/api/agent';
 import { WRITE_TONE } from '../../src/agent/look';
 import { noAccess } from '../../src/data/access';
@@ -114,7 +116,7 @@ export default function MyAgents() {
                   key={write.request_id}
                   title={`${write.client_name} · ${write.action ?? write.tool_id}`}
                   subtitle={[write.target_label ?? t('agent.targetHidden'), relativeTimeNow(write.created_at)].join(' · ')}
-                  icon="sparkle"
+                  leading={<AgentAvatar kind={clientKindOf(write.client_name)} name={write.client_name} size={30} />}
                   accessory={<Badge label={t(`agent.status.${write.status}`)} tone={WRITE_TONE[write.status]} />}
                   onPress={() => openObject({ kind: 'write', id: write.request_id })}
                 />
