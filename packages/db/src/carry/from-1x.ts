@@ -25,7 +25,14 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import postgres from 'postgres';
-import { applyMigrations, detectDatabaseGeneration, V1_ARCHIVE_FOLDER, V1_LATEST_TAG } from '../migrate.js';
+import {
+  applyMigrations,
+  detectDatabaseGeneration,
+  markCarryCompleted,
+  markCarryStarted,
+  V1_ARCHIVE_FOLDER,
+  V1_LATEST_TAG,
+} from '../migrate.js';
 import { readCoreMigrations } from '../core-migrations.js';
 import { copyExtensionTables, discoverExtensionTables, dropTables } from './extensions.js';
 
@@ -63,10 +70,23 @@ export interface CarryReport {
   targetCounts: Record<string, number>;
 }
 
+/** The carry refused to start: nothing was written to the target. */
 export class CarryError extends Error {
   constructor(message: string) {
     super(message);
     this.name = 'CarryError';
+  }
+}
+
+/**
+ * The carry started writing and then failed. The target holds part of the data
+ * and its carry marker stays incomplete, so `migrate` and the API boot refuse it
+ * until a re-run completes.
+ */
+export class CarryFailedError extends Error {
+  constructor(message: string, options?: { cause?: unknown }) {
+    super(message, options);
+    this.name = 'CarryFailedError';
   }
 }
 
@@ -279,7 +299,7 @@ class Writer {
     if (this.buffer.length === 0 || !this.ctx.target) return;
     const target = this.ctx.target;
     const meta = this.ctx.targetTables.get(this.table);
-    if (!meta) throw new CarryError(`Target table ${this.table} is missing — is the 3.0 baseline applied?`);
+    if (!meta) throw new Error(`Target table ${this.table} is missing — is the 3.0 baseline applied?`);
     const columns = meta.columns.filter((column) => this.buffer.some((row) => row[column] !== undefined));
     const rows = this.buffer.map((row) => {
       const out: Row = {};
@@ -300,7 +320,7 @@ class Writer {
     } catch (error) {
       // Never echo row contents (private data): table, columns and the database's message only.
       const message = error instanceof Error ? error.message : String(error);
-      throw new CarryError(`Writing ${this.table} failed (${columns.join(', ')}): ${message}`);
+      throw new Error(`Writing ${this.table} failed (${columns.join(', ')}): ${message}`);
     }
   }
 }
@@ -1581,6 +1601,8 @@ export async function carryFrom1x(options: CarryOptions): Promise<CarryReport> {
   const source = postgres(options.from, { max: 4, onnotice: () => {} });
   const target = options.to ? postgres(options.to, { max: 4, onnotice: () => {} }) : null;
   const startedAt = new Date().toISOString();
+  // Set once the carry marker is written: from then on a failure is a failed carry, not a refusal.
+  let writing = false;
   try {
     // ── source must be 1.6.x ──
     const generation = await detectDatabaseGeneration(source);
@@ -1601,6 +1623,7 @@ export async function carryFrom1x(options: CarryOptions): Promise<CarryReport> {
     if (target) {
       if (await sameDatabase(source, target)) throw new CarryError('--from and --to are the same database.');
       const targetGeneration = await detectDatabaseGeneration(target);
+      // A target whose earlier carry did not complete is a 3.0 database too: a re-run finishes it.
       if (targetGeneration.kind === 'v1' || targetGeneration.kind === 'v2' || targetGeneration.kind === 'unknown') {
         throw new CarryError(
           `The target must be an empty or a 3.0 database (detected: ${targetGeneration.kind}). Create a new database for 3.0.`,
@@ -1623,6 +1646,9 @@ export async function carryFrom1x(options: CarryOptions): Promise<CarryReport> {
       const v3Tables = [...targetMeta.keys()].filter((name) => !extensionTables.includes(name));
       const clash = extensionTables.filter((name) => name !== 'extension_migrations' && coreV3Names.has(name));
       if (clash.length > 0) throw new CarryError(`Extension tables clash with 3.0 core tables: ${clash.join(', ')}`);
+      // Before anything is emptied: until the marker completes, migrate and boot refuse this database.
+      await markCarryStarted(target, generation.latest ?? 'unknown');
+      writing = true;
       log('Emptying the target…');
       await dropTables(target, extensionTables);
       if (v3Tables.length > 0) {
@@ -1690,6 +1716,8 @@ export async function carryFrom1x(options: CarryOptions): Promise<CarryReport> {
       }
     }
 
+    if (target && !dryRun) await markCarryCompleted(target);
+
     return {
       dryRun,
       startedAt,
@@ -1701,6 +1729,14 @@ export async function carryFrom1x(options: CarryOptions): Promise<CarryReport> {
       notes: [...ctx.notes.entries()].map(([text, count]) => (count > 1 ? `${text} (×${count})` : text)),
       targetCounts,
     };
+  } catch (error) {
+    if (!writing) throw error;
+    const message = error instanceof Error ? error.message : String(error);
+    throw new CarryFailedError(
+      `${message}\nThe target now holds only part of the data and is marked incomplete; ` +
+        'the API and `pnpm db:migrate` refuse it. Fix the cause and re-run migrate-from-1x.',
+      { cause: error },
+    );
   } finally {
     await source.end();
     await target?.end();

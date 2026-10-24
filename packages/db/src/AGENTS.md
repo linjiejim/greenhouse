@@ -10,7 +10,8 @@
 
 ### 版本识别与拒绝
 
-- `migrate.ts` 的 `detectDatabaseGeneration()` 把库分成 empty / v3 / v1 / v2 / unknown：有 `users` + `sessions` 无 `conversations` 或命中 `drizzle/archive-1x` 的迁移 hash = 1.x；有 `members` 无 `users` = 2.x。
+- `migrate.ts` 的 `detectDatabaseGeneration()` 把库分成 empty / v3 / carry_incomplete / v1 / v2 / unknown：有 `users` + `sessions` 无 `conversations` 或命中 `drizzle/archive-1x` 的迁移 hash = 1.x；有 `members` 无 `users` = 2.x。
+- `migrate-from-1x` 清空目标前写 `drizzle.greenhouse_carry` 标记（`completed_at` 为空），最后一步才置完成；标记未完成的库 = carry_incomplete，`db:migrate` 和 API 启动都拒绝。从没搬过的新库没有标记，正常启动。开始写之后的失败抛 `CarryFailedError`（CLI「Carry failed:」退出 3），写之前的拒绝是 `CarryError`（「Refusing:」退出 2）。
 - `pnpm db:migrate` 只接受空库和 3.0 库；1.x、2.x、有表但不是 Greenhouse 的库一律拒绝（退出码 2），提示语来自 `refusalFor()`。
 - API 启动时 `initSchema()` 同样拒绝 1.x / 2.x 库，未迁移的空库报「先跑 `pnpm db:migrate`」；它只检查，不建任何东西。
 - 1.x 库永不原地升级：建新空库后跑 `migrate-from-1x`。2.x 库 3.0 既不能跑也不能搬。

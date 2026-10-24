@@ -394,7 +394,10 @@ docker compose run --rm migrate ./node_modules/.bin/tsx apps/api/src/cli/index.t
 ```
 
 Add `--json` for a machine-readable report. The command exits with code 2 when it refuses (a
-2.x or pre-1.6 source, a 1.x or foreign target, the same database twice). To roll back, point
+2.x or pre-1.6 source, a 1.x or foreign target, the same database twice) and with code 3
+("Carry failed:") when it stops after it started writing. The target is marked as carrying
+until a run completes, so a half-carried database is refused by `pnpm db:migrate` and the API
+boot; fix the cause and run the same command again. To roll back, point
 the 1.x deployment at the untouched old database; anything written in 3.0 afterwards stays in
 the new one.
 

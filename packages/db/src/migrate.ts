@@ -29,6 +29,8 @@ export const V1_LATEST_TAG = '0013_report_templates';
 export type DatabaseGeneration =
   | { kind: 'empty' }
   | { kind: 'v3'; applied: string[] }
+  /** A 3.0 database a `migrate-from-1x` run started filling and never finished. */
+  | { kind: 'carry_incomplete'; applied: string[]; startedAt: string }
   | { kind: 'v1'; applied: string[]; latest: string | null; current: boolean }
   | { kind: 'v2' }
   | { kind: 'unknown'; tables: number };
@@ -42,6 +44,61 @@ export class DatabaseGenerationError extends Error {
     this.name = 'DatabaseGenerationError';
   }
 }
+
+/**
+ * The carry marker: one row `migrate-from-1x` writes into the target before it
+ * empties anything (`completed_at` null) and completes as its very last step.
+ * It lives in the `drizzle` schema next to the migration journal, so it is not
+ * a public table: never emptied, carried or listed as part of the data model.
+ * A database never carried has no marker.
+ */
+export const CARRY_MARKER_TABLE = 'drizzle.greenhouse_carry';
+
+export interface CarryState {
+  sourceVersion: string | null;
+  startedAt: string;
+  completedAt: string | null;
+}
+
+export async function readCarryState(sql: postgres.Sql): Promise<CarryState | null> {
+  const [exists] = await sql<{ t: string | null }[]>`SELECT to_regclass(${CARRY_MARKER_TABLE})::text AS t`;
+  if (!exists?.t) return null;
+  const [row] = await sql<{ source_version: string | null; started_at: Date; completed_at: Date | null }[]>`
+    SELECT source_version, started_at, completed_at FROM drizzle.greenhouse_carry WHERE id = 1`;
+  if (!row) return null;
+  return {
+    sourceVersion: row.source_version,
+    startedAt: new Date(row.started_at).toISOString(),
+    completedAt: row.completed_at ? new Date(row.completed_at).toISOString() : null,
+  };
+}
+
+/** Record that a carry into this database has started (and is not complete). */
+export async function markCarryStarted(sql: postgres.Sql, sourceVersion: string): Promise<void> {
+  await sql`CREATE SCHEMA IF NOT EXISTS drizzle`;
+  await sql`
+    CREATE TABLE IF NOT EXISTS drizzle.greenhouse_carry (
+      id integer PRIMARY KEY CHECK (id = 1),
+      source_version text,
+      started_at timestamptz NOT NULL,
+      completed_at timestamptz
+    )`;
+  await sql`
+    INSERT INTO drizzle.greenhouse_carry (id, source_version, started_at, completed_at)
+    VALUES (1, ${sourceVersion}, now(), NULL)
+    ON CONFLICT (id) DO UPDATE SET source_version = EXCLUDED.source_version, started_at = now(), completed_at = NULL`;
+}
+
+/** Record that the carry finished; the database may now be served. */
+export async function markCarryCompleted(sql: postgres.Sql): Promise<void> {
+  await sql`UPDATE drizzle.greenhouse_carry SET completed_at = now() WHERE id = 1`;
+}
+
+const CARRY_INCOMPLETE_REFUSAL = (startedAt: string) =>
+  `A migrate-from-1x carry into this database started at ${startedAt} and did not complete, ` +
+  'so it holds only part of the data. Re-run\n' +
+  '  pnpm cli migrate-from-1x --from <1.x database url> --to <this database url>\n' +
+  '(it empties this database and carries everything again), or point DATABASE_URL elsewhere.';
 
 async function appliedHashes(sql: postgres.Sql): Promise<Set<string>> {
   const [exists] = await sql<{ t: string | null }[]>`SELECT to_regclass('drizzle.__drizzle_migrations')::text AS t`;
@@ -84,8 +141,12 @@ export async function detectDatabaseGeneration(
     const latest = v1Applied.at(-1) ?? null;
     return { kind: 'v1', applied: v1Applied, latest, current: latest === V1_LATEST_TAG };
   }
-  if (row?.users && row.conversations) return { kind: 'v3', applied: v3Applied };
-  if (v3Applied.length > 0) return { kind: 'v3', applied: v3Applied };
+  if ((row?.users && row.conversations) || v3Applied.length > 0) {
+    const carry = await readCarryState(sql);
+    if (carry && !carry.completedAt)
+      return { kind: 'carry_incomplete', applied: v3Applied, startedAt: carry.startedAt };
+    return { kind: 'v3', applied: v3Applied };
+  }
   if (!row?.users && (row?.n ?? 0) === 0) return { kind: 'empty' };
   // Tables but none of ours (extension tables alone, or another product).
   return { kind: 'unknown', tables: row?.n ?? 0 };
@@ -107,6 +168,8 @@ export function refusalFor(generation: DatabaseGeneration): string | null {
         'This database belongs to Greenhouse 2.x (it has `members`, not `users`). ' +
         '3.0 cannot run on it or carry it; keep it on the 2.x line.'
       );
+    case 'carry_incomplete':
+      return CARRY_INCOMPLETE_REFUSAL(generation.startedAt);
     case 'unknown':
       return (
         `This database already has ${generation.tables} table(s) but no Greenhouse schema. ` +

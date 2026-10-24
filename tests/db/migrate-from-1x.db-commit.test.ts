@@ -14,6 +14,7 @@ import { randomBytes } from 'node:crypto';
 import {
   applyMigrations,
   carryFrom1x,
+  CarryFailedError,
   createDatabase,
   DatabaseGenerationError,
   type CarryReport,
@@ -56,7 +57,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   for (const db of created) await dropDatabase(TEST_DATABASE_URL, db);
-});
+}, 120_000);
 
 describe('migrate refuses databases 3.0 must not run on', () => {
   it('refuses a 1.x database and points at migrate-from-1x', async () => {
@@ -287,6 +288,52 @@ describe('migrate-from-1x carry', () => {
       { id: '2', parent_id: '1' },
       { id: '3001', parent_id: null },
     ]);
+  }, 120_000);
+
+  it('marks a finished carry complete; a fresh install has no marker and boots', async () => {
+    expect(await queryRows(target, `SELECT completed_at IS NOT NULL AS done FROM drizzle.greenhouse_carry`)).toEqual([
+      { done: true },
+    ]);
+    const fresh = await database('nomarker');
+    await applyMigrations(fresh);
+    expect(await queryRows(fresh, `SELECT to_regclass('drizzle.greenhouse_carry')::text AS t`)).toEqual([{ t: null }]);
+    expect((await applyMigrations(fresh)).kind).toBe('v3');
+    const provider = createDatabase(fresh);
+    try {
+      await expect(provider.initSchema()).resolves.toBeUndefined();
+    } finally {
+      await provider.close();
+    }
+  });
+
+  it('a carry that fails midway leaves the target refused until a re-run completes it', async () => {
+    const dst = await database('half');
+    await carryFrom1x({ from: source, to: dst, now: NOW });
+    // TRUNCATE keeps triggers: the re-run empties the target, then dies writing tasks.
+    await queryRows(
+      dst,
+      `CREATE FUNCTION fail_carry() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'injected'; END $$;
+       CREATE TRIGGER fail_carry BEFORE INSERT ON tasks FOR EACH STATEMENT EXECUTE FUNCTION fail_carry();`,
+    );
+    const failure = await carryFrom1x({ from: source, to: dst, now: NOW }).catch((err: unknown) => err);
+    expect(failure).toBeInstanceOf(CarryFailedError);
+    expect((failure as Error).message).toMatch(/Writing tasks failed.*injected[\s\S]*re-run migrate-from-1x/);
+    expect(await queryRows(dst, `SELECT completed_at FROM drizzle.greenhouse_carry`)).toEqual([{ completed_at: null }]);
+
+    const refused = await applyMigrations(dst).catch((err: unknown) => err);
+    expect(refused).toBeInstanceOf(DatabaseGenerationError);
+    expect((refused as Error).message).toMatch(/did not complete[\s\S]*migrate-from-1x/);
+    const provider = createDatabase(dst);
+    try {
+      await expect(provider.initSchema()).rejects.toThrow(/did not complete/);
+    } finally {
+      await provider.close();
+    }
+
+    await queryRows(dst, `DROP TRIGGER fail_carry ON tasks; DROP FUNCTION fail_carry();`);
+    const again = await carryFrom1x({ from: source, to: dst, now: NOW });
+    expect(again.targetCounts).toEqual(report.targetCounts);
+    expect((await applyMigrations(dst)).kind).toBe('v3');
   }, 120_000);
 
   it('a dry run reads and reports but writes nothing', async () => {

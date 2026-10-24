@@ -156,6 +156,26 @@ function createDatabaseProvider(db: Db, client: DbClient['client'] | null) {
       if (!shape?.users || !shape.conversations) {
         throw new Error('Database tables not found. Run `pnpm db:migrate` to apply the schema.');
       }
+      // A migrate-from-1x carry that started here and never finished: part of the data only.
+      const [carry] = (await db.execute(sql`
+        SELECT to_regclass('drizzle.greenhouse_carry')::text AS marker`)) as unknown as Array<{
+        marker: string | null;
+      }>;
+      if (carry?.marker) {
+        const [state] = (await db.execute(sql`
+          SELECT started_at FROM drizzle.greenhouse_carry WHERE id = 1 AND completed_at IS NULL`)) as unknown as Array<{
+          started_at: string | Date;
+        }>;
+        if (state) {
+          throw new Error(
+            refusalFor({
+              kind: 'carry_incomplete',
+              applied: [],
+              startedAt: new Date(state.started_at).toISOString(),
+            })!,
+          );
+        }
+      }
     },
 
     async resetSchema(): Promise<void> {

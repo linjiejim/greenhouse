@@ -6,11 +6,13 @@
  * and is emptied first when it already holds data, so the command can be
  * repeated. Prints the reconciliation report — rows read / written per source →
  * target table and every skipped row with its reason. Exits 2 when it refuses
- * (a 2.x / pre-1.6 source, a 1.x / foreign target, the same database twice).
+ * (a 2.x / pre-1.6 source, a 1.x / foreign target, the same database twice) and
+ * 3 when the carry fails after it started writing: the target is then marked
+ * incomplete and refused by `migrate` and the API boot until a re-run completes.
  */
 
 import chalk from 'chalk';
-import { carryFrom1x, CarryError, type CarryReport } from '@greenhouse/db';
+import { carryFrom1x, CarryError, CarryFailedError, type CarryReport } from '@greenhouse/db';
 import { flagBool, flagStr, heading, parseFlags, redactDbUrl, table } from './shared.js';
 
 const USAGE = 'Usage: pnpm cli migrate-from-1x --from <1.6 database url> --to <new database url> [--dry-run] [--json]';
@@ -104,6 +106,10 @@ export async function run(args: string[]): Promise<number> {
     if (err instanceof CarryError) {
       console.error(chalk.red('Refusing:'), err.message);
       return 2;
+    }
+    if (err instanceof CarryFailedError) {
+      console.error(chalk.red('Carry failed:'), err.message);
+      return 3;
     }
     throw err;
   }
