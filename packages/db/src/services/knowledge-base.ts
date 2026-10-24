@@ -670,12 +670,26 @@ export function createKnowledgeBaseService(db: Db) {
       `);
     },
 
-    /** Count non-archived docs placed directly in a folder (folder-delete guard). */
-    async countInFolder(folderId: string): Promise<number> {
+    /**
+     * Count the published docs placed directly in a folder that `list` would show
+     * for the same visibility / owner: a count must not reveal docs the caller
+     * cannot read (another member's private doc left in a team folder, a draft).
+     */
+    async countInFolder(
+      folderId: string,
+      filter: { visibility: 'team' | 'private'; ownerUserId?: string },
+    ): Promise<number> {
+      const conditions = [
+        eq(knowledgeBase.folder_id, String(folderId)),
+        eq(knowledgeBase.scope, 'shared'),
+        eq(knowledgeBase.status, 'published'),
+        eq(knowledgeBase.visibility, filter.visibility),
+      ];
+      if (filter.ownerUserId) conditions.push(eq(knowledgeBase.owner_user_id, filter.ownerUserId));
       const rows = await db
         .select({ cnt: sql<number>`COUNT(*)` })
         .from(knowledgeBase)
-        .where(and(eq(knowledgeBase.folder_id, String(folderId)), sql`${knowledgeBase.status} <> 'archived'`));
+        .where(and(...conditions));
       return Number(rows[0]?.cnt ?? 0);
     },
 

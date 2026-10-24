@@ -535,6 +535,29 @@ describe('knowledge_query folders', () => {
     expect(tree.truncated).toBe(true);
   });
 
+  it('counts only the docs the caller could list in that folder', async () => {
+    const prefix = `cnt${Date.now()}`;
+    const other = await createInternalTestUser(db, { email: `${prefix}-other@test.com` });
+    const folder = await teamFolder(`${prefix}团队`);
+    const doc = (docId: string, extra: { visibility: 'team' | 'private'; status: 'published' | 'draft' }) =>
+      db.knowledgeBase.create({
+        doc_id: `${prefix}/${docId}`,
+        scope: 'shared',
+        title: docId,
+        content: docId,
+        folder_id: folder.id,
+        created_by: other.id,
+        owner_user_id: other.id,
+        ...extra,
+      });
+    await doc('team', { visibility: 'team', status: 'published' });
+    // Another member's private doc left in the team folder, and a draft: neither is listable.
+    await doc('private', { visibility: 'private', status: 'published' });
+    await doc('draft', { visibility: 'team', status: 'draft' });
+    const tree = await kbFolderTree(db, { visibility: 'team' }, { rootId: null, maxDepth: 1, maxNodes: 1000 });
+    expect(tree.folders.find((f) => f.id === folder.id)?.docs).toBe(1);
+  });
+
   it("never shows another member's personal folders, and keeps team and personal apart", async () => {
     const prefix = `vis${Date.now()}`;
     const other = await createInternalTestUser(db, { email: `${prefix}-other@test.com` });

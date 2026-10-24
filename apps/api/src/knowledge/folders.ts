@@ -309,6 +309,11 @@ export async function kbFolderTree(
   // Breadth-first picks which folders fit; path order makes the listing read as a tree.
   nodes.sort((a, b) => a.path.localeCompare(b.path));
   const folders: KbFolderNode[] = [];
-  for (const node of nodes) folders.push({ ...node, docs: await db.knowledgeBase.countInFolder(node.id) });
+  // Counted exactly like kbTree lists docs, so the number never reveals an unreadable doc.
+  const docFilter = {
+    visibility: scope.visibility,
+    ownerUserId: scope.visibility === 'private' ? scope.ownerUserId : undefined,
+  };
+  for (const node of nodes) folders.push({ ...node, docs: await db.knowledgeBase.countInFolder(node.id, docFilter) });
   return { folders, total_folders: reachable, truncated: reachable > nodes.length };
 }
