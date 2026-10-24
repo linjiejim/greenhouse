@@ -341,6 +341,12 @@ v1 只接 DeepSeek 与 OpenAI 兼容服务，它们**自动**缓存 prompt 前�
 - **目录树是读路径的一部分，不只是 UI**：`action='tree'` 返回目录 + 每个目录的文档标题（空目录也列），
   `search`/`list` 的 `folder` 参数把范围限定到某棵子树。路径解析复用 `resolveKbFolderPath`（错误列同级、
   歧义拒绝），子树展开在应用层（`kbFolderSubtreeIds`，KB 树浅、量小，不上递归 CTE）。
+  `action='folders'` 只列目录（id / 路径 / 层级 / 直属文档数），有界（`depth` ≤8、≤200 个目录、`truncated` +
+  `total_folders`），一次查出整棵可见树再在内存里走（`kbFolderTree`）。**它是 `knowledge_query` 的一个 action，
+  不是第二个读工具**——读面单一实现的约定不因「列目录」破例。
+- **写入时可顺手建目录**：`knowledge_mutation` 的 `create_folders:true` 让 `folder` 路径上缺的段逐级新建，走
+  Files 的 `createCabinetFolder`（同一条 drive 权限、命名规则和审计）；只能建在调用者自己能建的架上——团队文档建团队目录，
+  个人文档建在**本人**私有树里；编辑别人共享来的个人文档时不在 owner 的树里建任何东西。不传时缺目录仍报错，错误里提示该参数。
   ⚠️ **folder 过滤只准收窄**：`folderIds` 传空数组必须匹配零行（`folderFilter` 里的 `AND false`），
   放宽成「无过滤」会把一次限定范围的提问静默答成全库范围。
 - **弱命中要出声不要过滤**：全部命中的 `relevance` 都低于 `WEAK_RELEVANCE_MAX` 时返回 `weak_match:true` +

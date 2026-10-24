@@ -13,6 +13,7 @@ import { knowledgeRegistration } from '../../platform/knowledge/registration.js'
 import { initializePlatformRuntime, resetPlatformRuntimeForTests } from '../../platform/runtime.js';
 import { createKnowledgeMutationTool } from '../knowledge-mutation.js';
 import { createKnowledgeQueryTool } from '../knowledge-query.js';
+import { kbFolderTree } from '../../knowledge/folders.js';
 import { TEST_DATABASE_URL } from '@greenhouse/db/test-config';
 import { createInternalTestUser } from '../../../../../tests/helpers/internal-user.js';
 
@@ -336,5 +337,237 @@ describe('knowledge_query folder navigation', () => {
 
     const personal = await execute(query, { action: 'tree', scope: 'personal' });
     expect((personal.folders as Array<{ path: string }>).map((f) => f.path)).toContain(`${prefix}我的笔记`);
+  });
+});
+
+/**
+ * `create_folders` (spec B9): a member's agent may lay out the folders it files
+ * into — but only where the member could create them in Files: team folders for
+ * team docs, the member's OWN personal tree for personal docs.
+ */
+describe('knowledge_mutation create_folders', () => {
+  beforeEach(async () => {
+    db = await initDatabase({ type: 'pg', pgConnectionString: TEST_DATABASE_URL });
+    initializePlatformRuntime(db, [knowledgeRegistration]);
+    user = await createInternalTestUser(db, { email: 'kb-create-folders@test.com' });
+  });
+
+  afterEach(async () => {
+    resetPlatformRuntimeForTests();
+    await db.close();
+    _resetProvider();
+  });
+
+  async function childNames(parentId: number | null, visibility: 'team' | 'private', ownerUserId?: string) {
+    const rows = await db.drive.listFolders({
+      scope: 'kb',
+      parent_id: parentId,
+      visibility,
+      owner_user_id: ownerUserId,
+    });
+    return rows;
+  }
+
+  it('creates every missing segment of a nested team path and files the doc there', async () => {
+    const prefix = `cf${Date.now()}`;
+    const existing = await teamFolder(`${prefix}指南`);
+    const tool = createKnowledgeMutationTool(db, { userId: user.id });
+    const res = await execute(tool, {
+      action: 'knowledge.create_doc',
+      scope: 'team',
+      doc_id: `${prefix}/nested`,
+      title: 'n',
+      content: 'n',
+      folder: `${prefix}指南/新栏目/子栏目`,
+      create_folders: true,
+    });
+    expect(res.status).toBe('created');
+    expect((res.document as { folder?: string }).folder).toBe(`${prefix}指南/新栏目/子栏目`);
+    expect(res.created_folders).toEqual([`${prefix}指南/新栏目`, `${prefix}指南/新栏目/子栏目`]);
+
+    const [mid] = await childNames(existing.id, 'team');
+    expect(mid?.name).toBe('新栏目');
+    expect(mid?.created_by).toBe(user.id);
+    const [leaf] = await childNames(mid!.id, 'team');
+    expect(leaf?.name).toBe('子栏目');
+    const row = await db.knowledgeBase.get(`${prefix}/nested`, 'shared');
+    expect(row?.folder_id).toBe(leaf!.id);
+
+    // A second write on the same path reuses the folders instead of duplicating them.
+    const again = await execute(tool, {
+      action: 'knowledge.create_doc',
+      scope: 'team',
+      doc_id: `${prefix}/nested-2`,
+      title: 'n2',
+      content: 'n2',
+      folder: `${prefix}指南/新栏目/子栏目`,
+      create_folders: true,
+    });
+    expect(again.status).toBe('created');
+    expect(again.created_folders).toBeUndefined();
+    expect(await childNames(existing.id, 'team')).toHaveLength(1);
+  });
+
+  it('without the flag a missing folder is an error that names create_folders and creates nothing', async () => {
+    const prefix = `nf${Date.now()}`;
+    const root = await teamFolder(`${prefix}指南`);
+    const tool = createKnowledgeMutationTool(db, { userId: user.id });
+    const res = await execute(tool, {
+      action: 'knowledge.create_doc',
+      scope: 'team',
+      doc_id: `${prefix}/missing`,
+      title: 'm',
+      content: 'm',
+      folder: `${prefix}指南/没有`,
+    });
+    expect(res.status).toBeUndefined();
+    expect(String(res.error)).toContain('Folder not found');
+    expect(String(res.error)).toContain('create_folders');
+    expect(await childNames(root.id, 'team')).toHaveLength(0);
+    expect(await db.knowledgeBase.get(`${prefix}/missing`, 'shared')).toBeUndefined();
+  });
+
+  it('personal docs create folders in the caller own private tree, never on the team shelf', async () => {
+    const prefix = `pf${Date.now()}`;
+    const tool = createKnowledgeMutationTool(db, { userId: user.id });
+    const res = await execute(tool, {
+      action: 'knowledge.create_doc',
+      scope: 'personal',
+      doc_id: `${prefix}/mine`,
+      title: 'p',
+      content: 'p',
+      folder: `${prefix}私人/草稿`,
+      create_folders: true,
+    });
+    expect(res.status).toBe('created');
+    const mine = (await childNames(null, 'private', user.id)).find((f) => f.name === `${prefix}私人`);
+    expect(mine?.owner_user_id).toBe(user.id);
+    expect((await childNames(null, 'team')).some((f) => f.name === `${prefix}私人`)).toBe(false);
+  });
+
+  it("an editor of someone else's personal doc cannot create folders in the owner's tree", async () => {
+    const prefix = `ef${Date.now()}`;
+    const owner = await createInternalTestUser(db, { email: `${prefix}-owner@test.com` });
+    const ownerTool = createKnowledgeMutationTool(db, { userId: owner.id });
+    const created = await execute(ownerTool, {
+      action: 'knowledge.create_doc',
+      scope: 'personal',
+      doc_id: `${prefix}/owned`,
+      title: 'o',
+      content: 'o',
+    });
+    expect(created.status).toBe('created');
+    const doc = await db.knowledgeBase.get(`${prefix}/owned`, 'shared');
+    await db.knowledgeShares.grant(doc!.id, user.id, 'editor', owner.id);
+
+    const editorTool = createKnowledgeMutationTool(db, { userId: user.id });
+    const res = await execute(editorTool, {
+      action: 'knowledge.update_doc',
+      scope: 'personal',
+      doc_id: `${prefix}/owned`,
+      folder: `${prefix}新目录`,
+      create_folders: true,
+    });
+    expect(res.status).toBeUndefined();
+    expect(String(res.error)).toContain('own personal tree');
+    expect((await childNames(null, 'private', owner.id)).some((f) => f.name === `${prefix}新目录`)).toBe(false);
+    expect((await childNames(null, 'private', user.id)).some((f) => f.name === `${prefix}新目录`)).toBe(false);
+  });
+});
+
+/** `knowledge_query action=folders` — the folder tree alone, bounded. */
+describe('knowledge_query folders', () => {
+  beforeEach(async () => {
+    db = await initDatabase({ type: 'pg', pgConnectionString: TEST_DATABASE_URL });
+    initializePlatformRuntime(db, [knowledgeRegistration]);
+    user = await createInternalTestUser(db, { email: 'kb-folder-list@test.com' });
+  });
+
+  afterEach(async () => {
+    resetPlatformRuntimeForTests();
+    await db.close();
+    _resetProvider();
+  });
+
+  type Node = { id: number; path: string; depth: number; docs: number; more_subfolders?: number };
+
+  it('lists ids, paths and doc counts, and cuts at depth with a truncated flag', async () => {
+    const prefix = `fl${Date.now()}`;
+    const a = await teamFolder(`${prefix}A`);
+    const b = await teamFolder('B', a.id);
+    const c = await teamFolder('C', b.id);
+    await teamFolder('D', c.id);
+    const mutation = createKnowledgeMutationTool(db, { userId: user.id });
+    await execute(mutation, {
+      action: 'knowledge.create_doc',
+      scope: 'team',
+      doc_id: `${prefix}/in-b`,
+      title: 'b',
+      content: 'b',
+      folder: `${prefix}A/B`,
+    });
+
+    const query = createKnowledgeQueryTool(db, { userId: user.id });
+    const res = await execute(query, { action: 'folders', scope: 'team', folder: `${prefix}A`, depth: 2 });
+    expect(res.root).toBe(`${prefix}A`);
+    const folders = res.folders as Node[];
+    expect(folders.map((f) => [f.path, f.depth])).toEqual([
+      [`${prefix}A/B`, 1],
+      [`${prefix}A/B/C`, 2],
+    ]);
+    expect(folders[0]).toMatchObject({ id: b.id, docs: 1 });
+    expect(folders[1]).toMatchObject({ id: c.id, docs: 0, more_subfolders: 1 });
+    expect(res.total_folders).toBe(3);
+    expect(res.truncated).toBe(true);
+
+    const full = await execute(query, { action: 'folders', scope: 'team', folder: `${prefix}A` });
+    expect((full.folders as Node[]).map((f) => f.path)).toEqual([`${prefix}A/B`, `${prefix}A/B/C`, `${prefix}A/B/C/D`]);
+    expect(full.truncated).toBeUndefined();
+  });
+
+  it('caps the number of listed folders', async () => {
+    const prefix = `cap${Date.now()}`;
+    const root = await teamFolder(`${prefix}根`);
+    for (const name of ['1', '2', '3', '4', '5']) await teamFolder(name, root.id);
+    const tree = await kbFolderTree(db, { visibility: 'team' }, { rootId: root.id, maxDepth: 3, maxNodes: 3 });
+    expect(tree.folders).toHaveLength(3);
+    expect(tree.total_folders).toBe(5);
+    expect(tree.truncated).toBe(true);
+  });
+
+  it("never shows another member's personal folders, and keeps team and personal apart", async () => {
+    const prefix = `vis${Date.now()}`;
+    const other = await createInternalTestUser(db, { email: `${prefix}-other@test.com` });
+    await db.drive.createFolder({
+      scope: 'kb',
+      name: `${prefix}别人的`,
+      visibility: 'private',
+      owner_user_id: other.id,
+      created_by: other.id,
+    });
+    await db.drive.createFolder({
+      scope: 'kb',
+      name: `${prefix}我的`,
+      visibility: 'private',
+      owner_user_id: user.id,
+      created_by: user.id,
+    });
+    await teamFolder(`${prefix}团队`);
+
+    const query = createKnowledgeQueryTool(db, { userId: user.id });
+    const personal = ((await execute(query, { action: 'folders', scope: 'personal' })).folders as Node[]).map(
+      (f) => f.path,
+    );
+    expect(personal).toContain(`${prefix}我的`);
+    expect(personal).not.toContain(`${prefix}别人的`);
+    expect(personal).not.toContain(`${prefix}团队`);
+
+    const team = ((await execute(query, { action: 'folders', scope: 'team' })).folders as Node[]).map((f) => f.path);
+    expect(team).toContain(`${prefix}团队`);
+    expect(team).not.toContain(`${prefix}我的`);
+    expect(team).not.toContain(`${prefix}别人的`);
+
+    const shared = await execute(query, { action: 'folders', scope: 'shared' });
+    expect(String(shared.error)).toContain('folders is only available');
   });
 });

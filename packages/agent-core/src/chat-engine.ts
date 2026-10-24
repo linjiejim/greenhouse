@@ -114,6 +114,9 @@ export function summarizeOutput(toolName: string, output: Record<string, unknown
     // while it was one of three KB tools, expensive now that it is the only one.
     case 'knowledge_query':
       if (output.error) return { error: output.error };
+      if (typeof output.total_folders === 'number') {
+        return { action: 'folders', scope: output.scope, root: output.root, folders: output.total_folders };
+      }
       if (Array.isArray(output.folders)) {
         return { action: 'tree', scope: output.scope, root: output.root, docs: output.total_docs };
       }

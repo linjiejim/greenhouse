@@ -198,6 +198,9 @@ stateless Agent/MCP 不开放该文件工具。
 
 - `action="tree"`（team/personal）— 浏览目录树 + 每个目录下的文档标题，可用 `folder` 限定到某棵子树。
   空目录也会列出（「这个栏目存在但还没内容」是真答案）。public/shared 无目录树，明确报错并指路。
+- `action="folders"`（team/personal）— 只列目录树：每个目录的 `id`、路径、层级、直属文档数，不带文档标题。
+  有界：`depth` 默认 3、最多 8，最多列 200 个目录；超出时 `truncated:true` + `total_folders`，深度截断处带
+  `more_subfolders`。整棵可见树一次查询取回（同 `resolveKbFolderPath` 的可见性规则），给成员的 Agent 规划归档位置用。
 - `action="search"` — 关键词检索，可带 `folder` 把检索限定在某栏目及其子目录内；结果行带 `folder` 路径与
   `relevance`。**全部命中都低于弱匹配阈值时返回 `weak_match:true`**——不过滤，只如实标注。
 - `action="get"` — 读一篇。`mode="outline"` 只回标题树与各节体量，`mode="section"` 按标题读一节
