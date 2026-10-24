@@ -7,8 +7,8 @@
  */
 
 import type { MessagePage } from '../data/transcript';
-import type { ChatMessage, ChatSession } from '../shared/greenhouse-types';
-import { get, post, seg } from './client';
+import type { ChatMessage, ChatSession, SearchGroup } from '../shared/greenhouse-types';
+import { del, get, patch, post, seg } from './client';
 
 export const SESSION_PAGE = 50;
 
@@ -34,3 +34,16 @@ export const getMessages = (id: string, beforeSeq?: number) =>
 /** Whether the session has a reply being written (generation outlives the request). */
 export const chatRun = (sessionId: string) =>
   get<{ active: boolean; run?: { status: 'running' | 'completed' | 'error' } }>(`/api/chat/runs/${seg(sessionId)}`);
+
+/** Pin a conversation to the top of my list, or take it off. */
+export const pinSession = (id: string, pinned: boolean) =>
+  pinned ? post<{ ok: true }>(`/api/sessions/${seg(id)}/pin`, {}) : del<{ ok: true }>(`/api/sessions/${seg(id)}/pin`);
+
+export const renameSession = (id: string, title: string) => patch<ChatSession>(`/api/sessions/${seg(id)}`, { title });
+
+/** Stop the reply being written. */
+export const stopRun = (sessionId: string) => post<unknown>(`/api/chat/runs/${seg(sessionId)}/stop`, {});
+
+/** Search across what I can read (`/api/search`); `kind` narrows it to one group. */
+export const searchAll = (q: string, kind?: string) =>
+  get<{ query: string; groups: SearchGroup[] }>('/api/search', { q: q.slice(0, 200), ...(kind ? { kind } : {}) });
