@@ -115,8 +115,17 @@ const RETIRED_TABLES: Record<string, string> = {
 const str = (value: unknown): string | null => (value === null || value === undefined ? null : String(value));
 const strReq = (value: unknown): string => String(value);
 
+const LONE_SURROGATE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g;
+
+/**
+ * What 1.x JSON text may hold that jsonb cannot: U+0000 (dropped) and lone
+ * UTF-16 surrogates from `\uD83D`-style escapes of a cut emoji (→ U+FFFD).
+ */
 function stripNul(value: unknown): unknown {
-  if (typeof value === 'string') return value.includes('\u0000') ? value.replaceAll('\u0000', '') : value;
+  if (typeof value === 'string') {
+    const noNul = value.includes('\u0000') ? value.replaceAll('\u0000', '') : value;
+    return noNul.replace(LONE_SURROGATE, '\uFFFD');
+  }
   if (Array.isArray(value)) return value.map(stripNul);
   if (value && typeof value === 'object') {
     const out: Row = {};
@@ -286,7 +295,13 @@ class Writer {
       return out;
     });
     this.buffer = [];
-    await target`INSERT INTO ${target(this.table)} ${target(rows as Array<Record<string, postgres.ParameterOrJSON<never>>>, columns)}`;
+    try {
+      await target`INSERT INTO ${target(this.table)} ${target(rows as Array<Record<string, postgres.ParameterOrJSON<never>>>, columns)}`;
+    } catch (error) {
+      // Never echo row contents (private data): table, columns and the database's message only.
+      const message = error instanceof Error ? error.message : String(error);
+      throw new CarryError(`Writing ${this.table} failed (${columns.join(', ')}): ${message}`);
+    }
   }
 }
 
@@ -1190,6 +1205,8 @@ async function carryAutomations(ctx: Ctx): Promise<void> {
   if (older > 0) ctx.skip(versionLine, 'older immutable version (versions retired in 3.0)', older);
 }
 
+const RETIRED_TOKEN_ACCOUNT = 'per-member token account (retired; USD member budgets replace it)';
+
 const TERMINAL = new Set(['succeeded', 'failed', 'canceled', 'interrupted']);
 
 async function carryRuns(ctx: Ctx): Promise<void> {
@@ -1382,25 +1399,28 @@ async function carryUsage(ctx: Ctx): Promise<void> {
     created_at: row.created_at,
   }));
 
-  await carry(ctx, 'usage_budget_accounts', 'budgets', (row) =>
-    row.scope_type === 'user' && row.unit === 'tokens'
-      ? 'per-member token account (retired; USD member budgets replace it)'
-      : {
-          id: strReq(row.id),
-          kind: 'account',
-          scope_type: row.scope_type,
-          scope_id: row.scope_id,
-          unit: row.unit,
-          status: row.status,
-          period_start: row.period_start,
-          period_end: row.period_end,
-          limit_units: row.limit_units,
-          reserved_units: row.reserved_units,
-          spent_units: row.spent_units,
-          created_at: row.created_at,
-          updated_at: row.updated_at,
-        },
-  );
+  const retiredAccounts = ctx.idSet('retired token accounts');
+  await carry(ctx, 'usage_budget_accounts', 'budgets', (row) => {
+    if (row.scope_type === 'user' && row.unit === 'tokens') {
+      retiredAccounts.add(String(row.id));
+      return RETIRED_TOKEN_ACCOUNT;
+    }
+    return {
+      id: strReq(row.id),
+      kind: 'account',
+      scope_type: row.scope_type,
+      scope_id: row.scope_id,
+      unit: row.unit,
+      status: row.status,
+      period_start: row.period_start,
+      period_end: row.period_end,
+      limit_units: row.limit_units,
+      reserved_units: row.reserved_units,
+      spent_units: row.spent_units,
+      created_at: row.created_at,
+      updated_at: row.updated_at,
+    };
+  });
   await carry(ctx, 'usage_budget_limits', 'budgets', (row) => ({
     id: strReq(row.id),
     kind: 'limit',
@@ -1417,14 +1437,18 @@ async function carryUsage(ctx: Ctx): Promise<void> {
   }));
   const budgets = ctx.idSet('budgets');
   await carry(ctx, 'usage_budget_reservations', 'budget_reservations', (row) =>
-    !budgets.has(String(row.account_id))
-      ? 'account not carried'
-      : { ...row, metadata: parseJson(row.metadata, {}, ctx, 'reservation metadata') },
+    retiredAccounts.has(String(row.account_id))
+      ? RETIRED_TOKEN_ACCOUNT
+      : !budgets.has(String(row.account_id))
+        ? 'account not carried'
+        : { ...row, metadata: parseJson(row.metadata, {}, ctx, 'reservation metadata') },
   );
   await carry(ctx, 'usage_budget_ledger', 'budget_ledger', (row) =>
-    !budgets.has(String(row.account_id))
-      ? 'account not carried'
-      : { ...row, id: strReq(row.id), metadata: parseJson(row.metadata, {}, ctx, 'ledger metadata') },
+    retiredAccounts.has(String(row.account_id))
+      ? RETIRED_TOKEN_ACCOUNT
+      : !budgets.has(String(row.account_id))
+        ? 'account not carried'
+        : { ...row, id: strReq(row.id), metadata: parseJson(row.metadata, {}, ctx, 'ledger metadata') },
   );
   await carry(ctx, 'usage_price_overrides', 'prices', (row) => row);
   await carry(ctx, 'usage_counters', 'module_usage_daily', (row) => (isDay(row.day) ? row : 'unparseable day'));
@@ -1541,8 +1565,8 @@ export async function carryFrom1x(options: CarryOptions): Promise<CarryReport> {
   const now = options.now ?? new Date();
   const dryRun = options.dryRun ?? false;
   if (!dryRun && !options.to) throw new CarryError('--to is required (unless --dry-run)');
-  const source = postgres(options.from, { max: 2, onnotice: () => {} });
-  const target = options.to ? postgres(options.to, { max: 2, onnotice: () => {} }) : null;
+  const source = postgres(options.from, { max: 4, onnotice: () => {} });
+  const target = options.to ? postgres(options.to, { max: 4, onnotice: () => {} }) : null;
   const startedAt = new Date().toISOString();
   try {
     // ── source must be 1.6.x ──
@@ -1629,8 +1653,13 @@ export async function carryFrom1x(options: CarryOptions): Promise<CarryReport> {
     await carryMisc(ctx);
 
     log('Extension tables…');
-    const extensions = await copyExtensionTables(source, dryRun ? null : target, extensionTables, log, (text) =>
-      ctx.note(text),
+    const extensions = await copyExtensionTables(
+      source,
+      dryRun ? null : target,
+      extensionTables,
+      log,
+      (text) => ctx.note(text),
+      { from: options.from, to: dryRun ? null : (options.to ?? null) },
     );
 
     // Source tables nobody read: a 1.x table this carry does not know is a bug, not data loss to hide.

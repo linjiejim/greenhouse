@@ -9,7 +9,8 @@
  * stream across with COPY, then sequences are set to the source's position.
  */
 
-import type postgres from 'postgres';
+import { pipeline } from 'node:stream/promises';
+import postgres from 'postgres';
 
 type Sql = postgres.Sql;
 
@@ -90,7 +91,8 @@ export async function copyExtensionTables(
   target: Sql | null,
   tables: string[],
   log: (line: string) => void,
-  note: (text: string) => void = () => {},
+  note: (text: string) => void,
+  urls: { from: string; to: string | null },
 ): Promise<Array<{ table: string; rows: number }>> {
   const result: Array<{ table: string; rows: number }> = [];
   const foreignKeys: Array<{ table: string; name: string; def: string }> = [];
@@ -128,16 +130,21 @@ export async function copyExtensionTables(
       }
     }
 
-    if (rows > 0) {
+    if (rows > 0 && urls.to) {
       const columnList = writable.join(', ');
-      const reader = await source.unsafe(`COPY ${ident(table)} (${columnList}) TO STDOUT`).readable();
-      const writer = await target.unsafe(`COPY ${ident(table)} (${columnList}) FROM STDIN`).writable();
-      await new Promise<void>((resolve, reject) => {
-        reader.on('error', reject);
-        writer.on('error', reject);
-        writer.on('finish', () => resolve());
-        reader.pipe(writer);
-      });
+      // A COPY gets connections of its own: postgres.js keeps a copy-mode
+      // connection reserved after the stream ends, so later queries on the
+      // shared pools would wait on it forever.
+      const copySource = postgres(urls.from, { max: 1, onnotice: () => {} });
+      const copyTarget = postgres(urls.to, { max: 1, onnotice: () => {} });
+      try {
+        const reader = await copySource.unsafe(`COPY ${ident(table)} (${columnList}) TO STDOUT`).readable();
+        const writer = await copyTarget.unsafe(`COPY ${ident(table)} (${columnList}) FROM STDIN`).writable();
+        await pipeline(reader, writer);
+      } finally {
+        await copySource.end({ timeout: 5 });
+        await copyTarget.end({ timeout: 5 });
+      }
     }
 
     if (table !== BOOKKEEPING) {

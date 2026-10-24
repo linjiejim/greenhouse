@@ -168,6 +168,10 @@ describe('migrate-from-1x carry', () => {
     const [message] = await queryRows(target, `SELECT parts FROM messages WHERE id = 'm2'`);
     // The NUL escape is dropped (jsonb cannot hold U+0000); the rest survives.
     expect(message!.parts).toEqual({ references: [{ doc_id: 1 }], pipeline: [{ type: 'tool', output: 'badbyte' }] });
+    // A lone surrogate escape (a cut emoji) becomes U+FFFD instead of failing the insert.
+    expect(await queryRows(target, `SELECT parts FROM messages WHERE id = 'm3'`)).toEqual([
+      { parts: { references: [{ title: 'half \uFFFD' }] } },
+    ]);
     expect(await queryRows(target, `SELECT notify, unattended_tools FROM automations`)).toEqual([
       {
         notify: { webhook: 'https://hook.example.test', email: true, wecom: false, feishu: true },

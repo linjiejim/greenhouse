@@ -46,7 +46,8 @@ INSERT INTO sessions (id, title, user_id, channel, rating, feedback, metadata, c
   ('s-bob', 'Bob chat', 'u-bob', 'web', NULL, NULL, '{}', '2026-10-03T00:00:00Z', '2026-10-03T00:00:00Z');
 INSERT INTO messages (id, session_id, role, content, references_, pipeline, images, confidence, seq, created_at) VALUES
   ('m1', 's-ann', 'user', 'hello', '[]', '[]', '["img-1"]', NULL, 1, '2026-10-01T00:00:00Z'),
-  ('m2', 's-ann', 'assistant', 'hi', '[{"doc_id":1}]', '[{"type":"tool","output":"bad\u0000byte"}]', '[]', 0.8, 2, '2026-10-01T00:00:01Z');
+  ('m2', 's-ann', 'assistant', 'hi', '[{"doc_id":1}]', '[{"type":"tool","output":"bad\u0000byte"}]', '[]', 0.8, 2, '2026-10-01T00:00:01Z'),
+  ('m3', 's-ann', 'assistant', 'cut', '[{"title":"half \ud83d"}]', '[]', '[]', NULL, 3, '2026-10-01T00:00:02Z');
 INSERT INTO session_shares (id, session_id, shared_with, shared_by, created_at) VALUES (1, 's-ann', 'u-bob', 'u-ann', '2026-10-02T00:00:00Z');
 INSERT INTO session_share_reads (id, session_id, user_id, read_at) VALUES (1, 's-ann', 'u-bob', '2026-10-02T01:00:00Z');
 INSERT INTO session_groups (id, user_id, name, kind, created_at, updated_at) VALUES
