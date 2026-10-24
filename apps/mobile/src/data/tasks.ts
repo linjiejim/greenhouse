@@ -105,8 +105,17 @@ export function myTasks(
       }
     }
   }
+  return groupMyTasks(mine, today);
+}
+
+/**
+ * My tasks grouped by when they are due as seen on `today` (overdue first, no date last), each
+ * group by due date then title, empty groups left out. Also regroups a saved list when it is shown,
+ * so a copy saved yesterday does not still call yesterday's tasks "today".
+ */
+export function groupMyTasks(tasks: readonly MyTask[], today: string): { bucket: DueBucket; tasks: MyTask[] }[] {
   const groups = new Map<DueBucket, MyTask[]>();
-  for (const task of mine) {
+  for (const task of tasks) {
     const bucket = dueBucket(task.due_date, today);
     groups.set(bucket, [...(groups.get(bucket) ?? []), task]);
   }

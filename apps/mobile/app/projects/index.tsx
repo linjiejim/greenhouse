@@ -14,7 +14,7 @@ import { gantt, listProjects } from '../../src/api/projects';
 import type { ApiResult } from '../../src/api/client';
 import { captureIdentity } from '../../src/data/identity';
 import { noAccess } from '../../src/data/access';
-import { localDay, myTasks, type DueBucket, type MyTask } from '../../src/data/tasks';
+import { groupMyTasks, localDay, myTasks, type DueBucket, type MyTask } from '../../src/data/tasks';
 import { parseMyTasks } from '../../src/data/recent-items';
 import { useOfflineResource } from '../../src/data/use-offline-resource';
 import { useResource } from '../../src/data/use-resource';
@@ -63,7 +63,9 @@ export default function Projects() {
   const rows = useMemo((): Row[] => {
     if (tab === 'mine') {
       const out: Row[] = [];
-      for (const group of mine.data ?? []) {
+      // grouped again for today: a saved copy keeps the groups of the day it was saved
+      const groups = groupMyTasks((mine.data ?? []).flatMap((group) => group.tasks), localDay(new Date()));
+      for (const group of groups) {
         out.push({ key: `h-${group.bucket}`, type: 'header', title: t(`projects.dueGroup.${group.bucket}`) });
         group.tasks.forEach((task, i) =>
           out.push({ key: `t-${task.id}`, type: 'task', task, bucket: group.bucket, position: position(i, group.tasks.length) }),
