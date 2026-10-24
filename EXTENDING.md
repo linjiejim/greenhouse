@@ -107,7 +107,7 @@ Every field is optional and maps 1:1 onto a core registry:
 | `tools` | tool catalog → chat, `/api/agent`, `/api/mcp`, workbench | `meta.surface` decides exposure exactly like a core tool. Lazy tools implement `createLazy(ctx)` (user, session, db, `unattended`) — no per-tool case in core, and `defineExtension` refuses a lazy tool without it. Ids must not collide. |
 | `routes` | mounted after the typed core chain | Convention `/api/ext/<id>`; `guards` run for every request under the prefix. Extension routes are not part of the public `AppType` contract. |
 | `applications` | platform kernel (`bootstrapPlatform` + `initializePlatformRuntime`) | Manifest v2 + handlers; scaffold with `pnpm cli platform create-app <id>`. |
-| `featureFlags` / `featurePoints` | `user_features`, the permissions dialog, feature-owned tool sets | Extension flags are strings (the compile-time `FeatureKey` union stays core-only). A non-global tool must belong to exactly one point. |
+| `featureFlags` / `featurePoints` | `user_grants` (`kind='feature'`), the permissions dialog, feature-owned tool sets | Extension flags are strings (the compile-time `FeatureKey` union stays core-only). A non-global tool must belong to exactly one point. |
 | `workspaceSettings` | Runtime Config (one section per extension), `workspace_settings` table, env overlay | Key `<id>.<name>`, `group: '<id>'`; secrets are encrypted at rest and write-only over the API. |
 | `publicPaths` | `isPublicPath()` in the auth middleware | Keep minimal — OAuth callbacks, webhooks. |
 | `jobs` | started/stopped with the scheduler | croner syntax; zone defaults to `SCHEDULER_TIMEZONE`. |
@@ -121,10 +121,28 @@ Every field is optional and maps 1:1 onto a core registry:
 | `applications[].teamExportableEntities` | the `team` role's bootstrap field policy | Which of your entities a normal user may export in full. Empty by default — bulk export is a deliberate grant. |
 | `applications[].platformTools` | MCP tool visibility | Ties `crm_query` / `crm_mutation` to the application's query / command actions, so a fully denied tool disappears from `tools/list` like core's do. |
 | `dependsOn` | a boot-time check | Ids this extension needs switched on too. Two extensions in one build can import each other by path; this makes the configuration requirement explicit and fails fast instead of deep inside a request. Reserve it for the genuinely unshareable — an authenticated transport, a credential chain. |
-| `driveScopes` | the shared Drive (`drive_folders` / `drive_files`) | Your own file cabinet inside core's tables: rows carry `scope: '<your scope>'` and `owner_key` (any text — a record id), and the `authorize(ownerKey, ctx)` you declare is the only rule core applies. |
+| `driveScopes` | the shared Drive (`folders` / `files` rows with `source='drive'`) | Your own file cabinet inside core's tables: rows carry `scope: '<your scope>'` and `owner_key` (any text — a record id), and the `authorize(ownerKey, ctx)` you declare is the only rule core applies. |
 | `workbenchRecipes` | Home workbench card picker + `workbench_query.recipes` | Backed by one of the extension's own read tools; `labelKey` / `descriptionKey` translate it. |
 | `skillPacks` | Skill Center seed at boot | Same layout as `skillhub/`. |
 | `onBoot` / `onShutdown` | after the tool registry exists, before routes serve; on SIGTERM | |
+
+### Core data your extension touches
+
+- Reach core only through the stable facades `db.users`, `db.drive` and `db.platform`; their
+  method shapes do not change between releases.
+- Every core id is text. New rows get a prefixed ULID (`usr_01J…`, `fil_01J…`); rows carried
+  from 1.x keep their old id as a string (`"42"`). Store user ids and other core ids as `text`,
+  without a foreign key into core, and never parse an id's shape.
+- `db.drive` takes ids as `string | number` and always returns strings. `DriveFileRow` keeps the
+  1.x field names extensions read: `cos_key` (= `files.storage_key`), `size` and `uploaded_by`
+  (= `files.created_by`).
+- There is one organization: no `org_id` anywhere. `db.platform` methods still take an `orgId`;
+  pass `'default'`.
+- Name new extension tables `ext_<id>_*`. Existing `crm_*`-style tables keep their names.
+- `pnpm cli migrate-from-1x` copies extension tables and `extension_migrations` verbatim when a
+  1.x database moves to 3.0 (DDL rebuilt from the catalog, rows streamed with COPY, sequences
+  carried), so the lane keeps running from where it was. An extension that stored a 1.x numeric
+  user id keeps resolving because carried users keep that id as a string.
 
 Import what you need from `apps/api/src/extension-kit.ts` (`defineTool`, `getDb`,
 `getAuthUser`, `requireFeature`, `getWorkspaceValue`, `GREENHOUSE_CONFIG`, types). Deeper
@@ -242,7 +260,7 @@ belongs to Greenhouse itself.
 | **Feature flag** (per-user opt-in / opt-out) | `packages/types/src/features.ts` | `FEATURE_FLAGS` entry; guard routes with `requireFeature('<key>')`; the admin toggle appears automatically |
 | **Feature point** (what a flag / app owns) | `apps/api/src/platform/feature-points.ts` | Maps a flag or app to its tool ids and capability prefix so one switch controls app + REST + MCP + chat |
 | **API route** | `apps/api/src/routes/<resource>.ts`, mounted in `apps/api/src/index.ts` (`mountRoutes`) | Chained Hono routes (they become part of the typed `AppType` contract used by the web client) |
-| **Database table + service** | `packages/db/src/schema/<domain>.ts` + `services/<domain>.ts`, one line in `provider.ts` | Drizzle schema → `pnpm drizzle-kit generate` → review SQL → commit; services are typed factories, the provider type is inferred |
+| **Database table + service** | `packages/db/src/schema/<domain>.ts` + `services/<domain>.ts`, an id prefix in `ids.ts`, one line in `provider.ts` | Drizzle schema with the `_columns.ts` helpers → `pnpm drizzle-kit generate` (diffs against the 3.0 baseline) → review SQL → commit → `pnpm db:migrate`; services are typed factories, the provider type is inferred; update `db-schema.md` |
 | **Web page / navigation** | `apps/web/src/pages/**`, `apps/web/src/lib/nav-registry.ts`, hash routes in `apps/web/src/app.tsx` | Settings/Administration modules come from `nav-registry`; top-level pages are hash routes in `app.tsx`; platform apps surface through the permission-aware catalog (`apps/web/src/platform/`) |
 | **Chat card for a tool output** | `apps/web/src/components/tool-call/body-artifacts.tsx` + `tool-call-card.tsx` | Tool results render from the tool's `presentation` metadata; add a body renderer keyed by tool id |
 | **Translations** | `apps/web/src/lib/i18n/{en,zh}.ts` | Keys must exist in both locales; `visible-copy.test.ts` rejects hardcoded English in TSX |

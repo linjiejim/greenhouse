@@ -68,19 +68,21 @@ with two users (reader and editor).
 
 **Projects** — 3 projects (Website Relaunch, Q3 Product Launch, SOC 2), members,
 14 tasks with subtasks / dependencies / mixed status, comments, and an activity
-log.
+log (`audit_events` rows with `app_id='projects'`).
 
-**Chat** — 5 sessions on the `web` channel, showing tool pipelines
-(`knowledge_query`, `external_search`, `project_query`, `analyze_image`), KB
-citations, reasoning, ratings, and a shared session.
+**Chat** — 5 conversations (`conversations.json`) on the `web` channel, showing tool
+pipelines (`knowledge_query`, `external_search`, `project_query`, `analyze_image`)
+and KB citations in `messages.parts`, reasoning, and a shared conversation
+(`conversation_shares.json` + `conversation_share_reads.json`).
 
-**Power features** — quick prompts (global + personal), user memories, scheduled
-automations (cron), feature requests (all statuses), one custom agent, and per-user
-feature flags.
+**Power features** — quick prompts (`prompts`, global + personal), user memories
+(`memories`), scheduled automations (`automations`, cron), feature requests
+(`feedback` with `kind='request'`, all statuses), one custom agent (`run_profiles`),
+and per-user feature flags (`user_grants` with `kind='feature'`).
 
 ## Not seeded (and why)
 
-- `refresh_tokens` — ephemeral, minted at login.
+- `auth_refresh_tokens` — ephemeral, minted at login.
 - `email_accounts` — values are encrypted with the instance secret;
   bind mailboxes in Settings → Email.
-- `llm_calls`, `llm_usage`, `api_audit_log` — telemetry, produced by real usage.
+- `usage_events`, `request_log`, `runs` — telemetry, produced by real usage.

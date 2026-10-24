@@ -22,6 +22,9 @@ cp .env.example .env && ./scripts/gen-secrets.sh
 # start just Postgres from the compose file (bound to 127.0.0.1:5432)
 docker compose up -d postgres
 
+# apply the schema (the 3.0 migration chain; refuses a 1.x / 2.x database)
+pnpm db:migrate
+
 # create the first super admin
 pnpm admin:create
 
@@ -65,8 +68,10 @@ These are enforced in review (full detail in `AGENTS.md`):
   and docs must reflect what actually works; unconfigured paths should error
   explicitly, not pretend.
 - **DB schema changes** need a migration: edit the schema →
-  `drizzle-kit generate` → review the SQL → commit. On shared/persistent DBs use
-  `migrate`, never `push`. Update `packages/db/src/AGENTS.md`.
+  `pnpm drizzle-kit generate` (it diffs against the 3.0 baseline) → review the SQL →
+  commit → `pnpm db:migrate`. On shared/persistent DBs use `pnpm db:migrate`, never
+  `push`. Update `packages/db/src/db-schema.md` (and `packages/db/src/AGENTS.md` when a
+  rule changes).
 - **Don't reinvent helpers** — check `packages/utils/` first.
 - **Use the structured `logger`** (`@greenhouse/utils/logger`) in runtime code,
   not raw `console.*` (CLI tools that print to the operator are the exception).

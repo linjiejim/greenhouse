@@ -81,7 +81,7 @@ v3 曾把模型收进 Agent 身份：想更强的推理就选 deep、想百万�
   名字，fallback 时并不改变，记它等于指认一个没跑过的 provider。
 - **选中的模型记在用户维度**（`greenhouse_last_model:<userId>`），不是会话维度：一次会话里前几轮用 flash
   摸情况、发现要动脑再切 pro 是正常用法，把选择钉死在会话上反而拦住它。
-- **自定义 Agent 也能切**，但选中一个自定义 Agent 时选择器默认跳到它自己的 `custom_profiles.model_id`
+- **自定义 Agent 也能切**，但选中一个自定义 Agent 时选择器默认跳到它自己的 `run_profiles.model_id`
   ——那是作者对"这个 Agent 该怎么跑"的决定，不该被用户上一次的随手选择静默盖掉。仍是默认，可覆盖。
 - **采样参数归模型目录**：`temperature` / `thinking` / `max_tokens` 等写进 `models.yaml` 的 `options`，由
   `resolveModelConfig()` 合并（profile 显式给的优先）。
@@ -133,7 +133,7 @@ stateless Agent/MCP 不开放该文件工具。
 ### Automation（定时任务）工具
 
 所有内部用户默认装配 `automation_query`（读）与 `automation_mutation`（写），对应 Chat 侧栏
-「Automation」面板背后的 `scheduled_tasks`：模型可以在对话里直接把「每个工作日早上 9 点汇总昨天的
+「Automation」面板背后的 `automations` 表：模型可以在对话里直接把「每个工作日早上 9 点汇总昨天的
 项目进展」变成一条真实的定时任务，也能列出、改期、暂停、删除或立即试跑。
 
 - **owner-scoped 且 super 不例外**：工具构造时钉死 `scope: 'own'`，跨用户管理只存在于 `/api/tasks`
