@@ -8,6 +8,7 @@
 
 import { and, desc, eq, gt, inArray, isNull, sql } from 'drizzle-orm';
 import { nowIso } from '@greenhouse/utils/date';
+import type { AgentAvatar } from '@greenhouse/types/agent-avatar';
 
 import type { Db } from '../client.js';
 import { newId } from '../ids.js';
@@ -324,6 +325,7 @@ export function createPlatformOAuthService(db: Db) {
         client_name: string;
         connected_at: string;
         last_used_at: string | null;
+        avatar: AgentAvatar | null;
       }>
     > {
       const rows = await db
@@ -331,6 +333,7 @@ export function createPlatformOAuthService(db: Db) {
           client_id: platformOAuthClients.id,
           client_name: platformOAuthClients.client_name,
           connected_at: platformOAuthGrants.created_at,
+          avatar: platformOAuthGrants.avatar,
           last_used_at: sql<string | null>`max(${platformOAuthTokens.last_used_at})`,
         })
         .from(platformOAuthGrants)
@@ -352,6 +355,21 @@ export function createPlatformOAuthService(db: Db) {
         connected_at: new Date(row.connected_at).toISOString(),
         last_used_at: row.last_used_at ? new Date(row.last_used_at).toISOString() : null,
       }));
+    },
+
+    /**
+     * Set (or with null, clear) the plant avatar a member picked for one of
+     * their connected agents — on every grant they hold for that client, so a
+     * reconnect to another resource keeps it. Returns how many grants changed;
+     * 0 means the member has no grant for the client.
+     */
+    async setUserClientAvatar(userId: string, clientId: string, avatar: AgentAvatar | null): Promise<number> {
+      const rows = await db
+        .update(platformOAuthGrants)
+        .set({ avatar, updated_at: nowIso() })
+        .where(and(eq(platformOAuthGrants.user_id, userId), eq(platformOAuthGrants.client_id, clientId)))
+        .returning({ id: platformOAuthGrants.id });
+      return rows.length;
     },
 
     async revokeGrant(id: string, userId?: string): Promise<boolean> {

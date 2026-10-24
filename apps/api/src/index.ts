@@ -49,6 +49,7 @@ import {
 
 // Route modules
 import authRoutes from './routes/auth.js';
+import meRoutes from './routes/me.js';
 import profileRoutes from './routes/profiles.js';
 import sessionRoutes from './routes/sessions.js';
 import { createChatRoute } from './routes/chat.js';
@@ -265,6 +266,7 @@ function mountRoutes(toolRegistry: ToolRegistry) {
       // router must be mounted before narrower application routes.
       .route('/', oauthRoutes)
       .route('/api/auth', authRoutes)
+      .route('/api/me', meRoutes)
       .route('/api/profiles', profileRoutes)
       .route('/api/sessions', sessionRoutes)
       .route('/health', healthRoutes)

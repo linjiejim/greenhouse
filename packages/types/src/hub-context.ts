@@ -7,6 +7,8 @@
  * apps/api/src/retro.
  */
 
+import type { AgentAvatar } from './agent-avatar.js';
+
 import type { TableBaseRole } from './tables.js';
 
 /** MCP resources a member's agent can read for team context. */
@@ -137,6 +139,8 @@ export interface AgentConnectionSeen {
   /** Last MCP request with one of its tokens; null = connected but never called. */
   last_seen_at: string | null;
   connected_at: string;
+  /** Plant avatar the member picked; null = the default for its client (`kind`). */
+  avatar: AgentAvatar | null;
 }
 
 export interface AgentConnectionsCheck {
