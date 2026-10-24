@@ -210,7 +210,14 @@ describe('POST /api/refs/resolve', () => {
       user_id: owner.id,
     });
     const url = `#/tables/${base.id}/table/${schema.table.id}?record=${record.id}`;
-    const wrongBase = `#/tables/${base.id + 1000000}/table/${schema.table.id}?record=${record.id}`;
+    // A real base the table does not belong to: the link names the wrong base.
+    const otherBase = await db.tables.createBase({
+      name: `${token} other`,
+      visibility: 'private',
+      owner_id: owner.id,
+      created_by: owner.id,
+    });
+    const wrongBase = `#/tables/${otherBase.id}/table/${schema.table.id}?record=${record.id}`;
 
     const mine = await resolve(app, owner.id, [url, wrongBase]);
     expect(mine.body.items.map((item) => item.title)).toEqual([`${token} restock`, null]);
