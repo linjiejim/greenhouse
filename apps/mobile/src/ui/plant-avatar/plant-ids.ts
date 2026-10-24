@@ -417,3 +417,44 @@ export function plantAvatarConfig(plant: PlantId, mood?: PlantMood): AvatarConfi
   const avatar = withPlant<AvatarConfig>({}, plant);
   return mood ? withMood(avatar, mood) : avatar;
 }
+
+// ─── Members' connected agents (MCP / OAuth clients) ──────────────────────
+
+/**
+ * Well-known agent clients → species, matched case-insensitively as a substring of the client
+ * name. Order matters (first match wins). Append only: a changed row re-skins every member's
+ * connection of that client.
+ */
+export const CLIENT_PLANTS = Object.freeze([
+  ['claude code', 'fern'],
+  ['codex', 'opuntia'],
+  ['cursor', 'clover'],
+] as const satisfies readonly (readonly [string, PlantId])[]);
+
+/** Species any other client may land on: everything but the assistant's sprout and the reserved picks above. */
+const CLIENT_POOL: readonly PlantId[] = Object.freeze(
+  PLANT_IDS.filter((p) => p !== DEFAULT_PLANT && !CLIENT_PLANTS.some(([, reserved]) => reserved === p)),
+);
+
+export interface ClientPlant {
+  plant: PlantId;
+  tint: PlantTint;
+}
+
+/**
+ * A connected agent's avatar: the connection's own `avatar {plant, tint}` when the API carries
+ * one, else a deterministic pick by client name (Claude Code → fern, Codex → opuntia,
+ * Cursor → clover, anything else → a stable hash over the remaining species). People never
+ * get a plant — they keep initials.
+ */
+export function plantForClient(name: string | null | undefined, avatar?: unknown): ClientPlant {
+  const a = asRecord(avatar);
+  const tint = avatarTint(a);
+  if (isPlantId(a.plant)) return { plant: a.plant, tint };
+  const key = String(name ?? '')
+    .trim()
+    .toLowerCase();
+  const known = CLIENT_PLANTS.find(([needle]) => key.includes(needle));
+  if (known) return { plant: known[1], tint };
+  return { plant: CLIENT_POOL[hashSeed(key) % CLIENT_POOL.length]!, tint };
+}

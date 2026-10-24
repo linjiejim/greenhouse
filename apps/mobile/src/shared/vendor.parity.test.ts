@@ -59,6 +59,14 @@ describe('vendored workspace code', () => {
     );
   });
 
+  it('the connected-agent plant rule matches packages/types/src/plant-avatar.ts', () => {
+    const canonical = parse('packages/types/src/plant-avatar.ts');
+    const copy = parse(`${MOBILE}/ui/plant-avatar/plant-ids.ts`);
+    for (const name of ['CLIENT_PLANTS', 'CLIENT_POOL', 'ClientPlant', 'plantForClient', 'avatarTint', 'hashSeed']) {
+      expect(declaration(copy, name), name).toBe(declaration(canonical, name));
+    }
+  });
+
   it('the notification shapes match packages/types/src/notification.ts', () => {
     const canonical = parse('packages/types/src/notification.ts');
     const copy = parse(`${MOBILE}/shared/greenhouse-types.ts`);

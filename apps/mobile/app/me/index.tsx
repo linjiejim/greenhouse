@@ -117,7 +117,7 @@ export default function Me() {
             <Button key={agent.client_id} onPress={() => router.push('/me/agents')}>
               <HStack spacing={12}>
                 <RNHostView matchContents>
-                  <AgentAvatar kind={agent.kind} name={agent.client_name} avatar={agent.avatar} size={32} />
+                  <AgentAvatar name={agent.client_name} avatar={agent.avatar} size={32} />
                 </RNHostView>
                 <VStack alignment="leading" spacing={2}>
                   <Text modifiers={[font({ textStyle: 'body' }), foregroundStyle(hex.label), lineLimit(1)]}>{agent.client_name}</Text>

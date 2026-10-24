@@ -54,18 +54,17 @@ export function AssistantAvatar({
 }
 
 export function AgentAvatar({
-  kind,
   name,
   avatar,
   size,
   state,
 }: {
-  kind: string;
+  /** The client's name (`client_name`): it picks the plant, as on the web. */
   name: string;
   avatar?: { plant?: string; tint?: string } | null;
   size: number;
   state?: PlantStateInput;
 }) {
-  const resolved = useMemo(() => agentPlant(kind, name, avatar), [kind, name, avatar]);
+  const resolved = useMemo(() => agentPlant(name, avatar), [name, avatar]);
   return <PlantAvatar plant={resolved.plant} tint={resolved.tint} state={state} size={size} animate={false} seed={resolved.seed} />;
 }

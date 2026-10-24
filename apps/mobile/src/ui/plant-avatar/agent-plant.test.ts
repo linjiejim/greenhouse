@@ -1,26 +1,25 @@
 import { describe, expect, it } from 'vitest';
-import { agentPlant, clientKindOf } from './agent-plant';
+import { plantForClient } from '../../../../../packages/types/src/plant-avatar';
+import { agentPlant } from './agent-plant';
 
 describe('a connected agent’s plant', () => {
-  it('follows the client by default', () => {
-    expect(agentPlant('claude-code', 'Claude Code · MacBook').plant).toBe('lavender');
-    expect(agentPlant('codex', 'Codex').plant).toBe('opuntia');
-    expect(agentPlant('cursor', 'Cursor').plant).toBe('ginkgo');
+  it('follows the client name like the web', () => {
+    expect(agentPlant('Claude Code · MacBook').plant).toBe('fern');
+    expect(agentPlant('Codex CLI').plant).toBe('opuntia');
+    expect(agentPlant('Cursor').plant).toBe('clover');
+    expect(agentPlant('Claude Code').tint).toBe('plant');
   });
 
   it('takes the plant the member chose', () => {
-    expect(agentPlant('codex', 'Codex', { plant: 'fern', tint: 'rose' })).toMatchObject({ plant: 'fern', tint: 'rose' });
+    expect(agentPlant('Codex', { plant: 'fern', tint: 'rose' })).toMatchObject({ plant: 'fern', tint: 'rose' });
+    expect(agentPlant('Codex', { tint: 'rose' })).toMatchObject({ plant: 'opuntia', tint: 'rose' });
   });
 
-  it('gives an unknown client a stable plant that is never the assistant’s sprout', () => {
-    const first = agentPlant('other', 'My Script');
-    expect(agentPlant('other', 'My Script').plant).toBe(first.plant);
-    expect(first.plant).not.toBe('sprout');
-  });
-
-  it('guesses the client from a write’s client name', () => {
-    expect(clientKindOf('Claude Code · MacBook')).toBe('claude-code');
-    expect(clientKindOf('codex-cli')).toBe('codex');
-    expect(clientKindOf('My script')).toBe('other');
+  it('matches the canonical plantForClient for any client, never the assistant’s sprout', () => {
+    for (const name of ['Claude Code', 'Claude Desktop', 'codex-cli', 'Windsurf', 'Zed', 'My Script', '', null]) {
+      const { plant, tint } = agentPlant(name);
+      expect({ plant, tint }, String(name)).toEqual(plantForClient(name));
+      expect(plant).not.toBe('sprout');
+    }
   });
 });
