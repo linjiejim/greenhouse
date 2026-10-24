@@ -65,6 +65,8 @@
 
 ## Share extension
 
+- Not in store builds yet: EAS cannot turn on App Groups for app.greenhouse.mobile.share through the App Store Connect API. Enable App Groups (group.app.greenhouse.mobile) for that identifier in the Apple developer console, then put the share entry back in app.json (`@bacons/apple-targets` match and `extra.eas.build.experimental.ios.appExtensions`).
+
 - targets/share ("存到 Greenhouse", @bacons/apple-targets type `share`, SwiftUI) uploads shared photos, videos and files into Files on the active station: shelf and folder picker, then init → bytes → complete.
 - It reads only the station and a short-lived access token from the App Group keychain item `greenhouse.share.session` (src/share/session.ts writes it on every token change; src/share/payload.ts is the shape). Never put the refresh token there: a single-use refresh in the extension would sign the app out. An expired token tells the member to open the app.
 - Keep the keychain key, service and App Group in payload.ts and ShareModel.swift identical; the extension's Info.plist activation rule caps what it accepts.

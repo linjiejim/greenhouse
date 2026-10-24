@@ -42,7 +42,12 @@
       "output": "single"
     },
     "plugins": [
-      "@bacons/apple-targets",
+      [
+        "@bacons/apple-targets",
+        {
+          "match": "widget"
+        }
+      ],
       [
         "expo-build-properties",
         {
@@ -114,15 +119,6 @@
           "experimental": {
             "ios": {
               "appExtensions": [
-                {
-                  "bundleIdentifier": "app.greenhouse.mobile.share",
-                  "targetName": "GreenhouseShare",
-                  "entitlements": {
-                    "com.apple.security.application-groups": [
-                      "group.app.greenhouse.mobile"
-                    ]
-                  }
-                },
                 {
                   "bundleIdentifier": "app.greenhouse.mobile.widget",
                   "targetName": "GreenhouseWidget",
