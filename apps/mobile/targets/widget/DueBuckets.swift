@@ -40,6 +40,10 @@ enum DueBuckets {
 
   static func dayKey(_ date: Date, _ calendar: Calendar) -> String {
     let parts = calendar.dateComponents([.year, .month, .day], from: date)
-    return String(format: "%04d-%02d-%02d", parts.year ?? 0, parts.month ?? 0, parts.day ?? 0)
+    func pad(_ value: Int?, _ width: Int) -> String {
+      let digits = String(value ?? 0)
+      return String(repeating: "0", count: max(0, width - digits.count)) + digits
+    }
+    return "\(pad(parts.year, 4))-\(pad(parts.month, 2))-\(pad(parts.day, 2))"
   }
 }

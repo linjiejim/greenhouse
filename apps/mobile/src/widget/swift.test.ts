@@ -1,8 +1,9 @@
 /**
  * The widget's Swift agrees with the app: targets/widget/DueBuckets.swift is compiled with swiftc
  * and must bucket due dates exactly like src/data/tasks.ts `dueBucket`, also with the phone set to
- * a Buddhist or Japanese calendar, and the widget sources typecheck against the iOS SDK. Skipped
- * where there is no Swift toolchain (Linux CI).
+ * a Buddhist or Japanese calendar (on a Mac), and the widget sources typecheck against the iOS SDK.
+ * The rule runs wherever swiftc does (a Mac with Xcode or the Command Line Tools, Linux with Swift);
+ * the typecheck only where the iOS simulator SDK is installed.
  */
 
 import { execFileSync } from 'node:child_process';
@@ -14,15 +15,33 @@ import { afterAll, describe, expect, it } from 'vitest';
 import { dueBucket } from '../data/tasks';
 
 const widgetDir = fileURLToPath(new URL('../../targets/widget/', import.meta.url));
-const hasSwift = (() => {
-  if (process.platform !== 'darwin') return false;
+const succeeds = (command: string, args: string[]) => {
   try {
-    execFileSync('xcrun', ['--find', 'swiftc'], { stdio: 'ignore' });
+    execFileSync(command, args, { stdio: 'ignore' });
     return true;
   } catch {
     return false;
   }
-})();
+};
+const mac = process.platform === 'darwin';
+/** How to call swiftc: through xcrun on a Mac (Xcode or the Command Line Tools), else from PATH. */
+const swiftc: string[] | null = mac
+  ? succeeds('xcrun', ['--find', 'swiftc'])
+    ? ['xcrun', 'swiftc']
+    : null
+  : succeeds('swiftc', ['--version'])
+    ? ['swiftc']
+    : null;
+/** The iOS simulator SDK, for typechecking the widget (needs Xcode, not only a Swift toolchain). */
+const hasIosSdk = mac && succeeds('xcrun', ['--sdk', 'iphonesimulator', '--show-sdk-path']);
+/** Calendar settings to run under: Foundation reads them from the arguments on Apple platforms only. */
+const settings: readonly (readonly [string[], string | null])[] = mac
+  ? [
+      [['-AppleLocale', 'en_US'], 'gregorian'],
+      [['-AppleLocale', 'th_TH@calendar=buddhist'], 'buddhist'],
+      [['-AppleLocale', 'ja_JP@calendar=japanese'], 'japanese'],
+    ]
+  : [[[], null]];
 
 const days = ['2026-10-24', '2026-12-28', '2027-02-26', '2028-02-28'];
 const dues = (today: string): (string | null)[] => {
@@ -48,7 +67,7 @@ const dues = (today: string): (string | null)[] => {
   ];
 };
 
-describe.skipIf(!hasSwift)('the widget’s Swift', () => {
+describe.skipIf(!swiftc)('the widget’s Swift', () => {
   const work = mkdtempSync(join(tmpdir(), 'gh-widget-swift-'));
   afterAll(() => rmSync(work, { recursive: true, force: true }));
 
@@ -74,28 +93,25 @@ describe.skipIf(!hasSwift)('the widget’s Swift', () => {
       ].join('\n'),
     );
     const binary = join(work, 'buckets');
-    execFileSync('xcrun', ['swiftc', '-o', binary, join(widgetDir, 'DueBuckets.swift'), join(work, 'main.swift')], { stdio: 'pipe' });
+    const [command, ...prefix] = swiftc!;
+    execFileSync(command!, [...prefix, '-o', binary, join(widgetDir, 'DueBuckets.swift'), join(work, 'main.swift')], { stdio: 'pipe' });
     const expected = cases.map(({ today, due }) => dueBucket(due, today));
-    // the phone's calendar setting (Foundation reads it from the arguments), in a far-east time zone
-    for (const [locale, calendar] of [
-      ['en_US', 'gregorian'],
-      ['th_TH@calendar=buddhist', 'buddhist'],
-      ['ja_JP@calendar=japanese', 'japanese'],
-    ] as const) {
-      const [identifier, ...swift] = execFileSync(binary, ['-AppleLocale', locale], {
+    // the phone's calendar setting, in a far-east time zone
+    for (const [args, calendar] of settings) {
+      const [identifier, ...swift] = execFileSync(binary, args, {
         encoding: 'utf8',
         env: { ...process.env, TZ: 'Asia/Shanghai' },
       })
         .trim()
         .split('\n');
-      expect(identifier).toBe(calendar);
+      if (calendar) expect(identifier).toBe(calendar);
       expect(swift).toEqual(expected);
     }
     // the table covers every bucket
     expect(new Set(expected)).toEqual(new Set(['overdue', 'today', 'soon', 'later', 'none']));
   }, 120_000);
 
-  it('the widget sources typecheck against the iOS SDK', () => {
+  it.skipIf(!hasIosSdk)('the widget sources typecheck against the iOS SDK', () => {
     expect(() =>
       execFileSync(
         'xcrun',
