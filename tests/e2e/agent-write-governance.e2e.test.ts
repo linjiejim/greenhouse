@@ -124,8 +124,8 @@ describe('E2E: recorded MCP writes', () => {
     expect(result.isError).toBeFalsy();
     expect(JSON.stringify(json(result))).toContain('created');
     const line = result.content.at(-1)!.text;
-    expect(line).toMatch(/^Recorded in Greenhouse as write rtr_/);
-    const writeId = line.match(/(rtr_\w+)/)![1];
+    expect(line).toMatch(/^Recorded in Greenhouse as write run_/);
+    const writeId = line.match(/(run_\w+)/)![1];
 
     const search = json(await callTool('knowledge_query', { action: 'search', scope: 'team', query: title }));
     expect(JSON.stringify(search)).toContain(title);
@@ -147,8 +147,8 @@ describe('E2E: recorded MCP writes', () => {
 
     const preview = await callTool('tables_mutation', {
       action: 'records.delete',
-      table_id: 999_999,
-      record_id: 1,
+      table_id: '999999',
+      record_id: '1',
       revision: 1,
     });
     expect(preview.isError).toBeFalsy();
@@ -156,7 +156,7 @@ describe('E2E: recorded MCP writes', () => {
       status: 'needs_confirmation',
       action: 'records.delete',
       risk: 'r3',
-      input: { table_id: 999_999, record_id: 1 },
+      input: { table_id: '999999', record_id: '1' },
     });
 
     const after = await fetch(`${BASE_URL}/api/agent-access/writes`, { headers: h(superToken) });
@@ -165,8 +165,8 @@ describe('E2E: recorded MCP writes', () => {
     // Confirmed, it runs (and the tool itself refuses the unknown table) — recorded either way.
     const confirmed = await callTool('tables_mutation', {
       action: 'records.delete',
-      table_id: 999_999,
-      record_id: 1,
+      table_id: '999999',
+      record_id: '1',
       revision: 1,
       confirm: true,
     });
@@ -185,7 +185,7 @@ describe('E2E: recorded MCP writes', () => {
       content: 'Mine.',
     });
     expect(personal.isError).toBeFalsy();
-    expect(personal.content.at(-1)!.text).toMatch(/^Recorded in Greenhouse as write rtr_/);
+    expect(personal.content.at(-1)!.text).toMatch(/^Recorded in Greenhouse as write run_/);
   });
 
   it('bounds a long read reply and pages the rest with tool_output_read, for the producing client only', async () => {

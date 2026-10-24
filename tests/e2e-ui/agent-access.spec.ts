@@ -46,7 +46,7 @@ test("an agent's write runs at once and shows up under Activity", async ({ page,
       },
     });
     const content = ((await call.json()) as { result: { content: Array<{ text: string }> } }).result.content;
-    expect(content.at(-1)!.text).toMatch(/^Recorded in Greenhouse as write rtr_/);
+    expect(content.at(-1)!.text).toMatch(/^Recorded in Greenhouse as write run_/);
 
     await page.goto('/#/settings/agent-connections/activity');
     const row = page.getByRole('row', { name: new RegExp(`${runId}-codex`) }).first();

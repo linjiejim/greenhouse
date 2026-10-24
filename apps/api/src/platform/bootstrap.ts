@@ -1,10 +1,10 @@
 /**
  * Idempotent Platform Kernel bootstrap.
  *
- * It publishes/activates registered manifests, creates the protected internal
- * role bridge, adds only missing baseline grants/policies, and synchronizes
- * active internal users to exactly one system role. Custom roles and explicit
- * user overrides are never removed.
+ * It creates the protected internal role bridge, adds only missing baseline
+ * grants / policies for the registered manifests (manifests themselves are
+ * not stored since 3.0), and synchronizes active internal users to exactly one
+ * system role. Custom roles are never removed.
  */
 
 import { randomUUID } from 'node:crypto';

@@ -257,13 +257,13 @@ describe('E2E: Information Disclosure Prevention', () => {
 // ─── Session ID Enumeration ──────────────────────────────
 
 describe('E2E: ID Enumeration Protection', () => {
-  it('sessions use UUID format (not sequential)', async () => {
+  it('sessions use prefixed ULID ids (not sequential)', async () => {
     const session1 = await createSession('team');
     const session2 = await createSession('team');
 
-    // UUIDs should not be sequential integers
-    expect(session1).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
-    expect(session2).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
+    // Ids are a type prefix plus a ULID, never sequential integers
+    expect(session1).toMatch(/^cnv_[0-9A-HJKMNP-TV-Z]{26}$/);
+    expect(session2).toMatch(/^cnv_[0-9A-HJKMNP-TV-Z]{26}$/);
     expect(session1).not.toBe(session2);
   });
 });

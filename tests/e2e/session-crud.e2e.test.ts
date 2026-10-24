@@ -64,7 +64,7 @@ afterAll(async () => {
 // ─── Session CRUD ────────────────────────────────────────
 
 describe('E2E: Session CRUD', () => {
-  it('creates session and returns UUID', async () => {
+  it('creates session and returns a prefixed id', async () => {
     const res = await fetch(`${BASE_URL}/api/sessions`, {
       method: 'POST',
       headers: h(memberTokenA),
@@ -72,7 +72,7 @@ describe('E2E: Session CRUD', () => {
     });
     expect(res.status).toBe(201);
     const data = await res.json();
-    expect(data.id).toMatch(/^[0-9a-f]{8}-/);
+    expect(data.id).toMatch(/^cnv_/);
     // `team` is a retired id — the server resolves it to the preset that replaced it.
     expect(data.profile_id).toBe('sprouty');
     sessionsToClean.push({ id: data.id, token: memberTokenA });

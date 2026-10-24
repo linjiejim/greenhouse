@@ -328,7 +328,8 @@ describe('E2E: Unified access view', () => {
     expect(Array.isArray(tables.capabilities)).toBe(true);
 
     const knowledge = data.featurePoints.find((p: { key: string }) => p.key === 'knowledge');
-    expect(knowledge.mainControl).toEqual({ type: 'capability', capability: 'knowledge.*' });
+    // Per-user capability overrides were retired in 3.0: app access follows the role.
+    expect(knowledge.mainControl).toBeNull();
 
     // Baseline is read-only context: the always-on global tools. (The raw team-role
     // capability list was dropped 2026-08-14 — the app cards carry that information.)

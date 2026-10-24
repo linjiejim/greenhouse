@@ -123,9 +123,9 @@ describe('oauthLoginStates', () => {
     });
     expect(await db.oauthLoginStates.sweepExpired()).toBeGreaterThanOrEqual(1);
     const ids = [stale, live].map((v) => createHash('sha256').update(v).digest('hex'));
-    const rows = (await db.executeRaw(
-      sql`SELECT id FROM login_states WHERE id IN (${ids[0]}, ${ids[1]})`,
-    )) as Array<{ id: string }>;
+    const rows = (await db.executeRaw(sql`SELECT id FROM login_states WHERE id IN (${ids[0]}, ${ids[1]})`)) as Array<{
+      id: string;
+    }>;
     expect(rows.map((row) => row.id)).toEqual([ids[1]]);
   });
 });
