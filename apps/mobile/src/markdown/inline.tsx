@@ -79,7 +79,13 @@ const NOT_ALNUM = /[^A-Za-z0-9]/;
 const URL_STOP = '\\s<>"\'`\\u2e80-\\u9fff\\u3000-\\u303f\\uff00-\\uffef';
 /** …and may not end with (sentence punctuation after a link stays prose). */
 const URL_TAIL = '.,;:!?)\\]}*_~';
-const BARE_URL = new RegExp(`^https?:\\/\\/[^${URL_STOP}]*[^${URL_STOP}${URL_TAIL}]`);
+/** A balanced `(…)` inside a URL (`…/presentationdetents(_:)`) is part of it, as in GFM. */
+const URL_PARENS = `\\([^${URL_STOP}()]*\\)`;
+const BARE_URL = new RegExp(
+  `^https?:\\/\\/(?:[^${URL_STOP}()]|${URL_PARENS})*(?:[^${URL_STOP}${URL_TAIL}(]|${URL_PARENS})`,
+);
+/** A link destination: `<…>` (may hold spaces and parentheses) or a bare one with balanced `(…)`. */
+const DEST = String.raw`(?:<([^<>\n]+)>|((?:[^()\s]|\([^()\s]*\))+))`;
 
 const linkNode = (href: string, label: ReactNode, k: number, { s, open, preview }: Ctx, name?: string) => {
   if (preview) return <Text key={k}>{label}</Text>;
@@ -94,18 +100,18 @@ const linkNode = (href: string, label: ReactNode, k: number, { s, open, preview 
 
 const INLINE_TOKENS: InlineTok[] = [
   {
-    re: /^!\[([^\]]*)\]\(\s*([^)\s]+)\s*\)/,
+    re: new RegExp(String.raw`^!\[([^\]]*)\]\(\s*` + DEST + String.raw`\s*\)`),
     node: (m, k, { s, open, imageLabel, preview }) =>
       preview ? null : (
-        <Text key={k} style={s.link} onPress={() => open(m[2], m[1])} accessibilityRole="link">
+        <Text key={k} style={s.link} onPress={() => open(m[2] ?? m[3], m[1])} accessibilityRole="link">
           {`[${m[1] || imageLabel}]`}
         </Text>
       ),
   },
   {
     // CommonMark lets the destination sit between spaces: `[name]( /path )`
-    re: /^\[([^\]]+)\]\(\s*([^)\s]+)\s*\)/,
-    node: (m, k, ctx, inner) => linkNode(m[2], inner(m[1]), k, ctx, m[1]),
+    re: new RegExp(String.raw`^\[([^\]]+)\]\(\s*` + DEST + String.raw`\s*\)`),
+    node: (m, k, ctx, inner) => linkNode(m[2] ?? m[3], inner(m[1]), k, ctx, m[1]),
   },
   {
     re: /^\*\*(.+?)\*\*/,

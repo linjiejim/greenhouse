@@ -50,6 +50,18 @@ describe('inline Markdown', () => {
     expect(out).not.toContain('**');
   });
 
+  it('takes a link destination in <…> or with balanced parentheses whole', () => {
+    const url = 'https://developer.apple.com/documentation/swiftui/view/presentationdetents(_:)';
+    expect(html(`[Docs](<${url}>)`)).toBe('<span><span>Docs</span></span>');
+    expect(html(`[Docs](${url})`)).toBe('<span><span>Docs</span></span>');
+  });
+
+  it('keeps balanced parentheses in a bare URL but not a closing one around it', () => {
+    const url = 'https://developer.apple.com/documentation/swiftui/view/presentationdetents(_:)';
+    expect(html(`see ${url} ok`)).toBe(`<span>see </span><span>${url}</span><span> ok</span>`);
+    expect(html('(https://example.com/a)')).toBe('<span>(</span><span>https://example.com/a</span><span>)</span>');
+  });
+
   it('leaves arithmetic and snake_case alone', () => {
     expect(html('2 * 3 * 4 and foo_bar_baz')).toBe('<span>2 * 3 * 4 and foo_bar_baz</span>');
   });
