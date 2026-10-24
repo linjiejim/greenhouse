@@ -49,6 +49,8 @@ export {
   V1_LATEST_TAG,
 } from './migrate.js';
 export type { DatabaseGeneration } from './migrate.js';
+export { carryFrom1x, CarryError, v1CoreTables } from './carry/from-1x.js';
+export type { CarryOptions, CarryReport, CarryLine } from './carry/from-1x.js';
 export type { IdKind } from './ids.js';
 export type { CoreMigrationFile } from './core-migrations.js';
 
