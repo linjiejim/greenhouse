@@ -59,7 +59,9 @@ export function parseOutbox(saved: unknown): QueuedTurn[] {
         text: item.text,
         images,
         createdAt: item.createdAt,
-        ...(item.status === 'unknown' || item.status === 'failed' ? { status: item.status } : {}),
+        // `failed` only means something in a conversation; a first message saved as failed (an older
+        // build held it so while asking) starts its conversation again, and is asked about again
+        ...(item.status === 'unknown' || (item.status === 'failed' && typeof item.sessionId === 'string') ? { status: item.status } : {}),
         ...(typeof item.attempts === 'number' ? { attempts: item.attempts } : {}),
         ...(typeof item.retryAt === 'number' ? { retryAt: item.retryAt } : {}),
         ...(typeof item.error === 'string' ? { error: item.error } : {}),

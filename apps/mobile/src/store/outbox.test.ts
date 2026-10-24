@@ -6,7 +6,7 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { QueuedTurn } from '../data/outbox';
+import { parseOutbox, type QueuedTurn } from '../data/outbox';
 
 vi.mock('zustand', () => ({
   create: <S extends object>(init: () => S) => {
@@ -24,8 +24,11 @@ vi.mock('./stations', () => ({ useStations: { getState: () => ({ activeId: 's' }
 vi.mock('./offline', () => ({ readOffline: async () => [], writeOffline: () => {} }));
 vi.mock('../data/identity', () => ({ captureIdentity: () => () => true }));
 vi.mock('../lib/i18n', () => ({ t: (key: string) => key }));
-const confirm = { answers: [] as boolean[] };
-vi.mock('../ui/dialogs', () => ({ alertError: vi.fn(), confirmAction: async () => confirm.answers.shift() ?? false }));
+const confirm: { answers: boolean[]; pending?: () => Promise<boolean> } = { answers: [] };
+vi.mock('../ui/dialogs', () => ({
+  alertError: vi.fn(),
+  confirmAction: async () => (confirm.pending ? confirm.pending() : (confirm.answers.shift() ?? false)),
+}));
 
 const api = { send: vi.fn() };
 const session: { answer: unknown } = { answer: { ok: true, data: { id: 'ses_new' } } };
@@ -49,6 +52,7 @@ beforeEach(() => {
   api.send.mockReset();
   session.answer = { ok: true, data: { id: 'ses_new' } };
   confirm.answers = [];
+  confirm.pending = undefined;
 });
 
 describe('sending queued messages', () => {
@@ -129,4 +133,29 @@ describe('sending queued messages', () => {
     expect(useOutbox.getState().items[0]!.status).toBeUndefined();
   });
 
+
+  it('asks again after a restart while the question was open, and only once at a time', async () => {
+    useOutbox.setState({ items: [turn('n', { sessionId: null })] });
+    session.answer = { ok: false, status: 403, code: 'forbidden', message: 'Not allowed' };
+    let asked = 0;
+    confirm.pending = () => {
+      asked += 1;
+      return new Promise<boolean>(() => {}); // the app is killed before the member answers
+    };
+    await flushOutbox();
+    await flushOutbox();
+    expect(asked).toBe(1);
+
+    // restart: the saved outbox comes back, nothing in memory
+    const saved = parseOutbox(JSON.parse(JSON.stringify(useOutbox.getState().items)));
+    _resetOutbox();
+    useOutbox.setState({ items: saved });
+    await flushOutbox();
+    expect(asked).toBe(2);
+  });
+
+  it('starts a conversation again for a first message saved as failed by an older build', () => {
+    expect(parseOutbox([{ ...turn('n', { sessionId: null }), status: 'failed', error: 'x' }])[0]!.status).toBeUndefined();
+    expect(parseOutbox([{ ...turn('s'), status: 'failed' }])[0]!.status).toBe('failed');
+  });
 });

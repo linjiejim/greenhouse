@@ -126,16 +126,19 @@ export async function deliverQueued(
   }
 }
 
+/** First messages whose remove-or-keep question is on screen (never saved: a restart asks again). */
+const asking = new Set<string>();
+
 /**
  * A first message the station refused to start a conversation for has no conversation to wait
  * in, so the member decides: remove it, or keep it to try again later (asked again if refused).
+ * Nothing is saved until they answer, so an app closed meanwhile asks again on its next pass.
  */
 function askAboutRefused(id: string, message: string): void {
   const current = captureIdentity();
   const turn = queued(id);
-  if (!turn) return;
-  // held (not sent, not asked again) while the question is open
-  patch(id, { status: 'failed', error: message });
+  if (!turn || asking.has(id)) return;
+  asking.add(id);
   const words = turn.text.trim();
   void confirmAction({
     title: t('conversation.queuedFailed'),
@@ -143,11 +146,13 @@ function askAboutRefused(id: string, message: string): void {
     confirmLabel: t('conversation.removeQueued'),
     cancelLabel: t('conversation.keepQueued'),
     destructive: true,
-  }).then((remove) => {
-    if (!current() || !queued(id)) return;
-    if (remove) unqueueTurn(id);
-    else patch(id, { ...afterAttempt(queued(id)!, 'retry', ''), error: undefined });
-  });
+  })
+    .then((remove) => {
+      if (!current() || !queued(id)) return;
+      if (remove) unqueueTurn(id);
+      else patch(id, afterAttempt(queued(id)!, 'retry', ''));
+    })
+    .finally(() => asking.delete(id));
 }
 
 let flushing = false;
@@ -162,7 +167,7 @@ export async function flushOutbox(): Promise<void> {
       if (!current()) return;
       if (!snapshot.sessionId) {
         // a new conversation first; the message keeps it, so a retry never makes another
-        if (inFlight.has(snapshot.id) || !queued(snapshot.id)) continue;
+        if (inFlight.has(snapshot.id) || asking.has(snapshot.id) || !queued(snapshot.id)) continue;
         inFlight.add(snapshot.id);
         let made: Awaited<ReturnType<typeof createSession>>;
         try {
@@ -222,6 +227,7 @@ export function useOutboxFlush(): void {
 export function _resetOutbox(): void {
   claimed.clear();
   inFlight.clear();
+  asking.clear();
   flushing = false;
   useOutbox.setState({ items: [] });
 }
