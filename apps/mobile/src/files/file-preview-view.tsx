@@ -99,8 +99,11 @@ export function FilePreviewPane({ id, path: given = '', name }: { id: string; pa
       setSharing(false);
     }
   };
+  // A sheet's scroll view must be its root element (after SheetScreen): wrapped in a flex View it
+  // renders nothing in a form sheet, so every branch carries the background itself.
+  const surface = { flex: 1, backgroundColor: colors.background };
   return (
-    <View style={{ flex: 1, backgroundColor: colors.background }}>
+    <>
       <SheetScreen
         title={file?.name ?? name}
         actions={
@@ -110,7 +113,7 @@ export function FilePreviewPane({ id, path: given = '', name }: { id: string; pa
         }
       />
       {failed && saved && docMiss(failStatus) === 'unreachable' ? (
-        <ScrollView contentInsetAdjustmentBehavior="automatic" contentContainerStyle={{ paddingVertical: space.md }}>
+        <ScrollView style={surface} contentInsetAdjustmentBehavior="automatic" contentContainerStyle={{ paddingVertical: space.md }}>
           <Text style={{ ...typo.footnote, color: colors.secondaryLabel, marginHorizontal: space.margin + space.xs, marginBottom: space.sm }}>
             {t('files.offlineDetails')}
           </Text>
@@ -129,12 +132,12 @@ export function FilePreviewPane({ id, path: given = '', name }: { id: string; pa
           icon="file"
           title={docMiss(failStatus) === 'gone' ? t('files.notAvailable') : t('files.downloadFailed')}
           onRetry={docMiss(failStatus) === 'gone' ? undefined : () => retry((n) => n + 1)}
-          style={{ flex: 1 }}
+          style={surface}
         />
       ) : !file ? (
-        <LoadingState style={{ flex: 1 }} />
+        <LoadingState style={surface} />
       ) : file.previewText !== undefined ? (
-        <ScrollView contentInsetAdjustmentBehavior="automatic" contentContainerStyle={{ padding: space.margin }}>
+        <ScrollView style={surface} contentInsetAdjustmentBehavior="automatic" contentContainerStyle={{ padding: space.margin }}>
           <Text selectable style={{ ...typo.body, color: colors.label }}>
             {file.previewText}
           </Text>
@@ -149,12 +152,14 @@ export function FilePreviewPane({ id, path: given = '', name }: { id: string; pa
           icon="file"
           title={t('files.unsupported')}
           message={file.name}
-          style={{ flex: 1 }}
+          style={surface}
           action={<NativeButton label={t('files.share')} icon="share" onPress={() => void share()} disabled={sharing} />}
         />
       ) : (
-        <FilePreviewView uri={file.uri} onUnsupported={() => setUnsupported(true)} style={{ flex: 1 }} />
+        <View style={surface}>
+          <FilePreviewView uri={file.uri} onUnsupported={() => setUnsupported(true)} style={{ flex: 1 }} />
+        </View>
       )}
-    </View>
+    </>
   );
 }
