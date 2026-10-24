@@ -5,12 +5,16 @@
  * the folder on screen; a file opens in Quick Look (app/file-preview.tsx) with share.
  */
 
+import { FilePreviewPane } from '../src/files/file-preview-view';
+import { SplitView, useSplit } from '../src/ui/split';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { FlatList, View } from 'react-native';
+import { FlatList } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { breadcrumb, listLevel, searchCabinet, type FilesShelf } from '../src/api/drive';
 import { captureIdentity } from '../src/data/identity';
+import type { RecentFile } from '../src/data/recent-items';
 import { useResource } from '../src/data/use-resource';
+import { recentFiles, rememberFile } from '../src/store/offline';
 import { pick, uploadAll, type UploadFrom } from '../src/files/upload';
 import { useT } from '../src/lib/i18n';
 import { relativeTimeNow } from '../src/lib/time-words';
@@ -21,12 +25,14 @@ import { alertError } from '../src/ui/dialogs';
 import { DirectorySearch, useDirectoryFilter } from '../src/ui/directory-search';
 import { EmptyState, LoadingState } from '../src/ui/empty';
 import { notifySuccess } from '../src/ui/haptics';
-import { ListRow, type RowPosition } from '../src/ui/list';
+import { ListRow, ListSectionHeader, type RowPosition } from '../src/ui/list';
 import { Segmented } from '../src/ui/segmented';
 import { toast } from '../src/ui/toast';
 import { toolbarIcon } from '../src/ui/toolbar-icon';
 
 type Row =
+  | { key: string; type: 'header'; title: string }
+  | { key: string; type: 'failed' }
   | { key: string; type: 'folder'; id: number; name: string; shelf: FilesShelf; position: RowPosition }
   | { key: string; type: 'file'; id: number; name: string; subtitle: string; position: RowPosition };
 
@@ -45,9 +51,28 @@ export default function Files() {
   const filter = useDirectoryFilter();
   const query = filter.query.trim();
   const [uploading, setUploading] = useState(false);
+  // iPad: the file opens beside the list (src/ui/split.tsx)
+  const split = useSplit();
+  const [selected, setSelected] = useState<{ id: number; name: string } | null>(null);
 
   const load = useCallback(() => listLevel(shelf, folderId), [shelf, folderId]);
   const resource = useResource(load);
+
+  // the files opened lately, with their details, also offline (src/store/offline.ts)
+  const [recent, setRecent] = useState<RecentFile[]>([]);
+  useEffect(() => {
+    if (folderId == null) void recentFiles().then(setRecent);
+  }, [folderId, resource.data, resource.error]);
+
+  const open = useCallback(
+    (id: number, name: string) => {
+      const file = resource.data?.files.find((entry) => entry.id === id);
+      if (file) void rememberFile(file, shelf);
+      if (split) setSelected({ id, name });
+      else router.push({ pathname: '/file-preview', params: { id: String(id), name } });
+    },
+    [resource.data, shelf, router, split],
+  );
 
   const [folder, setFolder] = useState<DriveFolder | null>(null);
   useEffect(() => {
@@ -63,8 +88,10 @@ export default function Files() {
     if (!openFileId || opened.current || !resource.data) return;
     opened.current = true;
     const file = resource.data.files.find((entry) => entry.id === openFileId);
-    router.push({ pathname: '/file-preview', params: { id: String(openFileId), name: file?.name ?? '' } });
-  }, [openFileId, resource.data, router]);
+    if (file) void rememberFile(file, shelf);
+    if (split) setSelected({ id: openFileId, name: file?.name ?? '' });
+    else router.push({ pathname: '/file-preview', params: { id: String(openFileId), name: file?.name ?? '' } });
+  }, [openFileId, resource.data, router, split, shelf]);
 
   const [hits, setHits] = useState<Row[] | null>(null);
   useEffect(() => {
@@ -108,10 +135,33 @@ export default function Files() {
 
   const rows = useMemo((): Row[] => {
     if (hits) return hits;
-    if (!resource.data) return [];
+    const out: Row[] = [];
+    const lately = folderId == null ? recent.slice(0, 5) : [];
+    if (lately.length) {
+      out.push({ key: 'h-recent', type: 'header', title: t('files.recent') });
+      out.push(
+        ...lately.map(
+          (f, i): Row => ({
+            key: `r-${f.id}`,
+            type: 'file',
+            id: f.id,
+            name: f.name,
+            subtitle: `${formatBytes(f.size)} · ${relativeTimeNow(f.updated_at)}`,
+            position: position(i, lately.length),
+          }),
+        ),
+      );
+    }
+    if (!resource.data) {
+      // with nothing above, the list's own empty state says loading / failed
+      if (out.length && !resource.loading) out.push({ key: 'failed', type: 'failed' });
+      return out;
+    }
+    if (out.length) out.push({ key: 'h-shelf', type: 'header', title: t(`files.shelf.${shelf}`) });
     const { folders, files } = resource.data;
     const count = folders.length + files.length;
     return [
+      ...out,
       ...folders.map((f, i): Row => ({ key: `f-${f.id}`, type: 'folder', id: f.id, name: f.name, shelf, position: position(i, count) })),
       ...files.map(
         (f, i): Row => ({
@@ -124,7 +174,7 @@ export default function Files() {
         }),
       ),
     ];
-  }, [hits, resource.data, shelf]);
+  }, [hits, resource.data, resource.loading, shelf, recent, folderId, t]);
 
   const upload = async (from: UploadFrom) => {
     // the whole upload belongs to whoever opened the picker, on this station
@@ -149,8 +199,8 @@ export default function Files() {
     if (result.failed) alertError(t('files.uploadFailed', { n: result.failed }), result.error || undefined);
   };
 
-  return (
-    <View style={styles.root}>
+  const listing = (
+    <>
       <Stack.Screen options={{ title: folderId != null ? (folder?.name ?? '') : t('nav.files') }} />
       <DirectorySearch filter={filter} />
       <Stack.Toolbar placement="right">
@@ -167,6 +217,7 @@ export default function Files() {
         </Stack.Toolbar.Menu>
       </Stack.Toolbar>
       <FlatList<Row>
+        style={styles.root}
         contentInsetAdjustmentBehavior="automatic"
         data={rows}
         keyExtractor={(row) => row.key}
@@ -186,7 +237,17 @@ export default function Files() {
           </>
         }
         renderItem={({ item }) =>
-          item.type === 'folder' ? (
+          item.type === 'header' ? (
+            <ListSectionHeader title={item.title} />
+          ) : item.type === 'failed' ? (
+            <EmptyState
+              icon="alert"
+              title={t('files.loadFailed')}
+              message={t('files.offlineRecent')}
+              onRetry={() => void resource.refresh()}
+              style={styles.inline}
+            />
+          ) : item.type === 'folder' ? (
             <ListRow
               title={item.name}
               icon="folder"
@@ -200,7 +261,7 @@ export default function Files() {
               subtitle={item.subtitle}
               icon="file"
               position={item.position}
-              onPress={() => router.push({ pathname: '/file-preview', params: { id: String(item.id), name: item.name } })}
+              onPress={() => open(item.id, item.name)}
             />
           )
         }
@@ -217,7 +278,15 @@ export default function Files() {
         }
         contentContainerStyle={styles.content}
       />
-    </View>
+    </>
+  );
+  if (!split) return listing;
+  return (
+    <SplitView
+      list={listing}
+      detail={selected ? <FilePreviewPane key={selected.id} id={String(selected.id)} name={selected.name} embedded /> : null}
+      placeholder={{ icon: 'file', title: t('files.pick') }}
+    />
   );
 }
 
@@ -227,4 +296,5 @@ const useStyles = makeStyles((c) => ({
   segmented: { marginHorizontal: space.margin, marginVertical: space.md },
   uploading: { paddingVertical: space.md },
   state: { paddingTop: space.xxxl },
+  inline: { paddingTop: space.xl },
 }));

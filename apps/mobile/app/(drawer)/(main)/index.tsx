@@ -10,6 +10,8 @@
  *  - Once notifications are on screen, the push soft ask may follow (src/push/soft-ask.ts).
  */
 
+import { NotificationView } from '../../../src/notifications/notification-view';
+import { SplitView, useSplit } from '../../../src/ui/split';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { FlatList, RefreshControl, Text, View } from 'react-native';
 import { Stack, useNavigation, useRouter } from 'expo-router';
@@ -86,11 +88,16 @@ export default function Home() {
     else void clearAllStationBanners();
   }, [t]);
 
+  // iPad: the notification opens beside the list (src/ui/split.tsx)
+  const split = useSplit();
+  const [selected, setSelected] = useState<string | null>(null);
+
   const open = useCallback(
     (item: PlatformNotification) => {
-      void openNotificationOrTarget(router, item.id, hex.accent);
+      if (split) setSelected(item.id);
+      else void openNotificationOrTarget(router, item.id, hex.accent);
     },
-    [router, hex.accent],
+    [router, hex.accent, split],
   );
 
   // the saved copy is on screen and the network did not answer
@@ -116,8 +123,8 @@ export default function Home() {
     );
   }, [status, styles.empty, t]);
 
-  return (
-    <View style={styles.root}>
+  const listing = (
+    <>
       <Stack.Screen options={{ title: t('nav.home') }} />
       <Stack.Toolbar placement="left">
         <Stack.Toolbar.Button
@@ -135,6 +142,7 @@ export default function Home() {
         />
       </Stack.Toolbar>
       <FlatList<PlatformNotification>
+        style={styles.root}
         contentInsetAdjustmentBehavior="automatic"
         data={items}
         keyExtractor={(item) => item.id}
@@ -176,7 +184,15 @@ export default function Home() {
         windowSize={11}
         removeClippedSubviews
       />
-    </View>
+    </>
+  );
+  if (!split) return listing;
+  return (
+    <SplitView
+      list={listing}
+      detail={selected ? <NotificationView key={selected} id={selected} embedded /> : null}
+      placeholder={{ icon: 'bell', title: t('notifications.pick') }}
+    />
   );
 }
 

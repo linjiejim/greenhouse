@@ -36,7 +36,7 @@ export interface CachedFile {
 export async function downloadFile(path: string, fallbackName = 'download', signal?: AbortSignal): Promise<CachedFile> {
   const station = getTokenStationId();
   const res = await api(path, { signal });
-  if (!res.ok) throw new Error('download_failed');
+  if (!res.ok) throw Object.assign(new Error('download_failed'), { status: res.status });
   const bytes = new Uint8Array(await res.arrayBuffer());
   if (signal?.aborted || station !== getTokenStationId()) throw new Error('download_cancelled');
   const name = fileNameFrom(res.headers.get('content-disposition'), fallbackName)

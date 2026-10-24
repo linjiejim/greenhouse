@@ -1,7 +1,7 @@
 /** One base (`/tables/base?id=`): its tables. A base I cannot open answers 404 (or 403 without the feature). */
 
 import React, { useCallback } from 'react';
-import { FlatList, View } from 'react-native';
+import { FlatList, ScrollView, View } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { getBase } from '../../src/api/tables';
 import { noAccess, notFound } from '../../src/data/access';
@@ -30,19 +30,22 @@ export default function Base() {
     return (
       <View style={styles.root}>
         <Stack.Screen options={{ title: t('nav.tables') }} />
-        <EmptyState
-          icon="table"
-          title={noAccess(resource.error) ? t('tables.noAccess') : t('tables.notFound')}
-          style={styles.state}
-        />
+        <ScrollView contentInsetAdjustmentBehavior="automatic">
+          <EmptyState
+            icon="table"
+            title={noAccess(resource.error) ? t('tables.noAccess') : t('tables.notFound')}
+            style={styles.state}
+          />
+        </ScrollView>
       </View>
     );
   }
 
   return (
-    <View style={styles.root}>
+    <>
       <Stack.Screen options={{ title: resource.data?.base.name ?? '' }} />
       <FlatList<TableDef>
+        style={styles.root}
         contentInsetAdjustmentBehavior="automatic"
         data={tables}
         keyExtractor={(table) => String(table.id)}
@@ -74,7 +77,7 @@ export default function Base() {
         }
         contentContainerStyle={styles.content}
       />
-    </View>
+    </>
   );
 }
 

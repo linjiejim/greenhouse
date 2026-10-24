@@ -21,8 +21,12 @@ export const en = {
     discard: 'Discard',
     keepEditing: 'Keep Editing',
     discardHint: 'Your unsaved changes will be lost.',
+    savedCopy: 'Offline — showing the copy saved on this phone.',
     search: 'Search',
     noMatches: 'No matches',
+    otherStation: 'Not available on this station',
+    otherStationHint: 'This item is from “{name}”. Switch to that station to open it.',
+    otherStationUnknown: 'This item is from another station.',
   },
   login: {
     station: 'Station',
@@ -94,6 +98,7 @@ export const en = {
     linkUnavailable: 'This link can’t be opened here.',
   },
   knowledge: {
+    pick: 'Choose a document',
     shelf: { team: 'Team', personal: 'Mine', shared: 'Shared with me' },
     recent: 'Recently Opened',
     empty: 'No documents here',
@@ -109,7 +114,14 @@ export const en = {
     commentAdded: 'Comment added',
   },
   files: {
+    pick: 'Choose a file',
     shelf: { team: 'Team', personal: 'Mine' },
+    recent: 'Recently Opened',
+    offlineRecent: 'Details of files you opened recently stay readable offline.',
+    offlineDetails: 'Offline — the file itself needs the station. Its details:',
+    size: 'Size',
+    updated: 'Updated',
+    notAvailable: 'This file isn’t available',
     empty: 'No files here',
     emptyHint: 'Upload from Photos, the camera or Files with +.',
     loadFailed: 'Couldn’t load files',
@@ -127,6 +139,7 @@ export const en = {
     textTruncated: 'Only the beginning is shown. Share the file to read all of it.',
   },
   notifications: {
+    pick: 'Choose a notification',
     markAllRead: 'Mark All as Read',
     markFailed: 'Couldn’t mark them read',
     empty: 'You’re all caught up',
@@ -208,6 +221,7 @@ export const en = {
     deniedMessage: 'Turn on notifications for Greenhouse in Settings.',
   },
   projects: {
+    pick: 'Choose a task',
     tabs: { mine: 'My Tasks', all: 'Projects' },
     dueGroup: { overdue: 'Overdue', today: 'Due Today', soon: 'Next 7 Days', later: 'Later', none: 'No Due Date' },
     status: { todo: 'To Do', in_progress: 'In Progress', in_review: 'In Review', done: 'Done', cancelled: 'Cancelled' },
@@ -245,6 +259,7 @@ export const en = {
     commentAdded: 'Comment added',
   },
   tables: {
+    pick: 'Choose a record',
     empty: 'No bases',
     emptyHint: 'Bases shared with you show up here.',
     loadFailed: 'Couldn’t load tables',

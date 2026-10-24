@@ -5,7 +5,7 @@
  */
 
 import React, { useCallback, useMemo, useRef, useState } from 'react';
-import { FlatList, View } from 'react-native';
+import { FlatList } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { createSession, listSessions, SESSION_PAGE } from '../../src/api/assistant';
 import { captureIdentity } from '../../src/data/identity';
@@ -86,7 +86,7 @@ export default function Assistant() {
     sessions.length === 1 ? 'only' : index === 0 ? 'first' : index === sessions.length - 1 ? 'last' : 'middle';
 
   return (
-    <View style={styles.root}>
+    <>
       <Stack.Screen options={{ title: t('nav.assistant') }} />
       <Stack.Toolbar placement="right">
         <Stack.Toolbar.Button
@@ -97,6 +97,7 @@ export default function Assistant() {
         />
       </Stack.Toolbar>
       <FlatList<ChatSession>
+        style={styles.root}
         contentInsetAdjustmentBehavior="automatic"
         data={sessions}
         keyExtractor={(session) => session.id}
@@ -127,7 +128,7 @@ export default function Assistant() {
         }
         contentContainerStyle={styles.content}
       />
-    </View>
+    </>
   );
 }
 

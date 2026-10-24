@@ -5,8 +5,10 @@
  * recently, which also read offline (src/store/knowledge.ts). Read-only on the phone for now.
  */
 
+import { DocView } from '../../src/knowledge/doc-view';
+import { SplitView, useSplit } from '../../src/ui/split';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { FlatList, View } from 'react-native';
+import { FlatList } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { listDocs, listKbFolders, searchDocs, type KbShelf } from '../../src/api/knowledge';
 import type { ApiResult } from '../../src/api/client';
@@ -37,6 +39,9 @@ export default function Knowledge() {
   const { colors: c } = useTheme();
   const styles = useStyles(c);
   const filter = useDirectoryFilter();
+  // iPad: the document opens beside the list (src/ui/split.tsx)
+  const split = useSplit();
+  const [selected, setSelected] = useState<number | null>(null);
   const query = filter.query.trim();
 
   const load = useCallback(async (): Promise<ApiResult<{ folders: DriveFolder[]; docs: KbDoc[] }>> => {
@@ -126,11 +131,12 @@ export default function Knowledge() {
     <EmptyState icon="book" title={t(hits ? 'common.noMatches' : 'knowledge.empty')} style={styles.state} />
   );
 
-  return (
-    <View style={styles.root}>
+  const listing = (
+    <>
       <Stack.Screen options={{ title }} />
       <DirectorySearch filter={filter} />
       <FlatList<KbRow>
+        style={styles.root}
         contentInsetAdjustmentBehavior="automatic"
         data={rows}
         keyExtractor={(row) => row.key}
@@ -169,14 +175,22 @@ export default function Knowledge() {
               icon="file"
               accessory="chevron"
               position={item.position}
-              onPress={() => router.push({ pathname: '/knowledge/doc', params: { id: String(item.id) } })}
+              onPress={() => (split ? setSelected(item.id) : router.push({ pathname: '/knowledge/doc', params: { id: String(item.id) } }))}
             />
           );
         }}
         ListEmptyComponent={empty}
         contentContainerStyle={styles.content}
       />
-    </View>
+    </>
+  );
+  if (!split) return listing;
+  return (
+    <SplitView
+      list={listing}
+      detail={selected != null ? <DocView key={selected} id={selected} embedded /> : null}
+      placeholder={{ icon: 'book', title: t('knowledge.pick') }}
+    />
   );
 }
 

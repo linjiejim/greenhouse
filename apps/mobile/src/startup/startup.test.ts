@@ -176,6 +176,7 @@ vi.mock('../ui/nav', () => ({
 vi.mock('../ui/sheet-edge', () => ({ sheetEdgeLayout: () => null }));
 vi.mock('../store/notifications', () => ({ forgetOfflineCopies: vi.fn() }));
 vi.mock('../share/session', () => ({}));
+vi.mock('../widget/publish', () => ({}));
 
 import RootLayout from '../../app/_layout';
 import { Splash } from '../ui/splash';

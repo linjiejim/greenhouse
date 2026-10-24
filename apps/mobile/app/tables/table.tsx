@@ -4,8 +4,10 @@
  * add a record (the quick-add sheet); the list reloads when the sheet closes.
  */
 
+import { RecordView } from '../../src/tables/record-view';
+import { SplitView, useSplit } from '../../src/ui/split';
 import React, { useCallback, useMemo, useRef, useState } from 'react';
-import { FlatList, View } from 'react-native';
+import { FlatList, ScrollView, View } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import type { ApiResult } from '../../src/api/client';
 import { getBase, getSchema, queryRecords } from '../../src/api/tables';
@@ -39,6 +41,9 @@ export default function TableScreen() {
   const router = useRouter();
   const { colors: c } = useTheme();
   const styles = useStyles(c);
+  // iPad: the record opens beside the list (src/ui/split.tsx)
+  const split = useSplit();
+  const [selected, setSelected] = useState<number | null>(null);
 
   const load = useCallback(async (): Promise<ApiResult<Head>> => {
     const [schema, base, page] = await Promise.all([
@@ -108,7 +113,9 @@ export default function TableScreen() {
     return (
       <View style={styles.root}>
         <Stack.Screen options={{ title: t('nav.tables') }} />
-        <EmptyState icon="table" title={noAccess(resource.error) ? t('tables.noAccess') : t('tables.notFound')} style={styles.state} />
+        <ScrollView contentInsetAdjustmentBehavior="automatic">
+          <EmptyState icon="table" title={noAccess(resource.error) ? t('tables.noAccess') : t('tables.notFound')} style={styles.state} />
+        </ScrollView>
       </View>
     );
   }
@@ -116,8 +123,8 @@ export default function TableScreen() {
   const position = (index: number): RowPosition =>
     records.length === 1 ? 'only' : index === 0 ? 'first' : index === records.length - 1 ? 'last' : 'middle';
 
-  return (
-    <View style={styles.root}>
+  const listing = (
+    <>
       <Stack.Screen options={{ title: head?.schema.table.name ?? '' }} />
       {head && canAddRecords(head.role) ? (
         <Stack.Toolbar placement="right">
@@ -143,10 +150,12 @@ export default function TableScreen() {
             accessory="chevron"
             position={position(index)}
             onPress={() =>
-              router.push({
-                pathname: '/tables/record',
-                params: { base: baseId != null ? String(baseId) : '', table: String(tableId), id: String(item.id) },
-              })
+              split
+                ? setSelected(item.id)
+                : router.push({
+                    pathname: '/tables/record',
+                    params: { base: baseId != null ? String(baseId) : '', table: String(tableId), id: String(item.id) },
+                  })
             }
           />
         )}
@@ -170,9 +179,18 @@ export default function TableScreen() {
             <EmptyState icon="table" title={t('tables.recordsEmpty')} style={styles.state} />
           )
         }
+        style={styles.root}
         contentContainerStyle={styles.content}
       />
-    </View>
+    </>
+  );
+  if (!split) return listing;
+  return (
+    <SplitView
+      list={listing}
+      detail={selected != null ? <RecordView key={selected} tableId={tableId} recordId={selected} embedded /> : null}
+      placeholder={{ icon: 'table', title: t('tables.pick') }}
+    />
   );
 }
 

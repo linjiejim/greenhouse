@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ProjectTask } from '../shared/greenhouse-types';
-import { addDays, dueBucket, findTask, flattenTasks, localDay, myTasks, parseTags, withTaskPatched } from './tasks';
+import { addDays, dueBucket, findTask, flattenTasks, groupMyTasks, localDay, myTasks, parseTags, withTaskPatched, type MyTask } from './tasks';
 
 const task = (id: number, over: Partial<ProjectTask> = {}): ProjectTask => ({
   id,
@@ -86,5 +86,28 @@ describe('my tasks', () => {
       ['none', [5]],
     ]);
     expect(groups[1]!.tasks[0]!.project_title).toBe('Ops');
+  });
+});
+
+describe('a saved list of my tasks shown on a later day', () => {
+  const task = (id: number, due: string | null): MyTask =>
+    ({ id, title: `T${id}`, due_date: due, project_id: 1, project_title: 'P', project_color: null }) as MyTask;
+  const savedYesterday = [
+    { bucket: 'today' as const, tasks: [task(1, '2026-10-23')] },
+    { bucket: 'soon' as const, tasks: [task(2, '2026-10-24'), task(3, '2026-10-30')] },
+    { bucket: 'none' as const, tasks: [task(4, null)] },
+  ];
+
+  it('is grouped again for today', () => {
+    const groups = groupMyTasks(
+      savedYesterday.flatMap((group) => group.tasks),
+      '2026-10-24',
+    );
+    expect(groups.map((group) => [group.bucket, group.tasks.map((t) => t.id)])).toEqual([
+      ['overdue', [1]],
+      ['today', [2]],
+      ['soon', [3]],
+      ['none', [4]],
+    ]);
   });
 });

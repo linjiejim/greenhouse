@@ -9,9 +9,13 @@ import { calendarDateLabel } from '../lib/time-words';
 import type { TableField } from '../shared/greenhouse-types';
 
 /** The words for `displayValue`; user names are loaded only when a field holds users. */
-export function useFieldWords(fields: readonly TableField[] | null | undefined): FieldWords {
+export function useFieldWords(
+  fields: readonly TableField[] | null | undefined,
+  /** Names already known (a record's own, kept with its offline copy): no lookup is made. */
+  known?: Readonly<Record<string, string>>,
+): FieldWords {
   const t = useT();
-  const needsUsers = !!fields?.some((field) => field.type === 'user' || field.type === 'multi_user');
+  const needsUsers = !known && !!fields?.some((field) => field.type === 'user' || field.type === 'multi_user');
   const [names, setNames] = useState<Map<string, string>>(new Map());
   useEffect(() => {
     if (!needsUsers) return;
@@ -31,8 +35,8 @@ export function useFieldWords(fields: readonly TableField[] | null | undefined):
       yes: t('tables.yes'),
       no: t('tables.no'),
       date: (value: string) => calendarDateLabel(value.length > 10 ? value : value.slice(0, 10)) || value,
-      user: (id: string) => names.get(id) ?? id,
+      user: (id: string) => known?.[id] ?? names.get(id) ?? id,
     }),
-    [t, names],
+    [t, names, known],
   );
 }

@@ -4,7 +4,7 @@
  */
 
 import React, { useCallback } from 'react';
-import { FlatList, View } from 'react-native';
+import { FlatList } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { listBases } from '../../src/api/tables';
 import { noAccess } from '../../src/data/access';
@@ -31,9 +31,10 @@ export default function Tables() {
   const bases = resource.data ?? [];
 
   return (
-    <View style={styles.root}>
+    <>
       <Stack.Screen options={{ title: t('nav.tables') }} />
       <FlatList<TableBase>
+        style={styles.root}
         contentInsetAdjustmentBehavior="automatic"
         data={bases}
         keyExtractor={(base) => String(base.id)}
@@ -65,7 +66,7 @@ export default function Tables() {
         }
         contentContainerStyle={styles.content}
       />
-    </View>
+    </>
   );
 }
 

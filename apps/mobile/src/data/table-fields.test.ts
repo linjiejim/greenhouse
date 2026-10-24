@@ -7,7 +7,10 @@ import {
   draftValues,
   liveFields,
   quickAddFields,
+  keptUserNames,
   recordTitle,
+  recordUserIds,
+  recordUserNames,
   selectOptions,
 } from './table-fields';
 
@@ -102,5 +105,38 @@ describe('quick add', () => {
 
   it('lets editors and up add records', () => {
     expect(['owner', 'builder', 'editor', 'viewer', undefined].map(canAddRecords)).toEqual([true, true, true, false, false]);
+  });
+});
+
+describe('the names kept with a record’s offline copy', () => {
+  const users = [
+    { id: 'usr_maya', nickname: 'Maya' },
+    { id: 'usr_li', nickname: 'Li' },
+    { id: 'usr_sam', nickname: 'Sam' },
+    { id: 'usr_anon', nickname: null },
+  ];
+
+  it('keeps only the people the record’s user fields name', () => {
+    const fields = [field(1, 'text'), field(2, 'user'), field(3, 'multi_user')];
+    const record = { values: { '1': 'usr_sam', '2': 'usr_maya', '3': ['usr_li', 'usr_anon', 7] }, computed_values: {} };
+    expect(recordUserNames(fields, record, users)).toEqual({ usr_maya: 'Maya', usr_li: 'Li' });
+  });
+
+  it('is empty when the record names nobody', () => {
+    expect(recordUserNames([field(2, 'user')], { values: {}, computed_values: {} }, users)).toEqual({});
+    expect(recordUserNames([field(1, 'text')], { values: { '1': 'usr_maya' }, computed_values: {} }, users)).toEqual({});
+  });
+});
+
+describe('the people a record names', () => {
+  it('lists each user id its user fields name once, in field order', () => {
+    const fields = [field(1, 'text'), field(2, 'user'), field(3, 'multi_user')];
+    const record = { values: { '1': 'usr_sam', '2': 'usr_li', '3': ['usr_maya', 'usr_li', 7] }, computed_values: {} };
+    expect(recordUserIds(fields, record)).toEqual(['usr_li', 'usr_maya']);
+  });
+
+  it('keeps an earlier copy’s names only for the people the record still names', () => {
+    expect(keptUserNames(['usr_maya', 'usr_new'], { usr_maya: 'Maya', usr_gone: 'Gone' })).toEqual({ usr_maya: 'Maya' });
+    expect(keptUserNames([], { usr_maya: 'Maya' })).toEqual({});
   });
 });

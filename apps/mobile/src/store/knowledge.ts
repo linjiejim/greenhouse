@@ -8,6 +8,7 @@ import { readCache, writeCache, removeCache } from '../data/disk-cache';
 import { dropped, parseRecent, parseSaved, toSaved, withOpened, type RecentDoc, type SavedDoc } from '../data/recent-docs';
 import type { KbDoc } from '../shared/greenhouse-types';
 import { useAuth } from './auth';
+import { notifyOfflineChanged } from './offline-events';
 import { useStations } from './stations';
 
 const RECENT = 'kb-recent';
@@ -38,6 +39,7 @@ export async function rememberDoc(doc: KbDoc): Promise<void> {
   writeCache(id.station, id.member, docKind(doc.id), toSaved(doc, Date.now()));
   writeCache(id.station, id.member, RECENT, after);
   for (const gone of dropped(before, after)) removeCache(id.station, id.member, docKind(gone));
+  notifyOfflineChanged(RECENT);
 }
 
 /** The server says the document is gone or no longer readable: its copy goes too. */
@@ -52,4 +54,5 @@ export async function forgetDoc(docId: number): Promise<void> {
     RECENT,
     before.filter((entry) => entry.id !== docId),
   );
+  notifyOfflineChanged(RECENT);
 }

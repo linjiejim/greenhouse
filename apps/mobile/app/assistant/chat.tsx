@@ -8,7 +8,7 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import { FlatList, Pressable, Text, TextInput, View } from 'react-native';
+import { FlatList, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { Stack, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { KeyboardStickyView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -117,7 +117,9 @@ export default function Chat() {
     return (
       <View style={styles.root}>
         <Stack.Screen options={{ title: t('nav.assistant') }} />
-        <EmptyState icon="msgs" title={t('assistant.notFound')} style={styles.state} />
+        <ScrollView contentInsetAdjustmentBehavior="automatic">
+          <EmptyState icon="msgs" title={t('assistant.notFound')} style={styles.state} />
+        </ScrollView>
       </View>
     );
   }
