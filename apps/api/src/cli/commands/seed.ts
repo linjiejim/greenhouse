@@ -40,8 +40,6 @@ const EXAMPLES_DIR = GREENHOUSE_CONFIG.packs.seeds
  */
 const LOAD_ORDER = [
   'users',
-  'user_groups',
-  'group_members',
   'knowledge_base',
   'knowledge_base_versions',
   'knowledge_base_shares',

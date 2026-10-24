@@ -67,7 +67,6 @@ export const PAGE_MODULE_IDS = [
   'skillhub',
   'activity',
   'settings.preferences',
-  'settings.groups',
   'settings.agent-connections',
   'settings.provider-bindings',
   'settings.email-accounts',

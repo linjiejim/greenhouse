@@ -707,12 +707,10 @@ const zh: Messages = {
     apiTargetUnsaved: '请先保存或丢弃当前修改，再切换 API 环境。',
     apiTargetUnavailable: '{target} API 当前不可用，环境没有切换。',
     labs: '实验功能',
-    users: '用户与小组',
-    usersDesc: '账号、权限、用量限制，以及用于共享的小组',
+    users: '用户',
+    usersDesc: '账号、权限与用量限制',
     preferences: '偏好设置',
     preferencesDesc: '主题、语言与个人备注',
-    groups: '小组',
-    groupsDesc: '知识共享小组',
     agentConnections: 'Agent 连接',
     agentConnectionsDesc: '接入你的 Agent，查看它们以你的身份写入了什么',
     providerBindings: '账号连接',
@@ -755,14 +753,6 @@ const zh: Messages = {
     activityLogAdminDesc: '成员、成员的 Agent、自动化与管理员的改动',
     issues: '问题与需求',
     issuesDesc: '成员及其 Agent 提交的功能需求与使用中遇到的问题',
-  },
-
-  usersAndGroups: {
-    tabsLabel: '用户与小组',
-    tab: {
-      users: '用户',
-      groups: '小组',
-    },
   },
 
   issues: {
@@ -2109,7 +2099,6 @@ const zh: Messages = {
     permission: '权限',
     roleReader: '只读 (reader)',
     roleEditor: '可编辑 (editor)',
-    groups: '小组',
     searchMembers: '搜索成员...',
     noMembers: '无成员',
     alreadyShared: '已共享',
@@ -2162,32 +2151,6 @@ const zh: Messages = {
     batchDeleteConfirm: '它们将被移入回收站。',
     batchMovedToTrash: '已移入回收站',
     partialFailed: '{n} 条失败',
-  },
-
-  // 小组（知识共享小组）
-  groups: {
-    group: '小组',
-    intro: '小组是知识库精细共享的目标。把个人知识文档共享给一个小组，组内成员即可访问。你创建的小组由你管理。',
-    newGroupName: '新小组名称…',
-    createGroup: '新建小组',
-    noGroups: '还没有小组。',
-    deleteGroup: '删除小组',
-    deleteGroupTitle: '删除小组？',
-    deleteGroupConfirm: '删除“{name}”？已共享给该小组的访问权限会一并失效。',
-    memberOne: '名成员',
-    memberOther: '名成员',
-    noMembers: '暂无成员',
-    remove: '移除',
-    searchToAdd: '搜索成员添加…',
-    noMatchingMembers: '无匹配成员',
-    loadFailed: '加载小组失败',
-    created: '小组已创建',
-    createFailed: '创建失败',
-    deleted: '小组已删除',
-    deleteFailed: '删除失败',
-    loadMembersFailed: '加载成员失败',
-    addFailed: '添加失败',
-    removeFailed: '移除失败',
   },
 
   // 自动化（定时任务）

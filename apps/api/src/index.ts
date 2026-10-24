@@ -94,7 +94,6 @@ import promptRoutes from './routes/prompts.js';
 import knowledgeRoutes from './routes/knowledge.js';
 import { createSearchRoute } from './routes/search.js';
 import { createActivityRoutes } from './routes/activity.js';
-import groupRoutes from './routes/groups.js';
 import shareRoutes from './routes/shares.js';
 import { createNotificationRoutes } from './routes/notifications.js';
 import pushDeviceRoutes from './routes/push-devices.js';
@@ -323,8 +322,6 @@ function mountRoutes(toolRegistry: ToolRegistry) {
       .route('/api/chat-files', chatFileRoutes)
       .use('/api/artifact-actions/*', requireInternal())
       .route('/api/artifact-actions', artifactActionRoutes)
-      .use('/api/groups/*', requireInternal())
-      .route('/api/groups', groupRoutes)
       .use('/api/shares/*', requireInternal())
       .route('/api/shares', shareRoutes)
       .use('/api/notifications', requireInternal())

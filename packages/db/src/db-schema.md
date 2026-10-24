@@ -36,8 +36,8 @@
 | `user_memories` | PK `id` | 用户长期记忆；`title`（注入 prompt 的召回索引行）+ `content` + 类别、状态机（active/dormant/archived/superseded）、pinned、来源、`superseded_by` 自引用、`last_used_at` |
 | `tool_frictions` | PK `id`, UNIQUE `fingerprint` | Agent 踩坑信号（团队级，永不注入 prompt）；工具/类型/摘要/证据、`occurrence_count` 聚合计数、样本会话、复盘状态与解决备注 |
 | `user_prompts` | PK `id`；UK `artifact_action_id` | **Tasks**（可复用任务，用户面已改叫 Tasks，表名保留）；`description` 一句话用途说明（选择器里展示）、`variables` JSON 存 `{{占位符}}` 定义、`expected_tools` JSON 存该流程实际用过的工具（**仅展示，不做权限判定**）、`source_session_id` 逻辑指向固化来源会话（无 FK，任务比会话活得久）、`created_via` 区分手写与会话固化。聊天固化时 `artifact_action_id` 是 exactly-once 恢复键；无变量无工具的行 = 原来的快捷 Prompt，行为逐字段不变 |
-| `user_groups` | PK `id` | 用户创建的小组；`created_by` 为逻辑用户引用 |
-| `group_members` | PK `id`；UK `(group_id, user_id)` | 小组成员；同时 FK 到 user_groups 与 users |
+| `user_groups` | PK `id` | 用户创建的小组；`created_by` 为逻辑用户引用。3.0 起无 service 与读写方，待 schema 重建时删除 |
+| `group_members` | PK `id`；UK `(group_id, user_id)` | 小组成员；同时 FK 到 user_groups 与 users。3.0 起无 service 与读写方 |
 
 ### 会话、Agent 运行时与个人整理
 
@@ -108,7 +108,7 @@ Chat 与 Automation 共用的执行控制面（`workflow` / `mission` / `eval` �
 |---|---|---|
 | `knowledge_base` | PK `id`；UK `(doc_id, scope)` | 内部知识文档；Markdown + Tiptap JSON，team/private 可见性、状态、owner、AI 增强字段；`sort_order` 为侧栏树同级手工顺序（0 = 从没排过，读侧排最后） |
 | `knowledge_base_versions` | PK `id`；UK `(doc_id, version)` | 知识文档不可变版本快照；标题、正文、编辑器 JSON、摘要、变更人/原因 |
-| `knowledge_base_shares` | PK `id`；UK `(doc_id, shared_with)` | private 文档共享；目标为 user id 或 `group:<id>`，角色 reader/editor |
+| `knowledge_base_shares` | PK `id`；UK `(doc_id, shared_with)` | private 文档共享；目标为 user id，角色 reader/editor |
 | `drive_folders` | PK `id` | `kb/crm/tables` 三 scope 文件夹树；自引用 parent；KB 用 visibility/owner，CRM 用 company，Tables 用 Base；`sort_order` 同 `knowledge_base`（同级手工顺序，0 排最后） |
 | `drive_files` | PK `id`；UK `cos_key` | 文件元数据；folder、对象存储 key、content type、size、pending/active/deleted 状态与 scope 权属；scope-owner check 防止跨域混挂 |
 | `email_accounts` | PK `id`；UK `(user_id, email_address)`；IDX `user_id` | per-user IMAP/SMTP 邮箱绑定；连接配置为明文列（便于运维排查），**仅 `password_encrypted` 是 AES-256-GCM 密文**；`preset` 只作 UI 提示不参与分支；`use_proxy` 决定是否走 `MAIL_EGRESS_PROXY`。共享的 greenhouse@ 邮箱**不在此表**，只从 env 读（运维所有物，无 owner） |
@@ -349,7 +349,7 @@ Chat 与 Automation 共用的执行控制面（`workflow` / `mission` / `eval` �
 | `custom_profiles.reviewed_by` | `users.id` 或 `system:agent-governance` | v1.4 退役列：历史审查 actor，不再读写 |
 | `custom_profile_versions.created_by` / `.owner_backup_user_id` | `users.id` | 不可变版本快照中的逻辑引用，账号删除不改写证据 |
 | `knowledge_base.owner_user_id` | `users.id` | private 文档所有者 |
-| `knowledge_base_shares.shared_with` | `users.id` 或 `group:<user_groups.id>` | 用户/小组复合共享目标 |
+| `knowledge_base_shares.shared_with` | `users.id` | 共享目标用户 |
 | `email_send_log.user_id` | `users.id` | 发起人；审计独立于账号生命周期，刻意无 FK |
 | `email_send_log.account_id` | `email_accounts.id` | personal 发信的来源绑定；绑定被解除后审计仍需可读，故无 FK |
 | `email_send_log.task_id` | `scheduled_tasks.id` | automation 送达的来源任务 |
@@ -447,7 +447,6 @@ erDiagram
 erDiagram
     knowledge_base ||--o{ knowledge_base_versions : "FK CASCADE"
     knowledge_base ||--o{ knowledge_base_shares : "FK CASCADE"
-    user_groups ||--o{ knowledge_base_shares : "逻辑 group target"
     drive_folders ||--o{ drive_folders : "FK CASCADE parent"
     drive_folders ||--o{ drive_files : "FK CASCADE"
     agent_skills ||--o{ agent_skill_versions : "FK CASCADE"

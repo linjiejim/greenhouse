@@ -1,9 +1,8 @@
 /**
  * Knowledge sharing (Phase 3) integration tests.
  *
- * Covers granular sharing of PRIVATE docs with specific users and groups, the
- * reader/editor role distinction, group-membership-based access, and the
- * security boundary (readers can't write; shared docs don't leak to team scope).
+ * Covers granular sharing of PRIVATE docs with specific users, the
+ * reader/editor role distinction, and the security boundary (readers can't write; shared docs don't leak to team scope).
  *
  * Requires: PostgreSQL running at localhost:5432 with greenhouse_test database.
  */
@@ -50,7 +49,7 @@ describe('Knowledge sharing — repositories', () => {
     _resetProvider();
   });
 
-  it('effectiveRole folds in direct + group grants and takes the highest', async () => {
+  it('effectiveRole returns the granted role, and a re-grant replaces it', async () => {
     const alice = await createUser(db, 'alice@test.com', 'Alice');
     const bob = await createUser(db, 'bob@test.com', 'Bob');
     const doc = await createPrivateDoc(alice.id, 'sop', 'SOP');
@@ -59,13 +58,12 @@ describe('Knowledge sharing — repositories', () => {
     await db.knowledgeShares.grant(doc.id, bob.id, 'reader', alice.id);
     expect(await db.knowledgeShares.effectiveRole(doc.id, bob.id)).toBe('reader');
 
-    // Bob also gets editor via a group → editor wins.
-    const group = await db.groups.create({ name: 'Ops', created_by: alice.id });
-    await db.groups.addMembers(group.id, [bob.id], alice.id);
-    await db.knowledgeShares.grant(doc.id, `group:${group.id}`, 'editor', alice.id);
+    // Granting again upgrades the same grant.
+    await db.knowledgeShares.grant(doc.id, bob.id, 'editor', alice.id);
     expect(await db.knowledgeShares.effectiveRole(doc.id, bob.id)).toBe('editor');
+    expect(await db.knowledgeShares.userIdsWithAccess(doc.id)).toEqual([bob.id]);
 
-    // listDocIdsForUser finds the doc (via either grant).
+    // listDocIdsForUser finds the doc.
     expect(await db.knowledgeShares.listDocIdsForUser(bob.id)).toContain(doc.id);
   });
 
@@ -81,17 +79,6 @@ describe('Knowledge sharing — repositories', () => {
     await db.knowledgeShares.revoke(doc.id, bob.id);
     expect(await db.knowledgeShares.effectiveRole(doc.id, bob.id)).toBeNull();
     expect(await db.knowledgeShares.listDocIdsForUser(bob.id)).not.toContain(doc.id);
-  });
-
-  it('groups: listForUser returns owned + member groups', async () => {
-    const alice = await createUser(db, 'alice@test.com', 'Alice');
-    const bob = await createUser(db, 'bob@test.com', 'Bob');
-    const g = await db.groups.create({ name: 'Marketing', created_by: alice.id });
-    await db.groups.addMembers(g.id, [bob.id], alice.id);
-
-    expect((await db.groups.listForUser(alice.id)).some((x) => x.id === g.id)).toBe(true); // owner
-    expect((await db.groups.listForUser(bob.id)).some((x) => x.id === g.id)).toBe(true); // member
-    expect(await db.groups.isMember(g.id, bob.id)).toBe(true);
   });
 });
 
@@ -191,11 +178,9 @@ describe('Knowledge sharing — tools', () => {
     expect(shareDenied.error).toBeTruthy();
   });
 
-  it('group share grants access to all members', async () => {
+  it('editor share lets the recipient read and update', async () => {
     const alice = await createUser(db, 'alice@test.com', 'Alice');
     const dave = await createUser(db, 'dave@test.com', 'Dave');
-    const group = await db.groups.create({ name: 'Eng', created_by: alice.id });
-    await db.groups.addMembers(group.id, [dave.id], alice.id);
 
     const aliceMutate = createKnowledgeMutationTool(db, { userId: alice.id });
     const created = await run(aliceMutate, {
@@ -209,11 +194,11 @@ describe('Knowledge sharing — tools', () => {
       action: 'knowledge.share_doc',
       scope: 'personal',
       doc_id: docId,
-      share_targets: [`group:${group.id}`],
+      share_targets: [dave.id],
       share_role: 'editor',
     });
 
-    // Dave (group member, editor) can read via shared scope and update.
+    // Dave (editor) can read via shared scope and update.
     const daveQuery = createKnowledgeQueryTool(db, { userId: dave.id });
     const got = await run(daveQuery, { action: 'get', scope: 'shared', doc_id: docId });
     expect(got.content).toContain('Engineering');

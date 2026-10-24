@@ -71,7 +71,6 @@ export * from './services/custom-profiles.js';
 export { segmentForFts, buildSegmentedTsQuery } from './services/fts.js';
 export * from './services/knowledge-base.js';
 export * from './services/knowledge-shares.js';
-export * from './services/groups.js';
 export * from './services/user-features.js';
 export * from './services/user-memories.js';
 export * from './services/tool-frictions.js';

@@ -89,10 +89,7 @@ export const knowledgeMutationSchema = z.object({
     .enum(['reader', 'editor'])
     .optional()
     .describe('Role to grant on share_doc (default reader). reader = read-only, editor = read+write.'),
-  share_targets: z
-    .array(z.string())
-    .optional()
-    .describe('share/unshare targets: user ids, or "group:<id>" for a whole group. Personal docs only.'),
+  share_targets: z.array(z.string()).optional().describe('share/unshare targets: user ids. Personal docs only.'),
   change_reason: z.string().optional().describe('Reason stored in version history for updates.'),
   meta: z.record(z.string(), z.unknown()).optional(),
 });
@@ -124,11 +121,11 @@ const meta: ToolMeta = {
   id: 'knowledge_mutation',
   name: 'Knowledge Mutation',
   brief: 'Create/update/patch/archive/restore/share team or personal knowledge docs with confirmation',
-  description: `Controlled knowledge mutation tool. Actions: knowledge.create_doc, knowledge.update_doc (replace the FULL body), knowledge.patch_doc (targeted edit — replace an exact unique substring via find/replace; prefer this for small edits to long docs instead of resending the whole body), knowledge.append_doc (add content to the end via the content field), knowledge.update_section (replace one Markdown section's body, addressed by its heading), knowledge.archive_doc, knowledge.restore_version (roll back to a prior version number from knowledge_query versions), and knowledge.share_doc / knowledge.unshare_doc (grant or revoke access to a PERSONAL doc for specific users or groups via share_targets = user ids or "group:<id>", with share_role reader|editor — owner only).
+  description: `Controlled knowledge mutation tool. Actions: knowledge.create_doc, knowledge.update_doc (replace the FULL body), knowledge.patch_doc (targeted edit — replace an exact unique substring via find/replace; prefer this for small edits to long docs instead of resending the whole body), knowledge.append_doc (add content to the end via the content field), knowledge.update_section (replace one Markdown section's body, addressed by its heading), knowledge.archive_doc, knowledge.restore_version (roll back to a prior version number from knowledge_query versions), and knowledge.share_doc / knowledge.unshare_doc (grant or revoke access to a PERSONAL doc for specific users via share_targets = user ids, with share_role reader|editor — owner only).
 
 For large docs, patch_doc/append_doc/update_section are strongly preferred over update_doc: you send only the change, not the entire document, which is cheaper and avoids accidentally altering untouched sections. find (patch_doc) and heading (update_section) must match exactly once — read the doc with knowledge_query first to copy the exact text.
 
-Editors (granted editor role) may create/update/patch/append/restore; archiving and sharing are owner-only. Every change is recorded in version history and every call requires explicit user confirmation via the cloud proxy (confirm:true) and is audited. Always read/search existing docs with knowledge_query first (use action=versions before a restore), explain the intended change, and wait for user approval before calling. Personal scope is limited to the current user's own documents. Use personal docs to durably capture the user's business/project context and preferences so it can be recalled in future sessions — and share them with specific colleagues or groups when context should be shared.`,
+Editors (granted editor role) may create/update/patch/append/restore; archiving and sharing are owner-only. Every change is recorded in version history and every call requires explicit user confirmation via the cloud proxy (confirm:true) and is audited. Always read/search existing docs with knowledge_query first (use action=versions before a restore), explain the intended change, and wait for user approval before calling. Personal scope is limited to the current user's own documents. Use personal docs to durably capture the user's business/project context and preferences so it can be recalled in future sessions — and share them with specific colleagues when context should be shared.`,
   category: 'team',
   is_global: true,
   surface: { proxy: 'write', mcp: 'knowledge' },
@@ -204,7 +201,7 @@ export function createKnowledgeMutationTool(db: DatabaseProvider, ctx: Knowledge
         if (!existing || existing.status === 'archived' || existing.visibility !== visibility) {
           return { action: input.action, error: `Document not found: ${input.doc_id}` };
         }
-        // Access folds in owner / team-collaborative / editor+reader grants (incl. groups).
+        // Access folds in owner / team-collaborative / editor+reader grants.
         const access = await resolveKbAccess(db, existing, ctx.userId);
         if (!canWrite(access)) {
           return { action: input.action, error: `Document not found: ${input.doc_id}` };

@@ -6,7 +6,7 @@
  * Model:
  * - team docs (visibility='team')  → collaborative: every internal user reads + writes.
  * - private docs (visibility='private') → owner has full control; others get the
- *   role granted to them directly OR via a group (editor > reader); nobody else.
+ *   role granted to them (reader / editor); nobody else.
  */
 
 import type { DatabaseProvider, KnowledgeDocRow, KnowledgeShareRole } from '@greenhouse/db';

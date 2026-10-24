@@ -1,13 +1,9 @@
 /**
  * Knowledge share service — granular sharing of PRIVATE knowledge docs with
- * specific users or groups (PostgreSQL).
- *
- * A grant's `shared_with` is either a user_id or 'group:<groupId>'. Effective
- * access for a user folds in both their direct grants and any group they belong
- * to, taking the highest role (editor > reader).
+ * specific users (PostgreSQL). A grant's `shared_with` is a user_id.
  */
 
-import { eq, and, desc, sql } from 'drizzle-orm';
+import { eq, and, desc } from 'drizzle-orm';
 import { nowIso } from '@greenhouse/utils/date';
 
 import type { Db } from '../client.js';
@@ -57,51 +53,31 @@ export function createKnowledgeShareService(db: Db) {
         .orderBy(desc(knowledgeBaseShares.created_at));
     },
 
-    /**
-     * Highest effective role for a user on a doc, considering BOTH a direct
-     * user grant and any group grant the user is a member of. editor > reader.
-     * Returns null when the user has no grant.
-     */
+    /** The user's role on a doc from their grant, or null when there is none. */
     async effectiveRole(docId: number, userId: string): Promise<KnowledgeShareRole | null> {
-      // Match a direct user grant OR any group grant the user belongs to, then
-      // pick the strongest role (editor wins over reader).
-      const rows = (await db.execute(sql`
-        SELECT role FROM knowledge_base_shares
-        WHERE doc_id = ${docId}
-          AND (
-            shared_with = ${userId}
-            OR shared_with IN (
-              SELECT 'group:' || group_id FROM group_members WHERE user_id = ${userId}
-            )
-          )
-        ORDER BY CASE role WHEN 'editor' THEN 0 ELSE 1 END
-        LIMIT 1
-      `)) as unknown as Array<{ role: KnowledgeShareRole }>;
+      const rows = await db
+        .select({ role: knowledgeBaseShares.role })
+        .from(knowledgeBaseShares)
+        .where(and(eq(knowledgeBaseShares.doc_id, docId), eq(knowledgeBaseShares.shared_with, userId)))
+        .limit(1);
       return rows[0]?.role ?? null;
     },
 
-    /** Every user a doc is shared with, directly or through a group (for live-update fan-out). */
+    /** Every user a doc is shared with (for live-update fan-out). */
     async userIdsWithAccess(docId: number): Promise<string[]> {
-      const rows = (await db.execute(sql`
-        SELECT shared_with AS user_id FROM knowledge_base_shares
-        WHERE doc_id = ${docId} AND shared_with NOT LIKE 'group:%'
-        UNION
-        SELECT gm.user_id FROM knowledge_base_shares s
-        JOIN group_members gm ON s.shared_with = 'group:' || gm.group_id
-        WHERE s.doc_id = ${docId}
-      `)) as unknown as Array<{ user_id: string }>;
+      const rows = await db
+        .select({ user_id: knowledgeBaseShares.shared_with })
+        .from(knowledgeBaseShares)
+        .where(eq(knowledgeBaseShares.doc_id, docId));
       return rows.map((row) => String(row.user_id));
     },
 
-    /** Distinct doc ids shared with the user (directly or via a group). */
+    /** Distinct doc ids shared with the user. */
     async listDocIdsForUser(userId: string): Promise<number[]> {
-      const rows = (await db.execute(sql`
-        SELECT DISTINCT doc_id FROM knowledge_base_shares
-        WHERE shared_with = ${userId}
-          OR shared_with IN (
-            SELECT 'group:' || group_id FROM group_members WHERE user_id = ${userId}
-          )
-      `)) as unknown as Array<{ doc_id: number }>;
+      const rows = await db
+        .selectDistinct({ doc_id: knowledgeBaseShares.doc_id })
+        .from(knowledgeBaseShares)
+        .where(eq(knowledgeBaseShares.shared_with, userId));
       return rows.map((r) => Number(r.doc_id));
     },
   };

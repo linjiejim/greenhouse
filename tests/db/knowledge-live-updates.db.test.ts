@@ -116,7 +116,7 @@ describe('knowledge.changed audience', () => {
     _resetProvider();
   });
 
-  it('sends a private doc to its owner and its share targets, direct and through a group — nobody else', async () => {
+  it('sends a private doc to its owner and its share targets — nobody else', async () => {
     const owner = await createInternalTestUser(db, { email: `ka-owner-${run}@test.local` });
     const direct = await createInternalTestUser(db, { email: `ka-direct-${run}@test.local` });
     const member = await createInternalTestUser(db, { email: `ka-member-${run}@test.local` });
@@ -130,9 +130,7 @@ describe('knowledge.changed audience', () => {
       created_by: owner.id,
     });
     await db.knowledgeShares.grant(doc.id, direct.id, 'reader', owner.id);
-    const group = await db.groups.create({ name: `ka-group-${run}`, created_by: owner.id });
-    await db.groups.addMembers(group.id, [member.id], owner.id);
-    await db.knowledgeShares.grant(doc.id, `group:${group.id}`, 'editor', owner.id);
+    await db.knowledgeShares.grant(doc.id, member.id, 'editor', owner.id);
 
     const sender = recordingSender();
     await publishKnowledgeChange(db, { kind: 'updated', doc }, sender);

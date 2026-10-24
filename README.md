@@ -87,7 +87,7 @@ same script doubles as an end-to-end smoke tour (see [Development](#development)
   tagging, and a global ⌘P search.
 - **Knowledge Base** — team, personal and shared documents with a Tiptap editor, Markdown-first
   storage, folders plus a file cabinet, templates, version
-  history, fine-grained sharing via groups, and segmented full-text search (CJK-aware).
+  history, per-person sharing, and segmented full-text search (CJK-aware).
 - **Projects** — projects, tasks (board / gantt / tree views), members, comments, activity log.
 - **Tables** — multidimensional bases: typed fields, views, forms, record links, dashboards,
   rule automations, and conversational schema planning (the agent drafts a base, you confirm).

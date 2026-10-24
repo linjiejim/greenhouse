@@ -14,7 +14,7 @@
  * POST   /api/knowledge/docs/:id/enrich               — AI 生成 summary/questions/topics/tags
  * GET    /api/knowledge/search                        — 搜索团队知识库
  * GET    /api/knowledge/docs/:id/shares               — 私有文档的共享列表
- * POST   /api/knowledge/docs/:id/shares               — 添加/更新共享（user/group, reader/editor）
+ * POST   /api/knowledge/docs/:id/shares               — 添加/更新共享（user, reader/editor）
  * DELETE /api/knowledge/docs/:id/shares/:target       — 撤销共享
  * GET    /api/knowledge/docs/templates                — team 可见模板列表（从模板新建）
  * POST   /api/knowledge/docs/:id/editing-presence     — 编辑心跳，返回其他在编辑者
@@ -143,11 +143,6 @@ function versionToApi(row: KnowledgeDocVersionRow) {
 
 function normalizeRole(value: unknown): KnowledgeShareRole {
   return value === 'editor' ? 'editor' : 'reader';
-}
-
-/** A share target is a user_id, or 'group:<id>' for a whole group. */
-function groupTarget(groupId: number): string {
-  return `group:${groupId}`;
 }
 
 function buildMeta(space: unknown, meta: unknown): Record<string, unknown> {
@@ -311,7 +306,7 @@ const knowledgeRoutes = new Hono<AppEnv>()
     const base = { scope: 'shared', status, space, search, limit, offset } as const;
     const db = getDb();
 
-    // Private docs that OTHER people shared with the caller (directly or via a group).
+    // Private docs that OTHER people shared with the caller.
     const sharedWithMe = async (): Promise<KnowledgeDocRow[]> => {
       const ids = await db.knowledgeShares.listDocIdsForUser(user.id);
       if (ids.length === 0) return [];
@@ -552,13 +547,8 @@ const knowledgeRoutes = new Hono<AppEnv>()
     const grants = await getDb().knowledgeShares.listForDoc(id);
     const enriched = await Promise.all(
       grants.map(async (g) => {
-        if (g.shared_with.startsWith('group:')) {
-          const gid = parseInt(g.shared_with.slice('group:'.length), 10);
-          const group = Number.isFinite(gid) ? await getDb().groups.getById(gid) : undefined;
-          return { target: g.shared_with, kind: 'group' as const, name: group?.name || `Group ${gid}`, role: g.role };
-        }
         const u = await getDb().users.getById(g.shared_with);
-        return { target: g.shared_with, kind: 'user' as const, name: u?.nickname || 'Unknown', role: g.role };
+        return { target: g.shared_with, name: u?.nickname || 'Unknown', role: g.role };
       }),
     );
     return c.json({ shares: enriched });
@@ -580,19 +570,13 @@ const knowledgeRoutes = new Hono<AppEnv>()
     const role = normalizeRole(body.role);
     const message = typeof body.message === 'string' ? body.message : undefined;
     const userIds: string[] = Array.isArray(body.user_ids) ? body.user_ids.map(String) : [];
-    const groupIds: number[] = Array.isArray(body.group_ids)
-      ? body.group_ids.map((g: unknown) => parseInt(String(g), 10)).filter((n: number) => Number.isFinite(n))
-      : [];
-    if (userIds.length === 0 && groupIds.length === 0) return c.json({ error: 'user_ids or group_ids required' }, 400);
+    if (userIds.length === 0) return c.json({ error: 'user_ids required' }, 400);
 
     for (const uid of userIds) {
       if (uid === user.id) continue; // owner already has full access
       await getDb().knowledgeShares.grant(id, uid, role, user.id, message);
     }
-    for (const gid of groupIds) {
-      await getDb().knowledgeShares.grant(id, groupTarget(gid), role, user.id, message);
-    }
-    logger.info('[Knowledge] doc shared', { docId: id, by: user.id, userIds, groupIds, role });
+    logger.info('[Knowledge] doc shared', { docId: id, by: user.id, userIds, role });
     return c.json({ success: true });
   })
   .delete('/docs/:id/shares/:target', async (c) => {

@@ -108,14 +108,6 @@ const SETTINGS_TOP: NavModule[] = [
     description: 'Theme, language, and personal notes',
   },
   {
-    id: 'settings.groups',
-    label: 'Groups',
-    icon: Users,
-    path: '#/settings/groups',
-    parent: 'settings',
-    description: 'Groups for knowledge sharing',
-  },
-  {
     id: 'settings.agent-connections',
     label: 'Agent Connections',
     icon: Key,
@@ -192,11 +184,11 @@ const ADMINISTRATION_MODULES: NavModule[] = [
   // then workspace configuration and agent access.
   {
     id: 'admin.users',
-    label: 'Users & groups',
+    label: 'Users',
     icon: Users,
     path: '#/administration/users',
     parent: 'administration',
-    description: 'Accounts, permissions, limits, and the groups used for sharing',
+    description: 'Accounts, permissions, and limits',
     requireRole: ['super'],
   },
   {
@@ -376,7 +368,6 @@ type Translate = (key: TranslationKey, params?: Record<string, string | number>)
 
 const NAV_COPY: Record<string, { label: TranslationKey; description?: TranslationKey }> = {
   'settings.preferences': { label: 'navigation.preferences', description: 'navigation.preferencesDesc' },
-  'settings.groups': { label: 'navigation.groups', description: 'navigation.groupsDesc' },
   'settings.agent-connections': {
     label: 'navigation.agentConnections',
     description: 'navigation.agentConnectionsDesc',
@@ -580,7 +571,7 @@ export function resolveSubModule(
     return { primary, secondary: localized.label, description: localized.description };
   }
 
-  // Handle partial paths (e.g. settings/groups/123 → match settings.groups)
+  // Handle partial paths (e.g. administration/issues/123 → match admin.issues)
   const segments = subPath.split('/').filter(Boolean);
 
   // Try matching parent path (strip trailing segments)
@@ -589,7 +580,7 @@ export function resolveSubModule(
     const match = ALL_MODULES.find((m) => m.path === tryPath);
     if (match) {
       const localized = localizeNavModule(match, t);
-      // For detail pages (e.g. settings/groups/123), append the detail ID. Other
+      // For detail pages (e.g. administration/issues/123), append the detail ID. Other
       // trailing segments are a module's own tabs or deep links, not an identity.
       if (i < segments.length && /^\d+$/.test(segments[i] ?? '')) {
         return { primary, secondary: `${localized.label} › #${segments[i]}` };

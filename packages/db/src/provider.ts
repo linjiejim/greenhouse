@@ -34,7 +34,6 @@ import { createCustomProfileService } from './services/custom-profiles.js';
 import { createSessionPinService } from './services/session-pins.js';
 import { createKnowledgeBaseService } from './services/knowledge-base.js';
 import { createKnowledgeShareService } from './services/knowledge-shares.js';
-import { createGroupService } from './services/groups.js';
 import { createUserFeatureService } from './services/user-features.js';
 import { createUserMemoryService } from './services/user-memories.js';
 import { createToolFrictionService } from './services/tool-frictions.js';
@@ -86,7 +85,6 @@ function createDatabaseProvider(db: Db, client: DbClient['client'] | null) {
     sessionPins: createSessionPinService(db),
     knowledgeBase: createKnowledgeBaseService(db),
     knowledgeShares: createKnowledgeShareService(db),
-    groups: createGroupService(db),
     userFeatures: createUserFeatureService(db),
     userMemories: createUserMemoryService(db),
     toolFrictions: createToolFrictionService(db),

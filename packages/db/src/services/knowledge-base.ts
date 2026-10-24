@@ -432,8 +432,7 @@ export function createKnowledgeBaseService(db: Db) {
 
     /**
      * Search PRIVATE docs shared WITH the caller (never their own): FTS over the
-     * jieba token columns, gated by a share grant (direct or via a group the
-     * caller belongs to). The strongest matching role (editor > reader) rides
+     * jieba token columns, gated by the caller's share grant, whose role rides
      * along as `access`. Access is enforced in SQL — the app never post-filters —
      * so the gate matches `resolveKbAccess`. Falls back to ILIKE like `search`.
      */
@@ -447,17 +446,12 @@ export function createKnowledgeBaseService(db: Db) {
       const andQuery = buildSegmentedTsQuery(query, '&');
       const orQuery = buildSegmentedTsQuery(query, '|');
 
-      // The caller's grant on each doc, folded to the strongest role. A LATERAL
-      // join both gates the row (INNER → no grant, no row) and surfaces the role.
+      // The caller's grant on each doc. A LATERAL join both gates the row
+      // (INNER → no grant, no row) and surfaces the role.
       const grantJoin = sql`
         JOIN LATERAL (
           SELECT s.role FROM knowledge_base_shares s
-          WHERE s.doc_id = kb.id
-            AND (
-              s.shared_with = ${userId}
-              OR s.shared_with IN (SELECT 'group:' || group_id FROM group_members WHERE user_id = ${userId})
-            )
-          ORDER BY CASE s.role WHEN 'editor' THEN 0 ELSE 1 END
+          WHERE s.doc_id = kb.id AND s.shared_with = ${userId}
           LIMIT 1
         ) g ON true
       `;

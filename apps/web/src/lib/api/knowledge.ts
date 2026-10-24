@@ -222,7 +222,7 @@ export async function listKnowledgeShares(id: number): Promise<KnowledgeShare[]>
 
 export async function shareKnowledgeDoc(
   id: number,
-  input: { user_ids?: string[]; group_ids?: number[]; role: 'reader' | 'editor'; message?: string },
+  input: { user_ids: string[]; role: 'reader' | 'editor'; message?: string },
 ): Promise<void> {
   const args = { param: { id: String(id) }, json: input };
   const res = await rpc.api.knowledge.docs[':id'].shares.$post(args);
@@ -232,7 +232,7 @@ export async function shareKnowledgeDoc(
   }
 }
 
-/** Revoke a grant. `target` is a user id or 'group:<id>'. */
+/** Revoke a grant. `target` is a user id. */
 export async function revokeKnowledgeShare(id: number, target: string): Promise<void> {
   // encodeURIComponent matches the previous hand-built URL byte-for-byte
   // (the server decodeURIComponent()s the param on top of router decoding).

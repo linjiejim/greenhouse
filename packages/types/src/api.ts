@@ -290,28 +290,10 @@ export interface KnowledgeTemplateSummary {
 }
 
 export interface KnowledgeShare {
-  /** user id, or 'group:<id>' for a group grant. */
+  /** The user id the doc is shared with. */
   target: string;
-  kind: 'user' | 'group';
   name: string;
   role: 'reader' | 'editor';
-}
-
-export interface UserGroup {
-  id: number;
-  name: string;
-  description: string;
-  created_by: string;
-  member_count?: number;
-  created_at: string | null;
-  updated_at: string | null;
-}
-
-export interface GroupMember {
-  user_id: string;
-  nickname: string;
-  email?: string;
-  added_at: string | null;
 }
 
 export interface KnowledgeDocVersion {

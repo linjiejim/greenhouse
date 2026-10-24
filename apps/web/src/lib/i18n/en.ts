@@ -710,12 +710,10 @@ export default {
     apiTargetUnsaved: 'Save or discard your changes before switching API environments.',
     apiTargetUnavailable: '{target} API is unavailable. The environment was not changed.',
     labs: 'Labs',
-    users: 'Users & groups',
-    usersDesc: 'Accounts, permissions, limits, and the groups used for sharing',
+    users: 'Users',
+    usersDesc: 'Accounts, permissions, and limits',
     preferences: 'Preferences',
     preferencesDesc: 'Theme, language, and personal notes',
-    groups: 'Groups',
-    groupsDesc: 'Groups for knowledge sharing',
     agentConnections: 'Agent Connections',
     agentConnectionsDesc: 'Connect your agents and see what they wrote as you',
     providerBindings: 'Connections',
@@ -758,14 +756,6 @@ export default {
     activityLogAdminDesc: 'Changes by people, their agents, automations and admins',
     issues: 'Issues & requests',
     issuesDesc: 'Feature requests and frictions reported by members and their agents',
-  },
-
-  usersAndGroups: {
-    tabsLabel: 'Users and groups',
-    tab: {
-      users: 'Users',
-      groups: 'Groups',
-    },
   },
 
   issues: {
@@ -2169,7 +2159,6 @@ export default {
     permission: 'Permission',
     roleReader: 'Read-only (reader)',
     roleEditor: 'Editable (editor)',
-    groups: 'Groups',
     searchMembers: 'Search members...',
     noMembers: 'No members',
     alreadyShared: 'Shared',
@@ -2223,33 +2212,6 @@ export default {
     batchDeleteConfirm: 'They will be moved to trash.',
     batchMovedToTrash: 'Moved to trash',
     partialFailed: '{n} failed',
-  },
-
-  // Groups (knowledge-sharing groups)
-  groups: {
-    group: 'Group',
-    intro:
-      'Groups are targets for fine-grained knowledge sharing. Share a personal knowledge doc with a group and all its members can access it. Groups you create are managed by you.',
-    newGroupName: 'New group name…',
-    createGroup: 'Create Group',
-    noGroups: 'No groups yet.',
-    deleteGroup: 'Delete group',
-    deleteGroupTitle: 'Delete group?',
-    deleteGroupConfirm: 'Delete "{name}"? Access shared with this group will also be revoked.',
-    memberOne: 'member',
-    memberOther: 'members',
-    noMembers: 'No members',
-    remove: 'Remove',
-    searchToAdd: 'Search members to add…',
-    noMatchingMembers: 'No matching members',
-    loadFailed: 'Failed to load groups',
-    created: 'Group created',
-    createFailed: 'Create failed',
-    deleted: 'Group deleted',
-    deleteFailed: 'Delete failed',
-    loadMembersFailed: 'Failed to load members',
-    addFailed: 'Add failed',
-    removeFailed: 'Remove failed',
   },
 
   // Automations (scheduled tasks)

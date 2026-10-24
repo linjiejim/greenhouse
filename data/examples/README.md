@@ -60,12 +60,12 @@ shared demo password.
 
 ## What's covered (Tiers 1–3)
 
-**Identity & access** — 5 users (super / team / disabled), 2 groups + membership.
+**Identity & access** — 5 users (super / team / disabled).
 
 **Knowledge base** — 12 docs spanning team vs private visibility,
 published / draft / archived status, AI enrichment (`_summary` / `_questions` /
 `_topics`), tags, version history (roadmap + handbook), and private-doc sharing
-with a user and a group.
+with two users (reader and editor).
 
 **Projects** — 3 projects (Website Relaunch, Q3 Product Launch, SOC 2), members,
 14 tasks with subtasks / dependencies / mixed status, comments, and an activity
