@@ -411,13 +411,16 @@ export function clearProfileCache(): void {
  * Enrich a profile's system prompt with the rich output formatting guide.
  * Applies to any profile with `access.rich_output: true`; these also get the
  * confirm-button block. Profiles without rich output are unchanged.
+ *
+ * `richBlocks` = the blocks the requesting screen draws (a chat request's `rich_blocks`,
+ * already admitted); absent = the default set every older client draws.
  */
-export function enrichSystemPrompt(profile: AgentProfile): string {
+export function enrichSystemPrompt(profile: AgentProfile, richBlocks?: readonly string[]): string {
   if (!profile.access.rich_output) {
     return profile.system_prompt;
   }
 
-  return profile.system_prompt + '\n' + composeRichOutput({ confirm: true });
+  return profile.system_prompt + '\n' + composeRichOutput({ confirm: true, blocks: richBlocks });
 }
 
 // ─── File Watcher (dev hot-reload) ───────────────────────

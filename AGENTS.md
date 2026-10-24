@@ -364,7 +364,7 @@ Always import these — don't reimplement:
 | `parseSemver` / `isValidSemver` / `compareSemver` / `bumpPatch` | `@greenhouse/utils/semver` | Strict `X.Y.Z` semver helpers (skill versions) — don't hand-write the regex |
 | `escapeHtml(value)` | `@greenhouse/utils/html` | Escape text into hand-built HTML (emails) |
 | `sendWeComMarkdown` / `sendFeishuMarkdown` | `@greenhouse/utils/wecom` / `feishu` | Group-bot webhook posts (both check the JSON body, not just the HTTP status) |
-| `composeRichOutput({confirm?})` | `@greenhouse/utils/prompts` | The single copy of the rich-output prompt guide shared by every profile |
+| `composeRichOutput({confirm?, blocks?})` | `@greenhouse/utils/prompts` | The single copy of the rich-output prompt guide shared by every profile, narrowed to the blocks a screen draws |
 
 ## Auth & permissions
 

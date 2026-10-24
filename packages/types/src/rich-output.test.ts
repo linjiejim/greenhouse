@@ -1,5 +1,18 @@
 import { describe, expect, it } from 'vitest';
-import { RICH_OUTPUT_LIMITS, isChartData, isConfirmData, isDataTableData, parseSegments } from './rich-output.js';
+import {
+  DEFAULT_CLIENT_BLOCKS,
+  MODEL_FENCES,
+  RICH_OUTPUT_LIMITS,
+  admitRichBlocks,
+  cardsMarkdown,
+  isChartData,
+  isConfirmData,
+  isDataTableData,
+  parseSegments,
+  resolveBlockAction,
+  statsMarkdown,
+  stepsMarkdown,
+} from './rich-output.js';
 
 const fence = (type: string, payload: unknown) => `\`\`\`${type}\n${JSON.stringify(payload)}\n\`\`\``;
 
@@ -141,5 +154,109 @@ describe('Rich Output parser', () => {
         datasets: [{ label: 'Series', data: [Number.POSITIVE_INFINITY] }],
       }),
     ).toBe(false);
+  });
+});
+
+describe('stats / cards / steps blocks', () => {
+  const block = (type: string, payload: unknown) => parseSegments(fence(type, payload))[0];
+
+  it('accepts stats and keeps direction and colour apart', () => {
+    expect(
+      block('stats', {
+        title: 'October',
+        items: [{ label: 'Cost', value: 1200, unit: '$', delta: '+8%', trend: 'up', tone: 'negative', hint: 'vs Sep' }],
+      }),
+    ).toEqual({
+      type: 'stats',
+      data: {
+        title: 'October',
+        items: [{ label: 'Cost', value: 1200, unit: '$', delta: '+8%', trend: 'up', tone: 'negative', hint: 'vs Sep' }],
+      },
+    });
+  });
+
+  it('cuts wordy text instead of rejecting the block, but keeps structure strict', () => {
+    const stats = block('stats', { items: [{ label: 'x'.repeat(100), value: 1 }] });
+    expect(stats).toMatchObject({ type: 'stats' });
+    expect((stats as { data: { items: { label: string }[] } }).data.items[0]!.label).toHaveLength(40);
+    expect(block('stats', { items: [] })).toMatchObject({ type: 'markdown' });
+    expect(block('stats', { items: Array.from({ length: 9 }, (_, i) => ({ label: 'a', value: i })) })).toMatchObject({
+      type: 'markdown',
+    });
+    expect(block('stats', { items: [{ label: 'a', value: {} }] })).toMatchObject({ type: 'markdown' });
+  });
+
+  it('only lets cards link in-app routes or http(s) URLs', () => {
+    expect(block('cards', { items: [{ title: 'Doc', url: '#/projects/42' }] })).toMatchObject({ type: 'cards' });
+    expect(block('cards', { items: [{ title: 'Doc', url: 'https://example.com/a' }] })).toMatchObject({
+      type: 'cards',
+    });
+    expect(block('cards', { items: [{ title: 'Doc', url: 'javascript:alert(1)' }] })).toMatchObject({
+      type: 'markdown',
+    });
+    expect(block('cards', { items: [{ title: 'Doc', url: '/api/secret' }] })).toMatchObject({ type: 'markdown' });
+    expect(
+      block('cards', { items: [{ title: 'Doc', badges: Array.from({ length: 4 }, () => ({ label: 'b' })) }] }),
+    ).toMatchObject({ type: 'markdown' });
+  });
+
+  it('checks step statuses and block actions', () => {
+    expect(block('steps', { items: [{ title: 'Build', status: 'active' }] })).toMatchObject({ type: 'steps' });
+    expect(block('steps', { items: [{ title: 'Build', status: 'doing' }] })).toMatchObject({ type: 'markdown' });
+    const actions = [{ label: 'Split by industry', value: 'Split October customers by industry' }];
+    expect(block('steps', { items: [{ title: 'Build', status: 'done' }], actions })).toMatchObject({
+      type: 'steps',
+      data: { actions },
+    });
+    expect(
+      block('stats', {
+        items: [{ label: 'a', value: 1 }],
+        actions: Array.from({ length: 5 }, (_, i) => ({ label: `b${i}`, value: `v${i}` })),
+      }),
+    ).toMatchObject({ type: 'markdown' });
+  });
+
+  it('resolves which button the next message pressed', () => {
+    const actions = [
+      { label: 'Yes', value: 'Go ahead with the plan' },
+      { label: 'No', value: 'Stop here' },
+    ];
+    expect(resolveBlockAction(actions, '  Stop here ')).toBe('Stop here');
+    expect(resolveBlockAction(actions, 'something else')).toBeNull();
+    expect(resolveBlockAction(actions, null)).toBeNull();
+  });
+
+  it('degrades to plain Markdown', () => {
+    expect(statsMarkdown({ title: 'Oct', items: [{ label: 'New', value: 128, unit: 'users', delta: '+12%' }] })).toBe(
+      '**Oct**\n\n- **New**: 128 users (+12%)',
+    );
+    expect(
+      cardsMarkdown({
+        items: [{ title: 'Site [v2]', url: '#/projects/4', subtitle: 'Owner Ann', badges: [{ label: 'Late' }] }],
+      }),
+    ).toBe('- [Site \\[v2\\]](#/projects/4) — Owner Ann · Late');
+    expect(
+      stepsMarkdown({
+        items: [
+          { title: 'Review', status: 'done', time: '10-02' },
+          { title: 'Build', status: 'active', detail: 'front end 60%' },
+          { title: 'Ship', status: 'pending' },
+        ],
+      }),
+    ).toBe('- [x] Review (10-02)\n- [ ] Build (in progress) — front end 60%\n- [ ] Ship');
+  });
+});
+
+describe('rich block capabilities', () => {
+  it('admits the declared model blocks only', () => {
+    expect(admitRichBlocks(undefined)).toBeUndefined();
+    expect(admitRichBlocks('chart')).toBeUndefined();
+    expect(admitRichBlocks(['steps', 'chart', 'bogus', 7])).toEqual(['chart', 'steps']);
+    expect(admitRichBlocks([])).toEqual([]);
+  });
+
+  it('keeps old clients on the five original blocks', () => {
+    expect(DEFAULT_CLIENT_BLOCKS).toEqual(['chart', 'datatable', 'confirm', 'mermaid', 'html-preview']);
+    expect(MODEL_FENCES).toEqual(expect.arrayContaining([...DEFAULT_CLIENT_BLOCKS, 'stats', 'cards', 'steps']));
   });
 });

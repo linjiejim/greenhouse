@@ -22,10 +22,16 @@ Profile `access` 只声明 `level: internal | hidden` 与 `rich_output`；不存
 ## 富文本输出（`rich_output`）
 
 `access.rich_output: true` 的 profile 由 `enrichSystemPrompt()`（`apps/api/src/profile.ts`）在
-system prompt 末尾追加 `composeRichOutput({ confirm: true })` —— chart / datatable / confirm
-三种 code fence 的写法与写作纪律。
+system prompt 末尾追加 `composeRichOutput({ confirm: true, blocks })` —— 各富块 code fence 的写法与写作纪律。
 
-**只有一份副本，改一次即改全部**：`RICH_OUTPUT_GUIDE` 在 `packages/utils/src/prompts.ts`。
+**只教这块屏幕能画的块**：聊天请求可带 `rich_blocks: string[]`（`ModelFence` 名，`@greenhouse/types/rich-output`
+的 `admitRichBlocks` 过滤未知名），系统提示只收这些块的说明；不带 = `DEFAULT_CLIENT_BLOCKS`（chart / datatable /
+confirm / mermaid / html-preview，旧客户端的既有行为），新块（stats / cards / steps）只给声明了它们的客户端。
+网页聊天声明全部块；手机端声明自己的列表；`[]` 得到「只写普通 Markdown」的说明。同一会话换屏幕时系统提示随之变，
+前缀缓存只在那一轮失效。
+
+**只有一份副本，改一次即改全部**：每块的说明在 `packages/utils/src/prompts.ts` 的 `RICH_BLOCK_GUIDES`，
+`RICH_OUTPUT_GUIDE` 是全量版本；`tests/api/agent-profiles.test.ts` 把它的键和 `MODEL_FENCES` 绑在一起。
 `sprouty` 声明 `rich_output: true` 因此拿到它；`desktop` 是 `false`，原样返回。
 自定义 Agent 从 `base_profile_id` 继承 `rich_output`（`profile.ts`），因此也走同一份。
 **不要在某个 YAML 里另写一份块格式说明**——两份副本必然漂移。

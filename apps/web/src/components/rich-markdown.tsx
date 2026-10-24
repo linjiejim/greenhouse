@@ -3,7 +3,8 @@
  *
  * Parses markdown content into segments, rendering:
  * - Plain markdown via the existing <Markdown> component
- * - Custom blocks (chart, confirm, datatable) via specialized React components
+ * - Custom blocks (chart, confirm, datatable, stats, cards, steps, mermaid, html-preview)
+ *   via specialized React components
  *
  * Drop-in replacement for <Markdown> in chat/agent contexts.
  * Wiki/source detail pages should continue using <Markdown> directly.
@@ -26,6 +27,7 @@ import { ConfirmBlock } from './blocks/confirm-block';
 import { DataTableBlock, DataTablePendingBlock } from './blocks/datatable-block';
 import { HtmlPreviewBlock } from './blocks/html-preview-block';
 import { MermaidBlock } from './blocks/mermaid-block';
+import { CardsBlock, StatsBlock, StepsBlock } from './blocks/business-blocks';
 import { ErrorBoundary } from './ui';
 import { useT } from '../lib/i18n';
 import type { MarkdownLinkTarget } from './markdown';
@@ -37,7 +39,10 @@ interface RichMarkdownProps {
   className?: string;
   /** Use compact (tight) variant for chat/agent messages. */
   compact?: boolean;
-  /** Callback for confirm block actions. If not provided, confirm buttons are rendered but disabled. */
+  /**
+   * Sends a button's value as the member's next message — confirm buttons and the buttons
+   * under stats / cards / steps. If not provided, buttons are rendered but disabled.
+   */
   onConfirmAction?: (value: string) => void;
   /** Persisted follow-up user message used to restore confirm selection after reload. */
   resolvedConfirmValue?: string;
@@ -79,7 +84,7 @@ export function RichMarkdown({
         // never re-render.
         return seg.code === (prevSeg as MermaidSegment | HtmlPreviewSegment).code ? prevSeg : seg;
       }
-      // For block types (chart, confirm, datatable), compare serialized data
+      // For block types (chart, confirm, datatable, stats, cards, steps), compare serialized data
       if (JSON.stringify((seg as { data: unknown }).data) === JSON.stringify((prevSeg as { data: unknown }).data)) {
         return prevSeg;
       }
@@ -152,6 +157,42 @@ const MemoSegmentRenderer = React.memo(function SegmentRenderer({
 
     case 'datatable-pending':
       return <DataTablePendingBlock compact={compact} />;
+
+    case 'stats':
+      return (
+        <BlockBoundary>
+          <StatsBlock
+            data={segment.data}
+            compact={compact}
+            onAction={onConfirmAction}
+            resolvedValue={resolvedConfirmValue}
+          />
+        </BlockBoundary>
+      );
+
+    case 'cards':
+      return (
+        <BlockBoundary>
+          <CardsBlock
+            data={segment.data}
+            compact={compact}
+            onAction={onConfirmAction}
+            resolvedValue={resolvedConfirmValue}
+          />
+        </BlockBoundary>
+      );
+
+    case 'steps':
+      return (
+        <BlockBoundary>
+          <StepsBlock
+            data={segment.data}
+            compact={compact}
+            onAction={onConfirmAction}
+            resolvedValue={resolvedConfirmValue}
+          />
+        </BlockBoundary>
+      );
 
     case 'mermaid':
       return (

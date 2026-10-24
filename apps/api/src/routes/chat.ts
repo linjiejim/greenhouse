@@ -28,6 +28,7 @@ import { createClientActionBridge } from '../tools/client-action-bridge.js';
 import type { ClientActionBridge } from '../tools/client-action-bridge.js';
 import { createClientActionTools } from '../tools/client-actions.js';
 import type { ChatRequestBody, ChatRequestMessage } from '@greenhouse/types/api';
+import { admitRichBlocks } from '@greenhouse/types/rich-output';
 import { readSessionDigest } from '@greenhouse/db';
 import { BROWSER_SESSION_CHANNEL, type SessionChannel } from '@greenhouse/types/session';
 import { resolveProfileAsync } from '../profiles/profile.js';
@@ -512,6 +513,8 @@ export function createChatRoute(toolRegistry: ToolRegistry) {
             {
               digest: sessionDigest?.text,
               canSearchConversation: Boolean(sessionId) && 'session_query' in serverTools,
+              // The blocks this screen draws (absent → the default set); the guide teaches only these.
+              richBlocks: admitRichBlocks(body.rich_blocks),
             },
           );
           const providerMessages = appendTurnContext(
@@ -774,7 +777,7 @@ async function buildSystemPromptWithUserNotes(
   profile: AgentProfile,
   hasTools: boolean,
   userId: string | null,
-  conversation: { digest?: string; canSearchConversation: boolean },
+  conversation: { digest?: string; canSearchConversation: boolean; richBlocks?: readonly string[] },
 ): Promise<string> {
   let userInfo: string | undefined;
   let userLocale: string | undefined;
@@ -798,7 +801,7 @@ async function buildSystemPromptWithUserNotes(
     if (memoryBlock) userInfo = userInfo ? `${userInfo}\n${memoryBlock}` : memoryBlock;
   }
 
-  let prompt = buildSystemPrompt(profile, userInfo ? { userInfo } : undefined);
+  let prompt = buildSystemPrompt(profile, { userInfo, richBlocks: conversation.richBlocks });
   if (hasTools) {
     prompt += `\n\n## Tool Guidance\nUse your available tools proactively when they are relevant to the user's request.`;
   }

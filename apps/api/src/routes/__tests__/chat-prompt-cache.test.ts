@@ -80,8 +80,12 @@ vi.mock('../../config/models.js', () => ({ isChatModelAllowed: () => false }));
 vi.mock('../../chat/persist.js', () => ({ persistChatResult: mocks.persistChatResult }));
 vi.mock('../../agent.js', () => ({
   selectTools: mocks.selectTools,
-  buildSystemPrompt: vi.fn((_profile: unknown, ctx?: { userInfo?: string }) =>
-    ctx?.userInfo ? `PROFILE PROMPT\n## User Context\n${ctx.userInfo}` : 'PROFILE PROMPT',
+  buildSystemPrompt: vi.fn((_profile: unknown, ctx?: { userInfo?: string; richBlocks?: readonly string[] }) =>
+    [
+      'PROFILE PROMPT',
+      `RICH BLOCKS: ${ctx?.richBlocks ? ctx.richBlocks.join(',') : 'default'}`,
+      ...(ctx?.userInfo ? [`## User Context\n${ctx.userInfo}`] : []),
+    ].join('\n'),
   ),
 }));
 
@@ -308,6 +312,20 @@ describe('POST /api/chat — cache-first prompt', () => {
     for (const perTurn of ['Current Time', 'PAGE-CONTEXT-MARKER', '## Attached Images', '## UI Actions']) {
       expect(plain.system_prompt).not.toContain(perTurn);
     }
+  });
+
+  it('offers the model only the rich blocks the screen declares', async () => {
+    expect((await plainTurn()).system_prompt).toContain('RICH BLOCKS: default');
+    mocks.sessions.buildChatMessages.mockResolvedValue([
+      ...HISTORY,
+      { role: 'user', content: 'Status?', created_at: '2026-10-01T01:01:00.000Z', images: [] },
+    ]);
+    const phone = await sendTurn({
+      session_id: 'session-1',
+      messages: [{ role: 'user', content: 'Status?' }],
+      rich_blocks: ['steps', 'not-a-block', 'stats'],
+    });
+    expect(phone.system_prompt).toContain('RICH BLOCKS: stats,steps');
   });
 
   it('closes the newest user message with the per-turn block, leaving earlier messages untouched', async () => {

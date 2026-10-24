@@ -191,6 +191,15 @@ export default {
     downloadFailed: 'File download failed',
     rows: '{rows} rows',
   },
+  richBlocks: {
+    step: {
+      done: 'Done',
+      active: 'In progress',
+      pending: 'To do',
+      blocked: 'Blocked',
+      skipped: 'Skipped',
+    },
+  },
   objectChip: {
     type: {
       doc: 'Document',

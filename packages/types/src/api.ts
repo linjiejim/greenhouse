@@ -550,6 +550,11 @@ export interface ChatRequestBody {
   client_action_scope_id?: string;
   /** Re-run the latest assistant reply instead of appending a user message (validated server-side). */
   regenerate_assistant_message_id?: unknown;
+  /**
+   * Rich blocks this screen draws (`ModelFence` names, `@greenhouse/types/rich-output`). The
+   * model is offered only these; absent = the five every client drew before (DEFAULT_CLIENT_BLOCKS).
+   */
+  rich_blocks?: string[];
 }
 
 /**
@@ -567,6 +572,7 @@ export const CHAT_REQUEST_BODY_KEYS = [
   'client_actions',
   'client_action_scope_id',
   'regenerate_assistant_message_id',
+  'rich_blocks',
 ] as const satisfies readonly (keyof ChatRequestBody)[];
 
 type UnlistedChatRequestKeys = Exclude<keyof ChatRequestBody, (typeof CHAT_REQUEST_BODY_KEYS)[number]>;

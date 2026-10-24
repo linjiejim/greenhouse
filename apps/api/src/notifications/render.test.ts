@@ -79,6 +79,16 @@ describe('flattenRichOutput', () => {
     expect(flattenRichOutput('结果如下\n\n```datatable\n{"columns":')).toBe('结果如下');
   });
 
+  it('turns stats, cards and steps into lists', () => {
+    const out = flattenRichOutput(
+      [
+        '```stats\n{"items":[{"label":"新增客户","value":128,"unit":"家"}]}\n```',
+        '```steps\n{"items":[{"title":"开发","status":"active"},{"title":"验收","status":"pending"}]}\n```',
+      ].join('\n\n'),
+    );
+    expect(out).toBe('- **新增客户**: 128 家\n\n- [ ] 开发 (进行中)\n- [ ] 验收');
+  });
+
   it('leaves ordinary Markdown alone', () => {
     const md = '## 标题\n\n- 一\n- 二\n\n| a | b |\n| --- | --- |\n| 1 | 2 |';
     expect(flattenRichOutput(md)).toBe(md);

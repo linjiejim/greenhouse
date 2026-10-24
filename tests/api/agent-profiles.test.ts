@@ -238,11 +238,13 @@ describe('Profile module loading and legacy compatibility', () => {
 describe('Rich output guide', () => {
   it('is one shared copy — every rich-output profile gets it, no YAML restates it', async () => {
     const { enrichSystemPrompt } = await import('../../apps/api/src/profiles/profile.js');
-    const { RICH_OUTPUT_GUIDE } = await import('@greenhouse/utils/prompts');
+    const { RICH_OUTPUT_GUIDE, composeRichOutput } = await import('@greenhouse/utils/prompts');
+    const { MODEL_FENCES } = await import('@greenhouse/types/rich-output');
 
     for (const id of ['sprouty']) {
       const profile = loadProfile(id)!;
-      expect(enrichSystemPrompt(profile as any), id).toContain(RICH_OUTPUT_GUIDE);
+      expect(enrichSystemPrompt(profile as any), id).toContain(composeRichOutput({ confirm: true }));
+      expect(enrichSystemPrompt(profile as any, MODEL_FENCES), id).toContain(RICH_OUTPUT_GUIDE);
       // A second copy in the YAML would drift from this one.
       expect(profile.system_prompt, id).not.toContain('```datatable');
     }
@@ -261,5 +263,28 @@ describe('Rich output guide', () => {
     expect(RICH_OUTPUT_GUIDE).toMatch(/数据没齐就不要开 fence/);
     expect(RICH_OUTPUT_GUIDE).toMatch(/开了就必须一次写完/);
     expect(RICH_OUTPUT_GUIDE).toMatch(/整块重写/);
+  });
+
+  it('teaches only the blocks the screen draws', async () => {
+    const { composeRichOutput, RICH_GUIDE_BLOCKS } = await import('@greenhouse/utils/prompts');
+    const { MODEL_FENCES, DEFAULT_CLIENT_BLOCKS } = await import('@greenhouse/types/rich-output');
+    // The two packages cannot import each other; this holds their lists together.
+    expect([...RICH_GUIDE_BLOCKS].sort()).toEqual([...MODEL_FENCES].sort());
+
+    const fences = (guide: string) => MODEL_FENCES.filter((name) => guide.includes('```' + name + '\n'));
+    expect(fences(composeRichOutput({ confirm: true }))).toEqual(
+      DEFAULT_CLIENT_BLOCKS.slice().sort((a, b) => MODEL_FENCES.indexOf(a) - MODEL_FENCES.indexOf(b)),
+    );
+    expect(fences(composeRichOutput({ confirm: true, blocks: MODEL_FENCES }))).toEqual(MODEL_FENCES);
+
+    const phone = composeRichOutput({ confirm: true, blocks: ['stats', 'steps', 'confirm'] });
+    expect(fences(phone)).toEqual(['stats', 'steps', 'confirm']);
+    expect(phone).toContain('### 块按钮（actions）');
+    expect(phone).not.toContain('```chart');
+
+    const plain = composeRichOutput({ confirm: true, blocks: [] });
+    expect(fences(plain)).toEqual([]);
+    expect(plain).toContain('不渲染任何富块');
+    expect(plain).toContain('站内实体引用');
   });
 });

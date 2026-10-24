@@ -199,6 +199,15 @@ const zh: Messages = {
     downloadFailed: '文件下载失败',
     rows: '{rows} 行',
   },
+  richBlocks: {
+    step: {
+      done: '已完成',
+      active: '进行中',
+      pending: '待开始',
+      blocked: '受阻',
+      skipped: '已跳过',
+    },
+  },
   objectChip: {
     type: {
       doc: '文档',
