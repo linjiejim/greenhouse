@@ -1,7 +1,7 @@
 /**
  * The rows of a conversation (content layer — solid colors, never glass):
  *
- *  - `UserMessage` — my words in a light bubble on the right, my pictures and attached files
+ *  - `UserMessage` — my words (inline Markdown, like the web's bubble) in a light bubble on the right, my pictures and attached files
  *    under it (the ```attachments fence never shows as text). A message still waiting for the
  *    station (queued offline) says so, with a retry.
  *  - `AssistantReply` — the reply without a bubble, in the order a reply reads: the sprout and
@@ -18,6 +18,7 @@ import { Text, View } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import { useT } from '../lib/i18n';
 import { Markdown, RichContext, type RichEnv } from '../markdown';
+import { Inline } from '../markdown/inline';
 import { makeStyles, radius, space, squircle, typo, useTheme, weight } from '../theme';
 import { AssistantAvatar } from '../ui/avatar';
 import { NativeButton } from '../ui/button';
@@ -74,8 +75,9 @@ export const UserMessage = memo(function UserMessage({
       {text ? (
         <CopyMenu text={text}>
           <View style={[styles.bubble, queued && styles.queued]}>
+            {/* my words are Markdown, as on the web: an ask_user answer's **labels** read bold */}
             <Text style={styles.userText} selectable>
-              {text}
+              <Inline text={text} />
             </Text>
           </View>
         </CopyMenu>
