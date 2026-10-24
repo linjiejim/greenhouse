@@ -372,6 +372,22 @@ export function createPlatformOAuthService(db: Db) {
       return rows.length;
     },
 
+    /** The plant avatar a member picked for one connected client (any of their grants); null = none. */
+    async getUserClientAvatar(userId: string, clientId: string): Promise<AgentAvatar | null> {
+      const rows = await db
+        .select({ avatar: platformOAuthGrants.avatar })
+        .from(platformOAuthGrants)
+        .where(
+          and(
+            eq(platformOAuthGrants.user_id, userId),
+            eq(platformOAuthGrants.client_id, clientId),
+            sql`${platformOAuthGrants.avatar} IS NOT NULL`,
+          ),
+        )
+        .limit(1);
+      return rows[0]?.avatar ?? null;
+    },
+
     async revokeGrant(id: string, userId?: string): Promise<boolean> {
       return db.transaction(async (tx) => {
         const now = nowIso();

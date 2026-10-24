@@ -768,6 +768,10 @@ async function hydrateRun(
       agent: {
         client_id: typeof input.client_id === 'string' ? input.client_id : null,
         client_name: typeof input.client_name === 'string' ? input.client_name : 'Agent',
+        avatar:
+          typeof input.client_id === 'string'
+            ? await ctx.db.platformOAuth.getUserClientAvatar(row.owner_user_id, input.client_id).catch(() => null)
+            : null,
       },
       module: moduleOfTool(toolId),
       verb: shape.verb,

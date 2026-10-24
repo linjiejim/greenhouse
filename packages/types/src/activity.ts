@@ -10,6 +10,8 @@
  *   admin       an administrator changing workspace settings, users or MCP access
  */
 
+import type { AgentAvatar } from './agent-avatar.js';
+
 export const ACTIVITY_SOURCES = ['person', 'agent', 'automation', 'admin'] as const;
 export type ActivitySource = (typeof ACTIVITY_SOURCES)[number];
 
@@ -54,7 +56,7 @@ export interface ActivityItem {
   at: string;
   actor: { id: string; name: string | null };
   /** Set when a member's agent made the change. */
-  agent: { client_id: string | null; client_name: string } | null;
+  agent: { client_id: string | null; client_name: string; avatar?: AgentAvatar | null } | null;
   module: CoreActivityModule | (string & {});
   verb: ActivityVerb;
   /** What kind of thing changed (`project`, `task`, `document`, `file`, …), when known. */

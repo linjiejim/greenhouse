@@ -575,7 +575,7 @@ const oauthRoutes = new Hono<AppEnv>()
     return c.json({
       grants: grants.map(({ grant, client }) => ({
         id: grant.id,
-        client: { id: client.id, name: client.client_name, status: client.status },
+        client: { id: client.id, name: client.client_name, status: client.status, avatar: grant.avatar ?? null },
         resource: grant.resource,
         scopes: parseStoredStringArray(grant.scopes),
         status: grant.status,

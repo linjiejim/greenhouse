@@ -3,6 +3,8 @@
  * agents see it (apps/api/src/agent-access, Settings › Agent connections).
  */
 
+import type { AgentAvatar } from './agent-avatar.js';
+
 import type { RuntimePayload } from './runtime.js';
 
 /** Risk tier of a write: r1 own+reversible, r2 shared data, r3 delete-like. */
@@ -28,6 +30,8 @@ export interface AgentWriteView {
   risk: AgentWriteRisk;
   client_id: string;
   client_name: string;
+  /** The plant avatar the member picked for this agent; null = the default for its client. */
+  avatar?: AgentAvatar | null;
   basis: AgentWriteBasis | null;
   /** What the write targets, named for a person (the document title), when the member may read it. */
   target_label: string | null;

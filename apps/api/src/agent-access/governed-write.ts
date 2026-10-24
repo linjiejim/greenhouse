@@ -232,6 +232,7 @@ export async function agentWriteView(db: DatabaseProvider, run: RuntimeRunRow): 
     risk: input.risk,
     client_id: input.client_id,
     client_name: input.client_name,
+    avatar: await db.platformOAuth.getUserClientAvatar(run.owner_user_id, input.client_id).catch(() => null),
     basis: AGENT_WRITE_BASES.includes(recorded as WriteBasis) ? (recorded as WriteBasis) : null,
     target_label: await targetLabel(db, run.owner_user_id, input.tool_id, input.input),
     input: input.input,
