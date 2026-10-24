@@ -2,8 +2,8 @@
  * The widget's Swift agrees with the app: targets/widget/DueBuckets.swift is compiled with swiftc
  * and must bucket due dates exactly like src/data/tasks.ts `dueBucket`, also with the phone set to
  * a Buddhist or Japanese calendar (on a Mac), and the widget sources typecheck against the iOS SDK.
- * The rule runs wherever swiftc does (a Mac with Xcode or the Command Line Tools, Linux with Swift);
- * the typecheck only where the iOS simulator SDK is installed.
+ * Both run on a Mac only: the rule wherever swiftc is (Xcode or the Command Line Tools), the
+ * typecheck only where the iOS simulator SDK is installed.
  */
 
 import { execFileSync } from 'node:child_process';
@@ -24,14 +24,12 @@ const succeeds = (command: string, args: string[]) => {
   }
 };
 const mac = process.platform === 'darwin';
-/** How to call swiftc: through xcrun on a Mac (Xcode or the Command Line Tools), else from PATH. */
-const swiftc: string[] | null = mac
-  ? succeeds('xcrun', ['--find', 'swiftc'])
-    ? ['xcrun', 'swiftc']
-    : null
-  : succeeds('swiftc', ['--version'])
-    ? ['swiftc']
-    : null;
+/**
+ * How to call swiftc: through xcrun on a Mac (Xcode or the Command Line Tools). The widget only
+ * runs on iOS, so other platforms (Linux CI) skip these checks rather than depend on a Linux
+ * Foundation whose calendar behaviour the widget never meets.
+ */
+const swiftc: string[] | null = mac && succeeds('xcrun', ['--find', 'swiftc']) ? ['xcrun', 'swiftc'] : null;
 /** The iOS simulator SDK, for typechecking the widget (needs Xcode, not only a Swift toolchain). */
 const hasIosSdk = mac && succeeds('xcrun', ['--sdk', 'iphonesimulator', '--show-sdk-path']);
 /** Calendar settings to run under: Foundation reads them from the arguments on Apple platforms only. */
