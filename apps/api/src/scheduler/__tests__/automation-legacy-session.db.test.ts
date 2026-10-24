@@ -72,6 +72,11 @@ describe('Automation occurrences carried from 1.x', () => {
       UPDATE run_steps SET input = jsonb_set(input, '{session_id}', to_jsonb(${legacy}::text))
       WHERE run_id = ${queued.run.id}`);
 
+    // Boot catch-up admits the same occurrence again: it is the carried one, not a conflict.
+    const replay = await enqueueAutomationRun({ db, task, trigger: 'cron', scheduledFor });
+    expect(replay.run.id).toBe(queued.run.id);
+    expect(replay.session_id).toBe(legacy);
+
     const workerId = unique('automation-legacy-worker');
     const claimed = await db.runtime.claimNextRun({ worker_id: workerId, lease_ms: 60_000, kinds: ['automation'] });
     expect(claimed?.id).toBe(queued.run.id);

@@ -105,6 +105,18 @@ function automationSessionId(taskId: string, source: string): string {
   return stableId('conversation', `automation-session:${taskId}:${source}`);
 }
 
+/**
+ * Whether `sessionId` is this occurrence's deterministic conversation: the current
+ * `cnv_` id, or the uuid 1.x minted for an occurrence carried in flight. A stored
+ * occurrence keeps the id it was admitted with; only a new one gets the current form.
+ */
+function isOccurrenceSessionId(taskId: string, source: string, sessionId: string): boolean {
+  return (
+    sessionId === automationSessionId(taskId, source) ||
+    sessionId === legacySessionUuid(`automation-session:${taskId}:${source}`)
+  );
+}
+
 /** The 1.x formula: occurrences carried in flight from 1.x still carry a uuid session. */
 function legacySessionUuid(seed: string): string {
   const hex = createHash('sha256').update(seed).digest('hex').slice(0, 32).split('');
@@ -184,7 +196,6 @@ async function exactOccurrence(
     source: string;
     scheduledFor: string;
     trigger: AutomationRuntimeInput['trigger'];
-    sessionId: string;
   },
 ): Promise<EnqueuedAutomationRun | null> {
   const existing = await db.runtime.getRun(input.runId);
@@ -194,9 +205,9 @@ async function exactOccurrence(
     existing.kind !== 'automation' ||
     existing.source_kind !== taskSourceKind(input.taskId) ||
     existing.source_id !== input.source ||
-    existing.session_id !== input.sessionId ||
+    existing.session_id !== snapshot.session_id ||
+    !isOccurrenceSessionId(input.taskId, input.source, snapshot.session_id) ||
     snapshot.task_id !== input.taskId ||
-    snapshot.session_id !== input.sessionId ||
     snapshot.scheduled_for !== input.scheduledFor ||
     snapshot.trigger !== input.trigger
   ) {
@@ -263,8 +274,7 @@ function parseInput(run: RuntimeRunRow): AutomationRuntimeInput {
     run.source_id !== expectedSource ||
     run.id !== runtimeRunId(task.id, expectedSource) ||
     run.session_id !== input.session_id ||
-    (input.session_id !== automationSessionId(task.id, expectedSource) &&
-      input.session_id !== legacySessionUuid(`automation-session:${task.id}:${expectedSource}`))
+    !isOccurrenceSessionId(task.id, expectedSource, input.session_id)
   ) {
     throw new Error(`Automation Runtime run ${run.id} task snapshot is inconsistent`);
   }
@@ -288,7 +298,6 @@ export async function enqueueAutomationRun(input: EnqueueAutomationInput): Promi
     source,
     scheduledFor,
     trigger,
-    sessionId,
   });
   if (replay) return replay;
 
@@ -356,7 +365,6 @@ export async function enqueueAutomationRun(input: EnqueueAutomationInput): Promi
         source,
         scheduledFor,
         trigger,
-        sessionId,
       });
       if (concurrent) return concurrent;
     }
