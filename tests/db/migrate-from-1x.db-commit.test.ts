@@ -101,7 +101,10 @@ describe('migrate-from-1x refusals', () => {
   it('refuses a 1.x source that is not on 1.6 yet', async () => {
     const old = await database('oldsrc');
     await buildV1Database(old, { seed: false });
-    await queryRows(old, `DELETE FROM drizzle.__drizzle_migrations WHERE created_at = (SELECT max(created_at) FROM drizzle.__drizzle_migrations)`);
+    await queryRows(
+      old,
+      `DELETE FROM drizzle.__drizzle_migrations WHERE created_at = (SELECT max(created_at) FROM drizzle.__drizzle_migrations)`,
+    );
     await expect(carryFrom1x({ from: old, to: target })).rejects.toThrow(/upgrade it to 1\.6/);
   });
 
@@ -158,13 +161,21 @@ describe('migrate-from-1x carry', () => {
   });
 
   it('turns JSON text into jsonb and moves pins onto conversations and read rows', async () => {
-    expect(await queryRows(target, `SELECT id, pin_position, pinned_at IS NOT NULL AS pinned FROM conversations ORDER BY id`)).toEqual([
+    expect(
+      await queryRows(
+        target,
+        `SELECT id, pin_position, pinned_at IS NOT NULL AS pinned FROM conversations ORDER BY id`,
+      ),
+    ).toEqual([
       { id: 's-ann', pin_position: 1, pinned: true },
       { id: 's-bob', pin_position: 0, pinned: false },
     ]);
-    expect(await queryRows(target, `SELECT user_id, pinned_at IS NOT NULL AS pinned, read_at IS NOT NULL AS read FROM conversation_share_reads`)).toEqual([
-      { user_id: 'u-bob', pinned: true, read: true },
-    ]);
+    expect(
+      await queryRows(
+        target,
+        `SELECT user_id, pinned_at IS NOT NULL AS pinned, read_at IS NOT NULL AS read FROM conversation_share_reads`,
+      ),
+    ).toEqual([{ user_id: 'u-bob', pinned: true, read: true }]);
     const [message] = await queryRows(target, `SELECT parts FROM messages WHERE id = 'm2'`);
     // The NUL escape is dropped (jsonb cannot hold U+0000); the rest survives.
     expect(message!.parts).toEqual({ references: [{ doc_id: 1 }], pipeline: [{ type: 'tool', output: 'badbyte' }] });
@@ -193,7 +204,9 @@ describe('migrate-from-1x carry', () => {
     expect(await queryRows(target, `SELECT file_id, target_type, target_id, slot FROM file_links`)).toEqual([
       { file_id: '1', target_type: 'table_record', target_id: '1', slot: '3' },
     ]);
-    expect(await queryRows(target, `SELECT resource_type, resource_id, principal_id, role FROM shares ORDER BY id`)).toEqual([
+    expect(
+      await queryRows(target, `SELECT resource_type, resource_id, principal_id, role FROM shares ORDER BY id`),
+    ).toEqual([
       { resource_type: 'kb_document', resource_id: '2', principal_id: 'u-ann', role: 'reader' },
       { resource_type: 'table_base', resource_id: '1', principal_id: 'u-bob', role: 'editor' },
     ]);
@@ -205,16 +218,18 @@ describe('migrate-from-1x carry', () => {
       { id: '1', kind: 'model' },
       { id: 'svu-1', kind: 'service' },
     ]);
-    expect((await queryRows(target, `SELECT id, app_id FROM audit_events ORDER BY id`)).map((row) => `${row.id}:${row.app_id}`)).toEqual([
-      'a1:knowledge',
-      'esl_1:email',
-      'pac_1:projects',
-    ]);
+    expect(
+      (await queryRows(target, `SELECT id, app_id FROM audit_events ORDER BY id`)).map(
+        (row) => `${row.id}:${row.app_id}`,
+      ),
+    ).toEqual(['a1:knowledge', 'esl_1:email', 'pac_1:projects']);
     expect(await queryRows(target, `SELECT id, kind FROM feedback ORDER BY id`)).toEqual([
       { id: '1', kind: 'request' },
       { id: 'frc_1', kind: 'friction' },
     ]);
-    expect(await queryRows(target, `SELECT source, count(*)::int AS n FROM files GROUP BY source ORDER BY source`)).toEqual([
+    expect(
+      await queryRows(target, `SELECT source, count(*)::int AS n FROM files GROUP BY source ORDER BY source`),
+    ).toEqual([
       { source: 'chat_upload', n: 1 },
       { source: 'drive', n: 2 },
       { source: 'run', n: 1 },
@@ -245,6 +260,34 @@ describe('migrate-from-1x carry', () => {
     expect(again.targetCounts).toEqual(report.targetCounts);
     expect(await queryRows(target, `SELECT id FROM prompts WHERE id = 'stray'`)).toEqual([]);
   });
+
+  it('carries a child task that comes batches before its parent, and clears a parent it skips', async () => {
+    const src = await database('tasks_src');
+    await buildV1Database(src);
+    // Replica mode skips the FK triggers so the child can sit physically before its parent.
+    const fillers = Array.from({ length: 600 }, (_, i) => `(${101 + i}, 1, NULL, 'f${i}', 'u-ann', now(), now())`).join(
+      ', ',
+    );
+    await queryRows(
+      src,
+      `SET session_replication_role = replica;
+       INSERT INTO tasks (id, project_id, parent_id, title, created_by, created_at, updated_at) VALUES (100, 1, 2000, 'child', 'u-ann', now(), now());
+       INSERT INTO tasks (id, project_id, parent_id, title, created_by, created_at, updated_at) VALUES ${fillers};
+       INSERT INTO tasks (id, project_id, parent_id, title, created_by, created_at, updated_at) VALUES (2000, 1, NULL, 'parent', 'u-ann', now(), now());
+       INSERT INTO tasks (id, project_id, parent_id, title, created_by, created_at, updated_at) VALUES (3000, 999, NULL, 'orphan parent', 'u-ann', now(), now());
+       INSERT INTO tasks (id, project_id, parent_id, title, created_by, created_at, updated_at) VALUES (3001, 1, 3000, 'orphan child', 'u-ann', now(), now());`,
+    );
+    const dst = await database('tasks_dst');
+    const carried = await carryFrom1x({ from: src, to: dst, now: NOW });
+    expect(line(carried, 'tasks').skipped).toEqual({ 'project not carried': 1 });
+    expect(
+      await queryRows(dst, `SELECT id, parent_id FROM tasks WHERE id IN ('2', '100', '3001') ORDER BY id`),
+    ).toEqual([
+      { id: '100', parent_id: '2000' },
+      { id: '2', parent_id: '1' },
+      { id: '3001', parent_id: null },
+    ]);
+  }, 120_000);
 
   it('a dry run reads and reports but writes nothing', async () => {
     const empty = await database('dry');

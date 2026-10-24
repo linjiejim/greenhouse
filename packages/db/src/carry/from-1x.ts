@@ -991,8 +991,10 @@ async function carryProjects(ctx: Ctx): Promise<void> {
   });
   const taskLine = ctx.line('tasks', 'tasks');
   taskLine.read = tasks.length;
-  const taskIds = new Set(tasks.map((row) => String(row.id)));
   const taskWriter = new Writer(ctx, 'tasks');
+  // Rows come unordered and land in batches, so a child can arrive before its
+  // parent: insert every task parentless, then restore the links whose both ends landed.
+  const parentLinks: Array<{ id: string; parent: string }> = [];
   for (const row of tasks) {
     if (!projects.has(String(row.project_id))) {
       ctx.skip(taskLine, 'project not carried');
@@ -1003,17 +1005,28 @@ async function carryProjects(ctx: Ctx): Promise<void> {
       ...row,
       id: strReq(row.id),
       project_id: strReq(row.project_id),
-      // Parents are inserted in the same batch stream; a parent the carry skips is cleared.
-      parent_id: row.parent_id !== null && taskIds.has(String(row.parent_id)) ? String(row.parent_id) : null,
+      parent_id: null,
       start_date: day(row.start_date, ctx, 'tasks.start_date'),
       due_date: day(row.due_date, ctx, 'tasks.due_date'),
       tags: parseJson(row.tags, [], ctx, 'tasks.tags'),
       dependencies: Array.isArray(dependencies) ? dependencies.map((dep) => String(dep)) : [],
     });
+    if (row.parent_id !== null) parentLinks.push({ id: String(row.id), parent: String(row.parent_id) });
   }
   await taskWriter.flush();
-  ctx.log(`  tasks → tasks: ${taskLine.read} read, ${taskLine.written} written`);
   const carriedTasks = ctx.idSet('tasks');
+  // A parent the carry skipped is cleared.
+  const links = parentLinks.filter((link) => carriedTasks.has(link.id) && carriedTasks.has(link.parent));
+  if (!ctx.dryRun && ctx.target) {
+    for (let start = 0; start < links.length; start += BATCH) {
+      const slice = links.slice(start, start + BATCH);
+      await ctx.target`
+        UPDATE tasks SET parent_id = link.parent
+        FROM unnest(${slice.map((link) => link.id)}::text[], ${slice.map((link) => link.parent)}::text[]) AS link(id, parent)
+        WHERE tasks.id = link.id`;
+    }
+  }
+  ctx.log(`  tasks → tasks: ${taskLine.read} read, ${taskLine.written} written`);
   await carry(ctx, 'task_comments', 'task_comments', (row) =>
     !carriedTasks.has(String(row.task_id))
       ? 'task not carried'
