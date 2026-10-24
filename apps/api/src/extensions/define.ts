@@ -115,7 +115,7 @@ export interface GreenhouseExtension {
   searchSources?: SearchSource[];
   /**
    * Drive scopes this extension owns — its own file cabinet inside the shared
-   * `drive_folders` / `drive_files` tables, keyed by `owner_key` and guarded by
+   * `folders` / `files` tables, keyed by `owner_key` and guarded by
    * the resolver declared here. Core validates the shape and delegates the rule.
    */
   driveScopes?: DriveScopeDef[];

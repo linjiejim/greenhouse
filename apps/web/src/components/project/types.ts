@@ -8,9 +8,9 @@ import type { TranslationKey } from '../../lib/i18n';
 // ─── Types ───────────────────────────────────────────────
 
 export interface Task {
-  id: number;
-  project_id: number;
-  parent_id: number | null;
+  id: string;
+  project_id: string;
+  parent_id: string | null;
   title: string;
   description: string | null;
   status: string;
@@ -23,8 +23,8 @@ export interface Task {
   completed_at: string | null;
   sort_order: number;
   estimated_hours: number | null;
-  tags: string[] | string;
-  dependencies: number[] | string;
+  tags: string[];
+  dependencies: string[];
   created_by: string;
   created_at: string;
   updated_at: string;
@@ -32,7 +32,7 @@ export interface Task {
 }
 
 export interface Project {
-  id: number;
+  id: string;
   title: string;
   description: string | null;
   status: string;
@@ -46,8 +46,8 @@ export interface Project {
 }
 
 export interface ProjectMember {
-  id: number;
-  project_id: number;
+  id: string;
+  project_id: string;
   user_id: string;
   role: 'owner' | 'member';
   nickname: string;
@@ -56,8 +56,8 @@ export interface ProjectMember {
 }
 
 export interface Comment {
-  id: number;
-  task_id: number;
+  id: string;
+  task_id: string;
   user_id: string;
   user_nickname: string;
   content: string;
@@ -65,7 +65,7 @@ export interface Comment {
 }
 
 export interface Activity {
-  id: number;
+  id: string;
   action: string;
   detail: string | null;
   user_id: string;

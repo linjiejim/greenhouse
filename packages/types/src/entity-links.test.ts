@@ -3,9 +3,9 @@ import { ENTITY_KINDS, type EntityRef, entityUrl, isEntityUrl, parseEntityUrl } 
 
 /** One representative ref per kind — the round-trip test asserts full coverage. */
 const SAMPLES: EntityRef[] = [
-  { kind: 'project', id: 9 },
-  { kind: 'kb_doc', id: 88, slug: 'brand-foundations-logo' },
-  { kind: 'tables_record', baseId: 3, tableId: 12, id: 501 },
+  { kind: 'project', id: '9' },
+  { kind: 'kb_doc', id: 'doc_01JABCDEFGHJKMNPQRSTVWXYZ0', slug: 'brand-foundations-logo' },
+  { kind: 'tables_record', baseId: 'bas_01JABC', tableId: '12', id: 'rec_01JXYZ' },
 ];
 
 describe('entity links', () => {
@@ -17,17 +17,25 @@ describe('entity links', () => {
   });
 
   it('builds the app routes the pages actually serve', () => {
-    expect(entityUrl({ kind: 'project', id: 9 })).toBe('#/projects/9');
-    expect(entityUrl({ kind: 'kb_doc', id: 88, slug: 'a-b' })).toBe('#/knowledge/doc/88-a-b');
-    expect(entityUrl({ kind: 'tables_record', baseId: 3, tableId: 12, id: 501 })).toBe(
+    expect(entityUrl({ kind: 'project', id: '9' })).toBe('#/projects/9');
+    expect(entityUrl({ kind: 'kb_doc', id: '88', slug: 'a-b' })).toBe('#/knowledge/doc/88-a-b');
+    expect(entityUrl({ kind: 'tables_record', baseId: '3', tableId: '12', id: '501' })).toBe(
       '#/tables/3/table/12?record=501',
     );
+  });
+
+  it('accepts text project ids (new ULIDs and carried 1.x numbers)', () => {
+    expect(parseEntityUrl('#/projects/prj_01JABCDEFGHJKMNPQRSTVWXYZ0')).toEqual({
+      kind: 'project',
+      id: 'prj_01JABCDEFGHJKMNPQRSTVWXYZ0',
+    });
+    expect(parseEntityUrl('#/projects/42')).toEqual({ kind: 'project', id: '42' });
   });
 
   it('keeps dashes inside a kb slug', () => {
     expect(parseEntityUrl('#/knowledge/doc/12-multi-dash-slug')).toEqual({
       kind: 'kb_doc',
-      id: 12,
+      id: '12',
       slug: 'multi-dash-slug',
     });
   });
@@ -40,17 +48,14 @@ describe('entity links', () => {
     ['an unknown module', '#/widgets/42'],
     ['an extra path segment', '#/projects/42/edit'],
     ['an unknown segment', '#/projects/leads/42'],
-    ['a non-numeric id', '#/projects/abc'],
-    ['a zero id', '#/projects/0'],
-    ['a padded id', '#/projects/007'],
-    ['a negative id', '#/projects/-1'],
-    ['a fractional id', '#/projects/1.5'],
+    ['a malformed id', '#/projects/-1'],
+    ['an id with a space', '#/projects/a%20b'],
     ['a kb doc with no slug', '#/knowledge/doc/12'],
     ['a kb doc with an empty slug', '#/knowledge/doc/12-'],
     ['a kb doc with no id', '#/knowledge/doc/-slug'],
     ['a kb scope route', '#/knowledge/internal/space/slug'],
     ['a table without a record param', '#/tables/3/table/12'],
-    ['a table with a junk record param', '#/tables/3/table/12?record=abc'],
+    ['a table with a junk record param', '#/tables/3/table/12?record=a%20b'],
     ['a non-hash in-app path', '/projects/42'],
     ['an external url', 'https://example.com/projects/42'],
     ['a mention', 'user:abc'],
@@ -61,12 +66,12 @@ describe('entity links', () => {
   });
 
   it('tolerates surrounding whitespace and extra query params', () => {
-    expect(parseEntityUrl('  #/projects/9  ')).toEqual({ kind: 'project', id: 9 });
+    expect(parseEntityUrl('  #/projects/9  ')).toEqual({ kind: 'project', id: '9' });
     expect(parseEntityUrl('#/tables/3/table/12?view=grid&record=501')).toEqual({
       kind: 'tables_record',
-      baseId: 3,
-      tableId: 12,
-      id: 501,
+      baseId: '3',
+      tableId: '12',
+      id: '501',
     });
   });
 });

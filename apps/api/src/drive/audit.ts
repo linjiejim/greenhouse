@@ -29,12 +29,12 @@ export type DriveChangeAction =
 
 export interface DriveChangeNode {
   kind: 'file' | 'folder';
-  id: number;
+  id: string;
   name: string;
   scope: string;
   visibility?: 'team' | 'private' | null;
   owner_user_id?: string | null;
-  base_id?: number | null;
+  base_id?: string | null;
   owner_key?: string | null;
 }
 

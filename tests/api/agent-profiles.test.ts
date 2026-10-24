@@ -231,7 +231,7 @@ describe('Profile module loading and legacy compatibility', () => {
 
   it('resolveProfileAsync handles custom malformed IDs', async () => {
     const { resolveProfileAsync } = await import('../../apps/api/src/profiles/profile.js');
-    await expect(resolveProfileAsync('custom:abc')).rejects.toThrow(/Invalid custom profile ID/);
+    await expect(resolveProfileAsync('custom:not an id')).rejects.toThrow(/Invalid custom profile ID/);
   });
 });
 

@@ -60,8 +60,13 @@ export interface RuntimeWorker {
   stop(): void;
 }
 
-function eventEnvelope(raw: string): RuntimeEventEnvelope {
-  const parsed = JSON.parse(raw) as Partial<RuntimeEventEnvelope>;
+function eventEnvelope(raw: unknown): RuntimeEventEnvelope {
+  // Outbox payloads are jsonb; a carried 1.x text payload is still accepted.
+  const value: unknown = typeof raw === 'string' ? JSON.parse(raw) : raw;
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error('Runtime outbox payload is malformed');
+  }
+  const parsed = value as Partial<RuntimeEventEnvelope>;
   if (
     typeof parsed.event_id !== 'string' ||
     typeof parsed.run_id !== 'string' ||

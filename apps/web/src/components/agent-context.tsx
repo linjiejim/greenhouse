@@ -14,6 +14,7 @@
 
 import { findExtensionPage } from '../extensions';
 import React, { createContext, useContext, useState, useCallback, useEffect, useMemo } from 'react';
+import { isRowId } from '@greenhouse/utils/id';
 import type { AssistantLaunchRequest, PageContext } from '@greenhouse/types/agent-context';
 import { pageContextKey } from '../lib/page-context-key';
 import { parseExecutionSubPath } from '../lib/execution-route';
@@ -64,8 +65,8 @@ export function resolveUrlContext(hash: string): PageContext | null {
 
     case 'projects':
       if (subPath) {
-        const projectId = parseInt(subPath, 10);
-        return isNaN(projectId) ? { type: 'project-list' } : { type: 'project-detail', projectId };
+        const projectId = subPath.split('/')[0];
+        return projectId ? { type: 'project-detail', projectId } : { type: 'project-list' };
       }
       return { type: 'project-list' };
 
@@ -76,12 +77,10 @@ export function resolveUrlContext(hash: string): PageContext | null {
       return null;
 
     case 'tables': {
-      const baseId = Number(segments[1]);
-      const itemId = Number(segments[3]);
       return {
         type: 'tables',
-        baseId: Number.isInteger(baseId) && baseId > 0 ? baseId : undefined,
-        tableId: segments[2] === 'table' && Number.isInteger(itemId) && itemId > 0 ? itemId : undefined,
+        baseId: isRowId(segments[1]) ? segments[1] : undefined,
+        tableId: segments[2] === 'table' && isRowId(segments[3]) ? segments[3] : undefined,
       };
     }
 

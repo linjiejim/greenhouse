@@ -3,15 +3,17 @@
  *
  * Generic token storage for connected providers (Feishu, WeCom, …).
  * Tokens are stored encrypted — encryption/decryption happens in the caller's
- * service layer.
+ * service layer. Inputs keep their plain names (`access_token`, …); they land in
+ * the `*_enc` columns of `provider_connections`, which is what rows return.
  */
 
 import { eq, and, isNull } from 'drizzle-orm';
 import { nowIso } from '@greenhouse/utils/date';
 
 import type { Db } from '../client.js';
-import { userProviderTokens } from '../schema/index.js';
-import type { ProviderTokenRow } from '../schema/provider-token.js';
+import { newId } from '../ids.js';
+import { providerConnections as userProviderTokens } from '../schema/index.js';
+import type { ProviderTokenRow } from '../schema/oauth.js';
 
 export interface ProviderTokenInput {
   user_id: string;
@@ -37,19 +39,20 @@ export function createProviderTokenService(db: Db) {
     async upsert(input: ProviderTokenInput): Promise<ProviderTokenRow> {
       const now = nowIso();
       const values = {
+        id: newId('providerConnection'),
         user_id: input.user_id,
         provider: input.provider,
         workspace_id: input.workspace_id ?? null,
-        access_token: input.access_token ?? null,
-        refresh_token: input.refresh_token ?? null,
-        provider_credential: input.provider_credential ?? null,
+        access_token_enc: input.access_token ?? null,
+        refresh_token_enc: input.refresh_token ?? null,
+        credential_enc: input.provider_credential ?? null,
         token_type: input.token_type ?? 'Bearer',
         scope: input.scope ?? null,
         expires_at: input.expires_at ?? null,
         provider_user_id: input.provider_user_id ?? null,
         provider_email: input.provider_email ?? null,
         provider_name: input.provider_name ?? null,
-        metadata: input.metadata ? JSON.stringify(input.metadata) : '{}',
+        metadata: input.metadata ?? {},
         created_at: now,
         updated_at: now,
       };
@@ -60,9 +63,9 @@ export function createProviderTokenService(db: Db) {
         .onConflictDoUpdate({
           target: [userProviderTokens.user_id, userProviderTokens.provider, userProviderTokens.workspace_id],
           set: {
-            access_token: values.access_token,
-            refresh_token: values.refresh_token,
-            provider_credential: values.provider_credential,
+            access_token_enc: values.access_token_enc,
+            refresh_token_enc: values.refresh_token_enc,
+            credential_enc: values.credential_enc,
             token_type: values.token_type,
             scope: values.scope,
             expires_at: values.expires_at,
@@ -142,11 +145,11 @@ export function createProviderTokenService(db: Db) {
           );
 
       const updateData: Record<string, unknown> = {
-        access_token: updates.access_token,
+        access_token_enc: updates.access_token,
         updated_at: nowIso(),
       };
       if (updates.refresh_token !== undefined) {
-        updateData.refresh_token = updates.refresh_token;
+        updateData.refresh_token_enc = updates.refresh_token;
       }
       if (updates.expires_at !== undefined) {
         updateData.expires_at = updates.expires_at;

@@ -14,12 +14,12 @@ export const KNOWLEDGE_SEARCH_SCOPES = ['team', 'personal', 'shared', 'all'] as 
 export type KnowledgeSearchScope = (typeof KNOWLEDGE_SEARCH_SCOPES)[number];
 
 export interface KnowledgeSearchHit {
-  id: number;
+  id: string;
   slug: string;
   title: string;
   summary: string;
   snippet: string;
-  tags: string;
+  tags: string[];
   relevance: number;
   scope: 'team' | 'personal' | 'shared';
   access: 'owner' | 'editor' | 'reader';
@@ -79,7 +79,7 @@ export async function searchKnowledgeScopes(
       title: r.title,
       summary: r._summary || '',
       snippet: r.snippet,
-      tags: r.tags || '[]',
+      tags: r.tags ?? [],
       relevance: Number(r.relevance || 0),
       scope: r.scope,
       access: r.access,

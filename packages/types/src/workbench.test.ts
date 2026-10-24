@@ -287,11 +287,11 @@ describe('workbench templates', () => {
 
 describe('navEntitySource', () => {
   it('maps each pinnable kind onto its read action', () => {
-    expect(navEntitySource({ kind: 'project', id: 3 })).toEqual({
+    expect(navEntitySource({ kind: 'project', id: '3' })).toEqual({
       toolId: 'project_query',
-      input: { action: 'get', project_id: 3 },
+      input: { action: 'get', project_id: '3' },
     });
-    expect(navEntitySource({ kind: 'kb_doc', id: 9, slug: 'guide' })).toEqual({
+    expect(navEntitySource({ kind: 'kb_doc', id: '9', slug: 'guide' })).toEqual({
       toolId: 'knowledge_query',
       input: { action: 'get', doc_id: '9' },
     });

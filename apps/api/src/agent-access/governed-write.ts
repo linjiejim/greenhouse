@@ -165,16 +165,11 @@ async function advanceStep(
 }
 
 function parseInput(run: RuntimeRunRow): AgentWriteRunInput {
-  return JSON.parse(run.input) as AgentWriteRunInput;
+  return run.input as AgentWriteRunInput;
 }
 
-function parseJson(text: string | null): RuntimePayload | null {
-  if (text === null) return null;
-  try {
-    return JSON.parse(text) as RuntimePayload;
-  } catch {
-    return text;
-  }
+function parseJson(value: unknown): RuntimePayload | null {
+  return value === null || value === undefined ? null : (value as RuntimePayload);
 }
 
 function toolError(output: unknown): string | null {

@@ -12,12 +12,13 @@ import type {
   TableQuery,
   TableRecordValues,
   TableSchemaSnapshot,
+  TableViewConfig,
 } from '@greenhouse/types/tables';
 import { authFetch } from '../auth';
 import { rpc } from './client';
 
 export interface TableBase {
-  id: number;
+  id: string;
   name: string;
   description: string | null;
   visibility: TableBaseVisibility;
@@ -33,8 +34,8 @@ export interface TableBaseWithRole extends TableBase {
 }
 
 export interface TableDefinition {
-  id: number;
-  base_id: number;
+  id: string;
+  base_id: string;
   name: string;
   description: string | null;
   position: number;
@@ -46,13 +47,13 @@ export interface TableDefinition {
 }
 
 export interface TableField {
-  id: number;
-  table_id: number;
+  id: string;
+  table_id: string;
   name: string;
   type: TableFieldType;
   required: boolean;
   is_primary: boolean;
-  config: string;
+  config: TableFieldConfig;
   position: number;
   created_by: string;
   created_at: string;
@@ -61,13 +62,13 @@ export interface TableField {
 }
 
 export interface TableView {
-  id: number;
-  table_id: number;
+  id: string;
+  table_id: string;
   name: string;
   type: 'grid';
   scope: 'shared' | 'personal';
   owner_id: string | null;
-  config: string;
+  config: TableViewConfig;
   position: number;
   revision: number;
   created_by: string;
@@ -76,8 +77,8 @@ export interface TableView {
 }
 
 export interface TableRecord {
-  id: number;
-  table_id: number;
+  id: string;
+  table_id: string;
   values: TableRecordValues;
   computed_values: TableRecordValues;
   revision: number;
@@ -101,8 +102,8 @@ export interface TableRecordPage {
 }
 
 export interface TableSchemaVersion {
-  id: number;
-  table_id: number;
+  id: string;
+  table_id: string;
   version: number;
   schema_snapshot: TableSchemaSnapshot;
   change_type: 'created' | 'field_created' | 'field_updated' | 'field_archived';
@@ -112,7 +113,7 @@ export interface TableSchemaVersion {
 }
 
 export interface TableBatchRecordItem {
-  record_id?: number;
+  record_id?: string;
   revision?: number;
   values: TableRecordValues;
 }
@@ -149,8 +150,8 @@ export interface TableBaseWorkspace {
   role: TableBaseRole;
   tables: TableDefinition[];
   members: Array<{
-    id: number;
-    base_id: number;
+    id: string;
+    base_id: string;
     user_id: string;
     role: TableBaseRole;
     added_by: string;
@@ -181,8 +182,8 @@ export async function createTableBase(input: {
   return response.json();
 }
 
-export async function getTableBase(baseId: number): Promise<TableBaseWorkspace> {
-  const response = await rpc.api.tables.bases[':baseId'].$get({ param: { baseId: String(baseId) } });
+export async function getTableBase(baseId: string): Promise<TableBaseWorkspace> {
+  const response = await rpc.api.tables.bases[':baseId'].$get({ param: { baseId: baseId } });
   if (!response.ok) throw await responseError(response, 'Unable to load Base');
   return response.json();
 }
@@ -196,54 +197,54 @@ export async function listTableUsers(): Promise<
 }
 
 export async function updateTableBase(
-  baseId: number,
+  baseId: string,
   input: { name?: string; description?: string | null; visibility?: TableBaseVisibility },
 ): Promise<TableBase> {
-  const args = { param: { baseId: String(baseId) }, json: input };
+  const args = { param: { baseId: baseId }, json: input };
   const response = await rpc.api.tables.bases[':baseId'].$patch(args);
   if (!response.ok) throw await responseError(response, 'Unable to update Base');
   return (await response.json()).base;
 }
 
 export async function upsertTableBaseMember(
-  baseId: number,
+  baseId: string,
   userId: string,
   role: Exclude<TableBaseRole, 'owner'>,
 ): Promise<TableBaseWorkspace['members'][number]> {
-  const args = { param: { baseId: String(baseId), userId }, json: { role } };
+  const args = { param: { baseId: baseId, userId }, json: { role } };
   const response = await rpc.api.tables.bases[':baseId'].members[':userId'].$put(args);
   if (!response.ok) throw await responseError(response, 'Unable to update member');
   return (await response.json()).member;
 }
 
-export async function removeTableBaseMember(baseId: number, userId: string): Promise<void> {
+export async function removeTableBaseMember(baseId: string, userId: string): Promise<void> {
   const response = await rpc.api.tables.bases[':baseId'].members[':userId'].$delete({
-    param: { baseId: String(baseId), userId },
+    param: { baseId: baseId, userId },
   });
   if (!response.ok) throw await responseError(response, 'Unable to remove member');
 }
 
-export async function listTableBaseAudit(baseId: number, limit = 100): Promise<TableAuditEvent[]> {
+export async function listTableBaseAudit(baseId: string, limit = 100): Promise<TableAuditEvent[]> {
   const response = await authFetch(`/api/tables/bases/${baseId}/audit?limit=${limit}`);
   if (!response.ok) throw await responseError(response, 'Unable to load Base audit');
   return ((await response.json()) as { events: TableAuditEvent[] }).events;
 }
 
 export async function createTableDefinition(
-  baseId: number,
+  baseId: string,
   input: { name: string; description?: string },
 ): Promise<TableSchema> {
-  const args = { param: { baseId: String(baseId) }, json: input };
+  const args = { param: { baseId: baseId }, json: input };
   const response = await rpc.api.tables.bases[':baseId'].tables.$post(args);
   if (!response.ok) throw await responseError(response, 'Unable to create Table');
   return response.json();
 }
 
 export async function updateTableDefinition(
-  tableId: number,
+  tableId: string,
   input: { name?: string; description?: string | null },
 ): Promise<TableDefinition> {
-  const args = { param: { tableId: String(tableId) }, json: input };
+  const args = { param: { tableId: tableId }, json: input };
   const response = await rpc.api.tables.tables[':tableId'].$patch(args);
   if (!response.ok) throw await responseError(response, 'Unable to update Table');
   return (await response.json()).table;
@@ -254,34 +255,34 @@ export async function updateTableDefinition(
  * administrator can bring it back with `pnpm cli tables restore-table <id>`.
  * Only the Base creator may do this (spec D3).
  */
-export async function archiveTableDefinition(tableId: number): Promise<TableDefinition> {
-  const response = await rpc.api.tables.tables[':tableId'].archive.$post({ param: { tableId: String(tableId) } });
+export async function archiveTableDefinition(tableId: string): Promise<TableDefinition> {
+  const response = await rpc.api.tables.tables[':tableId'].archive.$post({ param: { tableId: tableId } });
   if (!response.ok) throw await responseError(response, 'Unable to delete Table');
   return (await response.json()).table;
 }
 
-export async function archiveTableBase(baseId: number): Promise<TableBase> {
-  const response = await rpc.api.tables.bases[':baseId'].archive.$post({ param: { baseId: String(baseId) } });
+export async function archiveTableBase(baseId: string): Promise<TableBase> {
+  const response = await rpc.api.tables.bases[':baseId'].archive.$post({ param: { baseId: baseId } });
   if (!response.ok) throw await responseError(response, 'Unable to delete Base');
   return (await response.json()).base;
 }
 
-export async function getTableSchema(tableId: number): Promise<TableSchema> {
-  const response = await rpc.api.tables.tables[':tableId'].schema.$get({ param: { tableId: String(tableId) } });
+export async function getTableSchema(tableId: string): Promise<TableSchema> {
+  const response = await rpc.api.tables.tables[':tableId'].schema.$get({ param: { tableId: tableId } });
   if (!response.ok) throw await responseError(response, 'Unable to load schema');
   return response.json();
 }
 
-export async function listTableSchemaVersions(tableId: number): Promise<TableSchemaVersion[]> {
+export async function listTableSchemaVersions(tableId: string): Promise<TableSchemaVersion[]> {
   const response = await rpc.api.tables.tables[':tableId'].schema.versions.$get({
-    param: { tableId: String(tableId) },
+    param: { tableId: tableId },
   });
   if (!response.ok) throw await responseError(response, 'Unable to load schema versions');
   return (await response.json()).versions;
 }
 
 export async function createTableField(
-  tableId: number,
+  tableId: string,
   input: {
     name: string;
     type: TableFieldType;
@@ -289,24 +290,24 @@ export async function createTableField(
     config?: TableFieldConfig;
   },
 ): Promise<TableField> {
-  const args = { param: { tableId: String(tableId) }, json: input };
+  const args = { param: { tableId: tableId }, json: input };
   const response = await rpc.api.tables.tables[':tableId'].fields.$post(args);
   if (!response.ok) throw await responseError(response, 'Unable to create field');
   return (await response.json()).field;
 }
 
 export async function updateTableField(
-  fieldId: number,
+  fieldId: string,
   input: { name?: string; required?: boolean; config?: TableFieldConfig; position?: number },
 ): Promise<TableField> {
-  const args = { param: { fieldId: String(fieldId) }, json: input };
+  const args = { param: { fieldId: fieldId }, json: input };
   const response = await rpc.api.tables.fields[':fieldId'].$patch(args);
   if (!response.ok) throw await responseError(response, 'Unable to update field');
   return (await response.json()).field;
 }
 
-export async function archiveTableField(fieldId: number): Promise<TableField> {
-  const response = await rpc.api.tables.fields[':fieldId'].archive.$post({ param: { fieldId: String(fieldId) } });
+export async function archiveTableField(fieldId: string): Promise<TableField> {
+  const response = await rpc.api.tables.fields[':fieldId'].archive.$post({ param: { fieldId: fieldId } });
   if (!response.ok) throw await responseError(response, 'Unable to archive field');
   return (await response.json()).field;
 }
@@ -328,47 +329,47 @@ export async function applyTableSchemaPlan(
 }
 
 export async function createTableView(
-  tableId: number,
+  tableId: string,
   input: { name: string; scope: 'shared' | 'personal'; config?: Record<string, unknown> },
 ): Promise<TableView> {
-  const args = { param: { tableId: String(tableId) }, json: input };
+  const args = { param: { tableId: tableId }, json: input };
   const response = await rpc.api.tables.tables[':tableId'].views.$post(args);
   if (!response.ok) throw await responseError(response, 'Unable to create view');
   return (await response.json()).view;
 }
 
 export async function updateTableView(
-  viewId: number,
+  viewId: string,
   input: { revision: number; name?: string; config?: Record<string, unknown>; position?: number },
 ): Promise<TableView> {
-  const args = { param: { viewId: String(viewId) }, json: input };
+  const args = { param: { viewId: viewId }, json: input };
   const response = await rpc.api.tables.views[':viewId'].$patch(args);
   if (!response.ok) throw await responseError(response, 'Unable to update view');
   return (await response.json()).view;
 }
 
-export async function queryTableRecords(tableId: number, query: TableQuery): Promise<TableRecordPage> {
-  const args = { param: { tableId: String(tableId) }, json: query };
+export async function queryTableRecords(tableId: string, query: TableQuery): Promise<TableRecordPage> {
+  const args = { param: { tableId: tableId }, json: query };
   const response = await rpc.api.tables.tables[':tableId'].records.query.$post(args);
   if (!response.ok) throw await responseError(response, 'Unable to query records');
   return response.json();
 }
 
-export async function createTableRecord(tableId: number, values: TableRecordValues): Promise<TableRecord> {
-  const args = { param: { tableId: String(tableId) }, json: { values } };
+export async function createTableRecord(tableId: string, values: TableRecordValues): Promise<TableRecord> {
+  const args = { param: { tableId: tableId }, json: { values } };
   const response = await rpc.api.tables.tables[':tableId'].records.$post(args);
   if (!response.ok) throw await responseError(response, 'Unable to create record');
   return (await response.json()).record;
 }
 
 export async function updateTableRecord(
-  tableId: number,
-  recordId: number,
+  tableId: string,
+  recordId: string,
   revision: number,
   values: TableRecordValues,
 ): Promise<TableRecord> {
   const args = {
-    param: { tableId: String(tableId), recordId: String(recordId) },
+    param: { tableId: tableId, recordId: recordId },
     json: { revision, values },
   };
   const response = await rpc.api.tables.tables[':tableId'].records[':recordId'].$patch(args);
@@ -377,17 +378,17 @@ export async function updateTableRecord(
 }
 
 export async function validateTableRecordBatch(
-  tableId: number,
+  tableId: string,
   items: TableBatchRecordItem[],
 ): Promise<TableBatchValidation[]> {
-  const args = { param: { tableId: String(tableId) }, json: { items } };
+  const args = { param: { tableId: tableId }, json: { items } };
   const response = await rpc.api.tables.tables[':tableId'].records['batch-validate'].$post(args);
   if (!response.ok) throw await responseError(response, 'Unable to validate pasted records');
   return (await response.json()).results;
 }
 
 export async function upsertTableRecordBatch(
-  tableId: number,
+  tableId: string,
   items: TableBatchRecordItem[],
 ): Promise<
   Array<
@@ -401,13 +402,13 @@ export async function upsertTableRecordBatch(
       }
   >
 > {
-  const args = { param: { tableId: String(tableId) }, json: { items } };
+  const args = { param: { tableId: tableId }, json: { items } };
   const response = await rpc.api.tables.tables[':tableId'].records['batch-upsert'].$post(args);
   if (!response.ok) throw await responseError(response, 'Unable to paste records');
   return (await response.json()).results;
 }
 
-export async function deleteTableRecord(tableId: number, recordId: number, revision: number): Promise<void> {
+export async function deleteTableRecord(tableId: string, recordId: string, revision: number): Promise<void> {
   const response = await authFetch(`/api/tables/tables/${tableId}/records/${recordId}?revision=${revision}`, {
     method: 'DELETE',
   });
@@ -415,14 +416,14 @@ export async function deleteTableRecord(tableId: number, recordId: number, revis
 }
 
 /** The recycle bin feed — soft-deleted rows, newest first. */
-export async function listDeletedTableRecords(tableId: number, limit = 100): Promise<TableRecord[]> {
+export async function listDeletedTableRecords(tableId: string, limit = 100): Promise<TableRecord[]> {
   const response = await authFetch(`/api/tables/tables/${tableId}/records/deleted?limit=${limit}`);
   if (!response.ok) throw await responseError(response, 'Unable to load deleted records');
   return ((await response.json()) as { records: TableRecord[] }).records;
 }
 
-export async function restoreTableRecord(tableId: number, recordId: number): Promise<TableRecord> {
-  const args = { param: { tableId: String(tableId), recordId: String(recordId) } };
+export async function restoreTableRecord(tableId: string, recordId: string): Promise<TableRecord> {
+  const args = { param: { tableId: tableId, recordId: recordId } };
   const response = await rpc.api.tables.tables[':tableId'].records[':recordId'].restore.$post(args);
   if (!response.ok) throw await responseError(response, 'Unable to restore record');
   return (await response.json()).record;

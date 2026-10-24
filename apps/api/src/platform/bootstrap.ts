@@ -19,7 +19,6 @@ import { extensionApplicationPlans } from '../extensions/boot.js';
 type InternalUserRole = Exclude<UserRole, 'external'>;
 
 export interface PlatformBootstrapResult {
-  appReleasesActivated: string[];
   rolesCreated: string[];
   capabilitiesAdded: number;
   entityPoliciesAdded: number;
@@ -212,18 +211,6 @@ async function addBaselineEntityPolicies(
   }
 }
 
-async function publishApplications(db: DatabaseProvider, result: PlatformBootstrapResult): Promise<void> {
-  const active = await db.platform.listActiveAppReleases();
-  const activeByApp = new Map(active.map((row) => [row.app_id, row]));
-  for (const application of APPLICATIONS) {
-    const release = await db.platform.publishAppRelease({ manifest: application.manifest });
-    if (activeByApp.get(application.manifest.id)?.id !== release.id) {
-      await db.platform.activateAppRelease(release.id);
-      result.appReleasesActivated.push(`${application.manifest.id}@${application.manifest.version}`);
-    }
-  }
-}
-
 async function synchronizeLegacyBindings(
   db: DatabaseProvider,
   roles: Record<InternalUserRole, PlatformRoleRow>,
@@ -241,30 +228,18 @@ async function synchronizeLegacyBindings(
 
 export async function bootstrapPlatform(db: DatabaseProvider): Promise<PlatformBootstrapResult> {
   const result: PlatformBootstrapResult = {
-    appReleasesActivated: [],
     rolesCreated: [],
     capabilitiesAdded: 0,
     entityPoliciesAdded: 0,
     bindingsSynchronized: 0,
   };
 
-  await db.platform.ensureOrganization({
-    id: PLATFORM_ORG_ID,
-    code: PLATFORM_ORG_ID,
-    name: 'Greenhouse',
-  });
   const roles = await ensureSystemRoles(db, result);
-  await publishApplications(db, result);
   await addBaselineCapabilities(db, roles, result);
   await addBaselineEntityPolicies(db, roles, result);
   await synchronizeLegacyBindings(db, roles, result);
 
-  if (
-    result.appReleasesActivated.length > 0 ||
-    result.rolesCreated.length > 0 ||
-    result.capabilitiesAdded > 0 ||
-    result.entityPoliciesAdded > 0
-  ) {
+  if (result.rolesCreated.length > 0 || result.capabilitiesAdded > 0 || result.entityPoliciesAdded > 0) {
     await db.platform.recordAudit({
       orgId: PLATFORM_ORG_ID,
       actorId: 'platform-bootstrap',

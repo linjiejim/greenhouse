@@ -176,7 +176,7 @@ function messages(secret: string | null, body: Record<string, unknown>, init: Re
 
 async function reservationStatuses(keyId: string): Promise<string[]> {
   const rows = (await db.executeRaw(
-    sql`SELECT DISTINCT status FROM usage_budget_reservations WHERE idempotency_key LIKE ${`gateway:${keyId}:%`}`,
+    sql`SELECT DISTINCT status FROM budget_reservations WHERE idempotency_key LIKE ${`gateway:${keyId}:%`}`,
   )) as Array<{ status: string }>;
   return rows.map((row) => row.status).sort();
 }
@@ -184,7 +184,7 @@ async function reservationStatuses(keyId: string): Promise<string[]> {
 async function facts(userId: string) {
   return (await db.executeRaw(
     sql`SELECT model, input_tokens, output_tokens, cached_tokens, cost_usd_micros::int AS cost_usd_micros, client, gateway_key_id
-          FROM llm_usage WHERE user_id = ${userId} ORDER BY id`,
+          FROM usage_events WHERE kind = 'model' AND user_id = ${userId} ORDER BY created_at, id`,
   )) as Array<Record<string, unknown>>;
 }
 

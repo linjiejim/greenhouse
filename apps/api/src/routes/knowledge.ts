@@ -3,7 +3,7 @@
  *
  * GET    /api/knowledge/docs                          — 文档列表（默认：团队 + 本人个人文档）
  * POST   /api/knowledge/docs                          — 创建文档（body 可含 folder_id 直接入目录）
- * GET    /api/knowledge/docs/id/:id                   — 按数字 id 获取文档详情（规范深链解析）
+ * GET    /api/knowledge/docs/id/:id                   — 按 id 获取文档详情（规范深链解析）
  * GET    /api/knowledge/docs/:slug                    — 按 slug 获取文档详情
  * PUT    /api/knowledge/docs/:id                      — 更新文档并记录版本（body 可含 folder_id 移动目录）
  * DELETE /api/knowledge/docs/:id                      — 归档文档（软删除）
@@ -29,8 +29,8 @@
 import { meteringClientForRequest } from '../usage/metering.js';
 import { Hono } from 'hono';
 import { getDb } from '@greenhouse/db';
-import type { KnowledgeDocRow, KnowledgeDocVersionRow, KnowledgeShareRole } from '@greenhouse/db';
-import { safeJsonParse } from '@greenhouse/utils/json';
+import type { KnowledgeDoc, KnowledgeDocVersionRow, KnowledgeShareRole } from '@greenhouse/db';
+import { toRowId } from '@greenhouse/utils/id';
 import { logger } from '@greenhouse/utils/logger';
 import { markdownToTiptapJson } from '@greenhouse/knowledge-editor/markdown';
 import { getAuthUser, requireSuper } from '../auth/middleware.js';
@@ -100,18 +100,18 @@ function normalizeStringArray(value: unknown): string[] {
     .slice(0, 20);
 }
 
-function docToApi(row: KnowledgeDocRow) {
-  const meta = safeJsonParse(row.meta || '{}', {}) as Record<string, unknown>;
+function docToApi(row: KnowledgeDoc) {
+  const meta = row.meta ?? {};
   return {
     id: row.id,
     slug: row.doc_id,
     title: row.title,
     content_markdown: row.content,
-    content_json: row.content_json || '{}',
+    content_json: row.content_json ?? {},
     summary: row._summary || '',
-    questions: row._questions || '[]',
-    topics: row._topics || '[]',
-    tags: row.tags || '[]',
+    questions: row._questions ?? [],
+    topics: row._topics ?? [],
+    tags: row.tags ?? [],
     space: typeof meta.space === 'string' ? meta.space : 'general',
     folder_id: row.folder_id,
     sort_order: row.sort_order,
@@ -133,7 +133,7 @@ function versionToApi(row: KnowledgeDocVersionRow) {
     version: row.version,
     title: row.title,
     content_markdown: row.content,
-    content_json: row.content_json || '{}',
+    content_json: row.content_json ?? {},
     summary: row.summary || '',
     changed_by: row.changed_by,
     change_reason: row.change_reason,
@@ -153,17 +153,17 @@ function buildMeta(space: unknown, meta: unknown): Record<string, unknown> {
 }
 
 /** Serialize a doc with the caller's effective access role, so the UI can gate controls. */
-async function docToApiWithAccess(row: KnowledgeDocRow, userId: string) {
+async function docToApiWithAccess(row: KnowledgeDoc, userId: string) {
   const access = await resolveKbAccess(getDb(), row, userId);
   return { ...docToApi(row), access };
 }
 
 // ─── Sharing helpers (private docs) ──────────────────────
 
-type OwnedDoc = { ok: true; doc: KnowledgeDocRow } | { ok: false; status: 404 | 403; error: string };
+type OwnedDoc = { ok: true; doc: KnowledgeDoc } | { ok: false; status: 404 | 403; error: string };
 
 /** Resolve the doc + assert the caller owns it (only owners manage sharing). */
-async function resolveOwnedDoc(userId: string, id: number): Promise<OwnedDoc> {
+async function resolveOwnedDoc(userId: string, id: string): Promise<OwnedDoc> {
   const doc = await getDb().knowledgeBase.getById(id);
   if (!doc) return { ok: false, status: 404, error: 'Document not found' };
   const access = await resolveKbAccess(getDb(), doc, userId);
@@ -191,7 +191,7 @@ async function nicknameOf(userId: string, hint?: string): Promise<string> {
  * owner's own private folder. Returns an error string, or null when allowed.
  */
 async function validateFolderTarget(
-  folderId: number | null,
+  folderId: string | null,
   docVisibility: Visibility,
   docOwnerId: string | null,
 ): Promise<string | null> {
@@ -223,13 +223,13 @@ const knowledgeRoutes = new Hono<AppEnv>()
     const kind = body.kind === 'folder' || body.kind === 'doc' ? body.kind : null;
     if (!kind) return c.json({ error: 'kind must be "doc" or "folder"' }, 400);
 
-    const ids = Array.isArray(body.ids) ? body.ids.map(Number).filter((n) => Number.isInteger(n) && n > 0) : [];
+    const ids = Array.isArray(body.ids) ? body.ids.map(toRowId).filter((id): id is string => id !== null) : [];
     if (ids.length === 0) return c.json({ error: 'ids is required' }, 400);
     if (ids.length !== new Set(ids).size) return c.json({ error: 'ids must be unique' }, 400);
     if (ids.length > 500) return c.json({ error: 'too many ids' }, 400);
 
-    const parentId = body.parent_id == null ? null : Number(body.parent_id);
-    if (parentId !== null && !Number.isInteger(parentId)) return c.json({ error: 'invalid parent_id' }, 400);
+    const parentId = body.parent_id == null ? null : toRowId(body.parent_id);
+    if (body.parent_id != null && parentId === null) return c.json({ error: 'invalid parent_id' }, 400);
 
     const db = getDb();
     if (kind === 'doc') {
@@ -276,11 +276,9 @@ const knowledgeRoutes = new Hono<AppEnv>()
   .get('/export', async (c) => {
     // Optional scope narrows the download; it never widens what may be packed
     // (the team-visibility filter inside applies to all three shapes).
-    const folderId = Number(c.req.query('folder_id'));
-    const docId = Number(c.req.query('doc_id'));
     const result = await buildKnowledgeExport(getDb(), nowIso(), {
-      folderId: Number.isInteger(folderId) && folderId > 0 ? folderId : undefined,
-      docId: Number.isInteger(docId) && docId > 0 ? docId : undefined,
+      folderId: toRowId(c.req.query('folder_id')) ?? undefined,
+      docId: toRowId(c.req.query('doc_id')) ?? undefined,
     });
     logger.info('[knowledge] exported library', { by: getAuthUser(c).id, ...result.stats, notes: undefined });
     // Copy into an ArrayBuffer-backed view: fflate's Uint8Array is typed over
@@ -307,21 +305,18 @@ const knowledgeRoutes = new Hono<AppEnv>()
     const db = getDb();
 
     // Private docs that OTHER people shared with the caller.
-    const sharedWithMe = async (): Promise<KnowledgeDocRow[]> => {
+    const sharedWithMe = async (): Promise<KnowledgeDoc[]> => {
       const ids = await db.knowledgeShares.listDocIdsForUser(user.id);
       if (ids.length === 0) return [];
       const docs = await db.knowledgeBase.listByIds(ids, { status });
       // listByIds is not owner-scoped; keep only private docs the caller does NOT own
       // (own docs already come from the private branch) and apply the space filter.
       return docs.filter(
-        (d) =>
-          d.visibility === 'private' &&
-          d.owner_user_id !== user.id &&
-          (!space || (safeJsonParse(d.meta || '{}', {}) as any).space === space),
+        (d) => d.visibility === 'private' && d.owner_user_id !== user.id && (!space || d.meta?.space === space),
       );
     };
 
-    let rows: KnowledgeDocRow[];
+    let rows: KnowledgeDoc[];
     if (visibility === 'team') {
       rows = await db.knowledgeBase.list({ ...base, visibility: 'team' });
     } else if (visibility === 'private') {
@@ -356,10 +351,10 @@ const knowledgeRoutes = new Hono<AppEnv>()
     // Optional folder placement, so "new doc in this folder" from the sidebar tree
     // is one request instead of create-then-move.
     const visibility = normalizeVisibility(body.visibility);
-    let folderId: number | null = null;
+    let folderId: string | null = null;
     if (body.folder_id !== undefined && body.folder_id !== null) {
-      folderId = parseInt(String(body.folder_id), 10);
-      if (!Number.isFinite(folderId)) return c.json({ error: 'Invalid folder_id' }, 400);
+      folderId = toRowId(body.folder_id);
+      if (!folderId) return c.json({ error: 'Invalid folder_id' }, 400);
       const err = await validateFolderTarget(folderId, visibility, user.id);
       if (err) return c.json({ error: err }, 400);
     }
@@ -369,12 +364,8 @@ const knowledgeRoutes = new Hono<AppEnv>()
       scope: 'shared',
       title,
       content,
-      content_json:
-        typeof body.content_json === 'string'
-          ? body.content_json
-          : body.content_json !== undefined
-            ? JSON.stringify(body.content_json)
-            : markdownToTiptapJson(content),
+      // An object, or the editor's serialized string (the service normalizes both).
+      content_json: body.content_json != null ? body.content_json : markdownToTiptapJson(content),
       visibility,
       status: normalizeStatus(body.status),
       is_template: body.is_template === true,
@@ -401,8 +392,8 @@ const knowledgeRoutes = new Hono<AppEnv>()
     // (id is authoritative; slug can be renamed). The `id/` static segment can't
     // collide with `/docs/:slug` (single segment) or `/docs/:id/versions`.
     const user = getAuthUser(c);
-    const id = parseInt(c.req.param('id'), 10);
-    if (!Number.isFinite(id)) return c.json({ error: 'Invalid id' }, 400);
+    const id = toRowId(c.req.param('id'));
+    if (!id) return c.json({ error: 'Invalid id' }, 400);
     const doc = await getDb().knowledgeBase.getById(id);
     if (!doc || doc.status === 'archived') return c.json({ error: 'Document not found' }, 404);
     const access = await resolveKbAccess(getDb(), doc, user.id);
@@ -421,8 +412,8 @@ const knowledgeRoutes = new Hono<AppEnv>()
   })
   .put('/docs/:id', async (c) => {
     const user = getAuthUser(c);
-    const id = parseInt(c.req.param('id'), 10);
-    if (!Number.isFinite(id)) return c.json({ error: 'Invalid id' }, 400);
+    const id = toRowId(c.req.param('id'));
+    if (!id) return c.json({ error: 'Invalid id' }, 400);
 
     const existing = await getDb().knowledgeBase.getById(id);
     if (!existing) return c.json({ error: 'Document not found' }, 404);
@@ -446,8 +437,7 @@ const knowledgeRoutes = new Hono<AppEnv>()
       updates.content = String(body.content_markdown ?? body.content ?? '');
     }
     if (body.content_json !== undefined) {
-      updates.content_json =
-        typeof body.content_json === 'string' ? body.content_json : JSON.stringify(body.content_json ?? {});
+      updates.content_json = body.content_json ?? {};
     } else if (contentChanged) {
       // Markdown changed without fresh editor JSON — derive it so the two stay in sync.
       updates.content_json = markdownToTiptapJson(updates.content as string);
@@ -466,8 +456,8 @@ const knowledgeRoutes = new Hono<AppEnv>()
     if (body.tags !== undefined) updates.tags = normalizeStringArray(body.tags);
     if (body.space !== undefined || body.meta !== undefined) updates.meta = buildMeta(body.space, body.meta);
     if (body.folder_id !== undefined) {
-      const folderId = body.folder_id === null ? null : parseInt(String(body.folder_id), 10);
-      if (folderId !== null && !Number.isFinite(folderId)) return c.json({ error: 'Invalid folder_id' }, 400);
+      const folderId = body.folder_id === null ? null : toRowId(body.folder_id);
+      if (body.folder_id !== null && folderId === null) return c.json({ error: 'Invalid folder_id' }, 400);
       // Validate against the doc's resulting visibility/owner (either may change in this PUT).
       const nextVisibility = (updates.visibility as Visibility) ?? normalizeVisibility(existing.visibility);
       const err = await validateFolderTarget(folderId, nextVisibility, existing.owner_user_id);
@@ -501,8 +491,8 @@ const knowledgeRoutes = new Hono<AppEnv>()
   })
   .delete('/docs/:id', async (c) => {
     const user = getAuthUser(c);
-    const id = parseInt(c.req.param('id'), 10);
-    if (!Number.isFinite(id)) return c.json({ error: 'Invalid id' }, 400);
+    const id = toRowId(c.req.param('id'));
+    if (!id) return c.json({ error: 'Invalid id' }, 400);
     const existing = await getDb().knowledgeBase.getById(id);
     if (!existing) return c.json({ error: 'Document not found' }, 404);
     const access = await resolveKbAccess(getDb(), existing, user.id);
@@ -513,8 +503,8 @@ const knowledgeRoutes = new Hono<AppEnv>()
   })
   .get('/docs/:id/versions', async (c) => {
     const user = getAuthUser(c);
-    const id = parseInt(c.req.param('id'), 10);
-    if (!Number.isFinite(id)) return c.json({ error: 'Invalid id' }, 400);
+    const id = toRowId(c.req.param('id'));
+    if (!id) return c.json({ error: 'Invalid id' }, 400);
     const doc = await getDb().knowledgeBase.getById(id);
     if (!doc || !canRead(await resolveKbAccess(getDb(), doc, user.id))) {
       return c.json({ error: 'Document not found' }, 404);
@@ -524,9 +514,9 @@ const knowledgeRoutes = new Hono<AppEnv>()
   })
   .post('/docs/:id/versions/:version/restore', async (c) => {
     const user = getAuthUser(c);
-    const id = parseInt(c.req.param('id'), 10);
+    const id = toRowId(c.req.param('id'));
     const version = parseInt(c.req.param('version'), 10);
-    if (!Number.isFinite(id) || !Number.isFinite(version)) return c.json({ error: 'Invalid id or version' }, 400);
+    if (!id || !Number.isFinite(version)) return c.json({ error: 'Invalid id or version' }, 400);
     const doc = await getDb().knowledgeBase.getById(id);
     if (!doc) return c.json({ error: 'Document not found' }, 404);
     const access = await resolveKbAccess(getDb(), doc, user.id);
@@ -539,8 +529,8 @@ const knowledgeRoutes = new Hono<AppEnv>()
 
   .get('/docs/:id/shares', async (c) => {
     const user = getAuthUser(c);
-    const id = parseInt(c.req.param('id'), 10);
-    if (!Number.isFinite(id)) return c.json({ error: 'Invalid id' }, 400);
+    const id = toRowId(c.req.param('id'));
+    if (!id) return c.json({ error: 'Invalid id' }, 400);
     const r = await resolveOwnedDoc(user.id, id);
     if (!r.ok) return c.json({ error: r.error }, r.status);
 
@@ -555,8 +545,8 @@ const knowledgeRoutes = new Hono<AppEnv>()
   })
   .post('/docs/:id/shares', async (c) => {
     const user = getAuthUser(c);
-    const id = parseInt(c.req.param('id'), 10);
-    if (!Number.isFinite(id)) return c.json({ error: 'Invalid id' }, 400);
+    const id = toRowId(c.req.param('id'));
+    if (!id) return c.json({ error: 'Invalid id' }, 400);
     const r = await resolveOwnedDoc(user.id, id);
     if (!r.ok) return c.json({ error: r.error }, r.status);
     if (r.doc.visibility !== 'private') {
@@ -581,8 +571,8 @@ const knowledgeRoutes = new Hono<AppEnv>()
   })
   .delete('/docs/:id/shares/:target', async (c) => {
     const user = getAuthUser(c);
-    const id = parseInt(c.req.param('id'), 10);
-    if (!Number.isFinite(id)) return c.json({ error: 'Invalid id' }, 400);
+    const id = toRowId(c.req.param('id'));
+    if (!id) return c.json({ error: 'Invalid id' }, 400);
     const r = await resolveOwnedDoc(user.id, id);
     if (!r.ok) return c.json({ error: r.error }, r.status);
     const target = c.req.param('target'); // Hono already URL-decodes params
@@ -595,8 +585,8 @@ const knowledgeRoutes = new Hono<AppEnv>()
 
   .post('/docs/:id/editing-presence', async (c) => {
     const user = getAuthUser(c);
-    const id = parseInt(c.req.param('id'), 10);
-    if (!Number.isFinite(id)) return c.json({ error: 'Invalid id' }, 400);
+    const id = toRowId(c.req.param('id'));
+    if (!id) return c.json({ error: 'Invalid id' }, 400);
     const db = getDb();
     const doc = await db.knowledgeBase.getById(id);
     if (!doc || !canWrite(await resolveKbAccess(db, doc, user.id))) return c.json({ error: 'Document not found' }, 404);
@@ -670,8 +660,8 @@ const knowledgeRoutes = new Hono<AppEnv>()
   })
   .post('/docs/:id/ai/rewrite', async (c) => {
     const user = getAuthUser(c);
-    const id = parseInt(c.req.param('id'), 10);
-    if (!Number.isFinite(id)) return c.json({ error: 'Invalid id' }, 400);
+    const id = toRowId(c.req.param('id'));
+    if (!id) return c.json({ error: 'Invalid id' }, 400);
     const doc = await getDb().knowledgeBase.getById(id);
     if (!doc || !canWrite(await resolveKbAccess(getDb(), doc, user.id))) {
       return c.json({ error: 'Document not found' }, 404);
@@ -703,8 +693,8 @@ const knowledgeRoutes = new Hono<AppEnv>()
   })
   .post('/docs/:id/enrich', async (c) => {
     const user = getAuthUser(c);
-    const id = parseInt(c.req.param('id'), 10);
-    if (!Number.isFinite(id)) return c.json({ error: 'Invalid id' }, 400);
+    const id = toRowId(c.req.param('id'));
+    if (!id) return c.json({ error: 'Invalid id' }, 400);
     const doc = await getDb().knowledgeBase.getById(id);
     if (!doc || !canWrite(await resolveKbAccess(getDb(), doc, user.id))) {
       return c.json({ error: 'Document not found' }, 404);

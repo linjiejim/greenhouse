@@ -17,7 +17,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { Button, Badge, Tag, Spinner, ConfirmDialog, EmptyState, FilterPills, Toggle, toast } from '../components/ui';
-import { ArrowLeft, BarChart3, Bot, Plus, Pencil, Trash2, Globe, GitFork } from '../lib/icons';
+import { ArrowLeft, BarChart3, Bot, Plus, Pencil, Trash2, Globe } from '../lib/icons';
 import { SproutyAvatar } from '../components/sprouty/index.js';
 import { profileToSprouty } from '../components/chat/profile-selector';
 import * as api from '../lib/api';
@@ -48,7 +48,7 @@ export function RunProfilesPanel({ sectionTabs }: { sectionTabs?: React.ReactNod
 
   // Delete confirm
   const [deleteTarget, setDeleteTarget] = useState<api.Profile | null>(null);
-  const [forkTarget, setForkTarget] = useState<api.Profile | null>(null);
+  const [template, setTemplate] = useState<api.Profile | null>(null);
   const [sharingIds, setSharingIds] = useState<Set<string>>(() => new Set());
 
   const loadData = useCallback(async () => {
@@ -73,15 +73,32 @@ export function RunProfilesPanel({ sectionTabs }: { sectionTabs?: React.ReactNod
 
   const openCreate = () => {
     setEditingProfile(null);
+    setTemplate(null);
     setDrawerOpen(true);
   };
 
   const openEdit = (profile: api.Profile) => {
     setEditingProfile(profile);
+    setTemplate(null);
     setDrawerOpen(true);
   };
 
-  const handleSave = async (input: api.CustomProfileInput, editId?: number) => {
+  /**
+   * Start a new Agent from a built-in preset. A preset runs with everything the
+   * member may use (its YAML tool list is not a runtime narrowing), so the new
+   * Agent starts from that set rather than a weaker copy.
+   */
+  const openFromTemplate = (preset: api.Profile) => {
+    setEditingProfile(null);
+    setTemplate({
+      ...preset,
+      base_profile_id: preset.id,
+      tools: availableTools.map((tool) => tool.id),
+    });
+    setDrawerOpen(true);
+  };
+
+  const handleSave = async (input: api.CustomProfileInput, editId?: string) => {
     if (editId !== undefined) {
       await api.updateCustomProfile(editId, input);
       toast(t('agents.updated'), 'success');
@@ -96,8 +113,7 @@ export function RunProfilesPanel({ sectionTabs }: { sectionTabs?: React.ReactNod
   const handleDelete = async () => {
     if (!deleteTarget) return;
     try {
-      const numId = parseInt(deleteTarget.id.replace('custom:', ''), 10);
-      await api.deleteCustomProfile(numId);
+      await api.deleteCustomProfile(deleteTarget.id.replace(/^custom:/, ''));
       toast(t('agents.deleted'), 'success');
       setDeleteTarget(null);
       loadData();
@@ -107,27 +123,12 @@ export function RunProfilesPanel({ sectionTabs }: { sectionTabs?: React.ReactNod
     }
   };
 
-  const handleFork = async () => {
-    if (!forkTarget) return;
-    const sourceId = forkTarget.id;
-    setForkTarget(null);
-    try {
-      const forked = await api.forkProfile(sourceId);
-      setEditingProfile(forked);
-      setDrawerOpen(true);
-      loadData();
-      refreshProfiles();
-    } catch (err: any) {
-      toast(err.message || t('agents.forkFailed'), 'error');
-    }
-  };
-
   /** Super only: switch whether an agent is available to the whole team. */
   const handleShareToggle = async (profile: api.Profile, next: boolean) => {
     if (sharingIds.has(profile.id)) return;
     setSharingIds((ids) => new Set(ids).add(profile.id));
     try {
-      await api.setCustomProfileSharing(Number.parseInt(profile.id.replace('custom:', ''), 10), next);
+      await api.setCustomProfileSharing(profile.id.replace(/^custom:/, ''), next);
       toast(t('agents.sharingUpdated'), 'success');
       await loadData();
       await refreshProfiles();
@@ -157,7 +158,7 @@ export function RunProfilesPanel({ sectionTabs }: { sectionTabs?: React.ReactNod
   // switched); everyone else receives their own plus the team-shared ones.
   const sharedProfiles = profiles.filter((p) => p.user_id !== currentUser?.id && p.is_shared);
   const teamProfiles = isSuper ? profiles.filter((p) => p.user_id !== currentUser?.id && !p.is_shared) : [];
-  // Every selectable preset can be forked — the hidden system ones cannot.
+  // Every selectable preset can start a new Agent — the hidden system ones cannot.
   const templateProfiles = systemProfiles.filter((p) => PRESET_AGENT_IDS.includes(p.id as never));
   const scopedProfiles = scope === 'mine' ? myProfiles : scope === 'shared' ? sharedProfiles : teamProfiles;
   const hasScopeContent = scopedProfiles.length > 0 || (scope === 'shared' && templateProfiles.length > 0);
@@ -215,7 +216,7 @@ export function RunProfilesPanel({ sectionTabs }: { sectionTabs?: React.ReactNod
         </div>
       ) : (
         <>
-          {/* Fork from System Profile */}
+          {/* Start from a built-in preset */}
           {scope === 'shared' && templateProfiles.length > 0 && (
             <div>
               <h3 className="text-xs font-medium text-fg-muted mb-2 uppercase tracking-wider">
@@ -225,7 +226,7 @@ export function RunProfilesPanel({ sectionTabs }: { sectionTabs?: React.ReactNod
                 {templateProfiles.map((p) => (
                   <button
                     key={p.id}
-                    onClick={() => setForkTarget(p)}
+                    onClick={() => openFromTemplate(p)}
                     className="group flex min-h-20 items-start gap-3 rounded-lg border border-edge bg-surface-raised px-3 py-3 text-left transition-colors hover:border-primary-edge hover:bg-primary-subtle/30"
                   >
                     <SproutyAvatar {...profileToSprouty(p)} state="idle" size="sm" animate={false} />
@@ -240,7 +241,7 @@ export function RunProfilesPanel({ sectionTabs }: { sectionTabs?: React.ReactNod
                         {p.model_id ?? 'flash'} · {t('agents.toolsCount', { count: p.tools.length })}
                       </div>
                     </div>
-                    <GitFork
+                    <Plus
                       size={13}
                       className="text-fg-faint group-hover:text-primary-fg flex-shrink-0 transition-colors"
                     />
@@ -296,11 +297,6 @@ export function RunProfilesPanel({ sectionTabs }: { sectionTabs?: React.ReactNod
                                 {p.description && (
                                   <div className="text-xs text-fg-faint truncate max-w-[300px]" title={p.description}>
                                     {p.description}
-                                  </div>
-                                )}
-                                {p.forked_from && (
-                                  <div className="text-[10px] text-primary-fg mt-0.5">
-                                    ↳ {t('agents.forkedFrom', { name: p.forked_from })}
                                   </div>
                                 )}
                               </div>
@@ -423,20 +419,9 @@ export function RunProfilesPanel({ sectionTabs }: { sectionTabs?: React.ReactNod
         open={drawerOpen}
         onClose={() => setDrawerOpen(false)}
         profile={editingProfile}
+        template={template}
         availableTools={availableTools}
         onSave={handleSave}
-      />
-
-      {/* Fork Confirmation */}
-      <ConfirmDialog
-        open={!!forkTarget}
-        onClose={() => setForkTarget(null)}
-        onConfirm={handleFork}
-        title={t('agents.forkTitle')}
-        description={t('agents.forkDescription', {
-          name: forkTarget ? localized(forkTarget.name_i18n, forkTarget.name) : '',
-        })}
-        confirmLabel={t('agents.forkAndEdit')}
       />
 
       {/* Delete Confirmation */}

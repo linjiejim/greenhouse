@@ -53,27 +53,27 @@ export function isTaskVariable(value: unknown): value is TaskVariable {
   );
 }
 
-/** Parse the stored JSON column; anything malformed degrades to "no variables". */
-export function parseTaskVariables(raw: string | null | undefined): TaskVariable[] {
-  if (!raw) return [];
+/** The stored value (an array, or legacy JSON text); anything malformed degrades to "nothing". */
+function storedArray(raw: unknown): unknown[] {
+  if (Array.isArray(raw)) return raw;
+  if (typeof raw !== 'string' || !raw) return [];
   try {
     const parsed: unknown = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter(isTaskVariable).slice(0, TASK_VARIABLE_LIMITS.maxVariables);
+    return Array.isArray(parsed) ? parsed : [];
   } catch {
     return [];
   }
 }
 
-export function parseExpectedTools(raw: string | null | undefined): string[] {
-  if (!raw) return [];
-  try {
-    const parsed: unknown = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter((tool): tool is string => typeof tool === 'string' && tool.length > 0).slice(0, 40);
-  } catch {
-    return [];
-  }
+/** Read the stored variables; anything malformed degrades to "no variables". */
+export function parseTaskVariables(raw: unknown): TaskVariable[] {
+  return storedArray(raw).filter(isTaskVariable).slice(0, TASK_VARIABLE_LIMITS.maxVariables);
+}
+
+export function parseExpectedTools(raw: unknown): string[] {
+  return storedArray(raw)
+    .filter((tool): tool is string => typeof tool === 'string' && tool.length > 0)
+    .slice(0, 40);
 }
 
 /** Placeholders actually present in the body, in first-appearance order. */

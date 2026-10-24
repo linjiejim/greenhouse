@@ -42,6 +42,7 @@ ${chalk.bold('Inspect')}
 ${chalk.bold('Manage')}
   users create              Create a user (--email --password --nickname --role)
   db reset                  Wipe ALL data — truncate every table (--yes; local dev only)
+  db migrate                Apply the 3.0 migration chain (refuses a 1.x / 2.x database)
   db baseline               Adopt an existing database: record the migration chain as applied (--dry-run, --yes)
   platform bootstrap        Publish manifests + synchronize system roles/policies
   platform create-app <id>  Scaffold a fail-closed Platform app (--title, --output, --dry-run)

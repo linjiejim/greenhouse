@@ -15,6 +15,7 @@
  * email/imap-smtp-client.ts，与 Agent 工具共用同一份实现。
  */
 
+import { toRowId } from '@greenhouse/utils/id';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { getDb } from '@greenhouse/db';
@@ -171,8 +172,8 @@ export function createEmailRoutes() {
         const user = (c.get as (key: string) => AuthUser | undefined)('user');
         if (!user) return c.json({ error: 'Authentication required' }, 401);
 
-        const id = Number.parseInt(c.req.param('id'), 10);
-        if (!Number.isInteger(id)) return c.json({ error: 'Invalid account id' }, 400);
+        const id = toRowId(c.req.param('id'));
+        if (!id) return c.json({ error: 'Invalid account id' }, 400);
 
         const existing = await getDb().email.getAccount(id);
         if (!existing || existing.user_id !== user.id) return c.json({ error: 'Account not found' }, 404);
@@ -223,8 +224,8 @@ export function createEmailRoutes() {
         const user = (c.get as (key: string) => AuthUser | undefined)('user');
         if (!user) return c.json({ error: 'Authentication required' }, 401);
 
-        const id = Number.parseInt(c.req.param('id'), 10);
-        if (!Number.isInteger(id)) return c.json({ error: 'Invalid account id' }, 400);
+        const id = toRowId(c.req.param('id'));
+        if (!id) return c.json({ error: 'Invalid account id' }, 400);
 
         const existing = await getDb().email.getAccount(id);
         if (!existing || existing.user_id !== user.id) return c.json({ error: 'Account not found' }, 404);
@@ -244,8 +245,8 @@ export function createEmailRoutes() {
         const user = (c.get as (key: string) => AuthUser | undefined)('user');
         if (!user) return c.json({ error: 'Authentication required' }, 401);
 
-        const id = Number.parseInt(c.req.param('id'), 10);
-        if (!Number.isInteger(id)) return c.json({ error: 'Invalid account id' }, 400);
+        const id = toRowId(c.req.param('id'));
+        if (!id) return c.json({ error: 'Invalid account id' }, 400);
 
         const existing = await getDb().email.getAccount(id);
         if (!existing || existing.user_id !== user.id) return c.json({ error: 'Account not found' }, 404);

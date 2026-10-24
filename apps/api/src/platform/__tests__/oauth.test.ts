@@ -10,11 +10,11 @@ import {
 
 describe('parseStoredOAuthScopes', () => {
   it('accepts canonical persisted scope sets', () => {
-    expect(parseStoredOAuthScopes(JSON.stringify(['mcp:read']))).toEqual(['mcp:read']);
-    expect(parseStoredOAuthScopes(JSON.stringify(['mcp:read', 'mcp:write']))).toEqual(['mcp:read', 'mcp:write']);
+    expect(parseStoredOAuthScopes(['mcp:read'])).toEqual(['mcp:read']);
+    expect(parseStoredOAuthScopes(['mcp:read', 'mcp:write'])).toEqual(['mcp:read', 'mcp:write']);
   });
 
-  it.each(['not-json', '[]', JSON.stringify(['mcp:write']), JSON.stringify(['unknown'])])(
+  it.each<unknown>(['not-json', [], ['mcp:write'], ['unknown']])(
     'rejects malformed or authority-expanding persisted scopes: %s',
     (stored) => {
       expect(() => parseStoredOAuthScopes(stored)).toThrow('Stored OAuth scopes are invalid');
@@ -22,7 +22,7 @@ describe('parseStoredOAuthScopes', () => {
   );
 
   it('returns exactly the stored resource groups', () => {
-    const stored = JSON.stringify(['mcp:read', 'mcp:knowledge', 'mcp:tables']);
+    const stored = ['mcp:read', 'mcp:knowledge', 'mcp:tables'];
     expect(parseStoredOAuthScopes(stored)).toEqual(['mcp:read', 'mcp:knowledge', 'mcp:tables']);
   });
 
@@ -33,7 +33,7 @@ describe('parseStoredOAuthScopes', () => {
    * backfilled by migration 0063 exactly so this branch never needs to exist.
    */
   it('never expands a stored scope set that names no resource group', () => {
-    const parsed = parseStoredOAuthScopes(JSON.stringify(['mcp:read', 'mcp:write']));
+    const parsed = parseStoredOAuthScopes(['mcp:read', 'mcp:write']);
     expect(resourceGroupsFromScopes(parsed)).toEqual([]);
     for (const scope of OAUTH_RESOURCE_SCOPES) expect(parsed).not.toContain(scope);
   });

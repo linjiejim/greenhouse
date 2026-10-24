@@ -48,7 +48,7 @@ const { createAutomationQueryTool } = await import('../automation-query.js');
 const { createAutomationMutationTool } = await import('../automation-mutation.js');
 
 interface Row {
-  id: number;
+  id: number | string;
   user_id: string;
   name: string;
   profile_id: string;
@@ -86,13 +86,14 @@ function row(overrides: Partial<Row> = {}): Row {
   };
 }
 
+/** Ids are text since 3.0; fixtures keep writing small numbers and are stored under their string form. */
 function fakeDb(rows: Row[] = [], sessions: Record<number, unknown[]> = {}) {
-  const store = new Map(rows.map((r) => [r.id, { ...r }]));
-  let seq = Math.max(0, ...store.keys());
+  const store = new Map(rows.map((r) => [String(r.id), { ...r, id: String(r.id) }]));
+  let seq = Math.max(0, ...rows.map((r) => Number(r.id)));
   const db = {
     scheduledTasks: {
-      async getById(id: number) {
-        return store.get(id);
+      async getById(id: string) {
+        return store.get(String(id));
       },
       async list(userId?: string) {
         return [...store.values()].filter((r) => !userId || r.user_id === userId);
@@ -101,23 +102,23 @@ function fakeDb(rows: Row[] = [], sessions: Record<number, unknown[]> = {}) {
         return [...store.values()].filter((r) => r.user_id === userId).length;
       },
       async create(input: Record<string, unknown>) {
-        const created = row({ ...(input as Partial<Row>), id: ++seq });
+        const created = { ...row({ ...(input as Partial<Row>) }), id: String(++seq) };
         store.set(created.id, created);
         return created;
       },
-      async update(id: number, updates: Record<string, unknown>) {
-        const existing = store.get(id);
+      async update(id: string, updates: Record<string, unknown>) {
+        const existing = store.get(String(id));
         if (!existing) return undefined;
         Object.assign(existing, updates);
         return existing;
       },
-      async delete(id: number) {
-        store.delete(id);
+      async delete(id: string) {
+        store.delete(String(id));
       },
     },
     sessions: {
-      async list({ taskId }: { taskId?: number }) {
-        return sessions[taskId ?? -1] ?? [];
+      async list({ taskId }: { taskId?: string }) {
+        return sessions[Number(taskId ?? -1)] ?? [];
       },
     },
   } as unknown as DatabaseProvider;
@@ -142,7 +143,7 @@ describe('automation_query', () => {
     const result = await asTool(createAutomationQueryTool(db, OWNER)).execute({ action: 'list' });
 
     expect(result.count).toBe(1);
-    expect((result.automations as Row[])[0]!.id).toBe(1);
+    expect((result.automations as Row[])[0]!.id).toBe('1');
   });
 
   it('does not widen for a super — the tool surface is owner-only', async () => {
@@ -263,9 +264,9 @@ describe('automation_mutation — update / delete / run_now', () => {
     });
 
     expect(result.status).toBe('updated');
-    expect(store.get(3)!.enabled).toBe(false);
+    expect(store.get('3')!.enabled).toBe(false);
     expect(store.size).toBe(1);
-    expect(scheduler.reloadTask).toHaveBeenCalledWith(3);
+    expect(scheduler.reloadTask).toHaveBeenCalledWith('3');
   });
 
   it('refuses switching an existing automation onto a hidden profile', async () => {
@@ -277,7 +278,7 @@ describe('automation_mutation — update / delete / run_now', () => {
     });
 
     expect(result.error).toMatch(/not available/);
-    expect(store.get(3)!.profile_id).toBe('team');
+    expect(store.get('3')!.profile_id).toBe('team');
   });
 
   it('cannot touch another user’s automation', async () => {
@@ -287,7 +288,7 @@ describe('automation_mutation — update / delete / run_now', () => {
     expect(await tool.execute({ action: 'update', id: 4, enabled: false })).toMatchObject({ error: 'Not authorized' });
     expect(await tool.execute({ action: 'delete', id: 4 })).toMatchObject({ error: 'Not authorized' });
     expect(await tool.execute({ action: 'run_now', id: 4 })).toMatchObject({ error: 'Not authorized' });
-    expect(store.get(4)!.enabled).toBe(true);
+    expect(store.get('4')!.enabled).toBe(true);
     expect(scheduler.runTaskManually).not.toHaveBeenCalled();
   });
 
@@ -297,7 +298,7 @@ describe('automation_mutation — update / delete / run_now', () => {
 
     expect(result).toMatchObject({ status: 'deleted', name: 'Obsolete' });
     expect(store.size).toBe(0);
-    expect(scheduler.removeJob).toHaveBeenCalledWith(5);
+    expect(scheduler.removeJob).toHaveBeenCalledWith('5');
   });
 
   it('run_now returns the session id so the user can open the result', async () => {

@@ -7,7 +7,7 @@
  *
  * All are idempotent. Run `reindex` after a segmentation change to backfill
  * token columns; run `migrate-spaces` once to fold the legacy one-level `space`
- * grouping into the drive_folders directory tree.
+ * grouping into the kb folder tree.
  *
  * `import` treats the directory as the seed of a KB column: the directory name
  * (or `--folder`) becomes a top-level team folder, each first-level
@@ -21,7 +21,6 @@ import { createHash } from 'node:crypto';
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { basename, join, resolve } from 'node:path';
 import chalk from 'chalk';
-import { safeJsonParse } from '@greenhouse/utils/json';
 import { markdownToTiptapJson } from '@greenhouse/knowledge-editor/markdown';
 import { putUpload } from '../../storage/uploads.js';
 import { openDb, parseFlags, flagNum, flagBool, flagStr } from './shared.js';
@@ -31,10 +30,10 @@ const USAGE = `${chalk.bold('cli knowledge')} — knowledge-base maintenance
 ${chalk.bold('Usage:')} pnpm cli knowledge <reindex|migrate-spaces|import> [--flags]
 
 ${chalk.bold('Subcommands')}
-  reindex          Recompute segmented FTS tokens for all knowledge_base rows.
+  reindex          Recompute segmented FTS columns for all kb_documents rows.
                    Idempotent. --batch <n>   rows per keyset page (default 200)
   migrate-spaces   Fold distinct meta.space (≠ 'general') into kb team folders
-                   and set knowledge_base.folder_id; clears the migrated space.
+                   and set kb_documents.folder_id; clears the migrated space.
                    Idempotent. --dry-run to preview.
   import <dir>     Seed a directory of Markdown files into the team KB as one
                    top-level folder (default: the directory name; --folder <name>
@@ -53,16 +52,16 @@ async function reindex(args: string[]): Promise<number> {
   console.log(chalk.bold('Reindexing segmented FTS tokens…'));
 
   const kb = await db.knowledgeBase.reindexTokens(batch, (done) => {
-    process.stdout.write(`\r  knowledge_base: ${done} rows`);
+    process.stdout.write(`\r  kb_documents: ${done} rows`);
   });
-  process.stdout.write(`\r  knowledge_base: ${chalk.green(`${kb} rows`)}          \n`);
+  process.stdout.write(`\r  kb_documents: ${chalk.green(`${kb} rows`)}          \n`);
 
   console.log(chalk.green(`\n✓ Reindexed ${kb} rows.`));
   return 0;
 }
 
 /**
- * Fold the legacy one-level `meta.space` grouping into the drive_folders tree:
+ * Fold the legacy one-level `meta.space` grouping into the kb folder tree:
  * each distinct team-doc space (≠ 'general') becomes a top-level kb team folder;
  * the doc's folder_id is set and its meta.space cleared. Idempotent — a folder
  * of the same name is reused, and already-migrated docs (space already cleared)
@@ -76,7 +75,7 @@ async function migrateSpaces(args: string[]): Promise<number> {
   // Team docs carrying a non-general space.
   const docs = (await db.knowledgeBase.listAll('shared')).filter((d) => {
     if (d.visibility !== 'team') return false;
-    const space = (safeJsonParse(d.meta || '{}', {}) as Record<string, unknown>).space;
+    const space = d.meta?.space;
     return typeof space === 'string' && space && space !== 'general';
   });
 
@@ -88,7 +87,7 @@ async function migrateSpaces(args: string[]): Promise<number> {
   // Group by space name.
   const bySpace = new Map<string, typeof docs>();
   for (const d of docs) {
-    const space = String((safeJsonParse(d.meta || '{}', {}) as Record<string, unknown>).space);
+    const space = String(d.meta?.space);
     (bySpace.get(space) ?? bySpace.set(space, []).get(space)!).push(d);
   }
 
@@ -107,7 +106,7 @@ async function migrateSpaces(args: string[]): Promise<number> {
       rootByName.set(space, folder);
     }
     for (const d of spaceDocs) {
-      const meta = safeJsonParse(d.meta || '{}', {}) as Record<string, unknown>;
+      const meta = { ...d.meta };
       delete meta.space;
       await db.knowledgeBase.update(
         d.id,
@@ -238,11 +237,11 @@ async function importSeedTree(
   console.log(`  assets: ${chalk.green(`${assetFiles.length}${dryRun ? ' (not uploaded in dry-run)' : ' uploaded'}`)}`);
 
   // 2. Ensure the folder tree <root>/{...section folders}.
-  async function ensureFolder(name: string, parentId: number | null): Promise<number> {
+  async function ensureFolder(name: string, parentId: string | null): Promise<string> {
     const siblings = await db.drive.listFolders({ scope: 'kb', parent_id: parentId, visibility: 'team' });
     const existing = siblings.find((f) => f.name === name);
     if (existing) return existing.id;
-    if (dryRun) return -1;
+    if (dryRun) return '(dry-run)';
     const created = await db.drive.createFolder({
       scope: 'kb',
       parent_id: parentId,
@@ -254,7 +253,7 @@ async function importSeedTree(
   }
 
   const rootId = await ensureFolder(cfg.rootFolder, null);
-  const folderIdByName = new Map<string, number>([['', rootId]]);
+  const folderIdByName = new Map<string, string>([['', rootId]]);
   // Specs arrive in tree order, so first-seen order IS the intended folder order.
   const usedFolders = [...new Set(specs.map((s) => s.folder).filter(Boolean))];
   for (const folder of usedFolders) folderIdByName.set(folder, await ensureFolder(folder, rootId));

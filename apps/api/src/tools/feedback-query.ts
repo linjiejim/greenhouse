@@ -23,7 +23,7 @@ const feedbackQuerySchema = z.object({
   everyone: z.boolean().optional().describe('requests.list: super only — everyone’s requests instead of your own.'),
   limit: z.number().int().min(1).max(50).optional().describe('requests.list: max results (default 20).'),
   offset: z.number().int().min(0).optional().describe('requests.list: pagination offset.'),
-  id: z.number().int().positive().optional().describe('requests.get: the request id.'),
+  id: z.coerce.string().optional().describe('requests.get: the request id.'),
 });
 
 type FeedbackQueryInput = z.infer<typeof feedbackQuerySchema>;

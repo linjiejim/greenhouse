@@ -3,18 +3,19 @@
  *
  * Who may see or change a template, and whether a definition is well formed,
  * is decided in the API layer (apps/api/src/reports/templates.ts); this
- * service stores already-checked definitions as JSON text and reads them back
+ * service stores already-checked definitions (jsonb) and reads them back
  * with the owner's nickname. Deletes are soft (`deleted_at`), so a seed that
  * runs "only while there has never been a template" stays a one-time event.
  */
 
-import { randomBytes } from 'node:crypto';
 import { and, asc, desc, eq, isNull, or, sql } from 'drizzle-orm';
 import { nowIso } from '@greenhouse/utils/date';
 
 import type { Db } from '../client.js';
+import type { ReportFormat, ReportTemplateCoverField, ReportTemplateSection } from '@greenhouse/types/reports';
+import { newId } from '../ids.js';
 import { reportTemplates, users } from '../schema/index.js';
-import type { ReportTemplateRow } from '../schema/report-template.js';
+import type { ReportTemplateRow } from '../schema/report-templates.js';
 
 export type ReportTemplateVisibilityValue = ReportTemplateRow['visibility'];
 export type ReportTemplateKindValue = ReportTemplateRow['kind'];
@@ -23,10 +24,10 @@ export interface ReportTemplateWriteInput {
   name: string;
   description: string;
   kind: ReportTemplateKindValue;
-  /** Already-checked values; stored as JSON text. */
-  formats: readonly string[];
-  sections: readonly unknown[];
-  cover_fields: readonly unknown[];
+  /** Already-checked values (jsonb). */
+  formats: readonly ReportFormat[];
+  sections: readonly ReportTemplateSection[];
+  cover_fields: readonly ReportTemplateCoverField[];
   visibility: ReportTemplateVisibilityValue;
 }
 
@@ -42,7 +43,7 @@ export interface ReportTemplateWithOwner extends ReportTemplateRow {
 }
 
 function newTemplateId(): string {
-  return `rtpl_${randomBytes(6).toString('hex')}`;
+  return newId('reportTemplate');
 }
 
 export function createReportTemplateService(db: Db) {
@@ -66,9 +67,9 @@ export function createReportTemplateService(db: Db) {
           name: input.name,
           description: input.description,
           kind: input.kind,
-          formats: JSON.stringify(input.formats),
-          sections: JSON.stringify(input.sections),
-          cover_fields: JSON.stringify(input.cover_fields),
+          formats: [...input.formats],
+          sections: [...input.sections],
+          cover_fields: [...input.cover_fields],
           visibility: input.visibility,
           owner_user_id: input.owner_user_id,
           is_default: input.is_default ?? false,
@@ -120,9 +121,9 @@ export function createReportTemplateService(db: Db) {
           name: input.name,
           description: input.description,
           kind: input.kind,
-          formats: JSON.stringify(input.formats),
-          sections: JSON.stringify(input.sections),
-          cover_fields: JSON.stringify(input.cover_fields),
+          formats: [...input.formats],
+          sections: [...input.sections],
+          cover_fields: [...input.cover_fields],
           visibility: input.visibility,
           version: sql`${reportTemplates.version} + 1`,
           updated_by: by,
@@ -159,9 +160,9 @@ export function createReportTemplateService(db: Db) {
             name: input.name,
             description: input.description,
             kind: input.kind,
-            formats: JSON.stringify(input.formats),
-            sections: JSON.stringify(input.sections),
-            cover_fields: JSON.stringify(input.cover_fields),
+            formats: [...input.formats],
+            sections: [...input.sections],
+            cover_fields: [...input.cover_fields],
             visibility: input.visibility,
             owner_user_id: input.owner_user_id,
             is_default: input.is_default ?? false,

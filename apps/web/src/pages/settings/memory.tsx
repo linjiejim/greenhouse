@@ -20,7 +20,7 @@ import { ModulePage } from '../../components/app/module-page';
 type MemoryStatus = 'active' | 'dormant' | 'archived' | 'superseded';
 
 interface Memory {
-  id: number;
+  id: string;
   category: string;
   title: string;
   content: string;
@@ -69,11 +69,11 @@ export function MemoryPanel() {
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'live' | MemoryStatus>('live');
-  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState('');
   const [editContent, setEditContent] = useState('');
   const [editCategory, setEditCategory] = useState('');
-  const [busyId, setBusyId] = useState<number | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
 
   const loadMemories = useCallback(async () => {
     try {
@@ -101,7 +101,7 @@ export function MemoryPanel() {
     loadMemories();
   }, [loadMemories]);
 
-  const patchMemory = async (id: number, body: Record<string, unknown>) => {
+  const patchMemory = async (id: string, body: Record<string, unknown>) => {
     try {
       setBusyId(id);
       const res = await authFetch(`/api/auth/me/memories/${id}`, {
@@ -133,7 +133,7 @@ export function MemoryPanel() {
     if (ok) setEditingId(null);
   };
 
-  const handleDelete = async (id: number) => {
+  const handleDelete = async (id: string) => {
     try {
       setBusyId(id);
       const res = await authFetch(`/api/auth/me/memories/${id}`, { method: 'DELETE' });

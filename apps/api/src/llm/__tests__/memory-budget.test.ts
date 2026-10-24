@@ -16,7 +16,7 @@ const mocks = vi.hoisted(() => {
     updated_at: '2026-08-01T00:00:00.000Z',
     superseded_by: null,
   }));
-  const reserveMonthlyUser = vi.fn(async (_input: Record<string, unknown>) => {
+  const tokenReserve = vi.fn(async (_input: Record<string, unknown>) => {
     events.push('reserve');
   });
   const settle = vi.fn(async (_input: Record<string, unknown>) => {
@@ -34,7 +34,6 @@ const mocks = vi.hoisted(() => {
         id: 'user-1',
         role: 'team',
         status: 'active',
-        monthly_token_limit: 1_000_000,
       })),
     },
     userMemories: {
@@ -45,13 +44,15 @@ const mocks = vi.hoisted(() => {
       setStatus: vi.fn(),
     },
     usageBudget: {
-      reserveMonthlyUser,
       settle,
       release,
       ensureAccount: vi.fn(async (input: { scope_type: string; scope_id: string; unit?: string }) => ({
         id: `${input.scope_type}:${input.scope_id}:${input.unit}`,
       })),
-      reserve: vi.fn(async () => []),
+      // Token reservations (ids ending `:tokens`) vs the USD reservation.
+      reserve: vi.fn(async (input: { account_ids: readonly string[] }) =>
+        input.account_ids.every((id) => id.endsWith(':tokens')) ? tokenReserve(input) : [],
+      ),
     },
     metering: {
       getLimits: vi.fn(async () => []),
@@ -65,7 +66,7 @@ const mocks = vi.hoisted(() => {
     events,
     record,
     release,
-    reserveMonthlyUser,
+    tokenReserve,
     settle,
     providerAttemptHook: undefined as undefined | ((input: any) => Promise<any>),
   };
@@ -132,7 +133,7 @@ describe('memory consolidation usage budget', () => {
     await expect(runMemoryConsolidation()).resolves.toEqual({ demoted: 0, usersProcessed: 1, opsApplied: 0 });
 
     expect(mocks.events).toEqual(['prepare', 'reserve', 'provider', 'settle', 'record']);
-    const reservation = mocks.reserveMonthlyUser.mock.calls[0]![0] as { idempotency_key: string };
+    const reservation = mocks.tokenReserve.mock.calls[0]![0] as { idempotency_key: string };
     expect(reservation).toMatchObject({ user_id: 'user-1', caller: 'memory-consolidation' });
     expect(mocks.settle).toHaveBeenCalledWith(
       expect.objectContaining({ idempotency_key: reservation.idempotency_key, actual_units: 124 }),

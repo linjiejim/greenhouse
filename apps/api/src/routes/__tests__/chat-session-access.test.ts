@@ -55,15 +55,11 @@ function makeSession(ownerId = 'owner'): SessionRow {
     id: 'session-1',
     title: 'Existing title',
     status: 'active',
-    rating: null,
-    comment: null,
-    feedback: null,
     profile_id: 'team',
     user_id: ownerId,
     app_id: null,
     channel: 'web',
-    parent_session_id: null,
-    metadata: '{}',
+    metadata: {},
     created_at: '2026-07-21T00:00:00.000Z',
     updated_at: '2026-07-21T00:00:00.000Z',
   };
@@ -114,7 +110,6 @@ beforeEach(() => {
     id: 'owner',
     role: 'team',
     status: 'active',
-    monthly_token_limit: 20_000_000,
   });
   mocks.usage.sumMonthTokens.mockResolvedValue(0);
 });
@@ -218,8 +213,6 @@ describe('POST /api/chat session authorization', () => {
       id: 'owner',
       role: 'team',
       status: 'active',
-      daily_message_limit: 0,
-      monthly_token_limit: 20_000_000,
     });
     mocks.usage.countTodayMessages.mockResolvedValue(999);
 

@@ -12,9 +12,6 @@ function session(overrides: Partial<HistorySession>): HistorySession {
     status: 'active',
     profile_id: 'sprouty',
     updated_at: '2026-08-07T01:00:00.000Z',
-    feedback: null,
-    rating: null,
-    comment: null,
     ...overrides,
   } as HistorySession;
 }
@@ -33,7 +30,6 @@ function renderList(sessions: HistorySession[]) {
         loading: false,
         status: 'active',
         onOpen: vi.fn(),
-        onEdit: vi.fn(),
         onStatusChange: vi.fn(),
         onDelete: vi.fn(),
       }),

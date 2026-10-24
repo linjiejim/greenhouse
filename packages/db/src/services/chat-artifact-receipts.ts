@@ -1,13 +1,14 @@
 /**
- * Durable receipts for non-idempotent actions launched from Chat cards.
+ * Durable receipts for non-idempotent actions launched from Chat cards
+ * (`card_action_receipts`). The id is the card action's client-chosen key.
  */
 
 import { and, eq } from 'drizzle-orm';
 import { nowIso } from '@greenhouse/utils/date';
 
 import type { Db } from '../client.js';
-import { chatArtifactReceipts } from '../schema/index.js';
-import type { ChatArtifactReceiptRow } from '../schema/session.js';
+import { cardActionReceipts as chatArtifactReceipts } from '../schema/index.js';
+import type { ChatArtifactReceiptRow } from '../schema/conversations.js';
 
 export type ChatArtifactKind = ChatArtifactReceiptRow['kind'];
 
@@ -32,7 +33,7 @@ export function createChatArtifactReceiptService(db: Db) {
         .values({
           ...input,
           status: 'processing',
-          result: '{}',
+          result: {},
           error: null,
           created_at: now,
           updated_at: now,
@@ -62,7 +63,12 @@ export function createChatArtifactReceiptService(db: Db) {
     async succeed(id: string, userId: string, result: unknown): Promise<ChatArtifactReceiptRow | undefined> {
       const [row] = await db
         .update(chatArtifactReceipts)
-        .set({ status: 'succeeded', result: JSON.stringify(result), error: null, updated_at: nowIso() })
+        .set({
+          status: 'succeeded',
+          result: (result ?? {}) as Record<string, unknown>,
+          error: null,
+          updated_at: nowIso(),
+        })
         .where(and(eq(chatArtifactReceipts.id, id), eq(chatArtifactReceipts.user_id, userId)))
         .returning();
       return row;

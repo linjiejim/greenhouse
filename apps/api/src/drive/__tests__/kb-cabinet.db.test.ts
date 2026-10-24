@@ -159,7 +159,7 @@ describe('files_mutation over the recorded-write path', () => {
     const client = await db.platformOAuth.registerClient({
       id: unique('client'),
       client_name: 'Claude Code',
-      redirect_uris: '[]',
+      redirect_uris: [],
       created_by: alice.id,
     });
     const registry = { files_mutation: createFilesMutationTool(db, { userId: alice.id }) } as unknown as ToolRegistry;

@@ -61,17 +61,17 @@ function memoryDb() {
       if (rows.some((r) => r.name === input.name)) throw new Error('duplicate name');
       const now = nowIso();
       const row: SkillRow = {
-        id: nextId++,
+        id: String(nextId++),
         name: input.name,
         display_name: input.display_name || input.name,
         description: input.description,
-        tags: JSON.stringify(input.tags ?? []),
+        tags: input.tags ?? [],
         latest_version: first.version,
         status: 'active',
         owner_user_id: input.owner_user_id,
         download_count: 0,
         scan_status: 'pending',
-        scan_findings: '[]',
+        scan_findings: [],
         scan_version: null,
         scanned_at: null,
         scan_reviewed_by: null,
@@ -81,19 +81,19 @@ function memoryDb() {
         updated_at: now,
       };
       rows.push(row);
-      versions.push({ id: nextVersionId++, skill_id: row.id, created_at: now, ...first });
+      versions.push({ id: String(nextVersionId++), skill_id: row.id, created_at: now, ...first });
       return row;
     },
-    async addVersion(skillId: number, input: SkillVersionInput): Promise<SkillVersionRow> {
+    async addVersion(skillId: string, input: SkillVersionInput): Promise<SkillVersionRow> {
       if (versions.some((v) => v.skill_id === skillId && v.version === input.version)) throw new Error('dup version');
-      const row: SkillVersionRow = { id: nextVersionId++, skill_id: skillId, created_at: nowIso(), ...input };
+      const row: SkillVersionRow = { id: String(nextVersionId++), skill_id: skillId, created_at: nowIso(), ...input };
       versions.push(row);
       const skill = rows.find((r) => r.id === skillId)!;
       skill.latest_version = input.version;
       skill.updated_at = nowIso();
       return row;
     },
-    async getById(id: number) {
+    async getById(id: string) {
       return rows.find((r) => r.id === id);
     },
     async getByName(name: string) {
@@ -111,30 +111,30 @@ function memoryDb() {
     async listUnscanned(limit = 100) {
       return rows.filter((r) => r.scanned_at === null).slice(0, limit);
     },
-    async listVersions(skillId: number) {
-      return versions.filter((v) => v.skill_id === skillId).sort((a, b) => b.id - a.id);
+    async listVersions(skillId: string) {
+      return versions.filter((v) => v.skill_id === skillId).reverse();
     },
-    async getVersion(skillId: number, version: string) {
+    async getVersion(skillId: string, version: string) {
       return versions.find((v) => v.skill_id === skillId && v.version === version);
     },
-    async updateMeta(skillId: number, updates: SkillMetaUpdateInput) {
+    async updateMeta(skillId: string, updates: SkillMetaUpdateInput) {
       const skill = rows.find((r) => r.id === skillId);
       if (!skill) return undefined;
       if (updates.display_name !== undefined) skill.display_name = updates.display_name;
       if (updates.description !== undefined) skill.description = updates.description;
-      if (updates.tags !== undefined) skill.tags = JSON.stringify(updates.tags);
+      if (updates.tags !== undefined) skill.tags = updates.tags;
       skill.updated_at = nowIso();
       return skill;
     },
-    async updateMetaWithScan(skillId: number, updates: SkillMetaUpdateInput, input: SkillScanResultInput) {
+    async updateMetaWithScan(skillId: string, updates: SkillMetaUpdateInput, input: SkillScanResultInput) {
       const skill = rows.find((r) => r.id === skillId);
       if (!skill || skill.latest_version !== input.version) return undefined;
       if (updates.display_name !== undefined) skill.display_name = updates.display_name;
       if (updates.description !== undefined) skill.description = updates.description;
-      if (updates.tags !== undefined) skill.tags = JSON.stringify(updates.tags);
+      if (updates.tags !== undefined) skill.tags = updates.tags;
       skill.updated_at = nowIso();
       skill.scan_status = input.status;
-      skill.scan_findings = JSON.stringify(input.findings);
+      skill.scan_findings = input.findings;
       skill.scan_version = input.version;
       skill.scanned_at = nowIso();
       skill.scan_reviewed_by = null;
@@ -142,16 +142,16 @@ function memoryDb() {
       skill.scan_note = null;
       return skill;
     },
-    async setStatus(skillId: number, status: SkillRow['status']) {
+    async setStatus(skillId: string, status: SkillRow['status']) {
       const skill = rows.find((r) => r.id === skillId);
       if (skill) skill.status = status;
       return skill;
     },
-    async setScanResult(skillId: number, input: SkillScanResultInput) {
+    async setScanResult(skillId: string, input: SkillScanResultInput) {
       const skill = rows.find((r) => r.id === skillId);
       if (!skill) return undefined;
       skill.scan_status = input.status;
-      skill.scan_findings = JSON.stringify(input.findings);
+      skill.scan_findings = input.findings;
       skill.scan_version = input.version;
       skill.scanned_at = nowIso();
       skill.scan_reviewed_by = null;
@@ -159,7 +159,7 @@ function memoryDb() {
       skill.scan_note = null;
       return skill;
     },
-    async setScanDecision(skillId: number, input: SkillScanDecisionInput) {
+    async setScanDecision(skillId: string, input: SkillScanDecisionInput) {
       const skill = rows.find((r) => r.id === skillId);
       if (!skill) return undefined;
       skill.scan_status = input.status;
@@ -168,11 +168,11 @@ function memoryDb() {
       skill.scan_note = input.note ?? null;
       return skill;
     },
-    async incrementDownloads(skillId: number) {
+    async incrementDownloads(skillId: string) {
       const skill = rows.find((r) => r.id === skillId);
       if (skill) skill.download_count += 1;
     },
-    async remove(skillId: number) {
+    async remove(skillId: string) {
       const idx = rows.findIndex((r) => r.id === skillId);
       if (idx === -1) return false;
       rows.splice(idx, 1);
@@ -730,7 +730,7 @@ describe('scan review — decide / rescan / sweep', () => {
   it('the sweep does not treat a self-applied `official` tag as first-party', async () => {
     _setFirstPartyNamesForTests(new Set()); // the repo owns nothing here
     const row = (await db.skills.getByName('evil-skill'))!;
-    row.tags = JSON.stringify(['official', 'core']);
+    row.tags = ['official', 'core'];
     row.scanned_at = null;
     row.scan_status = 'pending';
     await sweepUnscannedSkills(db);

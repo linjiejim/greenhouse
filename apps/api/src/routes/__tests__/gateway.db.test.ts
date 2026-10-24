@@ -229,7 +229,7 @@ function chat(secret: string | null, body: Record<string, unknown>, init: Reques
 async function reservations(keyId: string) {
   const rows = (await db.executeRaw(
     sql`SELECT idempotency_key, status, estimated_units::int AS estimated_units, actual_units::int AS actual_units
-          FROM usage_budget_reservations WHERE idempotency_key LIKE ${`gateway:${keyId}:%`}`,
+          FROM budget_reservations WHERE idempotency_key LIKE ${`gateway:${keyId}:%`}`,
   )) as Array<{ idempotency_key: string; status: string; estimated_units: number; actual_units: number | null }>;
   const calls = new Map<string, typeof rows>();
   for (const row of rows) {
@@ -252,7 +252,7 @@ async function reservations(keyId: string) {
 async function facts(userId: string) {
   return (await db.executeRaw(
     sql`SELECT model, input_tokens, output_tokens, cached_tokens, cost_usd_micros::int AS cost_usd_micros, client, service, caller, budget_idempotency_key, gateway_key_id
-          FROM llm_usage WHERE user_id = ${userId} ORDER BY id`,
+          FROM usage_events WHERE kind = 'model' AND user_id = ${userId} ORDER BY created_at, id`,
   )) as Array<Record<string, any>>;
 }
 

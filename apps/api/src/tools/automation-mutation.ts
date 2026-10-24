@@ -33,7 +33,7 @@ const automationMutationSchema = z.object({
   action: z
     .enum(['create', 'update', 'delete', 'run_now'])
     .describe('Write action. update also enables/disables via the enabled flag.'),
-  id: z.number().int().optional().describe('Automation id — required for update, delete and run_now.'),
+  id: z.coerce.string().optional().describe('Automation id — required for update, delete and run_now.'),
   name: z.string().optional().describe('Short display name, 2-50 characters.'),
   task_prompt: z
     .string()
@@ -51,19 +51,24 @@ const automationMutationSchema = z.object({
   profile_id: z.string().optional().describe('Agent profile the run uses. Defaults to the standard internal agent.'),
   max_steps: z.number().int().optional().describe(`Tool-call budget per run, 1-${MAX_STEPS_LIMIT}. Defaults to 15.`),
   enabled: z.boolean().optional().describe('false pauses the automation without deleting it.'),
-  notify_webhook: z
-    .string()
-    .nullable()
+  notify: z
+    .object({
+      webhook: z
+        .string()
+        .nullable()
+        .optional()
+        .describe(
+          'Group-bot webhook the scheduler posts each run summary to; must be an https://qyapi.weixin.qq.com (WeCom) or https://open.feishu.cn/open-apis/bot/... (Feishu) URL. null clears it. Without one the result only lands silently in the conversation list.',
+        ),
+      email: z
+        .boolean()
+        .optional()
+        .describe(
+          "Email each run summary to the owner's own account address. No address to supply — it is always the owner.",
+        ),
+    })
     .optional()
-    .describe(
-      'Group-bot webhook the scheduler posts each run summary to; must be an https://qyapi.weixin.qq.com (WeCom) or https://open.feishu.cn/open-apis/bot/... (Feishu) URL. null clears it. Without one the result only lands silently in the conversation list.',
-    ),
-  notify_email: z
-    .boolean()
-    .optional()
-    .describe(
-      "Email each run summary to the owner's own account address. No address to supply — it is always the owner.",
-    ),
+    .describe('Where each run summary is delivered. On update only the keys given change.'),
   quiet_when_empty: z
     .boolean()
     .optional()
@@ -84,7 +89,7 @@ Each run starts a FRESH conversation with no history, so task_prompt must stand 
 
 enabled:false pauses and enabled:true resumes — never delete what the user only wants paused. delete drops the definition but keeps past run conversations. run_now executes once immediately and returns its session_id, so the user can check the output without waiting for the schedule.
 
-Always set notify_webhook or notify_email — a 03:00 run nobody is told about is worth little. For frequent "watch for X" checks, also set quiet_when_empty so runs that find nothing stay silent.
+Always set notify.webhook or notify.email — a 03:00 run nobody is told about is worth little. For frequent "watch for X" checks, also set quiet_when_empty so runs that find nothing stay silent.
 
 Before create, update or delete, state the configuration back in plain language — name, what it will do, and when it fires spelled out ("every weekday at 09:00 Hong Kong time") — then get explicit agreement. Read the current settings with automation_query first when changing an existing one.
 
@@ -118,8 +123,7 @@ export function createAutomationMutationTool(db: DatabaseProvider, ctx: Automati
             profile_id: input.profile_id,
             max_steps: input.max_steps,
             enabled: input.enabled,
-            notify_webhook: input.notify_webhook,
-            notify_email: input.notify_email,
+            notify: input.notify,
             quiet_when_empty: input.quiet_when_empty,
           });
           if (!result.ok) return { action: input.action, error: result.error };
@@ -137,8 +141,7 @@ export function createAutomationMutationTool(db: DatabaseProvider, ctx: Automati
             profile_id: input.profile_id,
             max_steps: input.max_steps,
             enabled: input.enabled,
-            notify_webhook: input.notify_webhook,
-            notify_email: input.notify_email,
+            notify: input.notify,
             quiet_when_empty: input.quiet_when_empty,
           });
           if (!result.ok) return { action: input.action, error: result.error };

@@ -11,10 +11,32 @@
 import { describe, it, expect, vi } from 'vitest';
 import type { PlatformActionResult } from '@greenhouse/platform-kernel';
 import type { SchemaPlanOperation } from '@greenhouse/types/tables';
-import { analyzeSchemaPlan, applySchemaPlan, type SchemaPlanDispatch } from '../schema-plan.js';
+import { z } from 'zod';
+import {
+  analyzeSchemaPlan,
+  applySchemaPlan,
+  schemaPlanOperationSchema,
+  type SchemaPlanDispatch,
+} from '../schema-plan.js';
 
 const ok = (data: unknown): PlatformActionResult => ({ ok: true, data });
 const fail = (message: string): PlatformActionResult => ({ ok: false, code: 'CONFLICT', message });
+
+describe('schema plan wire schema', () => {
+  it('takes ids as strings and coerces a legacy numeric id', () => {
+    expect(schemaPlanOperationSchema.parse({ op: 'field.archive', tableId: 4, fieldId: 'col_01JABC' })).toEqual({
+      op: 'field.archive',
+      tableId: '4',
+      fieldId: 'col_01JABC',
+    });
+    expect(schemaPlanOperationSchema.safeParse({ op: 'field.archive', tableId: '', fieldId: 'x' }).success).toBe(false);
+  });
+
+  it('shows ids to the model as plain strings', () => {
+    const json = JSON.stringify(z.toJSONSchema(schemaPlanOperationSchema, { io: 'input' }));
+    expect(json).toContain('"tableId":{"type":"string"');
+  });
+});
 
 describe('analyzeSchemaPlan', () => {
   it('accepts a plan that creates a Base, its table and fields', () => {
@@ -51,7 +73,7 @@ describe('analyzeSchemaPlan', () => {
     expect(
       analyzeSchemaPlan([
         { op: 'base.create', ref: 'b', name: 'A' },
-        { op: 'table.create', baseRef: 'b', baseId: 7, name: 'B' },
+        { op: 'table.create', baseRef: 'b', baseId: '7', name: 'B' },
       ]),
     ).toEqual({ error: expect.stringContaining('exactly one of baseRef or baseId') });
 
@@ -62,25 +84,25 @@ describe('analyzeSchemaPlan', () => {
 
   it('requires owner for Base settings but only builder for structure', () => {
     const result = analyzeSchemaPlan([
-      { op: 'table.create', baseId: 4, name: 'B' },
-      { op: 'base.update', baseId: 4, name: 'Renamed' },
+      { op: 'table.create', baseId: '4', name: 'B' },
+      { op: 'base.update', baseId: '4', name: 'Renamed' },
     ]);
     if ('error' in result) throw new Error(result.error);
     // The strictest requirement across the plan wins, so a plan that renames a
     // Base cannot slip through on builder alone.
-    expect(result.baseRequirements.get(4)).toBe('owner');
+    expect(result.baseRequirements.get('4')).toBe('owner');
   });
 
   it('collects field targets with their claimed table for the membership check', () => {
     const result = analyzeSchemaPlan([
-      { op: 'field.archive', tableId: 9, fieldId: 12 },
-      { op: 'field.update', tableId: 9, fieldId: 13, name: 'Renamed' },
+      { op: 'field.archive', tableId: '9', fieldId: '12' },
+      { op: 'field.update', tableId: '9', fieldId: '13', name: 'Renamed' },
     ]);
     if ('error' in result) throw new Error(result.error);
-    expect(result.tableRequirements.get(9)).toBe('builder');
+    expect(result.tableRequirements.get('9')).toBe('builder');
     expect(result.fieldTargets).toEqual([
-      { tableId: 9, fieldId: 12 },
-      { tableId: 9, fieldId: 13 },
+      { tableId: '9', fieldId: '12' },
+      { tableId: '9', fieldId: '13' },
     ]);
   });
 });
@@ -88,9 +110,9 @@ describe('analyzeSchemaPlan', () => {
 describe('applySchemaPlan', () => {
   it('resolves refs forward, including the table created alongside a Base', async () => {
     const dispatch = vi.fn<SchemaPlanDispatch>(async (actionId) => {
-      if (actionId === 'createBase') return ok({ base: { id: 1 }, schema: { table: { id: 10 } } });
-      if (actionId === 'createTable') return ok({ table: { id: 11 } });
-      return ok({ field: { id: 100 } });
+      if (actionId === 'createBase') return ok({ base: { id: '1' }, schema: { table: { id: '10' } } });
+      if (actionId === 'createTable') return ok({ table: { id: '11' } });
+      return ok({ field: { id: '100' } });
     });
 
     const operations: SchemaPlanOperation[] = [
@@ -102,14 +124,14 @@ describe('applySchemaPlan', () => {
     const result = await applySchemaPlan(operations, dispatch);
 
     expect(result.results.map((entry) => entry.status)).toEqual(['applied', 'applied', 'applied', 'applied']);
-    expect(result.baseId).toBe(1);
+    expect(result.baseId).toBe('1');
     // The Base's own table is addressable, so its fields land there rather than
     // beside an orphan "Table 1".
-    expect(dispatch).toHaveBeenNthCalledWith(2, 'createField', expect.objectContaining({ tableId: 10 }), {
-      tableId: 10,
+    expect(dispatch).toHaveBeenNthCalledWith(2, 'createField', expect.objectContaining({ tableId: '10' }), {
+      tableId: '10',
     });
-    expect(dispatch).toHaveBeenNthCalledWith(4, 'createField', expect.objectContaining({ tableId: 11 }), {
-      tableId: 11,
+    expect(dispatch).toHaveBeenNthCalledWith(4, 'createField', expect.objectContaining({ tableId: '11' }), {
+      tableId: '11',
     });
   });
 
@@ -117,15 +139,17 @@ describe('applySchemaPlan', () => {
     const dispatch = vi.fn<SchemaPlanDispatch>(async (actionId, payload) => {
       if (actionId === 'createTable') {
         const named = payload as { name?: string };
-        return named.name === 'Contacts' ? fail('A resource with this name already exists') : ok({ table: { id: 11 } });
+        return named.name === 'Contacts'
+          ? fail('A resource with this name already exists')
+          : ok({ table: { id: '11' } });
       }
-      return ok({ field: { id: 100 } });
+      return ok({ field: { id: '100' } });
     });
 
     const operations: SchemaPlanOperation[] = [
-      { op: 'table.create', ref: 'bad', baseId: 1, name: 'Contacts' },
+      { op: 'table.create', ref: 'bad', baseId: '1', name: 'Contacts' },
       { op: 'field.create', tableRef: 'bad', name: 'Email', type: 'email' },
-      { op: 'table.create', ref: 'good', baseId: 1, name: 'Leads' },
+      { op: 'table.create', ref: 'good', baseId: '1', name: 'Leads' },
       { op: 'field.create', tableRef: 'good', name: 'Stage', type: 'text' },
     ];
     const result = await applySchemaPlan(operations, dispatch);
@@ -139,13 +163,15 @@ describe('applySchemaPlan', () => {
 
   it('reports a failed operation without aborting the rest of the plan', async () => {
     const dispatch = vi.fn<SchemaPlanDispatch>(async (actionId) =>
-      actionId === 'archiveField' ? fail('Primary or unavailable fields cannot be archived') : ok({ field: { id: 2 } }),
+      actionId === 'archiveField'
+        ? fail('Primary or unavailable fields cannot be archived')
+        : ok({ field: { id: '2' } }),
     );
 
     const result = await applySchemaPlan(
       [
-        { op: 'field.archive', tableId: 5, fieldId: 1 },
-        { op: 'field.create', tableId: 5, name: 'Notes', type: 'long_text' },
+        { op: 'field.archive', tableId: '5', fieldId: '1' },
+        { op: 'field.create', tableId: '5', name: 'Notes', type: 'long_text' },
       ],
       dispatch,
     );
@@ -155,11 +181,11 @@ describe('applySchemaPlan', () => {
   });
 
   it('offers no Base link when the plan spans several Bases', async () => {
-    const dispatch = vi.fn<SchemaPlanDispatch>(async () => ok({ table: { id: 1 } }));
+    const dispatch = vi.fn<SchemaPlanDispatch>(async () => ok({ table: { id: '1' } }));
     const result = await applySchemaPlan(
       [
-        { op: 'table.create', baseId: 1, name: 'A' },
-        { op: 'table.create', baseId: 2, name: 'B' },
+        { op: 'table.create', baseId: '1', name: 'A' },
+        { op: 'table.create', baseId: '2', name: 'B' },
       ],
       dispatch,
     );

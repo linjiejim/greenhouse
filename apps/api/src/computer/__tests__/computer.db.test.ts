@@ -124,8 +124,8 @@ async function memberComputer(): Promise<MemberComputerRow> {
 
 async function computerFacts() {
   return (await db.executeRaw(
-    sql`SELECT units::int AS units, unit_kind, cost_usd_micros, client, oauth_client_id, run_id FROM service_usage
-        WHERE user_id = ${member.id} AND service = 'computer' ORDER BY created_at`,
+    sql`SELECT units::int AS units, unit_kind, cost_usd_micros, client, oauth_client_id, run_id FROM usage_events
+        WHERE kind = 'service' AND user_id = ${member.id} AND service = 'computer' ORDER BY created_at, id`,
   )) as Array<Record<string, unknown>>;
 }
 
@@ -181,7 +181,7 @@ beforeEach(async () => {
   initializePlatformRuntime(db, [projectsRegistration, knowledgeRegistration, tablesRegistration]);
   member = await createInternalTestUser(db, { email: `${unique('computer-member')}@test.local` });
   clientId = unique('client');
-  await db.platformOAuth.registerClient({ id: clientId, client_name: 'Codex', redirect_uris: '[]' });
+  await db.platformOAuth.registerClient({ id: clientId, client_name: 'Codex', redirect_uris: [] });
   // Other suites' committed rows must not fill the workspace limit here.
   process.env.COMPUTER_MAX_RUNNING = String((await db.memberComputers.listActive()).length + 1);
   driver = fakeDriver();
@@ -307,7 +307,10 @@ describe('cloud computer: over MCP', () => {
     expect(reserved).toMatchObject({ status: 'reserved', estimated_units: BLOCK });
 
     const runs = await db.runtime.listRuns({ owner_user_id: member.id, kinds: ['agent_write'], limit: 5 });
-    expect(runs.items.map((row) => JSON.parse(row.input).tool_id)).toEqual(['computer_exec', 'computer_exec']);
+    expect(runs.items.map((row) => (row.input as { tool_id?: string }).tool_id)).toEqual([
+      'computer_exec',
+      'computer_exec',
+    ]);
 
     const stopped = (await client.callTool({ name: 'computer_stop', arguments: {} })) as CallResult;
     expect(JSON.parse(stopped.content[0]!.text)).toMatchObject({ status: 'stopped', minutes_billed: 1 });
@@ -568,7 +571,7 @@ describe('cloud computer: lifecycle and per-minute billing', () => {
     const refused = await memberComputer();
     expect(refused).toMatchObject({ status: 'failed', stop_reason: 'failed' });
     const refusedGroup = (await db.executeRaw(
-      sql`SELECT status FROM usage_budget_reservations WHERE run_id = ${refused.id}`,
+      sql`SELECT status FROM budget_reservations WHERE run_id = ${refused.id}`,
     )) as Array<{ status: string }>;
     expect(refusedGroup.map((row) => row.status)).toEqual(['released', 'released', 'released']);
 
@@ -577,7 +580,7 @@ describe('cloud computer: lifecycle and per-minute billing', () => {
     const unknown = await memberComputer();
     expect(unknown.id).not.toBe(refused.id);
     const unknownGroup = (await db.executeRaw(
-      sql`SELECT status FROM usage_budget_reservations WHERE run_id = ${unknown.id}`,
+      sql`SELECT status FROM budget_reservations WHERE run_id = ${unknown.id}`,
     )) as Array<{ status: string }>;
     expect(unknownGroup.map((row) => row.status)).toEqual(['reserved', 'reserved', 'reserved']);
   });

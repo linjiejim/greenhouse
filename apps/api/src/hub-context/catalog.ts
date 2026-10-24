@@ -90,7 +90,7 @@ async function tablesBases(input: CatalogInput): Promise<{ bases: DataCatalogBas
   const all = (
     listed.data as {
       bases: Array<{
-        id: number;
+        id: string;
         name: string;
         description: string | null;
         visibility: 'private' | 'team';
@@ -102,7 +102,7 @@ async function tablesBases(input: CatalogInput): Promise<{ bases: DataCatalogBas
   ).bases;
   const picked = all.slice(0, MAX_BASES);
   const runtime = getPlatformRuntime();
-  const tableTotals = new Map<number, number>();
+  const tableTotals = new Map<string, number>();
   // Tables through the guarded listing (table entity policy, `tables.structure.read`),
   // never straight from the service.
   const tablesByBase = new Map(
@@ -124,7 +124,7 @@ async function tablesBases(input: CatalogInput): Promise<{ bases: DataCatalogBas
   // record access is decided per base (base role + `tables.data.read` + the
   // record entity policy), so one guarded count on a table of the base answers
   // it for every table in that base. Elsewhere counts are left out, not zeroed.
-  const recordsReadable = new Set<number>();
+  const recordsReadable = new Set<string>();
   if (input.counts !== false) {
     await Promise.all(
       picked.map(async (base) => {

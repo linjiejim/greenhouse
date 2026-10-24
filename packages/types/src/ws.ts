@@ -58,7 +58,7 @@ export type ServerWsEvent =
   // A knowledge document the recipient can see was created, edited or archived
   // (web, chat tool, MCP or an approved agent write). Ids only: clients refetch
   // over the authenticated API.
-  | { type: 'knowledge.changed'; docId: number; change: KnowledgeDocChangeKind }
+  | { type: 'knowledge.changed'; docId: string; change: KnowledgeDocChangeKind }
   // Cross-domain Execution Center invalidation. Payload contents stay on the
   // authenticated Runtime API; WS carries only identity and sequence.
   | {

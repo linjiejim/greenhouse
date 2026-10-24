@@ -11,7 +11,7 @@ import { useProjectRefreshStore } from '../../../stores';
 import { useT } from '../../../lib/i18n';
 
 interface ProjectSummary {
-  id: number;
+  id: string;
   title: string;
   status: string;
   progress: number;

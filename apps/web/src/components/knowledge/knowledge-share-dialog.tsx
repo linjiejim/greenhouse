@@ -3,7 +3,7 @@
  * reader or editor level. Owner-only (the page gates the entry point).
  *
  * Mirrors the session ShareDialog but adds a role, matching the
- * knowledge_base_shares model (shared_with = user_id).
+ * `shares` model (one kb_document grant per user).
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
@@ -17,7 +17,7 @@ import type { ShareableUser, KnowledgeShare } from '@greenhouse/types/api';
 interface KnowledgeShareDialogProps {
   open: boolean;
   onClose: () => void;
-  docId: number;
+  docId: string;
   docTitle: string;
   onChanged?: () => void;
 }

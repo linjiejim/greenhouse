@@ -40,26 +40,26 @@ export function matchKnowledgeAction(method: string, fullPath: string): Knowledg
   // extra "this is an admin act" gate; the capability itself is plain read.
   if (method === 'GET' && path === '/export') return { actionId: 'listDocuments' };
 
-  let match = path.match(/^\/docs\/id\/(\d+)$/);
+  let match = path.match(/^\/docs\/id\/([^/]+)$/);
   if (match && method === 'GET') return { actionId: 'readDocument', documentId: match[1] };
 
-  match = path.match(/^\/docs\/(\d+)\/editing-presence$/);
+  match = path.match(/^\/docs\/([^/]+)\/editing-presence$/);
   if (match && method === 'POST') return { actionId: 'updateDocument', documentId: match[1], change: 'presence' };
 
-  match = path.match(/^\/docs\/(\d+)\/versions$/);
+  match = path.match(/^\/docs\/([^/]+)\/versions$/);
   if (match && method === 'GET') return { actionId: 'listVersions', documentId: match[1] };
-  match = path.match(/^\/docs\/(\d+)\/versions\/\d+\/restore$/);
+  match = path.match(/^\/docs\/([^/]+)\/versions\/\d+\/restore$/);
   if (match && method === 'POST') return { actionId: 'restoreVersion', documentId: match[1] };
-  match = path.match(/^\/docs\/(\d+)\/shares$/);
+  match = path.match(/^\/docs\/([^/]+)\/shares$/);
   if (match && method === 'GET') return { actionId: 'listShares', documentId: match[1] };
   if (match && method === 'POST') return { actionId: 'manageShares', documentId: match[1] };
-  match = path.match(/^\/docs\/(\d+)\/shares\/.+$/);
+  match = path.match(/^\/docs\/([^/]+)\/shares\/.+$/);
   if (match && method === 'DELETE') return { actionId: 'manageShares', documentId: match[1] };
-  match = path.match(/^\/docs\/(\d+)\/ai\/rewrite$/);
+  match = path.match(/^\/docs\/([^/]+)\/ai\/rewrite$/);
   if (match && method === 'POST') return { actionId: 'rewriteDocument', documentId: match[1] };
-  match = path.match(/^\/docs\/(\d+)\/enrich$/);
+  match = path.match(/^\/docs\/([^/]+)\/enrich$/);
   if (match && method === 'POST') return { actionId: 'enrichDocument', documentId: match[1] };
-  match = path.match(/^\/docs\/(\d+)$/);
+  match = path.match(/^\/docs\/([^/]+)$/);
   if (match && method === 'PUT') return { actionId: 'updateDocument', documentId: match[1] };
   if (match && method === 'DELETE') return { actionId: 'archiveDocument', documentId: match[1] };
 
@@ -72,7 +72,8 @@ export function matchKnowledgeAction(method: string, fullPath: string): Knowledg
 async function createdDocumentId(c: Context): Promise<string | undefined> {
   try {
     const body = (await c.res.clone().json()) as { doc?: { id?: unknown } };
-    return typeof body.doc?.id === 'number' ? String(body.doc.id) : undefined;
+    const id = body.doc?.id;
+    return typeof id === 'string' || typeof id === 'number' ? String(id) : undefined;
   } catch {
     return undefined;
   }

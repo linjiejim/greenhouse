@@ -81,7 +81,7 @@ export function gatewayModelViews(): GatewayModelView[] {
     .filter((model) => model.openai || model.anthropic);
 }
 
-/** This UTC month's settled spend per key (llm_usage.gateway_key_id), optionally one member's keys. */
+/** This UTC month's settled spend per key (usage_events.gateway_key_id), optionally one member's keys. */
 export function monthSpendByKey(db: DatabaseProvider, userId?: string): Promise<Map<string, GatewayKeySpend>> {
   const period = getUtcMonthPeriod();
   return db.gatewayKeys.spendByKey({ since: period.start, until: period.end, ...(userId ? { user_id: userId } : {}) });

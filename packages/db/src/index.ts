@@ -37,6 +37,19 @@ export type {
   ExtensionMigrationRunner,
 } from './extension-migrations.js';
 export { readCoreMigrations } from './core-migrations.js';
+export { newId, isNewId, ulid, ID_PREFIX } from './ids.js';
+export {
+  applyMigrations,
+  assertMigratableDatabase,
+  detectDatabaseGeneration,
+  refusalFor,
+  DatabaseGenerationError,
+  MIGRATIONS_FOLDER,
+  V1_ARCHIVE_FOLDER,
+  V1_LATEST_TAG,
+} from './migrate.js';
+export type { DatabaseGeneration } from './migrate.js';
+export type { IdKind } from './ids.js';
 export type { CoreMigrationFile } from './core-migrations.js';
 
 // ─── Public types ────────────────────────────────────────

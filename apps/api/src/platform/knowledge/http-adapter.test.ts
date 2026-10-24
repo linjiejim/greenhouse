@@ -8,6 +8,9 @@ describe('Knowledge HTTP capability map', () => {
     ['GET', '/api/knowledge/docs/id/12', 'readDocument'],
     ['POST', '/api/knowledge/docs/12/editing-presence', 'updateDocument'],
     ['POST', '/api/knowledge/tree/reorder', 'updateDocument'],
+    ['GET', '/api/knowledge/docs/id/doc_01JABCDEFGHJKMNPQRSTVWXYZ0', 'readDocument'],
+    ['PUT', '/api/knowledge/docs/doc_01JABCDEFGHJKMNPQRSTVWXYZ0', 'updateDocument'],
+    ['GET', '/api/knowledge/docs/doc_01JABCDEFGHJKMNPQRSTVWXYZ0/versions', 'listVersions'],
     ['GET', '/api/knowledge/export', 'listDocuments'],
   ])('maps %s %s to %s', (method, path, actionId) => {
     expect(matchKnowledgeAction(method, path)?.actionId).toBe(actionId);

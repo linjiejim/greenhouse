@@ -1,9 +1,8 @@
 /**
  * Provider-call usage budget guard — the model half of metering.
  *
- * Every model provider call reserves before I/O: the owning user's monthly
- * token budget (plus organization / provider token accounts — kept in parallel
- * for this release) AND the call's USD price against the member, `llm` (or
+ * Every model provider call reserves before I/O: the organization / provider
+ * monthly token accounts AND the call's USD price against the member, `llm` (or
  * `vision`) service and organization USD accounts (usage/metering.ts — USD is
  * the primary limit). Once provider I/O may have started, a failed/unknown call
  * is deliberately left reserved for the DB TTL sweeper to charge at the
@@ -255,7 +254,7 @@ export interface OrganizationAttemptBudgetContext {
 /**
  * Hard admission for a model call the organization pays for — there is no
  * member behind it (the monthly retro). USD only, against the `llm` service and
- * organization accounts with client `system`; the llm_usage fact carries no
+ * organization accounts with client `system`; the usage event carries no
  * user. Same outcome rules as the member hook: a refusal throws before I/O, a
  * call whose outcome is unknown stays reserved for the sweeper.
  */
@@ -444,7 +443,7 @@ export class UserTokenBudgetLease {
     });
   }
 
-  /** The metering columns of this call's llm_usage fact, with the price it was settled at. */
+  /** The metering columns of this call's model usage event, with the price it was settled at. */
   usageAttribution(costUsdMicros: number | null, applied: AppliedTokenPrice | undefined) {
     const attribution = this.spend?.attribution;
     return {
@@ -497,9 +496,10 @@ function estimateUsd(input: ReserveUserTokenBudgetInput, price: TokenPrice | und
 }
 
 /**
- * Reserve the active internal owner's current UTC-month token account, then the
- * call's USD against the member / service / organization accounts. A USD
- * refusal releases the token reservation it just made.
+ * Reserve the call's tokens against the organization and provider monthly
+ * token accounts (env-configured caps), then its USD against the member /
+ * service / organization accounts. The owner must be an active internal member.
+ * A USD refusal releases the token reservation it just made.
  */
 export async function reserveUserTokenBudget(input: ReserveUserTokenBudgetInput): Promise<UserTokenBudgetLease> {
   const estimatedTokens = positiveSafeInteger(input.estimatedTokens);
@@ -510,9 +510,12 @@ export async function reserveUserTokenBudget(input: ReserveUserTokenBudgetInput)
 
   try {
     const user = await requireBudgetOwner(input.db, input.userId);
-    await input.db.usageBudget.reserveMonthlyUser({
+    const tokenAccounts = await Promise.all(
+      buildTokenSharedAccounts(input).map((account) => input.db.usageBudget.ensureAccount(account)),
+    );
+    await input.db.usageBudget.reserve({
+      account_ids: tokenAccounts.map((account) => account.id),
       user_id: user.id,
-      limit_tokens: user.monthly_token_limit,
       idempotency_key: idempotencyKey,
       estimated_units: estimatedTokens,
       caller: input.caller,
@@ -520,7 +523,6 @@ export async function reserveUserTokenBudget(input: ReserveUserTokenBudgetInput)
       model_id: input.modelId,
       provider_id: input.providerId,
       run_id: input.runId,
-      additional_accounts: buildTokenSharedAccounts(input),
       metadata: input.metadata,
     });
   } catch (err) {
@@ -562,7 +564,7 @@ export type BudgetedUsageRecord = Omit<
 >;
 
 /**
- * Settle the token and USD reservations, then append the llm_usage fact with
+ * Settle the token and USD reservations, then append the model usage event with
  * the same key, its cost and its attribution. Callers may catch failures after
  * provider I/O; an unsettled reservation remains conservative and expires to
  * the original estimate.

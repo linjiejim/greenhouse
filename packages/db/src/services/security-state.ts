@@ -16,8 +16,8 @@ import { nowIso } from '@greenhouse/utils/date';
 import { safeJsonParse } from '@greenhouse/utils/json';
 
 import type { Db } from '../client.js';
-import { oauthLoginStates, rateLimitBuckets } from '../schema/index.js';
-import type { OAuthLoginStateRow } from '../schema/security-state.js';
+import { loginStates as oauthLoginStates, rateLimits as rateLimitBuckets } from '../schema/index.js';
+import type { OAuthLoginStateRow } from '../schema/identity.js';
 
 export function createRateLimitService(db: Db) {
   return {
@@ -68,7 +68,7 @@ export function createOAuthLoginStateService(db: Db) {
         id: hashLoginValue(input.value),
         provider: input.provider,
         kind: input.kind,
-        payload: JSON.stringify(input.payload),
+        payload: input.payload,
         expires_at: input.expiresAt,
         created_at: nowIso(),
       });

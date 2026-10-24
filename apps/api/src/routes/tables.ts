@@ -64,6 +64,7 @@ import { analyzeSchemaPlan, applySchemaPlan, schemaPlanApplySchema } from '../pl
 import { getPlatformRuntime } from '../platform/runtime.js';
 import { artifactReceiptResult, claimArtifactAction } from '../chat/artifact-actions.js';
 import { toErrorMessage } from '@greenhouse/utils/error';
+import { toRowId } from '@greenhouse/utils/id';
 
 type ActionFailure = {
   ok: false;
@@ -90,8 +91,9 @@ function actionError(c: Context, result: ActionFailure) {
   );
 }
 
-function numberParam(c: Context, key: string): number {
-  return Number(c.req.param(key));
+/** A row id from the path; '' when malformed (the action's input schema rejects it). */
+function idParam(c: Context, key: string): string {
+  return toRowId(c.req.param(key)) ?? '';
 }
 
 async function jsonBody(c: Context): Promise<Record<string, unknown>> {
@@ -147,7 +149,7 @@ const tablesRoutes = new Hono<AppEnv>()
     );
   })
   .get('/bases/:baseId', async (c) => {
-    const baseId = numberParam(c, 'baseId');
+    const baseId = idParam(c, 'baseId');
     const result = await dispatch(c, 'getBase', { baseId }, { baseId });
     if (!result.ok) return actionError(c, result);
     return c.json(
@@ -160,32 +162,32 @@ const tablesRoutes = new Hono<AppEnv>()
     );
   })
   .patch('/bases/:baseId', async (c) => {
-    const baseId = numberParam(c, 'baseId');
+    const baseId = idParam(c, 'baseId');
     const result = await dispatch(c, 'updateBase', { ...(await jsonBody(c)), baseId }, { baseId });
     if (!result.ok) return actionError(c, result);
     return c.json(result.data as { base: TableBaseRow });
   })
   .post('/bases/:baseId/archive', async (c) => {
-    const baseId = numberParam(c, 'baseId');
+    const baseId = idParam(c, 'baseId');
     const result = await dispatch(c, 'archiveBase', { baseId }, { baseId });
     if (!result.ok) return actionError(c, result);
     return c.json(result.data as { base: TableBaseRow });
   })
   .get('/bases/:baseId/members', async (c) => {
-    const baseId = numberParam(c, 'baseId');
+    const baseId = idParam(c, 'baseId');
     const result = await dispatch(c, 'listMembers', { baseId }, { baseId });
     if (!result.ok) return actionError(c, result);
     return c.json(result.data as { members: TableBaseMemberRow[] });
   })
   .get('/bases/:baseId/audit', async (c) => {
-    const baseId = numberParam(c, 'baseId');
+    const baseId = idParam(c, 'baseId');
     const limit = Number(c.req.query('limit')) || undefined;
     const result = await dispatch(c, 'listBaseAudit', { baseId, limit }, { baseId });
     if (!result.ok) return actionError(c, result);
     return c.json(result.data as { events: PlatformAuditEventRow[] });
   })
   .put('/bases/:baseId/members/:userId', async (c) => {
-    const baseId = numberParam(c, 'baseId');
+    const baseId = idParam(c, 'baseId');
     const userId = c.req.param('userId');
     const result = await dispatch(
       c,
@@ -197,69 +199,69 @@ const tablesRoutes = new Hono<AppEnv>()
     return c.json(result.data as { member: TableBaseMemberRow });
   })
   .delete('/bases/:baseId/members/:userId', async (c) => {
-    const baseId = numberParam(c, 'baseId');
+    const baseId = idParam(c, 'baseId');
     const userId = c.req.param('userId');
     const result = await dispatch(c, 'manageMembers', { operation: 'remove', baseId, userId }, { baseId });
     if (!result.ok) return actionError(c, result);
     return c.json(result.data as { success: true });
   })
   .get('/bases/:baseId/tables', async (c) => {
-    const baseId = numberParam(c, 'baseId');
+    const baseId = idParam(c, 'baseId');
     const result = await dispatch(c, 'listTables', { baseId }, { baseId });
     if (!result.ok) return actionError(c, result);
     return c.json(result.data as { tables: TableDefinitionRow[] });
   })
   .post('/bases/:baseId/tables', async (c) => {
-    const baseId = numberParam(c, 'baseId');
+    const baseId = idParam(c, 'baseId');
     const result = await dispatch(c, 'createTable', { ...(await jsonBody(c)), baseId }, { baseId });
     if (!result.ok) return actionError(c, result);
     return c.json(result.data as TableSchemaResult, 201);
   })
   .patch('/tables/:tableId', async (c) => {
-    const tableId = numberParam(c, 'tableId');
+    const tableId = idParam(c, 'tableId');
     const result = await dispatch(c, 'updateTable', { ...(await jsonBody(c)), tableId }, { tableId });
     if (!result.ok) return actionError(c, result);
     return c.json(result.data as { table: TableDefinitionRow });
   })
   .post('/tables/:tableId/archive', async (c) => {
-    const tableId = numberParam(c, 'tableId');
+    const tableId = idParam(c, 'tableId');
     const result = await dispatch(c, 'archiveTable', { tableId }, { tableId });
     if (!result.ok) return actionError(c, result);
     return c.json(result.data as { table: TableDefinitionRow });
   })
   .get('/tables/:tableId/schema', async (c) => {
-    const tableId = numberParam(c, 'tableId');
+    const tableId = idParam(c, 'tableId');
     const result = await dispatch(c, 'getSchema', { tableId }, { tableId });
     if (!result.ok) return actionError(c, result);
     return c.json(result.data as TableSchemaResult);
   })
   .get('/tables/:tableId/schema/versions', async (c) => {
-    const tableId = numberParam(c, 'tableId');
+    const tableId = idParam(c, 'tableId');
     const result = await dispatch(c, 'listSchemaVersions', { tableId }, { tableId });
     if (!result.ok) return actionError(c, result);
     return c.json(result.data as { versions: TableSchemaVersionRow[] });
   })
   .get('/tables/:tableId/schema/versions/:version', async (c) => {
-    const tableId = numberParam(c, 'tableId');
-    const version = numberParam(c, 'version');
+    const tableId = idParam(c, 'tableId');
+    const version = Number(c.req.param('version'));
     const result = await dispatch(c, 'getSchemaVersion', { tableId, version }, { tableId });
     if (!result.ok) return actionError(c, result);
     return c.json(result.data as { version: TableSchemaVersionRow });
   })
   .post('/tables/:tableId/fields', async (c) => {
-    const tableId = numberParam(c, 'tableId');
+    const tableId = idParam(c, 'tableId');
     const result = await dispatch(c, 'createField', { ...(await jsonBody(c)), tableId }, { tableId });
     if (!result.ok) return actionError(c, result);
     return c.json(result.data as { field: TableFieldRow }, 201);
   })
   .patch('/fields/:fieldId', async (c) => {
-    const fieldId = numberParam(c, 'fieldId');
+    const fieldId = idParam(c, 'fieldId');
     const result = await dispatch(c, 'updateField', { ...(await jsonBody(c)), fieldId }, { fieldId });
     if (!result.ok) return actionError(c, result);
     return c.json(result.data as { field: TableFieldRow });
   })
   .post('/fields/:fieldId/archive', async (c) => {
-    const fieldId = numberParam(c, 'fieldId');
+    const fieldId = idParam(c, 'fieldId');
     const result = await dispatch(c, 'archiveField', { fieldId }, { fieldId });
     if (!result.ok) return actionError(c, result);
     return c.json(result.data as { field: TableFieldRow });
@@ -312,31 +314,31 @@ const tablesRoutes = new Hono<AppEnv>()
     }
   })
   .get('/tables/:tableId/views', async (c) => {
-    const tableId = numberParam(c, 'tableId');
+    const tableId = idParam(c, 'tableId');
     const result = await dispatch(c, 'listViews', { tableId }, { tableId });
     if (!result.ok) return actionError(c, result);
     return c.json(result.data as { views: TableViewRow[] });
   })
   .post('/tables/:tableId/views', async (c) => {
-    const tableId = numberParam(c, 'tableId');
+    const tableId = idParam(c, 'tableId');
     const result = await dispatch(c, 'createView', { ...(await jsonBody(c)), tableId }, { tableId });
     if (!result.ok) return actionError(c, result);
     return c.json(result.data as { view: TableViewRow }, 201);
   })
   .patch('/views/:viewId', async (c) => {
-    const viewId = numberParam(c, 'viewId');
+    const viewId = idParam(c, 'viewId');
     const result = await dispatch(c, 'updateView', { ...(await jsonBody(c)), viewId }, { viewId });
     if (!result.ok) return actionError(c, result);
     return c.json(result.data as { view: TableViewRow });
   })
   .post('/tables/:tableId/records/query', async (c) => {
-    const tableId = numberParam(c, 'tableId');
+    const tableId = idParam(c, 'tableId');
     const result = await dispatch(c, 'queryRecords', { tableId, query: await jsonBody(c) }, { tableId });
     if (!result.ok) return actionError(c, result);
     return c.json(result.data as TableRecordQueryResult);
   })
   .post('/tables/:tableId/records', async (c) => {
-    const tableId = numberParam(c, 'tableId');
+    const tableId = idParam(c, 'tableId');
     const result = await dispatch(c, 'createRecord', { ...(await jsonBody(c)), tableId }, { tableId });
     if (!result.ok) return actionError(c, result);
     return c.json(result.data as { record: TableRecordRow }, 201);
@@ -346,29 +348,29 @@ const tablesRoutes = new Hono<AppEnv>()
    * otherwise be read as a record id and answered with a 400.
    */
   .get('/tables/:tableId/records/deleted', async (c) => {
-    const tableId = numberParam(c, 'tableId');
+    const tableId = idParam(c, 'tableId');
     const limit = Number(c.req.query('limit')) || undefined;
     const result = await dispatch(c, 'listDeletedRecords', { tableId, limit }, { tableId });
     if (!result.ok) return actionError(c, result);
     return c.json(result.data as { records: TableRecordRow[] });
   })
   .post('/tables/:tableId/records/:recordId/restore', async (c) => {
-    const tableId = numberParam(c, 'tableId');
-    const recordId = numberParam(c, 'recordId');
+    const tableId = idParam(c, 'tableId');
+    const recordId = idParam(c, 'recordId');
     const result = await dispatch(c, 'restoreRecord', { tableId, recordId }, { tableId, recordId });
     if (!result.ok) return actionError(c, result);
     return c.json(result.data as { record: TableRecordRow });
   })
   .get('/tables/:tableId/records/:recordId', async (c) => {
-    const tableId = numberParam(c, 'tableId');
-    const recordId = numberParam(c, 'recordId');
+    const tableId = idParam(c, 'tableId');
+    const recordId = idParam(c, 'recordId');
     const result = await dispatch(c, 'getRecord', { tableId, recordId }, { tableId, recordId });
     if (!result.ok) return actionError(c, result);
     return c.json(result.data as { record: TableRecordRow });
   })
   .patch('/tables/:tableId/records/:recordId', async (c) => {
-    const tableId = numberParam(c, 'tableId');
-    const recordId = numberParam(c, 'recordId');
+    const tableId = idParam(c, 'tableId');
+    const recordId = idParam(c, 'recordId');
     const result = await dispatch(
       c,
       'updateRecord',
@@ -379,7 +381,7 @@ const tablesRoutes = new Hono<AppEnv>()
     return c.json(result.data as { record: TableRecordRow });
   })
   .post('/tables/:tableId/records/batch-upsert', async (c) => {
-    const tableId = numberParam(c, 'tableId');
+    const tableId = idParam(c, 'tableId');
     const result = await dispatch(c, 'batchUpsertRecords', { ...(await jsonBody(c)), tableId }, { tableId });
     if (!result.ok) return actionError(c, result);
     return c.json(
@@ -398,14 +400,14 @@ const tablesRoutes = new Hono<AppEnv>()
     );
   })
   .post('/tables/:tableId/records/batch-validate', async (c) => {
-    const tableId = numberParam(c, 'tableId');
+    const tableId = idParam(c, 'tableId');
     const result = await dispatch(c, 'validateBatchRecords', { ...(await jsonBody(c)), tableId }, { tableId });
     if (!result.ok) return actionError(c, result);
     return c.json(result.data as { results: TableBatchValidationResult[] });
   })
   .delete('/tables/:tableId/records/:recordId', async (c) => {
-    const tableId = numberParam(c, 'tableId');
-    const recordId = numberParam(c, 'recordId');
+    const tableId = idParam(c, 'tableId');
+    const recordId = idParam(c, 'recordId');
     const revision = Number(c.req.query('revision'));
     const result = await dispatch(c, 'deleteRecord', { tableId, recordId, revision }, { tableId, recordId });
     if (!result.ok) return actionError(c, result);

@@ -10,6 +10,7 @@
  * 修复动作发生在 harness 层，本路由不产生任何对 Agent 的注入。
  */
 
+import { toRowId } from '@greenhouse/utils/id';
 import { Hono } from 'hono';
 import { getDb } from '@greenhouse/db';
 import type { ToolFrictionStatus } from '@greenhouse/db';
@@ -37,8 +38,8 @@ const frictions = new Hono<AppEnv>()
   })
   /** PATCH /:id — move status / record how it was fixed */
   .patch('/:id', async (c) => {
-    const id = parseInt(c.req.param('id'), 10);
-    if (isNaN(id)) return c.json({ error: 'Invalid ID' }, 400);
+    const id = toRowId(c.req.param('id'));
+    if (!id) return c.json({ error: 'Invalid ID' }, 400);
 
     const body = (await c.req.json()) as { status?: string; resolution_note?: string | null };
     if (body.status !== undefined && !VALID_STATUSES.includes(body.status as ToolFrictionStatus)) {
@@ -58,8 +59,8 @@ const frictions = new Hono<AppEnv>()
   })
   /** DELETE /:id — drop a false positive outright */
   .delete('/:id', async (c) => {
-    const id = parseInt(c.req.param('id'), 10);
-    if (isNaN(id)) return c.json({ error: 'Invalid ID' }, 400);
+    const id = toRowId(c.req.param('id'));
+    if (!id) return c.json({ error: 'Invalid ID' }, 400);
 
     const deleted = await getDb().toolFrictions.delete(id);
     if (!deleted) return c.json({ error: 'Friction not found' }, 404);

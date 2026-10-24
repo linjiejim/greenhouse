@@ -7,7 +7,8 @@ import type { DataScope } from '@greenhouse/platform-kernel';
 import { nowIso } from '@greenhouse/utils/date';
 
 import type { Db } from '../client.js';
-import { projects, projectMembers, tasks, taskComments, projectActivities } from '../schema/index.js';
+import { newId } from '../ids.js';
+import { auditEvents, projects, projectMembers, tasks, taskComments } from '../schema/index.js';
 import type {
   ProjectRow,
   ProjectStatus,
@@ -18,8 +19,38 @@ import type {
   TaskRow,
   TaskStatus,
   TaskCommentRow,
-  ProjectActivityRow,
-} from '../schema/project.js';
+} from '../schema/projects.js';
+
+/**
+ * One entry of a project's activity history. Stored as an `audit_events` row
+ * (app_id 'projects', capability 'projects.activity'); this is its old shape.
+ */
+export interface ProjectActivityRow {
+  id: string;
+  project_id: string;
+  task_id: string | null;
+  user_id: string;
+  action: string;
+  detail: string | null;
+  created_at: string;
+}
+
+/** `audit_events.app_id` / `capability` of project activity rows. */
+export const PROJECT_ACTIVITY_APP_ID = 'projects';
+export const PROJECT_ACTIVITY_CAPABILITY = 'projects.activity';
+
+function toActivityRow(row: typeof auditEvents.$inferSelect): ProjectActivityRow {
+  const summary = row.summary as { project_id?: unknown; task_id?: unknown; detail?: unknown };
+  return {
+    id: row.id,
+    project_id: String(summary.project_id ?? ''),
+    task_id: summary.task_id == null ? null : String(summary.task_id),
+    user_id: row.actor_id,
+    action: row.action_id,
+    detail: typeof summary.detail === 'string' ? summary.detail : null,
+    created_at: row.created_at,
+  };
+}
 
 export interface ProjectInput {
   title: string;
@@ -47,15 +78,15 @@ export interface ProjectUpdateInput {
 }
 
 export interface ProjectMemberInput {
-  project_id: number;
+  project_id: string;
   user_id: string;
   role?: ProjectMemberRole;
   added_by: string;
 }
 
 export interface TaskInput {
-  project_id: number;
-  parent_id?: number;
+  project_id: string;
+  parent_id?: string;
   title: string;
   description?: string;
   status?: TaskStatus;
@@ -67,7 +98,7 @@ export interface TaskInput {
   sort_order?: number;
   estimated_hours?: number;
   tags?: string[];
-  dependencies?: number[];
+  dependencies?: string[];
   created_by: string;
 }
 
@@ -78,18 +109,18 @@ export interface TaskUpdateInput {
   priority?: Priority;
   task_type?: string;
   assignee_id?: string | null;
-  parent_id?: number | null;
-  project_id?: number;
+  parent_id?: string | null;
+  project_id?: string;
   start_date?: string | null;
   due_date?: string | null;
   sort_order?: number;
   estimated_hours?: number | null;
   tags?: string[];
-  dependencies?: number[];
+  dependencies?: string[];
 }
 
 export interface TaskCommentInput {
-  task_id: number;
+  task_id: string;
   user_id: string;
   content: string;
 }
@@ -112,7 +143,7 @@ export interface ProjectListAccess {
 export interface TaskListOpts {
   status?: TaskStatus;
   assignee_id?: string;
-  parent_id?: number | null;
+  parent_id?: string | null;
   limit?: number;
   offset?: number;
 }
@@ -146,6 +177,7 @@ export function createProjectService(db: Db) {
       const [inserted] = await db
         .insert(projects)
         .values({
+          id: newId('project'),
           title: input.title,
           description: input.description ?? null,
           status: input.status ?? 'planning',
@@ -163,6 +195,7 @@ export function createProjectService(db: Db) {
       const project = inserted!;
       // Auto-add creator as owner member
       await db.insert(projectMembers).values({
+        id: newId('projectMember'),
         project_id: project.id,
         user_id: input.created_by,
         role: 'owner',
@@ -174,6 +207,7 @@ export function createProjectService(db: Db) {
         await db
           .insert(projectMembers)
           .values({
+            id: newId('projectMember'),
             project_id: project.id,
             user_id: input.owner_id,
             role: 'owner',
@@ -192,7 +226,7 @@ export function createProjectService(db: Db) {
       return project;
     },
 
-    async getProjectById(id: number): Promise<ProjectRow | undefined> {
+    async getProjectById(id: string): Promise<ProjectRow | undefined> {
       const rows = await db.select().from(projects).where(eq(projects.id, id));
       return rows[0];
     },
@@ -230,7 +264,7 @@ export function createProjectService(db: Db) {
         .offset(offset);
     },
 
-    async updateProject(id: number, updates: ProjectUpdateInput, userId: string): Promise<ProjectRow | undefined> {
+    async updateProject(id: string, updates: ProjectUpdateInput, userId: string): Promise<ProjectRow | undefined> {
       const set: Record<string, unknown> = { updated_at: nowIso() };
       const changes: string[] = [];
 
@@ -271,7 +305,7 @@ export function createProjectService(db: Db) {
       return service.getProjectById(id);
     },
 
-    async deleteProject(id: number): Promise<boolean> {
+    async deleteProject(id: string): Promise<boolean> {
       const deleted = await db.delete(projects).where(eq(projects.id, id)).returning({ id: projects.id });
       return deleted.length > 0;
     },
@@ -301,7 +335,7 @@ export function createProjectService(db: Db) {
       return Number(row?.cnt ?? 0);
     },
 
-    async getProjectStats(id: number): Promise<{
+    async getProjectStats(id: string): Promise<{
       total: number;
       todo: number;
       in_progress: number;
@@ -347,6 +381,7 @@ export function createProjectService(db: Db) {
       const [inserted] = await db
         .insert(tasks)
         .values({
+          id: newId('task'),
           project_id: input.project_id,
           parent_id: input.parent_id ?? null,
           title: input.title,
@@ -359,8 +394,8 @@ export function createProjectService(db: Db) {
           due_date: input.due_date ?? null,
           sort_order: sortOrder,
           estimated_hours: input.estimated_hours ?? null,
-          tags: JSON.stringify(input.tags ?? []),
-          dependencies: JSON.stringify(input.dependencies ?? []),
+          tags: input.tags ?? [],
+          dependencies: input.dependencies ?? [],
           created_by: input.created_by,
           created_at: now,
           updated_at: now,
@@ -378,12 +413,12 @@ export function createProjectService(db: Db) {
       return task;
     },
 
-    async getTaskById(id: number): Promise<TaskRow | undefined> {
+    async getTaskById(id: string): Promise<TaskRow | undefined> {
       const rows = await db.select().from(tasks).where(eq(tasks.id, id));
       return rows[0];
     },
 
-    async listTasks(projectId: number, opts?: TaskListOpts): Promise<TaskRow[]> {
+    async listTasks(projectId: string, opts?: TaskListOpts): Promise<TaskRow[]> {
       const conditions = [eq(tasks.project_id, projectId)];
       if (opts?.status) conditions.push(eq(tasks.status, opts.status));
       if (opts?.assignee_id) conditions.push(eq(tasks.assignee_id, opts.assignee_id));
@@ -407,7 +442,7 @@ export function createProjectService(db: Db) {
         .offset(offset);
     },
 
-    async updateTask(id: number, updates: TaskUpdateInput, userId: string): Promise<TaskRow | undefined> {
+    async updateTask(id: string, updates: TaskUpdateInput, userId: string): Promise<TaskRow | undefined> {
       const task = await service.getTaskById(id);
       if (!task) return undefined;
 
@@ -449,8 +484,8 @@ export function createProjectService(db: Db) {
       if (updates.due_date !== undefined) set.due_date = updates.due_date;
       if (updates.sort_order !== undefined) set.sort_order = updates.sort_order;
       if (updates.estimated_hours !== undefined) set.estimated_hours = updates.estimated_hours;
-      if (updates.tags !== undefined) set.tags = JSON.stringify(updates.tags);
-      if (updates.dependencies !== undefined) set.dependencies = JSON.stringify(updates.dependencies);
+      if (updates.tags !== undefined) set.tags = updates.tags;
+      if (updates.dependencies !== undefined) set.dependencies = updates.dependencies;
 
       if (Object.keys(set).length <= 1) return task;
 
@@ -461,12 +496,12 @@ export function createProjectService(db: Db) {
       return service.getTaskById(id);
     },
 
-    async deleteTask(id: number): Promise<boolean> {
+    async deleteTask(id: string): Promise<boolean> {
       const deleted = await db.delete(tasks).where(eq(tasks.id, id)).returning({ id: tasks.id });
       return deleted.length > 0;
     },
 
-    async reorderTasks(updates: Array<{ id: number; sort_order: number }>): Promise<void> {
+    async reorderTasks(updates: Array<{ id: string; sort_order: number }>): Promise<void> {
       await db.transaction(async (tx: any) => {
         for (const u of updates) {
           await tx.update(tasks).set({ sort_order: u.sort_order }).where(eq(tasks.id, u.id));
@@ -480,6 +515,7 @@ export function createProjectService(db: Db) {
       const [inserted] = await db
         .insert(taskComments)
         .values({
+          id: newId('taskComment'),
           task_id: input.task_id,
           user_id: input.user_id,
           content: input.content,
@@ -501,7 +537,7 @@ export function createProjectService(db: Db) {
       return comment;
     },
 
-    async getComments(taskId: number, limit = 50): Promise<TaskCommentRow[]> {
+    async getComments(taskId: string, limit = 50): Promise<TaskCommentRow[]> {
       return await db
         .select()
         .from(taskComments)
@@ -510,12 +546,12 @@ export function createProjectService(db: Db) {
         .limit(limit);
     },
 
-    async getCommentById(id: number): Promise<TaskCommentRow | undefined> {
+    async getCommentById(id: string): Promise<TaskCommentRow | undefined> {
       const rows = await db.select().from(taskComments).where(eq(taskComments.id, id)).limit(1);
       return rows[0];
     },
 
-    async deleteComment(id: number): Promise<boolean> {
+    async deleteComment(id: string): Promise<boolean> {
       const deleted = await db.delete(taskComments).where(eq(taskComments.id, id)).returning({ id: taskComments.id });
       return deleted.length > 0;
     },
@@ -523,40 +559,54 @@ export function createProjectService(db: Db) {
     // ── Activity Log ──
 
     async logActivity(
-      projectId: number,
+      projectId: string,
       userId: string,
       action: string,
-      taskId?: number,
+      taskId?: string,
       detail?: string,
     ): Promise<void> {
       await service.logActivityInternal(projectId, taskId ?? null, userId, action, detail ?? null);
     },
 
-    async getActivities(projectId: number, limit = 50, offset = 0): Promise<ProjectActivityRow[]> {
-      return await db
+    async getActivities(projectId: string, limit = 50, offset = 0): Promise<ProjectActivityRow[]> {
+      const rows = await db
         .select()
-        .from(projectActivities)
-        .where(eq(projectActivities.project_id, projectId))
-        .orderBy(desc(projectActivities.created_at))
+        .from(auditEvents)
+        .where(
+          and(
+            eq(auditEvents.app_id, PROJECT_ACTIVITY_APP_ID),
+            eq(auditEvents.capability, PROJECT_ACTIVITY_CAPABILITY),
+            sql`${auditEvents.summary}->>'project_id' = ${projectId}`,
+          ),
+        )
+        .orderBy(desc(auditEvents.created_at), desc(auditEvents.id))
         .limit(limit)
         .offset(offset);
+      return rows.map(toActivityRow);
     },
 
     // ── Private ──
 
     async logActivityInternal(
-      projectId: number,
-      taskId: number | null,
+      projectId: string,
+      taskId: string | null,
       userId: string,
       action: string,
       detail: string | null,
     ): Promise<void> {
-      await db.insert(projectActivities).values({
-        project_id: projectId,
-        task_id: taskId,
-        user_id: userId,
-        action,
-        detail,
+      await db.insert(auditEvents).values({
+        id: newId('auditEvent'),
+        actor_id: userId,
+        actor_type: 'human',
+        request_id: newId('auditEvent'),
+        app_id: PROJECT_ACTIVITY_APP_ID,
+        module_id: 'projects',
+        entity_id: taskId ? 'task' : 'project',
+        record_id: taskId ?? projectId,
+        action_id: action,
+        capability: PROJECT_ACTIVITY_CAPABILITY,
+        result: 'success',
+        summary: { project_id: projectId, task_id: taskId, detail },
         created_at: nowIso(),
       });
     },
@@ -567,6 +617,7 @@ export function createProjectService(db: Db) {
       const [inserted] = await db
         .insert(projectMembers)
         .values({
+          id: newId('projectMember'),
           project_id: input.project_id,
           user_id: input.user_id,
           role: input.role ?? 'member',
@@ -588,7 +639,7 @@ export function createProjectService(db: Db) {
       return inserted!;
     },
 
-    async removeMember(projectId: number, userId: string): Promise<boolean> {
+    async removeMember(projectId: string, userId: string): Promise<boolean> {
       const deleted = await db
         .delete(projectMembers)
         .where(and(eq(projectMembers.project_id, projectId), eq(projectMembers.user_id, userId)))
@@ -596,7 +647,7 @@ export function createProjectService(db: Db) {
       return deleted.length > 0;
     },
 
-    async getMembers(projectId: number): Promise<ProjectMemberRow[]> {
+    async getMembers(projectId: string): Promise<ProjectMemberRow[]> {
       return await db
         .select()
         .from(projectMembers)
@@ -605,7 +656,7 @@ export function createProjectService(db: Db) {
     },
 
     async updateMemberRole(
-      projectId: number,
+      projectId: string,
       userId: string,
       role: ProjectMemberRole,
     ): Promise<ProjectMemberRow | undefined> {
@@ -617,7 +668,7 @@ export function createProjectService(db: Db) {
       return updated;
     },
 
-    async isMember(projectId: number, userId: string): Promise<boolean> {
+    async isMember(projectId: string, userId: string): Promise<boolean> {
       const rows = await db
         .select({ id: projectMembers.id })
         .from(projectMembers)

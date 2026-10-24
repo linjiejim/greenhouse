@@ -16,7 +16,6 @@
 
 import { tool } from 'ai';
 import { z } from 'zod';
-import { safeJsonParse } from '@greenhouse/utils/json';
 import { toErrorMessage } from '@greenhouse/utils/error';
 import type { DatabaseProvider } from '@greenhouse/db';
 import { placeholdersIn, TASK_VARIABLE_LIMITS, type TaskVariable } from '@greenhouse/types/tasks';
@@ -95,7 +94,7 @@ async function toolsUsedIn(db: DatabaseProvider, sessionId: string): Promise<str
   const messages = await db.sessions.getMessages(sessionId);
   const used: string[] = [];
   for (const message of messages) {
-    const pipeline = safeJsonParse(message.pipeline, []);
+    const pipeline: unknown = message.parts.pipeline;
     if (!Array.isArray(pipeline)) continue;
     for (const raw of pipeline) {
       const step = raw as { tool?: unknown; name?: unknown } | null;

@@ -1,20 +1,12 @@
 /**
- * Golden manifest hashes — the guard for the one platform failure CI cannot see.
+ * Golden manifest hashes — a manifest's serialized form is fixed per version.
  *
- * `publishAppRelease` refuses to republish `<app>@<version>` when the manifest
- * serializes to a different hash than the row already stored. Every test and CI
- * run starts from an empty database, so there is never a stored row to clash
- * with: a manifest edit that forgets its version bump passes every gate and then
- * **kills the API at boot** on the first environment that already has the old
- * hash. That is not hypothetical — 2026-08-11's deploy took the dev box down
- * with `应用 projects@1.0.0 已存在且 manifest hash 不同`, from a change that only
- * reordered a key inside each action object (`{id, ...action}` →
- * `{...action, id}`), altering no behaviour at all.
- *
- * So the hash is pinned here instead. If this test fails you changed what a
- * manifest serializes to — **bump that manifest's `version`, then update the
- * hash below**. Both, in the same commit: the version is what lets the new
- * manifest be published, the hash is what keeps this guard honest.
+ * 3.0 no longer stores app releases, so nothing fails at boot when a manifest
+ * changes without a version bump; clients, extensions and audit summaries
+ * still read `<app>@<version>` as a promise about what the app declares. The
+ * hash is pinned here so that promise holds. If this test fails you changed
+ * what a manifest serializes to — **bump that manifest's `version`, then
+ * update the hash below**, in the same commit.
  */
 
 import { createHash } from 'node:crypto';
@@ -31,9 +23,9 @@ function manifestHash(manifest: unknown): string {
 }
 
 const GOLDEN: ReadonlyArray<{ manifest: { id: string; version: string }; hash: string }> = [
-  { manifest: knowledgeManifest, hash: '3c5ebe45220a613baf5fb68d525d1da04b9ce3fb5ff72ce96d2923dcdf83e0f1' },
-  { manifest: projectsManifest, hash: 'b71d5106c4215dd5a0d1b5b0242da1ce3eb34994d145fc1b91ae54f00413afb0' },
-  { manifest: tablesManifest, hash: 'e17175e92b6dce75d6cd9927dc15e6152b68842609528627f74eeaec052c2c39' },
+  { manifest: knowledgeManifest, hash: '913cee0b0477d9df728edaf231096070eb58d17f113aa043a6a476c08e0c2759' },
+  { manifest: projectsManifest, hash: '603d8c2644b53ec3cae159121b3f3e853c34378533ebf03dedd84f551a348951' },
+  { manifest: tablesManifest, hash: '3f15cbbfae3ab9302f15dcf2be886afd119eb8285e94dde94dbf004895af1a07' },
 ];
 
 describe('platform manifest hashes', () => {

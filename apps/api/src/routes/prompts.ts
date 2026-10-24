@@ -10,6 +10,7 @@
  * 任务与原来的快捷指令逐字段相同，改路径只会让所有既有客户端一起返工。
  */
 
+import { toRowId } from '@greenhouse/utils/id';
 import { Hono } from 'hono';
 import { getDb } from '@greenhouse/db';
 import {
@@ -35,8 +36,11 @@ import { withOwnerNicknames } from '../user-display.js';
  * user has no way to tell. Extra placeholders are fine — the profile prompt
  * tells the model to ask about anything still unfilled.
  */
-function validateVariables(raw: unknown, body: string): { ok: true; json: string } | { ok: false; error: string } {
-  if (raw === undefined) return { ok: true, json: '[]' };
+function validateVariables(
+  raw: unknown,
+  body: string,
+): { ok: true; value: TaskVariable[] } | { ok: false; error: string } {
+  if (raw === undefined) return { ok: true, value: [] };
   if (!Array.isArray(raw)) return { ok: false, error: 'variables must be an array' };
   if (raw.length > TASK_VARIABLE_LIMITS.maxVariables) {
     return { ok: false, error: `at most ${TASK_VARIABLE_LIMITS.maxVariables} variables` };
@@ -50,18 +54,18 @@ function validateVariables(raw: unknown, body: string): { ok: true; json: string
   const present = placeholdersIn(body);
   const orphan = variables.find((v) => !present.includes(v.key));
   if (orphan) return { ok: false, error: `variable "${orphan.key}" has no {{${orphan.key}}} in the body` };
-  return { ok: true, json: JSON.stringify(variables) };
+  return { ok: true, value: variables };
 }
 
-function validateExpectedTools(raw: unknown): { ok: true; json: string } | { ok: false; error: string } {
-  if (raw === undefined) return { ok: true, json: '[]' };
+function validateExpectedTools(raw: unknown): { ok: true; value: string[] } | { ok: false; error: string } {
+  if (raw === undefined) return { ok: true, value: [] };
   if (!Array.isArray(raw) || raw.some((tool) => typeof tool !== 'string')) {
     return { ok: false, error: 'expected_tools must be an array of strings' };
   }
   // Not checked against the tool catalog on purpose: this list is a record of
   // what the captured run used, and a tool retired later should still show as
   // "this task used to need it" rather than blocking the save.
-  return { ok: true, json: JSON.stringify([...new Set(raw as string[])].slice(0, 40)) };
+  return { ok: true, value: [...new Set(raw as string[])].slice(0, 40) };
 }
 
 function parsePromptScope(raw: string | undefined): PromptScope | undefined | null {
@@ -126,8 +130,8 @@ const prompts = new Hono<AppEnv>()
       title: body.title.trim(),
       content,
       description: body.description?.trim() || null,
-      variables: variables.json,
-      expected_tools: tools.json,
+      variables: variables.value,
+      expected_tools: tools.value,
       source_session_id: body.source_session_id ?? null,
     };
     if (withArtifactReceipt) {
@@ -191,8 +195,8 @@ const prompts = new Hono<AppEnv>()
   .patch('/:id', async (c) => {
     const user = getAuthUser(c);
 
-    const id = parseInt(c.req.param('id'), 10);
-    if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+    const id = toRowId(c.req.param('id'));
+    if (!id) return c.json({ error: 'Invalid id' }, 400);
 
     const existing = await getDb().userPrompts.getById(id);
     if (!existing) return c.json({ error: 'Prompt not found' }, 404);
@@ -231,7 +235,7 @@ const prompts = new Hono<AppEnv>()
       // placeholder and its variable in two requests can never both pass.
       const variables = validateVariables(body.variables, (updates.content as string) ?? existing.content);
       if (!variables.ok) return c.json({ error: variables.error }, 400);
-      updates.variables = variables.json;
+      updates.variables = variables.value;
     } else if (body.content !== undefined) {
       // A content-only edit must not orphan the STORED variables either — this
       // is the same forbidden case validateVariables guards on create (a form
@@ -252,7 +256,7 @@ const prompts = new Hono<AppEnv>()
     if (body.expected_tools !== undefined) {
       const tools = validateExpectedTools(body.expected_tools);
       if (!tools.ok) return c.json({ error: tools.error }, 400);
-      updates.expected_tools = tools.json;
+      updates.expected_tools = tools.value;
     }
 
     const updated = await getDb().userPrompts.update(id, updates);
@@ -263,8 +267,8 @@ const prompts = new Hono<AppEnv>()
   .delete('/:id', async (c) => {
     const user = getAuthUser(c);
 
-    const id = parseInt(c.req.param('id'), 10);
-    if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+    const id = toRowId(c.req.param('id'));
+    if (!id) return c.json({ error: 'Invalid id' }, 400);
 
     const existing = await getDb().userPrompts.getById(id);
     if (!existing) return c.json({ error: 'Prompt not found' }, 404);

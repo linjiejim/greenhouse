@@ -4,8 +4,9 @@ import { eq, and, sql, desc } from 'drizzle-orm';
 import { nowIso } from '@greenhouse/utils/date';
 
 import type { Db } from '../client.js';
-import { apiAuditLog } from '../schema/index.js';
-import type { ApiAuditLogRow, ApiAuditChannel } from '../schema/api-audit.js';
+import { newId } from '../ids.js';
+import { requestLog as apiAuditLog } from '../schema/index.js';
+import type { ApiAuditLogRow, ApiAuditChannel } from '../schema/audit.js';
 
 export interface ApiAuditLogInput {
   app_id: string;
@@ -35,6 +36,7 @@ export function createApiAuditService(db: Db) {
   const service = {
     async record(input: ApiAuditLogInput): Promise<void> {
       await db.insert(apiAuditLog).values({
+        id: newId('requestLog'),
         app_id: input.app_id,
         endpoint: input.endpoint,
         method: input.method,
@@ -44,7 +46,7 @@ export function createApiAuditService(db: Db) {
         duration_ms: input.duration_ms ?? null,
         input_tokens: input.input_tokens ?? null,
         output_tokens: input.output_tokens ?? null,
-        meta: JSON.stringify(input.meta ?? {}),
+        meta: input.meta ?? {},
         ip_address: input.ip_address ?? null,
         error: input.error ?? null,
         created_at: nowIso(),
@@ -63,7 +65,10 @@ export function createApiAuditService(db: Db) {
       if (conditions.length > 0) {
         query = query.where(conditions.length === 1 ? conditions[0] : and(...conditions)) as any;
       }
-      return await (query as any).orderBy(desc(apiAuditLog.created_at)).limit(limit).offset(offset);
+      return await (query as any)
+        .orderBy(desc(apiAuditLog.created_at), desc(apiAuditLog.id))
+        .limit(limit)
+        .offset(offset);
     },
 
     async count(opts?: { app_id?: string; since?: string }): Promise<number> {

@@ -39,11 +39,9 @@ const budgetDb = {
       id: 'image-user',
       role: 'team',
       status: 'active',
-      monthly_token_limit: 20_000_000,
     })),
   },
   usageBudget: {
-    reserveMonthlyUser: vi.fn(async () => []),
     ensureAccount: metered.ensureAccount,
     reserve: metered.reserve,
     settle: vi.fn(async () => []),
@@ -247,7 +245,10 @@ describe('GenerateImageTool', () => {
 
     try {
       const tool = createImageTool();
-      const result = await tool.execute({ action: 'generate', prompt: 'a poster' }, { toolCallId: 'test', messages: [] });
+      const result = await tool.execute(
+        { action: 'generate', prompt: 'a poster' },
+        { toolCallId: 'test', messages: [] },
+      );
 
       const [url, init] = spy.mock.calls[0];
       expect(url).toBe('https://images.example.com/v1/images/generations');
@@ -267,7 +268,10 @@ describe('GenerateImageTool', () => {
 
     try {
       const tool = createImageTool();
-      const result = await tool.execute({ action: 'generate', prompt: 'a poster' }, { toolCallId: 'test', messages: [] });
+      const result = await tool.execute(
+        { action: 'generate', prompt: 'a poster' },
+        { toolCallId: 'test', messages: [] },
+      );
 
       expect((result as any).error).toContain('IMAGE_API_KEY');
       expect(spy).not.toHaveBeenCalled();

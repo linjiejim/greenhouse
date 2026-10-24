@@ -10,13 +10,7 @@ import { Hono } from 'hono';
 import type { Context } from 'hono';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
-import {
-  _resetProvider,
-  initDatabase,
-  type DatabaseProvider,
-  type KnowledgeDocRow,
-  type UserRow,
-} from '@greenhouse/db';
+import { _resetProvider, initDatabase, type DatabaseProvider, type KnowledgeDoc, type UserRow } from '@greenhouse/db';
 import type { AppEnv } from '../../app-env.js';
 import knowledgeRoutes from '../knowledge.js';
 import { knowledgeRegistration } from '../../platform/knowledge/registration.js';
@@ -26,22 +20,23 @@ import { createKnowledgeMutationTool } from '../../tools/knowledge-mutation.js';
 import { buildMcpServer, filterMcpToolIdsByPlatform } from '../mcp.js';
 import { TEST_DATABASE_URL } from '@greenhouse/db/test-config';
 import { createInternalTestUser } from '../../../../../tests/helpers/internal-user.js';
+import { moveToRestrictedRole } from '../../../../../tests/helpers/restricted-role.js';
 
 let db: DatabaseProvider;
 let owner: UserRow;
 let directReader: UserRow;
 let sharedEditor: UserRow;
 let outsider: UserRow;
-let teamDoc: KnowledgeDocRow;
-let directDoc: KnowledgeDocRow;
-let editorDoc: KnowledgeDocRow;
+let teamDoc: KnowledgeDoc;
+let directDoc: KnowledgeDoc;
+let editorDoc: KnowledgeDoc;
 let ownerReady: Promise<UserRow> | undefined;
 let directReaderReady: Promise<UserRow> | undefined;
 let sharedEditorReady: Promise<UserRow> | undefined;
 let outsiderReady: Promise<UserRow> | undefined;
-let teamDocReady: Promise<KnowledgeDocRow> | undefined;
-let directDocReady: Promise<KnowledgeDocRow> | undefined;
-let editorDocReady: Promise<KnowledgeDocRow> | undefined;
+let teamDocReady: Promise<KnowledgeDoc> | undefined;
+let directDocReady: Promise<KnowledgeDoc> | undefined;
+let editorDocReady: Promise<KnowledgeDoc> | undefined;
 let directShareReady: Promise<void> | undefined;
 let editorShareReady: Promise<void> | undefined;
 
@@ -94,7 +89,7 @@ async function createDoc(slug: string, visibility: 'team' | 'private') {
   });
 }
 
-function setupTeamDoc(): Promise<KnowledgeDocRow> {
+function setupTeamDoc(): Promise<KnowledgeDoc> {
   teamDocReady ??= createDoc('team-handbook', 'team').then((created) => {
     teamDoc = created;
     return created;
@@ -102,7 +97,7 @@ function setupTeamDoc(): Promise<KnowledgeDocRow> {
   return teamDocReady;
 }
 
-function setupDirectDoc(): Promise<KnowledgeDocRow> {
+function setupDirectDoc(): Promise<KnowledgeDoc> {
   directDocReady ??= createDoc('direct-secret', 'private').then((created) => {
     directDoc = created;
     return created;
@@ -110,7 +105,7 @@ function setupDirectDoc(): Promise<KnowledgeDocRow> {
   return directDocReady;
 }
 
-function setupEditorDoc(): Promise<KnowledgeDocRow> {
+function setupEditorDoc(): Promise<KnowledgeDoc> {
   editorDocReady ??= createDoc('editor-secret', 'private').then((created) => {
     editorDoc = created;
     return created;
@@ -270,12 +265,8 @@ describe('Knowledge Platform migration', () => {
 
   it('intersects platform capability denial with every transport', async () => {
     await setupDirectReader();
-    await db.platform.setUserCapabilityOverride({
-      org_id: 'default',
-      user_id: directReader.id,
-      capability: 'knowledge.*',
-      effect: 'deny',
-      reason: 'Knowledge transport parity test',
+    await moveToRestrictedRole(db, directReader.id, {
+      capabilities: (team) => team.filter((capability) => !capability.startsWith('knowledge.')),
     });
     const app = createHttpApp([directReader]);
     const http = await app.request('/api/knowledge/docs', {
@@ -327,7 +318,7 @@ describe('Knowledge Platform migration', () => {
       body: JSON.stringify({ title: `Audit me ${Date.now()}`, content: 'x' }),
     });
     expect(created.status).toBe(201);
-    const docId = ((await created.json()) as { doc: { id: number } }).doc.id;
+    const docId = ((await created.json()) as { doc: { id: string } }).doc.id;
     await app.request(`/api/knowledge/docs/${docId}/editing-presence`, {
       method: 'POST',
       headers: { 'x-test-user': owner.id },
@@ -336,8 +327,8 @@ describe('Knowledge Platform migration', () => {
     const audits = (await db.platform.listAuditEvents('default', 50)).filter((event) => event.actor_id === owner.id);
     const create = audits.find((event) => event.action_id === 'createDocument' && event.result === 'success');
     expect(create?.record_id).toBe(String(docId));
-    const beat = audits.find((event) => JSON.parse(event.summary).change === 'presence');
-    expect(JSON.parse(beat!.summary)).toMatchObject({ activity: false });
+    const beat = audits.find((event) => (event.summary as Record<string, unknown>).change === 'presence');
+    expect(beat!.summary).toMatchObject({ activity: false });
   });
 
   it('allows shared editors to write while reader grants remain read-only', async () => {

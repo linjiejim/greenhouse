@@ -17,7 +17,7 @@
 import { parse as parseYaml } from 'yaml';
 import type { DatabaseProvider, SkillRow, UserPromptRow } from '@greenhouse/db';
 import type { TaskVariable } from '@greenhouse/types/tasks';
-import { safeJsonParse } from '@greenhouse/utils/json';
+import { toRowId } from '@greenhouse/utils/id';
 import { downloadSkill, skillUsableBy, type Actor } from '../skills/center.js';
 import type { SkillFile } from '../skills/bundle.js';
 
@@ -102,7 +102,7 @@ export function skillArguments(skillMd: string): TeamPromptArgument[] {
 }
 
 function taskArguments(row: UserPromptRow): TeamPromptArgument[] {
-  const variables = safeJsonParse(row.variables, []) as TaskVariable[];
+  const variables = row.variables as TaskVariable[];
   return (Array.isArray(variables) ? variables : [])
     .filter((variable) => variable && typeof variable.key === 'string')
     .map((variable) => ({
@@ -216,8 +216,8 @@ export async function getTeamPrompt(
   }
 
   if (name.startsWith(PROMPT_PREFIX)) {
-    const id = Number(name.slice(PROMPT_PREFIX.length));
-    if (!Number.isSafeInteger(id) || id <= 0) return null;
+    const id = toRowId(name.slice(PROMPT_PREFIX.length));
+    if (!id) return null;
     const row = await db.userPrompts.getById(id);
     // Their own, or one shared with the team — the same set the picker lists.
     if (!row || (row.user_id !== actor.userId && !row.is_global)) return null;

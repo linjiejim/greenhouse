@@ -76,7 +76,7 @@ export interface DataCatalogReach {
 }
 
 export interface DataCatalogTable {
-  id: number;
+  id: string;
   name: string;
   /** Live records; null when the member may not read this base's records (counts are then left out). */
   row_count: number | null;
@@ -86,7 +86,7 @@ export interface DataCatalogTable {
 
 export interface DataCatalogBase {
   kind: 'tables_base';
-  id: number;
+  id: string;
   name: string;
   description: string | null;
   visibility: 'private' | 'team';

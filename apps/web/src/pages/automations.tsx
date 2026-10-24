@@ -50,7 +50,28 @@ import { RunProfilesPanel } from './run-profiles';
 import { pinnedProfileVersion, unpinnedProfileId } from '../lib/automation-profiles';
 import { AutomationProfileSelect } from './automation-profile-select';
 
-type Task = ScheduledTask & { schedule_desc?: string };
+/**
+ * A task as the form edits it: `notify` is shown as four flat fields (one per
+ * control) and folded back into the object on save (`withFormDefaults`).
+ */
+type Task = ScheduledTask & {
+  schedule_desc?: string;
+  notify_webhook: string | null;
+  notify_email: boolean;
+  notify_wecom: boolean;
+  notify_feishu: boolean;
+};
+
+function toFormTask(task: ScheduledTask & { schedule_desc?: string }): Task {
+  const notify = task.notify ?? { webhook: null, email: false, wecom: false, feishu: false };
+  return {
+    ...task,
+    notify_webhook: notify.webhook,
+    notify_email: notify.email,
+    notify_wecom: notify.wecom,
+    notify_feishu: notify.feishu,
+  };
+}
 
 // ─── Schedule builder ────────────────────────────────────
 //
@@ -261,29 +282,26 @@ function ScheduleField({ value, onChange }: CrudFieldRenderProps) {
 // ─── Run history dialog ──────────────────────────────────
 
 /**
- * The stored grant is a JSON string on the row; the form edits a list. Normalise
- * on the way out so an untouched form does not post the raw string back (the
- * server takes an array and would refuse it).
+ * Form values → request body: the four notify controls become the `notify`
+ * object (only the ones present in the form) and the tool grant is normalised
+ * to known ids.
  */
 function withFormDefaults(data: Record<string, unknown>): Partial<ScheduledTaskInput> {
-  const { unattended_tools, ...rest } = data;
+  const { unattended_tools, notify_webhook, notify_email, notify_wecom, notify_feishu, ...rest } = data;
+  const notify: NonNullable<ScheduledTaskInput['notify']> = {};
+  if (notify_webhook !== undefined)
+    notify.webhook = typeof notify_webhook === 'string' && notify_webhook ? notify_webhook : null;
+  if (notify_email !== undefined) notify.email = notify_email === true;
+  if (notify_wecom !== undefined) notify.wecom = notify_wecom === true;
+  if (notify_feishu !== undefined) notify.feishu = notify_feishu === true;
+  delete rest.notify;
+  delete rest.schedule_desc;
   return {
     ...rest,
     max_steps: (data.max_steps as number | null) ?? 15,
-    unattended_tools: readOptInTools(unattended_tools),
+    ...(Object.keys(notify).length > 0 ? { notify } : {}),
+    unattended_tools: normalizeAutomationOptInTools(unattended_tools),
   } as Partial<ScheduledTaskInput>;
-}
-
-/** Accepts the stored JSON string, an already-edited array, or nothing. */
-function readOptInTools(value: unknown): string[] {
-  if (typeof value === 'string') {
-    try {
-      return normalizeAutomationOptInTools(JSON.parse(value));
-    } catch {
-      return [];
-    }
-  }
-  return normalizeAutomationOptInTools(value);
 }
 
 /**
@@ -302,7 +320,7 @@ function readOptInTools(value: unknown): string[] {
 function OptInToolsField({ value, onChange, disabled }: CrudFieldRenderProps) {
   const t = useT();
   const [available, setAvailable] = useState<Set<string> | null>(null);
-  const selected = useMemo(() => new Set(readOptInTools(value)), [value]);
+  const selected = useMemo(() => new Set(normalizeAutomationOptInTools(value)), [value]);
 
   useEffect(() => {
     let alive = true;
@@ -524,7 +542,7 @@ export function AutomationsPanel({ sectionTabs }: { sectionTabs?: React.ReactNod
   const [feishu, setFeishu] = useState({ available: false, bound: false });
   // Guards double-fires of Run-now while a run is in flight (the legacy button
   // showed a spinner and disabled itself; navigation happens on completion).
-  const runningIds = useRef<Set<number>>(new Set());
+  const runningIds = useRef<Set<string>>(new Set());
   const [historyTask, setHistoryTask] = useState<Task | null>(null);
 
   useEffect(() => {
@@ -542,13 +560,13 @@ export function AutomationsPanel({ sectionTabs }: { sectionTabs?: React.ReactNod
   const dataSource = useMemo<CrudDataSource<Task>>(
     () => ({
       async list() {
-        const items = await api.listTasks();
+        const items = (await api.listTasks()).map(toFormTask);
         const visible = filterAutomationsByScope(items, currentUser?.id, scope);
         return { items: visible, total: visible.length };
       },
-      create: (data) => api.createTask(withFormDefaults(data) as ScheduledTaskInput),
-      update: (id, data) => api.updateTask(Number(id), withFormDefaults(data)),
-      remove: (id) => api.deleteTask(Number(id)),
+      create: async (data) => toFormTask(await api.createTask(withFormDefaults(data) as ScheduledTaskInput)),
+      update: async (id, data) => toFormTask(await api.updateTask(String(id), withFormDefaults(data))),
+      remove: (id) => api.deleteTask(String(id)),
     }),
     [currentUser?.id, scope],
   );

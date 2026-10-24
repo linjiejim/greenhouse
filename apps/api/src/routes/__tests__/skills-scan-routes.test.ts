@@ -60,17 +60,17 @@ function post(path: string, as: keyof typeof USERS, body?: unknown) {
 }
 
 const suspiciousRow = {
-  id: 1,
+  id: '1',
   name: 'evil-skill',
   display_name: 'Evil Skill',
   description: 'x',
-  tags: '[]',
+  tags: [] as string[],
   latest_version: '0.1.0',
   status: 'active',
   owner_user_id: 'u-owner',
   download_count: 0,
   scan_status: 'suspicious',
-  scan_findings: '[]',
+  scan_findings: [] as unknown[],
   scan_version: '0.1.0',
   scanned_at: '2026-08-05T00:00:00Z',
   scan_reviewed_by: null,
@@ -102,11 +102,14 @@ describe('POST /api/skills/:name/scan-decision', () => {
   it('accepts clean / blocked from a super and records the reviewer', async () => {
     const res = await post('/api/skills/evil-skill/scan-decision', 'admin', { decision: 'clean', note: 'reviewed' });
     expect(res.status).toBe(200);
-    expect((mocks.db.skills as { setScanDecision: ReturnType<typeof vi.fn> }).setScanDecision).toHaveBeenCalledWith(1, {
-      status: 'clean',
-      reviewed_by: 'u-admin',
-      note: 'reviewed',
-    });
+    expect((mocks.db.skills as { setScanDecision: ReturnType<typeof vi.fn> }).setScanDecision).toHaveBeenCalledWith(
+      '1',
+      {
+        status: 'clean',
+        reviewed_by: 'u-admin',
+        note: 'reviewed',
+      },
+    );
   });
 
   it('400s on a decision value outside the two rulings', async () => {
@@ -132,7 +135,7 @@ describe('POST /api/skills/:name/rescan', () => {
     const res = await post('/api/skills/evil-skill/rescan', 'admin');
     expect(res.status).toBe(404);
     // It got past the role gate and actually tried to re-read the latest version.
-    expect((mocks.db.skills as { getVersion: ReturnType<typeof vi.fn> }).getVersion).toHaveBeenCalledWith(1, '0.1.0');
+    expect((mocks.db.skills as { getVersion: ReturnType<typeof vi.fn> }).getVersion).toHaveBeenCalledWith('1', '0.1.0');
   });
 });
 

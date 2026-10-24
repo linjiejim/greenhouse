@@ -7,13 +7,13 @@ import { useT } from '../../lib/i18n';
 export type TableResource = { kind: 'table'; value: TableDefinition };
 
 interface ResourceDialogProps {
-  baseId: number;
+  baseId: string;
   /** Create mode: open the dialog to create a table. Ignored when `resource` is set. */
   type: 'table' | null;
   /** Edit mode: the existing table. */
   resource?: TableResource | null;
   onClose: () => void;
-  onCreated?: (type: 'table', resourceId: number) => void;
+  onCreated?: (type: 'table', resourceId: string) => void;
   onSaved?: () => void;
 }
 

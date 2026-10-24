@@ -12,7 +12,7 @@ import { nowIso } from '@greenhouse/utils/date';
 
 import type { Db } from '../client.js';
 import { workspaceSettings } from '../schema/index.js';
-import type { WorkspaceSettingRow } from '../schema/workspace-setting.js';
+import type { WorkspaceSettingRow } from '../schema/workspace.js';
 
 export type WorkspaceSettingWrite =
   | { value: unknown; value_enc?: undefined }

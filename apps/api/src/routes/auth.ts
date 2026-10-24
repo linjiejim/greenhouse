@@ -11,6 +11,7 @@
  * PUT  /api/auth/me/preferences — 更新当前用户偏好notes
  */
 
+import { toRowId } from '@greenhouse/utils/id';
 import { createHash } from 'node:crypto';
 import { Hono, type Context } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
@@ -80,7 +81,6 @@ export async function issueUserSession(user: UserRow) {
       email: user.email,
       nickname: user.nickname,
       role: user.role,
-      monthly_token_limit: user.monthly_token_limit,
       locale: user.locale ?? 'en',
     },
   };
@@ -222,7 +222,6 @@ const auth = new Hono<AppEnv>()
         email: user.email,
         nickname: user.nickname,
         role: user.role,
-        monthly_token_limit: user.monthly_token_limit,
         locale: user.locale ?? 'en',
       },
     });
@@ -247,7 +246,6 @@ const auth = new Hono<AppEnv>()
         email: user.email,
         nickname: user.nickname,
         role: user.role,
-        monthly_token_limit: user.monthly_token_limit,
         notes: user.notes ?? null,
         locale: user.locale ?? 'en',
         features,
@@ -272,14 +270,14 @@ const auth = new Hono<AppEnv>()
     try {
       const msgRows = await getDb().executeRaw(sql`
         SELECT COUNT(*) as cnt FROM messages m
-        JOIN sessions s ON m.session_id = s.id
+        JOIN conversations s ON m.session_id = s.id
         WHERE s.user_id = ${authUser.id} AND m.role = 'user' AND m.created_at >= ${todayStart}
       `);
       todayMessages = Number(msgRows[0]?.cnt ?? 0);
 
       const tokenRows = await getDb().executeRaw(sql`
         SELECT COALESCE(SUM(input_tokens + output_tokens), 0) as total
-        FROM llm_usage WHERE user_id = ${authUser.id} AND created_at >= ${monthStart}
+        FROM usage_events WHERE kind = 'model' AND user_id = ${authUser.id} AND created_at >= ${monthStart}
       `);
       monthTokens = Number(tokenRows[0]?.total ?? 0);
     } catch {
@@ -290,7 +288,6 @@ const auth = new Hono<AppEnv>()
       usage: {
         today_messages: todayMessages,
         month_tokens: monthTokens,
-        monthly_limit: user.monthly_token_limit,
       },
     });
   })
@@ -365,8 +362,8 @@ const auth = new Hono<AppEnv>()
       return c.json({ error: 'Memory feature not enabled for your account' }, 403);
     }
 
-    const id = parseInt(c.req.param('id'), 10);
-    if (isNaN(id)) return c.json({ error: 'Invalid memory ID' }, 400);
+    const id = toRowId(c.req.param('id'));
+    if (!id) return c.json({ error: 'Invalid memory ID' }, 400);
 
     const body = (await c.req.json()) as {
       title?: string;
@@ -420,8 +417,8 @@ const auth = new Hono<AppEnv>()
       return c.json({ error: 'Memory feature not enabled for your account' }, 403);
     }
 
-    const id = parseInt(c.req.param('id'), 10);
-    if (isNaN(id)) return c.json({ error: 'Invalid memory ID' }, 400);
+    const id = toRowId(c.req.param('id'));
+    if (!id) return c.json({ error: 'Invalid memory ID' }, 400);
 
     const existing = await getDb().userMemories.getOwned(id, authUser.id);
     if (!existing) return c.json({ error: 'Memory not found' }, 404);

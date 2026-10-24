@@ -66,7 +66,7 @@ describe('custom Agent team availability routes', () => {
     const agent = (await created.json()) as { id: string; is_shared: boolean };
     expect(agent).toMatchObject({ is_shared: false, current_version: 1 });
     expect(agent).not.toHaveProperty('lifecycle_status');
-    const numericId = agent.id.replace('custom:', '');
+    const profileId = agent.id.replace('custom:', '');
 
     const readerList = async () =>
       ((await (await app.request('/api/profiles/custom', as(reader))).json()) as { profiles: Array<{ id: string }> })
@@ -74,13 +74,13 @@ describe('custom Agent team availability routes', () => {
     expect((await readerList()).some((p) => p.id === agent.id)).toBe(false);
 
     const ownerShare = await app.request(
-      `/api/profiles/custom/${numericId}/sharing`,
+      `/api/profiles/custom/${profileId}/sharing`,
       as(owner, { method: 'PUT', body: JSON.stringify({ is_shared: true }) }),
     );
     expect(ownerShare.status).toBe(403);
 
     const adminShare = await app.request(
-      `/api/profiles/custom/${numericId}/sharing`,
+      `/api/profiles/custom/${profileId}/sharing`,
       as(admin, { method: 'PUT', body: JSON.stringify({ is_shared: true }) }),
     );
     expect(adminShare.status).toBe(200);
@@ -88,26 +88,26 @@ describe('custom Agent team availability routes', () => {
     expect((await readerList()).some((p) => p.id === agent.id)).toBe(true);
 
     const edited = await app.request(
-      `/api/profiles/custom/${numericId}`,
+      `/api/profiles/custom/${profileId}`,
       as(owner, { method: 'PUT', body: JSON.stringify({ system_prompt: 'Answer from the knowledge base, briefly.' }) }),
     );
     expect(edited.status).toBe(200);
     expect(await edited.json()).toMatchObject({ is_shared: true, current_version: 2 });
 
-    const versions = await app.request(`/api/profiles/custom/${numericId}/versions`, as(reader));
+    const versions = await app.request(`/api/profiles/custom/${profileId}/versions`, as(reader));
     expect(
       ((await versions.json()) as { versions: Array<{ version: number }> }).versions.map((v) => v.version),
     ).toEqual([2]);
 
     const lifecycle = await app.request(
-      `/api/profiles/custom/${numericId}/lifecycle`,
+      `/api/profiles/custom/${profileId}/lifecycle`,
       as(owner, { method: 'POST', body: JSON.stringify({ status: 'review' }) }),
     );
     expect(lifecycle.status).toBe(404);
 
-    const deleted = await app.request(`/api/profiles/custom/${numericId}`, as(owner, { method: 'DELETE' }));
+    const deleted = await app.request(`/api/profiles/custom/${profileId}`, as(owner, { method: 'DELETE' }));
     expect(deleted.status).toBe(200);
-    expect(await db.customProfiles.getById(Number(numericId))).toBeUndefined();
+    expect(await db.customProfiles.getById(profileId)).toBeUndefined();
   });
 });
 

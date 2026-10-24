@@ -59,7 +59,7 @@ export interface GanttBarStyle {
 }
 
 interface DragState {
-  taskId: number;
+  taskId: string;
   mode: 'move' | 'resize-start' | 'resize-end';
   origStart: string | null;
   origEnd: string | null;
@@ -70,7 +70,7 @@ interface DragState {
 export interface GanttRowCtx {
   dragGrip: ReactNode;
   expandToggle: (task: GanttTaskItem) => ReactNode;
-  batchCheckbox: (taskId: number) => ReactNode;
+  batchCheckbox: (taskId: string) => ReactNode;
   statusIcon: (task: GanttTaskItem) => ReactNode;
   titleSpan: (task: GanttTaskItem) => ReactNode;
   assigneeSpan: (task: GanttTaskItem) => ReactNode;
@@ -104,8 +104,8 @@ export interface GanttCoreProps<TData, GData> {
   leftHeader: ReactNode;
   /** Extra node inside the left panel (e.g. resize handle). */
   leftPanelExtra?: ReactNode;
-  isTaskExpanded: (id: number) => boolean;
-  onToggleTask: (id: number) => void;
+  isTaskExpanded: (id: string) => boolean;
+  onToggleTask: (id: string) => void;
   /** Content of a task row in the left panel (container/handlers provided by core). */
   renderTaskRow: (row: GanttTaskRow<TData>, ctx: GanttRowCtx) => ReactNode;
   /** Full row element for a group row in the left panel. */
@@ -127,9 +127,9 @@ export interface GanttCoreProps<TData, GData> {
   /** Resolve the drag-create row from the mouse Y position (cross-project view). */
   dragCreateByRow?: boolean;
   /** Row drag-sort drop — shells implement reorder/reparent/move semantics. */
-  onSortDrop: (sourceId: number, targetIdx: number) => void;
+  onSortDrop: (sourceId: string, targetIdx: number) => void;
   /** Batch action other than 'clear' — shells persist and call clear() as before. */
-  onBatchAction: (action: string, value: string | undefined, ids: number[], clear: () => void) => void;
+  onBatchAction: (action: string, value: string | undefined, ids: string[], clear: () => void) => void;
   /** Extra controls in the batch bar (e.g. move-to-project select). */
   renderBatchExtra?: (run: (action: string, value?: string) => void) => ReactNode;
   contextMenuProjects?: GanttContextMenuProject[];
@@ -211,10 +211,10 @@ export function GanttCore<TData, GData>({
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; task: Task } | null>(null);
 
   // Drag sort state
-  const [dragSortState, setDragSortState] = useState<{ sourceId: number; overIndex: number } | null>(null);
+  const [dragSortState, setDragSortState] = useState<{ sourceId: string; overIndex: number } | null>(null);
 
   // Batch selection
-  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [showBatchBar, setShowBatchBar] = useState(false);
 
   // Keyboard nav
@@ -229,7 +229,7 @@ export function GanttCore<TData, GData>({
 
   // ── Batch selection ─────────────────────────────────────
 
-  const toggleSelected = useCallback((id: number) => {
+  const toggleSelected = useCallback((id: string) => {
     setSelectedIds((prev) => {
       const next = new Set(prev);
       next.has(id) ? next.delete(id) : next.add(id);
@@ -559,10 +559,10 @@ export function GanttCore<TData, GData>({
   const handleDragSortDrop = useCallback(
     (e: React.DragEvent, targetIdx: number) => {
       e.preventDefault();
-      const sourceId = parseInt(e.dataTransfer.getData('text/plain'), 10);
+      const sourceId = e.dataTransfer.getData('text/plain');
       setDragSortState(null);
 
-      if (isNaN(sourceId)) return;
+      if (!sourceId) return;
       onSortDrop(sourceId, targetIdx);
     },
     [onSortDrop],
@@ -580,7 +580,7 @@ export function GanttCore<TData, GData>({
 
   const depArrows = useMemo(() => {
     const arrows: Array<{ x1: number; y1: number; x2: number; y2: number }> = [];
-    const taskIndexMap = new Map<number, number>();
+    const taskIndexMap = new Map<string, number>();
     rows.forEach((row, i) => {
       if (row.kind === 'task') taskIndexMap.set(row.task.id, i);
     });

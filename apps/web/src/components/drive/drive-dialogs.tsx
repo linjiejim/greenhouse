@@ -64,15 +64,15 @@ interface TreeRow {
 }
 
 /** Depth-first rows of the folder tree, skipping `excludeId` and everything below it. */
-export function folderTreeRows(folders: readonly DriveFolder[], excludeId: number | null): TreeRow[] {
-  const children = new Map<number | null, DriveFolder[]>();
+export function folderTreeRows(folders: readonly DriveFolder[], excludeId: string | null): TreeRow[] {
+  const children = new Map<string | null, DriveFolder[]>();
   for (const folder of folders) {
     const list = children.get(folder.parent_id) ?? [];
     list.push(folder);
     children.set(folder.parent_id, list);
   }
   const rows: TreeRow[] = [];
-  const walk = (parentId: number | null, depth: number) => {
+  const walk = (parentId: string | null, depth: number) => {
     for (const folder of children.get(parentId) ?? []) {
       if (folder.id === excludeId) continue;
       rows.push({ folder, depth });
@@ -96,15 +96,15 @@ export function DriveMoveDialog({
   owner: DriveOwner;
   /** What is being moved, for the title. */
   name: string;
-  currentParentId: number | null;
+  currentParentId: string | null;
   /** Set when a folder is moved: it and its subtree are not valid targets. */
-  movingFolderId: number | null;
+  movingFolderId: string | null;
   onClose: () => void;
-  onSubmit: (targetFolderId: number | null) => void;
+  onSubmit: (targetFolderId: string | null) => void;
 }) {
   const t = useT();
   const [folders, setFolders] = useState<DriveFolder[] | null>(null);
-  const [target, setTarget] = useState<number | null>(currentParentId);
+  const [target, setTarget] = useState<string | null>(currentParentId);
 
   useEffect(() => {
     if (!open) return;
@@ -122,7 +122,7 @@ export function DriveMoveDialog({
   }, [open, currentParentId]);
 
   const rows = useMemo(() => folderTreeRows(folders ?? [], movingFolderId), [folders, movingFolderId]);
-  const option = (id: number | null, label: string, depth: number) => (
+  const option = (id: string | null, label: string, depth: number) => (
     <button
       key={id ?? 'root'}
       type="button"

@@ -9,8 +9,9 @@ import { eq, sql } from 'drizzle-orm';
 import { nowIso } from '@greenhouse/utils/date';
 
 import type { Db } from '../client.js';
-import { feishuConversations, feishuMessageReceipts } from '../schema/index.js';
-import type { FeishuConversationRow } from '../schema/feishu-bot.js';
+import { newId } from '../ids.js';
+import { feishuConversations, feishuReceipts as feishuMessageReceipts } from '../schema/index.js';
+import type { FeishuConversationRow } from '../schema/feishu.js';
 
 export interface FeishuConversationInput {
   feishu_key: string;
@@ -37,7 +38,7 @@ export function createFeishuBotService(db: Db) {
       const now = nowIso();
       await db
         .insert(feishuConversations)
-        .values({ ...input, created_at: now, last_message_at: now })
+        .values({ id: newId('feishuConversation'), ...input, created_at: now, last_message_at: now })
         .onConflictDoNothing({ target: feishuConversations.feishu_key });
       const rows = await db
         .select()

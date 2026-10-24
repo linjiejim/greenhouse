@@ -44,19 +44,19 @@ type SchemaPlanInput = z.infer<typeof schemaPlanSchema>;
 // ─── Permission probe ────────────────────────────────────
 
 interface ProbedTable {
-  baseId: number;
-  fieldIds: Set<number>;
+  baseId: string;
+  fieldIds: Set<string>;
 }
 
 function readSchemaResult(data: unknown): ProbedTable | undefined {
   if (!data || typeof data !== 'object') return undefined;
   const { table, fields } = data as { table?: { base_id?: unknown }; fields?: unknown };
-  if (!table || typeof table.base_id !== 'number') return undefined;
-  const fieldIds = new Set<number>();
+  if (!table || typeof table.base_id !== 'string') return undefined;
+  const fieldIds = new Set<string>();
   if (Array.isArray(fields)) {
     for (const field of fields) {
-      if (field && typeof field === 'object' && typeof (field as { id?: unknown }).id === 'number') {
-        fieldIds.add((field as { id: number }).id);
+      if (field && typeof field === 'object' && typeof (field as { id?: unknown }).id === 'string') {
+        fieldIds.add((field as { id: string }).id);
       }
     }
   }
@@ -84,7 +84,7 @@ export interface TablesSchemaPlanContext {
  */
 async function probePermissions(userId: string, shape: SchemaPlanShape): Promise<string | undefined> {
   const context = { userId };
-  const tables = new Map<number, ProbedTable>();
+  const tables = new Map<string, ProbedTable>();
 
   for (const [tableId, required] of shape.tableRequirements) {
     const result = await dispatchTablesAgentAction(context, 'getSchema', { tableId }, { tableId });

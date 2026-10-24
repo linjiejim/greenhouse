@@ -10,8 +10,9 @@ import { and, asc, desc, eq, ilike, isNull, or, sql } from 'drizzle-orm';
 import { nowIso } from '@greenhouse/utils/date';
 
 import type { Db } from '../client.js';
-import { agentSkills, agentSkillVersions } from '../schema/index.js';
-import type { SkillRow, SkillScanStatus, SkillStatus, SkillVersionRow } from '../schema/skill.js';
+import { newId } from '../ids.js';
+import { skills as agentSkills, skillVersions as agentSkillVersions } from '../schema/index.js';
+import type { SkillRow, SkillScanStatus, SkillStatus, SkillVersionRow } from '../schema/skills.js';
 
 export interface SkillCreateInput {
   name: string;
@@ -49,7 +50,7 @@ export interface SkillListOpts {
 /** Scanner verdict (written by the publish path / rescan / boot sweep). */
 export interface SkillScanResultInput {
   status: SkillScanStatus;
-  /** JSON-serializable finding list; stored as text per the JSON-as-text rule. */
+  /** Finding list (jsonb). */
   findings: unknown[];
   /** The version the verdict was produced from. */
   version: string;
@@ -81,28 +82,31 @@ export function createSkillService(db: Db) {
         const [skill] = await tx
           .insert(agentSkills)
           .values({
+            id: newId('skill'),
             name: input.name,
             display_name: input.display_name || input.name,
             description: input.description,
-            tags: JSON.stringify(input.tags ?? []),
+            tags: input.tags ?? [],
             latest_version: first.version,
             owner_user_id: input.owner_user_id,
             created_at: now,
             updated_at: now,
           })
           .returning();
-        await tx.insert(agentSkillVersions).values({ skill_id: skill!.id, ...first, created_at: now });
+        await tx
+          .insert(agentSkillVersions)
+          .values({ id: newId('skillVersion'), skill_id: skill!.id, ...first, created_at: now });
         return skill!;
       });
     },
 
     /** Append a version and bump the denormalized latest_version, in one transaction. */
-    async addVersion(skillId: number, input: SkillVersionInput): Promise<SkillVersionRow> {
+    async addVersion(skillId: string, input: SkillVersionInput): Promise<SkillVersionRow> {
       const now = nowIso();
       return await db.transaction(async (tx) => {
         const [version] = await tx
           .insert(agentSkillVersions)
-          .values({ skill_id: skillId, ...input, created_at: now })
+          .values({ id: newId('skillVersion'), skill_id: skillId, ...input, created_at: now })
           .returning();
         await tx
           .update(agentSkills)
@@ -112,7 +116,7 @@ export function createSkillService(db: Db) {
       });
     },
 
-    async getById(id: number): Promise<SkillRow | undefined> {
+    async getById(id: string): Promise<SkillRow | undefined> {
       return (await db.select().from(agentSkills).where(eq(agentSkills.id, id)))[0];
     },
 
@@ -131,7 +135,7 @@ export function createSkillService(db: Db) {
             ilike(agentSkills.name, pattern),
             ilike(agentSkills.display_name, pattern),
             ilike(agentSkills.description, pattern),
-            ilike(agentSkills.tags, pattern),
+            ilike(sql`${agentSkills.tags}::text`, pattern),
           ),
         );
       }
@@ -155,7 +159,7 @@ export function createSkillService(db: Db) {
             ilike(agentSkills.name, pattern),
             ilike(agentSkills.display_name, pattern),
             ilike(agentSkills.description, pattern),
-            ilike(agentSkills.tags, pattern),
+            ilike(sql`${agentSkills.tags}::text`, pattern),
           ),
         );
       }
@@ -169,15 +173,15 @@ export function createSkillService(db: Db) {
     },
 
     /** Version history, newest first. */
-    async listVersions(skillId: number): Promise<SkillVersionRow[]> {
+    async listVersions(skillId: string): Promise<SkillVersionRow[]> {
       return await db
         .select()
         .from(agentSkillVersions)
         .where(eq(agentSkillVersions.skill_id, skillId))
-        .orderBy(desc(agentSkillVersions.id));
+        .orderBy(desc(agentSkillVersions.created_at), desc(agentSkillVersions.id));
     },
 
-    async getVersion(skillId: number, version: string): Promise<SkillVersionRow | undefined> {
+    async getVersion(skillId: string, version: string): Promise<SkillVersionRow | undefined> {
       return (
         await db
           .select()
@@ -186,25 +190,25 @@ export function createSkillService(db: Db) {
       )[0];
     },
 
-    async updateMeta(skillId: number, updates: SkillMetaUpdateInput): Promise<SkillRow | undefined> {
+    async updateMeta(skillId: string, updates: SkillMetaUpdateInput): Promise<SkillRow | undefined> {
       const set: Record<string, unknown> = { updated_at: nowIso() };
       if (updates.display_name !== undefined) set.display_name = updates.display_name;
       if (updates.description !== undefined) set.description = updates.description;
-      if (updates.tags !== undefined) set.tags = JSON.stringify(updates.tags);
+      if (updates.tags !== undefined) set.tags = updates.tags;
       await db.update(agentSkills).set(set).where(eq(agentSkills.id, skillId));
       return service.getById(skillId);
     },
 
     /** Metadata participates in the security verdict, so update both atomically. */
     async updateMetaWithScan(
-      skillId: number,
+      skillId: string,
       updates: SkillMetaUpdateInput,
       scan: SkillScanResultInput,
     ): Promise<SkillRow | undefined> {
       const set: Record<string, unknown> = {
         updated_at: nowIso(),
         scan_status: scan.status,
-        scan_findings: JSON.stringify(scan.findings),
+        scan_findings: scan.findings,
         scan_version: scan.version,
         scanned_at: nowIso(),
         scan_reviewed_by: null,
@@ -213,7 +217,7 @@ export function createSkillService(db: Db) {
       };
       if (updates.display_name !== undefined) set.display_name = updates.display_name;
       if (updates.description !== undefined) set.description = updates.description;
-      if (updates.tags !== undefined) set.tags = JSON.stringify(updates.tags);
+      if (updates.tags !== undefined) set.tags = updates.tags;
       const rows = await db
         .update(agentSkills)
         .set(set)
@@ -222,7 +226,7 @@ export function createSkillService(db: Db) {
       return rows[0];
     },
 
-    async setStatus(skillId: number, status: SkillStatus): Promise<SkillRow | undefined> {
+    async setStatus(skillId: string, status: SkillStatus): Promise<SkillRow | undefined> {
       await db.update(agentSkills).set({ status, updated_at: nowIso() }).where(eq(agentSkills.id, skillId));
       return service.getById(skillId);
     },
@@ -236,7 +240,7 @@ export function createSkillService(db: Db) {
      * With `onlyIfLatestVersion` the write is a no-op when a newer publish has
      * already moved `latest_version` on — the newer scan's verdict stands.
      */
-    async setScanResult(skillId: number, input: SkillScanResultInput): Promise<SkillRow | undefined> {
+    async setScanResult(skillId: string, input: SkillScanResultInput): Promise<SkillRow | undefined> {
       const where =
         input.onlyIfLatestVersion === undefined
           ? eq(agentSkills.id, skillId)
@@ -245,7 +249,7 @@ export function createSkillService(db: Db) {
         .update(agentSkills)
         .set({
           scan_status: input.status,
-          scan_findings: JSON.stringify(input.findings),
+          scan_findings: input.findings,
           scan_version: input.version,
           scanned_at: nowIso(),
           scan_reviewed_by: null,
@@ -257,7 +261,7 @@ export function createSkillService(db: Db) {
     },
 
     /** Record a super admin's ruling (clean / blocked), keeping the findings for the record. */
-    async setScanDecision(skillId: number, input: SkillScanDecisionInput): Promise<SkillRow | undefined> {
+    async setScanDecision(skillId: string, input: SkillScanDecisionInput): Promise<SkillRow | undefined> {
       await db
         .update(agentSkills)
         .set({
@@ -276,11 +280,11 @@ export function createSkillService(db: Db) {
         .select()
         .from(agentSkills)
         .where(isNull(agentSkills.scanned_at))
-        .orderBy(asc(agentSkills.id))
+        .orderBy(asc(agentSkills.created_at), asc(agentSkills.id))
         .limit(limit);
     },
 
-    async incrementDownloads(skillId: number): Promise<void> {
+    async incrementDownloads(skillId: string): Promise<void> {
       await db
         .update(agentSkills)
         .set({ download_count: sql`${agentSkills.download_count} + 1` })
@@ -288,7 +292,7 @@ export function createSkillService(db: Db) {
     },
 
     /** Hard delete (versions cascade). Storage objects are the caller's job. */
-    async remove(skillId: number): Promise<boolean> {
+    async remove(skillId: string): Promise<boolean> {
       const deleted = await db.delete(agentSkills).where(eq(agentSkills.id, skillId)).returning({ id: agentSkills.id });
       return deleted.length > 0;
     },

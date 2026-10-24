@@ -184,18 +184,18 @@ describe('data catalog page', () => {
 describe('connect wizard check', () => {
   it('shows when each of my connected agents last reached MCP, and nobody else’s', async () => {
     const clientId = unique('client');
-    await db.platformOAuth.registerClient({ id: clientId, client_name: 'Claude Code', redirect_uris: '[]' });
+    await db.platformOAuth.registerClient({ id: clientId, client_name: 'Claude Code', redirect_uris: [] });
     const grant = await db.platformOAuth.upsertGrant({
       user_id: member.id,
       client_id: clientId,
       resource: 'http://localhost/api/mcp',
-      scopes: JSON.stringify(['mcp:read']),
+      scopes: ['mcp:read'],
     });
     const token = await db.platformOAuth.createAccessToken(grant.id, {
       token_hash: unique('hash'),
       token_type: 'access',
       resource: 'http://localhost/api/mcp',
-      scopes: JSON.stringify(['mcp:read']),
+      scopes: ['mcp:read'],
       expires_at: new Date(Date.now() + 3_600_000).toISOString(),
     });
 

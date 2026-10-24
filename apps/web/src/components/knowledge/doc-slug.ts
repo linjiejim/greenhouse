@@ -31,7 +31,7 @@ export function slugify(input: string): string {
  *   after typing "H" the slug was `h` and truthy, so nothing after it ever
  *   reached the slug and new docs were saved with one-character permalinks.
  */
-export function nextSlug(editor: { id?: number; title: string; slug: string }, nextTitle: string): string {
+export function nextSlug(editor: { id?: string; title: string; slug: string }, nextTitle: string): string {
   if (editor.id) return editor.slug;
   const handEdited = editor.slug !== '' && editor.slug !== slugify(editor.title);
   return handEdited ? editor.slug : slugify(nextTitle);

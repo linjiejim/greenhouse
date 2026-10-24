@@ -1,5 +1,5 @@
 /**
- * Module usage counters — the shared vocabulary of `usage_counters`.
+ * Module usage counters — the shared vocabulary of `module_usage_daily`.
  *
  * Counts only (no users, arguments or content), written by the API and read by
  * Administration › Usage. Two kinds:

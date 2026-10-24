@@ -18,6 +18,7 @@ import { chatFileKeyFor, deleteObjectAtKey, putObjectAtKey } from '../storage/up
 import { defineTool, type ToolMeta } from './define.js';
 import { extensionExportSources } from './export-sources.js';
 import { tableQuerySchema } from './tables-query.js';
+import { tableRowIdSchema } from '../platform/tables/schema-plan.js';
 import { generateTabularExport, type TabularExportColumn, type TabularExportFormat } from './tabular-export.js';
 
 const MAX_EXPORT_ROWS = 10_000;
@@ -40,7 +41,7 @@ const inlineSourceSchema = z.object({
 
 const tablesSourceSchema = z.object({
   type: z.literal('tables_records'),
-  table_id: z.number().int().positive(),
+  table_id: tableRowIdSchema,
   query: tableQuerySchema.omit({ cursor: true, limit: true }).optional(),
 });
 
@@ -182,10 +183,10 @@ async function loadTablesRecords(
 
   const dynamicColumns = fields
     .map((field) => ({
-      id: typeof field.id === 'number' ? field.id : undefined,
+      id: typeof field.id === 'string' ? field.id : undefined,
       name: typeof field.name === 'string' ? field.name : undefined,
     }))
-    .filter((field): field is { id: number; name: string } => field.id != null && Boolean(field.name));
+    .filter((field): field is { id: string; name: string } => field.id != null && Boolean(field.name));
   if (dynamicColumns.length + 3 > MAX_EXPORT_COLUMNS) {
     throw new Error(`Export supports at most ${MAX_EXPORT_COLUMNS} columns`);
   }

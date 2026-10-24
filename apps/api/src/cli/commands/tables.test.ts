@@ -58,7 +58,7 @@ describe('cli tables — dispatch', () => {
     ['restore-base', 'restoreBase'],
     ['restore-table', 'restoreTable'],
   ] as const)('refuses %s without a usable id and touches nothing', async (sub, method) => {
-    expect(await run([sub, 'seven'])).toBe(1);
+    expect(await run([sub, 'not an id!'])).toBe(1);
     expect(await run([sub])).toBe(1);
     expect(tables[method]).not.toHaveBeenCalled();
   });
@@ -85,7 +85,7 @@ describe('cli tables — restore guards', () => {
     tables.listArchivedTables.mockResolvedValue([{ id: 9, name: 'Leads', base_id: 4 }]);
 
     expect(await run(['restore-base', '4'])).toBe(0);
-    expect(tables.restoreBase).toHaveBeenCalledWith(4);
+    expect(tables.restoreBase).toHaveBeenCalledWith('4');
     expect(out.join('\n')).toContain('#9 Leads');
   });
 
@@ -96,7 +96,7 @@ describe('cli tables — restore guards', () => {
     tables.getBase.mockResolvedValue({ id: 4, name: 'Ops', archived_at: '2026-08-01T00:00:00Z' });
 
     expect(await run(['restore-table', '9'])).toBe(0);
-    expect(tables.restoreTable).toHaveBeenCalledWith(9);
+    expect(tables.restoreTable).toHaveBeenCalledWith('9');
     expect(out.join('\n')).toContain('restore-base 4');
   });
 

@@ -42,13 +42,13 @@ const memorySchema = z.object({
       'preference: how they want answers (style, language, format). fact: who they are (role, projects, stack, domain). behavior: how they work (workflows, habits, conventions).',
     ),
   pinned: z.boolean().optional().describe('Pinned memories never go dormant and sort first. Use sparingly.'),
-  ids: z.number().int().array().optional().describe('Memory ids to open — for recall.'),
+  ids: z.coerce.string().array().optional().describe('Memory ids to open — for recall.'),
   query: z.string().optional().describe('Keyword search over titles and bodies — for recall.'),
   include_inactive: z
     .boolean()
     .optional()
     .describe('Include dormant/archived memories in a recall search (default false).'),
-  id: z.number().int().optional().describe('Memory id — required for update and forget.'),
+  id: z.coerce.string().optional().describe('Memory id — required for update and forget.'),
 });
 
 type MemoryInput = z.infer<typeof memorySchema>;

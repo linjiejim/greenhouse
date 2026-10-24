@@ -255,7 +255,7 @@ const DRIVE_PREFIX = normalizeKeyPrefix(
 /** Build the server-owned COS key for a drive file. Namespaced by scope + owner. */
 export function driveKeyFor(opts: {
   scope: string;
-  baseId?: number | null;
+  baseId?: string | null;
   /** Owner of an extension scope. */
   ownerKey?: string | null;
   visibility?: string | null;

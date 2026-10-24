@@ -35,10 +35,10 @@ export function FeatureRequestsPanel({ tabs, actions }: { tabs?: React.ReactNode
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('');
-  const [expandedId, setExpandedId] = useState<number | null>(null);
-  const [editingNote, setEditingNote] = useState<number | null>(null);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [editingNote, setEditingNote] = useState<string | null>(null);
   const [noteText, setNoteText] = useState('');
-  const [saving, setSaving] = useState<number | null>(null);
+  const [saving, setSaving] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -56,7 +56,7 @@ export function FeatureRequestsPanel({ tabs, actions }: { tabs?: React.ReactNode
     load();
   }, [load]);
 
-  const handleStatusChange = async (id: number, status: string) => {
+  const handleStatusChange = async (id: string, status: string) => {
     setSaving(id);
     try {
       await updateFeatureRequest(id, { status });
@@ -67,7 +67,7 @@ export function FeatureRequestsPanel({ tabs, actions }: { tabs?: React.ReactNode
     setSaving(null);
   };
 
-  const handlePriorityChange = async (id: number, priority: string) => {
+  const handlePriorityChange = async (id: string, priority: string) => {
     setSaving(id);
     try {
       await updateFeatureRequest(id, { priority });
@@ -78,7 +78,7 @@ export function FeatureRequestsPanel({ tabs, actions }: { tabs?: React.ReactNode
     setSaving(null);
   };
 
-  const handleSaveNote = async (id: number) => {
+  const handleSaveNote = async (id: string) => {
     setSaving(id);
     try {
       await updateFeatureRequest(id, { admin_note: noteText });

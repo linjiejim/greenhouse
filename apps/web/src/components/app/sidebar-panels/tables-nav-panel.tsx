@@ -18,9 +18,9 @@ const ROLE_RANK: Record<TableBaseRole, number> = { viewer: 0, editor: 1, builder
 export function TablesNavPanel({ subPath }: TablesNavPanelProps) {
   const t = useT();
   const segments = useMemo(() => subPath.split('/').filter(Boolean), [subPath]);
-  const selectedBaseId = Number(segments[0]) || null;
+  const selectedBaseId = segments[0] || null;
   const selectedType = segments[1] === 'table' ? segments[1] : null;
-  const selectedResourceId = Number(segments[2]) || null;
+  const selectedResourceId = segments[2] || null;
   const [bases, setBases] = useState<TableBaseWithRole[]>([]);
   const [workspace, setWorkspace] = useState<TableBaseWorkspace | null>(null);
   const [loadingBases, setLoadingBases] = useState(true);

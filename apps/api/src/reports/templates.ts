@@ -10,16 +10,12 @@
 
 import type { DatabaseProvider, ReportTemplateWithOwner } from '@greenhouse/db';
 import type { ActorContext } from '@greenhouse/platform-kernel';
-import { safeJsonParse } from '@greenhouse/utils/json';
 import {
   checkReportTemplateDefinition,
   REPORT_TEMPLATE_VISIBILITIES,
-  type ReportTemplateCoverField,
   type ReportTemplateDefinition,
-  type ReportTemplateSection,
   type ReportTemplateView,
   type ReportTemplateVisibility,
-  type ReportFormat,
 } from '@greenhouse/types/reports';
 import { humanActor } from '../platform/actor.js';
 import { recordReportTemplateChange } from './audit.js';
@@ -57,11 +53,6 @@ export function canEditTemplate(
   return actor.role === 'super' || (row.owner_user_id !== null && row.owner_user_id === actor.userId);
 }
 
-function jsonArray(text: string): unknown[] {
-  const parsed = safeJsonParse(text, []);
-  return Array.isArray(parsed) ? parsed : [];
-}
-
 export function toTemplateView(row: ReportTemplateWithOwner, actor: TemplateActor): ReportTemplateView {
   return {
     id: row.id,
@@ -69,9 +60,9 @@ export function toTemplateView(row: ReportTemplateWithOwner, actor: TemplateActo
     description: row.description,
     kind: row.kind,
     // Stored only after checkReportTemplateDefinition, so the shapes hold.
-    formats: jsonArray(row.formats) as ReportFormat[],
-    sections: jsonArray(row.sections) as ReportTemplateSection[],
-    cover_fields: jsonArray(row.cover_fields) as ReportTemplateCoverField[],
+    formats: row.formats,
+    sections: row.sections,
+    cover_fields: row.cover_fields,
     visibility: row.visibility,
     owner_user_id: row.owner_user_id,
     owner_name: row.owner_name,

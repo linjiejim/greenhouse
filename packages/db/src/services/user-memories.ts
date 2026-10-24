@@ -12,8 +12,9 @@ import { eq, and, or, desc, asc, sql, inArray, lt, isNull, ilike, ne } from 'dri
 import { nowIso } from '@greenhouse/utils/date';
 
 import type { Db } from '../client.js';
-import { userMemories } from '../schema/index.js';
-import type { UserMemoryRow, UserMemoryCategory, UserMemoryStatus, UserMemorySource } from '../schema/user-memory.js';
+import { newId } from '../ids.js';
+import { memories as userMemories } from '../schema/index.js';
+import type { UserMemoryRow, UserMemoryCategory, UserMemoryStatus, UserMemorySource } from '../schema/memories.js';
 
 export interface UserMemoryInput {
   user_id: string;
@@ -51,6 +52,7 @@ export function createUserMemoryService(db: Db) {
       const rows = await db
         .insert(userMemories)
         .values({
+          id: newId('memory'),
           user_id: input.user_id,
           category: input.category,
           title: input.title,
@@ -115,13 +117,13 @@ export function createUserMemoryService(db: Db) {
         .limit(opts.limit ?? 20);
     },
 
-    async getById(id: number): Promise<UserMemoryRow | undefined> {
+    async getById(id: string): Promise<UserMemoryRow | undefined> {
       const rows = await db.select().from(userMemories).where(eq(userMemories.id, id));
       return rows[0];
     },
 
     /** Fetch by id, scoped to an owner — the ownership check for API/tool paths. */
-    async getOwned(id: number, userId: string): Promise<UserMemoryRow | undefined> {
+    async getOwned(id: string, userId: string): Promise<UserMemoryRow | undefined> {
       const rows = await db
         .select()
         .from(userMemories)
@@ -129,7 +131,7 @@ export function createUserMemoryService(db: Db) {
       return rows[0];
     },
 
-    async update(id: number, userId: string, updates: UserMemoryUpdateInput): Promise<UserMemoryRow | undefined> {
+    async update(id: string, userId: string, updates: UserMemoryUpdateInput): Promise<UserMemoryRow | undefined> {
       const set: Record<string, unknown> = { updated_at: nowIso() };
       if (updates.category !== undefined) set.category = updates.category;
       if (updates.title !== undefined) set.title = updates.title;
@@ -148,7 +150,7 @@ export function createUserMemoryService(db: Db) {
      * Mark real use: refresh last_used_at and wake dormant rows. Prompt injection
      * must NOT call this — only an actual recall/update counts as a use.
      */
-    async touch(ids: number[], userId: string): Promise<void> {
+    async touch(ids: string[], userId: string): Promise<void> {
       if (ids.length === 0) return;
       const now = nowIso();
       await db
@@ -163,10 +165,10 @@ export function createUserMemoryService(db: Db) {
 
     /** Move a memory along the lifecycle (archive, supersede, restore). */
     async setStatus(
-      id: number,
+      id: string,
       userId: string,
       status: UserMemoryStatus,
-      supersededBy?: number,
+      supersededBy?: string,
     ): Promise<UserMemoryRow | undefined> {
       if (status === 'superseded' && supersededBy !== undefined) {
         const replacement = await service.getOwned(supersededBy, userId);
@@ -185,7 +187,7 @@ export function createUserMemoryService(db: Db) {
     },
 
     /** Hard delete — only ever driven by the owner from the settings page. */
-    async delete(id: number, userId: string): Promise<boolean> {
+    async delete(id: string, userId: string): Promise<boolean> {
       const rows = await db
         .delete(userMemories)
         .where(and(eq(userMemories.id, id), eq(userMemories.user_id, userId)))

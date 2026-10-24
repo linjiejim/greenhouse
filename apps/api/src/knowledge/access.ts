@@ -1,6 +1,6 @@
 /**
  * Knowledge access resolution — single source of truth for who can do what to a
- * knowledge_base doc, shared by the HTTP route and the agent tools so the two
+ * knowledge document, shared by the HTTP route and the agent tools so the two
  * paths can never diverge (a past divergence was a cross-user leak).
  *
  * Model:
@@ -9,13 +9,13 @@
  *   role granted to them (reader / editor); nobody else.
  */
 
-import type { DatabaseProvider, KnowledgeDocRow, KnowledgeShareRole } from '@greenhouse/db';
+import type { DatabaseProvider, KnowledgeDoc, KnowledgeShareRole } from '@greenhouse/db';
 
 export type KbAccess = 'owner' | 'editor' | 'reader' | null;
 
 export async function resolveKbAccess(
   db: DatabaseProvider,
-  doc: Pick<KnowledgeDocRow, 'id' | 'visibility' | 'owner_user_id'>,
+  doc: Pick<KnowledgeDoc, 'id' | 'visibility' | 'owner_user_id'>,
   userId: string,
 ): Promise<KbAccess> {
   if (doc.owner_user_id === userId) return 'owner';
@@ -34,7 +34,7 @@ export const canRead = (access: KbAccess): boolean => access !== null;
 export const canWrite = (access: KbAccess): boolean => access === 'owner' || access === 'editor';
 
 /** Archive (soft-delete). Private docs: owner only; team docs stay collaborative. */
-export const canArchive = (access: KbAccess, doc: Pick<KnowledgeDocRow, 'visibility'>): boolean =>
+export const canArchive = (access: KbAccess, doc: Pick<KnowledgeDoc, 'visibility'>): boolean =>
   access === 'owner' || doc.visibility === 'team';
 
 /** Manage sharing + change visibility — owner only (only meaningful for private docs). */

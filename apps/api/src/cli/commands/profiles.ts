@@ -2,7 +2,7 @@
  * `pnpm cli profiles` — list built-in profiles + custom database profiles.
  *
  * Built-ins come from the in-process registry; custom profiles are read
- * directly from `custom_profiles` (there is no cross-user list service).
+ * directly from `run_profiles` (there is no cross-user list service).
  */
 
 import { sql } from 'drizzle-orm';
@@ -10,7 +10,7 @@ import { loadAllProfiles } from '../../profiles/profile.js';
 import { openDb, parseFlags, flagBool, table, heading, dim, truncate } from './shared.js';
 
 interface CustomProfileRow {
-  id: number;
+  id: string;
   slug: string;
   user_id: string;
   name: string;
@@ -28,7 +28,7 @@ export async function run(args: string[]): Promise<number> {
   const custom = (await db
     .executeRaw(
       sql`SELECT id, slug, user_id, name, base_profile_id, is_shared, updated_at
-          FROM custom_profiles ORDER BY id`,
+          FROM run_profiles ORDER BY created_at, id`,
     )
     .catch(() => [])) as CustomProfileRow[];
 

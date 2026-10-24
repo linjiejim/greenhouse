@@ -244,7 +244,7 @@ describe('Platform OAuth 2.1', () => {
       client_id: clientId,
       redirect_uri: REDIRECT_URI,
       resource: `${API_URL}/api/mcp`,
-      scopes: JSON.stringify(['mcp:read']),
+      scopes: ['mcp:read'],
       code_challenge: pkceChallenge(VERIFIER),
       expires_at: new Date(Date.now() - 1_000).toISOString(),
     });
@@ -357,9 +357,7 @@ describe('Platform OAuth 2.1', () => {
 
     // Simulate pre-fix/drifted storage: the grant was narrowed but its token
     // rows were not revoked. Runtime checks must still reject that authority.
-    await db.executeRaw(
-      sql`UPDATE platform_oauth_grants SET scopes = ${JSON.stringify(['mcp:read'])} WHERE id = ${grant.id}`,
-    );
+    await db.executeRaw(sql`UPDATE oauth_grants SET scopes = '["mcp:read"]'::jsonb WHERE id = ${grant.id}`);
 
     const access = await protectedApp.request('/', {
       headers: { authorization: `Bearer ${tokens.access_token}` },
@@ -377,14 +375,14 @@ describe('Platform OAuth 2.1', () => {
         token_hash: hashOAuthCredential('drift-access'),
         token_type: 'access',
         resource: `${API_URL}/api/mcp`,
-        scopes: JSON.stringify(['mcp:read', 'mcp:write']),
+        scopes: ['mcp:read', 'mcp:write'],
         expires_at: new Date(Date.now() + 60_000).toISOString(),
       },
       {
         token_hash: hashOAuthCredential('drift-refresh'),
         token_type: 'refresh',
         resource: `${API_URL}/api/mcp`,
-        scopes: JSON.stringify(['mcp:read', 'mcp:write']),
+        scopes: ['mcp:read', 'mcp:write'],
         expires_at: new Date(Date.now() + 60_000).toISOString(),
       },
     );
@@ -454,7 +452,7 @@ describe('Platform OAuth 2.1', () => {
       user_id: user.id,
       client_id: clientId,
       resource: `${API_URL}/api/mcp`,
-      scopes: JSON.stringify(['mcp:read']),
+      scopes: ['mcp:read'],
     });
     await db.platformOAuth.createAuthorizationCode({
       code_hash: hashOAuthCredential(raw),
@@ -462,7 +460,7 @@ describe('Platform OAuth 2.1', () => {
       client_id: clientId,
       redirect_uri: REDIRECT_URI,
       resource: `${API_URL}/api/mcp`,
-      scopes: JSON.stringify(['mcp:read']),
+      scopes: ['mcp:read'],
       code_challenge: pkceChallenge(VERIFIER),
       expires_at: new Date(Date.now() + 60_000).toISOString(),
     });
@@ -494,7 +492,7 @@ describe('Platform OAuth 2.1', () => {
       // The admin API normalizes before persisting — which fills in every
       // resource group when the caller names none. Persisting the raw list here
       // would produce a client that legitimately reaches zero tools.
-      const stored = JSON.stringify(normalizeOAuthScopes(scopes.join(' ')));
+      const stored = normalizeOAuthScopes(scopes.join(' '));
       await db.platformOAuth.registerMachineClient({
         id: clientId,
         client_name: 'Machine test',

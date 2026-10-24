@@ -18,7 +18,7 @@ import { useT } from '../../lib/i18n';
 
 interface RecycleBinDrawerProps {
   open: boolean;
-  tableId: number;
+  tableId: string;
   /** Used to label each row the way the grid does, rather than by id. */
   primaryField?: TableField;
   usersById: ReadonlyMap<string, { nickname: string }>;
@@ -37,7 +37,7 @@ export function RecycleBinDrawer({
   const t = useT();
   const [records, setRecords] = useState<TableRecord[]>([]);
   const [loading, setLoading] = useState(false);
-  const [restoring, setRestoring] = useState<number | null>(null);
+  const [restoring, setRestoring] = useState<string | null>(null);
   const [error, setError] = useState('');
 
   const load = useCallback(async () => {

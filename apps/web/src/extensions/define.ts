@@ -117,7 +117,7 @@ export interface WebExtensionMcpGroup {
 /** A section appended to every knowledge document while the extension is active. */
 export interface WebExtensionKnowledgeDocPanel {
   id: string;
-  component: ComponentType<{ docId: number }>;
+  component: ComponentType<{ docId: string }>;
 }
 
 export interface WebExtensionToolCard {

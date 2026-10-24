@@ -23,8 +23,8 @@ export function CreateTaskDialog({
   open: boolean;
   onClose: () => void;
   onCreated: () => void;
-  projectId: number;
-  parentId?: number;
+  projectId: string;
+  parentId?: string;
   users: Array<{ id: string; nickname: string }>;
   taskType?: string;
   initialStartDate?: string;

@@ -346,6 +346,20 @@ function prepareSandboxDb(container, cfg, sandboxDb, fresh) {
     if (r.code !== 0) throw new Error(`建库失败：${r.err}`);
     return;
   }
+  // 3.0 跑不了 1.x 库：主库还是 1.x（有 sessions、没有 conversations）就建空库，
+  // 需要数据时用 `pnpm migrate-from-1x --from <主库> --to <沙箱库>` 搬。
+  const shape = psql(
+    container,
+    cfg.user,
+    cfg.db,
+    "select coalesce(to_regclass('public.sessions')::text, '') || '|' || coalesce(to_regclass('public.conversations')::text, '')",
+  );
+  if (shape.code === 0 && shape.out.startsWith('sessions|') && shape.out.endsWith('|')) {
+    warn(`主库 ${cfg.db} 是 1.x 结构，3.0 不能克隆它：建空沙箱库（要数据就跑 pnpm migrate-from-1x）`);
+    const r = psql(container, cfg.user, 'postgres', `create database "${sandboxDb}"`);
+    if (r.code !== 0) throw new Error(`建库失败：${r.err}`);
+    return;
+  }
   info(`克隆主库 ${cfg.db} → ${sandboxDb}（TEMPLATE 拷贝）…`);
   const tpl = psql(container, cfg.user, 'postgres', `create database "${sandboxDb}" template "${cfg.db}"`);
   if (tpl.code === 0) return;
@@ -371,9 +385,9 @@ function prepareSandboxDb(container, cfg, sandboxDb, fresh) {
  * .run-dev/logs/migrate.log，控制台只留结论；失败才把尾部贴出来。
  */
 function runMigrate(dbUrl) {
-  info('应用迁移（drizzle-kit migrate）…');
+  info('应用迁移（pnpm db:migrate）…');
   const { file, fd } = openLog('migrate');
-  const r = spawnSync('pnpm', ['exec', 'drizzle-kit', 'migrate'], {
+  const r = spawnSync('pnpm', ['db:migrate'], {
     cwd: ROOT,
     stdio: ['ignore', fd, fd],
     env: { ...process.env, DATABASE_URL: dbUrl },
@@ -381,7 +395,7 @@ function runMigrate(dbUrl) {
   fs.closeSync(fd);
   if (r.status !== 0) {
     console.error(fs.readFileSync(file, 'utf8').split('\n').slice(-30).join('\n'));
-    throw new Error(`drizzle-kit migrate 失败（全文 ${path.relative(ROOT, file)}）`);
+    throw new Error(`pnpm db:migrate 失败（全文 ${path.relative(ROOT, file)}）`);
   }
   info(`迁移完成 ✓（${path.relative(ROOT, file)}）`);
 }
@@ -396,7 +410,7 @@ function warnPendingMigrations(container, cfg, dbUrl) {
   }
   if (applied !== null && applied < files) {
     warn(
-      `${cfg.db} 有 ${files - applied} 条迁移未应用 —— 需要时手动跑：DATABASE_URL=${dbUrl} pnpm exec drizzle-kit migrate`,
+      `${cfg.db} 有 ${files - applied} 条迁移未应用 —— 需要时手动跑：DATABASE_URL=${dbUrl} pnpm db:migrate`,
     );
   }
 }

@@ -27,6 +27,7 @@ import { tablesRegistration } from '../../platform/tables/application.js';
 import { invalidateWorkspaceConfigCache } from '../../settings/workspace-config.js';
 import { publishSkill } from '../../skills/center.js';
 import { _resetSkillStoreForTests, _setSkillStoreForTests, type SkillStore } from '../../skills/store.js';
+import { moveToRestrictedRole } from '../../../../../tests/helpers/restricted-role.js';
 
 vi.setConfig({ testTimeout: 20_000 });
 
@@ -131,7 +132,7 @@ beforeEach(async () => {
   await db.platformOAuth.registerClient({
     id: clientId,
     client_name: 'Codex',
-    redirect_uris: '[]',
+    redirect_uris: [],
     created_by: member.id,
   });
 
@@ -199,12 +200,8 @@ describe('team context resources', () => {
   });
 
   it('follows the member: a denied knowledge capability removes conventions even with the knowledge group', async () => {
-    await db.platform.setUserCapabilityOverride({
-      org_id: 'default',
-      user_id: member.id,
-      capability: 'knowledge.*',
-      effect: 'deny',
-      reason: 'team context permission test',
+    await moveToRestrictedRole(db, member.id, {
+      capabilities: (team) => team.filter((capability) => !capability.startsWith('knowledge.')),
     });
     const client = await connect(member, FULL);
     const uris = (await client.listResources()).resources.map((resource) => resource.uri);
@@ -213,9 +210,9 @@ describe('team context resources', () => {
 });
 
 describe('MCP prompts', () => {
-  let ownPrompt: number;
-  let sharedPrompt: number;
-  let privatePrompt: number;
+  let ownPrompt: string;
+  let sharedPrompt: string;
+  let privatePrompt: string;
 
   beforeEach(async () => {
     const reviewed = await publishSkill(
@@ -247,7 +244,7 @@ describe('MCP prompts', () => {
         user_id: member.id,
         title: 'Summarize {{topic}}',
         content: 'Summarize {{topic}} in three lines.',
-        variables: JSON.stringify([{ key: 'topic', label: 'Topic', required: true }]),
+        variables: [{ key: 'topic', label: 'Topic', required: true }],
       })
     ).id;
     sharedPrompt = (

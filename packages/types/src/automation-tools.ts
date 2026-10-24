@@ -83,7 +83,7 @@ export function automationOptInTier(id: string): AutomationOptInTier | null {
 }
 
 /**
- * Normalise whatever is stored in / posted to `scheduled_tasks.unattended_tools`
+ * Normalise whatever is stored in / posted to `automations.unattended_tools`
  * into a deduplicated, catalog-ordered list of known ids.
  *
  * Read paths use this so a tool that later leaves the catalog stops being

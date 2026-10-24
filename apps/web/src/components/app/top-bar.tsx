@@ -26,7 +26,6 @@ import { IconButton, Input, toast } from '../ui';
 import { FullHistoryModal } from '../history-modal';
 import { chatWorkspaceLabel } from '../chat/chat-workspace-navigation';
 import type { ChatWorkspaceView } from '../../stores';
-import { MessageFeedback } from '../chat/message-feedback';
 
 type Route =
   | 'home'
@@ -51,13 +50,6 @@ interface TopBarProps {
   onSelectSession: (sessionId: string) => void;
   /** Optional extra content rendered between title and right-side buttons */
   children?: React.ReactNode;
-}
-
-interface ChatFeedbackControls {
-  sessionId: string;
-  initialRating: number | null;
-  initialComment: string | null;
-  readonly: boolean;
 }
 
 interface ChatShareControls {
@@ -161,26 +153,10 @@ export function EditableChatTitle({ title, controls }: { title: string; controls
 
 /** Session actions are kept renderable without store setup so their compact
  * TopBar contract has a direct regression test. */
-export function ChatTopBarSessionActions({
-  feedback,
-  share,
-}: {
-  feedback: ChatFeedbackControls | null;
-  share: ChatShareControls | null;
-}) {
+export function ChatTopBarSessionActions({ share }: { share: ChatShareControls | null }) {
   const t = useT();
   return (
     <>
-      {feedback && (
-        <MessageFeedback
-          messageId=""
-          sessionId={feedback.sessionId}
-          initialRating={feedback.initialRating}
-          initialComment={feedback.initialComment}
-          readonly={feedback.readonly}
-          toolbar
-        />
-      )}
       {share && (
         <IconButton
           onClick={share.onOpen}
@@ -211,7 +187,7 @@ export function TopBar({
   children,
 }: TopBarProps) {
   const t = useT();
-  const { setNavOpen, chatShare, chatFeedback, chatTitleEdit } = useUIStore();
+  const { setNavOpen, chatShare, chatTitleEdit } = useUIStore();
   const [showMobileHistory, setShowMobileHistory] = useState(false);
   const sidePaneOpen = useSidePaneStore((state) => state.isOpen);
   const collapseSidePane = useSidePaneStore((state) => state.collapse);
@@ -283,7 +259,7 @@ export function TopBar({
             {sidePaneOpen ? <PanelRightClose size={16} /> : <PanelRightOpen size={16} />}
           </IconButton>
         )}
-        {isChatConversation && <ChatTopBarSessionActions feedback={chatFeedback} share={chatShare} />}
+        {isChatConversation && <ChatTopBarSessionActions share={chatShare} />}
         {children}
         <div className="flex items-center gap-1 md:hidden">
           {route === 'chat' && (

@@ -10,6 +10,7 @@ vi.mock('../scheduler/runtime-driver.js', () => ({ reconcileReclaimedAutomationR
 vi.mock('../scheduler/notify.js', () => ({ notifyTaskResult: mocks.notify }));
 
 import { createRuntimeDomainProjector } from './domain-projector.js';
+import type { RuntimeEventEnvelope } from './worker.js';
 
 function run(overrides: Partial<RuntimeRunRow> = {}): RuntimeRunRow {
   return {
@@ -34,7 +35,7 @@ function run(overrides: Partial<RuntimeRunRow> = {}): RuntimeRunRow {
     heartbeat_at: null,
     attempt: 3,
     max_attempts: 3,
-    input: '{}',
+    input: {},
     output: null,
     error_code: 'runtime_attempts_exhausted',
     error_message: 'lease expired',
@@ -55,10 +56,10 @@ function event(result: RuntimeRunRow, type: 'run.status_changed' | 'run.lease_ex
     step_id: null,
     seq: 5,
     type,
-    payload: { result },
+    payload: { result } as unknown as RuntimeEventEnvelope['payload'],
     actor_user_id: null,
     created_at: '2026-08-12T00:00:00.000Z',
-  } as const;
+  } satisfies RuntimeEventEnvelope;
 }
 
 describe('Runtime durable domain projector', () => {
@@ -86,6 +87,7 @@ describe('Runtime durable domain projector', () => {
   });
 
   it('projects an Automation outcome and enqueues one deep-linked durable notification', async () => {
+    // A snapshot written by 1.x: numeric id and flat notify_* fields.
     const task = {
       id: 42,
       user_id: 'owner',
@@ -111,8 +113,8 @@ describe('Runtime durable domain projector', () => {
       status: 'succeeded',
       source_kind: 'scheduled_task:42',
       source_id: 'scheduled:2026-08-12T10:00:00.000Z',
-      input: JSON.stringify({ task, session_id: 'session-42', scheduled_for: '2026-08-12T10:00:00.000Z' }),
-      output: JSON.stringify({ summary: 'Everything is healthy.' }),
+      input: { task, session_id: 'session-42', scheduled_for: '2026-08-12T10:00:00.000Z' },
+      output: { summary: 'Everything is healthy.' },
       error_code: null,
       error_message: null,
     });
@@ -125,11 +127,15 @@ describe('Runtime durable domain projector', () => {
     await createRuntimeDomainProjector(db as never)(event(current));
 
     expect(projectRuntimeOutcome).toHaveBeenCalledWith(
-      expect.objectContaining({ runtime_run_id: current.id, status: 'succeeded', task_id: 42 }),
+      expect.objectContaining({ runtime_run_id: current.id, status: 'succeeded', task_id: '42' }),
     );
     expect(mocks.notify).toHaveBeenCalledWith(
       db,
-      task,
+      expect.objectContaining({
+        id: '42',
+        name: 'Daily report',
+        notify: { webhook: null, email: true, wecom: false, feishu: false },
+      }),
       { status: 'completed', summary: 'Everything is healthy.', sessionId: 'session-42' },
       { runId: current.id, eventId: 'event-1' },
     );

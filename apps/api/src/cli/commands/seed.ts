@@ -9,11 +9,10 @@
  *
  * Each file in `data/examples/` is named after a table and holds JSONL — one JSON
  * object per line, loaded in a fixed FK-safe order (LOAD_ORDER). Rows may use
- * native arrays/objects for JSON-as-text columns; they are stringified on the way
- * in. `users.json` rows carry a plaintext `password`; it is scrypt-hashed here so
+ * native arrays/objects for jsonb columns. `users.json` rows carry a plaintext `password`; it is scrypt-hashed here so
  * every demo account shares one known password. Runs through the same provider
  * the app uses (`resetSchema` + `executeRaw`), so it stays in lockstep with the
- * migration chain — run `npx drizzle-kit migrate` first on a fresh database.
+ * migration chain — run `pnpm db:migrate` first on a fresh database.
  */
 
 import { GREENHOUSE_CONFIG, resolvePackPath } from '../../config/greenhouse-config.js';
@@ -21,7 +20,6 @@ import { readFileSync, existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { sql } from 'drizzle-orm';
 import chalk from 'chalk';
-import type { CustomProfileInput } from '@greenhouse/db';
 import { DATA_DIR } from '../../paths.js';
 import { hashPassword } from '../../auth/password.js';
 import { markdownToTiptapJson } from '@greenhouse/knowledge-editor/markdown';
@@ -35,33 +33,30 @@ const EXAMPLES_DIR = GREENHOUSE_CONFIG.packs.seeds
 
 /**
  * FK-safe load order. Parents before children; self-referential tables
- * (`tasks`, `sessions`) rely on rows being authored parent-first within the file.
+ * (`tasks`) rely on rows being authored parent-first within the file.
  * A table listed here whose file is missing is simply skipped.
  */
 const LOAD_ORDER = [
   'users',
-  'knowledge_base',
-  'knowledge_base_versions',
-  'knowledge_base_shares',
+  'kb_documents',
+  'kb_versions',
+  'shares',
   'projects',
   'project_members',
   'tasks',
   'task_comments',
-  'project_activities',
-  'sessions',
+  'conversations',
   'messages',
-  'session_shares',
-  'session_share_reads',
-  'user_prompts',
-  'user_memories',
-  'scheduled_tasks',
-  'feature_requests',
-  'custom_profiles',
-  'user_features',
+  'conversation_shares',
+  'conversation_share_reads',
+  'prompts',
+  'memories',
+  'automations',
+  'feedback',
+  'run_profiles',
+  'user_grants',
+  'audit_events',
 ];
-
-/** (table, column) pairs that are real jsonb — pass a cast JSON literal, not text. */
-const JSONB_COLUMNS = new Set<string>();
 
 type Row = Record<string, unknown>;
 
@@ -86,10 +81,8 @@ function buildInsert(table: string, row: Row) {
   const idents = cols.map((c) => sql.identifier(c));
   const values = cols.map((c) => {
     const v = row[c];
-    if (JSONB_COLUMNS.has(`${table}.${c}`)) {
-      return sql`${JSON.stringify(v)}::jsonb`;
-    }
-    // JSON-as-text columns are authored as native arrays/objects — stringify them.
+    // jsonb columns are authored as native arrays/objects; the provider's driver
+    // sends the JSON text as-is and PostgreSQL types it from the column.
     if (v !== null && typeof v === 'object') {
       return sql`${JSON.stringify(v)}`;
     }
@@ -153,20 +146,6 @@ export async function run(args: string[]): Promise<number> {
       continue;
     }
 
-    // Custom agents go through the service: it writes the asset AND its immutable
-    // v1 (custom_profile_versions) in one transaction, which raw inserts
-    // cannot reproduce without duplicating the manifest-hash logic.
-    if (table === 'custom_profiles') {
-      for (const row of rows) {
-        const { id: _id, created_at: _createdAt, updated_at: _updatedAt, ...input } = row;
-        await db.customProfiles.create(input as unknown as CustomProfileInput);
-      }
-      totalRows += rows.length;
-      console.log(`• ${table}: ${rows.length} rows`);
-      continue;
-    }
-
-    let hasNumericId = false;
     for (const row of rows) {
       // users carry a plaintext `password`; convert to the stored hash.
       if (table === 'users' && 'password' in row) {
@@ -175,18 +154,12 @@ export async function run(args: string[]): Promise<number> {
       }
       // KB docs are authored as canonical Markdown only; derive the Tiptap
       // editor state the same way the knowledge_mutation tool does at runtime.
-      if (table === 'knowledge_base' && !row.content_json && typeof row.content === 'string') {
+      if (table === 'kb_documents' && !row.content_json && typeof row.content === 'string') {
         row.content_json = markdownToTiptapJson(row.content);
       }
-      if (typeof row.id === 'number') hasNumericId = true;
+      // Ids are text (3.0): the dataset may author them as numbers.
+      if (typeof row.id === 'number') row.id = String(row.id);
       await db.executeRaw(buildInsert(table, row));
-    }
-
-    // Realign the serial sequence so future app inserts don't collide with ours.
-    if (hasNumericId) {
-      await db.executeRaw(
-        sql.raw(`SELECT setval(pg_get_serial_sequence('${table}', 'id'), (SELECT MAX(id) FROM ${table}), true)`),
-      );
     }
 
     totalRows += rows.length;

@@ -144,7 +144,7 @@ function docAccess(doc: KnowledgeDoc): 'owner' | 'editor' | 'reader' {
 }
 
 /** `#/knowledge/new[/personal][/folder/<id>]` — the editor lands the doc in `folderId`. */
-function newDocPath(scope: TreeScope, folderId?: number | null): string {
+function newDocPath(scope: TreeScope, folderId?: string | null): string {
   return `#/knowledge/new${scope === 'private' ? '/personal' : ''}${folderId != null ? `/folder/${folderId}` : ''}`;
 }
 
@@ -188,7 +188,7 @@ export function KnowledgeNavPanel({ activeModule = '', collapsed, onNavigate }: 
   // A folder created inside a collapsed parent would land out of sight — ask the
   // tree to reveal the parent once, then forget it (so the user can collapse it
   // again). Cleared by the tree through `onRevealed`.
-  const [revealFolder, setRevealFolder] = useState<{ scope: TreeScope; id: number } | null>(null);
+  const [revealFolder, setRevealFolder] = useState<{ scope: TreeScope; id: string } | null>(null);
   const clearReveal = useCallback(() => setRevealFolder(null), []);
 
   // Persist the active tab; keep it in sync with the route when the route
@@ -287,7 +287,7 @@ export function KnowledgeNavPanel({ activeModule = '', collapsed, onNavigate }: 
 
   /** Move a doc into a kb folder (null = root). */
   const moveDocToFolder = useCallback(
-    async (docId: number, folderId: number | null) => {
+    async (docId: string, folderId: string | null) => {
       try {
         await updateKnowledgeDoc(docId, { folder_id: folderId });
         bump();
@@ -300,7 +300,7 @@ export function KnowledgeNavPanel({ activeModule = '', collapsed, onNavigate }: 
 
   /** Re-parent a folder (null = root). Cycles are rejected server-side too. */
   const moveFolder = useCallback(
-    async (folderId: number, parentId: number | null) => {
+    async (folderId: string, parentId: string | null) => {
       try {
         await updateDriveFolder(folderId, { parent_id: parentId });
         bump();
@@ -318,7 +318,7 @@ export function KnowledgeNavPanel({ activeModule = '', collapsed, onNavigate }: 
    * refetch shows the truth either way.
    */
   const reorderSiblings = useCallback(
-    async (kind: 'doc' | 'folder', parentId: number | null, orderedIds: number[]) => {
+    async (kind: 'doc' | 'folder', parentId: string | null, orderedIds: string[]) => {
       try {
         await reorderKnowledgeTree(kind, parentId, orderedIds);
       } catch (err) {
@@ -336,7 +336,7 @@ export function KnowledgeNavPanel({ activeModule = '', collapsed, onNavigate }: 
    * the toast is there because the wait is real once images are involved.
    */
   const exportLibrary = useCallback(
-    async (target?: { folderId?: number; docId?: number; name?: string }) => {
+    async (target?: { folderId?: string; docId?: string; name?: string }) => {
       if (exportingRef.current) return;
       exportingRef.current = true;
       toast(t('knowledge.exportRunning'), 'info');
@@ -361,7 +361,7 @@ export function KnowledgeNavPanel({ activeModule = '', collapsed, onNavigate }: 
 
   /** Move one node up/down among its siblings — the keyboard/touch path to ordering. */
   const nudge = useCallback(
-    (kind: 'doc' | 'folder', parentId: number | null, siblingIds: number[], id: number, delta: -1 | 1) => {
+    (kind: 'doc' | 'folder', parentId: string | null, siblingIds: string[], id: string, delta: -1 | 1) => {
       const from = siblingIds.indexOf(id);
       const to = from + delta;
       if (from < 0 || to < 0 || to >= siblingIds.length) return;
@@ -449,7 +449,7 @@ export function KnowledgeNavPanel({ activeModule = '', collapsed, onNavigate }: 
    * long list, so ordering also exists as plain menu commands.
    */
   const nudgeItems = useCallback(
-    (kind: 'doc' | 'folder', parentId: number | null, siblingIds: number[], id: number): ContextMenuItem[] => {
+    (kind: 'doc' | 'folder', parentId: string | null, siblingIds: string[], id: string): ContextMenuItem[] => {
       const at = siblingIds.indexOf(id);
       const items: ContextMenuItem[] = [];
       if (at > 0) {
@@ -891,15 +891,15 @@ export function KnowledgeNavPanel({ activeModule = '', collapsed, onNavigate }: 
 // ─── Dialog state ────────────────────────────────────────
 
 type NamePromptState =
-  | { mode: 'create'; scope: TreeScope; parentId: number | null; initial: string }
-  | { mode: 'rename'; scope: TreeScope; folderId: number; initial: string }
+  | { mode: 'create'; scope: TreeScope; parentId: string | null; initial: string }
+  | { mode: 'rename'; scope: TreeScope; folderId: string; initial: string }
   /** Doc rename = title only. The slug stays put; it is the doc's link identity. */
-  | { mode: 'rename-doc'; docId: number; initial: string };
+  | { mode: 'rename-doc'; docId: string; initial: string };
 
 interface MoveTargetState {
   kind: 'doc' | 'folder';
   scope: TreeScope;
-  id: number;
+  id: string;
   name: string;
 }
 
@@ -962,18 +962,18 @@ function FolderPickerDialog({
   title: string;
   subject: string;
   folders: DriveFolder[];
-  excludeFolderId?: number;
-  onPick: (folderId: number | null) => void;
+  excludeFolderId?: string;
+  onPick: (folderId: string | null) => void;
   onClose: () => void;
 }) {
   const t = useT();
   const blocked = useMemo(
-    () => (excludeFolderId != null ? subtreeIds(folders, excludeFolderId) : new Set<number>()),
+    () => (excludeFolderId != null ? subtreeIds(folders, excludeFolderId) : new Set<string>()),
     [folders, excludeFolderId],
   );
 
   const rows: React.ReactNode[] = [];
-  const walk = (parentId: number | null, depth: number) => {
+  const walk = (parentId: string | null, depth: number) => {
     if (depth > 8) return;
     for (const f of folders.filter((x) => (x.parent_id ?? null) === parentId).sort(byFolderOrder)) {
       if (blocked.has(f.id)) continue;
@@ -1059,8 +1059,8 @@ const byDocOrder = (a: KnowledgeDoc, b: KnowledgeDoc) =>
   orderKey(a.sort_order) - orderKey(b.sort_order) || a.title.localeCompare(b.title);
 
 /** A folder plus every folder beneath it (drag/move guard). */
-function subtreeIds(folders: DriveFolder[], rootId: number): Set<number> {
-  const ids = new Set<number>([rootId]);
+function subtreeIds(folders: DriveFolder[], rootId: string): Set<string> {
+  const ids = new Set<string>([rootId]);
   // Bounded sweep: each pass can only add descendants, so depth-many passes suffice.
   for (let i = 0; i < 64; i++) {
     const before = ids.size;
@@ -1071,9 +1071,9 @@ function subtreeIds(folders: DriveFolder[], rootId: number): Set<number> {
 }
 
 /** Ancestor folder ids of `folderId`, nearest first. */
-function ancestorIds(folders: DriveFolder[], folderId: number): number[] {
-  const chain: number[] = [];
-  let cursor: number | null = folderId;
+function ancestorIds(folders: DriveFolder[], folderId: string): string[] {
+  const chain: string[] = [];
+  let cursor: string | null = folderId;
   for (let i = 0; cursor != null && i < 64; i++) {
     chain.push(cursor);
     cursor = folders.find((f) => f.id === cursor)?.parent_id ?? null;
@@ -1094,7 +1094,7 @@ const sameEdge = (a: DropEdge | null, b: DropEdge) =>
  * knowledge-tree-expansion.ts) — the tree renders fully expanded meanwhile,
  * matching the old default, and nothing is persisted until it resolves.
  */
-type TreeExpansion = { scope: TreeScope; ids: Set<number> | null };
+type TreeExpansion = { scope: TreeScope; ids: Set<string> | null };
 
 /**
  * Nested kb tree: folders AND the documents inside them, so the sidebar is the
@@ -1130,18 +1130,18 @@ export function KnowledgeTree({
   docs: KnowledgeDoc[];
   activeSlug: string | null;
   /** Folder to expand down to once (a freshly created subfolder's parent). */
-  revealFolderId: number | null;
+  revealFolderId: string | null;
   onRevealed: () => void;
   onOpenDoc: (doc: KnowledgeDoc) => void;
   onDocMenu: (e: React.MouseEvent, doc: KnowledgeDoc) => void;
   onFolderMenu: (e: React.MouseEvent, folder: DriveFolder) => void;
-  onMoveDoc: (docId: number, folderId: number | null) => void;
-  onMoveFolder: (folderId: number, parentId: number | null) => void;
-  onReorder: (kind: 'doc' | 'folder', parentId: number | null, orderedIds: number[]) => void;
+  onMoveDoc: (docId: string, folderId: string | null) => void;
+  onMoveFolder: (folderId: string, parentId: string | null) => void;
+  onReorder: (kind: 'doc' | 'folder', parentId: string | null, orderedIds: string[]) => void;
 }) {
   const t = useT();
   const [expansion, setExpansion] = useState<TreeExpansion>(() => ({ scope, ids: loadExpanded(scope) }));
-  const hoverExpandRef = useRef<{ id: number; timer: number } | null>(null);
+  const hoverExpandRef = useRef<{ id: string; timer: number } | null>(null);
 
   useEffect(() => {
     setExpansion((prev) => (prev.scope === scope ? prev : { scope, ids: loadExpanded(scope) }));
@@ -1175,7 +1175,7 @@ export function KnowledgeTree({
   // scope's set directly — exactly what is about to be committed, so switching
   // tabs never flashes the wrong tree.
   const expandedIds = expansion.scope === scope ? expansion.ids : loadExpanded(scope);
-  const isExpanded = (id: number) => expandedIds === null || expandedIds.has(id);
+  const isExpanded = (id: string) => expandedIds === null || expandedIds.has(id);
 
   const activeDoc = activeSlug ? docs.find((d) => d.slug === activeSlug) : undefined;
   const activeFolderId = activeDoc?.folder_id ?? null;
@@ -1194,7 +1194,7 @@ export function KnowledgeTree({
    * back out of storage.
    */
   const revealChain = useCallback(
-    (folderId: number) => {
+    (folderId: string) => {
       const prev = expansionRef.current;
       // Pending migration already renders fully expanded — leave it to migrate.
       // The `migrated` dependency below re-runs this once the set materialises.
@@ -1233,7 +1233,7 @@ export function KnowledgeTree({
     onRevealed();
   }, [revealFolderId, revealChain, onRevealed]);
 
-  const toggle = (id: number) => {
+  const toggle = (id: string) => {
     // A pending migration renders fully expanded, so the first click has to
     // collapse: materialise the legacy set first, which also completes the
     // migration (its ids are folded in below, the key has nothing left to say).
@@ -1252,7 +1252,7 @@ export function KnowledgeTree({
 
   /** Open a collapsed folder the pointer lingers on, so deep drops are reachable. */
   const scheduleHoverExpand = useCallback(
-    (folderId: number) => {
+    (folderId: string) => {
       if (expansionRef.current.ids?.has(folderId)) return;
       if (hoverExpandRef.current?.id === folderId) return;
       if (hoverExpandRef.current) window.clearTimeout(hoverExpandRef.current.timer);
@@ -1368,7 +1368,7 @@ export function KnowledgeTree({
     );
   };
 
-  const renderLevel = (parentId: number | null, depth: number): React.ReactNode => {
+  const renderLevel = (parentId: string | null, depth: number): React.ReactNode => {
     if (depth > 8) return null;
     const childFolders = folders.filter((f) => (f.parent_id ?? null) === parentId).sort(byFolderOrder);
     const childDocs = docs.filter((d) => (d.folder_id ?? null) === parentId).sort(byDocOrder);

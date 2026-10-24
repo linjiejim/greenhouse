@@ -103,7 +103,7 @@ export function getEmailPreset(id: string): EmailPreset | undefined {
 
 /** An account as returned to the browser — never carries the password. */
 export interface EmailAccountView {
-  id: number;
+  id: string;
   email_address: string;
   display_name: string | null;
   preset: EmailPresetId;

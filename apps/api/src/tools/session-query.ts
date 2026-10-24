@@ -170,7 +170,6 @@ export function createSessionQueryTool(db: DatabaseProvider, ctx: SessionQueryCo
             profile_id: session.profile_id,
             channel: session.channel,
             status: session.status,
-            rating: session.rating,
             created_at: session.created_at,
             updated_at: session.updated_at,
           },

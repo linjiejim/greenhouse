@@ -39,7 +39,7 @@ export async function createPrompt(input: {
 }
 
 export async function updatePrompt(
-  id: number,
+  id: string,
   input: {
     title?: string;
     content?: string;
@@ -53,13 +53,13 @@ export async function updatePrompt(
 ): Promise<UserPrompt> {
   // Non-literal arg: hc only types `json` for validator-backed routes (none yet);
   // the indirection passes the body while keeping param/response typing.
-  const args = { param: { id: String(id) }, json: input };
+  const args = { param: { id }, json: input };
   const res = await rpc.api.prompts[':id'].$patch(args);
   if (!res.ok) throw new Error(`Failed to update prompt: ${res.status}`);
   return res.json();
 }
 
-export async function deletePrompt(id: number): Promise<void> {
-  const res = await rpc.api.prompts[':id'].$delete({ param: { id: String(id) } });
+export async function deletePrompt(id: string): Promise<void> {
+  const res = await rpc.api.prompts[':id'].$delete({ param: { id } });
   if (!res.ok) throw new Error(`Failed to delete prompt: ${res.status}`);
 }

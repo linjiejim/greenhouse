@@ -58,7 +58,6 @@ describe('TopBar mobile chat actions', () => {
       createElement(I18nProvider, {
         initialLocale: 'en',
         children: createElement(ChatTopBarSessionActions, {
-          feedback: null,
           share: { shareCount: 2, onOpen: vi.fn() },
         }),
       }),
@@ -68,27 +67,6 @@ describe('TopBar mobile chat actions', () => {
     expect(shareButton).not.toBe('');
     expect(shareButton).not.toContain('>Share<');
     expect(shareButton).toContain('>2<');
-  });
-
-  it('keeps TopBar feedback to the single Star entry', () => {
-    const html = renderToStaticMarkup(
-      createElement(I18nProvider, {
-        initialLocale: 'en',
-        children: createElement(ChatTopBarSessionActions, {
-          feedback: {
-            sessionId: 'session-1',
-            initialRating: null,
-            initialComment: null,
-            readonly: false,
-          },
-          share: null,
-        }),
-      }),
-    );
-
-    expect(html).toContain('aria-label="Rate this response"');
-    expect(html).not.toContain('aria-label="Good response"');
-    expect(html).not.toContain('aria-label="Bad response"');
   });
 
   it('edits a saved conversation title inline and commits on Enter', async () => {

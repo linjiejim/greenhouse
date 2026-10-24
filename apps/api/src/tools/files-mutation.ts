@@ -39,25 +39,21 @@ const filesMutationSchema = z.object({
     .enum(['team', 'personal'])
     .optional()
     .describe('folders.create / files.upload: the team shelf or your personal shelf. Default team.'),
-  folder_id: z
-    .number()
-    .int()
-    .positive()
+  folder_id: z.coerce
+    .string()
     .nullable()
     .optional()
     .describe(
       'folders.update / folders.delete: the folder. files.upload: the folder to put the file in (omit for the shelf root). files.update: the folder to move into, null for the shelf root.',
     ),
-  parent_id: z
-    .number()
-    .int()
-    .positive()
+  parent_id: z.coerce
+    .string()
     .nullable()
     .optional()
     .describe(
       'folders.create: the parent folder (omit for the shelf root). folders.update: the new parent, null for the shelf root.',
     ),
-  file_id: z.number().int().positive().optional().describe('files.update / files.delete: the file.'),
+  file_id: z.coerce.string().optional().describe('files.update / files.delete: the file.'),
   name: z.string().optional().describe('The new folder or file name, including the extension for files.'),
   text: z.string().optional().describe('files.upload: the file content as text (UTF-8).'),
   content_base64: z.string().optional().describe('files.upload: the file content as base64, for binary files.'),

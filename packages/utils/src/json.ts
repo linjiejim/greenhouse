@@ -9,13 +9,17 @@
  * This is the canonical JSON extraction implementation used across the project.
  */
 /**
- * Safely parse a JSON string, returning a fallback on failure.
- * Use for DB columns that store JSON text (e.g. references and meta).
+ * Safely read a JSON value, returning a fallback on failure.
+ *
+ * Accepts JSON text (a request body, an LLM reply, a stored string) or an
+ * already-parsed value — jsonb columns arrive parsed — so callers don't need to
+ * know which one they hold. null / undefined / '' / unparseable text → fallback.
  */
-export function safeJsonParse(str: string | null | undefined, fallback: unknown = null): unknown {
-  if (!str) return fallback;
+export function safeJsonParse(value: unknown, fallback: unknown = null): unknown {
+  if (value === null || value === undefined || value === '') return fallback;
+  if (typeof value !== 'string') return value;
   try {
-    return JSON.parse(str);
+    return JSON.parse(value);
   } catch {
     return fallback;
   }

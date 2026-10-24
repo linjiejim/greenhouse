@@ -5,8 +5,8 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { maxSidePaneWidth, SIDE_PANE_MIN_WIDTH, useSidePaneStore } from './side-pane-store';
 
-const company = { kind: 'project', id: 42 } as const;
-const contact = { kind: 'kb_doc', id: 7, slug: 'contact-notes' } as const;
+const company = { kind: 'project', id: '42' } as const;
+const contact = { kind: 'kb_doc', id: '7', slug: 'contact-notes' } as const;
 
 describe('side pane store', () => {
   beforeEach(() => {

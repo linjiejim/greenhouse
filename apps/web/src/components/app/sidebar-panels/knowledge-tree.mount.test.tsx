@@ -26,10 +26,23 @@ import { expandedKey, legacyCollapsedKey } from './knowledge-tree-expansion';
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 const folder = (id: number, name: string, parent_id: number | null = null): DriveFolder =>
-  ({ id, name, parent_id, scope: 'kb', visibility: 'team' }) as DriveFolder;
+  ({
+    id: String(id),
+    name,
+    parent_id: parent_id == null ? null : String(parent_id),
+    scope: 'kb',
+    visibility: 'team',
+  }) as DriveFolder;
 
 const doc = (id: number, title: string, folder_id: number | null): KnowledgeDoc =>
-  ({ id, title, slug: `doc-${id}`, visibility: 'team', folder_id, status: 'published' }) as KnowledgeDoc;
+  ({
+    id: String(id),
+    title,
+    slug: `doc-${id}`,
+    visibility: 'team',
+    folder_id: folder_id == null ? null : String(folder_id),
+    status: 'published',
+  }) as KnowledgeDoc;
 
 // brand ─ guidelines ─ "Nested doc"
 const FOLDERS = [folder(1, 'brand'), folder(2, 'guidelines', 1), folder(3, 'empty')];
@@ -91,7 +104,7 @@ describe('KnowledgeTree expansion', () => {
     expect(stored('team')).toBe('[]');
 
     act(() => chevron(container, 'brand').click());
-    expect(JSON.parse(stored('team')!)).toEqual([1]);
+    expect(JSON.parse(stored('team')!)).toEqual(['1']);
     expect(container.textContent).toContain('guidelines');
 
     act(() => chevron(container, 'brand').click());
@@ -111,7 +124,7 @@ describe('KnowledgeTree expansion', () => {
 
     rerender({ folders: FOLDERS, docs: DOCS });
     // Old semantics carried over: everything expanded except `guidelines`.
-    expect(JSON.parse(stored('team')!).sort()).toEqual([1, 3]);
+    expect(JSON.parse(stored('team')!).sort()).toEqual(['1', '3']);
     expect(localStorage.getItem(legacyCollapsedKey('team'))).toBeNull();
     expect(container.textContent).toContain('guidelines');
     expect(container.textContent).not.toContain('Nested doc');
@@ -119,7 +132,7 @@ describe('KnowledgeTree expansion', () => {
 
     // Migration runs once: a remount reads the new key rather than resetting it.
     const second = mount();
-    expect(JSON.parse(stored('team')!).sort()).toEqual([1, 3]);
+    expect(JSON.parse(stored('team')!).sort()).toEqual(['1', '3']);
     second.unmount();
   });
 
@@ -129,9 +142,9 @@ describe('KnowledgeTree expansion', () => {
     expect(container.textContent).not.toContain('guidelines');
 
     // A subfolder was just created under `guidelines`, two collapsed levels down.
-    rerender({ revealFolderId: 2 });
+    rerender({ revealFolderId: '2' });
     expect(onRevealed).toHaveBeenCalledTimes(1);
-    expect(JSON.parse(stored('team')!).sort()).toEqual([1, 2]);
+    expect(JSON.parse(stored('team')!).sort()).toEqual(['1', '2']);
     expect(container.textContent).toContain('Nested doc');
 
     // Consumed: collapsing the parent again sticks.
@@ -146,7 +159,7 @@ describe('KnowledgeTree expansion', () => {
     const { container, unmount } = mount({ activeSlug: 'doc-12' });
 
     expect(container.textContent).toContain('Nested doc');
-    expect(JSON.parse(stored('team')!).sort()).toEqual([1, 2]);
+    expect(JSON.parse(stored('team')!).sort()).toEqual(['1', '2']);
     unmount();
   });
 
@@ -166,7 +179,7 @@ describe('KnowledgeTree expansion', () => {
     rerender({ scope: 'private', activeSlug: 'doc-12' });
 
     expect(container.textContent).toContain('Nested doc');
-    expect(JSON.parse(stored('private')!).sort()).toEqual([1, 2, 3]);
+    expect(JSON.parse(stored('private')!).sort()).toEqual(['1', '2', '3']);
     expect(localStorage.getItem(legacyCollapsedKey('private'))).toBeNull();
     unmount();
   });
@@ -180,7 +193,7 @@ describe('KnowledgeTree expansion', () => {
   // and let a version-keyed effect flip on the spinner.
   it('keeps the reveal when the panel swaps the tree for its refetch spinner', () => {
     function Harness() {
-      const [revealFolderId, setRevealFolderId] = useState<number | null>(null);
+      const [revealFolderId, setRevealFolderId] = useState<string | null>(null);
       const [version, setVersion] = useState(0);
       const [loading, setLoading] = useState(false);
       // KnowledgeNavPanel does exactly this: bump() → the docsVersion effect
@@ -197,7 +210,7 @@ describe('KnowledgeTree expansion', () => {
             type: 'button',
             id: 'create',
             onClick: () => {
-              setRevealFolderId(2);
+              setRevealFolderId('2');
               setVersion((v) => v + 1);
             },
           },
@@ -232,7 +245,7 @@ describe('KnowledgeTree expansion', () => {
     expect(container.textContent).toContain('loading…'); // the tree is gone
 
     // The reveal must have outlived the unmount, or the refetched tree hides it.
-    expect(JSON.parse(stored('team')!).sort()).toEqual([1, 2]);
+    expect(JSON.parse(stored('team')!).sort()).toEqual(['1', '2']);
     act(() => root.unmount());
   });
 
@@ -243,7 +256,7 @@ describe('KnowledgeTree expansion', () => {
 
     rerender({ scope: 'private' });
     expect(container.textContent).toContain('guidelines');
-    expect(JSON.parse(stored('private')!)).toEqual([1]);
+    expect(JSON.parse(stored('private')!)).toEqual(['1']);
     expect(JSON.parse(stored('team')!)).toEqual([]);
     unmount();
   });

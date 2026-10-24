@@ -9,19 +9,20 @@
  *    finer capability + record/field controls where app-backed.
  *  - Advanced access — opt-in flags (Knowledge Sync) and the individually
  *    granted "Advanced tools" bucket.
- *  - Usage limits — monthly token cap.
+ *
+ * Member spend limits live in Administration › Services & pricing (USD budgets).
  *
  * The view is composed server-side (GET /api/admin/users/:id/access); writes fan out
- * to the existing granular endpoints (features / platform overrides / entity-policies
- * / tools). Replaces the separate tool-assignment and feature-toggle dialogs and the
+ * to the existing granular endpoints (features / tools). App capabilities and
+ * record/field policies come from the member's role and are shown read-only
+ * (per-user overrides were retired in 3.0). Replaces the separate tool-assignment and feature-toggle dialogs and the
  * standalone App Permissions page.
  */
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Button, Checkbox, Dialog, Input, Select, Spinner, Tag, Toggle, toast } from '../../components/ui';
+import { Dialog, Spinner, Tag, Toggle, toast } from '../../components/ui';
 import { authFetch } from '../../lib/auth';
 import { fetchUserAccess, setUserTools, type UserAccessView, type AccessFeaturePoint } from '../../lib/api/admin';
-import { formatTokens } from '../../lib/api';
 import {
   BookOpen,
   Brain,
@@ -39,12 +40,11 @@ import { getToolIcon } from '../../lib/icons';
 import type { LucideIcon } from '../../lib/icons';
 import { useT } from '../../lib/i18n';
 
-type Tab = 'basic' | 'apps' | 'advanced' | 'limits';
+type Tab = 'basic' | 'apps' | 'advanced';
 
 type AccessEntity = NonNullable<AccessFeaturePoint['entities']>[number];
 type ReadMode = 'full' | 'masked' | 'none';
 type FieldPolicy = { read: ReadMode; write: boolean; export: boolean };
-type OverrideMode = 'inherit' | 'allow' | 'deny';
 
 const FEATURE_ICONS: Record<string, LucideIcon> = {
   Users,
@@ -65,213 +65,56 @@ function FeatureIcon({ name, className }: { name: string; className?: string }) 
 
 // ─── Entity record/field editor ──────────────────────────
 
-function scopeKinds(entity: AccessEntity): string[] {
-  const override = entity.override;
-  if (override?.effect === 'allow' && override.policy) return override.policy.scopes.map((s) => s.kind);
-  if (override?.effect === 'deny') return [];
-  return entity.effectivePolicy.scopes;
-}
-
-function fieldPolicies(entity: AccessEntity): Record<string, FieldPolicy> {
-  const override = entity.override;
-  const source =
-    override?.effect === 'allow' && override.policy
-      ? (override.policy.fields as Record<string, FieldPolicy>)
-      : override?.effect === 'deny'
-        ? {}
-        : (entity.effectivePolicy.fields as Record<string, FieldPolicy>);
-  const base: Record<string, FieldPolicy> = {};
-  for (const field of entity.fields) {
-    base[field.id] = source[field.id] ?? { read: 'none', write: false, export: false };
-  }
-  return base;
-}
-
-function EntityPolicyEditor({
-  userId,
-  entity,
-  disabled,
-  onSaved,
-}: {
-  userId: string;
-  entity: AccessEntity;
-  disabled: boolean;
-  onSaved: () => Promise<void>;
-}) {
+/** Read-only record scope + field policy an app entity grants this member through their role. */
+function EntityPolicyView({ entity }: { entity: AccessEntity }) {
   const t = useT();
-  const [mode, setMode] = useState<OverrideMode>(entity.override?.effect ?? 'inherit');
-  const [scopes, setScopes] = useState<Set<string>>(() => new Set(scopeKinds(entity)));
-  const [fields, setFields] = useState<Record<string, FieldPolicy>>(() => fieldPolicies(entity));
-  const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    setMode(entity.override?.effect ?? 'inherit');
-    setScopes(new Set(scopeKinds(entity)));
-    setFields(fieldPolicies(entity));
-  }, [entity]);
-
-  const toggleScope = (scope: string) =>
-    setScopes((current) => {
-      const next = new Set(current);
-      if (next.has(scope)) next.delete(scope);
-      else next.add(scope);
-      return next;
-    });
-
-  const updateField = (fieldId: string, patch: Partial<FieldPolicy>) =>
-    setFields((current) => ({
-      ...current,
-      [fieldId]: { ...(current[fieldId] ?? { read: 'none', write: false, export: false }), ...patch },
-    }));
-
-  const save = async () => {
-    setSaving(true);
-    try {
-      const endpoint = `/api/admin/platform/users/${encodeURIComponent(userId)}/entity-policies/${entity.appId}/${entity.entityId}`;
-      const res =
-        mode === 'inherit'
-          ? await authFetch(endpoint, { method: 'DELETE' })
-          : await authFetch(endpoint, {
-              method: 'PUT',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                effect: mode,
-                scopes:
-                  mode === 'deny'
-                    ? []
-                    : [...scopes].map((kind) =>
-                        kind === 'department' || kind === 'departmentTree' ? { kind, departmentIds: [] } : { kind },
-                      ),
-                fields: mode === 'deny' ? {} : fields,
-                reason: `Updated from permission modal (${entity.appId}.${entity.entityId})`,
-              }),
-            });
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error(body.error || t('permissions.savePolicyFailed'));
-      }
-      toast(t('permissions.policySaved'), 'success');
-      await onSaved();
-    } catch (error) {
-      toast(error instanceof Error ? error.message : t('permissions.savePolicyFailed'), 'error');
-    } finally {
-      setSaving(false);
-    }
-  };
-
+  const fields = entity.effectivePolicy.fields as Record<string, FieldPolicy>;
   return (
     <details className="rounded-lg border border-edge bg-surface-raised">
       <summary className="cursor-pointer list-none px-3 py-2 flex items-center justify-between gap-3">
         <span className="text-xs font-medium text-fg">{entity.title}</span>
-        <Tag tone={mode === 'deny' ? 'danger' : mode === 'allow' ? 'primary' : 'neutral'}>
-          {t(`permissions.mode.${mode}`)}
-        </Tag>
+        <span className="flex flex-wrap gap-1">
+          {entity.effectivePolicy.scopes.length === 0 ? (
+            <Tag tone="danger">{t('permissions.denied')}</Tag>
+          ) : (
+            entity.effectivePolicy.scopes.map((scope) => (
+              <Tag key={scope} tone="neutral">
+                {t(`permissions.scope.${scope}` as Parameters<typeof t>[0])}
+              </Tag>
+            ))
+          )}
+        </span>
       </summary>
-      <div className="border-t border-edge p-3 space-y-3">
-        <div className="flex items-center gap-2">
-          <span className="text-xs font-medium text-fg-secondary w-24">{t('permissions.override')}</span>
-          <Select
-            size="sm"
-            value={mode}
-            disabled={disabled}
-            onChange={(e) => setMode(e.target.value as OverrideMode)}
-            aria-label={t('permissions.overrideMode', { name: entity.title })}
-          >
-            <option value="inherit">{t('permissions.inheritRoles')}</option>
-            <option value="allow">{t('permissions.customAllow')}</option>
-            <option value="deny">{t('permissions.denyRecordType')}</option>
-          </Select>
-        </div>
-
-        {mode === 'allow' && (
-          <>
-            <div>
-              <div className="text-xs font-medium text-fg-secondary mb-1.5">{t('permissions.recordScope')}</div>
-              <div className="flex flex-wrap gap-3">
-                {entity.accessScopes.map((scope) => (
-                  <Checkbox
-                    key={scope}
-                    label={t(`permissions.scope.${scope}` as Parameters<typeof t>[0])}
-                    checked={scopes.has(scope)}
-                    onChange={() => toggleScope(scope)}
-                    disabled={disabled}
-                    className="text-xs"
-                  />
-                ))}
-              </div>
-            </div>
-            <div className="overflow-x-auto rounded-lg border border-edge">
-              <table className="w-full min-w-[480px] text-xs">
-                <thead className="bg-surface-sunken text-fg-muted">
-                  <tr>
-                    <th className="text-left px-2.5 py-1.5">{t('permissions.field')}</th>
-                    <th className="text-left px-2.5 py-1.5">{t('permissions.classification')}</th>
-                    <th className="text-left px-2.5 py-1.5">{t('permissions.read')}</th>
-                    <th className="text-center px-2.5 py-1.5">{t('permissions.write')}</th>
-                    <th className="text-center px-2.5 py-1.5">{t('permissions.export')}</th>
+      <div className="border-t border-edge p-3">
+        <div className="overflow-x-auto rounded-lg border border-edge">
+          <table className="w-full min-w-[480px] text-xs">
+            <thead className="bg-surface-sunken text-fg-muted">
+              <tr>
+                <th className="text-left px-2.5 py-1.5">{t('permissions.field')}</th>
+                <th className="text-left px-2.5 py-1.5">{t('permissions.read')}</th>
+                <th className="text-center px-2.5 py-1.5">{t('permissions.write')}</th>
+                <th className="text-center px-2.5 py-1.5">{t('permissions.export')}</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-edge">
+              {entity.fields.map((field) => {
+                const policy = fields[field.id] ?? { read: 'none', write: false, export: false };
+                const read: Record<ReadMode, string> = {
+                  full: t('permissions.full'),
+                  masked: t('permissions.masked'),
+                  none: t('permissions.hidden'),
+                };
+                return (
+                  <tr key={field.id}>
+                    <td className="px-2.5 py-1.5 font-medium text-fg">{field.title}</td>
+                    <td className="px-2.5 py-1.5 text-fg-secondary">{read[policy.read]}</td>
+                    <td className="px-2.5 py-1.5 text-center text-fg-secondary">{policy.write ? '✓' : '—'}</td>
+                    <td className="px-2.5 py-1.5 text-center text-fg-secondary">{policy.export ? '✓' : '—'}</td>
                   </tr>
-                </thead>
-                <tbody className="divide-y divide-edge">
-                  {entity.fields.map((field) => {
-                    const policy = fields[field.id] ?? { read: 'none', write: false, export: false };
-                    return (
-                      <tr key={field.id}>
-                        <td className="px-2.5 py-1.5 font-medium text-fg">{field.title}</td>
-                        <td className="px-2.5 py-1.5">
-                          <Tag
-                            tone={
-                              field.classification === 'restricted'
-                                ? 'danger'
-                                : field.classification === 'confidential'
-                                  ? 'warning'
-                                  : 'neutral'
-                            }
-                          >
-                            {t(`permissions.class.${field.classification}` as Parameters<typeof t>[0])}
-                          </Tag>
-                        </td>
-                        <td className="px-2.5 py-1.5">
-                          <Select
-                            size="sm"
-                            value={policy.read}
-                            disabled={disabled}
-                            onChange={(e) => updateField(field.id, { read: e.target.value as ReadMode })}
-                            aria-label={t('permissions.readField', { name: field.title })}
-                          >
-                            <option value="full">{t('permissions.full')}</option>
-                            <option value="masked">{t('permissions.masked')}</option>
-                            <option value="none">{t('permissions.hidden')}</option>
-                          </Select>
-                        </td>
-                        <td className="px-2.5 py-1.5 text-center">
-                          <Checkbox
-                            checked={policy.write}
-                            disabled={disabled || policy.read === 'none'}
-                            onChange={(e) => updateField(field.id, { write: e.target.checked })}
-                            aria-label={t('permissions.writeField', { name: field.title })}
-                          />
-                        </td>
-                        <td className="px-2.5 py-1.5 text-center">
-                          <Checkbox
-                            checked={policy.export}
-                            disabled={disabled || policy.read === 'none'}
-                            onChange={(e) => updateField(field.id, { export: e.target.checked })}
-                            aria-label={t('permissions.exportField', { name: field.title })}
-                          />
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </>
-        )}
-
-        <div className="flex justify-end">
-          <Button size="sm" onClick={save} disabled={saving || disabled}>
-            {saving ? t('common.saving') : t('permissions.saveRecordPolicy')}
-          </Button>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
       </div>
     </details>
@@ -281,29 +124,21 @@ function EntityPolicyEditor({
 // ─── Feature point card ──────────────────────────────────
 
 function FeaturePointCard({
-  userId,
   point,
   busy,
   onToggleMain,
-  onSetCapability,
   onToggleTool,
-  onReload,
 }: {
-  userId: string;
   point: AccessFeaturePoint;
   busy: boolean;
   onToggleMain: (point: AccessFeaturePoint, next: boolean) => void;
-  onSetCapability: (capability: string, mode: OverrideMode) => void;
   onToggleTool: (toolId: string, assigned: boolean) => void;
-  onReload: () => Promise<void>;
 }) {
   const t = useT();
   const [expanded, setExpanded] = useState(false);
   const isApp = point.kind === 'app';
   const isToolset = point.kind === 'toolset';
   const hasFiner = isApp && ((point.capabilities?.length ?? 0) > 0 || (point.entities?.length ?? 0) > 0);
-  // App-level off disables the finer controls (a disabled feature isn't fine-tuned).
-  const finerDisabled = busy || !point.enabled;
 
   return (
     <div className="rounded-xl border border-edge bg-surface-raised overflow-hidden">
@@ -350,7 +185,7 @@ function FeaturePointCard({
                 {t('common.actions')}
               </div>
               {point.capabilities!.map((cap) => (
-                <div key={cap.capability} className="grid grid-cols-[minmax(0,1fr)_112px] items-center gap-3 py-1">
+                <div key={cap.capability} className="py-1">
                   <div className="min-w-0">
                     <div className="text-xs font-medium text-fg truncate" title={cap.capability}>
                       {cap.capability}
@@ -362,17 +197,6 @@ function FeaturePointCard({
                       <span className="text-[10px] text-fg-faint truncate">{cap.reason}</span>
                     </div>
                   </div>
-                  <Select
-                    size="sm"
-                    value={cap.override}
-                    disabled={finerDisabled}
-                    onChange={(e) => onSetCapability(cap.capability, e.target.value as OverrideMode)}
-                    aria-label={t('permissions.overrideCapability', { name: cap.capability })}
-                  >
-                    <option value="inherit">{t('permissions.inherit')}</option>
-                    <option value="allow">{t('permissions.allow')}</option>
-                    <option value="deny">{t('permissions.deny')}</option>
-                  </Select>
                 </div>
               ))}
             </div>
@@ -384,13 +208,7 @@ function FeaturePointCard({
                 {t('permissions.recordsAndFields')}
               </div>
               {point.entities!.map((entity) => (
-                <EntityPolicyEditor
-                  key={`${entity.appId}:${entity.entityId}`}
-                  userId={userId}
-                  entity={entity}
-                  disabled={finerDisabled}
-                  onSaved={onReload}
-                />
+                <EntityPolicyView key={`${entity.appId}:${entity.entityId}`} entity={entity} />
               ))}
             </div>
           )}
@@ -443,69 +261,6 @@ function GlobalToolsSection({ baseline }: { baseline: UserAccessView['baseline']
             {toolItem.name}
           </span>
         ))}
-      </div>
-    </div>
-  );
-}
-
-// ─── Limits tab ──────────────────────────────────────────
-
-function LimitsTab({
-  userId,
-  limits,
-  onSaved,
-}: {
-  userId: string;
-  limits: UserAccessView['limits'];
-  onSaved: () => Promise<void>;
-}) {
-  const t = useT();
-  const [monthly, setMonthly] = useState(limits.monthly_token_limit);
-  const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    setMonthly(limits.monthly_token_limit);
-  }, [limits]);
-
-  const save = async () => {
-    setSaving(true);
-    try {
-      const res = await authFetch(`/api/admin/users/${userId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ monthly_token_limit: monthly }),
-      });
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error(body.error || t('permissions.saveLimitsFailed'));
-      }
-      toast(t('permissions.limitsSaved'), 'success');
-      await onSaved();
-    } catch (error) {
-      toast(error instanceof Error ? error.message : t('permissions.saveLimitsFailed'), 'error');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <div className="space-y-4 max-w-sm">
-      <label className="block">
-        <span className="text-xs font-medium text-fg-secondary">{t('permissions.monthlyTokenLimit')}</span>
-        <Input
-          type="number"
-          value={monthly}
-          onChange={(e) => setMonthly(parseInt(e.target.value) || 0)}
-          className="mt-1 w-40"
-        />
-        <span className="block text-[11px] text-fg-faint mt-1">
-          {t('permissions.tokensPerMonth', { count: formatTokens(monthly) })}
-        </span>
-      </label>
-      <div className="flex justify-end">
-        <Button size="sm" onClick={save} disabled={saving}>
-          {saving ? t('common.saving') : t('permissions.saveLimits')}
-        </Button>
       </div>
     </div>
   );
@@ -582,37 +337,7 @@ export function UserPermissionsModal({
           body: JSON.stringify({ feature: control.flag, enabled: next }),
         }),
       );
-    } else {
-      // Capability-backed app: off = deny the app.* pattern, on = clear that override.
-      const endpoint = `/api/admin/platform/users/${user.id}/overrides`;
-      void runWrite(() =>
-        next
-          ? authFetch(`${endpoint}?capability=${encodeURIComponent(control.capability)}`, { method: 'DELETE' })
-          : authFetch(endpoint, {
-              method: 'PUT',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                capability: control.capability,
-                effect: 'deny',
-                reason: 'Feature disabled from permission modal',
-              }),
-            }),
-      );
     }
-  };
-
-  const setCapability = (capability: string, mode: OverrideMode) => {
-    if (!user) return;
-    const endpoint = `/api/admin/platform/users/${user.id}/overrides`;
-    void runWrite(() =>
-      mode === 'inherit'
-        ? authFetch(`${endpoint}?capability=${encodeURIComponent(capability)}`, { method: 'DELETE' })
-        : authFetch(endpoint, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ capability, effect: mode, reason: 'Updated from permission modal' }),
-          }),
-    );
   };
 
   const toolset = useMemo(() => data?.featurePoints.find((p) => p.kind === 'toolset'), [data]);
@@ -640,7 +365,6 @@ export function UserPermissionsModal({
               ['basic', t('permissions.basicTab')],
               ['apps', t('permissions.appsTab')],
               ['advanced', t('permissions.advancedTab')],
-              ['limits', t('permissions.limitsTab')],
             ] as const
           ).map(([key, label]) => (
             <button
@@ -673,8 +397,6 @@ export function UserPermissionsModal({
           <div className="h-40 flex items-center justify-center">
             <Spinner />
           </div>
-        ) : tab === 'limits' ? (
-          <LimitsTab userId={data.user.id} limits={data.limits} onSaved={load} />
         ) : (
           <div className="space-y-2.5">
             <p className="text-xs text-fg-muted">
@@ -689,13 +411,10 @@ export function UserPermissionsModal({
               .map((point) => (
                 <FeaturePointCard
                   key={point.key}
-                  userId={data.user.id}
                   point={point}
                   busy={busy}
-                  onSetCapability={setCapability}
                   onToggleMain={toggleMain}
                   onToggleTool={toggleTool}
-                  onReload={load}
                 />
               ))}
             {tab === 'basic' && <GlobalToolsSection baseline={data.baseline} />}

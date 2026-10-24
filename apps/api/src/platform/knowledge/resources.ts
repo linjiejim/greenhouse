@@ -6,8 +6,7 @@
  * can also read that document, and direct URI probing returns not-found.
  */
 
-import type { DatabaseProvider, KnowledgeDocRow } from '@greenhouse/db';
-import { safeJsonParse } from '@greenhouse/utils/json';
+import type { DatabaseProvider, KnowledgeDoc } from '@greenhouse/db';
 import { canRead, resolveKbAccess } from '../../knowledge/access.js';
 
 export const KNOWLEDGE_RESOURCE_URI_TEMPLATE = 'greenhouse://knowledge/doc/{slug}';
@@ -34,7 +33,7 @@ function normalizedTimestamp(value: string | null): string | undefined {
   return Number.isNaN(timestamp.getTime()) ? undefined : timestamp.toISOString();
 }
 
-function descriptor(doc: KnowledgeDocRow): KnowledgeResourceDescriptor {
+function descriptor(doc: KnowledgeDoc): KnowledgeResourceDescriptor {
   const lastModified = normalizedTimestamp(doc.updated_at);
   return {
     uri: resourceUri(doc.doc_id),
@@ -75,7 +74,7 @@ export async function listKnowledgeResources(
       status: 'published',
     })
   ).filter((doc) => doc.visibility === 'private' && doc.owner_user_id !== userId);
-  const unique = new Map<number, KnowledgeDocRow>();
+  const unique = new Map<string, KnowledgeDoc>();
   for (const doc of [...team, ...own, ...shared]) unique.set(doc.id, doc);
   return [...unique.values()]
     .sort((left, right) => new Date(right.updated_at ?? 0).getTime() - new Date(left.updated_at ?? 0).getTime())
@@ -106,7 +105,7 @@ export async function readKnowledgeResource(
   const access = await resolveKbAccess(db, doc, userId);
   if (!canRead(access)) return undefined;
 
-  const meta = safeJsonParse(doc.meta, {}) as Record<string, unknown>;
+  const meta = doc.meta ?? {};
   const frontmatter = [
     '---',
     `title: ${JSON.stringify(doc.title)}`,

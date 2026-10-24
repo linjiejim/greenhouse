@@ -5,7 +5,7 @@
  * inquiry knowledge. Postgres' 'simple'/'english' text-search parsers do NOT
  * word-segment CJK (a whole Chinese sentence collapses to one token), so we
  * segment on the application side with jieba and store the space-joined tokens
- * in dedicated `_tokens_a/b/c` columns. Both the stored tokens and the query
+ * in dedicated `search_a/b/c` columns (the generated `search_tsv` weighs them). Both the stored tokens and the query
  * MUST go through the SAME `segmentForFts()` so they align.
  *
  * Segmentation rule: jieba cuts the whole string; latin words / numbers survive
@@ -52,7 +52,7 @@ export function segmentForFts(input: string | null | undefined): string {
 
 /**
  * Build a prefix-match `to_tsquery` string from a free-text query, segmenting it
- * first so it aligns with the stored `_tokens_*` columns.
+ * first so it aligns with the stored `search_*` columns.
  *
  * @param op '&' for AND (precision) or '|' for OR (recall).
  * Returns null when nothing usable remains — callers fall back to ILIKE.
@@ -91,14 +91,17 @@ export function buildSnippet(content: string | null | undefined, query: string, 
 }
 
 /**
- * Extract plain text from a JSON-array-as-text column (tags / _questions /
- * _topics) for segmentation. Returns a space-joined string; tolerates malformed
- * JSON by returning the raw string.
+ * Extract plain text from a string-array value (tags / _questions / _topics)
+ * for segmentation. Accepts the jsonb array itself or, for legacy callers, its
+ * JSON text; returns a space-joined string and tolerates malformed JSON by
+ * returning the raw string.
  */
-export function jsonArrayToText(raw: string | null | undefined): string {
-  if (!raw) return '';
+export function jsonArrayToText(raw: unknown): string {
+  if (raw == null || raw === '') return '';
+  if (Array.isArray(raw)) return raw.filter((v) => typeof v === 'string').join(' ');
+  if (typeof raw !== 'string') return '';
   try {
-    const parsed = JSON.parse(raw);
+    const parsed: unknown = JSON.parse(raw);
     if (Array.isArray(parsed)) return parsed.filter((v) => typeof v === 'string').join(' ');
   } catch {
     /* fall through */

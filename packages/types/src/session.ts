@@ -30,35 +30,43 @@ export interface SessionRow {
   id: string;
   title: string | null;
   status: string;
-  rating: number | null;
-  comment: string | null;
-  feedback: string | null;
   profile_id: string;
   user_id: string | null;
   app_id: string | null;
   channel: SessionChannel;
-  /** Set when this session was spawned by another session (historical: the spawn_session tool, retired in 1.5). */
-  parent_session_id: string | null;
-  metadata: string;
+  metadata: Record<string, unknown>;
+  /** When the owner pinned it (recipients of a share pin on their own read row). */
+  pinned_at?: string | null;
+  pin_position?: number;
   created_at: string;
   updated_at: string;
 }
 
 // ─── Message Types ───────────────────────────────────────
 
+/** An image attached to (user) or generated in (assistant) a message. */
+export interface MessageImage {
+  id: string;
+  url: string;
+}
+
+/** Structured parts of a message besides its Markdown body (`messages.parts`). */
+export interface MessageParts {
+  references?: Reference[];
+  images?: MessageImage[];
+  pipeline?: PipelineStep[];
+}
+
 export interface MessageRow {
   id: string;
   session_id: string;
   role: string;
   content: string;
-  references_: string;
-  pipeline: string;
+  /** Knowledge references, attached / generated images and the tool pipeline. */
+  parts: MessageParts;
   reasoning: string | null;
   /** Registry model id that produced this assistant turn; null for user turns and pre-2026-08 messages. */
   model: string | null;
-  images: string;
-  confidence: number | null;
-  grounded: number | null;
   input_tokens: number | null;
   output_tokens: number | null;
   cached_tokens: number | null;
@@ -108,9 +116,7 @@ export interface MessageInput {
   reasoning?: string;
   /** Registry model id that produced this assistant turn. */
   model?: string;
-  images?: Array<{ id: string; url: string }>;
-  confidence?: number;
-  grounded?: boolean;
+  images?: MessageImage[];
   input_tokens?: number;
   output_tokens?: number;
   cached_tokens?: number;

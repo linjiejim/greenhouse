@@ -23,9 +23,9 @@ let db: DatabaseProvider;
 let owner: UserRow;
 let task: ScheduledTaskRow;
 
-async function taskSession(taskId: number, title: string): Promise<string> {
-  const session = await db.sessions.create(title, 'team', owner.id, undefined, 'task', undefined, {
-    metadata: JSON.stringify({ task_id: taskId, task_name: title }),
+async function taskSession(taskId: string, title: string): Promise<string> {
+  const session = await db.sessions.create(title, 'team', owner.id, undefined, 'task', {
+    metadata: { task_id: taskId, task_name: title },
   });
   return session.id;
 }
@@ -43,9 +43,7 @@ describe('automation run history', () => {
       timezone: 'UTC',
       max_steps: 10,
       enabled: true,
-      notify_webhook: null,
-      notify_email: false,
-      notify_wecom: false,
+      notify: { webhook: null, email: false, wecom: false },
     });
   });
 
@@ -98,9 +96,7 @@ describe('automation run history', () => {
       timezone: 'UTC',
       max_steps: 10,
       enabled: true,
-      notify_webhook: null,
-      notify_email: false,
-      notify_wecom: false,
+      notify: { webhook: null, email: false, wecom: false },
     });
     const mine = await taskSession(task.id, '[History fixture] mine');
     const foreign = await taskSession(other.id, '[Other fixture] foreign');

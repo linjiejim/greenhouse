@@ -12,6 +12,7 @@
  * v1's daily extraction cron was deleted; see docs/specs/20260804-memory-v2.md.
  */
 
+import { toRowId } from '@greenhouse/utils/id';
 import { generateText } from 'ai';
 import { toErrorMessage } from '@greenhouse/utils/error';
 import {
@@ -140,9 +141,9 @@ const CONSOLIDATION_SYSTEM_PROMPT = `You are the upkeep pass over one user's sto
 You receive a numbered list of memories, each with an id, category, title and content.
 
 Return a JSON array of operations. Valid operations:
-- {"op":"merge","ids":[<ids>],"title":"...","content":"...","category":"preference|fact|behavior"} — two or more memories say the same thing. Write one replacement that keeps every distinct detail; the originals are retired.
-- {"op":"supersede","old_id":<id>,"new_id":<id>} — two memories contradict each other and one is clearly the newer truth. Keep new_id, retire old_id.
-- {"op":"demote","id":<id>} — this was a one-off task detail or is plainly obsolete, and is not worth keeping active.
+- {"op":"merge","ids":["<id>","<id>"],"title":"...","content":"...","category":"preference|fact|behavior"} — two or more memories say the same thing. Write one replacement that keeps every distinct detail; the originals are retired.
+- {"op":"supersede","old_id":"<id>","new_id":"<id>"} — two memories contradict each other and one is clearly the newer truth. Keep new_id, retire old_id.
+- {"op":"demote","id":"<id>"} — this was a one-off task detail or is plainly obsolete, and is not worth keeping active.
 
 Rules:
 - Write in English. Keep proper nouns and literal values (identifiers, enum values such as 潜在, document titles, customer names, error strings) EXACTLY as they appear — never translate them.
@@ -153,18 +154,23 @@ Rules:
 
 interface ConsolidationOp {
   op: 'merge' | 'supersede' | 'demote';
-  ids?: number[];
+  ids?: string[];
   title?: string;
   content?: string;
   category?: string;
-  old_id?: number;
-  new_id?: number;
+  old_id?: string;
+  new_id?: string;
+}
+
+/** A memory id as the model wrote it (string, or a legacy number); undefined if malformed. */
+function opId(value: unknown): string | undefined {
+  return toRowId(value) ?? undefined;
 }
 
 const VALID_CATEGORIES = new Set(['preference', 'fact', 'behavior']);
 
 /** Parse + shape-check the model's operation list. Anything malformed is dropped. */
-export function parseConsolidationOps(raw: string, knownIds: Set<number>): ConsolidationOp[] {
+export function parseConsolidationOps(raw: string, knownIds: Set<string>): ConsolidationOp[] {
   const jsonStr = extractJson(raw);
   if (!jsonStr) return [];
 
@@ -182,7 +188,7 @@ export function parseConsolidationOps(raw: string, knownIds: Set<number>): Conso
     const op = item as Record<string, unknown>;
 
     if (op.op === 'merge') {
-      const ids = Array.isArray(op.ids) ? op.ids.filter((n): n is number => typeof n === 'number') : [];
+      const ids = Array.isArray(op.ids) ? op.ids.map(opId).filter((id): id is string => id !== undefined) : [];
       const title = typeof op.title === 'string' ? op.title.trim() : '';
       const content = typeof op.content === 'string' ? op.content.trim() : '';
       const category = typeof op.category === 'string' && VALID_CATEGORIES.has(op.category) ? op.category : 'fact';
@@ -193,8 +199,8 @@ export function parseConsolidationOps(raw: string, knownIds: Set<number>): Conso
     }
 
     if (op.op === 'supersede') {
-      const oldId = typeof op.old_id === 'number' ? op.old_id : undefined;
-      const newId = typeof op.new_id === 'number' ? op.new_id : undefined;
+      const oldId = opId(op.old_id);
+      const newId = opId(op.new_id);
       if (oldId === undefined || newId === undefined || oldId === newId) continue;
       if (!knownIds.has(oldId) || !knownIds.has(newId)) continue;
       ops.push({ op: 'supersede', old_id: oldId, new_id: newId });
@@ -202,7 +208,7 @@ export function parseConsolidationOps(raw: string, knownIds: Set<number>): Conso
     }
 
     if (op.op === 'demote') {
-      const id = typeof op.id === 'number' ? op.id : undefined;
+      const id = opId(op.id);
       if (id === undefined || !knownIds.has(id)) continue;
       ops.push({ op: 'demote', ids: [id] });
     }

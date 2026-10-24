@@ -20,10 +20,23 @@ import { KnowledgeTree } from './knowledge-nav-panel';
 import { expandedKey, legacyCollapsedKey } from './knowledge-tree-expansion';
 
 const folder = (id: number, name: string, parent_id: number | null = null): DriveFolder =>
-  ({ id, name, parent_id, scope: 'kb', visibility: 'team' }) as DriveFolder;
+  ({
+    id: String(id),
+    name,
+    parent_id: parent_id == null ? null : String(parent_id),
+    scope: 'kb',
+    visibility: 'team',
+  }) as DriveFolder;
 
 const doc = (id: number, title: string, folder_id: number | null): KnowledgeDoc =>
-  ({ id, title, slug: `doc-${id}`, visibility: 'team', folder_id, status: 'published' }) as KnowledgeDoc;
+  ({
+    id: String(id),
+    title,
+    slug: `doc-${id}`,
+    visibility: 'team',
+    folder_id: folder_id == null ? null : String(folder_id),
+    status: 'published',
+  }) as KnowledgeDoc;
 
 // brand ─ guidelines ─ "Nested doc"
 //       └ "Guideline doc"

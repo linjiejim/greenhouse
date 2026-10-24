@@ -33,7 +33,7 @@ export const tablesManifest = compileApp(
         table: 'table_bases',
         accessScopes: ['own', 'collaborating', 'all'],
         fields: {
-          id: { kind: 'integer', title: 'ID', classification: 'internal' },
+          id: { kind: 'text', title: 'ID', classification: 'internal' },
           name: { kind: 'text', title: 'Name', required: true, searchable: true, sortable: true },
           description: { kind: 'longText', title: 'Description', searchable: true },
           visibility: { kind: 'enum', title: 'Visibility', values: ['private', 'team'], filterable: true },
@@ -48,7 +48,7 @@ export const tablesManifest = compileApp(
         table: 'table_tables',
         accessScopes: ['own', 'collaborating', 'all'],
         fields: {
-          id: { kind: 'integer', title: 'ID', classification: 'internal' },
+          id: { kind: 'text', title: 'ID', classification: 'internal' },
           baseId: { kind: 'relation', title: 'Base', target: 'base', required: true },
           name: { kind: 'text', title: 'Name', required: true, searchable: true },
           description: { kind: 'longText', title: 'Description' },
@@ -62,7 +62,7 @@ export const tablesManifest = compileApp(
         table: 'table_fields',
         accessScopes: ['own', 'collaborating', 'all'],
         fields: {
-          id: { kind: 'integer', title: 'ID', classification: 'internal' },
+          id: { kind: 'text', title: 'ID', classification: 'internal' },
           tableId: { kind: 'relation', title: 'Table', target: 'table', required: true },
           name: { kind: 'text', title: 'Name', required: true },
           type: { kind: 'text', title: 'Type', required: true, filterable: true },
@@ -77,7 +77,7 @@ export const tablesManifest = compileApp(
         table: 'table_views',
         accessScopes: ['own', 'collaborating', 'all'],
         fields: {
-          id: { kind: 'integer', title: 'ID', classification: 'internal' },
+          id: { kind: 'text', title: 'ID', classification: 'internal' },
           tableId: { kind: 'relation', title: 'Table', target: 'table', required: true },
           name: { kind: 'text', title: 'Name', required: true },
           scope: { kind: 'enum', title: 'Scope', values: ['shared', 'personal'], filterable: true },
@@ -92,7 +92,7 @@ export const tablesManifest = compileApp(
         table: 'table_records',
         accessScopes: ['own', 'collaborating', 'all'],
         fields: {
-          id: { kind: 'integer', title: 'ID', classification: 'internal' },
+          id: { kind: 'text', title: 'ID', classification: 'internal' },
           tableId: { kind: 'relation', title: 'Table', target: 'table', required: true },
           values: { kind: 'json', title: 'Values', required: true },
           revision: { kind: 'integer', title: 'Revision', required: true, classification: 'internal' },

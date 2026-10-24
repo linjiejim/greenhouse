@@ -25,7 +25,7 @@ export function collectTaskDates(list: Task[], dates: Date[] = []): Date[] {
 }
 
 /** Collect ids of tasks that have children (expand-all / auto-expand). */
-export function collectParentIds(list: Task[], into: Set<number> = new Set()): Set<number> {
+export function collectParentIds(list: Task[], into: Set<string> = new Set()): Set<string> {
   forEachTask(list, (t) => {
     if (t.children?.length) into.add(t.id);
   });
@@ -33,8 +33,8 @@ export function collectParentIds(list: Task[], into: Set<number> = new Set()): S
 }
 
 /** PATCH /api/projects/tasks/:id with a JSON body. */
-export function patchTask(taskId: number, body: Record<string, unknown>): Promise<Response> {
-  return authFetch(`/api/projects/tasks/${taskId}`, {
+export function patchTask(taskId: string, body: Record<string, unknown>): Promise<Response> {
+  return authFetch(`/api/projects/tasks/${encodeURIComponent(taskId)}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
@@ -42,8 +42,8 @@ export function patchTask(taskId: number, body: Record<string, unknown>): Promis
 }
 
 /** PATCH /api/projects/tasks/:id/move to another project. */
-export function moveTask(taskId: number, projectId: number): Promise<Response> {
-  return authFetch(`/api/projects/tasks/${taskId}/move`, {
+export function moveTask(taskId: string, projectId: string): Promise<Response> {
+  return authFetch(`/api/projects/tasks/${encodeURIComponent(taskId)}/move`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ project_id: projectId }),
@@ -52,7 +52,7 @@ export function moveTask(taskId: number, projectId: number): Promise<Response> {
 
 /** PATCH /api/projects/tasks-reorder with sort_order (and optional project_id) updates. */
 export function reorderTasks(
-  updates: Array<{ id: number; sort_order: number; project_id?: number }>,
+  updates: Array<{ id: string; sort_order: number; project_id?: string }>,
 ): Promise<Response> {
   return authFetch('/api/projects/tasks-reorder', {
     method: 'PATCH',
@@ -61,14 +61,15 @@ export function reorderTasks(
   });
 }
 
-export function parseDeps(deps: number[] | string | undefined): number[] {
-  if (!deps) return [];
-  if (Array.isArray(deps)) return deps;
-  try {
-    return JSON.parse(deps);
-  } catch (_err) {
-    return [];
-  }
+/** A task's dependency ids (always strings; tolerates carried numeric ids). */
+export function parseDeps(deps: ReadonlyArray<string | number> | null | undefined): string[] {
+  return Array.isArray(deps) ? deps.map(String) : [];
+}
+
+/** The id after the first `:` of a context-menu action (`dep:<id>`), or null when empty / `null`. */
+function actionId(action: string): string | null {
+  const id = action.slice(action.indexOf(':') + 1);
+  return id && id !== 'null' ? id : null;
 }
 
 export function dateToStr(d: Date): string {
@@ -137,9 +138,9 @@ export interface TaskActionCallbacks {
   /** Called when 'add-subtask' is clicked */
   onAddSubtask?: (task: Task) => void;
   /** Optimistic update before server call (for instant UI feedback) */
-  onOptimistic?: (taskId: number, updates: Record<string, any>) => void;
+  onOptimistic?: (taskId: string, updates: Record<string, any>) => void;
   /** Resolve a project name by id (for toast messages on move) */
-  resolveProjectName?: (projectId: number) => string | undefined;
+  resolveProjectName?: (projectId: string) => string | undefined;
 }
 
 /**
@@ -165,24 +166,24 @@ export async function handleTaskAction(action: string, task: Task, cbs: TaskActi
     toast(newType === 'milestone' ? '已设为里程碑' : '已取消里程碑', 'success');
     cbs.onRefresh();
   } else if (action.startsWith('dep:')) {
-    const depId = parseInt(action.split(':')[1], 10);
-    if (isNaN(depId)) return;
+    const depId = actionId(action);
+    if (!depId) return;
     const currentDeps = parseDeps(task.dependencies);
     const newDeps = [...currentDeps, depId];
     await patchTask(task.id, { dependencies: newDeps });
     toast('已添加前置任务', 'success');
     cbs.onRefresh();
   } else if (action.startsWith('undep:')) {
-    const depId = parseInt(action.split(':')[1], 10);
-    if (isNaN(depId)) return;
+    const depId = actionId(action);
+    if (!depId) return;
     const currentDeps = parseDeps(task.dependencies);
     const newDeps = currentDeps.filter((d) => d !== depId);
     await patchTask(task.id, { dependencies: newDeps });
     toast('已移除前置任务', 'success');
     cbs.onRefresh();
   } else if (action.startsWith('move:')) {
-    const targetProjectId = parseInt(action.split(':')[1], 10);
-    if (isNaN(targetProjectId)) return;
+    const targetProjectId = actionId(action);
+    if (!targetProjectId) return;
     const oldProjectId = task.project_id;
     cbs.onOptimistic?.(task.id, { project_id: targetProjectId });
     await moveTask(task.id, targetProjectId);
@@ -194,10 +195,10 @@ export async function handleTaskAction(action: string, task: Task, cbs: TaskActi
     });
     cbs.onRefresh();
   } else if (action.startsWith('reparent:')) {
-    const newParentId = parseInt(action.split(':')[1], 10);
+    const newParentId = actionId(action);
     const oldParentId = task.parent_id;
-    cbs.onOptimistic?.(task.id, { parent_id: isNaN(newParentId) ? null : newParentId });
-    await patchTask(task.id, { parent_id: isNaN(newParentId) ? null : newParentId });
+    cbs.onOptimistic?.(task.id, { parent_id: newParentId });
+    await patchTask(task.id, { parent_id: newParentId });
     toast('已设为子任务', 'success', {
       onUndo: () => {
         patchTask(task.id, { parent_id: oldParentId ?? null }).then(() => cbs.onRefresh());

@@ -29,7 +29,6 @@ import {
   isStableId,
   validateEntityPolicy,
   resolveEntityPolicy,
-  type CapabilityEffect,
 } from '@greenhouse/platform-kernel';
 import { getDb } from '@greenhouse/db';
 import type { AppEnv } from '../app-env.js';
@@ -45,7 +44,6 @@ import {
   normalizeOAuthScopes,
   parseStoredStringArray,
 } from '../platform/oauth.js';
-import { safeJsonParse } from '@greenhouse/utils/json';
 import type { PlatformOAuthClientRow } from '@greenhouse/db';
 
 /** Secret hashes never leave the API, even to super admins. */
@@ -112,30 +110,22 @@ function validateManifestEntityPolicy(
 const platformAdminRoutes = new Hono<AppEnv>()
   .use('*', requireSuper())
   .get('/catalog', async (c) => {
-    const releases = await getDb().platform.listAppReleases();
-    return c.json({
-      applications: getPlatformRuntime().listManifests(),
-      releases: releases.map(({ parsedManifest: _parsedManifest, ...release }) => release),
-    });
+    return c.json({ applications: getPlatformRuntime().listManifests() });
   })
   .get('/roles', async (c) => {
     const roles = await getDb().platform.listRoles(PLATFORM_ORG_ID);
     const roleIds = roles.map((role) => role.id);
-    const [capabilities, bindings, entityPolicies, userOverrides, users] = await Promise.all([
+    const [capabilities, bindings, entityPolicies, users] = await Promise.all([
       getDb().platform.listRoleCapabilities(roleIds),
       getDb().platform.listRoleBindings(roleIds),
       getDb().platform.listRoleEntityPolicies(roleIds),
-      getDb().platform.listUserCapabilityOverrides(PLATFORM_ORG_ID),
       getDb().users.list(),
     ]);
-    const userEntityPolicies = await getDb().platform.listUserEntityPolicyOverrides(PLATFORM_ORG_ID);
     return c.json({
       roles,
       capabilities,
       bindings,
       entityPolicies,
-      userOverrides,
-      userEntityPolicies,
       users: users.map((user) => ({
         id: user.id,
         email: user.email,
@@ -246,7 +236,6 @@ const platformAdminRoutes = new Hono<AppEnv>()
         });
       }
     }
-    const overrides = await getDb().platform.listUserCapabilityOverrides(PLATFORM_ORG_ID, user.id);
     const entityPolicies = [];
     for (const manifest of getPlatformRuntime().listManifests()) {
       for (const entity of Object.values(manifest.entities)) {
@@ -260,104 +249,14 @@ const platformAdminRoutes = new Hono<AppEnv>()
           appId: manifest.id,
           moduleId: entity.module,
           entityId: entity.id,
-          policy: resolveEntityPolicy(snapshot.rolePolicies, snapshot.userOverride),
-          override: snapshot.userOverride,
+          policy: resolveEntityPolicy(snapshot.rolePolicies),
         });
       }
     }
     return c.json({
       user: { id: user.id, nickname: user.nickname, role: user.role },
       permissions,
-      overrides,
       entityPolicies,
-    });
-  })
-  .put('/users/:userId/overrides', async (c) => {
-    const user = await getDb().users.getById(c.req.param('userId'));
-    if (!user) return c.json({ error: 'User not found' }, 404);
-    const body = (await c.req.json()) as {
-      capability?: string;
-      effect?: CapabilityEffect;
-      reason?: string;
-    };
-    if (!body.capability || (body.effect !== 'allow' && body.effect !== 'deny')) {
-      return c.json({ error: 'capability and effect are required' }, 400);
-    }
-    const validationError = validateCapabilityCatalog([body.capability]);
-    if (validationError) return c.json({ error: validationError }, 400);
-    const override = await getDb().platform.setUserCapabilityOverride({
-      org_id: PLATFORM_ORG_ID,
-      user_id: user.id,
-      capability: body.capability,
-      effect: body.effect,
-      reason: body.reason,
-      granted_by: getAuthUser(c).id,
-    });
-    return c.json({ override });
-  })
-  .delete('/users/:userId/overrides', async (c) => {
-    const capability = c.req.query('capability');
-    if (!capability) return c.json({ error: 'capability query parameter is required' }, 400);
-    return c.json({
-      success: await getDb().platform.clearUserCapabilityOverride(PLATFORM_ORG_ID, c.req.param('userId'), capability),
-    });
-  })
-  .put('/users/:userId/entity-policies/:appId/:entityId', async (c) => {
-    const user = await getDb().users.getById(c.req.param('userId'));
-    if (!user) return c.json({ error: 'User not found' }, 404);
-    const appId = c.req.param('appId');
-    const entityId = c.req.param('entityId');
-    const entity = manifestEntity(appId, entityId);
-    if (!entity) return c.json({ error: 'Manifest entity not found' }, 404);
-    try {
-      const body = (await c.req.json()) as {
-        effect?: CapabilityEffect;
-        scopes?: unknown;
-        fields?: unknown;
-        reason?: string;
-      };
-      if (body.effect !== 'allow' && body.effect !== 'deny') {
-        return c.json({ error: 'effect must be allow or deny' }, 400);
-      }
-      const policy =
-        body.effect === 'deny'
-          ? validateEntityPolicy({ scopes: [], fields: {} })
-          : validateManifestEntityPolicy(entity, {
-              scopes: body.scopes ?? [],
-              fields: body.fields ?? {},
-            });
-      const override = await getDb().platform.setUserEntityPolicyOverride({
-        org_id: PLATFORM_ORG_ID,
-        user_id: user.id,
-        effect: body.effect,
-        policy: {
-          app_id: appId,
-          module_id: entity.module,
-          entity_id: entityId,
-          scopes: policy.scopes,
-          field_policies: policy.fields,
-        },
-        reason: body.reason,
-        granted_by: getAuthUser(c).id,
-      });
-      return c.json({ override });
-    } catch (error) {
-      return c.json({ error: error instanceof Error ? error.message : 'Invalid entity policy' }, 400);
-    }
-  })
-  .delete('/users/:userId/entity-policies/:appId/:entityId', async (c) => {
-    const user = await getDb().users.getById(c.req.param('userId'));
-    if (!user) return c.json({ error: 'User not found' }, 404);
-    if (!manifestEntity(c.req.param('appId'), c.req.param('entityId'))) {
-      return c.json({ error: 'Manifest entity not found' }, 404);
-    }
-    return c.json({
-      success: await getDb().platform.clearUserEntityPolicyOverride(
-        PLATFORM_ORG_ID,
-        c.req.param('userId'),
-        c.req.param('appId'),
-        c.req.param('entityId'),
-      ),
     });
   })
   .get('/audit', async (c) => {
@@ -412,14 +311,14 @@ const platformAdminRoutes = new Hono<AppEnv>()
       client_name: clientName,
       client_secret_hash: hashOAuthCredential(clientSecret),
       bound_user_id: body.bound_user_id,
-      allowed_scopes: JSON.stringify(scopes),
+      allowed_scopes: scopes,
       created_by: getAuthUser(c).id,
     });
     await getDb().platformOAuth.upsertGrant({
       user_id: body.bound_user_id,
       client_id: clientId,
       resource: getMcpResourceUrl(),
-      scopes: JSON.stringify(scopes),
+      scopes: scopes,
     });
     await getDb().platform.recordAudit({
       orgId: PLATFORM_ORG_ID,
@@ -494,7 +393,7 @@ const platformAdminRoutes = new Hono<AppEnv>()
       getDb().apiAudit.count({ app_id: client.id, since }),
     ]);
     return c.json({
-      records: records.map((r) => ({ ...r, meta: safeJsonParse(r.meta) })),
+      records,
       total,
       has_more: offset + limit < total,
     });

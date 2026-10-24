@@ -105,7 +105,7 @@ export function ShareDialog({ open, onClose, sessionId, sessionTitle, onShareCha
   }, [sessionId, onShareChanged, t]);
 
   const handleRemoveOne = useCallback(
-    async (shareId: number) => {
+    async (shareId: string) => {
       try {
         await api.deleteOneShare(sessionId, shareId);
         setExistingShares((prev) => prev.filter((s) => s.id !== shareId));

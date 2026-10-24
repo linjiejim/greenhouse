@@ -27,7 +27,6 @@ export async function createManagedUser(input: {
   email: string;
   nickname: string;
   role: 'team';
-  monthly_token_limit: number;
   credential_mode: 'email_link' | 'direct_password';
   password?: string;
 }) {
@@ -106,10 +105,10 @@ export async function fetchFeatureRequests(status?: string): Promise<{ total: nu
 }
 
 export async function updateFeatureRequest(
-  id: number,
+  id: string,
   updates: { status?: string; priority?: string; admin_note?: string },
 ): Promise<{ request: FeatureRequest }> {
-  const args = { param: { id: String(id) }, json: updates };
+  const args = { param: { id }, json: updates };
   const res = await rpc.api.admin['feature-requests'][':id'].$patch(args);
   if (!res.ok) throw new Error(`Failed to update feature request: ${res.status}`);
   return res.json();

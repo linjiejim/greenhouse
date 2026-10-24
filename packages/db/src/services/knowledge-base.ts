@@ -6,14 +6,45 @@
  * versions, FTS, and incremental ingest via content_hash.
  */
 
-import { eq, and, sql, isNull, ilike, like, or, desc, asc, gt, inArray } from 'drizzle-orm';
+import { eq, and, sql, isNull, ilike, like, or, desc, asc, gt, inArray, getTableColumns } from 'drizzle-orm';
 import { nowIso } from '@greenhouse/utils/date';
 import type { KnowledgeDocChangeKind } from '@greenhouse/types/ws';
 
 import type { Db } from '../client.js';
-import { knowledgeBase, knowledgeBaseVersions } from '../schema/index.js';
-import type { KnowledgeDocRow, KnowledgeDocVersionRow } from '../schema/knowledge-base.js';
+import { newId } from '../ids.js';
+import { kbDocuments as knowledgeBase, kbVersions as knowledgeBaseVersions } from '../schema/index.js';
+import type { KnowledgeDocRow, KnowledgeDocVersionRow } from '../schema/knowledge.js';
 import { segmentForFts, buildSegmentedTsQuery, buildSnippet, jsonArrayToText } from './fts.js';
+
+/**
+ * A knowledge document as services return it: the row without the full-text
+ * columns (`search_a/b/c`, generated `search_tsv`), which are write-side
+ * plumbing and must never reach an API response.
+ */
+export type KnowledgeDoc = Omit<KnowledgeDocRow, 'search_a' | 'search_b' | 'search_c' | 'search_tsv'>;
+
+const {
+  search_a: _searchA,
+  search_b: _searchB,
+  search_c: _searchC,
+  search_tsv: _searchTsv,
+  ...docColumns
+} = getTableColumns(knowledgeBase);
+
+/** Tiptap JSON as a value; accepts the editor's serialized string too (empty / malformed → `{}`). */
+export type KnowledgeContentJson = Record<string, unknown> | string | null;
+
+function toContentJson(value: KnowledgeContentJson | undefined): Record<string, unknown> {
+  let parsed: unknown = value;
+  if (typeof value === 'string') {
+    try {
+      parsed = JSON.parse(value);
+    } catch {
+      return {};
+    }
+  }
+  return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : {};
+}
 
 /** Recompute the weighted jieba token columns from a doc's text fields. */
 function kbTokens(fields: {
@@ -23,12 +54,12 @@ function kbTokens(fields: {
   questionsText?: string | null;
   content?: string | null;
   topicsText?: string | null;
-}): { _tokens_a: string; _tokens_b: string; _tokens_c: string } {
+}): { search_a: string; search_b: string; search_c: string } {
   const join = (...parts: (string | null | undefined)[]) => parts.filter(Boolean).join(' ');
   return {
-    _tokens_a: segmentForFts(join(fields.title, fields.tagsText)),
-    _tokens_b: segmentForFts(join(fields.summary, fields.questionsText)),
-    _tokens_c: segmentForFts(join(fields.content, fields.topicsText)),
+    search_a: segmentForFts(join(fields.title, fields.tagsText)),
+    search_b: segmentForFts(join(fields.summary, fields.questionsText)),
+    search_c: segmentForFts(join(fields.content, fields.topicsText)),
   };
 }
 
@@ -37,7 +68,7 @@ export interface KnowledgeDocInput {
   scope?: string;
   title: string;
   content: string;
-  content_json?: string | null;
+  content_json?: KnowledgeContentJson;
   content_hash?: string | null;
   visibility?: string;
   status?: string;
@@ -45,7 +76,7 @@ export interface KnowledgeDocInput {
   tags?: string[];
   meta?: Record<string, unknown>;
   file_path?: string | null;
-  folder_id?: number | null;
+  folder_id?: string | null;
   owner_user_id?: string | null;
   created_by?: string | null;
   updated_by?: string | null;
@@ -58,13 +89,13 @@ export interface KnowledgeDocUpdateInput {
   doc_id?: string;
   title?: string;
   content?: string;
-  content_json?: string | null;
+  content_json?: KnowledgeContentJson;
   visibility?: string;
   status?: string;
   is_template?: boolean;
   tags?: string[];
   meta?: Record<string, unknown>;
-  folder_id?: number | null;
+  folder_id?: string | null;
   owner_user_id?: string | null;
   _summary?: string;
   _questions?: string[];
@@ -72,15 +103,15 @@ export interface KnowledgeDocUpdateInput {
 }
 
 export interface KnowledgeSearchResult {
-  id: number;
+  id: string;
   doc_id: string;
   title: string;
   _summary: string | null;
   snippet: string;
-  tags: string;
+  tags: string[];
   relevance: number;
   /** Folder the doc is filed in (null = root); the tools render it as a path. */
-  folder_id: number | null;
+  folder_id: string | null;
 }
 
 /** A shared-with-me hit carries the caller's effective role on the doc. */
@@ -101,7 +132,7 @@ export interface KnowledgeListOpts {
    * expanded subtree (see `kbFolderSubtreeIds`); an empty array matches nothing,
    * `undefined` means no folder restriction at all.
    */
-  folderIds?: number[];
+  folderIds?: string[];
   limit?: number;
   offset?: number;
 }
@@ -113,7 +144,7 @@ export interface KnowledgeSearchOpts {
   visibility?: string;
   status?: string;
   /** Same semantics as KnowledgeListOpts.folderIds. */
-  folderIds?: number[];
+  folderIds?: string[];
   limit?: number;
 }
 
@@ -123,7 +154,7 @@ export interface KnowledgeSearchOpts {
  * subtree turned out empty", and widening that to the whole library would
  * silently answer a scoped question with unscoped results.
  */
-function folderFilter(folderIds: number[] | undefined, prefix: '' | 'kb.') {
+function folderFilter(folderIds: string[] | undefined, prefix: '' | 'kb.') {
   if (folderIds === undefined) return sql``;
   if (folderIds.length === 0) return sql`AND false`;
   const column = prefix === 'kb.' ? sql`kb.folder_id` : sql`folder_id`;
@@ -137,9 +168,9 @@ function folderFilter(folderIds: number[] | undefined, prefix: '' | 'kb.') {
 
 export interface KnowledgeDocChange {
   kind: KnowledgeDocChangeKind;
-  doc: KnowledgeDocRow;
+  doc: KnowledgeDoc;
   /** Audience before an update — a doc made private must still reach whoever could see it a moment ago. */
-  previous?: Pick<KnowledgeDocRow, 'visibility' | 'owner_user_id'>;
+  previous?: Pick<KnowledgeDoc, 'visibility' | 'owner_user_id'>;
 }
 
 type KnowledgeDocChangeListener = (change: KnowledgeDocChange) => void;
@@ -186,24 +217,25 @@ export function createKnowledgeBaseService(db: Db) {
         topicsText: (doc._topics ?? []).join(' '),
       });
       const values = {
+        id: newId('document'),
         doc_id: doc.doc_id,
         scope: doc.scope ?? 'shared',
         title: doc.title,
         content: doc.content,
-        content_json: doc.content_json ?? '{}',
+        content_json: toContentJson(doc.content_json),
         content_hash: doc.content_hash ?? null,
-        visibility: doc.visibility ?? 'team',
-        status: doc.status ?? 'published',
-        tags: JSON.stringify(doc.tags ?? []),
-        meta: JSON.stringify(doc.meta ?? {}),
+        visibility: (doc.visibility ?? 'team') as KnowledgeDocRow['visibility'],
+        status: (doc.status ?? 'published') as KnowledgeDocRow['status'],
+        tags: doc.tags ?? [],
+        meta: doc.meta ?? {},
         file_path: doc.file_path ?? null,
         folder_id: doc.folder_id ?? null,
         owner_user_id: doc.owner_user_id ?? doc.created_by ?? null,
         created_by: doc.created_by ?? null,
         updated_by: doc.updated_by ?? doc.created_by ?? null,
         _summary: doc._summary ?? '',
-        _questions: JSON.stringify(doc._questions ?? []),
-        _topics: JSON.stringify(doc._topics ?? []),
+        _questions: doc._questions ?? [],
+        _topics: doc._topics ?? [],
         ...tokens,
         created_at: now,
         updated_at: now,
@@ -237,7 +269,7 @@ export function createKnowledgeBaseService(db: Db) {
         });
     },
 
-    async create(doc: KnowledgeDocInput): Promise<KnowledgeDocRow> {
+    async create(doc: KnowledgeDocInput): Promise<KnowledgeDoc> {
       const now = nowIso();
       const tokens = kbTokens({
         title: doc.title,
@@ -250,31 +282,32 @@ export function createKnowledgeBaseService(db: Db) {
       const inserted = await db
         .insert(knowledgeBase)
         .values({
+          id: newId('document'),
           doc_id: doc.doc_id,
           scope: doc.scope ?? 'shared',
           title: doc.title,
           content: doc.content,
-          content_json: doc.content_json ?? '{}',
+          content_json: toContentJson(doc.content_json),
           content_hash: doc.content_hash ?? null,
-          visibility: doc.visibility ?? 'team',
-          status: doc.status ?? 'published',
+          visibility: (doc.visibility ?? 'team') as KnowledgeDocRow['visibility'],
+          status: (doc.status ?? 'published') as KnowledgeDocRow['status'],
           is_template: doc.is_template ?? false,
-          tags: JSON.stringify(doc.tags ?? []),
-          meta: JSON.stringify(doc.meta ?? {}),
+          tags: doc.tags ?? [],
+          meta: doc.meta ?? {},
           file_path: doc.file_path ?? null,
           folder_id: doc.folder_id ?? null,
           owner_user_id: doc.owner_user_id ?? doc.created_by ?? null,
           created_by: doc.created_by ?? null,
           updated_by: doc.updated_by ?? doc.created_by ?? null,
           _summary: doc._summary ?? '',
-          _questions: JSON.stringify(doc._questions ?? []),
-          _topics: JSON.stringify(doc._topics ?? []),
+          _questions: doc._questions ?? [],
+          _topics: doc._topics ?? [],
           _enriched_at: doc._summary || doc._questions || doc._topics ? now : null,
           ...tokens,
           created_at: now,
           updated_at: now,
         })
-        .returning();
+        .returning(docColumns);
 
       const row = inserted[0]!;
       await service.createVersion(row, doc.created_by ?? doc.updated_by ?? null, 'Created document');
@@ -283,11 +316,11 @@ export function createKnowledgeBaseService(db: Db) {
     },
 
     async update(
-      id: number,
+      id: string,
       updates: KnowledgeDocUpdateInput,
       changedBy?: string | null,
       reason = 'Updated document',
-    ): Promise<KnowledgeDocRow | undefined> {
+    ): Promise<KnowledgeDoc | undefined> {
       const current = await service.getById(id);
       if (!current) return undefined;
 
@@ -295,21 +328,21 @@ export function createKnowledgeBaseService(db: Db) {
       if (updates.doc_id !== undefined) setValues.doc_id = updates.doc_id;
       if (updates.title !== undefined) setValues.title = updates.title;
       if (updates.content !== undefined) setValues.content = updates.content;
-      if (updates.content_json !== undefined) setValues.content_json = updates.content_json ?? '{}';
+      if (updates.content_json !== undefined) setValues.content_json = toContentJson(updates.content_json);
       // Markdown is canonical. If `content` changed but no fresh Tiptap JSON was supplied
       // (e.g. agent knowledge_mutation only sends Markdown), clear the now-stale JSON so the
       // editor falls back to rendering the new Markdown instead of showing the old content.
-      else if (updates.content !== undefined) setValues.content_json = '{}';
+      else if (updates.content !== undefined) setValues.content_json = {};
       if (updates.visibility !== undefined) setValues.visibility = updates.visibility;
       if (updates.status !== undefined) setValues.status = updates.status;
       if (updates.is_template !== undefined) setValues.is_template = updates.is_template;
-      if (updates.tags !== undefined) setValues.tags = JSON.stringify(updates.tags);
-      if (updates.meta !== undefined) setValues.meta = JSON.stringify(updates.meta);
+      if (updates.tags !== undefined) setValues.tags = updates.tags;
+      if (updates.meta !== undefined) setValues.meta = updates.meta;
       if (updates.folder_id !== undefined) setValues.folder_id = updates.folder_id;
       if (updates.owner_user_id !== undefined) setValues.owner_user_id = updates.owner_user_id;
       if (updates._summary !== undefined) setValues._summary = updates._summary;
-      if (updates._questions !== undefined) setValues._questions = JSON.stringify(updates._questions);
-      if (updates._topics !== undefined) setValues._topics = JSON.stringify(updates._topics);
+      if (updates._questions !== undefined) setValues._questions = updates._questions;
+      if (updates._topics !== undefined) setValues._topics = updates._topics;
       if (updates._summary !== undefined || updates._questions !== undefined || updates._topics !== undefined) {
         setValues._enriched_at = nowIso();
       } else if (updates.content !== undefined) {
@@ -339,7 +372,11 @@ export function createKnowledgeBaseService(db: Db) {
         );
       }
 
-      const rows = await db.update(knowledgeBase).set(setValues).where(eq(knowledgeBase.id, id)).returning();
+      const rows = await db
+        .update(knowledgeBase)
+        .set(setValues)
+        .where(eq(knowledgeBase.id, String(id)))
+        .returning(docColumns);
       const updated = rows[0];
       if (updated) {
         await service.createVersion(updated, changedBy ?? null, reason);
@@ -352,20 +389,24 @@ export function createKnowledgeBaseService(db: Db) {
       return updated;
     },
 
-    async archive(id: number, changedBy?: string | null): Promise<boolean> {
+    async archive(id: string, changedBy?: string | null): Promise<boolean> {
       const row = await service.update(id, { status: 'archived' }, changedBy, 'Archived document');
       return !!row;
     },
 
-    async get(docId: string, scope = 'shared'): Promise<KnowledgeDocRow | undefined> {
+    async get(docId: string, scope = 'shared'): Promise<KnowledgeDoc | undefined> {
       const conditions = and(eq(knowledgeBase.doc_id, docId), eq(knowledgeBase.scope, scope));
 
-      const rows = await db.select().from(knowledgeBase).where(conditions).limit(1);
+      const rows = await db.select(docColumns).from(knowledgeBase).where(conditions).limit(1);
       return rows[0] ?? undefined;
     },
 
-    async getById(id: number): Promise<KnowledgeDocRow | undefined> {
-      const rows = await db.select().from(knowledgeBase).where(eq(knowledgeBase.id, id)).limit(1);
+    async getById(id: string): Promise<KnowledgeDoc | undefined> {
+      const rows = await db
+        .select(docColumns)
+        .from(knowledgeBase)
+        .where(eq(knowledgeBase.id, String(id)))
+        .limit(1);
       return rows[0] ?? undefined;
     },
 
@@ -384,32 +425,28 @@ export function createKnowledgeBaseService(db: Db) {
       const visibilityClause = opts?.visibility ? sql`AND kb.visibility = ${opts.visibility}` : sql``;
       const folderClause = folderFilter(opts?.folderIds, 'kb.');
 
-      // Query the jieba-segmented token columns so Chinese sentences word-match.
-      const weightedTsVector = sql`(
-        setweight(to_tsvector('simple', kb._tokens_a), 'A') ||
-        setweight(to_tsvector('simple', kb._tokens_b), 'B') ||
-        setweight(to_tsvector('simple', kb._tokens_c), 'C')
-      )`;
+      // `search_tsv` is generated from the jieba-segmented search_a/b/c columns
+      // (weights A/B/C), so Chinese sentences word-match and the GIN index applies.
 
       // Two passes: AND first (precision), then OR TOPS UP the remaining slots
       // (recall). Returning on the first non-empty pass instead let a single
       // mediocre AND hit hide the entire OR candidate set.
       const collected: (KnowledgeSearchResult & { content: string })[] = [];
-      const seen = new Set<number>();
+      const seen = new Set<string>();
       for (const tsQuery of [andQuery, orQuery]) {
         if (!tsQuery || collected.length >= limit) continue;
         try {
           const result = await db.execute(sql`
             SELECT kb.id, kb.doc_id, kb.title, kb._summary, kb.tags, kb.folder_id, kb.content,
-                   ts_rank(${weightedTsVector}, to_tsquery('simple', ${tsQuery})) as relevance
-            FROM knowledge_base kb
-            WHERE ${weightedTsVector} @@ to_tsquery('simple', ${tsQuery})
+                   ts_rank(kb.search_tsv, to_tsquery('simple', ${tsQuery})) as relevance
+            FROM kb_documents kb
+            WHERE kb.search_tsv @@ to_tsquery('simple', ${tsQuery})
               AND kb.scope = ${scope}
               AND kb.status = ${status}
             ${ownerClause}
             ${visibilityClause}
             ${folderClause}
-            ORDER BY relevance DESC
+            ORDER BY relevance DESC, kb.updated_at DESC
             LIMIT ${limit}
           `);
           for (const row of result as unknown as (KnowledgeSearchResult & { content: string })[]) {
@@ -450,8 +487,9 @@ export function createKnowledgeBaseService(db: Db) {
       // (INNER → no grant, no row) and surfaces the role.
       const grantJoin = sql`
         JOIN LATERAL (
-          SELECT s.role FROM knowledge_base_shares s
-          WHERE s.doc_id = kb.id AND s.shared_with = ${userId}
+          SELECT s.role FROM shares s
+          WHERE s.resource_type = 'kb_document' AND s.resource_id = kb.id
+            AND s.principal_type = 'user' AND s.principal_id = ${userId}
           LIMIT 1
         ) g ON true
       `;
@@ -460,31 +498,25 @@ export function createKnowledgeBaseService(db: Db) {
         return service.searchSharedLike(query, userId, grantJoin, status, limit);
       }
 
-      const weightedTsVector = sql`(
-        setweight(to_tsvector('simple', kb._tokens_a), 'A') ||
-        setweight(to_tsvector('simple', kb._tokens_b), 'B') ||
-        setweight(to_tsvector('simple', kb._tokens_c), 'C')
-      )`;
-
       // AND for precision, then OR to top up the remaining slots (same rule as
       // `search` — a lone AND hit must not hide the OR candidates).
       const collected: (KnowledgeSharedSearchResult & { content: string })[] = [];
-      const seen = new Set<number>();
+      const seen = new Set<string>();
       for (const tsQuery of [andQuery, orQuery]) {
         if (!tsQuery || collected.length >= limit) continue;
         try {
           const result = await db.execute(sql`
             SELECT kb.id, kb.doc_id, kb.title, kb._summary, kb.tags, kb.folder_id, kb.content,
-                   ts_rank(${weightedTsVector}, to_tsquery('simple', ${tsQuery})) as relevance,
+                   ts_rank(kb.search_tsv, to_tsquery('simple', ${tsQuery})) as relevance,
                    g.role as access
-            FROM knowledge_base kb
+            FROM kb_documents kb
             ${grantJoin}
-            WHERE ${weightedTsVector} @@ to_tsquery('simple', ${tsQuery})
+            WHERE kb.search_tsv @@ to_tsquery('simple', ${tsQuery})
               AND kb.scope = 'shared'
               AND kb.status = ${status}
               AND kb.visibility = 'private'
               AND kb.owner_user_id IS DISTINCT FROM ${userId}
-            ORDER BY relevance DESC
+            ORDER BY relevance DESC, kb.updated_at DESC
             LIMIT ${limit}
           `);
           for (const row of result as unknown as (KnowledgeSharedSearchResult & { content: string })[]) {
@@ -514,7 +546,7 @@ export function createKnowledgeBaseService(db: Db) {
       const result = await db.execute(sql`
         SELECT kb.id, kb.doc_id, kb.title, kb._summary, kb.tags, kb.folder_id,
                SUBSTRING(kb.content, 1, 240) as snippet, 1.0 as relevance, g.role as access
-        FROM knowledge_base kb
+        FROM kb_documents kb
         ${grantJoin}
         WHERE kb.scope = 'shared'
           AND kb.status = ${status}
@@ -522,8 +554,8 @@ export function createKnowledgeBaseService(db: Db) {
           AND kb.owner_user_id IS DISTINCT FROM ${_userId}
           AND (
             kb.title ILIKE ${like} OR kb.content ILIKE ${like}
-            OR kb._summary ILIKE ${like} OR kb._questions ILIKE ${like}
-            OR kb._topics ILIKE ${like} OR kb.tags ILIKE ${like}
+            OR kb._summary ILIKE ${like} OR kb._questions::text ILIKE ${like}
+            OR kb._topics::text ILIKE ${like} OR kb.tags::text ILIKE ${like}
           )
         ORDER BY CASE WHEN kb.title ILIKE ${like} THEN 0 ELSE 1 END, kb.updated_at DESC, kb.title
         LIMIT ${limit}
@@ -531,19 +563,20 @@ export function createKnowledgeBaseService(db: Db) {
       return result as unknown as KnowledgeSharedSearchResult[];
     },
 
-    async listAll(scope = 'shared'): Promise<KnowledgeDocRow[]> {
+    async listAll(scope = 'shared'): Promise<KnowledgeDoc[]> {
       const conditions = and(eq(knowledgeBase.scope, scope));
 
-      return db.select().from(knowledgeBase).where(conditions).orderBy(desc(knowledgeBase.updated_at));
+      return db.select(docColumns).from(knowledgeBase).where(conditions).orderBy(desc(knowledgeBase.updated_at));
     },
 
-    async list(opts?: KnowledgeListOpts): Promise<KnowledgeDocRow[]> {
+    async list(opts?: KnowledgeListOpts): Promise<KnowledgeDoc[]> {
       const scope = opts?.scope ?? 'shared';
-      const status = opts?.status ?? 'published';
+      const status = (opts?.status ?? 'published') as KnowledgeDocRow['status'];
       const conditions = [eq(knowledgeBase.scope, scope), eq(knowledgeBase.status, status)];
       if (opts?.ownerUserId) conditions.push(eq(knowledgeBase.owner_user_id, opts.ownerUserId));
-      if (opts?.visibility) conditions.push(eq(knowledgeBase.visibility, opts.visibility));
-      if (opts?.space) conditions.push(sql`${knowledgeBase.meta}::jsonb ->> 'space' = ${opts.space}`);
+      if (opts?.visibility)
+        conditions.push(eq(knowledgeBase.visibility, opts.visibility as KnowledgeDocRow['visibility']));
+      if (opts?.space) conditions.push(sql`${knowledgeBase.meta} ->> 'space' = ${opts.space}`);
       // An empty folder set matches nothing (see folderFilter) — never widen.
       if (opts?.folderIds !== undefined) {
         conditions.push(opts.folderIds.length === 0 ? sql`false` : inArray(knowledgeBase.folder_id, opts.folderIds));
@@ -560,18 +593,18 @@ export function createKnowledgeBaseService(db: Db) {
       }
 
       return db
-        .select()
+        .select(docColumns)
         .from(knowledgeBase)
         .where(and(...conditions))
-        .orderBy(desc(knowledgeBase.updated_at))
+        .orderBy(desc(knowledgeBase.updated_at), desc(knowledgeBase.id))
         .limit(opts?.limit ?? 50)
         .offset(opts?.offset ?? 0);
     },
 
     /** Team-visible templates for the "new from template" picker. */
-    async listTemplates(): Promise<KnowledgeDocRow[]> {
+    async listTemplates(): Promise<KnowledgeDoc[]> {
       return db
-        .select()
+        .select(docColumns)
         .from(knowledgeBase)
         .where(
           and(
@@ -583,13 +616,13 @@ export function createKnowledgeBaseService(db: Db) {
         .orderBy(asc(knowledgeBase.title));
     },
 
-    /** Fetch docs by their numeric ids (used to resolve shared-with-me docs). */
-    async listByIds(ids: number[], opts?: { status?: string }): Promise<KnowledgeDocRow[]> {
+    /** Fetch docs by their ids (used to resolve shared-with-me docs). */
+    async listByIds(ids: string[], opts?: { status?: string }): Promise<KnowledgeDoc[]> {
       if (ids.length === 0) return [];
-      const conditions = [inArray(knowledgeBase.id, ids)];
-      if (opts?.status) conditions.push(eq(knowledgeBase.status, opts.status));
+      const conditions = [inArray(knowledgeBase.id, ids.map(String))];
+      if (opts?.status) conditions.push(eq(knowledgeBase.status, opts.status as KnowledgeDocRow['status']));
       return db
-        .select()
+        .select(docColumns)
         .from(knowledgeBase)
         .where(and(...conditions))
         .orderBy(desc(knowledgeBase.updated_at));
@@ -605,7 +638,7 @@ export function createKnowledgeBaseService(db: Db) {
 
     async count(scope?: string): Promise<number> {
       const condition = scope ? sql`WHERE scope = ${scope}` : sql``;
-      const result = await db.execute(sql`SELECT COUNT(*)::int as count FROM knowledge_base ${condition}`);
+      const result = await db.execute(sql`SELECT COUNT(*)::int as count FROM kb_documents ${condition}`);
       return Number((result as any[])[0]?.count ?? 0);
     },
 
@@ -627,9 +660,9 @@ export function createKnowledgeBaseService(db: Db) {
      * transaction). Mirrors `drive.reorderFolders`; authorization and the
      * "these really are siblings" check belong to the caller.
      */
-    async reorderDocs(ids: number[]): Promise<void> {
+    async reorderDocs(ids: string[]): Promise<void> {
       if (ids.length === 0) return;
-      const pairs = ids.map((id, i) => sql`(${id}::int, ${i + 1}::int)`);
+      const pairs = ids.map((id, i) => sql`(${String(id)}::text, ${i + 1}::int)`);
       await db.execute(sql`
         UPDATE ${knowledgeBase} SET sort_order = v.ord
         FROM (VALUES ${sql.join(pairs, sql`, `)}) AS v(id, ord)
@@ -638,30 +671,26 @@ export function createKnowledgeBaseService(db: Db) {
     },
 
     /** Count non-archived docs placed directly in a folder (folder-delete guard). */
-    async countInFolder(folderId: number): Promise<number> {
+    async countInFolder(folderId: string): Promise<number> {
       const rows = await db
         .select({ cnt: sql<number>`COUNT(*)` })
         .from(knowledgeBase)
-        .where(and(eq(knowledgeBase.folder_id, folderId), sql`${knowledgeBase.status} <> 'archived'`));
+        .where(and(eq(knowledgeBase.folder_id, String(folderId)), sql`${knowledgeBase.status} <> 'archived'`));
       return Number(rows[0]?.cnt ?? 0);
     },
 
-    async listUnenriched(limit = 20): Promise<KnowledgeDocRow[]> {
+    async listUnenriched(limit = 20): Promise<KnowledgeDoc[]> {
       return db
-        .select()
+        .select(docColumns)
         .from(knowledgeBase)
         .where(and(isNull(knowledgeBase._enriched_at), eq(knowledgeBase.status, 'published')))
+        .orderBy(asc(knowledgeBase.created_at), asc(knowledgeBase.id))
         .limit(limit);
     },
 
     /**
-     * Recompute the segmented `_tokens_a/b/c` columns for every row (keyset-paged,
-     * idempotent — recompute is deterministic). Used by `cli knowledge reindex`
-     * after the migration adds the columns empty. Does NOT bump `updated_at`.
-     */
-    /**
-     * Rows whose segmented FTS tokens were never computed — documents that
-     * predate the token columns (added by a migration with empty defaults).
+     * Rows whose segmented FTS columns were never computed — documents carried
+     * into `kb_documents` without their `search_a/b/c` (they default to '').
      * Search silently misses them until `reindexTokens` runs.
      */
     async countUntokenized(): Promise<number> {
@@ -669,13 +698,19 @@ export function createKnowledgeBaseService(db: Db) {
         .select({ count: sql<number>`count(*)::int` })
         .from(knowledgeBase)
         .where(
-          and(eq(knowledgeBase._tokens_a, ''), sql`(${knowledgeBase.title} <> '' OR ${knowledgeBase.content} <> '')`),
+          and(eq(knowledgeBase.search_a, ''), sql`(${knowledgeBase.title} <> '' OR ${knowledgeBase.content} <> '')`),
         );
       return rows[0]?.count ?? 0;
     },
 
+    /**
+     * Recompute the segmented `search_a/b/c` columns for every row (keyset-paged
+     * over the text id — any total order works for paging; idempotent, since
+     * recompute is deterministic). Used by `cli knowledge reindex` and the boot
+     * backfill. Does NOT bump `updated_at`.
+     */
     async reindexTokens(batchSize = 200, onProgress?: (done: number) => void): Promise<number> {
-      let lastId = 0;
+      let lastId = '';
       let total = 0;
       for (;;) {
         const rows = await db
@@ -711,19 +746,19 @@ export function createKnowledgeBaseService(db: Db) {
       return total;
     },
 
-    async listVersions(docId: number): Promise<KnowledgeDocVersionRow[]> {
+    async listVersions(docId: string): Promise<KnowledgeDocVersionRow[]> {
       return db
         .select()
         .from(knowledgeBaseVersions)
-        .where(eq(knowledgeBaseVersions.doc_id, docId))
+        .where(eq(knowledgeBaseVersions.doc_id, String(docId)))
         .orderBy(desc(knowledgeBaseVersions.version));
     },
 
-    async getVersion(docId: number, version: number): Promise<KnowledgeDocVersionRow | undefined> {
+    async getVersion(docId: string, version: number): Promise<KnowledgeDocVersionRow | undefined> {
       const rows = await db
         .select()
         .from(knowledgeBaseVersions)
-        .where(and(eq(knowledgeBaseVersions.doc_id, docId), eq(knowledgeBaseVersions.version, version)))
+        .where(and(eq(knowledgeBaseVersions.doc_id, String(docId)), eq(knowledgeBaseVersions.version, version)))
         .limit(1);
       return rows[0];
     },
@@ -733,7 +768,7 @@ export function createKnowledgeBaseService(db: Db) {
      * snapshot via update(), which records a NEW version, so the restore itself
      * is auditable and reversible. Returns undefined if the version is unknown.
      */
-    async restoreVersion(id: number, version: number, changedBy?: string | null): Promise<KnowledgeDocRow | undefined> {
+    async restoreVersion(id: string, version: number, changedBy?: string | null): Promise<KnowledgeDoc | undefined> {
       const snapshot = await service.getVersion(id, version);
       if (!snapshot) return undefined;
       // Apply the snapshot through update() so the rollback is itself recorded as a
@@ -743,7 +778,7 @@ export function createKnowledgeBaseService(db: Db) {
         {
           title: snapshot.title,
           content: snapshot.content,
-          content_json: snapshot.content_json ?? '{}',
+          content_json: snapshot.content_json ?? {},
           _summary: snapshot.summary ?? '',
         },
         changedBy ?? null,
@@ -752,7 +787,7 @@ export function createKnowledgeBaseService(db: Db) {
     },
 
     async updateEnrichment(
-      id: number,
+      id: string,
       data: { _summary: string; _questions: string[]; _topics: string[]; _enriched_at?: string | null },
     ): Promise<void> {
       // Recompute the B/C token tiers that enrichment feeds (title/tags/content
@@ -770,28 +805,29 @@ export function createKnowledgeBaseService(db: Db) {
         .update(knowledgeBase)
         .set({
           _summary: data._summary,
-          _questions: JSON.stringify(data._questions),
-          _topics: JSON.stringify(data._topics),
+          _questions: data._questions,
+          _topics: data._topics,
           _enriched_at: data._enriched_at ?? nowIso(),
           updated_at: nowIso(),
           ...tokens,
         })
-        .where(eq(knowledgeBase.id, id));
+        .where(eq(knowledgeBase.id, String(id)));
     },
 
     // ─── Private ─────────────────────────────────────────
 
-    async createVersion(doc: KnowledgeDocRow, changedBy: string | null, reason: string): Promise<void> {
+    async createVersion(doc: KnowledgeDoc, changedBy: string | null, reason: string): Promise<void> {
       const row = await db.execute(
-        sql`SELECT COALESCE(MAX(version), 0)::int + 1 as next_version FROM knowledge_base_versions WHERE doc_id = ${doc.id}`,
+        sql`SELECT COALESCE(MAX(version), 0)::int + 1 as next_version FROM kb_versions WHERE doc_id = ${doc.id}`,
       );
       const version = Number((row as any[])[0]?.next_version ?? 1);
       await db.insert(knowledgeBaseVersions).values({
+        id: newId('documentVersion'),
         doc_id: doc.id,
         version,
         title: doc.title,
         content: doc.content,
-        content_json: doc.content_json ?? '{}',
+        content_json: doc.content_json ?? {},
         summary: doc._summary ?? '',
         changed_by: changedBy,
         change_reason: reason,
@@ -809,7 +845,7 @@ export function createKnowledgeBaseService(db: Db) {
       const result = await db.execute(sql`
         SELECT id, doc_id, title, _summary, tags, folder_id,
                SUBSTRING(content, 1, 240) as snippet, 1.0 as relevance
-        FROM knowledge_base
+        FROM kb_documents
         WHERE scope = ${scope}
         AND status = ${status}
         ${ownerClause}
@@ -817,8 +853,8 @@ export function createKnowledgeBaseService(db: Db) {
         ${folderClause}
         AND (
           title ILIKE ${like} OR content ILIKE ${like}
-          OR _summary ILIKE ${like} OR _questions ILIKE ${like}
-          OR _topics ILIKE ${like} OR tags ILIKE ${like}
+          OR _summary ILIKE ${like} OR _questions::text ILIKE ${like}
+          OR _topics::text ILIKE ${like} OR tags::text ILIKE ${like}
         )
         ORDER BY CASE WHEN title ILIKE ${like} THEN 0 ELSE 1 END, updated_at DESC, title
         LIMIT ${limit}

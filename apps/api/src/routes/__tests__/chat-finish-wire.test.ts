@@ -129,7 +129,6 @@ beforeEach(() => {
     id: 'owner',
     role: 'team',
     status: 'active',
-    monthly_token_limit: 20_000_000,
   });
   mocks.reserveUserTokenBudget.mockResolvedValue({
     idempotencyKey: 'chat:test-run',
@@ -149,15 +148,11 @@ beforeEach(() => {
     id: 'session-1',
     title: 'Existing title',
     status: 'active',
-    rating: null,
-    comment: null,
-    feedback: null,
     profile_id: 'team',
     user_id: 'owner',
     app_id: null,
     channel: 'web',
-    parent_session_id: null,
-    metadata: '{}',
+    metadata: {},
     created_at: '2026-07-31T00:00:00.000Z',
     updated_at: '2026-07-31T00:00:00.000Z',
   });

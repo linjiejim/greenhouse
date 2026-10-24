@@ -11,7 +11,7 @@ import { compileApp, defineApp } from '@greenhouse/platform-kernel';
 export const projectsManifest = compileApp(
   defineApp({
     id: 'projects',
-    version: '1.0.1',
+    version: '1.1.0',
     title: 'Projects',
     description: 'Team projects, tasks, collaboration, and activity history.',
     modules: {
@@ -38,7 +38,7 @@ export const projectsManifest = compileApp(
         table: 'projects',
         accessScopes: ['own', 'collaborating', 'all'],
         fields: {
-          id: { kind: 'integer', title: 'ID', classification: 'internal' },
+          id: { kind: 'text', title: 'ID', classification: 'internal' },
           title: { kind: 'text', title: 'Title', required: true, searchable: true, sortable: true },
           description: { kind: 'longText', title: 'Description', searchable: true },
           status: {
@@ -78,7 +78,7 @@ export const projectsManifest = compileApp(
         table: 'tasks',
         accessScopes: ['own', 'collaborating', 'assigned', 'all'],
         fields: {
-          id: { kind: 'integer', title: 'ID', classification: 'internal' },
+          id: { kind: 'text', title: 'ID', classification: 'internal' },
           projectId: { kind: 'relation', title: 'Project', target: 'project', required: true },
           parentId: { kind: 'relation', title: 'Parent task', target: 'task' },
           title: { kind: 'text', title: 'Title', required: true, searchable: true, sortable: true },
@@ -113,7 +113,7 @@ export const projectsManifest = compileApp(
         table: 'task_comments',
         accessScopes: ['own', 'collaborating', 'all'],
         fields: {
-          id: { kind: 'integer', title: 'ID', classification: 'internal' },
+          id: { kind: 'text', title: 'ID', classification: 'internal' },
           taskId: { kind: 'relation', title: 'Task', target: 'task', required: true },
           userId: { kind: 'user', title: 'Author', required: true },
           content: { kind: 'longText', title: 'Content', required: true },
@@ -126,7 +126,7 @@ export const projectsManifest = compileApp(
         table: 'project_members',
         accessScopes: ['collaborating', 'all'],
         fields: {
-          id: { kind: 'integer', title: 'ID', classification: 'internal' },
+          id: { kind: 'text', title: 'ID', classification: 'internal' },
           projectId: { kind: 'relation', title: 'Project', target: 'project', required: true },
           userId: { kind: 'user', title: 'User', required: true },
           role: {
@@ -142,10 +142,10 @@ export const projectsManifest = compileApp(
       activity: {
         title: 'Project activity',
         module: 'collaboration',
-        table: 'project_activities',
+        table: 'audit_events',
         accessScopes: ['collaborating', 'all'],
         fields: {
-          id: { kind: 'integer', title: 'ID', classification: 'internal' },
+          id: { kind: 'text', title: 'ID', classification: 'internal' },
           projectId: { kind: 'relation', title: 'Project', target: 'project', required: true },
           taskId: { kind: 'relation', title: 'Task', target: 'task' },
           userId: { kind: 'user', title: 'User', required: true },

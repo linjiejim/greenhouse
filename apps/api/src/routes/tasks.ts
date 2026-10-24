@@ -98,7 +98,7 @@ export function createTasksRoute() {
         const user = (c.get as (key: string) => AuthUser | undefined)('user');
         if (!user) return c.json({ error: 'Authentication required' }, 401);
 
-        const result = await getTask(getDb(), consoleActor(user), parseInt(c.req.param('id'), 10));
+        const result = await getTask(getDb(), consoleActor(user), c.req.param('id'));
         if (!result.ok) return c.json({ error: result.error }, statusFor(result.code));
 
         return c.json({ task: result.task, recent_runs: result.recent_runs });
@@ -112,7 +112,7 @@ export function createTasksRoute() {
         const user = (c.get as (key: string) => AuthUser | undefined)('user');
         if (!user) return c.json({ error: 'Authentication required' }, 401);
 
-        const result = await listTaskRuns(getDb(), consoleActor(user), parseInt(c.req.param('id'), 10));
+        const result = await listTaskRuns(getDb(), consoleActor(user), c.req.param('id'));
         if (!result.ok) return c.json({ error: result.error }, statusFor(result.code));
 
         return c.json({ task: result.task, entries: result.entries });
@@ -125,7 +125,7 @@ export function createTasksRoute() {
         if (!user) return c.json({ error: 'Authentication required' }, 401);
 
         const body = await c.req.json();
-        const result = await updateTask(getDb(), consoleActor(user), parseInt(c.req.param('id'), 10), body);
+        const result = await updateTask(getDb(), consoleActor(user), c.req.param('id'), body);
         if (!result.ok) return c.json({ error: result.error }, statusFor(result.code));
 
         return c.json({ task: result.task });
@@ -137,7 +137,7 @@ export function createTasksRoute() {
         const user = (c.get as (key: string) => AuthUser | undefined)('user');
         if (!user) return c.json({ error: 'Authentication required' }, 401);
 
-        const result = await deleteTask(getDb(), consoleActor(user), parseInt(c.req.param('id'), 10));
+        const result = await deleteTask(getDb(), consoleActor(user), c.req.param('id'));
         if (!result.ok) return c.json({ error: result.error }, statusFor(result.code));
 
         return c.json({ ok: true });
@@ -150,7 +150,7 @@ export function createTasksRoute() {
         const user = (c.get as (key: string) => AuthUser | undefined)('user');
         if (!user) return c.json({ error: 'Authentication required' }, 401);
 
-        const result = await runTaskNow(getDb(), consoleActor(user), parseInt(c.req.param('id'), 10));
+        const result = await runTaskNow(getDb(), consoleActor(user), c.req.param('id'));
         if (!result.ok) return c.json({ error: result.error }, statusFor(result.code));
 
         return c.json({

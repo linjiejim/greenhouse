@@ -38,7 +38,8 @@ import {
 import { useKnowledgeStore } from '../stores';
 import { registerNavigationGuard } from '../lib/navigation-guard';
 import { useT } from '../lib/i18n';
-import { safeParse, timeAgo, formatDate } from '../lib/utils';
+import { timeAgo, formatDate } from '../lib/utils';
+import { isRowId } from '@greenhouse/utils/id';
 import {
   Archive,
   ChevronDown,
@@ -79,8 +80,8 @@ function DocByIdRedirect({ idSlug, basePath }: { idSlug: string; basePath: strin
   const t = useT();
   const [error, setError] = useState(false);
   useEffect(() => {
-    const id = parseInt(idSlug.split('-')[0] || '', 10);
-    if (!Number.isFinite(id)) {
+    const id = idSlug.split('-')[0] || '';
+    if (!isRowId(id)) {
       setError(true);
       return;
     }
@@ -123,7 +124,7 @@ function decodeSeg(s: string): string {
  * still defaults `meta.space` on create for legacy readers; nothing writes it.
  */
 interface EditorState {
-  id?: number;
+  id?: string;
   /**
    * `updated_at` of the doc when the editor opened — the save's conflict
    * baseline. Taken from the editor, not the live doc: the open doc refetches
@@ -158,9 +159,10 @@ function docToEditor(doc: KnowledgeDoc): EditorState {
     slug: doc.slug,
     visibility: doc.visibility,
     status: doc.status === 'draft' ? 'draft' : 'published',
-    tagsText: safeParse<string[]>(doc.tags, []).join(', '),
+    tagsText: (doc.tags ?? []).join(', '),
     summary: doc.summary || '',
-    value: { markdown: doc.content_markdown || '', json: doc.content_json || '{}' },
+    // The editor keeps its state serialized (it compares strings to skip no-op resets).
+    value: { markdown: doc.content_markdown || '', json: JSON.stringify(doc.content_json ?? {}) },
   };
 }
 
@@ -197,8 +199,8 @@ export function KnowledgePage({ subPath = '', basePath = '#/knowledge' }: Knowle
       // A kb folder: #/knowledge/folder/<id> shows its attachments (its documents
       // are in the sidebar tree); #/knowledge/folder/<id>/<slug> is the legacy
       // in-folder doc deeplink and still resolves to the doc detail.
-      const fid = parseInt(segments[1] || '', 10);
-      if (!Number.isFinite(fid)) {
+      const fid = segments[1] || '';
+      if (!isRowId(fid)) {
         window.location.hash = `${basePath}/internal`;
         return null;
       }
@@ -220,12 +222,12 @@ export function KnowledgePage({ subPath = '', basePath = '#/knowledge' }: Knowle
     case 'new': {
       // #/knowledge/new[/personal][/folder/<id>]
       const folderAt = segments.indexOf('folder');
-      const newFolderId = folderAt > 0 ? parseInt(segments[folderAt + 1] || '', 10) : NaN;
+      const newFolderId = folderAt > 0 ? segments[folderAt + 1] || '' : '';
       return (
         <NewDocView
           basePath={basePath}
           defaultVisibility={segments[1] === 'personal' ? 'private' : 'team'}
-          folderId={Number.isFinite(newFolderId) ? newFolderId : undefined}
+          folderId={isRowId(newFolderId) ? newFolderId : undefined}
         />
       );
     }
@@ -248,7 +250,7 @@ function InternalDocsView({ space, docSlug, basePath }: { space: string; docSlug
 
 // ─── Folder Docs View (team docs inside one kb folder) ──
 
-function FolderDocsView({ folderId, docSlug, basePath }: { folderId: number; docSlug: string; basePath: string }) {
+function FolderDocsView({ folderId, docSlug, basePath }: { folderId: string; docSlug: string; basePath: string }) {
   return <DocsScopeView scope="team" space="" folderId={folderId} docSlug={docSlug} basePath={basePath} />;
 }
 
@@ -276,7 +278,7 @@ function DocsScopeView({
   scope: 'team' | 'private' | 'shared';
   space: string;
   /** When set, show only team docs placed in this kb folder. */
-  folderId?: number;
+  folderId?: string;
   docSlug: string;
   basePath: string;
 }) {
@@ -307,7 +309,7 @@ function DocsScopeView({
   const [historyOpen, setHistoryOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   // Guards the auto-open so cancelling the editor doesn't immediately re-open it.
-  const autoEditedRef = useRef<number | null>(null);
+  const autoEditedRef = useRef<string | null>(null);
 
   const isTeam = scope === 'team';
   const isShared = scope === 'shared';
@@ -472,7 +474,7 @@ function DocsScopeView({
 
   // Detail view
   if (selectedDoc && cleanSlug) {
-    const tags = safeParse<string[]>(selectedDoc.tags, []);
+    const tags = selectedDoc.tags ?? [];
     const archived = selectedDoc.status === 'archived';
     // Permission-aware controls from the caller's effective role on the doc.
     const access = selectedDoc.access ?? (isTeam ? 'editor' : 'owner');
@@ -633,7 +635,7 @@ function DocsScopeView({
                 // Summary only — never the raw Markdown body (renders as noisy
                 // `#`/`*` soup). Blank when a doc has no summary yet.
                 summary={doc.summary || undefined}
-                tags={safeParse<string[]>(doc.tags, [])}
+                tags={doc.tags ?? []}
                 badge={
                   <span className="text-[10px] text-fg-faint">{doc.updated_at ? timeAgo(doc.updated_at) : '—'}</span>
                 }
@@ -667,7 +669,7 @@ function DocsScopeView({
  * The folder's own visibility comes from the breadcrumb, so personal folders work
  * the same as team ones.
  */
-function FolderAttachmentsView({ folderId }: { folderId: number }) {
+function FolderAttachmentsView({ folderId }: { folderId: string }) {
   const t = useT();
   const [crumbs, setCrumbs] = useState<DriveFolder[] | null>(null);
 
@@ -716,13 +718,13 @@ function NewDocView({
   basePath: string;
   defaultVisibility: 'team' | 'private';
   /** kb folder the new doc lands in (from `#/knowledge/new/.../folder/<id>`). */
-  folderId?: number;
+  folderId?: string;
 }) {
   const t = useT();
   const bump = useKnowledgeStore((s) => s.bump);
   const [editor, setEditor] = useState<EditorState>(emptyEditor(defaultVisibility));
   const [saving, setSaving] = useState(false);
-  const [templates, setTemplates] = useState<{ id: number; slug: string; title: string }[]>([]);
+  const [templates, setTemplates] = useState<{ id: string; slug: string; title: string }[]>([]);
   // An empty new doc is not "unsaved work" — the baseline is the blank form, so
   // the guard only arms once something has actually been typed or templated in.
   const [baseline] = useState(() => editorSignature(emptyEditor(defaultVisibility)));
@@ -734,14 +736,14 @@ function NewDocView({
       .catch(() => setTemplates([]));
   }, []);
 
-  const applyTemplate = async (id: number) => {
+  const applyTemplate = async (id: string) => {
     try {
       const doc = await getKnowledgeDocById(id);
       setEditor((e) => ({
         ...e,
-        value: { markdown: doc.content_markdown || '', json: doc.content_json || '{}' },
+        value: { markdown: doc.content_markdown || '', json: JSON.stringify(doc.content_json ?? {}) },
         summary: doc.summary || '',
-        tagsText: safeParse<string[]>(doc.tags, []).join(', '),
+        tagsText: (doc.tags ?? []).join(', '),
       }));
       toast(t('knowledge.fromTemplate'), 'success');
     } catch (err) {
@@ -885,7 +887,7 @@ function KbCard({
  * Editing presence: while an existing doc's editor is open, beat every 30s and
  * return the OTHER current editors (the server excludes self). No-op for new docs.
  */
-function useEditingPresence(docId?: number): KnowledgeEditorPresence[] {
+function useEditingPresence(docId?: string): KnowledgeEditorPresence[] {
   const [editors, setEditors] = useState<KnowledgeEditorPresence[]>([]);
   useEffect(() => {
     if (!docId) return;

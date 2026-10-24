@@ -31,6 +31,7 @@ import type {
 } from '@greenhouse/types/tables';
 import { TABLE_FIELD_TYPES } from '@greenhouse/types/tables';
 import { isUniqueViolation } from '@greenhouse/utils/error';
+import { toRowId } from '@greenhouse/utils/id';
 import { tablesManifest } from '../manifests/tables.js';
 import type { PlatformHandlerContext } from '../runtime.js';
 
@@ -66,6 +67,11 @@ function payloadOf(request: Parameters<Handler>[0]): Record<string, unknown> {
 function positiveInt(payload: Record<string, unknown>, key: string): number | undefined {
   const value = payload[key];
   return typeof value === 'number' && Number.isInteger(value) && value > 0 ? value : undefined;
+}
+
+/** A row id from the payload; legacy numeric ids are accepted and normalized to strings. */
+function rowId(payload: Record<string, unknown>, key: string): string | undefined {
+  return toRowId(payload[key]) ?? undefined;
 }
 
 function stringValue(payload: Record<string, unknown>, key: string): string | undefined {
@@ -127,7 +133,7 @@ async function baseRole(
 async function requireBase(
   context: PlatformHandlerContext,
   actor: ActorContext,
-  baseId: number,
+  baseId: string,
   entityId: string,
   required: RequiredRole,
 ): Promise<{ base: TableBaseRow; role: TableBaseRole } | undefined> {
@@ -138,17 +144,17 @@ async function requireBase(
   return { base, role };
 }
 
-async function baseForTable(db: DatabaseProvider, tableId: number): Promise<TableBaseRow | undefined> {
+async function baseForTable(db: DatabaseProvider, tableId: string): Promise<TableBaseRow | undefined> {
   const table = await db.tables.getTable(tableId);
   return table ? db.tables.getBase(table.base_id) : undefined;
 }
 
-async function baseForField(db: DatabaseProvider, fieldId: number): Promise<TableBaseRow | undefined> {
+async function baseForField(db: DatabaseProvider, fieldId: string): Promise<TableBaseRow | undefined> {
   const field = await db.tables.getField(fieldId);
   return field ? baseForTable(db, field.table_id) : undefined;
 }
 
-async function baseForView(db: DatabaseProvider, viewId: number): Promise<TableBaseRow | undefined> {
+async function baseForView(db: DatabaseProvider, viewId: string): Promise<TableBaseRow | undefined> {
   const view = await db.tables.getView(viewId);
   return view ? baseForTable(db, view.table_id) : undefined;
 }
@@ -180,7 +186,7 @@ const listBases: Handler = async (request, context) => {
 };
 
 const getBase: Handler = async (request, context) => {
-  const baseId = positiveInt(payloadOf(request), 'baseId');
+  const baseId = rowId(payloadOf(request), 'baseId');
   if (!baseId) return fail('INVALID_INPUT', 'baseId is required');
   const access = await requireBase(context, request.actor, baseId, 'base', 'viewer');
   if (!access) return fail('NOT_FOUND', 'Base not found');
@@ -214,7 +220,7 @@ const createBase: Handler = async (request, context) => {
 
 const updateBase: Handler = async (request, context) => {
   const payload = payloadOf(request);
-  const baseId = positiveInt(payload, 'baseId');
+  const baseId = rowId(payload, 'baseId');
   if (!baseId) return fail('INVALID_INPUT', 'baseId is required');
   const access = await requireBase(context, request.actor, baseId, 'base', 'owner');
   if (!access) return fail('NOT_FOUND', 'Base not found');
@@ -233,7 +239,7 @@ const updateBase: Handler = async (request, context) => {
 };
 
 const archiveBase: Handler = async (request, context) => {
-  const baseId = positiveInt(payloadOf(request), 'baseId');
+  const baseId = rowId(payloadOf(request), 'baseId');
   if (!baseId) return fail('INVALID_INPUT', 'baseId is required');
   const access = await requireBase(context, request.actor, baseId, 'base', 'owner');
   if (!access) return fail('NOT_FOUND', 'Base not found');
@@ -242,7 +248,7 @@ const archiveBase: Handler = async (request, context) => {
 };
 
 const listMembers: Handler = async (request, context) => {
-  const baseId = positiveInt(payloadOf(request), 'baseId');
+  const baseId = rowId(payloadOf(request), 'baseId');
   if (!baseId) return fail('INVALID_INPUT', 'baseId is required');
   const access = await requireBase(context, request.actor, baseId, 'base', 'viewer');
   if (!access) return fail('NOT_FOUND', 'Base not found');
@@ -252,7 +258,7 @@ const listMembers: Handler = async (request, context) => {
 
 const listBaseAudit: Handler = async (request, context) => {
   const payload = payloadOf(request);
-  const baseId = positiveInt(payload, 'baseId');
+  const baseId = rowId(payload, 'baseId');
   if (!baseId) return fail('INVALID_INPUT', 'baseId is required');
   if (!(await requireBase(context, request.actor, baseId, 'base', 'owner'))) {
     return fail('NOT_FOUND', 'Base not found');
@@ -263,17 +269,17 @@ const listBaseAudit: Handler = async (request, context) => {
     tablesManifest.id,
     Math.min(limit * 4, 500),
   );
-  const tableBaseCache = new Map<number, number | undefined>();
+  const tableBaseCache = new Map<string, string | undefined>();
 
-  const baseFromTable = async (tableId: number) => {
+  const baseFromTable = async (tableId: string) => {
     if (!tableBaseCache.has(tableId)) {
       tableBaseCache.set(tableId, (await context.db.tables.getTable(tableId))?.base_id);
     }
     return tableBaseCache.get(tableId);
   };
-  const eventBaseId = async (event: (typeof candidates)[number]): Promise<number | undefined> => {
-    const id = Number(event.record_id);
-    if (!Number.isInteger(id) || id <= 0) return undefined;
+  const eventBaseId = async (event: (typeof candidates)[number]): Promise<string | undefined> => {
+    const id = toRowId(event.record_id);
+    if (!id) return undefined;
     if (
       [
         'getBase',
@@ -338,7 +344,7 @@ const listBaseAudit: Handler = async (request, context) => {
 
 const manageMembers: Handler = async (request, context) => {
   const payload = payloadOf(request);
-  const baseId = positiveInt(payload, 'baseId');
+  const baseId = rowId(payload, 'baseId');
   const userId = stringValue(payload, 'userId');
   if (!baseId || !userId) return fail('INVALID_INPUT', 'baseId and userId are required');
   const access = await requireBase(context, request.actor, baseId, 'base', 'owner');
@@ -375,7 +381,7 @@ const listAssignableUsers: Handler = async (_request, context) => {
 };
 
 const listTables: Handler = async (request, context) => {
-  const baseId = positiveInt(payloadOf(request), 'baseId');
+  const baseId = rowId(payloadOf(request), 'baseId');
   if (!baseId) return fail('INVALID_INPUT', 'baseId is required');
   const access = await requireBase(context, request.actor, baseId, 'table', 'viewer');
   if (!access) return fail('NOT_FOUND', 'Base not found');
@@ -383,7 +389,7 @@ const listTables: Handler = async (request, context) => {
 };
 
 const getSchema: Handler = async (request, context) => {
-  const tableId = positiveInt(payloadOf(request), 'tableId');
+  const tableId = rowId(payloadOf(request), 'tableId');
   if (!tableId) return fail('INVALID_INPUT', 'tableId is required');
   const base = await baseForTable(context.db, tableId);
   if (!base || !(await requireBase(context, request.actor, base.id, 'table', 'viewer'))) {
@@ -394,7 +400,7 @@ const getSchema: Handler = async (request, context) => {
 };
 
 const listSchemaVersions: Handler = async (request, context) => {
-  const tableId = positiveInt(payloadOf(request), 'tableId');
+  const tableId = rowId(payloadOf(request), 'tableId');
   if (!tableId) return fail('INVALID_INPUT', 'tableId is required');
   const base = await baseForTable(context.db, tableId);
   if (!base || !(await requireBase(context, request.actor, base.id, 'table', 'viewer'))) {
@@ -405,7 +411,7 @@ const listSchemaVersions: Handler = async (request, context) => {
 
 const getSchemaVersion: Handler = async (request, context) => {
   const payload = payloadOf(request);
-  const tableId = positiveInt(payload, 'tableId');
+  const tableId = rowId(payload, 'tableId');
   const version = positiveInt(payload, 'version');
   if (!tableId || !version) return fail('INVALID_INPUT', 'tableId and version are required');
   const base = await baseForTable(context.db, tableId);
@@ -418,7 +424,7 @@ const getSchemaVersion: Handler = async (request, context) => {
 
 const createTable: Handler = async (request, context) => {
   const payload = payloadOf(request);
-  const baseId = positiveInt(payload, 'baseId');
+  const baseId = rowId(payload, 'baseId');
   const name = stringValue(payload, 'name');
   if (!baseId || !name) return fail('INVALID_INPUT', 'baseId and name are required');
   if (!(await requireBase(context, request.actor, baseId, 'table', 'builder'))) {
@@ -435,7 +441,7 @@ const createTable: Handler = async (request, context) => {
 
 const updateTable: Handler = async (request, context) => {
   const payload = payloadOf(request);
-  const tableId = positiveInt(payload, 'tableId');
+  const tableId = rowId(payload, 'tableId');
   if (!tableId) return fail('INVALID_INPUT', 'tableId is required');
   const base = await baseForTable(context.db, tableId);
   if (!base || !(await requireBase(context, request.actor, base.id, 'table', 'builder'))) {
@@ -458,7 +464,7 @@ const updateTable: Handler = async (request, context) => {
  * symmetric acts (spec D3). Records, links and fields survive the archive.
  */
 const archiveTable: Handler = async (request, context) => {
-  const tableId = positiveInt(payloadOf(request), 'tableId');
+  const tableId = rowId(payloadOf(request), 'tableId');
   if (!tableId) return fail('INVALID_INPUT', 'tableId is required');
   const base = await baseForTable(context.db, tableId);
   if (!base || !(await requireBase(context, request.actor, base.id, 'table', 'owner'))) {
@@ -470,7 +476,7 @@ const archiveTable: Handler = async (request, context) => {
 
 const createField: Handler = async (request, context) => {
   const payload = payloadOf(request);
-  const tableId = positiveInt(payload, 'tableId');
+  const tableId = rowId(payload, 'tableId');
   const name = stringValue(payload, 'name');
   const type = stringValue(payload, 'type') as TableFieldType | undefined;
   if (!tableId || !name || !type) return fail('INVALID_INPUT', 'tableId, name, and type are required');
@@ -493,7 +499,7 @@ const createField: Handler = async (request, context) => {
 
 const updateField: Handler = async (request, context) => {
   const payload = payloadOf(request);
-  const fieldId = positiveInt(payload, 'fieldId');
+  const fieldId = rowId(payload, 'fieldId');
   if (!fieldId) return fail('INVALID_INPUT', 'fieldId is required');
   const base = await baseForField(context.db, fieldId);
   if (!base || !(await requireBase(context, request.actor, base.id, 'field', 'builder'))) {
@@ -510,7 +516,7 @@ const updateField: Handler = async (request, context) => {
 };
 
 const archiveField: Handler = async (request, context) => {
-  const fieldId = positiveInt(payloadOf(request), 'fieldId');
+  const fieldId = rowId(payloadOf(request), 'fieldId');
   if (!fieldId) return fail('INVALID_INPUT', 'fieldId is required');
   const base = await baseForField(context.db, fieldId);
   if (!base || !(await requireBase(context, request.actor, base.id, 'field', 'builder'))) {
@@ -521,7 +527,7 @@ const archiveField: Handler = async (request, context) => {
 };
 
 const listViews: Handler = async (request, context) => {
-  const tableId = positiveInt(payloadOf(request), 'tableId');
+  const tableId = rowId(payloadOf(request), 'tableId');
   if (!tableId) return fail('INVALID_INPUT', 'tableId is required');
   const base = await baseForTable(context.db, tableId);
   if (!base || !(await requireBase(context, request.actor, base.id, 'view', 'viewer'))) {
@@ -532,7 +538,7 @@ const listViews: Handler = async (request, context) => {
 
 const createView: Handler = async (request, context) => {
   const payload = payloadOf(request);
-  const tableId = positiveInt(payload, 'tableId');
+  const tableId = rowId(payload, 'tableId');
   const name = stringValue(payload, 'name');
   const scope: TableViewScope = payload.scope === 'shared' ? 'shared' : 'personal';
   if (!tableId || !name) return fail('INVALID_INPUT', 'tableId and name are required');
@@ -554,7 +560,7 @@ const createView: Handler = async (request, context) => {
 
 const updateView: Handler = async (request, context) => {
   const payload = payloadOf(request);
-  const viewId = positiveInt(payload, 'viewId');
+  const viewId = rowId(payload, 'viewId');
   const revision = positiveInt(payload, 'revision');
   if (!viewId || !revision) return fail('INVALID_INPUT', 'viewId and revision are required');
   const userId = effectiveUserId(request.actor);
@@ -584,7 +590,7 @@ const updateView: Handler = async (request, context) => {
 async function requireTableData(
   request: Parameters<Handler>[0],
   context: PlatformHandlerContext,
-  tableId: number,
+  tableId: string,
   required: RequiredRole,
   valuesAccess: 'none' | 'read' | 'full-read' | 'write' = 'none',
 ): Promise<{ base: TableBaseRow; valuesRead: 'none' | 'masked' | 'full' } | undefined> {
@@ -600,8 +606,8 @@ async function requireTableData(
 
 const getRecord: Handler = async (request, context) => {
   const payload = payloadOf(request);
-  const tableId = positiveInt(payload, 'tableId');
-  const recordId = positiveInt(payload, 'recordId');
+  const tableId = rowId(payload, 'tableId');
+  const recordId = rowId(payload, 'recordId');
   if (!tableId || !recordId) return fail('INVALID_INPUT', 'tableId and recordId are required');
   const access = await requireTableData(request, context, tableId, 'viewer', 'read');
   if (!access) return fail('NOT_FOUND', 'Record not found');
@@ -613,7 +619,7 @@ const getRecord: Handler = async (request, context) => {
 
 const queryRecords: Handler = async (request, context) => {
   const payload = payloadOf(request);
-  const tableId = positiveInt(payload, 'tableId');
+  const tableId = rowId(payload, 'tableId');
   if (!tableId) return fail('INVALID_INPUT', 'tableId is required');
   if (!(await requireTableData(request, context, tableId, 'viewer', 'full-read'))) {
     return fail('NOT_FOUND', 'Table not found');
@@ -623,7 +629,7 @@ const queryRecords: Handler = async (request, context) => {
 
 const aggregateRecords: Handler = async (request, context) => {
   const payload = payloadOf(request);
-  const tableId = positiveInt(payload, 'tableId');
+  const tableId = rowId(payload, 'tableId');
   const input = objectValue<TableAggregateInput>(payload, 'input');
   if (!tableId || !input) return fail('INVALID_INPUT', 'tableId and input are required');
   if (!(await requireTableData(request, context, tableId, 'viewer', 'full-read'))) {
@@ -634,7 +640,7 @@ const aggregateRecords: Handler = async (request, context) => {
 
 const createRecord: Handler = async (request, context) => {
   const payload = payloadOf(request);
-  const tableId = positiveInt(payload, 'tableId');
+  const tableId = rowId(payload, 'tableId');
   const values = objectValue<TableRecordValues>(payload, 'values');
   if (!tableId || !values) return fail('INVALID_INPUT', 'tableId and values are required');
   if (!(await requireTableData(request, context, tableId, 'editor', 'write'))) {
@@ -650,8 +656,8 @@ const createRecord: Handler = async (request, context) => {
 
 const updateRecord: Handler = async (request, context) => {
   const payload = payloadOf(request);
-  const tableId = positiveInt(payload, 'tableId');
-  const recordId = positiveInt(payload, 'recordId');
+  const tableId = rowId(payload, 'tableId');
+  const recordId = rowId(payload, 'recordId');
   const revision = positiveInt(payload, 'revision');
   const values = objectValue<TableRecordValues>(payload, 'values');
   if (!tableId || !recordId || !revision || !values) {
@@ -675,14 +681,14 @@ const updateRecord: Handler = async (request, context) => {
 
 const batchUpsertRecords: Handler = async (request, context) => {
   const payload = payloadOf(request);
-  const tableId = positiveInt(payload, 'tableId');
+  const tableId = rowId(payload, 'tableId');
   if (!tableId || !Array.isArray(payload.items)) return fail('INVALID_INPUT', 'tableId and items are required');
   if (!(await requireTableData(request, context, tableId, 'editor', 'write'))) {
     return fail('NOT_FOUND', 'Table not found');
   }
   const results = await context.db.tables.batchUpsertRecords({
     table_id: tableId,
-    items: payload.items as Array<{ record_id?: number; revision?: number; values: TableRecordValues }>,
+    items: payload.items as Array<{ record_id?: string; revision?: number; values: TableRecordValues }>,
     user_id: effectiveUserId(request.actor),
   });
   return ok({ results });
@@ -690,22 +696,22 @@ const batchUpsertRecords: Handler = async (request, context) => {
 
 const validateBatchRecords: Handler = async (request, context) => {
   const payload = payloadOf(request);
-  const tableId = positiveInt(payload, 'tableId');
+  const tableId = rowId(payload, 'tableId');
   if (!tableId || !Array.isArray(payload.items)) return fail('INVALID_INPUT', 'tableId and items are required');
   if (!(await requireTableData(request, context, tableId, 'editor', 'write'))) {
     return fail('NOT_FOUND', 'Table not found');
   }
   const results = await context.db.tables.validateBatchRecords({
     table_id: tableId,
-    items: payload.items as Array<{ record_id?: number; revision?: number; values: TableRecordValues }>,
+    items: payload.items as Array<{ record_id?: string; revision?: number; values: TableRecordValues }>,
   });
   return ok({ results });
 };
 
 const deleteRecord: Handler = async (request, context) => {
   const payload = payloadOf(request);
-  const tableId = positiveInt(payload, 'tableId');
-  const recordId = positiveInt(payload, 'recordId');
+  const tableId = rowId(payload, 'tableId');
+  const recordId = rowId(payload, 'recordId');
   const revision = positiveInt(payload, 'revision');
   if (!tableId || !recordId || !revision) {
     return fail('INVALID_INPUT', 'tableId, recordId, and revision are required');
@@ -727,7 +733,7 @@ const deleteRecord: Handler = async (request, context) => {
 
 const listDeletedRecords: Handler = async (request, context) => {
   const payload = payloadOf(request);
-  const tableId = positiveInt(payload, 'tableId');
+  const tableId = rowId(payload, 'tableId');
   if (!tableId) return fail('INVALID_INPUT', 'tableId is required');
   if (!(await requireTableData(request, context, tableId, 'editor', 'full-read'))) {
     return fail('NOT_FOUND', 'Table not found');
@@ -738,8 +744,8 @@ const listDeletedRecords: Handler = async (request, context) => {
 
 const restoreRecord: Handler = async (request, context) => {
   const payload = payloadOf(request);
-  const tableId = positiveInt(payload, 'tableId');
-  const recordId = positiveInt(payload, 'recordId');
+  const tableId = rowId(payload, 'tableId');
+  const recordId = rowId(payload, 'recordId');
   if (!tableId || !recordId) return fail('INVALID_INPUT', 'tableId and recordId are required');
   if (!(await requireTableData(request, context, tableId, 'editor', 'full-read'))) {
     return fail('NOT_FOUND', 'Record not found');
@@ -795,11 +801,11 @@ export const tablesRegistration: ApplicationRegistration<PlatformHandlerContext>
 export function tablesResource(
   actionId: TablesActionId,
   ids: {
-    baseId?: number;
-    tableId?: number;
-    fieldId?: number;
-    viewId?: number;
-    recordId?: number;
+    baseId?: string;
+    tableId?: string;
+    fieldId?: string;
+    viewId?: string;
+    recordId?: string;
   } = {},
 ) {
   const action = tablesManifest.actions[actionId];
@@ -808,6 +814,6 @@ export function tablesResource(
     appId: tablesManifest.id,
     moduleId: action.module,
     entityId: action.entity,
-    recordId: id ? String(id) : undefined,
+    recordId: id || undefined,
   };
 }

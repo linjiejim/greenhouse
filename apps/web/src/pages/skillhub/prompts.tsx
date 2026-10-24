@@ -47,13 +47,13 @@ export function PromptsPanel() {
       create: (data) => createPrompt(shapePayload(data)),
       update: async (id, data) => {
         const payload = shapePayload(data);
-        const row = (await fetchPrompts(scope as PromptScope)).find((prompt) => prompt.id === Number(id));
+        const row = (await fetchPrompts(scope as PromptScope)).find((prompt) => prompt.id === id);
         const variables = parseTaskVariables(row?.variables).filter((variable) =>
           placeholdersIn(payload.content).includes(variable.key),
         );
-        return updatePrompt(Number(id), { ...payload, variables });
+        return updatePrompt(id, { ...payload, variables });
       },
-      remove: (id) => deletePrompt(Number(id)),
+      remove: (id) => deletePrompt(id),
     }),
     [scope],
   );

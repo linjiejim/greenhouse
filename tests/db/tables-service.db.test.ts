@@ -6,7 +6,14 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { _resetProvider, initDatabase, TablesValidationError, type DatabaseProvider } from '@greenhouse/db';
+import {
+  _resetProvider,
+  initDatabase,
+  parseTableFieldConfig,
+  TablesValidationError,
+  validateTableFieldConfig,
+  type DatabaseProvider,
+} from '@greenhouse/db';
 import { TEST_DATABASE_URL } from '@greenhouse/db/test-config';
 import { createInternalTestUser } from '../helpers/internal-user.js';
 
@@ -44,7 +51,7 @@ async function fixture() {
   return { base, schema, primary: schema.fields[0]! };
 }
 
-async function createStatusField(tableId: number) {
+async function createStatusField(tableId: string) {
   return db.tables.createField({
     table_id: tableId,
     name: 'Status',
@@ -59,7 +66,7 @@ async function createStatusField(tableId: number) {
   });
 }
 
-async function createScoreField(tableId: number) {
+async function createScoreField(tableId: string) {
   return db.tables.createField({
     table_id: tableId,
     name: 'Score',
@@ -68,7 +75,7 @@ async function createScoreField(tableId: number) {
   });
 }
 
-async function createAssigneeField(tableId: number) {
+async function createAssigneeField(tableId: string) {
   return db.tables.createField({
     table_id: tableId,
     name: 'Assignee',
@@ -406,6 +413,66 @@ describe('Tables domain service', () => {
     expect((await db.tables.listViews(schema.table.id, ownerId)).map((view) => view.id)).not.toContain(personal.id);
   });
 
+  it('keeps Base members as shares rows', async () => {
+    const { base } = await fixture();
+    expect(base.id).toMatch(/^bas_/);
+    expect(await db.tables.listBaseMembers(base.id)).toEqual([
+      expect.objectContaining({ base_id: base.id, user_id: ownerId, role: 'owner', added_by: ownerId }),
+    ]);
+    expect((await db.tables.listBasesForUser(teammateId)).map((row) => row.id)).not.toContain(base.id);
+
+    await db.tables.upsertBaseMember({ base_id: base.id, user_id: teammateId, role: 'viewer', added_by: ownerId });
+    const promoted = await db.tables.upsertBaseMember({
+      base_id: base.id,
+      user_id: teammateId,
+      role: 'builder',
+      added_by: ownerId,
+    });
+    expect(promoted).toMatchObject({ base_id: base.id, user_id: teammateId, role: 'builder' });
+    expect(await db.tables.listBaseMembers(base.id)).toHaveLength(2);
+    expect(await db.tables.getBaseMember(base.id, teammateId)).toMatchObject({ role: 'builder' });
+    expect((await db.tables.listBasesForUser(teammateId)).map((row) => row.id)).toContain(base.id);
+
+    expect(await db.tables.removeBaseMember(base.id, teammateId)).toBe(true);
+    expect(await db.tables.getBaseMember(base.id, teammateId)).toBeUndefined();
+    expect(await db.tables.removeBaseMember(base.id, teammateId)).toBe(false);
+  });
+
+  it('stores relation values as record id strings and normalizes legacy numeric ids', async () => {
+    const base = await db.tables.createBase({ name: 'Legacy ids', owner_id: ownerId, created_by: ownerId });
+    const people = await db.tables.createTable({ base_id: base.id, name: 'People', created_by: ownerId });
+    const teams = await db.tables.createTable({ base_id: base.id, name: 'Teams', created_by: ownerId });
+    const lead = await db.tables.createField({
+      table_id: teams.table.id,
+      name: 'Lead',
+      type: 'relation',
+      config: { relation: { targetTableId: people.table.id } },
+      created_by: ownerId,
+    });
+    const person = await db.tables.createRecord({
+      table_id: people.table.id,
+      values: { [people.fields[0]!.id]: 'Ada' },
+      user_id: ownerId,
+    });
+    const team = await db.tables.createRecord({
+      table_id: teams.table.id,
+      values: { [teams.fields[0]!.id]: 'Core', [lead.id]: person.id },
+      user_id: ownerId,
+    });
+    expect(team.values[lead.id]).toBe(person.id);
+    expect(await db.tables.listRecordLinks(lead.id, team.id)).toEqual([
+      expect.objectContaining({ target_record_id: person.id, position: 0 }),
+    ]);
+    // Rows carried from 1.x keep "42"-style ids; a client may still send them as numbers.
+    expect(validateTableFieldConfig('relation', { relation: { targetTableId: 42 as never } })).toEqual({
+      version: 1,
+      relation: { targetTableId: '42', multiple: false },
+    });
+    expect(parseTableFieldConfig({ config: { rollup: { relationFieldId: 7, targetFieldId: 8 } } as never })).toEqual({
+      rollup: { relationFieldId: '7', targetFieldId: '8' },
+    });
+  });
+
   it('accepts only active Drive files from the same Base and persists attachment edges', async () => {
     const { base, schema, primary } = await fixture();
     const attachments = await db.tables.createField({
@@ -464,6 +531,13 @@ describe('Tables domain service', () => {
           [primary.id]: 'Legacy string handle',
           [attachments.id]: ['1750000000000-deadbeef.pdf'],
         },
+        user_id: ownerId,
+      }),
+    ).rejects.toThrow(/unavailable Base file/);
+    await expect(
+      db.tables.createRecord({
+        table_id: schema.table.id,
+        values: { [primary.id]: 'Not an id', [attachments.id]: [{ id: pending.id }] },
         user_id: ownerId,
       }),
     ).rejects.toThrow(/expects Drive file ids/);

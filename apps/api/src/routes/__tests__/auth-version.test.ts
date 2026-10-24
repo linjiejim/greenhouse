@@ -50,8 +50,6 @@ describe('refresh-token credential version', () => {
       role: 'team',
       status: 'active',
       auth_version: 5,
-      daily_message_limit: 200,
-      monthly_token_limit: 20_000_000,
       locale: 'en',
     });
 
@@ -74,8 +72,6 @@ describe('refresh-token credential version', () => {
       role: 'team',
       status: 'active',
       auth_version: 5,
-      daily_message_limit: 200,
-      monthly_token_limit: 20_000_000,
       locale: 'en',
     });
 
@@ -136,7 +132,6 @@ describe('public password-link completion', () => {
       role: 'team',
       status: 'active',
       auth_version: 1,
-      monthly_token_limit: 5_000_000,
       locale: 'en',
     };
     const link = { id: 'link-1', purpose: 'invite', expires_at: '2026-08-13T00:00:00.000Z' };

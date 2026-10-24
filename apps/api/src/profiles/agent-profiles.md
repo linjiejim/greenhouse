@@ -86,34 +86,35 @@ v3 曾把模型收进 Agent 身份：想更强的推理就选 deep、想百万�
 - **采样参数归模型目录**：`temperature` / `thinking` / `max_tokens` 等写进 `models.yaml` 的 `options`，由
   `resolveModelConfig()` 合并（profile 显式给的优先）。
 - **`extends` 已删除**：它只为「同一个 Agent、换个模型」而生，模型下放之后零消费者。
-- 自定义 Agent 仍自带 `custom_profiles.model_id`，**不从 base profile 继承**：否则预设换模型会连带改掉
-  所有 fork 出去的 Agent。`base_profile_id` 是 fork 溯源与 `rich_output` 等访问属性的来源。
+- 自定义 Agent 仍自带 `run_profiles.model_id`，**不从 base profile 继承**：否则预设换模型会连带改掉
+  所有从预设起步的 Agent。`base_profile_id` 是 `rich_output` 等访问属性与模型 fallback 的来源。
 
 ### Custom Agent 的管理体验
 
-- My Agents 中点击 built-in preset 先出现用途确认：确认后才调用 fork API 创建个人副本，并立即打开编辑器。取消确认不得产生数据库记录。
-- fork 后的模型、prompt、tools 与外观都属于个人副本，不影响 built-in preset；外观字段包括颜色、配件、叶片和基础眼型，状态表情可临时覆盖基础眼型；可选 tools 仍然只来自当前用户的 allow-set，编辑器不能扩大权限。
+- My Agents 中点击 built-in preset 打开「新建 Agent」编辑器，表单以该预设的配置预填（tools 预填为当前用户的完整 allow-set，因为预设本身就按 allow-set 运行）；保存才创建，关闭不产生数据库记录。3.0 起没有 fork API，也不记录 fork 溯源。
+- 新 Agent 的模型、prompt、tools 与外观都属于个人，不影响 built-in preset；外观字段包括颜色、配件、叶片和基础眼型，状态表情可临时覆盖基础眼型；可选 tools 仍然只来自当前用户的 allow-set，编辑器不能扩大权限。
 - Agent 编辑器桌面端使用 90vw 双栏工作区：左侧编辑身份、紧凑可折叠的外观、模型、prompt 与快捷能力，右侧独立选择 Tools；两列分别滚动。移动端回退为单列顺序滚动。
 - 用户界面统一称 Agent；Profile 只作为服务端契约与内部类型名。Name / System Prompt 是前端必填项，未保存改动关闭前必须确认。
 - Tools 的友好说明来自 registry `brief`；只对 registry 已明确声明的 proxy surface 展示 Read / Write 风险，Write 同时展示 Confirm。该展示不改变 allow-set、confirm gate 或 runtime 权限交集。
 
-### Custom Agent 的版本与团队可用（v1.4）
+### Custom Agent 的版本与团队可用（v1.4；3.0 起不再存历史版本）
 
-- `custom_profiles` 是稳定资产身份；每次创建/编辑都会向 `custom_profile_versions` 追加完整、带 SHA-256
-  `manifest_hash` 的不可变 manifest。版本同时记录 change log、purpose、audience、risk、budget policy 与
-  backup owner；服务层不提供版本 update。
+- `run_profiles` 一行就是 Agent 的完整当前配置（含 purpose、audience、risk、budget policy、backup owner）；
+  `version` 是配置编辑计数，每次编辑 +1。3.0 起**不存历史版本、不记 change log**：`custom:<id>@<n>`
+  （n ≤ version，包括 1.x 留下的 pin）一律解析为**当前配置**；`getVersion` / `getCurrentVersion` /
+  `listVersions` 由当前行合成版本对象（`manifest_hash` 是当前配置的 SHA-256），`listVersions` 只返回一条。
 - **私有，除非团队可用**：Agent 默认只有 owner 能看、能用；`is_shared=true` 时所有内部用户都能选用。
   只有 super 能切换（`PUT /api/profiles/custom/:id/sharing`，Agents 页的开关）；owner 在 UI 里只看到一行
   「请联系管理员」的提示，create/update 带 `is_shared` 想改值会被 400 拒绝。可见性判断只有一处：
   `profiles/access.ts` 的 `canUseCustomProfile`（owner / super / `is_shared`）。
-- **非 owner 永远拿当前版本**：没有独立发布渠道。`custom:<id>` 对所有人都 pin 到 `current_version`；
-  编辑共享 Agent 不改变共享状态，下一次选用就拿到新版本。
+- **非 owner 永远拿当前版本**：没有独立发布渠道。`custom:<id>` 对所有人都 pin 到 `version`（接口字段仍叫
+  `current_version`）；编辑共享 Agent 不改变共享状态。
 - **已 pin 的引用继续解析**：新会话、Automation 在落库前把 `custom:<id>` pin 为 `custom:<id>@<version>`
-  （外部 Agent tool proxy 同样先按真实用户权限 pin）；之后 owner 再编辑，已 pin 的会话 / Automation 仍按原
-  版本运行（`assertPinnedProfileExecutionAccess` 只要求「仍可使用该 Agent」+「该版本存在」）。取消共享会立刻
+  （外部 Agent tool proxy 同样先按真实用户权限 pin）；之后 owner 再编辑，已 pin 的会话 / Automation 继续解析，
+  但跑的是编辑后的当前配置（`assertPinnedProfileExecutionAccess` 只要求「仍可使用该 Agent」+「版本号 ≤ 当前」）。取消共享会立刻
   撤销非 owner 的执行权限。`resolveProfileAsync()` 对缺失/畸形 custom 引用明确失败，绝不静默替换为 Sprouty。
 - **Automation 可以跑在执行配置（run profile）上**（v1.5）：表单列出内置配置 + 自己的 + 团队共享的执行配置；`task-center.ts` 的 `resolveTaskProfile` 按 **automation 的 owner**（不是编辑者——super 改成员的 automation 也不能塞给成员用不了的配置）校验并 pin，原样保存不改配置则保留旧 pin；super 编辑别人的 automation 时，表单的候选来自 `GET /api/profiles/usable-by/:userId`（super only，返回该成员自己的 + 团队共享的执行配置），而不是 super 自己的列表；每次运行 `assertPinnedProfileExecutionAccess` 再按 owner 查一遍，取消共享 / 删除 / 版本缺失都让这次运行带原因失败，绝不退回别的配置。
-- **删除是真删除**：`DELETE /api/profiles/custom/:id` 连同全部版本删除，pin 到它的会话与 Automation 随后
+- **删除是真删除**：`DELETE /api/profiles/custom/:id` 删除该行，pin 到它的会话与 Automation 随后
   fail closed（「run profile no longer exists」）。
 - 审核生命周期（draft → review → pilot → verified）、复核期、自动治理 worker（`AGENT_GOVERNANCE_ENABLED`）
   及其 `agent_review_due` / `agent_suspended` 通知已在 v1.4 删除；对应列是退役列，见 db AGENTS「退役表」。

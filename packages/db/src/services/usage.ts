@@ -1,5 +1,7 @@
 /**
- * Usage service — LLM usage tracking and aggregate stats (PostgreSQL).
+ * Usage service — model-call facts (`usage_events` of kind `model`) and their
+ * aggregate stats. Service facts are written by `metering`, `audit` rows by
+ * `llmCalls`; neither counts as a model call here.
  */
 
 import { sql } from 'drizzle-orm';
@@ -7,7 +9,8 @@ import { nowIso } from '@greenhouse/utils/date';
 import type { ModelCacheHitRow } from '@greenhouse/types/usage';
 
 import type { Db } from '../client.js';
-import { llmUsage } from '../schema/index.js';
+import { newId } from '../ids.js';
+import { usageEvents } from '../schema/index.js';
 
 export interface UsageRecord {
   profile_id: string;
@@ -208,7 +211,9 @@ export function createUsageService(db: Db) {
   const service = {
     /** Record a single LLM call. */
     async record(usage: UsageRecord): Promise<void> {
-      await db.insert(llmUsage).values({
+      await db.insert(usageEvents).values({
+        id: newId('usageEvent'),
+        kind: 'model',
         profile_id: usage.profile_id,
         caller: usage.caller,
         session_id: usage.session_id ?? null,
@@ -224,7 +229,7 @@ export function createUsageService(db: Db) {
         client: usage.client ?? null,
         oauth_client_id: usage.oauth_client_id ?? null,
         service: usage.service ?? null,
-        price_applied: usage.price_applied ? JSON.stringify(usage.price_applied) : null,
+        price_applied: usage.price_applied ? { ...usage.price_applied } : null,
         gateway_key_id: usage.gateway_key_id ?? null,
         created_at: nowIso(),
       });
@@ -232,7 +237,7 @@ export function createUsageService(db: Db) {
 
     /** Aggregate stats grouped by profile. */
     async getStatsByProfile(opts?: { since?: string }): Promise<UsageStats[]> {
-      const conditions = opts?.since ? sql`WHERE created_at >= ${opts.since}` : sql``;
+      const conditions = opts?.since ? sql`AND created_at >= ${opts.since}` : sql``;
 
       const result = await db.execute(sql`
         SELECT profile_id, COUNT(*) AS total_calls,
@@ -240,7 +245,7 @@ export function createUsageService(db: Db) {
           SUM(cached_tokens) AS total_cached_tokens, SUM(reasoning_tokens) AS total_reasoning_tokens,
           SUM(duration_ms) AS total_duration_ms, AVG(duration_ms) AS avg_duration_ms,
           MAX(created_at) AS last_used_at
-        FROM llm_usage ${conditions}
+        FROM usage_events WHERE kind = 'model' ${conditions}
         GROUP BY profile_id ORDER BY total_calls DESC
       `);
       return (result as any[]).map((r) => ({
@@ -265,7 +270,7 @@ export function createUsageService(db: Db) {
           SUM(cached_tokens) AS total_cached_tokens, SUM(reasoning_tokens) AS total_reasoning_tokens,
           SUM(duration_ms) AS total_duration_ms, AVG(duration_ms) AS avg_duration_ms,
           MAX(created_at) AS last_used_at
-        FROM llm_usage WHERE profile_id = ${profileId} ${sinceClause}
+        FROM usage_events WHERE kind = 'model' AND profile_id = ${profileId} ${sinceClause}
         GROUP BY profile_id
       `);
       const r = (result as any[])[0];
@@ -285,13 +290,13 @@ export function createUsageService(db: Db) {
 
     /** Aggregate stats grouped by caller. */
     async getStatsByCaller(opts?: { since?: string }): Promise<CallerStats[]> {
-      const where = opts?.since ? sql`WHERE created_at >= ${opts.since}` : sql``;
+      const where = opts?.since ? sql`AND created_at >= ${opts.since}` : sql``;
       const result = await db.execute(sql`
         SELECT caller, COUNT(*) AS total_calls,
           SUM(input_tokens) AS total_input_tokens, SUM(output_tokens) AS total_output_tokens,
           SUM(cached_tokens) AS total_cached_tokens, SUM(reasoning_tokens) AS total_reasoning_tokens,
           SUM(duration_ms) AS total_duration_ms
-        FROM llm_usage ${where}
+        FROM usage_events WHERE kind = 'model' ${where}
         GROUP BY caller ORDER BY total_calls DESC
       `);
       return (result as any[]).map((r) => ({
@@ -309,18 +314,18 @@ export function createUsageService(db: Db) {
     async getRecentUsage(
       profileId?: string,
       limit = 20,
-    ): Promise<Array<UsageRecord & { id: number; created_at: string }>> {
-      const where = profileId ? sql`WHERE profile_id = ${profileId}` : sql``;
+    ): Promise<Array<UsageRecord & { id: string; created_at: string }>> {
+      const where = profileId ? sql`AND profile_id = ${profileId}` : sql``;
       const result = await db.execute(sql`
         SELECT id, profile_id, caller, session_id, user_id, model,
                input_tokens, output_tokens, cached_tokens,
                reasoning_tokens, duration_ms, budget_idempotency_key, created_at
-        FROM llm_usage ${where}
-        ORDER BY created_at DESC LIMIT ${limit}
+        FROM usage_events WHERE kind = 'model' ${where}
+        ORDER BY created_at DESC, id DESC LIMIT ${limit}
       `);
       return (result as any[]).map((r) => ({
         ...r,
-        id: Number(r.id),
+        id: String(r.id),
         input_tokens: Number(r.input_tokens),
         output_tokens: Number(r.output_tokens),
         cached_tokens: Number(r.cached_tokens),
@@ -331,14 +336,14 @@ export function createUsageService(db: Db) {
 
     /** Get global totals. */
     async getTotalStats(opts?: { since?: string }): Promise<TotalStats> {
-      const where = opts?.since ? sql`WHERE created_at >= ${opts.since}` : sql``;
+      const where = opts?.since ? sql`AND created_at >= ${opts.since}` : sql``;
       const result = await db.execute(sql`
         SELECT COUNT(*) AS total_calls,
           COALESCE(SUM(input_tokens), 0) AS total_input_tokens,
           COALESCE(SUM(output_tokens), 0) AS total_output_tokens,
           COALESCE(SUM(cached_tokens), 0) AS total_cached_tokens,
           COALESCE(SUM(reasoning_tokens), 0) AS total_reasoning_tokens
-        FROM llm_usage ${where}
+        FROM usage_events WHERE kind = 'model' ${where}
       `);
       const r = (result as any[])[0];
       return {
@@ -371,8 +376,8 @@ export function createUsageService(db: Db) {
             COALESCE(SUM(reasoning_tokens), 0) AS total_reasoning_tokens,
             COALESCE(SUM(duration_ms), 0) AS total_duration_ms,
             COALESCE(AVG(duration_ms), 0) AS avg_duration_ms
-          FROM llm_usage
-          WHERE created_at >= ${since} AND created_at < ${until}
+          FROM usage_events
+          WHERE kind = 'model' AND created_at >= ${since} AND created_at < ${until}
         `),
       );
 
@@ -386,33 +391,33 @@ export function createUsageService(db: Db) {
             COALESCE(SUM(reasoning_tokens), 0) AS total_reasoning_tokens,
             COALESCE(SUM(duration_ms), 0) AS total_duration_ms,
             COALESCE(AVG(duration_ms), 0) AS avg_duration_ms
-          FROM llm_usage
-          WHERE created_at >= ${since} AND created_at < ${until}
+          FROM usage_events
+          WHERE kind = 'model' AND created_at >= ${since} AND created_at < ${until}
           GROUP BY profile_id
           ORDER BY total_calls DESC, profile_id ASC
         `),
       );
 
-      type AgentAssetRow = { id: number; name: string; user_id: string };
+      type AgentAssetRow = { id: string; name: string; user_id: string };
       const agentAssetRows = resultRows<AgentAssetRow>(
-        await db.execute(sql`SELECT id, name, user_id FROM custom_profiles`),
+        await db.execute(sql`SELECT id, name, user_id FROM run_profiles`),
       );
-      const agentAssets = new Map(agentAssetRows.map((row) => [Number(row.id), row]));
+      const agentAssets = new Map(agentAssetRows.map((row) => [String(row.id), row]));
 
       type AgentUsdRow = { profile_id: string; actual_usd_micros: string | number };
       const agentUsdRows = resultRows<AgentUsdRow>(
         await db.execute(sql`
           WITH budget_profiles AS (
             SELECT budget_idempotency_key, MIN(profile_id) AS profile_id
-            FROM llm_usage
-            WHERE budget_idempotency_key IS NOT NULL
+            FROM usage_events
+            WHERE kind = 'model' AND budget_idempotency_key IS NOT NULL
             GROUP BY budget_idempotency_key
             HAVING COUNT(DISTINCT profile_id) = 1
           )
           SELECT bp.profile_id, COALESCE(SUM(ledger.delta_spent_units), 0) AS actual_usd_micros
-          FROM usage_budget_ledger ledger
-          JOIN usage_budget_reservations reservation ON reservation.id = ledger.reservation_id
-          JOIN usage_budget_accounts account ON account.id = ledger.account_id
+          FROM budget_ledger ledger
+          JOIN budget_reservations reservation ON reservation.id = ledger.reservation_id
+          JOIN budgets account ON account.id = ledger.account_id
           JOIN budget_profiles bp ON bp.budget_idempotency_key = reservation.idempotency_key
           WHERE account.scope_type = 'user' AND account.unit = 'usd_micros'
             AND ledger.created_at >= ${since} AND ledger.created_at < ${until}
@@ -421,10 +426,10 @@ export function createUsageService(db: Db) {
       );
       const usdByProfile = new Map(agentUsdRows.map((row) => [row.profile_id, Number(row.actual_usd_micros)]));
 
-      const customReference = /^custom:(\d+)(?:@(\d+))?$/;
+      const customReference = /^custom:([^@]+)(?:@(\d+))?$/;
       const agents: CostValueAgentMetric[] = agentRows.map((row) => {
         const match = customReference.exec(row.profile_id);
-        const customId = match ? Number(match[1]) : null;
+        const customId = match ? match[1]! : null;
         const asset = customId == null ? undefined : agentAssets.get(customId);
         return {
           ...usageMetric(row),
@@ -453,9 +458,9 @@ export function createUsageService(db: Db) {
             COALESCE(SUM(usage.reasoning_tokens), 0) AS total_reasoning_tokens,
             COALESCE(SUM(usage.duration_ms), 0) AS total_duration_ms,
             COALESCE(AVG(usage.duration_ms), 0) AS avg_duration_ms
-          FROM llm_usage usage
+          FROM usage_events usage
           LEFT JOIN users ON users.id = usage.user_id
-          WHERE usage.user_id IS NOT NULL
+          WHERE usage.kind = 'model' AND usage.user_id IS NOT NULL
             AND usage.created_at >= ${since} AND usage.created_at < ${until}
           GROUP BY usage.user_id, users.nickname, users.email, users.role
           ORDER BY total_calls DESC, usage.user_id ASC
@@ -467,8 +472,8 @@ export function createUsageService(db: Db) {
         await db.execute(sql`
           SELECT account.scope_id AS user_id,
             COALESCE(SUM(ledger.delta_spent_units), 0) AS actual_usd_micros
-          FROM usage_budget_ledger ledger
-          JOIN usage_budget_accounts account ON account.id = ledger.account_id
+          FROM budget_ledger ledger
+          JOIN budgets account ON account.id = ledger.account_id
           WHERE account.scope_type = 'user' AND account.unit = 'usd_micros'
             AND ledger.created_at >= ${since} AND ledger.created_at < ${until}
           GROUP BY account.scope_id
@@ -502,26 +507,26 @@ export function createUsageService(db: Db) {
         await db.execute(sql`
           WITH reservation_run_keys AS (
             SELECT idempotency_key, MIN(run_id) AS run_id
-            FROM usage_budget_reservations
+            FROM budget_reservations
             WHERE run_id IS NOT NULL
             GROUP BY idempotency_key
           ), linked_usage AS (
             SELECT keys.run_id, COUNT(usage.id) AS llm_calls,
               COALESCE(SUM(usage.input_tokens + usage.output_tokens), 0) AS llm_tokens
             FROM reservation_run_keys keys
-            JOIN llm_usage usage ON usage.budget_idempotency_key = keys.idempotency_key
+            JOIN usage_events usage ON usage.budget_idempotency_key = keys.idempotency_key AND usage.kind = 'model'
             GROUP BY keys.run_id
           ), step_usage AS (
             SELECT run_id, COALESCE(SUM(requests_used), 0) AS step_requests,
               COALESCE(SUM(tokens_used), 0) AS step_tokens
-            FROM runtime_steps
+            FROM run_steps
             GROUP BY run_id
           ), run_usd AS (
             SELECT reservation.run_id,
               COALESCE(SUM(ledger.delta_spent_units), 0) AS actual_usd_micros
-            FROM usage_budget_ledger ledger
-            JOIN usage_budget_reservations reservation ON reservation.id = ledger.reservation_id
-            JOIN usage_budget_accounts account ON account.id = ledger.account_id
+            FROM budget_ledger ledger
+            JOIN budget_reservations reservation ON reservation.id = ledger.reservation_id
+            JOIN budgets account ON account.id = ledger.account_id
             WHERE reservation.run_id IS NOT NULL
               AND account.scope_type = 'user' AND account.unit = 'usd_micros'
             GROUP BY reservation.run_id
@@ -539,7 +544,7 @@ export function createUsageService(db: Db) {
               AS total_duration_ms,
             COALESCE(AVG(EXTRACT(EPOCH FROM (COALESCE(run.ended_at, run.updated_at) - COALESCE(run.started_at, run.created_at))) * 1000), 0)
               AS avg_duration_ms
-          FROM runtime_runs run
+          FROM runs run
           LEFT JOIN linked_usage linked ON linked.run_id = run.id
           LEFT JOIN step_usage steps ON steps.run_id = run.id
           LEFT JOIN run_usd run_cost ON run_cost.run_id = run.id
@@ -589,26 +594,26 @@ export function createUsageService(db: Db) {
         await db.execute(sql`
           WITH reservation_run_keys AS (
             SELECT idempotency_key, MIN(run_id) AS run_id
-            FROM usage_budget_reservations
+            FROM budget_reservations
             WHERE run_id IS NOT NULL
             GROUP BY idempotency_key
           ), linked_usage AS (
             SELECT keys.run_id, COUNT(usage.id) AS llm_calls,
               COALESCE(SUM(usage.input_tokens + usage.output_tokens), 0) AS llm_tokens
             FROM reservation_run_keys keys
-            JOIN llm_usage usage ON usage.budget_idempotency_key = keys.idempotency_key
+            JOIN usage_events usage ON usage.budget_idempotency_key = keys.idempotency_key AND usage.kind = 'model'
             GROUP BY keys.run_id
           ), step_usage AS (
             SELECT run_id, COALESCE(SUM(requests_used), 0) AS step_requests,
               COALESCE(SUM(tokens_used), 0) AS step_tokens
-            FROM runtime_steps
+            FROM run_steps
             GROUP BY run_id
           ), run_usd AS (
             SELECT reservation.run_id,
               COALESCE(SUM(ledger.delta_spent_units), 0) AS actual_usd_micros
-            FROM usage_budget_ledger ledger
-            JOIN usage_budget_reservations reservation ON reservation.id = ledger.reservation_id
-            JOIN usage_budget_accounts account ON account.id = ledger.account_id
+            FROM budget_ledger ledger
+            JOIN budget_reservations reservation ON reservation.id = ledger.reservation_id
+            JOIN budgets account ON account.id = ledger.account_id
             WHERE reservation.run_id IS NOT NULL
               AND account.scope_type = 'user' AND account.unit = 'usd_micros'
             GROUP BY reservation.run_id
@@ -622,7 +627,7 @@ export function createUsageService(db: Db) {
             COALESCE(steps.step_requests, 0) AS step_requests,
             COALESCE(steps.step_tokens, 0) AS step_tokens,
             COALESCE(run_cost.actual_usd_micros, 0) AS actual_usd_micros
-          FROM runtime_runs run
+          FROM runs run
           LEFT JOIN linked_usage linked ON linked.run_id = run.id
           LEFT JOIN step_usage steps ON steps.run_id = run.id
           LEFT JOIN run_usd run_cost ON run_cost.run_id = run.id
@@ -657,8 +662,8 @@ export function createUsageService(db: Db) {
         await db.execute(sql`
           SELECT id, scope_type, scope_id, unit, status, period_start, period_end,
             limit_units, reserved_units, spent_units
-          FROM usage_budget_accounts
-          WHERE period_end > ${since} AND period_start < ${until}
+          FROM budgets
+          WHERE kind = 'account' AND period_end > ${since} AND period_start < ${until}
           ORDER BY scope_type ASC, scope_id ASC, unit ASC
         `),
       );
@@ -698,8 +703,8 @@ export function createUsageService(db: Db) {
       const organizationUsdRows = resultRows<{ actual_usd_micros: string | number }>(
         await db.execute(sql`
           SELECT COALESCE(SUM(ledger.delta_spent_units), 0) AS actual_usd_micros
-          FROM usage_budget_ledger ledger
-          JOIN usage_budget_accounts account ON account.id = ledger.account_id
+          FROM budget_ledger ledger
+          JOIN budgets account ON account.id = ledger.account_id
           WHERE account.scope_type = 'organization' AND account.unit = 'usd_micros'
             AND ledger.created_at >= ${since} AND ledger.created_at < ${until}
         `),
@@ -740,7 +745,7 @@ export function createUsageService(db: Db) {
           SELECT model, COUNT(*) AS calls,
             COALESCE(SUM(input_tokens), 0) AS input_tokens,
             COALESCE(SUM(cached_tokens), 0) AS cached_tokens
-          FROM llm_usage WHERE created_at >= ${opts.since}
+          FROM usage_events WHERE kind = 'model' AND created_at >= ${opts.since}
           GROUP BY model ORDER BY SUM(input_tokens) DESC NULLS LAST, model
         `),
       );
@@ -755,17 +760,6 @@ export function createUsageService(db: Db) {
           hit_rate: input > 0 ? cached / input : null,
         };
       });
-    },
-
-    /** Sum this month's token usage (for monthly quota). */
-    async sumMonthTokens(userId: string): Promise<number> {
-      const now = new Date();
-      const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
-      const result = await db.execute(sql`
-        SELECT COALESCE(SUM(input_tokens + output_tokens), 0) as total
-        FROM llm_usage WHERE user_id = ${userId} AND created_at >= ${monthStart}
-      `);
-      return Number((result as any[])[0]?.total ?? 0);
     },
   };
   return service;

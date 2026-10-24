@@ -82,23 +82,23 @@ type CabinetReader = Pick<CabinetCaller, 'db' | 'userId'>;
 
 const access = (caller: CabinetReader, node: DriveAccessNode) => resolveDriveAccess(node, caller.userId, {});
 
-const notFound = (what: 'folder' | 'file', id: number) =>
+const notFound = (what: 'folder' | 'file', id: string) =>
   ({ error: `No ${what} with id "${id}" that you can see. Use search or list to find the right id.` }) as const;
 
-async function readableFolder(caller: CabinetCaller, id: number): Promise<CabinetResult<DriveFolderRow>> {
+async function readableFolder(caller: CabinetCaller, id: string): Promise<CabinetResult<DriveFolderRow>> {
   const folder = await caller.db.drive.getFolder(id);
   if (!folder || folder.scope !== 'kb' || !canReadDrive(access(caller, folder))) return notFound('folder', id);
   return folder;
 }
 
-async function writableFolder(caller: CabinetCaller, id: number): Promise<CabinetResult<DriveFolderRow>> {
+async function writableFolder(caller: CabinetCaller, id: string): Promise<CabinetResult<DriveFolderRow>> {
   const folder = await readableFolder(caller, id);
   if ('error' in folder) return folder;
   if (!canWriteDrive(access(caller, folder))) return { error: `You cannot change folder "${folder.name}".` };
   return folder;
 }
 
-async function readableFile(caller: CabinetReader, id: number): Promise<CabinetResult<DriveFileRow>> {
+async function readableFile(caller: CabinetReader, id: string): Promise<CabinetResult<DriveFileRow>> {
   const file = await caller.db.drive.getFile(id);
   if (!file || file.scope !== 'kb' || file.status !== 'active' || !canReadDrive(access(caller, file))) {
     return notFound('file', id);
@@ -106,7 +106,7 @@ async function readableFile(caller: CabinetReader, id: number): Promise<CabinetR
   return file;
 }
 
-async function writableFile(caller: CabinetCaller, id: number): Promise<CabinetResult<DriveFileRow>> {
+async function writableFile(caller: CabinetCaller, id: string): Promise<CabinetResult<DriveFileRow>> {
   const file = await readableFile(caller, id);
   if ('error' in file) return file;
   if (!canWriteDrive(access(caller, file))) return { error: `You cannot change file "${file.name}".` };
@@ -117,7 +117,7 @@ async function writableFile(caller: CabinetCaller, id: number): Promise<CabinetR
 
 export async function listCabinetFolder(
   caller: CabinetCaller,
-  input: { shelf: FilesShelf; folderId?: number | null },
+  input: { shelf: FilesShelf; folderId?: string | null },
 ): Promise<
   CabinetResult<{ folder: CabinetFolderView | null; folders: CabinetFolderView[]; files: CabinetFileView[] }>
 > {
@@ -160,7 +160,7 @@ export async function searchCabinet(
 
 export async function getCabinetFile(
   caller: CabinetCaller,
-  fileId: number,
+  fileId: string,
 ): Promise<CabinetResult<CabinetFileView & { path: string[] }>> {
   const file = await readableFile(caller, fileId);
   if ('error' in file) return file;
@@ -170,7 +170,7 @@ export async function getCabinetFile(
 
 export async function cabinetDownloadUrl(
   caller: CabinetCaller,
-  fileId: number,
+  fileId: string,
 ): Promise<CabinetResult<{ file: CabinetFileView; download_url: string; expires_in_seconds: number }>> {
   const file = await readableFile(caller, fileId);
   if ('error' in file) return file;
@@ -195,7 +195,7 @@ export async function cabinetDownloadUrl(
  */
 export async function readCabinetFileBytes(
   caller: CabinetReader,
-  input: { fileId: number; maxBytes: number },
+  input: { fileId: string; maxBytes: number },
 ): Promise<CabinetResult<{ file: CabinetFileView; bytes: Buffer }>> {
   const file = await readableFile(caller, input.fileId);
   if ('error' in file) return file;
@@ -214,7 +214,7 @@ export async function readCabinetFileBytes(
 
 export async function readCabinetFile(
   caller: CabinetCaller,
-  input: { fileId: number; maxChars?: number },
+  input: { fileId: string; maxChars?: number },
 ): Promise<CabinetResult<{ file: CabinetFileView; text: string; total_chars: number; truncated: boolean }>> {
   const file = await readableFile(caller, input.fileId);
   if ('error' in file) return file;
@@ -252,7 +252,7 @@ function cleanName(name: string): CabinetResult<string> {
 async function targetFolder(
   caller: CabinetCaller,
   shelf: FilesShelf,
-  folderId: number | null | undefined,
+  folderId: string | null | undefined,
 ): Promise<CabinetResult<DriveFolderRow | null>> {
   const root = shelfRoot(caller.userId, shelf);
   if (!folderId) return canWriteDrive(access(caller, root)) ? null : { error: 'You cannot write to this shelf.' };
@@ -264,7 +264,7 @@ async function targetFolder(
 
 export async function createCabinetFolder(
   caller: CabinetCaller,
-  input: { shelf: FilesShelf; parentId?: number | null; name: string },
+  input: { shelf: FilesShelf; parentId?: string | null; name: string },
 ): Promise<CabinetResult<{ folder: CabinetFolderView }>> {
   const name = cleanName(input.name);
   if (typeof name !== 'string') return name;
@@ -285,7 +285,7 @@ export async function createCabinetFolder(
 
 export async function updateCabinetFolder(
   caller: CabinetCaller,
-  input: { folderId: number; name?: string; parentId?: number | null },
+  input: { folderId: string; name?: string; parentId?: string | null },
 ): Promise<CabinetResult<{ folder: CabinetFolderView }>> {
   if (input.name === undefined && input.parentId === undefined) return { error: 'Pass name and/or parent_id.' };
   const folder = await writableFolder(caller, input.folderId);
@@ -313,8 +313,8 @@ export async function updateCabinetFolder(
 
 export async function deleteCabinetFolder(
   caller: CabinetCaller,
-  folderId: number,
-): Promise<CabinetResult<{ deleted: true; folder_id: number }>> {
+  folderId: string,
+): Promise<CabinetResult<{ deleted: true; folder_id: string }>> {
   const folder = await writableFolder(caller, folderId);
   if ('error' in folder) return folder;
   const result = await caller.db.drive.deleteFolder(folder.id);
@@ -329,7 +329,7 @@ export async function deleteCabinetFolder(
 
 export async function uploadCabinetFile(
   caller: CabinetCaller,
-  input: { shelf: FilesShelf; folderId?: number | null; name: string; bytes: Buffer },
+  input: { shelf: FilesShelf; folderId?: string | null; name: string; bytes: Buffer },
 ): Promise<CabinetResult<{ file: CabinetFileView }>> {
   const name = cleanName(input.name);
   if (typeof name !== 'string') return name;
@@ -371,7 +371,7 @@ export async function uploadCabinetFile(
 
 export async function updateCabinetFile(
   caller: CabinetCaller,
-  input: { fileId: number; name?: string; folderId?: number | null },
+  input: { fileId: string; name?: string; folderId?: string | null },
 ): Promise<CabinetResult<{ file: CabinetFileView }>> {
   if (input.name === undefined && input.folderId === undefined) return { error: 'Pass name and/or folder_id.' };
   const file = await writableFile(caller, input.fileId);
@@ -398,8 +398,8 @@ export async function updateCabinetFile(
 
 export async function deleteCabinetFile(
   caller: CabinetCaller,
-  fileId: number,
-): Promise<CabinetResult<{ deleted: true; file_id: number }>> {
+  fileId: string,
+): Promise<CabinetResult<{ deleted: true; file_id: string }>> {
   const file = await writableFile(caller, fileId);
   if ('error' in file) return file;
   await caller.db.drive.softDeleteFile(file.id);

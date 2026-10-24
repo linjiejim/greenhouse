@@ -7,7 +7,7 @@
  * no process-local queue or ownership state is authoritative.
  */
 
-import { createHash, randomUUID } from 'node:crypto';
+import { createHash } from 'node:crypto';
 import { and, asc, desc, eq, gt, inArray, isNull, lte, or, sql } from 'drizzle-orm';
 import {
   canTransitionRuntimeArtifact,
@@ -17,6 +17,8 @@ import {
   canTransitionRuntimeToolCall,
   isRuntimeInterruptCommandLegal,
   isRuntimeRunCommandLegal,
+  type RuntimeArtifactDirection,
+  type RuntimeArtifactStatus,
   type RuntimeInterruptCommand,
   type RuntimeInterruptStatus,
   type RuntimePayload,
@@ -25,20 +27,20 @@ import {
 import { nowIso } from '@greenhouse/utils/date';
 
 import type { Db } from '../client.js';
+import { newId, type IdKind } from '../ids.js';
 import {
-  runtimeArtifacts,
-  runtimeEvents,
-  runtimeInterrupts,
-  runtimeOutbox,
-  runtimeRuns,
-  runtimeSteps,
-  runtimeToolCalls,
-  sessions,
+  conversations,
+  files,
+  runEvents,
+  runInterrupts,
+  runOutbox,
+  runs,
+  runSteps,
+  runToolCalls,
 } from '../schema/index.js';
 import type {
+  FileRow,
   RuntimeActionRisk,
-  RuntimeArtifactRow,
-  RuntimeArtifactStatus,
   RuntimeDesiredState,
   RuntimeEventRow,
   RuntimeInterruptRow,
@@ -50,7 +52,81 @@ import type {
   RuntimeStepStatus,
   RuntimeToolCallRow,
   RuntimeToolCallStatus,
-} from '../schema/runtime.js';
+} from '../schema/index.js';
+
+export type { RuntimeArtifactStatus };
+
+/**
+ * A file a run consumed or produced. Stored as a `files` row with
+ * `source = 'run'`; this is the runtime view of it (statuses keep the runtime
+ * vocabulary: `available` is the file's `active`).
+ */
+export interface RuntimeArtifactRow {
+  id: string;
+  run_id: string;
+  step_id: string | null;
+  tool_call_id: string | null;
+  direction: RuntimeArtifactDirection;
+  kind: string;
+  name: string;
+  path: string | null;
+  content_type: string | null;
+  size_bytes: number | null;
+  sha256: string | null;
+  storage_key: string | null;
+  status: RuntimeArtifactStatus;
+  source: string;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Runtime-specific details kept in `files.meta` for a run artifact. */
+interface RunFileMeta {
+  direction: RuntimeArtifactDirection;
+  kind: string;
+  path: string | null;
+  step_id: string | null;
+  tool_call_id: string | null;
+  source: string;
+  /** Size as the producer reported it; `files.size` is 0 when unknown. */
+  size_known?: boolean;
+}
+
+const FILE_STATUS_BY_ARTIFACT = {
+  pending: 'pending',
+  available: 'active',
+  failed: 'failed',
+  skipped: 'skipped',
+} as const satisfies Record<RuntimeArtifactStatus, FileRow['status']>;
+
+function artifactStatusOf(status: FileRow['status']): RuntimeArtifactStatus {
+  if (status === 'active') return 'available';
+  if (status === 'pending' || status === 'failed' || status === 'skipped') return status;
+  // A run file the drive later deleted reads as no longer available.
+  return 'failed';
+}
+
+function artifactFromFile(row: FileRow): RuntimeArtifactRow {
+  const meta = (row.meta ?? {}) as Partial<RunFileMeta>;
+  return {
+    id: row.id,
+    run_id: row.run_id ?? '',
+    step_id: meta.step_id ?? null,
+    tool_call_id: meta.tool_call_id ?? null,
+    direction: meta.direction === 'input' ? 'input' : 'output',
+    kind: meta.kind ?? 'file',
+    name: row.name,
+    path: meta.path ?? null,
+    content_type: row.content_type,
+    size_bytes: meta.size_known === false ? null : row.size,
+    sha256: row.sha256,
+    storage_key: row.storage_key,
+    status: artifactStatusOf(row.status),
+    source: meta.source ?? 'runtime',
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+  };
+}
 
 export type RuntimeKernelErrorCode =
   | 'runtime_invalid_input'
@@ -311,7 +387,7 @@ export interface RuntimeArtifactCreateInput {
   run_id: string;
   step_id?: string | null;
   tool_call_id?: string | null;
-  direction: RuntimeArtifactRow['direction'];
+  direction: RuntimeArtifactDirection;
   kind: string;
   name: string;
   path?: string | null;
@@ -437,16 +513,40 @@ function encodeJson(value: unknown, label: string): string {
   }
 }
 
-function parseJson<T>(value: string): T {
-  return JSON.parse(value) as T;
+/**
+ * Validate that `value` is JSON-serializable and return the exact JSON value
+ * the jsonb column will hold (undefined members dropped, dates as strings).
+ */
+function toJson(value: unknown, label: string): RuntimePayload {
+  return JSON.parse(encodeJson(value, label)) as RuntimePayload;
 }
 
-function prefixedId(prefix: string): string {
-  return `${prefix}_${randomUUID().replaceAll('-', '')}`;
+/**
+ * Key-order-independent encoding. PostgreSQL normalizes jsonb key order, so a
+ * stored value is compared with a fresh one through this, never through the
+ * text JSON.stringify happens to produce.
+ */
+export function canonicalJson(value: unknown): string {
+  if (value === null || typeof value !== 'object') return JSON.stringify(value) ?? 'null';
+  if (Array.isArray(value))
+    return `[${value.map((item) => canonicalJson(item === undefined ? null : item)).join(',')}]`;
+  const entries = Object.entries(value as Record<string, unknown>)
+    .filter(([, item]) => item !== undefined && typeof item !== 'function')
+    .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0));
+  return `{${entries.map(([key, item]) => `${JSON.stringify(key)}:${canonicalJson(item)}`).join(',')}}`;
+}
+
+function sameJson(stored: unknown, fresh: unknown): boolean {
+  return canonicalJson(stored) === canonicalJson(fresh);
+}
+
+function prefixedId(kind: IdKind): string {
+  return newId(kind);
 }
 
 function fingerprint(value: unknown): string {
-  return createHash('sha256').update(encodeJson(value, 'idempotent command')).digest('hex');
+  encodeJson(value, 'idempotent command');
+  return createHash('sha256').update(canonicalJson(value)).digest('hex');
 }
 
 function leaseExpiry(at: string, leaseMs: number): string {
@@ -475,8 +575,8 @@ async function requireStepInRun(
 ): Promise<RuntimeStepRow> {
   const [step] = await tx
     .select()
-    .from(runtimeSteps)
-    .where(and(eq(runtimeSteps.id, assertIdentifier(stepId, label)), eq(runtimeSteps.run_id, runId)))
+    .from(runSteps)
+    .where(and(eq(runSteps.id, assertIdentifier(stepId, label)), eq(runSteps.run_id, runId)))
     .limit(1);
   if (!step) fail('runtime_invalid_input', `${label} does not belong to runtime run ${runId}`);
   return step;
@@ -489,10 +589,8 @@ async function requireToolCallInRun(
 ): Promise<RuntimeToolCallRow> {
   const [toolCall] = await tx
     .select()
-    .from(runtimeToolCalls)
-    .where(
-      and(eq(runtimeToolCalls.id, assertIdentifier(toolCallId, 'tool_call_id')), eq(runtimeToolCalls.run_id, runId)),
-    )
+    .from(runToolCalls)
+    .where(and(eq(runToolCalls.id, assertIdentifier(toolCallId, 'tool_call_id')), eq(runToolCalls.run_id, runId)))
     .limit(1);
   if (!toolCall) fail('runtime_invalid_input', `tool_call_id does not belong to runtime run ${runId}`);
   return toolCall;
@@ -505,7 +603,7 @@ async function appendEventInTransaction(
 ): Promise<RuntimeEventRow> {
   const runId = assertIdentifier(input.run_id, 'run_id');
   const eventType = assertIdentifier(input.type, 'event type', 256);
-  const payload = encodeJson(input.payload, 'event payload');
+  const payload = toJson(input.payload, 'event payload');
   const idempotencyKey = input.idempotency_key
     ? assertIdentifier(input.idempotency_key, 'event idempotency_key')
     : null;
@@ -513,37 +611,33 @@ async function appendEventInTransaction(
   const availableAt = input.available_at ? asIso(input.available_at, 'available_at') : at;
   const maxAttempts = assertPositiveInteger(input.max_attempts ?? 10, 'max_attempts');
 
-  const [run] = await tx
-    .select({ id: runtimeRuns.id })
-    .from(runtimeRuns)
-    .where(eq(runtimeRuns.id, runId))
-    .for('update');
+  const [run] = await tx.select({ id: runs.id }).from(runs).where(eq(runs.id, runId)).for('update');
   if (!run) fail('runtime_not_found', `Runtime run ${runId} was not found`);
 
   if (idempotencyKey) {
     const [existing] = await tx
       .select()
-      .from(runtimeEvents)
-      .where(and(eq(runtimeEvents.run_id, runId), eq(runtimeEvents.idempotency_key, idempotencyKey)))
+      .from(runEvents)
+      .where(and(eq(runEvents.run_id, runId), eq(runEvents.idempotency_key, idempotencyKey)))
       .limit(1);
     if (existing) {
       if (
         existing.type !== eventType ||
         existing.step_id !== (input.step_id ?? null) ||
-        existing.payload !== payload ||
+        !sameJson(existing.payload, payload) ||
         existing.actor_user_id !== (input.actor_user_id ?? null)
       ) {
         fail('runtime_idempotency_conflict', 'Runtime event idempotency key was reused with different data');
       }
       const deliveries = await tx
         .select({
-          topic: runtimeOutbox.topic,
-          available_at: runtimeOutbox.available_at,
-          max_attempts: runtimeOutbox.max_attempts,
+          topic: runOutbox.topic,
+          available_at: runOutbox.available_at,
+          max_attempts: runOutbox.max_attempts,
         })
-        .from(runtimeOutbox)
-        .where(eq(runtimeOutbox.event_id, existing.id))
-        .orderBy(asc(runtimeOutbox.topic));
+        .from(runOutbox)
+        .where(eq(runOutbox.event_id, existing.id))
+        .orderBy(asc(runOutbox.topic));
       if (
         encodeJson(
           deliveries.map((row) => row.topic),
@@ -565,16 +659,16 @@ async function appendEventInTransaction(
   if (input.step_id) await requireStepInRun(tx, runId, input.step_id);
 
   const [event] = await tx
-    .insert(runtimeEvents)
+    .insert(runEvents)
     .values({
-      id: prefixedId('rte'),
+      id: prefixedId('runEvent'),
       run_id: runId,
       step_id: input.step_id ?? null,
       // Keep allocation and insertion in one PostgreSQL statement. The Run row
       // lock above serializes independent transactions; the single statement
       // also closes the select→insert interleaving possible when test/service
       // calls share one outer transaction and its row lock is re-entrant.
-      seq: sql<number>`(SELECT COALESCE(MAX(${runtimeEvents.seq}), 0) + 1 FROM ${runtimeEvents} WHERE ${runtimeEvents.run_id} = ${runId})`,
+      seq: sql<number>`(SELECT COALESCE(MAX(${runEvents.seq}), 0) + 1 FROM ${runEvents} WHERE ${runEvents.run_id} = ${runId})`,
       type: eventType,
       payload,
       actor_user_id: input.actor_user_id ?? null,
@@ -583,7 +677,7 @@ async function appendEventInTransaction(
     })
     .returning();
 
-  const deliveryPayload = encodeJson(
+  const deliveryPayload = toJson(
     {
       event_id: event!.id,
       run_id: event!.run_id,
@@ -596,9 +690,9 @@ async function appendEventInTransaction(
     },
     'outbox payload',
   );
-  await tx.insert(runtimeOutbox).values(
+  await tx.insert(runOutbox).values(
     topics.map((topic) => ({
-      id: prefixedId('rto'),
+      id: prefixedId('outbox'),
       event_id: event!.id,
       topic,
       payload: deliveryPayload,
@@ -619,7 +713,7 @@ interface StoredCommandResult<T> {
 }
 
 function replayCommand<T>(event: RuntimeEventRow, expectedFingerprint: string): T {
-  const payload = parseJson<StoredCommandResult<T>>(event.payload);
+  const payload = event.payload as unknown as StoredCommandResult<T>;
   if (payload.command_fingerprint !== expectedFingerprint) {
     fail('runtime_idempotency_conflict', 'Runtime command idempotency key was reused with different input');
   }
@@ -649,7 +743,12 @@ export function createRuntimeService(db: Db) {
       return db.transaction(async (rawTx) => {
         const tx = rawTx as unknown as TransactionalDb;
         if (sessionId) {
-          const [session] = await tx.select().from(sessions).where(eq(sessions.id, sessionId)).for('update').limit(1);
+          const [session] = await tx
+            .select({ user_id: conversations.user_id })
+            .from(conversations)
+            .where(eq(conversations.id, sessionId))
+            .for('update')
+            .limit(1);
           if (!session || session.user_id !== ownerUserId) {
             fail('runtime_not_found', 'Chat session is missing or belongs to another owner');
           }
@@ -680,7 +779,7 @@ export function createRuntimeService(db: Db) {
     },
 
     async createRun(input: RuntimeRunCreateInput): Promise<RuntimeRunRow> {
-      const id = input.id ? assertIdentifier(input.id, 'id') : prefixedId('rtr');
+      const id = input.id ? assertIdentifier(input.id, 'id') : prefixedId('run');
       const ownerUserId = assertIdentifier(input.owner_user_id, 'owner_user_id');
       const initiatedBy = assertIdentifier(input.initiated_by_user_id, 'initiated_by_user_id');
       const sourceKind = assertIdentifier(input.source_kind, 'source_kind');
@@ -688,7 +787,7 @@ export function createRuntimeService(db: Db) {
       const idempotencyKey = input.idempotency_key ? assertIdentifier(input.idempotency_key, 'idempotency_key') : null;
       const priority = assertNonnegativeInteger(input.priority ?? 0, 'priority');
       const maxAttempts = assertPositiveInteger(input.max_attempts ?? 3, 'max_attempts');
-      const encodedInput = encodeJson(input.input, 'run input');
+      const encodedInput = toJson(input.input, 'run input');
       const notBefore = input.not_before ? asIso(input.not_before, 'not_before') : null;
       const deadlineAt = input.deadline_at ? asIso(input.deadline_at, 'deadline_at') : null;
       if (notBefore && deadlineAt && Date.parse(deadlineAt) <= Date.parse(notBefore)) {
@@ -704,20 +803,16 @@ export function createRuntimeService(db: Db) {
 
         const candidates = await tx
           .select()
-          .from(runtimeRuns)
+          .from(runs)
           .where(
             or(
-              and(
-                eq(runtimeRuns.kind, input.kind),
-                eq(runtimeRuns.source_kind, sourceKind),
-                eq(runtimeRuns.source_id, sourceId),
-              ),
+              and(eq(runs.kind, input.kind), eq(runs.source_kind, sourceKind), eq(runs.source_id, sourceId)),
               ...(idempotencyKey
                 ? [
                     and(
-                      eq(runtimeRuns.owner_user_id, ownerUserId),
-                      eq(runtimeRuns.kind, input.kind),
-                      eq(runtimeRuns.idempotency_key, idempotencyKey),
+                      eq(runs.owner_user_id, ownerUserId),
+                      eq(runs.kind, input.kind),
+                      eq(runs.idempotency_key, idempotencyKey),
                     ),
                   ]
                 : []),
@@ -728,7 +823,7 @@ export function createRuntimeService(db: Db) {
         let rootRunId = id;
         if (input.parent_run_id) {
           const parentId = assertIdentifier(input.parent_run_id, 'parent_run_id');
-          const [parent] = await tx.select().from(runtimeRuns).where(eq(runtimeRuns.id, parentId)).limit(1);
+          const [parent] = await tx.select().from(runs).where(eq(runs.id, parentId)).limit(1);
           if (!parent) fail('runtime_not_found', `Parent runtime run ${parentId} was not found`);
           rootRunId = parent.root_run_id;
         }
@@ -750,7 +845,7 @@ export function createRuntimeService(db: Db) {
             sameInstant(existing.not_before, notBefore) &&
             sameInstant(existing.deadline_at, deadlineAt) &&
             existing.max_attempts === maxAttempts &&
-            existing.input === encodedInput;
+            sameJson(existing.input, encodedInput);
           if (!same || candidates.some((row) => row.id !== existing.id)) {
             fail('runtime_idempotency_conflict', 'Runtime run identity was reused with different input');
           }
@@ -759,14 +854,14 @@ export function createRuntimeService(db: Db) {
 
         if (input.single_active_source_kind) {
           const [active] = await tx
-            .select({ id: runtimeRuns.id })
-            .from(runtimeRuns)
+            .select({ id: runs.id })
+            .from(runs)
             .where(
               and(
-                eq(runtimeRuns.owner_user_id, ownerUserId),
-                eq(runtimeRuns.kind, input.kind),
-                eq(runtimeRuns.source_kind, sourceKind),
-                inArray(runtimeRuns.status, [...ACTIVE_RUN_STATUSES]),
+                eq(runs.owner_user_id, ownerUserId),
+                eq(runs.kind, input.kind),
+                eq(runs.source_kind, sourceKind),
+                inArray(runs.status, [...ACTIVE_RUN_STATUSES]),
               ),
             )
             .limit(1);
@@ -777,7 +872,7 @@ export function createRuntimeService(db: Db) {
 
         const at = nowIso();
         const [created] = await tx
-          .insert(runtimeRuns)
+          .insert(runs)
           .values({
             id,
             kind: input.kind,
@@ -819,7 +914,7 @@ export function createRuntimeService(db: Db) {
     },
 
     async getRun(id: string): Promise<RuntimeRunRow | undefined> {
-      const [row] = await db.select().from(runtimeRuns).where(eq(runtimeRuns.id, id)).limit(1);
+      const [row] = await db.select().from(runs).where(eq(runs.id, id)).limit(1);
       return row;
     },
 
@@ -830,12 +925,12 @@ export function createRuntimeService(db: Db) {
     ): Promise<RuntimeRunRow | undefined> {
       const [row] = await db
         .select()
-        .from(runtimeRuns)
+        .from(runs)
         .where(
           and(
-            eq(runtimeRuns.kind, kind),
-            eq(runtimeRuns.source_kind, assertIdentifier(sourceKind, 'source_kind')),
-            eq(runtimeRuns.source_id, assertIdentifier(sourceId, 'source_id')),
+            eq(runs.kind, kind),
+            eq(runs.source_kind, assertIdentifier(sourceKind, 'source_kind')),
+            eq(runs.source_id, assertIdentifier(sourceId, 'source_id')),
           ),
         )
         .limit(1);
@@ -846,15 +941,15 @@ export function createRuntimeService(db: Db) {
     async findActiveRunBySession(sessionId: string, ownerUserId?: string): Promise<RuntimeRunRow | undefined> {
       const [row] = await db
         .select()
-        .from(runtimeRuns)
+        .from(runs)
         .where(
           and(
-            eq(runtimeRuns.session_id, assertIdentifier(sessionId, 'session_id')),
-            inArray(runtimeRuns.status, [...ACTIVE_RUN_STATUSES]),
-            ...(ownerUserId ? [eq(runtimeRuns.owner_user_id, assertIdentifier(ownerUserId, 'owner_user_id'))] : []),
+            eq(runs.session_id, assertIdentifier(sessionId, 'session_id')),
+            inArray(runs.status, [...ACTIVE_RUN_STATUSES]),
+            ...(ownerUserId ? [eq(runs.owner_user_id, assertIdentifier(ownerUserId, 'owner_user_id'))] : []),
           ),
         )
-        .orderBy(desc(runtimeRuns.created_at), desc(runtimeRuns.id))
+        .orderBy(desc(runs.created_at), desc(runs.id))
         .limit(1);
       return row;
     },
@@ -862,24 +957,24 @@ export function createRuntimeService(db: Db) {
     async listRunsByOwner(ownerUserId: string, limit = 50): Promise<RuntimeRunRow[]> {
       return db
         .select()
-        .from(runtimeRuns)
-        .where(eq(runtimeRuns.owner_user_id, ownerUserId))
-        .orderBy(desc(runtimeRuns.created_at), desc(runtimeRuns.id))
+        .from(runs)
+        .where(eq(runs.owner_user_id, ownerUserId))
+        .orderBy(desc(runs.created_at), desc(runs.id))
         .limit(Math.min(Math.max(limit, 1), 200));
     },
 
     /**
      * All runs of one source definition (e.g. every occurrence of a scheduled
      * task, `source_kind='scheduled_task:<id>'`). Hits the prefix of
-     * `uq_runtime_runs_source`, so it stays an index scan as `runtime_runs`
+     * `uq_runs_source`, so it stays an index scan as `runs`
      * grows with chat traces.
      */
     async listRunsForSource(kind: RuntimeRunKind, sourceKind: string, limit = 100): Promise<RuntimeRunRow[]> {
       return db
         .select()
-        .from(runtimeRuns)
-        .where(and(eq(runtimeRuns.kind, kind), eq(runtimeRuns.source_kind, sourceKind)))
-        .orderBy(desc(runtimeRuns.created_at), desc(runtimeRuns.id))
+        .from(runs)
+        .where(and(eq(runs.kind, kind), eq(runs.source_kind, sourceKind)))
+        .orderBy(desc(runs.created_at), desc(runs.id))
         .limit(Math.min(Math.max(limit, 1), 200));
     },
 
@@ -897,23 +992,23 @@ export function createRuntimeService(db: Db) {
       if (kinds?.length === 0 || statuses?.length === 0) return { items: [], next_cursor: null };
       const rows = await db
         .select()
-        .from(runtimeRuns)
+        .from(runs)
         .where(
           and(
-            ...(ownerUserId ? [eq(runtimeRuns.owner_user_id, ownerUserId)] : []),
-            ...(kinds ? [inArray(runtimeRuns.kind, kinds)] : []),
-            ...(statuses ? [inArray(runtimeRuns.status, statuses)] : []),
+            ...(ownerUserId ? [eq(runs.owner_user_id, ownerUserId)] : []),
+            ...(kinds ? [inArray(runs.kind, kinds)] : []),
+            ...(statuses ? [inArray(runs.status, statuses)] : []),
             ...(cursor
               ? [
                   or(
-                    sql`${runtimeRuns.created_at} < ${cursor.created_at}`,
-                    and(eq(runtimeRuns.created_at, cursor.created_at), sql`${runtimeRuns.id} < ${cursor.id}`),
+                    sql`${runs.created_at} < ${cursor.created_at}`,
+                    and(eq(runs.created_at, cursor.created_at), sql`${runs.id} < ${cursor.id}`),
                   ),
                 ]
               : []),
           ),
         )
-        .orderBy(desc(runtimeRuns.created_at), desc(runtimeRuns.id))
+        .orderBy(desc(runs.created_at), desc(runs.id))
         .limit(limit + 1);
       const hasMore = rows.length > limit;
       const items = hasMore ? rows.slice(0, limit) : rows;
@@ -975,12 +1070,12 @@ export function createRuntimeService(db: Db) {
 
       return db.transaction(async (rawTx) => {
         const tx = rawTx as unknown as TransactionalDb;
-        const [locked] = await tx.select().from(runtimeRuns).where(eq(runtimeRuns.id, id)).for('update');
+        const [locked] = await tx.select().from(runs).where(eq(runs.id, id)).for('update');
         if (!locked) fail('runtime_not_found', `Runtime run ${id} was not found`);
         const [replayed] = await tx
           .select()
-          .from(runtimeEvents)
-          .where(and(eq(runtimeEvents.run_id, id), eq(runtimeEvents.idempotency_key, idempotencyKey)))
+          .from(runEvents)
+          .where(and(eq(runEvents.run_id, id), eq(runEvents.idempotency_key, idempotencyKey)))
           .limit(1);
         if (replayed) return replayCommand<RuntimeRunRow>(replayed, commandFingerprint);
         if (locked.version !== expectedVersion) {
@@ -1026,13 +1121,13 @@ export function createRuntimeService(db: Db) {
         const renewedLease = workerId && input.to_status === 'running' ? leaseExpiry(at, input.lease_ms!) : null;
         const releasesLease = terminal || ['queued', 'waiting', 'paused'].includes(input.to_status);
         const [updated] = await tx
-          .update(runtimeRuns)
+          .update(runs)
           .set({
             status: input.to_status,
             ...(input.desired_state !== undefined ? { desired_state: input.desired_state } : {}),
             ...(input.wait_reason !== undefined ? { wait_reason: input.wait_reason } : {}),
             ...(input.output !== undefined
-              ? { output: input.output === null ? null : encodeJson(input.output, 'run output') }
+              ? { output: input.output === null ? null : toJson(input.output, 'run output') }
               : {}),
             ...(input.error_code !== undefined ? { error_code: input.error_code } : {}),
             ...(input.error_message !== undefined ? { error_message: input.error_message } : {}),
@@ -1044,9 +1139,9 @@ export function createRuntimeService(db: Db) {
             ...(releasesLease ? { lease_owner: null, lease_expires_at: null } : {}),
             ...(terminal ? { ended_at: at } : {}),
             updated_at: at,
-            version: sql`${runtimeRuns.version} + 1`,
+            version: sql`${runs.version} + 1`,
           })
-          .where(and(eq(runtimeRuns.id, id), eq(runtimeRuns.version, expectedVersion)))
+          .where(and(eq(runs.id, id), eq(runs.version, expectedVersion)))
           .returning();
         if (!updated) fail('runtime_version_conflict', `Runtime run ${id} changed concurrently`);
         await appendEventInTransaction(
@@ -1075,12 +1170,12 @@ export function createRuntimeService(db: Db) {
       const commandFingerprint = fingerprint(command);
       return db.transaction(async (rawTx) => {
         const tx = rawTx as unknown as TransactionalDb;
-        const [locked] = await tx.select().from(runtimeRuns).where(eq(runtimeRuns.id, id)).for('update');
+        const [locked] = await tx.select().from(runs).where(eq(runs.id, id)).for('update');
         if (!locked) fail('runtime_not_found', `Runtime run ${id} was not found`);
         const [replayed] = await tx
           .select()
-          .from(runtimeEvents)
-          .where(and(eq(runtimeEvents.run_id, id), eq(runtimeEvents.idempotency_key, idempotencyKey)))
+          .from(runEvents)
+          .where(and(eq(runEvents.run_id, id), eq(runEvents.idempotency_key, idempotencyKey)))
           .limit(1);
         if (replayed) return replayCommand<RuntimeRunRow>(replayed, commandFingerprint);
         if (locked.version !== expectedVersion) {
@@ -1091,7 +1186,7 @@ export function createRuntimeService(db: Db) {
         }
 
         const at = nowIso();
-        const next: Partial<typeof runtimeRuns.$inferInsert> = { updated_at: at };
+        const next: Partial<typeof runs.$inferInsert> = { updated_at: at };
         if (command.type === 'start') next.desired_state = 'run';
         if (command.type === 'pause') {
           next.status = 'paused';
@@ -1123,9 +1218,9 @@ export function createRuntimeService(db: Db) {
           next.lease_expires_at = null;
         }
         const [updated] = await tx
-          .update(runtimeRuns)
-          .set({ ...next, version: sql`${runtimeRuns.version} + 1` })
-          .where(and(eq(runtimeRuns.id, id), eq(runtimeRuns.version, expectedVersion)))
+          .update(runs)
+          .set({ ...next, version: sql`${runs.version} + 1` })
+          .where(and(eq(runs.id, id), eq(runs.version, expectedVersion)))
           .returning();
         if (!updated) fail('runtime_version_conflict', `Runtime run ${id} changed concurrently`);
         await appendEventInTransaction(
@@ -1169,20 +1264,20 @@ export function createRuntimeService(db: Db) {
 
       return db.transaction(async (rawTx) => {
         const tx = rawTx as unknown as TransactionalDb;
-        const [locked] = await tx.select().from(runtimeRuns).where(eq(runtimeRuns.id, id)).for('update');
+        const [locked] = await tx.select().from(runs).where(eq(runs.id, id)).for('update');
         if (!locked) fail('runtime_not_found', `Runtime run ${id} was not found`);
 
         const [replayed] = await tx
           .select()
-          .from(runtimeEvents)
-          .where(and(eq(runtimeEvents.run_id, id), eq(runtimeEvents.idempotency_key, idempotencyKey)))
+          .from(runEvents)
+          .where(and(eq(runEvents.run_id, id), eq(runEvents.idempotency_key, idempotencyKey)))
           .limit(1);
         if (replayed) {
-          const payload = parseJson<{
+          const payload = replayed.payload as unknown as {
             command_fingerprint?: string;
             command?: RuntimeRunCommand;
             result: RuntimeRunRow;
-          }>(replayed.payload);
+          };
           const replayFingerprint =
             payload.command_fingerprint ?? (payload.command ? fingerprint(payload.command) : undefined);
           if (replayFingerprint !== commandFingerprint) {
@@ -1198,13 +1293,13 @@ export function createRuntimeService(db: Db) {
 
         const at = nowIso();
         const [updated] = await tx
-          .update(runtimeRuns)
+          .update(runs)
           .set({
             desired_state: desiredStateForCommand(command.type),
             updated_at: at,
-            version: sql`${runtimeRuns.version} + 1`,
+            version: sql`${runs.version} + 1`,
           })
-          .where(and(eq(runtimeRuns.id, id), eq(runtimeRuns.version, locked.version)))
+          .where(and(eq(runs.id, id), eq(runs.version, locked.version)))
           .returning();
         if (!updated) fail('runtime_version_conflict', `Runtime run ${id} changed concurrently`);
 
@@ -1236,44 +1331,41 @@ export function createRuntimeService(db: Db) {
       return db.transaction(async (rawTx) => {
         const tx = rawTx as unknown as TransactionalDb;
         const where = and(
-          eq(runtimeRuns.status, 'queued'),
-          eq(runtimeRuns.desired_state, 'run'),
-          or(isNull(runtimeRuns.not_before), lte(runtimeRuns.not_before, at)),
-          or(isNull(runtimeRuns.deadline_at), gt(runtimeRuns.deadline_at, at)),
+          eq(runs.status, 'queued'),
+          eq(runs.desired_state, 'run'),
+          or(isNull(runs.not_before), lte(runs.not_before, at)),
+          or(isNull(runs.deadline_at), gt(runs.deadline_at, at)),
           // A lease that expired while still `claimed` never crossed the
           // driver's provider/side-effect boundary. The reaper marks that
           // narrow case so it can be claimed again even when max_attempts=1;
           // a stale `running` lease is never granted this exception.
-          or(
-            sql`${runtimeRuns.attempt} < ${runtimeRuns.max_attempts}`,
-            eq(runtimeRuns.error_code, SAFE_CLAIM_RECOVERY_CODE),
-          ),
-          ...(runId ? [eq(runtimeRuns.id, runId)] : []),
-          ...(kinds && kinds.length > 0 ? [inArray(runtimeRuns.kind, kinds)] : []),
+          or(sql`${runs.attempt} < ${runs.max_attempts}`, eq(runs.error_code, SAFE_CLAIM_RECOVERY_CODE)),
+          ...(runId ? [eq(runs.id, runId)] : []),
+          ...(kinds && kinds.length > 0 ? [inArray(runs.kind, kinds)] : []),
         );
         const [candidate] = await tx
           .select()
-          .from(runtimeRuns)
+          .from(runs)
           .where(where)
-          .orderBy(desc(runtimeRuns.priority), asc(runtimeRuns.created_at), asc(runtimeRuns.id))
+          .orderBy(desc(runs.priority), asc(runs.created_at), asc(runs.id))
           .limit(1)
           .for('update', { skipLocked: true });
         if (!candidate) return undefined;
         const [claimed] = await tx
-          .update(runtimeRuns)
+          .update(runs)
           .set({
             status: 'claimed',
             lease_owner: workerId,
             lease_expires_at: expiresAt,
             heartbeat_at: at,
-            attempt: sql`${runtimeRuns.attempt} + 1`,
+            attempt: sql`${runs.attempt} + 1`,
             error_code: null,
             error_message: null,
             started_at: candidate.started_at ?? at,
             updated_at: at,
-            version: sql`${runtimeRuns.version} + 1`,
+            version: sql`${runs.version} + 1`,
           })
-          .where(and(eq(runtimeRuns.id, candidate.id), eq(runtimeRuns.version, candidate.version)))
+          .where(and(eq(runs.id, candidate.id), eq(runs.version, candidate.version)))
           .returning();
         if (!claimed) return undefined;
         await appendEventInTransaction(
@@ -1303,12 +1395,12 @@ export function createRuntimeService(db: Db) {
       const expiresAt = leaseExpiry(at, input.lease_ms);
       return db.transaction(async (rawTx) => {
         const tx = rawTx as unknown as TransactionalDb;
-        const [run] = await tx.select().from(runtimeRuns).where(eq(runtimeRuns.id, runId)).for('update');
+        const [run] = await tx.select().from(runs).where(eq(runs.id, runId)).for('update');
         if (!run) fail('runtime_not_found', `Runtime run ${runId} was not found`);
         const [step] = await tx
           .select()
-          .from(runtimeSteps)
-          .where(and(eq(runtimeSteps.id, stepId), eq(runtimeSteps.run_id, runId)))
+          .from(runSteps)
+          .where(and(eq(runSteps.id, stepId), eq(runSteps.run_id, runId)))
           .for('update');
         if (!step) fail('runtime_not_found', `Runtime step ${stepId} was not found`);
         if (
@@ -1322,21 +1414,21 @@ export function createRuntimeService(db: Db) {
           return undefined;
         }
         const [claimedRun] = await tx
-          .update(runtimeRuns)
+          .update(runs)
           .set({
             status: 'claimed',
             lease_owner: workerId,
             lease_expires_at: expiresAt,
             heartbeat_at: at,
-            attempt: sql`${runtimeRuns.attempt} + 1`,
+            attempt: sql`${runs.attempt} + 1`,
             started_at: run.started_at ?? at,
             updated_at: at,
-            version: sql`${runtimeRuns.version} + 1`,
+            version: sql`${runs.version} + 1`,
           })
-          .where(and(eq(runtimeRuns.id, run.id), eq(runtimeRuns.version, run.version)))
+          .where(and(eq(runs.id, run.id), eq(runs.version, run.version)))
           .returning();
         const [claimedStep] = await tx
-          .update(runtimeSteps)
+          .update(runSteps)
           .set({
             status: 'claimed',
             lease_owner: workerId,
@@ -1344,9 +1436,9 @@ export function createRuntimeService(db: Db) {
             heartbeat_at: at,
             started_at: step.started_at ?? at,
             updated_at: at,
-            version: sql`${runtimeSteps.version} + 1`,
+            version: sql`${runSteps.version} + 1`,
           })
-          .where(and(eq(runtimeSteps.id, step.id), eq(runtimeSteps.version, step.version)))
+          .where(and(eq(runSteps.id, step.id), eq(runSteps.version, step.version)))
           .returning();
         if (!claimedRun || !claimedStep) {
           fail('runtime_version_conflict', `Runtime execution ${runId}/${stepId} changed concurrently`);
@@ -1397,12 +1489,12 @@ export function createRuntimeService(db: Db) {
       });
       return db.transaction(async (rawTx) => {
         const tx = rawTx as unknown as TransactionalDb;
-        const [locked] = await tx.select().from(runtimeRuns).where(eq(runtimeRuns.id, id)).for('update');
+        const [locked] = await tx.select().from(runs).where(eq(runs.id, id)).for('update');
         if (!locked) fail('runtime_not_found', `Runtime run ${id} was not found`);
         const [replayed] = await tx
           .select()
-          .from(runtimeEvents)
-          .where(and(eq(runtimeEvents.run_id, id), eq(runtimeEvents.idempotency_key, eventKey)))
+          .from(runEvents)
+          .where(and(eq(runEvents.run_id, id), eq(runEvents.idempotency_key, eventKey)))
           .limit(1);
         if (replayed) return replayCommand<RuntimeRunRow>(replayed, commandFingerprint);
         if (
@@ -1416,21 +1508,21 @@ export function createRuntimeService(db: Db) {
           fail('runtime_lease_lost', `Runtime run ${id} lease is no longer owned by this worker`);
         }
         const [updated] = await tx
-          .update(runtimeRuns)
+          .update(runs)
           .set({
             heartbeat_at: at,
             lease_expires_at: expiresAt,
             updated_at: at,
-            version: sql`${runtimeRuns.version} + 1`,
+            version: sql`${runs.version} + 1`,
           })
           .where(
             and(
-              eq(runtimeRuns.id, id),
-              eq(runtimeRuns.version, expectedVersion),
-              eq(runtimeRuns.lease_owner, workerId),
-              inArray(runtimeRuns.status, [...LEASED_RUN_STATUSES]),
-              eq(runtimeRuns.desired_state, 'run'),
-              gt(runtimeRuns.lease_expires_at, at),
+              eq(runs.id, id),
+              eq(runs.version, expectedVersion),
+              eq(runs.lease_owner, workerId),
+              inArray(runs.status, [...LEASED_RUN_STATUSES]),
+              eq(runs.desired_state, 'run'),
+              gt(runs.lease_expires_at, at),
             ),
           )
           .returning();
@@ -1471,9 +1563,9 @@ export function createRuntimeService(db: Db) {
           const tx = rawTx as unknown as TransactionalDb;
           const [stale] = await tx
             .select()
-            .from(runtimeRuns)
-            .where(and(inArray(runtimeRuns.status, [...LEASED_RUN_STATUSES]), lte(runtimeRuns.lease_expires_at, now)))
-            .orderBy(asc(runtimeRuns.lease_expires_at), asc(runtimeRuns.id))
+            .from(runs)
+            .where(and(inArray(runs.status, [...LEASED_RUN_STATUSES]), lte(runs.lease_expires_at, now)))
+            .orderBy(asc(runs.lease_expires_at), asc(runs.id))
             .limit(1)
             .for('update', { skipLocked: true });
           if (!stale) return undefined;
@@ -1505,7 +1597,7 @@ export function createRuntimeService(db: Db) {
                   : 'queued';
           const terminal = nextStatus === 'failed' || nextStatus === 'canceled' || nextStatus === 'interrupted';
           const [updated] = await tx
-            .update(runtimeRuns)
+            .update(runs)
             .set({
               status: nextStatus,
               error_code: cancelRequested
@@ -1530,9 +1622,9 @@ export function createRuntimeService(db: Db) {
               lease_owner: null,
               lease_expires_at: null,
               updated_at: now,
-              version: sql`${runtimeRuns.version} + 1`,
+              version: sql`${runs.version} + 1`,
             })
-            .where(and(eq(runtimeRuns.id, stale.id), eq(runtimeRuns.version, stale.version)))
+            .where(and(eq(runs.id, stale.id), eq(runs.version, stale.version)))
             .returning();
           if (!updated) return undefined;
           if (safeToReclaim) {
@@ -1540,7 +1632,7 @@ export function createRuntimeService(db: Db) {
             // Steps owned by the same dead worker in this transaction so the
             // next claim sees one coherent execution without a projector race.
             await tx
-              .update(runtimeSteps)
+              .update(runSteps)
               .set({
                 status: 'queued',
                 lease_owner: null,
@@ -1548,13 +1640,13 @@ export function createRuntimeService(db: Db) {
                 error_code: SAFE_CLAIM_RECOVERY_CODE,
                 error_message: 'Parent Runtime claim expired before execution entered running',
                 updated_at: now,
-                version: sql`${runtimeSteps.version} + 1`,
+                version: sql`${runSteps.version} + 1`,
               })
               .where(
                 and(
-                  eq(runtimeSteps.run_id, stale.id),
-                  eq(runtimeSteps.status, 'claimed'),
-                  ...(stale.lease_owner ? [eq(runtimeSteps.lease_owner, stale.lease_owner)] : []),
+                  eq(runSteps.run_id, stale.id),
+                  eq(runSteps.status, 'claimed'),
+                  ...(stale.lease_owner ? [eq(runSteps.lease_owner, stale.lease_owner)] : []),
                 ),
               );
           }
@@ -1579,28 +1671,26 @@ export function createRuntimeService(db: Db) {
     // ─── Steps ───────────────────────────────────────────
 
     async createStep(input: RuntimeStepCreateInput): Promise<RuntimeStepRow> {
-      const id = input.id ? assertIdentifier(input.id, 'id') : prefixedId('rts');
+      const id = input.id ? assertIdentifier(input.id, 'id') : prefixedId('runStep');
       const runId = assertIdentifier(input.run_id, 'run_id');
       const stepKey = assertIdentifier(input.step_key, 'step_key');
       const attempt = assertPositiveInteger(input.attempt ?? 1, 'attempt');
-      const encodedInput = encodeJson(input.input, 'step input');
+      const encodedInput = toJson(input.input, 'step input');
       return db.transaction(async (rawTx) => {
         const tx = rawTx as unknown as TransactionalDb;
         const lockKey = `runtime-step:${runId}:${stepKey}:${attempt}`;
         await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`);
         const [existing] = await tx
           .select()
-          .from(runtimeSteps)
-          .where(
-            and(eq(runtimeSteps.run_id, runId), eq(runtimeSteps.step_key, stepKey), eq(runtimeSteps.attempt, attempt)),
-          )
+          .from(runSteps)
+          .where(and(eq(runSteps.run_id, runId), eq(runSteps.step_key, stepKey), eq(runSteps.attempt, attempt)))
           .limit(1);
         if (existing) {
           if (
             (input.id !== undefined && existing.id !== id) ||
             existing.parent_step_id !== (input.parent_step_id ?? null) ||
             existing.kind !== input.kind ||
-            existing.input !== encodedInput
+            !sameJson(existing.input, encodedInput)
           ) {
             fail('runtime_idempotency_conflict', 'Runtime step identity was reused with different input');
           }
@@ -1611,7 +1701,7 @@ export function createRuntimeService(db: Db) {
         }
         const at = nowIso();
         const [created] = await tx
-          .insert(runtimeSteps)
+          .insert(runSteps)
           .values({
             id,
             run_id: runId,
@@ -1641,16 +1731,16 @@ export function createRuntimeService(db: Db) {
     },
 
     async getStep(id: string): Promise<RuntimeStepRow | undefined> {
-      const [row] = await db.select().from(runtimeSteps).where(eq(runtimeSteps.id, id)).limit(1);
+      const [row] = await db.select().from(runSteps).where(eq(runSteps.id, id)).limit(1);
       return row;
     },
 
     async listSteps(runId: string): Promise<RuntimeStepRow[]> {
       return db
         .select()
-        .from(runtimeSteps)
-        .where(eq(runtimeSteps.run_id, assertIdentifier(runId, 'run_id')))
-        .orderBy(asc(runtimeSteps.created_at), asc(runtimeSteps.id));
+        .from(runSteps)
+        .where(eq(runSteps.run_id, assertIdentifier(runId, 'run_id')))
+        .orderBy(asc(runSteps.created_at), asc(runSteps.id));
     },
 
     async claimNextStep(input: RuntimeStepClaimInput): Promise<RuntimeStepRow | undefined> {
@@ -1661,7 +1751,7 @@ export function createRuntimeService(db: Db) {
       const expiresAt = leaseExpiry(at, input.lease_ms);
       return db.transaction(async (rawTx) => {
         const tx = rawTx as unknown as TransactionalDb;
-        const [parentRun] = await tx.select().from(runtimeRuns).where(eq(runtimeRuns.id, runId)).for('update');
+        const [parentRun] = await tx.select().from(runs).where(eq(runs.id, runId)).for('update');
         if (!parentRun) fail('runtime_not_found', `Runtime run ${runId} was not found`);
         if (
           parentRun.desired_state !== 'run' ||
@@ -1674,20 +1764,20 @@ export function createRuntimeService(db: Db) {
         }
         const [candidate] = await tx
           .select()
-          .from(runtimeSteps)
+          .from(runSteps)
           .where(
             and(
-              eq(runtimeSteps.status, 'queued'),
-              eq(runtimeSteps.run_id, runId),
-              ...(stepId ? [eq(runtimeSteps.id, stepId)] : []),
+              eq(runSteps.status, 'queued'),
+              eq(runSteps.run_id, runId),
+              ...(stepId ? [eq(runSteps.id, stepId)] : []),
             ),
           )
-          .orderBy(asc(runtimeSteps.created_at), asc(runtimeSteps.id))
+          .orderBy(asc(runSteps.created_at), asc(runSteps.id))
           .limit(1)
           .for('update', { skipLocked: true });
         if (!candidate) return undefined;
         const [claimed] = await tx
-          .update(runtimeSteps)
+          .update(runSteps)
           .set({
             status: 'claimed',
             lease_owner: workerId,
@@ -1695,9 +1785,9 @@ export function createRuntimeService(db: Db) {
             heartbeat_at: at,
             started_at: candidate.started_at ?? at,
             updated_at: at,
-            version: sql`${runtimeSteps.version} + 1`,
+            version: sql`${runSteps.version} + 1`,
           })
-          .where(and(eq(runtimeSteps.id, candidate.id), eq(runtimeSteps.version, candidate.version)))
+          .where(and(eq(runSteps.id, candidate.id), eq(runSteps.version, candidate.version)))
           .returning();
         if (!claimed) return undefined;
         await appendEventInTransaction(
@@ -1736,16 +1826,16 @@ export function createRuntimeService(db: Db) {
       });
       return db.transaction(async (rawTx) => {
         const tx = rawTx as unknown as TransactionalDb;
-        const [snapshot] = await tx.select().from(runtimeSteps).where(eq(runtimeSteps.id, id)).limit(1);
+        const [snapshot] = await tx.select().from(runSteps).where(eq(runSteps.id, id)).limit(1);
         if (!snapshot) fail('runtime_not_found', `Runtime step ${id} was not found`);
-        const [run] = await tx.select().from(runtimeRuns).where(eq(runtimeRuns.id, snapshot.run_id)).for('update');
+        const [run] = await tx.select().from(runs).where(eq(runs.id, snapshot.run_id)).for('update');
         if (!run) fail('runtime_not_found', `Runtime run ${snapshot.run_id} was not found`);
-        const [locked] = await tx.select().from(runtimeSteps).where(eq(runtimeSteps.id, id)).for('update');
+        const [locked] = await tx.select().from(runSteps).where(eq(runSteps.id, id)).for('update');
         if (!locked) fail('runtime_not_found', `Runtime step ${id} was not found`);
         const [replayed] = await tx
           .select()
-          .from(runtimeEvents)
-          .where(and(eq(runtimeEvents.run_id, locked.run_id), eq(runtimeEvents.idempotency_key, eventKey)))
+          .from(runEvents)
+          .where(and(eq(runEvents.run_id, locked.run_id), eq(runEvents.idempotency_key, eventKey)))
           .limit(1);
         if (replayed) return replayCommand<RuntimeStepRow>(replayed, commandFingerprint);
         if (
@@ -1763,20 +1853,20 @@ export function createRuntimeService(db: Db) {
           fail('runtime_lease_lost', `Runtime step ${id} lease is no longer owned by this worker`);
         }
         const [updated] = await tx
-          .update(runtimeSteps)
+          .update(runSteps)
           .set({
             heartbeat_at: at,
             lease_expires_at: expiresAt,
             updated_at: at,
-            version: sql`${runtimeSteps.version} + 1`,
+            version: sql`${runSteps.version} + 1`,
           })
           .where(
             and(
-              eq(runtimeSteps.id, id),
-              eq(runtimeSteps.version, expectedVersion),
-              eq(runtimeSteps.lease_owner, workerId),
-              inArray(runtimeSteps.status, [...LEASED_STEP_STATUSES]),
-              gt(runtimeSteps.lease_expires_at, at),
+              eq(runSteps.id, id),
+              eq(runSteps.version, expectedVersion),
+              eq(runSteps.lease_owner, workerId),
+              inArray(runSteps.status, [...LEASED_STEP_STATUSES]),
+              gt(runSteps.lease_expires_at, at),
             ),
           )
           .returning();
@@ -1800,9 +1890,9 @@ export function createRuntimeService(db: Db) {
       const now = asIso(at);
       return db
         .select()
-        .from(runtimeSteps)
-        .where(and(inArray(runtimeSteps.status, [...LEASED_STEP_STATUSES]), lte(runtimeSteps.lease_expires_at, now)))
-        .orderBy(asc(runtimeSteps.lease_expires_at), asc(runtimeSteps.id))
+        .from(runSteps)
+        .where(and(inArray(runSteps.status, [...LEASED_STEP_STATUSES]), lte(runSteps.lease_expires_at, now)))
+        .orderBy(asc(runSteps.lease_expires_at), asc(runSteps.id))
         .limit(Math.min(Math.max(limit, 1), 500));
     },
 
@@ -1819,16 +1909,16 @@ export function createRuntimeService(db: Db) {
       });
       return db.transaction(async (rawTx) => {
         const tx = rawTx as unknown as TransactionalDb;
-        const [snapshot] = await tx.select().from(runtimeSteps).where(eq(runtimeSteps.id, id)).limit(1);
+        const [snapshot] = await tx.select().from(runSteps).where(eq(runSteps.id, id)).limit(1);
         if (!snapshot) fail('runtime_not_found', `Runtime step ${id} was not found`);
-        const [run] = await tx.select().from(runtimeRuns).where(eq(runtimeRuns.id, snapshot.run_id)).for('update');
+        const [run] = await tx.select().from(runs).where(eq(runs.id, snapshot.run_id)).for('update');
         if (!run) fail('runtime_not_found', `Runtime run ${snapshot.run_id} was not found`);
-        const [locked] = await tx.select().from(runtimeSteps).where(eq(runtimeSteps.id, id)).for('update');
+        const [locked] = await tx.select().from(runSteps).where(eq(runSteps.id, id)).for('update');
         if (!locked) fail('runtime_not_found', `Runtime step ${id} was not found`);
         const [replayed] = await tx
           .select()
-          .from(runtimeEvents)
-          .where(and(eq(runtimeEvents.run_id, locked.run_id), eq(runtimeEvents.idempotency_key, eventKey)))
+          .from(runEvents)
+          .where(and(eq(runEvents.run_id, locked.run_id), eq(runEvents.idempotency_key, eventKey)))
           .limit(1);
         if (replayed) return replayCommand<RuntimeStepStaleRequeueResult>(replayed, commandFingerprint);
         if (locked.version !== expectedVersion) {
@@ -1844,7 +1934,7 @@ export function createRuntimeService(db: Db) {
           fail('runtime_invalid_transition', `Runtime step ${id} is not a stale retryable lease`);
         }
         const [interrupted] = await tx
-          .update(runtimeSteps)
+          .update(runSteps)
           .set({
             status: 'interrupted',
             error_code: 'runtime_lease_expired',
@@ -1853,14 +1943,14 @@ export function createRuntimeService(db: Db) {
             lease_owner: null,
             lease_expires_at: null,
             updated_at: at,
-            version: sql`${runtimeSteps.version} + 1`,
+            version: sql`${runSteps.version} + 1`,
           })
-          .where(and(eq(runtimeSteps.id, id), eq(runtimeSteps.version, expectedVersion)))
+          .where(and(eq(runSteps.id, id), eq(runSteps.version, expectedVersion)))
           .returning();
         if (!interrupted) fail('runtime_version_conflict', `Runtime step ${id} changed concurrently`);
-        const replacementId = prefixedId('rts');
+        const replacementId = prefixedId('runStep');
         const [replacement] = await tx
-          .insert(runtimeSteps)
+          .insert(runSteps)
           .values({
             id: replacementId,
             run_id: locked.run_id,
@@ -1927,20 +2017,16 @@ export function createRuntimeService(db: Db) {
       const commandFingerprint = fingerprint({ ...input, actor_user_id: input.actor_user_id ?? null });
       return db.transaction(async (rawTx) => {
         const tx = rawTx as unknown as TransactionalDb;
-        const [snapshot] = await tx.select().from(runtimeSteps).where(eq(runtimeSteps.id, input.id)).limit(1);
+        const [snapshot] = await tx.select().from(runSteps).where(eq(runSteps.id, input.id)).limit(1);
         if (!snapshot) fail('runtime_not_found', `Runtime step ${input.id} was not found`);
-        const [parentRun] = await tx
-          .select()
-          .from(runtimeRuns)
-          .where(eq(runtimeRuns.id, snapshot.run_id))
-          .for('update');
+        const [parentRun] = await tx.select().from(runs).where(eq(runs.id, snapshot.run_id)).for('update');
         if (!parentRun) fail('runtime_not_found', `Runtime run ${snapshot.run_id} was not found`);
-        const [locked] = await tx.select().from(runtimeSteps).where(eq(runtimeSteps.id, input.id)).for('update');
+        const [locked] = await tx.select().from(runSteps).where(eq(runSteps.id, input.id)).for('update');
         if (!locked) fail('runtime_not_found', `Runtime step ${input.id} was not found`);
         const [replayed] = await tx
           .select()
-          .from(runtimeEvents)
-          .where(and(eq(runtimeEvents.run_id, locked.run_id), eq(runtimeEvents.idempotency_key, eventKey)))
+          .from(runEvents)
+          .where(and(eq(runEvents.run_id, locked.run_id), eq(runEvents.idempotency_key, eventKey)))
           .limit(1);
         if (replayed) return replayCommand<RuntimeStepRow>(replayed, commandFingerprint);
         if (locked.version !== expectedVersion) {
@@ -1990,11 +2076,11 @@ export function createRuntimeService(db: Db) {
         const renewedLease = workerId && input.to_status === 'running' ? leaseExpiry(at, input.lease_ms!) : null;
         const releasesLease = terminal || ['queued', 'waiting', 'paused'].includes(input.to_status);
         const [updated] = await tx
-          .update(runtimeSteps)
+          .update(runSteps)
           .set({
             status: input.to_status,
             ...(input.output !== undefined
-              ? { output: input.output === null ? null : encodeJson(input.output, 'step output') }
+              ? { output: input.output === null ? null : toJson(input.output, 'step output') }
               : {}),
             ...(input.error_code !== undefined ? { error_code: input.error_code } : {}),
             ...(input.error_message !== undefined ? { error_message: input.error_message } : {}),
@@ -2018,9 +2104,9 @@ export function createRuntimeService(db: Db) {
             ...(releasesLease ? { lease_owner: null, lease_expires_at: null } : {}),
             ...(terminal ? { ended_at: at } : {}),
             updated_at: at,
-            version: sql`${runtimeSteps.version} + 1`,
+            version: sql`${runSteps.version} + 1`,
           })
-          .where(and(eq(runtimeSteps.id, input.id), eq(runtimeSteps.version, expectedVersion)))
+          .where(and(eq(runSteps.id, input.id), eq(runSteps.version, expectedVersion)))
           .returning();
         if (!updated) fail('runtime_version_conflict', `Runtime step ${input.id} changed concurrently`);
         await appendEventInTransaction(
@@ -2042,13 +2128,13 @@ export function createRuntimeService(db: Db) {
     // ─── Tool calls / artifacts / interrupts ─────────────
 
     async createToolCall(input: RuntimeToolCallCreateInput): Promise<RuntimeToolCallRow> {
-      const id = input.id ? assertIdentifier(input.id, 'id') : prefixedId('rtc');
+      const id = input.id ? assertIdentifier(input.id, 'id') : prefixedId('toolCall');
       const runId = assertIdentifier(input.run_id, 'run_id');
       const stepId = input.step_id ? assertIdentifier(input.step_id, 'step_id') : null;
       const toolName = assertIdentifier(input.tool_name, 'tool_name');
       const canonicalInputHash = assertIdentifier(input.canonical_input_hash, 'canonical_input_hash');
       const idempotencyKey = input.idempotency_key ? assertIdentifier(input.idempotency_key, 'idempotency_key') : null;
-      const encodedInput = encodeJson(input.input, 'tool input');
+      const encodedInput = toJson(input.input, 'tool input');
       return db.transaction(async (rawTx) => {
         const tx = rawTx as unknown as TransactionalDb;
         if (stepId) await requireStepInRun(tx, runId, stepId);
@@ -2057,15 +2143,15 @@ export function createRuntimeService(db: Db) {
           await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`);
           const [existing] = await tx
             .select()
-            .from(runtimeToolCalls)
-            .where(and(eq(runtimeToolCalls.run_id, runId), eq(runtimeToolCalls.idempotency_key, idempotencyKey)))
+            .from(runToolCalls)
+            .where(and(eq(runToolCalls.run_id, runId), eq(runToolCalls.idempotency_key, idempotencyKey)))
             .limit(1);
           if (existing) {
             if (
               (input.id !== undefined && existing.id !== id) ||
               existing.step_id !== stepId ||
               existing.tool_name !== toolName ||
-              existing.input !== encodedInput ||
+              !sameJson(existing.input, encodedInput) ||
               existing.canonical_input_hash !== canonicalInputHash ||
               existing.risk_level !== input.risk_level ||
               existing.platform_audit_event_id !== (input.platform_audit_event_id ?? null)
@@ -2077,7 +2163,7 @@ export function createRuntimeService(db: Db) {
         }
         const at = nowIso();
         const [created] = await tx
-          .insert(runtimeToolCalls)
+          .insert(runToolCalls)
           .values({
             id,
             run_id: runId,
@@ -2129,12 +2215,12 @@ export function createRuntimeService(db: Db) {
         // Match createToolCall's lock order so direct evidence writers cannot
         // deadlock this execution admission while both target the same key.
         await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`);
-        const [run] = await tx.select().from(runtimeRuns).where(eq(runtimeRuns.id, runId)).for('update');
+        const [run] = await tx.select().from(runs).where(eq(runs.id, runId)).for('update');
         if (!run) fail('runtime_not_found', `Runtime run ${runId} was not found`);
         const [step] = await tx
           .select()
-          .from(runtimeSteps)
-          .where(and(eq(runtimeSteps.id, stepId), eq(runtimeSteps.run_id, runId)))
+          .from(runSteps)
+          .where(and(eq(runSteps.id, stepId), eq(runSteps.run_id, runId)))
           .for('update');
         if (!step) fail('runtime_invalid_input', `step_id does not belong to runtime run ${runId}`);
         if (run.owner_user_id !== actorUserId) {
@@ -2175,9 +2261,9 @@ export function createRuntimeService(db: Db) {
         // means an earlier transaction already admitted this SDK toolCallId;
         // never turn a network retry into a second external side effect.
         const [existing] = await tx
-          .select({ id: runtimeToolCalls.id, status: runtimeToolCalls.status })
-          .from(runtimeToolCalls)
-          .where(and(eq(runtimeToolCalls.run_id, runId), eq(runtimeToolCalls.idempotency_key, idempotencyKey)))
+          .select({ id: runToolCalls.id, status: runToolCalls.status })
+          .from(runToolCalls)
+          .where(and(eq(runToolCalls.run_id, runId), eq(runToolCalls.idempotency_key, idempotencyKey)))
           .limit(1);
         if (existing) {
           fail(
@@ -2203,8 +2289,8 @@ export function createRuntimeService(db: Db) {
     async getToolCall(id: string): Promise<RuntimeToolCallRow | undefined> {
       const [row] = await db
         .select()
-        .from(runtimeToolCalls)
-        .where(eq(runtimeToolCalls.id, assertIdentifier(id, 'id')))
+        .from(runToolCalls)
+        .where(eq(runToolCalls.id, assertIdentifier(id, 'id')))
         .limit(1);
       return row;
     },
@@ -2212,30 +2298,21 @@ export function createRuntimeService(db: Db) {
     async listToolCalls(runId: string): Promise<RuntimeToolCallRow[]> {
       return db
         .select()
-        .from(runtimeToolCalls)
-        .where(eq(runtimeToolCalls.run_id, assertIdentifier(runId, 'run_id')))
-        .orderBy(asc(runtimeToolCalls.created_at), asc(runtimeToolCalls.id));
+        .from(runToolCalls)
+        .where(eq(runToolCalls.run_id, assertIdentifier(runId, 'run_id')))
+        .orderBy(asc(runToolCalls.created_at), asc(runToolCalls.id));
     },
 
     async transitionToolCall(input: RuntimeToolCallTransitionInput): Promise<RuntimeToolCallRow> {
       const commandFingerprint = fingerprint({ ...input, actor_user_id: input.actor_user_id ?? null });
       return db.transaction(async (rawTx) => {
         const tx = rawTx as unknown as TransactionalDb;
-        const [locked] = await tx
-          .select()
-          .from(runtimeToolCalls)
-          .where(eq(runtimeToolCalls.id, input.id))
-          .for('update');
+        const [locked] = await tx.select().from(runToolCalls).where(eq(runToolCalls.id, input.id)).for('update');
         if (!locked) fail('runtime_not_found', `Runtime tool call ${input.id} was not found`);
         const [replayed] = await tx
           .select()
-          .from(runtimeEvents)
-          .where(
-            and(
-              eq(runtimeEvents.run_id, locked.run_id),
-              eq(runtimeEvents.idempotency_key, input.event_idempotency_key),
-            ),
-          )
+          .from(runEvents)
+          .where(and(eq(runEvents.run_id, locked.run_id), eq(runEvents.idempotency_key, input.event_idempotency_key)))
           .limit(1);
         if (replayed) return replayCommand<RuntimeToolCallRow>(replayed, commandFingerprint);
         if (locked.version !== input.expected_version) {
@@ -2247,20 +2324,20 @@ export function createRuntimeService(db: Db) {
         const at = nowIso();
         const terminal = ['succeeded', 'failed', 'canceled'].includes(input.to_status);
         const [updated] = await tx
-          .update(runtimeToolCalls)
+          .update(runToolCalls)
           .set({
             status: input.to_status,
             ...(input.output !== undefined
-              ? { output: input.output === null ? null : encodeJson(input.output, 'tool output') }
+              ? { output: input.output === null ? null : toJson(input.output, 'tool output') }
               : {}),
             ...(input.error_code !== undefined ? { error_code: input.error_code } : {}),
             ...(input.error_message !== undefined ? { error_message: input.error_message } : {}),
             ...(input.to_status === 'running' && !locked.started_at ? { started_at: at } : {}),
             ...(terminal ? { ended_at: at } : {}),
             updated_at: at,
-            version: sql`${runtimeToolCalls.version} + 1`,
+            version: sql`${runToolCalls.version} + 1`,
           })
-          .where(and(eq(runtimeToolCalls.id, input.id), eq(runtimeToolCalls.version, input.expected_version)))
+          .where(and(eq(runToolCalls.id, input.id), eq(runToolCalls.version, input.expected_version)))
           .returning();
         if (!updated) fail('runtime_version_conflict', `Runtime tool call ${input.id} changed concurrently`);
         await appendEventInTransaction(
@@ -2283,7 +2360,7 @@ export function createRuntimeService(db: Db) {
       if (input.size_bytes !== undefined && input.size_bytes !== null) {
         assertNonnegativeInteger(input.size_bytes, 'size_bytes');
       }
-      const id = input.id ? assertIdentifier(input.id, 'id') : prefixedId('rta');
+      const id = input.id ? assertIdentifier(input.id, 'id') : prefixedId('file');
       const runId = assertIdentifier(input.run_id, 'run_id');
       const stepId = input.step_id ? assertIdentifier(input.step_id, 'step_id') : null;
       const toolCallId = input.tool_call_id ? assertIdentifier(input.tool_call_id, 'tool_call_id') : null;
@@ -2313,68 +2390,78 @@ export function createRuntimeService(db: Db) {
         await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`);
         const [replayed] = await tx
           .select()
-          .from(runtimeEvents)
-          .where(and(eq(runtimeEvents.run_id, runId), eq(runtimeEvents.idempotency_key, eventKey)))
+          .from(runEvents)
+          .where(and(eq(runEvents.run_id, runId), eq(runEvents.idempotency_key, eventKey)))
           .limit(1);
         if (replayed) return replayCommand<RuntimeArtifactRow>(replayed, commandFingerprint);
+        const [run] = await tx.select({ id: runs.id }).from(runs).where(eq(runs.id, runId)).limit(1);
+        if (!run) fail('runtime_not_found', `Runtime run ${runId} was not found`);
         const step = stepId ? await requireStepInRun(tx, runId, stepId) : null;
         const toolCall = toolCallId ? await requireToolCallInRun(tx, runId, toolCallId) : null;
         if (step && toolCall?.step_id && toolCall.step_id !== step.id) {
           fail('runtime_invalid_input', 'tool_call_id and step_id belong to different runtime steps');
         }
         const at = nowIso();
+        const meta: RunFileMeta = {
+          direction: input.direction,
+          kind: assertIdentifier(input.kind, 'kind'),
+          path: input.path ?? null,
+          step_id: stepId,
+          tool_call_id: toolCallId,
+          source: assertIdentifier(input.source, 'source'),
+          ...(input.size_bytes === undefined || input.size_bytes === null ? { size_known: false } : {}),
+        };
         const [created] = await tx
-          .insert(runtimeArtifacts)
+          .insert(files)
           .values({
             id,
+            source: 'run',
             run_id: runId,
-            step_id: stepId,
-            tool_call_id: toolCallId,
-            direction: input.direction,
-            kind: assertIdentifier(input.kind, 'kind'),
             name: assertIdentifier(input.name, 'name', 2048),
-            path: input.path ?? null,
             content_type: input.content_type ?? null,
-            size_bytes: input.size_bytes ?? null,
+            size: input.size_bytes ?? 0,
             sha256: input.sha256 ?? null,
             storage_key: input.storage_key ?? null,
-            status: input.status ?? 'pending',
-            source: assertIdentifier(input.source, 'source'),
+            status: FILE_STATUS_BY_ARTIFACT[input.status ?? 'pending'],
+            meta: meta as unknown as Record<string, unknown>,
+            created_by: input.actor_user_id ?? null,
             created_at: at,
             updated_at: at,
           })
           .returning();
+        const artifact = artifactFromFile(created!);
         await appendEventInTransaction(
           tx,
           {
             run_id: runId,
             step_id: stepId,
             type: 'artifact.created',
-            payload: { command_fingerprint: commandFingerprint, result: created! } as unknown as RuntimePayload,
+            payload: { command_fingerprint: commandFingerprint, result: artifact } as unknown as RuntimePayload,
             actor_user_id: input.actor_user_id ?? null,
             idempotency_key: eventKey,
           },
           at,
         );
-        return created!;
+        return artifact;
       });
     },
 
     async getArtifact(id: string): Promise<RuntimeArtifactRow | undefined> {
       const [row] = await db
         .select()
-        .from(runtimeArtifacts)
-        .where(eq(runtimeArtifacts.id, assertIdentifier(id, 'id')))
+        .from(files)
+        .where(and(eq(files.id, assertIdentifier(id, 'id')), eq(files.source, 'run')))
         .limit(1);
-      return row;
+      return row ? artifactFromFile(row) : undefined;
     },
 
     async listArtifacts(runId: string): Promise<RuntimeArtifactRow[]> {
-      return db
+      const rows = await db
         .select()
-        .from(runtimeArtifacts)
-        .where(eq(runtimeArtifacts.run_id, assertIdentifier(runId, 'run_id')))
-        .orderBy(asc(runtimeArtifacts.created_at), asc(runtimeArtifacts.id));
+        .from(files)
+        .where(and(eq(files.run_id, assertIdentifier(runId, 'run_id')), eq(files.source, 'run')))
+        .orderBy(asc(files.created_at), asc(files.id));
+      return rows.map(artifactFromFile);
     },
 
     async transitionArtifact(input: {
@@ -2389,16 +2476,17 @@ export function createRuntimeService(db: Db) {
     }): Promise<RuntimeArtifactRow> {
       return db.transaction(async (rawTx) => {
         const tx = rawTx as unknown as TransactionalDb;
-        const [locked] = await tx
+        const [lockedFile] = await tx
           .select()
-          .from(runtimeArtifacts)
-          .where(eq(runtimeArtifacts.id, input.id))
+          .from(files)
+          .where(and(eq(files.id, input.id), eq(files.source, 'run')))
           .for('update');
-        if (!locked) fail('runtime_not_found', `Runtime artifact ${input.id} was not found`);
+        if (!lockedFile) fail('runtime_not_found', `Runtime artifact ${input.id} was not found`);
+        const locked = artifactFromFile(lockedFile);
         const [existingEvent] = await tx
           .select()
-          .from(runtimeEvents)
-          .where(and(eq(runtimeEvents.run_id, locked.run_id), eq(runtimeEvents.idempotency_key, input.idempotency_key)))
+          .from(runEvents)
+          .where(and(eq(runEvents.run_id, locked.run_id), eq(runEvents.idempotency_key, input.idempotency_key)))
           .limit(1);
         const commandFingerprint = fingerprint({ ...input, actor_user_id: input.actor_user_id ?? null });
         if (existingEvent) return replayCommand<RuntimeArtifactRow>(existingEvent, commandFingerprint);
@@ -2409,43 +2497,49 @@ export function createRuntimeService(db: Db) {
           assertNonnegativeInteger(input.size_bytes, 'size_bytes');
         }
         const at = nowIso();
+        const meta = { ...(lockedFile.meta ?? {}) } as Record<string, unknown>;
+        if (input.size_bytes !== undefined) {
+          if (input.size_bytes === null) meta.size_known = false;
+          else delete meta.size_known;
+        }
         const [updated] = await tx
-          .update(runtimeArtifacts)
+          .update(files)
           .set({
-            status: input.to_status,
+            status: FILE_STATUS_BY_ARTIFACT[input.to_status],
             ...(input.storage_key !== undefined ? { storage_key: input.storage_key } : {}),
             ...(input.sha256 !== undefined ? { sha256: input.sha256 } : {}),
-            ...(input.size_bytes !== undefined ? { size_bytes: input.size_bytes } : {}),
+            ...(input.size_bytes !== undefined ? { size: input.size_bytes ?? 0, meta } : {}),
             updated_at: at,
           })
-          .where(and(eq(runtimeArtifacts.id, input.id), eq(runtimeArtifacts.status, input.expected_status)))
+          .where(and(eq(files.id, input.id), eq(files.status, FILE_STATUS_BY_ARTIFACT[input.expected_status])))
           .returning();
         if (!updated) fail('runtime_version_conflict', `Runtime artifact ${input.id} changed concurrently`);
+        const artifact = artifactFromFile(updated);
         await appendEventInTransaction(
           tx,
           {
             run_id: locked.run_id,
             step_id: locked.step_id,
             type: 'artifact.status_changed',
-            payload: { command_fingerprint: commandFingerprint, result: updated! } as unknown as RuntimePayload,
+            payload: { command_fingerprint: commandFingerprint, result: artifact } as unknown as RuntimePayload,
             actor_user_id: input.actor_user_id ?? null,
             idempotency_key: input.idempotency_key,
           },
           at,
         );
-        return updated!;
+        return artifact;
       });
     },
 
     async createInterrupt(input: RuntimeInterruptCreateInput): Promise<RuntimeInterruptRow> {
-      const id = input.id ? assertIdentifier(input.id, 'id') : prefixedId('rti');
+      const id = input.id ? assertIdentifier(input.id, 'id') : prefixedId('interrupt');
       const runId = assertIdentifier(input.run_id, 'run_id');
       const stepId = input.step_id ? assertIdentifier(input.step_id, 'step_id') : null;
       const toolCallId = input.tool_call_id ? assertIdentifier(input.tool_call_id, 'tool_call_id') : null;
       const eventKey = input.idempotency_key
         ? assertIdentifier(input.idempotency_key, 'idempotency_key')
         : `interrupt.created:${id}`;
-      const payload = encodeJson(input.payload, 'interrupt payload');
+      const payload = toJson(input.payload, 'interrupt payload');
       const expiresAt = input.expires_at ? asIso(input.expires_at, 'expires_at') : null;
       const assigneeUserId = assertIdentifier(input.assignee_user_id, 'assignee_user_id');
       const commandFingerprint = fingerprint({
@@ -2467,8 +2561,8 @@ export function createRuntimeService(db: Db) {
         await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`);
         const [replayed] = await tx
           .select()
-          .from(runtimeEvents)
-          .where(and(eq(runtimeEvents.run_id, runId), eq(runtimeEvents.idempotency_key, eventKey)))
+          .from(runEvents)
+          .where(and(eq(runEvents.run_id, runId), eq(runEvents.idempotency_key, eventKey)))
           .limit(1);
         if (replayed) return replayCommand<RuntimeInterruptRow>(replayed, commandFingerprint);
         const step = stepId ? await requireStepInRun(tx, runId, stepId) : null;
@@ -2481,7 +2575,7 @@ export function createRuntimeService(db: Db) {
         }
         const at = nowIso();
         const [created] = await tx
-          .insert(runtimeInterrupts)
+          .insert(runInterrupts)
           .values({
             id,
             run_id: runId,
@@ -2499,16 +2593,12 @@ export function createRuntimeService(db: Db) {
           .returning();
         if (toolCallId) {
           const [linked] = await tx
-            .update(runtimeToolCalls)
-            .set({ interrupt_id: id, updated_at: at, version: sql`${runtimeToolCalls.version} + 1` })
+            .update(runToolCalls)
+            .set({ interrupt_id: id, updated_at: at, version: sql`${runToolCalls.version} + 1` })
             .where(
-              and(
-                eq(runtimeToolCalls.id, toolCallId),
-                eq(runtimeToolCalls.run_id, runId),
-                isNull(runtimeToolCalls.interrupt_id),
-              ),
+              and(eq(runToolCalls.id, toolCallId), eq(runToolCalls.run_id, runId), isNull(runToolCalls.interrupt_id)),
             )
-            .returning({ id: runtimeToolCalls.id });
+            .returning({ id: runToolCalls.id });
           if (!linked) fail('runtime_version_conflict', `Runtime tool call ${toolCallId} changed concurrently`);
         }
         await appendEventInTransaction(
@@ -2530,8 +2620,8 @@ export function createRuntimeService(db: Db) {
     async getInterrupt(id: string): Promise<RuntimeInterruptRow | undefined> {
       const [row] = await db
         .select()
-        .from(runtimeInterrupts)
-        .where(eq(runtimeInterrupts.id, assertIdentifier(id, 'id')))
+        .from(runInterrupts)
+        .where(eq(runInterrupts.id, assertIdentifier(id, 'id')))
         .limit(1);
       return row;
     },
@@ -2539,9 +2629,9 @@ export function createRuntimeService(db: Db) {
     async listInterrupts(runId: string): Promise<RuntimeInterruptRow[]> {
       return db
         .select()
-        .from(runtimeInterrupts)
-        .where(eq(runtimeInterrupts.run_id, assertIdentifier(runId, 'run_id')))
-        .orderBy(asc(runtimeInterrupts.created_at), asc(runtimeInterrupts.id));
+        .from(runInterrupts)
+        .where(eq(runInterrupts.run_id, assertIdentifier(runId, 'run_id')))
+        .orderBy(asc(runInterrupts.created_at), asc(runInterrupts.id));
     },
 
     async commandInterrupt(command: RuntimeInterruptCommand, decidedByUserId: string): Promise<RuntimeInterruptRow> {
@@ -2550,16 +2640,14 @@ export function createRuntimeService(db: Db) {
         const tx = rawTx as unknown as TransactionalDb;
         const [locked] = await tx
           .select()
-          .from(runtimeInterrupts)
-          .where(eq(runtimeInterrupts.id, command.interrupt_id))
+          .from(runInterrupts)
+          .where(eq(runInterrupts.id, command.interrupt_id))
           .for('update');
         if (!locked) fail('runtime_not_found', `Runtime interrupt ${command.interrupt_id} was not found`);
         const [replayed] = await tx
           .select()
-          .from(runtimeEvents)
-          .where(
-            and(eq(runtimeEvents.run_id, locked.run_id), eq(runtimeEvents.idempotency_key, command.idempotency_key)),
-          )
+          .from(runEvents)
+          .where(and(eq(runEvents.run_id, locked.run_id), eq(runEvents.idempotency_key, command.idempotency_key)))
           .limit(1);
         if (replayed) return replayCommand<RuntimeInterruptRow>(replayed, commandFingerprint);
         if (locked.version !== command.expected_version) {
@@ -2577,21 +2665,16 @@ export function createRuntimeService(db: Db) {
           fail('runtime_invalid_transition', `Cannot transition interrupt from ${locked.status} to ${status}`);
         }
         const [updated] = await tx
-          .update(runtimeInterrupts)
+          .update(runInterrupts)
           .set({
             status,
-            decision: command.decision === null ? null : encodeJson(command.decision, 'interrupt decision'),
+            decision: command.decision === null ? null : toJson(command.decision, 'interrupt decision'),
             decided_by_user_id: assertIdentifier(decidedByUserId, 'decided_by_user_id'),
             decided_at: at,
             updated_at: at,
-            version: sql`${runtimeInterrupts.version} + 1`,
+            version: sql`${runInterrupts.version} + 1`,
           })
-          .where(
-            and(
-              eq(runtimeInterrupts.id, command.interrupt_id),
-              eq(runtimeInterrupts.version, command.expected_version),
-            ),
-          )
+          .where(and(eq(runInterrupts.id, command.interrupt_id), eq(runInterrupts.version, command.expected_version)))
           .returning();
         if (!updated)
           fail('runtime_version_conflict', `Runtime interrupt ${command.interrupt_id} changed concurrently`);
@@ -2614,15 +2697,15 @@ export function createRuntimeService(db: Db) {
     async listPendingInterrupts(assigneeUserId: string, limit = 100): Promise<RuntimeInterruptRow[]> {
       return db
         .select()
-        .from(runtimeInterrupts)
+        .from(runInterrupts)
         .where(
           and(
-            eq(runtimeInterrupts.assignee_user_id, assigneeUserId),
-            eq(runtimeInterrupts.status, 'pending'),
-            or(isNull(runtimeInterrupts.expires_at), gt(runtimeInterrupts.expires_at, nowIso())),
+            eq(runInterrupts.assignee_user_id, assigneeUserId),
+            eq(runInterrupts.status, 'pending'),
+            or(isNull(runInterrupts.expires_at), gt(runInterrupts.expires_at, nowIso())),
           ),
         )
-        .orderBy(asc(runtimeInterrupts.created_at), asc(runtimeInterrupts.id))
+        .orderBy(asc(runInterrupts.created_at), asc(runInterrupts.id))
         .limit(Math.min(Math.max(limit, 1), 200));
     },
 
@@ -2640,28 +2723,25 @@ export function createRuntimeService(db: Db) {
         : null;
       if (kinds?.length === 0) return { items: [], next_cursor: null };
       const rows = await db
-        .select({ interrupt: runtimeInterrupts, run: runtimeRuns })
-        .from(runtimeInterrupts)
-        .innerJoin(runtimeRuns, eq(runtimeInterrupts.run_id, runtimeRuns.id))
+        .select({ interrupt: runInterrupts, run: runs })
+        .from(runInterrupts)
+        .innerJoin(runs, eq(runInterrupts.run_id, runs.id))
         .where(
           and(
-            ...(assigneeUserId ? [eq(runtimeInterrupts.assignee_user_id, assigneeUserId)] : []),
-            ...(input.status ? [eq(runtimeInterrupts.status, input.status)] : []),
-            ...(kinds ? [inArray(runtimeRuns.kind, kinds)] : []),
+            ...(assigneeUserId ? [eq(runInterrupts.assignee_user_id, assigneeUserId)] : []),
+            ...(input.status ? [eq(runInterrupts.status, input.status)] : []),
+            ...(kinds ? [inArray(runs.kind, kinds)] : []),
             ...(cursor
               ? [
                   or(
-                    sql`${runtimeInterrupts.created_at} < ${cursor.created_at}`,
-                    and(
-                      eq(runtimeInterrupts.created_at, cursor.created_at),
-                      sql`${runtimeInterrupts.id} < ${cursor.id}`,
-                    ),
+                    sql`${runInterrupts.created_at} < ${cursor.created_at}`,
+                    and(eq(runInterrupts.created_at, cursor.created_at), sql`${runInterrupts.id} < ${cursor.id}`),
                   ),
                 ]
               : []),
           ),
         )
-        .orderBy(desc(runtimeInterrupts.created_at), desc(runtimeInterrupts.id))
+        .orderBy(desc(runInterrupts.created_at), desc(runInterrupts.id))
         .limit(limit + 1);
       const hasMore = rows.length > limit;
       const items = hasMore ? rows.slice(0, limit) : rows;
@@ -2683,30 +2763,30 @@ export function createRuntimeService(db: Db) {
           ? []
           : await db
               .select({
-                kind: runtimeRuns.kind,
-                status: runtimeRuns.status,
+                kind: runs.kind,
+                status: runs.status,
                 count: sql<number>`count(*)`,
               })
-              .from(runtimeRuns)
+              .from(runs)
               .where(
                 and(
-                  ...(ownerUserId ? [eq(runtimeRuns.owner_user_id, ownerUserId)] : []),
-                  ...(kinds ? [inArray(runtimeRuns.kind, kinds)] : []),
+                  ...(ownerUserId ? [eq(runs.owner_user_id, ownerUserId)] : []),
+                  ...(kinds ? [inArray(runs.kind, kinds)] : []),
                 ),
               )
-              .groupBy(runtimeRuns.kind, runtimeRuns.status);
+              .groupBy(runs.kind, runs.status);
       const [pendingRow] =
         kinds?.length === 0
           ? [{ count: 0 }]
           : await db
               .select({ count: sql<number>`count(*)` })
-              .from(runtimeInterrupts)
-              .innerJoin(runtimeRuns, eq(runtimeInterrupts.run_id, runtimeRuns.id))
+              .from(runInterrupts)
+              .innerJoin(runs, eq(runInterrupts.run_id, runs.id))
               .where(
                 and(
-                  eq(runtimeInterrupts.status, 'pending'),
-                  ...(assigneeUserId ? [eq(runtimeInterrupts.assignee_user_id, assigneeUserId)] : []),
-                  ...(kinds ? [inArray(runtimeRuns.kind, kinds)] : []),
+                  eq(runInterrupts.status, 'pending'),
+                  ...(assigneeUserId ? [eq(runInterrupts.assignee_user_id, assigneeUserId)] : []),
+                  ...(kinds ? [inArray(runs.kind, kinds)] : []),
                 ),
               );
       const byStatus = Object.fromEntries(
@@ -2738,24 +2818,24 @@ export function createRuntimeService(db: Db) {
           const tx = rawTx as unknown as TransactionalDb;
           const [candidate] = await tx
             .select()
-            .from(runtimeInterrupts)
-            .where(and(eq(runtimeInterrupts.status, 'pending'), lte(runtimeInterrupts.expires_at, now)))
-            .orderBy(asc(runtimeInterrupts.expires_at), asc(runtimeInterrupts.id))
+            .from(runInterrupts)
+            .where(and(eq(runInterrupts.status, 'pending'), lte(runInterrupts.expires_at, now)))
+            .orderBy(asc(runInterrupts.expires_at), asc(runInterrupts.id))
             .limit(1)
             .for('update', { skipLocked: true });
           if (!candidate) return undefined;
           const [updated] = await tx
-            .update(runtimeInterrupts)
+            .update(runInterrupts)
             .set({
               status: 'expired',
               updated_at: now,
-              version: sql`${runtimeInterrupts.version} + 1`,
+              version: sql`${runInterrupts.version} + 1`,
             })
             .where(
               and(
-                eq(runtimeInterrupts.id, candidate.id),
-                eq(runtimeInterrupts.version, candidate.version),
-                eq(runtimeInterrupts.status, 'pending'),
+                eq(runInterrupts.id, candidate.id),
+                eq(runInterrupts.version, candidate.version),
+                eq(runInterrupts.status, 'pending'),
               ),
             )
             .returning();
@@ -2790,9 +2870,9 @@ export function createRuntimeService(db: Db) {
       const limit = Math.min(Math.max(opts.limit ?? 500, 1), 1000);
       return db
         .select()
-        .from(runtimeEvents)
-        .where(and(eq(runtimeEvents.run_id, runId), gt(runtimeEvents.seq, after)))
-        .orderBy(asc(runtimeEvents.seq))
+        .from(runEvents)
+        .where(and(eq(runEvents.run_id, runId), gt(runEvents.seq, after)))
+        .orderBy(asc(runEvents.seq))
         .limit(limit);
     },
 
@@ -2800,19 +2880,19 @@ export function createRuntimeService(db: Db) {
     async listAllEvents(runId: string): Promise<RuntimeEventRow[]> {
       return db
         .select()
-        .from(runtimeEvents)
-        .where(eq(runtimeEvents.run_id, assertIdentifier(runId, 'run_id')))
-        .orderBy(asc(runtimeEvents.seq));
+        .from(runEvents)
+        .where(eq(runEvents.run_id, assertIdentifier(runId, 'run_id')))
+        .orderBy(asc(runEvents.seq));
     },
 
     async getEventByIdempotency(runId: string, idempotencyKey: string): Promise<RuntimeEventRow | undefined> {
       const [row] = await db
         .select()
-        .from(runtimeEvents)
+        .from(runEvents)
         .where(
           and(
-            eq(runtimeEvents.run_id, assertIdentifier(runId, 'run_id')),
-            eq(runtimeEvents.idempotency_key, assertIdentifier(idempotencyKey, 'idempotency_key')),
+            eq(runEvents.run_id, assertIdentifier(runId, 'run_id')),
+            eq(runEvents.idempotency_key, assertIdentifier(idempotencyKey, 'idempotency_key')),
           ),
         )
         .limit(1);
@@ -2820,11 +2900,7 @@ export function createRuntimeService(db: Db) {
     },
 
     async listOutboxForEvent(eventId: string): Promise<RuntimeOutboxRow[]> {
-      return db
-        .select()
-        .from(runtimeOutbox)
-        .where(eq(runtimeOutbox.event_id, eventId))
-        .orderBy(asc(runtimeOutbox.topic));
+      return db.select().from(runOutbox).where(eq(runOutbox.event_id, eventId)).orderBy(asc(runOutbox.topic));
     },
 
     async claimOutbox(input: RuntimeOutboxClaimInput): Promise<RuntimeOutboxRow[]> {
@@ -2836,66 +2912,66 @@ export function createRuntimeService(db: Db) {
       return db.transaction(async (rawTx) => {
         const tx = rawTx as unknown as TransactionalDb;
         await tx
-          .update(runtimeOutbox)
+          .update(runOutbox)
           .set({
             status: 'dead_letter',
             lease_owner: null,
             lease_expires_at: null,
             last_error: 'delivery lease expired after final attempt',
             updated_at: at,
-            version: sql`${runtimeOutbox.version} + 1`,
+            version: sql`${runOutbox.version} + 1`,
           })
           .where(
             and(
-              eq(runtimeOutbox.status, 'claimed'),
-              lte(runtimeOutbox.lease_expires_at, at),
-              sql`${runtimeOutbox.attempts} >= ${runtimeOutbox.max_attempts}`,
+              eq(runOutbox.status, 'claimed'),
+              lte(runOutbox.lease_expires_at, at),
+              sql`${runOutbox.attempts} >= ${runOutbox.max_attempts}`,
             ),
           );
         await tx
-          .update(runtimeOutbox)
+          .update(runOutbox)
           .set({
             status: 'pending',
             lease_owner: null,
             lease_expires_at: null,
             last_error: 'delivery lease expired',
             updated_at: at,
-            version: sql`${runtimeOutbox.version} + 1`,
+            version: sql`${runOutbox.version} + 1`,
           })
           .where(
             and(
-              eq(runtimeOutbox.status, 'claimed'),
-              lte(runtimeOutbox.lease_expires_at, at),
-              sql`${runtimeOutbox.attempts} < ${runtimeOutbox.max_attempts}`,
+              eq(runOutbox.status, 'claimed'),
+              lte(runOutbox.lease_expires_at, at),
+              sql`${runOutbox.attempts} < ${runOutbox.max_attempts}`,
             ),
           );
 
         const candidates = await tx
           .select()
-          .from(runtimeOutbox)
+          .from(runOutbox)
           .where(
             and(
-              eq(runtimeOutbox.status, 'pending'),
-              lte(runtimeOutbox.available_at, at),
-              ...(topics ? [inArray(runtimeOutbox.topic, topics)] : []),
+              eq(runOutbox.status, 'pending'),
+              lte(runOutbox.available_at, at),
+              ...(topics ? [inArray(runOutbox.topic, topics)] : []),
             ),
           )
-          .orderBy(asc(runtimeOutbox.available_at), asc(runtimeOutbox.created_at), asc(runtimeOutbox.id))
+          .orderBy(asc(runOutbox.available_at), asc(runOutbox.created_at), asc(runOutbox.id))
           .limit(limit)
           .for('update', { skipLocked: true });
         if (candidates.length === 0) return [];
         const ids = candidates.map((row) => row.id);
         return tx
-          .update(runtimeOutbox)
+          .update(runOutbox)
           .set({
             status: 'claimed',
-            attempts: sql`${runtimeOutbox.attempts} + 1`,
+            attempts: sql`${runOutbox.attempts} + 1`,
             lease_owner: workerId,
             lease_expires_at: expiresAt,
             updated_at: at,
-            version: sql`${runtimeOutbox.version} + 1`,
+            version: sql`${runOutbox.version} + 1`,
           })
-          .where(and(inArray(runtimeOutbox.id, ids), eq(runtimeOutbox.status, 'pending')))
+          .where(and(inArray(runOutbox.id, ids), eq(runOutbox.status, 'pending')))
           .returning();
       });
     },
@@ -2908,7 +2984,7 @@ export function createRuntimeService(db: Db) {
     }): Promise<RuntimeOutboxRow> {
       const at = asIso(input.at);
       const [updated] = await db
-        .update(runtimeOutbox)
+        .update(runOutbox)
         .set({
           status: 'delivered',
           lease_owner: null,
@@ -2916,15 +2992,15 @@ export function createRuntimeService(db: Db) {
           last_error: null,
           delivered_at: at,
           updated_at: at,
-          version: sql`${runtimeOutbox.version} + 1`,
+          version: sql`${runOutbox.version} + 1`,
         })
         .where(
           and(
-            eq(runtimeOutbox.id, input.id),
-            eq(runtimeOutbox.version, input.expected_version),
-            eq(runtimeOutbox.status, 'claimed'),
-            eq(runtimeOutbox.lease_owner, input.worker_id),
-            gt(runtimeOutbox.lease_expires_at, at),
+            eq(runOutbox.id, input.id),
+            eq(runOutbox.version, input.expected_version),
+            eq(runOutbox.status, 'claimed'),
+            eq(runOutbox.lease_owner, input.worker_id),
+            gt(runOutbox.lease_expires_at, at),
           ),
         )
         .returning();
@@ -2942,7 +3018,7 @@ export function createRuntimeService(db: Db) {
       const at = asIso(input.at);
       return db.transaction(async (rawTx) => {
         const tx = rawTx as unknown as TransactionalDb;
-        const [locked] = await tx.select().from(runtimeOutbox).where(eq(runtimeOutbox.id, input.id)).for('update');
+        const [locked] = await tx.select().from(runOutbox).where(eq(runOutbox.id, input.id)).for('update');
         if (
           !locked ||
           locked.version !== input.expected_version ||
@@ -2955,16 +3031,16 @@ export function createRuntimeService(db: Db) {
         }
         const status = locked.attempts >= locked.max_attempts ? 'dead_letter' : 'failed';
         const [updated] = await tx
-          .update(runtimeOutbox)
+          .update(runOutbox)
           .set({
             status,
             lease_owner: null,
             lease_expires_at: null,
             last_error: input.error,
             updated_at: at,
-            version: sql`${runtimeOutbox.version} + 1`,
+            version: sql`${runOutbox.version} + 1`,
           })
-          .where(and(eq(runtimeOutbox.id, input.id), eq(runtimeOutbox.version, input.expected_version)))
+          .where(and(eq(runOutbox.id, input.id), eq(runOutbox.version, input.expected_version)))
           .returning();
         return updated!;
       });
@@ -2977,18 +3053,18 @@ export function createRuntimeService(db: Db) {
     }): Promise<RuntimeOutboxRow> {
       const at = nowIso();
       const [updated] = await db
-        .update(runtimeOutbox)
+        .update(runOutbox)
         .set({
           status: 'pending',
           available_at: asIso(input.available_at, 'available_at'),
           updated_at: at,
-          version: sql`${runtimeOutbox.version} + 1`,
+          version: sql`${runOutbox.version} + 1`,
         })
         .where(
           and(
-            eq(runtimeOutbox.id, input.id),
-            eq(runtimeOutbox.version, input.expected_version),
-            eq(runtimeOutbox.status, 'failed'),
+            eq(runOutbox.id, input.id),
+            eq(runOutbox.version, input.expected_version),
+            eq(runOutbox.status, 'failed'),
           ),
         )
         .returning();
@@ -2999,9 +3075,9 @@ export function createRuntimeService(db: Db) {
     async listActiveRuns(limit = 200): Promise<RuntimeRunRow[]> {
       return db
         .select()
-        .from(runtimeRuns)
-        .where(inArray(runtimeRuns.status, [...ACTIVE_RUN_STATUSES]))
-        .orderBy(asc(runtimeRuns.created_at), asc(runtimeRuns.id))
+        .from(runs)
+        .where(inArray(runs.status, [...ACTIVE_RUN_STATUSES]))
+        .orderBy(asc(runs.created_at), asc(runs.id))
         .limit(Math.min(Math.max(limit, 1), 1000));
     },
   };

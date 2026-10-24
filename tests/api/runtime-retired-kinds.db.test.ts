@@ -127,9 +127,11 @@ describe('settleRetiredRuntimeRuns', () => {
 
     // Old runs never page their owner on the way out.
     const terminal = (await db.runtime.listEvents(mission.id)).find(
-      (event) => event.type === 'run.status_changed' && JSON.parse(event.payload).result.status === 'canceled',
+      (event) =>
+        event.type === 'run.status_changed' &&
+        (event.payload as { result?: { status?: string } }).result?.status === 'canceled',
     );
-    expect(JSON.parse(terminal!.payload)).toMatchObject({ notification_policy: 'suppress' });
+    expect(terminal!.payload).toMatchObject({ notification_policy: 'suppress' });
 
     // A second boot finds nothing left to do for these runs.
     await settleRetiredRuntimeRuns(db);

@@ -13,7 +13,7 @@ import type { KnowledgeDoc, KnowledgeDocVersion } from '@greenhouse/types/api';
 import { Badge, Button, Dialog, Select, Spinner, toast } from '../ui';
 import { Markdown, useActiveHeading, useDocumentHeadings, type DocHeading } from '../markdown';
 import { ChevronRight, Eye, Files, HelpCircle, Pin, RotateCcw } from '../../lib/icons';
-import { safeParse, formatDate } from '../../lib/utils';
+import { formatDate } from '../../lib/utils';
 import { listKnowledgeVersions, restoreKnowledgeVersion } from '../../lib/api/knowledge';
 import { computeLineDiffWithWords } from '../../lib/wiki-diff';
 import { renderDiffWords } from '../../lib/diff-words';
@@ -27,8 +27,8 @@ interface KnowledgeDetailProps {
 export function KnowledgeDetail({ doc }: KnowledgeDetailProps) {
   const t = useT();
   const contentRef = useRef<HTMLDivElement>(null);
-  const questions = safeParse<string[]>(doc.questions, []);
-  const topics = safeParse<string[]>(doc.topics, []);
+  const questions = doc.questions ?? [];
+  const topics = doc.topics ?? [];
   const headings = useDocumentHeadings(contentRef, doc.content_markdown || '');
 
   // The scroll container is reused when switching docs, so the previous
@@ -233,7 +233,7 @@ function DocOutline({
  * "where this came from", say). Rendered below the document body;
  * an extension that is compiled in but not active registers nothing.
  */
-function ExtensionDocPanels({ docId }: { docId: number }) {
+function ExtensionDocPanels({ docId }: { docId: string }) {
   const active = useExtensionsStore((s) => s.extensions);
   const panels = registeredKnowledgeDocPanels().filter((panel) =>
     active.some((extension) => extension.id === panel.extensionId),

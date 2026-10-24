@@ -2,19 +2,19 @@
  * Refresh token service — refresh token persistence for seamless token renewal (PostgreSQL).
  */
 
-import { randomUUID } from 'node:crypto';
 import { eq, and, sql } from 'drizzle-orm';
 import { nowIso } from '@greenhouse/utils/date';
 
 import type { Db } from '../client.js';
-import { refreshTokens } from '../schema/index.js';
-import type { RefreshTokenRow } from '../schema/user.js';
+import { newId } from '../ids.js';
+import { authRefreshTokens as refreshTokens } from '../schema/index.js';
+import type { RefreshTokenRow } from '../schema/identity.js';
 
 export function createRefreshTokenService(db: Db) {
   const service = {
     /** Store a new refresh token. Returns the token ID. */
     async create(userId: string, tokenHash: string, expiresAt: string, authVersion: number): Promise<string> {
-      const id = randomUUID();
+      const id = newId('refreshToken');
       await db.insert(refreshTokens).values({
         id,
         user_id: userId,

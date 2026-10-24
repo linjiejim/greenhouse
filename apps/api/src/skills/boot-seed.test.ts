@@ -40,8 +40,6 @@ function fakeUser(overrides: Partial<UserRow>): UserRow {
     password_hash: 'x',
     role: 'team',
     status: 'active',
-    daily_message_limit: 200,
-    monthly_token_limit: 20000000,
     created_by: null,
     created_at: nowIso(),
     updated_at: nowIso(),
@@ -60,17 +58,17 @@ function memoryDb(users: UserRow[]) {
       if (rows.some((r) => r.name === input.name)) throw new Error('duplicate name');
       const now = nowIso();
       const row: SkillRow = {
-        id: nextId++,
+        id: String(nextId++),
         name: input.name,
         display_name: input.display_name || input.name,
         description: input.description,
-        tags: JSON.stringify(input.tags ?? []),
+        tags: input.tags ?? [],
         latest_version: first.version,
         status: 'active',
         owner_user_id: input.owner_user_id,
         download_count: 0,
         scan_status: 'pending',
-        scan_findings: '[]',
+        scan_findings: [],
         scan_version: null,
         scanned_at: null,
         scan_reviewed_by: null,
@@ -80,12 +78,12 @@ function memoryDb(users: UserRow[]) {
         updated_at: now,
       };
       rows.push(row);
-      versions.push({ id: nextVersionId++, skill_id: row.id, created_at: now, ...first });
+      versions.push({ id: String(nextVersionId++), skill_id: row.id, created_at: now, ...first });
       return row;
     },
-    async addVersion(skillId: number, input: SkillVersionInput): Promise<SkillVersionRow> {
+    async addVersion(skillId: string, input: SkillVersionInput): Promise<SkillVersionRow> {
       if (versions.some((v) => v.skill_id === skillId && v.version === input.version)) throw new Error('dup version');
-      const row: SkillVersionRow = { id: nextVersionId++, skill_id: skillId, created_at: nowIso(), ...input };
+      const row: SkillVersionRow = { id: String(nextVersionId++), skill_id: skillId, created_at: nowIso(), ...input };
       versions.push(row);
       const skill = rows.find((r) => r.id === skillId)!;
       skill.latest_version = input.version;
@@ -94,28 +92,28 @@ function memoryDb(users: UserRow[]) {
     async getByName(name: string): Promise<SkillRow | undefined> {
       return rows.find((r) => r.name === name);
     },
-    async getById(id: number): Promise<SkillRow | undefined> {
+    async getById(id: string): Promise<SkillRow | undefined> {
       return rows.find((r) => r.id === id);
     },
-    async getVersion(skillId: number, version: string): Promise<SkillVersionRow | undefined> {
+    async getVersion(skillId: string, version: string): Promise<SkillVersionRow | undefined> {
       return versions.find((v) => v.skill_id === skillId && v.version === version);
     },
-    async listVersions(skillId: number): Promise<SkillVersionRow[]> {
+    async listVersions(skillId: string): Promise<SkillVersionRow[]> {
       return versions.filter((v) => v.skill_id === skillId);
     },
-    async updateMeta(id: number, updates: SkillMetaUpdateInput): Promise<SkillRow | undefined> {
+    async updateMeta(id: string, updates: SkillMetaUpdateInput): Promise<SkillRow | undefined> {
       const row = rows.find((r) => r.id === id);
       if (!row) return undefined;
       if (updates.display_name !== undefined) row.display_name = updates.display_name;
       if (updates.description !== undefined) row.description = updates.description;
-      if (updates.tags !== undefined) row.tags = JSON.stringify(updates.tags);
+      if (updates.tags !== undefined) row.tags = updates.tags;
       return row;
     },
-    async setScanResult(id: number, input: SkillScanResultInput): Promise<SkillRow | undefined> {
+    async setScanResult(id: string, input: SkillScanResultInput): Promise<SkillRow | undefined> {
       const row = rows.find((r) => r.id === id);
       if (!row) return undefined;
       row.scan_status = input.status;
-      row.scan_findings = JSON.stringify(input.findings);
+      row.scan_findings = input.findings;
       row.scan_version = input.version;
       row.scanned_at = nowIso();
       return row;
@@ -216,7 +214,7 @@ describe('seedSkillhub', () => {
 
     const skill = await db.skills.getByName('pack-a');
     expect(skill?.owner_user_id).toBe('u-super');
-    expect(JSON.parse(skill!.tags)).toEqual(['official', 'apps']);
+    expect(skill!.tags).toEqual(['official', 'apps']);
     expect(skill?.display_name).toBe('pack-a 标题');
 
     const second = await seedSkillhub(db, seedEnv);

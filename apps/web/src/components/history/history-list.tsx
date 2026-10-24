@@ -6,7 +6,7 @@
 
 import React from 'react';
 import { Badge, EmptyState, Pagination, Spinner } from '../ui';
-import { Archive, Inbox, Pencil, RotateCcw, Share2, Star, ThumbsDown, ThumbsUp, Trash2 } from '../../lib/icons';
+import { Archive, Inbox, RotateCcw, Share2, Trash2 } from '../../lib/icons';
 import type { LucideIcon } from '../../lib/icons';
 import { SessionTypeIcon } from '../chat/session-type-icon';
 import type { HistorySession } from './filter-model';
@@ -25,7 +25,6 @@ interface HistoryListProps {
   /** Status bucket being viewed — used for the empty-state copy. */
   status: string;
   onOpen: (session: HistorySession) => void;
-  onEdit: (session: HistorySession) => void;
   onStatusChange: (session: HistorySession, status: string) => void;
   onDelete: (session: HistorySession) => void;
 }
@@ -40,7 +39,6 @@ export function HistoryList({
   loading,
   status,
   onOpen,
-  onEdit,
   onStatusChange,
   onDelete,
 }: HistoryListProps) {
@@ -70,7 +68,6 @@ export function HistoryList({
               key={session.id}
               session={session}
               onOpen={onOpen}
-              onEdit={onEdit}
               onStatusChange={onStatusChange}
               onDelete={onDelete}
             />
@@ -92,10 +89,9 @@ export function HistoryList({
 function SessionRow({
   session,
   onOpen,
-  onEdit,
   onStatusChange,
   onDelete,
-}: Pick<HistoryListProps, 'onOpen' | 'onEdit' | 'onStatusChange' | 'onDelete'> & {
+}: Pick<HistoryListProps, 'onOpen' | 'onStatusChange' | 'onDelete'> & {
   session: HistorySession;
 }) {
   const t = useT();
@@ -123,22 +119,7 @@ function SessionRow({
             {t('history.shared')}
           </Badge>
         )}
-        {/* Rating and feedback are read-only here. They are set where they are
-            earned — in the conversation's own feedback panel, and via the
-            sidebar's star — so a second set of writable controls on every row
-            was nine interactive glyphs paying for a duplicate path. */}
-        {session.rating ? (
-          <span
-            className="flex flex-shrink-0 items-center gap-0.5 text-[11px] tabular-nums text-star"
-            title={t('chat.rating')}
-          >
-            <Star size={10} className="fill-current" />
-            {session.rating}
-          </span>
-        ) : null}
-        <div className="flex-shrink-0">{feedbackBadge(session.feedback)}</div>
         <div className="flex flex-shrink-0 items-center gap-0 md:opacity-0 md:transition-opacity md:group-hover:opacity-100">
-          <RowActionButton icon={Pencil} title={t('history.adminComment')} onClick={stop(() => onEdit(session))} />
           {session.status === 'deleted' || session.status === 'archived' ? (
             <RowActionButton
               icon={RotateCcw}
@@ -161,11 +142,6 @@ function SessionRow({
         <span className="flex-shrink-0">{formatDate(session.updated_at)}</span>
         <span className="hidden md:inline font-mono flex-shrink-0">{session.id.slice(0, 8)}</span>
         <SessionTypeIcon profileId={session.profile_id} size={11} />
-        {session.comment && (
-          <span className="text-fg-muted truncate min-w-0 flex items-center gap-0.5">
-            <Pencil size={9} /> {session.comment}
-          </span>
-        )}
       </div>
     </div>
   );
@@ -189,21 +165,5 @@ function RowActionButton({
     >
       <Icon size={12} />
     </button>
-  );
-}
-
-function feedbackBadge(feedback: string | null) {
-  if (!feedback) return null;
-  const map: Record<string, { variant: 'default' | 'success' | 'destructive'; icon: LucideIcon }> = {
-    good: { variant: 'success', icon: ThumbsUp },
-    bad: { variant: 'destructive', icon: ThumbsDown },
-    starred: { variant: 'default', icon: Star },
-  };
-  const info = map[feedback];
-  if (!info) return null;
-  return (
-    <Badge variant={info.variant}>
-      <info.icon size={10} />
-    </Badge>
   );
 }

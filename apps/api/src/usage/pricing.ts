@@ -4,7 +4,7 @@
  *
  * The price list is models.yaml / services.yaml, overridden per model or per
  * service × provider by what a super set on Services & pricing
- * (`usage_price_overrides`). Overrides are cached in-process and refreshed by
+ * (`prices`). Overrides are cached in-process and refreshed by
  * `syncPriceOverrides()` (every metering entry point calls it; a write
  * refreshes immediately, other processes within OVERRIDE_TTL_MS). A change
  * applies to calls settled after it; every fact keeps the price it was settled
@@ -112,7 +112,7 @@ export function effectiveModelPrice(
   return price ? { price, source: 'config', model: id } : undefined;
 }
 
-// ─── Applied-price snapshots (llm_usage / service_usage `price_applied`) ─
+// ─── Applied-price snapshots (usage_events `price_applied`) ─
 
 export function tokenPriceSnapshot(price: TokenPrice, source: PriceSource, extra: Record<string, unknown> = {}) {
   return {

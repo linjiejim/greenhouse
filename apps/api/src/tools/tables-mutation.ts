@@ -8,13 +8,14 @@ import { tool } from 'ai';
 import { z } from 'zod';
 import { defineTool, type ToolMeta } from './define.js';
 import { dispatchTablesAgentAction } from '../platform/tables/agent-adapter.js';
+import { tableRowIdSchema } from '../platform/tables/schema-plan.js';
 
 const valuesSchema = z
   .record(z.string(), z.unknown())
-  .describe('Record values keyed by stable numeric field ID strings from schema.get.');
+  .describe('Record values keyed by stable field IDs from schema.get.');
 
 const batchItemSchema = z.object({
-  record_id: z.number().int().positive().optional().describe('Existing record ID; omit to create.'),
+  record_id: tableRowIdSchema.optional().describe('Existing record ID; omit to create.'),
   revision: z.number().int().positive().optional().describe('Required with record_id for optimistic concurrency.'),
   values: valuesSchema,
 });
@@ -23,8 +24,8 @@ const tablesMutationSchema = z.object({
   action: z
     .enum(['records.create', 'records.update', 'records.upsert', 'records.batch_upsert', 'records.delete'])
     .describe('Bounded record mutation action.'),
-  table_id: z.number().int().positive().describe('Target Table ID.'),
-  record_id: z.number().int().positive().optional().describe('Existing record ID for update/upsert/delete.'),
+  table_id: tableRowIdSchema.describe('Target Table ID.'),
+  record_id: tableRowIdSchema.optional().describe('Existing record ID for update/upsert/delete.'),
   revision: z.number().int().positive().optional().describe('Current revision for update/upsert/delete.'),
   values: valuesSchema.optional().describe('Create/update values keyed by field ID.'),
   items: z.array(batchItemSchema).min(1).max(100).optional().describe('Batch upsert items, maximum 100.'),

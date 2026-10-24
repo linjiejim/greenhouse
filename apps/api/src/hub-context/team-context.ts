@@ -11,7 +11,7 @@
  * each is still read through `resolveKbAccess` for this member.
  */
 
-import type { DatabaseProvider, KnowledgeDocRow } from '@greenhouse/db';
+import type { DatabaseProvider, KnowledgeDoc } from '@greenhouse/db';
 import type { ActorContext } from '@greenhouse/platform-kernel';
 import { allMcpResourceGroups, isRetiredMcpResourceGroup } from '@greenhouse/types/mcp';
 import { DATA_CATALOG_TOOL, TEAM_CONTEXT_TOOL, TEAM_CONTEXT_URIS } from '@greenhouse/types/hub-context';
@@ -106,7 +106,7 @@ function knowledgeReachable(reachable: ReadonlySet<string>): boolean {
   return reachable.has('knowledge_query');
 }
 
-async function readableDocs(caller: TeamContextCaller, docs: KnowledgeDocRow[]): Promise<KnowledgeDocRow[]> {
+async function readableDocs(caller: TeamContextCaller, docs: KnowledgeDoc[]): Promise<KnowledgeDoc[]> {
   const allowed = await Promise.all(
     docs.map(async (doc) => canRead(await resolveKbAccess(caller.db, doc, caller.userId))),
   );
@@ -124,12 +124,12 @@ async function contextDocs(caller: TeamContextCaller) {
   return { conventions, glossary: glossary[0] ?? null };
 }
 
-function docSource(doc: KnowledgeDocRow): string {
+function docSource(doc: KnowledgeDoc): string {
   const updated = doc.updated_at ? new Date(doc.updated_at).toISOString().slice(0, 10) : 'unknown';
   return `Source: greenhouse://knowledge/doc/${encodeURIComponent(doc.doc_id)} · updated ${updated}`;
 }
 
-function conventionsMarkdown(docs: KnowledgeDocRow[]): string {
+function conventionsMarkdown(docs: KnowledgeDoc[]): string {
   return [
     '# Team conventions',
     '',
@@ -139,7 +139,7 @@ function conventionsMarkdown(docs: KnowledgeDocRow[]): string {
   ].join('\n');
 }
 
-function glossaryMarkdown(doc: KnowledgeDocRow): string {
+function glossaryMarkdown(doc: KnowledgeDoc): string {
   return ['# Glossary', '', `## ${doc.title}`, '', docSource(doc), '', doc.content.trim(), ''].join('\n');
 }
 
@@ -298,7 +298,7 @@ export async function readContextResource(
   return undefined;
 }
 
-function bundleDoc(doc: KnowledgeDocRow, fullUri: string) {
+function bundleDoc(doc: KnowledgeDoc, fullUri: string) {
   const content = doc.content.trim();
   const truncated = content.length > BUNDLE_DOC_CHARS;
   return {

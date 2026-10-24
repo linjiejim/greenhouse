@@ -6,9 +6,9 @@
  *               every registered application (reads are audited too and are not
  *               activity), drive changes (drive/audit.ts) and a member connecting
  *               or disconnecting an agent;
- *   agent       runtime_runs kind 'agent_write' — members' own agents over MCP,
+ *   agent       runs kind 'agent_write' — members' own agents over MCP,
  *               with the client's name (agent-access/governed-write.ts);
- *   automation  runtime_runs kind 'automation';
+ *   automation  runs kind 'automation';
  *   admin       platform_audit_events of the admin actions listed below
  *               (workspace settings, user access, MCP machine clients, a
  *               member's model gateway key revoked by a super).
@@ -46,13 +46,12 @@ import {
 } from '@greenhouse/types/activity';
 import { entityUrl } from '@greenhouse/types/entity-links';
 import { filesPageHref, shelfOfVisibility } from '@greenhouse/types/files';
-import { safeJsonParse } from '@greenhouse/utils/json';
 
 /** A JSON object column, or {} for anything else. */
-function jsonObject(text: string | null): Record<string, unknown> {
-  const value = safeJsonParse(text, {});
+function jsonObject(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
 }
+import { toRowId } from '@greenhouse/utils/id';
 import { canRead as canReadKb, resolveKbAccess } from '../knowledge/access.js';
 import { DRIVE_AUDIT_APP_ID, type DriveChangeAction } from '../drive/audit.js';
 import {
@@ -61,7 +60,6 @@ import {
   REPORTS_AUDIT_APP_ID,
 } from '../reports/audit.js';
 import { canViewTemplate } from '../reports/templates.js';
-import { PLATFORM_ORG_ID } from '../platform/runtime.js';
 import { MUTATING_PROXY_ALLOWLIST } from '../tools/registry.js';
 
 export interface ActivityViewer {
@@ -386,7 +384,7 @@ async function fetchPending(
     if (wants('mcp')) actions.push({ appId: 'platform', actionIds: PERSONAL_PLATFORM_ACTIONS });
     jobs.push(
       db.activity
-        .listAuditChanges({ ...window, orgId: PLATFORM_ORG_ID, actions, actorType: 'human', userId: q.userId })
+        .listAuditChanges({ ...window, actions, actorType: 'human', userId: q.userId })
         .then((rows) => rows.map((row) => ({ kind: 'audit', source: 'person', row }) as const)),
     );
   }
@@ -397,7 +395,7 @@ async function fetchPending(
       .map(([, actionIds]) => ({ appId: 'platform', actionIds }));
     jobs.push(
       db.activity
-        .listAuditChanges({ ...window, orgId: PLATFORM_ORG_ID, actions, actorType: 'human', userId: q.userId })
+        .listAuditChanges({ ...window, actions, actorType: 'human', userId: q.userId })
         .then((rows) => rows.map((row) => ({ kind: 'audit', source: 'admin', row }) as const)),
     );
   }
@@ -446,10 +444,8 @@ async function userNames(db: DatabaseProvider, ids: Iterable<string>): Promise<M
 
 async function knowledgeTarget(ctx: HydrateContext, recordId: string) {
   try {
-    // The kernel records either the numeric id or the doc slug, depending on the caller.
-    const doc = /^\d+$/.test(recordId)
-      ? await ctx.db.knowledgeBase.getById(Number(recordId))
-      : await ctx.db.knowledgeBase.get(recordId, 'shared');
+    // The kernel records either the row id or the doc slug, depending on the caller.
+    const doc = (await ctx.db.knowledgeBase.getById(recordId)) ?? (await ctx.db.knowledgeBase.get(recordId, 'shared'));
     if (!doc || !canReadKb(await resolveKbAccess(ctx.db, doc, ctx.viewer.id))) return null;
     return { label: doc.title, url: entityUrl({ kind: 'kb_doc', id: doc.id, slug: doc.doc_id }) };
   } catch {
@@ -457,7 +453,7 @@ async function knowledgeTarget(ctx: HydrateContext, recordId: string) {
   }
 }
 
-async function projectReadable(ctx: HydrateContext, projectId: number) {
+async function projectReadable(ctx: HydrateContext, projectId: string) {
   const project = await ctx.db.projects.getProjectById(projectId);
   if (!project) return null;
   if (ctx.viewer.role === 'super' || project.visibility === 'public') return project;
@@ -466,8 +462,8 @@ async function projectReadable(ctx: HydrateContext, projectId: number) {
 }
 
 async function projectTarget(ctx: HydrateContext, entity: string | null, recordId: string) {
-  const id = Number(recordId);
-  if (!Number.isSafeInteger(id) || id <= 0) return null;
+  const id = toRowId(recordId);
+  if (!id) return null;
   try {
     if (entity === 'project') {
       const project = await projectReadable(ctx, id);
@@ -496,7 +492,7 @@ function driveTarget(ctx: HydrateContext, entity: string | null, recordId: strin
   const mine = typeof node.owner_user_id === 'string' && node.owner_user_id === ctx.viewer.id;
   if (node.scope !== 'kb' || !(visibility === 'team' || mine) || typeof node.name !== 'string') return null;
   const shelf = shelfOfVisibility(visibility);
-  const id = Number(recordId);
+  const id = recordId;
   const url =
     entity === 'folder' ? filesPageHref({ shelf, folderId: id }) : entity === 'file' ? filesPageHref({ shelf }) : null;
   return { label: node.name, url };
@@ -504,8 +500,8 @@ function driveTarget(ctx: HydrateContext, entity: string | null, recordId: strin
 
 /** A file or folder as it is now, named under the same shelf rule as its audit rows. */
 async function liveDriveTarget(ctx: HydrateContext, entity: 'file' | 'folder', recordId: string) {
-  const id = Number(recordId);
-  if (!Number.isSafeInteger(id) || id <= 0) return null;
+  const id = toRowId(recordId);
+  if (!id) return null;
   try {
     const row = entity === 'folder' ? await ctx.db.drive.getFolder(id) : await ctx.db.drive.getFile(id);
     return row ? driveTarget(ctx, entity, recordId, row) : null;
@@ -701,7 +697,7 @@ async function agentWriteTarget(
   shape: WriteShape,
 ): Promise<ActivityItem['target']> {
   const input = field(jsonObject(row.input), 'input');
-  const result = field(safeJsonParse(row.output, null), 'result');
+  const result = field(row.output, 'result');
   const creates = shape.verb === 'create';
   const own = ctx.viewer.id === row.owner_user_id;
   const superReads = ctx.viewer.role === 'super';

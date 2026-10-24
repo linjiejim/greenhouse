@@ -46,7 +46,7 @@ describe('gateway keys', () => {
   it('stores only the hash and a short prefix, and finds the key by its secret', async () => {
     const raw = secret();
     const row = await db.gatewayKeys.create({ user_id: owner.id, name: 'laptop', secret: raw });
-    expect(row.id).toMatch(/^gwk_[0-9a-f]{16}$/);
+    expect(row.id).toMatch(/^gwk_[0-9A-HJKMNP-TV-Z]{26}$/);
     expect(row.key_hash).toBe(hashGatewaySecret(raw));
     expect(row.key_hash).not.toContain(raw);
     expect(row.key_prefix).toBe(raw.slice(0, 12));

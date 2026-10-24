@@ -25,13 +25,10 @@
 - **custom profile 的 `base_profile_id` 只能是预设之一**（`CUSTOM_BASE_PROFILE_IDS = PRESET_PROFILE_IDS`，
   由 `isValidCustomBaseProfileId()` 强制）。`eval-judge`、`desktop` 与所有旧 id 都不是合法 base；
   存量的 `team` 等值先经 `normalizeProfileId()` 归一再校验。base **只**提供 `access.rich_output` 与 model
-  fallback——custom agent 自带 `custom_profiles.model_id`，预设换模型不会改掉已 fork 出去的 Agent。
-- **custom Agent 是稳定资产 + 不可变版本**：`custom_profiles` 只保存身份、owner 与发布指针；可执行 manifest
-  追加到 `custom_profile_versions`。引用形态为 `custom:<id>@<version>`，会话、定时任务与 Eval 创建时必须先 pin；
-  `resolveProfileAsync()` 找不到 custom 资产/版本必须明确报错，绝不回落 Sprouty。
-- **编辑即撤销原审查**：任何新版本都会把资产恢复为 `draft`，清空 published/reviewer/review-date 并停止共享。
-  旧 pinned 引用仍可重放，但不能再被其他用户发现或新选中。只有 super 可发布 `pilot` / `verified`；共享只来自
-  这两个状态。owner 可提交 review/撤回/归档，super 可审核、暂停与退役；版本行不得 update/delete。
+  fallback——custom agent 自带 `run_profiles.model_id`，预设换模型不会改掉从预设起步的 Agent。
+- **custom Agent 是一行当前配置**：`run_profiles` 存完整配置，`version` 每次编辑 +1，不存历史版本（3.0）。
+  引用形态为 `custom:<id>@<version>`（id 是不透明文本），会话与定时任务创建时必须先 pin；任何 ≤ version 的 pin
+  都解析为当前配置。`resolveProfileAsync()` 找不到 custom 资产/版本必须明确报错，绝不回落 Sprouty。
 - **模型是每轮的选择，不是 Agent 的身份**（2026-08-01 起，推翻旧的「一个 Agent = 一个模型」）：
   `POST /api/chat` 的 `model` 字段按 `isChatModelAllowed()` 对 `models.yaml` 的 `chat.selectable` 校验后作
   `modelOverride` 下发，落库进 `messages.model`；校验不过（模型已下线或 key 已撤）就回落 profile 的

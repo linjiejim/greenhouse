@@ -15,7 +15,7 @@
  * the existing granular endpoints — this module is read-only aggregation.
  */
 
-import { resolveEntityPolicy, type FieldPolicy, type UserEntityPolicyOverride } from '@greenhouse/platform-kernel';
+import { resolveEntityPolicy, type FieldPolicy } from '@greenhouse/platform-kernel';
 import { featureDefault } from '@greenhouse/types/features';
 import { fromExtensions } from '../extensions/index.js';
 import type { DatabaseProvider, UserRow } from '@greenhouse/db';
@@ -163,8 +163,6 @@ export function toolsetToolIds(): string[] {
 
 // ─── Access view shape ───────────────────────────────────
 
-export type CapabilityOverrideMode = 'inherit' | 'allow' | 'deny';
-
 export interface AccessCapability {
   capability: string;
   moduleId: string;
@@ -174,7 +172,6 @@ export interface AccessCapability {
   allowed: boolean;
   reason: string;
   matchedPattern?: string;
-  override: CapabilityOverrideMode;
 }
 
 export interface AccessEntityField {
@@ -190,7 +187,6 @@ export interface AccessEntity {
   accessScopes: string[];
   fields: AccessEntityField[];
   effectivePolicy: { scopes: string[]; fields: Record<string, FieldPolicy> };
-  override?: UserEntityPolicyOverride;
 }
 
 export interface AccessTool {
@@ -202,7 +198,7 @@ export interface AccessTool {
   assigned: boolean;
 }
 
-export type AccessMainControl = { type: 'flag'; flag: string } | { type: 'capability'; capability: string } | null;
+export type AccessMainControl = { type: 'flag'; flag: string } | null;
 
 export interface AccessFeaturePoint {
   key: string;
@@ -222,7 +218,6 @@ export interface AccessFeaturePoint {
 
 export interface UserAccessView {
   user: { id: string; nickname: string; email: string; role: string; status: string };
-  limits: { monthly_token_limit: number };
   featurePoints: AccessFeaturePoint[];
   baseline: {
     globalTools: AccessTool[];
@@ -247,17 +242,15 @@ export async function buildUserAccessView(db: DatabaseProvider, user: UserRow): 
   const actor = humanActor(user);
   const isSuper = user.role === 'super';
 
-  const [featureRows, assignedTools, overrides] = await Promise.all([
+  const [featureRows, assignedTools] = await Promise.all([
     db.userFeatures.listByUser(user.id),
     db.userTools.getTools(user.id),
-    db.platform.listUserCapabilityOverrides(PLATFORM_ORG_ID, user.id),
   ]);
 
   const featureState = new Map(featureRows.map((r) => [r.feature, r.enabled]));
   const resolveFlag = (key: string): boolean =>
     isSuper ? true : featureState.has(key) ? Boolean(featureState.get(key)) : featureDefault(key);
   const assignedSet = new Set(assignedTools);
-  const overrideMap = new Map(overrides.map((o) => [o.capability, o.effect]));
   const toolAssigned = (id: string) => isSuper || assignedSet.has(id);
 
   const featurePoints: AccessFeaturePoint[] = [];
@@ -319,7 +312,6 @@ export async function buildUserAccessView(db: DatabaseProvider, user: UserRow): 
         allowed: decision.allowed,
         reason: decision.reason,
         matchedPattern: decision.matchedPattern,
-        override: (overrideMap.get(capability) as CapabilityOverrideMode) ?? 'inherit',
       });
     }
 
@@ -332,7 +324,7 @@ export async function buildUserAccessView(db: DatabaseProvider, user: UserRow): 
         appId: manifest.id,
         entityId: entity.id,
       });
-      const effective = resolveEntityPolicy(snapshot.rolePolicies, snapshot.userOverride);
+      const effective = resolveEntityPolicy(snapshot.rolePolicies);
       entities.push({
         appId: manifest.id,
         entityId: entity.id,
@@ -344,16 +336,12 @@ export async function buildUserAccessView(db: DatabaseProvider, user: UserRow): 
           classification: field.classification ?? 'public',
         })),
         effectivePolicy: { scopes: effective.scopes.map((s) => s.kind), fields: effective.fields },
-        override: snapshot.userOverride,
       });
     }
 
     const enabled = point.flag ? resolveFlag(point.flag) : capabilities.some((c) => c.allowed);
-    const mainControl: AccessMainControl = point.flag
-      ? { type: 'flag', flag: point.flag }
-      : point.capabilityPrefix
-        ? { type: 'capability', capability: point.capabilityPrefix }
-        : null;
+    // App access follows the member's role (per-user overrides were retired in 3.0).
+    const mainControl: AccessMainControl = point.flag ? { type: 'flag', flag: point.flag } : null;
 
     featurePoints.push({
       key: point.key,
@@ -384,9 +372,6 @@ export async function buildUserAccessView(db: DatabaseProvider, user: UserRow): 
       email: user.email,
       role: user.role,
       status: user.status,
-    },
-    limits: {
-      monthly_token_limit: user.monthly_token_limit,
     },
     featurePoints,
     baseline: {

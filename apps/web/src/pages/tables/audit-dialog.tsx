@@ -7,7 +7,7 @@ import { useT, type TranslationKey } from '../../lib/i18n';
 
 interface TablesAuditDialogProps {
   open: boolean;
-  baseId: number;
+  baseId: string;
   users: Array<{ id: string; nickname: string; email: string }>;
   onClose: () => void;
 }

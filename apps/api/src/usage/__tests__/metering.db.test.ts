@@ -183,12 +183,12 @@ describe('budget alerts', () => {
     let alerts = await budgetNotifications(member);
     expect(alerts).toHaveLength(1);
     expect(alerts[0]).toMatchObject({ kind: 'budget_attention' });
-    expect(JSON.parse(alerts[0]!.payload)).toMatchObject({ threshold: 80, scope_type: 'user', scope_id: member.id });
+    expect(alerts[0]!.payload).toMatchObject({ threshold: 80, scope_type: 'user', scope_id: member.id });
 
     await spend(1_000); // 100%
     await spend(0 + 1).catch(() => undefined); // refused: no third alert
     alerts = await budgetNotifications(member);
-    expect(alerts.map((alert) => JSON.parse(alert.payload).threshold).sort()).toEqual([100, 80]);
+    expect(alerts.map((alert) => alert.payload.threshold).sort()).toEqual([100, 80]);
     expect(alerts.every((alert) => alert.dedupe_key.startsWith(`usage-budget:${accountId('user', member.id)}:`))).toBe(
       true,
     );
@@ -202,7 +202,7 @@ describe('budget alerts', () => {
 
     const adminAlerts = await budgetNotifications(admin);
     expect(adminAlerts).toHaveLength(1);
-    expect(JSON.parse(adminAlerts[0]!.payload)).toMatchObject({ scope_type: 'organization', threshold: 80 });
+    expect(adminAlerts[0]!.payload).toMatchObject({ scope_type: 'organization', threshold: 80 });
     // The member's own account is at 9_000 of $50 — far below 80%.
     expect(await budgetNotifications(member)).toHaveLength(0);
   });
@@ -297,14 +297,14 @@ describe('admin limits', () => {
     await settleServiceFact(db, lease, { provider: 'tavily', units: 1, unitKind: 'call', costUsdMicros: 8_500 });
     expect((await balances()).service.limit_units).toBe(10_000);
     // One team alert, not a second one for the service that only mirrors it.
-    expect((await budgetNotifications(admin)).map((n) => JSON.parse(n.payload).scope_type)).toEqual(['organization']);
+    expect((await budgetNotifications(admin)).map((n) => n.payload.scope_type)).toEqual(['organization']);
 
     // With its own cap the service is alerted on separately.
     await db.metering.setLimit({ scope_type: 'service', scope_id: 'web_search', limit_units: 9_000 });
     const next = await reserve(1);
     next.markProviderIoStarted();
     await settleServiceFact(db, next, { provider: 'tavily', units: 1, unitKind: 'call', costUsdMicros: 1 });
-    expect((await budgetNotifications(admin)).map((n) => JSON.parse(n.payload).scope_type).sort()).toEqual([
+    expect((await budgetNotifications(admin)).map((n) => n.payload.scope_type).sort()).toEqual([
       'organization',
       'service',
     ]);
@@ -353,9 +353,9 @@ describe('admin price overrides', () => {
 
   async function llmFact(key: string) {
     const rows = (await db.executeRaw(
-      sql`SELECT cost_usd_micros, price_applied FROM llm_usage WHERE budget_idempotency_key = ${key}`,
-    )) as Array<{ cost_usd_micros: string | number | null; price_applied: string | null }>;
-    return { cost: Number(rows[0]!.cost_usd_micros), price: JSON.parse(rows[0]!.price_applied ?? 'null') };
+      sql`SELECT cost_usd_micros, price_applied FROM usage_events WHERE kind = 'model' AND budget_idempotency_key = ${key}`,
+    )) as Array<{ cost_usd_micros: string | number | null; price_applied: Record<string, unknown> | null }>;
+    return { cost: Number(rows[0]!.cost_usd_micros), price: rows[0]!.price_applied ?? null };
   }
 
   it('prices a model call at the price in force at settlement and keeps it on the fact', async () => {
@@ -434,7 +434,7 @@ describe('admin price overrides', () => {
     expect(ledger[0]).toMatchObject({ entry_type: 'settle', delta_spent_units: 200, delta_reserved_units: 0 });
     expect(await llmFact(lease.idempotencyKey)).toMatchObject({ cost: 200 });
     // The member crossed 100% and is told.
-    expect((await budgetNotifications(member)).map((n) => JSON.parse(n.payload).threshold)).toEqual([100]);
+    expect((await budgetNotifications(member)).map((n) => n.payload.threshold)).toEqual([100]);
   });
 
   it('records each search at its provider price and picks up an override for the next call', async () => {
@@ -450,8 +450,9 @@ describe('admin price overrides', () => {
       );
     const facts = async () =>
       (await db.executeRaw(
-        sql`SELECT cost_usd_micros, price_applied FROM service_usage WHERE user_id = ${member.id} ORDER BY created_at`,
-      )) as Array<{ cost_usd_micros: string | number; price_applied: string }>;
+        sql`SELECT cost_usd_micros, price_applied FROM usage_events
+            WHERE kind = 'service' AND user_id = ${member.id} ORDER BY created_at, id`,
+      )) as Array<{ cost_usd_micros: string | number; price_applied: Record<string, unknown> }>;
 
     await search();
     await db.metering.setPriceOverride({ kind: 'service', target: 'web_search', provider: 'tavily', unit_price: 0.01 });
@@ -460,7 +461,7 @@ describe('admin price overrides', () => {
 
     const rows = await facts();
     expect(rows.map((row) => Number(row.cost_usd_micros))).toEqual([8_000, 10_000]);
-    expect(rows.map((row) => JSON.parse(row.price_applied))).toEqual([
+    expect(rows.map((row) => row.price_applied)).toEqual([
       { source: 'config', unit_price: 0.008, unit: 'call' },
       { source: 'override', unit_price: 0.01, unit: 'call' },
     ]);

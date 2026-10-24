@@ -141,7 +141,7 @@ export async function allActiveFrictions(
   pageSize: number = FRICTION_PAGE,
 ) {
   const rows: Awaited<ReturnType<DatabaseProvider['toolFrictions']['listActiveBetween']>> = [];
-  let afterId: number | undefined;
+  let afterId: string | undefined;
   for (;;) {
     // Keyset on the immutable id: a friction recorded between pages is still read exactly once.
     const page = await db.toolFrictions.listActiveBetween({ ...window, limit: pageSize, afterId });

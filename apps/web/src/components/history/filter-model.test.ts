@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_HISTORY_FILTERS,
-  countByFeedback,
   countByStatus,
   countHiddenFilters,
   filterSessions,
@@ -13,11 +12,8 @@ function session(overrides: Partial<HistorySession> & { id: string }): HistorySe
   return {
     title: null,
     status: 'active',
-    rating: null,
-    comment: null,
-    feedback: null,
     profile_id: 'team',
-    metadata: '{}',
+    metadata: {},
     created_at: '2026-08-01T00:00:00Z',
     updated_at: '2026-08-01T00:00:00Z',
     ...overrides,
@@ -66,46 +62,34 @@ describe('history filter model', () => {
     expect(ids(filterSessions(all, filters({ group: 'all' })))).toEqual(['pinned', 'loose']);
   });
 
-  it('matches an exact rating, keeping unrated sessions out', () => {
-    const all = [session({ id: 'three', rating: 3 }), session({ id: 'five', rating: 5 }), session({ id: 'none' })];
-    expect(ids(filterSessions(all, filters({ rating: 3 })))).toEqual(['three']);
-    expect(ids(filterSessions(all, filters({ rating: null })))).toEqual(['three', 'five', 'none']);
-  });
-
-  it('searches title and comment case-insensitively', () => {
-    const all = [
-      session({ id: 'by-title', title: 'Nutrient Schedule' }),
-      session({ id: 'by-comment', comment: 'follow up on NUTRIENT mix' }),
-      session({ id: 'miss', title: 'Lighting' }),
-    ];
-    expect(ids(filterSessions(all, filters({ search: 'nutrient' })))).toEqual(['by-title', 'by-comment']);
+  it('searches the title case-insensitively', () => {
+    const all = [session({ id: 'by-title', title: 'Nutrient Schedule' }), session({ id: 'miss', title: 'Lighting' })];
+    expect(ids(filterSessions(all, filters({ search: 'nutrient' })))).toEqual(['by-title']);
   });
 
   it('ANDs every active filter together', () => {
     const all = [
-      session({ id: 'hit', feedback: 'good', rating: 5, title: 'harvest plan', pinned: true, is_owner: true }),
-      session({ id: 'wrong-feedback', feedback: 'bad', rating: 5, title: 'harvest plan', pinned: true }),
-      session({ id: 'not-pinned', feedback: 'good', rating: 5, title: 'harvest plan' }),
-      session({ id: 'wrong-title', feedback: 'good', rating: 5, title: 'seeding', pinned: true }),
+      session({ id: 'hit', title: 'harvest plan', pinned: true, is_owner: true }),
+      session({ id: 'not-mine', title: 'harvest plan', pinned: true, is_owner: false }),
+      session({ id: 'not-pinned', title: 'harvest plan' }),
+      session({ id: 'wrong-title', title: 'seeding', pinned: true }),
     ];
-    const combined = filters({ feedback: 'good', rating: 5, group: 'pinned', owner: 'mine', search: 'harvest' });
+    const combined = filters({ group: 'pinned', owner: 'mine', search: 'harvest' });
     expect(ids(filterSessions(all, combined))).toEqual(['hit']);
   });
 
-  it('counts every status bucket and only the three feedback values', () => {
+  it('counts every status bucket', () => {
     const all = [
-      session({ id: 'a', feedback: 'good' }),
-      session({ id: 'b', status: 'archived', feedback: 'good' }),
-      session({ id: 'c', status: 'archived', feedback: 'stale-value' }),
-      session({ id: 'd', feedback: 'starred' }),
+      session({ id: 'a' }),
+      session({ id: 'b', status: 'archived' }),
+      session({ id: 'c', status: 'archived' }),
+      session({ id: 'd' }),
     ];
     expect(countByStatus(all)).toEqual({ active: 2, archived: 2 });
-    expect(countByFeedback(all)).toEqual({ good: 2, bad: 0, starred: 1 });
   });
 
   it('counts what the collapsed row is hiding, ignoring status and search', () => {
     expect(countHiddenFilters(filters({ status: 'deleted', search: 'x' }))).toBe(0);
-    expect(countHiddenFilters(filters({ feedback: 'good', rating: 4 }))).toBe(2);
     expect(countHiddenFilters(filters({ owner: 'all', group: 'pinned', profile: 'sprouty' }))).toBe(3);
   });
 

@@ -153,10 +153,10 @@ export async function persistChatResult(input: PersistInput): Promise<void> {
   if (dsmlRecoveries.length > 0) {
     try {
       const sess = await getDb().sessions.getById(sessionId);
-      const meta = JSON.parse(sess?.metadata || '{}');
-      meta.dsml_recoveries = (meta.dsml_recoveries || 0) + dsmlRecoveries.length;
+      const meta = { ...sess?.metadata };
+      meta.dsml_recoveries = (Number(meta.dsml_recoveries) || 0) + dsmlRecoveries.length;
       meta.last_dsml_at = dsmlRecoveries[dsmlRecoveries.length - 1].timestamp;
-      await getDb().sessions.update(sessionId, { metadata: JSON.stringify(meta) });
+      await getDb().sessions.update(sessionId, { metadata: meta });
     } catch {
       /* ignore */
     }

@@ -50,7 +50,7 @@ import {
 
 // ─── Project Detail Page ─────────────────────────────────
 
-export function ProjectDetailPage({ projectId }: { projectId: number }) {
+export function ProjectDetailPage({ projectId }: { projectId: string }) {
   const inPeek = useInEntityPeek();
   const t = useT();
   const currentUser = useAuthStore((s) => s.currentUser);
@@ -68,10 +68,10 @@ export function ProjectDetailPage({ projectId }: { projectId: number }) {
   const [ganttZoom, setGanttZoom] = useState<GanttZoom>('day');
   const [ganttFilter, setGanttFilter] = useState<GanttFilter>({});
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
-  const [expanded, setExpanded] = useState<Set<number>>(new Set());
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [showCreate, setShowCreate] = useState(false);
   const [showCreateMilestone, setShowCreateMilestone] = useState(false);
-  const [createParentId, setCreateParentId] = useState<number | undefined>();
+  const [createParentId, setCreateParentId] = useState<string | undefined>();
   const [createDates, setCreateDates] = useState<{ start?: string; end?: string }>({});
   const [users, setUsers] = useState<Array<{ id: string; nickname: string }>>([]);
   const [activities, setActivities] = useState<Activity[]>([]);
@@ -154,7 +154,7 @@ export function ProjectDetailPage({ projectId }: { projectId: number }) {
     return () => enrichPageContext(null);
   }, [project, enrichPageContext]);
 
-  const handleToggle = (id: number) => {
+  const handleToggle = (id: string) => {
     setExpanded((prev) => {
       const next = new Set(prev);
       next.has(id) ? next.delete(id) : next.add(id);

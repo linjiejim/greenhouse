@@ -1,4 +1,4 @@
-/** Immutable custom Agent versions and the private-unless-shared rule (v1.4). */
+/** Custom Agent version counter, 1.x pins and the private-unless-shared rule (v1.4 / 3.0). */
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { _resetProvider, initDatabase } from '@greenhouse/db';
@@ -37,7 +37,7 @@ async function createAgent(riskLevel: 'low' | 'medium' | 'high' = 'medium', mode
   });
 }
 
-describe('Custom Agent immutable versions', () => {
+describe('Custom Agent versions', () => {
   beforeEach(async () => {
     db = await initDatabase({ type: 'pg', pgConnectionString: TEST_DATABASE_URL });
     owner = await createInternalTestUser(db, { email: `${unique('agent-owner')}@test.local` });
@@ -48,25 +48,24 @@ describe('Custom Agent immutable versions', () => {
     _resetProvider();
   });
 
-  it('creates a private asset plus immutable v1 and ignores direct sharing', async () => {
+  it('creates a private Agent at version 1 and ignores direct sharing', async () => {
     const asset = await createAgent();
     const version = await db.customProfiles.getCurrentVersion(asset.id);
 
-    expect(asset).toMatchObject({ current_version: 1, is_shared: false });
+    expect(asset.id).toMatch(/^rpf_/);
+    expect(asset).toMatchObject({ version: 1, is_shared: false, purpose: 'Release readiness' });
     expect(version).toMatchObject({
       profile_id: asset.id,
       version: 1,
       name: 'Release analyst',
-      change_log: 'Initial version',
       risk_level: 'medium',
     });
     expect(version?.manifest_hash).toMatch(/^[a-f0-9]{64}$/);
-    expect(JSON.parse(version!.budget_policy)).toEqual({ max_tokens: 50_000 });
+    expect(version!.budget_policy).toEqual({ max_tokens: 50_000 });
   });
 
-  it('appends a new version without mutating the prior executable manifest', async () => {
+  it('bumps the version on every edit and resolves older pins to the current configuration', async () => {
     const asset = await createAgent();
-    const v1 = await db.customProfiles.getVersion(asset.id, 1);
     const changed = await db.customProfiles.createVersion(asset.id, {
       name: 'Release analyst v2',
       system_prompt: 'Require verified evidence and identify blockers.',
@@ -75,10 +74,17 @@ describe('Custom Agent immutable versions', () => {
       created_by: owner.id,
     });
 
-    expect(changed?.profile).toMatchObject({ current_version: 2 });
-    expect(changed?.version).toMatchObject({ version: 2, change_log: 'Add blocker analysis' });
-    expect(await db.customProfiles.getVersion(asset.id, 1)).toEqual(v1);
-    expect((await db.customProfiles.listVersions(asset.id)).map((version) => version.version)).toEqual([2, 1]);
+    expect(changed?.profile).toMatchObject({ version: 2, tools: ['team_knowledge', 'project_query'] });
+    expect(changed?.version).toMatchObject({ version: 2, name: 'Release analyst v2' });
+    // Immutable versions were retired in 3.0: a 1.x pin runs the current configuration.
+    expect(await db.customProfiles.getVersion(asset.id, 1)).toMatchObject({
+      version: 1,
+      name: 'Release analyst v2',
+      manifest_hash: changed!.version.manifest_hash,
+    });
+    expect(await db.customProfiles.getVersion(asset.id, 3)).toBeUndefined();
+    expect(await db.customProfiles.getVersion(asset.id, 0)).toBeUndefined();
+    expect((await db.customProfiles.listVersions(asset.id)).map((version) => version.version)).toEqual([2]);
   });
 
   it('keeps a shared Agent shared across edits, hands non-owners the current version, and keeps old pins resolving', async () => {
@@ -96,8 +102,8 @@ describe('Custom Agent immutable versions', () => {
       change_log: 'Add blocker analysis',
       created_by: owner.id,
     });
-    expect(v2?.profile).toMatchObject({ current_version: 2, is_shared: true });
-    // The next pick gets the new version; work already pinned keeps v1.
+    expect(v2?.profile).toMatchObject({ version: 2, is_shared: true });
+    // The next pick gets the new version; work already pinned keeps its pin (now the current configuration).
     await expect(pinProfileIdForUser(readerActor, `custom:${asset.id}`, db)).resolves.toBe(`custom:${asset.id}@2`);
     await expect(pinProfileIdForUser(readerActor, `custom:${asset.id}@1`, db, { existingPin: true })).resolves.toBe(
       `custom:${asset.id}@1`,
@@ -109,7 +115,7 @@ describe('Custom Agent immutable versions', () => {
     ).resolves.toBeUndefined();
     await expect(resolveProfileAsync(`custom:${asset.id}@1`, db)).resolves.toMatchObject({
       id: `custom:${asset.id}@1`,
-      system_prompt: 'Use only verified release evidence.',
+      system_prompt: 'Require verified evidence and identify blockers.',
     });
   });
 
@@ -128,25 +134,6 @@ describe('Custom Agent immutable versions', () => {
     await expect(
       assertPinnedProfileExecutionAccess(db, { id: owner.id, role: 'team' }, `custom:${asset.id}@1`, 'Automation'),
     ).resolves.toBeUndefined();
-  });
-
-  it('never writes the retired review columns', async () => {
-    const asset = await createAgent();
-    await db.customProfiles.setShared(asset.id, true);
-    await db.customProfiles.createVersion(asset.id, { change_log: 'Second', created_by: owner.id });
-    const row = await db.customProfiles.getById(asset.id);
-    const v2 = await db.customProfiles.getVersion(asset.id, 2);
-
-    // Column defaults, untouched by create / edit / share.
-    expect(row).toMatchObject({
-      lifecycle_status: 'draft',
-      lifecycle_note: null,
-      published_version: null,
-      reviewed_by: null,
-      reviewed_at: null,
-      next_review_at: null,
-    });
-    expect(v2?.review_due_at).toBeNull();
   });
 
   // A model is retired from the catalog (or its key is unset) long after an
@@ -174,7 +161,7 @@ describe('Custom Agent immutable versions', () => {
     }
   });
 
-  it('deletes an Agent with its versions, so its pins fail closed', async () => {
+  it('deletes an Agent, so its pins fail closed', async () => {
     const asset = await createAgent();
     await db.customProfiles.createVersion(asset.id, { change_log: 'Second', created_by: owner.id });
 

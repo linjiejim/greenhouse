@@ -10,7 +10,6 @@
 
 import { toErrorMessage } from '@greenhouse/utils/error';
 import { budgetRefusalReason } from '../usage/budget-errors.js';
-import { safeJsonParse } from '@greenhouse/utils/json';
 import { normalizeAutomationOptInTools } from '@greenhouse/types/automation-tools';
 import { Cron } from 'croner';
 import { getDb, type DatabaseProvider } from '@greenhouse/db';
@@ -39,15 +38,12 @@ export interface ActiveTaskOwner {
 }
 
 /**
- * The owner's per-automation tool grant, as stored.
- *
- * `safeJsonParse` rather than a bare `JSON.parse`: this is a JSON-as-text
- * column, and a corrupt value must degrade to "no extra tools" — the
- * fail-closed direction — instead of throwing and turning every run of that
- * automation into a failure.
+ * The owner's per-automation tool grant, as stored. Anything that is not a
+ * list (a corrupt or legacy value) degrades to "no extra tools" — the
+ * fail-closed direction — instead of failing every run of that automation.
  */
 function optInTools(task: ScheduledTaskRow): unknown {
-  return safeJsonParse(task.unattended_tools, []);
+  return Array.isArray(task.unattended_tools) ? task.unattended_tools : [];
 }
 
 export type TaskOwnerState = { state: 'active'; owner: ActiveTaskOwner } | { state: 'paused' } | { state: 'invalid' };
@@ -114,7 +110,7 @@ export async function validateTaskExecution(task: ScheduledTaskRow, db: Database
  * leak a write or a confirm-gated tool into a run nobody is watching.
  *
  * On top of that baseline the OWNER may grant extra tools per automation
- * (`scheduled_tasks.unattended_tools`, see
+ * (`automations.unattended_tools`, see
  * docs/specs/20260824-automation-optin-tools.md). That grant is a filter, not a
  * permission: it is intersected here with `effectiveToolIds`, which
  * `executeTaskInSession` re-resolves from the current owner immediately before
@@ -154,17 +150,17 @@ export async function prepareTask(
   // 3. Create a new session for this execution
   const reference = options.scheduledFor ? new Date(options.scheduledFor) : new Date();
   const title = options.sessionTitle ?? buildTaskSessionTitle(task.name, task.timezone, reference);
-  const metadata = JSON.stringify({
+  const metadata = {
     task_id: task.id,
     task_name: task.name,
     ...(options.runtimeRunId ? { automation_runtime_run_id: options.runtimeRunId } : {}),
     ...(options.trigger ? { automation_trigger: options.trigger } : {}),
     ...(options.scheduledFor ? { scheduled_for: options.scheduledFor } : {}),
-  });
+  };
   let session = options.sessionId ? await db.sessions.getById(options.sessionId) : undefined;
   if (!session) {
     try {
-      session = await db.sessions.create(title, task.profile_id, task.user_id, undefined, 'task', undefined, {
+      session = await db.sessions.create(title, task.profile_id, task.user_id, undefined, 'task', {
         ...(options.sessionId ? { id: options.sessionId } : {}),
         metadata,
       });

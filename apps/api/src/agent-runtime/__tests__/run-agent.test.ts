@@ -13,7 +13,7 @@
  * summarizeOutput (whose default returns the full output).
  */
 
-import { fakeMeteringServices } from '../../../../../tests/helpers/metering-db.js';
+import { fakeMeteringServices, routeReserve } from '../../../../../tests/helpers/metering-db.js';
 import { describe, it, expect, vi } from 'vitest';
 import { extractPipelineAndReferences, runAgentInSession } from '../run-agent.js';
 
@@ -141,7 +141,7 @@ describe('runAgentInSession transcript persistence', () => {
           : { ok: true, message: { id: 'assistant-message' } },
       );
     const recordUsage = vi.fn().mockResolvedValue(undefined);
-    const reserveMonthlyUser = vi.fn().mockResolvedValue([]);
+    const tokenReserve = vi.fn().mockResolvedValue([]);
     const settleBudget = vi.fn().mockResolvedValue([]);
     const generate = vi.fn().mockResolvedValue({
       text: 'Generated answer',
@@ -156,11 +156,10 @@ describe('runAgentInSession transcript persistence', () => {
       },
       usage: { record: recordUsage },
       usageBudget: {
-        reserveMonthlyUser,
         settle: settleBudget,
         release: vi.fn().mockResolvedValue([]),
         ensureAccount: metered.ensureAccount,
-        reserve: metered.reserve,
+        reserve: routeReserve(tokenReserve, metered.reserve),
       },
       metering: metered.metering,
       users: {
@@ -168,11 +167,10 @@ describe('runAgentInSession transcript persistence', () => {
           id: 'owner-1',
           role: 'team',
           status: 'active',
-          monthly_token_limit: 20_000_000,
         }),
       },
     };
-    return { appendAssistantIfTail, db, generate, getLatestMessage, recordUsage, reserveMonthlyUser, settleBudget };
+    return { appendAssistantIfTail, db, generate, getLatestMessage, recordUsage, tokenReserve, settleBudget };
   }
 
   it('persists through the same exact-tail CAS as streaming chat', async () => {
@@ -229,7 +227,7 @@ describe('runAgentInSession transcript persistence', () => {
         budget_idempotency_key: expect.any(String),
       }),
     );
-    expect(fixture.reserveMonthlyUser).toHaveBeenCalledBefore(fixture.generate);
+    expect(fixture.tokenReserve).toHaveBeenCalledBefore(fixture.generate);
     expect(fixture.settleBudget).toHaveBeenCalledWith(expect.objectContaining({ actual_units: 6 }));
   });
 

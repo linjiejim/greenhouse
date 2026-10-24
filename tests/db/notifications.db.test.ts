@@ -45,7 +45,7 @@ describe('platform notification service', () => {
     expect(first.created).toBe(true);
     expect(replay).toEqual({ notification: first.notification, created: false });
     expect(await db.notifications.get(first.notification.id)).toEqual(first.notification);
-    expect(JSON.parse(first.notification.payload)).toEqual(input.payload);
+    expect(first.notification.payload).toEqual(input.payload);
     expect(await db.notifications.countUnread(owner.id)).toBe(1);
     await expect(db.notifications.create({ ...input, body: 'A conflicting retry' })).rejects.toMatchObject({
       code: 'notification_idempotency_conflict',

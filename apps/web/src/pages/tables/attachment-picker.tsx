@@ -13,19 +13,20 @@ import {
 import { useT } from '../../lib/i18n';
 
 interface AttachmentPickerProps {
-  baseId: number;
-  value: Array<number | string>;
-  onChange: (value: Array<number | string>) => void;
+  baseId: string;
+  /** Drive file ids (strings; a value saved before ids became text may still hold a number). */
+  value: Array<string | number>;
+  onChange: (value: string[]) => void;
 }
 
 export function AttachmentPicker({ baseId, value, onChange }: AttachmentPickerProps) {
   const t = useT();
   const [open, setOpen] = useState(false);
-  const [folderId, setFolderId] = useState<number | null>(null);
+  const [folderId, setFolderId] = useState<string | null>(null);
   const [folders, setFolders] = useState<DriveFolder[]>([]);
   const [files, setFiles] = useState<DriveFile[]>([]);
   const [crumbs, setCrumbs] = useState<DriveFolder[]>([]);
-  const [knownFiles, setKnownFiles] = useState<Record<number, DriveFile>>({});
+  const [knownFiles, setKnownFiles] = useState<Record<string, DriveFile>>({});
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState('');
@@ -59,9 +60,10 @@ export function AttachmentPicker({ baseId, value, onChange }: AttachmentPickerPr
     if (open) void load();
   }, [load, open]);
 
-  const selectedIds = new Set(value.filter((entry): entry is number => typeof entry === 'number'));
-  const toggle = (fileId: number) => {
-    onChange(selectedIds.has(fileId) ? value.filter((entry) => entry !== fileId) : [...value, fileId]);
+  const ids = value.map(String);
+  const selectedIds = new Set(ids);
+  const toggle = (fileId: string) => {
+    onChange(selectedIds.has(fileId) ? ids.filter((entry) => entry !== fileId) : [...ids, fileId]);
   };
 
   const upload = async (list: FileList | null) => {
@@ -83,11 +85,11 @@ export function AttachmentPicker({ baseId, value, onChange }: AttachmentPickerPr
     <>
       <div className="space-y-2">
         <div className="flex flex-wrap gap-1.5">
-          {value.map((entry) => {
-            const file = typeof entry === 'number' ? knownFiles[entry] : undefined;
+          {ids.map((entry) => {
+            const file = knownFiles[entry];
             return (
               <span
-                key={String(entry)}
+                key={entry}
                 className="inline-flex items-center gap-1 rounded-md border border-edge bg-surface-sunken px-2 py-1 text-xs text-fg-secondary"
               >
                 <Paperclip size={11} />
@@ -95,7 +97,7 @@ export function AttachmentPicker({ baseId, value, onChange }: AttachmentPickerPr
                 <button
                   type="button"
                   className="ml-1 text-fg-faint hover:text-danger"
-                  onClick={() => onChange(value.filter((item) => item !== entry))}
+                  onClick={() => onChange(ids.filter((item) => item !== entry))}
                 >
                   <X size={11} />
                 </button>

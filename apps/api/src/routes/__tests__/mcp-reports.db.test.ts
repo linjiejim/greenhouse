@@ -108,7 +108,7 @@ beforeEach(async () => {
   await db.platformOAuth.registerClient({
     id: clientId,
     client_name: 'Codex',
-    redirect_uris: '[]',
+    redirect_uris: [],
     created_by: member.id,
   });
   fakes.objects.clear();
@@ -259,7 +259,7 @@ describe('MCP report tools: rendering', () => {
 
     const runs = await agentWrites();
     expect(runs).toHaveLength(1);
-    expect(JSON.parse(runs[0]!.input)).toMatchObject({ tool_id: 'report_render', client_id: clientId });
+    expect(runs[0]!.input).toMatchObject({ tool_id: 'report_render', client_id: clientId });
     expect(runs[0]!.status).toBe('succeeded');
 
     // The activity log says what happened: the member's agent created that file.
@@ -267,7 +267,7 @@ describe('MCP report tools: rendering', () => {
     expect(activity[0]).toMatchObject({ module: 'files', target: { label: '研发周报 第 43 周.pdf' } });
 
     const metered = (await db.executeRaw(
-      sql`SELECT count(*)::int AS n FROM service_usage WHERE user_id = ${member.id}`,
+      sql`SELECT count(*)::int AS n FROM usage_events WHERE kind = 'service' AND user_id = ${member.id}`,
     )) as Array<{ n: number }>;
     expect(metered[0]!.n).toBe(0);
   });

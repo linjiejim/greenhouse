@@ -15,13 +15,13 @@ export { formatFileSize } from '../file-download';
 export type DriveScope = 'kb' | 'tables';
 
 export interface DriveFolder {
-  id: number;
+  id: string;
   scope: DriveScope;
-  parent_id: number | null;
+  parent_id: string | null;
   name: string;
   visibility: 'team' | 'private' | null;
   owner_user_id: string | null;
-  base_id: number | null;
+  base_id: string | null;
   /** Manual order among siblings; 0 = never dragged (falls back to name order). */
   sort_order: number;
   created_by: string | null;
@@ -30,9 +30,9 @@ export interface DriveFolder {
 }
 
 export interface DriveFile {
-  id: number;
+  id: string;
   scope: DriveScope;
-  folder_id: number | null;
+  folder_id: string | null;
   name: string;
   cos_key: string;
   content_type: string | null;
@@ -40,7 +40,7 @@ export interface DriveFile {
   status: 'pending' | 'active' | 'deleted';
   visibility: 'team' | 'private' | null;
   owner_user_id: string | null;
-  base_id: number | null;
+  base_id: string | null;
   uploaded_by: string | null;
   created_at: string;
   updated_at: string;
@@ -54,7 +54,7 @@ export interface DriveFile {
  */
 export type DriveOwner =
   | { scope: 'kb'; visibility: 'team' | 'private'; owner_key?: never }
-  | { scope: 'tables'; base_id: number; owner_key?: never }
+  | { scope: 'tables'; base_id: string; owner_key?: never }
   | { scope: string; owner_key: string };
 
 /** The extension member of the union — `scope` alone cannot discriminate it. */
@@ -87,26 +87,26 @@ function ownerQuery(owner: DriveOwner): string {
  * level, or `'all'` for every folder in the scope (flat — build the tree client
  * side in one request instead of walking level by level).
  */
-export async function listDriveFolders(owner: DriveOwner, parentId: number | null | 'all'): Promise<DriveFolder[]> {
+export async function listDriveFolders(owner: DriveOwner, parentId: string | null | 'all'): Promise<DriveFolder[]> {
   const q = `${ownerQuery(owner)}${parentId != null ? `&parent_id=${parentId}` : ''}`;
   const { folders } = await jsonReq<{ folders: DriveFolder[] }>(`/api/drive/folders?${q}`, 'GET');
   return folders;
 }
 
-export async function listDriveFiles(owner: DriveOwner, folderId: number | null): Promise<DriveFile[]> {
+export async function listDriveFiles(owner: DriveOwner, folderId: string | null): Promise<DriveFile[]> {
   const q = `${ownerQuery(owner)}${folderId != null ? `&folder_id=${folderId}` : ''}`;
   const { files } = await jsonReq<{ files: DriveFile[] }>(`/api/drive/files?${q}`, 'GET');
   return files;
 }
 
-export async function driveBreadcrumb(folderId: number): Promise<DriveFolder[]> {
+export async function driveBreadcrumb(folderId: string): Promise<DriveFolder[]> {
   const { folders } = await jsonReq<{ folders: DriveFolder[] }>(`/api/drive/breadcrumb?folder_id=${folderId}`, 'GET');
   return folders;
 }
 
 export async function createDriveFolder(
   owner: DriveOwner,
-  parentId: number | null,
+  parentId: string | null,
   name: string,
 ): Promise<DriveFolder> {
   const { folder } = await jsonReq<{ folder: DriveFolder }>('/api/drive/folders', 'POST', {
@@ -119,21 +119,21 @@ export async function createDriveFolder(
 
 /** Rename and/or move a folder. `parent_id: null` moves it to the root. */
 export async function updateDriveFolder(
-  id: number,
-  patch: { name?: string; parent_id?: number | null },
+  id: string,
+  patch: { name?: string; parent_id?: string | null },
 ): Promise<DriveFolder> {
   const { folder } = await jsonReq<{ folder: DriveFolder }>(`/api/drive/folders/${id}`, 'PUT', patch);
   return folder;
 }
 
-export async function deleteDriveFolder(id: number): Promise<void> {
+export async function deleteDriveFolder(id: string): Promise<void> {
   await jsonReq(`/api/drive/folders/${id}`, 'DELETE');
 }
 
 /** Rename and/or move a file. `folder_id: null` moves it to the root of its cabinet. */
 export async function updateDriveFile(
-  id: number,
-  patch: { name?: string; folder_id?: number | null },
+  id: string,
+  patch: { name?: string; folder_id?: string | null },
 ): Promise<DriveFile> {
   const { file } = await jsonReq<{ file: DriveFile }>(`/api/drive/files/${id}`, 'PUT', patch);
   return file;
@@ -155,7 +155,7 @@ export function driveFileContentUrl(file: Pick<DriveFile, 'id'>): string {
   return `/api/drive/files/${file.id}/content`;
 }
 
-export async function deleteDriveFile(id: number): Promise<void> {
+export async function deleteDriveFile(id: string): Promise<void> {
   await jsonReq(`/api/drive/files/${id}`, 'DELETE');
 }
 
@@ -163,8 +163,8 @@ export async function deleteDriveFile(id: number): Promise<void> {
  * Upload one file: init → upload bytes → (presigned: confirm). Works in both
  * backends — direct presigned PUT to COS, or proxy PUT through the API on local.
  */
-export async function uploadDriveFile(owner: DriveOwner, folderId: number | null, file: File): Promise<void> {
-  const init = await jsonReq<{ file_id: number; mode: 'cos' | 'proxy'; upload_url: string }>(
+export async function uploadDriveFile(owner: DriveOwner, folderId: string | null, file: File): Promise<void> {
+  const init = await jsonReq<{ file_id: string; mode: 'cos' | 'proxy'; upload_url: string }>(
     '/api/drive/files/init',
     'POST',
     {

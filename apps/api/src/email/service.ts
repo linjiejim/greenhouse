@@ -17,6 +17,7 @@
  * layer, the routes and the scheduler cannot each grow their own version.
  */
 
+import { toRowId } from '@greenhouse/utils/id';
 import type { DatabaseProvider, EmailAccountRow } from '@greenhouse/db';
 import { logger } from '@greenhouse/utils/logger';
 import { toErrorMessage } from '@greenhouse/utils/error';
@@ -43,7 +44,8 @@ export { MailboxError };
  * thing that was not true about that call. `resolveMailbox` normalizes it back
  * to an account id.
  */
-export type MailboxRef = 'shared' | number | { address: string };
+/** `'shared'`, an email account id (opaque text; never equals 'shared'), or an address. */
+export type MailboxRef = 'shared' | (string & {}) | { address: string };
 
 export function parseMailboxRef(value: string | number | undefined): MailboxRef | null {
   if (value === undefined || value === '') return null;
@@ -52,10 +54,10 @@ export function parseMailboxRef(value: string | number | undefined): MailboxRef 
     if (trimmed === '') return null;
     if (trimmed === 'shared') return 'shared';
     if (trimmed.includes('@')) return { address: trimmed.toLowerCase() };
-    const id = Number.parseInt(trimmed, 10);
-    return Number.isInteger(id) && id > 0 ? id : null;
+    return toRowId(trimmed);
   }
-  return Number.isInteger(value) && value > 0 ? value : null;
+  // Legacy numeric account ids.
+  return Number.isInteger(value) && value > 0 ? String(value) : null;
 }
 
 /**
@@ -111,7 +113,7 @@ export interface ResolvedMailbox {
   displayName: string | null;
   client: ImapSmtpClient;
   /** Only set for personal mailboxes. */
-  accountId?: number;
+  accountId?: string;
 }
 
 export function toCredentials(row: EmailAccountRow): MailboxCredentials {
@@ -125,7 +127,7 @@ export function toCredentials(row: EmailAccountRow): MailboxCredentials {
     use_tls: row.use_tls,
     use_proxy: row.use_proxy,
     username: row.username,
-    password: decryptToken(row.password_encrypted),
+    password: decryptToken(row.password_enc),
   };
 }
 
@@ -219,7 +221,7 @@ export interface SendContext {
   userId: string;
   origin: 'chat' | 'automation' | 'account-security';
   sessionId?: string | null;
-  taskId?: number | null;
+  taskId?: string | null;
 }
 
 function twentyFourHoursAgoIso(): string {

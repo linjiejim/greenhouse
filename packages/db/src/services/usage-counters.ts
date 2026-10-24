@@ -1,5 +1,5 @@
 /**
- * Usage counter service — daily module usage counts (`usage_counters`).
+ * Usage counter service — daily module usage counts (`module_usage_daily`).
  *
  * Counts only: one row per (UTC day, kind, key, client), bumped with a single
  * upsert so concurrent writers never collide. Callers in apps/api go through the
@@ -12,7 +12,7 @@ import { nowIso } from '@greenhouse/utils/date';
 import type { UsageCountRow } from '@greenhouse/types/usage';
 
 import type { Db } from '../client.js';
-import { usageCounters, USAGE_COUNTER_KINDS } from '../schema/index.js';
+import { moduleUsageDaily, USAGE_COUNTER_KINDS } from '../schema/index.js';
 
 export type UsageCounterKind = (typeof USAGE_COUNTER_KINDS)[number];
 
@@ -27,11 +27,11 @@ export function createUsageCounterService(db: Db) {
     async increment(kind: UsageCounterKind, key: string, client: string, at: Date = new Date()): Promise<void> {
       const now = nowIso();
       await db
-        .insert(usageCounters)
+        .insert(moduleUsageDaily)
         .values({ day: usageDay(at), kind, key, client, count: 1, updated_at: now })
         .onConflictDoUpdate({
-          target: [usageCounters.day, usageCounters.kind, usageCounters.key, usageCounters.client],
-          set: { count: sql`${usageCounters.count} + 1`, updated_at: now },
+          target: [moduleUsageDaily.day, moduleUsageDaily.kind, moduleUsageDaily.key, moduleUsageDaily.client],
+          set: { count: sql`${moduleUsageDaily.count} + 1`, updated_at: now },
         });
     },
 
@@ -43,14 +43,20 @@ export function createUsageCounterService(db: Db) {
     async summarize(kind: UsageCounterKind, range: { from: string; to: string }): Promise<UsageCountRow[]> {
       const rows = await db
         .select({
-          key: usageCounters.key,
-          client: usageCounters.client,
-          count: sql<string>`sum(${usageCounters.count})`,
+          key: moduleUsageDaily.key,
+          client: moduleUsageDaily.client,
+          count: sql<string>`sum(${moduleUsageDaily.count})`,
         })
-        .from(usageCounters)
-        .where(and(eq(usageCounters.kind, kind), gte(usageCounters.day, range.from), lte(usageCounters.day, range.to)))
-        .groupBy(usageCounters.key, usageCounters.client)
-        .orderBy(sql`sum(${usageCounters.count}) desc`, usageCounters.key, usageCounters.client);
+        .from(moduleUsageDaily)
+        .where(
+          and(
+            eq(moduleUsageDaily.kind, kind),
+            gte(moduleUsageDaily.day, range.from),
+            lte(moduleUsageDaily.day, range.to),
+          ),
+        )
+        .groupBy(moduleUsageDaily.key, moduleUsageDaily.client)
+        .orderBy(sql`sum(${moduleUsageDaily.count}) desc`, moduleUsageDaily.key, moduleUsageDaily.client);
       // postgres.js returns SUM(integer) as a bigint string.
       return rows.map((row) => ({ key: row.key, client: row.client, count: Number(row.count) }));
     },

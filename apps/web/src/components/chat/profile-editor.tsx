@@ -48,7 +48,6 @@ interface ProfileFormData {
   purpose: string;
   audience: string;
   risk_level: 'low' | 'medium' | 'high';
-  change_log: string;
   avatar_color: string;
   avatar_accessories: string[];
   avatar_leafStyle: LeafStyle;
@@ -59,8 +58,10 @@ interface ProfileEditorDrawerProps {
   open: boolean;
   onClose: () => void;
   profile: Profile | null; // null = create mode
+  /** Create mode only: start from this Agent's configuration (a built-in preset). */
+  template?: Profile | null;
   availableTools: ToolMeta[];
-  onSave: (input: CustomProfileInput, editId?: number) => Promise<void>;
+  onSave: (input: CustomProfileInput, editId?: string) => Promise<void>;
 }
 
 function createEmptyForm(): ProfileFormData {
@@ -75,7 +76,6 @@ function createEmptyForm(): ProfileFormData {
     purpose: '',
     audience: '',
     risk_level: 'medium',
-    change_log: '',
     avatar_color: 'forest',
     avatar_accessories: [],
     avatar_leafStyle: 'normal',
@@ -95,7 +95,6 @@ function createProfileForm(profile: Profile): ProfileFormData {
     purpose: profile.purpose || '',
     audience: profile.audience || '',
     risk_level: profile.risk_level || 'medium',
-    change_log: '',
     avatar_color: profile.avatar?.color || 'forest',
     avatar_accessories: profile.avatar?.accessories || [],
     avatar_leafStyle: profile.avatar?.leafStyle || 'normal',
@@ -105,7 +104,14 @@ function createProfileForm(profile: Profile): ProfileFormData {
 
 // ─── Component ──────────────────────────────────────────
 
-export function ProfileEditorDrawer({ open, onClose, profile, availableTools, onSave }: ProfileEditorDrawerProps) {
+export function ProfileEditorDrawer({
+  open,
+  onClose,
+  profile,
+  template,
+  availableTools,
+  onSave,
+}: ProfileEditorDrawerProps) {
   const t = useT();
   const isEditing = !!profile;
   // Same list as the Chat picker: catalog models this deployment can reach.
@@ -136,7 +142,9 @@ export function ProfileEditorDrawer({ open, onClose, profile, availableTools, on
     if (open) {
       const nextForm = profile
         ? createProfileForm(profile)
-        : { ...createEmptyForm(), change_log: t('profileEditor.initialVersion') };
+        : template
+          ? createProfileForm(template)
+          : createEmptyForm();
       setForm(nextForm);
       setInitialForm(nextForm);
       setError('');
@@ -147,7 +155,7 @@ export function ProfileEditorDrawer({ open, onClose, profile, availableTools, on
       setDiscardConfirmOpen(false);
       setTouched({ name: false, systemPrompt: false });
     }
-  }, [open, profile, t]);
+  }, [open, profile, template]);
 
   /**
    * Tools the author actually chooses between. Built-ins are excluded: every
@@ -242,7 +250,6 @@ export function ProfileEditorDrawer({ open, onClose, profile, availableTools, on
         purpose: form.purpose.trim() || undefined,
         audience: form.audience.trim() || undefined,
         risk_level: form.risk_level,
-        change_log: form.change_log.trim() || undefined,
         avatar: {
           color: form.avatar_color,
           accessories: form.avatar_accessories,
@@ -251,7 +258,7 @@ export function ProfileEditorDrawer({ open, onClose, profile, availableTools, on
         },
       };
 
-      const editId = profile ? parseInt(profile.id.replace('custom:', ''), 10) : undefined;
+      const editId = profile ? profile.id.replace(/^custom:/, '') : undefined;
       await onSave(input, editId);
       onClose();
     } catch (err: any) {
@@ -590,28 +597,12 @@ export function ProfileEditorDrawer({ open, onClose, profile, availableTools, on
                     <option value="high">{t('common.high')}</option>
                   </Select>
                 </FormField>
-                <FormField label={t('profileEditor.changeLog')}>
-                  <Input
-                    value={form.change_log}
-                    onChange={(e) => setForm({ ...form, change_log: e.target.value })}
-                    placeholder={t(profile ? 'profileEditor.changeLogPlaceholder' : 'profileEditor.initialVersion')}
-                  />
-                </FormField>
               </FormGrid>
 
               {profile && (
                 <div className="space-y-1 rounded-lg border border-edge bg-surface-muted px-3 py-2 text-xs text-fg-muted">
                   <div>{t('profileEditor.versionSummary', { version: profile.current_version ?? 1 })}</div>
                   {profile.is_shared && <div className="text-warning">{t('profileEditor.sharedEditWarning')}</div>}
-                </div>
-              )}
-
-              {/* Forked from badge */}
-              {profile?.forked_from && (
-                <div className="flex items-center gap-1.5 px-3 py-1.5 bg-primary-subtle/50 border border-primary-edge/30 rounded-lg">
-                  <span className="text-[10px] text-primary-fg font-medium">
-                    ↳ {t('profileEditor.forkedFrom', { name: profile.forked_from })}
-                  </span>
                 </div>
               )}
 

@@ -9,7 +9,7 @@
  * page says why) — it is never handed to an agent because it was once picked.
  */
 
-import type { DatabaseProvider, KnowledgeDocRow } from '@greenhouse/db';
+import type { DatabaseProvider, KnowledgeDoc } from '@greenhouse/db';
 import {
   DEFAULT_WORKSPACE_TIMEZONE,
   MAX_CONVENTION_DOCS,
@@ -47,21 +47,21 @@ export async function workspaceTimeZone(): Promise<string> {
 }
 
 /** Why a document cannot serve as team context, or null when it can. */
-export function teamContextDocProblem(doc: KnowledgeDocRow | undefined): TeamContextDocProblem | null {
+export function teamContextDocProblem(doc: KnowledgeDoc | undefined): TeamContextDocProblem | null {
   if (!doc) return 'missing';
   if (doc.status !== 'published') return 'archived';
   if (doc.visibility !== 'team') return 'not_team';
   return null;
 }
 
-function refOf(docId: string, doc: KnowledgeDocRow | undefined): TeamContextDocRef {
+function refOf(docId: string, doc: KnowledgeDoc | undefined): TeamContextDocRef {
   return { doc_id: docId, title: doc?.title ?? null, problem: teamContextDocProblem(doc) };
 }
 
 export interface ResolvedTeamContextDocs {
   /** Convention documents that still serve, in the admin's order. */
-  conventions: KnowledgeDocRow[];
-  glossary: KnowledgeDocRow | null;
+  conventions: KnowledgeDoc[];
+  glossary: KnowledgeDoc | null;
   refs: { conventions: TeamContextDocRef[]; glossary: TeamContextDocRef | null };
 }
 
@@ -80,7 +80,7 @@ export async function resolveTeamContextDocs(
   const glossaryRef = glossaryId ? refOf(glossaryId, glossaryDoc) : null;
   return {
     conventions: conventionDocs.filter(
-      (doc, index): doc is KnowledgeDocRow => doc !== undefined && conventionRefs[index]!.problem === null,
+      (doc, index): doc is KnowledgeDoc => doc !== undefined && conventionRefs[index]!.problem === null,
     ),
     glossary: glossaryDoc && glossaryRef?.problem === null ? glossaryDoc : null,
     refs: { conventions: conventionRefs, glossary: glossaryRef },

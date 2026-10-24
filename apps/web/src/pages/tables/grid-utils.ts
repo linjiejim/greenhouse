@@ -1,6 +1,6 @@
+import { isRowId } from '@greenhouse/utils/id';
 import type { TableFieldConfig, TableRecordValues } from '@greenhouse/types/tables';
 import type { TableBatchRecordItem, TableField, TableRecord } from '../../lib/api/tables';
-import { safeParse } from '../../lib/utils';
 
 export interface TablePasteUser {
   id: string;
@@ -46,7 +46,7 @@ function findOption(raw: string, config: TableFieldConfig): string {
 export function parsePastedCell(field: TableField, raw: string, users: TablePasteUser[]): unknown {
   const value = raw.trim();
   if (!value) return null;
-  const config = safeParse<TableFieldConfig>(field.config, {});
+  const config = field.config ?? {};
 
   if (field.type === 'number') {
     const number = Number(value.replace(/,/g, ''));
@@ -69,8 +69,8 @@ export function parsePastedCell(field: TableField, raw: string, users: TablePast
   if (field.type === 'multi_user') return splitList(value).map((entry) => findUser(entry, users));
   if (field.type === 'attachment') return splitList(value);
   if (field.type === 'relation') {
-    const ids = splitList(value).map((entry) => Number(entry.replace(/^#/, '')));
-    if (ids.some((id) => !Number.isInteger(id) || id <= 0)) throw new Error(`"${raw}" is not a record id`);
+    const ids = splitList(value).map((entry) => entry.replace(/^#/, ''));
+    if (ids.some((id) => !isRowId(id))) throw new Error(`"${raw}" is not a record id`);
     return config.relation?.multiple ? ids : ids[0];
   }
   if (field.type === 'formula' || field.type === 'rollup') {

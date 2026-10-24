@@ -1,8 +1,6 @@
 import React from 'react';
-import type { TableFieldConfig } from '@greenhouse/types/tables';
 import { InlineEditCell } from '../../components/tables';
 import type { TableField } from '../../lib/api/tables';
-import { safeParse } from '../../lib/utils';
 import { parsePastedCell, type TablePasteUser } from './grid-utils';
 
 interface InlineCellProps {
@@ -22,7 +20,7 @@ function draftValue(field: TableField, value: unknown): string {
 }
 
 export function InlineCell({ field, value, users, canEdit, children, onCommit, onPaste }: InlineCellProps) {
-  const config = safeParse<TableFieldConfig>(field.config, {});
+  const config = field.config ?? {};
   const selectOptions =
     field.type === 'single_select'
       ? (config.options ?? []).map((option) => ({ value: option.id, label: option.label }))

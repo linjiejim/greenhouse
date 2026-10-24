@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { isRowId } from '@greenhouse/utils/id';
 import type { TableBaseRole, TableBaseVisibility } from '@greenhouse/types/tables';
 import {
   getTableBase,
@@ -340,9 +341,9 @@ function BaseWorkspace({
   resourceType,
   resourceId,
 }: {
-  baseId: number;
+  baseId: string;
   resourceType?: 'table';
-  resourceId?: number;
+  resourceId?: string;
 }) {
   const t = useT();
   const { enrichPageContext } = useAgentContext();
@@ -504,14 +505,10 @@ export function TablesPage({ subPath = '' }: TablesPageProps) {
   const segments = subPath.split('/').filter(Boolean);
   if (segments.length === 0) return <TablesHome />;
   if (segments[0] === 'catalog') return <DataCatalogPage />;
-  const baseId = Number(segments[0]);
+  const baseId = segments[0];
   const resourceType = segments[1] === 'table' ? segments[1] : undefined;
-  const resourceId = segments[2] ? Number(segments[2]) : undefined;
-  if (
-    !Number.isInteger(baseId) ||
-    baseId <= 0 ||
-    (resourceId !== undefined && (!Number.isInteger(resourceId) || resourceId <= 0))
-  ) {
+  const resourceId = segments[2] || undefined;
+  if (!isRowId(baseId) || (resourceId !== undefined && !isRowId(resourceId))) {
     return (
       <div className="flex h-full items-center justify-center text-sm text-fg-faint">
         {t('tables.home.invalidRoute')}

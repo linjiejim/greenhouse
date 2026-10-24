@@ -11,7 +11,8 @@
  */
 
 import chalk from 'chalk';
-import { openDb, parseFlags, flagBool, flagNum, splitSub, table, heading, dim } from './shared.js';
+import { toRowId } from '@greenhouse/utils/id';
+import { openDb, parseFlags, flagBool, flagStr, splitSub, table, heading, dim } from './shared.js';
 
 export async function run(args: string[]): Promise<number> {
   const { sub, rest } = splitSub(args, 'list-archived');
@@ -28,7 +29,7 @@ async function listArchived(args: string[]): Promise<number> {
   const db = await openDb();
   const [bases, tables] = await Promise.all([
     db.tables.listArchivedBases(),
-    db.tables.listArchivedTables(flagNum(flags, 'base', 0) || undefined),
+    db.tables.listArchivedTables(toRowId(flagStr(flags, 'base')) ?? undefined),
   ]);
 
   if (flagBool(flags, 'json')) {
@@ -59,7 +60,7 @@ async function listArchived(args: string[]): Promise<number> {
   if (!tables.length) {
     console.log(dim('  (none)'));
   } else {
-    const baseNames = new Map<number, string>();
+    const baseNames = new Map<string, string>();
     for (const definition of tables) {
       if (!baseNames.has(definition.base_id)) {
         const base = await db.tables.getBase(definition.base_id);
@@ -85,8 +86,8 @@ async function listArchived(args: string[]): Promise<number> {
 
 async function restoreBase(args: string[]): Promise<number> {
   const { positionals } = parseFlags(args);
-  const id = Number(positionals[0]);
-  if (!Number.isInteger(id) || id <= 0) {
+  const id = toRowId(positionals[0]);
+  if (!id) {
     console.error('Usage: pnpm cli tables restore-base <id>');
     return 1;
   }
@@ -116,8 +117,8 @@ async function restoreBase(args: string[]): Promise<number> {
 
 async function restoreTable(args: string[]): Promise<number> {
   const { positionals } = parseFlags(args);
-  const id = Number(positionals[0]);
-  if (!Number.isInteger(id) || id <= 0) {
+  const id = toRowId(positionals[0]);
+  if (!id) {
     console.error('Usage: pnpm cli tables restore-table <id>');
     return 1;
   }

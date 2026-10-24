@@ -1,5 +1,5 @@
 /**
- * Module usage counting — the API side of `usage_counters`.
+ * Module usage counting — the API side of `module_usage_daily`.
  *
  * Counts are fire-and-forget: `countUsage()` never throws, never awaits the
  * database, and logs a warning when the write fails. A counter must never fail

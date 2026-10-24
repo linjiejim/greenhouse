@@ -1,11 +1,12 @@
 /**
- * Feishu / WeCom login state in `oauth_login_states` (real PostgreSQL).
+ * Feishu / WeCom login state in `login_states` (real PostgreSQL).
  *
  * Only the SHA-256 of a value is stored, a value is consumed at most once, and
  * provider, kind and expiry all gate the consume. The cross-connection race is
  * pinned in security-state.db-commit.test.ts.
  */
 
+import { safeJsonParse } from '@greenhouse/utils/json';
 import { createHash, randomBytes } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { sql } from 'drizzle-orm';
@@ -37,9 +38,11 @@ describe('oauthLoginStates', () => {
     });
     const hash = createHash('sha256').update(state).digest('hex');
     const rows = (await db.executeRaw(
-      sql`SELECT id, payload FROM oauth_login_states WHERE id IN (${hash}, ${state})`,
-    )) as Array<{ id: string; payload: string }>;
-    expect(rows).toEqual([{ id: hash, payload: '{"intent":"login"}' }]);
+      sql`SELECT id, payload FROM login_states WHERE id IN (${hash}, ${state})`,
+    )) as Array<{ id: string; payload: unknown }>;
+    expect(rows.map((row) => ({ id: row.id, payload: safeJsonParse(row.payload, null) }))).toEqual([
+      { id: hash, payload: { intent: 'login' } },
+    ]);
   });
 
   it('consumes a value exactly once and returns its payload', async () => {
@@ -121,7 +124,7 @@ describe('oauthLoginStates', () => {
     expect(await db.oauthLoginStates.sweepExpired()).toBeGreaterThanOrEqual(1);
     const ids = [stale, live].map((v) => createHash('sha256').update(v).digest('hex'));
     const rows = (await db.executeRaw(
-      sql`SELECT id FROM oauth_login_states WHERE id IN (${ids[0]}, ${ids[1]})`,
+      sql`SELECT id FROM login_states WHERE id IN (${ids[0]}, ${ids[1]})`,
     )) as Array<{ id: string }>;
     expect(rows.map((row) => row.id)).toEqual([ids[1]]);
   });

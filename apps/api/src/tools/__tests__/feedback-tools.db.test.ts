@@ -36,7 +36,7 @@ beforeEach(async () => {
   const client = await db.platformOAuth.registerClient({
     id: unique('client'),
     client_name: 'Codex',
-    redirect_uris: '[]',
+    redirect_uris: [],
     created_by: alice.id,
   });
   caller = { userId: alice.id, clientId: client.id, clientName: 'Codex', authMethod: 'oauth' };

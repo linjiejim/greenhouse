@@ -57,7 +57,7 @@ export type TableFormulaFunction = (typeof TABLE_FORMULA_FUNCTIONS)[number];
 
 export type TableFormulaExpression =
   | { type: 'literal'; value: string | number | boolean | null }
-  | { type: 'field'; fieldId: number }
+  | { type: 'field'; fieldId: string }
   | {
       type: 'binary';
       operator: TableFormulaBinaryOperator;
@@ -73,7 +73,7 @@ export interface TableFieldConfig {
   version?: number;
   options?: TableSelectOption[];
   relation?: {
-    targetTableId: number;
+    targetTableId: string;
     multiple?: boolean;
   };
   formula?: {
@@ -81,8 +81,8 @@ export interface TableFieldConfig {
     expression: TableFormulaExpression;
   };
   rollup?: {
-    relationFieldId: number;
-    targetFieldId: number;
+    relationFieldId: string;
+    targetFieldId: string;
     aggregation: TableRollupAggregation;
   };
 }
@@ -106,7 +106,7 @@ export const TABLE_FILTER_OPERATORS = [
 export type TableFilterOperator = (typeof TABLE_FILTER_OPERATORS)[number];
 
 export interface TableFilterClause {
-  fieldId: number;
+  fieldId: string;
   operator: TableFilterOperator;
   value?: unknown;
 }
@@ -117,7 +117,7 @@ export interface TableFilterGroup {
 }
 
 export interface TableSort {
-  fieldId?: number;
+  fieldId?: string;
   systemField?: 'created_at' | 'updated_at';
   direction: 'asc' | 'desc';
 }
@@ -137,7 +137,7 @@ export type TableViewScope = 'shared' | 'personal';
 
 export interface TableViewConfig {
   version?: number;
-  fieldIds?: number[];
+  fieldIds?: string[];
   widths?: Record<string, number>;
   /**
    * How many leading columns stay pinned to the left while scrolling.
@@ -148,11 +148,6 @@ export interface TableViewConfig {
   query?: Omit<TableQuery, 'cursor' | 'limit'>;
 }
 
-// Still referenced by the legacy Drizzle schema (table_dashboard_widgets); the
-// feature is gone, drop these with the schema rebuild.
-export const TABLE_DASHBOARD_WIDGET_TYPES = ['kpi', 'bar', 'line', 'pie', 'records', 'text'] as const;
-export type TableDashboardWidgetType = (typeof TABLE_DASHBOARD_WIDGET_TYPES)[number];
-
 export const TABLE_AGGREGATIONS = ['count', 'sum', 'avg', 'min', 'max'] as const;
 export type TableAggregation = (typeof TABLE_AGGREGATIONS)[number];
 
@@ -160,7 +155,7 @@ export const TABLE_SCHEMA_CHANGE_TYPES = ['created', 'field_created', 'field_upd
 export type TableSchemaChangeType = (typeof TABLE_SCHEMA_CHANGE_TYPES)[number];
 
 export interface TableSchemaSnapshotField {
-  id: number;
+  id: string;
   name: string;
   type: TableFieldType;
   required: boolean;
@@ -172,7 +167,7 @@ export interface TableSchemaSnapshotField {
 
 export interface TableSchemaSnapshot {
   version: 1;
-  tableId: number;
+  tableId: string;
   fields: TableSchemaSnapshotField[];
 }
 
@@ -184,47 +179,10 @@ export interface TableBatchValidationResult {
   current?: number;
 }
 
-// Form and automation config types are still referenced by the legacy Drizzle
-// schema (table_forms / table_automation_rules); the features are gone, drop
-// these with the schema rebuild.
-export interface TableFormConfig {
-  version?: number;
-  title?: string;
-  description?: string;
-  fieldIds: number[];
-  submitLabel?: string;
-  successMessage?: string;
-}
-
-export type TableAutomationTrigger = 'record_created' | 'record_updated';
-
-export type TableAutomationAction =
-  | {
-      type: 'update_record';
-      values: TableRecordValues;
-    }
-  | {
-      type: 'create_record';
-      tableId: number;
-      values: TableRecordValues;
-    }
-  | {
-      type: 'notify';
-      userIds: string[];
-      title: string;
-      message: string;
-    };
-
-export interface TableAutomationConfig {
-  version?: number;
-  condition?: TableFilterGroup;
-  actions: TableAutomationAction[];
-}
-
 export interface TableAggregateInput {
   operation: TableAggregation;
-  valueFieldId?: number;
-  groupByFieldId?: number;
+  valueFieldId?: string;
+  groupByFieldId?: string;
   query?: Omit<TableQuery, 'cursor' | 'limit'>;
   limit?: number;
 }
@@ -263,7 +221,7 @@ export type SchemaPlanOperation =
     }
   | {
       op: 'base.update';
-      baseId: number;
+      baseId: string;
       name?: string;
       description?: string | null;
       visibility?: TableBaseVisibility;
@@ -273,16 +231,16 @@ export type SchemaPlanOperation =
       ref?: SchemaPlanRef;
       /** Exactly one of baseRef / baseId. */
       baseRef?: SchemaPlanRef;
-      baseId?: number;
+      baseId?: string;
       name: string;
       description?: string;
     }
-  | { op: 'table.update'; tableId: number; name?: string; description?: string | null }
+  | { op: 'table.update'; tableId: string; name?: string; description?: string | null }
   | {
       op: 'field.create';
       /** Exactly one of tableRef / tableId. */
       tableRef?: SchemaPlanRef;
-      tableId?: number;
+      tableId?: string;
       name: string;
       type: TableFieldType;
       required?: boolean;
@@ -291,13 +249,13 @@ export type SchemaPlanOperation =
   | {
       op: 'field.update';
       /** Carried for the draft-time permission probe and to prove the field really is in this table. */
-      tableId: number;
-      fieldId: number;
+      tableId: string;
+      fieldId: string;
       name?: string;
       required?: boolean;
       config?: TableFieldConfig;
     }
-  | { op: 'field.archive'; tableId: number; fieldId: number };
+  | { op: 'field.archive'; tableId: string; fieldId: string };
 
 export type SchemaPlanOperationKind = SchemaPlanOperation['op'];
 
@@ -317,7 +275,7 @@ export interface SchemaPlanOperationResult {
   op: SchemaPlanOperationKind;
   status: SchemaPlanResultStatus;
   /** Id of the created or touched object, when one exists. */
-  id?: number;
+  id?: string;
   /** Failure reason, or which ref's failure caused this one to be skipped. */
   message?: string;
 }
@@ -325,5 +283,5 @@ export interface SchemaPlanOperationResult {
 export interface SchemaPlanApplyResult {
   results: SchemaPlanOperationResult[];
   /** The Base the plan touched, when it is unambiguous — lets the card link to it. */
-  baseId?: number;
+  baseId?: string;
 }

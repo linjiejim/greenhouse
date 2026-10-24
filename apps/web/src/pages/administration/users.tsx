@@ -78,7 +78,6 @@ export function UserManagementPanel() {
     password: '',
     nickname: '',
     role: 'team' as string,
-    monthly_token_limit: 5000000,
     credential_mode: 'email_link' as 'email_link' | 'direct_password',
   });
 
@@ -174,7 +173,6 @@ export function UserManagementPanel() {
         email: form.email,
         nickname: form.nickname,
         role: 'team',
-        monthly_token_limit: form.monthly_token_limit,
         credential_mode: form.credential_mode,
         ...(form.credential_mode === 'direct_password' ? { password: form.password } : {}),
       });
@@ -184,7 +182,6 @@ export function UserManagementPanel() {
         password: '',
         nickname: '',
         role: 'team',
-        monthly_token_limit: 5000000,
         credential_mode: passwordLinkCapability?.available ? 'email_link' : 'direct_password',
       });
       if (hasFailedDelivery(data)) {
@@ -466,13 +463,6 @@ export function UserManagementPanel() {
                   <option value="team">{t('settings.roleTeam')}</option>
                 </Select>
               </FormField>
-              <FormField label={t('settings.monthlyTokenLimit')}>
-                <Input
-                  type="number"
-                  value={form.monthly_token_limit}
-                  onChange={(e) => setForm({ ...form, monthly_token_limit: parseInt(e.target.value) || 0 })}
-                />
-              </FormField>
             </FormGrid>
             <FormError>{error}</FormError>
             <FormActions>
@@ -534,11 +524,6 @@ export function UserManagementPanel() {
               ) : (
                 filteredUsers.map((u) => {
                   const usage = u.usage_summary;
-                  // Raw share, not the clamped bar width: past 100% the bar is
-                  // pinned and stops being able to say "this account is blocked".
-                  const tokenShare =
-                    usage && u.monthly_token_limit > 0 ? (usage.month_tokens / u.monthly_token_limit) * 100 : 0;
-                  const tokenPct = Math.min(100, tokenShare);
 
                   return (
                     <tr
@@ -598,27 +583,9 @@ export function UserManagementPanel() {
                       {/* Month tokens */}
                       <td className="py-2.5 px-3 text-right">
                         {usage ? (
-                          <div>
-                            <div className="flex items-center justify-end gap-1.5">
-                              {tokenShare >= 80 && (
-                                <Tag
-                                  tone={tokenShare >= 100 ? 'danger' : 'warning'}
-                                >{`${Math.round(tokenShare)}%`}</Tag>
-                              )}
-                              <span className="text-xs font-medium text-fg-secondary">
-                                {formatTokens(usage.month_tokens)}
-                                <span className="text-fg-faint">/{formatTokens(u.monthly_token_limit)}</span>
-                              </span>
-                            </div>
-                            <div className="w-full bg-surface-muted rounded-full h-1 mt-1">
-                              <div
-                                className={`h-1 rounded-full ${
-                                  tokenShare >= 100 ? 'bg-danger' : tokenShare >= 80 ? 'bg-warning' : 'bg-primary-400'
-                                }`}
-                                style={{ width: `${tokenPct}%` }}
-                              />
-                            </div>
-                          </div>
+                          <span className="text-xs font-medium text-fg-secondary">
+                            {formatTokens(usage.month_tokens)}
+                          </span>
                         ) : (
                           <span className="text-xs text-fg-faint">—</span>
                         )}

@@ -8,8 +8,8 @@ describe('pageContextKey', () => {
   });
 
   it('rotates when a route-scoped entity changes', () => {
-    expect(pageContextKey({ type: 'project-detail', projectId: 1 })).not.toBe(
-      pageContextKey({ type: 'project-detail', projectId: 2 }),
+    expect(pageContextKey({ type: 'project-detail', projectId: '1' })).not.toBe(
+      pageContextKey({ type: 'project-detail', projectId: '2' }),
     );
   });
 

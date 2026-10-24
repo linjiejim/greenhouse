@@ -23,6 +23,7 @@ import {
   Link,
 } from '../../lib/icons';
 import { StatusIcon } from './task-tree';
+import { parseDeps } from './gantt-utils';
 import { statusConfig } from './types';
 import type { Task, Comment } from './types';
 import { useT } from '../../lib/i18n';
@@ -71,8 +72,7 @@ export function TaskDetailDrawer({
     setEditing(false);
     setEditDeps(false);
     setDepSearch('');
-    const deps =
-      typeof task.dependencies === 'string' ? JSON.parse(task.dependencies || '[]') : task.dependencies || [];
+    const deps = parseDeps(task.dependencies);
     setForm({
       title: task.title,
       description: task.description || '',
@@ -82,13 +82,13 @@ export function TaskDetailDrawer({
       start_date: task.start_date || '',
       due_date: task.due_date || '',
       estimated_hours: task.estimated_hours == null ? '' : String(task.estimated_hours),
-      tags: typeof task.tags === 'string' ? JSON.parse(task.tags || '[]').join(', ') : (task.tags || []).join(', '),
+      tags: (task.tags || []).join(', '),
       dependencies: deps,
     });
     loadComments(task.id);
   }, [task]);
 
-  const loadComments = async (taskId: number) => {
+  const loadComments = async (taskId: string) => {
     setLoadingComments(true);
     try {
       const res = await authFetch(`/api/projects/tasks/${taskId}/comments`);
@@ -112,7 +112,7 @@ export function TaskDetailDrawer({
             .map((t: string) => t.trim())
             .filter(Boolean)
         : [];
-      const res = await authFetch(`/api/projects/tasks/${task.id}`, {
+      const res = await authFetch(`/api/projects/tasks/${encodeURIComponent(task.id)}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -144,7 +144,7 @@ export function TaskDetailDrawer({
     // Optimistic: update local form state immediately
     setForm((prev) => ({ ...prev, status: newStatus }));
     // Fire server update (non-blocking)
-    authFetch(`/api/projects/tasks/${task.id}`, {
+    authFetch(`/api/projects/tasks/${encodeURIComponent(task.id)}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ status: newStatus }),
@@ -152,7 +152,7 @@ export function TaskDetailDrawer({
     toast(t('projects.statusUpdated'), 'success', {
       onUndo: () => {
         setForm((prev) => ({ ...prev, status: oldStatus }));
-        authFetch(`/api/projects/tasks/${task.id}`, {
+        authFetch(`/api/projects/tasks/${encodeURIComponent(task.id)}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ status: oldStatus }),
@@ -183,7 +183,7 @@ export function TaskDetailDrawer({
   const handleDelete = async () => {
     if (!task) return;
     setShowDeleteConfirm(false);
-    await authFetch(`/api/projects/tasks/${task.id}`, { method: 'DELETE' });
+    await authFetch(`/api/projects/tasks/${encodeURIComponent(task.id)}`, { method: 'DELETE' });
     toast(t('task.deleted'), 'success');
     onClose();
     onUpdate();
@@ -283,7 +283,7 @@ export function TaskDetailDrawer({
                   </div>
                 )}
                 {(() => {
-                  const tags = typeof task.tags === 'string' ? JSON.parse(task.tags || '[]') : task.tags || [];
+                  const tags = task.tags || [];
                   return (
                     tags.length > 0 && (
                       <div className="flex items-center gap-2 text-fg-muted">
@@ -317,15 +317,10 @@ export function TaskDetailDrawer({
 
               {/* Dependencies (Feature 8) */}
               {(() => {
-                const deps: number[] =
-                  typeof task.dependencies === 'string'
-                    ? JSON.parse(task.dependencies || '[]')
-                    : task.dependencies || [];
+                const deps = parseDeps(task.dependencies);
                 const depTasks = deps.map((id) => allTasks.find((t) => t.id === id)).filter(Boolean) as Task[];
                 const dependents = allTasks.filter((t) => {
-                  const tDeps =
-                    typeof t.dependencies === 'string' ? JSON.parse(t.dependencies || '[]') : t.dependencies || [];
-                  return tDeps.includes(task.id);
+                  return parseDeps(t.dependencies).includes(task.id);
                 });
                 return (
                   <div>
@@ -357,7 +352,7 @@ export function TaskDetailDrawer({
                                 <button
                                   onClick={async () => {
                                     const newDeps = deps.filter((d) => d !== dt.id);
-                                    await authFetch(`/api/projects/tasks/${task.id}`, {
+                                    await authFetch(`/api/projects/tasks/${encodeURIComponent(task.id)}`, {
                                       method: 'PATCH',
                                       headers: { 'Content-Type': 'application/json' },
                                       body: JSON.stringify({ dependencies: newDeps }),
@@ -396,7 +391,7 @@ export function TaskDetailDrawer({
                                         key={t.id}
                                         onClick={async () => {
                                           const newDeps = [...deps, t.id];
-                                          await authFetch(`/api/projects/tasks/${task.id}`, {
+                                          await authFetch(`/api/projects/tasks/${encodeURIComponent(task.id)}`, {
                                             method: 'PATCH',
                                             headers: { 'Content-Type': 'application/json' },
                                             body: JSON.stringify({ dependencies: newDeps }),

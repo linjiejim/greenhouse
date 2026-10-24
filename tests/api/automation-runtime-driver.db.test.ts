@@ -32,7 +32,7 @@ async function projectLatestTerminalOutcome(runId: string): Promise<void> {
   const events = await db.runtime.listEvents(runId);
   const terminal = [...events].reverse().find((event) => {
     if (event.type !== 'run.status_changed' && event.type !== 'run.lease_expired') return false;
-    const payload = JSON.parse(event.payload) as { result?: { status?: string } };
+    const payload = event.payload as { result?: { status?: string } };
     return payload.result && ['succeeded', 'failed', 'canceled', 'interrupted'].includes(payload.result.status ?? '');
   });
   if (!terminal) throw new Error(`Runtime run ${runId} has no terminal outbox event`);
@@ -42,7 +42,7 @@ async function projectLatestTerminalOutcome(runId: string): Promise<void> {
     step_id: terminal.step_id,
     seq: terminal.seq,
     type: terminal.type,
-    payload: JSON.parse(terminal.payload),
+    payload: terminal.payload as RuntimeEventEnvelope['payload'],
     actor_user_id: terminal.actor_user_id,
     created_at: terminal.created_at,
   } satisfies RuntimeEventEnvelope);
@@ -51,6 +51,7 @@ async function projectLatestTerminalOutcome(runId: string): Promise<void> {
 async function scheduledTask(
   overrides: { quiet_when_empty?: boolean; notify_email?: boolean } = {},
 ): Promise<ScheduledTaskRow> {
+  const { notify_email, ...rest } = overrides;
   const owner = await createInternalTestUser(db, { email: `${unique('automation')}@test.local` });
   return db.scheduledTasks.create({
     user_id: owner.id,
@@ -60,7 +61,8 @@ async function scheduledTask(
     schedule: '0 * * * *',
     timezone: 'UTC',
     max_steps: 5,
-    ...overrides,
+    ...rest,
+    ...(notify_email !== undefined ? { notify: { email: notify_email } } : {}),
   });
 }
 
@@ -150,7 +152,7 @@ describe('durable Automation Runtime driver', () => {
       }),
     );
     expect(await db.runtime.getRun(queued.run.id)).toMatchObject({ status: 'succeeded', attempt: 1 });
-    expect(JSON.parse((await db.runtime.getRun(queued.run.id))!.output!)).toMatchObject({
+    expect((await db.runtime.getRun(queued.run.id))!.output).toMatchObject({
       tool_evidence: [],
     });
     expect(await db.runtime.listSteps(queued.run.id)).toEqual([
@@ -170,7 +172,7 @@ describe('durable Automation Runtime driver', () => {
     await db.scheduledTasks.update(stale.id, {
       enabled: false,
       task_prompt: 'A newly reviewed prompt that supersedes the callback snapshot.',
-      notify_webhook: null,
+      notify: { webhook: null },
     });
 
     await expect(
@@ -376,7 +378,7 @@ describe('durable Automation Runtime driver', () => {
 
     const run = await db.runtime.getRun(runId);
     expect(run).toMatchObject({ status: 'succeeded' });
-    expect(JSON.parse(run!.output!)).toMatchObject({ summary: NO_UPDATE_SUMMARY, no_update: true });
+    expect(run!.output).toMatchObject({ summary: NO_UPDATE_SUMMARY, no_update: true });
     // The prepared prompt carried the instruction the model answered.
     const messages = await db.sessions.getMessages(sessionId);
     expect(messages.find((message) => message.role === 'user')?.content).toContain('NO_UPDATE');
@@ -397,7 +399,7 @@ describe('durable Automation Runtime driver', () => {
 
     const loud = await scheduledTask();
     const { runId, sessionId } = await driveOnce(loud, '2026-08-12T08:00:00.000Z', 'NO_UPDATE');
-    expect(JSON.parse((await db.runtime.getRun(runId))!.output!)).not.toHaveProperty('no_update');
+    expect((await db.runtime.getRun(runId))!.output).not.toHaveProperty('no_update');
     expect(await notificationsFor(loud.user_id)).toHaveLength(1);
     const messages = await db.sessions.getMessages(sessionId);
     expect(messages.find((message) => message.role === 'user')?.content).not.toContain('NO_UPDATE');
@@ -475,7 +477,7 @@ describe('durable Automation Runtime driver', () => {
       title: expect.stringContaining('outcome unknown'),
       body: expect.stringContaining('tables_mutation (update_record) · uncertain'),
     });
-    expect(JSON.parse(notifications[0]!.payload)).toMatchObject({
+    expect(notifications[0]!.payload).toMatchObject({
       status: 'interrupted',
       writes: [{ tool: 'tables_mutation', action: 'update_record', status: 'uncertain' }],
     });

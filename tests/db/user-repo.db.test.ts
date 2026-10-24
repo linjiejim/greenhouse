@@ -144,34 +144,4 @@ describe('User Repository', () => {
       expect(after!.last_login_at).toBeTruthy();
     }
   });
-
-  it('sets default daily and monthly limits', async () => {
-    const user = await db.users.create({
-      email: 'limits@test.com',
-      password_hash: 'h',
-      nickname: 'Limits',
-      role: 'team',
-    });
-
-    expect(user.daily_message_limit).toBeGreaterThan(0);
-    expect(user.monthly_token_limit).toBeGreaterThan(0);
-  });
-
-  it('updates user limits', async () => {
-    const user = await db.users.create({
-      email: 'ulimit@test.com',
-      password_hash: 'h',
-      nickname: 'ULimit',
-      role: 'team',
-    });
-
-    await db.users.update(user.id, {
-      daily_message_limit: 500,
-      monthly_token_limit: 50000000,
-    });
-
-    const found = await db.users.getById(user.id);
-    expect(found!.daily_message_limit).toBe(500);
-    expect(found!.monthly_token_limit).toBe(50000000);
-  });
 });

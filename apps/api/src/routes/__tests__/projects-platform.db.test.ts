@@ -13,7 +13,6 @@ import projectsRoutes from '../projects.js';
 import platformRoutes from '../platform.js';
 import platformAdminRoutes from '../platform-admin.js';
 import { bootstrapPlatform } from '../../platform/bootstrap.js';
-import { tablesManifest } from '../../platform/manifests/tables.js';
 import { projectsRegistration } from '../../platform/projects/application.js';
 import { initializePlatformRuntime, resetPlatformRuntimeForTests } from '../../platform/runtime.js';
 import { humanActor } from '../../platform/actor.js';
@@ -21,12 +20,16 @@ import { createProjectQueryTool } from '../../tools/project-query.js';
 import { createProjectMutationTool } from '../../tools/project-mutation.js';
 import { TEST_DATABASE_URL } from '@greenhouse/db/test-config';
 import { createInternalTestUser } from '../../../../../tests/helpers/internal-user.js';
+import { moveToRestrictedRole, withoutCapability } from '../../../../../tests/helpers/restricted-role.js';
+import { projectsManifest } from '../../platform/manifests/projects.js';
+
+const PROJECT_CAPABILITIES = [...new Set(Object.values(projectsManifest.actions).map((action) => action.capability))];
 
 let db: DatabaseProvider;
 let owner: UserRow;
 let outsider: UserRow;
-let privateProjectId: number;
-let publicProjectId: number;
+let privateProjectId: string;
+let publicProjectId: string;
 let actorsReady: Promise<void> | undefined;
 let projectsReady: Promise<void> | undefined;
 
@@ -120,30 +123,16 @@ describe('Projects Platform Kernel migration', () => {
     _resetProvider();
   });
 
-  it('bootstraps active application manifests and idempotent protected internal roles', async () => {
+  it('bootstraps idempotent protected internal roles', async () => {
     await setupActors();
     const second = await bootstrapPlatform(db);
     expect(second).toMatchObject({
-      appReleasesActivated: [],
       rolesCreated: [],
       capabilitiesAdded: 0,
       entityPoliciesAdded: 0,
       bindingsSynchronized: 2,
     });
 
-    // Read the versions that move from their manifests; the two rarely-touched
-    // ones stay literal so a silent bump there still trips this. They moved to
-    // 1.0.1 on 2026-08-11 — not a content change of their own, but every
-    // manifest's serialization shifted when compileApp stopped letting a
-    // caller-supplied `id` through, and an unbumped manifest whose hash moved
-    // is a boot-time fatal (see platform/__tests__/manifest-hash.test.ts).
-    // Core's three, pinned. A fork's extensions publish their own applications
-    // beside them, so filter to core rather than asserting the whole list.
-    const active = await db.platform.listActiveAppReleases();
-    const coreIds = new Set(['knowledge', 'projects', 'tables']);
-    expect(
-      active.filter((release) => coreIds.has(release.app_id)).map((release) => `${release.app_id}@${release.version}`),
-    ).toEqual(['knowledge@1.0.1', 'projects@1.0.1', `tables@${tablesManifest.version}`]);
     const roles = await db.platform.listRoles('default');
     expect(roles.map((role) => role.code)).toEqual(['super', 'team']);
     expect(roles.every((role) => role.system_protected)).toBe(true);
@@ -161,7 +150,7 @@ describe('Projects Platform Kernel migration', () => {
     const readProjectPolicy = async () => {
       const rows = await db.platform.listRoleEntityPolicies([superRole.id]);
       const row = rows.find((r) => r.app_id === 'projects' && r.entity_id === 'project')!;
-      return JSON.parse(row.field_policies) as Record<
+      return row.field_policies as Record<
         string,
         { read: 'full' | 'masked' | 'none'; write: boolean; export: boolean }
       >;
@@ -223,13 +212,8 @@ describe('Projects Platform Kernel migration', () => {
 
   it('applies user deny before the team baseline on HTTP and direct registry dispatch', async () => {
     await setupProjects();
-    await db.platform.setUserCapabilityOverride({
-      org_id: 'default',
-      user_id: owner.id,
-      capability: 'projects.portfolio.update',
-      effect: 'deny',
-      granted_by: owner.id,
-      reason: 'Test restriction',
+    await moveToRestrictedRole(db, owner.id, {
+      capabilities: withoutCapability('projects.portfolio.update', { 'projects.*': PROJECT_CAPABILITIES }),
     });
     const app = createHttpApp({ owner });
     const response = await app.request(`/api/projects/${publicProjectId}`, {
@@ -366,12 +350,8 @@ describe('Projects Platform Kernel migration', () => {
     })) as { status?: string; error?: string };
     expect(allowed).toMatchObject({ status: 'updated' });
 
-    await db.platform.setUserCapabilityOverride({
-      org_id: 'default',
-      user_id: owner.id,
-      capability: 'projects.portfolio.update',
-      effect: 'deny',
-      granted_by: owner.id,
+    await moveToRestrictedRole(db, owner.id, {
+      capabilities: withoutCapability('projects.portfolio.update', { 'projects.*': PROJECT_CAPABILITIES }),
     });
     const denied = (await executeTool(ownerMutation, {
       action: 'project.update',
@@ -394,14 +374,14 @@ describe('Projects Platform Kernel migration', () => {
       action: 'task.create',
       project_id: publicProjectId,
       title: 'Comment target',
-    })) as { status?: string; task?: { id: number } };
+    })) as { status?: string; task?: { id: string } };
     expect(created.status).toBe('created');
 
     const commented = (await executeTool(ownerMutation, {
       action: 'comment.add',
       task_id: created.task!.id,
       content: 'Ported from project_manager.add_comment',
-    })) as { status?: string; comment?: { id: number; task_id: number } };
+    })) as { status?: string; comment?: { id: string; task_id: string } };
     expect(commented.status).toBe('created');
     expect(commented.comment?.task_id).toBe(created.task!.id);
 
@@ -461,43 +441,30 @@ describe('Projects Platform Kernel migration', () => {
     });
     expect(capabilities.status).toBe(200);
 
+    // Per-user overrides were retired in 3.0: the endpoint is gone, roles are the only lever.
     const override = await app.request(`/api/admin/platform/users/${owner.id}/overrides`, {
       method: 'PUT',
       headers: { 'content-type': 'application/json', 'x-test-user': 'superUser' },
-      body: JSON.stringify({
-        capability: 'projects.portfolio.read',
-        effect: 'deny',
-        reason: 'Catalog test',
-      }),
+      body: JSON.stringify({ capability: 'projects.portfolio.read', effect: 'deny' }),
     });
-    expect(override.status).toBe(200);
-
-    const hidden = await app.request('/api/platform/apps', {
-      headers: { 'x-test-user': 'owner' },
-    });
-    const hiddenApplications = (await hidden.json()).applications as Array<{ id: string }>;
-    expect(hiddenApplications).toEqual([
-      expect.objectContaining({
-        id: 'projects',
-      }),
-    ]);
-    const hiddenProjects = hiddenApplications[0] as unknown as {
-      actions: Record<string, { capability: string }>;
-    };
-    expect(
-      Object.values(hiddenProjects.actions).some((action) => action.capability === 'projects.portfolio.read'),
-    ).toBe(false);
+    expect(override.status).toBe(404);
   });
 
-  it('round-trips user entity policies and rejects fields or scopes outside the manifest', async () => {
+  it('round-trips role entity policies and rejects fields or scopes outside the manifest', async () => {
     await setupActors();
     const superUser = await createUser('entity-policy-super@test.com', 'super');
     const app = createPlatformHttpApp({ owner, superUser });
-    const endpoint = `/api/admin/platform/users/${owner.id}/entity-policies/projects/project`;
     const headers = {
       'content-type': 'application/json',
       'x-test-user': 'superUser',
     };
+    const created = await app.request('/api/admin/platform/roles', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ code: 'projectAuditor', name: 'Project auditor' }),
+    });
+    const roleId = (await created.json()).role.id as string;
+    const endpoint = `/api/admin/platform/roles/${roleId}/entity-policies/projects/project`;
 
     const invalidScope = await app.request(endpoint, {
       method: 'PUT',
@@ -558,51 +525,18 @@ describe('Projects Platform Kernel migration', () => {
     });
     expect(saved.status).toBe(200);
 
-    const effective = await app.request(`/api/admin/platform/users/${owner.id}/effective`, {
-      headers: { 'x-test-user': 'superUser' },
-    });
-    expect(effective.status).toBe(200);
-    expect((await effective.json()).entityPolicies).toContainEqual(
-      expect.objectContaining({
-        appId: 'projects',
-        entityId: 'project',
-        override: expect.objectContaining({
-          effect: 'allow',
-          policy: {
-            scopes: [{ kind: 'own' }],
-            fields: {
-              title: { read: 'masked', write: true, export: false },
-            },
-          },
-        }),
-      }),
-    );
-
     const roles = await app.request('/api/admin/platform/roles', {
       headers: { 'x-test-user': 'superUser' },
     });
-    expect((await roles.json()).userEntityPolicies).toContainEqual(
+    expect((await roles.json()).entityPolicies).toContainEqual(
       expect.objectContaining({
-        user_id: owner.id,
+        role_id: roleId,
         app_id: 'projects',
         entity_id: 'project',
+        scopes: [{ kind: 'own' }],
+        field_policies: expect.objectContaining({ title: { read: 'masked', write: true, export: false } }),
       }),
     );
-
-    const cleared = await app.request(endpoint, {
-      method: 'DELETE',
-      headers: { 'x-test-user': 'superUser' },
-    });
-    expect(cleared.status).toBe(200);
-    expect(await cleared.json()).toEqual({ success: true });
-
-    const afterClear = await app.request(`/api/admin/platform/users/${owner.id}/effective`, {
-      headers: { 'x-test-user': 'superUser' },
-    });
-    const projectPolicy = (await afterClear.json()).entityPolicies.find(
-      (entry: { appId: string; entityId: string }) => entry.appId === 'projects' && entry.entityId === 'project',
-    );
-    expect(projectPolicy.override).toBeUndefined();
   });
 
   it('persists only visible applications in the user workbench', async () => {
@@ -718,12 +652,9 @@ describe('Projects Platform Kernel migration', () => {
     expect(await staleWrite.json()).toMatchObject({ error: expect.stringContaining('changed') });
     await db.platform.setUserWorkbenchPreferences('default', owner.id, savedPreferences);
 
-    await db.platform.setUserCapabilityOverride({
-      org_id: 'default',
-      user_id: owner.id,
-      capability: 'projects.*',
-      effect: 'deny',
-      granted_by: owner.id,
+    await moveToRestrictedRole(db, owner.id, {
+      capabilities: (team) =>
+        team.filter((capability) => capability !== 'projects.*' && !capability.startsWith('projects.')),
     });
     const filtered = await app.request('/api/platform/me/workbench', {
       headers: { 'x-test-user': 'owner' },

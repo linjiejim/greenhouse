@@ -339,10 +339,8 @@ describe('E2E: Unified access view', () => {
     expect(new Set(data.featurePoints.map((p: { group: string }) => p.group))).toEqual(
       new Set(['basic', 'apps', 'advanced']),
     );
-    // daily_message_limit retired 2026-08-07: column kept for storage compat,
-    // but the access view exposes monthly_token_limit only.
-    expect(data.limits).toHaveProperty('monthly_token_limit');
-    expect(data.limits).not.toHaveProperty('daily_message_limit');
+    // The per-member quotas are gone in 3.0 (member spend is a USD budget).
+    expect(data).not.toHaveProperty('limits');
   });
 
   it('member cannot access the aggregate view', async () => {

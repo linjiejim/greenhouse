@@ -3,6 +3,7 @@
 import type { DatabaseProvider } from '@greenhouse/db';
 import type { RuntimeJsonValue } from '@greenhouse/types/runtime';
 import { reconcileReclaimedAutomationRun } from '../scheduler/runtime-driver.js';
+import { normalizeSnapshotTask } from '../scheduler/task-snapshot.js';
 import { notifyTaskResult } from '../scheduler/notify.js';
 import type { RuntimeEventEnvelope } from './worker.js';
 
@@ -17,25 +18,22 @@ function automationInput(run: Awaited<ReturnType<DatabaseProvider['runtime']['ge
   session_id: string;
   scheduled_for: string;
 } | null {
-  if (!run) return null;
-  try {
-    const parsed = JSON.parse(run.input) as Record<string, unknown>;
-    if (
-      !parsed.task ||
-      typeof parsed.task !== 'object' ||
-      typeof parsed.session_id !== 'string' ||
-      typeof parsed.scheduled_for !== 'string'
-    ) {
-      return null;
-    }
-    return parsed as unknown as {
-      task: Parameters<typeof notifyTaskResult>[1];
-      session_id: string;
-      scheduled_for: string;
-    };
-  } catch {
+  if (!run || !run.input || typeof run.input !== 'object' || Array.isArray(run.input)) return null;
+  const parsed = run.input as Record<string, unknown>;
+  if (
+    !parsed.task ||
+    typeof parsed.task !== 'object' ||
+    Array.isArray(parsed.task) ||
+    typeof parsed.session_id !== 'string' ||
+    typeof parsed.scheduled_for !== 'string'
+  ) {
     return null;
   }
+  return {
+    task: normalizeSnapshotTask(parsed.task as Record<string, unknown>),
+    session_id: parsed.session_id,
+    scheduled_for: parsed.scheduled_for,
+  };
 }
 
 type RuntimeRun = NonNullable<Awaited<ReturnType<DatabaseProvider['runtime']['getRun']>>>;
@@ -49,15 +47,12 @@ function automationOutput(run: RuntimeRun): { summary: string; noUpdate: boolean
   if (run.status !== 'succeeded' || !run.output) {
     return { summary: run.error_message ?? 'Automation execution failed', noUpdate: false };
   }
-  try {
-    const output = JSON.parse(run.output) as { summary?: unknown; no_update?: unknown };
-    return {
-      summary: typeof output.summary === 'string' ? output.summary : '',
-      noUpdate: output.no_update === true,
-    };
-  } catch {
-    return { summary: '', noUpdate: false };
-  }
+  if (typeof run.output !== 'object' || Array.isArray(run.output)) return { summary: '', noUpdate: false };
+  const output = run.output as { summary?: unknown; no_update?: unknown };
+  return {
+    summary: typeof output.summary === 'string' ? output.summary : '',
+    noUpdate: output.no_update === true,
+  };
 }
 
 async function projectAutomationOutcome(db: DatabaseProvider, run: RuntimeRun, eventId: string): Promise<void> {
@@ -69,7 +64,7 @@ async function projectAutomationOutcome(db: DatabaseProvider, run: RuntimeRun, e
   )
     return;
   const input = automationInput(run);
-  if (!input || input.task.id !== Number(run.source_kind.split(':')[1])) {
+  if (!input || input.task.id !== run.source_kind.slice(run.source_kind.indexOf(':') + 1)) {
     throw new Error(`Automation Runtime run ${run.id} has invalid immutable input`);
   }
   await db.scheduledTasks.projectRuntimeOutcome({

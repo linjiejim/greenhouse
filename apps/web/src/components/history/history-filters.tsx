@@ -4,22 +4,14 @@
  *
  * The two axes that decide *which* conversations exist for you — status and
  * ownership — stay in the primary row. Everything behind "More" is a refinement
- * within that set, and is grouped by what it refines: how the conversation is
- * organised (Organize) vs what someone thought of it (Review). A flat run of four
- * Selects and a star widget gave no clue which was which.
+ * within that set.
  */
 
 import React from 'react';
-import { FilterPills, SearchInput, Select, StarRating } from '../ui';
+import { FilterPills, SearchInput, Select } from '../ui';
 import { Filter, RotateCcw } from '../../lib/icons';
 import type { Profile } from '../../lib/api';
-import {
-  DEFAULT_HISTORY_FILTERS,
-  countHiddenFilters,
-  type FeedbackFilter,
-  type HistoryFilters,
-  type OwnerFilter,
-} from './filter-model';
+import { DEFAULT_HISTORY_FILTERS, countHiddenFilters, type HistoryFilters, type OwnerFilter } from './filter-model';
 import { useT } from '../../lib/i18n';
 import { useAuthStore } from '../../stores';
 
@@ -33,7 +25,6 @@ interface HistoryFiltersBarProps {
   filters: HistoryFilters;
   onChange: (patch: Partial<HistoryFilters>) => void;
   statusCounts: Record<string, number>;
-  feedbackCounts: Record<string, number>;
   profiles: Profile[];
   searchPlaceholder: string;
 }
@@ -42,7 +33,6 @@ export function HistoryFiltersBar({
   filters,
   onChange,
   statusCounts,
-  feedbackCounts,
   profiles,
   searchPlaceholder,
 }: HistoryFiltersBarProps) {
@@ -55,20 +45,13 @@ export function HistoryFiltersBar({
     { key: 'archived', label: t('common.archived') },
     { key: 'deleted', label: t('common.deleted') },
   ];
-  const feedbackPills: Array<{ key: Exclude<FeedbackFilter, 'all'>; label: string }> = [
-    { key: 'good', label: t('history.good') },
-    { key: 'bad', label: t('history.bad') },
-    { key: 'starred', label: t('history.starred') },
-  ];
 
   /** Reset everything behind "More"; status and search are the user's place, not a filter. */
   const resetRefinements = () =>
     onChange({
-      feedback: DEFAULT_HISTORY_FILTERS.feedback,
       owner: DEFAULT_HISTORY_FILTERS.owner,
       group: DEFAULT_HISTORY_FILTERS.group,
       profile: DEFAULT_HISTORY_FILTERS.profile,
-      rating: DEFAULT_HISTORY_FILTERS.rating,
     });
 
   return (
@@ -122,7 +105,7 @@ export function HistoryFiltersBar({
         </button>
       </div>
 
-      {/* Row 2: refinements, grouped by what they refine */}
+      {/* Row 2: refinements */}
       {showMore && (
         <div className="space-y-2 border-t border-edge pt-2">
           <FilterSection label={t('history.sectionOrganize')}>
@@ -150,26 +133,6 @@ export function HistoryFiltersBar({
                 ))}
               </Select>
             )}
-          </FilterSection>
-
-          <FilterSection label={t('history.sectionReview')}>
-            <FilterPills
-              wrap
-              toggle
-              allLabel={t('common.all')}
-              items={feedbackPills.map((item) => ({ ...item, count: feedbackCounts[item.key] || undefined }))}
-              activeKey={filters.feedback === 'all' ? null : filters.feedback}
-              onChange={(key) => onChange({ feedback: (key as FeedbackFilter | null) ?? 'all' })}
-            />
-            <span className="flex items-center gap-1.5">
-              <span className="flex-shrink-0 text-[11px] text-fg-faint">{t('history.rating')}:</span>
-              {/* Re-clicking the active star clears it — otherwise the only way
-                  out of a rating filter is the reset button. */}
-              <StarRating
-                value={filters.rating ?? 0}
-                onChange={(rating) => onChange({ rating: rating === filters.rating ? null : rating })}
-              />
-            </span>
             {hidden > 0 && (
               <button
                 type="button"

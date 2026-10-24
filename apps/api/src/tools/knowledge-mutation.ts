@@ -9,7 +9,6 @@
 import { randomUUID } from 'node:crypto';
 import { tool } from 'ai';
 import { z } from 'zod';
-import { safeJsonParse } from '@greenhouse/utils/json';
 import { toErrorMessage } from '@greenhouse/utils/error';
 import { markdownToTiptapJson } from '@greenhouse/knowledge-editor/markdown';
 import { entityUrl } from '@greenhouse/types/entity-links';
@@ -39,7 +38,7 @@ export const knowledgeMutationSchema = z.object({
     ])
     .describe('Bounded knowledge mutation action.'),
   scope: z.enum(['team', 'personal']).default('team').describe('Team shared doc or current-user personal doc.'),
-  doc_id: z
+  doc_id: z.coerce
     .string()
     .optional()
     .describe('Document id. Required for update/archive/restore/share; optional for create.'),
@@ -152,7 +151,7 @@ export function createKnowledgeMutationTool(db: DatabaseProvider, ctx: Knowledge
           const existing = await db.knowledgeBase.get(docId, dbScope);
           if (existing) return { action: input.action, error: `Document already exists: ${docId}` };
 
-          let folderId: number | null = null;
+          let folderId: string | null = null;
           let folderPath: string | undefined;
           if (input.folder !== undefined) {
             const folder = await resolveKbFolderPath(db, input.folder, { visibility, ownerUserId: ctx.userId });
@@ -298,7 +297,7 @@ export function createKnowledgeMutationTool(db: DatabaseProvider, ctx: Knowledge
         // Optional folder move. Resolved against the DOC OWNER's tree (matches the
         // HTTP route's validateFolderTarget): an editor moving a doc shared with
         // them files it within the owner's folders, never their own.
-        let folderMove: { folderId: number | null; path: string } | undefined;
+        let folderMove: { folderId: string | null; path: string } | undefined;
         if (input.folder !== undefined) {
           const folder = await resolveKbFolderPath(db, input.folder, {
             visibility,
@@ -337,7 +336,7 @@ export function createKnowledgeMutationTool(db: DatabaseProvider, ctx: Knowledge
             doc_id: updated.doc_id,
             title: updated.title,
             visibility: updated.visibility,
-            tags: safeJsonParse(updated.tags, []),
+            tags: updated.tags,
             ...(folderMove && folderMove.folderId != null ? { folder: folderMove.path } : {}),
           },
         };

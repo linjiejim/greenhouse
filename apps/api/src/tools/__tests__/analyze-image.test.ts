@@ -1,4 +1,4 @@
-import { fakeMeteringServices } from '../../../../../tests/helpers/metering-db.js';
+import { fakeMeteringServices, routeReserve } from '../../../../../tests/helpers/metering-db.js';
 import { describe, expect, it, vi } from 'vitest';
 import {
   analyzeImageSchema,
@@ -39,7 +39,7 @@ describe('analyze_image prompt', () => {
 });
 
 function budgetDb(events: string[]) {
-  const reserveMonthlyUser = vi.fn(async (_input: Record<string, unknown>) => {
+  const tokenReserve = vi.fn(async (_input: Record<string, unknown>) => {
     events.push('reserve');
   });
   const settle = vi.fn(async (_input: Record<string, unknown>) => {
@@ -60,21 +60,19 @@ function budgetDb(events: string[]) {
           id: 'user-1',
           role: 'team',
           status: 'active',
-          monthly_token_limit: 1_000_000,
         })),
       },
       usageBudget: {
-        reserveMonthlyUser,
         settle,
         release,
         ensureAccount: metered.ensureAccount,
-        reserve: metered.reserve,
+        reserve: routeReserve(tokenReserve, metered.reserve),
       },
       usage: { record },
     },
     record,
     release,
-    reserveMonthlyUser,
+    tokenReserve,
     settle,
   };
 }
@@ -105,10 +103,10 @@ describe('analyze_image usage budget', () => {
 
     expect(output.description).toBe('visible facts');
     expect(events).toEqual(['load', 'prepare', 'reserve', 'provider', 'settle', 'record']);
-    expect(f.reserveMonthlyUser).toHaveBeenCalledWith(
+    expect(f.tokenReserve).toHaveBeenCalledWith(
       expect.objectContaining({ user_id: 'user-1', caller: 'vision', run_id: 'session-1' }),
     );
-    const budgetKey = f.reserveMonthlyUser.mock.calls[0]![0].idempotency_key as string;
+    const budgetKey = f.tokenReserve.mock.calls[0]![0].idempotency_key as string;
     expect(f.settle).toHaveBeenCalledWith(expect.objectContaining({ idempotency_key: budgetKey, actual_units: 37 }));
     expect(f.record).toHaveBeenCalledWith(expect.objectContaining({ budget_idempotency_key: budgetKey }));
   });
@@ -125,7 +123,7 @@ describe('analyze_image usage budget', () => {
     const output = (await tool.execute!({ image_id: 'missing' }, {} as never)) as { error?: string };
 
     expect(output.error).toMatch(/not found/i);
-    expect(f.reserveMonthlyUser).not.toHaveBeenCalled();
+    expect(f.tokenReserve).not.toHaveBeenCalled();
   });
 
   it('keeps the reservation when the provider attempt has an unknown outcome', async () => {
@@ -144,7 +142,7 @@ describe('analyze_image usage budget', () => {
     const output = (await tool.execute!({ image_id: 'upload-1' }, {} as never)) as { error?: string };
 
     expect(output.error).toContain('socket closed');
-    expect(f.reserveMonthlyUser).toHaveBeenCalledTimes(1);
+    expect(f.tokenReserve).toHaveBeenCalledTimes(1);
     expect(f.settle).not.toHaveBeenCalled();
     expect(f.release).not.toHaveBeenCalled();
   });

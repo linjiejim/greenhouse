@@ -428,7 +428,6 @@ async function main() {
     ...extensionApplicationRegistrations(),
   ]);
   if (
-    platformBootstrap.appReleasesActivated.length > 0 ||
     platformBootstrap.rolesCreated.length > 0 ||
     platformBootstrap.capabilitiesAdded > 0 ||
     platformBootstrap.entityPoliciesAdded > 0

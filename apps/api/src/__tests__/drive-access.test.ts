@@ -31,22 +31,22 @@ describe('resolveDriveAccess — kb scope', () => {
 describe('resolveDriveAccess — tables scope', () => {
   it('maps Base roles to Drive access and denies missing membership', () => {
     expect(
-      resolveDriveAccess({ scope: 'tables', base_id: 1 }, 'owner', {
+      resolveDriveAccess({ scope: 'tables', base_id: '1' }, 'owner', {
         tablesRole: 'owner',
       }),
     ).toBe('owner');
     expect(
-      resolveDriveAccess({ scope: 'tables', base_id: 1 }, 'builder', {
+      resolveDriveAccess({ scope: 'tables', base_id: '1' }, 'builder', {
         tablesRole: 'builder',
       }),
     ).toBe('editor');
     expect(
-      resolveDriveAccess({ scope: 'tables', base_id: 1 }, 'viewer', {
+      resolveDriveAccess({ scope: 'tables', base_id: '1' }, 'viewer', {
         tablesRole: 'viewer',
       }),
     ).toBe('reader');
     expect(
-      resolveDriveAccess({ scope: 'tables', base_id: 1 }, 'outsider', {
+      resolveDriveAccess({ scope: 'tables', base_id: '1' }, 'outsider', {
         tablesRole: null,
       }),
     ).toBeNull();

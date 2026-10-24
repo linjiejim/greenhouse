@@ -66,7 +66,7 @@ async function runWorker(fetchImpl: FetchLike): Promise<void> {
 
 async function attemptsFor(userId: string): Promise<NotificationDeliveryAttemptRow[]> {
   return (await db.executeRaw(sql`
-    SELECT a.* FROM notification_delivery_attempts a
+    SELECT a.* FROM notification_deliveries a
     JOIN notifications n ON n.id = a.notification_id
     WHERE n.user_id = ${userId} AND a.channel = 'mobile_push'
     ORDER BY a.created_at

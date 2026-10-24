@@ -1,8 +1,7 @@
 import type { ReactNode } from 'react';
-import type { TableFieldConfig } from '@greenhouse/types/tables';
 import { TagList } from '../../components/ui';
 import type { TableField } from '../../lib/api/tables';
-import { formatDate, formatDay, safeParse } from '../../lib/utils';
+import { formatDate, formatDay } from '../../lib/utils';
 
 export function renderTableFieldValue(
   field: TableField,
@@ -10,7 +9,7 @@ export function renderTableFieldValue(
   usersById: ReadonlyMap<string, { nickname: string }>,
 ): ReactNode {
   if (value === null || value === undefined || value === '') return <span className="text-fg-faint">—</span>;
-  const config = safeParse<TableFieldConfig>(field.config, {});
+  const config = field.config ?? {};
   const options = new Map((config.options ?? []).map((option) => [option.id, option.label]));
   if (field.type === 'boolean') return value === true ? 'Yes' : 'No';
   if (field.type === 'date' && typeof value === 'string') return formatDay(value);

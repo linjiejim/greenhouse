@@ -56,8 +56,8 @@ describe('Task routes', () => {
     const row = (await res.json()) as Record<string, unknown>;
     expect(row).toMatchObject({
       title: 'Weekly report',
-      variables: '[]',
-      expected_tools: '[]',
+      variables: [],
+      expected_tools: [],
       created_via: 'manual',
       description: null,
     });
@@ -78,9 +78,9 @@ describe('Task routes', () => {
     expect(res.status).toBe(201);
 
     const row = (await res.json()) as Record<string, unknown>;
-    expect(JSON.parse(row.variables as string)).toHaveLength(2);
+    expect(row.variables).toHaveLength(2);
     // Deduped, so a repeated call in the captured run does not double-list.
-    expect(JSON.parse(row.expected_tools as string)).toEqual(['crm_query', 'export_data']);
+    expect(row.expected_tools).toEqual(['crm_query', 'export_data']);
     expect(row.created_via).toBe('capture');
     expect(row.source_session_id).toBe('sess-1');
   });
@@ -200,7 +200,7 @@ describe('Task routes', () => {
       body: JSON.stringify({ content: 'Report {{b}}.', variables: [{ key: 'b', label: 'B' }] }),
     });
     expect(ok.status).toBe(200);
-    expect(JSON.parse(((await ok.json()) as { variables: string }).variables)[0].key).toBe('b');
+    expect(((await ok.json()) as { variables: Array<{ key: string }> }).variables[0]!.key).toBe('b');
   });
 
   it('rejects a content-only edit that would orphan a stored variable', async () => {
@@ -242,6 +242,6 @@ describe('Task routes', () => {
       body: JSON.stringify({ content: 'Report, no placeholders.', variables: [] }),
     });
     expect(pruned.status).toBe(200);
-    expect(((await pruned.json()) as { variables: string }).variables).toBe('[]');
+    expect(((await pruned.json()) as { variables: unknown[] }).variables).toEqual([]);
   });
 });

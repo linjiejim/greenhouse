@@ -8,7 +8,6 @@ import type {
   PlatformNotificationSummary,
 } from '@greenhouse/types/notification';
 import type { RuntimeJsonValue } from '@greenhouse/types/runtime';
-import { safeJsonParse } from '@greenhouse/utils/json';
 
 import type { AppEnv } from '../app-env.js';
 import { getAuthUser } from '../auth/middleware.js';
@@ -49,7 +48,7 @@ function toWire(row: NotificationRow): PlatformNotification {
     kind: row.kind,
     title: row.title,
     body: row.body,
-    payload: safeJsonParse(row.payload, {}) as RuntimeJsonValue,
+    payload: (row.payload ?? {}) as RuntimeJsonValue,
     run_id: row.run_id,
     interrupt_id: row.interrupt_id,
     event_id: row.event_id,

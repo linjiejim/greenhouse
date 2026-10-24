@@ -14,7 +14,6 @@
  * (docs/specs/20260805-skillhub-web-upload-and-scan.md).
  */
 
-import { safeJsonParse } from '@greenhouse/utils/json';
 import { bumpPatch, compareSemver, isValidSemver } from '@greenhouse/utils/semver';
 import { logger } from '@greenhouse/utils/logger';
 import type { DatabaseProvider, SkillRow, SkillScanStatus, SkillVersionRow } from '@greenhouse/db';
@@ -79,13 +78,13 @@ export function toSkillSummary(row: SkillRow): SkillSummary {
     name: row.name,
     display_name: row.display_name,
     description: row.description,
-    tags: safeJsonParse(row.tags, []) as string[],
+    tags: row.tags,
     latest_version: row.latest_version,
     status: row.status,
     owner_user_id: row.owner_user_id,
     download_count: row.download_count,
     scan_status: row.scan_status,
-    scan_findings: safeJsonParse(row.scan_findings, []) as ScanFinding[],
+    scan_findings: row.scan_findings as ScanFinding[],
     scan_version: row.scan_version,
     scanned_at: row.scanned_at,
     scan_reviewed_by: row.scan_reviewed_by,
@@ -373,7 +372,7 @@ export async function publishSkill(db: DatabaseProvider, actor: Actor, input: Pu
     scanForPublish(skill.name, files, {
       display_name: skill.display_name,
       description: skill.description,
-      tags: safeJsonParse(skill.tags, []) as string[],
+      tags: skill.tags,
     }),
   );
   return { ok: true, created: false, skill: toSkillSummary(scanned), version: toVersionSummary(versionRow) };
@@ -589,7 +588,7 @@ export async function updateSkillMeta(
   const prospective = {
     display_name: updates.display_name ?? skill.display_name,
     description: updates.description ?? skill.description,
-    tags: updates.tags ?? (safeJsonParse(skill.tags, []) as string[]),
+    tags: updates.tags ?? skill.tags,
   };
   let report: { status: SkillScanStatus; findings: ScanFinding[] };
   try {
@@ -676,7 +675,7 @@ export async function rescanSkill(db: DatabaseProvider, actor: Actor, name: stri
     scanForPublish(skill.name, bundle.files, {
       display_name: skill.display_name,
       description: skill.description,
-      tags: safeJsonParse(skill.tags, []) as string[],
+      tags: skill.tags,
     }),
   );
   return { ok: true, skill: toSkillSummary(scanned) };
@@ -707,7 +706,7 @@ export async function sweepUnscannedSkills(db: DatabaseProvider, limit = 200): P
         // Repo-owned packs are re-seeded as trusted on every boot; treat them
         // the same here so a backfill can't quarantine a first-party skill.
         // Trust comes from the repo listing, never from the (editable) tag.
-        const tags = safeJsonParse(skill.tags, []) as string[];
+        const tags = skill.tags;
         await recordScan(
           db,
           skill,

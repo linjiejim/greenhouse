@@ -42,7 +42,7 @@ const catalog: DataCatalog = {
   bases: [
     {
       kind: 'tables_base',
-      id: 3,
+      id: '3',
       name: 'Sales pipeline',
       description: 'Deals by stage',
       visibility: 'team',
@@ -50,7 +50,7 @@ const catalog: DataCatalog = {
       owner: { id: 'u1', name: 'Ada' },
       last_changed_at: '2026-10-20T08:00:00.000Z',
       url: '#/tables/3',
-      tables: [{ id: 9, name: 'Deals', row_count: 128, last_changed_at: '2026-10-20T08:00:00.000Z' }],
+      tables: [{ id: '9', name: 'Deals', row_count: 128, last_changed_at: '2026-10-20T08:00:00.000Z' }],
       table_count: 60,
       tables_truncated: true,
       reach: [

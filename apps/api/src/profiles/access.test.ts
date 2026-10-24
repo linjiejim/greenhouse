@@ -18,12 +18,12 @@ const superUser = { id: 'super', role: 'super' as const };
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.getById.mockResolvedValue({
-    id: 7,
+    id: '7',
     user_id: 'owner',
     is_shared: false,
-    current_version: 3,
+    version: 3,
   });
-  mocks.getVersion.mockImplementation(async (_profileId: number, version: number) => ({ version }));
+  mocks.getVersion.mockImplementation(async (_profileId: string, version: number) => ({ version }));
 });
 
 describe('custom profile access policy', () => {
@@ -33,13 +33,13 @@ describe('custom profile access policy', () => {
   });
 
   it('allows the owner, a shared reader, and super', async () => {
-    await expect(assertCustomProfileAccess(owner, 'custom:7')).resolves.toMatchObject({ id: 7 });
+    await expect(assertCustomProfileAccess(owner, 'custom:7')).resolves.toMatchObject({ id: '7' });
 
-    mocks.getById.mockResolvedValueOnce({ id: 7, user_id: 'owner', is_shared: true, current_version: 2 });
-    await expect(assertCustomProfileAccess(other, 'custom:7')).resolves.toMatchObject({ id: 7 });
+    mocks.getById.mockResolvedValueOnce({ id: '7', user_id: 'owner', is_shared: true, version: 2 });
+    await expect(assertCustomProfileAccess(other, 'custom:7')).resolves.toMatchObject({ id: '7' });
 
-    mocks.getById.mockResolvedValueOnce({ id: 7, user_id: 'owner', is_shared: false });
-    await expect(assertCustomProfileAccess(superUser, 'custom:7')).resolves.toMatchObject({ id: 7 });
+    mocks.getById.mockResolvedValueOnce({ id: '7', user_id: 'owner', is_shared: false });
+    await expect(assertCustomProfileAccess(superUser, 'custom:7')).resolves.toMatchObject({ id: '7' });
   });
 
   it('fails closed for private, missing, and malformed custom profile IDs', async () => {
@@ -51,19 +51,19 @@ describe('custom profile access policy', () => {
     mocks.getById.mockResolvedValueOnce(undefined);
     await expect(assertCustomProfileAccess(owner, 'custom:8')).rejects.toMatchObject({ status: 404 });
 
-    await expect(assertCustomProfileAccess(owner, 'custom:not-a-number')).rejects.toMatchObject({ status: 400 });
+    await expect(assertCustomProfileAccess(owner, 'custom:not a valid id')).rejects.toMatchObject({ status: 400 });
   });
 
   it('pins owners and shared readers alike to the current version', async () => {
     await expect(pinProfileIdForUser(owner, 'custom:7')).resolves.toBe('custom:7@3');
     await expect(pinProfileIdForUser(other, 'custom:7')).rejects.toMatchObject({ status: 403 });
 
-    mocks.getById.mockResolvedValue({ id: 7, user_id: 'owner', is_shared: true, current_version: 3 });
+    mocks.getById.mockResolvedValue({ id: '7', user_id: 'owner', is_shared: true, version: 3 });
     await expect(pinProfileIdForUser(other, 'custom:7')).resolves.toBe('custom:7@3');
   });
 
   it('keeps an existing pin resolving after the Agent moved on, but not a version that never existed', async () => {
-    mocks.getById.mockResolvedValue({ id: 7, user_id: 'owner', is_shared: true, current_version: 3 });
+    mocks.getById.mockResolvedValue({ id: '7', user_id: 'owner', is_shared: true, version: 3 });
     await expect(pinProfileIdForUser(other, 'custom:7@2', undefined, { existingPin: true })).resolves.toBe(
       'custom:7@2',
     );
@@ -75,24 +75,10 @@ describe('custom profile access policy', () => {
   });
 
   it('never lets a non-owner pick an older version themselves (it may never have been shared)', async () => {
-    mocks.getById.mockResolvedValue({ id: 7, user_id: 'owner', is_shared: true, current_version: 3 });
+    mocks.getById.mockResolvedValue({ id: '7', user_id: 'owner', is_shared: true, version: 3 });
     await expect(pinProfileIdForUser(other, 'custom:7@1')).rejects.toMatchObject({ status: 403 });
     await expect(pinProfileIdForUser(other, 'custom:7@3')).resolves.toBe('custom:7@3');
     // The owner may still pin any of their own versions.
     await expect(pinProfileIdForUser(owner, 'custom:7@1')).resolves.toBe('custom:7@1');
-  });
-
-  it('ignores the retired review lifecycle entirely', async () => {
-    // A legacy row may still carry lifecycle_status; it no longer decides anything.
-    mocks.getById.mockResolvedValue({
-      id: 7,
-      user_id: 'owner',
-      is_shared: false,
-      lifecycle_status: 'verified',
-      published_version: 2,
-      current_version: 3,
-    });
-    await expect(pinProfileIdForUser(other, 'custom:7')).rejects.toMatchObject({ status: 403 });
-    await expect(pinProfileIdForUser(owner, 'custom:7')).resolves.toBe('custom:7@3');
   });
 });

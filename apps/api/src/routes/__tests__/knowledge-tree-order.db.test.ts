@@ -35,7 +35,7 @@ function appFor(users: UserRow[]) {
   return app;
 }
 
-async function teamFolder(name: string, parentId?: number) {
+async function teamFolder(name: string, parentId?: string) {
   return db.drive.createFolder({
     scope: 'kb',
     name,
@@ -45,7 +45,7 @@ async function teamFolder(name: string, parentId?: number) {
   });
 }
 
-async function teamDoc(slug: string, title: string, folderId: number | null, content = `# ${title}`) {
+async function teamDoc(slug: string, title: string, folderId: string | null, content = `# ${title}`) {
   return db.knowledgeBase.create({
     doc_id: slug,
     title,

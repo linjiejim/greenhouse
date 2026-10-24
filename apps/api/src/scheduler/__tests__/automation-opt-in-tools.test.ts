@@ -94,13 +94,13 @@ describe('validateUnattendedTools', () => {
 
   it('accepts a catalogued grant and canonicalises it', () => {
     const result = validateUnattendedTools(['knowledge_mutation', 'memory', 'memory'], CONSOLE);
-    expect(result).toEqual({ json: JSON.stringify(['memory', 'knowledge_mutation']) });
+    expect(result).toEqual({ tools: ['memory', 'knowledge_mutation'] });
   });
 
   it('distinguishes "not supplied" from "supplied empty"', () => {
     // undefined must leave a stored grant alone on update; [] must clear it.
     expect(validateUnattendedTools(undefined, CONSOLE)).toBeUndefined();
-    expect(validateUnattendedTools([], CONSOLE)).toEqual({ json: '[]' });
+    expect(validateUnattendedTools([], CONSOLE)).toEqual({ tools: [] });
   });
 
   it('refuses a non-array without throwing', () => {

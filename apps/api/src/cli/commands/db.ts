@@ -3,6 +3,8 @@
  *
  *   pnpm cli stats          # row counts across core tables + health
  *   pnpm cli db reset       # TRUNCATE every table (type the db name to confirm)
+ *   pnpm cli db migrate     # apply the 3.0 migration chain (pnpm db:migrate);
+ *                           # refuses a 1.x or 2.x database
  *   pnpm cli db baseline    # adopt an existing database: record the migration
  *                           # chain (core + enabled extensions) as applied
  *                           # (--dry-run to preview, --yes for automation,
@@ -12,7 +14,7 @@
 
 import chalk from 'chalk';
 import { sql } from 'drizzle-orm';
-import { readCoreMigrations } from '@greenhouse/db';
+import { applyMigrations, DatabaseGenerationError, readCoreMigrations } from '@greenhouse/db';
 import { DRIZZLE_DIR } from '../../paths.js';
 import { extensionMigrationSources } from '../../extensions/boot.js';
 import {
@@ -27,19 +29,20 @@ import {
   dim,
   dbName,
   redactDbUrl,
+  DATABASE_URL,
 } from './shared.js';
 
 /** Core tables surfaced in the overview (missing tables render as n/a). */
 const STAT_TABLES = [
   'users',
-  'sessions',
+  'conversations',
   'messages',
   'projects',
   'tasks',
-  'knowledge_base',
-  'custom_profiles',
-  'scheduled_tasks',
-  'feature_requests',
+  'kb_documents',
+  'run_profiles',
+  'automations',
+  'feedback',
 ];
 
 export async function run(args: string[]): Promise<number> {
@@ -47,8 +50,32 @@ export async function run(args: string[]): Promise<number> {
   if (sub === 'stats' || sub === 'overview') return stats(rest);
   if (sub === 'reset') return reset(rest);
   if (sub === 'baseline') return baseline(rest);
-  console.error(chalk.red(`Unknown db subcommand: ${sub} (expected: stats | reset | baseline)`));
+  if (sub === 'migrate') return migrateCore();
+  console.error(chalk.red(`Unknown db subcommand: ${sub} (expected: stats | reset | migrate | baseline)`));
   return 1;
+}
+
+/**
+ * Apply the 3.0 chain. Opens its own connection (the shared provider would
+ * refuse an empty database) and refuses a 1.x / 2.x database with the way out.
+ */
+async function migrateCore(): Promise<number> {
+  try {
+    const before = await applyMigrations(DATABASE_URL, DRIZZLE_DIR);
+    const label =
+      before.kind === 'empty'
+        ? 'empty database'
+        : `3.0 database (${before.kind === 'v3' ? before.applied.length : 0} applied)`;
+    console.log(chalk.green(`✓ migrations applied to ${redactDbUrl()} — was: ${label}`));
+    return 0;
+  } catch (err) {
+    if (err instanceof DatabaseGenerationError) {
+      console.error(chalk.red('Refusing to migrate:'), err.message);
+      return 2;
+    }
+    console.error(chalk.red('Migration failed:'), err instanceof Error ? err.message : String(err));
+    return 1;
+  }
 }
 
 /**

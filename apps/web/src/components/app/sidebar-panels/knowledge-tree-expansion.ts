@@ -35,10 +35,12 @@ function readItem(key: string): string | null {
   }
 }
 
-function parseIds(raw: string | null): Set<number> {
+/** Stored folder ids; numbers written before 3.0 are the same (carried) ids as strings. */
+function parseIds(raw: string | null): Set<string> {
   try {
-    const parsed = raw ? JSON.parse(raw) : [];
-    return new Set(Array.isArray(parsed) ? parsed.filter((n): n is number => typeof n === 'number') : []);
+    const parsed: unknown = raw ? JSON.parse(raw) : [];
+    if (!Array.isArray(parsed)) return new Set();
+    return new Set(parsed.flatMap((n) => (typeof n === 'string' ? [n] : typeof n === 'number' ? [String(n)] : [])));
   } catch {
     return new Set();
   }
@@ -52,14 +54,14 @@ function parseIds(raw: string | null): Set<number> {
  *   has to supply the folder ids before the set can be computed
  * - neither present → empty set (all collapsed — the default for a new browser)
  */
-export function loadExpanded(scope: TreeScope): Set<number> | null {
+export function loadExpanded(scope: TreeScope): Set<string> | null {
   const raw = readItem(expandedKey(scope));
   if (raw !== null) return parseIds(raw);
   if (readItem(legacyCollapsedKey(scope)) !== null) return null;
   return new Set();
 }
 
-export function saveExpanded(scope: TreeScope, ids: Set<number>): void {
+export function saveExpanded(scope: TreeScope, ids: Set<string>): void {
   try {
     localStorage.setItem(expandedKey(scope), JSON.stringify([...ids]));
   } catch {
@@ -68,7 +70,7 @@ export function saveExpanded(scope: TreeScope, ids: Set<number>): void {
 }
 
 /** Legacy → current: every known folder id except the ones stored as collapsed. */
-export function migrateLegacyExpanded(scope: TreeScope, folderIds: number[]): Set<number> {
+export function migrateLegacyExpanded(scope: TreeScope, folderIds: string[]): Set<string> {
   const collapsed = parseIds(readItem(legacyCollapsedKey(scope)));
   return new Set(folderIds.filter((id) => !collapsed.has(id)));
 }

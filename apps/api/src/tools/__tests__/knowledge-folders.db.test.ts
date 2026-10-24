@@ -29,7 +29,7 @@ async function execute(tool: unknown, input: unknown): Promise<Record<string, un
   })) as Record<string, unknown>;
 }
 
-async function teamFolder(name: string, parentId?: number) {
+async function teamFolder(name: string, parentId?: string) {
   return db.drive.createFolder({
     scope: 'kb',
     name,
@@ -229,7 +229,7 @@ describe('knowledge_query folder navigation', () => {
 
     const query = createKnowledgeQueryTool(db, { userId: user.id });
     const res = await execute(query, { action: 'tree', scope: 'team' });
-    const folders = res.folders as Array<{ path: string; docs: Array<{ id: number; title: string }> }>;
+    const folders = res.folders as Array<{ path: string; docs: Array<{ id: string; title: string }> }>;
     const byPath = new Map(folders.map((f) => [f.path, f]));
 
     expect(byPath.get(`${prefix}产品`)?.docs.map((d) => d.title)).toEqual([`${prefix}产品总览`]);

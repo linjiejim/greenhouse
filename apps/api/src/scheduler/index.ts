@@ -31,7 +31,7 @@ import type { ToolRegistry } from '../agent.js';
 import type { ScheduledTaskRow } from '@greenhouse/db';
 
 export class TaskScheduler {
-  private jobs = new Map<number, Cron>();
+  private jobs = new Map<string, Cron>();
   private readonly runtimeEnabled: boolean;
 
   constructor(_toolRegistry: ToolRegistry, options: { runtimeEnabled?: boolean } = {}) {
@@ -117,7 +117,7 @@ export class TaskScheduler {
    * the overlap guard; process-local state is never authoritative.
    */
   async runTask(
-    taskId: number,
+    taskId: string,
     trigger: Extract<AutomationTrigger, 'cron' | 'catchup'> = 'cron',
     scheduledFor: string | Date = new Date(),
   ): Promise<string | null> {
@@ -178,7 +178,7 @@ export class TaskScheduler {
    * surfaced: a task session holding the error, `failed` on the row with the
    * cursor advanced, and the owner's configured deliveries.
    */
-  private async surfaceEnqueueFailure(taskId: number, errorMessage: string): Promise<void> {
+  private async surfaceEnqueueFailure(taskId: string, errorMessage: string): Promise<void> {
     try {
       const db = getDb();
       const task = await db.scheduledTasks.getById(taskId);
@@ -189,8 +189,7 @@ export class TaskScheduler {
         task.user_id,
         undefined,
         'task',
-        undefined,
-        { metadata: JSON.stringify({ task_id: task.id, task_name: task.name }) },
+        { metadata: { task_id: task.id, task_name: task.name } },
       );
       await recordFailedTaskSession(session.id, errorMessage, false, db);
       await db.scheduledTasks.updateRunStatus(task.id, 'failed', this.getNextRun(task));
@@ -205,7 +204,7 @@ export class TaskScheduler {
   /**
    * Persist a manual occurrence and return its deterministic visible session.
    */
-  async runTaskManually(taskId: number, initiatedByUserId?: string): Promise<string | null> {
+  async runTaskManually(taskId: string, initiatedByUserId?: string): Promise<string | null> {
     if (!this.runtimeEnabled) return null;
     try {
       const db = getDb();
@@ -248,7 +247,7 @@ export class TaskScheduler {
   /**
    * Reload a specific task (after CRUD update).
    */
-  async reloadTask(taskId: number): Promise<void> {
+  async reloadTask(taskId: string): Promise<void> {
     const db = getDb();
     const task = await db.scheduledTasks.getById(taskId);
 
@@ -284,7 +283,7 @@ export class TaskScheduler {
    * Remove a cron job by task ID.
    * Public — called by delete handler after DB removal.
    */
-  removeJob(taskId: number): void {
+  removeJob(taskId: string): void {
     const existing = this.jobs.get(taskId);
     if (existing) {
       existing.stop();
@@ -368,7 +367,7 @@ export class TaskScheduler {
   /**
    * Get scheduler status for health checks.
    */
-  getStatus(): { activeJobs: number; runningTasks: number[] } {
+  getStatus(): { activeJobs: number; runningTasks: string[] } {
     return {
       activeJobs: this.jobs.size,
       // Runtime is the authoritative source; health must not pretend an
