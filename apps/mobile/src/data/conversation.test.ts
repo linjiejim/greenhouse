@@ -120,7 +120,7 @@ describe('an open conversation', () => {
     await c.open();
     s.setActive(true);
     const result = await c.send('Again');
-    expect(result).toEqual({ sent: false, restore: 'Again', notice: 'busy', message: 'busy' });
+    expect(result).toEqual({ sent: false, restore: 'Again', notice: 'busy', message: 'busy', status: 409 });
     await vi.waitFor(() => expect(c.state.busy).toBe(false));
     expect(s.deps.follow).toHaveBeenCalledOnce();
     expect(c.state.transcript?.messages.at(-1)?.content).toBe('Still writing');
@@ -133,6 +133,18 @@ describe('an open conversation', () => {
     await c.open();
     expect(await c.send('Hi')).toMatchObject({ sent: false, restore: 'Hi', notice: 'failed' });
     expect(c.state.pending).toBeNull();
+  });
+
+  it('does not call a send delivered when the conversation closed while it failed', async () => {
+    const s = station();
+    let fail: (outcome: StreamOutcome) => void = () => {};
+    s.deps.send = () => new Promise<StreamOutcome>((resolve) => (fail = resolve));
+    const c = new Conversation(s.deps);
+    await c.open();
+    const sending = c.send('Queued words');
+    c.dispose();
+    fail(miss(0) as StreamOutcome);
+    expect(await sending).toMatchObject({ sent: false, notice: 'offline', status: 0 });
   });
 
   it('follows a reply being written when it opens, and reloads when it ends', async () => {

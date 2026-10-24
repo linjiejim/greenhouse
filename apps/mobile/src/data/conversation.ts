@@ -64,7 +64,7 @@ export interface ConversationState<M extends TranscriptMessage = TranscriptMessa
 /** What the composer should do after a send. */
 export type SendResult =
   | { sent: true }
-  | { sent: false; restore: string; notice: 'busy' | 'failed' | 'offline'; message: string };
+  | { sent: false; restore: string; notice: 'busy' | 'failed' | 'offline'; message: string; status: number };
 
 /** The state before a conversation opens. */
 export const CLOSED_CONVERSATION: ConversationState<never> = {
@@ -179,21 +179,21 @@ export class Conversation<M extends TranscriptMessage = TranscriptMessage> {
 
   async send(text: string, images: readonly SentImage[] = []): Promise<SendResult> {
     const message = text.trim();
-    if ((!message && !images.length) || this.state.busy) return { sent: false, restore: text, notice: 'busy', message: '' };
+    if ((!message && !images.length) || this.state.busy) return { sent: false, restore: text, notice: 'busy', message: '', status: 409 };
     this.start = exchangeStart(this.state.transcript);
     this.set({ pending: message, pendingImages: images, reply: EMPTY_REPLY, busy: true, unreconciled: false, streamFailed: false });
     const outcome = await this.deps.send(message, this.onEvent, this.abort.signal, images);
-    if (!this.live()) return { sent: true };
     if (!outcome.ok) {
+      // closed meanwhile: still say how the send ended, so a queued message is not taken as sent
+      const notice = outcome.status === 0 ? 'offline' : outcome.status === 409 ? 'busy' : 'failed';
+      const failed = { sent: false, restore: text, notice, message: outcome.message, status: outcome.status } as const;
+      if (!this.live()) return failed;
       this.set({ pending: null, pendingImages: [], reply: null, busy: false });
-      if (outcome.status === 0) return { sent: false, restore: text, notice: 'offline', message: outcome.message };
-      if (outcome.status === 409) {
-        // a reply is still being written: keep my words and follow that reply
-        void this.followActive();
-        return { sent: false, restore: text, notice: 'busy', message: outcome.message };
-      }
-      return { sent: false, restore: text, notice: 'failed', message: outcome.message };
+      // a reply is still being written: keep my words and follow that reply
+      if (notice === 'busy') void this.followActive();
+      return failed;
     }
+    if (!this.live()) return { sent: true };
     if (!outcome.finished) await this.waitForRun();
     await this.reconcile();
     return { sent: true };
