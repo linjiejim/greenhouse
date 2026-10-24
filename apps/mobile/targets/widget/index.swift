@@ -100,6 +100,9 @@ private struct Words {
       let parse = DateFormatter()
       parse.dateFormat = "yyyy-MM-dd"
       parse.locale = Locale(identifier: "en_US_POSIX")
+      // due dates are Gregorian whatever calendar the phone uses (DueBuckets.swift)
+      parse.calendar = DueBuckets.calendar()
+      parse.timeZone = parse.calendar.timeZone
       guard let date = parse.date(from: due) else { return nil }
       let out = DateFormatter()
       out.locale = Locale(identifier: zh ? "zh_Hans_CN" : "en_US")

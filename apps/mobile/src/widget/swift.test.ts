@@ -1,7 +1,8 @@
 /**
  * The widget's Swift agrees with the app: targets/widget/DueBuckets.swift is compiled with swiftc
- * and must bucket due dates exactly like src/data/tasks.ts `dueBucket`, and the widget sources
- * typecheck against the iOS SDK. Skipped where there is no Swift toolchain (Linux CI).
+ * and must bucket due dates exactly like src/data/tasks.ts `dueBucket`, also with the phone set to
+ * a Buddhist or Japanese calendar, and the widget sources typecheck against the iOS SDK. Skipped
+ * where there is no Swift toolchain (Linux CI).
  */
 
 import { execFileSync } from 'node:child_process';
@@ -51,31 +52,47 @@ describe.skipIf(!hasSwift)('the widget’s Swift', () => {
   const work = mkdtempSync(join(tmpdir(), 'gh-widget-swift-'));
   afterAll(() => rmSync(work, { recursive: true, force: true }));
 
-  it('buckets due dates like the app', () => {
+  it('buckets due dates like the app, whatever calendar the phone is set to', () => {
     const cases = days.flatMap((today) => dues(today).map((due) => ({ today, due })));
     const swiftString = (value: string | null) => (value === null ? 'nil' : JSON.stringify(value));
+    // "today" is an instant: 21:30 on that Gregorian day in the phone's time zone
     const lines = cases.map(({ today, due }) => {
       const [y, m, d] = today.split('-').map(Number);
-      return `print(DueBuckets.bucket(due: ${swiftString(due)}, today: day(${y}, ${m}, ${d}), calendar: calendar))`;
+      return `print(DueBuckets.bucket(due: ${swiftString(due)}, today: day(${y}, ${m}, ${d})))`;
     });
     writeFileSync(
       join(work, 'main.swift'),
       [
         'import Foundation',
-        'var calendar = Calendar(identifier: .gregorian)',
-        'calendar.timeZone = TimeZone(identifier: "Asia/Shanghai")!',
+        'var gregorian = Calendar(identifier: .gregorian)',
+        'gregorian.timeZone = TimeZone.current',
         'func day(_ y: Int, _ m: Int, _ d: Int) -> Date {',
-        '  calendar.date(from: DateComponents(year: y, month: m, day: d, hour: 21, minute: 30))!',
+        '  gregorian.date(from: DateComponents(year: y, month: m, day: d, hour: 21, minute: 30))!',
         '}',
+        'print(Calendar.current.identifier)',
         ...lines,
       ].join('\n'),
     );
     const binary = join(work, 'buckets');
     execFileSync('xcrun', ['swiftc', '-o', binary, join(widgetDir, 'DueBuckets.swift'), join(work, 'main.swift')], { stdio: 'pipe' });
-    const swift = execFileSync(binary, { encoding: 'utf8' }).trim().split('\n');
-    expect(swift).toEqual(cases.map(({ today, due }) => dueBucket(due, today)));
+    const expected = cases.map(({ today, due }) => dueBucket(due, today));
+    // the phone's calendar setting (Foundation reads it from the arguments), in a far-east time zone
+    for (const [locale, calendar] of [
+      ['en_US', 'gregorian'],
+      ['th_TH@calendar=buddhist', 'buddhist'],
+      ['ja_JP@calendar=japanese', 'japanese'],
+    ] as const) {
+      const [identifier, ...swift] = execFileSync(binary, ['-AppleLocale', locale], {
+        encoding: 'utf8',
+        env: { ...process.env, TZ: 'Asia/Shanghai' },
+      })
+        .trim()
+        .split('\n');
+      expect(identifier).toBe(calendar);
+      expect(swift).toEqual(expected);
+    }
     // the table covers every bucket
-    expect(new Set(swift)).toEqual(new Set(['overdue', 'today', 'soon', 'later', 'none']));
+    expect(new Set(expected)).toEqual(new Set(['overdue', 'today', 'soon', 'later', 'none']));
   }, 120_000);
 
   it('the widget sources typecheck against the iOS SDK', () => {
