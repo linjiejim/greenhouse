@@ -1222,7 +1222,14 @@ export function ConversationPane({
                             : undefined
                           : undefined
                       }
-                      onConfirmAction={msg.role === 'assistant' && isOwner ? handleSend : undefined}
+                      onConfirmAction={
+                        // handleSend refuses while a reply runs or in a retired channel; a block
+                        // button pressed then would mark itself chosen with nothing sent, so the
+                        // buttons stay inert until a send can be accepted
+                        msg.role === 'assistant' && isOwner && !effectiveRunActive && !isRetiredChannel
+                          ? handleSend
+                          : undefined
+                      }
                       hasFollowUpUserMessage={hasFollowUpUserMessage}
                       submittedUserMessage={submittedUserMessage}
                       confirmedActionValue={followUpUserMessage}

@@ -74,6 +74,31 @@ describe('stats / cards / steps blocks', () => {
     expect(buttons.every((b) => b.disabled)).toBe(true);
   });
 
+  it('keeps buttons unchosen while no send can be accepted, and commits once it can', async () => {
+    const content = fence('stats', { items: [{ label: 'Customers', value: 128 }], actions });
+    // a reply is running: the pane passes no sender
+    const root = await render(content);
+    const buttons = () => Array.from(root.querySelectorAll('button')).filter((b) => b.textContent?.startsWith('By '));
+    expect(buttons().every((b) => b.disabled)).toBe(true);
+    await act(async () => buttons()[0]!.click());
+    expect(root.querySelector('button[aria-pressed="true"]')).toBeNull();
+
+    // the reply finished: the same block takes the press
+    const onAction = vi.fn();
+    await act(async () => {
+      mountedRoot?.render(
+        createElement(I18nProvider, {
+          initialLocale: 'en',
+          children: createElement(RichMarkdown, { compact: true, content, onConfirmAction: onAction }),
+        }),
+      );
+    });
+    expect(buttons().every((b) => !b.disabled)).toBe(true);
+    await act(async () => buttons()[1]!.click());
+    expect(onAction).toHaveBeenCalledWith('Split October customers by region');
+    expect(root.querySelector('button[aria-pressed="true"]')?.textContent).toBe('By region');
+  });
+
   it('shows the pressed button from the follow-up message after a reload', async () => {
     const root = await render(fence('steps', { items: [{ title: 'Review', status: 'done' }], actions }), {
       onConfirmAction: vi.fn(),
