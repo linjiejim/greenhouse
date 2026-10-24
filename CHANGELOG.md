@@ -10,7 +10,18 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Added
 
-* team agent hub 1.6 — services & pricing, model gateway, MCP services, cloud computer, report templates, team context, monthly retro, data catalog, native mobile app ([dffa2ed](https://github.com/linjiejim/greenhouse/commit/dffa2edfac681cda6b52a49caf476d5b60c1ee14))
+* **metering:** price every paid call in USD (models, search, page reads, images, vision, cloud computer) with organization, service and member budgets, 80%/100% alerts, refusals that tell the agent why, admin-set prices, and the Services & pricing page plus Settings › Usage
+* **gateway:** model gateway for members' own agents: per-member keys, OpenAI-compatible and Anthropic-compatible endpoints (Claude Code, Cursor, SDKs), metered like everything else; off by default
+* **mcp:** web_search, read_url, analyze_image and generate_image for members' agents, metered and recorded
+* **computer:** on-demand cloud computer per member on E2B (off by default, idle stop, per-minute billing, MCP computer tools)
+* **reports:** team report templates rendered server-side to PDF, Word and PowerPoint into Files, for agents, chat and automations
+* **context:** team conventions, glossary, SkillHub prompts and an overview served to agents over MCP (prompts, resources, team_context), a monthly retro doc, a data catalog and a per-client connect wizard
+* **mobile:** native Expo SDK 57 app for the team hub — notifications and push, knowledge, Files with share-to-Greenhouse, projects and tasks, tables, my agents, assistant, widgets, iPad split view, offline reading, Feishu sign-in
+
+### Notes
+
+* MCP knowledge resources now follow the grant's knowledge scope; an older grant without it must re-consent to read knowledge resources.
+* Local DB test runs require TEST_DATABASE_URL (only CI keeps the default).
 
 ## [1.5.0](https://github.com/linjiejim/greenhouse/compare/v1.4.0...v1.5.0) (2026-10-23)
 
