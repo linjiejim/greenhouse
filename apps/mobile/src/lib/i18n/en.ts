@@ -260,6 +260,7 @@ export const en = {
     commentAdded: 'Comment added',
   },
   tables: {
+    sideways: 'Read sideways',
     empty: 'No bases',
     emptyHint: 'A base holds tables of records; bases shared with you show up here too.',
     newBase: 'New Base',

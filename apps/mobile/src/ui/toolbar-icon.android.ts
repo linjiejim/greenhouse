@@ -41,6 +41,7 @@ const SOURCES: Record<IconName, ImageSourcePropType> = {
   menu: require('../../assets/icons/android/menu.xml'),
   expand: require('../../assets/icons/android/open_in_full.xml'),
   rotate: require('../../assets/icons/android/undo.xml'),
+  sideways: require('../../assets/icons/android/screen_rotation.xml'),
   clock: require('../../assets/icons/android/schedule.xml'),
   camera: require('../../assets/icons/android/photo_camera.xml'),
   image: require('../../assets/icons/android/image.xml'),

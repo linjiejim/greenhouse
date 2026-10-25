@@ -254,6 +254,7 @@ export const zh: Catalog = {
     commentAdded: '评论已添加',
   },
   tables: {
+    sideways: '横向查看',
     empty: '还没有数据表',
     emptyHint: '数据表里放一张张记录表；共享给你的也会出现在这里。',
     newBase: '新建数据表',

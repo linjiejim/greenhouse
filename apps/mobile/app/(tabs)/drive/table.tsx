@@ -20,6 +20,8 @@ import { useFieldWords } from '../../../src/tables/use-field-words';
 import { makeStyles, space, useTheme } from '../../../src/theme';
 import { EmptyState, LoadingState } from '../../../src/ui/empty';
 import { Row, SectionFooter, rowPosition } from '../../../src/ui/list';
+import { refreshItem, usePullRefresh } from '../../../src/ui/refresh';
+import { SidewaysTable } from '../../../src/ui/sideways';
 import { useOpenObject } from '../../../src/shell/open-object';
 import { toolbarIcon } from '../../../src/ui/toolbar-icon';
 import { objectId } from '../../../src/lib/object-id';
@@ -62,6 +64,7 @@ export default function TableScreen() {
     };
   }, [tableId, baseId]);
   const resource = useResource(load);
+  const pull = usePullRefresh(resource.refresh);
   const head = resource.data;
 
   // later pages, cleared whenever the first page is read again
@@ -92,6 +95,20 @@ export default function TableScreen() {
     return [...(head?.records ?? []), ...extra.records].filter((record) => !seen.has(record.id) && !!seen.add(record.id));
   }, [head, extra.records]);
 
+  // the records read so far as a grid, for reading sideways
+  const [sideways, setSideways] = useState(false);
+  const grid = useMemo(
+    () =>
+      sideways
+        ? {
+            head: fields.map((field) => field.name),
+            rows: records.map((record) => fields.map((field) => displayValue(field, cellValue(field, record), words))),
+            plain: true,
+          }
+        : null,
+    [sideways, fields, records, words],
+  );
+
   const subtitle = useCallback(
     (record: TableRecord) =>
       fields
@@ -120,21 +137,29 @@ export default function TableScreen() {
   return (
     <>
       <Stack.Screen options={{ title: head?.schema.table.name ?? '' }} />
-      {head && canAddRecords(head.role) ? (
-        <Stack.Toolbar placement="right">
+      <Stack.Toolbar placement="right">
+        {refreshItem(resource.loading && !!head && !pull.refreshing, t('common.loading'))}
+        {records.length ? (
+          <Stack.Toolbar.Button
+            icon={toolbarIcon('sideways')}
+            accessibilityLabel={t('tables.sideways')}
+            onPress={() => setSideways(true)}
+          />
+        ) : null}
+        {head && canAddRecords(head.role) ? (
           <Stack.Toolbar.Button
             icon={toolbarIcon('plus')}
             accessibilityLabel={t('tables.addRecord')}
             onPress={() => router.push({ pathname: '/tables/new-record', params: { table: String(tableId) } })}
           />
-        </Stack.Toolbar>
-      ) : null}
+        ) : null}
+      </Stack.Toolbar>
       <FlatList<TableRecord>
         contentInsetAdjustmentBehavior="automatic"
         data={records}
         keyExtractor={(record) => String(record.id)}
-        refreshing={resource.loading && !!head}
-        onRefresh={() => void resource.refresh()}
+        refreshing={pull.refreshing}
+        onRefresh={pull.onRefresh}
         onEndReached={() => void loadMore()}
         onEndReachedThreshold={0.5}
         renderItem={({ item, index }) => (
@@ -168,6 +193,12 @@ export default function TableScreen() {
         }
         style={styles.root}
         contentContainerStyle={styles.content}
+      />
+      <SidewaysTable
+        data={grid}
+        title={head?.schema.table.name ?? ''}
+        visible={sideways}
+        onClose={() => setSideways(false)}
       />
     </>
   );

@@ -22,6 +22,8 @@ import { EmptyState } from '../src/ui/empty';
 import { TableRecords } from '../src/markdown/blocks/table';
 import { Segmented } from '../src/ui/segmented';
 import { SheetClose } from '../src/ui/sheet-chrome';
+import { SidewaysTable } from '../src/ui/sideways';
+import { toolbarIcon } from '../src/ui/toolbar-icon';
 
 export default function FullTable() {
   const { colors: c } = useTheme();
@@ -30,12 +32,22 @@ export default function FullTable() {
   const { k, title } = useLocalSearchParams<{ k?: string; title?: string }>();
   const data = getHandoff<TableData>(k, 'table');
   const [avail, setAvail] = useState(0);
+  const [sideways, setSideways] = useState(false);
   const [mode, setMode] = useState<'records' | 'grid'>(data && data.head.length > 4 ? 'records' : 'grid');
 
   return (
     <View style={styles.root}>
       <Stack.Screen options={{ title: title ? String(title) : t('chat.table') }} />
       <SheetClose />
+      {data ? (
+        <Stack.Toolbar placement="right">
+          <Stack.Toolbar.Button
+            icon={toolbarIcon('sideways')}
+            accessibilityLabel={t('tables.sideways')}
+            onPress={() => setSideways(true)}
+          />
+        </Stack.Toolbar>
+      ) : null}
       {data ? (
         <ScrollView contentInsetAdjustmentBehavior="automatic" contentContainerStyle={styles.content}>
           <Segmented
@@ -60,6 +72,7 @@ export default function FullTable() {
           <EmptyState icon="table" title={t('chat.expired')} message={t('chat.expiredHint')} />
         </View>
       )}
+      <SidewaysTable data={data ?? null} title={title ? String(title) : t('chat.table')} visible={sideways} onClose={() => setSideways(false)} />
     </View>
   );
 }

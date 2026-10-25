@@ -62,6 +62,7 @@ const ICONS = {
   menu: ['line.3.horizontal', 'menu'],
   expand: ['arrow.up.left.and.arrow.down.right', 'open_in_full'],
   rotate: ['arrow.counterclockwise', 'undo'],
+  sideways: ['rectangle.landscape.rotate', 'screen_rotation'],
   clock: ['clock', 'schedule'],
   camera: ['camera', 'photo_camera'],
   image: ['photo', 'image'],
