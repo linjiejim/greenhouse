@@ -1,4 +1,4 @@
-/** A tab's own native stack (app/(tabs)/<tab>/_layout.tsx): compact inline titles, pages pushed inside the tab. */
+/** A place's own native stack (app/(drawer)/<place>/_layout.tsx): compact inline titles, pages pushed inside the place. */
 
 import React from 'react';
 import { Stack } from 'expo-router';

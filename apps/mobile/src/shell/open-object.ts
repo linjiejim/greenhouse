@@ -31,7 +31,7 @@ interface NavState {
 function rootRoutes(container: ContainerRef): StackRoute[] {
   let state = container.getRootState() as NavState | undefined;
   for (let depth = 0; state && depth < 4; depth += 1) {
-    if (state.routes.some((route) => route.name === '(tabs)' || route.name === 'login')) return state.routes;
+    if (state.routes.some((route) => route.name === '(drawer)' || route.name === 'login')) return state.routes;
     state = state.routes[state.routes.length - 1]?.state;
   }
   return [];

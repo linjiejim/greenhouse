@@ -193,19 +193,20 @@ export function TalkingAvatar({
 }: {
   state: PlantState;
   out: SharedValue<number>;
-  origin: { x: number; y: number };
+  /** The conversation's frame in the window (beside the sidebar on an iPad); the sprout settles at its centre. */
+  origin: { x: number; y: number; width: number };
 }) {
   const t = useT();
-  const { width } = useWindowDimensions();
+  const { width } = origin;
   const reduced = useReducedMotion();
   const avatar = useAnchor((s) => s.avatar);
   const title = useAnchor((s) => s.title);
   // from: the title's sprout; to: centred just below the title
   const from = avatar
     ? { x: avatar.x + avatar.width / 2 - origin.x, y: avatar.y + avatar.height / 2 - origin.y }
-    : { x: width / 2 - origin.x, y: 80 - origin.y };
+    : { x: width / 2, y: 80 - origin.y };
   const below = title ? title.y + title.height : 88;
-  const to = { x: width / 2 - origin.x, y: below + space.sm + LARGE / 2 - origin.y };
+  const to = { x: width / 2, y: below + space.sm + LARGE / 2 - origin.y };
   const style = useAnimatedStyle(() => {
     const p = out.value;
     if (reduced) {

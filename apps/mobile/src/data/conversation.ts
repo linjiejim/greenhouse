@@ -1,6 +1,6 @@
 /**
  * One open conversation with the assistant. React-free (./conversation.test.ts); the screen
- * (app/chat.tsx) renders `state` and calls the methods, the network arrives through
+ * (app/(drawer)/(home)/chat.tsx) renders `state` and calls the methods, the network arrives through
  * `ConversationDeps`.
  *
  * - It opens on the latest page of messages and pages older history in front on demand

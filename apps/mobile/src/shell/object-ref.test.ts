@@ -28,10 +28,10 @@ describe('openObject', () => {
   });
 
   it('counts only the object sheets at the top of the stack', () => {
-    expect(sheetDepth(routes('(tabs)'))).toBe(0);
-    expect(sheetDepth(routes('(tabs)', 'sheet/project', 'sheet/task'))).toBe(2);
-    expect(sheetDepth(routes('(tabs)', 'sheet/doc', 'chat'))).toBe(0);
-    expect(sheetDepth(routes('(tabs)', 'notifications', 'sheet/doc'))).toBe(1);
+    expect(sheetDepth(routes('(drawer)'))).toBe(0);
+    expect(sheetDepth(routes('(drawer)', 'sheet/project', 'sheet/task'))).toBe(2);
+    expect(sheetDepth(routes('(drawer)', 'sheet/doc', 'chat'))).toBe(0);
+    expect(sheetDepth(routes('(drawer)', 'notifications', 'sheet/doc'))).toBe(1);
   });
 
   it('stacks up to three sheets, then replaces the top one', () => {

@@ -75,6 +75,7 @@ export const zh: Catalog = {
     serverBody: '{station} 的 Greenhouse 版本比这个 App 需要的旧。请管理员升级，或换一个工作站。',
   },
   nav: {
+    sidebar: '侧边栏',
     home: '首页',
     knowledge: '知识库',
     files: '云盘',

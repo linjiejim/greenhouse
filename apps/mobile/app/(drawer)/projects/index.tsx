@@ -26,6 +26,7 @@ import { makeStyles, space, typo, useTheme } from '../../../src/theme';
 import { NativeButton } from '../../../src/ui/button';
 import { alertError, promptText } from '../../../src/ui/dialogs';
 import { DirectorySearch, useDirectoryFilter } from '../../../src/ui/directory-search';
+import { SidebarToolbar } from '../../../src/ui/sidebar';
 import { EmptyState, LoadingState } from '../../../src/ui/empty';
 import { notifySuccess } from '../../../src/ui/haptics';
 import { refreshItem, usePullRefresh } from '../../../src/ui/refresh';
@@ -150,6 +151,7 @@ export default function Projects() {
     <>
       <Stack.Screen options={{ title: t('nav.projects') }} />
       <DirectorySearch filter={filter} />
+      <SidebarToolbar />
       <Stack.Toolbar placement="right">
         {refreshItem(busy, t('common.loading'))}
         <Stack.Toolbar.Button

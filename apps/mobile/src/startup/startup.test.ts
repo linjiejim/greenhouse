@@ -41,7 +41,7 @@ const test = await vi.hoisted(async () => {
     prefs: { hydrate: vi.fn() },
     station: { activeId: 'station-a' },
     fonts: [false, null] as [boolean, Error | null],
-    segments: ['(tabs)', '(home)'] as string[],
+    segments: ['(drawer)', '(home)'] as string[],
     router: { canDismiss: vi.fn(() => false), dismissAll: vi.fn(), replace: vi.fn() },
     renderRoute: (() => null) as () => ReturnType<typeof React.createElement> | null,
   };
@@ -264,7 +264,7 @@ beforeEach(() => {
   test.prefs.hydrate.mockClear();
   test.station.activeId = 'station-a';
   test.fonts = [false, null];
-  test.segments = ['(tabs)', '(home)'];
+  test.segments = ['(drawer)', '(home)'];
   test.router.canDismiss.mockReset().mockReturnValue(false);
   test.router.dismissAll.mockClear();
   test.router.replace.mockClear();

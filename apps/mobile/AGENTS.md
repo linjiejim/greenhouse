@@ -3,7 +3,7 @@
 ## Scope
 
 - The app is the team's Agent hub on the phone: 首页 (greeting, recent conversations, a composer; search and the bell in its bar), 知识库, 云盘 (with Tables), 项目, search, the conversation page, 通知 and 「我」 (account, station, text size, My Agents, settings). It is not a web wrapper and not an agent console.
-- The root is NativeTabs (app/(tabs)/_layout.tsx); Tables is a segment of 云盘 only with the `tables` feature (src/shell/modules.ts `hasTables`, supers always). There are no placeholder screens.
+- The root is a sidebar drawer (app/(drawer)/_layout.tsx, expo-router's vendored Drawer on react-native-drawer-layout; panel src/shell/sidebar-content.tsx, rules src/shell/layout-rule.ts): each place swaps in with its own stack, the edge swipe opens it only on a place's first page (deeper it is the back gesture), an iPad at regular width keeps it permanent; the conversation page `/chat` lives in home's stack; Tables is a segment of 云盘 only with the `tables` feature (src/shell/modules.ts `hasTables`, supers always). There are no placeholder screens.
 - Page, sheet, type, color and state rules live in DESIGN.md; read it before adding a screen.
 - Experience bar: content within 1.5 s of a cold start (cache first, refresh in background), 60 fps lists, haptics and optimistic updates, offline reading of recent items, dark mode, Dynamic Type, VoiceOver.
 
@@ -64,7 +64,7 @@
 
 ## Widgets and iPad
 
-- iPad gets the tab bar as a sidebar (`sidebarAdaptable`); there is no hand-made split view.
+- iPad at regular width gets the sidebar as a permanent column (the split view); never embed object views in panes or draw pane headers: objects stay form sheets and every bar is a native stack's.
 - targets/widget holds the 我的任务 and 最近文档 widgets; they read only the App Group snapshot src/widget/publish.ts writes through modules/widget-bridge (shape: src/widget/model.ts, a parity test checks the Swift decoder). Never put a token or private body text in it.
 - The widget works due buckets out per timeline entry (targets/widget/DueBuckets.swift, the rule of src/data/tasks.ts `dueBucket`); src/widget/swift.test.ts compiles it with swiftc against the JS rule (on a Mac also under Buddhist and Japanese calendar settings) wherever swiftc exists, and typechecks the widget where the iOS simulator SDK is installed.
 - Widget links carry `station=`; it stays on the route until checked, and the item's screen (src/widget/station-gate.tsx) waits for the stations to load, then opens only on that station.
@@ -127,7 +127,7 @@
 ## Native pitfalls
 
 - RN overlays render below native sheets: UI that must cover them (toast) uses FullWindowOverlay, mounted only while shown.
-- The root Stack starts at (tabs): go home with goHome (src/shell/nav.ts), never `<Redirect>` or router.replace; open a page from a sheet only after dismissing the sheets (openObject does).
+- The root Stack starts at (drawer): go home with goHome (src/shell/nav.ts), never `<Redirect>` or router.replace; open a page from a sheet only after dismissing the sheets (openObject does).
 - A large-title page's list or ScrollView is the screen's root element (a fragment, the background on the list's own style); inside a wrapping View the title sticks over the rows instead of collapsing.
 - Mount a SwiftUI Form on the first frame and swap its children when data arrives, or its first untitled Section slides under the nav bar.
 - Never remove a Form section while one of its inputs has focus (UIKit crash); call Keyboard.dismiss() in beforeRemove.

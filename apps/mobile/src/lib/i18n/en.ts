@@ -81,6 +81,7 @@ export const en = {
       '{station} runs an older Greenhouse than this app needs. Ask your admin to update it, or choose another station.',
   },
   nav: {
+    sidebar: 'Sidebar',
     home: 'Home',
     knowledge: 'Knowledge',
     files: 'Drive',

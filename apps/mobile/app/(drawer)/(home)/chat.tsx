@@ -26,13 +26,13 @@ import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-rou
 import { KeyboardStickyView, useKeyboardState } from 'react-native-keyboard-controller';
 import Animated, { FadeIn, FadeOut, ReduceMotion } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { chatRun, createSession, getMessages, getSessionInfo, stopRun } from '../src/api/assistant';
-import { HeaderTitle, TalkingAvatar, TalkingBand, TalkingRoom, useTalking } from '../src/chat/header-avatar';
-import { useStepsSheet } from '../src/chat/steps-sheet';
-import type { ApiResult } from '../src/api/client';
-import { Composer } from '../src/chat/composer';
-import { sentParts } from '../src/chat/composer-files';
-import { AssistantReply, UserMessage } from '../src/chat/messages';
+import { chatRun, createSession, getMessages, getSessionInfo, stopRun } from '../../../src/api/assistant';
+import { HeaderTitle, TalkingAvatar, TalkingBand, TalkingRoom, useTalking } from '../../../src/chat/header-avatar';
+import { useStepsSheet } from '../../../src/chat/steps-sheet';
+import type { ApiResult } from '../../../src/api/client';
+import { Composer } from '../../../src/chat/composer';
+import { sentParts } from '../../../src/chat/composer-files';
+import { AssistantReply, UserMessage } from '../../../src/chat/messages';
 import {
   attachmentsFence,
   messageImages,
@@ -40,12 +40,12 @@ import {
   splitAttachments,
   type AttachedFile,
   type ToolStep,
-} from '../src/chat/parts';
-import { sendDirect } from '../src/chat/direct-send';
-import { followRun, regenerateReply, sendMessage } from '../src/chat/send';
-import { useComposerBridge } from '../src/chat/composer-bridge';
-import { useComposerFiles } from '../src/chat/use-composer-files';
-import { visibleMessages } from '../src/data/chat-stream';
+} from '../../../src/chat/parts';
+import { sendDirect } from '../../../src/chat/direct-send';
+import { followRun, regenerateReply, sendMessage } from '../../../src/chat/send';
+import { useComposerBridge } from '../../../src/chat/composer-bridge';
+import { useComposerFiles } from '../../../src/chat/use-composer-files';
+import { visibleMessages } from '../../../src/data/chat-stream';
 import {
   CLOSED_CONVERSATION,
   Conversation,
@@ -53,29 +53,29 @@ import {
   tailOf,
   type ConversationState,
   type SentImage,
-} from '../src/data/conversation';
-import { atEnd, shouldFollowEnd } from '../src/data/follow-end';
-import { captureIdentity } from '../src/data/identity';
-import { newTurnId } from '../src/data/outbox';
-import type { MessagePage } from '../src/data/transcript';
-import { getHandoff } from '../src/lib/handoff';
-import { useT } from '../src/lib/i18n';
-import type { ChatMessage } from '../src/shared/greenhouse-types';
-import { readChatCopy, saveChatCopy } from '../src/store/chat-copies';
-import { claimConversation, deliverQueued, queueTurn, unqueueTurn, useOutbox } from '../src/store/outbox';
-import { HIT, makeStyles, motion, space, typo, useTheme } from '../src/theme';
-import { alertError, confirmAction, promptText } from '../src/ui/dialogs';
-import { EmptyState } from '../src/ui/empty';
-import { usePlantWorkState } from '../src/ui/plant-avatar/use-plant-work';
-import { Spinner } from '../src/ui/core';
-import { GlassIconButton } from '../src/ui/glass';
-import { notifySuccess, notifyWarning } from '../src/ui/haptics';
-import { toast } from '../src/ui/toast';
-import { toolbarIcon } from '../src/ui/toolbar-icon';
-import { useHeaderInset } from '../src/ui/header-inset';
-import { OpenOrigin } from '../src/shell/open-object';
-import { useSessions } from '../src/store/sessions';
-import { forgetChatCopy } from '../src/store/chat-copies';
+} from '../../../src/data/conversation';
+import { atEnd, shouldFollowEnd } from '../../../src/data/follow-end';
+import { captureIdentity } from '../../../src/data/identity';
+import { newTurnId } from '../../../src/data/outbox';
+import type { MessagePage } from '../../../src/data/transcript';
+import { getHandoff } from '../../../src/lib/handoff';
+import { useT } from '../../../src/lib/i18n';
+import type { ChatMessage } from '../../../src/shared/greenhouse-types';
+import { readChatCopy, saveChatCopy } from '../../../src/store/chat-copies';
+import { claimConversation, deliverQueued, queueTurn, unqueueTurn, useOutbox } from '../../../src/store/outbox';
+import { HIT, makeStyles, motion, space, typo, useTheme } from '../../../src/theme';
+import { alertError, confirmAction, promptText } from '../../../src/ui/dialogs';
+import { EmptyState } from '../../../src/ui/empty';
+import { usePlantWorkState } from '../../../src/ui/plant-avatar/use-plant-work';
+import { Spinner } from '../../../src/ui/core';
+import { GlassIconButton } from '../../../src/ui/glass';
+import { notifySuccess, notifyWarning } from '../../../src/ui/haptics';
+import { toast } from '../../../src/ui/toast';
+import { toolbarIcon } from '../../../src/ui/toolbar-icon';
+import { useHeaderInset } from '../../../src/ui/header-inset';
+import { OpenOrigin } from '../../../src/shell/open-object';
+import { useSessions } from '../../../src/store/sessions';
+import { forgetChatCopy } from '../../../src/store/chat-copies';
 
 /** What home hands over for the first message of a conversation it made. */
 export interface FirstTurn {
@@ -123,7 +123,7 @@ export default function Chat() {
   const dragging = useRef(false);
   /** Scrolled away from the end (shows the ↓ button). */
   const [away, setAway] = useState(false);
-  const [rootOrigin, setRootOrigin] = useState({ x: 0, y: 0 });
+  const [rootOrigin, setRootOrigin] = useState({ x: 0, y: 0, width: 0 });
   const root = useRef<View>(null);
   const shape = useRef({ head: '', tail: '' });
   const firstTurn = useRef<FirstTurn | null>(getHandoff<FirstTurn>(params.k, 'first-turn') ?? null);
@@ -617,7 +617,9 @@ export default function Chat() {
       ref={root}
       style={styles.root}
       onLayout={() =>
-        root.current?.measureInWindow((x, y) => setRootOrigin((now) => (now.x === x && now.y === y ? now : { x, y })))
+        root.current?.measureInWindow((x, y, width) =>
+          setRootOrigin((now) => (now.x === x && now.y === y && now.width === width ? now : { x, y, width })),
+        )
       }
     >
       {header}

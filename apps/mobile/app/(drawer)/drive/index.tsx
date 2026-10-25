@@ -33,6 +33,7 @@ import { makeStyles, space, useTheme } from '../../../src/theme';
 import { NativeButton } from '../../../src/ui/button';
 import { alertError, promptText } from '../../../src/ui/dialogs';
 import { DirectorySearch, useDirectoryFilter } from '../../../src/ui/directory-search';
+import { SidebarToolbar } from '../../../src/ui/sidebar';
 import { EmptyState, LoadingState } from '../../../src/ui/empty';
 import { notifySuccess } from '../../../src/ui/haptics';
 import { Row, SectionHeader, rowPosition, type RowPosition } from '../../../src/ui/list';
@@ -306,6 +307,7 @@ export default function Drive() {
     <>
       <Stack.Screen options={{ title: folderId != null ? (path[path.length - 1]?.name ?? '') : t('nav.files') }} />
       <DirectorySearch filter={filter} />
+      <SidebarToolbar />
       <Stack.Toolbar placement="right">
         {refreshItem(busy, t('common.loading'))}
         {view !== 'tables' ? (

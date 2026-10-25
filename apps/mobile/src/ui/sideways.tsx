@@ -30,7 +30,7 @@ export function SidewaysTable(props: SidewaysProps) {
       supportedOrientations={['portrait']}
       onRequestClose={props.onClose}
     >
-      {/* its own provider: the screen's insets include the tab bar (83 at the bottom, not the 34 of the home indicator) */}
+      {/* its own provider: the presenting screen's insets are not the modal's (a bar under it once made the bottom 83, not the home indicator's 34) */}
       <SafeAreaProvider>
         <Turned {...props} />
       </SafeAreaProvider>

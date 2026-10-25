@@ -3,9 +3,9 @@ import { clearHandoffs } from '../src/lib/handoff';
  * Root layout — bootstraps auth + prefs, applies the appearance, gates routes, and declares the
  * app's native navigation map:
  *
- *  - `(tabs)`            the system tab bar: 首页 · 知识库 · 云盘 · 项目 (search opens from home)
- *                        (a sidebar on iPad); each tab has its own stack
- *  - `chat`              one conversation, a full pushed page (the only object that is not a sheet)
+ *  - `(drawer)`          the sidebar and its places: 首页 · 知识库 · 云盘 · 项目, each with its own
+ *                        stack; home's holds search and the conversation page (`/chat`, the only
+ *                        object that is not a sheet); a drawer on a phone, a column on an iPad
  *  - `sheet/*`           every other object, opened by openObject (src/shell/open-object.ts) as a
  *                        form sheet; sheets stack on sheets up to three deep
  *  - `me`                「我」: account, station, text size, My Agents, settings (page sheet with
@@ -78,7 +78,7 @@ const followHandoffs = () => {
 useAuth.subscribe(followHandoffs);
 useStations.subscribe(followHandoffs);
 
-export const unstable_settings = { initialRouteName: '(tabs)' };
+export const unstable_settings = { initialRouteName: '(drawer)' };
 
 /** Routes a signed-out member may be on: the login page and the stations sheet it opens. */
 const SIGNED_OUT_ROUTES = new Set(['login', 'sheets/stations', 'sheets/station-add']);
@@ -175,11 +175,8 @@ export default function RootLayout() {
                 screenLayout={sheetEdgeLayout}
               >
                 {/* the tabs are the stack's root: never popped by the back gesture */}
-                <Stack.Screen name="(tabs)" options={{ title: t('nav.home'), gestureEnabled: false }} />
+                <Stack.Screen name="(drawer)" options={{ title: t('nav.home'), gestureEnabled: false }} />
                 <Stack.Screen name="login" options={{ animation: 'fade', gestureEnabled: false }} />
-
-                {/* ── the conversation: the one full pushed page ── */}
-                <Stack.Screen name="chat" options={detailScreen(c)} />
 
                 {/* ── object sheets (openObject): documents and files read full height ── */}
                 <Stack.Screen name="sheet/doc" options={sheetScreen([1], { header: true })} />

@@ -30,6 +30,7 @@ import { useOpenObject } from '../../../src/shell/open-object';
 import { recentDocs } from '../../../src/store/knowledge';
 import { makeStyles, space, typo, useTheme } from '../../../src/theme';
 import { DirectorySearch, useDirectoryFilter } from '../../../src/ui/directory-search';
+import { SidebarToolbar } from '../../../src/ui/sidebar';
 import { NativeButton } from '../../../src/ui/button';
 import { EmptyState, LoadingState } from '../../../src/ui/empty';
 import { SectionHeader } from '../../../src/ui/list';
@@ -179,6 +180,7 @@ export default function Knowledge() {
     <>
       <Stack.Screen options={{ title }} />
       <DirectorySearch filter={filter} />
+      <SidebarToolbar />
       <Stack.Toolbar placement="right">
         {refreshItem(busy, t('common.loading'))}
         {writable ? (

@@ -2,11 +2,11 @@
 
 ## Structure
 
-- The root is the system tab bar: 首页 · 知识库 · 云盘 · 项目; each tab has its own native stack. Search is a bar button on home that pushes the search page.
-- A conversation is the only full pushed page; every other object opens through openObject (src/shell/open-object.ts) as a form sheet.
+- There is no tab bar: a sidebar (首页 · 搜索 · 知识库 · 云盘 · 项目, 「我」 at its foot) swaps the places, each with its own native stack; a phone slides it out by an edge swipe on a place's first page or the bar button at the top left, an iPad at regular width keeps it on screen as a split view. Search and the bell stay at the top right of home.
+- A conversation is the only full pushed page (in home's stack, so the iPad sidebar stays beside it); every other object opens through openObject (src/shell/open-object.ts) as a form sheet.
 - Sheets stack on sheets up to three; the fourth replaces the top one. ✕ closes only the sheet it sits on.
 - Documents, files, folders and projects open full height; tasks, records, notifications, runs and writes open at 0.6 and grow.
-- Tab lists (知识库, 云盘, 项目, and pages pushed in them) have a compact bar: inline title, then search as a bar button and + on the same row; no large titles, no second row.
+- Place lists (知识库, 云盘, 项目, and pages pushed in them) have a compact bar: inline title, then search as a bar button and + on the same row; no large titles, no second row.
 - A refresh the app starts never moves a list: a pull shows the pull spinner, any other refresh with rows on screen a small spinner in the bar (src/ui/refresh.tsx), a first load Skeleton or LoadingState.
 - Edits happen in sheets (SwiftUI Form on iOS, Material on Android); the page underneath never changes behind them.
 - Long-press menus are system context menus (NativeMenu) and every item is also a VoiceOver action.
@@ -39,7 +39,7 @@
 
 - Text takes a role from typo.* (largeTitle … caption2) and adjusts weight only with weight.*; never a raw fontSize.
 - typo follows the in-app text size (seven steps, 0.8–1.35) times Dynamic Type; read it inside makeStyles or render, never into module constants.
-- Native bars, the tab bar, menus, alerts and the keyboard follow the system size and font only.
+- Native bars, menus, alerts and the keyboard follow the system size and font only.
 - Nunito is the face everywhere it can apply; Chinese falls back to PingFang.
 - One-line titles cut at the tail; file names cut in the middle so the extension stays.
 

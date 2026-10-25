@@ -42,7 +42,8 @@ import { EmptyState } from '../../../src/ui/empty';
 import { Skeleton } from '../../../src/ui/skeleton';
 import { rowPosition } from '../../../src/ui/list';
 import { toolbarIcon } from '../../../src/ui/toolbar-icon';
-import type { FirstTurn } from '../../chat';
+import { SidebarToolbar } from '../../../src/ui/sidebar';
+import type { FirstTurn } from './chat';
 
 /**
  * A provider of its own: inside the tab controller the screen's safe area includes the tab bar,
@@ -141,9 +142,8 @@ function Home() {
   return (
     <View style={styles.root}>
       <Stack.Screen options={{ title: '', headerLargeTitleEnabled: false }} />
-      <Stack.Toolbar placement="left">
-        <Stack.Toolbar.Button icon={toolbarIcon('person')} accessibilityLabel={t('me.title')} onPress={() => router.push('/me')} />
-      </Stack.Toolbar>
+      {/* the sidebar (places, and 「我」 at its foot) */}
+      <SidebarToolbar />
       <Stack.Toolbar placement="right">
         <Stack.Toolbar.Button icon={toolbarIcon('search')} accessibilityLabel={t('common.search')} onPress={() => router.push('/search')} />
         <Stack.Toolbar.Button
