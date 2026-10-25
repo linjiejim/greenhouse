@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Stack, useFocusEffect } from 'expo-router';
 import type { ComponentRef } from 'react';
 import { useT } from '../lib/i18n';
@@ -32,6 +32,50 @@ export function DirectorySearch({ filter }: { filter: ReturnType<typeof useDirec
       allowToolbarIntegration={false}
       onChangeText={(event) => filter.setQuery(event.nativeEvent.text)}
       onCancelButtonPress={() => filter.setQuery('')}
+    />
+  );
+}
+
+/**
+ * A search asked for by a bar button (the conversations sheet, whose ✕ stands alone): no field
+ * until `open`, then one under the title, focused. Cancel, or leaving it empty, clears the query
+ * and hides it again.
+ */
+export function RevealedSearch({
+  filter,
+  open,
+  onClose,
+}: {
+  filter: ReturnType<typeof useDirectoryFilter>;
+  open: boolean;
+  onClose: () => void;
+}) {
+  const t = useT();
+  const { ref, query, setQuery } = filter;
+  useEffect(() => {
+    if (!open) return;
+    // the native bar attaches on the next layout; focus once it is there
+    const timer = setTimeout(() => ref.current?.focus(), 300);
+    return () => clearTimeout(timer);
+  }, [open, ref]);
+  if (!open) return null;
+  const close = () => {
+    setQuery('');
+    onClose();
+  };
+  return (
+    <Stack.SearchBar
+      ref={ref}
+      placeholder={t('common.search')}
+      autoCapitalize="none"
+      placement="stacked"
+      hideWhenScrolling={false}
+      autoFocus
+      onChangeText={(event) => setQuery(event.nativeEvent.text)}
+      onCancelButtonPress={close}
+      onBlur={() => {
+        if (!query.trim()) close();
+      }}
     />
   );
 }

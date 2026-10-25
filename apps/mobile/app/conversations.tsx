@@ -1,8 +1,9 @@
 /**
  * 全部对话 — a sheet over home: my conversations, pinned first (swipe to pin, long press to
- * rename), the ones the phone keeps showing at once. The native search bar searches every
- * conversation I can read on the station (`/api/search?kind=session`). A conversation opens its
- * page (the sheet closes first).
+ * rename), the ones the phone keeps showing at once. The bar: search and new conversation as one
+ * group, ✕ alone at the far right. Search shows the native field only when asked for, and
+ * searches every conversation I can read on the station (`/api/search?kind=session`). A
+ * conversation opens its page (the sheet closes first).
  */
 
 import React, { useEffect, useMemo, useState } from 'react';
@@ -16,7 +17,7 @@ import { useOpenObject } from '../src/shell/open-object';
 import { useSessions } from '../src/store/sessions';
 import { makeStyles, space, typo, useTheme } from '../src/theme';
 import { promptText } from '../src/ui/dialogs';
-import { DirectorySearch, useDirectoryFilter } from '../src/ui/directory-search';
+import { RevealedSearch, useDirectoryFilter } from '../src/ui/directory-search';
 import { EmptyState } from '../src/ui/empty';
 import { Skeleton } from '../src/ui/skeleton';
 import { Row, rowPosition } from '../src/ui/list';
@@ -34,6 +35,7 @@ export default function Conversations() {
   const offline = useSessions((s) => s.offline);
   const pull = usePullRefresh(useSessions.getState().refresh);
   const filter = useDirectoryFilter();
+  const [searching, setSearching] = useState(false);
   const query = filter.query.trim();
   const [hits, setHits] = useState<{ id: string; title: string; subtitle?: string }[] | null>(null);
 
@@ -82,8 +84,26 @@ export default function Conversations() {
 
   return (
     <>
-      <SheetScreen title={t('home.allTitle')} actions={[{ icon: 'compose', label: t('assistant.newChat'), onPress: () => { router.back(); setTimeout(() => router.push('/chat'), 0); } }]} />
-      <DirectorySearch filter={filter} />
+      <SheetScreen
+        title={t('home.allTitle')}
+        closeApart
+        actions={[
+          {
+            icon: 'search',
+            label: t('common.search'),
+            onPress: () => (searching ? filter.ref.current?.focus() : setSearching(true)),
+          },
+          {
+            icon: 'compose',
+            label: t('assistant.newChat'),
+            onPress: () => {
+              router.back();
+              setTimeout(() => router.push('/chat'), 0);
+            },
+          },
+        ]}
+      />
+      <RevealedSearch filter={filter} open={searching} onClose={() => setSearching(false)} />
       {hits ? (
         <FlatList
           style={styles.root}

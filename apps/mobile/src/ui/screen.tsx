@@ -6,7 +6,8 @@
  *    native bar (the back button is always the system's).
  *  - `SheetScreen` — an object sheet (src/shell/open-object.ts): title, its actions and ✕ on the
  *    right. ✕ closes this sheet only; the sheets under it stay. Opened from a conversation, it
- *    says so above its title ("From …", src/shell/open-object.ts `OpenOrigin`).
+ *    says so above its title ("From …", src/shell/open-object.ts `OpenOrigin`). With
+ *    `closeApart`, ✕ stands alone at the far right and the actions form their own glass group.
  *
  * Both render nothing of their own: the list or scroll view after them stays the screen's root,
  * so large titles collapse and sheets grow when scrolled to the edge.
@@ -48,6 +49,11 @@ interface ScreenProps {
   busy?: boolean;
 }
 
+interface SheetScreenProps extends ScreenProps {
+  /** ✕ gets a glass of its own (iOS 26), apart from the actions' group. */
+  closeApart?: boolean;
+}
+
 export function Screen({ title, actions = [], busy }: ScreenProps) {
   const t = useT();
   return (
@@ -81,7 +87,7 @@ function OriginTitle({ title, from }: { title: string; from: string }) {
   );
 }
 
-export function SheetScreen({ title, actions = [], busy }: ScreenProps) {
+export function SheetScreen({ title, actions = [], busy, closeApart }: SheetScreenProps) {
   const t = useT();
   const router = useRouter();
   const { from } = useLocalSearchParams<{ from?: string }>();
@@ -91,7 +97,12 @@ export function SheetScreen({ title, actions = [], busy }: ScreenProps) {
       <Stack.Toolbar placement="right">
         {busy !== undefined ? refreshItem(busy, t('common.loading')) : null}
         {actionButtons(actions)}
-        <Stack.Toolbar.Button icon={toolbarIcon('x')} accessibilityLabel={t('common.close')} onPress={() => router.back()} />
+        <Stack.Toolbar.Button
+          icon={toolbarIcon('x')}
+          accessibilityLabel={t('common.close')}
+          separateBackground={closeApart}
+          onPress={() => router.back()}
+        />
       </Stack.Toolbar>
     </>
   );
