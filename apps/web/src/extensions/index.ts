@@ -5,11 +5,16 @@
  * Translations, tool cards and icons are registered for every compiled
  * extension at load (harmless while inactive); pages, navigation and modules
  * are only rendered for the ids the API reports as active.
+ *
+ * A web half whose `sdk` / `core` declaration this build rejects is dropped
+ * here, once: it registers nothing, its onLoad never runs, no lookup finds it,
+ * and the extensions store never reports it active (so the sidebar, settings
+ * and every other reader of the store skip it too).
  */
 import { registerExtensionMessages } from '../lib/i18n';
 import { registerExtensionNavModules, registerExtensionPageModules } from '../lib/nav-registry';
 import { registerExtensionContextProvider } from '../lib/context-registry';
-import { useExtensionsStore } from '../stores/extensions-store';
+import { setIncompatibleExtensionIds, useExtensionsStore } from '../stores/extensions-store';
 import { checkExtensionCompat } from '@greenhouse/utils/extension-compat';
 import { APP_VERSION } from '../lib/utils';
 import {
@@ -31,13 +36,43 @@ for (const ext of COMPILED_WEB_EXTENSIONS) {
   byId.set(ext.id, ext);
 }
 
+// ─── Compatibility ──────────────────────────────────────
+// A web half written for another contract revision or core range stays off
+// even when the API reports the id active; missing declarations only warn.
+
+/** The compiled extensions this build accepts, and the ids it refuses (errors logged, warnings in dev). */
+export function partitionCompatibleWebExtensions(
+  extensions: readonly WebExtension[],
+  version: string | null,
+): { loaded: WebExtension[]; rejected: Set<string> } {
+  const loaded: WebExtension[] = [];
+  const rejected = new Set<string>();
+  for (const ext of extensions) {
+    const { errors, warnings } = checkExtensionCompat(ext, version);
+    if (import.meta.env?.DEV) for (const warning of warnings) console.warn(`[extensions] ${warning}`);
+    if (errors.length > 0) {
+      rejected.add(ext.id);
+      console.error(`[extensions] ${errors.join(' ')}`);
+    } else {
+      loaded.push(ext);
+    }
+  }
+  return { loaded, rejected };
+}
+
+const { loaded: LOADED_WEB_EXTENSIONS, rejected: INCOMPATIBLE } = partitionCompatibleWebExtensions(
+  COMPILED_WEB_EXTENSIONS,
+  APP_VERSION === '0.0.0' ? null : APP_VERSION,
+);
+setIncompatibleExtensionIds(INCOMPATIBLE);
+
 // Legacy hashes (`pages[].aliases`) are resolved by the router before extension
 // routes, so across the compiled set each must be unique and none may shadow a
 // live route. Checked once at load: a conflict is a build mistake, not a runtime state.
 const ROUTE_ALIASES = new Map<string, string>();
 {
-  const routes = new Set(COMPILED_WEB_EXTENSIONS.flatMap((ext) => (ext.pages ?? []).map((page) => page.route)));
-  for (const ext of COMPILED_WEB_EXTENSIONS) {
+  const routes = new Set(LOADED_WEB_EXTENSIONS.flatMap((ext) => (ext.pages ?? []).map((page) => page.route)));
+  for (const ext of LOADED_WEB_EXTENSIONS) {
     for (const page of ext.pages ?? []) {
       for (const [from, to] of Object.entries(page.aliases ?? {})) {
         if (routes.has(from))
@@ -49,22 +84,9 @@ const ROUTE_ALIASES = new Map<string, string>();
   }
 }
 
-// ─── Compatibility ──────────────────────────────────────
-// A web half written for another contract revision or core range stays off
-// even when the API reports the id active; missing declarations only warn.
-const INCOMPATIBLE = new Set<string>();
-for (const ext of COMPILED_WEB_EXTENSIONS) {
-  const { errors, warnings } = checkExtensionCompat(ext, APP_VERSION === '0.0.0' ? null : APP_VERSION);
-  if (errors.length > 0) {
-    INCOMPATIBLE.add(ext.id);
-    console.error(`[extensions] ${errors.join(' ')}`);
-  }
-  if (import.meta.env?.DEV) for (const warning of warnings) console.warn(`[extensions] ${warning}`);
-}
+// ─── Load-time registrations (compatible set) ───────────
 
-// ─── Load-time registrations (compiled set) ─────────────
-
-for (const ext of COMPILED_WEB_EXTENSIONS) {
+for (const ext of LOADED_WEB_EXTENSIONS) {
   if (ext.messages) registerExtensionMessages(ext.id, ext.messages);
   if (ext.modules?.length) registerExtensionNavModules(ext.id, ext.modules);
   for (const page of ext.pages ?? []) {
@@ -89,22 +111,17 @@ for (const ext of COMPILED_WEB_EXTENSIONS) {
 
 /** Ids the connected API reports as active (empty until the extensions store loads). */
 function activeIds(): Set<string> {
-  return new Set(
-    useExtensionsStore
-      .getState()
-      .extensions.map((e) => e.id)
-      .filter((id) => !INCOMPATIBLE.has(id)),
-  );
+  return new Set(useExtensionsStore.getState().extensions.map((e) => e.id));
 }
 
 export function isActiveWebExtension(id: string): boolean {
   return activeIds().has(id);
 }
 
-/** Every compiled page route — used by the hash router, which must parse before the store loads. */
+/** Every compatible compiled page route — used by the hash router, which must parse before the store loads. */
 export function compiledExtensionRoutes(): Set<string> {
   const routes = new Set<string>();
-  for (const ext of COMPILED_WEB_EXTENSIONS) for (const page of ext.pages ?? []) routes.add(page.route);
+  for (const ext of LOADED_WEB_EXTENSIONS) for (const page of ext.pages ?? []) routes.add(page.route);
   return routes;
 }
 
@@ -134,7 +151,7 @@ export interface ExtensionSurface {
  */
 export function extensionSurfaces(active: ReadonlySet<string> = activeIds()): ExtensionSurface[] {
   const surfaces: ExtensionSurface[] = [];
-  for (const ext of COMPILED_WEB_EXTENSIONS) {
+  for (const ext of LOADED_WEB_EXTENSIONS) {
     if (!active.has(ext.id)) continue;
     for (const page of ext.pages ?? []) {
       surfaces.push({ extensionId: ext.id, kind: 'page', hash: `#/${page.route}` });
@@ -184,7 +201,7 @@ if (typeof window !== 'undefined') {
 }
 
 export function findExtensionPage(route: string): { extension: WebExtension; page: WebExtensionPage } | null {
-  for (const ext of COMPILED_WEB_EXTENSIONS) {
+  for (const ext of LOADED_WEB_EXTENSIONS) {
     const page = ext.pages?.find((p) => p.route === route);
     if (page) return { extension: ext, page };
   }
@@ -193,14 +210,14 @@ export function findExtensionPage(route: string): { extension: WebExtension; pag
 
 /** Navigation items of the active extensions, in registration order. */
 export function activeExtensionNavItems(active: ReadonlySet<string> = activeIds()): WebExtensionNavItem[] {
-  return COMPILED_WEB_EXTENSIONS.filter((ext) => active.has(ext.id)).flatMap((ext) => ext.navigation ?? []);
+  return LOADED_WEB_EXTENSIONS.filter((ext) => active.has(ext.id)).flatMap((ext) => ext.navigation ?? []);
 }
 
 export function extensionModuleComponent(
   parent: 'settings' | 'administration',
   key: string,
 ): WebExtensionModule | undefined {
-  for (const ext of COMPILED_WEB_EXTENSIONS) {
+  for (const ext of LOADED_WEB_EXTENSIONS) {
     const mod = ext.modules?.find((m) => m.parent === parent && m.key === key);
     if (mod) return mod;
   }

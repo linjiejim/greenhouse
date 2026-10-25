@@ -13,6 +13,7 @@ import {
   extensionModuleComponent,
   extensionSurfaces,
   findExtensionPage,
+  partitionCompatibleWebExtensions,
 } from '../index';
 import { defineWebExtension } from '../define';
 import { translate } from '../../lib/i18n';
@@ -31,7 +32,7 @@ import { getToolIcon, StickyNote } from '../../lib/icons';
 import { isArtifactCall } from '../../components/tool-call/body-artifacts';
 import { getContextProvider } from '../../lib/context-registry';
 import { resolveUrlContext } from '../../components/agent-context';
-import { useExtensionsStore } from '../../stores/extensions-store';
+import { setIncompatibleExtensionIds, useExtensionsStore } from '../../stores/extensions-store';
 
 describe('web extension seam', () => {
   it('compiles the example and exposes its page route', () => {
@@ -157,6 +158,49 @@ describe('web extension seam', () => {
       await expect(useExtensionsStore.getState().load()).resolves.toBeUndefined();
     } finally {
       fetchSpy.mockRestore();
+      useExtensionsStore.getState().reset();
+    }
+  });
+});
+
+describe('web extension compatibility', () => {
+  it('drops a web half this build rejects before anything registers it', () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const onLoad = vi.fn();
+    try {
+      const old = defineWebExtension({ id: 'old', sdk: 99, onLoad });
+      const current = defineWebExtension({ id: 'current', sdk: 1 });
+      const { loaded, rejected } = partitionCompatibleWebExtensions([old, current], null);
+      expect(loaded.map((ext) => ext.id)).toEqual(['current']);
+      expect([...rejected]).toEqual(['old']);
+      expect(error).toHaveBeenCalledOnce();
+      expect(onLoad).not.toHaveBeenCalled();
+    } finally {
+      error.mockRestore();
+    }
+  });
+
+  it('never reports a rejected extension active, even when the API does', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          extensions: [
+            { id: 'example', name: 'Example notes', description: null },
+            { id: 'ghost', name: 'Ghost', description: null },
+          ],
+          entityKinds: [{ kind: 'ext:ghost:thing', route: '#/ghost/things/:id' }],
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      ),
+    );
+    try {
+      setIncompatibleExtensionIds(['ghost']);
+      await useExtensionsStore.getState().load();
+      expect(useExtensionsStore.getState().extensions.map((e) => e.id)).toEqual(['example']);
+      expect(isEntityUrl('#/ghost/things/1')).toBe(false);
+    } finally {
+      fetchSpy.mockRestore();
+      setIncompatibleExtensionIds([]);
       useExtensionsStore.getState().reset();
     }
   });
