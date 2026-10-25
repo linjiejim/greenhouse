@@ -2,11 +2,14 @@
 
 ## Project intro
 
-Greenhouse is an open-source, AI-native enterprise agent workbench. The AI agent is the core
-of the product, not an add-on: chat, the knowledge base, projects, tables, automations
-and email all share one tool layer and one permission model. The same
-tools members use in chat are exposed to external agents over the `/api/agent` proxy and the
-`/api/mcp` MCP server.
+Greenhouse is a self-hosted Agent hub for one team. Members connect their own agents (Codex,
+Claude Code, Cursor, any MCP client) over `/api/mcp`; those agents reach the team's knowledge,
+files, projects, tables, skills, report templates and paid services within the member's own
+permissions. Agent writes are recorded as runs; deletes preview first; paid calls are metered
+against USD budgets; a model gateway (`/api/gateway/*`) lends members the team's models.
+Sprouty (`apps/api/src/profiles/sprouty.yaml`) is the one built-in assistant (web, iOS,
+Feishu bot, automations). All surfaces share one tool catalog and one permission model.
+Capability reference (Chinese): `docs/capabilities.md`.
 
 The product serves an internal team only: members use the `team` role, admins the `super`
 role. Web, `/api/chat`, the `/api/agent` proxy and MCP all bind to a real internal account — there is
@@ -106,7 +109,7 @@ what exists." These rules are as binding as the "add" rules:
   whole suite in the `e2e-ui` job (Chromium via `playwright install --with-deps`).
 - **Screenshot tour (visual smoke)**: `node scripts/capture-screens.mjs` drives a running,
   seeded dev stack (`E2E_BASE_URL`, default `:4400`) through every surface with Playwright:
-  it seeds a demo Tables base / workbench layout / skills / custom agent / MCP machine client
+  it seeds a demo Tables base / workbench layout / skills / run profile / MCP machine client
   over the API, asks the live model two questions, and writes `docs/assets/screens/*.webp`
   (+ `chat-knowledge.gif` / `.mp4`) that the README and `docs/index.html` embed. It exits
   non-zero on any console error or failed `/api` request. Re-run it after visible UI changes
@@ -178,10 +181,10 @@ Full runbook: **[RELEASING.md](./RELEASING.md)**. The conventions an agent must 
   the **root `package.json` `version`** mirrors it and is bumped automatically by
   release-please (`release-type: node`) in the Release PR — **don't hand-edit it**.
   The per-workspace `package.json` `version` fields are placeholders (not maintained).
-- **Version comes from the tag at build time.** CI injects `APP_VERSION` (tag) +
-  `APP_REVISION` (commit sha) → env; read them via `@greenhouse/utils/version`
-  (`getVersionInfo()`), surfaced at `GET /health`. Don't read `package.json.version` for the
-  runtime version.
+- **Version comes from the tag at build time.** `release.yml` passes `APP_VERSION` (tag) +
+  `APP_REVISION` (commit sha) as build args → image env + OCI labels. No runtime reader exists
+  yet and `GET /health` does not report them. Don't read `package.json.version` for the runtime
+  version.
 - **Conventional Commits drive the bump.** PRs are **squash-merged** → one Conventional Commit
   per PR. `release-please` reads them, opens a Release PR, and on merge tags + creates the
   GitHub Release. **`CHANGELOG.md` is release-please-managed — don't hand-edit released
@@ -190,7 +193,8 @@ Full runbook: **[RELEASING.md](./RELEASING.md)**. The conventions an agent must 
   enough to merge yet gets the `parked` label instead of being merged half-baked or closed.
   Keep it rebased (watch **migration numbers** — renumber to the next free slot on revive).
 - **Stable vs. edge is a hard promise.** Tag → `ghcr.io/<owner>/greenhouse:X.Y.Z` `:X.Y`
-  `:latest` (stable). `main` → `:edge` / `:main-<sha>` only. `release.yml` enforces this.
+  (stable). `main` → `:edge` / `:main-<sha>` only. `release.yml` sets `latest=false`: no
+  workflow moves `:latest` today.
 - **Publishing workflows are repository-gated.** `release.yml` / `release-please.yml` /
   `mobile.yml` / `deploy.yml` / `uptime.yml` only run in `linjiejim/greenhouse`; a fork's CD goes
   in `.github/workflows/fork-*.yml`.
@@ -239,7 +243,7 @@ greenhouse/
 │   │       ├── notifications/# notification center + durable delivery
 │   │       ├── email/        # IMAP/SMTP client, shared mailbox, security
 │   │       ├── wecom/ feishu/# optional IM integrations (binding, push, sign-in, bot)
-│   │       ├── skills/       # Skill Center — bundle validation, store, publish/download, scanner
+│   │       ├── skills/       # SkillHub — bundle validation, store, publish/download, scanner
 │   │       ├── reports/      # report templates + server-side PDF/DOCX/PPTX rendering into Files (fonts in apps/api/assets/fonts)
 │   │       ├── storage/      # upload storage (local disk / COS) + s3-lite (SigV4 client)
 │   │       ├── workbench/    # workbench card evaluation (shared by API + tools)
@@ -257,10 +261,10 @@ greenhouse/
 │   ├── db/               # database layer — Drizzle schema + domain services (types inferred),
 │   │                     #   migrate / version detection, carry/ (migrate-from-1x), db-schema.md
 │   ├── knowledge-editor/ # Tiptap schema + server Markdown↔Tiptap JSON
-│   ├── crud/             # low-code CRUD framework (defineCrud + CrudPage / createCrudRoutes)
+│   ├── crud/             # low-code CRUD pages (defineCrud + CrudPage); server half unused
 │   ├── ui/               # shared React UI: the plant-avatar renderer (SVG builder + motion + <PlantAvatar>)
 │   └── contract/         # typed API contract — re-exports apps/api's AppType + hc (web client)
-├── skillhub/             # first-party skill packs (synced into the Skill Center on boot)
+├── skillhub/             # skill-pack format; packs here sync into SkillHub on boot (none shipped)
 ├── drizzle/              # migration files (single source of truth): 0000_v3_baseline + later;
 │                         #   archive-1x/ = the 1.x chain, read only for version detection
 ├── scripts/              # gen-secrets, backup-db, run-dev, e2e-ci, capture-screens, …
@@ -280,7 +284,7 @@ greenhouse/
 | `@greenhouse/db` | `packages/db/` | Database layer |
 | `@greenhouse/knowledge-editor` | `packages/knowledge-editor/` | KB editor: Tiptap schema + Markdown↔Tiptap JSON. Markdown is canonical; `content_json='{}'` is legal |
 | `@greenhouse/ui` | `packages/ui/` | Plant-avatar renderer (`./components/plant-avatar`, React-free `./components/plant-avatar/svg`); ids + legacy resolver live in `@greenhouse/types` |
-| `@greenhouse/crud` | `packages/crud/` | Low-code CRUD — `defineCrud` + `CrudPage` client, `createCrudRoutes` server, shared wire protocol |
+| `@greenhouse/crud` | `packages/crud/` | Low-code CRUD — `defineCrud` + `CrudPage` client (automations, email accounts, SkillHub prompts). `createCrudRoutes` is exported but only its own tests use it |
 | `@greenhouse/contract` | `packages/contract/` | Typed API contract (AppType + hc; **type-only import of `@greenhouse/api`**) |
 | `@greenhouse/api` | `apps/api/` | Backend app |
 | `@greenhouse/web` | `apps/web/` | Frontend app |
@@ -342,9 +346,8 @@ greenhouse/
     `pnpm db:migrate` and the extension lane from
     `DATABASE_URL=… pnpm tsx scripts/apply-ext-migrations.mjs`.
 - **Client stations**: `clients.stations` (`multi` | `single` + `defaults`) describes how client
-  builds treat servers. Since the browser extension (its build-time reader) was removed in 1.5,
-  no code reads it; the mobile app mirrors it through `EXPO_PUBLIC_STATIONS_MODE` /
-  `EXPO_PUBLIC_API_BASE_URL` (see `apps/mobile/AGENTS.md`). Kept so deployment configs stay valid.
+  builds treat servers. No server code reads it; the mobile app mirrors it through
+  `EXPO_PUBLIC_STATIONS_MODE` / `EXPO_PUBLIC_API_BASE_URL` (see `apps/mobile/AGENTS.md`).
 
 ## Domain rules
 
