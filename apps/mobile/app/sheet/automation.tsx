@@ -34,7 +34,7 @@ import { NativeButton } from '../../src/ui/button';
 import { alertError, confirmAction } from '../../src/ui/dialogs';
 import { EmptyState, LoadingState } from '../../src/ui/empty';
 import { notifySuccess, selectionTick } from '../../src/ui/haptics';
-import { Badge, Row, Section } from '../../src/ui/list';
+import { Badge, Card, Row, Section, SectionHeader } from '../../src/ui/list';
 import { SheetScreen } from '../../src/ui/screen';
 import { toast } from '../../src/ui/toast';
 import { NativeToggle } from '../../src/ui/toggle';
@@ -168,18 +168,15 @@ export default function AutomationSheet() {
   return (
     <ScrollView style={styles.root} contentInsetAdjustmentBehavior="automatic" contentContainerStyle={styles.content}>
       <SheetScreen title={task.name} busy={resource.loading} />
-      <Section header={t('automations.prompt')}>
-        <View style={styles.prompt}>
-          <Text style={styles.promptText} selectable>
-            {task.task_prompt}
-          </Text>
-        </View>
-      </Section>
-      <Section>
-        <View style={styles.toggle}>
-          <NativeToggle label={t('automations.enabled')} value={task.enabled} onChange={(on) => void toggle(on)} />
-        </View>
-      </Section>
+      <SectionHeader title={t('automations.prompt')} />
+      <Card style={styles.card}>
+        <Text style={styles.promptText} selectable>
+          {task.task_prompt}
+        </Text>
+      </Card>
+      <Card style={[styles.card, styles.toggle]}>
+        <NativeToggle label={t('automations.enabled')} value={task.enabled} onChange={(on) => void toggle(on)} />
+      </Card>
       <Section>
         <Row title={t('automations.scheduleLabel')} value={scheduleLabel(task.schedule)} icon="clock" />
         {task.enabled && next ? (
@@ -254,8 +251,8 @@ const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.groupedBackground },
   content: { paddingTop: space.md, paddingBottom: space.xxxl },
   state: { paddingTop: space.xxxl },
-  prompt: { paddingHorizontal: space.margin, paddingVertical: space.md },
+  card: { marginBottom: space.xxl, paddingHorizontal: space.margin, paddingVertical: space.md },
   promptText: { ...typo.body, color: c.label },
-  toggle: { paddingHorizontal: space.margin, minHeight: HIT, justifyContent: 'center' },
+  toggle: { paddingVertical: 0, minHeight: HIT, justifyContent: 'center' },
   actions: { marginHorizontal: space.margin, marginBottom: space.xxl, gap: space.sm },
 }));
