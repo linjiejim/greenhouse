@@ -3,8 +3,9 @@
  *
  *  - the bar: 「我」 (→ the sheet: account, station, text size, my agents, settings) on the left;
  *    search (→ the search page) and the bell with the unread count (→ notifications) on the right;
- *  - the assistant's sprout (tap: it waves) and a greeting; a quiet line when something waits
- *    for me;
+ *  - the assistant's sprout (src/ui/greeting-sprout.tsx: it waves; each tap answers with a
+ *    bounce and the next face, quick taps make an easter egg) and a greeting; a quiet line when
+ *    something waits for me;
  *  - my five latest conversations, one line each, pinned first (swipe to pin), and 全部 (→ the
  *    all-conversations sheet with search); kept on the phone, so they show at once and offline;
  *  - the composer: words, + (photos, camera, files — uploaded as they are picked, into a
@@ -36,10 +37,10 @@ import { useNotifications } from '../../../src/store/notifications';
 import { queueTurn } from '../../../src/store/outbox';
 import { useSessions } from '../../../src/store/sessions';
 import { HIT, makeStyles, space, typo, useTheme, weight } from '../../../src/theme';
-import { AssistantAvatar } from '../../../src/ui/avatar';
 import { Icon, Touchable } from '../../../src/ui/core';
 import { alertError, promptText } from '../../../src/ui/dialogs';
 import { EmptyState } from '../../../src/ui/empty';
+import { GreetingSprout } from '../../../src/ui/greeting-sprout';
 import { Skeleton } from '../../../src/ui/skeleton';
 import { rowPosition } from '../../../src/ui/list';
 import { toolbarIcon } from '../../../src/ui/toolbar-icon';
@@ -69,7 +70,6 @@ function Home() {
   const needsYou = useNotifications((s) => s.items.filter((n) => !n.read_at && n.kind === 'runtime_attention').length);
   const [draft, setDraft] = useState('');
   const [composerHeight, setComposerHeight] = useState(64);
-  const [waves, setWaves] = useState(0);
   const input = useRef<TextInput>(null);
 
   // back on home (from a conversation, a sheet): the list catches up
@@ -164,14 +164,7 @@ function Home() {
         keyboardDismissMode="interactive"
         contentContainerStyle={[styles.content, { paddingBottom: composerHeight + space.xxl }]}
       >
-        <Touchable
-          onPress={() => setWaves((n) => n + 1)}
-          accessibilityRole="image"
-          accessibilityLabel={t('conversation.assistant')}
-          style={styles.hero}
-        >
-          <AssistantAvatar key={waves} size={88} state="hello" animate />
-        </Touchable>
+        <GreetingSprout size={88} accessibilityLabel={t('conversation.assistant')} style={styles.hero} />
         <Text style={styles.greeting} accessibilityRole="header">
           {t(`home.greeting.${greetingFor(new Date().getHours())}`, { name })}
         </Text>

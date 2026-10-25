@@ -61,3 +61,34 @@ export function parseSessions(saved: unknown): ChatSession[] | null {
 export function withPinned(sessions: readonly ChatSession[], id: string, pinned: boolean): ChatSession[] {
   return sessions.map((s) => (s.id === id ? { ...s, pinned, pin_sort: pinned ? -Date.now() : undefined } : s));
 }
+
+/**
+ * Tapping the greeting sprout: each tap answers with the next face (a happy hop, a wave, a
+ * chatter), then it rests; EGG_TAPS taps within EGG_WINDOW_MS make the easter egg (a happy spin)
+ * and start the count again.
+ */
+export const SPROUT_REACTIONS = ['done', 'hello', 'speaking'] as const;
+export type SproutReaction = (typeof SPROUT_REACTIONS)[number];
+export const EGG_TAPS = 5;
+export const EGG_WINDOW_MS = 2000;
+/** How long a reaction shows before the sprout rests (each tap restarts it). */
+export const SPROUT_REACTION_MS = 900;
+
+export interface SproutTaps {
+  /** Taps so far: picks the next face. */
+  count: number;
+  /** When the taps of the current run came (ms), the oldest first. */
+  recent: readonly number[];
+}
+
+export const NO_SPROUT_TAPS: SproutTaps = { count: 0, recent: [] };
+
+export function tapSprout(
+  taps: SproutTaps,
+  now: number,
+): { taps: SproutTaps; reaction: SproutReaction; egg: boolean } {
+  const recent = [...taps.recent.filter((at) => now - at < EGG_WINDOW_MS), now];
+  const egg = recent.length >= EGG_TAPS;
+  const reaction = egg ? 'done' : SPROUT_REACTIONS[taps.count % SPROUT_REACTIONS.length]!;
+  return { taps: { count: taps.count + 1, recent: egg ? [] : recent }, reaction, egg };
+}

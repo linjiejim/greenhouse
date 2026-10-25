@@ -3,7 +3,11 @@ import type { ChatSession } from '../shared/greenhouse-types';
 import {
   conversationAgent,
   DEFAULT_HOME_RECENT,
+  EGG_TAPS,
+  EGG_WINDOW_MS,
   greetingFor,
+  NO_SPROUT_TAPS,
+  tapSprout,
   homeRecentOf,
   orderConversations,
   parseSessions,
@@ -63,5 +67,37 @@ describe('home recent count', () => {
     expect(homeRecentOf('')).toBeNull();
     expect(homeRecentOf(null)).toBeNull();
     expect(homeRecentOf('three')).toBeNull();
+  });
+});
+
+describe('tapping the greeting sprout', () => {
+  it('answers each tap with the next face', () => {
+    let taps = NO_SPROUT_TAPS;
+    const faces: string[] = [];
+    for (const at of [0, 3000, 6000, 9000]) {
+      const next = tapSprout(taps, at);
+      taps = next.taps;
+      faces.push(next.reaction);
+      expect(next.egg).toBe(false);
+    }
+    expect(faces).toEqual(['done', 'hello', 'speaking', 'done']);
+  });
+
+  it('makes the easter egg from quick taps, then counts again', () => {
+    let taps = NO_SPROUT_TAPS;
+    const eggs: boolean[] = [];
+    for (let i = 0; i < EGG_TAPS + 1; i++) {
+      const next = tapSprout(taps, i * 200);
+      taps = next.taps;
+      eggs.push(next.egg);
+    }
+    expect(eggs).toEqual([false, false, false, false, true, false]);
+    expect(taps.recent).toHaveLength(1);
+  });
+
+  it('forgets taps older than the window', () => {
+    let taps = NO_SPROUT_TAPS;
+    for (let i = 0; i < EGG_TAPS - 1; i++) taps = tapSprout(taps, i * 100).taps;
+    expect(tapSprout(taps, EGG_WINDOW_MS + 500).egg).toBe(false);
   });
 });
