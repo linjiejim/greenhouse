@@ -45,10 +45,7 @@ import { toolbarIcon } from '../../../src/ui/toolbar-icon';
 import { SidebarToolbar } from '../../../src/ui/sidebar';
 import type { FirstTurn } from './chat';
 
-/**
- * A provider of its own: inside the tab controller the screen's safe area includes the tab bar,
- * so the composer sits on top of the bar instead of under it.
- */
+/** A provider of its own, so the insets are this screen's: the composer's solid band reaches the bottom edge. */
 export default function HomeScreen() {
   return (
     <SafeAreaProvider>
@@ -145,7 +142,11 @@ function Home() {
       {/* the sidebar (places, and 「我」 at its foot) */}
       <SidebarToolbar />
       <Stack.Toolbar placement="right">
-        <Stack.Toolbar.Button icon={toolbarIcon('search')} accessibilityLabel={t('common.search')} onPress={() => router.push('/search')} />
+        <Stack.Toolbar.Button
+          icon={toolbarIcon('search')}
+          accessibilityLabel={t('common.search')}
+          onPress={() => router.push('/search')}
+        />
         <Stack.Toolbar.Button
           icon={toolbarIcon('bell')}
           accessibilityLabel={unread > 0 ? t('home.notificationsUnread', { n: unread }) : t('notifications.title')}
@@ -160,7 +161,12 @@ function Home() {
         keyboardDismissMode="interactive"
         contentContainerStyle={[styles.content, { paddingBottom: composerHeight + space.xxl }]}
       >
-        <Touchable onPress={() => setWaves((n) => n + 1)} accessibilityRole="image" accessibilityLabel={t('conversation.assistant')} style={styles.hero}>
+        <Touchable
+          onPress={() => setWaves((n) => n + 1)}
+          accessibilityRole="image"
+          accessibilityLabel={t('conversation.assistant')}
+          style={styles.hero}
+        >
           <AssistantAvatar key={waves} size={88} state="hello" animate />
         </Touchable>
         <Text style={styles.greeting} accessibilityRole="header">
@@ -178,7 +184,12 @@ function Home() {
             {t('home.recent')}
           </Text>
           {sessions.length ? (
-            <Touchable onPress={() => router.push('/conversations')} accessibilityRole="button" hitSlop={8} style={styles.all}>
+            <Touchable
+              onPress={() => router.push('/conversations')}
+              accessibilityRole="button"
+              hitSlop={8}
+              style={styles.all}
+            >
               <Text style={styles.allText}>{t('home.all')}</Text>
             </Touchable>
           ) : null}
@@ -200,27 +211,32 @@ function Home() {
         ) : status === 'empty' ? (
           <Skeleton rows={RECENT_ON_HOME} />
         ) : status === 'error' ? (
-          <EmptyState icon="alert" title={t('assistant.loadFailed')} onRetry={() => void useSessions.getState().refresh()} style={styles.state} />
+          <EmptyState
+            icon="alert"
+            title={t('assistant.loadFailed')}
+            onRetry={() => void useSessions.getState().refresh()}
+            style={styles.state}
+          />
         ) : (
           <Text style={styles.empty}>{t('home.noConversations')}</Text>
         )}
       </ScrollView>
 
-      <KeyboardStickyView offset={{ opened: insets.bottom }} style={[styles.composerWrap, { bottom: insets.bottom }]}>
-        <View style={styles.composerPad}>
-          <Composer
-            ref={input}
-            value={draft}
-            onChangeText={setDraft}
-            onSend={() => void send()}
-            onAttach={(from) => void files.attach(from)}
-            files={files.files}
-            onRemoveFile={files.remove}
-            onRetryFiles={files.retry}
-            placeholder={t('composer.placeholder')}
-            onHeight={setComposerHeight}
-          />
-        </View>
+      <KeyboardStickyView offset={{ opened: insets.bottom }} style={styles.composerWrap}>
+        <Composer
+          ref={input}
+          value={draft}
+          onChangeText={setDraft}
+          onSend={() => void send()}
+          onAttach={(from) => void files.attach(from)}
+          files={files.files}
+          onRemoveFile={files.remove}
+          onRetryFiles={files.retry}
+          placeholder={t('composer.placeholder')}
+          onHeight={setComposerHeight}
+          bottomInset={insets.bottom}
+          grouped
+        />
       </KeyboardStickyView>
     </View>
   );
@@ -252,9 +268,13 @@ const useStyles = makeStyles((c) => ({
   sectionTitle: { ...typo.headline, color: c.label },
   all: { minHeight: HIT, justifyContent: 'center' },
   allText: { ...typo.body, fontWeight: weight.semibold, color: c.accent },
-  offline: { ...typo.footnote, color: c.secondaryLabel, marginHorizontal: space.margin + space.xs, marginBottom: space.sm },
+  offline: {
+    ...typo.footnote,
+    color: c.secondaryLabel,
+    marginHorizontal: space.margin + space.xs,
+    marginBottom: space.sm,
+  },
   state: { paddingTop: space.xl },
   empty: { ...typo.subheadline, color: c.secondaryLabel, marginHorizontal: space.margin + space.xs },
   composerWrap: { position: 'absolute', left: 0, right: 0, bottom: 0 },
-  composerPad: { paddingBottom: space.sm },
 }));

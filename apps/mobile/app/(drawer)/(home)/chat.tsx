@@ -493,7 +493,10 @@ export default function Chat() {
   const header = (
     <>
       <Stack.Screen
-        options={{ title: headerTitle, headerTitle: () => <HeaderTitle title={headerTitle} state={face} away={avatarOut} /> }}
+        options={{
+          title: headerTitle,
+          headerTitle: () => <HeaderTitle title={headerTitle} state={face} away={avatarOut} />,
+        }}
       />
       <Stack.Toolbar placement="right">
         <Stack.Toolbar.Button
@@ -680,8 +683,7 @@ export default function Chat() {
             // the native scroll view's own end: content, its padding and the keyboard inset
             // (only when it overflows: a short conversation rests at the top, under the bar)
             // (while a reply streams, at once: an animated scroll restarted on every delta never lands)
-            if (follow && height > viewport.current)
-              scrollRef(list.current)?.scrollToEnd({ animated: !state.busy });
+            if (follow && height > viewport.current) scrollRef(list.current)?.scrollToEnd({ animated: !state.busy });
           }}
           ListHeaderComponent={
             <>
@@ -708,7 +710,7 @@ export default function Chat() {
           }
           contentContainerStyle={[
             styles.content,
-            { paddingTop: headerInset + space.md, paddingBottom: composerHeight + insets.bottom + keyboardRoom + space.lg },
+            { paddingTop: headerInset + space.md, paddingBottom: composerHeight + keyboardRoom + space.lg },
           ]}
         />
       </OpenOrigin.Provider>
@@ -729,23 +731,22 @@ export default function Chat() {
             />
           </Animated.View>
         ) : null}
-        <View style={{ paddingBottom: Math.max(insets.bottom, space.sm) }}>
-          <Composer
-            ref={input}
-            value={draft}
-            onChangeText={setDraft}
-            onSend={() => void submit()}
-            working={state.busy}
-            onStop={sessionId ? () => void stopRun(sessionId) : undefined}
-            onAttach={(from) => void files.attach(from)}
-            files={files.files}
-            onRemoveFile={files.remove}
-            onRetryFiles={files.retry}
-            placeholder={t(messages.length ? 'composer.followUp' : 'composer.placeholder')}
-            autoFocus={!sessionId && !params.k}
-            onHeight={setComposerHeight}
-          />
-        </View>
+        <Composer
+          ref={input}
+          value={draft}
+          onChangeText={setDraft}
+          onSend={() => void submit()}
+          working={state.busy}
+          onStop={sessionId ? () => void stopRun(sessionId) : undefined}
+          onAttach={(from) => void files.attach(from)}
+          files={files.files}
+          onRemoveFile={files.remove}
+          onRetryFiles={files.retry}
+          placeholder={t(messages.length ? 'composer.followUp' : 'composer.placeholder')}
+          autoFocus={!sessionId && !params.k}
+          onHeight={setComposerHeight}
+          bottomInset={insets.bottom}
+        />
       </KeyboardStickyView>
     </View>
   );

@@ -11,8 +11,11 @@
  *  - The field grows with the text up to six lines and shrinks back as it empties.
  *
  * There is no voice input: members use the keyboard's own dictation. Pure view: the screen owns
- * the draft and the files and places it (a KeyboardStickyView), and learns its height through
- * `onHeight` to pad its list.
+ * the draft and the files and places it (a KeyboardStickyView at the bottom edge), and learns its
+ * height through `onHeight` to pad its list.
+ *
+ * The bar is opaque: a solid band of the page's surface behind the field reaches down through the
+ * bottom safe area (`bottomInset`), so the list never shows through under the field.
  */
 
 import React, { forwardRef, memo } from 'react';
@@ -28,10 +31,12 @@ import { NativeMenu, type MenuItem } from '../ui/menu';
 import { MAX_FILES, canSendMessage, type ComposerFile } from './composer-files';
 import type { AttachSource } from './use-composer-files';
 
+/** A one-line field: roomier than a plain control (HIT). */
+const FIELD = HIT + space.sm;
 /** The round buttons inside the field (+, send, stop). */
-const BUTTON = 32;
-/** The space around them, so a one-line field is exactly HIT tall. */
-const INSET = (HIT - BUTTON) / 2;
+const BUTTON = 36;
+/** The space around them, so a one-line field is exactly FIELD tall. */
+const INSET = (FIELD - BUTTON) / 2;
 
 export const Composer = memo(
   forwardRef<
@@ -50,8 +55,12 @@ export const Composer = memo(
       onRetryFiles: () => void;
       placeholder: string;
       autoFocus?: boolean;
-      /** Height of the control layer (excluding the bottom safe-area pad). */
+      /** Height of the whole bar, its bottom safe-area band included. */
       onHeight?: (h: number) => void;
+      /** The bottom safe area the bar's solid band covers (0 while the keyboard is up is fine: it sits under it). */
+      bottomInset: number;
+      /** The page is grouped (home): the band takes the grouped surface. */
+      grouped?: boolean;
     }
   >(function Composer(
     {
@@ -67,6 +76,8 @@ export const Composer = memo(
       placeholder,
       autoFocus,
       onHeight,
+      bottomInset,
+      grouped,
     },
     ref,
   ) {
@@ -75,8 +86,8 @@ export const Composer = memo(
     const t = useT();
     const { fontScale, height } = useWindowDimensions();
     const lineHeight = typo.body.lineHeight * fontScale;
-    // the field sizes itself to its text (iOS multiline): one line is HIT tall, at most six lines
-    const minInputHeight = Math.max(HIT, Math.ceil(lineHeight) + space.sm * 2);
+    // the field sizes itself to its text (iOS multiline): one line is FIELD tall, at most six lines
+    const minInputHeight = Math.max(FIELD, Math.ceil(lineHeight) + space.md * 2);
     const maxInputHeight = Math.max(minInputHeight, Math.min(6 * lineHeight + space.sm * 2, height * 0.4));
 
     const canSend = canSendMessage(value, files);
@@ -90,7 +101,10 @@ export const Composer = memo(
     ];
 
     return (
-      <View style={styles.wrap} onLayout={(e) => onHeight?.(e.nativeEvent.layout.height)}>
+      <View
+        style={[styles.wrap, grouped && styles.wrapGrouped, { paddingBottom: Math.max(bottomInset, space.sm) }]}
+        onLayout={(e) => onHeight?.(e.nativeEvent.layout.height)}
+      >
         <Glass interactive style={styles.field}>
           {files.length ? (
             <View style={styles.chips}>
@@ -203,10 +217,11 @@ export const Composer = memo(
 );
 
 const useStyles = makeStyles((c) => ({
-  wrap: { paddingHorizontal: space.md, paddingTop: space.sm },
-  field: { minHeight: HIT, borderRadius: HIT / 2, overflow: 'hidden', ...squircle },
+  wrap: { paddingHorizontal: space.md, paddingTop: space.sm, backgroundColor: c.background },
+  wrapGrouped: { backgroundColor: c.groupedBackground },
+  field: { minHeight: FIELD, borderRadius: FIELD / 2, overflow: 'hidden', ...squircle },
   row: { flexDirection: 'row', alignItems: 'flex-end' },
-  slot: { width: BUTTON + INSET * 2, height: HIT, alignItems: 'center', justifyContent: 'center' },
+  slot: { width: BUTTON + INSET * 2, height: FIELD, alignItems: 'center', justifyContent: 'center' },
   plus: { width: BUTTON, height: BUTTON, borderRadius: BUTTON / 2, alignItems: 'center', justifyContent: 'center' },
   send: { width: BUTTON, height: BUTTON, borderRadius: BUTTON / 2, alignItems: 'center', justifyContent: 'center' },
   sendOn: { backgroundColor: c.accent },
@@ -216,8 +231,8 @@ const useStyles = makeStyles((c) => ({
     flex: 1,
     color: c.label,
     paddingHorizontal: space.xxs,
-    paddingTop: space.sm + space.xxs,
-    paddingBottom: space.sm + space.xxs,
+    paddingTop: space.md + space.xxs,
+    paddingBottom: space.md + space.xxs,
   },
   chips: { paddingTop: space.sm, paddingHorizontal: space.sm, gap: space.xs },
   thumbs: { gap: space.sm, paddingRight: space.xs },
