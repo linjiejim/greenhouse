@@ -163,6 +163,9 @@ const RATE_LIMITS: Record<string, RateLimitConfig> = {
   // One write per page view; a generous ceiling keeps a looping client from
   // turning the counter table into a write hotspot.
   '/api/usage': { windowMs: 60_000, max: 240 },
+  // The public connector OAuth callback (a browser redirect from a provider); it
+  // only redirects back to the app, but it decrypts a state on every hit.
+  '/api/connectors/oauth/callback': { windowMs: 60_000, max: 30 },
   // Other authenticated or independently guarded endpoints are intentionally unthrottled here.
 };
 

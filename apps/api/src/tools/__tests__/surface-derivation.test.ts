@@ -62,6 +62,10 @@ describe('surface-derived exposure sets', () => {
         'computer_files',
         // v1.7: the team's report templates (list / get / validate — no side effects).
         'report_templates',
+        // v3: connectors. The read tier keeps the `connectors` group reachable for
+        // read-only grants; mcp_call governs its own writes (policy, preview,
+        // recording) and is filtered out of the /api/agent CLI proxy.
+        'mcp_call',
       ].sort(),
     );
   });
@@ -141,8 +145,14 @@ describe('surface-derived exposure sets', () => {
         // v1.7: report templates and rendering in their own `reports` group.
         'report_templates',
         'report_render',
+        // v3: connectors in their own `connectors` group (existing grants do not gain it).
+        'mcp_call',
       ].sort(),
     );
+  });
+
+  it('the connectors group holds mcp_call and nothing else', () => {
+    expect(sorted(new Set(MCP_TOOL_IDS_BY_GROUP.get('connectors') ?? []))).toEqual(['mcp_call']);
   });
 
   it('every MCP-exposed tool declares a resource group, and groups only contain exposed tools', () => {
@@ -232,6 +242,7 @@ describe('surface-derived exposure sets', () => {
         'computer_stop',
         'report_templates',
         'report_render',
+        'mcp_call',
       ].sort(),
     );
   });

@@ -49,6 +49,7 @@ export const MCP_RESOURCE_GROUP_IDS = [
   'services',
   'computer',
   'reports',
+  'connectors',
 ] as const;
 
 export type McpResourceGroup = (typeof MCP_RESOURCE_GROUP_IDS)[number];

@@ -50,6 +50,12 @@ const PUBLIC_PATHS = new Set([
   // the probe would seed a pending state nobody consumes on every password
   // login — a probe must have no side effects.
   '/api/feishu/login-available',
+  // A connector's OAuth provider redirects the BROWSER here, without a Bearer.
+  // It writes nothing: it only sends the person back to the app (web hash route
+  // or the mobile scheme), whose logged-in session then calls
+  // POST /api/me/connectors/oauth/finish — which refuses a state started by
+  // someone else. Rate-limited in security.ts.
+  '/api/connectors/oauth/callback',
 ]);
 
 /** Exported for the boundary regression test — see routes/__tests__/attachment-boundary.test.ts. */

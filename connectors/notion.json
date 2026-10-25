@@ -1,0 +1,35 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "com.notion/mcp",
+  "title": "Notion",
+  "description": "Search, read and edit the Notion pages and databases a member can access.",
+  "version": "1.0.1",
+  "websiteUrl": "https://developers.notion.com/guides/mcp/get-started-with-mcp",
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "https://mcp.notion.com/mcp"
+    },
+    {
+      "type": "sse",
+      "url": "https://mcp.notion.com/sse"
+    }
+  ],
+  "_meta": {
+    "com.linjiejim.greenhouse/connector": {
+      "slug": "notion",
+      "category": "productivity",
+      "title_zh": "Notion",
+      "description_zh": "检索、阅读、编辑成员自己有权访问的 Notion 页面与数据库。",
+      "auth": {
+        "mode": "oauth",
+        "zero_config": true
+      },
+      "read_only_tools": [],
+      "verification": {
+        "level": "sign_in",
+        "date": "2026-10-09"
+      }
+    }
+  }
+}

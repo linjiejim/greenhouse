@@ -56,6 +56,8 @@ import { createTablesSchemaPlanTool } from '../tools/tables-schema-plan.js';
 import { createExportDataTool } from '../tools/export-data.js';
 import { createTaskCaptureTool } from '../tools/task-capture.js';
 import { createReadAttachmentTool } from '../tools/read-attachment.js';
+import { createMcpCallTool, MCP_CALL_TOOL_ID } from '../tools/mcp-call.js';
+import type { ToolCallClient } from '@greenhouse/types/usage';
 import type { AgentProfile } from '../profiles/profile.js';
 
 /**
@@ -135,6 +137,17 @@ export interface LazyServerToolContext {
    * Dropping a tool outright is UNATTENDED_TOOL_DENYLIST's job instead.
    */
   unattended?: boolean;
+  /**
+   * Build `mcp_call` for this surface. Only chat and automations pass it: the
+   * `/api/agent` proxy never gets connectors, and `/api/mcp` builds its own
+   * per request (routes/mcp.ts) because its write rules depend on the grant.
+   */
+  connectors?: {
+    surface: 'chat' | 'automation';
+    client: ToolCallClient;
+    /** An agent's connector list (ids); null = every connector the member can use. */
+    allowed: readonly string[] | null;
+  };
 }
 
 /**
@@ -224,8 +237,15 @@ export function filterUnattendedToolIds(ids: string[], optInToolIds: readonly st
  */
 const BROWSER_OUTPUT_ONLY_TOOL_IDS: ReadonlySet<string> = new Set(['ask_user', 'export_data']);
 
+/** Read-tier tools a browser-extension conversation still never gets: mcp_call reaches outside and can write. */
+const BROWSER_DENIED_TOOL_IDS: ReadonlySet<string> = new Set(['mcp_call']);
+
 export function filterBrowserSessionToolIds(toolIds: readonly string[]): string[] {
-  return toolIds.filter((id) => getToolMeta(id)?.surface?.proxy === 'read' || BROWSER_OUTPUT_ONLY_TOOL_IDS.has(id));
+  return toolIds.filter(
+    (id) =>
+      !BROWSER_DENIED_TOOL_IDS.has(id) &&
+      (getToolMeta(id)?.surface?.proxy === 'read' || BROWSER_OUTPUT_ONLY_TOOL_IDS.has(id)),
+  );
 }
 
 export function buildLazyServerTools(
@@ -401,6 +421,19 @@ export function buildLazyServerTools(
         profileId: ctx.profileId ?? null,
       });
     }
+  }
+
+  // Connectors: only on surfaces that asked for them (see LazyServerToolContext.connectors).
+  if (ctx.connectors && effectiveTools.includes(MCP_CALL_TOOL_ID)) {
+    const mcpCall = createMcpCallTool({
+      db,
+      userId,
+      sessionId: sessionId ?? null,
+      connectors: ctx.connectors.allowed,
+      surface: ctx.connectors.surface,
+      client: ctx.connectors.client,
+    });
+    if (mcpCall) tools[MCP_CALL_TOOL_ID] = mcpCall;
   }
 
   // Extension lazy tools take the generic path: no per-tool case needed in core.

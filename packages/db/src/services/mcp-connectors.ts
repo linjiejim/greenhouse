@@ -339,6 +339,14 @@ export function createMcpConnectorService(db: Db) {
         .where(and(eq(providerConnections.user_id, userId), like(providerConnections.provider, `${PROVIDER_PREFIX}%`)));
     },
 
+    /** Every member credential for one connector (revocation before a delete). */
+    async listConnectionsForConnector(connectorId: string): Promise<ProviderTokenRow[]> {
+      return db
+        .select()
+        .from(providerConnections)
+        .where(eq(providerConnections.provider, mcpConnectionProvider(connectorId)));
+    },
+
     /** Members holding a credential, per connector. */
     async countConnections(connectorIds: readonly string[]): Promise<Map<string, number>> {
       const counts = new Map<string, number>();

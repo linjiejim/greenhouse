@@ -59,6 +59,7 @@ import { generateSessionTitle } from '../llm/title.js';
 import { canWriteSession } from '../sessions/access.js';
 import { admitTurnEnvironment } from '../chat/turn-environment.js';
 import { appendImageIdHints, appendTurnContext, buildTurnContextBlock } from '../chat/turn-context.js';
+import { buildConnectorsContext } from '../tools/mcp-call.js';
 import { formatDigestSection, scheduleDigestFold } from '../chat/digest.js';
 import { chatRunRegistry, ChatRun } from '../chat/runs.js';
 import { pumpChatTurn, streamRunToResponse } from '../chat/turn.js';
@@ -503,6 +504,7 @@ export function createChatRoute(toolRegistry: ToolRegistry) {
                 workspaceId: body.workspace_id,
                 profileId: profile.id,
                 toolRegistry,
+                connectors: { surface: 'chat', client: turnClient, allowed: profile.connectors ?? null },
               }),
             },
             turnClient,
@@ -564,11 +566,22 @@ export function createChatRoute(toolRegistry: ToolRegistry) {
               richBlocks: admitRichBlocks(body.rich_blocks),
             },
           );
+          // Connectors change with the member's connections, so they ride the turn context.
+          const connectorsBlock =
+            'mcp_call' in serverTools
+              ? await buildConnectorsContext({
+                  db: getDb(),
+                  userId,
+                  connectors: profile.connectors ?? null,
+                  surface: 'chat',
+                })
+              : null;
           const providerMessages = appendTurnContext(
             engineMessages,
             buildTurnContextBlock({
               ambientContext,
               visionInlinedImages,
+              ...(connectorsBlock ? { connectorsBlock } : {}),
               ...(usesClientActions ? { clientActionNames: clientActions.map((a) => a.name) } : {}),
             }),
           );

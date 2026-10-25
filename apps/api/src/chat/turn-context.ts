@@ -35,6 +35,8 @@ export interface TurnContextInput {
   visionInlinedImages?: number;
   /** Names of the browser Client Actions registered for this turn. */
   clientActionNames?: string[];
+  /** The connectors mcp_call can reach this turn (tools/mcp-call.ts buildConnectorsContext). */
+  connectorsBlock?: string;
 }
 
 /** The per-turn closing block appended to the newest user message. */
@@ -70,6 +72,8 @@ export function buildTurnContextBlock(input: TurnContextInput): string {
       `After a UI action succeeds, briefly confirm what you did. These actions only affect the UI — ` +
       `real data changes still go through the normal confirmed mutation tools.`;
   }
+
+  if (input.connectorsBlock) block += input.connectorsBlock;
 
   return block;
 }
