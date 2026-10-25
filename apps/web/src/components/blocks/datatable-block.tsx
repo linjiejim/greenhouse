@@ -162,7 +162,7 @@ export function DataTableBlock({ data, compact = false }: { data: DataTableData;
     <div className="flex flex-wrap items-center justify-between gap-2">
       <div className="flex min-w-0 items-baseline gap-2">
         {data.title && <span className="truncate text-xs font-semibold text-fg">{data.title}</span>}
-        <span className="whitespace-nowrap text-[10px] text-fg-faint">
+        <span className="whitespace-nowrap text-caption text-fg-faint">
           {t('common.rows', { rows: filteredRows.length })}
         </span>
       </div>

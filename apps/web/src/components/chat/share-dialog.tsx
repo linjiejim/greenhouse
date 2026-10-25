@@ -195,7 +195,7 @@ export function ShareDialog({ open, onClose, sessionId, sessionTitle, onShareCha
                       <div key={s.id} className="flex items-center justify-between py-1">
                         <div className="flex items-center gap-2 min-w-0">
                           <Badge variant="default">{user?.nickname || t('shareDialog.unknown')}</Badge>
-                          <span className="text-[10px] text-fg-faint">{timeAgo(s.created_at)}</span>
+                          <span className="text-caption text-fg-faint">{timeAgo(s.created_at)}</span>
                         </div>
                         <button
                           onClick={() => handleRemoveOne(s.id)}
@@ -272,9 +272,11 @@ export function ShareDialog({ open, onClose, sessionId, sessionTitle, onShareCha
                       {/* Info */}
                       <div className="min-w-0 flex-1">
                         <div className="text-sm font-medium truncate">{user.nickname}</div>
-                        <div className="text-[11px] text-fg-muted truncate">{user.email}</div>
+                        <div className="text-caption text-fg-muted truncate">{user.email}</div>
                       </div>
-                      {isAlready && <span className="text-[10px] text-fg-faint">{t('shareDialog.alreadyShared')}</span>}
+                      {isAlready && (
+                        <span className="text-caption text-fg-faint">{t('shareDialog.alreadyShared')}</span>
+                      )}
                     </button>
                   );
                 })}

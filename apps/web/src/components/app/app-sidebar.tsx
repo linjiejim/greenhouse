@@ -126,8 +126,8 @@ export function SidebarBrandHeader(props: SidebarBrandHeaderProps) {
         <div className="pointer-events-none relative z-[1] flex items-center gap-2 transition-opacity group-hover:opacity-80">
           <AppLogo size="sm" logoOnly />
           <div className="flex min-w-0 flex-col">
-            <span className="font-display text-sm font-bold leading-tight text-fg">Greenhouse</span>
-            <div className="flex h-3 items-center gap-1 text-[9px] leading-tight text-fg-faint">
+            <span className="text-sm font-bold leading-tight text-fg">Greenhouse</span>
+            <div className="flex h-4 items-center gap-1 text-caption leading-4 text-fg-faint">
               <span>{t('navigation.brandTagline')}</span>
             </div>
           </div>

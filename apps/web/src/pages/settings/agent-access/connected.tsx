@@ -45,7 +45,7 @@ export function ConnectedAgents({ onConnect }: { onConnect: () => void }) {
                   <div className="text-sm font-medium text-fg truncate" title={grant.client.name}>
                     {grant.client.name}
                   </div>
-                  <div className="text-[10px] font-mono text-fg-faint truncate" title={grant.client.id}>
+                  <div className="text-caption font-mono text-fg-faint truncate" title={grant.client.id}>
                     {grant.client.id}
                   </div>
                 </div>

@@ -263,14 +263,14 @@ export function GanttView({
         <span className="text-xs font-medium text-fg-secondary">{t('projects.tasks')}</span>
         <button
           onClick={handleExpandAll}
-          className="text-[10px] text-fg-faint hover:text-primary-fg"
+          className="text-caption text-fg-faint hover:text-primary-fg"
           title={t('projects.expandAll')}
         >
           ▼
         </button>
         <button
           onClick={handleCollapseAll}
-          className="text-[10px] text-fg-faint hover:text-primary-fg"
+          className="text-caption text-fg-faint hover:text-primary-fg"
           title={t('projects.collapseAll')}
         >
           ▶

@@ -126,12 +126,12 @@ function ProjectCard({ project, onClick }: { project: Project; onClick: () => vo
             </h3>
             {project.visibility === 'private' && <Lock size={11} className="text-fg-faint flex-shrink-0" />}
             {project.priority !== 'normal' && (
-              <span className={`text-[10px] font-medium ${pc.color}`}>{t(pc.label)}</span>
+              <span className={`text-caption font-medium ${pc.color}`}>{t(pc.label)}</span>
             )}
           </div>
           {project.description && <p className="text-xs text-fg-muted line-clamp-1">{project.description}</p>}
         </div>
-        <span className={`text-[10px] px-2 py-0.5 rounded-full border font-medium whitespace-nowrap ${sc.color}`}>
+        <span className={`text-caption px-2 py-0.5 rounded-full border font-medium whitespace-nowrap ${sc.color}`}>
           {t(sc.label)}
         </span>
       </div>
@@ -407,7 +407,7 @@ export function ProjectsPage() {
                   <button
                     key={z}
                     onClick={() => handleZoomChange(z)}
-                    className={`px-2 py-1 rounded-sm text-[11px] transition-colors ${
+                    className={`px-2 py-1 rounded-sm text-caption transition-colors ${
                       ganttZoom === z
                         ? 'bg-surface-raised text-primary-fg-strong font-medium shadow-sm'
                         : 'text-fg-muted hover:text-fg-secondary'

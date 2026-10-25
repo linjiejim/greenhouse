@@ -109,7 +109,9 @@ function DemoRow({ children, className = '' }: { children: React.ReactNode; clas
 }
 
 function CodeLabel({ children }: { children: React.ReactNode }) {
-  return <code className="text-[11px] font-mono bg-surface-muted text-fg-muted px-1.5 py-0.5 rounded">{children}</code>;
+  return (
+    <code className="text-caption font-mono bg-surface-muted text-fg-muted px-1.5 py-0.5 rounded">{children}</code>
+  );
 }
 
 /** Collapsible code snippet viewer */
@@ -119,13 +121,13 @@ function CodeSnippet({ code, label = 'Show Code' }: { code: string; label?: stri
     <div className="mt-2">
       <button
         onClick={() => setOpen(!open)}
-        className="flex items-center gap-1 text-[11px] text-fg-muted hover:text-fg-secondary transition-colors"
+        className="flex items-center gap-1 text-caption text-fg-muted hover:text-fg-secondary transition-colors"
       >
         <ChevronRight size={10} className={`transition-transform ${open ? 'rotate-90' : ''}`} />
         {label}
       </button>
       {open && (
-        <pre className="mt-1.5 p-3 bg-surface-sunken rounded-sm text-[11px] font-mono text-fg-secondary overflow-x-auto border border-edge">
+        <pre className="mt-1.5 p-3 bg-surface-sunken rounded-sm text-caption font-mono text-fg-secondary overflow-x-auto border border-edge">
           {code}
         </pre>
       )}
@@ -139,7 +141,7 @@ function ColorSwatch({ name, className }: { name: string; className: string }) {
   return (
     <div className="flex flex-col items-center gap-1.5">
       <div className={`w-12 h-12 rounded-md border border-edge shadow-sm ${className}`} />
-      <span className="text-[10px] font-mono text-fg-muted text-center leading-tight">{name}</span>
+      <span className="text-caption font-mono text-fg-muted text-center leading-tight">{name}</span>
     </div>
   );
 }
@@ -230,7 +232,7 @@ export function DesignPage() {
         {NAV_SECTIONS.map((group) => (
           <div key={group.group} className="mb-3">
             <div className="px-2 mb-1">
-              <span className="text-[10px] font-medium text-fg-faint uppercase tracking-wider">{group.group}</span>
+              <span className="text-caption font-medium text-fg-faint uppercase tracking-wider">{group.group}</span>
             </div>
             {group.items.map((s) => (
               <a
@@ -382,10 +384,10 @@ function ColorsSection() {
 
       <SubSection title="Borders">
         <DemoRow>
-          <div className="w-24 h-12 rounded-md border border-edge flex items-center justify-center text-[10px] text-fg-muted font-mono">
+          <div className="w-24 h-12 rounded-md border border-edge flex items-center justify-center text-caption text-fg-muted font-mono">
             edge
           </div>
-          <div className="w-24 h-12 rounded-md border-2 border-edge-strong flex items-center justify-center text-[10px] text-fg-muted font-mono">
+          <div className="w-24 h-12 rounded-md border-2 border-edge-strong flex items-center justify-center text-caption text-fg-muted font-mono">
             edge-strong
           </div>
         </DemoRow>
@@ -397,7 +399,7 @@ function ColorsSection() {
             <ColorSwatch key={shade} name={`${shade}`} className={`bg-primary-${shade}`} />
           ))}
         </DemoRow>
-        <p className="text-[10px] text-fg-faint mt-2">
+        <p className="text-caption text-fg-faint mt-2">
           Fixed Greenhouse brand palette. Light and dark modes only change semantic surfaces.
         </p>
       </SubSection>
@@ -460,8 +462,8 @@ function TypographySection() {
           <span className="text-xs text-fg-muted">Labels, tags, secondary info</span>
         </div>
         <div className="flex items-baseline gap-3">
-          <CodeLabel>text-[10px]</CodeLabel>
-          <span className="text-[10px] text-fg-faint">Timestamps, fine print</span>
+          <CodeLabel>text-caption</CodeLabel>
+          <span className="text-caption text-fg-faint">Timestamps, fine print</span>
         </div>
       </div>
 
@@ -482,7 +484,7 @@ function TypographySection() {
           >
             This is a very long text that should be truncated with an ellipsis when it overflows the container width
           </p>
-          <p className="text-[10px] text-fg-faint mt-2">
+          <p className="text-caption text-fg-faint mt-2">
             Rule: always pair <CodeLabel>truncate</CodeLabel> with <CodeLabel>title=&#123;value&#125;</CodeLabel>
           </p>
         </div>
@@ -509,7 +511,7 @@ function SpacingSection() {
             <div key={r.label} className="flex flex-col items-center gap-2">
               <div className={`w-16 h-16 bg-primary-subtle-hover border border-primary-edge ${r.cls}`} />
               <CodeLabel>{r.label}</CodeLabel>
-              <span className="text-[10px] text-fg-faint">{r.usage}</span>
+              <span className="text-caption text-fg-faint">{r.usage}</span>
             </div>
           ))}
         </DemoRow>
@@ -1037,7 +1039,7 @@ function CardsSection() {
             </div>
             <div>
               <h3 className="text-sm font-semibold text-fg">With Icon</h3>
-              <span className="text-[10px] text-fg-faint">Subtitle text</span>
+              <span className="text-caption text-fg-faint">Subtitle text</span>
             </div>
           </div>
           <p className="text-xs text-fg-muted">Card with avatar/icon header pattern.</p>
@@ -2150,7 +2152,7 @@ console.log(greeting);
     >
       <div className="grid grid-cols-2 gap-4">
         <div>
-          <p className="text-[11px] font-semibold text-fg-muted uppercase tracking-wider mb-2">
+          <p className="text-caption font-semibold text-fg-muted uppercase tracking-wider mb-2">
             prose-base (Wiki / Docs)
           </p>
           <Card className="p-4">
@@ -2158,7 +2160,7 @@ console.log(greeting);
           </Card>
         </div>
         <div>
-          <p className="text-[11px] font-semibold text-fg-muted uppercase tracking-wider mb-2">
+          <p className="text-caption font-semibold text-fg-muted uppercase tracking-wider mb-2">
             prose-compact (Chat Messages)
           </p>
           <Card className="p-4">

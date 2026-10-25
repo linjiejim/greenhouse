@@ -90,7 +90,7 @@ export function BaseDialog({ open, base = null, onClose, onCreated, onSaved }: B
             onChange={(event) => setDescription(event.target.value)}
             placeholder={t('tables.base.descriptionPlaceholder')}
           />
-          <p className="mt-1 text-[11px] text-fg-faint">{t('tables.base.descriptionHint')}</p>
+          <p className="mt-1 text-caption text-fg-faint">{t('tables.base.descriptionHint')}</p>
         </div>
         {!editing && (
           <div>

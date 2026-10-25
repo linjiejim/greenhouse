@@ -42,7 +42,7 @@ export const PROFILE_COLORS = ['bg-accent', 'bg-info', 'bg-danger', 'bg-warning'
 export function KpiCard({ title, children }: { title: string; children: ReactNode }) {
   return (
     <div className="bg-surface-card border border-edge rounded-lg p-4 shadow-sm">
-      <div className="text-[10px] font-semibold text-fg-faint uppercase tracking-wider mb-2">{title}</div>
+      <div className="text-caption font-semibold text-fg-faint uppercase tracking-wider mb-2">{title}</div>
       {children}
     </div>
   );
@@ -66,7 +66,7 @@ export function DistributionBar({ items }: { items: Array<{ label: string; value
               <div className={`h-full rounded-full ${item.color}`} style={{ width: `${Math.max(pct, 1)}%` }} />
             </div>
             <div className="w-16 text-right text-xs text-fg-muted">{item.value.toLocaleString()}</div>
-            <div className="w-12 text-right text-[11px] text-fg-faint">{pct.toFixed(0)}%</div>
+            <div className="w-12 text-right text-caption text-fg-faint">{pct.toFixed(0)}%</div>
           </div>
         );
       })}

@@ -92,7 +92,7 @@ export function TablesAuditDialog({ open, baseId, users, onClose }: TablesAuditD
                       {event.client_id ? ` · client ${event.client_id}` : ''}
                     </p>
                   </div>
-                  <time className="flex-shrink-0 text-[11px] text-fg-faint" dateTime={event.created_at}>
+                  <time className="flex-shrink-0 text-caption text-fg-faint" dateTime={event.created_at}>
                     {formatDate(event.created_at)}
                   </time>
                 </li>

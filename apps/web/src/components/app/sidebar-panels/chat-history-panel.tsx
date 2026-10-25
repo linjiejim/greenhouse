@@ -837,14 +837,14 @@ export function ChatHistoryPanel({ currentSessionId, onSelectSession, collapsed 
             titles with no author. Present on any row the viewer doesn't own. */}
         {session.owner_nickname && (
           <span
-            className="max-w-[72px] flex-shrink-0 truncate text-[10px] text-fg-faint"
+            className="max-w-[72px] flex-shrink-0 truncate text-caption text-fg-faint"
             title={t('history.ownedBy', { name: session.owner_nickname })}
           >
             {session.owner_nickname}
           </span>
         )}
         <span className="sidebar-secondary-meta relative flex-shrink-0 flex items-center">
-          <span className="text-[10px] text-fg-faint tabular-nums group-hover/item:invisible">
+          <span className="text-caption text-fg-faint tabular-nums group-hover/item:invisible">
             {relativeTime(session.updated_at)}
           </span>
           <button
@@ -895,12 +895,12 @@ export function ChatHistoryPanel({ currentSessionId, onSelectSession, collapsed 
         >
           {isCollapsed ? <ChevronRight size={11} /> : <ChevronDown size={11} />}
           {showPinIcon && <Pin size={11} />}
-          <span className="text-[10px] font-semibold uppercase tracking-wider flex-1 text-left truncate">{title}</span>
-          <span className="text-[10px] tabular-nums">{count}</span>
+          <span className="text-caption font-semibold uppercase tracking-wider flex-1 text-left truncate">{title}</span>
+          <span className="text-caption tabular-nums">{count}</span>
         </button>
         {!isCollapsed && display.map((s) => renderRow(s, key, orderable, orderedIds))}
         {!isCollapsed && display.length === 0 && isDropTarget && (
-          <div className="mx-3 my-1 rounded border border-dashed border-edge px-3 py-2 text-center text-[10px] text-fg-faint">
+          <div className="mx-3 my-1 rounded border border-dashed border-edge px-3 py-2 text-center text-caption text-fg-faint">
             {t('sessionGroups.dropHere')}
           </div>
         )}
@@ -994,10 +994,10 @@ export function ChatHistoryPanel({ currentSessionId, onSelectSession, collapsed 
                     className="mt-1 flex w-full items-center gap-1.5 px-3 py-1 text-fg-faint transition-colors first:mt-0 hover:text-fg-secondary"
                   >
                     {isCollapsed ? <ChevronRight size={11} /> : <ChevronDown size={11} />}
-                    <span className="flex-1 truncate text-left text-[10px] font-semibold uppercase tracking-wider">
+                    <span className="flex-1 truncate text-left text-caption font-semibold uppercase tracking-wider">
                       {group.label}
                     </span>
-                    <span className="text-[10px] tabular-nums">{group.sessions.length}</span>
+                    <span className="text-caption tabular-nums">{group.sessions.length}</span>
                   </button>
                   {!isCollapsed && group.sessions.map((session) => renderRow(session, `date:${group.group}`))}
                 </div>
@@ -1006,7 +1006,7 @@ export function ChatHistoryPanel({ currentSessionId, onSelectSession, collapsed 
             {hasMoreDateBuckets && (
               <button
                 onClick={() => setDateBucketLimit((n) => n + DATE_BUCKET_PAGE)}
-                className="w-full px-3 py-2 text-[11px] text-fg-faint hover:text-fg-secondary hover:bg-surface-muted transition-colors"
+                className="w-full px-3 py-2 text-caption text-fg-faint hover:text-fg-secondary hover:bg-surface-muted transition-colors"
               >
                 {t('sessionGroups.showMore')}
               </button>

@@ -68,7 +68,7 @@ function PinItem({ moduleId, isActive, onNavigate, onContextMenu, dragProps, isD
       title={mod.label}
     >
       <Icon size={18} className={`flex-shrink-0 ${isActive ? 'text-primary-fg' : 'text-fg-faint'}`} />
-      <span className="text-[10px] leading-tight truncate w-full">{mod.label}</span>
+      <span className="text-caption leading-tight truncate w-full">{mod.label}</span>
     </button>
   );
 }
@@ -115,10 +115,10 @@ export function PinnedSection({ currentHash }: PinnedSectionProps) {
       {/* Section header */}
       <div className="flex items-center gap-1.5 px-1 py-1.5">
         <Pin size={11} className="text-fg-faint" />
-        <span className="text-[10px] font-semibold text-fg-faint uppercase tracking-wider flex-1">
+        <span className="text-caption font-semibold text-fg-faint uppercase tracking-wider flex-1">
           {t('sessionGroups.pinned')}
         </span>
-        <span className="text-[10px] text-fg-faint">{visiblePinnedIds.length}</span>
+        <span className="text-caption text-fg-faint">{visiblePinnedIds.length}</span>
       </div>
 
       {/* Pinned items — 4-col icon grid */}
@@ -140,7 +140,7 @@ export function PinnedSection({ currentHash }: PinnedSectionProps) {
       {hiddenCount > 0 && (
         <button
           onClick={() => setExpanded(!expanded)}
-          className="w-full flex items-center justify-center gap-1 py-1 text-[10px] text-fg-faint hover:text-fg-secondary transition-colors"
+          className="w-full flex items-center justify-center gap-1 py-1 text-caption text-fg-faint hover:text-fg-secondary transition-colors"
         >
           <ChevronDown
             size={10}
@@ -242,7 +242,7 @@ export function MobilePinnedSection({ currentHash, onNavigate }: MobilePinnedPro
     <div className="px-2 py-1">
       <div className="flex items-center gap-1.5 px-3 py-1.5">
         <Pin size={11} className="text-fg-faint" />
-        <span className="text-[10px] font-semibold text-fg-faint uppercase tracking-wider">
+        <span className="text-caption font-semibold text-fg-faint uppercase tracking-wider">
           {t('sessionGroups.pinned')}
         </span>
       </div>

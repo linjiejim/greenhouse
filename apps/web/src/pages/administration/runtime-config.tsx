@@ -34,7 +34,7 @@ function Description({ text, className }: { text: string; className: string }) {
     <p className={className}>
       {parts.map((part, index) =>
         index % 2 === 1 ? (
-          <code key={index} className="rounded bg-surface-muted px-1 font-mono text-[10px] text-fg-secondary">
+          <code key={index} className="rounded bg-surface-muted px-1 font-mono text-caption text-fg-secondary">
             {part}
           </code>
         ) : (
@@ -58,7 +58,7 @@ function SourceBadge({ source }: { source: WorkspaceSettingView['source'] }) {
     none: t('runtimeConfig.sourceNone'),
   };
   return (
-    <span className={`px-1.5 py-0.5 rounded text-[9px] font-medium whitespace-nowrap ${styles[source]}`}>
+    <span className={`px-1.5 py-0.5 rounded text-caption font-medium whitespace-nowrap ${styles[source]}`}>
       {labels[source]}
     </span>
   );
@@ -174,7 +174,7 @@ export function RuntimeConfigPanel() {
                         />
                       </div>
                       {v.env && (
-                        <p className="text-[9px] text-fg-faint font-mono mt-0.5">
+                        <p className="text-caption text-fg-faint font-mono mt-0.5">
                           {t('runtimeConfig.envFallback')} {v.env}
                         </p>
                       )}
@@ -215,7 +215,7 @@ export function RuntimeConfigPanel() {
                           </Button>
                         ) : null}
                       </div>
-                      <Description text={v.description} className="text-[10px] text-fg-faint mt-0.5" />
+                      <Description text={v.description} className="text-caption text-fg-faint mt-0.5" />
                     </div>
                   </div>
                 );
@@ -229,7 +229,7 @@ export function RuntimeConfigPanel() {
             {saving ? t('common.saving') : t('runtimeConfig.save')}
           </Button>
           {Object.keys(dirty).length > 0 && (
-            <span className="text-[10px] text-fg-faint">
+            <span className="text-caption text-fg-faint">
               {t('runtimeConfig.pendingCount', { count: Object.keys(dirty).length })}
             </span>
           )}

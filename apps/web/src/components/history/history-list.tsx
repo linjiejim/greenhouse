@@ -138,7 +138,7 @@ function SessionRow({
       </div>
 
       {/* Row 2 */}
-      <div className="flex items-center gap-2 mt-0.5 text-[11px] text-fg-faint min-w-0">
+      <div className="flex items-center gap-2 mt-0.5 text-caption text-fg-faint min-w-0">
         <span className="flex-shrink-0">{formatDate(session.updated_at)}</span>
         <span className="hidden md:inline font-mono flex-shrink-0">{session.id.slice(0, 8)}</span>
         <SessionTypeIcon profileId={session.profile_id} size={11} />

@@ -511,7 +511,7 @@ function DocsScopeView({
                 </Badge>
               ))}
             </div>
-            <p className="text-[10px] text-fg-faint truncate mt-0.5">
+            <p className="text-caption text-fg-faint truncate mt-0.5">
               {t('knowledge.updatedPrefix')} {selectedDoc.updated_at ? formatDate(selectedDoc.updated_at) : '—'} ·{' '}
               {selectedDoc.slug}
             </p>
@@ -640,7 +640,7 @@ function DocsScopeView({
                 summary={doc.summary || undefined}
                 tags={doc.tags ?? []}
                 badge={
-                  <span className="text-[10px] text-fg-faint">{doc.updated_at ? timeAgo(doc.updated_at) : '—'}</span>
+                  <span className="text-caption text-fg-faint">{doc.updated_at ? timeAgo(doc.updated_at) : '—'}</span>
                 }
                 action={
                   <Button
@@ -699,7 +699,7 @@ function FolderAttachmentsView({ folderId }: { folderId: string }) {
         <Paperclip size={14} className="text-fg-faint flex-shrink-0" />
         <div className="min-w-0">
           <h1 className="text-sm font-semibold text-fg truncate">{folder.name}</h1>
-          <p className="text-[10px] text-fg-faint truncate">
+          <p className="text-caption text-fg-faint truncate">
             {t('knowledge.folderAttachments')} · {crumbs.map((c) => c.name).join(' / ')}
           </p>
         </div>
@@ -829,11 +829,11 @@ function TagsList({ tags }: { tags: string[] }) {
   return (
     <div className="mt-1.5 flex flex-wrap gap-1">
       {tags.slice(0, 5).map((tag) => (
-        <span key={tag} className="text-[10px] text-fg-faint bg-surface-muted px-1.5 py-0.5 rounded">
+        <span key={tag} className="text-caption text-fg-faint bg-surface-muted px-1.5 py-0.5 rounded">
           {tag}
         </span>
       ))}
-      {tags.length > 5 && <span className="text-[10px] text-fg-faint">+{tags.length - 5}</span>}
+      {tags.length > 5 && <span className="text-caption text-fg-faint">+{tags.length - 5}</span>}
     </div>
   );
 }

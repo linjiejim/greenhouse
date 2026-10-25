@@ -81,7 +81,7 @@ export function DetailHeader({
           {/* Meta entries wrap as whole chunks; without nowrap a flex child
               shrinks until CJK text breaks one character per line. */}
           {meta && (
-            <div className="flex items-center gap-3 mt-1 flex-wrap text-[10px] text-fg-faint [&>*]:whitespace-nowrap">
+            <div className="flex items-center gap-3 mt-1 flex-wrap text-caption text-fg-faint [&>*]:whitespace-nowrap">
               {meta}
             </div>
           )}
@@ -164,7 +164,7 @@ export function Field({ label, value, children, hideEmpty = false, span, classNa
 
   return (
     <div className={`${spanClass} ${className}`}>
-      <div className="text-[11px] font-medium text-fg-faint mb-1">{label}</div>
+      <div className="text-caption font-medium text-fg-faint mb-1">{label}</div>
       <div className="text-sm text-fg-secondary break-words">{content}</div>
     </div>
   );

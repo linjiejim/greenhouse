@@ -30,7 +30,7 @@ export function SkillHubNavPanel({ activeName }: { activeName?: string }) {
         <span className="text-xs font-medium text-fg-muted uppercase tracking-wide">SkillHub</span>
         {reviewCount > 0 && (
           <span
-            className="rounded-full bg-warning-subtle px-1.5 text-[10px] font-medium text-warning"
+            className="rounded-full bg-warning-subtle px-1.5 text-caption font-medium text-warning"
             title={t('skillHub.awaitingReview', { count: reviewCount })}
           >
             {reviewCount}

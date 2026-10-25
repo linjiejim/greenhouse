@@ -20,16 +20,16 @@ function Reach({ reach }: { reach: DataCatalogReach[] }) {
   if (reach.length === 0) return null;
   return (
     <div className="mt-3 border-t border-edge pt-3">
-      <div className="mb-1.5 text-[11px] font-medium text-fg-secondary">{t('dataCatalog.reach')}</div>
+      <div className="mb-1.5 text-caption font-medium text-fg-secondary">{t('dataCatalog.reach')}</div>
       <ul className="space-y-1">
         {reach.map((entry) => (
           <li key={`${entry.tool}:${entry.how}`} className="flex flex-wrap items-baseline gap-1.5 text-xs">
-            <code className="rounded bg-surface-sunken px-1.5 py-0.5 font-mono text-[11px] text-fg">{entry.tool}</code>
+            <code className="rounded bg-surface-sunken px-1.5 py-0.5 font-mono text-caption text-fg">{entry.tool}</code>
             <Tag tone={entry.access === 'write' ? 'warning' : 'neutral'}>{t(`dataCatalog.access.${entry.access}`)}</Tag>
-            <span className="text-[11px] text-fg-faint">
+            <span className="text-caption text-fg-faint">
               {entry.group ? t('dataCatalog.scope', { group: entry.group }) : t('dataCatalog.inAppOnly')}
             </span>
-            <span className="basis-full text-[11px] leading-4 text-fg-muted">{entry.how}</span>
+            <span className="basis-full text-caption leading-4 text-fg-muted">{entry.how}</span>
           </li>
         ))}
       </ul>
@@ -97,7 +97,7 @@ export function DataCatalogPage() {
                     {base.description && (
                       <p className="mt-1 line-clamp-2 text-xs leading-5 text-fg-muted">{base.description}</p>
                     )}
-                    <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-fg-faint">
+                    <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-caption text-fg-faint">
                       <span>
                         {base.visibility === 'team' ? t('tables.home.teamVisible') : t('tables.home.private')}
                       </span>
@@ -127,7 +127,7 @@ export function DataCatalogPage() {
                       </ul>
                     )}
                     {base.tables_truncated && (
-                      <p className="mt-2 text-[11px] text-fg-muted" data-testid="data-catalog-tables-truncated">
+                      <p className="mt-2 text-caption text-fg-muted" data-testid="data-catalog-tables-truncated">
                         {t('dataCatalog.tablesTruncated', { shown: base.tables.length, total: base.table_count })}
                       </p>
                     )}
@@ -149,12 +149,12 @@ export function DataCatalogPage() {
                     </div>
                     {source.description && <p className="mt-1 text-xs leading-5 text-fg-muted">{source.description}</p>}
                     {source.record_kinds.length > 0 && (
-                      <p className="mt-2 text-[11px] text-fg-faint">
+                      <p className="mt-2 text-caption text-fg-faint">
                         {t('dataCatalog.recordKinds', { kinds: source.record_kinds.join(', ') })}
                       </p>
                     )}
                     {source.exports.length > 0 && (
-                      <ul className="mt-2 space-y-0.5 text-[11px] text-fg-muted">
+                      <ul className="mt-2 space-y-0.5 text-caption text-fg-muted">
                         {source.exports.map((entry) => (
                           <li key={entry.type}>
                             {t('dataCatalog.export', { type: entry.type })} — {entry.describe}

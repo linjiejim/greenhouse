@@ -23,7 +23,7 @@ export function RuntimePayloadPanel({
         />
         <span>{title}</span>
       </summary>
-      <pre className="selectable max-h-[32rem] overflow-auto border-t border-edge p-3 text-[11px] leading-relaxed text-fg-secondary">
+      <pre className="selectable max-h-[32rem] overflow-auto border-t border-edge p-3 text-caption leading-relaxed text-fg-secondary">
         {payloadText(value)}
       </pre>
     </details>

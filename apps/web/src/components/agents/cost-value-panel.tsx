@@ -179,14 +179,14 @@ export function CostValuePanel() {
                         {agent.name}
                         {agent.agent_version != null ? ` · v${agent.agent_version}` : ''}
                       </div>
-                      <div className="text-[10px] text-fg-faint">
+                      <div className="text-caption text-fg-faint">
                         {t('agents.costValue.callsTokens', {
                           calls: agent.total_calls.toLocaleString(),
                           tokens: formatTokens(agent.total_tokens),
                         })}
                       </div>
                     </div>
-                    <div className="text-right text-[10px] text-fg-muted">
+                    <div className="text-right text-caption text-fg-muted">
                       <div>{formatDuration(agent.total_duration_ms)}</div>
                       {agent.actual_usd_micros !== 0 && <div>{formatUsdMicros(agent.actual_usd_micros)}</div>}
                     </div>
@@ -205,14 +205,14 @@ export function CostValuePanel() {
                       <div className="truncate text-xs font-medium text-fg" title={user.email ?? user.user_id}>
                         {user.nickname ?? user.email ?? user.user_id}
                       </div>
-                      <div className="text-[10px] text-fg-faint">
+                      <div className="text-caption text-fg-faint">
                         {t('agents.costValue.callsTokens', {
                           calls: user.total_calls.toLocaleString(),
                           tokens: formatTokens(user.total_tokens),
                         })}
                       </div>
                     </div>
-                    <div className="text-right text-[10px] text-fg-muted">
+                    <div className="text-right text-caption text-fg-muted">
                       <div>{formatDuration(user.total_duration_ms)}</div>
                       {user.actual_usd_micros !== 0 && <div>{formatUsdMicros(user.actual_usd_micros)}</div>}
                     </div>
@@ -232,7 +232,7 @@ export function CostValuePanel() {
                     <div className="min-w-0 flex-1 text-xs font-medium text-fg">
                       {RUNTIME_KIND_KEYS[runtime.kind] ? t(RUNTIME_KIND_KEYS[runtime.kind]) : runtime.kind}
                     </div>
-                    <div className="text-right text-[10px] text-fg-muted">
+                    <div className="text-right text-caption text-fg-muted">
                       <div>
                         {t('agents.costValue.runsAndRate', {
                           runs: runtime.total_runs,
@@ -274,7 +274,7 @@ export function CostValuePanel() {
                             : budget.status}
                       </Tag>
                     </div>
-                    <div className="mt-1 text-[10px] text-fg-faint">
+                    <div className="mt-1 text-caption text-fg-faint">
                       {t('agents.costValue.budgetBalance', {
                         available: formatBudgetUnits(budget.unit, budget.available_units),
                         limit: formatBudgetUnits(budget.unit, budget.limit_units),
@@ -343,7 +343,7 @@ export function CostValuePanel() {
 function Metric({ icon: Icon, label, value }: { icon: LucideIcon; label: string; value: string }) {
   return (
     <div className="rounded-sm border border-edge bg-surface-muted px-3 py-2">
-      <div className="flex items-center gap-1 text-[10px] text-fg-muted">
+      <div className="flex items-center gap-1 text-caption text-fg-muted">
         <Icon size={12} />
         {label}
       </div>

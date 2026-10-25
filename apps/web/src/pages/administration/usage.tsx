@@ -89,7 +89,7 @@ function ByUsersTab({ period }: { period: string }) {
         </KpiCard>
         <KpiCard title={t('usage.totalTokens')}>
           <div className="text-2xl font-bold text-fg">{formatTokens(totalInput + totalOutput)}</div>
-          <div className="text-[11px] text-fg-faint mt-0.5">
+          <div className="text-caption text-fg-faint mt-0.5">
             {t('usage.inputOutput', { input: formatTokens(totalInput), output: formatTokens(totalOutput) })}
           </div>
         </KpiCard>
@@ -97,7 +97,7 @@ function ByUsersTab({ period }: { period: string }) {
 
       {/* Detail table */}
       <Card className="p-0 overflow-x-auto">
-        <table className="w-full min-w-[680px] text-[11px]">
+        <table className="w-full min-w-[680px] text-caption">
           <thead>
             <tr className="text-fg-faint border-b border-edge bg-surface-sunken/50">
               <th className="text-left font-medium py-2.5 px-4">{t('usage.user')}</th>
@@ -158,7 +158,7 @@ function ByProfilesTab({ summary }: { summary: UsageSummary }) {
         <KpiCard title={t('usage.inputTokens')}>
           <div className="text-2xl font-bold text-fg">{formatTokens(total.total_input_tokens)}</div>
           {Number(total.total_cached_tokens) > 0 && (
-            <div className="text-[11px] text-fg-faint mt-0.5">
+            <div className="text-caption text-fg-faint mt-0.5">
               {t('usage.cached', { count: formatTokens(total.total_cached_tokens) })}
             </div>
           )}
@@ -166,7 +166,7 @@ function ByProfilesTab({ summary }: { summary: UsageSummary }) {
         <KpiCard title={t('usage.outputTokens')}>
           <div className="text-2xl font-bold text-fg">{formatTokens(total.total_output_tokens)}</div>
           {Number(total.total_reasoning_tokens) > 0 && (
-            <div className="text-[11px] text-fg-faint mt-0.5">
+            <div className="text-caption text-fg-faint mt-0.5">
               {t('usage.reasoning', { count: formatTokens(total.total_reasoning_tokens) })}
             </div>
           )}
@@ -185,7 +185,7 @@ function ByProfilesTab({ summary }: { summary: UsageSummary }) {
         />
         {by_profile.length > 0 && (
           <div className="mt-4 pt-4 border-t border-edge overflow-x-auto">
-            <table className="w-full min-w-[560px] text-[11px]">
+            <table className="w-full min-w-[560px] text-caption">
               <thead>
                 <tr className="text-fg-faint">
                   <th className="text-left font-medium pb-2">{t('usage.profile')}</th>
@@ -230,7 +230,7 @@ function ByCallersTab({ summary }: { summary: UsageSummary }) {
         <KpiCard title={t('usage.inputTokens')}>
           <div className="text-2xl font-bold text-fg">{formatTokens(total.total_input_tokens)}</div>
           {Number(total.total_cached_tokens) > 0 && (
-            <div className="text-[11px] text-fg-faint mt-0.5">
+            <div className="text-caption text-fg-faint mt-0.5">
               {t('usage.cached', { count: formatTokens(total.total_cached_tokens) })}
             </div>
           )}
@@ -238,7 +238,7 @@ function ByCallersTab({ summary }: { summary: UsageSummary }) {
         <KpiCard title={t('usage.outputTokens')}>
           <div className="text-2xl font-bold text-fg">{formatTokens(total.total_output_tokens)}</div>
           {Number(total.total_reasoning_tokens) > 0 && (
-            <div className="text-[11px] text-fg-faint mt-0.5">
+            <div className="text-caption text-fg-faint mt-0.5">
               {t('usage.reasoning', { count: formatTokens(total.total_reasoning_tokens) })}
             </div>
           )}
@@ -257,7 +257,7 @@ function ByCallersTab({ summary }: { summary: UsageSummary }) {
         />
         {by_caller.length > 0 && (
           <div className="mt-4 pt-4 border-t border-edge overflow-x-auto">
-            <table className="w-full min-w-[480px] text-[11px]">
+            <table className="w-full min-w-[480px] text-caption">
               <thead>
                 <tr className="text-fg-faint">
                   <th className="text-left font-medium pb-2">{t('usage.caller')}</th>

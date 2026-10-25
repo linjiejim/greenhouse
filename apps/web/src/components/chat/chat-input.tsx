@@ -361,7 +361,7 @@ export function ChatInput({
                     </div>
                   )}
                   {img.uploaded && (
-                    <div className="absolute bottom-0 left-0 right-0 bg-success/80 text-white text-[9px] text-center">
+                    <div className="absolute bottom-0 left-0 right-0 bg-success/80 text-white text-caption text-center">
                       ✓
                     </div>
                   )}

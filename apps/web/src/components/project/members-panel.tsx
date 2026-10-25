@@ -137,10 +137,10 @@ export function MembersPanel({
                         {m.nickname}
                       </span>
                       {m.user_id === currentUserId && (
-                        <span className="text-[10px] text-fg-faint">({t('common.you')})</span>
+                        <span className="text-caption text-fg-faint">({t('common.you')})</span>
                       )}
                     </div>
-                    <div className="flex items-center gap-1 text-[10px] text-fg-faint">
+                    <div className="flex items-center gap-1 text-caption text-fg-faint">
                       <RoleIcon size={10} />
                       <span>{m.role === 'owner' ? t('projects.owner') : t('projects.member')}</span>
                     </div>

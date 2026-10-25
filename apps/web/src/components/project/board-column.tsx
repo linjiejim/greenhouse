@@ -35,7 +35,7 @@ export function BoardColumn({
       <div className={`flex items-center gap-2 px-3 py-2 rounded-t-md border ${cfg.bg}`}>
         <StatusIcon status={status} size={13} />
         <span className="text-xs font-medium">{t(cfg.label)}</span>
-        <span className="text-[10px] text-fg-faint ml-auto">{flatTasks.length}</span>
+        <span className="text-caption text-fg-faint ml-auto">{flatTasks.length}</span>
       </div>
       <div className="space-y-1.5 p-1.5 bg-surface-sunken/50 rounded-b-md border border-t-0 border-edge min-h-[100px]">
         {flatTasks.map((task) => (
@@ -55,11 +55,11 @@ export function BoardColumn({
               </div>
               <div className="flex items-center gap-1.5">
                 {task.assignee_nickname && (
-                  <span className="bg-surface-muted px-1.5 py-0.5 rounded-full text-[10px] truncate max-w-[50px]">
+                  <span className="bg-surface-muted px-1.5 py-0.5 rounded-full text-caption truncate max-w-[50px]">
                     {task.assignee_nickname}
                   </span>
                 )}
-                {task.due_date && <span className="text-[10px]">{task.due_date.slice(5)}</span>}
+                {task.due_date && <span className="text-caption">{task.due_date.slice(5)}</span>}
               </div>
             </div>
           </div>

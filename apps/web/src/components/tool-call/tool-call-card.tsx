@@ -140,23 +140,23 @@ export function ToolCallCard({ call, variant }: ToolCallCardProps) {
         <span className="flex-shrink-0">
           <ToolIcon size={11} />
         </span>
-        <span className={`flex-shrink-0 text-[11px] ${isLoading ? 'text-warning' : 'text-fg-secondary'}`}>
+        <span className={`flex-shrink-0 text-caption ${isLoading ? 'text-warning' : 'text-fg-secondary'}`}>
           {toolDisplayName(call.name)}
         </span>
-        {inputSummary && <span className="min-w-0 truncate text-[11px] text-fg-faint">{inputSummary}</span>}
+        {inputSummary && <span className="min-w-0 truncate text-caption text-fg-faint">{inputSummary}</span>}
         {outputSummary && (
-          <span className="hidden max-w-[180px] truncate text-[10px] text-fg-faint md:inline">→ {outputSummary}</span>
+          <span className="hidden max-w-[180px] truncate text-caption text-fg-faint md:inline">→ {outputSummary}</span>
         )}
 
         {/* Duration (full variant only) */}
         {variant === 'full' && call.durationMs != null && (
-          <span className="text-[10px] text-fg-faint tabular-nums flex-shrink-0 ml-auto mr-1">
+          <span className="text-caption text-fg-faint tabular-nums flex-shrink-0 ml-auto mr-1">
             {(call.durationMs / 1000).toFixed(2)}s
           </span>
         )}
 
         <span className="flex-shrink-0">
-          {isLoading ? <span className="text-[10px] font-medium text-warning">{t('chat.toolRunning')}</span> : null}
+          {isLoading ? <span className="text-caption font-medium text-warning">{t('chat.toolRunning')}</span> : null}
         </span>
       </button>
 
@@ -195,7 +195,7 @@ export function ToolCallCard({ call, variant }: ToolCallCardProps) {
           {call.input != null && (
             <div className="flex-shrink-0">
               <span className="text-xs font-medium text-fg-muted">{t('chat.toolInput')}</span>
-              <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap break-words rounded-sm border border-edge bg-surface-sunken p-2.5 text-[11px] text-fg-secondary">
+              <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap break-words rounded-sm border border-edge bg-surface-sunken p-2.5 text-caption text-fg-secondary">
                 {formatJson(call.input)}
               </pre>
             </div>
@@ -203,7 +203,7 @@ export function ToolCallCard({ call, variant }: ToolCallCardProps) {
           {output !== undefined && (
             <div className="flex min-h-0 flex-1 flex-col">
               <span className="text-xs font-medium text-fg-muted">{t('chat.toolOutput')}</span>
-              <div className="mt-1 min-h-0 flex-1 overflow-auto rounded-sm border border-edge bg-surface-sunken p-2.5 text-[11px] text-fg-secondary">
+              <div className="mt-1 min-h-0 flex-1 overflow-auto rounded-sm border border-edge bg-surface-sunken p-2.5 text-caption text-fg-secondary">
                 <JsonDataView value={parseJsonValue(output)} />
               </div>
             </div>
@@ -267,7 +267,7 @@ function JsonCollectionRow({ label, value, depth }: { label: string; value: unkn
       <summary className="flex cursor-pointer list-none items-center gap-1 px-2 py-1.5 text-fg-muted hover:text-fg-secondary">
         <ChevronRight size={11} className="flex-shrink-0 transition-transform group-open:rotate-90" />
         <span className="min-w-0 flex-1 break-words font-medium text-primary-fg">{label}</span>
-        <span className="flex-shrink-0 text-[10px] text-fg-faint">
+        <span className="flex-shrink-0 text-caption text-fg-faint">
           {t(Array.isArray(value) ? 'tools.itemCount' : 'tools.fieldCount', { count })}
         </span>
       </summary>

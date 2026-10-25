@@ -141,7 +141,7 @@ export function InlineMultiSelectEditor({
           </div>
         )}
       </div>
-      {error && <p className="mb-2 text-[10px] text-danger">{error}</p>}
+      {error && <p className="mb-2 text-caption text-danger">{error}</p>}
       <div className="flex justify-end gap-1">
         <Button type="button" size="sm" variant="ghost" disabled={saving} onClick={onCancel}>
           {t('common.cancel')}

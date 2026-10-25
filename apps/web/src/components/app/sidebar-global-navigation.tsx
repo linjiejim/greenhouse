@@ -62,7 +62,7 @@ function PrimaryLink({
       {!compact && <span className="min-w-0 flex-1 truncate">{item.label}</span>}
       {!!item.badge && (
         <span
-          className={`${compact ? 'absolute -right-1 -top-1' : ''} inline-flex min-w-4 items-center justify-center rounded-full bg-warning-subtle px-1 text-[9px] font-semibold text-warning`}
+          className={`${compact ? 'absolute -right-1 -top-1' : ''} inline-flex min-w-4 items-center justify-center rounded-full bg-warning-subtle px-1 text-caption font-semibold text-warning`}
         >
           {item.badge > 99 ? '99+' : item.badge}
         </span>
@@ -247,7 +247,7 @@ export function SidebarGlobalNavigation({
                       />
                       <span className="truncate">{item.label}</span>
                       {!!item.badge && (
-                        <span className="ml-auto inline-flex min-w-4 items-center justify-center rounded-full bg-warning-subtle px-1 text-[9px] font-semibold text-warning">
+                        <span className="ml-auto inline-flex min-w-4 items-center justify-center rounded-full bg-warning-subtle px-1 text-caption font-semibold text-warning">
                           {item.badge > 99 ? '99+' : item.badge}
                         </span>
                       )}

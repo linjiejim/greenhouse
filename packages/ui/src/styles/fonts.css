@@ -1,0 +1,17 @@
+/* Bundled Nunito, SIL OFL 1.1 (../assets/fonts). No external font request at runtime; the family
+   stack with its CJK fallbacks is `--font-sans` in ../tokens/tokens.css. */
+@font-face {
+  font-family: Nunito;
+  font-style: normal;
+  font-weight: 200 1000;
+  font-display: swap;
+  src: url('../assets/fonts/nunito-variable.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: Nunito;
+  font-style: italic;
+  font-weight: 200 1000;
+  font-display: swap;
+  src: url('../assets/fonts/nunito-italic-variable.woff2') format('woff2');
+}

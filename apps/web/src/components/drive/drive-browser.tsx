@@ -355,7 +355,7 @@ export function DriveBrowser({
                     <span className="block text-sm text-fg truncate" title={f.name}>
                       {f.name}
                     </span>
-                    <span className="block text-[11px] text-fg-faint">
+                    <span className="block text-caption text-fg-faint">
                       {formatFileSize(f.size)} · {formatDate(f.created_at)}
                     </span>
                   </span>

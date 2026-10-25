@@ -449,7 +449,7 @@ export function ScanPanel({
       {(high.length > 0 || other.length > 0) && (
         <div className="mt-2 space-y-1">
           {[...high, ...other].map((f, i) => (
-            <div key={`${f.rule}-${f.path ?? 'meta'}-${i}`} className="text-[11px] text-fg-secondary">
+            <div key={`${f.rule}-${f.path ?? 'meta'}-${i}`} className="text-caption text-fg-secondary">
               <Tag tone={f.severity === 'high' ? 'danger' : 'neutral'}>{f.rule}</Tag>
               {f.path && <span className="ml-1.5 font-mono text-fg-faint">{f.path}</span>}
               <div className="mt-0.5 font-mono break-all text-fg-muted">{f.excerpt}</div>

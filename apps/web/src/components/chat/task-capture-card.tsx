@@ -134,15 +134,15 @@ export function TaskCaptureCard({
       }
     >
       <div className="space-y-2.5">
-        {createdId === null && <p className="text-[11px] text-fg-faint">{t('tasks.capturedHint')}</p>}
+        {createdId === null && <p className="text-caption text-fg-faint">{t('tasks.capturedHint')}</p>}
 
         <label className="block">
-          <span className="mb-0.5 block text-[10px] text-fg-muted">{t('tasks.fieldTitle')}</span>
+          <span className="mb-0.5 block text-caption text-fg-muted">{t('tasks.fieldTitle')}</span>
           <Input size="sm" value={title} onChange={(e) => setTitle(e.target.value)} disabled={createdId !== null} />
         </label>
 
         <label className="block">
-          <span className="mb-0.5 block text-[10px] text-fg-muted">{t('tasks.fieldDescription')}</span>
+          <span className="mb-0.5 block text-caption text-fg-muted">{t('tasks.fieldDescription')}</span>
           <Input
             size="sm"
             value={description}
@@ -152,7 +152,7 @@ export function TaskCaptureCard({
         </label>
 
         <label className="block">
-          <span className="mb-0.5 block text-[10px] text-fg-muted">{t('tasks.fieldContent')}</span>
+          <span className="mb-0.5 block text-caption text-fg-muted">{t('tasks.fieldContent')}</span>
           <Textarea
             rows={7}
             value={content}
@@ -164,13 +164,13 @@ export function TaskCaptureCard({
 
         {data.variables.length > 0 && (
           <div>
-            <span className="mb-1 block text-[10px] text-fg-muted">{t('tasks.variables')}</span>
+            <span className="mb-1 block text-caption text-fg-muted">{t('tasks.variables')}</span>
             <div className="flex flex-wrap gap-1">
               {data.variables.map((variable) => (
                 <span
                   key={variable.key}
                   title={variable.example || undefined}
-                  className="rounded border border-edge bg-surface-muted px-1.5 py-0.5 text-[10px] text-fg-secondary"
+                  className="rounded border border-edge bg-surface-muted px-1.5 py-0.5 text-caption text-fg-secondary"
                 >
                   {`{{${variable.key}}}`} · {variable.label}
                   {variable.required && <span className="ml-0.5 text-danger">*</span>}
@@ -184,14 +184,14 @@ export function TaskCaptureCard({
           <div>
             {/* Derived from what this conversation really called, so it is a
                 capability report rather than a claim. */}
-            <span className="mb-1 block text-[10px] text-fg-muted">{t('tasks.usesTools')}</span>
+            <span className="mb-1 block text-caption text-fg-muted">{t('tasks.usesTools')}</span>
             <div className="flex flex-wrap gap-1">
               {data.expected_tools.map((tool) => {
                 const Icon = getToolIcon(tool);
                 return (
                   <span
                     key={tool}
-                    className="inline-flex items-center gap-1 rounded border border-edge bg-surface-muted px-1.5 py-0.5 text-[10px] text-fg-secondary"
+                    className="inline-flex items-center gap-1 rounded border border-edge bg-surface-muted px-1.5 py-0.5 text-caption text-fg-secondary"
                   >
                     <Icon size={10} />
                     {tool}

@@ -91,7 +91,7 @@ export function ActivityRow({ item, compact = false }: { item: ActivityItem; com
           <span className="text-fg-secondary">{activityPhrase(t, item)}</span>
           {target && <span className="font-medium"> {target}</span>}
         </p>
-        <div className="mt-0.5 flex min-w-0 flex-wrap items-center gap-1.5 text-[11px] text-fg-faint">
+        <div className="mt-0.5 flex min-w-0 flex-wrap items-center gap-1.5 text-caption text-fg-faint">
           <span title={formatDate(item.at)}>{timeAgo(item.at)}</span>
           <Tag size="xs">{activityModuleLabel(t, item.module)}</Tag>
           {item.agent && (

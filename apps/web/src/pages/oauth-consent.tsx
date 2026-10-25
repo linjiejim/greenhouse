@@ -162,7 +162,7 @@ export function OAuthConsentPage() {
                 <div className="mt-5">
                   <div className="flex items-baseline justify-between gap-2 mb-2">
                     <h2 className="text-sm font-medium text-fg">{t('oauthConsent.capabilitiesTitle')}</h2>
-                    <span className="text-[11px] text-fg-faint">
+                    <span className="text-caption text-fg-faint">
                       {t('oauthConsent.selectedCount', { count: selectedCount, total: offeredGroups.length })}
                     </span>
                   </div>
@@ -192,7 +192,7 @@ export function OAuthConsentPage() {
                 </div>
               )}
 
-              <p className="mt-4 text-[11px] text-fg-faint break-all">
+              <p className="mt-4 text-caption text-fg-faint break-all">
                 {t('oauthConsent.returningTo')} <span className="font-mono">{request.redirect_uri}</span>
               </p>
               {error && <p className="mt-3 text-xs text-danger">{error}</p>}

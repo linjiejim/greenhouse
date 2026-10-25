@@ -35,12 +35,12 @@ export function BatchActionBar({
   const actionsDisabled = busy || count === 0;
 
   const actionClass =
-    'flex flex-1 flex-col items-center justify-center gap-0.5 min-h-[44px] rounded-sm px-1 py-1 text-[10px] font-medium text-fg-secondary transition-colors hover:bg-surface-muted disabled:opacity-40 disabled:hover:bg-transparent';
+    'flex flex-1 flex-col items-center justify-center gap-0.5 min-h-[44px] rounded-sm px-1 py-1 text-caption font-medium text-fg-secondary transition-colors hover:bg-surface-muted disabled:opacity-40 disabled:hover:bg-transparent';
 
   return (
     <div className="sticky bottom-0 z-10 flex-shrink-0 border-t border-edge bg-surface-chrome pb-[max(0.25rem,env(safe-area-inset-bottom))]">
       {/* Count + select-all / clear */}
-      <div className="flex items-center gap-2 px-3 pt-2 text-[11px] text-fg-faint">
+      <div className="flex items-center gap-2 px-3 pt-2 text-caption text-fg-faint">
         <span className="font-medium text-fg-secondary">{t('sessionGroups.selected', { count })}</span>
         <div className="flex-1" />
         {onSelectAll && (
@@ -91,7 +91,7 @@ export function BatchActionBar({
           type="button"
           onClick={onDone}
           disabled={busy}
-          className="flex flex-1 flex-col items-center justify-center gap-0.5 min-h-[44px] rounded-sm px-1 py-1 text-[10px] font-medium text-primary-fg-strong transition-colors hover:bg-primary-subtle disabled:opacity-40"
+          className="flex flex-1 flex-col items-center justify-center gap-0.5 min-h-[44px] rounded-sm px-1 py-1 text-caption font-medium text-primary-fg-strong transition-colors hover:bg-primary-subtle disabled:opacity-40"
           title={t('sessionGroups.done')}
         >
           <X size={15} />

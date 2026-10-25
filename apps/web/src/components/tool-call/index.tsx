@@ -61,7 +61,7 @@ export function ToolCallRenderer({ calls, variant, defaultCollapsed }: ToolCallR
       {/* Summary header — styled to match the "Thinking" toggle */}
       <button
         onClick={() => setCollapsed(!collapsed)}
-        className="flex max-w-full min-w-0 items-center gap-1 py-0.5 text-left text-[11px] text-fg-faint transition-colors hover:text-fg-secondary"
+        className="flex max-w-full min-w-0 items-center gap-1 py-0.5 text-left text-caption text-fg-faint transition-colors hover:text-fg-secondary"
       >
         {callingCount > 0 ? (
           <span className="w-2 h-2 rounded-full bg-warning animate-pulse flex-shrink-0" />
@@ -76,7 +76,7 @@ export function ToolCallRenderer({ calls, variant, defaultCollapsed }: ToolCallR
         {collapsed && callingCount > 0 && currentSummary && (
           <span
             key={`${currentCall?.name}:${currentSummary}:${callingCount}`}
-            className="ml-1 min-w-0 truncate text-[10px] text-fg-faint animate-fade-in"
+            className="ml-1 min-w-0 truncate text-caption text-fg-faint animate-fade-in"
           >
             {currentSummary}
           </span>

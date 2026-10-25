@@ -94,7 +94,7 @@ export function PromptsPanel() {
             width: '6rem',
             render: (p) =>
               p.shortcut ? (
-                <span className="text-[11px] font-mono text-fg-muted bg-surface-muted px-1.5 py-0.5 rounded">
+                <span className="text-caption font-mono text-fg-muted bg-surface-muted px-1.5 py-0.5 rounded">
                   /{p.shortcut}
                 </span>
               ) : (
@@ -108,7 +108,7 @@ export function PromptsPanel() {
             width: '5rem',
             render: (p) =>
               p.is_global ? (
-                <Badge variant="default" className="text-[10px]">
+                <Badge variant="default" className="text-caption">
                   <Globe size={10} className="mr-0.5" /> {t('settings.promptGlobal')}
                 </Badge>
               ) : (
@@ -133,11 +133,11 @@ export function PromptsPanel() {
                     <span
                       key={v.key}
                       title={v.label}
-                      className="rounded bg-surface-muted px-1 py-0.5 font-mono text-[10px] text-fg-muted"
+                      className="rounded bg-surface-muted px-1 py-0.5 font-mono text-caption text-fg-muted"
                     >{`{{${v.key}}}`}</span>
                   ))}
                   {tools.map((tool) => (
-                    <span key={tool} className="rounded bg-surface-muted px-1 py-0.5 text-[10px] text-fg-muted">
+                    <span key={tool} className="rounded bg-surface-muted px-1 py-0.5 text-caption text-fg-muted">
                       {tool}
                     </span>
                   ))}

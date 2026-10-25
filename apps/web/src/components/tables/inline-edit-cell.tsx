@@ -146,7 +146,7 @@ export function InlineEditCell<T>({
           onChange={(checked) => void commitValue(checked as T)}
         />
         <span className="text-xs text-fg-muted">{value === true ? t('common.yes') : t('common.no')}</span>
-        {error && <span className="text-[10px] text-danger">{error}</span>}
+        {error && <span className="text-caption text-danger">{error}</span>}
       </div>
     );
   }
@@ -228,7 +228,7 @@ export function InlineEditCell<T>({
           />
           <span>{value === true ? t('common.yes') : t('common.no')}</span>
         </div>
-        {error && <p className="mt-1 whitespace-normal text-[10px] text-danger">{error}</p>}
+        {error && <p className="mt-1 whitespace-normal text-caption text-danger">{error}</p>}
       </div>
     );
   }
@@ -312,7 +312,7 @@ export function InlineEditCell<T>({
       onClick={(event) => event.stopPropagation()}
     >
       {control}
-      {error && <p className="mt-1 whitespace-normal text-[10px] text-danger">{error}</p>}
+      {error && <p className="mt-1 whitespace-normal text-caption text-danger">{error}</p>}
     </div>
   );
 }

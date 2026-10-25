@@ -143,7 +143,7 @@ function ConnectionField({ value, onChange, disabled }: CrudFieldRenderProps) {
 
       <div className="grid grid-cols-2 gap-2">
         <div>
-          <label className="text-[11px] text-fg-faint mb-1 block">IMAP host</label>
+          <label className="text-caption text-fg-faint mb-1 block">IMAP host</label>
           <Input
             size="sm"
             disabled={disabled}
@@ -152,7 +152,7 @@ function ConnectionField({ value, onChange, disabled }: CrudFieldRenderProps) {
           />
         </div>
         <div>
-          <label className="text-[11px] text-fg-faint mb-1 block">IMAP port</label>
+          <label className="text-caption text-fg-faint mb-1 block">IMAP port</label>
           <Input
             size="sm"
             type="number"
@@ -162,7 +162,7 @@ function ConnectionField({ value, onChange, disabled }: CrudFieldRenderProps) {
           />
         </div>
         <div>
-          <label className="text-[11px] text-fg-faint mb-1 block">SMTP host</label>
+          <label className="text-caption text-fg-faint mb-1 block">SMTP host</label>
           <Input
             size="sm"
             disabled={disabled}
@@ -171,7 +171,7 @@ function ConnectionField({ value, onChange, disabled }: CrudFieldRenderProps) {
           />
         </div>
         <div>
-          <label className="text-[11px] text-fg-faint mb-1 block">SMTP port</label>
+          <label className="text-caption text-fg-faint mb-1 block">SMTP port</label>
           <Input
             size="sm"
             type="number"

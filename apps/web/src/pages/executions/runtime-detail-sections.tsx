@@ -36,7 +36,7 @@ export function RuntimeStepsSection({ steps }: { steps: readonly RuntimeStep[] }
               {technicalStatus(step.status)}
               <Tag tone="neutral">{step.kind}</Tag>
             </div>
-            <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[10px] text-fg-faint">
+            <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-caption text-fg-faint">
               <span>{t('taskCenter.attempt', { count: step.attempt })}</span>
               <span>{t('taskCenter.tokensUsed', { count: formatTokens(step.tokens_used) })}</span>
               <span>{t('taskCenter.requestsUsed', { count: step.requests_used })}</span>
@@ -75,7 +75,7 @@ export function RuntimeToolCallsSection({ calls }: { calls: readonly RuntimeTool
               {technicalStatus(call.status)}
             </div>
             {call.canonical_input_hash && (
-              <p className="selectable mt-2 break-all font-mono text-[10px] text-fg-faint">
+              <p className="selectable mt-2 break-all font-mono text-caption text-fg-faint">
                 {t('taskCenter.inputHash')}: {call.canonical_input_hash}
               </p>
             )}
@@ -112,7 +112,7 @@ export function RuntimeArtifactsSection({ artifacts }: { artifacts: readonly Run
                   </span>
                   {technicalStatus(artifact.status)}
                 </div>
-                <div className="mt-1 space-y-0.5 text-[10px] text-fg-faint">
+                <div className="mt-1 space-y-0.5 text-caption text-fg-faint">
                   <p>{[artifact.kind, artifact.content_type, artifact.direction].filter(Boolean).join(' · ')}</p>
                   {artifact.size_bytes !== null && <p>{formatFileSize(artifact.size_bytes)}</p>}
                   {artifact.path && <p className="selectable break-all">{artifact.path}</p>}
@@ -139,8 +139,8 @@ export function RuntimeEventsSection({ events }: { events: readonly RuntimeEvent
             <span className="absolute -left-[1.56rem] top-1.5 h-2 w-2 rounded-full border border-primary-edge bg-accent" />
             <div className="flex flex-wrap items-center gap-2">
               <span className="font-mono text-xs font-semibold text-fg">{event.type}</span>
-              <span className="text-[10px] text-fg-faint">#{event.seq}</span>
-              <span className="text-[10px] text-fg-faint">{formatDate(event.created_at)}</span>
+              <span className="text-caption text-fg-faint">#{event.seq}</span>
+              <span className="text-caption text-fg-faint">{formatDate(event.created_at)}</span>
               {event.type.endsWith('status_changed') && <CheckCircle2 size={12} className="text-success" />}
             </div>
             <div className="mt-1">

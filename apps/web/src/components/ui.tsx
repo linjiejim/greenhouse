@@ -145,7 +145,7 @@ export function IconButton({
       {tooltipMode === 'inline' && (
         <span
           role="tooltip"
-          className={`pointer-events-none absolute ${place} left-1/2 -translate-x-1/2 z-30 whitespace-nowrap rounded bg-fg px-1.5 py-0.5 text-[11px] text-surface-raised opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100`}
+          className={`pointer-events-none absolute ${place} left-1/2 -translate-x-1/2 z-30 whitespace-nowrap rounded bg-fg px-1.5 py-0.5 text-caption text-surface-raised opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100`}
         >
           {label}
         </span>
@@ -156,7 +156,7 @@ export function IconButton({
           <span
             role="tooltip"
             style={{ left: portalPosition.left, top: portalPosition.top }}
-            className={`pointer-events-none fixed z-[70] -translate-x-1/2 whitespace-nowrap rounded bg-fg px-1.5 py-0.5 text-[11px] text-surface-raised shadow-sm ${
+            className={`pointer-events-none fixed z-[70] -translate-x-1/2 whitespace-nowrap rounded bg-fg px-1.5 py-0.5 text-caption text-surface-raised shadow-sm ${
               tooltip === 'top' ? '-translate-y-full' : ''
             }`}
           >
@@ -373,7 +373,7 @@ export function Badge({
 
 // ─── Tag ─────────────────────────────────────────────────
 // Compact, single-line pill for table cells & dense metadata. ALWAYS
-// `whitespace-nowrap` — replaces hand-rolled `text-[10px] px-1.5 py-0.5 rounded`
+// `whitespace-nowrap` — replaces hand-rolled `text-caption px-1.5 py-0.5 rounded`
 // spans that wrapped char-by-char when columns were squeezed. Pass `truncate`
 // inside constrained cells so long values ellipsize instead of overflowing.
 
@@ -409,7 +409,7 @@ export function Tag({
   className = '',
   children,
 }: TagProps) {
-  const sizeCls = size === 'xs' ? 'text-[10px] px-1.5 py-0.5 gap-0.5' : 'text-xs px-2 py-0.5 gap-1';
+  const sizeCls = size === 'xs' ? 'text-caption px-1.5 py-0.5 gap-0.5' : 'text-xs px-2 py-0.5 gap-1';
   const autoTitle = title ?? (truncate && typeof children === 'string' ? children : undefined);
   return (
     <span
@@ -444,7 +444,7 @@ export function TagList({ items, max = 3, tone = 'neutral', className = '' }: Ta
           {String(t)}
         </Tag>
       ))}
-      {rest > 0 && <span className="text-[10px] text-fg-faint flex-shrink-0">+{rest}</span>}
+      {rest > 0 && <span className="text-caption text-fg-faint flex-shrink-0">+{rest}</span>}
     </div>
   );
 }
@@ -577,7 +577,7 @@ interface InputProps extends Omit<React.InputHTMLAttributes<HTMLInputElement>, '
 
 export function Input({ size = 'md', className = '', ...props }: InputProps) {
   const sizes: Record<string, string> = {
-    xs: 'px-1 py-0.5 text-[11px]',
+    xs: 'px-1 py-0.5 text-caption',
     sm: 'px-2 py-1.5 text-xs',
     md: 'px-3 py-2 text-sm',
     lg: 'px-4 py-3 text-sm rounded-lg',
@@ -865,7 +865,7 @@ interface SelectProps extends Omit<React.SelectHTMLAttributes<HTMLSelectElement>
 
 export function Select({ size = 'md', inline = false, className = '', ...props }: SelectProps) {
   const sizes: Record<string, string> = {
-    xs: 'px-1 py-0.5 text-[11px]',
+    xs: 'px-1 py-0.5 text-caption',
     sm: 'px-2 py-1.5 text-xs',
     md: 'px-3 py-2 text-sm',
     lg: 'px-4 py-3 text-sm rounded-lg',
@@ -972,11 +972,11 @@ export function AppLogo({
     <div className="flex items-center gap-2">
       <img src={logoSrc} alt={productName} className={`${sizeClasses[size]} ${logoRounding} object-contain`} />
       <div className="flex flex-col">
-        <span className="font-display font-bold text-fg text-sm leading-tight">{productName}</span>
+        <span className="font-bold text-fg text-sm leading-tight">{productName}</span>
         {showAttribution && (
-          <span className="text-[9px] text-fg-faint leading-tight">{t('navigation.brandTagline')}</span>
+          <span className="text-caption text-fg-faint leading-tight">{t('navigation.brandTagline')}</span>
         )}
-        {showVersion && <span className="text-[9px] text-fg-faint font-mono leading-tight">v{APP_VERSION}</span>}
+        {showVersion && <span className="text-caption text-fg-faint font-mono leading-tight">v{APP_VERSION}</span>}
       </div>
     </div>
   );
@@ -1316,7 +1316,7 @@ export function FilterPills({
   className = '',
 }: FilterPillsProps) {
   const isSegment = variant === 'segment';
-  const base = `${fill ? 'min-w-0 flex-1 justify-center' : 'flex-shrink-0'} inline-flex items-center gap-1 text-[11px] border transition-colors whitespace-nowrap ${
+  const base = `${fill ? 'min-w-0 flex-1 justify-center' : 'flex-shrink-0'} inline-flex items-center gap-1 text-caption border transition-colors whitespace-nowrap ${
     isSegment ? 'rounded px-2 py-[3px]' : 'rounded-full px-2 py-0.5'
   }`;
   // A segment's unselected items sit flat on the track — borders on every one
@@ -1334,7 +1334,7 @@ export function FilterPills({
       if (key === null) return onChange(null);
       onChange(toggle && isActive ? null : key);
     };
-    const badge = count !== undefined ? <span className="text-[10px] tabular-nums opacity-70">{count}</span> : null;
+    const badge = count !== undefined ? <span className="text-caption tabular-nums opacity-70">{count}</span> : null;
 
     if (color) {
       return (
@@ -1513,7 +1513,7 @@ interface AvatarProps {
 
 export function Avatar({ name, icon, size = 'md', variant = 'default', className = '' }: AvatarProps) {
   const sizeMap: Record<string, { box: string; text: string; icon: number }> = {
-    xs: { box: 'w-5 h-5', text: 'text-[10px]', icon: 10 },
+    xs: { box: 'w-5 h-5', text: 'text-caption', icon: 10 },
     sm: { box: 'w-7 h-7', text: 'text-xs', icon: 13 },
     md: { box: 'w-8 h-8', text: 'text-sm', icon: 14 },
     lg: { box: 'w-14 h-14', text: 'text-2xl', icon: 24 },
@@ -1558,7 +1558,7 @@ export function DateRangeInput({
   const inputSize = size === 'sm' ? ('xs' as const) : ('sm' as const);
   return (
     <div className={`flex items-center gap-1.5 ${className}`}>
-      <span className="text-[10px] text-fg-faint flex-shrink-0">{t('common.from')}</span>
+      <span className="text-caption text-fg-faint flex-shrink-0">{t('common.from')}</span>
       <Input
         type={type}
         size={inputSize}
@@ -1566,7 +1566,7 @@ export function DateRangeInput({
         onChange={(e) => onChange(e.target.value, to)}
         className={width}
       />
-      <span className="text-[10px] text-fg-faint flex-shrink-0">{t('common.to')}</span>
+      <span className="text-caption text-fg-faint flex-shrink-0">{t('common.to')}</span>
       <Input
         type={type}
         size={inputSize}

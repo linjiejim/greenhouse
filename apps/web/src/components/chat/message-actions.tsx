@@ -130,7 +130,7 @@ export function MessageActions({
   return (
     <div ref={actionsRef} className="relative inline-flex items-center gap-1">
       {/* Copy feedback toast */}
-      {copyFeedback && <span className="text-[10px] text-success font-medium animate-fade-in">{copyFeedback}</span>}
+      {copyFeedback && <span className="text-caption text-success font-medium animate-fade-in">{copyFeedback}</span>}
 
       {/* Compact icon actions share one stable right-aligned row. */}
       <div className="flex items-center gap-0.5">

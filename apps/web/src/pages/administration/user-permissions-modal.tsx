@@ -153,7 +153,7 @@ function FeaturePointCard({
         {(hasFiner || isToolset) && (
           <button
             onClick={() => setExpanded((v) => !v)}
-            className="text-[11px] text-fg-faint hover:text-fg-secondary px-2 py-1 rounded"
+            className="text-caption text-fg-faint hover:text-fg-secondary px-2 py-1 rounded"
           >
             {expanded ? t('permissions.hide') : isToolset ? t('permissions.tools') : t('permissions.details')}
           </button>
@@ -162,7 +162,7 @@ function FeaturePointCard({
           <Toggle checked={point.enabled} disabled={busy} onChange={(next) => onToggleMain(point, next)} />
         )}
         {isToolset && (
-          <span className="text-[11px] text-fg-faint whitespace-nowrap">
+          <span className="text-caption text-fg-faint whitespace-nowrap">
             {t('permissions.toolsOn', {
               enabled: (point.tools ?? []).filter((tool) => tool.assigned).length,
               total: point.tools?.length ?? 0,
@@ -174,14 +174,14 @@ function FeaturePointCard({
       {expanded && (isToolset || hasFiner) && (
         <div className="border-t border-edge bg-surface-sunken px-3.5 py-3 space-y-3">
           {isApp && !point.enabled && (
-            <p className="text-[11px] text-fg-muted flex items-center gap-1.5">
+            <p className="text-caption text-fg-muted flex items-center gap-1.5">
               <Info size={12} /> {t('permissions.enableToFineTune')}
             </p>
           )}
 
           {isApp && (point.capabilities?.length ?? 0) > 0 && (
             <div className="space-y-1">
-              <div className="text-[11px] font-semibold text-fg-faint uppercase tracking-wider">
+              <div className="text-caption font-semibold text-fg-faint uppercase tracking-wider">
                 {t('common.actions')}
               </div>
               {point.capabilities!.map((cap) => (
@@ -194,7 +194,7 @@ function FeaturePointCard({
                       <Tag tone={cap.allowed ? 'success' : 'danger'}>
                         {cap.allowed ? t('permissions.allowed') : t('permissions.denied')}
                       </Tag>
-                      <span className="text-[10px] text-fg-faint truncate">{cap.reason}</span>
+                      <span className="text-caption text-fg-faint truncate">{cap.reason}</span>
                     </div>
                   </div>
                 </div>
@@ -204,7 +204,7 @@ function FeaturePointCard({
 
           {isApp && (point.entities?.length ?? 0) > 0 && (
             <div className="space-y-1.5">
-              <div className="text-[11px] font-semibold text-fg-faint uppercase tracking-wider">
+              <div className="text-caption font-semibold text-fg-faint uppercase tracking-wider">
                 {t('permissions.recordsAndFields')}
               </div>
               {point.entities!.map((entity) => (
@@ -221,7 +221,7 @@ function FeaturePointCard({
                   <Icon size={14} className="text-fg-faint flex-shrink-0" />
                   <div className="min-w-0 flex-1">
                     <span className="text-xs font-medium text-fg-secondary">{toolItem.name}</span>
-                    <span className="text-[11px] text-fg-faint ml-2">{toolItem.brief}</span>
+                    <span className="text-caption text-fg-faint ml-2">{toolItem.brief}</span>
                   </div>
                   <Toggle
                     size="sm"
@@ -244,7 +244,7 @@ function GlobalToolsSection({ baseline }: { baseline: UserAccessView['baseline']
   const t = useT();
   return (
     <div className="space-y-1.5 pt-1">
-      <div className="text-[11px] font-semibold text-fg-faint uppercase tracking-wider">
+      <div className="text-caption font-semibold text-fg-faint uppercase tracking-wider">
         {t('permissions.globalTools')}
       </div>
       <p className="text-xs text-fg-muted leading-relaxed flex items-start gap-1.5">
@@ -255,7 +255,7 @@ function GlobalToolsSection({ baseline }: { baseline: UserAccessView['baseline']
         {baseline.globalTools.map((toolItem) => (
           <span
             key={toolItem.id}
-            className="text-[11px] px-2 py-1 rounded-full bg-surface-sunken text-fg-secondary"
+            className="text-caption px-2 py-1 rounded-full bg-surface-sunken text-fg-secondary"
             title={toolItem.brief}
           >
             {toolItem.name}

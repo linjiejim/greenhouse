@@ -45,12 +45,12 @@ export function FormField({
         'aria-invalid': error ? true : children.props['aria-invalid'],
       })}
       {help && (
-        <p id={helpId} className="mt-1 text-[11px] leading-4 text-fg-faint">
+        <p id={helpId} className="mt-1 text-caption leading-4 text-fg-faint">
           {help}
         </p>
       )}
       {error && (
-        <p id={errorId} className="mt-1 text-[11px] leading-4 text-danger">
+        <p id={errorId} className="mt-1 text-caption leading-4 text-danger">
           {error}
         </p>
       )}
@@ -93,7 +93,7 @@ export function FormGroup({
         {children}
       </div>
       {help && (
-        <p id={helpId} className="mt-1 text-[11px] leading-4 text-fg-faint">
+        <p id={helpId} className="mt-1 text-caption leading-4 text-fg-faint">
           {help}
         </p>
       )}
@@ -117,7 +117,7 @@ export function FormSection({
       {(title || description) && (
         <div className="mb-3">
           {title && <h4 className="text-xs font-semibold uppercase tracking-wider text-fg-muted">{title}</h4>}
-          {description && <p className="mt-1 text-[11px] leading-4 text-fg-faint">{description}</p>}
+          {description && <p className="mt-1 text-caption leading-4 text-fg-faint">{description}</p>}
         </div>
       )}
       {children}

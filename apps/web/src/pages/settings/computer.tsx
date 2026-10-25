@@ -115,7 +115,7 @@ export function ComputerPanel() {
                   {computer ? t(STATUS_KEYS[computer.status] ?? 'computer.statusNone') : t('computer.statusNone')}
                 </Tag>
                 {computer && (
-                  <div className="mt-1 text-[11px] text-fg-faint">
+                  <div className="mt-1 text-caption text-fg-faint">
                     {t('computer.lastUsedAt')} {relativeTime(computer.last_used_at)}
                   </div>
                 )}

@@ -608,7 +608,7 @@ export function TablesGridView({ table, tables, role, users }: TablesGridViewPro
                   ref={(cell) => {
                     headerCells.current[0] = cell;
                   }}
-                  className="sticky left-0 z-20 w-16 border-b border-r border-edge bg-surface-sunken px-3 py-2 text-[11px] font-medium text-fg-faint"
+                  className="sticky left-0 z-20 w-16 border-b border-r border-edge bg-surface-sunken px-3 py-2 text-caption font-medium text-fg-faint"
                 >
                   #
                 </th>
@@ -896,7 +896,7 @@ export function TablesGridView({ table, tables, role, users }: TablesGridViewPro
                   <option value="datetime">{t('tables.fieldType.datetime')}</option>
                 </Select>
               </div>
-              <p className="text-[11px] text-fg-faint sm:col-span-2">{t('tables.formulaSafety')}</p>
+              <p className="text-caption text-fg-faint sm:col-span-2">{t('tables.formulaSafety')}</p>
             </div>
           )}
           {fieldType === 'rollup' && (

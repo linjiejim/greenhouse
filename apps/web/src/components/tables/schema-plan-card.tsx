@@ -213,7 +213,7 @@ export function SchemaPlanCard({
                       {operation.required ? ` · ${t('tablesSchemaPlan.required')}` : ''}
                     </span>
                   )}
-                  {result?.message && <p className="text-[10px] text-danger">{result.message}</p>}
+                  {result?.message && <p className="text-caption text-danger">{result.message}</p>}
                 </div>
               </li>
             );

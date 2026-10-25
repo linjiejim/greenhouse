@@ -40,7 +40,7 @@ export function RuntimeInterruptsSection({ interrupts }: { interrupts: readonly 
                     <RuntimeRiskTag risk={interrupt.risk_level} />
                     <h3 className="text-sm font-semibold text-fg">{t(INTERRUPT_KEYS[interrupt.kind])}</h3>
                   </div>
-                  <p className="mt-1 text-[10px] text-fg-faint">
+                  <p className="mt-1 text-caption text-fg-faint">
                     {t('taskCenter.requestedAt', { time: formatDate(interrupt.created_at) })}
                   </p>
                 </div>
@@ -50,7 +50,7 @@ export function RuntimeInterruptsSection({ interrupts }: { interrupts: readonly 
                 <RuntimePayloadPanel title={t('taskCenter.decisionPayload')} value={interrupt.decision} />
               </div>
               {interrupt.canonical_input_hash && (
-                <p className="selectable mt-2 break-all font-mono text-[10px] text-fg-faint">
+                <p className="selectable mt-2 break-all font-mono text-caption text-fg-faint">
                   {t('taskCenter.inputHash')}: {interrupt.canonical_input_hash}
                 </p>
               )}

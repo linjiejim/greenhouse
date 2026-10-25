@@ -532,7 +532,7 @@ export function GlobalGanttView({
           >
             <Plus size={12} />
           </button>
-          <span className="text-[10px] text-fg-faint whitespace-nowrap flex-shrink-0">
+          <span className="text-caption text-fg-faint whitespace-nowrap flex-shrink-0">
             {p.stats.done}/{p.stats.total} · {p.progress}%
           </span>
         </div>
@@ -556,7 +556,7 @@ export function GlobalGanttView({
           {ctx.titleSpan(tk)}
           {tkDays != null && (
             <span
-              className="text-[10px] text-fg-faint flex-shrink-0 w-6 text-right tabular-nums"
+              className="text-caption text-fg-faint flex-shrink-0 w-6 text-right tabular-nums"
               title={`${tkDays} days`}
             >
               {tkDays}d
@@ -636,14 +636,14 @@ export function GlobalGanttView({
       <div className="flex items-center gap-1.5 flex-shrink-0">
         <button
           onClick={handleExpandAll}
-          className="text-[10px] text-fg-faint hover:text-primary-fg"
+          className="text-caption text-fg-faint hover:text-primary-fg"
           title={t('projects.expandAll')}
         >
           ▼
         </button>
         <button
           onClick={handleCollapseAll}
-          className="text-[10px] text-fg-faint hover:text-primary-fg"
+          className="text-caption text-fg-faint hover:text-primary-fg"
           title={t('projects.collapseAll')}
         >
           ▶
@@ -661,7 +661,7 @@ export function GlobalGanttView({
         >
           <RefreshCw size={12} />
         </button>
-        <span className="text-[10px] text-fg-faint whitespace-nowrap">{projects.length}p</span>
+        <span className="text-caption text-fg-faint whitespace-nowrap">{projects.length}p</span>
       </div>
     </div>
   );

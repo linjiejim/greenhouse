@@ -57,7 +57,7 @@ function Snippet({ title, code, testId }: { title: string; code: string; testId?
         <span className="text-xs font-medium text-fg-secondary">{title}</span>
         <CopyButton text={code} />
       </div>
-      <pre className="text-[11px] leading-relaxed font-mono bg-surface-sunken text-fg-secondary rounded-md p-2.5 overflow-x-auto">
+      <pre className="text-caption leading-relaxed font-mono bg-surface-sunken text-fg-secondary rounded-md p-2.5 overflow-x-auto">
         {code}
       </pre>
     </div>

@@ -95,7 +95,7 @@ export function PreferencesPanel() {
           />
           <FormActions
             leading={
-              <span className={`text-[10px] ${remaining < 50 ? 'text-warning' : 'text-fg-faint'}`}>
+              <span className={`text-caption ${remaining < 50 ? 'text-warning' : 'text-fg-faint'}`}>
                 {t('preferences.charactersRemaining', { count: remaining })}
               </span>
             }

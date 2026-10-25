@@ -39,7 +39,7 @@ export function ReasoningToggle({
     <button
       type="button"
       onClick={onToggle}
-      className="flex min-w-0 max-w-full items-center gap-1 py-0.5 text-left text-[11px] text-fg-faint transition-colors hover:text-fg-secondary"
+      className="flex min-w-0 max-w-full items-center gap-1 py-0.5 text-left text-caption text-fg-faint transition-colors hover:text-fg-secondary"
     >
       {active ? (
         <span className="h-2 w-2 flex-shrink-0 animate-pulse rounded-full bg-accent" />
@@ -49,7 +49,7 @@ export function ReasoningToggle({
       <span className="flex-shrink-0">{active ? t('chat.thinking') : t('chat.thought')}</span>
       <ChevronDown size={11} className={`flex-shrink-0 transition-transform ${expanded ? 'rotate-180' : ''}`} />
       {!expanded && headline && (
-        <span key={headline} className="ml-1 min-w-0 truncate text-[10px] text-fg-faint animate-fade-in">
+        <span key={headline} className="ml-1 min-w-0 truncate text-caption text-fg-faint animate-fade-in">
           {headline}
         </span>
       )}

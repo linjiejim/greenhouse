@@ -45,7 +45,7 @@ export function AssistantNavButton() {
     >
       <Bot size={16} />
       {activeCount > 0 && (
-        <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 flex items-center justify-center rounded-full text-[10px] font-bold text-on-accent bg-accent animate-pulse">
+        <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 flex items-center justify-center rounded-full text-caption leading-none font-bold text-on-accent bg-accent animate-pulse">
           {activeCount}
         </span>
       )}
@@ -136,8 +136,8 @@ export function AssistantPanel() {
 
   const contextSlot = effectiveContext ? (
     <div className="flex items-center gap-1.5 px-4 py-2 border-b border-edge bg-surface-muted/60 flex-shrink-0">
-      <span className="text-[10px] text-fg-faint">{t('agent.reference')}</span>
-      <span className="inline-flex min-w-0 items-center gap-1 px-2 py-0.5 text-[11px] rounded-full bg-primary-subtle text-primary-fg-strong border border-primary-edge">
+      <span className="text-caption text-fg-faint">{t('agent.reference')}</span>
+      <span className="inline-flex min-w-0 items-center gap-1 px-2 py-0.5 text-caption rounded-full bg-primary-subtle text-primary-fg-strong border border-primary-edge">
         {React.createElement(getContextIcon(effectiveContext.type), { size: 12 })}
         <span className="truncate">{getContextLabel(effectiveContext)}</span>
         <button
@@ -152,10 +152,10 @@ export function AssistantPanel() {
     </div>
   ) : contextDismissed && pageContext ? (
     <div className="flex items-center gap-2 px-4 py-2 border-b border-edge bg-surface-muted/60 flex-shrink-0">
-      <span className="text-[10px] text-fg-faint">{t('agent.referenceRemoved')}</span>
+      <span className="text-caption text-fg-faint">{t('agent.referenceRemoved')}</span>
       <button
         onClick={() => setContextDismissed(false)}
-        className="text-[10px] text-primary-fg hover:text-primary-fg-strong underline"
+        className="text-caption text-primary-fg hover:text-primary-fg-strong underline"
       >
         {t('common.restore')}
       </button>
@@ -277,7 +277,7 @@ export function AssistantPanel() {
               <div className="truncate text-xs text-fg-secondary" title={session.title || t('common.untitled')}>
                 {session.title || t('common.untitled')}
               </div>
-              <div className="mt-0.5 text-[10px] text-fg-faint">{new Date(session.updated_at).toLocaleString()}</div>
+              <div className="mt-0.5 text-caption text-fg-faint">{new Date(session.updated_at).toLocaleString()}</div>
             </button>
           ))}
         </div>

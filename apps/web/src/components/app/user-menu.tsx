@@ -131,7 +131,7 @@ export function SidebarAccountMenu({
         <span className="relative flex-shrink-0">
           <Avatar name={user?.nickname} size={compact ? 'md' : 'sm'} />
           {showInboxBadge && (
-            <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 flex items-center justify-center text-[10px] font-bold text-white bg-danger rounded-full ring-2 ring-surface-raised">
+            <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 flex items-center justify-center text-caption leading-none font-bold text-white bg-danger rounded-full ring-2 ring-surface-raised">
               {totalInboxCount > 99 ? '99+' : totalInboxCount}
             </span>
           )}
@@ -147,10 +147,10 @@ export function SidebarAccountMenu({
                   {user?.nickname || t('common.user')}
                 </span>
                 {user?.role && (
-                  <span className="text-[10px] text-fg-faint leading-tight capitalize flex-shrink-0">{user.role}</span>
+                  <span className="text-caption text-fg-faint leading-tight capitalize flex-shrink-0">{user.role}</span>
                 )}
               </div>
-              <span className="text-[9px] text-fg-faint font-mono leading-tight">v{APP_VERSION}</span>
+              <span className="text-caption text-fg-faint font-mono leading-tight">v{APP_VERSION}</span>
             </div>
             {showSettingsIcon && (
               <span
@@ -185,7 +185,7 @@ export function SidebarAccountMenu({
                     {user.nickname}
                   </span>
                   <span
-                    className={`text-[10px] px-1.5 py-0.5 rounded-full border font-medium capitalize flex-shrink-0 ${roleBadgeStyles[user.role] || roleBadgeStyles.team}`}
+                    className={`text-caption px-1.5 py-0.5 rounded-full border font-medium capitalize flex-shrink-0 ${roleBadgeStyles[user.role] || roleBadgeStyles.team}`}
                   >
                     {user.role}
                   </span>
@@ -200,7 +200,7 @@ export function SidebarAccountMenu({
           </div>
 
           <div className="border-b border-edge px-2.5 py-2">
-            <div className="mb-1.5 px-0.5 text-[10px] font-medium uppercase tracking-wider text-fg-faint">
+            <div className="mb-1.5 px-0.5 text-caption font-medium uppercase tracking-wider text-fg-faint">
               {t('preferences.theme')}
             </div>
             <div className="grid grid-cols-3 gap-1" role="group" aria-label={t('preferences.theme')}>
@@ -253,7 +253,7 @@ export function SidebarAccountMenu({
               </span>
               <span className="flex-1">{t('userMenu.inbox')}</span>
               {totalInboxCount > 0 && (
-                <span className="min-w-[18px] h-[18px] px-1 flex items-center justify-center text-[10px] font-bold text-white bg-danger rounded-full">
+                <span className="min-w-[18px] h-[18px] px-1 flex items-center justify-center text-caption font-bold text-white bg-danger rounded-full">
                   {totalInboxCount > 99 ? '99+' : totalInboxCount}
                 </span>
               )}
@@ -337,7 +337,7 @@ export function SidebarAccountMenu({
                   <span className="text-sm text-fg-secondary truncate flex-1" title={u.nickname}>
                     {u.nickname}
                   </span>
-                  <Badge variant="secondary" className="text-[10px] flex-shrink-0">
+                  <Badge variant="secondary" className="text-caption flex-shrink-0">
                     {u.role}
                   </Badge>
                 </div>

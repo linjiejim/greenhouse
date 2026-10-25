@@ -103,7 +103,7 @@ export function SettingsNavPanel({ activeModule, collapsed, onSignOut }: Setting
                 <>
                   {sectionIndex > 0 && <div className="mx-1 my-1.5 border-t border-edge" />}
                   <div className="px-3 pt-1 pb-0.5">
-                    <span className="text-[10px] font-semibold text-fg-faint uppercase tracking-wider">
+                    <span className="text-caption font-semibold text-fg-faint uppercase tracking-wider">
                       {section.labelKey ? t(section.labelKey) : section.label}
                     </span>
                   </div>

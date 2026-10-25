@@ -64,7 +64,7 @@ export function MyUsagePanel() {
               <div className="text-xl font-semibold tabular-nums text-fg" data-testid="my-usage-spent">
                 {formatUsd(budget.spent_usd_micros)}
               </div>
-              <div className="mt-1 text-[11px] text-fg-faint">
+              <div className="mt-1 text-caption text-fg-faint">
                 {t('metering.calls')} {report.totals.calls.toLocaleString()}
               </div>
             </KpiCard>
@@ -81,7 +81,7 @@ export function MyUsagePanel() {
                 {formatUsd(Math.max(0, budget.limit_usd_micros - budget.spent_usd_micros - budget.reserved_usd_micros))}
               </div>
               {budget.reserved_usd_micros > 0 && (
-                <div className="mt-1 text-[11px] text-fg-faint">
+                <div className="mt-1 text-caption text-fg-faint">
                   {t('metering.my.reservedNow', { amount: formatUsd(budget.reserved_usd_micros) })}
                 </div>
               )}

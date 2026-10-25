@@ -143,7 +143,7 @@ export function TablesNavPanel({ subPath }: TablesNavPanelProps) {
       <section className="flex max-h-[40%] min-h-0 flex-col border-b border-edge pb-2">
         {/* The sidebar keeps one primary action (New Chat); module creates are a small "+". */}
         <div className="flex items-center px-3 pb-1">
-          <span className="flex-1 text-[10px] font-semibold uppercase tracking-wider text-fg-faint">
+          <span className="flex-1 text-caption font-semibold uppercase tracking-wider text-fg-faint">
             {t('tables.sidebar.bases')}
           </span>
           <IconButton
@@ -181,7 +181,7 @@ export function TablesNavPanel({ subPath }: TablesNavPanelProps) {
                   <span className="min-w-0 flex-1 truncate" title={base.description || base.name}>
                     {base.name}
                   </span>
-                  <span className="sidebar-secondary-meta text-[10px] uppercase text-fg-faint">
+                  <span className="sidebar-secondary-meta text-caption uppercase text-fg-faint">
                     {t(`tables.home.role.${base.role}` as TranslationKey)}
                   </span>
                   {rowMenuButton(t('tables.sidebar.actionsFor', { name: base.name }), items)}
@@ -205,14 +205,14 @@ export function TablesNavPanel({ subPath }: TablesNavPanelProps) {
               <h2 className="truncate text-xs font-semibold text-fg" title={workspace.base.name}>
                 {workspace.base.name}
               </h2>
-              <p className="mt-0.5 text-[10px] text-fg-faint">
+              <p className="mt-0.5 text-caption text-fg-faint">
                 {t(workspace.base.visibility === 'team' ? 'tables.home.teamVisible' : 'tables.home.private')} ·{' '}
                 {t(`tables.home.role.${workspace.role}` as TranslationKey)}
               </p>
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto">
               <div className="flex items-center justify-between px-3 py-1">
-                <span className="text-[10px] font-semibold uppercase tracking-wider text-fg-faint">
+                <span className="text-caption font-semibold uppercase tracking-wider text-fg-faint">
                   {t('tables.home.title')}
                 </span>
                 {canBuild && (

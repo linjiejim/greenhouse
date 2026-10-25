@@ -170,7 +170,7 @@ export function FilesSearchList({ result, onOpen }: { result: CabinetSearchResul
             <span className="block truncate text-sm text-fg" title={file.name}>
               {file.name}
             </span>
-            <span className="block text-[11px] text-fg-faint">
+            <span className="block text-caption text-fg-faint">
               {formatFileSize(file.size)} · {formatDate(file.updated_at)}
             </span>
           </span>

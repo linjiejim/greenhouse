@@ -72,7 +72,7 @@ export function RecordDetailContent({
                   <span className="flex items-center gap-1.5">
                     <span>{field.name}</span>
                     {(field.type === 'formula' || field.type === 'rollup') && (
-                      <span className="text-[9px] font-normal uppercase tracking-wide text-fg-faint">
+                      <span className="text-caption font-normal uppercase tracking-wide text-fg-faint">
                         {t('tables.computed')}
                       </span>
                     )}

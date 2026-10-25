@@ -135,7 +135,7 @@ function DocOutline({
   };
 
   const heading = (
-    <span className="flex-1 text-[10px] font-semibold text-fg-faint uppercase tracking-wide">
+    <span className="flex-1 text-caption font-semibold text-fg-faint uppercase tracking-wide">
       {t('knowledge.onThisPage')}
     </span>
   );
@@ -358,7 +358,9 @@ export function KnowledgeVersionsDialog({
                 <VersionDiff before={contentOf(fromV)} after={contentOf(toV)} />
               </div>
             )}
-            {fromV && fromV === toV && <p className="mt-2 text-[10px] text-fg-faint">{t('knowledge.sameAsCurrent')}</p>}
+            {fromV && fromV === toV && (
+              <p className="mt-2 text-caption text-fg-faint">{t('knowledge.sameAsCurrent')}</p>
+            )}
           </div>
 
           {versions.map((v, idx) => {
@@ -369,7 +371,7 @@ export function KnowledgeVersionsDialog({
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
                   <div className="min-w-0">
                     <span className="font-medium text-fg">v{v.version}</span>
-                    {isLatest && <span className="text-[10px] text-fg-faint ml-1.5">{t('knowledge.currentTag')}</span>}
+                    {isLatest && <span className="text-caption text-fg-faint ml-1.5">{t('knowledge.currentTag')}</span>}
                     <span className="ml-2 break-words text-fg-muted">
                       {v.change_reason || t('knowledge.updatedReason')}
                     </span>
@@ -409,7 +411,7 @@ export function KnowledgeVersionsDialog({
                 </div>
                 {showDiff && (
                   <div className="mt-2">
-                    <p className="text-[10px] text-fg-faint mb-1">
+                    <p className="text-caption text-fg-faint mb-1">
                       {t('knowledge.versionDiffLabel', { version: v.version })}
                     </p>
                     <VersionDiff before={v.content_markdown || ''} after={doc.content_markdown || ''} />
@@ -429,16 +431,16 @@ function VersionDiff({ before, after }: { before: string; after: string }) {
   const t = useT();
   const diffLines = useMemo(() => computeLineDiffWithWords(before, after, 300), [before, after]);
   if (before === after) {
-    return <p className="text-[11px] text-fg-faint">{t('knowledge.sameAsCurrent')}</p>;
+    return <p className="text-caption text-fg-faint">{t('knowledge.sameAsCurrent')}</p>;
   }
   return (
-    <div className="rounded border border-edge overflow-auto max-h-64 text-[11px] font-mono leading-relaxed">
+    <div className="rounded border border-edge overflow-auto max-h-64 text-caption font-mono leading-relaxed">
       {diffLines.map((line, i) => (
         <div
           key={i}
           className={`px-2 py-0.5 ${line.type === 'add' ? 'bg-success-subtle' : line.type === 'remove' ? 'bg-danger-subtle' : ''}`}
         >
-          <span className="inline-block w-4 text-right mr-2 text-fg-faint select-none text-[10px]">
+          <span className="inline-block w-4 text-right mr-2 text-fg-faint select-none text-caption">
             {line.type === 'add' ? '+' : line.type === 'remove' ? '-' : ' '}
           </span>
           {line.type === 'same' ? (

@@ -119,7 +119,7 @@ export function PipelineStageChart({ steps, totalDurationMs, compact, className 
           {stages.map((stage, i) => (
             <div
               key={stage.tool}
-              className={`flex items-center gap-1 text-[10px] cursor-default rounded px-1 py-0.5 transition-colors ${
+              className={`flex items-center gap-1 text-caption cursor-default rounded px-1 py-0.5 transition-colors ${
                 hoveredIdx === i ? stage.color.light : ''
               }`}
               onMouseEnter={() => setHoveredIdx(i)}
@@ -132,7 +132,7 @@ export function PipelineStageChart({ steps, totalDurationMs, compact, className 
             </div>
           ))}
           {otherMs > 0 && (
-            <div className="flex items-center gap-1 text-[10px]">
+            <div className="flex items-center gap-1 text-caption">
               <span className="w-2 h-2 rounded-xs bg-edge-strong inline-block" />
               <span className="text-fg-muted font-medium">{t('pipeline.llmOther')}</span>
               <span className="text-fg-faint">{(otherMs / 1000).toFixed(2)}s</span>
@@ -144,7 +144,7 @@ export function PipelineStageChart({ steps, totalDurationMs, compact, className 
 
       {/* Tooltip (compact mode) */}
       {compact && hoveredIdx != null && (
-        <div className="mt-1 text-[10px] text-fg-muted">
+        <div className="mt-1 text-caption text-fg-muted">
           {stages[hoveredIdx].label}: {(stages[hoveredIdx].durationMs / 1000).toFixed(2)}s (
           {stages[hoveredIdx].percent.toFixed(0)}%)
         </div>

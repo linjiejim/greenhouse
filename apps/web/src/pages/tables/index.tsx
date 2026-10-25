@@ -141,7 +141,7 @@ function TablesHome() {
               <p className="mt-1 line-clamp-2 min-h-10 text-xs leading-5 text-fg-muted">
                 {base.description || t('tables.home.noDescription')}
               </p>
-              <div className="mt-4 flex items-center justify-between border-t border-edge pt-3 text-[11px] text-fg-faint">
+              <div className="mt-4 flex items-center justify-between border-t border-edge pt-3 text-caption text-fg-faint">
                 <span>{base.visibility === 'team' ? t('tables.home.teamVisible') : t('tables.home.private')}</span>
                 <span>{t('tables.home.updatedAt', { date: formatDay(base.updated_at) })}</span>
               </div>
@@ -258,12 +258,12 @@ function ShareDialog({
           </div>
           <ul className="mt-2 space-y-0.5">
             {SHAREABLE_ROLES.map((role) => (
-              <li key={role.value} className="text-[11px] text-fg-faint">
+              <li key={role.value} className="text-caption text-fg-faint">
                 <span className="font-medium text-fg-muted">{t(role.labelKey)}</span> — {t(role.hintKey)}
               </li>
             ))}
           </ul>
-          <p className="mt-1.5 text-[11px] text-fg-faint">{t('tables.home.ownerOnlyHint')}</p>
+          <p className="mt-1.5 text-caption text-fg-faint">{t('tables.home.ownerOnlyHint')}</p>
         </div>
         <div className="space-y-2 border-t border-edge pt-4">
           <div className="flex items-center justify-between rounded-md bg-surface-sunken px-3 py-2">
@@ -423,7 +423,7 @@ function BaseWorkspace({
         </a>
         <div className="min-w-0 flex-1">
           <h1 className="truncate text-sm font-semibold text-fg">{workspace.base.name}</h1>
-          <p className="truncate text-[11px] text-fg-faint">
+          <p className="truncate text-caption text-fg-faint">
             {workspace.base.visibility === 'team' ? t('tables.home.teamVisible') : t('tables.home.private')} ·{' '}
             {t(`tables.home.role.${workspace.role}`)}
           </p>

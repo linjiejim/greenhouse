@@ -102,7 +102,7 @@ export function AccountPasswordPage({
           <div className="mx-auto flex w-fit justify-center rounded-xl bg-logo-safe p-2">
             <AppLogo size="xl" logoOnly />
           </div>
-          <h1 className="font-display mt-3 text-xl font-bold text-fg">
+          <h1 className="mt-3 text-xl font-bold text-fg">
             {inspection?.purpose === 'reset' ? t('accountPassword.resetTitle') : t('accountPassword.inviteTitle')}
           </h1>
           <p className="mt-2 text-sm leading-6 text-fg-muted">

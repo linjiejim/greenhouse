@@ -208,7 +208,7 @@ export function InboxModal({ open, onClose }: { open: boolean; onClose: () => vo
                         {markdownPreview(copy.body)}
                       </span>
                     </span>
-                    <span className="flex-shrink-0 text-[11px] text-fg-faint">{timeAgo(item.created_at)}</span>
+                    <span className="flex-shrink-0 text-caption text-fg-faint">{timeAgo(item.created_at)}</span>
                   </button>
                 );
               })}
@@ -245,7 +245,7 @@ export function InboxModal({ open, onClose }: { open: boolean; onClose: () => vo
                       {share.message ? ` · “${share.message}”` : ''}
                     </span>
                   </span>
-                  <span className="flex-shrink-0 text-[11px] text-fg-faint">{timeAgo(share.created_at)}</span>
+                  <span className="flex-shrink-0 text-caption text-fg-faint">{timeAgo(share.created_at)}</span>
                 </button>
               ))}
             </div>

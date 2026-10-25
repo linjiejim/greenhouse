@@ -166,7 +166,7 @@ export function ChatTopBarSessionActions({ share }: { share: ChatShareControls |
         >
           <Share2 size={16} />
           {share.shareCount !== 0 && (
-            <span className="absolute right-0 top-0 inline-flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-accent px-0.5 text-[8px] leading-none text-on-accent ring-2 ring-surface-raised">
+            <span className="absolute right-0 top-0 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-accent px-1 text-caption leading-none text-on-accent ring-2 ring-surface-raised">
               {share.shareCount === -1 ? <Users size={8} /> : share.shareCount}
             </span>
           )}

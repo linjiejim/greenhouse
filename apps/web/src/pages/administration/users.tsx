@@ -540,7 +540,7 @@ export function UserManagementPanel() {
                             <div className="text-sm font-medium text-fg truncate" title={u.nickname}>
                               {u.nickname}
                             </div>
-                            <div className="text-[11px] text-fg-faint truncate" title={u.email}>
+                            <div className="text-caption text-fg-faint truncate" title={u.email}>
                               {u.email}
                             </div>
                           </div>
@@ -566,7 +566,7 @@ export function UserManagementPanel() {
                           )}
                           {u.password_link && (
                             <div
-                              className={`text-[10px] ${u.password_link.delivery_status === 'failed' ? 'text-danger' : 'text-fg-faint'}`}
+                              className={`text-caption ${u.password_link.delivery_status === 'failed' ? 'text-danger' : 'text-fg-faint'}`}
                               title={u.password_link.delivery_error ?? undefined}
                             >
                               {u.password_link.delivery_status === 'failed'

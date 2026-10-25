@@ -71,7 +71,7 @@ export function FileAttachmentCard({
         <div className="truncate text-xs font-semibold text-fg" title={name}>
           {name}
         </div>
-        {meta && <div className="mt-0.5 text-[10px] text-fg-faint">{meta}</div>}
+        {meta && <div className="mt-0.5 text-caption text-fg-faint">{meta}</div>}
       </div>
       {secondaryAction}
       {action}

@@ -93,7 +93,7 @@ export function CommandMenuPopover({ query, prompts, onSelectPrompt, onDismiss, 
       <PopoverWrapper anchorRef={anchorRef}>
         <div className="px-3 py-3 text-center">
           <p className="mb-1 text-xs text-fg-faint">{t('chat.noMatchingTasks')}</p>
-          <p className="text-[11px] text-fg-faint">
+          <p className="text-caption text-fg-faint">
             <button
               type="button"
               className="text-accent hover:underline"
@@ -161,7 +161,7 @@ export function CommandMenuPopover({ query, prompts, onSelectPrompt, onDismiss, 
 
 function SectionHeader({ icon, label }: { icon: React.ReactNode; label: string }) {
   return (
-    <div className="px-2 py-1.5 text-[10px] font-medium text-fg-faint uppercase tracking-wider flex items-center gap-1 sticky top-0 bg-surface-raised">
+    <div className="px-2 py-1.5 text-caption font-medium text-fg-faint uppercase tracking-wider flex items-center gap-1 sticky top-0 bg-surface-raised">
       {icon} {label}
     </div>
   );
@@ -169,7 +169,7 @@ function SectionHeader({ icon, label }: { icon: React.ReactNode; label: string }
 
 function SubHeader({ icon, label }: { icon: React.ReactNode; label: string }) {
   return (
-    <div className="px-2.5 py-1 text-[10px] font-semibold text-fg-faint uppercase tracking-wider flex items-center gap-1 bg-surface-muted">
+    <div className="px-2.5 py-1 text-caption font-semibold text-fg-faint uppercase tracking-wider flex items-center gap-1 bg-surface-muted">
       {icon} {label}
     </div>
   );
@@ -207,7 +207,7 @@ function PromptRow({
         {prompt.title}
       </span>
       {prompt.shortcut && (
-        <span className={`flex-shrink-0 font-mono text-[11px] ${isSelected ? 'text-white' : 'text-fg-faint'}`}>
+        <span className={`flex-shrink-0 font-mono text-caption ${isSelected ? 'text-white' : 'text-fg-faint'}`}>
           /{prompt.shortcut}
         </span>
       )}

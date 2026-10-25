@@ -261,14 +261,14 @@ export function ProjectDetailPage({ projectId, initialTaskId }: { projectId: str
               </button>
             )}
             <h1 className="text-base font-semibold text-fg truncate">{project.title}</h1>
-            <span className={`text-[10px] px-2 py-0.5 rounded-full border font-medium whitespace-nowrap ${psc.color}`}>
+            <span className={`text-caption px-2 py-0.5 rounded-full border font-medium whitespace-nowrap ${psc.color}`}>
               {t(psc.label)}
             </span>
             {project.priority !== 'normal' && (
-              <span className={`text-[10px] font-medium ${priorityColors[project.priority]}`}>{project.priority}</span>
+              <span className={`text-caption font-medium ${priorityColors[project.priority]}`}>{project.priority}</span>
             )}
             {project.visibility === 'private' && (
-              <span className="flex items-center gap-0.5 text-[10px] text-fg-faint">
+              <span className="flex items-center gap-0.5 text-caption text-fg-faint">
                 <Lock size={10} />
                 {t('projects.visibilityPrivate')}
               </span>
@@ -370,7 +370,7 @@ export function ProjectDetailPage({ projectId, initialTaskId }: { projectId: str
                   <button
                     key={z}
                     onClick={() => setGanttZoom(z)}
-                    className={`px-2 py-1 rounded-sm text-[11px] transition-colors ${
+                    className={`px-2 py-1 rounded-sm text-caption transition-colors ${
                       ganttZoom === z
                         ? 'bg-surface-raised text-primary-fg-strong font-medium shadow-sm'
                         : 'text-fg-muted hover:text-fg-secondary'
@@ -612,7 +612,7 @@ export function ProjectDetailPage({ projectId, initialTaskId }: { projectId: str
                   <div className="w-1.5 h-1.5 rounded-full bg-primary-400 mt-1.5 flex-shrink-0" />
                   <div className="flex-1 min-w-0">
                     <p className="text-xs text-fg-secondary">{a.detail || a.action}</p>
-                    <div className="flex items-center gap-2 mt-0.5 text-[10px] text-fg-faint">
+                    <div className="flex items-center gap-2 mt-0.5 text-caption text-fg-faint">
                       <span>{a.user_nickname}</span>
                       <span>{timeAgo(a.created_at)}</span>
                     </div>

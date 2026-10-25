@@ -32,13 +32,13 @@ export function AnnotationList({ annotations, onUpdate, onDelete, onClearAll }: 
   return (
     <div className="mb-2 space-y-1.5 animate-fade-in">
       <div className="flex items-center justify-between px-1">
-        <span className="text-[10px] text-fg-faint font-medium uppercase tracking-wider">
+        <span className="text-caption text-fg-faint font-medium uppercase tracking-wider">
           {t('chat.annotationsCount', { count: annotations.length })}
         </span>
         {annotations.length > 1 && (
           <button
             onClick={onClearAll}
-            className="text-[10px] text-fg-faint hover:text-danger transition-colors"
+            className="text-caption text-fg-faint hover:text-danger transition-colors"
             title={t('chat.clearAnnotations')}
           >
             {t('chat.clearAnnotations')}
@@ -91,14 +91,14 @@ function AnnotationItem({
   return (
     <div className="flex items-start gap-2 px-2.5 py-2 bg-surface-sunken border border-edge rounded-md group/ann">
       {/* Index badge */}
-      <span className="flex-shrink-0 w-5 h-5 flex items-center justify-center rounded-full bg-primary-subtle text-primary-fg-strong text-[10px] font-bold mt-0.5">
+      <span className="flex-shrink-0 w-5 h-5 flex items-center justify-center rounded-full bg-primary-subtle text-primary-fg-strong text-caption font-bold mt-0.5">
         {index}
       </span>
 
       {/* Content */}
       <div className="flex-1 min-w-0 space-y-0.5">
         {/* Quoted text */}
-        <p className="text-[11px] text-fg-muted italic line-clamp-2 leading-relaxed">"{displayQuote}"</p>
+        <p className="text-caption text-fg-muted italic line-clamp-2 leading-relaxed">"{displayQuote}"</p>
 
         {/* Note */}
         {isEditing ? (
@@ -129,7 +129,7 @@ function AnnotationItem({
         ) : annotation.note ? (
           <p className="text-xs text-fg-secondary font-medium leading-relaxed">→ {annotation.note}</p>
         ) : (
-          <p className="text-[11px] text-fg-faint">{t('chat.noNote')}</p>
+          <p className="text-caption text-fg-faint">{t('chat.noNote')}</p>
         )}
       </div>
 

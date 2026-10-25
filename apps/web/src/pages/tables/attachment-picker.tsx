@@ -189,7 +189,7 @@ export function AttachmentPicker({ baseId, value, onChange }: AttachmentPickerPr
                   />
                   <FileText size={17} className="text-fg-muted" />
                   <span className="min-w-0 flex-1 truncate text-sm text-fg">{file.name}</span>
-                  <span className="text-[11px] text-fg-faint">{formatFileSize(file.size)}</span>
+                  <span className="text-caption text-fg-faint">{formatFileSize(file.size)}</span>
                 </label>
               ))}
             </div>

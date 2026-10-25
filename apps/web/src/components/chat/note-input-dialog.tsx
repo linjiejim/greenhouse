@@ -111,7 +111,7 @@ export function NoteInputDialog({ quote, anchorRect, onSubmit, onDismiss }: Note
           <Send size={14} />
         </button>
       </div>
-      <p className="mt-1 text-[10px] text-fg-faint">{t('chat.noteKeyboardHint')}</p>
+      <p className="mt-1 text-caption text-fg-faint">{t('chat.noteKeyboardHint')}</p>
     </div>
   );
 }

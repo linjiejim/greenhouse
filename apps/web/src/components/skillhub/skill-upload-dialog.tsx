@@ -314,7 +314,7 @@ export function SkillUploadDialog({ open, onClose, skill, onPublished }: Props) 
               </div>
               <div className="mt-1 max-h-40 overflow-y-auto rounded-sm border border-edge bg-surface-sunken p-2 space-y-0.5">
                 {parsed.files.map((f) => (
-                  <div key={f.path} className="flex items-center gap-2 text-[11px]">
+                  <div key={f.path} className="flex items-center gap-2 text-caption">
                     <span className="font-mono text-fg-secondary truncate" title={f.path}>
                       {f.path}
                     </span>
@@ -348,7 +348,7 @@ function Field({ label, hint, children }: { label: string; hint?: string; childr
     <label className="block">
       <span className="text-xs font-medium text-fg-muted">{label}</span>
       <div className="mt-1">{children}</div>
-      {hint && <span className="mt-0.5 block text-[11px] text-fg-faint">{hint}</span>}
+      {hint && <span className="mt-0.5 block text-caption text-fg-faint">{hint}</span>}
     </label>
   );
 }

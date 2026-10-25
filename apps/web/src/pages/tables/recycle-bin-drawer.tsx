@@ -111,7 +111,7 @@ export function RecycleBinDrawer({
                         <span className="text-fg-faint">{t('tables.recordNumber', { id: record.id })}</span>
                       )}
                     </p>
-                    <p className="mt-0.5 text-[11px] text-fg-faint">
+                    <p className="mt-0.5 text-caption text-fg-faint">
                       {t('tables.deletedAt', { date: formatDate(record.updated_at) })}
                     </p>
                   </div>

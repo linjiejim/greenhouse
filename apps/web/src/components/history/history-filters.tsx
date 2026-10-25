@@ -100,7 +100,7 @@ export function HistoryFiltersBar({
           {showMore ? t('history.less') : t('history.more')}
           {/* Without this count, a filter left on inside the collapsed row silently shrinks the list. */}
           {!showMore && hidden > 0 && (
-            <span className="rounded-full bg-primary-subtle px-1.5 text-[10px] text-primary-fg-strong">{hidden}</span>
+            <span className="rounded-full bg-primary-subtle px-1.5 text-caption text-primary-fg-strong">{hidden}</span>
           )}
         </button>
       </div>
@@ -137,7 +137,7 @@ export function HistoryFiltersBar({
               <button
                 type="button"
                 onClick={resetRefinements}
-                className="inline-flex items-center gap-1 text-[11px] text-fg-faint transition-colors hover:text-fg-secondary"
+                className="inline-flex items-center gap-1 text-caption text-fg-faint transition-colors hover:text-fg-secondary"
               >
                 <RotateCcw size={11} />
                 {t('history.resetFilters')}
@@ -154,7 +154,7 @@ export function HistoryFiltersBar({
 function FilterSection({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex items-start gap-2">
-      <span className="w-16 flex-shrink-0 pt-1 text-[10px] font-semibold uppercase tracking-wider text-fg-faint">
+      <span className="w-16 flex-shrink-0 pt-1 text-caption font-semibold uppercase tracking-wider text-fg-faint">
         {label}
       </span>
       <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-2">{children}</div>

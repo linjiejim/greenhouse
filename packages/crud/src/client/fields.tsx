@@ -324,7 +324,7 @@ function JsonField({
           }
         }}
       />
-      {error && <p className="text-[11px] text-danger mt-0.5">{error}</p>}
+      {error && <p className="text-caption text-danger mt-0.5">{error}</p>}
     </div>
   );
 }

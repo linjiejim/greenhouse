@@ -98,7 +98,7 @@ export function SkillHubLanding({ showHeader = true }: { showHeader?: boolean })
 
         <div className="space-y-2">
           <div className="text-xs font-medium text-fg-secondary">{t('skillHub.connectMcp')}</div>
-          <p className="text-[11px] text-fg-faint">{t('skillHub.connectMcpHint')}</p>
+          <p className="text-caption text-fg-faint">{t('skillHub.connectMcpHint')}</p>
           <Button size="sm" variant="secondary" onClick={() => (window.location.hash = CONNECT_HREF)}>
             <Plug size={13} />
             {t('skillHub.openConnect')}
@@ -107,7 +107,7 @@ export function SkillHubLanding({ showHeader = true }: { showHeader?: boolean })
 
         <div className="space-y-2">
           <div className="text-xs font-medium text-fg-secondary">{t('skillHub.startUsing')}</div>
-          <p className="text-[11px] text-fg-faint">{t('skillHub.pasteToAgent')}</p>
+          <p className="text-caption text-fg-faint">{t('skillHub.pasteToAgent')}</p>
           <CopyBlock text={t('skillHub.bootstrapPrompt')} />
         </div>
       </div>

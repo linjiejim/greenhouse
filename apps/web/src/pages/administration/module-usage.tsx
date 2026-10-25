@@ -104,7 +104,7 @@ function KeyTotalsTable({
   const total = rows.reduce((sum, row) => sum + row.total, 0);
   return (
     <div className="overflow-x-auto">
-      <table className="w-full min-w-[420px] text-[11px]">
+      <table className="w-full min-w-[420px] text-caption">
         <thead>
           <tr className="text-fg-faint">
             <th className="text-left font-medium pb-2">{keyHeader}</th>
@@ -223,14 +223,14 @@ export function ModuleUsageTab({ days }: { days: UsageRangeDays }) {
         </KpiCard>
         <KpiCard title={t('usage.modules.cacheHitRate')}>
           <div className="text-2xl font-bold text-fg">{formatRate(hitRate)}</div>
-          <div className="text-[11px] text-fg-faint mt-0.5">{t('usage.modules.cacheHitRateHint')}</div>
+          <div className="text-caption text-fg-faint mt-0.5">{t('usage.modules.cacheHitRateHint')}</div>
         </KpiCard>
       </div>
 
       {clients.length > 0 && (
         <SectionCard title={t('usage.modules.byClient')}>
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[360px] text-[11px]">
+            <table className="w-full min-w-[360px] text-caption">
               <thead>
                 <tr className="text-fg-faint">
                   <th className="text-left font-medium pb-2">{t('usage.modules.client')}</th>
@@ -280,7 +280,7 @@ export function ModuleUsageTab({ days }: { days: UsageRangeDays }) {
           <div className="text-sm text-fg-faint">{t('usage.modules.noModelCalls')}</div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[480px] text-[11px]">
+            <table className="w-full min-w-[480px] text-caption">
               <thead>
                 <tr className="text-fg-faint">
                   <th className="text-left font-medium pb-2">{t('usage.modules.model')}</th>

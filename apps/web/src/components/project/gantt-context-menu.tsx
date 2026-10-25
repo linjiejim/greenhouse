@@ -191,7 +191,7 @@ export function GanttContextMenu({
                     }}
                     className={isLinked ? 'text-primary-fg font-medium' : 'text-fg-secondary'}
                   >
-                    <span className="text-[10px] text-fg-faint w-4 text-center">{isLinked ? '✓' : ''}</span>
+                    <span className="text-caption text-fg-faint w-4 text-center">{isLinked ? '✓' : ''}</span>
                     <span className="truncate">{dep.title}</span>
                   </SubmenuButton>
                 );

@@ -650,7 +650,7 @@ function BudgetRow({
     <tr className="border-b border-edge text-fg-secondary">
       <td className="py-2 pr-3">
         <div className="text-fg">{name}</div>
-        {hint && <div className="text-[11px] text-fg-faint">{hint}</div>}
+        {hint && <div className="text-caption text-fg-faint">{hint}</div>}
       </td>
       <td className="py-2 pr-3 text-right font-mono tabular-nums text-fg">{formatUsd(budget.limit_usd_micros)}</td>
       <td className="py-2 pr-3 text-right font-mono tabular-nums">
@@ -1021,7 +1021,7 @@ function GatewayTab() {
                 <div className="text-sm text-fg truncate" title={row.name}>
                   {row.name}
                 </div>
-                <div className="text-[10px] font-mono text-fg-faint truncate">{row.prefix}…</div>
+                <div className="text-caption font-mono text-fg-faint truncate">{row.prefix}…</div>
               </div>
             ),
           },
@@ -1056,7 +1056,7 @@ function GatewayTab() {
             render: (row) => (
               <div className="text-right">
                 <div className="font-mono tabular-nums text-xs text-fg">{formatUsd(row.month_spend_usd_micros)}</div>
-                <div className="text-[10px] text-fg-faint">{t('gateway.callsCount', { count: row.month_calls })}</div>
+                <div className="text-caption text-fg-faint">{t('gateway.callsCount', { count: row.month_calls })}</div>
               </div>
             ),
           },

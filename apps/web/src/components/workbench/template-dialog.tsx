@@ -45,7 +45,10 @@ export function TemplateDialog({ open, templates, onClose, onSelect }: TemplateD
               <span className="mt-1 text-xs leading-5 text-fg-muted">{t(labels.descriptionKey)}</span>
               <span className="mt-3 flex flex-wrap gap-1.5">
                 {recipes.map((recipe) => (
-                  <span key={recipe.id} className="rounded-full bg-surface-muted px-2 py-0.5 text-[11px] text-fg-muted">
+                  <span
+                    key={recipe.id}
+                    className="rounded-full bg-surface-muted px-2 py-0.5 text-caption text-fg-muted"
+                  >
                     {t(recipeLabels(recipe).labelKey)}
                   </span>
                 ))}

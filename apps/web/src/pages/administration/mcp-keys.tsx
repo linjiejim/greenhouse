@@ -311,7 +311,7 @@ export function McpKeysPanel() {
             <div className="px-3 pb-3 pt-2 space-y-2 border-t border-edge">
               <p className="text-xs text-fg-muted">{t('mcpAccess.interactiveHelp', { endpoint })}</p>
               <p className="text-xs text-fg-muted">{t('mcpAccess.automationHelp', { endpoint })}</p>
-              <pre className="text-[11px] leading-relaxed font-mono bg-surface-sunken text-fg-secondary rounded p-2 overflow-x-auto">
+              <pre className="text-caption leading-relaxed font-mono bg-surface-sunken text-fg-secondary rounded p-2 overflow-x-auto">
                 {tokenExample}
               </pre>
             </div>
@@ -328,7 +328,7 @@ export function McpKeysPanel() {
               {t('mcpAccess.secretOnce')}
             </div>
             <div className="space-y-1.5">
-              <div className="text-[11px] text-fg-muted">
+              <div className="text-caption text-fg-muted">
                 client_id <code className="font-mono text-fg select-all">{revealed.clientId}</code>
               </div>
               <div className="flex items-center gap-2">
@@ -375,7 +375,7 @@ export function McpKeysPanel() {
                   <tr key={c.id} className="border-t border-edge">
                     <td className="px-3 py-2">
                       <div className="font-medium text-fg">{c.client_name}</div>
-                      <div className="font-mono text-[11px] text-fg-faint" title={c.id}>
+                      <div className="font-mono text-caption text-fg-faint" title={c.id}>
                         {c.id}
                       </div>
                     </td>
@@ -416,7 +416,7 @@ export function McpKeysPanel() {
 
         {/* Interactive (public) clients — registered via DCR when users log in */}
         <div className="mb-1 text-xs font-semibold text-fg">{t('mcpAccess.interactiveClients')}</div>
-        <p className="text-[11px] text-fg-muted mb-2">{t('mcpAccess.interactiveDescription')}</p>
+        <p className="text-caption text-fg-muted mb-2">{t('mcpAccess.interactiveDescription')}</p>
         <div className="bg-surface-raised border border-edge rounded-md overflow-x-auto">
           <table className="min-w-[640px] w-full text-xs">
             <thead className="bg-surface-sunken text-fg-muted">
@@ -440,7 +440,7 @@ export function McpKeysPanel() {
                 <tr key={c.id} className="border-t border-edge">
                   <td className="px-3 py-2">
                     <div className="font-medium text-fg">{c.client_name}</div>
-                    <div className="font-mono text-[11px] text-fg-faint" title={c.id}>
+                    <div className="font-mono text-caption text-fg-faint" title={c.id}>
                       {c.id}
                     </div>
                   </td>
@@ -503,7 +503,7 @@ export function McpKeysPanel() {
                     />
                     <span className="min-w-0">
                       <span className="block text-xs text-fg">{t(mcpGroupLabelKey(id))}</span>
-                      <span className="block text-[11px] text-fg-muted">{t(mcpGroupDescriptionKey(id))}</span>
+                      <span className="block text-caption text-fg-muted">{t(mcpGroupDescriptionKey(id))}</span>
                     </span>
                   </label>
                 ))}
@@ -557,8 +557,8 @@ export function McpKeysPanel() {
           )}
           {!activityLoading && activityRows && activityRows.length > 0 && (
             <div className="max-h-[65vh] overflow-y-auto pr-2">
-              <p className="text-[11px] text-fg-faint mb-1">{t('mcpAccess.callsTotal', { count: activityTotal })}</p>
-              <table className="w-full text-[11px]">
+              <p className="text-caption text-fg-faint mb-1">{t('mcpAccess.callsTotal', { count: activityTotal })}</p>
+              <table className="w-full text-caption">
                 <thead className="text-fg-muted">
                   <tr>
                     <th className="py-1 text-left font-medium">{t('mcpAccess.time')}</th>

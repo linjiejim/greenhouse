@@ -96,11 +96,11 @@ export function AgentActivity() {
           rowExpand: (row) => (
             <div className="grid gap-3 md:grid-cols-2 py-1">
               <div>
-                <div className="text-[11px] font-medium text-fg-muted mb-1">{t('agentAccess.input')}</div>
+                <div className="text-caption font-medium text-fg-muted mb-1">{t('agentAccess.input')}</div>
                 <InputFields value={row.input} />
               </div>
               <div>
-                <div className="text-[11px] font-medium text-fg-muted mb-1">
+                <div className="text-caption font-medium text-fg-muted mb-1">
                   {row.error ? t('agentAccess.error') : t('agentAccess.output')}
                 </div>
                 <JsonBlock value={row.error ?? row.output} />

@@ -234,10 +234,10 @@ export function RunProfilesPanel({ sectionTabs }: { sectionTabs?: React.ReactNod
                       <div className="truncate text-xs font-medium text-fg-secondary">
                         {localized(p.name_i18n, p.name)}
                       </div>
-                      <div className="mt-0.5 line-clamp-2 text-[10px] leading-relaxed text-fg-muted">
+                      <div className="mt-0.5 line-clamp-2 text-caption leading-relaxed text-fg-muted">
                         {localized(p.description_i18n, p.description ?? '') || t('agents.defaultPurpose')}
                       </div>
-                      <div className="mt-1 text-[10px] text-fg-faint">
+                      <div className="mt-1 text-caption text-fg-faint">
                         {p.model_id ?? 'flash'} · {t('agents.toolsCount', { count: p.tools.length })}
                       </div>
                     </div>
@@ -366,7 +366,7 @@ export function RunProfilesPanel({ sectionTabs }: { sectionTabs?: React.ReactNod
                                     {p.name}
                                   </div>
                                   {p.owner_nickname && (
-                                    <div className="text-[10px] text-fg-muted">{p.owner_nickname}</div>
+                                    <div className="text-caption text-fg-muted">{p.owner_nickname}</div>
                                   )}
                                   {p.description && (
                                     <div className="text-xs text-fg-faint truncate max-w-[300px]" title={p.description}>

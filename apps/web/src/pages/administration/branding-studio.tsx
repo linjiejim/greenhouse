@@ -237,7 +237,7 @@ function SwatchInput({
         className="h-6 w-8 rounded border border-edge cursor-pointer flex-shrink-0"
         aria-label={variable}
       />
-      <span className="text-[10px] font-mono text-fg-secondary truncate" title={variable}>
+      <span className="text-caption font-mono text-fg-secondary truncate" title={variable}>
         {label}
       </span>
     </div>
@@ -536,7 +536,7 @@ export function BrandingStudioPanel() {
                       style={{ backgroundColor: rgbToHex(palette[shade]) }}
                       title={`primary-${shade}: ${rgbToHex(palette[shade])}`}
                     >
-                      <span className={`text-[9px] font-mono ${shade >= 400 ? 'text-white/80' : 'text-black/50'}`}>
+                      <span className={`text-caption font-mono ${shade >= 400 ? 'text-white/80' : 'text-black/50'}`}>
                         {shade}
                       </span>
                     </div>
@@ -697,7 +697,7 @@ export function BrandingStudioPanel() {
                         className="w-10 h-10 rounded-md object-contain border border-edge bg-surface"
                       />
                     ) : (
-                      <div className="w-10 h-10 rounded-md border border-dashed border-edge flex items-center justify-center text-fg-faint text-[9px]">
+                      <div className="w-10 h-10 rounded-md border border-dashed border-edge flex items-center justify-center text-fg-faint text-caption">
                         —
                       </div>
                     )}
@@ -726,7 +726,7 @@ export function BrandingStudioPanel() {
                       </button>
                     )}
                   </div>
-                  <p className="text-[10px] text-fg-faint mt-1">{t('brandingStudio.logoHint')}</p>
+                  <p className="text-caption text-fg-faint mt-1">{t('brandingStudio.logoHint')}</p>
                 </div>
                 <div className="flex items-center gap-2 pt-1">
                   <Button size="sm" onClick={handleSaveWorkspace} disabled={savingWorkspace}>

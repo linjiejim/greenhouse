@@ -36,7 +36,7 @@ export function TaskVariableForm({
         const missing = missingKeys.has(variable.key);
         return (
           <label key={variable.key} className="flex min-w-0 flex-col gap-1">
-            <span className="truncate text-[10px] text-fg-muted" title={variable.description || undefined}>
+            <span className="truncate text-caption text-fg-muted" title={variable.description || undefined}>
               {variable.label}
               {variable.required && <span className="ml-0.5 text-danger">*</span>}
             </span>

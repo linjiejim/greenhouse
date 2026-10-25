@@ -235,7 +235,7 @@ function MessageBubbleImpl(props: MessageProps) {
       <>
         <div className="flex justify-end animate-fade-in">
           <div
-            className={`group relative max-w-[80%] rounded-xl rounded-br-sm border border-edge bg-surface-muted px-4 py-3 shadow-sm shadow-primary-900/5 ${
+            className={`group relative max-w-[80%] rounded-xl rounded-br-sm border border-edge bg-surface-muted px-4 py-3 ${
               isEditing ? 'w-[min(28rem,80vw)]' : ''
             }`}
           >
@@ -300,11 +300,11 @@ function MessageBubbleImpl(props: MessageProps) {
               </div>
             )}
             <div className="flex items-center justify-between mt-1.5">
-              {createdAt && <p className="text-[10px] text-fg-faint">{new Date(createdAt).toLocaleTimeString()}</p>}
+              {createdAt && <p className="text-caption text-fg-faint">{new Date(createdAt).toLocaleTimeString()}</p>}
               {isLastUser && !isEditing && onEdit && (
                 <button
                   onClick={() => setIsEditing(true)}
-                  className="text-[10px] text-fg-faint hover:text-primary-fg opacity-0 group-hover:opacity-100 touch-visible transition-opacity ml-2"
+                  className="text-caption text-fg-faint hover:text-primary-fg opacity-0 group-hover:opacity-100 touch-visible transition-opacity ml-2"
                   title={t('chat.editMessage')}
                 >
                   <Pencil size={10} className="inline mr-0.5" />
@@ -374,8 +374,8 @@ function MessageBubbleImpl(props: MessageProps) {
           />
         )}
 
-        {/* Main content — flush, no bubble */}
-        <div className="relative">
+        {/* Main content — flush, no bubble; chat-reading = the 16/26 reading size */}
+        <div className="chat-reading relative">
           <div ref={contentRef}>
             <RichMarkdown
               content={content}
@@ -438,7 +438,7 @@ function MessageBubbleImpl(props: MessageProps) {
               <div className="mt-2 space-y-1">
                 <button
                   onClick={() => setShowReferences(!showReferences)}
-                  className="flex items-center gap-1 text-[10px] text-primary-fg transition-colors hover:text-primary-fg-strong"
+                  className="flex items-center gap-1 text-caption text-primary-fg transition-colors hover:text-primary-fg-strong"
                 >
                   <BookOpen size={11} />
                   {showReferences ? t('common.collapse') : t('chat.showAllReferences', { count: totalRefCount })}
@@ -450,7 +450,7 @@ function MessageBubbleImpl(props: MessageProps) {
                     {/* Knowledge documents the agent actually read */}
                     {hasRefs && (
                       <div className="flex flex-wrap items-center gap-1.5">
-                        <span className="flex flex-shrink-0 items-center gap-1 text-[11px] text-fg-faint">
+                        <span className="flex flex-shrink-0 items-center gap-1 text-caption text-fg-faint">
                           <BookOpen size={11} /> {t('chat.sources')}:
                         </span>
                         {knowledgeRefs.map((ref) =>
@@ -479,7 +479,7 @@ function MessageBubbleImpl(props: MessageProps) {
                     {/* External search sources */}
                     {hasExternalSources && (
                       <div className="flex flex-wrap items-center gap-1.5">
-                        <span className="flex flex-shrink-0 items-center gap-1 text-[10px] text-fg-faint">
+                        <span className="flex flex-shrink-0 items-center gap-1 text-caption text-fg-faint">
                           <Globe size={10} /> {t('chat.web')}:
                         </span>
                         {externalSources.map((es, i) => (
@@ -488,7 +488,7 @@ function MessageBubbleImpl(props: MessageProps) {
                             href={es.url}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="inline-flex flex-shrink-0 items-center gap-1 rounded border border-info/30 bg-info-subtle px-1.5 py-0.5 text-[10px] font-medium text-info-fg transition-colors hover:border-info/60"
+                            className="inline-flex flex-shrink-0 items-center gap-1 rounded border border-info/30 bg-info-subtle px-1.5 py-0.5 text-caption font-medium text-info-fg transition-colors hover:border-info/60"
                             title={es.url}
                           >
                             <Globe size={9} />
@@ -511,7 +511,7 @@ function MessageBubbleImpl(props: MessageProps) {
             {hasMetrics && (
               <button
                 onClick={() => setShowMetrics(!showMetrics)}
-                className="flex items-center gap-1 text-[11px] text-fg-faint transition-colors hover:text-fg-secondary"
+                className="flex items-center gap-1 text-caption text-fg-faint transition-colors hover:text-fg-secondary"
               >
                 {durationMs != null && (
                   <span className="flex items-center gap-0.5">
@@ -555,7 +555,7 @@ function MessageBubbleImpl(props: MessageProps) {
             {!compact && hasPipeline && pipeline!.length > 0 && (
               <PipelineStageChart steps={pipeline!} totalDurationMs={durationMs} />
             )}
-            <div className="flex flex-wrap gap-3 text-[11px] text-fg-muted bg-surface-sunken border border-edge rounded-sm px-3 py-2">
+            <div className="flex flex-wrap gap-3 text-caption text-fg-muted bg-surface-sunken border border-edge rounded-sm px-3 py-2">
               {model && <span className="font-mono">{model}</span>}
               {inputTokens != null && (
                 <span>{t('chat.inputTokensShort', { count: inputTokens.toLocaleString() })}</span>

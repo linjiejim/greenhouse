@@ -105,7 +105,7 @@ export function ProjectsListPanel({ collapsed }: ProjectsListPanelProps) {
             </span>
             {project.visibility === 'private' && <Lock size={10} className="flex-shrink-0 text-fg-faint" />}
             {project.progress > 0 && (
-              <span className="sidebar-secondary-meta flex-shrink-0 text-[10px] text-fg-faint tabular-nums">
+              <span className="sidebar-secondary-meta flex-shrink-0 text-caption text-fg-faint tabular-nums">
                 {project.progress}%
               </span>
             )}

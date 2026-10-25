@@ -29,7 +29,7 @@ export function CrudDetail<TRow>({ schema, row, onClose, onEdit }: CrudDetailPro
     <div className="grid grid-cols-2 gap-x-4 gap-y-3">
       {cols.map((col) => (
         <div key={col.key} className="min-w-0">
-          <div className="text-[11px] uppercase tracking-wide text-fg-faint mb-0.5">{tr(t, col.label)}</div>
+          <div className="text-caption uppercase tracking-wide text-fg-faint mb-0.5">{tr(t, col.label)}</div>
           <div className="text-sm text-fg break-words">{renderCell(col, row)}</div>
         </div>
       ))}

@@ -134,7 +134,7 @@ export function RecordDialog({ open, baseId, fields, record, users, saving, onCl
                       ? value.join(', ')
                       : String(value)}
                 </div>
-                <p className="mt-1 text-[11px] text-fg-faint">{t('tables.computedReadOnly')}</p>
+                <p className="mt-1 text-caption text-fg-faint">{t('tables.computedReadOnly')}</p>
               </div>
             );
           }

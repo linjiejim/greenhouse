@@ -163,8 +163,8 @@ export function CrudForm<TRow>({ schema, mode, initial, onClose, onSaved }: Crud
                 disabled={disabled}
                 testId={schema.testId ? `${schema.testId}-field-${f.key}` : undefined}
               />
-              {f.comment && <p className="text-[11px] text-fg-faint mt-0.5">{tr(t, f.comment)}</p>}
-              {errors[f.key] && <p className="text-[11px] text-danger mt-0.5">{errors[f.key]}</p>}
+              {f.comment && <p className="text-caption text-fg-faint mt-0.5">{tr(t, f.comment)}</p>}
+              {errors[f.key] && <p className="text-caption text-danger mt-0.5">{errors[f.key]}</p>}
             </div>
           );
         })}

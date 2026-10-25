@@ -63,7 +63,7 @@ function SkillRow({ skill, active, dimmed }: { skill: SkillSummary; active: bool
             <Download size={12} />
           </IconButton>
         </span>
-        <span className="sidebar-secondary-meta text-[10px] text-fg-faint flex-shrink-0">{skill.download_count}</span>
+        <span className="sidebar-secondary-meta text-caption text-fg-faint flex-shrink-0">{skill.download_count}</span>
       </a>
       <SkillDownloadConfirm target={downloadTarget} onClose={() => setDownloadTarget(null)} />
     </>
@@ -72,7 +72,7 @@ function SkillRow({ skill, active, dimmed }: { skill: SkillSummary; active: bool
 
 function GroupHeader({ label }: { label: string }) {
   return (
-    <div className="px-2 pt-1.5 pb-0.5 text-[10px] font-medium text-fg-muted uppercase tracking-wide">{label}</div>
+    <div className="px-2 pt-1.5 pb-0.5 text-caption font-medium text-fg-muted uppercase tracking-wide">{label}</div>
   );
 }
 
@@ -141,7 +141,7 @@ export function SkillHubList({ selectedName }: { selectedName?: string }) {
 
       {archivedTotal > 0 && (
         <div className="px-3 py-2 border-t border-edge flex items-center justify-between gap-2 flex-shrink-0">
-          <span className="text-[11px] text-fg-muted">{t('skillHub.showArchived')}</span>
+          <span className="text-caption text-fg-muted">{t('skillHub.showArchived')}</span>
           <Toggle checked={showArchived} onChange={setShowArchived} size="sm" />
         </div>
       )}

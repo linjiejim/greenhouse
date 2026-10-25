@@ -121,7 +121,7 @@ export function KnowledgeShareDialog({ open, onClose, docId, docTitle, onChanged
                 <div key={s.target} className="flex items-center justify-between py-1">
                   <div className="flex items-center gap-2 min-w-0">
                     <Badge variant="default">{s.name}</Badge>
-                    <span className="text-[10px] text-fg-faint">
+                    <span className="text-caption text-fg-faint">
                       {s.role === 'editor' ? t('knowledge.editable') : t('knowledge.readOnly')}
                     </span>
                   </div>
@@ -179,9 +179,9 @@ export function KnowledgeShareDialog({ open, onClose, docId, docTitle, onChanged
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="text-sm font-medium truncate">{u.nickname}</div>
-                      <div className="text-[11px] text-fg-muted truncate">{u.email}</div>
+                      <div className="text-caption text-fg-muted truncate">{u.email}</div>
                     </div>
-                    {already && <span className="text-[10px] text-fg-faint">{t('knowledge.alreadyShared')}</span>}
+                    {already && <span className="text-caption text-fg-faint">{t('knowledge.alreadyShared')}</span>}
                   </button>
                 );
               })}

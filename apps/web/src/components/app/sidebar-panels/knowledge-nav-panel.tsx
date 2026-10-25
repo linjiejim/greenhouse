@@ -648,7 +648,7 @@ export function KnowledgeNavPanel({ activeModule = '', collapsed, onNavigate }: 
       <Spinner className="h-4 w-4" />
     </div>
   );
-  const emptyBlock = (text: string) => <div className="px-3 py-2 text-[11px] text-fg-faint">{text}</div>;
+  const emptyBlock = (text: string) => <div className="px-3 py-2 text-caption text-fg-faint">{text}</div>;
 
   // ── All overview: recently edited only (scope pills are the sole navigation) ──
   const renderAll = () => {
@@ -667,7 +667,7 @@ export function KnowledgeNavPanel({ activeModule = '', collapsed, onNavigate }: 
           loadingBlock
         ) : recent.length > 0 ? (
           <div>
-            <div className="px-1 pb-1 text-[10px] font-semibold uppercase tracking-wider text-fg-faint">
+            <div className="px-1 pb-1 text-caption font-semibold uppercase tracking-wider text-fg-faint">
               {t('knowledge.recentlyEdited')}
             </div>
             <div className="space-y-0.5">
@@ -739,7 +739,7 @@ export function KnowledgeNavPanel({ activeModule = '', collapsed, onNavigate }: 
   const renderSearch = () => {
     if (searchLoading) {
       return (
-        <div className="flex items-center gap-2 justify-center py-4 text-[11px] text-fg-faint">
+        <div className="flex items-center gap-2 justify-center py-4 text-caption text-fg-faint">
           <Spinner className="h-4 w-4" /> {t('knowledge.searching')}
         </div>
       );
@@ -750,7 +750,7 @@ export function KnowledgeNavPanel({ activeModule = '', collapsed, onNavigate }: 
       <div className="pt-1 space-y-2">
         {groups.map((group) => (
           <div key={group.scope}>
-            <div className="px-1 pb-1 text-[10px] font-semibold uppercase tracking-wider text-fg-faint">
+            <div className="px-1 pb-1 text-caption font-semibold uppercase tracking-wider text-fg-faint">
               {scopeLabel(group.scope)}
             </div>
             <div className="divide-y divide-edge/50">
@@ -764,9 +764,9 @@ export function KnowledgeNavPanel({ activeModule = '', collapsed, onNavigate }: 
                     <span className="text-xs text-fg-secondary truncate flex-1" title={item.title}>
                       {item.title}
                     </span>
-                    {item.note && <span className="text-[9px] text-fg-faint flex-shrink-0">{item.note}</span>}
+                    {item.note && <span className="text-caption text-fg-faint flex-shrink-0">{item.note}</span>}
                   </div>
-                  {item.snippet && <p className="text-[10px] text-fg-faint line-clamp-2 mt-0.5">{item.snippet}</p>}
+                  {item.snippet && <p className="text-caption text-fg-faint line-clamp-2 mt-0.5">{item.snippet}</p>}
                 </button>
               ))}
             </div>
@@ -1038,7 +1038,7 @@ function DocRow({
       <span className="truncate flex-1" title={title}>
         {title}
       </span>
-      {note && <span className="text-[9px] text-fg-faint flex-shrink-0">{note}</span>}
+      {note && <span className="text-caption text-fg-faint flex-shrink-0">{note}</span>}
     </button>
   );
 }
@@ -1427,7 +1427,7 @@ export function KnowledgeTree({
                   <span className="flex-1 text-left truncate" title={f.name}>
                     {f.name}
                   </span>
-                  <span className="text-[10px] text-fg-faint flex-shrink-0 group-hover/row:invisible">
+                  <span className="text-caption text-fg-faint flex-shrink-0 group-hover/row:invisible">
                     {docs.filter((d) => d.folder_id === f.id).length || ''}
                   </span>
                 </button>

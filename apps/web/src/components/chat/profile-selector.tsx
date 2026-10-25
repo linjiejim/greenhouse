@@ -130,7 +130,7 @@ function ToolsPreviewTooltip({ profile, isRowHovered }: { profile: Profile; isRo
         if (!isRowHovered) closeSoon();
       }}
       aria-label={t('profileSelector.toolsAria', { name: profileName(profile, localized) })}
-      className="relative rounded-full px-1.5 py-0.5 text-[10px] text-fg-faint whitespace-nowrap hover:bg-primary-subtle hover:text-primary-fg-strong focus:outline-none focus:ring-1 focus:ring-primary-edge"
+      className="relative rounded-full px-1.5 py-0.5 text-caption text-fg-faint whitespace-nowrap hover:bg-primary-subtle hover:text-primary-fg-strong focus:outline-none focus:ring-1 focus:ring-primary-edge"
     >
       {t('profileSelector.toolCount', { count: tools.length })}
       {visible && style && (
@@ -147,8 +147,8 @@ function ToolsPreviewTooltip({ profile, isRowHovered }: { profile: Profile; isRo
           }}
         >
           <span className="flex items-center justify-between border-b border-edge px-3 py-2">
-            <span className="text-[11px] font-medium text-fg-muted">{t('profileEditor.tools')}</span>
-            <span className="text-[10px] text-fg-faint">{tools.length}</span>
+            <span className="text-caption font-medium text-fg-muted">{t('profileEditor.tools')}</span>
+            <span className="text-caption text-fg-faint">{tools.length}</span>
           </span>
           {tools.length > 0 ? (
             <span className="block max-h-[220px] overflow-y-auto p-1.5">
@@ -159,12 +159,12 @@ function ToolsPreviewTooltip({ profile, isRowHovered }: { profile: Profile; isRo
                     <Icon size={13} className="mt-0.5 flex-shrink-0 text-primary-fg" />
                     <span className="min-w-0">
                       <span
-                        className="block truncate text-[11px] font-medium leading-tight text-fg-secondary"
+                        className="block truncate text-caption font-medium leading-tight text-fg-secondary"
                         title={tool.replace(/_/g, ' ')}
                       >
                         {tool.replace(/_/g, ' ')}
                       </span>
-                      <span className="block text-[10px] leading-tight text-fg-faint line-clamp-2">
+                      <span className="block text-caption leading-tight text-fg-faint line-clamp-2">
                         {getToolBrief(tool)}
                       </span>
                     </span>
@@ -172,13 +172,13 @@ function ToolsPreviewTooltip({ profile, isRowHovered }: { profile: Profile; isRo
                 );
               })}
               {hiddenCount > 0 && (
-                <span className="block px-2 py-1 text-[10px] font-medium text-fg-faint">
+                <span className="block px-2 py-1 text-caption font-medium text-fg-faint">
                   {t('profileSelector.moreTools', { count: hiddenCount })}
                 </span>
               )}
             </span>
           ) : (
-            <span className="block px-3 py-2 text-center text-[10px] italic text-fg-faint">
+            <span className="block px-3 py-2 text-center text-caption italic text-fg-faint">
               {t('profileSelector.promptOnly')}
             </span>
           )}
@@ -228,7 +228,7 @@ function renderProfileRow(
           {name}
         </span>
         <span
-          className={`mt-0.5 block h-3 truncate text-[10px] leading-3 ${
+          className={`mt-0.5 block h-4 truncate text-caption leading-4 ${
             isHovered && description ? 'text-fg-faint' : 'text-transparent'
           }`}
           title={description || undefined}
@@ -305,7 +305,7 @@ function ProfilePickerPopover({
               onClose();
               window.location.hash = AUTOMATIONS_PROFILES_HASH;
             }}
-            className="ml-auto rounded-sm px-1.5 py-0.5 text-[11px] text-fg-secondary transition-colors hover:bg-surface-muted hover:text-fg"
+            className="ml-auto rounded-sm px-1.5 py-0.5 text-caption text-fg-secondary transition-colors hover:bg-surface-muted hover:text-fg"
           >
             {t('profileSelector.manage')}
           </button>
@@ -323,7 +323,7 @@ function ProfilePickerPopover({
                     setActiveFilter(filter);
                     setHoveredId(null);
                   }}
-                  className={`flex-shrink-0 rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors ${
+                  className={`flex-shrink-0 rounded-full px-2.5 py-1 text-caption font-medium transition-colors ${
                     isActive
                       ? 'bg-primary-subtle text-primary-fg-strong border border-primary-edge'
                       : 'border border-transparent text-fg-muted hover:bg-surface-sunken hover:text-fg-secondary'
@@ -341,7 +341,7 @@ function ProfilePickerPopover({
               {visibleGroups.map((group, index) => (
                 <div key={group.category}>
                   <div className={`${index > 0 ? 'mt-1.5 border-t border-edge pt-1.5' : ''} px-2 py-1`}>
-                    <span className="text-[10px] font-medium uppercase tracking-wider text-fg-faint">
+                    <span className="text-caption font-medium uppercase tracking-wider text-fg-faint">
                       {t(PROFILE_CATEGORY_LABELS[group.category])}
                     </span>
                   </div>
@@ -413,7 +413,7 @@ function ProfilePickerDrawer({
               </span>
               {isSelected && <Check size={14} className="text-primary-fg flex-shrink-0" />}
             </div>
-            <span className="text-[10px] text-fg-faint flex-shrink-0">
+            <span className="text-caption text-fg-faint flex-shrink-0">
               {t('profileSelector.toolCount', { count: p.tools.length })}
             </span>
           </div>
@@ -460,7 +460,7 @@ function ProfilePickerDrawer({
               <button
                 key={filter}
                 onClick={() => setActiveFilter(filter)}
-                className={`flex-shrink-0 rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors ${
+                className={`flex-shrink-0 rounded-full px-2.5 py-1 text-caption font-medium transition-colors ${
                   isActive
                     ? 'bg-primary-subtle text-primary-fg-strong border border-primary-edge'
                     : 'border border-transparent text-fg-muted hover:bg-surface-sunken hover:text-fg-secondary'
@@ -478,7 +478,7 @@ function ProfilePickerDrawer({
             {visibleGroups.map((group, index) => (
               <div key={group.category}>
                 <div className={`${index > 0 ? 'border-t border-edge mt-1.5 pt-1.5' : ''} px-4 py-1`}>
-                  <span className="text-[10px] font-medium text-fg-faint uppercase tracking-wider">
+                  <span className="text-caption font-medium text-fg-faint uppercase tracking-wider">
                     {t(PROFILE_CATEGORY_LABELS[group.category])}
                   </span>
                 </div>

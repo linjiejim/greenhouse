@@ -143,7 +143,7 @@ export function GatewayKeys({ onOpenGuide }: { onOpenGuide: () => void }) {
                 <div className="text-sm font-medium text-fg truncate" title={row.name}>
                   {row.name}
                 </div>
-                <div className="text-[10px] font-mono text-fg-faint truncate">{row.prefix}…</div>
+                <div className="text-caption font-mono text-fg-faint truncate">{row.prefix}…</div>
               </div>
             ),
           },
@@ -185,7 +185,7 @@ export function GatewayKeys({ onOpenGuide }: { onOpenGuide: () => void }) {
             render: (row) => (
               <div className="text-right">
                 <div className="font-mono tabular-nums text-xs text-fg">{formatUsd(row.month_spend_usd_micros)}</div>
-                <div className="text-[10px] text-fg-faint">{t('gateway.callsCount', { count: row.month_calls })}</div>
+                <div className="text-caption text-fg-faint">{t('gateway.callsCount', { count: row.month_calls })}</div>
               </div>
             ),
           },

@@ -80,14 +80,14 @@ export function TaskTreeItem({
         )}
 
         {task.assignee_nickname && (
-          <span className="text-[10px] text-fg-faint bg-surface-muted px-1.5 py-0.5 rounded-full truncate max-w-[60px]">
+          <span className="text-caption text-fg-faint bg-surface-muted px-1.5 py-0.5 rounded-full truncate max-w-[60px]">
             {task.assignee_nickname}
           </span>
         )}
 
         {task.due_date && (
           <span
-            className={`text-[10px] flex items-center gap-0.5 ${isOverdue ? 'text-danger font-medium' : 'text-fg-faint'}`}
+            className={`text-caption flex items-center gap-0.5 ${isOverdue ? 'text-danger font-medium' : 'text-fg-faint'}`}
           >
             <Calendar size={10} />
             {task.due_date.slice(5)}

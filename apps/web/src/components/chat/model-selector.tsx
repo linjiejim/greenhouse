@@ -94,7 +94,7 @@ export function ModelSelector({
               />
               <span className="min-w-0 flex-1">
                 <span className="block truncate font-mono text-fg">{model.id}</span>
-                <span className="block truncate text-[10px] text-fg-faint">{model.name}</span>
+                <span className="block truncate text-caption text-fg-faint">{model.name}</span>
               </span>
             </button>
           ))}

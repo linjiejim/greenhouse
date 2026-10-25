@@ -738,9 +738,7 @@ export function GanttCore<TData, GData>({
       ) : null,
     statusIcon: (task) =>
       task.task_type === 'milestone' ? (
-        <span className="text-star flex-shrink-0" style={{ fontSize: 10 }}>
-          ◆
-        </span>
+        <span className="text-star text-caption flex-shrink-0">◆</span>
       ) : (
         <StatusIcon status={task.status} size={12} />
       ),
@@ -753,7 +751,7 @@ export function GanttCore<TData, GData>({
     ),
     assigneeSpan: (task) =>
       task.assignee_nickname ? (
-        <span className="text-[10px] text-fg-faint truncate max-w-[60px] flex-shrink-0 text-right">
+        <span className="text-caption text-fg-faint truncate max-w-[60px] flex-shrink-0 text-right">
           {task.assignee_nickname}
         </span>
       ) : null,
@@ -774,7 +772,7 @@ export function GanttCore<TData, GData>({
             <button
               key={key}
               onClick={() => runBatchAction('status', key)}
-              className={`px-2 py-0.5 rounded-full border text-[10px] hover:shadow-sm transition-colors ${cfg.bg}`}
+              className={`px-2 py-0.5 rounded-full border text-caption hover:shadow-sm transition-colors ${cfg.bg}`}
             >
               {t(cfg.label)}
             </button>
@@ -876,7 +874,7 @@ export function GanttCore<TData, GData>({
               {headers.map((m, i) => (
                 <div
                   key={i}
-                  className="absolute top-0 h-full flex items-center px-2 border-l border-edge text-[10px] font-medium text-fg-muted"
+                  className="absolute top-0 h-full flex items-center px-2 border-l border-edge text-caption font-medium text-fg-muted"
                   style={{ left: m.left, width: m.width }}
                 >
                   {m.label}
@@ -1031,7 +1029,7 @@ export function GanttCore<TData, GData>({
                           <div className="flex items-center gap-1 px-1.5 truncate leading-5 relative z-[1] h-full">
                             {bar.width > 40 && (
                               <span
-                                className={`text-[9px] ${bar.isDarkBg ? 'text-white' : 'text-fg-secondary'} truncate font-medium`}
+                                className={`text-caption ${bar.isDarkBg ? 'text-white' : 'text-fg-secondary'} truncate font-medium`}
                                 title={task.title}
                               >
                                 {task.title}
@@ -1039,7 +1037,7 @@ export function GanttCore<TData, GData>({
                             )}
                             {bar.width > 120 && task.assignee_nickname && (
                               <span
-                                className={`text-[8px] ${bar.isDarkBg ? 'text-white/80' : 'text-fg-muted'} flex-shrink-0 flex items-center gap-0.5`}
+                                className={`text-caption ${bar.isDarkBg ? 'text-white/80' : 'text-fg-muted'} flex-shrink-0 flex items-center gap-0.5`}
                               >
                                 <User size={7} />
                                 {task.assignee_nickname}
@@ -1047,14 +1045,14 @@ export function GanttCore<TData, GData>({
                             )}
                             {bar.width > 80 && days && (
                               <span
-                                className={`text-[8px] ${bar.isDarkBg ? 'text-white/70' : 'text-fg-faint'} flex-shrink-0`}
+                                className={`text-caption ${bar.isDarkBg ? 'text-white/70' : 'text-fg-faint'} flex-shrink-0`}
                               >
                                 {days}d
                               </span>
                             )}
-                            {showBarStatusPill && bar.width > 100 && (
+                            {showBarStatusPill && bar.width > 160 && (
                               <span
-                                className={`text-[7px] px-1 py-px rounded-full flex-shrink-0 ${
+                                className={`text-caption leading-none px-1.5 py-0.5 rounded-sm flex-shrink-0 ${
                                   bar.isDarkBg ? 'bg-surface-raised/25 text-white' : 'bg-fg/10 text-fg-muted'
                                 }`}
                               >
@@ -1066,7 +1064,7 @@ export function GanttCore<TData, GData>({
                         {/* Parent bar label */}
                         {bar.isParent && bar.width > 50 && (
                           <span
-                            className={`text-[8px] ${bar.isDarkBg ? 'text-white/80' : 'text-fg-muted'} px-1 truncate block leading-3 relative z-[1]`}
+                            className={`text-caption ${bar.isDarkBg ? 'text-white/80' : 'text-fg-muted'} px-1 truncate block leading-4 relative z-[1]`}
                           >
                             {task.title}
                           </span>
@@ -1101,7 +1099,7 @@ export function GanttCore<TData, GData>({
               className="absolute top-0 bottom-0 w-px bg-danger z-[6] pointer-events-none"
               style={{ left: todayOffset }}
             >
-              <div className="absolute top-0 -left-2 text-[9px] text-danger font-medium bg-danger-subtle px-1 rounded">
+              <div className="absolute top-0 -left-2 text-caption text-danger font-medium bg-danger-subtle px-1 rounded">
                 {t('common.today')}
               </div>
             </div>

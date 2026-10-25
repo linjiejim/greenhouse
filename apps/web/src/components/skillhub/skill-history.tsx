@@ -69,7 +69,7 @@ function VersionFiles({ name, version }: { name: string; version: string }) {
           </button>
           {file.encoding === 'base64' && <span className="ml-2 text-fg-faint">{t('skillHub.binaryBase64')}</span>}
           {openPath === file.path && file.encoding !== 'base64' && (
-            <pre className="mt-1 mb-2 p-2 rounded-sm bg-surface-sunken border border-edge max-h-64 overflow-auto whitespace-pre-wrap break-words text-[11px] leading-relaxed">
+            <pre className="mt-1 mb-2 p-2 rounded-sm bg-surface-sunken border border-edge max-h-64 overflow-auto whitespace-pre-wrap break-words text-caption leading-relaxed">
               {file.content}
             </pre>
           )}

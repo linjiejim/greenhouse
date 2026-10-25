@@ -290,7 +290,7 @@ export function ProfileEditorDrawer({
               <div className="flex items-center gap-2">
                 <h3 className="text-sm font-semibold text-fg-secondary">{t('profileEditor.systemPrompt')}</h3>
                 <span
-                  className={`text-[10px] font-mono ${
+                  className={`text-caption font-mono ${
                     promptLength > MAX_PROMPT_CHARS ? 'text-danger font-semibold' : 'text-fg-faint'
                   }`}
                 >
@@ -335,7 +335,7 @@ export function ProfileEditorDrawer({
                   <PlantAvatar avatar={form.avatar} stableId={avatarStableId ?? 'new'} size="sm" animate={false} />
                   <span className="min-w-0 flex-1">
                     <span className="block text-xs font-medium text-fg-secondary">{t('profileEditor.appearance')}</span>
-                    <span className="block truncate text-[10px] text-fg-faint">{appearanceSummary}</span>
+                    <span className="block truncate text-caption text-fg-faint">{appearanceSummary}</span>
                   </span>
                   {showAppearance ? (
                     <ChevronUp size={14} className="text-fg-faint" />
@@ -360,7 +360,7 @@ export function ProfileEditorDrawer({
                             key={state}
                             type="button"
                             onClick={() => setPreviewState(state)}
-                            className={`rounded-full px-1.5 py-0.5 text-[9px] font-medium transition-colors ${
+                            className={`rounded-full px-1.5 py-0.5 text-caption font-medium transition-colors ${
                               previewState === state
                                 ? 'bg-primary-subtle text-primary-fg-strong'
                                 : 'text-fg-faint hover:bg-surface-muted hover:text-fg-muted'
@@ -374,7 +374,7 @@ export function ProfileEditorDrawer({
 
                     <div className="min-w-0 space-y-3">
                       <div>
-                        <label className="mb-1.5 block text-[10px] font-medium uppercase tracking-wider text-fg-faint">
+                        <label className="mb-1.5 block text-caption font-medium uppercase tracking-wider text-fg-faint">
                           {t('profileEditor.plant')}
                         </label>
                         <div
@@ -406,7 +406,7 @@ export function ProfileEditorDrawer({
                       </div>
 
                       <div>
-                        <label className="mb-1.5 block text-[10px] font-medium uppercase tracking-wider text-fg-faint">
+                        <label className="mb-1.5 block text-caption font-medium uppercase tracking-wider text-fg-faint">
                           {t('profileEditor.tint')}
                         </label>
                         <div
@@ -457,7 +457,7 @@ export function ProfileEditorDrawer({
                 />
               </FormField>
               {form.name.trim() && (
-                <p className="-mt-4 text-[10px] text-fg-faint">
+                <p className="-mt-4 text-caption text-fg-faint">
                   {t('profileEditor.slug')}: <span className="font-mono text-fg-muted">{slug}</span>
                 </p>
               )}
@@ -527,7 +527,7 @@ export function ProfileEditorDrawer({
                   </label>
                   <div className="flex items-center gap-2">
                     <span
-                      className={`text-[10px] font-mono ${
+                      className={`text-caption font-mono ${
                         promptLength > MAX_PROMPT_CHARS ? 'text-danger font-semibold' : 'text-fg-faint'
                       }`}
                     >
@@ -572,7 +572,7 @@ export function ProfileEditorDrawer({
                 <div>
                   <div className="flex items-center justify-between gap-3">
                     <h3 className="text-sm font-semibold text-fg">{t('profileEditor.tools')}</h3>
-                    <span className="rounded-full bg-primary-subtle px-2 py-0.5 text-[10px] font-medium text-primary-fg-strong">
+                    <span className="rounded-full bg-primary-subtle px-2 py-0.5 text-caption font-medium text-primary-fg-strong">
                       {t('profileEditor.selected', { count: form.tools.length })}
                     </span>
                   </div>
@@ -581,7 +581,7 @@ export function ProfileEditorDrawer({
                     <Tag tone="info">{t('profileEditor.read')}</Tag>
                     <Tag tone="danger">{t('profileEditor.write')}</Tag>
                     <Tag tone="warning">{t('profileEditor.confirm')}</Tag>
-                    <span className="text-[10px] text-fg-faint">{t('profileEditor.writeConfirmHint')}</span>
+                    <span className="text-caption text-fg-faint">{t('profileEditor.writeConfirmHint')}</span>
                   </div>
                 </div>
                 <Input
@@ -619,7 +619,7 @@ export function ProfileEditorDrawer({
                   return (
                     <div key={cat}>
                       <div className="sticky top-0 z-[1] border-b border-edge bg-surface-sunken px-4 py-2">
-                        <span className="text-[10px] font-semibold uppercase tracking-wider text-fg-faint">
+                        <span className="text-caption font-semibold uppercase tracking-wider text-fg-faint">
                           {t(groupLabels[cat])}
                         </span>
                       </div>
@@ -655,7 +655,7 @@ export function ProfileEditorDrawer({
                                 )}
                               </span>
                               {brief && (
-                                <span className="mt-0.5 block text-[10px] leading-relaxed text-fg-faint">{brief}</span>
+                                <span className="mt-0.5 block text-caption leading-relaxed text-fg-faint">{brief}</span>
                               )}
                             </span>
                           </label>
@@ -675,7 +675,7 @@ export function ProfileEditorDrawer({
           <FormActions
             className="flex-shrink-0 border-t border-edge bg-surface-raised px-4 py-3 sm:px-6"
             leading={
-              <p className="text-[10px] text-fg-faint">
+              <p className="text-caption text-fg-faint">
                 <span className="text-danger">*</span> {t('profileEditor.requiredHint')}
               </p>
             }

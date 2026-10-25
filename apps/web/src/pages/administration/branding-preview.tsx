@@ -17,7 +17,7 @@ const TONES = ['neutral', 'primary', 'success', 'warning', 'danger', 'info'] as 
 function Row({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section className="px-5 py-4 border-b border-edge last:border-b-0">
-      <h3 className="text-[11px] font-semibold text-fg-faint uppercase tracking-wide mb-3">{title}</h3>
+      <h3 className="text-caption font-semibold text-fg-faint uppercase tracking-wide mb-3">{title}</h3>
       {children}
     </section>
   );
@@ -33,7 +33,7 @@ export function BrandingPreview() {
       <Row title={t('brandingStudio.pvTypography')}>
         <h2 className="text-lg font-semibold text-fg mb-1">{t('brandingStudio.sampleHeading')}</h2>
         <p className="text-sm text-fg-secondary mb-1.5">{t('brandingStudio.sampleBody')}</p>
-        <p className="text-[10px] text-fg-faint font-mono">{t('brandingStudio.sampleMeta')}</p>
+        <p className="text-caption text-fg-faint font-mono">{t('brandingStudio.sampleMeta')}</p>
       </Row>
 
       {/* Buttons + form */}
@@ -98,7 +98,7 @@ export function BrandingPreview() {
               </li>
             </ul>
           </div>
-          <div className="flex items-center gap-1.5 text-[10px] text-fg-faint">
+          <div className="flex items-center gap-1.5 text-caption text-fg-faint">
             <Sparkles size={10} />
             <span>{t('brandingStudio.sampleModelMeta')}</span>
           </div>

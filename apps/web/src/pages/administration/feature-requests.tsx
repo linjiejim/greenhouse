@@ -171,7 +171,7 @@ export function FeatureRequestsPanel({ tabs, actions }: { tabs?: React.ReactNode
                         </td>
                         <td className="px-3 py-2">
                           <span
-                            className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${statusStyle.bg} ${statusStyle.text}`}
+                            className={`text-caption px-2 py-0.5 rounded-full font-medium ${statusStyle.bg} ${statusStyle.text}`}
                           >
                             {t(statusStyle.labelKey)}
                           </span>
@@ -181,7 +181,7 @@ export function FeatureRequestsPanel({ tabs, actions }: { tabs?: React.ReactNode
                         </td>
                         <td className="px-3 py-2">
                           <span className="text-xs text-fg-secondary font-medium">{r.submitted_by_nickname}</span>
-                          <span className="text-[10px] text-fg-faint ml-1">({r.submitted_by_role})</span>
+                          <span className="text-caption text-fg-faint ml-1">({r.submitted_by_role})</span>
                         </td>
                         <td className="px-3 py-2 text-xs text-fg-faint">{relativeTime(r.created_at)}</td>
                         <td className="px-3 py-2 text-center" onClick={(e) => e.stopPropagation()}>
@@ -229,7 +229,7 @@ export function FeatureRequestsPanel({ tabs, actions }: { tabs?: React.ReactNode
                             <Select
                               value={r.priority}
                               onChange={(e) => handlePriorityChange(r.id, e.target.value)}
-                              className="text-[10px] py-0 px-1 w-16 h-6"
+                              className="text-caption py-0 px-1 w-16 h-6"
                               disabled={isSaving}
                             >
                               <option value="low">{t('common.low')}</option>
@@ -274,7 +274,7 @@ export function FeatureRequestsPanel({ tabs, actions }: { tabs?: React.ReactNode
                                 ) : (
                                   <div className="flex items-start justify-between">
                                     <div>
-                                      <span className="text-[10px] text-fg-faint uppercase tracking-wider">
+                                      <span className="text-caption text-fg-faint uppercase tracking-wider">
                                         {t('settings.adminNote')}
                                       </span>
                                       {r.admin_note ? (

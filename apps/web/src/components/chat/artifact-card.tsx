@@ -43,7 +43,7 @@ export function ArtifactCard({
       <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center text-primary-fg">{icon}</span>
       <span className="min-w-0 flex-1">
         <span className="block truncate text-xs font-semibold text-fg">{title}</span>
-        {meta && <span className="block truncate text-[10px] text-fg-faint">{meta}</span>}
+        {meta && <span className="block truncate text-caption text-fg-faint">{meta}</span>}
       </span>
       {status && (
         <Tag
@@ -91,7 +91,7 @@ export function ArtifactCard({
 export function ArtifactCardActions({ hint, children }: { hint?: React.ReactNode; children: React.ReactNode }) {
   return (
     <div className="flex flex-wrap items-center gap-2">
-      {hint && <p className="min-w-0 flex-1 text-[10px] text-fg-faint">{hint}</p>}
+      {hint && <p className="min-w-0 flex-1 text-caption text-fg-faint">{hint}</p>}
       {children}
     </div>
   );

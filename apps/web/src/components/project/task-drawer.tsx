@@ -236,7 +236,7 @@ export function TaskDetailDrawer({
                   <button
                     key={key}
                     onClick={() => handleQuickStatus(key)}
-                    className={`text-[10px] px-2 py-1 rounded-full border transition-colors ${
+                    className={`text-caption px-2 py-1 rounded-full border transition-colors ${
                       (form.status || task.status) === key
                         ? `${cfg.bg} font-medium`
                         : 'border-edge text-fg-faint hover:border-edge-strong'
@@ -293,7 +293,7 @@ export function TaskDetailDrawer({
                           {tags.map((tag: string) => (
                             <span
                               key={tag}
-                              className="text-[10px] bg-surface-muted text-fg-secondary px-1.5 py-0.5 rounded"
+                              className="text-caption bg-surface-muted text-fg-secondary px-1.5 py-0.5 rounded"
                             >
                               {tag}
                             </span>
@@ -331,7 +331,7 @@ export function TaskDetailDrawer({
                       </h4>
                       <button
                         onClick={() => setEditDeps(!editDeps)}
-                        className="text-[10px] text-primary-fg hover:text-primary-fg-strong"
+                        className="text-caption text-primary-fg hover:text-primary-fg-strong"
                       >
                         {editDeps ? t('task.doneDeps') : t('task.editDeps')}
                       </button>
@@ -339,7 +339,7 @@ export function TaskDetailDrawer({
                     {/* Predecessors (blocks this task) */}
                     {(depTasks.length > 0 || editDeps) && (
                       <div className="mb-2">
-                        <span className="text-[10px] text-fg-faint mb-1 block">{t('task.blockers')}</span>
+                        <span className="text-caption text-fg-faint mb-1 block">{t('task.blockers')}</span>
                         <div className="space-y-1">
                           {depTasks.map((dt) => (
                             <div key={dt.id} className="flex items-center gap-1.5 text-xs py-0.5 group">
@@ -414,7 +414,7 @@ export function TaskDetailDrawer({
                                       !deps.includes(t.id) &&
                                       t.title.toLowerCase().includes(depSearch.toLowerCase()),
                                   ).length === 0 && (
-                                    <div className="px-2 py-1 text-[10px] text-fg-faint">
+                                    <div className="px-2 py-1 text-caption text-fg-faint">
                                       {t('task.noMatchingTasks')}
                                     </div>
                                   )}
@@ -428,7 +428,7 @@ export function TaskDetailDrawer({
                     {/* Dependents (this task blocks them) */}
                     {dependents.length > 0 && (
                       <div>
-                        <span className="text-[10px] text-fg-faint mb-1 block">{t('task.dependents')}</span>
+                        <span className="text-caption text-fg-faint mb-1 block">{t('task.dependents')}</span>
                         <div className="space-y-1">
                           {dependents.map((dt) => (
                             <div key={dt.id} className="flex items-center gap-1.5 text-xs py-0.5">
@@ -443,7 +443,7 @@ export function TaskDetailDrawer({
                       </div>
                     )}
                     {depTasks.length === 0 && dependents.length === 0 && !editDeps && (
-                      <p className="text-[10px] text-fg-faint">{t('task.noDependencies')}</p>
+                      <p className="text-caption text-fg-faint">{t('task.noDependencies')}</p>
                     )}
                   </div>
                 );
@@ -482,8 +482,8 @@ export function TaskDetailDrawer({
                   {comments.map((cm) => (
                     <div key={cm.id} className="bg-surface-sunken rounded-md p-2.5">
                       <div className="flex items-center gap-2 mb-1">
-                        <span className="text-[10px] font-medium text-fg-secondary">{cm.user_nickname}</span>
-                        <span className="text-[10px] text-fg-faint">{timeAgo(cm.created_at)}</span>
+                        <span className="text-caption font-medium text-fg-secondary">{cm.user_nickname}</span>
+                        <span className="text-caption text-fg-faint">{timeAgo(cm.created_at)}</span>
                       </div>
                       <p className="text-xs text-fg-secondary whitespace-pre-wrap">{cm.content}</p>
                     </div>

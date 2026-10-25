@@ -165,7 +165,7 @@ export function LoginScreen({ onSuccess }: { onSuccess: (user: AuthenticatedUser
           <div className="mx-auto flex w-fit justify-center rounded-xl bg-logo-safe p-2">
             <AppLogo size="xl" logoOnly />
           </div>
-          <h1 className="font-display text-xl font-bold text-fg mt-3">{t('login.title')}</h1>
+          <h1 className="text-xl font-bold text-fg mt-3">{t('login.title')}</h1>
           <p className="mt-1 text-xs font-semibold tracking-wide text-primary-fg-strong">
             <span className="sr-only">{taglines[0]}</span>
             <span className="login-tagline-window" aria-hidden="true">
@@ -216,7 +216,7 @@ export function LoginScreen({ onSuccess }: { onSuccess: (user: AuthenticatedUser
           <>
             <div className="mt-4 flex items-center gap-3" aria-hidden="true">
               <div className="h-px flex-1 bg-edge" />
-              <span className="text-[10px] uppercase tracking-wide text-fg-faint">{t('login.or')}</span>
+              <span className="text-caption uppercase tracking-wide text-fg-faint">{t('login.or')}</span>
               <div className="h-px flex-1 bg-edge" />
             </div>
             <Button

@@ -1,6 +1,7 @@
 @import 'tailwindcss';
 /* The one token source for web + mobile: packages/ui/src/tokens/tokens.ts → `pnpm tokens:build`. */
 @import '../../../packages/ui/src/tokens/tokens.css';
+@import '../../../packages/ui/src/styles/fonts.css';
 
 @source "../**/*.{tsx,ts}";
 /* Workspace packages with Tailwind-classed JSX (pnpm-symlinked → outside auto-detection) */
@@ -21,16 +22,11 @@ body {
   overscroll-behavior-y: none;
   background: var(--t-surface-canvas);
   color: var(--t-fg);
-  font-family: 'Nunito Sans', 'Avenir Next', 'Segoe UI', system-ui, Arial, sans-serif;
+  /* Nunito (bundled, packages/ui/src/styles/fonts.css) for body and headings; CJK falls back to the
+     system face. Branding Studio may override --font-sans. */
+  font-family: var(--font-sans);
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
-}
-
-.font-display,
-h1,
-h2,
-h3 {
-  font-family: Nunito, 'Avenir Next', 'Segoe UI', system-ui, Arial, sans-serif;
 }
 
 ::selection {
@@ -550,12 +546,22 @@ textarea,
   display: none;
 }
 
-/* ─── Prose: shared base (elements styled via Tailwind @apply) ─── */
+/* ─── Prose: shared base (elements styled via Tailwind @apply) ───
+   Reading text (documents, chat messages, user bubbles) is body-lg 16/26 in the primary text
+   colour; prose-compact stays 14px secondary for dense surfaces (task descriptions, widgets),
+   and `.chat-reading` lifts it to the reading size inside a conversation. */
 .prose-base,
 .prose-compact {
-  @apply text-sm font-normal text-fg-secondary;
+  @apply font-normal;
   overflow-wrap: anywhere;
   text-wrap: pretty;
+}
+.prose-base,
+.chat-reading .prose-compact {
+  @apply text-body-lg text-fg;
+}
+.prose-compact {
+  @apply text-sm text-fg-secondary;
 }
 .prose-base > :first-child,
 .prose-compact > :first-child {
@@ -712,7 +718,7 @@ textarea,
 }
 .prose-base pre code,
 .prose-compact pre code {
-  @apply bg-transparent p-0 text-[12px] font-normal leading-[1.65] text-fg-secondary;
+  @apply bg-transparent p-0 text-label font-normal leading-[1.6] text-fg-secondary;
 }
 
 /* ── Blockquote ── */
@@ -835,27 +841,24 @@ textarea,
 }
 
 /* ─── prose-base: spacious variant for wiki / docs ─── */
-.prose-base {
-  line-height: 1.72;
-}
 .prose-base h1 {
-  @apply mt-7 mb-3 text-xl leading-[1.35];
+  @apply mt-7 mb-3 text-[22px] leading-[30px];
 }
 .prose-base h2 {
-  @apply mt-6 mb-2 text-[17px] leading-[1.4];
+  @apply mt-6 mb-2 text-lg leading-[26px];
 }
 .prose-base h3 {
-  @apply mt-5 mb-2 text-[15px] leading-[1.45];
+  @apply mt-5 mb-2 text-base leading-[24px];
 }
 .prose-base h4 {
-  @apply mt-4 mb-1.5 text-sm leading-[1.5];
+  @apply mt-4 mb-1.5 text-base leading-[24px];
 }
 .prose-base h5,
 .prose-base h6 {
-  @apply mt-4 mb-1.5 text-[13px] leading-[1.5] text-fg-secondary;
+  @apply mt-4 mb-1.5 text-sm leading-[22px] text-fg-secondary;
 }
 .prose-base p {
-  @apply my-2.5;
+  @apply my-3;
 }
 .prose-base pre {
   @apply my-4 p-4;
@@ -877,9 +880,32 @@ textarea,
   @apply my-7;
 }
 
-/* ─── prose-compact: tight variant for chat / agent messages ─── */
+/* ─── prose-compact: tight variant for dense surfaces; chat-reading lifts it to 16/26 ─── */
 .prose-compact {
   line-height: 1.6;
+}
+.chat-reading .prose-compact {
+  line-height: 1.625;
+}
+.chat-reading .prose-compact h1 {
+  @apply text-lg leading-[26px];
+}
+.chat-reading .prose-compact h2 {
+  @apply text-[17px] leading-[24px];
+}
+.chat-reading .prose-compact h3,
+.chat-reading .prose-compact h4 {
+  @apply text-base leading-[24px];
+}
+.chat-reading .prose-compact h5,
+.chat-reading .prose-compact h6 {
+  @apply text-sm leading-[22px];
+}
+.chat-reading .prose-compact p {
+  @apply my-2;
+}
+.chat-reading .prose-compact table {
+  @apply text-label;
 }
 .prose-compact h1 {
   @apply mt-3 mb-1.5 text-base leading-[1.4];
@@ -956,7 +982,7 @@ textarea,
   @apply absolute right-1.5 top-1.5 z-10 inline-flex h-7 w-7 items-center justify-center rounded-sm border border-edge bg-surface-raised/90 text-fg-muted shadow-sm backdrop-blur-sm transition-colors hover:bg-surface-muted hover:text-fg focus:outline-none focus:ring-2 focus:ring-accent/40;
 }
 .hl-lang {
-  @apply absolute top-2 right-11 text-[10px] text-fg-faint uppercase tracking-wider select-none;
+  @apply absolute top-2 right-11 text-caption text-fg-faint uppercase tracking-wider select-none;
 }
 .md-code-fullscreen-view pre.hl-pre {
   @apply m-0 max-h-none min-h-full;
