@@ -77,37 +77,71 @@ function BlockTitle({ title }: { title?: string }) {
 
 const DELTA_TONE = { positive: 'text-success', negative: 'text-danger', neutral: 'text-fg-muted' } as const;
 
+/**
+ * Column counts for a stats grid of `count` items: the wide layout (≤ 4 columns) and the narrow
+ * one a phone-width message gets (≤ 3). The last item spans what is left of its row, so a grid
+ * never ends on a lone half-width orphan (the old 2 + 1 on phones).
+ */
+export function statsLayout(count: number): { wide: number; narrow: number; spanWide: number; spanNarrow: number } {
+  const wide = count <= 4 ? Math.max(count, 1) : count % 4 === 0 ? 4 : count % 3 === 0 ? 3 : 4;
+  const narrow = count <= 2 ? Math.max(count, 1) : count === 3 ? 3 : 2;
+  const fill = (columns: number) => {
+    const rest = count % columns;
+    return rest === 0 ? 1 : columns - rest + 1;
+  };
+  return { wide, narrow, spanWide: fill(wide), spanNarrow: fill(narrow) };
+}
+
 export function StatsBlock({ data, ...actionProps }: { data: StatsData } & BlockActionProps) {
   const { compact } = actionProps;
+  const layout = statsLayout(data.items.length);
   return (
     <RichBlockShell compact={compact} header={BlockTitle({ title: data.title })}>
-      <div
-        className={`grid gap-2 ${richBlockBodyClass(compact)}`}
-        style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(8.5rem, 1fr))' }}
-        data-testid="rich-stats"
-      >
-        {data.items.map((item, index) => (
-          <div
-            key={index}
-            className="flex min-w-0 flex-col gap-0.5 rounded-sm border border-edge bg-surface-raised p-2.5"
-          >
-            <span className="truncate text-xs text-fg-muted">{item.label}</span>
-            <span className="text-lg font-semibold tabular-nums text-fg">
-              {typeof item.value === 'number' ? item.value.toLocaleString() : item.value}
-              {item.unit && <span className="ml-1 text-xs font-normal text-fg-muted">{item.unit}</span>}
-            </span>
-            {item.delta !== undefined && (
-              <span
-                className={`inline-flex items-center gap-0.5 text-xs font-medium ${DELTA_TONE[item.tone ?? 'neutral']}`}
+      {/* One flat grid: hairline dividers (gap over the edge colour), no card per figure. */}
+      <div className="rich-stats">
+        <div
+          className="rich-stats-grid grid gap-px bg-edge"
+          style={
+            {
+              '--stats-wide': layout.wide,
+              '--stats-narrow': layout.narrow,
+            } as React.CSSProperties
+          }
+          data-testid="rich-stats"
+        >
+          {data.items.map((item, index) => {
+            const last = index === data.items.length - 1;
+            return (
+              <div
+                key={index}
+                className={`flex min-w-0 flex-col gap-0.5 bg-surface-card ${compact ? 'px-3 py-2.5' : 'px-4 py-3'} ${
+                  last ? 'rich-stats-last' : ''
+                }`}
+                style={
+                  last
+                    ? ({ '--span-wide': layout.spanWide, '--span-narrow': layout.spanNarrow } as React.CSSProperties)
+                    : undefined
+                }
               >
-                {item.trend === 'up' && <ArrowUp size={12} aria-hidden="true" />}
-                {item.trend === 'down' && <ArrowDown size={12} aria-hidden="true" />}
-                {item.delta}
-              </span>
-            )}
-            {item.hint && <span className="truncate text-xs text-fg-faint">{item.hint}</span>}
-          </div>
-        ))}
+                <span className="truncate text-xs text-fg-muted">{item.label}</span>
+                <span className="text-lg font-semibold tabular-nums text-fg">
+                  {typeof item.value === 'number' ? item.value.toLocaleString() : item.value}
+                  {item.unit && <span className="ml-1 text-xs font-normal text-fg-muted">{item.unit}</span>}
+                </span>
+                {item.delta !== undefined && (
+                  <span
+                    className={`inline-flex items-center gap-0.5 text-xs font-medium ${DELTA_TONE[item.tone ?? 'neutral']}`}
+                  >
+                    {item.trend === 'up' && <ArrowUp size={12} aria-hidden="true" />}
+                    {item.trend === 'down' && <ArrowDown size={12} aria-hidden="true" />}
+                    {item.delta}
+                  </span>
+                )}
+                {item.hint && <span className="truncate text-xs text-fg-faint">{item.hint}</span>}
+              </div>
+            );
+          })}
+        </div>
       </div>
       <BlockActions actions={data.actions} {...actionProps} />
     </RichBlockShell>
@@ -130,7 +164,7 @@ export function CardsBlock({ data, ...actionProps }: { data: CardsData } & Block
   const { compact } = actionProps;
   return (
     <RichBlockShell compact={compact} header={BlockTitle({ title: data.title })}>
-      <ul className={`flex flex-col gap-2 ${richBlockBodyClass(compact)}`} data-testid="rich-cards">
+      <ul className="flex flex-col divide-y divide-edge" data-testid="rich-cards">
         {data.items.map((item, index) => {
           const external = item.url ? /^https?:/i.test(item.url) : false;
           const body = (
@@ -156,13 +190,14 @@ export function CardsBlock({ data, ...actionProps }: { data: CardsData } & Block
               ) : null}
             </>
           );
-          const frame = 'flex flex-col gap-1 rounded-sm border border-edge bg-surface-raised p-2.5';
+          // Rows inside the one block surface (no card inside the card); a linked row highlights.
+          const frame = `flex flex-col gap-1 ${compact ? 'px-3 py-2.5' : 'px-4 py-3'}`;
           return (
             <li key={index}>
               {item.url ? (
                 <a
                   href={item.url}
-                  className={`${frame} no-underline transition-colors hover:border-primary-edge hover:bg-surface-muted`}
+                  className={`${frame} no-underline transition-colors hover:bg-surface-muted`}
                   onClick={external ? undefined : (e) => openCardLink(e, item.url!, item.title)}
                   {...(external ? { target: '_blank', rel: 'noopener noreferrer' } : {})}
                 >

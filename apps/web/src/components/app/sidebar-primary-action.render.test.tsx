@@ -11,7 +11,7 @@ function render(ui: ReactNode) {
 }
 
 describe('SidebarPrimaryAction', () => {
-  it('provides the centered primary style used by New Chat', () => {
+  it('gives New Chat the centered secondary style', () => {
     const newChat = renderToStaticMarkup(
       <SidebarPrimaryAction icon={Plus} onClick={vi.fn()}>
         New Chat
@@ -20,8 +20,10 @@ describe('SidebarPrimaryAction', () => {
 
     expect(newChat).toContain('justify-center');
     expect(newChat).toContain('rounded-md');
-    expect(newChat).toContain('bg-primary-500');
-    expect(newChat).toContain('hover:bg-primary-600');
+    // Secondary, not a solid accent block: a neutral raised surface with an accent icon.
+    expect(newChat).toContain('bg-surface-raised');
+    expect(newChat).not.toContain('bg-accent');
+    expect(newChat).toContain('text-primary-fg');
     expect(newChat).toContain('New Chat');
   });
 

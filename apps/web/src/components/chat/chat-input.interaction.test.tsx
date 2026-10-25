@@ -153,7 +153,7 @@ describe('ChatInput Task keyboard flow', () => {
     const rows = Array.from(container.querySelectorAll<HTMLButtonElement>('[role="option"]'));
     expect(rows).toHaveLength(2);
     expect(rows[0]?.getAttribute('aria-selected')).toBe('true');
-    expect(rows[0]?.className).toContain('bg-primary-600');
+    expect(rows[0]?.className).toContain('bg-accent');
     expect(rows[0]?.textContent).toBe('Prompt improver/improve');
     expect(container.textContent).not.toContain(secondTask.description);
 
@@ -162,7 +162,7 @@ describe('ChatInput Task keyboard flow', () => {
     });
     expect(rows[0]?.getAttribute('aria-selected')).toBe('false');
     expect(rows[1]?.getAttribute('aria-selected')).toBe('true');
-    expect(rows[1]?.className).toContain('bg-primary-600');
+    expect(rows[1]?.className).toContain('bg-accent');
 
     await act(async () => {
       window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
@@ -210,7 +210,7 @@ describe('ChatInput Agent Profile keyboard flow', () => {
     const rows = Array.from(container.querySelectorAll<HTMLButtonElement>('[role="option"]'));
     expect(rows).toHaveLength(3);
     expect(rows[0]?.getAttribute('aria-selected')).toBe('true');
-    expect(rows[0]?.className).toContain('bg-primary-600');
+    expect(rows[0]?.className).toContain('bg-accent');
     expect(rows.map((row) => row.textContent)).toEqual(['SproutySystem', 'Shared analystShared', 'My writerPersonal']);
     expect(container.textContent).not.toContain('description');
 

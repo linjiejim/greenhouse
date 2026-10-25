@@ -16,7 +16,9 @@ describe('EmptyState', () => {
 
     expect(html).toContain('data-empty-state="section"');
     expect(html).toContain('py-14');
-    expect(html).toContain('bg-primary-subtle');
+    // Section and page states show Sprouty asleep instead of an icon tile.
+    expect(html).toContain('data-empty-plant="sleep"');
+    expect(html).not.toContain('bg-primary-subtle');
     expect(html).toContain('aria-labelledby=');
     expect(html).toContain('aria-describedby=');
     expect(html).toContain('aria-hidden="true"');
@@ -52,7 +54,8 @@ describe('EmptyState', () => {
 
     expect(html).toContain('data-empty-state="page"');
     expect(html).toContain('min-h-[min(28rem,55dvh)]');
-    expect(html).toContain('bg-danger-subtle');
+    // A failure shows Sprouty's error face.
+    expect(html).toContain('data-empty-plant="error"');
     expect(html).toContain('Try again');
     expect(html).toContain('mt-4 flex flex-wrap');
   });

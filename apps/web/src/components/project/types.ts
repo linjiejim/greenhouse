@@ -84,11 +84,11 @@ export const statusConfig: Record<string, { label: TranslationKey; color: string
 };
 
 export const projectStatusConfig: Record<string, { label: TranslationKey; color: string }> = {
-  planning: { label: 'projects.planning', color: 'bg-surface-muted text-fg-secondary border-edge' },
-  active: { label: 'common.active', color: 'bg-info-subtle text-info border-info' },
-  on_hold: { label: 'projects.onHold', color: 'bg-warning-subtle text-warning-fg border-warning' },
-  completed: { label: 'common.completed', color: 'bg-success-subtle text-success-fg border-success' },
-  archived: { label: 'common.archived', color: 'bg-surface-sunken text-fg-faint border-edge' },
+  planning: { label: 'projects.planning', color: 'bg-surface-muted text-fg-secondary' },
+  active: { label: 'common.active', color: 'bg-info-subtle text-info' },
+  on_hold: { label: 'projects.onHold', color: 'bg-warning-subtle text-warning' },
+  completed: { label: 'common.completed', color: 'bg-success-subtle text-success' },
+  archived: { label: 'common.archived', color: 'bg-surface-muted text-fg-muted' },
 };
 
 export const priorityColors: Record<string, string> = {

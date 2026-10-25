@@ -32,13 +32,9 @@ export function RichBlockShell({
   return (
     <section
       data-rich-block-density={compact ? 'compact' : 'base'}
-      className={`rich-block overflow-hidden rounded-md border ${TONE_STYLES[tone]} ${className}`}
+      className={`rich-block overflow-hidden rounded-lg border ${TONE_STYLES[tone]} ${className}`}
     >
-      {header && (
-        <div className={`border-b border-edge bg-surface-sunken ${compact ? 'px-3 py-1.5' : 'px-3 py-2'}`}>
-          {header}
-        </div>
-      )}
+      {header && <div className={`border-b border-edge ${compact ? 'px-3 py-2' : 'px-4 py-2.5'}`}>{header}</div>}
       {children}
     </section>
   );

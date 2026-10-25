@@ -340,7 +340,7 @@ export function ChatInput({
           </div>
         )}
 
-        <div className="relative z-10 overflow-visible rounded-xl border border-edge bg-surface-chrome shadow-xl transition-[border-color,box-shadow] focus-within:border-accent focus-within:ring-2 focus-within:ring-accent/30">
+        <div className="relative z-10 overflow-visible rounded-2xl border border-edge-strong bg-surface-raised shadow-sm transition-[border-color,box-shadow] focus-within:border-accent focus-within:ring-1 focus-within:ring-accent">
           {/* Image preview */}
           {pendingImages.length > 0 && (
             <div className="px-3 pt-3 pb-1 flex gap-2 flex-wrap">
@@ -469,7 +469,7 @@ export function ChatInput({
               }}
               placeholder={placeholder ?? defaultPlaceholder}
               rows={1}
-              className="chat-composer-textarea block w-full resize-none border-0 bg-transparent px-4 pb-2.5 pr-16 pt-3 text-sm text-fg placeholder-fg-faint focus:outline-none focus:ring-0 disabled:opacity-60 md:pr-4"
+              className="chat-composer-textarea block w-full resize-none border-0 bg-transparent px-4 pb-2.5 pr-16 pt-3 text-base leading-6 text-fg placeholder-fg-faint focus:outline-none focus:ring-0 disabled:opacity-60 md:pr-4"
               style={{ minHeight: `${COMPOSER_MIN_HEIGHT}px`, maxHeight: `${COMPOSER_MAX_HEIGHT}px` }}
             />
             {!hideSendButton && (

@@ -2,6 +2,7 @@
  * shadcn-inspired UI primitives with Tailwind — light theme.
  */
 
+import { PlantAvatar } from '@greenhouse/ui/components/plant-avatar';
 import React from 'react';
 import { createPortal } from 'react-dom';
 import { AlertTriangle, X, Star as StarIcon, Search as SearchIcon, User as UserIcon } from '../lib/icons';
@@ -24,13 +25,15 @@ interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
 
 export function Button({ variant = 'default', size = 'md', className = '', children, ...props }: ButtonProps) {
   const base =
-    'inline-flex items-center justify-center gap-1.5 font-semibold rounded-md transition-colors focus:outline-none focus:ring-2 focus:ring-accent/40 focus:ring-offset-1 focus:ring-offset-surface-raised disabled:opacity-50 disabled:cursor-not-allowed';
+    'inline-flex items-center justify-center gap-1.5 font-semibold rounded-md transition-colors focus:outline-none focus:ring-2 focus:ring-accent/40 focus:ring-offset-1 focus:ring-offset-surface-raised disabled:cursor-not-allowed';
+  // A disabled primary goes neutral (readable, clearly off) instead of a washed-out accent.
   const variants: Record<string, string> = {
-    default: 'bg-accent text-on-accent shadow-sm shadow-primary-900/10 hover:bg-accent-hover',
-    secondary: 'bg-surface-muted text-fg-secondary hover:bg-surface-muted',
-    ghost: 'text-fg-muted hover:text-fg hover:bg-surface-muted',
-    destructive: 'bg-destructive text-white hover:bg-destructive-hover',
-    outline: 'border border-edge-strong text-fg-secondary hover:bg-surface-sunken',
+    default:
+      'bg-accent text-on-accent hover:bg-accent-hover disabled:bg-surface-muted disabled:text-fg-faint disabled:hover:bg-surface-muted',
+    secondary: 'bg-surface-muted text-fg-secondary hover:text-fg disabled:opacity-50',
+    ghost: 'text-fg-muted hover:text-fg hover:bg-surface-muted disabled:opacity-50',
+    destructive: 'bg-destructive text-white hover:bg-destructive-hover disabled:opacity-50',
+    outline: 'border border-edge-strong text-fg-secondary hover:bg-surface-sunken disabled:opacity-50',
   };
   const sizes: Record<string, string> = {
     sm: 'px-3 py-1.5 text-xs',
@@ -344,12 +347,14 @@ interface BadgeProps {
   title?: string;
 }
 
+// Status badges and tags are a solid subtle fill + the fg text of their tone (the same pairs the
+// app's Badge uses), no outline: the fill carries the tone, the words carry the meaning.
 const BADGE_VARIANTS: Record<string, string> = {
-  default: 'bg-primary-subtle text-primary-fg-strong border-primary-edge',
-  secondary: 'bg-surface-muted text-fg-secondary border-edge',
-  success: 'bg-success-subtle text-success border-success',
-  warning: 'bg-warning-subtle text-warning border-warning',
-  destructive: 'bg-danger-subtle text-danger border-danger',
+  default: 'bg-primary-subtle text-primary-fg-strong',
+  secondary: 'bg-surface-muted text-fg-secondary',
+  success: 'bg-success-subtle text-success',
+  warning: 'bg-warning-subtle text-warning',
+  destructive: 'bg-danger-subtle text-danger',
 };
 
 export function Badge({
@@ -364,7 +369,7 @@ export function Badge({
   return (
     <span
       title={autoTitle}
-      className={`inline-flex items-center whitespace-nowrap px-2 py-0.5 text-xs font-medium rounded-full border ${BADGE_VARIANTS[variant]} ${truncate ? maxW : ''} ${className}`}
+      className={`inline-flex items-center whitespace-nowrap px-2 py-0.5 text-xs font-medium rounded-full ${BADGE_VARIANTS[variant]} ${truncate ? maxW : ''} ${className}`}
     >
       {truncate ? <span className="truncate">{children}</span> : children}
     </span>
@@ -378,14 +383,13 @@ export function Badge({
 // inside constrained cells so long values ellipsize instead of overflowing.
 
 const TAG_TONES: Record<TagTone, string> = {
-  neutral: 'bg-surface-muted text-fg-muted border-edge',
-  // `primary-fg` lands at 4.4:1 on the selection-strength fill — under AA for a
-  // 10px tag. `primary-fg-strong` is 5.4:1, and matches what Badge already uses.
-  primary: 'bg-primary-subtle text-primary-fg-strong border-primary-edge',
-  success: 'bg-success-subtle text-success border-success',
-  warning: 'bg-warning-subtle text-warning border-warning',
-  danger: 'bg-danger-subtle text-danger border-danger',
-  info: 'bg-info-subtle text-info border-info',
+  neutral: 'bg-surface-muted text-fg-secondary',
+  // `primary-fg-strong` on the selection fill is the readable pair (≥ 4.5:1, tokens.test.ts).
+  primary: 'bg-primary-subtle text-primary-fg-strong',
+  success: 'bg-success-subtle text-success',
+  warning: 'bg-warning-subtle text-warning',
+  danger: 'bg-danger-subtle text-danger',
+  info: 'bg-info-subtle text-info',
 };
 
 interface TagProps {
@@ -414,7 +418,7 @@ export function Tag({
   return (
     <span
       title={autoTitle}
-      className={`inline-flex items-center whitespace-nowrap rounded border font-medium ${sizeCls} ${TAG_TONES[tone]} ${truncate ? maxW : ''} ${className}`}
+      className={`inline-flex items-center whitespace-nowrap rounded-xs font-medium ${sizeCls} ${TAG_TONES[tone]} ${truncate ? maxW : ''} ${className}`}
     >
       {icon}
       {truncate ? <span className="truncate">{children}</span> : children}
@@ -792,7 +796,10 @@ export function EmptyState({
     page: 26,
     compact: 20,
   } as const;
-  const iconShell = variant === 'compact' ? 'h-10 w-10 rounded-lg' : 'h-12 w-12 rounded-xl';
+  const iconShell = 'h-10 w-10 rounded-md';
+  // Section and page states show Sprouty (the same face on web and iOS): asleep when there is
+  // nothing here, its error face when something failed. Dense compact states keep the icon.
+  const plantState = tone === 'danger' ? 'error' : tone === 'success' ? 'idle' : 'sleep';
 
   return (
     <section
@@ -801,10 +808,16 @@ export function EmptyState({
       aria-describedby={description ? descriptionId : undefined}
       className={`flex w-full flex-col items-center justify-center text-center ${variants[variant]} ${className}`}
     >
-      <div className={`mb-3 flex items-center justify-center ${iconShell} ${tones[tone]}`} aria-hidden="true">
-        <IconComp size={iconSizes[variant]} strokeWidth={1.75} />
-      </div>
-      <h3 id={titleId} className={`${variant === 'compact' ? 'text-sm' : 'text-base'} font-semibold text-fg-secondary`}>
+      {variant === 'compact' ? (
+        <div className={`mb-3 flex items-center justify-center ${iconShell} ${tones[tone]}`} aria-hidden="true">
+          <IconComp size={iconSizes[variant]} strokeWidth={1.75} />
+        </div>
+      ) : (
+        <div className="mb-3" aria-hidden="true" data-empty-plant={plantState}>
+          <PlantAvatar plant="sprout" state={plantState} size={variant === 'page' ? 64 : 56} animate={false} />
+        </div>
+      )}
+      <h3 id={titleId} className={`${variant === 'compact' ? 'text-sm' : 'text-base'} font-semibold text-fg`}>
         {title}
       </h3>
       {description && (

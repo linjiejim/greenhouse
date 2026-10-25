@@ -43,7 +43,7 @@ describe('SidebarGlobalNavigation', () => {
     expect(html.indexOf('CRM')).toBeLessThan(html.indexOf('More'));
     expect(html).toContain('md:min-h-8');
     expect(html).toMatch(/href="#\/chat"[^>]*aria-current="page"[^>]*class="[^"]*sidebar-active-item/);
-    expect(html).toMatch(/href="#\/chat"[^>]*class="[^"]*font-semibold/);
+    expect(html).toMatch(/href="#\/chat"[^>]*class="[^"]*sidebar-active-item/);
   });
 
   it('keeps only overflow applications under More — automations, prompts and run profiles live elsewhere', () => {

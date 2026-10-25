@@ -207,7 +207,7 @@ function ScaleSlider({
         step={step}
         value={value}
         onChange={(e) => onChange(Number(e.target.value))}
-        className="flex-1 accent-primary-600"
+        className="flex-1 accent-accent"
         aria-label={label}
       />
       <span className="text-xs font-mono text-fg-secondary w-12 text-right">

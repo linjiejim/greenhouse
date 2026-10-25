@@ -115,6 +115,11 @@ export function translate(locale: Locale, key: AnyTranslationKey, params?: Recor
     return interpolate(text === path ? key : text, params);
   }
   const messages = locales[locale] ?? locales.en;
+  // Singular: a `count` of 1 uses the sibling `<key>_one` when the locale has one ("1 tool").
+  if (params?.count === 1) {
+    const one = resolve(messages, `${key}_one`);
+    if (one !== `${key}_one`) return interpolate(one, params);
+  }
   return interpolate(resolve(messages, key), params);
 }
 

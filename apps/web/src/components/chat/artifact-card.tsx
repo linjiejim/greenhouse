@@ -42,7 +42,7 @@ export function ArtifactCard({
     <>
       <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center text-primary-fg">{icon}</span>
       <span className="min-w-0 flex-1">
-        <span className="block truncate text-xs font-semibold text-fg">{title}</span>
+        <span className="block truncate text-sm font-semibold text-fg">{title}</span>
         {meta && <span className="block truncate text-caption text-fg-faint">{meta}</span>}
       </span>
       {status && (
@@ -66,24 +66,24 @@ export function ArtifactCard({
   return (
     <section
       data-chat-artifact-card
-      className={`overflow-hidden rounded-md border bg-surface-canvas ${FRAME_TONE[tone]} ${className}`}
+      className={`overflow-hidden rounded-lg border bg-surface-card ${FRAME_TONE[tone]} ${className}`}
     >
       {onToggle ? (
         <button
           type="button"
           onClick={onToggle}
           aria-expanded={!collapsed}
-          className={`flex w-full items-center gap-2 bg-surface-muted px-3 py-2 text-left transition-colors hover:bg-surface-muted/70 ${
+          className={`flex w-full items-center gap-2 px-4 py-2.5 text-left transition-colors hover:bg-surface-muted ${
             collapsed ? '' : 'border-b border-edge'
           }`}
         >
           {headerContent}
         </button>
       ) : (
-        <div className="flex items-center gap-2 border-b border-edge bg-surface-muted px-3 py-2">{headerContent}</div>
+        <div className="flex items-center gap-2 border-b border-edge px-4 py-2.5">{headerContent}</div>
       )}
-      {!collapsed && children && <div className="px-3 py-2.5">{children}</div>}
-      {!collapsed && footer && <div className="border-t border-edge bg-surface-muted px-3 py-2">{footer}</div>}
+      {!collapsed && children && <div className="px-4 py-3">{children}</div>}
+      {!collapsed && footer && <div className="border-t border-edge px-4 py-2.5">{footer}</div>}
     </section>
   );
 }

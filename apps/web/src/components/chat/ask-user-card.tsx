@@ -12,7 +12,7 @@
 
 import React, { useState, useCallback, useRef } from 'react';
 import { Button } from '../ui';
-import { ClipboardList, Send } from '../../lib/icons';
+import { Check, ClipboardList, Send } from '../../lib/icons';
 import { Markdown } from '../markdown';
 import { useT } from '../../lib/i18n';
 import { ArtifactCard, ArtifactCardActions } from './artifact-card';
@@ -165,7 +165,7 @@ export function AskUserCard({ data, onSubmit, submitted = false, submittedMessag
       {isSubmitted ? (
         <div className="space-y-1.5">
           {submittedAnswers.map((item, index) => (
-            <div key={item.id} className="flex min-w-0 items-start gap-2 text-xs">
+            <div key={item.id} className="flex min-w-0 items-start gap-2 text-sm">
               <span className="flex-shrink-0 text-fg-faint">{index + 1}.</span>
               <span className="min-w-0 text-fg-muted">
                 <span className="font-medium text-fg-secondary">{item.label}</span>
@@ -179,13 +179,13 @@ export function AskUserCard({ data, onSubmit, submitted = false, submittedMessag
         <>
           {/* Description (rendered as Markdown for formatting) */}
           {description && (
-            <div className="max-h-[200px] overflow-y-auto pb-1 text-xs text-fg-muted">
+            <div className="max-h-[200px] overflow-y-auto pb-1">
               <Markdown content={description} compact linkTarget="new-window" />
             </div>
           )}
 
           {/* Questions */}
-          <div className="space-y-4 pt-2">
+          <div className={`space-y-5 ${description ? 'pt-3' : ''}`}>
             {questions.map((q, idx) => (
               <QuestionField
                 key={q.id}
@@ -253,6 +253,64 @@ export function getSubmittedAnswers(
 
 // ─── Question Field ──────────────────────────────────────
 
+const FIELD_CLASS =
+  'w-full rounded-md border border-edge-strong bg-surface-raised px-3 py-2 text-sm text-fg placeholder-fg-faint focus:outline-none focus:ring-1 focus:ring-accent focus:border-accent disabled:opacity-60 disabled:cursor-not-allowed';
+
+/**
+ * One choice as a row that stays tidy at 1–3 lines: a modest radius from the scale (never a pill),
+ * the indicator pinned to the first line, and selection shown by the subtle accent fill, the
+ * accent edge and a check — never by colour alone. Single choice draws a round indicator, multiple
+ * choice a square one, so the two read differently before anything is picked.
+ */
+function ChoiceRow({
+  name,
+  multiple,
+  checked,
+  disabled,
+  label,
+  value,
+  onChange,
+}: {
+  name: string;
+  value: string;
+  multiple: boolean;
+  checked: boolean;
+  disabled: boolean;
+  label: string;
+  onChange: () => void;
+}) {
+  return (
+    <label
+      className={`flex items-start gap-2.5 rounded-md border px-3 py-2 transition-colors ${
+        disabled ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'
+      } ${
+        checked
+          ? 'border-primary-edge bg-primary-subtle text-primary-fg-strong'
+          : 'border-edge bg-surface-raised text-fg hover:bg-surface-muted'
+      }`}
+    >
+      <input
+        type={multiple ? 'checkbox' : 'radio'}
+        name={name}
+        value={value}
+        checked={checked}
+        onChange={onChange}
+        disabled={disabled}
+        className="peer sr-only"
+      />
+      <span
+        aria-hidden="true"
+        className={`mt-0.5 flex h-4 w-4 flex-shrink-0 items-center justify-center border peer-focus-visible:ring-2 peer-focus-visible:ring-accent ${
+          multiple ? 'rounded-xs' : 'rounded-full'
+        } ${checked ? 'border-accent bg-accent text-on-accent' : 'border-edge-strong bg-surface-raised'}`}
+      >
+        {checked && <Check size={11} strokeWidth={3} />}
+      </span>
+      <span className="min-w-0 flex-1 text-sm leading-5 break-words">{label}</span>
+    </label>
+  );
+}
+
 function QuestionField({
   question,
   index,
@@ -273,92 +331,63 @@ function QuestionField({
   const t = useT();
   const { id, label, type, options, required, placeholder } = question;
   const isRequired = required !== false;
+  const choice = type === 'single_choice' || type === 'multi_choice';
+  const labelId = `ask-user-${id}-label`;
 
   return (
-    <div>
-      <label className="block text-xs font-medium text-fg-secondary mb-1.5">
-        <span className="text-fg-faint mr-1">{index}.</span>
+    <div role={choice ? 'group' : undefined} aria-labelledby={choice ? labelId : undefined}>
+      {/* The question comes first, then how to answer, then the options. */}
+      <div id={labelId} className="mb-2 text-sm font-medium leading-5 text-fg">
+        <span className="mr-1 text-fg-faint">{index}.</span>
         {label}
-        {!isRequired && <span className="text-fg-faint font-normal ml-1">{t('chat.optional')}</span>}
-      </label>
+        {!isRequired && <span className="ml-1 font-normal text-fg-faint">{t('chat.optional')}</span>}
+      </div>
+      {choice && options && (
+        <p className="-mt-1 mb-2 text-caption text-fg-muted">
+          {type === 'multi_choice' ? t('chat.askChooseAny') : t('chat.askChooseOne')}
+        </p>
+      )}
 
       {type === 'text' && (
         <input
           type="text"
+          aria-labelledby={labelId}
           value={value as string}
           onChange={(e) => onTextChange(id, e.target.value)}
           placeholder={placeholder || ''}
           disabled={disabled}
-          className="w-full bg-surface-sunken border border-edge-strong rounded-md px-3 py-2 text-sm text-fg placeholder-fg-faint focus:outline-none focus:ring-2 focus:ring-accent/40 focus:border-accent disabled:opacity-60 disabled:cursor-not-allowed"
+          className={FIELD_CLASS}
         />
       )}
 
       {type === 'textarea' && (
         <textarea
+          aria-labelledby={labelId}
           value={value as string}
           onChange={(e) => onTextChange(id, e.target.value)}
           placeholder={placeholder || ''}
           disabled={disabled}
           rows={3}
-          className="w-full bg-surface-sunken border border-edge-strong rounded-md px-3 py-2 text-sm text-fg placeholder-fg-faint focus:outline-none focus:ring-2 focus:ring-accent/40 focus:border-accent resize-none disabled:opacity-60 disabled:cursor-not-allowed"
+          className={`${FIELD_CLASS} resize-none`}
         />
       )}
 
-      {type === 'single_choice' && options && (
+      {choice && options && (
         <div className="space-y-1.5">
           {options.map((opt) => (
-            <label
+            <ChoiceRow
               key={opt.value}
-              className={`flex items-center gap-2.5 px-3 py-2 rounded-md border transition-colors cursor-pointer ${
-                disabled
-                  ? 'opacity-60 cursor-not-allowed'
-                  : value === opt.value
-                    ? 'bg-primary-subtle border-primary-edge'
-                    : 'bg-surface-sunken border-edge hover:border-primary-300 hover:bg-primary-subtle/30'
-              }`}
-            >
-              <input
-                type="radio"
-                name={`ask-user-${id}`}
-                value={opt.value}
-                checked={value === opt.value}
-                onChange={() => onSingleChoice(id, opt.value)}
-                disabled={disabled}
-                className="accent-primary-600 w-3.5 h-3.5 flex-shrink-0"
-              />
-              <span className="text-sm text-fg-secondary">{opt.label}</span>
-            </label>
+              name={`ask-user-${id}`}
+              multiple={type === 'multi_choice'}
+              checked={
+                type === 'multi_choice' ? Array.isArray(value) && value.includes(opt.value) : value === opt.value
+              }
+              disabled={disabled}
+              label={opt.label}
+              value={opt.value}
+              onChange={() => (type === 'multi_choice' ? onMultiChoice(id, opt.value) : onSingleChoice(id, opt.value))}
+            />
           ))}
-        </div>
-      )}
-
-      {type === 'multi_choice' && options && (
-        <div className="space-y-1.5">
-          {options.map((opt) => {
-            const checked = Array.isArray(value) && value.includes(opt.value);
-            return (
-              <label
-                key={opt.value}
-                className={`flex items-center gap-2.5 px-3 py-2 rounded-md border transition-colors cursor-pointer ${
-                  disabled
-                    ? 'opacity-60 cursor-not-allowed'
-                    : checked
-                      ? 'bg-primary-subtle border-primary-edge'
-                      : 'bg-surface-sunken border-edge hover:border-primary-300 hover:bg-primary-subtle/30'
-                }`}
-              >
-                <input
-                  type="checkbox"
-                  value={opt.value}
-                  checked={checked}
-                  onChange={() => onMultiChoice(id, opt.value)}
-                  disabled={disabled}
-                  className="accent-primary-600 w-3.5 h-3.5 flex-shrink-0 rounded"
-                />
-                <span className="text-sm text-fg-secondary">{opt.label}</span>
-              </label>
-            );
-          })}
         </div>
       )}
     </div>

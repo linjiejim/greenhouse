@@ -1,4 +1,5 @@
 import React from 'react';
+import { CATEGORICAL_CHOICES, categoricalColor, categoricalHex, categoricalName } from '../../lib/categorical';
 import { FilterPills, Input, Select, Textarea } from '../ui';
 import { FormField, FormGrid, FormGroup } from '../form';
 import { useT } from '../../lib/i18n';
@@ -27,7 +28,8 @@ export const EMPTY_PROJECT_FORM: ProjectFormValue = {
   visibility: 'public',
 };
 
-const PROJECT_COLORS = ['#3b82f6', '#8b5cf6', '#06b6d4', '#f59e0b', '#ef4444', '#10b981', '#ec4899', '#6366f1'];
+/** Offered project colours: the categorical palette, stored as each colour's light `fg` hex. */
+const PROJECT_COLORS = CATEGORICAL_CHOICES.map(categoricalHex);
 
 export function ProjectForm({
   value,
@@ -116,14 +118,14 @@ export function ProjectForm({
               key={color}
               type="button"
               aria-label={t('projects.projectColorOption', { index: index + 1 })}
-              aria-pressed={value.color === color}
-              onClick={() => set('color', value.color === color ? '' : color)}
+              aria-pressed={categoricalName(value.color) === categoricalName(color)}
+              onClick={() => set('color', categoricalName(value.color) === categoricalName(color) ? '' : color)}
               className={`h-7 w-7 rounded-full border-2 transition-transform focus:outline-none focus:ring-2 focus:ring-accent/40 focus:ring-offset-2 focus:ring-offset-surface-raised ${
-                value.color === color
+                categoricalName(value.color) === categoricalName(color)
                   ? 'scale-110 border-fg'
                   : 'border-transparent hover:scale-105 hover:border-edge-strong'
               }`}
-              style={{ backgroundColor: color }}
+              style={{ backgroundColor: categoricalColor(color) }}
             />
           ))}
         </div>

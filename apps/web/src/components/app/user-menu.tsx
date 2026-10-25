@@ -185,7 +185,7 @@ export function SidebarAccountMenu({
                     {user.nickname}
                   </span>
                   <span
-                    className={`text-caption px-1.5 py-0.5 rounded-full border font-medium capitalize flex-shrink-0 ${roleBadgeStyles[user.role] || roleBadgeStyles.team}`}
+                    className={`text-caption px-1.5 py-0.5 rounded-full font-medium capitalize flex-shrink-0 ${roleBadgeStyles[user.role] || roleBadgeStyles.team}`}
                   >
                     {user.role}
                   </span>

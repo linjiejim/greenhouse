@@ -28,6 +28,8 @@ export interface PrimaryNavigationLabels {
   skillhub: string;
   automations: string;
   chat: string;
+  /** Localized names of the built-in applications by id; the catalog's `title` is English metadata. */
+  applications?: Record<string, string>;
 }
 
 interface BuildPrimaryNavigationArgs {
@@ -65,7 +67,7 @@ export function buildPrimaryNavigation({ applications, labels }: BuildPrimaryNav
       ? [
           {
             key: application.id,
-            label: application.title,
+            label: labels.applications?.[application.id] ?? application.title,
             icon: platformApplicationIcon(application),
             href,
           },

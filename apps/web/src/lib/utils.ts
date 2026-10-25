@@ -172,8 +172,8 @@ export function getWorkspaceColor(wsId: string): WorkspaceColorConfig {
 
 /** Semantic-token role badge styles for bordered variant (user lists, sidebar). */
 export const roleBadgeStyles: Record<string, string> = {
-  super: 'text-info border-info',
-  team: 'text-fg-secondary border-edge',
+  super: 'bg-info-subtle text-info',
+  team: 'bg-surface-muted text-fg-secondary',
 };
 
 // ─── HTML Sanitization ───────────────────────────────────

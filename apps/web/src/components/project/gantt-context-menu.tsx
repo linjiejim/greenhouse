@@ -4,6 +4,7 @@
  * view, edit, delete, set predecessor.
  */
 
+import { categoricalColor } from '../../lib/categorical';
 import { useRef, useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 import { Plus, Trash2, Edit3, Eye, FolderKanban, ChevronRight, CornerDownRight } from '../../lib/icons';
@@ -163,7 +164,10 @@ export function GanttContextMenu({
                     onClose();
                   }}
                 >
-                  <span className="w-2 h-2 rounded-xs flex-shrink-0" style={{ backgroundColor: p.color }} />
+                  <span
+                    className="w-2 h-2 rounded-xs flex-shrink-0"
+                    style={{ backgroundColor: categoricalColor(p.color) }}
+                  />
                   <span className="truncate">{p.title}</span>
                 </SubmenuButton>
               ))}

@@ -30,6 +30,7 @@ import {
   type GlobalGanttZoom,
   type GlobalGanttFilter,
   statusConfig as taskStatusConfig,
+  projectStatusConfig as statusConfig,
 } from '../components/project';
 import { useT, type TranslationKey } from '../lib/i18n';
 import { invalidateProjects, useProjectRefreshStore } from '../stores';
@@ -63,14 +64,6 @@ interface Project {
 }
 
 // ─── Status/Priority Badges ─────────────────────────────
-
-const statusConfig: Record<string, { label: TranslationKey; color: string }> = {
-  planning: { label: 'projects.planning', color: 'bg-surface-muted text-fg-secondary border-edge' },
-  active: { label: 'common.active', color: 'bg-info-subtle text-info border-info' },
-  on_hold: { label: 'projects.onHold', color: 'bg-warning-subtle text-warning-fg border-warning' },
-  completed: { label: 'common.completed', color: 'bg-success-subtle text-success-fg border-success' },
-  archived: { label: 'common.archived', color: 'bg-surface-sunken text-fg-faint border-edge' },
-};
 
 const priorityConfig: Record<string, { label: TranslationKey; color: string }> = {
   low: { label: 'common.low', color: 'text-fg-faint' },
@@ -131,7 +124,7 @@ function ProjectCard({ project, onClick }: { project: Project; onClick: () => vo
           </div>
           {project.description && <p className="text-xs text-fg-muted line-clamp-1">{project.description}</p>}
         </div>
-        <span className={`text-caption px-2 py-0.5 rounded-full border font-medium whitespace-nowrap ${sc.color}`}>
+        <span className={`text-caption px-2 py-0.5 rounded-full font-medium whitespace-nowrap ${sc.color}`}>
           {t(sc.label)}
         </span>
       </div>

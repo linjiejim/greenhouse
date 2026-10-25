@@ -3,7 +3,8 @@
  */
 
 import React, { useEffect, useState } from 'react';
-import { AppLogo, Button, Input } from '../ui';
+import { Button, Input } from '../ui';
+import { BrandIntro } from './brand-intro';
 import { loginInternal } from '../../lib/auth';
 import type { AuthenticatedUser } from '../../lib/auth';
 import {
@@ -163,7 +164,7 @@ export function LoginScreen({ onSuccess }: { onSuccess: (user: AuthenticatedUser
       >
         <div className="text-center mb-6">
           <div className="mx-auto flex w-fit justify-center rounded-xl bg-logo-safe p-2">
-            <AppLogo size="xl" logoOnly />
+            <BrandIntro className="h-16 w-16" />
           </div>
           <h1 className="text-xl font-bold text-fg mt-3">{t('login.title')}</h1>
           <p className="mt-1 text-xs font-semibold tracking-wide text-primary-fg-strong">

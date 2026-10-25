@@ -732,7 +732,7 @@ export function GanttCore<TData, GData>({
           type="checkbox"
           checked={selectedIds.has(taskId)}
           onChange={() => toggleSelected(taskId)}
-          className="mr-0.5 flex-shrink-0 accent-primary-600"
+          className="mr-0.5 flex-shrink-0 accent-accent"
           onClick={(e) => e.stopPropagation()}
         />
       ) : null,
@@ -1099,7 +1099,7 @@ export function GanttCore<TData, GData>({
               className="absolute top-0 bottom-0 w-px bg-danger z-[6] pointer-events-none"
               style={{ left: todayOffset }}
             >
-              <div className="absolute top-0 -left-2 text-caption text-danger font-medium bg-danger-subtle px-1 rounded">
+              <div className="absolute top-0 -left-2 whitespace-nowrap text-caption text-danger font-medium bg-danger-subtle px-1 rounded">
                 {t('common.today')}
               </div>
             </div>

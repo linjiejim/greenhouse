@@ -167,3 +167,11 @@ describe('data-driven translation keys resolve', () => {
     }
   });
 });
+
+describe('singular counts', () => {
+  it('uses the `_one` sibling for a count of 1', () => {
+    expect(translate('en', 'profileSelector.toolCount', { count: 1 })).toBe('1 tool');
+    expect(translate('en', 'profileSelector.toolCount', { count: 3 })).toBe('3 tools');
+    expect(translate('en', 'chat.askAnsweredCount', { count: 1 })).toBe('1 answer');
+  });
+});

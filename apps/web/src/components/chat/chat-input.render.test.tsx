@@ -76,8 +76,10 @@ describe('ChatInput responsive layout', () => {
   it('draws the focus highlight around the complete composer instead of the textarea', () => {
     const html = renderComposer();
 
-    expect(html).toContain('focus-within:border-primary-500');
-    expect(html).toContain('focus-within:ring-2');
+    // Neutral at rest, the accent outline only on focus.
+    expect(html).toContain('border-edge-strong');
+    expect(html).toContain('focus-within:border-accent');
+    expect(html).toContain('focus-within:ring-accent');
     expect(html).toContain('chat-composer-textarea');
     expect(html).toContain('focus:ring-0');
   });

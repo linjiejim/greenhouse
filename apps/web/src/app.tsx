@@ -54,6 +54,7 @@ import {
 } from './components/app/sidebar-panels';
 import { SidebarGlobalNavigation } from './components/app/sidebar-global-navigation';
 import { SidebarPrimaryAction } from './components/app/sidebar-primary-action';
+import { BrandIntro } from './components/app/brand-intro';
 import { SearchNavButton } from './components/search/search-nav-button';
 import { useAuthStore, useUIStore, useProfileStore } from './stores';
 import { useWsStore } from './stores/ws-store';
@@ -398,6 +399,11 @@ function AppShell({ route, subPath, params, extensionRoute }: AppShellProps) {
       skillhub: t('app.skillhub'),
       automations: t('navigation.automation'),
       chat: t('app.chat'),
+      applications: {
+        knowledge: t('app.knowledge'),
+        tables: t('navigation.tables'),
+        projects: t('app.projects'),
+      },
     },
   });
   return (
@@ -610,12 +616,12 @@ function AppShell({ route, subPath, params, extensionRoute }: AppShellProps) {
 function LoadingScreen() {
   const t = useT();
   return (
-    <div className="app-viewport flex items-center justify-center bg-surface-sunken">
+    <div className="app-viewport flex items-center justify-center bg-surface-chrome">
       <div className="text-center">
         <div className="mx-auto flex justify-center">
-          <AppLogo size="xl" logoOnly />
+          <BrandIntro className="h-16 w-16" />
         </div>
-        <p className="text-sm text-fg-faint mt-2">{t('common.loading')}</p>
+        <p className="text-sm text-fg-muted mt-3">{t('common.loading')}</p>
       </div>
     </div>
   );

@@ -8,6 +8,7 @@
  * 薄壳：数据加载/乐观更新/行模型构建/抽屉弹窗在此，渲染骨架在 GanttCore。
  */
 
+import { categoricalColor } from '../../lib/categorical';
 import { useMemo, useEffect, useState, useCallback } from 'react';
 import { TaskDetailDrawer } from './task-drawer';
 import { CreateTaskDialog } from './create-task-dialog';
@@ -511,7 +512,10 @@ export function GlobalGanttView({
               <ChevronRight size={12} className="text-fg-muted" />
             )}
           </span>
-          <span className="w-2.5 h-2.5 rounded-xs flex-shrink-0" style={{ backgroundColor: p.color }} />
+          <span
+            className="w-2.5 h-2.5 rounded-xs flex-shrink-0"
+            style={{ backgroundColor: categoricalColor(p.color) }}
+          />
           <span
             className="font-semibold text-fg truncate flex-1 hover:text-primary-fg-strong transition-colors"
             title={p.title}
@@ -552,7 +556,10 @@ export function GlobalGanttView({
           {ctx.expandToggle(tk)}
           {ctx.batchCheckbox(tk.id)}
           {ctx.statusIcon(tk)}
-          <span className="w-1.5 h-1.5 rounded-full flex-shrink-0 opacity-60" style={{ backgroundColor: p.color }} />
+          <span
+            className="w-1.5 h-1.5 rounded-full flex-shrink-0 opacity-60"
+            style={{ backgroundColor: categoricalColor(p.color) }}
+          />
           {ctx.titleSpan(tk)}
           {tkDays != null && (
             <span
@@ -593,13 +600,13 @@ export function GlobalGanttView({
                 left: pBar.left,
                 width: Math.max(pBar.width, DAY_WIDTH),
                 top: 13,
-                backgroundColor: p.color,
+                backgroundColor: categoricalColor(p.color),
               }}
               title={`${p.title}: ${p.start_date || '?'} → ${p.end_date || '?'}`}
             >
               <div
                 className="h-full rounded-xs opacity-60"
-                style={{ width: `${p.progress}%`, backgroundColor: p.color }}
+                style={{ width: `${p.progress}%`, backgroundColor: categoricalColor(p.color) }}
               />
             </div>
           )}
@@ -615,7 +622,7 @@ export function GlobalGanttView({
     [],
   );
 
-  const barLeftBorder = useCallback((row: GlobalTaskRow) => `2px solid ${row.data.color}`, []);
+  const barLeftBorder = useCallback((row: GlobalTaskRow) => `2px solid ${categoricalColor(row.data.color)}`, []);
 
   // ── Render ──────────────────────────────────────────────
 

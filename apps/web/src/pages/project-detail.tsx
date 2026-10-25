@@ -261,7 +261,7 @@ export function ProjectDetailPage({ projectId, initialTaskId }: { projectId: str
               </button>
             )}
             <h1 className="text-base font-semibold text-fg truncate">{project.title}</h1>
-            <span className={`text-caption px-2 py-0.5 rounded-full border font-medium whitespace-nowrap ${psc.color}`}>
+            <span className={`text-caption px-2 py-0.5 rounded-full font-medium whitespace-nowrap ${psc.color}`}>
               {t(psc.label)}
             </span>
             {project.priority !== 'normal' && (

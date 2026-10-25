@@ -2,6 +2,7 @@
 /* The one token source for web + mobile: packages/ui/src/tokens/tokens.ts → `pnpm tokens:build`. */
 @import '../../../packages/ui/src/tokens/tokens.css';
 @import '../../../packages/ui/src/styles/fonts.css';
+@import '../../../packages/ui/src/styles/brand.css';
 
 @source "../**/*.{tsx,ts}";
 /* Workspace packages with Tailwind-classed JSX (pnpm-symlinked → outside auto-detection) */
@@ -197,7 +198,7 @@ textarea,
  * That is why `--t-primary-edge` stays strong and is deliberately absent here.
  */
 .sidebar-active-item {
-  background: var(--t-primary-subtle-hover);
+  background: var(--t-primary-subtle);
   color: var(--t-primary-fg-strong);
 }
 
@@ -421,7 +422,7 @@ textarea,
 .brand-auth-background {
   --auth-glow-x: 50%;
   --auth-glow-y: 34%;
-  background-color: var(--t-surface-sunken);
+  background-color: var(--t-surface-chrome);
   background-image:
     radial-gradient(
       circle 24rem at var(--auth-glow-x) var(--auth-glow-y),
@@ -580,6 +581,26 @@ textarea,
 }
 .rich-markdown-compact > * + * {
   @apply mt-2.5;
+}
+
+/* Stats rich block: one flat grid. Columns and the last item's span come from statsLayout()
+   (business-blocks.tsx) as variables; a phone-width message switches to the narrow layout. */
+.rich-stats {
+  container-type: inline-size;
+}
+.rich-stats-grid {
+  grid-template-columns: repeat(var(--stats-wide), minmax(0, 1fr));
+}
+.rich-stats-last {
+  grid-column: span var(--span-wide);
+}
+@container (max-width: 30rem) {
+  .rich-stats-grid {
+    grid-template-columns: repeat(var(--stats-narrow), minmax(0, 1fr));
+  }
+  .rich-stats-last {
+    grid-column: span var(--span-narrow);
+  }
 }
 
 /* ── Headings and inline emphasis ── */

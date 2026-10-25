@@ -107,7 +107,7 @@ describe('Tables compact grid controls', () => {
     expect(html).toContain('aria-label="Add field"');
     expect(html).toContain('aria-label="Add record"');
     expect(html.match(/bottom-full mb-1\.5/g)).toHaveLength(5);
-    expect(html).toContain('bg-primary-500');
+    expect(html).toContain('bg-accent');
   });
 
   it('always exposes View while keeping edit and delete behind record edit permission', () => {

@@ -29,8 +29,8 @@ function directItemClasses(active: boolean, compact: boolean): string {
     ? `relative flex h-9 w-9 items-center justify-center rounded-md transition-colors ${
         active ? 'sidebar-active-item' : 'text-fg-muted hover:bg-surface-muted hover:text-fg'
       }`
-    : `flex min-h-11 w-full items-center gap-2 rounded-md px-2.5 text-left text-xs font-medium transition-colors md:min-h-8 ${
-        active ? 'sidebar-active-item font-semibold' : 'text-fg-muted hover:bg-surface-muted hover:text-fg'
+    : `flex min-h-11 w-full items-center gap-2.5 rounded-md px-2.5 text-left text-label transition-colors md:min-h-8 ${
+        active ? 'sidebar-active-item font-medium' : 'text-fg-secondary hover:bg-surface-muted hover:text-fg'
       }`;
 }
 
@@ -56,7 +56,7 @@ function PrimaryLink({
     >
       <Icon
         size={compact ? 16 : 14}
-        className={`flex-shrink-0 ${active ? 'text-primary-fg' : ''}`}
+        className={`flex-shrink-0 ${active ? 'text-primary-fg' : 'text-fg-muted'}`}
         aria-hidden="true"
       />
       {!compact && <span className="min-w-0 flex-1 truncate">{item.label}</span>}
@@ -206,7 +206,7 @@ export function SidebarGlobalNavigation({
                         onNavigate?.();
                       }}
                       className={`flex min-h-11 items-center gap-2.5 px-3 py-1.5 text-sm transition-colors md:min-h-9 ${
-                        active ? 'sidebar-active-item font-semibold' : 'text-fg-secondary hover:bg-surface-muted'
+                        active ? 'sidebar-active-item font-medium' : 'text-fg-secondary hover:bg-surface-muted'
                       }`}
                     >
                       <Icon
@@ -237,7 +237,7 @@ export function SidebarGlobalNavigation({
                         onNavigate?.();
                       }}
                       className={`flex min-h-11 items-center gap-2.5 px-3 py-1.5 text-sm transition-colors md:min-h-9 ${
-                        active ? 'sidebar-active-item font-semibold' : 'text-fg-secondary hover:bg-surface-muted'
+                        active ? 'sidebar-active-item font-medium' : 'text-fg-secondary hover:bg-surface-muted'
                       }`}
                     >
                       <Icon
