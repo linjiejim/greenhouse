@@ -7,7 +7,7 @@
  */
 
 import React, { useState } from 'react';
-import { Modal, ScrollView, Text, View, useWindowDimensions } from 'react-native';
+import { Modal, ScrollView, Text, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { TableGrid, type TableData } from '../markdown';
 import { useT } from '../lib/i18n';
@@ -28,9 +28,12 @@ export function SidewaysTable({
   const t = useT();
   const { colors: c } = useTheme();
   const styles = useStyles(c);
-  const { width, height } = useWindowDimensions();
+  const window = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const [avail, setAvail] = useState(0);
+  // the cover's real size (a modal can differ from the window by a bar): the turned box swaps it
+  const [screen, setScreen] = useState<{ width: number; height: number } | null>(null);
+  const { width, height } = screen ?? window;
   // turned clockwise: the content's top runs along the phone's right edge, its leading edge
   // along the top (the camera housing), its trailing edge along the home indicator
   const lead = Math.max(insets.top, space.margin);
@@ -43,7 +46,13 @@ export function SidewaysTable({
       supportedOrientations={['portrait']}
       onRequestClose={onClose}
     >
-      <View style={styles.root}>
+      <View
+        style={styles.root}
+        onLayout={(e) => {
+          const { width: w, height: h } = e.nativeEvent.layout;
+          if (w && h && (w !== screen?.width || h !== screen?.height)) setScreen({ width: w, height: h });
+        }}
+      >
         <View
           style={[
             styles.turned,
@@ -54,6 +63,9 @@ export function SidewaysTable({
               top: (height - width) / 2,
               paddingLeft: lead,
               paddingRight: trail,
+              // the turned top and bottom run along the phone's side edges (no insets in portrait)
+              paddingTop: Math.max(insets.right, space.sm),
+              paddingBottom: Math.max(insets.left, space.sm),
             },
           ]}
         >
@@ -85,9 +97,9 @@ export function SidewaysTable({
 }
 
 const useStyles = makeStyles((c) => ({
-  root: { flex: 1, backgroundColor: c.background },
+  root: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundColor: c.background },
   turned: { position: 'absolute', transform: [{ rotate: '90deg' }] },
-  bar: { flexDirection: 'row', alignItems: 'center', minHeight: HIT, marginTop: space.sm, gap: space.sm },
+  bar: { flexDirection: 'row', alignItems: 'center', minHeight: HIT, gap: space.sm },
   title: { ...typo.headline, fontWeight: weight.semibold, color: c.label, flex: 1 },
   close: { width: HIT, height: HIT, alignItems: 'center', justifyContent: 'center' },
   fill: { flex: 1 },
