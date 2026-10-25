@@ -222,6 +222,8 @@ export function createMcpConnectorService(db: Db) {
     /** Delete a connector and every member credential for it, together. */
     async delete(id: string): Promise<McpConnectorRow | undefined> {
       return db.transaction(async (tx) => {
+        // Connector row before credentials, the same order as update() and a guarded saveConnection.
+        await tx.select({ id: mcpConnectors.id }).from(mcpConnectors).where(eq(mcpConnectors.id, id)).for('update');
         await tx.delete(providerConnections).where(eq(providerConnections.provider, mcpConnectionProvider(id)));
         const [row] = await tx.delete(mcpConnectors).where(eq(mcpConnectors.id, id)).returning();
         return row;
