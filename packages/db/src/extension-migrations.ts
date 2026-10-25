@@ -11,9 +11,24 @@
  * so `drizzle-kit generate` against an extension's own schema works unchanged.
  * All pending files are applied inside one transaction under an advisory lock,
  * which keeps several API replicas booting at once from racing each other.
+ *
+ * Core generation marker. A file whose header carries
+ * `-- greenhouse:core-generation 1x` was written against the 1.x core tables
+ * (it alters or reads a 1.x table). 3.0 never executes such a file:
+ *  - on a database that was never carried from 1.x it is recorded as satisfied
+ *    and reported as skipped;
+ *  - on a carried database whose copied bookkeeping has the row, nothing happens;
+ *  - on a carried database where the extension ran on 1.x but this row is
+ *    missing, 1.x never applied the file, so the lane refuses: run it on 1.x and
+ *    carry again.
+ * The marker line is not part of the checksum, so marking a file that is
+ * already applied does not count as editing it.
+ *
+ * A file that is not marked 1x may not CREATE a table the core chain owns.
  */
 import { createHash } from 'node:crypto';
-import { tablesTouchedBy } from './core-migrations.js';
+import { coreTableNames, tablesTouchedBy } from './core-migrations.js';
+import { readCarryStateFromDb } from './carry-state.js';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { sql } from 'drizzle-orm';
@@ -25,48 +40,130 @@ export interface ExtensionMigrationSource {
   dir: string;
 }
 
+/** The core generation a file was written against; `null` = the current one. */
+export type ExtensionMigrationGeneration = '1x' | null;
+
+/**
+ * What the lane does / did with a file:
+ *  - `applied`  — recorded (ran here, or was carried over / baselined);
+ *  - `pending`  — will run on the next apply;
+ *  - `skipped`  — a 1x file on a database never carried from 1.x: recorded as
+ *                 satisfied without running (or will be on the next apply);
+ *  - `missing`  — a 1x file on a carried database whose 1.x side never ran it:
+ *                 the lane refuses until it is run on 1.x and carried again.
+ */
+export type ExtensionMigrationState = 'applied' | 'pending' | 'skipped' | 'missing';
+
 export interface ExtensionMigrationStatus {
   extensionId: string;
   name: string;
+  generation: ExtensionMigrationGeneration;
+  state: ExtensionMigrationState;
   createsTables: string[];
   dropsTables: string[];
   applied: boolean;
   /** The file changed after it was applied — the runner refuses to continue. */
   drifted: boolean;
+  /** Core tables this (current-generation) file would CREATE — the runner refuses it. */
+  collidesWithCore: string[];
 }
 
 const TABLE = 'extension_migrations';
 const STATEMENT_BREAKPOINT = '--> statement-breakpoint';
+/** `-- greenhouse:core-generation 1x` on a line of its own (whitespace tolerant). */
+const GENERATION_MARKER = /^[ \t]*--[ \t]*greenhouse:core-generation[ \t]+(\S+)[ \t]*(?:\r?\n|$)/gm;
 /** Arbitrary but fixed: every runner instance serializes on the same key. */
 const ADVISORY_LOCK_KEY = 74_192_026;
 
-interface MigrationFile {
+export interface MigrationFile {
   name: string;
+  /** sha256 of the file with marker lines removed — byte-identical to the raw hash for unmarked files. */
   checksum: string;
+  /** sha256 of the raw file, accepted too: a 1.x runner that saw the marker recorded this one. */
+  rawChecksum: string;
+  generation: ExtensionMigrationGeneration;
   /** Tables the file creates / drops — `db baseline` checks the net set exists. */
   createsTables: string[];
   dropsTables: string[];
   statements: string[];
 }
 
-function readMigrationFiles(dir: string): MigrationFile[] {
+const sha256 = (text: string) => createHash('sha256').update(text).digest('hex');
+
+/** Parse one migration file's text: generation marker, checksums, touched tables, statements. */
+export function parseMigrationFile(name: string, raw: string): MigrationFile {
+  let generation: ExtensionMigrationGeneration = null;
+  for (const match of raw.matchAll(GENERATION_MARKER)) {
+    if (match[1] !== '1x') {
+      throw new Error(`Extension migration ${name}: unknown core generation "${match[1]}" (only "1x" is defined)`);
+    }
+    generation = '1x';
+  }
+  const text = generation ? raw.replace(GENERATION_MARKER, '') : raw;
+  const touched = tablesTouchedBy(text);
+  return {
+    name,
+    checksum: sha256(text),
+    rawChecksum: sha256(raw),
+    generation,
+    createsTables: touched.creates,
+    dropsTables: touched.drops,
+    statements: text
+      .split(STATEMENT_BREAKPOINT)
+      .map((s) => s.trim())
+      .filter(Boolean),
+  };
+}
+
+export function readMigrationFiles(dir: string): MigrationFile[] {
   if (!existsSync(dir)) return [];
   return readdirSync(dir)
     .filter((f) => f.endsWith('.sql'))
     .sort()
-    .map((name) => {
-      const text = readFileSync(join(dir, name), 'utf8');
-      return {
-        name,
-        checksum: createHash('sha256').update(text).digest('hex'),
-        createsTables: tablesTouchedBy(text).creates,
-        dropsTables: tablesTouchedBy(text).drops,
-        statements: text
-          .split(STATEMENT_BREAKPOINT)
-          .map((s) => s.trim())
-          .filter(Boolean),
-      };
-    });
+    .map((name) => parseMigrationFile(name, readFileSync(join(dir, name), 'utf8')));
+}
+
+const checksumMatches = (file: MigrationFile, recorded: string) =>
+  recorded === file.checksum || recorded === file.rawChecksum;
+
+/** Core tables a current-generation file would create (1x files never run, so never collide). */
+function coreCollisions(file: MigrationFile, core: ReadonlySet<string>): string[] {
+  if (file.generation) return [];
+  return file.createsTables.filter((table) => core.has(table));
+}
+
+/**
+ * Whether a database came from a completed 1.x carry. Only then can a 1x file
+ * have been applied (on the 1.x side) — and only if the extension was there.
+ */
+async function carriedFrom1x(executor: Db): Promise<boolean> {
+  const carry = await readCarryStateFromDb(executor);
+  return Boolean(carry?.completedAt);
+}
+
+/**
+ * What to do with an unrecorded 1x file. On a carried database where the
+ * extension has rows (it ran on 1.x) a missing row means 1.x never applied the
+ * file; an extension with no rows at all was first enabled after the carry, so
+ * its 1x files are as irrelevant as on a fresh install.
+ */
+function unrecorded1xState(carried: boolean, extensionHasRows: boolean): 'skipped' | 'missing' {
+  return carried && extensionHasRows ? 'missing' : 'skipped';
+}
+
+function missing1xError(extensionId: string, names: string[]): Error {
+  return new Error(
+    `Extension migration(s) ${names.map((n) => `${extensionId}/${n}`).join(', ')} target the 1.x core ` +
+      '(-- greenhouse:core-generation 1x) and were never applied on the 1.x database this one was carried from. ' +
+      '3.0 does not run 1.x migrations: apply them on the 1.x database, then run migrate-from-1x again.',
+  );
+}
+
+function collisionError(extensionId: string, name: string, tables: string[]): Error {
+  return new Error(
+    `Extension migration ${extensionId}/${name} creates core table(s) ${tables.join(', ')} — ` +
+      'an extension owns its own tables; rename them (e.g. with the extension id as a prefix).',
+  );
 }
 
 export function createExtensionMigrationRunner(db: Db) {
@@ -92,17 +189,29 @@ export function createExtensionMigrationRunner(db: Db) {
     async status(sources: readonly ExtensionMigrationSource[]): Promise<ExtensionMigrationStatus[]> {
       await ensureTable();
       const out: ExtensionMigrationStatus[] = [];
+      if (sources.length === 0) return out;
+      const carried = await carriedFrom1x(db);
+      const core = coreTableNames();
       for (const source of sources) {
         const applied = await appliedChecksums(db, source.extensionId);
         for (const file of readMigrationFiles(source.dir)) {
           const existing = applied.get(file.name);
+          const recorded = existing !== undefined;
+          let state: ExtensionMigrationState;
+          if (file.generation === '1x') {
+            // Recorded on a fresh install = it was skipped; on a carried one = 1.x ran it.
+            state = recorded ? (carried ? 'applied' : 'skipped') : unrecorded1xState(carried, applied.size > 0);
+          } else state = recorded ? 'applied' : 'pending';
           out.push({
             extensionId: source.extensionId,
             name: file.name,
+            generation: file.generation,
+            state,
             createsTables: file.createsTables,
             dropsTables: file.dropsTables,
-            applied: existing !== undefined,
-            drifted: existing !== undefined && existing !== file.checksum,
+            applied: recorded,
+            drifted: recorded && !checksumMatches(file, existing),
+            collidesWithCore: coreCollisions(file, core),
           });
         }
       }
@@ -133,15 +242,19 @@ export function createExtensionMigrationRunner(db: Db) {
       await ensureTable();
       return db.transaction(async (tx) => {
         await tx.execute(sql`SELECT pg_advisory_xact_lock(${ADVISORY_LOCK_KEY})`);
+        const carried = await carriedFrom1x(tx as unknown as Db);
         const recorded: string[] = [];
         for (const source of sources) {
           const existing = await appliedChecksums(tx as unknown as Db, source.extensionId);
+          const extensionHasRows = existing.size > 0;
           const limit = opts.through?.[source.extensionId];
           let past = false;
           for (const file of readMigrationFiles(source.dir)) {
             if (past) break;
             if (limit !== undefined && file.name === limit) past = true;
             if (existing.has(file.name)) continue;
+            // A 1x file 1.x never ran stays unrecorded: baseline must not paper over it.
+            if (file.generation === '1x' && unrecorded1xState(carried, extensionHasRows) === 'missing') continue;
             await tx.execute(
               sql`INSERT INTO extension_migrations (extension_id, name, checksum) VALUES (${source.extensionId}, ${file.name}, ${file.checksum})`,
             );
@@ -152,24 +265,55 @@ export function createExtensionMigrationRunner(db: Db) {
       });
     },
 
-    /** Apply every pending file of every source, in order, atomically. */
-    async apply(sources: readonly ExtensionMigrationSource[]): Promise<{ applied: string[] }> {
-      if (sources.length === 0) return { applied: [] };
+    /**
+     * Apply every pending file of every source, in order, atomically. 1x files
+     * never run: they are recorded as satisfied (`skipped`) or refused (see the
+     * header). Refuses a current-generation file that creates a core table.
+     */
+    async apply(sources: readonly ExtensionMigrationSource[]): Promise<{ applied: string[]; skipped: string[] }> {
+      if (sources.length === 0) return { applied: [], skipped: [] };
       await ensureTable();
+      const core = coreTableNames();
       return db.transaction(async (tx) => {
         await tx.execute(sql`SELECT pg_advisory_xact_lock(${ADVISORY_LOCK_KEY})`);
+        const carried = await carriedFrom1x(tx as unknown as Db);
         const applied: string[] = [];
+        const skipped: string[] = [];
         for (const source of sources) {
           const existing = await appliedChecksums(tx as unknown as Db, source.extensionId);
-          for (const file of readMigrationFiles(source.dir)) {
+          const files = readMigrationFiles(source.dir);
+          // Refuse before running anything: a collision or a 1x gap is a build / carry mistake.
+          for (const file of files) {
+            const clash = coreCollisions(file, core);
+            if (clash.length > 0) throw collisionError(source.extensionId, file.name, clash);
+          }
+          const missing = files.filter(
+            (file) =>
+              file.generation === '1x' &&
+              !existing.has(file.name) &&
+              unrecorded1xState(carried, existing.size > 0) === 'missing',
+          );
+          if (missing.length > 0)
+            throw missing1xError(
+              source.extensionId,
+              missing.map((file) => file.name),
+            );
+          for (const file of files) {
             const checksum = existing.get(file.name);
             if (checksum !== undefined) {
-              if (checksum !== file.checksum) {
+              if (!checksumMatches(file, checksum)) {
                 throw new Error(
                   `Extension migration ${source.extensionId}/${file.name} changed after it was applied — ` +
                     'add a new migration file instead of editing an applied one',
                 );
               }
+              continue;
+            }
+            if (file.generation === '1x') {
+              await tx.execute(
+                sql`INSERT INTO extension_migrations (extension_id, name, checksum) VALUES (${source.extensionId}, ${file.name}, ${file.checksum})`,
+              );
+              skipped.push(`${source.extensionId}/${file.name}`);
               continue;
             }
             for (const statement of file.statements) await tx.execute(sql.raw(statement));
@@ -179,7 +323,7 @@ export function createExtensionMigrationRunner(db: Db) {
             applied.push(`${source.extensionId}/${file.name}`);
           }
         }
-        return { applied };
+        return { applied, skipped };
       });
     },
   };

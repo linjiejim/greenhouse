@@ -40,10 +40,13 @@ describe('extension migration baseline', () => {
       {
         extensionId: 'probe',
         name: '0001_create.sql',
+        generation: null,
+        state: 'applied',
         createsTables: [],
         dropsTables: ['users'],
         applied: true,
         drifted: false,
+        collidesWithCore: [],
       },
     ]);
     expect((await db.extensionMigrations.apply(sources)).applied).toEqual([]);
@@ -66,20 +69,26 @@ describe('extension migration baseline', () => {
       {
         extensionId: 'probe',
         name: '0001_create.sql',
+        generation: null,
+        state: 'applied',
         createsTables: [],
         dropsTables: ['users'],
         applied: true,
         drifted: false,
+        collidesWithCore: [],
       },
       // The status carries what the file creates, so `db baseline` can check it
       // really is there before recording the file as applied.
       {
         extensionId: 'probe',
         name: '0002_adopt.sql',
+        generation: null,
+        state: 'pending',
         createsTables: ['baseline_probe'],
         dropsTables: [],
         applied: false,
         drifted: false,
+        collidesWithCore: [],
       },
     ]);
     // …and applying the lane runs exactly that one file.

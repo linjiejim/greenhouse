@@ -35,21 +35,26 @@ export type {
   ExtensionMigrationSource,
   ExtensionMigrationStatus,
   ExtensionMigrationRunner,
+  ExtensionMigrationGeneration,
+  ExtensionMigrationState,
 } from './extension-migrations.js';
-export { readCoreMigrations } from './core-migrations.js';
+export { parseMigrationFile, readMigrationFiles } from './extension-migrations.js';
+export { readCoreMigrations, coreTableNames } from './core-migrations.js';
 export { newId, isNewId, stableId, ulid, ID_PREFIX } from './ids.js';
 export {
   applyMigrations,
+  applyAllMigrations,
   assertMigratableDatabase,
   detectDatabaseGeneration,
   readCarryState,
+  readCarryStateFromDb,
   refusalFor,
   DatabaseGenerationError,
   MIGRATIONS_FOLDER,
   V1_ARCHIVE_FOLDER,
   V1_LATEST_TAG,
 } from './migrate.js';
-export type { CarryState } from './migrate.js';
+export type { CarryState, AppliedMigrations } from './migrate.js';
 export type { DatabaseGeneration } from './migrate.js';
 export { carryFrom1x, CarryError, CarryFailedError, v1CoreTables } from './carry/from-1x.js';
 export type { CarryOptions, CarryReport, CarryLine } from './carry/from-1x.js';

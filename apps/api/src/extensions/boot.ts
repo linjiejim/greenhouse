@@ -55,12 +55,19 @@ export function extensionMigrationSources(): ExtensionMigrationSource[] {
   return EXTENSIONS.filter((ext) => ext.migrations).map((ext) => ({ extensionId: ext.id, dir: ext.migrations!.dir }));
 }
 
-/** Apply pending extension migrations (no-op without active extensions that ship any). */
+/**
+ * Apply pending extension migrations (no-op without active extensions that ship
+ * any). `pnpm db:migrate` already ran the lane in a normal deploy; this is the
+ * idempotent second pass. 1x files are never run — recorded and logged as skipped.
+ */
 export async function applyExtensionMigrations(db: DatabaseProvider): Promise<void> {
   const sources = extensionMigrationSources();
   if (sources.length === 0) return;
-  const { applied } = await db.extensionMigrations.apply(sources);
+  const { applied, skipped } = await db.extensionMigrations.apply(sources);
   if (applied.length > 0) logger.info(`[Extensions] Applied ${applied.length} migration(s): ${applied.join(', ')}`);
+  if (skipped.length > 0) {
+    logger.info(`[Extensions] Skipped ${skipped.length} 1.x-generation migration(s): ${skipped.join(', ')}`);
+  }
 }
 
 /** Mount extension routes after the typed core chain; guards run for every request under the prefix. */

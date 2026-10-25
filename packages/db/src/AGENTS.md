@@ -101,6 +101,11 @@
 - 新增 baseline 之后的迁移不得改 `0000_v3_baseline.sql`。
 - `pnpm cli db baseline` 只用于收编已有表但没有迁移记录的库（先 `--dry-run`）。
 - 扩展的表走扩展迁移车道（`extension-migrations.ts`、`extension_migrations` 表），不进 core `drizzle/`。
+- `pnpm db:migrate`（`applyAllMigrations`）在同一把 advisory 锁下先跑核心链、再跑已启用扩展的车道；API 启动再跑一次车道（幂等）。
+- 扩展迁移文件头 `-- greenhouse:core-generation 1x` 表示写给 1.x 核心表：3.0 永不执行。未搬家的库记为已满足并报 skipped；搬家库有记录就不动；搬家库里该扩展有记录却缺这一行就拒绝启动（去 1.x 补跑再搬）。
+- 标记行不计入 checksum（未标记文件的 checksum 与原来逐字节相同）；已应用的文件可以补标记。
+- 核心表名由 `coreTableNames()` 从 `drizzle/` 迁移链推出；非 1x 的扩展迁移 `CREATE TABLE` 核心表名时车道拒绝。
+- `pnpm cli db status` 列出核心链与每个扩展迁移的代际和状态（applied / pending / skipped / missing）。
 
 ### migrate-from-1x
 
@@ -112,6 +117,7 @@
 - 折叠：会话置顶 → `conversations.pinned_at` / `conversation_share_reads.pinned_at`；工作台偏好 → `users.preferences.workbench`；自定义 Agent 的当前版本 → `run_profiles`。
 - 合表记来源（判别列 + 报告）；serial id 可能撞车的来源加前缀：`pac_`（project_activities）、`esl_`（email_send_log）、`frc_`（tool_frictions）、`kbs_`（knowledge_base_shares）、`tbm_`（table_base_members）、`pin_`（置顶折成的 share read）。
 - 扩展表（1.x core 链没建过的 public 表，如 `crm_*` / `sellfox_*`）和 `extension_migrations` 原样复制：按源库 catalog 重建 DDL，COPY 流式搬数据，序列位置同步。
+- 扩展表与 3.0 核心表重名：`--dry-run` 写进报告（`extensionClashes`），真跑在写入前拒绝。报告的 `extensionMigrations` 按已启用扩展的车道逐文件列出代际与 3.0 的处理（carried / pending / skipped / missing）。
 - 不搬：退役表（eval、Missions、Workflows、api_clients）、已删功能（会话标签、用户组、文档评论 / 互链、表格表单 / 仪表盘 / 表内自动化 / 表格通知、组织、个人权限覆盖、app releases）、已结算 Run 30 天前的事件、已投递 outbox、过期凭证、限流桶、30 天前的请求日志、评测数据。每一行跳过都带原因计入报告。
 - 加新表或改表时同步更新 carry 的映射，并用 `carry/v1-fixture.ts`（归档链 + `tests/fixtures/v1-6-seed.sql`）的测试覆盖。
 

@@ -11,16 +11,17 @@
 
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import postgres from 'postgres';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import { migrate } from 'drizzle-orm/postgres-js/migrator';
-import { readCoreMigrations } from './core-migrations.js';
+import { MIGRATIONS_FOLDER, readCoreMigrations } from './core-migrations.js';
+import { readCarryState } from './carry-state.js';
+import { createExtensionMigrationRunner, type ExtensionMigrationSource } from './extension-migrations.js';
+import * as schema from './schema/index.js';
 
 const MIGRATION_LOCK_KEY = 74_192_031;
 
-/** `drizzle/` at the repository root. */
-export const MIGRATIONS_FOLDER = fileURLToPath(new URL('../../../drizzle', import.meta.url));
+export { MIGRATIONS_FOLDER };
 /** The archived 1.x chain, kept for version detection only. */
 export const V1_ARCHIVE_FOLDER = join(MIGRATIONS_FOLDER, 'archive-1x');
 /** The last 1.x migration a database must have before it can be carried. */
@@ -45,33 +46,8 @@ export class DatabaseGenerationError extends Error {
   }
 }
 
-/**
- * The carry marker: one row `migrate-from-1x` writes into the target before it
- * empties anything (`completed_at` null) and completes as its very last step.
- * It lives in the `drizzle` schema next to the migration journal, so it is not
- * a public table: never emptied, carried or listed as part of the data model.
- * A database never carried has no marker.
- */
-export const CARRY_MARKER_TABLE = 'drizzle.greenhouse_carry';
-
-export interface CarryState {
-  sourceVersion: string | null;
-  startedAt: string;
-  completedAt: string | null;
-}
-
-export async function readCarryState(sql: postgres.Sql): Promise<CarryState | null> {
-  const [exists] = await sql<{ t: string | null }[]>`SELECT to_regclass(${CARRY_MARKER_TABLE})::text AS t`;
-  if (!exists?.t) return null;
-  const [row] = await sql<{ source_version: string | null; started_at: Date; completed_at: Date | null }[]>`
-    SELECT source_version, started_at, completed_at FROM drizzle.greenhouse_carry WHERE id = 1`;
-  if (!row) return null;
-  return {
-    sourceVersion: row.source_version,
-    startedAt: new Date(row.started_at).toISOString(),
-    completedAt: row.completed_at ? new Date(row.completed_at).toISOString() : null,
-  };
-}
+export { CARRY_MARKER_TABLE, readCarryState, readCarryStateFromDb } from './carry-state.js';
+export type { CarryState } from './carry-state.js';
 
 /** Record that a carry into this database has started (and is not complete). */
 export async function markCarryStarted(sql: postgres.Sql, sourceVersion: string): Promise<void> {
@@ -194,13 +170,37 @@ export async function assertMigratableDatabase(sql: postgres.Sql): Promise<Datab
  * together apply it once. Refuses 1.x, 2.x and foreign databases.
  */
 export async function applyMigrations(url: string, folder = MIGRATIONS_FOLDER): Promise<DatabaseGeneration> {
+  return (await applyAllMigrations(url, { folder })).generation;
+}
+
+export interface AppliedMigrations {
+  /** What the database was before this run. */
+  generation: DatabaseGeneration;
+  /** The extension lane, when sources were given (`null` otherwise). */
+  extensions: { applied: string[]; skipped: string[] } | null;
+}
+
+/**
+ * `pnpm db:migrate`: the core chain, then — under the same advisory lock — the
+ * extension lane for the given sources, so a deployment can migrate fully
+ * before it switches traffic. The API boot still runs the extension lane
+ * (idempotent), which covers a deployment that skips this step.
+ */
+export async function applyAllMigrations(
+  url: string,
+  opts: { folder?: string; extensionSources?: readonly ExtensionMigrationSource[] } = {},
+): Promise<AppliedMigrations> {
   const sql = postgres(url, { max: 1, onnotice: () => {} });
   try {
     await sql`SELECT pg_advisory_lock(${MIGRATION_LOCK_KEY}::bigint)`;
     try {
       const generation = await assertMigratableDatabase(sql);
-      await migrate(drizzle(sql), { migrationsFolder: folder });
-      return generation;
+      const db = drizzle(sql, { schema });
+      await migrate(db, { migrationsFolder: opts.folder ?? MIGRATIONS_FOLDER });
+      const extensions = opts.extensionSources
+        ? await createExtensionMigrationRunner(db).apply(opts.extensionSources)
+        : null;
+      return { generation, extensions };
     } finally {
       await sql`SELECT pg_advisory_unlock(${MIGRATION_LOCK_KEY}::bigint)`.catch(() => undefined);
     }

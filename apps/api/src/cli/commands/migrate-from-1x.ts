@@ -13,6 +13,7 @@
 
 import chalk from 'chalk';
 import { carryFrom1x, CarryError, CarryFailedError, type CarryReport } from '@greenhouse/db';
+import { extensionMigrationSources } from '../../extensions/boot.js';
 import { flagBool, flagStr, heading, parseFlags, redactDbUrl, table } from './shared.js';
 
 const USAGE = 'Usage: pnpm cli migrate-from-1x --from <1.6 database url> --to <new database url> [--dry-run] [--json]';
@@ -64,6 +65,25 @@ export function formatCarryReport(report: CarryReport): string {
       ),
     );
   }
+  if (report.extensionClashes.length > 0) {
+    lines.push('');
+    lines.push(chalk.red(`✗ extension tables clash with 3.0 core tables: ${report.extensionClashes.join(', ')}`));
+  }
+  if (report.extensionMigrations.length > 0) {
+    lines.push('');
+    lines.push(heading('Extension migrations (what 3.0 does with each)'));
+    lines.push(
+      table(
+        ['extension', 'file', 'generation', 'state'],
+        report.extensionMigrations.map((row) => [
+          row.extensionId,
+          row.name,
+          row.generation ?? 'current',
+          row.state === 'missing' ? chalk.red('missing on 1.x — boot refuses') : row.state,
+        ]),
+      ),
+    );
+  }
   if (report.notes.length > 0) {
     lines.push('');
     lines.push(heading('Notes'));
@@ -98,6 +118,7 @@ export async function run(args: string[]): Promise<number> {
       from,
       to,
       dryRun,
+      extensionSources: extensionMigrationSources(),
       log: json ? undefined : (line) => console.log(chalk.dim(line)),
     });
     console.log(json ? JSON.stringify(report, null, 2) : formatCarryReport(report));

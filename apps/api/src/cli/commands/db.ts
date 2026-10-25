@@ -3,8 +3,11 @@
  *
  *   pnpm cli stats          # row counts across core tables + health
  *   pnpm cli db reset       # TRUNCATE every table (type the db name to confirm)
- *   pnpm cli db migrate     # apply the 3.0 migration chain (pnpm db:migrate);
- *                           # refuses a 1.x or 2.x database
+ *   pnpm cli db migrate     # apply the 3.0 migration chain, then the enabled
+ *                           # extensions' lane (pnpm db:migrate); refuses a
+ *                           # 1.x or 2.x database
+ *   pnpm cli db status      # core chain + every extension migration with its
+ *                           # generation and state (applied / pending / skipped / missing)
  *   pnpm cli db baseline    # adopt an existing database: record the migration
  *                           # chain (core + enabled extensions) as applied
  *                           # (--dry-run to preview, --yes for automation,
@@ -14,7 +17,12 @@
 
 import chalk from 'chalk';
 import { sql } from 'drizzle-orm';
-import { applyMigrations, DatabaseGenerationError, readCoreMigrations } from '@greenhouse/db';
+import {
+  applyAllMigrations,
+  DatabaseGenerationError,
+  readCoreMigrations,
+  type ExtensionMigrationStatus,
+} from '@greenhouse/db';
 import { DRIZZLE_DIR } from '../../paths.js';
 import { extensionMigrationSources } from '../../extensions/boot.js';
 import {
@@ -50,23 +58,35 @@ export async function run(args: string[]): Promise<number> {
   if (sub === 'stats' || sub === 'overview') return stats(rest);
   if (sub === 'reset') return reset(rest);
   if (sub === 'baseline') return baseline(rest);
-  if (sub === 'migrate') return migrateCore();
-  console.error(chalk.red(`Unknown db subcommand: ${sub} (expected: stats | reset | migrate | baseline)`));
+  if (sub === 'migrate') return migrateAll();
+  if (sub === 'status') return status();
+  console.error(chalk.red(`Unknown db subcommand: ${sub} (expected: stats | reset | migrate | status | baseline)`));
   return 1;
 }
 
 /**
- * Apply the 3.0 chain. Opens its own connection (the shared provider would
- * refuse an empty database) and refuses a 1.x / 2.x database with the way out.
+ * Apply the 3.0 chain, then the enabled extensions' migration lane under the
+ * same advisory lock (the boot runs the lane again; it is idempotent). Opens its
+ * own connection (the shared provider would refuse an empty database) and
+ * refuses a 1.x / 2.x database with the way out.
  */
-async function migrateCore(): Promise<number> {
+async function migrateAll(): Promise<number> {
   try {
-    const before = await applyMigrations(DATABASE_URL, DRIZZLE_DIR);
+    const { generation: before, extensions } = await applyAllMigrations(DATABASE_URL, {
+      folder: DRIZZLE_DIR,
+      extensionSources: extensionMigrationSources(),
+    });
     const label =
       before.kind === 'empty'
         ? 'empty database'
         : `3.0 database (${before.kind === 'v3' ? before.applied.length : 0} applied)`;
     console.log(chalk.green(`✓ migrations applied to ${redactDbUrl()} — was: ${label}`));
+    if (extensions && extensions.applied.length > 0) {
+      console.log(dim(`  extension migrations applied: ${extensions.applied.join(', ')}`));
+    }
+    if (extensions && extensions.skipped.length > 0) {
+      console.log(dim(`  extension migrations skipped (1.x core generation): ${extensions.skipped.join(', ')}`));
+    }
     return 0;
   } catch (err) {
     if (err instanceof DatabaseGenerationError) {
@@ -140,15 +160,16 @@ async function baseline(args: string[]): Promise<number> {
     if (seenThrough.has(entry.extensionId)) pastThrough.add(key);
     if (through.extensions[entry.extensionId] === entry.name) seenThrough.add(entry.extensionId);
   }
+  // A 1x file whose 1.x side never ran it is not recorded (the lane keeps refusing it).
   const extensionPending = extensionState.filter(
-    (entry) => !entry.applied && !pastThrough.has(`${entry.extensionId}/${entry.name}`),
+    (entry) => !entry.applied && entry.state !== 'missing' && !pastThrough.has(`${entry.extensionId}/${entry.name}`),
   );
   const leftPending = extensionState.filter(
     (entry) => !entry.applied && pastThrough.has(`${entry.extensionId}/${entry.name}`),
   );
   const drifted = extensionState.filter((entry) => entry.drifted);
 
-  heading('Migration baseline');
+  console.log(heading('Migration baseline'));
   console.log(
     kvBlock([
       ['Database', redactDbUrl()],
@@ -181,7 +202,8 @@ async function baseline(args: string[]): Promise<number> {
   // Net across the chain in order: a table created in one file and dropped in a
   // later one is not something the database should still have.
   const expected = new Set<string>();
-  for (const entry of [...corePending, ...extensionPending]) {
+  // 1x extension files describe the 1.x core, which a 3.0 database never has.
+  for (const entry of [...corePending, ...extensionPending.filter((e) => e.generation !== '1x')]) {
     for (const t of entry.createsTables) expected.add(t);
     for (const t of entry.dropsTables) expected.delete(t);
   }
@@ -227,6 +249,46 @@ async function baseline(args: string[]): Promise<number> {
   );
   console.log(dim('Verify with `pnpm drizzle-kit migrate` — it should now be a no-op.'));
   return 0;
+}
+
+function stateLabel(entry: ExtensionMigrationStatus): string {
+  if (entry.drifted) return chalk.red('drifted');
+  if (entry.collidesWithCore.length > 0) return chalk.red(`collides: ${entry.collidesWithCore.join(', ')}`);
+  switch (entry.state) {
+    case 'applied':
+      return chalk.green('applied');
+    case 'skipped':
+      return chalk.yellow(entry.applied ? 'skipped' : 'skipped (on next migrate)');
+    case 'missing':
+      return chalk.red('missing on 1.x — refused');
+    default:
+      return 'pending';
+  }
+}
+
+/** Core chain + extension lane, read-only. Exit 1 when the lane would refuse. */
+async function status(): Promise<number> {
+  const db = await openDb();
+  const core = await db.coreMigrationBaseline.status(readCoreMigrations(DRIZZLE_DIR));
+  const lane = await db.extensionMigrations.status(extensionMigrationSources());
+  console.log(heading('Migrations'));
+  console.log(
+    table(
+      ['Core migration', 'State'],
+      core.map((entry) => [entry.tag, entry.recorded ? chalk.green('applied') : 'pending']),
+    ),
+  );
+  if (lane.length === 0) console.log(dim('\nNo enabled extension ships migrations.'));
+  else
+    console.log(
+      '\n' +
+        table(
+          ['Extension migration', 'Generation', 'State'],
+          lane.map((entry) => [`${entry.extensionId}/${entry.name}`, entry.generation ?? 'current', stateLabel(entry)]),
+        ),
+    );
+  const blocked = lane.filter((entry) => entry.drifted || entry.state === 'missing' || entry.collidesWithCore.length);
+  return blocked.length > 0 ? 1 : 0;
 }
 
 async function stats(args: string[]): Promise<number> {

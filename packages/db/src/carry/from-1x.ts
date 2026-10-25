@@ -33,7 +33,12 @@ import {
   V1_ARCHIVE_FOLDER,
   V1_LATEST_TAG,
 } from '../migrate.js';
-import { readCoreMigrations } from '../core-migrations.js';
+import { coreTableNames, readCoreMigrations } from '../core-migrations.js';
+import {
+  readMigrationFiles,
+  type ExtensionMigrationGeneration,
+  type ExtensionMigrationSource,
+} from '../extension-migrations.js';
 import { copyExtensionTables, discoverExtensionTables, dropTables } from './extensions.js';
 
 type Row = Record<string, unknown>;
@@ -45,6 +50,11 @@ export interface CarryOptions {
   dryRun?: boolean;
   /** Cutoffs (30-day windows, expiry) are computed from this instant. */
   now?: Date;
+  /**
+   * The extension migration lanes the 3.0 deployment will run — the report
+   * says, per file, what boot will do with it on the carried database.
+   */
+  extensionSources?: readonly ExtensionMigrationSource[];
   log?: (line: string) => void;
 }
 
@@ -65,6 +75,22 @@ export interface CarryReport {
   /** Source tables the carry read nothing from on purpose (whole table retired). */
   retired: Array<{ table: string; rows: number; reason: string }>;
   extensions: Array<{ table: string; rows: number }>;
+  /** Extension tables whose names a 3.0 core table already uses (a real run refuses). */
+  extensionClashes: string[];
+  /**
+   * Per extension migration: `carried` (1.x recorded it, copied verbatim),
+   * `pending` (applies at the first 3.0 boot / db:migrate), `skipped` (a 1x
+   * file of an extension 1.x never ran — recorded as satisfied), `missing` (a
+   * 1x file 1.x never applied — 3.0 refuses to boot until it is run on 1.x and
+   * the carry repeated). Files the source recorded that no lane ships are
+   * listed with generation `null` and state `carried`.
+   */
+  extensionMigrations: Array<{
+    extensionId: string;
+    name: string;
+    generation: ExtensionMigrationGeneration;
+    state: 'carried' | 'pending' | 'skipped' | 'missing';
+  }>;
   notes: string[];
   /** Target row counts after the carry (core tables), for reconciliation. */
   targetCounts: Record<string, number>;
@@ -1638,14 +1664,34 @@ export async function carryFrom1x(options: CarryOptions): Promise<CarryReport> {
     const sourceTables = await publicTables(source);
     const coreTables = v1CoreTables();
     const extensionTables = discoverExtensionTables(sourceTables, coreTables);
+    // A 1.x extension table named like a 3.0 core table cannot be copied next to it.
+    // Checked before anything else so a dry run reports it too.
+    const v3Core = coreTableNames();
+    const extensionClashes = extensionTables.filter((name) => name !== 'extension_migrations' && v3Core.has(name));
+    if (extensionClashes.length > 0 && !dryRun) {
+      throw new CarryError(`Extension tables clash with 3.0 core tables: ${extensionClashes.join(', ')}`);
+    }
+    const extensionMigrations = await planExtensionMigrations(source, sourceTables, options.extensionSources ?? []);
     const ctx = new Ctx(source, target, dryRun, now, sourceTables, log);
+    if (extensionClashes.length > 0) {
+      ctx.notes.set(
+        `extension tables clash with 3.0 core tables (a real run refuses): ${extensionClashes.join(', ')}`,
+        1,
+      );
+    }
+    const missing1x = extensionMigrations.filter((entry) => entry.state === 'missing');
+    if (missing1x.length > 0) {
+      ctx.notes.set(
+        `1.x-generation extension migrations never applied on the source — 3.0 will refuse to boot until they ` +
+          `are run on 1.x and the carry is repeated: ${missing1x.map((e) => `${e.extensionId}/${e.name}`).join(', ')}`,
+        1,
+      );
+    }
 
     if (target && !dryRun) {
       const targetMeta = await describeTarget(target);
       // Idempotent: empty every 3.0 table and drop previously copied extension tables.
       const v3Tables = [...targetMeta.keys()].filter((name) => !extensionTables.includes(name));
-      const clash = extensionTables.filter((name) => name !== 'extension_migrations' && coreV3Names.has(name));
-      if (clash.length > 0) throw new CarryError(`Extension tables clash with 3.0 core tables: ${clash.join(', ')}`);
       // Before anything is emptied: until the marker completes, migrate and boot refuse this database.
       await markCarryStarted(target, generation.latest ?? 'unknown');
       writing = true;
@@ -1726,6 +1772,8 @@ export async function carryFrom1x(options: CarryOptions): Promise<CarryReport> {
       lines: [...ctx.lines.values()],
       retired,
       extensions,
+      extensionClashes,
+      extensionMigrations,
       notes: [...ctx.notes.entries()].map(([text, count]) => (count > 1 ? `${text} (×${count})` : text)),
       targetCounts,
     };
@@ -1743,78 +1791,38 @@ export async function carryFrom1x(options: CarryOptions): Promise<CarryReport> {
   }
 }
 
-/** Names of the 3.0 core tables (an extension table must not reuse one). */
-const coreV3Names = new Set([
-  'users',
-  'auth_refresh_tokens',
-  'password_links',
-  'login_states',
-  'rate_limits',
-  'roles',
-  'role_members',
-  'role_capabilities',
-  'role_entity_policies',
-  'user_grants',
-  'oauth_clients',
-  'oauth_grants',
-  'oauth_codes',
-  'oauth_tokens',
-  'gateway_keys',
-  'provider_connections',
-  'conversations',
-  'messages',
-  'conversation_shares',
-  'conversation_share_reads',
-  'card_action_receipts',
-  'runs',
-  'run_steps',
-  'run_tool_calls',
-  'run_interrupts',
-  'run_events',
-  'run_outbox',
-  'automations',
-  'automation_occurrences',
-  'run_profiles',
-  'kb_documents',
-  'kb_versions',
-  'folders',
-  'files',
-  'file_links',
-  'shares',
-  'projects',
-  'project_members',
-  'tasks',
-  'task_comments',
-  'table_bases',
-  'table_tables',
-  'table_fields',
-  'table_field_dependencies',
-  'table_views',
-  'table_records',
-  'table_record_links',
-  'table_schema_versions',
-  'table_recompute_jobs',
-  'notifications',
-  'notification_deliveries',
-  'push_devices',
-  'usage_events',
-  'budgets',
-  'budget_reservations',
-  'budget_ledger',
-  'prices',
-  'module_usage_daily',
-  'audit_events',
-  'request_log',
-  'feedback',
-  'email_accounts',
-  'feishu_conversations',
-  'feishu_receipts',
-  'member_computers',
-  'report_templates',
-  'skills',
-  'skill_versions',
-  'prompts',
-  'memories',
-  'workspace_settings',
-  'extension_migrations',
-]);
+/** What the 3.0 extension lane will do with each file once the source is carried. */
+async function planExtensionMigrations(
+  source: Sql,
+  sourceTables: Set<string>,
+  sources: readonly ExtensionMigrationSource[],
+): Promise<CarryReport['extensionMigrations']> {
+  const recorded = new Map<string, Set<string>>();
+  if (sourceTables.has('extension_migrations')) {
+    for (const row of await source`SELECT extension_id, name FROM extension_migrations ORDER BY extension_id, name`) {
+      const id = String(row.extension_id);
+      if (!recorded.has(id)) recorded.set(id, new Set());
+      recorded.get(id)!.add(String(row.name));
+    }
+  }
+  const out: CarryReport['extensionMigrations'] = [];
+  const shipped = new Set<string>();
+  for (const lane of sources) {
+    const rows = recorded.get(lane.extensionId) ?? new Set<string>();
+    for (const file of readMigrationFiles(lane.dir)) {
+      shipped.add(`${lane.extensionId}/${file.name}`);
+      let state: CarryReport['extensionMigrations'][number]['state'];
+      if (rows.has(file.name)) state = 'carried';
+      else if (file.generation === '1x') state = rows.size > 0 ? 'missing' : 'skipped';
+      else state = 'pending';
+      out.push({ extensionId: lane.extensionId, name: file.name, generation: file.generation, state });
+    }
+  }
+  for (const [extensionId, names] of recorded) {
+    for (const name of names) {
+      if (shipped.has(`${extensionId}/${name}`)) continue;
+      out.push({ extensionId, name, generation: null, state: 'carried' });
+    }
+  }
+  return out;
+}

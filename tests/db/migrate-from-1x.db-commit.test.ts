@@ -11,7 +11,11 @@
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { randomBytes } from 'node:crypto';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import {
+  applyAllMigrations,
   applyMigrations,
   carryFrom1x,
   CarryFailedError,
@@ -80,6 +84,25 @@ describe('migrate refuses databases 3.0 must not run on', () => {
     const fresh = await database('fresh');
     expect((await applyMigrations(fresh)).kind).toBe('empty');
     expect((await applyMigrations(fresh)).kind).toBe('v3');
+  });
+
+  it('db:migrate runs the extension lane after the core chain, and again is a no-op', async () => {
+    const fresh = await database('lane');
+    const lane = mkdtempSync(join(tmpdir(), 'gh-migrate-lane-'));
+    try {
+      writeFileSync(join(lane, '0001_create.sql'), 'CREATE TABLE ext_lane_probe (id int);\n');
+      writeFileSync(join(lane, '0002_core.sql'), '-- greenhouse:core-generation 1x\nDROP TABLE users;\n');
+      const extensionSources = [{ extensionId: 'lane', dir: lane }];
+      const first = await applyAllMigrations(fresh, { extensionSources });
+      expect(first.generation.kind).toBe('empty');
+      expect(first.extensions).toEqual({ applied: ['lane/0001_create.sql'], skipped: ['lane/0002_core.sql'] });
+      expect(await queryRows(fresh, `SELECT to_regclass('public.users')::text AS t`)).toEqual([{ t: 'users' }]);
+      const again = await applyAllMigrations(fresh, { extensionSources });
+      expect(again.extensions).toEqual({ applied: [], skipped: [] });
+      expect((await applyAllMigrations(fresh)).extensions).toBeNull();
+    } finally {
+      rmSync(lane, { recursive: true, force: true });
+    }
   });
 
   it('the API refuses to boot on a 1.x database', async () => {
@@ -344,5 +367,49 @@ describe('migrate-from-1x carry', () => {
     expect(await queryRows(empty, `SELECT count(*)::int AS n FROM pg_tables WHERE schemaname = 'public'`)).toEqual([
       { n: 0 },
     ]);
+  });
+
+  it('a dry run reports extension tables that clash with 3.0 core tables; a real run refuses', async () => {
+    const src = await database('clash_src');
+    await buildV1Database(src);
+    // `memories` is a 3.0 core table 1.x never had, so on 1.x it reads as an extension table.
+    await queryRows(src, 'CREATE TABLE memories (id serial PRIMARY KEY)');
+    const dry = await carryFrom1x({ from: src, dryRun: true, now: NOW });
+    expect(dry.extensionClashes).toEqual(['memories']);
+    expect(dry.notes.some((note) => /clash with 3\.0 core tables.*memories/.test(note))).toBe(true);
+    const dst = await database('clash_dst');
+    await expect(carryFrom1x({ from: src, to: dst, now: NOW })).rejects.toThrow(/clash with 3\.0 core tables: memories/);
+  }, 120_000);
+
+  it("reports what 3.0 will do with each extension migration, by generation", async () => {
+    const lanes = mkdtempSync(join(tmpdir(), 'gh-carry-lanes-'));
+    try {
+      const crm = join(lanes, 'crm');
+      const other = join(lanes, 'other');
+      for (const dir of [crm, other]) mkdirSync(dir);
+      writeFileSync(join(crm, '0001_baseline.sql'), 'SELECT 1;\n');
+      writeFileSync(join(crm, '0002_core.sql'), '-- greenhouse:core-generation 1x\nALTER TABLE sessions ADD COLUMN x int;\n');
+      writeFileSync(join(crm, '0003_next.sql'), 'CREATE TABLE crm_next (id int);\n');
+      writeFileSync(join(other, '0001_core.sql'), '-- greenhouse:core-generation 1x\nALTER TABLE users ADD COLUMN y int;\n');
+      const dry = await carryFrom1x({
+        from: source,
+        dryRun: true,
+        now: NOW,
+        extensionSources: [
+          { extensionId: 'crm', dir: crm },
+          { extensionId: 'other', dir: other },
+        ],
+      });
+      expect(dry.extensionClashes).toEqual([]);
+      expect(dry.extensionMigrations).toEqual([
+        { extensionId: 'crm', name: '0001_baseline.sql', generation: null, state: 'carried' },
+        { extensionId: 'crm', name: '0002_core.sql', generation: '1x', state: 'missing' },
+        { extensionId: 'crm', name: '0003_next.sql', generation: null, state: 'pending' },
+        { extensionId: 'other', name: '0001_core.sql', generation: '1x', state: 'skipped' },
+      ]);
+      expect(dry.notes.some((note) => note.includes('crm/0002_core.sql'))).toBe(true);
+    } finally {
+      rmSync(lanes, { recursive: true, force: true });
+    }
   });
 });

@@ -13,8 +13,12 @@
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { sql } from 'drizzle-orm';
 import type { Db } from './client.js';
+
+/** `drizzle/` at the repository root. */
+export const MIGRATIONS_FOLDER = fileURLToPath(new URL('../../../drizzle', import.meta.url));
 
 export interface CoreMigrationFile {
   tag: string;
@@ -71,6 +75,22 @@ export function readCoreMigrations(migrationsFolder: string): CoreMigrationFile[
       dropsTables: touched.drops,
     };
   });
+}
+
+/**
+ * The 3.0 core tables, derived from the migration chain itself (baseline plus
+ * every later file, creates and drops netted in order) — so an extension table
+ * can be checked against the real core set rather than a hand-kept list.
+ * `extension_migrations` is the extension lane's own bookkeeping table: not in
+ * the chain, but no extension may claim it either.
+ */
+export function coreTableNames(migrationsFolder = MIGRATIONS_FOLDER): Set<string> {
+  const names = new Set<string>(['extension_migrations']);
+  for (const file of readCoreMigrations(migrationsFolder)) {
+    for (const table of file.createsTables) names.add(table);
+    for (const table of file.dropsTables) names.delete(table);
+  }
+  return names;
 }
 
 export function createCoreMigrationBaseline(db: Db) {
