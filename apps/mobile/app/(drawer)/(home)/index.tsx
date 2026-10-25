@@ -10,7 +10,9 @@
  *    all-conversations sheet with search); kept on the phone, so they show at once and offline;
  *  - the composer: words, + (photos, camera, files — uploaded as they are picked, into a
  *    conversation made for them). Sending opens the conversation page with the
- *    message on its way; offline it waits in the outbox.
+ *    message on its way; offline it waits in the outbox. While it has focus the recent list
+ *    fades away (in place, nothing moves) and comes back when it lets go.
+
  *
  * The launch splash waits for the first list (saved or fresh) under it.
  */
@@ -19,6 +21,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ScrollView, Text, View, type TextInput } from 'react-native';
 import { Stack, useFocusEffect, useRouter } from 'expo-router';
 import { KeyboardStickyView } from 'react-native-keyboard-controller';
+import Animated, { ReduceMotion, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { createSession } from '../../../src/api/assistant';
 import { Composer } from '../../../src/chat/composer';
@@ -37,7 +40,7 @@ import { useAuth } from '../../../src/store/auth';
 import { useNotifications } from '../../../src/store/notifications';
 import { queueTurn } from '../../../src/store/outbox';
 import { useSessions } from '../../../src/store/sessions';
-import { HIT, makeStyles, space, typo, useTheme, weight } from '../../../src/theme';
+import { HIT, makeStyles, motion, space, typo, useTheme, weight } from '../../../src/theme';
 import { Icon, Touchable } from '../../../src/ui/core';
 import { alertError, promptText } from '../../../src/ui/dialogs';
 import { EmptyState } from '../../../src/ui/empty';
@@ -75,6 +78,16 @@ function Home() {
   // the agent a new conversation starts with (offered only where there is more than Sprouty)
   const agents = useChatAgents();
   const [agentId, setAgentId] = useState<string | null>(null);
+  // writing: the recent list steps back (fades in place) so the composer is the one thing in view
+  const [composing, setComposing] = useState(false);
+  const recentShown = useSharedValue(1);
+  useEffect(() => {
+    recentShown.value = withTiming(composing ? 0 : 1, {
+      duration: composing ? motion.exit : motion.base,
+      reduceMotion: ReduceMotion.System,
+    });
+  }, [composing, recentShown]);
+  const recentFade = useAnimatedStyle(() => ({ opacity: recentShown.value }));
 
   // back on home (from a conversation, a sheet): the list catches up
   useFocusEffect(
@@ -179,48 +192,55 @@ function Home() {
           </Touchable>
         ) : null}
 
-        <View style={styles.sectionHead}>
-          <Text style={styles.sectionTitle} accessibilityRole="header">
-            {t('home.recent')}
-          </Text>
-          {sessions.length ? (
-            <Touchable
-              onPress={() => router.push('/conversations')}
-              accessibilityRole="button"
-              hitSlop={8}
-              style={styles.all}
-            >
-              <Text style={styles.allText}>{t('home.all')}</Text>
-            </Touchable>
-          ) : null}
-        </View>
-        {offline ? <Text style={styles.offline}>{t('common.savedCopy')}</Text> : null}
-        {recentCount === 0 ? null : recent.length ? (
-          <View>
-            {recent.map((session, index) => (
-              <ConversationRow
-                key={session.id}
-                session={session}
-                position={rowPosition(index, recent.length)}
-                compact
-                onOpen={() => router.push({ pathname: '/chat', params: { session: session.id } })}
-                onPin={(pinned) => void useSessions.getState().pin(session.id, pinned)}
-                onRename={() => void rename(session.id, session.title)}
-              />
-            ))}
+        <Animated.View
+          style={recentFade}
+          pointerEvents={composing ? 'none' : 'auto'}
+          accessibilityElementsHidden={composing}
+          importantForAccessibility={composing ? 'no-hide-descendants' : 'auto'}
+        >
+          <View style={styles.sectionHead}>
+            <Text style={styles.sectionTitle} accessibilityRole="header">
+              {t('home.recent')}
+            </Text>
+            {sessions.length ? (
+              <Touchable
+                onPress={() => router.push('/conversations')}
+                accessibilityRole="button"
+                hitSlop={8}
+                style={styles.all}
+              >
+                <Text style={styles.allText}>{t('home.all')}</Text>
+              </Touchable>
+            ) : null}
           </View>
-        ) : status === 'empty' ? (
-          <Skeleton rows={recentCount} />
-        ) : status === 'error' ? (
-          <EmptyState
-            icon="alert"
-            title={t('assistant.loadFailed')}
-            onRetry={() => void useSessions.getState().refresh()}
-            style={styles.state}
-          />
-        ) : (
-          <Text style={styles.empty}>{t('home.noConversations')}</Text>
-        )}
+          {offline ? <Text style={styles.offline}>{t('common.savedCopy')}</Text> : null}
+          {recentCount === 0 ? null : recent.length ? (
+            <View>
+              {recent.map((session, index) => (
+                <ConversationRow
+                  key={session.id}
+                  session={session}
+                  position={rowPosition(index, recent.length)}
+                  compact
+                  onOpen={() => router.push({ pathname: '/chat', params: { session: session.id } })}
+                  onPin={(pinned) => void useSessions.getState().pin(session.id, pinned)}
+                  onRename={() => void rename(session.id, session.title)}
+                />
+              ))}
+            </View>
+          ) : status === 'empty' ? (
+            <Skeleton rows={recentCount} />
+          ) : status === 'error' ? (
+            <EmptyState
+              icon="alert"
+              title={t('assistant.loadFailed')}
+              onRetry={() => void useSessions.getState().refresh()}
+              style={styles.state}
+            />
+          ) : (
+            <Text style={styles.empty}>{t('home.noConversations')}</Text>
+          )}
+        </Animated.View>
       </ScrollView>
 
       <KeyboardStickyView offset={{ opened: insets.bottom }} style={styles.composerWrap}>
@@ -240,6 +260,7 @@ function Home() {
           agents={agents}
           agentId={agentId}
           onAgent={setAgentId}
+          onFocusChange={setComposing}
         />
       </KeyboardStickyView>
     </View>

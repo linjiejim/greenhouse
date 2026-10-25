@@ -71,6 +71,8 @@ export const Composer = memo(
       agents?: readonly ChatAgent[];
       agentId?: string | null;
       onAgent?: (id: string) => void;
+      /** The field gained or lost focus (home makes room around it). */
+      onFocusChange?: (focused: boolean) => void;
     }
   >(function Composer(
     {
@@ -91,6 +93,7 @@ export const Composer = memo(
       agents,
       agentId,
       onAgent,
+      onFocusChange,
     },
     ref,
   ) {
@@ -204,6 +207,8 @@ export const Composer = memo(
               ref={ref}
               value={value}
               onChangeText={onChangeText}
+              onFocus={onFocusChange ? () => onFocusChange(true) : undefined}
+              onBlur={onFocusChange ? () => onFocusChange(false) : undefined}
               autoFocus={autoFocus}
               placeholder={placeholder}
               placeholderTextColor={c.placeholder}
