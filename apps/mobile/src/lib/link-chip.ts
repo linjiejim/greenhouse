@@ -14,6 +14,7 @@
  */
 
 import { linkTarget, webUrl, type AppTarget } from './deep-links';
+import { isObjectId } from './object-id';
 
 export type ObjectType = 'doc' | 'file' | 'folder' | 'project' | 'task' | 'record' | 'table' | 'chat' | 'page';
 
@@ -90,4 +91,16 @@ export function classifyLink(href: string, label: string | undefined, stationBas
   })();
   const type = objectType(target);
   return { kind: 'object', type, target, label: words, resolveUrl: type === 'page' ? '' : webUrl(stationBase, hash) };
+}
+
+/**
+ * Where tapping an object chip goes. A document linked by slug opens by the id the station
+ * resolved for it (`POST /api/refs/resolve` answers the real id only when the member may read
+ * it); until then, or when it is hidden, the sheet looks the slug up itself.
+ */
+export function chipTarget(target: AppTarget, resolved: { id: string } | undefined): AppTarget {
+  if (target.kind === 'doc' && target.slug !== undefined && resolved && isObjectId(resolved.id)) {
+    return { kind: 'doc', id: resolved.id };
+  }
+  return target;
 }

@@ -15,8 +15,40 @@ describe('hash routes', () => {
     });
     expect(parseHashRoute('#/files')).toEqual({ kind: 'files', shelf: 'team', folderId: null, fileId: null });
     expect(parseHashRoute('#/activity/automation/rtr_1')).toEqual({ kind: 'web', hash: '#/activity/automation/rtr_1' });
-    expect(parseHashRoute('#/knowledge/doc/abc')).toEqual({ kind: 'web', hash: '#/knowledge/doc/abc' });
+    expect(parseHashRoute('#/knowledge')).toEqual({ kind: 'web', hash: '#/knowledge' });
     expect(parseHashRoute('/files')).toBeNull();
+  });
+
+  it('names a document by slug when its link carries no id', () => {
+    expect(parseHashRoute('#/knowledge/doc/incident-response-runbook')).toEqual({
+      kind: 'doc',
+      slug: 'incident-response-runbook',
+    });
+    expect(parseHashRoute('#/knowledge/doc/abc')).toEqual({ kind: 'doc', slug: 'abc' });
+    expect(parseHashRoute('#/knowledge/doc/%E6%8C%87%E5%8D%97')).toEqual({ kind: 'doc', slug: '指南' });
+    expect(parseHashRoute('#/knowledge/doc/01-plan')).toEqual({ kind: 'doc', slug: '01-plan' });
+    // the address-bar routes the web shows on a document
+    expect(parseHashRoute('#/knowledge/internal/general/api-style-guide')).toEqual({ kind: 'doc', slug: 'api-style-guide' });
+    expect(parseHashRoute('#/knowledge/internal/general/api-style-guide/edit')).toEqual({
+      kind: 'doc',
+      slug: 'api-style-guide',
+    });
+    expect(parseHashRoute('#/knowledge/personal/my-notes')).toEqual({ kind: 'doc', slug: 'my-notes' });
+    expect(parseHashRoute('#/knowledge/shared/their-notes')).toEqual({ kind: 'doc', slug: 'their-notes' });
+    expect(parseHashRoute('#/knowledge/folder/5/legacy-slug')).toEqual({ kind: 'doc', slug: 'legacy-slug' });
+    expect(linkTarget(`${BASE}/#/knowledge/doc/runbook`, BASE)).toEqual({ kind: 'doc', slug: 'runbook' });
+    // lists, folders and broken encodings are not documents
+    for (const hash of [
+      '#/knowledge/doc/',
+      '#/knowledge/internal/general',
+      '#/knowledge/personal',
+      '#/knowledge/folder/5',
+      '#/knowledge/folder/abc/slug',
+      '#/knowledge/doc/a/b',
+      '#/knowledge/doc/%E6%8C',
+    ]) {
+      expect(parseHashRoute(hash)).toEqual({ kind: 'web', hash });
+    }
   });
 
   it('reads 3.0 prefixed ULID ids as text', () => {

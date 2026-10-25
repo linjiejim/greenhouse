@@ -11,7 +11,9 @@
 import type { AppTarget, FilesShelf } from '../lib/deep-links';
 
 export type ObjectRef =
-  | { kind: 'doc'; id: string }
+  | { kind: 'doc'; id: string; slug?: undefined }
+  /** A document a link names by slug only; its sheet looks it up first. */
+  | { kind: 'doc'; slug: string; id?: undefined }
   | { kind: 'file'; id: string; name?: string }
   /** A file attached to or produced in a conversation (`/api/chat-files/<id>/content`). */
   | { kind: 'attachment'; path: string; name: string }
@@ -75,6 +77,11 @@ export function openingOf(ref: ObjectRef): Opening {
     case 'chat':
       return { via: 'page', pathname: '/chat', params: { session: ref.sessionId } };
     case 'doc':
+      return {
+        via: 'sheet',
+        pathname: '/sheet/doc',
+        params: ref.slug !== undefined ? { slug: ref.slug } : { id: String(ref.id) },
+      };
     case 'project':
       return { via: 'sheet', pathname: `/${SHEET_ROUTES[ref.kind]}`, params: { id: String(ref.id) } };
     case 'file':
@@ -115,7 +122,7 @@ export type Place =
 export function refOfTarget(target: AppTarget): { ref: ObjectRef } | { place: Place } {
   switch (target.kind) {
     case 'doc':
-      return { ref: { kind: 'doc', id: target.id } };
+      return { ref: target.slug !== undefined ? { kind: 'doc', slug: target.slug } : { kind: 'doc', id: target.id } };
     case 'files':
       if (target.fileId) return { ref: { kind: 'file', id: target.fileId } };
       return { place: { kind: 'drive', shelf: target.shelf, folderId: target.folderId } };

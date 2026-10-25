@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { classifyLink, domainOf, meaningfulLabel } from './link-chip';
+import { chipTarget, classifyLink, domainOf, meaningfulLabel } from './link-chip';
 
 const BASE = 'https://green.example.com';
 
@@ -11,6 +11,24 @@ describe('link chips', () => {
     expect(classifyLink(`${BASE}/#/projects/3?task=9`, undefined, BASE)).toMatchObject({ kind: 'object', type: 'task' });
     expect(classifyLink('#/files?shelf=team&folder=4', 'x', BASE)).toMatchObject({ kind: 'object', type: 'folder' });
     expect(classifyLink('#/chat?session=abc', 'chat', BASE)).toMatchObject({ kind: 'object', type: 'chat' });
+  });
+
+  it('shows a document linked by slug as a document chip and opens it by the resolved id', () => {
+    const chip = classifyLink('#/knowledge/doc/incident-response-runbook', undefined, BASE);
+    expect(chip).toMatchObject({ kind: 'object', type: 'doc', target: { kind: 'doc', slug: 'incident-response-runbook' } });
+    expect(chip.kind === 'object' && chip.resolveUrl).toBe('https://green.example.com/#/knowledge/doc/incident-response-runbook');
+    if (chip.kind !== 'object') throw new Error('object chip expected');
+    const doc = 'doc_01JB2Y8Z9QW3E4R5T6Y7V8H9P0';
+    // readable: the station answered the real id
+    expect(chipTarget(chip.target, { id: doc })).toEqual({ kind: 'doc', id: doc });
+    // not asked yet, or hidden (the id stays the link's slug): the sheet looks the slug up
+    expect(chipTarget(chip.target, undefined)).toEqual({ kind: 'doc', slug: 'incident-response-runbook' });
+    expect(chipTarget(chip.target, { id: 'incident-response-runbook' })).toEqual({
+      kind: 'doc',
+      slug: 'incident-response-runbook',
+    });
+    // other targets pass through
+    expect(chipTarget({ kind: 'doc', id: '12' }, { id: '99' })).toEqual({ kind: 'doc', id: '12' });
   });
 
   it('turns files the station serves into file chips', () => {

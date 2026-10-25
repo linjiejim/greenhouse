@@ -6,6 +6,13 @@ const routes = (...names: string[]) => names.map((name) => ({ name }));
 describe('openObject', () => {
   it('opens every object but a conversation as a sheet', () => {
     expect(openingOf({ kind: 'doc', id: '7' })).toEqual({ via: 'sheet', pathname: '/sheet/doc', params: { id: '7' } });
+    expect(openingOf({ kind: 'doc', slug: 'incident-response-runbook' })).toEqual({
+      via: 'sheet',
+      pathname: '/sheet/doc',
+      params: { slug: 'incident-response-runbook' },
+    });
+    expect(refOfTarget({ kind: 'doc', slug: 'runbook' })).toEqual({ ref: { kind: 'doc', slug: 'runbook' } });
+    expect(refOfTarget({ kind: 'doc', id: '7' })).toEqual({ ref: { kind: 'doc', id: '7' } });
     expect(openingOf({ kind: 'task', projectId: '2', id: '9' })).toEqual({
       via: 'sheet',
       pathname: '/sheet/task',

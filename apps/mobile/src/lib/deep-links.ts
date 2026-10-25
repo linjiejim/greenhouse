@@ -1,7 +1,7 @@
 /**
  * Where a link or a notification goes on the phone. React-free (./deep-links.test.ts).
  *
- * The web app's hash routes are the addresses (`#/knowledge/doc/<id>-<slug>`, `#/files?…`,
+ * The web app's hash routes are the addresses (`#/knowledge/doc/<id>-<slug>` or a doc's slug, `#/files?…`,
  * `#/projects/<id>`, `#/tables/<base>/table/<table>?record=`, `#/chat?session=`,
  * `#/activity/<kind>/<run>`); the same links appear in documents, comments and notifications
  * (a notification's `payload.url`, like the monthly retro document's). A route the phone has a screen for opens natively; any other route of the
@@ -14,7 +14,9 @@ import { objectId, type ObjectId } from './object-id';
 export type FilesShelf = 'team' | 'personal';
 
 export type AppTarget =
-  | { kind: 'doc'; id: ObjectId }
+  | { kind: 'doc'; id: ObjectId; slug?: undefined }
+  /** A document named by its slug (no id in the link); the station finds it (`/api/knowledge/docs/<slug>`). */
+  | { kind: 'doc'; slug: string; id?: undefined }
   | { kind: 'files'; shelf: FilesShelf; folderId: ObjectId | null; fileId: ObjectId | null }
   /** The project list (`id` null) or one project; a task when `taskId` is set. */
   | { kind: 'project'; id: ObjectId | null; taskId: ObjectId | null }
@@ -28,15 +30,50 @@ export type AppTarget =
   | { kind: 'web'; hash: string }
   | { kind: 'external'; url: string };
 
+/** A slug from route segments (a slug may hold `/`; a trailing `edit` is the web's editor), or null. */
+function slugOf(parts: string[]): string | null {
+  const kept = parts.length > 1 && parts[parts.length - 1] === 'edit' ? parts.slice(0, -1) : parts;
+  let slug: string;
+  try {
+    slug = kept.map((part) => decodeURIComponent(part)).join('/');
+  } catch {
+    return null;
+  }
+  // eslint-disable-next-line no-control-regex
+  return slug && slug.length <= 512 && !/[\u0000-\u001f]/.test(slug) ? slug : null;
+}
+
+/**
+ * A document link after `#/knowledge/` (the rule of packages/types/src/object-refs.ts):
+ * `doc/<id>-<slug>` or `doc/<id>` by id; `doc/<slug>` without an id (models write these) and the
+ * address-bar routes `internal/<space>/<slug>`, `personal/<slug>`, `shared/<slug>`,
+ * `folder/<id>/<slug>` by slug. Null for lists and folders.
+ */
+function docTarget(parts: string[]): AppTarget | null {
+  const [area, first] = parts;
+  if (area === 'doc' && first) {
+    // ULIDs carry `_`, never `-`
+    const id = objectId(first.split('-', 1)[0]);
+    if (id) return { kind: 'doc', id };
+    const slug = parts.length === 2 ? slugOf([first]) : null;
+    return slug ? { kind: 'doc', slug } : null;
+  }
+  let rest: string[] = [];
+  if (area === 'internal' && parts.length >= 3) rest = parts.slice(2);
+  else if ((area === 'personal' || area === 'shared') && parts.length >= 2) rest = parts.slice(1);
+  else if (area === 'folder' && parts.length >= 3 && objectId(first)) rest = parts.slice(2);
+  const slug = rest.length ? slugOf(rest) : null;
+  return slug ? { kind: 'doc', slug } : null;
+}
+
 /** A `#/…` route of the web app → the phone's target for it, or null when it is not a route. */
 export function parseHashRoute(hash: string): AppTarget | null {
   if (!hash.startsWith('#/')) return null;
   const [path, query = ''] = hash.slice(2).split('?', 2) as [string, string?];
   const segments = path.split('/').filter(Boolean);
-  if (segments[0] === 'knowledge' && segments[1] === 'doc') {
-    // `<id>-<slug>` or a bare id; ULIDs carry `_`, never `-`
-    const id = objectId((segments[2] ?? '').split('-', 1)[0]);
-    if (id) return { kind: 'doc', id };
+  if (segments[0] === 'knowledge') {
+    const doc = docTarget(segments.slice(1));
+    if (doc) return doc;
   }
   const params = new URLSearchParams(query);
   if (segments[0] === 'projects' && segments.length <= 2) {

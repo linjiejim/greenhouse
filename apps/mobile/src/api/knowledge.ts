@@ -38,6 +38,9 @@ export const listKbFolders = (shelf: KbShelf) =>
 
 export const getDoc = (id: string) => get<{ doc: KbDoc }>(`/api/knowledge/docs/id/${seg(String(id))}`);
 
+/** A document by its slug (a link without an id); the same read check as by id. */
+export const getDocBySlug = (slug: string) => get<{ doc: KbDoc }>(`/api/knowledge/docs/${seg(slug)}`);
+
 export const searchDocs = (q: string) =>
   get<{ results: KbSearchHit[]; query: string }>('/api/knowledge/search', { q, scope: 'all', limit: 30 });
 

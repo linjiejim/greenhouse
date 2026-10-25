@@ -7,7 +7,7 @@
 
 import React from 'react';
 import { formatBytes } from '../lib/format';
-import { classifyLink, type LinkChip as LinkTarget, type ObjectType } from '../lib/link-chip';
+import { chipTarget, classifyLink, type LinkChip as LinkTarget, type ObjectType } from '../lib/link-chip';
 import { useT, type TranslationKey } from '../lib/i18n';
 import { openLink } from '../lib/links';
 import { useOpenObject, useOpenTarget } from '../shell/open-object';
@@ -79,7 +79,7 @@ export function LinkChip({ chip }: { chip: ChipLink }) {
     icon = <Icon name={TYPE_ICON[chip.type]} size={13} color={c.accentText} />;
     // a title the station gave, else the link's words; only the type when it is not mine to see
     text = info ? (info.title ?? t(TYPE_LABEL[chip.type])) : (chip.label ?? t(TYPE_LABEL[chip.type]));
-    onPress = () => openTarget(chip.target);
+    onPress = () => openTarget(chipTarget(chip.target, info));
   }
 
   return <Chip inline icon={icon} label={text} tail={tail} tone={chip.kind === 'object' ? 'accent' : 'neutral'} onPress={onPress} />;

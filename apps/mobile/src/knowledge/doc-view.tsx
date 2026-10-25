@@ -8,7 +8,7 @@
 
 import React, { useCallback, useEffect, useState } from 'react';
 import { ScrollView, Text, View } from 'react-native';
-import { addComment, getDoc, listComments } from '../api/knowledge';
+import { addComment, getDoc, getDocBySlug, listComments } from '../api/knowledge';
 import { captureIdentity } from '../data/identity';
 import { docMiss, type SavedDoc } from '../data/recent-docs';
 import { useT } from '../lib/i18n';
@@ -25,8 +25,11 @@ import { SheetScreen } from '../ui/screen';
 
 type Shown = Pick<KbDoc, 'id' | 'title' | 'content_markdown' | 'updated_at'>;
 
-/** One document, as an object sheet (app/sheet/doc.tsx). */
-export function DocView({ id }: { id: string | null }) {
+/**
+ * One document, as an object sheet (app/sheet/doc.tsx). A link that names the document by slug
+ * only (`slug`, no `id`) is looked up first; from then on the sheet works by the real id.
+ */
+export function DocView({ id: given, slug }: { id: string | null; slug?: string | null }) {
   const t = useT();
   const { colors: c } = useTheme();
   const styles = useStyles(c);
@@ -36,6 +39,27 @@ export function DocView({ id }: { id: string | null }) {
   const [failed, setFailed] = useState(false);
   const [comments, setComments] = useState<KbComment[] | null>(null);
   const [attempt, setAttempt] = useState(0);
+  const [found, setFound] = useState<string | null>(null);
+  const id = given ?? found;
+
+  useEffect(() => {
+    if (given != null || !slug) return;
+    let alive = true;
+    const current = captureIdentity();
+    setFailed(false);
+    setMissing(false);
+    void getDocBySlug(slug).then((result) => {
+      if (!alive || !current()) return;
+      if (result.ok) {
+        setDoc(result.data.doc);
+        setFound(String(result.data.doc.id));
+      } else if (docMiss(result.status) === 'gone') setMissing(true);
+      else setFailed(true);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [given, slug, attempt]);
 
   useEffect(() => {
     if (id == null) return;
@@ -103,7 +127,7 @@ export function DocView({ id }: { id: string | null }) {
     toast(t('knowledge.commentAdded'), 'check');
   }, [id, t]);
 
-  if (id == null || missing) {
+  if ((id == null && !slug) || missing) {
     return (
       <>
         <SheetScreen title={t('nav.knowledge')} />
