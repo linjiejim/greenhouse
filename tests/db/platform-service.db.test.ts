@@ -51,8 +51,6 @@ describe('Platform control-plane service', () => {
     const user = await createUser();
     const role = await createRole(user.id);
     await db.platform.replaceRoleCapabilities(role.id, ['projects.project.*'], user.id);
-    // the account's own system role (team) grants nothing here
-    await db.platform.replaceRoleCapabilities((await db.platform.getRoleByCode('default', 'team'))!.id, []);
 
     const snapshot = await db.platform.getAuthorizationSnapshot(user.id, 'default');
     expect(snapshot.userOverrides).toEqual([]);
@@ -65,7 +63,7 @@ describe('Platform control-plane service', () => {
     });
   });
 
-  it('takes the system role from users.role, with or without its role_members row', async () => {
+  it('falls back to the system role users.role names when a member has no role at all', async () => {
     const superRole = (await db.platform.getRoleByCode('default', 'super'))!;
     const teamRole = (await db.platform.getRoleByCode('default', 'team'))!;
     await db.platform.replaceRoleCapabilities(superRole.id, ['*']);
@@ -89,45 +87,30 @@ describe('Platform control-plane service', () => {
       nickname: 'Copied',
       role: 'super',
     });
-    expect((await db.platform.listRoleBindings([superRole.id])).some((row) => row.user_id === copied.id)).toBe(false);
+    expect((await db.platform.listRoleBindings()).some((row) => row.user_id === copied.id)).toBe(false);
     expect(await can(copied.id, 'platform.role.manage')).toBe(true);
-    const superPolicies = await policies(copied.id);
-    expect(superPolicies).toContainEqual(expect.objectContaining({ scopes: [{ kind: 'all' }] }));
+    expect(await policies(copied.id)).toContainEqual(expect.objectContaining({ scopes: [{ kind: 'all' }] }));
 
-    // a team member reads as team without a binding
+    // a team member reads as team without a binding, and nothing more
     const member = await createUser('unbound-team@test.com');
     expect(await can(member.id, 'knowledge.document.read')).toBe(true);
     expect(await can(member.id, 'platform.role.manage')).toBe(false);
 
-    // demoted in SQL while still bound to super: the stale binding grants nothing
-    const demoted = await db.users.create({
-      email: 'demoted@test.com',
-      password_hash: 'hash',
-      nickname: 'Demoted',
-      role: 'super',
-    });
-    await db.platform.syncLegacyRoleBinding(demoted.id, 'super');
-    await db.users.update(demoted.id, { role: 'team' });
-    expect(await can(demoted.id, 'platform.role.manage')).toBe(false);
-    expect(await can(demoted.id, 'knowledge.document.read')).toBe(true);
-    expect(await policies(demoted.id)).toEqual(await policies(member.id));
-    expect(await policies(demoted.id)).not.toEqual(superPolicies);
-
-    // a disabled account holds no system role
+    // a disabled account holds no fallback role
     await db.users.update(copied.id, { status: 'disabled' });
     expect(await can(copied.id, 'platform.role.manage')).toBe(false);
     expect(await policies(copied.id)).toHaveLength(0);
   });
 
-  it('keeps custom roles from role_members next to the system role', async () => {
-    const user = await createUser('custom-and-team@test.com');
+  it('never widens a member moved to a narrower role', async () => {
+    const user = await createUser('narrowed@test.com');
     const role = await createRole(user.id);
-    await db.platform.replaceRoleCapabilities(role.id, ['projects.project.*'], user.id);
+    await db.platform.replaceRoleCapabilities(role.id, ['projects.project.read'], user.id);
     const teamRole = (await db.platform.getRoleByCode('default', 'team'))!;
     await db.platform.replaceRoleCapabilities(teamRole.id, ['knowledge.document.read']);
 
     const snapshot = await db.platform.getAuthorizationSnapshot(user.id, 'default');
-    expect(new Set(snapshot.roleGrants.map((grant) => grant.roleId))).toEqual(new Set([role.id, teamRole.id]));
+    expect(new Set(snapshot.roleGrants.map((grant) => grant.roleId))).toEqual(new Set([role.id]));
   });
 
   it('round-trips role entity policies', async () => {

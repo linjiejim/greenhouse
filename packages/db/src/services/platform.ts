@@ -94,28 +94,25 @@ function assertResourceIds(input: { app_id: string; module_id: string; entity_id
 
 export function createPlatformService(db: Db) {
   /**
-   * The roles a member holds: custom roles from `role_members`, and the
-   * protected system role named by an active member's `users.role` (super →
-   * super, team → team). Protected bindings are synchronized from the account
-   * role (boot, `platform bootstrap`, user writes), so `users.role` decides
-   * them here too: a missing binding (a row copied by hand, a role changed in
-   * SQL) neither locks a member out nor does a stale one outlive a demotion
-   * until the next restart.
+   * The roles a member holds: their `role_members` rows, or — when they have none at all — the
+   * protected system role their account names (an active `users.role` super → super, team →
+   * team). Boot and `platform bootstrap` write those bindings, so this only covers the window
+   * before the next sync (an account row copied by hand, a role set in SQL), where the member
+   * was refused everything. A member moved to a narrower role still has that role's row, so the
+   * fallback never widens them.
    */
   async function memberRoleIds(userId: string): Promise<string[]> {
-    const [bound, system] = await Promise.all([
-      db
-        .select({ role_id: platformRoleBindings.role_id })
-        .from(platformRoleBindings)
-        .innerJoin(platformRoles, eq(platformRoles.id, platformRoleBindings.role_id))
-        .where(and(eq(platformRoleBindings.user_id, userId), eq(platformRoles.system_protected, false))),
-      db
-        .select({ role_id: platformRoles.id })
-        .from(users)
-        .innerJoin(platformRoles, and(eq(platformRoles.code, users.role), eq(platformRoles.system_protected, true)))
-        .where(and(eq(users.id, userId), eq(users.status, 'active'))),
-    ]);
-    return [...new Set([...bound, ...system].map((row) => row.role_id))];
+    const bound = await db
+      .select({ role_id: platformRoleBindings.role_id })
+      .from(platformRoleBindings)
+      .where(eq(platformRoleBindings.user_id, userId));
+    if (bound.length > 0) return bound.map((row) => row.role_id);
+    const system = await db
+      .select({ role_id: platformRoles.id })
+      .from(users)
+      .innerJoin(platformRoles, and(eq(platformRoles.code, users.role), eq(platformRoles.system_protected, true)))
+      .where(and(eq(users.id, userId), eq(users.status, 'active')));
+    return system.map((row) => row.role_id);
   }
 
   const service = {

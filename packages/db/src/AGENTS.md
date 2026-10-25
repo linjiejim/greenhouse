@@ -147,7 +147,7 @@
 
 - 表：`roles`、`role_members`、`role_capabilities`、`role_entity_policies`（`schema/access.ts`）；service `services/platform.ts`。
 - 判定是角色 allow > 默认 deny；没有个人级能力 / 实体策略覆盖，也不存应用 release。
-- 受保护的 `super` / `team` 角色归属以 `users.role`（且 `status=active`）为准：`getAuthorizationSnapshot` / `getEntityPolicySnapshot` 只从 `role_members` 读自定义角色，系统角色按账号角色现算；`role_members` 里的系统角色行只是 bootstrap 同步出的镜像，缺了或过期都不改变判定。
+- 成员一条 `role_members` 都没有时，`getAuthorizationSnapshot` / `getEntityPolicySnapshot` 按 `users.role`（且 `status=active`）落到同名受保护角色（super / team）：补上手工复制账号行、SQL 改角色到下次 bootstrap 同步之间的空窗。只要有任何一行就只认绑定，换到更窄角色的成员不会被放宽。
 - 能力与实体策略由核心和扩展 manifest 声明；`scopes` / `field_policies` 进入内核前解析为 `@greenhouse/platform-kernel` 类型。
 - 每成员的 feature flag 与可选工具在 `user_grants`（`kind=feature` / `tool`），经 `db.userFeatures` / `db.userTools`。
 - `audit_events` 对主体与资源都是逻辑关联，无 FK。
