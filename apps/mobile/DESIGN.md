@@ -6,6 +6,8 @@
 - A conversation is the only full pushed page; every other object opens through openObject (src/shell/open-object.ts) as a form sheet.
 - Sheets stack on sheets up to three; the fourth replaces the top one. ✕ closes only the sheet it sits on.
 - Documents, files, folders and projects open full height; tasks, records, notifications, runs and writes open at 0.6 and grow.
+- Tab lists (知识库, 云盘, 项目, and pages pushed in them) have a compact bar: inline title, then search as a bar button and + on the same row; no large titles, no second row.
+- A refresh the app starts never moves a list: a pull shows the pull spinner, any other refresh with rows on screen a small spinner in the bar (src/ui/refresh.tsx), a first load Skeleton or LoadingState.
 - Edits happen in sheets (SwiftUI Form on iOS, Material on Android); the page underneath never changes behind them.
 - Long-press menus are system context menus (NativeMenu) and every item is also a VoiceOver action.
 

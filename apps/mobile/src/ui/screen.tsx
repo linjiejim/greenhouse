@@ -15,6 +15,7 @@ import React from 'react';
 import { Stack, useRouter } from 'expo-router';
 import { useT } from '../lib/i18n';
 import type { IconName } from './core';
+import { refreshItem } from './refresh';
 import { toolbarIcon } from './toolbar-icon';
 
 export interface ScreenAction {
@@ -37,24 +38,36 @@ function actionButtons(actions: readonly ScreenAction[]) {
   ));
 }
 
-export function Screen({ title, actions = [] }: { title: string; actions?: readonly ScreenAction[] }) {
+interface ScreenProps {
+  title: string;
+  actions?: readonly ScreenAction[];
+  /** A refresh the app started is running with content on screen: a small indicator in the bar (./refresh.tsx). */
+  busy?: boolean;
+}
+
+export function Screen({ title, actions = [], busy }: ScreenProps) {
+  const t = useT();
   return (
     <>
       <Stack.Screen options={{ title }} />
-      {actions.length ? (
-        <Stack.Toolbar placement="right">{actionButtons(actions)}</Stack.Toolbar>
+      {actions.length || busy !== undefined ? (
+        <Stack.Toolbar placement="right">
+          {busy !== undefined ? refreshItem(busy, t('common.loading')) : null}
+          {actionButtons(actions)}
+        </Stack.Toolbar>
       ) : null}
     </>
   );
 }
 
-export function SheetScreen({ title, actions = [] }: { title: string; actions?: readonly ScreenAction[] }) {
+export function SheetScreen({ title, actions = [], busy }: ScreenProps) {
   const t = useT();
   const router = useRouter();
   return (
     <>
       <Stack.Screen options={{ title }} />
       <Stack.Toolbar placement="right">
+        {busy !== undefined ? refreshItem(busy, t('common.loading')) : null}
         {actionButtons(actions)}
         <Stack.Toolbar.Button icon={toolbarIcon('x')} accessibilityLabel={t('common.close')} onPress={() => router.back()} />
       </Stack.Toolbar>

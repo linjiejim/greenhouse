@@ -23,6 +23,9 @@ export async function listProjects(stillCurrent: () => boolean): Promise<ApiResu
   );
 }
 
+/** A new project, mine (`POST /api/projects`); the station refuses without the capability (403). */
+export const createProject = (title: string) => post<{ project: Project }>('/api/projects', { title });
+
 export const getProject = (id: string) => get<ProjectDetail>(`/api/projects/${seg(String(id))}`);
 
 /** Every readable, non-archived project with its task tree — the source of "my tasks". */

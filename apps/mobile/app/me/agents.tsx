@@ -21,6 +21,8 @@ import { relativeTimeNow } from '../../src/lib/time-words';
 import { makeStyles, radius, space, squircle, typo, useTheme, weight } from '../../src/theme';
 import { EmptyState, LoadingState } from '../../src/ui/empty';
 import { Badge, Row, Section, SectionFooter, SectionHeader } from '../../src/ui/list';
+import { usePullRefresh } from '../../src/ui/refresh';
+import { Screen } from '../../src/ui/screen';
 
 const SERVICES = new Set(['llm', 'vision', 'web_search', 'page_read', 'image_generation', 'computer']);
 
@@ -33,11 +35,9 @@ export default function MyAgents() {
   const writes = useResource(useCallback(() => listAgentWrites(), []));
   const gateway = useResource(useCallback(() => gatewayOverview(), []));
   const loading = spend.loading || writes.loading || gateway.loading;
-  const refresh = () => {
-    void spend.refresh();
-    void writes.refresh();
-    void gateway.refresh();
-  };
+  const refresh = () => Promise.all([spend.refresh(), writes.refresh(), gateway.refresh()]);
+  const pull = usePullRefresh(refresh);
+  const busy = loading && !!(spend.data || writes.data) && !pull.refreshing;
 
   if (!spend.data && !writes.data && !gateway.data && !loading && noAccess(writes.error)) {
     return (
@@ -55,12 +55,12 @@ export default function MyAgents() {
 
   return (
     <>
-      <Stack.Screen options={{ title: t('nav.agent') }} />
+      <Screen title={t('nav.agent')} busy={busy} />
       <ScrollView
         style={styles.root}
         contentInsetAdjustmentBehavior="automatic"
         contentContainerStyle={styles.content}
-        refreshControl={<RefreshControl refreshing={loading && !!(spend.data || writes.data)} onRefresh={refresh} />}
+        refreshControl={<RefreshControl refreshing={pull.refreshing} onRefresh={pull.onRefresh} />}
       >
         {/* ── this month ── */}
         {spend.data ? (

@@ -3,9 +3,10 @@
  * stack (UINavigationController / UISheetPresentationController), never from a
  * hand-drawn header. Spread one of these into `<Stack.Screen options>`:
  *
- *  - `pageScreen()`   — a pushed page with a collapsing **large title** (lists,
- *    hubs: 知识库, 项目). Content scrolls under the glass bar with the iOS 26
- *    soft scroll-edge effect.
+ *  - `pageScreen()`   — a pushed page with a collapsing **large title**. Content
+ *    scrolls under the glass bar with the iOS 26 soft scroll-edge effect.
+ *    `{ compact: true }` keeps the title inline: the tab lists (知识库, 云盘, 项目)
+ *    put title, search (a bar button, ./directory-search.tsx) and + on one row.
  *  - `detailScreen()` — a pushed page with an inline (small) title (documents,
  *    detail views, the conversation).
  *  - `sheetScreen(detents)` — a **form sheet** (detail peeks, pickers, short
@@ -58,11 +59,11 @@ export function stackDefaults(c: ThemeColors, hex: HexPalette, isDark: boolean):
   };
 }
 
-export function pageScreen(c: ThemeColors, opts: { grouped?: boolean } = {}): NativeStackNavigationOptions {
+export function pageScreen(c: ThemeColors, opts: { grouped?: boolean; compact?: boolean } = {}): NativeStackNavigationOptions {
   const background = opts.grouped ? c.groupedBackground : c.background;
   return {
     headerShown: true,
-    headerLargeTitleEnabled: true,
+    headerLargeTitleEnabled: !opts.compact,
     headerTransparent: true,
     scrollEdgeEffects: { top: 'soft' },
     contentStyle: { backgroundColor: background },

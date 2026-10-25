@@ -18,6 +18,9 @@ import { get, post, seg } from './client';
 
 export const listBases = () => get<{ bases: TableBase[] }>('/api/tables/bases');
 
+/** A new private base with one empty table (`POST /api/tables/bases`), mine as owner. */
+export const createBase = (name: string) => post<{ base: TableBase }>('/api/tables/bases', { name });
+
 export const getBase = (baseId: string) =>
   get<{ base: TableBase; role: TableRole; tables: TableDef[] }>(`/api/tables/bases/${seg(String(baseId))}`);
 

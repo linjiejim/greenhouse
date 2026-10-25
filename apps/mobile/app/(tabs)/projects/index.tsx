@@ -9,7 +9,7 @@
 import React, { useCallback, useMemo } from 'react';
 import { FlatList, Text, View } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
-import { gantt, listProjects } from '../../../src/api/projects';
+import { createProject, gantt, listProjects } from '../../../src/api/projects';
 import type { ApiResult } from '../../../src/api/client';
 import { captureIdentity } from '../../../src/data/identity';
 import { noAccess } from '../../../src/data/access';
@@ -23,7 +23,13 @@ import { statusIcon, statusTint } from '../../../src/projects/look';
 import type { Project } from '../../../src/shared/greenhouse-types';
 import { useAuth } from '../../../src/store/auth';
 import { makeStyles, space, typo, useTheme } from '../../../src/theme';
+import { NativeButton } from '../../../src/ui/button';
+import { alertError, promptText } from '../../../src/ui/dialogs';
+import { DirectorySearch, useDirectoryFilter } from '../../../src/ui/directory-search';
 import { EmptyState, LoadingState } from '../../../src/ui/empty';
+import { notifySuccess } from '../../../src/ui/haptics';
+import { refreshItem, usePullRefresh } from '../../../src/ui/refresh';
+import { toolbarIcon } from '../../../src/ui/toolbar-icon';
 import { Row, SectionHeader, rowPosition, type RowPosition } from '../../../src/ui/list';
 import { Segmented } from '../../../src/ui/segmented';
 import { useOpenObject } from '../../../src/shell/open-object';
@@ -54,13 +60,40 @@ export default function Projects() {
   const mine = useOfflineResource('my-tasks', loadMine, parseMyTasks);
   const all = useResource(loadAll);
   const resource = tab === 'mine' ? mine : all;
+  const pull = usePullRefresh(resource.refresh);
+  const busy = resource.loading && !!resource.data && !pull.refreshing;
+  const filter = useDirectoryFilter();
+  const query = filter.query.trim().toLowerCase();
+  const matches = useCallback(
+    (...words: (string | null | undefined)[]) => !query || words.some((w) => w?.toLowerCase().includes(query)),
+    [query],
+  );
+
+  const newProject = async () => {
+    const title = (
+      await promptText({ title: t('projects.newProject'), placeholder: t('projects.newProjectName') })
+    )?.trim();
+    if (!title) return;
+    const current = captureIdentity();
+    const made = await createProject(title.slice(0, 200));
+    if (!current()) return;
+    if (!made.ok) {
+      alertError(t('projects.createFailed'), made.message || undefined);
+      return;
+    }
+    notifySuccess();
+    void all.refresh();
+    openObject({ kind: 'project', id: made.data.project.id });
+  };
 
   const rows = useMemo((): Item[] => {
     if (tab === 'mine') {
       const out: Item[] = [];
       // grouped again for today: a saved copy keeps the groups of the day it was saved
       const groups = groupMyTasks((mine.data ?? []).flatMap((group) => group.tasks), localDay(new Date()));
-      for (const group of groups) {
+      for (const whole of groups) {
+        const group = { ...whole, tasks: whole.tasks.filter((task) => matches(task.title, task.project_title)) };
+        if (!group.tasks.length) continue;
         out.push({ key: `h-${group.bucket}`, type: 'header', title: t(`projects.dueGroup.${group.bucket}`) });
         group.tasks.forEach((task, i) =>
           out.push({ key: `t-${task.id}`, type: 'task', task, bucket: group.bucket, position: rowPosition(i, group.tasks.length) }),
@@ -68,9 +101,9 @@ export default function Projects() {
       }
       return out;
     }
-    const projects = (all.data ?? []).filter((p) => p.status !== 'archived');
+    const projects = (all.data ?? []).filter((p) => p.status !== 'archived' && matches(p.title));
     return projects.map((project, i) => ({ key: `p-${project.id}`, type: 'project', project, position: rowPosition(i, projects.length) }));
-  }, [tab, mine.data, all.data, t]);
+  }, [tab, mine.data, all.data, matches, t]);
 
   const header = (
     <View>
@@ -84,7 +117,9 @@ export default function Projects() {
     </View>
   );
 
-  const empty = !resource.data ? (
+  const empty = query ? (
+    <EmptyState icon="search" title={t('common.noMatches')} style={styles.state} />
+  ) : !resource.data ? (
     resource.loading ? (
       <LoadingState style={styles.state} />
     ) : noAccess(resource.error) ? (
@@ -95,20 +130,42 @@ export default function Projects() {
   ) : tab === 'mine' ? (
     <EmptyState icon="checkCircle" title={t('projects.noTasks')} message={t('projects.noTasksHint')} style={styles.state} />
   ) : (
-    <EmptyState icon="checkCircle" title={t('projects.empty')} style={styles.state} />
+    <EmptyState
+      icon="checkCircle"
+      title={t('projects.empty')}
+      message={t('projects.emptyHint')}
+      action={
+        <NativeButton
+          label={t('projects.newProject')}
+          icon="plus"
+          variant="prominent"
+          onPress={() => void newProject()}
+        />
+      }
+      style={styles.state}
+    />
   );
 
   return (
     <>
       <Stack.Screen options={{ title: t('nav.projects') }} />
+      <DirectorySearch filter={filter} />
+      <Stack.Toolbar placement="right">
+        {refreshItem(busy, t('common.loading'))}
+        <Stack.Toolbar.Button
+          icon={toolbarIcon('plus')}
+          accessibilityLabel={t('projects.newProject')}
+          onPress={() => void newProject()}
+        />
+      </Stack.Toolbar>
       <FlatList<Item>
         style={styles.root}
         contentInsetAdjustmentBehavior="automatic"
         data={rows}
         keyExtractor={(row) => row.key}
         ListHeaderComponent={header}
-        refreshing={resource.loading && !!resource.data}
-        onRefresh={() => void resource.refresh()}
+        refreshing={pull.refreshing}
+        onRefresh={pull.onRefresh}
         renderItem={({ item }) => {
           if (item.type === 'header') return <SectionHeader title={item.title} />;
           if (item.type === 'task') {

@@ -11,6 +11,8 @@ import type { TableDef } from '../../../src/shared/greenhouse-types';
 import { makeStyles, space, useTheme } from '../../../src/theme';
 import { EmptyState, LoadingState } from '../../../src/ui/empty';
 import { Row, SectionFooter, rowPosition } from '../../../src/ui/list';
+import { usePullRefresh } from '../../../src/ui/refresh';
+import { Screen } from '../../../src/ui/screen';
 import { objectId } from '../../../src/lib/object-id';
 
 export default function Base() {
@@ -22,6 +24,7 @@ export default function Base() {
   const styles = useStyles(c);
   const load = useCallback(() => getBase(id ?? '0'), [id]);
   const resource = useResource(load);
+  const pull = usePullRefresh(resource.refresh);
   const tables = (resource.data?.tables ?? []).filter((table) => !table.archived_at).sort((a, b) => a.position - b.position);
 
   if (id == null || (!resource.data && !resource.loading && (notFound(resource.error) || noAccess(resource.error)))) {
@@ -41,14 +44,14 @@ export default function Base() {
 
   return (
     <>
-      <Stack.Screen options={{ title: resource.data?.base.name ?? '' }} />
+      <Screen title={resource.data?.base.name ?? ''} busy={resource.loading && !!resource.data && !pull.refreshing} />
       <FlatList<TableDef>
         style={styles.root}
         contentInsetAdjustmentBehavior="automatic"
         data={tables}
         keyExtractor={(table) => String(table.id)}
-        refreshing={resource.loading && !!resource.data}
-        onRefresh={() => void resource.refresh()}
+        refreshing={pull.refreshing}
+        onRefresh={pull.onRefresh}
         renderItem={({ item, index }) => (
           <Row
             title={item.name}

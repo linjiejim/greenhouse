@@ -20,6 +20,7 @@ import type { ProjectTask } from '../../src/shared/greenhouse-types';
 import { makeStyles, radius, space, squircle, typo, useTheme } from '../../src/theme';
 import { EmptyState, LoadingState } from '../../src/ui/empty';
 import { Badge, Row, SectionHeader, rowPosition, type RowPosition } from '../../src/ui/list';
+import { usePullRefresh } from '../../src/ui/refresh';
 import { SheetScreen } from '../../src/ui/screen';
 import { useOpenObject } from '../../src/shell/open-object';
 import { objectId } from '../../src/lib/object-id';
@@ -37,6 +38,7 @@ export default function ProjectSheet() {
   const styles = useStyles(c);
   const load = useCallback(() => getProject(id ?? '0'), [id]);
   const resource = useResource(load);
+  const pull = usePullRefresh(resource.refresh);
   const detail = resource.data;
 
   // back from a task sheet stacked on this one: its change shows here
@@ -104,15 +106,15 @@ export default function ProjectSheet() {
 
   return (
     <>
-      <SheetScreen title={project?.title ?? ''} />
+      <SheetScreen title={project?.title ?? ''} busy={resource.loading && !!detail && !pull.refreshing} />
       <FlatList<Item>
         style={styles.root}
         contentInsetAdjustmentBehavior="automatic"
         data={rows}
         keyExtractor={(row) => row.key}
         ListHeaderComponent={header}
-        refreshing={resource.loading && !!detail}
-        onRefresh={() => void resource.refresh()}
+        refreshing={pull.refreshing}
+        onRefresh={pull.onRefresh}
         renderItem={({ item }) => {
           if (item.type === 'header') return <SectionHeader title={item.title} />;
           const { task } = item;

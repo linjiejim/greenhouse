@@ -11,7 +11,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { FlatList } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { breadcrumb, listLevel, searchCabinet, type FilesShelf } from '../../../src/api/drive';
-import { listBases } from '../../../src/api/tables';
+import { createBase, listBases } from '../../../src/api/tables';
 import { noAccess } from '../../../src/data/access';
 import { captureIdentity } from '../../../src/data/identity';
 import type { RecentFile } from '../../../src/data/recent-items';
@@ -30,11 +30,13 @@ import { useOpenObject } from '../../../src/shell/open-object';
 import { useAuth } from '../../../src/store/auth';
 import { recentFiles, rememberFile } from '../../../src/store/offline';
 import { makeStyles, space, useTheme } from '../../../src/theme';
-import { alertError } from '../../../src/ui/dialogs';
+import { NativeButton } from '../../../src/ui/button';
+import { alertError, promptText } from '../../../src/ui/dialogs';
 import { DirectorySearch, useDirectoryFilter } from '../../../src/ui/directory-search';
 import { EmptyState, LoadingState } from '../../../src/ui/empty';
 import { notifySuccess } from '../../../src/ui/haptics';
 import { Row, SectionHeader, rowPosition, type RowPosition } from '../../../src/ui/list';
+import { refreshItem, usePullRefresh } from '../../../src/ui/refresh';
 import { Segmented } from '../../../src/ui/segmented';
 import { toast } from '../../../src/ui/toast';
 import { toolbarIcon } from '../../../src/ui/toolbar-icon';
@@ -76,6 +78,8 @@ export default function Drive() {
     return level.ok ? { ok: true as const, data: { bases: [] as TableBase[], ...level.data } } : level;
   }, [view, shelf, folderId]);
   const resource = useResource(load);
+  const pull = usePullRefresh(resource.refresh);
+  const busy = resource.loading && !!resource.data && !pull.refreshing;
   const version = useLibraryChanges((s) => s.version);
   const { refresh } = resource;
   useEffect(() => {
@@ -220,6 +224,21 @@ export default function Drive() {
     if (result.failed) alertError(t('files.uploadFailed', { n: result.failed }), result.error || undefined);
   };
 
+  const newBase = async () => {
+    const name = (await promptText({ title: t('tables.newBase'), placeholder: t('tables.newBaseName') }))?.trim();
+    if (!name) return;
+    const current = captureIdentity();
+    const made = await createBase(name.slice(0, 200));
+    if (!current()) return;
+    if (!made.ok) {
+      alertError(t('tables.createFailed'), made.message || undefined);
+      return;
+    }
+    notifySuccess();
+    void resource.refresh();
+    router.push({ pathname: '/drive/base', params: { id: String(made.data.base.id) } });
+  };
+
   const pickLevel = (index: number) => {
     const levels = path.length - index;
     if (levels > 0 && router.canDismiss()) router.dismiss(levels);
@@ -254,12 +273,31 @@ export default function Drive() {
         <EmptyState icon="alert" title={t('files.loadFailed')} onRetry={() => void resource.refresh()} style={styles.state} />
       )
     ) : view === 'tables' && !hits ? (
-      <EmptyState icon="table" title={t('tables.empty')} message={t('tables.emptyHint')} style={styles.state} />
+      <EmptyState
+        icon="table"
+        title={t('tables.empty')}
+        message={t('tables.emptyHint')}
+        action={
+          <NativeButton label={t('tables.newBase')} icon="plus" variant="prominent" onPress={() => void newBase()} />
+        }
+        style={styles.state}
+      />
     ) : (
       <EmptyState
         icon="folder"
         title={t(hits ? 'common.noMatches' : 'files.empty')}
         message={hits ? undefined : t('files.emptyHint')}
+        action={
+          hits ? undefined : (
+            <NativeButton
+              label={t('files.upload')}
+              icon="plus"
+              variant="prominent"
+              disabled={uploading}
+              onPress={() => void upload('files')}
+            />
+          )
+        }
         style={styles.state}
       />
     );
@@ -268,8 +306,9 @@ export default function Drive() {
     <>
       <Stack.Screen options={{ title: folderId != null ? (path[path.length - 1]?.name ?? '') : t('nav.files') }} />
       <DirectorySearch filter={filter} />
-      {view !== 'tables' ? (
-        <Stack.Toolbar placement="right">
+      <Stack.Toolbar placement="right">
+        {refreshItem(busy, t('common.loading'))}
+        {view !== 'tables' ? (
           <Stack.Toolbar.Menu icon={toolbarIcon('plus')} accessibilityLabel={t('library.new')} disabled={uploading}>
             <Stack.Toolbar.MenuAction icon="photo.on.rectangle" onPress={() => void upload('photos')}>
               {t('files.fromPhotos')}
@@ -284,15 +323,15 @@ export default function Drive() {
               {t('library.newFolder')}
             </Stack.Toolbar.MenuAction>
           </Stack.Toolbar.Menu>
-        </Stack.Toolbar>
-      ) : null}
+        ) : null}
+      </Stack.Toolbar>
       <FlatList<Item>
         style={styles.root}
         contentInsetAdjustmentBehavior="automatic"
         data={rows}
         keyExtractor={(row) => row.key}
-        refreshing={resource.loading && !!resource.data}
-        onRefresh={() => void resource.refresh()}
+        refreshing={pull.refreshing}
+        onRefresh={pull.onRefresh}
         ListHeaderComponent={header}
         renderItem={({ item }) =>
           item.type === 'header' ? (

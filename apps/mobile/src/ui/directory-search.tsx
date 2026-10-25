@@ -25,6 +25,9 @@ export function DirectorySearch({ filter }: { filter: ReturnType<typeof useDirec
     <Stack.SearchBar
       ref={filter.ref}
       placeholder={t('common.search')}
+      // a bar button beside +, on the title's row (iOS 26); never a second row under the title
+      placement="integratedButton"
+      allowToolbarIntegration={false}
       onChangeText={(event) => filter.setQuery(event.nativeEvent.text)}
       onCancelButtonPress={() => filter.setQuery('')}
     />

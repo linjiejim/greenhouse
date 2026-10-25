@@ -20,6 +20,7 @@ import { DirectorySearch, useDirectoryFilter } from '../src/ui/directory-search'
 import { EmptyState } from '../src/ui/empty';
 import { Skeleton } from '../src/ui/skeleton';
 import { Row, rowPosition } from '../src/ui/list';
+import { usePullRefresh } from '../src/ui/refresh';
 import { SheetScreen } from '../src/ui/screen';
 
 export default function Conversations() {
@@ -31,6 +32,7 @@ export default function Conversations() {
   const sessions = useSessions((s) => s.items);
   const status = useSessions((s) => s.status);
   const offline = useSessions((s) => s.offline);
+  const pull = usePullRefresh(useSessions.getState().refresh);
   const filter = useDirectoryFilter();
   const query = filter.query.trim();
   const [hits, setHits] = useState<{ id: string; title: string; subtitle?: string }[] | null>(null);
@@ -116,8 +118,8 @@ export default function Conversations() {
               onRename={() => void rename(item)}
             />
           )}
-          refreshing={false}
-          onRefresh={() => void useSessions.getState().refresh()}
+          refreshing={pull.refreshing}
+          onRefresh={pull.onRefresh}
           ListEmptyComponent={empty}
           contentContainerStyle={styles.content}
         />

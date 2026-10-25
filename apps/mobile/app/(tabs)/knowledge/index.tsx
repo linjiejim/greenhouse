@@ -30,8 +30,10 @@ import { useOpenObject } from '../../../src/shell/open-object';
 import { recentDocs } from '../../../src/store/knowledge';
 import { makeStyles, space, typo, useTheme } from '../../../src/theme';
 import { DirectorySearch, useDirectoryFilter } from '../../../src/ui/directory-search';
+import { NativeButton } from '../../../src/ui/button';
 import { EmptyState, LoadingState } from '../../../src/ui/empty';
 import { SectionHeader } from '../../../src/ui/list';
+import { refreshItem, usePullRefresh } from '../../../src/ui/refresh';
 import { Segmented } from '../../../src/ui/segmented';
 import { toolbarIcon } from '../../../src/ui/toolbar-icon';
 import { objectId } from '../../../src/lib/object-id';
@@ -64,6 +66,8 @@ export default function Knowledge() {
     return { ok: true, data: { folders: folders.data.folders, docs: docs.data.docs.map((doc) => ({ ...doc, content_markdown: '' })) } };
   }, [shelf]);
   const resource = useOfflineResource(`kb-shelf-${shelf}`, load, parseShelf);
+  const pull = usePullRefresh(resource.refresh);
+  const busy = resource.loading && !!resource.data && !pull.refreshing;
 
   // a write anywhere in the tree reloads this level
   const version = useLibraryChanges((s) => s.version);
@@ -153,15 +157,31 @@ export default function Knowledge() {
       />
     )
   ) : (
-    <EmptyState icon="book" title={t(hits ? 'common.noMatches' : 'knowledge.empty')} style={styles.state} />
+    <EmptyState
+      icon="book"
+      title={t(hits ? 'common.noMatches' : 'knowledge.empty')}
+      message={hits ? undefined : t('knowledge.emptyHint')}
+      action={
+        !hits && writable ? (
+          <NativeButton
+            label={t('library.newDoc')}
+            icon="plus"
+            variant="prominent"
+            onPress={() => actions.newDoc(owner, folderId)}
+          />
+        ) : undefined
+      }
+      style={styles.state}
+    />
   );
 
   return (
     <>
       <Stack.Screen options={{ title }} />
       <DirectorySearch filter={filter} />
-      {writable ? (
-        <Stack.Toolbar placement="right">
+      <Stack.Toolbar placement="right">
+        {refreshItem(busy, t('common.loading'))}
+        {writable ? (
           <Stack.Toolbar.Menu icon={toolbarIcon('plus')} accessibilityLabel={t('library.new')}>
             <Stack.Toolbar.MenuAction icon="folder.badge.plus" onPress={() => void actions.newFolder(owner, folderId)}>
               {t('library.newFolder')}
@@ -170,16 +190,16 @@ export default function Knowledge() {
               {t('library.newDoc')}
             </Stack.Toolbar.MenuAction>
           </Stack.Toolbar.Menu>
-        </Stack.Toolbar>
-      ) : null}
+        ) : null}
+      </Stack.Toolbar>
       <FlatList<KbRow>
         style={styles.root}
         contentInsetAdjustmentBehavior="automatic"
         data={rows}
         keyExtractor={(row) => row.key}
         ListHeaderComponent={header}
-        refreshing={resource.loading && !!resource.data}
-        onRefresh={() => void resource.refresh()}
+        refreshing={pull.refreshing}
+        onRefresh={pull.onRefresh}
         renderItem={({ item }) => {
           if (item.type === 'header') return <SectionHeader title={item.title} />;
           if (item.type === 'loading') return <LoadingState style={styles.inline} />;
