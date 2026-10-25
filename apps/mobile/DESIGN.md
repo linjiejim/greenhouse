@@ -28,7 +28,7 @@
 ## Type
 
 - Text takes a role from typo.* (largeTitle … caption2) and adjusts weight only with weight.*; never a raw fontSize.
-- typo follows the in-app text size (five steps, 0.9–1.35) times Dynamic Type; read it inside makeStyles or render, never into module constants.
+- typo follows the in-app text size (seven steps, 0.8–1.35) times Dynamic Type; read it inside makeStyles or render, never into module constants.
 - Native bars, the tab bar, menus, alerts and the keyboard follow the system size and font only.
 - Nunito is the face everywhere it can apply; Chinese falls back to PingFang.
 - One-line titles cut at the tail; file names cut in the middle so the extension stays.

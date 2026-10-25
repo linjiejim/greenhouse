@@ -2,7 +2,7 @@
  * The signed-in member's own settings that follow the account across devices.
  *
  * GET   /api/me/preferences   → MemberPreferences ({ fontScale })
- * PATCH /api/me/preferences   { fontScale?: 0.9 | 1 | 1.1 | 1.2 | 1.35 } → MemberPreferences
+ * PATCH /api/me/preferences   { fontScale?: 0.8 | 0.85 | 0.9 | 1 | 1.1 | 1.2 | 1.35 } → MemberPreferences
  *
  * Stored in `users.preferences` (jsonb) beside the Home workbench layout, which
  * keeps its own endpoint (`/api/platform/me/workbench`). Unknown keys and

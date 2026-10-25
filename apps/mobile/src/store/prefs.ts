@@ -11,7 +11,7 @@
 
 import { create } from 'zustand';
 import { loadPref, savePref } from '../api/token-storage';
-import { DEFAULT_TEXT_STEP, textStepOf, type TextStep } from '../theme/type-scale';
+import { DEFAULT_TEXT_STEP, legacyTextStepOf, TEXT_STEPS, textStepOf, type TextStep } from '../theme/type-scale';
 
 export type ThemePref = 'system' | 'light' | 'dark';
 export type LangPref = 'zh' | 'en';
@@ -47,15 +47,23 @@ export const usePrefs = create<Prefs>((set, get) => ({
   setTextStep: (textStep) => {
     if (get().textStep === textStep) return;
     set({ textStep });
-    void savePref('textStep', String(textStep));
+    // the multiplier, not the index: steps may be added anywhere on the ladder
+    void savePref('textScale', String(TEXT_STEPS[textStep]));
   },
   hydrated: false,
   hydrate: async () => {
-    const [theme, lang, textStep] = await Promise.all([loadPref('theme'), loadPref('lang'), loadPref('textStep')]);
+    const [theme, lang, textScale, legacyStep] = await Promise.all([
+      loadPref('theme'),
+      loadPref('lang'),
+      loadPref('textScale'),
+      loadPref('textStep'),
+    ]);
+    const textStep =
+      textScale != null ? textStepOf(textScale) : legacyStep != null ? legacyTextStepOf(legacyStep) : null;
     set({
       ...(theme === 'light' || theme === 'dark' || theme === 'system' ? { theme } : {}),
       ...(lang === 'zh' || lang === 'en' ? { lang } : {}),
-      ...(textStep != null ? { textStep: textStepOf(textStep) } : {}),
+      ...(textStep != null ? { textStep } : {}),
       hydrated: true,
     });
   },

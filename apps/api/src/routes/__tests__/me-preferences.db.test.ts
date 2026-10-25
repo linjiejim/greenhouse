@@ -58,9 +58,19 @@ describe('member preferences', () => {
     expect(stored.workbench).toBeTruthy();
   });
 
+  it('accepts the small steps 0.8 and 0.85', async () => {
+    const server = app(user);
+    for (const fontScale of [0.8, 0.85]) {
+      const saved = await server.request('/api/me/preferences', json({ fontScale }));
+      expect(saved.status).toBe(200);
+      expect(await (await server.request('/api/me/preferences')).json()).toEqual({ fontScale });
+    }
+  });
+
   it('rejects unknown keys and out-of-range values', async () => {
     const server = app(user);
     expect((await server.request('/api/me/preferences', json({ fontScale: 1.15 }))).status).toBe(400);
+    expect((await server.request('/api/me/preferences', json({ fontScale: 0.75 }))).status).toBe(400);
     expect((await server.request('/api/me/preferences', json({ fontScale: 1, theme: 'dark' }))).status).toBe(400);
     expect((await server.request('/api/me/preferences', json([1]))).status).toBe(400);
     expect((await db.users.getPreferences(user.id)).fontScale).toBeUndefined();

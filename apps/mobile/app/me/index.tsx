@@ -3,8 +3,7 @@ import { brandFont as font } from '../../src/ui/brand-font';
  * 「我」 — the root of the page sheet the home avatar opens. A SwiftUI Form, iOS Settings–style:
  *
  *  - account: the initial, name and email, the role; the 工作站 row (→ stations page);
- *  - 阅读: the in-app text size (five steps on top of the system size, src/settings/text-size.ts)
- *    with a live preview at the chosen size;
+ *  - 阅读: the in-app text size (seven steps on top of the system size, src/settings/text-size.ts);
  *  - 我的 Agent: the agents I connected (src/api/agent.ts) and their writes and spend (→ agents);
  *  - 通用: 通知 (→ notifications), theme (this phone's) and language (the account's);
  *  - 关于, then 退出登录 (destructive, confirmed; the sheet closes first).
@@ -32,7 +31,6 @@ import {
   foregroundStyle,
   frame,
   lineLimit,
-  padding,
   pickerStyle,
   tag,
 } from '@expo/ui/swift-ui/modifiers';
@@ -44,13 +42,12 @@ import { chooseTextSize } from '../../src/settings/text-size';
 import { usePushRow, useSettings } from '../../src/settings/use-settings';
 import { usePrefs, type LangPref, type ThemePref } from '../../src/store/prefs';
 import { useTheme } from '../../src/theme';
-import { TEXT_STEPS, type TextStep } from '../../src/theme/type-scale';
+import { TEXT_STEP_NAMES, TEXT_STEPS, type TextStep } from '../../src/theme/type-scale';
 import { AgentAvatar } from '../../src/ui/avatar';
 import { FormNavRow, NativeForm } from '../../src/ui/native-form';
 import { toolbarIcon } from '../../src/ui/toolbar-icon';
 
 const SECONDARY = foregroundStyle({ type: 'hierarchical', style: 'secondary' });
-const STEP_NAMES = ['small', 'standard', 'large', 'larger', 'largest'] as const;
 
 export default function Me() {
   const t = useT();
@@ -90,10 +87,10 @@ export default function Me() {
           <FormNavRow label={t('station.title')} value={s.station?.name ?? '—'} onPress={() => router.push('/me/stations')} />
         </Section>
 
-        {/* ── reading: the in-app text size, previewed at the chosen size ── */}
+        {/* ── reading: the in-app text size ── */}
         <Section title={t('me.reading')} footer={<Text>{t('me.textSizeHint')}</Text>}>
           <LabeledContent label={t('me.textSize')}>
-            <Text>{t(`me.textStep.${STEP_NAMES[step]}`)}</Text>
+            <Text>{t(`me.textStep.${TEXT_STEP_NAMES[step]}`)}</Text>
           </LabeledContent>
           <Slider
             value={step}
@@ -105,10 +102,6 @@ export default function Me() {
             onValueChange={(value) => chooseTextSize(Math.round(value) as TextStep)}
             modifiers={[accessibilityLabel(t('me.textSize'))]}
           />
-          <VStack alignment="leading" spacing={6} modifiers={[padding({ vertical: 4 })]}>
-            <Text modifiers={[font({ textStyle: 'caption', weight: 'semibold' }), SECONDARY]}>{t('me.preview')}</Text>
-            <Text modifiers={[font({ textStyle: 'body' })]}>{t('me.previewText')}</Text>
-          </VStack>
         </Section>
 
         {/* ── my agents ── */}

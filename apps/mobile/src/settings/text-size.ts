@@ -1,6 +1,6 @@
 /**
  * The in-app text size follows the account where the station keeps it
- * (`GET / PATCH /api/me/preferences` `{ fontScale }`, the multiplier 0.9–1.35). Until a station
+ * (`GET / PATCH /api/me/preferences` `{ fontScale }`, the multiplier 0.8–1.35). Until a station
  * has that endpoint (404) the size stays on this phone only; nothing is reported. Run by the root
  * layout: when the signed-in member loads, the account's size (if any) replaces the phone's —
  * unless the member picked a size while that read was on its way (the pick wins).

@@ -13,7 +13,7 @@ import { useT } from '../../src/lib/i18n';
 import { usePushRow, useSettings } from '../../src/settings/use-settings';
 import { usePrefs, type LangPref, type ThemePref } from '../../src/store/prefs';
 import { chooseTextSize } from '../../src/settings/text-size';
-import type { TextStep } from '../../src/theme/type-scale';
+import { TEXT_STEP_NAMES, type TextStep } from '../../src/theme/type-scale';
 import { useM3 } from '../../src/ui/m3';
 import {
   FormActionRow,
@@ -24,8 +24,6 @@ import {
   FormValueRow,
   NativeForm,
 } from '../../src/ui/native-form.android';
-
-const STEPS = ['small', 'standard', 'large', 'larger', 'largest'] as const;
 
 export default function Me() {
   const t = useT();
@@ -84,7 +82,7 @@ export default function Me() {
             label={t('me.textSize')}
             value={String(step)}
             onChange={(next) => chooseTextSize(Number(next) as TextStep)}
-            options={STEPS.map((name, index) => ({ value: String(index), label: t(`me.textStep.${name}`) }))}
+            options={TEXT_STEP_NAMES.map((name, index) => ({ value: String(index), label: t(`me.textStep.${name}`) }))}
           />
         </FormSection>
 
