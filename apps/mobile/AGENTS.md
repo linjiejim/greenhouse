@@ -107,6 +107,9 @@
 ## UI
 
 - Objects open only through useOpenObject / useOpenHref (src/shell/open-object.ts); never push a detail route by hand.
+- The composer's band is opaque through the bottom safe area: place it in a KeyboardStickyView at bottom 0 and pass `bottomInset` (src/chat/composer.tsx); never leave the inset under it see-through.
+- Home's recent list length is the phone's `homeRecent` pref (0/3/5/10, default 3, src/data/home.ts); rows there are `compact` (title and short age, no snippet).
+- Sprouty has one presence per screen: the header face in a conversation, the greeting sprout on home; never put an avatar on message rows.
 - A sheet's list or ScrollView is its root element (after SheetScreen); a ScrollView wrapped in a flex View renders nothing in a form sheet.
 - Zustand selectors return stored values; derive filtered arrays with useMemo (a fresh array from a selector loops forever).
 - Use system components: the expo-router native Stack, @expo/ui/swift-ui and NativeMenu (src/ui/menu.tsx); never JS-drawn headers, bottom sheets, action sheets, calendars or switches.
