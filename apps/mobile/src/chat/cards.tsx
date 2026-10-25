@@ -11,6 +11,7 @@
  *    the outcome; src/api/artifacts.ts).
  *  - `ExtensionCard` — a card an extension's tool returns: its title and summary here, its own
  *    view on the web.
+ *  - `ConnectCard` — `mcp_call` needs my key or sign-in first: connect here, then Continue.
  *  - `ObjectCards` — documents, tasks, projects and files the reply cites or wrote.
  *
  * Content layer: solid colors inside ChatCard frames, never glass.
@@ -37,6 +38,9 @@ import { notifySuccess, selectionTick } from '../ui/haptics';
 import { toast } from '../ui/toast';
 import { ChatCard } from './chat-card';
 import { askUserAnswer, type AskUser, type CitedObject, type SchemaPlan, type TaskCapture } from './parts';
+import { listMyConnectors } from '../api/connectors';
+import { connectConnector } from '../connectors/actions';
+import type { NeedsConnection } from '../connectors/model';
 
 const absolute = (url: string) => (/^https?:\/\//i.test(url) ? url : `${getApiBase()}${url}`);
 
@@ -346,6 +350,71 @@ export function TaskCaptureCard({ capture, actionKey, sessionId }: { capture: Ta
       actionLabel={t('cards.taskSave')}
       onAction={sessionId ? () => void save() : undefined}
       error={receipt?.status === 'failed' ? receipt.error : null}
+    />
+  );
+}
+
+/* ----------------------------- connect ----------------------------- */
+
+/**
+ * "Connect X": the agent needs my own account (key or sign-in) for a connector. Reads my standing
+ * once, so an old card in the history says connected; after connecting, Continue asks the agent
+ * to try again (the composer's send, when this conversation can send).
+ */
+export function ConnectCard({ need, onContinue }: { need: NeedsConnection; onContinue?: (text: string) => Promise<boolean> }) {
+  const t = useT();
+  const [state, setState] = useState<'loading' | 'ready' | 'working' | 'done'>('loading');
+  const [continued, setContinued] = useState(false);
+  useEffect(() => {
+    const current = captureIdentity();
+    void listMyConnectors().then((result) => {
+      if (!current()) return;
+      const mine = result.ok ? [...result.data.team, ...result.data.personal].find((c) => c.id === need.connectorId) : undefined;
+      setState(mine?.status === 'connected' ? 'done' : 'ready');
+    });
+  }, [need.connectorId]);
+  const connect = async () => {
+    setState('working');
+    const changed = await connectConnector({ id: need.connectorId, name: need.name, auth_kind: need.authKind });
+    if (!changed) {
+      setState('ready');
+      return;
+    }
+    const result = await listMyConnectors();
+    const mine = result.ok ? [...result.data.team, ...result.data.personal].find((c) => c.id === need.connectorId) : undefined;
+    setState(mine?.status === 'connected' ? 'done' : 'ready');
+  };
+  if (state === 'done' && onContinue && !continued) {
+    return (
+      <OnceCard
+        icon="link"
+        title={need.name}
+        meta={t('connectors.cardConnected')}
+        state="ready"
+        doneLabel=""
+        actionLabel={t('connectors.cardContinue')}
+        onAction={() => {
+          setContinued(true);
+          void onContinue(t('connectors.continueMessage', { name: need.name }));
+        }}
+      />
+    );
+  }
+  return (
+    <OnceCard
+      icon="link"
+      title={t('connectors.cardTitle', { name: need.name })}
+      meta={
+        need.reason === 'needs_reauth'
+          ? t('connectors.cardReconnect', { name: need.name })
+          : need.authKind === 'oauth'
+            ? t('connectors.cardBodyOauth', { name: need.name })
+            : t('connectors.cardBodyKey', { name: need.name })
+      }
+      state={state}
+      doneLabel={t('connectors.cardConnectedShort', { name: need.name })}
+      actionLabel={need.authKind === 'oauth' ? (need.reason === 'needs_reauth' ? t('connectors.reconnect') : t('connectors.connect')) : t('connectors.addKey')}
+      onAction={() => void connect()}
     />
   );
 }

@@ -13,6 +13,7 @@
  *  - the collapsed tool summary ("用了 3 个工具").
  */
 
+import { needsConnection, type NeedsConnection } from '../connectors/model';
 import { objectId } from '../lib/object-id';
 
 export interface ToolStep {
@@ -73,7 +74,8 @@ export type ReplyCard =
   | { kind: 'image'; key: string; url: string; prompt?: string }
   | { kind: 'task_capture'; key: string; capture: TaskCapture; actionKey: string }
   | { kind: 'schema_plan'; key: string; plan: SchemaPlan; actionKey: string }
-  | { kind: 'extension'; key: string; tool: string; title: string; summary?: string; url?: string };
+  | { kind: 'extension'; key: string; tool: string; title: string; summary?: string; url?: string }
+  | { kind: 'connect'; key: string; need: NeedsConnection };
 
 const record = (value: unknown): Record<string, unknown> | null =>
   value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
@@ -187,6 +189,12 @@ export function replyCards(steps: readonly ToolStep[], messageId: string, text: 
     if (!output || step.status === 'running') return;
     const key = `${step.id}-${index}`;
     const actionKey = `artifact:${messageId}:${step.id.replace(/^p/, '') || index}:${step.tool}`;
+    // mcp_call's "connect first": a card that connects it (web parity)
+    const need = step.tool === 'mcp_call' ? needsConnection(output) : null;
+    if (need) {
+      cards.push({ kind: 'connect', key, need });
+      return;
+    }
     const ask = askUser(output);
     if (ask) {
       cards.push({ kind: 'ask_user', key, ask });

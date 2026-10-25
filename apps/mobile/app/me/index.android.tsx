@@ -91,6 +91,7 @@ export default function Me() {
 
         <FormSection>
           <FormNavRow label={t('nav.agent')} icon="sparkle" onPress={() => router.push('/me/agents')} />
+          <FormNavRow label={t('connectors.title')} icon="link" onPress={() => router.push('/me/connectors')} />
           <FormNavRow
             label={t('settings.notifications')}
             value={push || undefined}
