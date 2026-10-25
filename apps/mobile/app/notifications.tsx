@@ -7,9 +7,11 @@
  *    stacked on this one, or its own sheet, and reads it; "mark all read" sits in the bar. Read
  *    marks are optimistic and come back on failure.
  *  - Pull to refresh, endless paging.
+ *  - A segmented control switches to team activity: the last 14 days of changes I may read
+ *    (`/api/activity/recent`, loaded on first visit, paged with `before`); a row opens its object.
  */
 
-import React, { useCallback, useMemo, useState, useEffect } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FlatList, RefreshControl, Text, View } from 'react-native';
 import { useT } from '../src/lib/i18n';
 import { plainText } from '../src/lib/plain-text';
@@ -17,6 +19,9 @@ import { relativeTimeNow } from '../src/lib/time-words';
 import { clearAllStationBanners } from '../src/push/handler';
 import type { PlatformNotification } from '../src/shared/greenhouse-types';
 import { openNotificationOrTarget } from '../src/shell/open-notification';
+import { listRecentChanges } from '../src/api/activity';
+import { ActivityRow } from '../src/notifications/activity-row';
+import type { ActivityItem } from '../src/shared/greenhouse-types';
 import { useOpenObject, useOpenTarget } from '../src/shell/open-object';
 import { useAuth } from '../src/store/auth';
 import { useNotifications } from '../src/store/notifications';
@@ -27,6 +32,38 @@ import { EmptyState, LoadingState } from '../src/ui/empty';
 import { selectionTick } from '../src/ui/haptics';
 import { Row, rowPosition } from '../src/ui/list';
 import { SheetScreen } from '../src/ui/screen';
+import { Segmented } from '../src/ui/segmented';
+
+type Tab = 'notifications' | 'activity';
+
+interface ActivityState {
+  items: ActivityItem[];
+  next: string | null;
+  status: 'idle' | 'loading' | 'ready' | 'error';
+  loadingMore: boolean;
+}
+
+const NO_ACTIVITY: ActivityState = { items: [], next: null, status: 'idle', loadingMore: false };
+
+/** The team activity feed: first page on demand, then `before` pages. */
+function useTeamActivity() {
+  const [state, setState] = useState<ActivityState>(NO_ACTIVITY);
+  const current = useRef(state);
+  current.current = state;
+  const load = useCallback(async (more: boolean) => {
+    const s = current.current;
+    if (more && (!s.next || s.loadingMore || s.status !== 'ready')) return;
+    const before = more ? s.next : null;
+    setState((prev) => (more ? { ...prev, loadingMore: true } : { ...prev, status: prev.items.length ? prev.status : 'loading' }));
+    const result = await listRecentChanges({ before });
+    setState((prev) => {
+      if (!result.ok) return more ? { ...prev, loadingMore: false } : { ...prev, status: prev.items.length ? 'ready' : 'error' };
+      const items = more ? [...prev.items, ...result.data.items] : result.data.items;
+      return { items, next: result.data.next_before, status: 'ready', loadingMore: false };
+    });
+  }, []);
+  return { ...state, refresh: () => load(false), loadMore: () => load(true) };
+}
 
 /** The notification kinds the server writes, as icons (unknown kinds get the bell). */
 const KIND_ICON: Record<string, IconName> = {
@@ -50,6 +87,14 @@ export default function Notifications() {
   const loadingMore = useNotifications((s) => s.loadingMore);
   const error = useNotifications((s) => s.error);
   const [refreshing, setRefreshing] = useState(false);
+  const [tab, setTab] = useState<Tab>('notifications');
+  const activity = useTeamActivity();
+  const activityStatus = activity.status;
+  const refreshActivity = activity.refresh;
+
+  useEffect(() => {
+    if (tab === 'activity' && activityStatus === 'idle') void refreshActivity();
+  }, [tab, activityStatus, refreshActivity]);
 
   useEffect(() => {
     if (member) void useNotifications.getState().refresh();
@@ -57,9 +102,10 @@ export default function Notifications() {
 
   const refresh = useCallback(async () => {
     setRefreshing(true);
-    await useNotifications.getState().refresh();
+    if (tab === 'activity') await refreshActivity();
+    else await useNotifications.getState().refresh();
     setRefreshing(false);
-  }, []);
+  }, [tab, refreshActivity]);
 
   const markAll = useCallback(async () => {
     selectionTick();
@@ -75,19 +121,68 @@ export default function Notifications() {
     return <EmptyState icon="bell" title={t('notifications.empty')} message={t('notifications.emptyHint')} style={styles.empty} />;
   }, [status, styles.empty, t]);
 
+  const activityEmpty = useMemo(() => {
+    if (activityStatus === 'idle' || activityStatus === 'loading') return <LoadingState style={styles.empty} />;
+    if (activityStatus === 'error')
+      return <EmptyState icon="alert" title={t('notifications.activityLoadFailed')} onRetry={() => void refreshActivity()} style={styles.empty} />;
+    return <EmptyState icon="clock" title={t('notifications.activityEmpty')} message={t('notifications.activityEmptyHint')} style={styles.empty} />;
+  }, [activityStatus, refreshActivity, styles.empty, t]);
+
+  const segmented = (
+    <Segmented
+      value={tab}
+      onChange={(value) => {
+        selectionTick();
+        setTab(value);
+      }}
+      options={[
+        { value: 'notifications' as const, label: t('notifications.tabNotifications') },
+        { value: 'activity' as const, label: t('notifications.tabActivity') },
+      ]}
+      style={styles.segmented}
+    />
+  );
+
   return (
     <>
       <SheetScreen
         title={t('notifications.title')}
-        actions={[{ icon: 'checkCircle', label: t('notifications.markAllRead'), disabled: unread === 0, onPress: () => void markAll() }]}
+        actions={
+          tab === 'notifications'
+            ? [{ icon: 'checkCircle', label: t('notifications.markAllRead'), disabled: unread === 0, onPress: () => void markAll() }]
+            : []
+        }
       />
+      {tab === 'activity' ? (
+        <FlatList<ActivityItem>
+          style={styles.root}
+          contentInsetAdjustmentBehavior="automatic"
+          data={activity.items}
+          keyExtractor={(item) => item.id}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void refresh()} />}
+          ListHeaderComponent={segmented}
+          renderItem={({ item, index }) => <ActivityRow item={item} index={index} count={activity.items.length} />}
+          onEndReached={() => void activity.loadMore()}
+          onEndReachedThreshold={0.4}
+          ListFooterComponent={activity.loadingMore ? <LoadingState style={styles.more} /> : null}
+          ListEmptyComponent={activityEmpty}
+          contentContainerStyle={styles.content}
+          initialNumToRender={12}
+          windowSize={11}
+        />
+      ) : (
       <FlatList<PlatformNotification>
         style={styles.root}
         contentInsetAdjustmentBehavior="automatic"
         data={items}
         keyExtractor={(item) => item.id}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void refresh()} />}
-        ListHeaderComponent={offline && items.length ? <Text style={styles.offline}>{t('notifications.showingSaved')}</Text> : null}
+        ListHeaderComponent={
+          <View>
+            {segmented}
+            {offline && items.length ? <Text style={styles.offline}>{t('notifications.showingSaved')}</Text> : null}
+          </View>
+        }
         renderItem={({ item, index }) => {
           const body = plainText(item.body, { oneLine: true });
           return (
@@ -119,6 +214,7 @@ export default function Notifications() {
         initialNumToRender={12}
         windowSize={11}
       />
+      )}
     </>
   );
 }
@@ -126,6 +222,7 @@ export default function Notifications() {
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.groupedBackground },
   content: { paddingTop: space.sm, paddingBottom: space.xxl },
+  segmented: { marginHorizontal: space.margin, marginBottom: space.md },
   unread: { width: 9, height: 9, borderRadius: 4.5, backgroundColor: c.accent },
   empty: { paddingTop: space.xxxl },
   more: { paddingVertical: space.lg },
