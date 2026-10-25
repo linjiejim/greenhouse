@@ -94,11 +94,18 @@ describe('mcp_call', () => {
     expect(audits[0]!.result).toBe('success');
   });
 
-  it('switched-off writes are invisible; an enabled write runs directly and is recorded as a run', async () => {
+  it('switched-off writes are named as switched off; an enabled write runs directly and is recorded as a run', async () => {
     const off = await deskWithWrites({});
-    expect(await executeMcpCall(ctx(), { action: 'call', connector: off.slug, tool: 'create_ticket' })).toHaveProperty(
-      'error',
-    );
+    const refused = (await executeMcpCall(ctx(), { action: 'call', connector: off.slug, tool: 'create_ticket' })) as {
+      error: string;
+    };
+    expect(refused.error).toMatch(/switched off/);
+    const listed = (await executeMcpCall(ctx(), { action: 'list' })) as {
+      connectors: { connector: string; tools: { name: string }[]; switched_off?: string[] }[];
+    };
+    const desk = listed.connectors.find((c) => c.connector === off.slug);
+    expect(desk?.tools.map((t) => t.name)).not.toContain('create_ticket');
+    expect(desk?.switched_off).toContain('create_ticket');
     expect(open.tickets).toEqual([]);
 
     const on = await deskWithWrites();

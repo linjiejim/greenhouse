@@ -44,7 +44,10 @@ export function ConnectorCard({
             {connector.auth_mode === 'shared' && !connector.has_shared_secret && (
               <Tag tone="danger">{t('connectors.noTeamCredential')}</Tag>
             )}
-            <ConnectorStatusTag status={connector.status} />
+            {/* The admin view counts member connections instead; the caller's own status would mislead. */}
+            {!(showConnections && connector.auth_mode === 'per_member') && (
+              <ConnectorStatusTag status={connector.status} />
+            )}
           </div>
           {connector.description && <p className="mt-1 text-xs text-fg-muted">{connector.description}</p>}
           <p className="mt-1 truncate text-caption text-fg-faint" title={connector.url}>

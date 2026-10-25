@@ -157,9 +157,12 @@ export async function buildConnectorsContext(
         : connector.tools.length === 0
           ? '(listed once the user connects it — call any tool name to show them the card)'
           : '(none available here)';
+    const off = connector.switched_off.slice(0, 12);
+    const offText =
+      off.length > 0 ? `\n  switched off by an administrator (ask them to turn on): ${off.join(', ')}` : '';
     const line =
       `- ${connector.handle}${tags.map((t) => ` [${t}]`).join('')} — ${connector.name}` +
-      `${connector.description ? `: ${connector.description.slice(0, 120)}` : ''}\n  tools: ${toolText}`;
+      `${connector.description ? `: ${connector.description.slice(0, 120)}` : ''}\n  tools: ${toolText}${offText}`;
     if (used + line.length > CONNECTORS_CONTEXT_MAX - 120) {
       omitted++;
       continue;
@@ -256,6 +259,7 @@ export async function executeMcpCall(
           description: t.description.slice(0, TOOL_SUMMARY_MAX),
           kind: t.kind,
         })),
+        ...(connector.switched_off.length > 0 ? { switched_off: connector.switched_off } : {}),
       })),
     };
   }
@@ -292,6 +296,11 @@ export async function executeMcpCall(
   const remote = input.tool ? offered.find((t) => t.name === input.tool) : undefined;
   if (!remote) {
     const names = offered.map((t) => `"${t.name}"`).join(', ') || '(none)';
+    if (input.tool && connector.switched_off.includes(input.tool)) {
+      return {
+        error: `"${input.tool}" on "${connector.handle}" is switched off. Tell the user an administrator (or the connector's owner) can turn it on; do not look for a workaround.`,
+      };
+    }
     return {
       error: input.tool
         ? `"${connector.handle}" has no tool "${input.tool}" available here. Its tools: ${names}.`

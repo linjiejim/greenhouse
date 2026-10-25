@@ -57,6 +57,8 @@ export interface DirectoryConnector {
   allow_external_writes: boolean;
   /** Only the switched-on tools. */
   tools: DirectoryTool[];
+  /** Names of advertised tools switched off, so the model can say so instead of claiming they don't exist. */
+  switched_off: string[];
 }
 
 let snapshot: readonly DirectoryConnector[] = [];
@@ -95,6 +97,9 @@ export function toDirectoryConnector(row: McpConnectorRow): DirectoryConnector {
         input_schema: tool.input_schema,
         kind: tool.kind,
       })),
+    switched_off: toolViews(row)
+      .filter((tool) => !tool.enabled)
+      .map((tool) => tool.name),
   };
 }
 
