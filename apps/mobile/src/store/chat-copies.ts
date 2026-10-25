@@ -13,11 +13,21 @@ export async function readChatCopy(sessionId: string): Promise<ChatCopy | null> 
   return parseChatCopy(await readOffline(kind(sessionId)));
 }
 
-export async function saveChatCopy(sessionId: string, copy: ChatCopy): Promise<void> {
-  const { list, dropped } = withOpenedChat(parseChatList(await readOffline(LIST)), sessionId);
-  writeOffline(kind(sessionId), copy);
-  writeOffline(LIST, list);
-  for (const gone of dropped) removeOffline(kind(gone));
+// saves run one after another, in the order asked: a later copy never lands under an earlier one
+let saving: Promise<void> = Promise.resolve();
+
+/** A copy that does not know whose the conversation is keeps what the copy before it knew. */
+export function saveChatCopy(sessionId: string, copy: ChatCopy): Promise<void> {
+  saving = saving
+    .then(async () => {
+      const before = copy.shared === undefined ? await readChatCopy(sessionId) : null;
+      const { list, dropped } = withOpenedChat(parseChatList(await readOffline(LIST)), sessionId);
+      writeOffline(kind(sessionId), before?.shared !== undefined ? { ...copy, shared: before.shared } : copy);
+      writeOffline(LIST, list);
+      for (const gone of dropped) removeOffline(kind(gone));
+    })
+    .catch(() => {});
+  return saving;
 }
 
 export async function forgetChatCopy(sessionId: string): Promise<void> {

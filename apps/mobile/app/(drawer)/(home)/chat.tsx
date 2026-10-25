@@ -174,16 +174,38 @@ export default function Chat() {
 
   const conversation = useMemo(() => {
     if (!sessionId) return null;
+    // the copy kept for offline is written whole from what is known now (the latest page and whose
+    // it is), so whichever of the two arrives last, the copy holds both
+    let lastPage: MessagePage<ChatMessage> | null = null;
+    const keepCopy = () => {
+      if (!lastPage) return;
+      void saveChatCopy(sessionId, {
+        title: conversationTitle.current,
+        page: lastPage,
+        ...(ownership.current !== undefined ? { shared: ownership.current } : {}),
+      });
+    };
+    let learning: Promise<void> | null = null;
+    const info = async () => {
+      const result = await getSessionInfo(sessionId);
+      if (result.ok) {
+        knowOwner(result.data.session.is_owner === false ? { by: result.data.share_info?.shared_by_nickname ?? null } : null);
+        setProfileId(result.data.session.profile_id);
+        keepCopy();
+      }
+      return result;
+    };
+    // a refresh while it is still unknown (opened offline, or the first ask failed) asks again
+    const learnOwner = () => {
+      if (ownership.current !== undefined || learning) return;
+      learning = info().then(() => {
+        learning = null;
+      });
+    };
     return new Conversation<ChatMessage>({
       title: async () => {
-        const result = await getSessionInfo(sessionId);
-        if (result.ok) {
-          knowOwner(
-            result.data.session.is_owner === false ? { by: result.data.share_info?.shared_by_nickname ?? null } : null,
-          );
-          setProfileId(result.data.session.profile_id);
-          return { ok: true, data: { title: result.data.session.title } };
-        }
+        const result = await info();
+        if (result.ok) return { ok: true, data: { title: result.data.session.title } };
         if (result.status === 0) {
           const copy = await readChatCopy(sessionId);
           if (copy) {
@@ -197,11 +219,9 @@ export default function Chat() {
         const result = await getMessages(sessionId);
         if (result.ok) {
           setOffline(false);
-          void saveChatCopy(sessionId, {
-            title: conversationTitle.current,
-            page: result.data,
-            ...(ownership.current !== undefined ? { shared: ownership.current } : {}),
-          });
+          lastPage = result.data;
+          keepCopy();
+          learnOwner();
           return result;
         }
         if (result.status === 0) {
