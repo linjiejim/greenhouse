@@ -226,6 +226,8 @@ export function createActivityService(db: Db) {
     async recentKnowledgeEdits(input: {
       userId: string;
       since: string;
+      /** Only edits strictly older than this (the feed's paging cursor). */
+      before?: string | null;
       limit: number;
     }): Promise<RecentKnowledgeEditRow[]> {
       const rows = await db.execute(sql`
@@ -234,6 +236,7 @@ export function createActivityService(db: Db) {
         FROM kb_versions v
         JOIN kb_documents kb ON kb.id = v.doc_id
         WHERE v.created_at >= ${input.since}::timestamptz
+          ${input.before ? sql`AND v.created_at < ${input.before}::timestamptz` : sql``}
           AND kb.status <> 'archived'
           AND (kb.visibility = 'team' OR kb.owner_user_id = ${input.userId}
                OR EXISTS (SELECT 1 FROM shares s WHERE s.resource_type = 'kb_document' AND s.resource_id = kb.id))
@@ -247,6 +250,7 @@ export function createActivityService(db: Db) {
     async recentProjectActivities(input: {
       projectIds: readonly string[];
       since: string;
+      before?: string | null;
       limit: number;
     }): Promise<RecentProjectActivityRow[]> {
       if (input.projectIds.length === 0) return [];
@@ -258,6 +262,7 @@ export function createActivityService(db: Db) {
           AND a.capability = ${PROJECT_ACTIVITY_CAPABILITY}
           AND ${inList(sql`(a.summary ->> 'project_id')`, input.projectIds.map(String))}
           AND a.created_at >= ${input.since}::timestamptz
+          ${input.before ? sql`AND a.created_at < ${input.before}::timestamptz` : sql``}
         ORDER BY a.created_at DESC, a.id DESC
         LIMIT ${bound(input.limit)}
       `);
@@ -272,6 +277,7 @@ export function createActivityService(db: Db) {
     async recentTableChanges(input: {
       tableIds: readonly string[];
       since: string;
+      before?: string | null;
       limit: number;
     }): Promise<RecentTableChangeRow[]> {
       if (input.tableIds.length === 0) return [];
@@ -283,6 +289,7 @@ export function createActivityService(db: Db) {
           sql`, `,
         )})
           AND r.updated_at >= ${input.since}::timestamptz
+          ${input.before ? sql`AND r.updated_at < ${input.before}::timestamptz` : sql``}
           AND r.deleted_at IS NULL
         GROUP BY r.table_id, r.updated_by
         ORDER BY max(r.updated_at) DESC

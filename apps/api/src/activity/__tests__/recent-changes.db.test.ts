@@ -209,4 +209,33 @@ describe('recent changes', () => {
       agent: null,
     });
   });
+
+  it('pages with a before cursor: strictly older, no repeats, same window', async () => {
+    const titles: string[] = [];
+    for (let i = 0; i < 3; i++) {
+      titles.push((await doc(alice, 'team', unique(`Paged ${i}`))).title);
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+    const seen = new Set<string>();
+    const found = new Set<string>();
+    let before: string | null = null;
+    let lastAt = Infinity;
+    for (let page = 0; page < 50 && found.size < titles.length; page++) {
+      const items = await listRecentChanges(db, bob, { limit: 2, before }, { runtime });
+      if (items.length === 0) break;
+      for (const item of items) {
+        expect(seen.has(item.id), `item ${item.id} repeated across pages`).toBe(false);
+        seen.add(item.id);
+        expect(Date.parse(item.at)).toBeLessThanOrEqual(lastAt);
+        if (titles.includes(item.target?.label ?? '')) found.add(item.target!.label!);
+      }
+      lastAt = Date.parse(items[items.length - 1].at);
+      before = items[items.length - 1].at;
+    }
+    expect([...found].sort()).toEqual([...titles].sort());
+
+    // A cursor at or before the window's start has nothing older to show.
+    const old = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+    expect(await listRecentChanges(db, bob, { limit: 2, before: old }, { runtime })).toEqual([]);
+  });
 });

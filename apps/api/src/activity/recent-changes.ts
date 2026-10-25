@@ -15,6 +15,9 @@
  * A change made through a member's agent is matched to the recorded
  * agent_write run (same member, same module, inside the run's time span) and
  * says "via <client>".
+ *
+ * Paging: `before` (an item's `at`) keeps only changes strictly older than it,
+ * inside the same window; a full page means there may be more.
  */
 
 import type { DatabaseProvider } from '@greenhouse/db';
@@ -49,6 +52,12 @@ export interface RecentViewer {
 
 type Draft = Omit<ActivityItem, 'actor'> & { actorId: string };
 
+/** The time window one page reads: [since, before). */
+interface Window {
+  since: string;
+  before: string | null;
+}
+
 const PROJECT_ACTIONS: Record<string, { verb: ActivityVerb; entity: string }> = {
   project_created: { verb: 'create', entity: 'project' },
   project_updated: { verb: 'update', entity: 'project' },
@@ -62,8 +71,8 @@ function draft(base: Omit<Draft, 'agent' | 'action_title' | 'status' | 'run' | '
   return { agent: null, action_title: null, status: null, run: null, detail: null, ...base };
 }
 
-async function knowledgeChanges(db: DatabaseProvider, viewer: RecentViewer, since: string, limit: number) {
-  const rows = await db.activity.recentKnowledgeEdits({ userId: viewer.id, since, limit: limit * 3 });
+async function knowledgeChanges(db: DatabaseProvider, viewer: RecentViewer, { since, before }: Window, limit: number) {
+  const rows = await db.activity.recentKnowledgeEdits({ userId: viewer.id, since, before, limit: limit * 3 });
   const seen = new Set<string>();
   const items: Draft[] = [];
   for (const row of rows) {
@@ -108,7 +117,7 @@ async function projectChanges(
   db: DatabaseProvider,
   runtime: PlatformRuntime,
   viewer: RecentViewer,
-  since: string,
+  { since, before }: Window,
   limit: number,
 ) {
   const actor = humanActor(viewer);
@@ -124,7 +133,7 @@ async function projectChanges(
   if (!(await runtime.authorize(actor, 'projects.collaboration.read')).allowed) return [];
   const projects = (listed.data as { projects: Array<{ id: string | number; title: string }> }).projects;
   const titles = new Map(projects.map((project) => [String(project.id), project.title]));
-  const fetched = await db.activity.recentProjectActivities({ projectIds: [...titles.keys()], since, limit });
+  const fetched = await db.activity.recentProjectActivities({ projectIds: [...titles.keys()], since, before, limit });
 
   // A row about a task shows only when that task is readable: the execution
   // read capability, then the same task rule listTasks applies (project
@@ -166,7 +175,7 @@ async function tableChanges(
   db: DatabaseProvider,
   runtime: PlatformRuntime,
   viewer: RecentViewer,
-  since: string,
+  { since, before }: Window,
   limit: number,
 ) {
   if (!(await userHasFeature(viewer.id, viewer.role, 'tables', db))) return [];
@@ -185,7 +194,7 @@ async function tableChanges(
       tables.set(table.id, { baseId: base.id, name: table.name });
     }
   }
-  const rows = await db.activity.recentTableChanges({ tableIds: [...tables.keys()], since, limit });
+  const rows = await db.activity.recentTableChanges({ tableIds: [...tables.keys()], since, before, limit });
   return rows.map((row) => {
     const table = tables.get(row.table_id)!;
     return draft({
@@ -203,8 +212,8 @@ async function tableChanges(
   });
 }
 
-async function fileChanges(db: DatabaseProvider, viewer: RecentViewer, since: string, limit: number) {
-  const rows = await db.drive.listRecentKbFiles({ userId: viewer.id, limit });
+async function fileChanges(db: DatabaseProvider, viewer: RecentViewer, { since, before }: Window, limit: number) {
+  const rows = await db.drive.listRecentKbFiles({ userId: viewer.id, limit, before });
   const sinceMs = Date.parse(since);
   return rows
     .filter((row) => row.uploaded_by && Date.parse(row.created_at) >= sinceMs)
@@ -258,19 +267,23 @@ async function attachAgents(db: DatabaseProvider, items: Draft[]): Promise<void>
 export async function listRecentChanges(
   db: DatabaseProvider,
   viewer: RecentViewer,
-  opts: { limit?: number; now?: number },
+  opts: { limit?: number; now?: number; before?: string | null },
   deps: { runtime: PlatformRuntime },
 ): Promise<ActivityItem[]> {
   const limit = Math.min(Math.max(Math.trunc(opts.limit ?? 20) || 20, 1), RECENT_MAX_ITEMS);
   const since = new Date((opts.now ?? Date.now()) - RECENT_DAYS * 24 * 60 * 60 * 1000).toISOString();
+  const beforeMs = opts.before ? Date.parse(opts.before) : NaN;
+  // An unparseable cursor reads as "from the top" rather than an error page.
+  const window: Window = { since, before: Number.isFinite(beforeMs) ? new Date(beforeMs).toISOString() : null };
+  if (window.before && window.before <= since) return [];
   const knowledgeAllowed = (await deps.runtime.authorize(humanActor(viewer), 'knowledge.library.read')).allowed;
 
   // Each lane fails on its own: one closed door is not an outage of the feed.
   const lanes = await Promise.all([
-    knowledgeAllowed ? knowledgeChanges(db, viewer, since, limit).catch(() => []) : Promise.resolve([]),
-    projectChanges(db, deps.runtime, viewer, since, limit).catch(() => []),
-    tableChanges(db, deps.runtime, viewer, since, limit).catch(() => []),
-    fileChanges(db, viewer, since, limit).catch(() => []),
+    knowledgeAllowed ? knowledgeChanges(db, viewer, window, limit).catch(() => []) : Promise.resolve([]),
+    projectChanges(db, deps.runtime, viewer, window, limit).catch(() => []),
+    tableChanges(db, deps.runtime, viewer, window, limit).catch(() => []),
+    fileChanges(db, viewer, window, limit).catch(() => []),
   ]);
   const items = lanes
     .flat()
