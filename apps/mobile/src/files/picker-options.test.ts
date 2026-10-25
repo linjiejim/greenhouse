@@ -10,9 +10,9 @@ const pickerPlugin = appJson.expo.plugins.find(
 );
 
 describe('opening the photo library or the camera for an upload', () => {
-  it('lets the camera take photos only, and keeps the microphone description dictation needs', () => {
-    // `false` here would delete NSMicrophoneUsageDescription, and iOS ends the app on the first hold-to-talk
-    expect(typeof pickerPlugin?.[1].microphonePermission).toBe('string');
+  it('lets the camera take photos only, and never asks for the microphone', () => {
+    // photos only: nothing records sound, so the app carries no microphone description
+    expect(pickerPlugin?.[1].microphonePermission).toBe(false);
     expect(mediaPickerOptions('camera').mediaTypes).toEqual(['images']);
     expect(mediaPickerOptions('camera').allowsMultipleSelection).toBe(false);
   });

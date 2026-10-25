@@ -88,7 +88,7 @@
 - Keep the keychain key, service and App Group in payload.ts and ShareModel.swift identical; the extension's Info.plist activation rule caps what it accepts.
 - The session carries the app's language; the extension speaks it (else the phone's) and uses the V1 green from ShareLogic.swift `Brand`, kept equal to src/theme/palette.ts.
 - Logic the extension needs goes in Foundation-only targets/share/ShareLogic.swift; src/share/share-logic.test.ts compiles it with src/share/ShareLogicCheck.swift and runs the checks (skipped without swiftc). A retry uploads only attachments that failed for a passing reason (no answer, 408, 429, 5xx); other 4xx refusals are listed with their reason and only another folder tries them again.
-- The camera captures photos only (src/files/picker-options.ts). The microphone permission is for hold-to-talk: never set expo-image-picker's `microphonePermission` to false, it deletes the description and iOS ends the app on the first hold.
+- The camera captures photos only (src/files/picker-options.ts); the app has no voice input (members use the keyboard's dictation), so expo-image-picker's `microphonePermission` stays false and nothing may record sound.
 
 ## Native builds and release
 
@@ -101,7 +101,6 @@
 - Never hand-edit the version in app.json or package.json; release-please bumps it and fingerprint.config.js keeps it out of the fingerprint.
 - The app icon (assets/icon.png, adaptive-icon.png) is rendered from logos/greenhouse-mark.svg's paths on V1 green with rsvg-convert; regenerate both together.
 - Mermaid ships as assets/web/mermaid.min.txt (copied from node_modules/mermaid/dist, version in MERMAID_VERSION) and is injected into the diagram WebView; there is no CDN fallback.
-- Hold-to-talk uses expo-speech-recognition on device first and falls back to the server recognizer; the simulator has no recognizer, check dictation on a phone.
 - A dev client on a simulator opens Metro without the "Open in" prompt with `xcrun simctl launch <udid> app.greenhouse.mobile --initialUrl http://localhost:<port>`.
 - iOS status bars are owned by native controllers (`UIViewControllerBasedStatusBarAppearance=true`); all stacks pass the app theme to stackDefaults. Expo StatusBar is Android-only.
 

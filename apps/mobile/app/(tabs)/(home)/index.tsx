@@ -8,7 +8,7 @@
  *  - my five latest conversations, one line each, pinned first (swipe to pin), and 全部 (→ the
  *    all-conversations sheet with search); kept on the phone, so they show at once and offline;
  *  - the composer: words, + (photos, camera, files — uploaded as they are picked, into a
- *    conversation made for them), hold-to-talk. Sending opens the conversation page with the
+ *    conversation made for them). Sending opens the conversation page with the
  *    message on its way; offline it waits in the outbox.
  *
  * The launch splash waits for the first list (saved or fresh) under it.
@@ -105,8 +105,8 @@ function Home() {
   }, [t]);
   const files = useComposerFiles(ensureSession);
 
-  const send = async (spoken?: string) => {
-    const text = spoken ?? draft;
+  const send = async () => {
+    const text = draft;
     const parts = sentParts(files.files);
     if (!text.trim() && !parts.images.length && !parts.attachments.length) return;
     const sessionId = await ensureSession();
@@ -212,7 +212,7 @@ function Home() {
             ref={input}
             value={draft}
             onChangeText={setDraft}
-            onSend={(spoken) => void send(spoken)}
+            onSend={() => void send()}
             onAttach={(from) => void files.attach(from)}
             files={files.files}
             onRemoveFile={files.remove}
