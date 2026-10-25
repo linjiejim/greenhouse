@@ -12,6 +12,7 @@ import { background, clip, fillMaxWidth, Shapes, size } from '@expo/ui/jetpack-c
 import { useT } from '../../src/lib/i18n';
 import { usePushRow, useSettings } from '../../src/settings/use-settings';
 import { usePrefs, type LangPref, type ThemePref } from '../../src/store/prefs';
+import { HOME_RECENT_CHOICES, type HomeRecent } from '../../src/data/home';
 import { chooseTextSize } from '../../src/settings/text-size';
 import { TEXT_STEP_NAMES, type TextStep } from '../../src/theme/type-scale';
 import { useM3 } from '../../src/ui/m3';
@@ -30,6 +31,8 @@ export default function Me() {
   const m = useM3();
   const router = useRouter();
   const s = useSettings();
+  const homeRecent = usePrefs((state) => state.homeRecent);
+  const setHomeRecent = usePrefs((state) => state.setHomeRecent);
   const push = usePushRow();
   const name = s.user?.nickname || t('settings.fallbackName');
   const step = usePrefs((state) => state.textStep);
@@ -116,6 +119,15 @@ export default function Me() {
               { value: 'zh', label: t('settings.langZh') },
               { value: 'en', label: t('settings.langEn') },
             ]}
+          />
+          <FormSelectRow<string>
+            label={t('settings.homeRecent')}
+            value={String(homeRecent)}
+            onChange={(next) => setHomeRecent(Number(next) as HomeRecent)}
+            options={HOME_RECENT_CHOICES.map((n) => ({
+              value: String(n),
+              label: n === 0 ? t('settings.homeRecentNone') : String(n),
+            }))}
           />
         </FormSection>
 

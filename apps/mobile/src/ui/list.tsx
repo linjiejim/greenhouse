@@ -153,6 +153,8 @@ export interface RowProps {
   position?: RowPosition;
   /** Set by Section — hides the separator under the last row. */
   last?: boolean;
+  /** A quiet row (home's recent conversations): the title in the secondary label color. */
+  quiet?: boolean;
 }
 
 export function Row({
@@ -177,6 +179,7 @@ export function Row({
   onAccessibilityAction,
   position,
   last,
+  quiet,
 }: RowProps) {
   const { colors: c } = useTheme();
   const styles = useStyles(c);
@@ -210,7 +213,11 @@ export function Row({
         <View style={[styles.body, large && { flexWrap: 'wrap' }]}>
           {/* keyed on the text size: re-measures when Dynamic Type changes (./font-scale.ts) */}
           <View key={fontKey} style={[styles.texts, large && { flexBasis: '100%' }]}>
-            <Text numberOfLines={large ? 0 : titleLines} ellipsizeMode={titleEllipsize} style={[styles.title, destructive && { color: c.red }]}>
+            <Text
+              numberOfLines={large ? 0 : titleLines}
+              ellipsizeMode={titleEllipsize}
+              style={[styles.title, quiet && { color: c.secondaryLabel }, destructive && { color: c.red }]}
+            >
               {title}
             </Text>
             {subtitle ? (

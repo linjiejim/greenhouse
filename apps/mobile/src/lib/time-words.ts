@@ -1,6 +1,6 @@
 /** Relative times (../data/time.ts) in the app's language and the phone's time zone. */
 
-import { calendarDate, relativeTime, type TimeWords } from '../data/time';
+import { calendarDate, relativeTime, shortAge, type TimeWords } from '../data/time';
 import { t } from './i18n';
 
 function words(): TimeWords {
@@ -18,6 +18,13 @@ function words(): TimeWords {
 /** content.md's relative time for this moment ('' for an unreadable time). */
 export function relativeTimeNow(iso: string | null | undefined): string {
   return relativeTime(iso, words(), Date.now(), undefined);
+}
+
+/** A compact age (3m, 8h, 1d, 2w; ../data/time.ts `shortAge`), '' for an unreadable time. */
+export function shortAgeNow(iso: string | null | undefined): string {
+  const age = shortAge(iso, Date.now());
+  if (!age) return '';
+  return age.unit === 'now' ? t('time.short.now') : t(`time.short.${age.unit}`, { n: age.n });
 }
 
 export function calendarDateLabel(iso: string): string {

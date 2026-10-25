@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { calendarDate, dayKey, parseMs, relativeTime, type TimeWords } from './time';
+import { calendarDate, dayKey, parseMs, relativeTime, shortAge, type TimeWords } from './time';
 
 const zh: TimeWords = {
   justNow: '刚刚',
@@ -60,5 +60,24 @@ describe('relativeTime (docs/design-system/content.md)', () => {
     expect(at('2026-10-13T23:30:00.000Z')).toBe('07:30');
     expect(dayKey(Date.parse('2026-10-13T23:30:00.000Z'), TZ)).toBe('2026-10-14');
     expect(dayKey(Date.parse('2026-10-13T23:30:00.000Z'), 'UTC')).toBe('2026-10-13');
+  });
+});
+
+describe('shortAge', () => {
+  const now = Date.parse('2026-10-25T12:00:00Z');
+  const ago = (ms: number) => new Date(now - ms).toISOString();
+  it('says 3m, 8h, 1d, 2w', () => {
+    expect(shortAge(ago(20_000), now)).toEqual({ n: 0, unit: 'now' });
+    expect(shortAge(ago(3 * 60_000), now)).toEqual({ n: 3, unit: 'm' });
+    expect(shortAge(ago(8 * 3_600_000 + 59 * 60_000), now)).toEqual({ n: 8, unit: 'h' });
+    expect(shortAge(ago(30 * 3_600_000), now)).toEqual({ n: 1, unit: 'd' });
+    expect(shortAge(ago(6 * 86_400_000), now)).toEqual({ n: 6, unit: 'd' });
+    expect(shortAge(ago(15 * 86_400_000), now)).toEqual({ n: 2, unit: 'w' });
+    expect(shortAge(ago(400 * 86_400_000), now)).toEqual({ n: 1, unit: 'y' });
+  });
+  it('treats a clock ahead of the phone as now and an unreadable time as nothing', () => {
+    expect(shortAge(new Date(now + 90_000).toISOString(), now)).toEqual({ n: 0, unit: 'now' });
+    expect(shortAge('not a time', now)).toBeNull();
+    expect(shortAge(null, now)).toBeNull();
   });
 });

@@ -24,7 +24,8 @@ import { Composer } from '../../../src/chat/composer';
 import { sentParts } from '../../../src/chat/composer-files';
 import { ConversationRow } from '../../../src/chat/conversation-row';
 import { useComposerFiles } from '../../../src/chat/use-composer-files';
-import { greetingFor, RECENT_ON_HOME } from '../../../src/data/home';
+import { greetingFor } from '../../../src/data/home';
+import { usePrefs } from '../../../src/store/prefs';
 import { captureIdentity } from '../../../src/data/identity';
 import { putHandoff } from '../../../src/lib/handoff';
 import { useT } from '../../../src/lib/i18n';
@@ -134,7 +135,9 @@ function Home() {
   };
 
   const name = user?.nickname?.trim() || '';
-  const recent = sessions.slice(0, RECENT_ON_HOME);
+  // how many is a setting in 「我」 (0 lists none; the All button stays)
+  const recentCount = usePrefs((s) => s.homeRecent);
+  const recent = sessions.slice(0, recentCount);
 
   return (
     <View style={styles.root}>
@@ -195,13 +198,14 @@ function Home() {
           ) : null}
         </View>
         {offline ? <Text style={styles.offline}>{t('common.savedCopy')}</Text> : null}
-        {recent.length ? (
+        {recentCount === 0 ? null : recent.length ? (
           <View>
             {recent.map((session, index) => (
               <ConversationRow
                 key={session.id}
                 session={session}
                 position={rowPosition(index, recent.length)}
+                compact
                 onOpen={() => router.push({ pathname: '/chat', params: { session: session.id } })}
                 onPin={(pinned) => void useSessions.getState().pin(session.id, pinned)}
                 onRename={() => void rename(session.id, session.title)}
@@ -209,7 +213,7 @@ function Home() {
             ))}
           </View>
         ) : status === 'empty' ? (
-          <Skeleton rows={RECENT_ON_HOME} />
+          <Skeleton rows={recentCount} />
         ) : status === 'error' ? (
           <EmptyState
             icon="alert"

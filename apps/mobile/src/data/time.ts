@@ -104,3 +104,23 @@ export function relativeTime(iso: string | null | undefined, words: TimeWords, n
   if (then.year === today.year) return fill(words.monthDay, date);
   return fill(words.yearMonthDay, { ...date, year: then.year });
 }
+
+export type AgeUnit = 'now' | 'm' | 'h' | 'd' | 'w' | 'y';
+
+/**
+ * A compact age for quiet lists (home's recent conversations): under a minute `now`, then whole
+ * minutes, hours, days, weeks (under a year) and years — 3m, 8h, 1d, 2w. Null for an unreadable time.
+ */
+export function shortAge(iso: string | null | undefined, now: number): { n: number; unit: AgeUnit } | null {
+  const ms = parseMs(iso);
+  if (Number.isNaN(ms)) return null;
+  const minutes = Math.floor(Math.max(0, now - ms) / 60_000);
+  if (minutes < 1) return { n: 0, unit: 'now' };
+  if (minutes < 60) return { n: minutes, unit: 'm' };
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return { n: hours, unit: 'h' };
+  const days = Math.floor(hours / 24);
+  if (days < 7) return { n: days, unit: 'd' };
+  if (days < 365) return { n: Math.floor(days / 7), unit: 'w' };
+  return { n: Math.floor(days / 365), unit: 'y' };
+}

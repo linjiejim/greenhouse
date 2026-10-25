@@ -168,6 +168,8 @@ export const zh: Catalog = {
     themeSystem: '跟随系统',
     themeLight: '浅色',
     themeDark: '深色',
+    homeRecent: '首页最近对话',
+    homeRecentNone: '不显示',
     language: '语言',
     langZh: '中文',
     langEn: 'English',
@@ -640,5 +642,6 @@ export const zh: Catalog = {
     monthDay: '{month} 月 {day} 日',
     yearMonthDay: '{year} 年 {month} 月 {day} 日',
     months: '',
+    short: { now: '刚刚', m: '{n}分', h: '{n}小时', d: '{n}天', w: '{n}周', y: '{n}年' },
   },
 };

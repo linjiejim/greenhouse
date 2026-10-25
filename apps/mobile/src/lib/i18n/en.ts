@@ -174,6 +174,8 @@ export const en = {
     themeSystem: 'System',
     themeLight: 'Light',
     themeDark: 'Dark',
+    homeRecent: 'Recent on Home',
+    homeRecentNone: 'None',
     language: 'Language',
     langZh: '中文',
     langEn: 'English',
@@ -654,6 +656,7 @@ export const en = {
     monthDay: '{monthName} {day}',
     yearMonthDay: '{monthName} {day}, {year}',
     months: 'Jan,Feb,Mar,Apr,May,Jun,Jul,Aug,Sep,Oct,Nov,Dec',
+    short: { now: 'now', m: '{n}m', h: '{n}h', d: '{n}d', w: '{n}w', y: '{n}y' },
   },
 };
 

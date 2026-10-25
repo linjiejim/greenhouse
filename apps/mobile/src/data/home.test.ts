@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import type { ChatSession } from '../shared/greenhouse-types';
-import { conversationAgent, greetingFor, orderConversations, parseSessions, withPinned } from './home';
+import {
+  conversationAgent,
+  DEFAULT_HOME_RECENT,
+  greetingFor,
+  homeRecentOf,
+  orderConversations,
+  parseSessions,
+  withPinned,
+} from './home';
 
 const s = (id: string, updated: string, pinned = false, pin_sort?: number): ChatSession => ({
   id,
@@ -25,7 +33,12 @@ describe('home', () => {
   });
 
   it('lists pinned conversations first, then the newest', () => {
-    const list = [s('old', '2026-10-01T00:00:00Z'), s('new', '2026-10-20T00:00:00Z'), s('p2', '2026-09-01T00:00:00Z', true, 2), s('p1', '2026-09-02T00:00:00Z', true, 1)];
+    const list = [
+      s('old', '2026-10-01T00:00:00Z'),
+      s('new', '2026-10-20T00:00:00Z'),
+      s('p2', '2026-09-01T00:00:00Z', true, 2),
+      s('p1', '2026-09-02T00:00:00Z', true, 1),
+    ];
     expect(orderConversations(list).map((x) => x.id)).toEqual(['p1', 'p2', 'new', 'old']);
   });
 
@@ -38,5 +51,17 @@ describe('home', () => {
   it('reads a saved list', () => {
     expect(parseSessions([s('a', 'x'), { id: 3 }])?.map((x) => x.id)).toEqual(['a']);
     expect(parseSessions({})).toBeNull();
+  });
+});
+
+describe('home recent count', () => {
+  it('reads a saved choice and refuses anything else', () => {
+    expect(DEFAULT_HOME_RECENT).toBe(3);
+    expect(homeRecentOf('0')).toBe(0);
+    expect(homeRecentOf('10')).toBe(10);
+    expect(homeRecentOf('4')).toBeNull();
+    expect(homeRecentOf('')).toBeNull();
+    expect(homeRecentOf(null)).toBeNull();
+    expect(homeRecentOf('three')).toBeNull();
   });
 });

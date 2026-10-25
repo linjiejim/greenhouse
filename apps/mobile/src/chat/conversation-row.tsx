@@ -1,7 +1,8 @@
 /**
- * One conversation in a list (home's recent five, the all-conversations sheet): the title and the
- * time, then one line of the newest message (where the station sends it); a pin trails pinned ones,
- * and an agent other than Sprouty leads with its plant (src/data/home.ts `conversationAgent`).
+ * One conversation in a list. The all-conversations sheet: the title and the time, then one line of
+ * the newest message (where the station sends it); a pin trails pinned ones, and an agent other than
+ * Sprouty leads with its plant (src/data/home.ts `conversationAgent`). Home (`compact`): only the
+ * title, one quiet line, and a short age (3m, 8h, 1d, 2w).
  * Swipe left to pin or unpin (Mail-style trailing action; the
  * swipe itself pins); long press offers pin and rename too, and VoiceOver gets both as
  * actions. Tapping opens the conversation page.
@@ -13,7 +14,7 @@ import Swipeable, { type SwipeableMethods } from 'react-native-gesture-handler/R
 import { conversationAgent } from '../data/home';
 import { useT } from '../lib/i18n';
 import { plainText } from '../lib/plain-text';
-import { relativeTimeNow } from '../lib/time-words';
+import { relativeTimeNow, shortAgeNow } from '../lib/time-words';
 import type { ChatSession } from '../shared/greenhouse-types';
 import { makeStyles, space, typo, useTheme, weight } from '../theme';
 import { AgentAvatar } from '../ui/avatar';
@@ -28,21 +29,24 @@ export function ConversationRow({
   onOpen,
   onPin,
   onRename,
+  compact,
 }: {
   session: ChatSession;
   position: RowPosition;
   onOpen: () => void;
   onPin: (pinned: boolean) => void;
   onRename: () => void;
+  /** Home's quiet line: title and short age only. */
+  compact?: boolean;
 }) {
   const { colors: c } = useTheme();
   const styles = useStyles(c);
   const t = useT();
   const swipe = useRef<SwipeableMethods>(null);
   const title = session.title?.trim() || t('assistant.untitled');
-  const snippet = plainText(session.last_message, { oneLine: true });
-  const agent = conversationAgent(session.profile_id);
-  const when = relativeTimeNow(session.updated_at);
+  const snippet = compact ? '' : plainText(session.last_message, { oneLine: true });
+  const agent = compact ? null : conversationAgent(session.profile_id);
+  const when = compact ? shortAgeNow(session.updated_at) : relativeTimeNow(session.updated_at);
   const pin = () => {
     selectionTick();
     swipe.current?.close();
@@ -58,7 +62,12 @@ export function ConversationRow({
       // swiping past the threshold pins (only the trailing action exists)
       onSwipeableOpen={pin}
       renderRightActions={() => (
-        <Touchable onPress={pin} style={styles.action} accessibilityRole="button" accessibilityLabel={t(session.pinned ? 'home.unpin' : 'home.pin')}>
+        <Touchable
+          onPress={pin}
+          style={styles.action}
+          accessibilityRole="button"
+          accessibilityLabel={t(session.pinned ? 'home.unpin' : 'home.pin')}
+        >
           <Icon name={session.pinned ? 'pinOff' : 'pin'} size={18} color={c.onTint} />
           <Text style={styles.actionText}>{t(session.pinned ? 'home.unpin' : 'home.pin')}</Text>
         </Touchable>
@@ -82,8 +91,16 @@ export function ConversationRow({
           value={when}
           accessory={session.pinned ? <Icon name="pin" size={13} color={c.accent} /> : 'none'}
           position={position}
+          quiet={compact}
           onPress={onOpen}
-          accessibilityLabel={[session.pinned ? t('home.pinned') : '', title, when, snippet].filter(Boolean).join(t('common.listSep'))}
+          accessibilityLabel={[
+            session.pinned ? t('home.pinned') : '',
+            title,
+            compact ? relativeTimeNow(session.updated_at) : when,
+            snippet,
+          ]
+            .filter(Boolean)
+            .join(t('common.listSep'))}
           accessibilityActions={[
             { name: 'pin', label: t(session.pinned ? 'home.unpin' : 'home.pin') },
             { name: 'rename', label: t('home.rename') },

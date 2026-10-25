@@ -11,6 +11,10 @@
 - Edits happen in sheets (SwiftUI Form on iOS, Material on Android); the page underneath never changes behind them.
 - Long-press menus are system context menus (NativeMenu) and every item is also a VoiceOver action.
 
+## Home
+
+- Home is where a conversation starts: the greeting, then my recent conversations as quiet one-line titles with a short age (3m, 8h, 1d, 2w), no snippet; 3 by default, 0/3/5/10 in 「我」 (src/store/prefs.ts `homeRecent`), and All for the rest.
+
 ## Conversation
 
 - The assistant is Sprouty in every language; its living face is in the header (src/chat/header-avatar.tsx) and glides below the title while a reply is written; the header grows and the list makes the same room, so it never covers a message; message rows keep a resting sprout.

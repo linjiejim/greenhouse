@@ -1,11 +1,11 @@
 import { brandFont as font } from '../../src/ui/brand-font';
 /**
- * 「我」 — the root of the page sheet the home avatar opens. A SwiftUI Form, iOS Settings–style:
+ * 「我」 — the root of the page sheet the sidebar's foot opens. A SwiftUI Form, iOS Settings–style:
  *
  *  - account: the initial, name and email, the role; the 工作站 row (→ stations page);
  *  - 阅读: the in-app text size (seven steps on top of the system size, src/settings/text-size.ts);
  *  - 我的 Agent: the agents I connected (src/api/agent.ts) and their writes and spend (→ agents);
- *  - 通用: 通知 (→ notifications), theme (this phone's) and language (the account's);
+ *  - 通用: 通知 (→ notifications), theme (this phone's), language (the account's) and how many recent conversations home lists (this phone's);
  *  - 关于 (version, update, 发送反馈 → feedback), then 退出登录 (destructive, confirmed; the sheet closes first).
  */
 
@@ -41,6 +41,7 @@ import { relativeTimeNow } from '../../src/lib/time-words';
 import { chooseTextSize } from '../../src/settings/text-size';
 import { usePushRow, useSettings } from '../../src/settings/use-settings';
 import { usePrefs, type LangPref, type ThemePref } from '../../src/store/prefs';
+import { HOME_RECENT_CHOICES, type HomeRecent } from '../../src/data/home';
 import { useTheme } from '../../src/theme';
 import { TEXT_STEP_NAMES, TEXT_STEPS, type TextStep } from '../../src/theme/type-scale';
 import { AgentAvatar } from '../../src/ui/avatar';
@@ -54,6 +55,8 @@ export default function Me() {
   const { hex } = useTheme();
   const router = useRouter();
   const s = useSettings();
+  const homeRecent = usePrefs((state) => state.homeRecent);
+  const setHomeRecent = usePrefs((state) => state.setHomeRecent);
   const push = usePushRow();
   const step = usePrefs((state) => state.textStep);
   const connections = useResource(useCallback(() => listConnections(), []));
@@ -64,7 +67,11 @@ export default function Me() {
     <>
       <Stack.Screen options={{ title: t('me.title') }} />
       <Stack.Toolbar placement="right">
-        <Stack.Toolbar.Button icon={toolbarIcon('x')} accessibilityLabel={t('common.close')} onPress={() => router.back()} />
+        <Stack.Toolbar.Button
+          icon={toolbarIcon('x')}
+          accessibilityLabel={t('common.close')}
+          onPress={() => router.back()}
+        />
       </Stack.Toolbar>
       <NativeForm>
         {/* ── account ── */}
@@ -72,8 +79,16 @@ export default function Me() {
           {/* one VoiceOver element: "name, role · email" — the picture is decoration */}
           <HStack spacing={14} modifiers={[accessibilityElement('combine')]}>
             <ZStack modifiers={[accessibilityHidden()]}>
-              <Circle modifiers={[foregroundStyle(hex.accentFill), frame({ width: 56, height: 56 }), accessibilityHidden()]} />
-              <Text modifiers={[font({ textStyle: 'title2', weight: 'semibold' }), foregroundStyle(hex.accentText), accessibilityHidden()]}>
+              <Circle
+                modifiers={[foregroundStyle(hex.accentFill), frame({ width: 56, height: 56 }), accessibilityHidden()]}
+              />
+              <Text
+                modifiers={[
+                  font({ textStyle: 'title2', weight: 'semibold' }),
+                  foregroundStyle(hex.accentText),
+                  accessibilityHidden(),
+                ]}
+              >
                 {(name.trim()[0] ?? '?').toUpperCase()}
               </Text>
             </ZStack>
@@ -84,7 +99,11 @@ export default function Me() {
               </Text>
             </VStack>
           </HStack>
-          <FormNavRow label={t('station.title')} value={s.station?.name ?? '—'} onPress={() => router.push('/me/stations')} />
+          <FormNavRow
+            label={t('station.title')}
+            value={s.station?.name ?? '—'}
+            onPress={() => router.push('/me/stations')}
+          />
         </Section>
 
         {/* ── reading: the in-app text size ── */}
@@ -113,9 +132,15 @@ export default function Me() {
                   <AgentAvatar name={agent.client_name} avatar={agent.avatar} size={32} />
                 </RNHostView>
                 <VStack alignment="leading" spacing={2}>
-                  <Text modifiers={[font({ textStyle: 'body' }), foregroundStyle(hex.label), lineLimit(1)]}>{agent.client_name}</Text>
-                  <Text modifiers={[font({ textStyle: 'footnote' }), foregroundStyle(hex.secondaryLabel), lineLimit(1)]}>
-                    {agent.last_seen_at ? t('me.agentSeen', { when: relativeTimeNow(agent.last_seen_at) }) : t('me.agentConnected')}
+                  <Text modifiers={[font({ textStyle: 'body' }), foregroundStyle(hex.label), lineLimit(1)]}>
+                    {agent.client_name}
+                  </Text>
+                  <Text
+                    modifiers={[font({ textStyle: 'footnote' }), foregroundStyle(hex.secondaryLabel), lineLimit(1)]}
+                  >
+                    {agent.last_seen_at
+                      ? t('me.agentSeen', { when: relativeTimeNow(agent.last_seen_at) })
+                      : t('me.agentConnected')}
                   </Text>
                 </VStack>
               </HStack>
@@ -126,7 +151,11 @@ export default function Me() {
 
         {/* ── general ── */}
         <Section title={t('me.general')}>
-          <FormNavRow label={t('settings.notifications')} value={push} onPress={() => router.push('/me/notifications')} />
+          <FormNavRow
+            label={t('settings.notifications')}
+            value={push}
+            onPress={() => router.push('/me/notifications')}
+          />
           <Picker
             label={t('settings.theme')}
             selection={s.theme}
@@ -145,6 +174,18 @@ export default function Me() {
           >
             <Text modifiers={[tag('zh')]}>{t('settings.langZh')}</Text>
             <Text modifiers={[tag('en')]}>{t('settings.langEn')}</Text>
+          </Picker>
+          <Picker
+            label={t('settings.homeRecent')}
+            selection={String(homeRecent)}
+            onSelectionChange={(v) => setHomeRecent(Number(v) as HomeRecent)}
+            modifiers={[pickerStyle('menu')]}
+          >
+            {HOME_RECENT_CHOICES.map((n) => (
+              <Text key={n} modifiers={[tag(String(n))]}>
+                {n === 0 ? t('settings.homeRecentNone') : String(n)}
+              </Text>
+            ))}
           </Picker>
         </Section>
 

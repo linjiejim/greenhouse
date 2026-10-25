@@ -1,5 +1,5 @@
 /**
- * Lightweight UI preferences shared across screens (theme, language, text size). In-memory store
+ * Lightweight UI preferences shared across screens (theme, language, text size, home's recent count). In-memory store
  * hydrated from persistent storage at startup (SecureStore on native, localStorage on web —
  * same backend as tokens).
  *
@@ -11,6 +11,7 @@
 
 import { create } from 'zustand';
 import { loadPref, savePref } from '../api/token-storage';
+import { DEFAULT_HOME_RECENT, homeRecentOf, type HomeRecent } from '../data/home';
 import { DEFAULT_TEXT_STEP, legacyTextStepOf, TEXT_STEPS, textStepOf, type TextStep } from '../theme/type-scale';
 
 export type ThemePref = 'system' | 'light' | 'dark';
@@ -24,6 +25,9 @@ interface Prefs {
   /** The in-app text size step (src/theme/type-scale.ts). */
   textStep: TextStep;
   setTextStep: (step: TextStep) => void;
+  /** How many recent conversations home lists (this phone's). */
+  homeRecent: HomeRecent;
+  setHomeRecent: (n: HomeRecent) => void;
   /** Persisted prefs have been read (until then every value is a default). */
   hydrated: boolean;
   /** Hydrate persisted prefs once at app start. */
@@ -50,20 +54,29 @@ export const usePrefs = create<Prefs>((set, get) => ({
     // the multiplier, not the index: steps may be added anywhere on the ladder
     void savePref('textScale', String(TEXT_STEPS[textStep]));
   },
+  homeRecent: DEFAULT_HOME_RECENT,
+  setHomeRecent: (homeRecent) => {
+    if (get().homeRecent === homeRecent) return;
+    set({ homeRecent });
+    void savePref('homeRecent', String(homeRecent));
+  },
   hydrated: false,
   hydrate: async () => {
-    const [theme, lang, textScale, legacyStep] = await Promise.all([
+    const [theme, lang, textScale, legacyStep, homeRecent] = await Promise.all([
       loadPref('theme'),
       loadPref('lang'),
       loadPref('textScale'),
       loadPref('textStep'),
+      loadPref('homeRecent'),
     ]);
+    const recent = homeRecentOf(homeRecent);
     const textStep =
       textScale != null ? textStepOf(textScale) : legacyStep != null ? legacyTextStepOf(legacyStep) : null;
     set({
       ...(theme === 'light' || theme === 'dark' || theme === 'system' ? { theme } : {}),
       ...(lang === 'zh' || lang === 'en' ? { lang } : {}),
       ...(textStep != null ? { textStep } : {}),
+      ...(recent !== null ? { homeRecent: recent } : {}),
       hydrated: true,
     });
   },

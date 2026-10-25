@@ -16,7 +16,18 @@ export function greetingFor(hour: number): Greeting {
   return 'night';
 }
 
-export const RECENT_ON_HOME = 5;
+/** How many recent conversations home lists (a setting in 「我」); 0 lists none. */
+export const HOME_RECENT_CHOICES = [0, 3, 5, 10] as const;
+export type HomeRecent = (typeof HOME_RECENT_CHOICES)[number];
+export const DEFAULT_HOME_RECENT: HomeRecent = 3;
+
+/** A saved choice, or null when it is not one of HOME_RECENT_CHOICES. */
+export function homeRecentOf(raw: string | null | undefined): HomeRecent | null {
+  const n = Number(raw);
+  return (HOME_RECENT_CHOICES as readonly number[]).includes(n) && raw !== null && raw !== ''
+    ? (n as HomeRecent)
+    : null;
+}
 
 /** The profiles that are Sprouty (the built-in assistant); anything else is an agent of its own. */
 const SPROUTY_PROFILES = new Set(['sprouty', 'team', 'desktop']);
