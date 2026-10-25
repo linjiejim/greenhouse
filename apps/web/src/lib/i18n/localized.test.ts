@@ -11,7 +11,6 @@ import { EMAIL_PRESETS } from '@greenhouse/types/email';
 import { MCP_RESOURCE_GROUP_IDS } from '@greenhouse/types/mcp';
 import { AUTOMATION_OPT_IN_TOOLS } from '@greenhouse/types/automation-tools';
 import { mcpGroupDescriptionKey, mcpGroupLabelKey } from '../mcp-groups';
-import { RECIPE_LABELS } from '../workbench/recipes';
 
 function flatten(value: Record<string, unknown>, prefix = ''): Map<string, string> {
   const entries = new Map<string, string>();
@@ -131,25 +130,6 @@ describe('data-driven translation keys resolve', () => {
     const known = new Set<string>(MCP_RESOURCE_GROUP_IDS);
     for (const id of labelled) {
       expect(known.has(id), `mcpGroups.${id}.* is labelled but ${id} is not in MCP_RESOURCE_GROUP_IDS`).toBe(true);
-    }
-  });
-
-  /**
-   * Workbench card recipes. The catalog lives in @greenhouse/types/workbench and
-   * the copy in `home.recipe.*`, joined by `RECIPE_LABELS`. An unclaimed key is a
-   * card recipe the picker cannot offer — the nine `home.recipe.crm*` keys
-   * survived their module exactly this way.
-   *
-   * Only CORE recipes go through that table: an extension's recipe ships its own
-   * `ext.<id>.*` keys, which are not in `en.ts` at all, so this stays exact.
-   */
-  it('has no home.recipe key that no recipe claims', () => {
-    const claimed = new Set(
-      Object.values(RECIPE_LABELS).flatMap((labels) => [labels.labelKey as string, labels.descriptionKey as string]),
-    );
-    for (const key of english.keys()) {
-      if (!key.startsWith('home.recipe.')) continue;
-      expect(claimed.has(key), `${key} is not referenced by RECIPE_LABELS in lib/workbench/recipes.ts`).toBe(true);
     }
   });
 

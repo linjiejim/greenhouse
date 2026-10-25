@@ -203,7 +203,7 @@ Team docs typically hold product facts, brand guidelines, SOPs, team notes, arch
 ${CITE_URL_INSTRUCTION}`,
   category: 'team',
   is_global: true,
-  surface: { proxy: 'read', mcp: 'knowledge', workbench: true, unattendedReplaySafe: true },
+  surface: { proxy: 'read', mcp: 'knowledge', unattendedReplaySafe: true },
   icon: 'BookOpen',
   sort_order: 16,
 };

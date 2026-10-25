@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { DEFAULT_WORKBENCH_PREFERENCES, type PlatformApplication } from '../platform/catalog.js';
+import type { PlatformApplication } from '../platform/catalog.js';
 import { usePlatformStore } from './platform-store.js';
 
 function application(id: string): PlatformApplication {
@@ -24,25 +24,15 @@ afterEach(async () => {
 
 describe('Platform store', () => {
   // Application visibility is filtered by the server on read (see the platform
-  // route tests); the store keeps whatever it is given and only normalizes shape.
-  it('loads the permission-filtered catalog and normalizes preference shape', async () => {
-    globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
+  // route tests); the store keeps whatever it is given.
+  it('loads the permission-filtered catalog with one request', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       if (String(input) === '/api/platform/apps') {
-        return Response.json({
-          applications: [application('projects'), application('knowledge')],
-        });
+        return Response.json({ applications: [application('projects'), application('knowledge')] });
       }
-      return Response.json({
-        preferences: {
-          ...DEFAULT_WORKBENCH_PREFERENCES,
-          appOrder: ['missing', 'knowledge'],
-          pinnedAppIds: ['missing', 'projects'],
-          hiddenAppIds: ['projects'],
-          defaultAppId: 'missing',
-          density: 'compact',
-        },
-      });
-    }) as typeof globalThis.fetch;
+      return Response.json({ error: 'not found' }, { status: 404 });
+    });
+    globalThis.fetch = fetchMock as typeof globalThis.fetch;
 
     await usePlatformStore.getState().load(true);
 
@@ -51,72 +41,17 @@ describe('Platform store', () => {
       loading: false,
       error: null,
       applications: [{ id: 'projects' }, { id: 'knowledge' }],
-      preferences: {
-        version: 2,
-        appOrder: ['missing', 'knowledge'],
-        // Hidden still wins over pinned — that rule is shape, not permission.
-        pinnedAppIds: ['missing'],
-        hiddenAppIds: ['projects'],
-        defaultAppId: 'missing',
-        density: 'compact',
-        tabs: [],
-        widgets: [],
-      },
     });
+    // The retired workbench preferences are no longer requested, so their 404 cannot fail the catalog.
+    expect(fetchMock.mock.calls.map(([url]) => String(url))).toEqual(['/api/platform/apps']);
   });
 
-  it('rolls back an optimistic preference update when persistence fails', async () => {
-    usePlatformStore.setState({
-      enabled: true,
-      applications: [application('projects')],
-      preferences: DEFAULT_WORKBENCH_PREFERENCES,
-    });
+  it('reports a failed catalog instead of showing an empty one silently', async () => {
     globalThis.fetch = vi.fn(async () =>
-      Response.json({ error: 'storage unavailable' }, { status: 503 }),
+      Response.json({ error: 'unavailable' }, { status: 503 }),
     ) as typeof globalThis.fetch;
-
-    await expect(
-      usePlatformStore.getState().savePreferences({
-        ...DEFAULT_WORKBENCH_PREFERENCES,
-        pinnedAppIds: ['projects'],
-      }),
-    ).rejects.toThrow('storage unavailable');
-
-    expect(usePlatformStore.getState()).toMatchObject({
-      saving: false,
-      preferences: DEFAULT_WORKBENCH_PREFERENCES,
-    });
-  });
-
-  it('reloads the server version when another writer wins', async () => {
-    const serverPreferences = {
-      ...DEFAULT_WORKBENCH_PREFERENCES,
-      pinnedAppIds: ['knowledge'],
-    };
-    usePlatformStore.setState({
-      enabled: true,
-      applications: [application('projects'), application('knowledge')],
-      preferences: DEFAULT_WORKBENCH_PREFERENCES,
-    });
-    globalThis.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      const url = String(input);
-      if (init?.method === 'PUT') return Response.json({ error: 'Workbench changed' }, { status: 409 });
-      if (url === '/api/platform/apps') {
-        return Response.json({ applications: [application('projects'), application('knowledge')] });
-      }
-      return Response.json({ preferences: serverPreferences });
-    }) as typeof globalThis.fetch;
-
-    await expect(
-      usePlatformStore.getState().savePreferences({
-        ...DEFAULT_WORKBENCH_PREFERENCES,
-        pinnedAppIds: ['projects'],
-      }),
-    ).rejects.toThrow('Workbench changed');
-
-    expect(usePlatformStore.getState()).toMatchObject({
-      saving: false,
-      preferences: serverPreferences,
-    });
+    await usePlatformStore.getState().load(true);
+    expect(usePlatformStore.getState()).toMatchObject({ applications: [], loading: false });
+    expect(usePlatformStore.getState().error).toBeTruthy();
   });
 });

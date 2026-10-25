@@ -91,6 +91,34 @@ export interface PlatformNotificationList {
   next_cursor: string | null;
 }
 
+// ─── team activity (/api/activity/recent) ──────────────────────────
+
+/** One change in the team activity feed (packages/types/src/activity.ts `ActivityItem`, the fields the phone reads). */
+export interface ActivityItem {
+  id: string;
+  source: 'person' | 'agent' | 'automation' | 'admin';
+  /** UTC ISO timestamp. */
+  at: string;
+  actor: { id: string; name: string | null };
+  agent: { client_id: string | null; client_name: string } | null;
+  module: string;
+  verb: string;
+  entity: string | null;
+  action: string;
+  action_title: string | null;
+  /** The object, named only when the viewer may read it; `url` is a web `#/…` route. */
+  target: { id: string | null; label: string | null; url: string | null } | null;
+  run: { id: string; kind: string } | null;
+  detail: string | null;
+}
+
+/** `GET /api/activity/recent?before=` (apps/api/src/routes/activity.ts): newest first, 14 days. */
+export interface RecentChangesPage {
+  items: ActivityItem[];
+  /** Pass back as `before` for the next page; null when there is no more. */
+  next_before: string | null;
+}
+
 /** verbatim */
 export interface PlatformNotificationSummary {
   unread: number;

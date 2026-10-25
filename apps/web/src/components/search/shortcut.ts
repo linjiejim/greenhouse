@@ -4,7 +4,7 @@
  *
  * ⌘P rather than the more usual ⌘K, which this app already spends on the
  * Assistant overlay. ⌘P costs the browser's print dialog inside the app — the
- * standard trade every palette-bearing editor makes, and printing a workbench
+ * standard trade every palette-bearing editor makes, and printing an app
  * page is not a thing people do here.
  */
 

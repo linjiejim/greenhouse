@@ -355,6 +355,13 @@ export async function queryTableRecords(tableId: string, query: TableQuery): Pro
   return response.json();
 }
 
+export async function getTableRecord(tableId: string, recordId: string): Promise<TableRecord> {
+  const args = { param: { tableId, recordId } };
+  const response = await rpc.api.tables.tables[':tableId'].records[':recordId'].$get(args);
+  if (!response.ok) throw await responseError(response, 'Unable to load record');
+  return (await response.json()).record;
+}
+
 export async function createTableRecord(tableId: string, values: TableRecordValues): Promise<TableRecord> {
   const args = { param: { tableId: tableId }, json: { values } };
   const response = await rpc.api.tables.tables[':tableId'].records.$post(args);

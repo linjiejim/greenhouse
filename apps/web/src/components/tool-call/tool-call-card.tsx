@@ -88,8 +88,6 @@ function humanizeIdentifier(value: string): string {
 /** Friendly tool label used in both the collapsed live summary and detail rows. */
 export function toolDisplayName(name: string): string {
   const aliases: Record<string, string> = {
-    workbench_query: 'Workbench',
-    workbench_mutation: 'Workbench',
     external_search: 'Web search',
     session_history: 'Conversation history',
     session_query: 'Conversations',

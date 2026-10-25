@@ -28,7 +28,6 @@ const MODULE_PAGES: ModulePageContract[] = [
   { file: '../tables/data-catalog.tsx', moduleId: 'workspace.data-catalog', layout: 'list' },
   { file: '../projects.tsx', moduleId: 'workspace.projects', layout: 'canvas' },
   { file: '../files.tsx', moduleId: 'workspace.files', layout: 'list' },
-  { file: '../home.tsx', moduleId: 'workspace.home', layout: 'list' },
   { file: '../skillhub/index.tsx', moduleId: 'workspace.skillhub', layout: 'canvas' },
   // The My prompts tab is a list inside the same module.
   { file: '../skillhub/index.tsx', moduleId: 'workspace.skillhub', layout: 'list' },

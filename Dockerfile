@@ -36,7 +36,7 @@ ENV NODE_ENV=production \
     APP_REVISION=${APP_REVISION}
 # OCI image labels — provenance a registry (GHCR) reads for the package page.
 LABEL org.opencontainers.image.title="Greenhouse" \
-      org.opencontainers.image.description="Open-source, AI-native enterprise agent workbench" \
+      org.opencontainers.image.description="Open-source, self-hosted agent hub for one team" \
       org.opencontainers.image.source="https://github.com/linjiejim/greenhouse" \
       org.opencontainers.image.version="${APP_VERSION}" \
       org.opencontainers.image.revision="${APP_REVISION}" \

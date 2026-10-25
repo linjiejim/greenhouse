@@ -107,28 +107,8 @@ import { TOOL_DEFINITIONS } from '../registry.js';
  * restate (data freshness, currency, profit caliber) that no parameter could
  * carry; the ceiling followed the measured total, not the other way round.
  *
- * 38_400 → 39_000 on 2026-08-05 for the workbench pair (`workbench_query` +
- * `workbench_mutation`), which let the agent build and edit the user's home
- * page. They first landed at 810 chars and were cut 35% to 528 by deleting what
- * the parameter schema already ships — the per-action breakdown (the action enum
- * describes all three reads), that removals need confirm (the `confirm` field
- * says which two actions require it), the date-token vocabulary and the dot-path
- * mapping rules (all `.describe()` text on the fields that own them). What
- * remains cannot live in a parameter:
- *   • the three names for one screen (home page / Home / 首页 / 工作台). Users ask
- *     for this by any of them, and an unmatched name means the model answers
- *     that it cannot edit the home page — which is the whole feature;
- *   • that a card stores a QUERY and not its answer. Without it the model
- *     "helpfully" pastes the numbers it just fetched into a note card, which is
- *     wrong the next morning and silently so;
- *   • that a write hands back a live preview and an empty one must be fixed, not
- *     announced as success. This is what pays for those writes being unconfirmed
- *     (spec D15) — the model verifying its own card is the safety story.
- * No cut elsewhere was available to pay for this: nothing in the catalog
- * duplicates it. Both tools are is_global (a workbench nobody can ask for is a
- * dead entry point in the Chat empty state), so this bills every internal user —
- * measured total is 38_949, and the ~51 chars left over are headroom, not
- * pre-approval. See docs/specs/20260805-home-workbench.md.
+ * 38_400 → 39_000 on 2026-08-05 for a pair of Home-page tools that 3.0 removed;
+ * the ceiling was left where it was.
  *
  * 39_000 → 40_500 on 2026-08-05 for the email pair (`email_query` +
  * `email_mutation`), which bring mailbox reading and sending back after the

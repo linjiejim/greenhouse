@@ -48,10 +48,6 @@ export interface ToolMeta {
    *   tools in the groups it was granted. Declaring the group here rather than in
    *   a separate table means a new MCP tool cannot silently end up in no group at
    *   all — the union type forces an answer. See @greenhouse/types/mcp.
-   * - workbench: true → safe to persist as a Home card and re-run whenever the
-   *   owner opens or refreshes the workbench. This is deliberately narrower
-   *   than proxy:'read': costly generation, arbitrary web searches, attachment
-   *   analysis and other side-effectful or unbounded reads must stay false.
    * - unattendedReplaySafe: true → may run without a person present and may be
    *   repeated after a checkpointed Runtime lease expires. This is stricter
    *   than proxy:'read': paid provider calls and reads that create durable
@@ -66,6 +62,7 @@ export interface ToolMeta {
   surface?: {
     proxy?: 'read' | 'write' | 'none';
     mcp?: McpResourceGroup | (string & {});
+    /** @deprecated Ignored since 3.0 (the Home workbench was removed); kept so 2.x extensions compile. Removed in 4.0. */
     workbench?: boolean;
     unattendedReplaySafe?: boolean;
     /**

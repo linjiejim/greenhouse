@@ -5,6 +5,7 @@ import { Edit3, Eye, X } from '../../lib/icons';
 import type { TableField, TableRecord } from '../../lib/api/tables';
 import { formatDate } from '../../lib/utils';
 import { renderTableFieldValue } from './field-value';
+import { useRelationLabels } from './relation-labels';
 import { useT } from '../../lib/i18n';
 
 interface RecordDetailContentProps {
@@ -28,6 +29,8 @@ export function RecordDetailContent({
 }: RecordDetailContentProps) {
   const t = useT();
   const usersById = useMemo(() => new Map(users.map((user) => [user.id, user])), [users]);
+  const linked = useMemo(() => [record], [record]);
+  const relationLabel = useRelationLabels(fields, linked);
   const createdBy = usersById.get(record.created_by)?.nickname ?? record.created_by;
   const updatedBy = usersById.get(record.updated_by)?.nickname ?? record.updated_by;
 
@@ -80,7 +83,7 @@ export function RecordDetailContent({
                 }
                 span={field.type === 'long_text' ? 'full' : 1}
               >
-                {renderTableFieldValue(field, value, usersById)}
+                {renderTableFieldValue(field, value, usersById, relationLabel)}
               </Field>
             );
           })}

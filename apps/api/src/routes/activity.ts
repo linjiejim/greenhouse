@@ -4,7 +4,8 @@
  * GET /api/activity          — 操作记录一页：人 / 成员的 Agent / 定时任务 / 管理员改动，游标分页
  *                              （source、module、user_id、from、to、cursor、limit）
  * GET /api/activity/export   — 同样的筛选导出 CSV（最多 ACTIVITY_EXPORT_MAX_ROWS 行）
- * GET /api/activity/recent   — 首页「团队动态」：近 14 天全团队的改动，只含查看者读得到的对象（limit ≤ 50）
+ * GET /api/activity/recent   — 铃铛里的「团队动态」：近 14 天全团队的改动，只含查看者读得到的对象（limit ≤ 50；
+ *                              before=<上一页最后一条的 at> 翻页，返回 next_before，没有更多时为 null）
  *
  * 成员只看到自己的记录（user_id 被忽略）；super 看全部、可按人筛选，管理员改动只给 super。
  * 实现见 activity/activity-log.ts。
@@ -24,7 +25,7 @@ import {
   listActivity,
   type ActivityQuery,
 } from '../activity/activity-log.js';
-import { listRecentChanges } from '../activity/recent-changes.js';
+import { listRecentChanges, RECENT_MAX_ITEMS } from '../activity/recent-changes.js';
 
 function queryOf(c: Context<AppEnv>): ActivityQuery {
   const limit = c.req.query('limit');
@@ -58,8 +59,11 @@ export function createActivityRoutes() {
     .get('/recent', async (c) => {
       const user = getAuthUser(c);
       const limit = Number(c.req.query('limit') ?? '') || undefined;
-      const items = await listRecentChanges(getDb(), user, { limit }, { runtime: getPlatformRuntime() });
-      return c.json({ items } as unknown as Record<string, unknown>);
+      const before = c.req.query('before') || null;
+      const items = await listRecentChanges(getDb(), user, { limit, before }, { runtime: getPlatformRuntime() });
+      const pageSize = Math.min(Math.max(Math.trunc(limit ?? 20) || 20, 1), RECENT_MAX_ITEMS);
+      const next_before = items.length >= pageSize ? (items[items.length - 1]?.at ?? null) : null;
+      return c.json({ items, next_before } as unknown as Record<string, unknown>);
     })
     .get('/export', async (c) => {
       const user = getAuthUser(c);

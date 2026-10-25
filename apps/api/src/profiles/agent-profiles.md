@@ -175,27 +175,10 @@ stateless Agent/MCP 不开放该文件工具。
   而 MCP 调用方自填 `user_confirmed` 与 `confirm`，两步确认坍缩成一步；`email_query` 一并摘掉——
   私人收件箱全文不该交给第三方客户端。`/api/agent`（CLI）两者照常。
 
-### Home 工作台工具
+### 已移除的工作台工具
 
-所有内部用户默认装配 `workbench_query`（读）与 `workbench_mutation`（写）——Chat 新会话空态
-就是首页工作台，所以「帮我把首页配一下」是用户在当前这场对话里提的需求，工具对是它的能力底座。
-
-- **owner-scoped**：两个工具都只解析请求者自己的 preferences 行，卡片也只能绑该用户**当前**
-  能调且明确适合自动刷新的工具（构造时传入 `resolveUserTools ∩ WORKBENCH_READ_TOOL_IDS`），绑不到的直接报错
-  并列出可绑清单，不是静默失败。
-- **求值链与页面同源**：`workbench/evaluate.ts` 一份实现同时服务批量求值端点与这两个工具，
-  所以「模型试算看到的」与「用户刷新看到的」不会分叉。
-- **单卡增改免 confirm、删除或模板替换要 confirm**：卡片是可逆的个人偏好，逐次确认会让「帮我搭一个」变成
-  连点五次；`remove_widget`/`remove_tab` 与会覆盖整套布局的 `apply_template` 保留 confirm 门。
-- **成员自选模板也与 UI 同源**：`workbench_query.templates` 只返回同时满足有效工作台工具与
-  Platform 可见应用的 Projects 模板；`workbench_mutation.apply_template` 用同一组
-  recipe 原子替换 tabs/widgets、保留应用偏好，并因会移除现有布局要求 `confirm:true`。
-- **写完立刻试算并回传结果**（spec D15）：数据卡走真实工具结果，导航卡走真实存在性/授权解析；这是免 confirm 的代价所在——模型自己看得见卡片出不出数，
-  空卡要修不要报成功。也因此未上 recipe 的工具可以先 `preview` 再落卡。
-- **并发写合并**：mutation 只把本轮相对读取快照产生的 widget/tab delta 合到 DB 锁内的最新配置，
-  与浏览器或另一轮 Agent 同时改动时不允许整份 JSON 后写覆盖前写。
-- **chat-only**：两个工具都不声明 `surface`，`/api/agent` 与 `/api/mcp` 拿不到——个人 UI 配置
-  没有自动化消费者。
+3.0 删除了 Home 工作台，`workbench_query` / `workbench_mutation` 随之删除。存量 Agent 配置或自动化里
+写着这两个 id 照常运行：工具名单是交集过滤，未知 id 被忽略（`tool-resolution.test.ts` 钉住）。
 
 ### 知识库读工具（`knowledge_query` 单一实现）
 

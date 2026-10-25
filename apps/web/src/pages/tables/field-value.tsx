@@ -2,11 +2,13 @@ import type { ReactNode } from 'react';
 import { TagList } from '../../components/ui';
 import type { TableField } from '../../lib/api/tables';
 import { formatDate, formatDay } from '../../lib/utils';
+import { relationIdsOf, type RelationLabelLookup } from './relation-labels';
 
 export function renderTableFieldValue(
   field: TableField,
   value: unknown,
   usersById: ReadonlyMap<string, { nickname: string }>,
+  relationLabel?: RelationLabelLookup,
 ): ReactNode {
   if (value === null || value === undefined || value === '') return <span className="text-fg-faint">—</span>;
   const config = field.config ?? {};
@@ -23,6 +25,12 @@ export function renderTableFieldValue(
   if (field.type === 'user' && typeof value === 'string') return usersById.get(value)?.nickname ?? value;
   if (field.type === 'multi_user' && Array.isArray(value)) {
     return <TagList items={value.map((entry) => usersById.get(String(entry))?.nickname ?? String(entry))} />;
+  }
+  if (field.type === 'relation') {
+    // The linked record's primary field (see ./relation-labels.ts), `#id` until it is known.
+    const names = relationIdsOf(value).map((id) => relationLabel?.(field, id) ?? `#${id}`);
+    if (names.length === 0) return <span className="text-fg-faint">—</span>;
+    return config.relation?.multiple ? <TagList items={names} /> : names[0];
   }
   if (field.type === 'attachment' && Array.isArray(value)) return <TagList items={value.map(String)} max={2} />;
   if (field.type === 'url' && typeof value === 'string') {

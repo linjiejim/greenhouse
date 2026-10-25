@@ -14,7 +14,7 @@ function application(id: string): PlatformApplication {
   };
 }
 
-const labels = { home: 'Home', files: 'Files', skillhub: 'SkillHub', automations: 'Automation' };
+const labels = { files: 'Files', skillhub: 'SkillHub', automations: 'Automation' };
 
 describe('Primary navigation', () => {
   it('orders the workspace by goal and puts the assistant last', () => {
@@ -29,7 +29,6 @@ describe('Primary navigation', () => {
     });
 
     expect(primary.map((item) => item.key)).toEqual([
-      'home',
       'knowledge',
       'files',
       'tables',
@@ -45,12 +44,12 @@ describe('Primary navigation', () => {
 
   it('omits unauthorized apps but keeps the fixed destinations', () => {
     const { primary } = buildPrimaryNavigation({ applications: [application('knowledge')], labels });
-    expect(primary.map((item) => item.key)).toEqual(['home', 'knowledge', 'files', 'skillhub', 'automations']);
+    expect(primary.map((item) => item.key)).toEqual(['knowledge', 'files', 'skillhub', 'automations']);
   });
 
-  it('leads with Home and keeps the Activity log out of the primary list (it has a fixed entry)', () => {
+  it('has no Home item (Home is the conversation) and keeps the Activity log out of the primary list', () => {
     const navigation = buildPrimaryNavigation({ applications: [], labels });
-    expect(navigation.primary[0]).toMatchObject({ key: 'home', href: '#/home' });
+    expect(navigation.primary.map((item) => item.key)).not.toContain('home');
     expect(navigation.primary.map((item) => item.href)).not.toContain('#/activity');
     // the assistant has no item: New Chat opens it
     expect(navigation.primary.map((item) => item.key)).not.toContain('chat');
@@ -68,7 +67,8 @@ describe('activeNavigationKey', () => {
     }
   });
 
-  it('lights nothing in a conversation (New Chat is its way in)', () => {
+  it('lights nothing in a conversation or on Home (New Chat is their way in)', () => {
     expect(activeNavigationKey('chat')).toBeNull();
+    expect(activeNavigationKey('home')).toBeNull();
   });
 });

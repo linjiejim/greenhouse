@@ -36,8 +36,8 @@ A full, code-checked list of what 3.0 does lives in **[docs/capabilities.md](doc
 <table>
   <tr>
     <td width="50%" valign="top">
-      <img src="docs/assets/screens/home-workbench.webp" alt="Live project cards backed by the agent tools" />
-      <b>Live cards</b> — cards backed by the same tools (on Home in 3.0, under the team's recent changes); edit by drag-and-drop or ask the assistant.
+      <img src="docs/assets/screens/home.webp" alt="Home: the assistant, a greeting, the composer and recent conversations" />
+      <b>Home is a conversation</b> — open the app and type: the assistant, what is waiting for you, and your recent conversations.
     </td>
     <td width="50%" valign="top">
       <img src="docs/assets/screens/chat-tables-answer.webp" alt="Chat answer with a rendered data table from a Tables base" />
@@ -134,11 +134,12 @@ Details: [MCP & agent access](#mcp--agent-access).
 - **Files** — the team's file cabinet and your own: folders, upload, preview (images, PDF,
   text), rename / move / delete and name search.
 - **Projects** — projects, members, tasks in list / board / Gantt views, task comments, activity.
-- **Tables** — multidimensional bases: typed fields, views, record links, formulas, lookups and
-  rollups, archive and restore, and conversational schema planning (the assistant drafts, you
+- **Tables** — multidimensional bases: typed fields, views, record links (shown by the linked
+  record's primary field), formulas and rollups, archive and restore, and conversational schema planning (the assistant drafts, you
   confirm).
-- **Home** — the team's recent changes (knowledge edits, project and table changes, new files,
-  and which agent made them) above your own live cards backed by the same tools.
+- **Home** — a new conversation: the assistant, a greeting, what is waiting for you, the composer
+  and your recent conversations. The team's recent changes (and which agent made them) are a tab
+  of the bell, on the web and on the phone.
 - **Activity log** — who changed what: members in the app, their agents over MCP (with the
   client's name), automations and admin setting changes, filterable and exportable as CSV.
   Each automation run and agent write keeps its full step, tool-call and event evidence; a run
@@ -225,7 +226,7 @@ iOS, Feishu, automations); **MCP** = the resource group a member grants; every M
 | Paid services | `analyze_image`; `web_search`, `read_url` (external only); `external_search` (Chat only) | `generate_image` | `services` |
 | Cloud computer (external only) | `computer_files` | `computer_exec`, `computer_transfer`, `computer_stop` | `computer` |
 | Email | `email_query` | `email_mutation` (confirm card) | — not on MCP |
-| Chat helpers | `ask_user`, `read_attachment`, `compute`, `call_llm`, `workbench_query`, `memory` (flag `memory`) | `export_data`, `task_capture`, `workbench_mutation` | — |
+| Chat helpers | `ask_user`, `read_attachment`, `compute`, `call_llm`, `memory` (flag `memory`) | `export_data`, `task_capture` | — |
 
 MCP adds three protocol tools for every grant: `team_context`, `data_catalog` and
 `tool_output_read`. Writes whose action deletes (`delete`, `remove`, `purge`, `destroy`, `drop`)
@@ -236,9 +237,10 @@ Deliberately **not** on MCP: email (its safety is a person reading the draft), `
 
 ### Clients
 
-- **Web** — Home, Knowledge, Files, Tables (with the Data catalog), Projects, SkillHub (Skills /
-  My prompts / Report templates), Automations (with Run profiles) and Chat; the ⌘P palette, an
-  inbox for notifications and shares, the Activity log, and the assistant as an overlay on any
+- **Web** — Home (a new conversation, with recent conversations in the sidebar on every page),
+  Knowledge, Files, Tables (with the Data catalog), Projects, SkillHub (Skills / My prompts /
+  Report templates) and Automations (with Run profiles); the ⌘P palette, a bell for notifications,
+  shares and team activity, the Activity log, and the assistant as an overlay on any
   page. Settings: preferences, Agent connections (connected agents, their writes, model gateway
   keys, connect wizard), Feishu / WeCom binding, email accounts, usage, cloud computer, memory.
   Administration: users and permissions, usage, Services & pricing (spend, prices, budgets,
@@ -710,15 +712,14 @@ the unattended denylist for scheduled runs). Ownership of the data itself is che
 tool, against the `userId` its factory received.
 
 The registry derives every exposure set from the catalog, with no hand-maintained id lists: the
-read and write proxy allowlists, the MCP set per resource group, the Home-workbench and builtin
-sets, and the lazy id list all come from each tool's `meta.surface` / `builtin` / `kind`. Guard
+read and write proxy allowlists, the MCP set per resource group, the builtin
+set, and the lazy id list all come from each tool's `meta.surface` / `builtin` / `kind`. Guard
 tests pin the result: `tools/__tests__/surface-derivation.test.ts` fixes the exact core members
-of the proxy, MCP, workbench and lazy sets (an intentional exposure change edits the tool and
+of the proxy, MCP and lazy sets (an intentional exposure change edits the tool and
 the test together), and `description-budget.test.ts` caps the combined length of tool
 descriptions, since every one is sent to the model on every step.
 
-The other `meta` fields: `surface.workbench` (safe to re-run as a Home card),
-`surface.unattendedReplaySafe` (may run with nobody present and be retried), `builtin` (part of
+The other `meta` fields: `surface.unattendedReplaySafe` (may run with nobody present and be retried), `builtin` (part of
 every run profile, even one that did not list it), `runtime_risk` (the risk class recorded
 on each call when the surface does not imply it) and `presentation` (`'artifact'` marks a
 result that renders as an inline card rather than a trace row). The header of
@@ -760,8 +761,7 @@ fields map 1:1 onto the core registries: the tool catalog (and with it `/api/age
 the permissions dialog), Runtime Config settings, public paths, the scheduler, the CLI, the
 database services, a dedicated **migration lane** (`extension_migrations`, applied at boot under
 an advisory lock), record kinds with deeplinks and chat peeks, lanes in global search, whole-dataset
-sources for `export_data`, its own scope in the shared file Drive, MCP consent groups, Home
-workbench cards, the hash router (including a page's own sub-modules), the sidebar, i18n, tool
+sources for `export_data`, its own scope in the shared file Drive, MCP consent groups, the hash router (including a page's own sub-modules), the sidebar, i18n, tool
 cards and the agent panel. Which extensions are *active* is decided per deployment by
 `greenhouse.config.ts` or `GREENHOUSE_EXTENSIONS`; an inactive extension contributes nothing —
 no tools, no routes, no migrations.

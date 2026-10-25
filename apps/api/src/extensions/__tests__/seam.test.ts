@@ -21,7 +21,6 @@ async function loadWith(enabled: string) {
   const middleware = await import('../../auth/middleware.js');
   const entityLinks = await import('@greenhouse/types/entity-links');
   const mcp = await import('@greenhouse/types/mcp');
-  const workbench = await import('@greenhouse/types/workbench');
   const searchSources = await import('../../search/sources.js');
   const drive = await import('../../drive/access.js');
   const exportSources = await import('../../tools/export-sources.js');
@@ -36,7 +35,6 @@ async function loadWith(enabled: string) {
     middleware,
     entityLinks,
     mcp,
-    workbench,
     searchSources,
     drive,
     exportSources,
@@ -60,7 +58,6 @@ describe('extension seam', { timeout: 60_000 }, () => {
     // the write tool declares proxy:'write', so it lands in the governed-write set
     expect(m.registry.MUTATING_PROXY_ALLOWLIST).toContain('example_notes_mutation');
     expect(m.registry.READONLY_PROXY_ALLOWLIST).not.toContain('example_notes_mutation');
-    expect(m.registry.WORKBENCH_READ_TOOL_IDS).toContain('example_notes_query');
     expect(m.registry.LAZY_TOOL_IDS).toContain('example_notes_query');
     expect(m.points.FEATURE_POINTS.find((p) => p.key === 'example')?.toolIds).toEqual([
       'example_notes_query',
@@ -114,10 +111,8 @@ describe('extension seam', { timeout: 60_000 }, () => {
     // an export_data lane of its own
     expect(m.exportSources.extensionExportSources().map((s) => s.type)).toEqual(['example_notes']);
 
-    // search lane + workbench recipe
+    // search lane
     expect(m.searchSources.extensionSearchSources().map((s) => s.kind)).toEqual(['ext:example:note']);
-    expect(m.workbench.allWidgetRecipes().map((r) => r.id)).toContain('example.notes');
-    expect(m.workbench.availableRecipes(['example_notes_query']).map((r) => r.id)).toEqual(['example.notes']);
   });
 
   it('contributes nothing while disabled', async () => {
@@ -138,7 +133,6 @@ describe('extension seam', { timeout: 60_000 }, () => {
     expect(m.drive.extensionDriveScopes()).toEqual([]);
     expect(m.drive.isKnownDriveScope('example-note')).toBe(false);
     expect(m.exportSources.extensionExportSources()).toEqual([]);
-    expect(m.workbench.allWidgetRecipes().some((r) => r.id === 'example.notes')).toBe(false);
     expect(() => m.entityLinks.entityUrl({ kind: 'ext:example:note', id: 1 })).toThrow(/Unknown entity kind/);
   });
 

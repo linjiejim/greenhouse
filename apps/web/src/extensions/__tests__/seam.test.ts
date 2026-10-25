@@ -17,7 +17,6 @@ import {
 import { defineWebExtension } from '../define';
 import { translate } from '../../lib/i18n';
 import { isEntityUrl, parseEntityUrl } from '@greenhouse/types/entity-links';
-import { availableRecipes } from '@greenhouse/types/workbench';
 import {
   getNavModule,
   isNavModuleActive,
@@ -28,8 +27,6 @@ import {
 import { registeredEntityKind, registeredKnowledgeDocPanels, registeredToolCard } from '../../lib/extension-registries';
 import { entityPeekMeta } from '../../components/entity-peek/registry';
 import { mcpGroupIds, mcpGroupLabelKey } from '../../lib/mcp-groups';
-import { recipeLabels } from '../../lib/workbench/recipes';
-import { WIDGET_RECIPES } from '@greenhouse/types/workbench';
 import { getToolIcon, StickyNote } from '../../lib/icons';
 import { isArtifactCall } from '../../components/tool-call/body-artifacts';
 import { getContextProvider } from '../../lib/context-registry';
@@ -108,23 +105,6 @@ describe('web extension seam', () => {
     expect(registeredKnowledgeDocPanels().map((p) => p.id)).toEqual(['example-doc-note']);
   });
 
-  it('labels an extension recipe from its own keys', () => {
-    const recipe = {
-      id: 'example.notes',
-      toolId: 'example_notes_query',
-      label: 'Example notes',
-      description: 'desc',
-      labelKey: 'ext.example.recipe.notes',
-      descriptionKey: 'ext.example.recipe.notesDesc',
-      display: 'table' as const,
-      source: { toolId: 'example_notes_query', input: {} },
-      size: { w: 6, h: 5 },
-    };
-    expect(translate('zh', recipeLabels(recipe).labelKey as never)).toBe('示例笔记');
-    // core recipes keep their closed table
-    expect(recipeLabels(WIDGET_RECIPES[0]).labelKey).toBe('home.recipe.projectsList');
-  });
-
   it('keeps the store fail-closed until the API answers', () => {
     expect(useExtensionsStore.getState().loaded).toBe(false);
     expect(useExtensionsStore.getState().extensions).toEqual([]);
@@ -153,7 +133,7 @@ describe('web extension seam', () => {
     expect(isNavModuleActive(mod!, [{ id: 'example' }])).toBe(true);
   });
 
-  it('learns record routes and recipes from the API, so links and cards resolve in the browser', async () => {
+  it('learns record routes from the API, so links resolve in the browser', async () => {
     // Before the store loads, an extension deeplink is just a link.
     expect(isEntityUrl('#/example/notes/7')).toBe(false);
 
@@ -162,17 +142,6 @@ describe('web extension seam', () => {
         JSON.stringify({
           extensions: [{ id: 'example', name: 'Example notes', description: null }],
           entityKinds: [{ kind: 'ext:example:note', route: '#/example/notes/:id' }],
-          workbenchRecipes: [
-            {
-              id: 'example.notes',
-              toolId: 'example_notes_query',
-              label: 'Example notes',
-              description: 'desc',
-              display: 'table',
-              source: { toolId: 'example_notes_query', input: {} },
-              size: { w: 6, h: 5 },
-            },
-          ],
         }),
         { status: 200, headers: { 'content-type': 'application/json' } },
       ),
@@ -180,10 +149,9 @@ describe('web extension seam', () => {
     try {
       await useExtensionsStore.getState().load();
       expect(useExtensionsStore.getState().extensions.map((e) => e.id)).toEqual(['example']);
-      // Now the same link opens a peek, and the card picker offers the recipe.
+      // Now the same link opens a peek.
       expect(isEntityUrl('#/example/notes/7')).toBe(true);
       expect(parseEntityUrl('#/example/notes/7')).toEqual({ kind: 'ext:example:note', id: 7 });
-      expect(availableRecipes(['example_notes_query']).map((r) => r.id)).toEqual(['example.notes']);
 
       // A second load (re-login) must not throw on the already-known entries.
       await expect(useExtensionsStore.getState().load()).resolves.toBeUndefined();

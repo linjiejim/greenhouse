@@ -26,7 +26,7 @@
 
 | 表 | 主键 / 唯一 | 用途与关键列 |
 |---|---|---|
-| `users` | PK `id`；UK `email` | 内部账号。`role` super / team（`external` 只出现在搬来的 disabled 行，鉴权拒绝）；`status` invited / active / reset_required / disabled；`auth_version` 凭证代数（改密、停用时递增，令牌与推送设备比对）；`locale`；`preferences` jsonb（字号 `fontScale`、Home 工作台 `workbench`） |
+| `users` | PK `id`；UK `email` | 内部账号。`role` super / team（`external` 只出现在搬来的 disabled 行，鉴权拒绝）；`status` invited / active / reset_required / disabled；`auth_version` 凭证代数（改密、停用时递增，令牌与推送设备比对）；`locale`；`preferences` jsonb（字号 `fontScale`） |
 | `auth_refresh_tokens` | PK `id` | 刷新令牌 hash、签发代数、过期时间；FK `user_id` CASCADE |
 | `password_links` | PK `id`；UK `token_hash`；部分 UK `user_id`（未消费未撤销） | 邀请 / 重置设密链接，只存 token 的 SHA-256；`purpose`、`issued_auth_version`、过期 / 消费 / 撤销、邮件投递状态；`created_by` 逻辑 |
 | `login_states` | PK `id`（= 值的 SHA-256） | 飞书 / 企微登录的待回调 `state` 与一次性登录码；`provider`、`kind` pending / login_code、`payload`、`expires_at`、`consumed_at` |

@@ -56,21 +56,11 @@ what exists." These rules are as binding as the "add" rules:
 - **Check for an existing implementation first.** Before adding a "second" retrieval / chart /
   editor / etc., register in the relevant AGENTS.md why the existing one can't be reused or
   extended. Parallel implementations without a recorded reason are not accepted.
-  - Registered: **the Home workbench reuses the *components and query semantics*** (`ChartBlock`,
-    `TableQuery` filter AST, "one card = one persisted query") and stores its config in
-    `users.preferences.workbench`. Its drag grid `components/workbench/widget-grid.tsx`
-    (Home only since Tables dashboards were removed in 3.0) is the recorded reason for
-    `react-grid-layout`: collision handling and vertical compaction.
   - Registered: **mermaid in chat uses the third-party `mermaid` library rather than a
     hand-drawn SVG renderer** — chat mermaid is read-only rendering of arbitrary diagram types,
     which no in-house drawing code could match (the interactive workflow SVG DAG it was once
     weighed against was retired with Workflows in v1.4). Lazy-loaded on the first mermaid fence;
     zero main-bundle cost.
-  - Registered: **workbench evaluation has one implementation** (`apps/api/src/workbench/evaluate.ts`)
-    shared by the batch evaluate endpoint and the `workbench_*` tools, so "what the model
-    previews" and "what the user refreshes" are the same thing. The bindable set is derived
-    from tool metadata (`surface.workbench: true` → `WORKBENCH_READ_TOOL_IDS`), deliberately
-    narrower than the read proxy.
 - **No speculative abstraction.** Don't write interface layers / multi-backend abstractions /
   "for future use" columns with no second consumer.
 - **Declared capabilities must be real.** LLM tool descriptions, UI options, and docs must not
@@ -109,7 +99,7 @@ what exists." These rules are as binding as the "add" rules:
   whole suite in the `e2e-ui` job (Chromium via `playwright install --with-deps`).
 - **Screenshot tour (visual smoke)**: `node scripts/capture-screens.mjs` drives a running,
   seeded dev stack (`E2E_BASE_URL`, default `:4400`) through every surface with Playwright:
-  it seeds a demo Tables base / workbench layout / skills / run profile / MCP machine client
+  it seeds a demo Tables base / skills / run profile / MCP machine client
   over the API, asks the live model two questions, and writes `docs/assets/screens/*.webp`
   (+ `chat-knowledge.gif` / `.mp4`) that the README and `docs/index.html` embed. It exits
   non-zero on any console error or failed `/api` request. Re-run it after visible UI changes
@@ -246,7 +236,6 @@ greenhouse/
 │   │       ├── skills/       # SkillHub — bundle validation, store, publish/download, scanner
 │   │       ├── reports/      # report templates + server-side PDF/DOCX/PPTX rendering into Files (fonts in apps/api/assets/fonts)
 │   │       ├── storage/      # upload storage (local disk / COS) + s3-lite (SigV4 client)
-│   │       ├── workbench/    # workbench card evaluation (shared by API + tools)
 │   │       ├── hub-context/  # team context for members' agents: MCP prompts/resources, team_context, data catalog
 │   │       ├── retro/        # monthly retro (复盘) doc: aggregates, suggestions, writer
 │   │       └── cli/          # `pnpm cli` console: index.ts dispatcher + commands/*
@@ -256,7 +245,7 @@ greenhouse/
 ├── packages/
 │   ├── agent-core/       # Agent kernel — streamText loop, model factory/registry, provider quirks
 │   ├── platform-kernel/  # Manifest v2, ActorContext, authorization, guarded registry (no DB/Hono/React)
-│   ├── types/            # shared types (FEATURE_FLAGS, WORKSPACE_SETTINGS, entity links, workbench…)
+│   ├── types/            # shared types (FEATURE_FLAGS, WORKSPACE_SETTINGS, entity links, activity…)
 │   ├── utils/            # shared helpers (date, json, concurrency, logger, crypto, semver, webhooks)
 │   ├── db/               # database layer — Drizzle schema + domain services (types inferred),
 │   │                     #   migrate / version detection, carry/ (migrate-from-1x), db-schema.md
@@ -280,7 +269,7 @@ greenhouse/
 |---|---|---|
 | `@greenhouse/agent-core` | `packages/agent-core/` | Agent kernel — chat-engine, model registry/factory, DSML interceptor |
 | `@greenhouse/platform-kernel` | `packages/platform-kernel/` | Manifest v2, actor context, authz, registry (`contract` / `dsl` / `authz` / `registry` subpaths) |
-| `@greenhouse/types` | `packages/types/` | Shared type definitions and registries (feature flags, workspace settings, entity links, object refs, workbench recipes) |
+| `@greenhouse/types` | `packages/types/` | Shared type definitions and registries (feature flags, workspace settings, entity links, object refs, activity) |
 | `@greenhouse/utils` | `packages/utils/` | Shared helpers |
 | `@greenhouse/db` | `packages/db/` | Database layer |
 | `@greenhouse/knowledge-editor` | `packages/knowledge-editor/` | KB editor: Tiptap schema + Markdown↔Tiptap JSON. Markdown is canonical; `content_json='{}'` is legal |
@@ -315,9 +304,10 @@ greenhouse/
     behind it. The full list is in EXTENDING.md → "Extensions". Registries opened for extensions
     so far: tools (incl. a generic lazy path), routes, platform apps, feature flags/points,
     workspace settings, public paths, scheduler jobs, CLI commands, db services + a migration
-    lane, entity kinds (deeplink + peek), search sources, MCP consent groups, workbench recipes,
+    lane, entity kinds (deeplink + peek), search sources, MCP consent groups,
     web pages/navigation/modules/i18n/tool cards/knowledge-doc panels/agent context.
-  - Still closed: notification transports and workbench pinning of extension records.
+  - Still closed: notification transports.
+  - `workbenchRecipes`, `meta.surface.workbench` and kit `WidgetRecipe` are deprecated no-ops (Home workbench removed in 3.0); drop them in 4.0.
   - Extension tables use the migration lane (`migrations/*.sql`, `--> statement-breakpoint`);
     never append extension DDL to `drizzle/`. Applied files are checksummed — add a new file
     instead of editing one.
@@ -449,8 +439,7 @@ dialog (`apps/web/src/pages/administration/user-permissions-modal.tsx`) renders 
 - `@greenhouse/platform-kernel` is the base for applications: Manifest v2, ActorContext,
   capability / entity / field authorization and a guarded registry. The API host
   (`apps/api/src/platform/`) persists roles, role members, role capabilities, role entity
-  policies and action audit (`audit_events`) in `db.platform`, plus the workbench layout in
-  `users.preferences`; OAuth state lives in `db.platformOAuth`. Single organization: there is
+  policies and action audit (`audit_events`) in `db.platform`; OAuth state lives in `db.platformOAuth`. Single organization: there is
   no organizations table or `org_id`; `ActorContext.orgId` stays and the host passes
   `'default'`.
 - Precedence is fixed: **role allow > default deny**. 3.0 stores no per-user allow/deny
@@ -469,7 +458,7 @@ dialog (`apps/web/src/pages/administration/user-permissions-modal.tsx`) renders 
 - Projects, Knowledge and Tables are registered applications. New applications start from
   `pnpm cli platform create-app <id> --title "..."`; an app without a web UI may stay
   Agent/MCP-only. The web catalog and the fixed shell navigation
-  (by goal: `Home → Knowledge → Files → Tables → Projects → SkillHub → Automations → Chat`, see
+  (by goal: `Knowledge → Files → Tables → Projects → SkillHub → Automations`; Home is the new conversation, see
   apps/web/src/AGENTS.md) derive from the user's authorized catalog;
   who changed what (people, their agents, automations, admins) lives in the Activity log (`#/activity`,
   formerly the execution center; `#/executions` redirects).

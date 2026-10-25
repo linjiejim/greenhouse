@@ -32,9 +32,7 @@ import { useT } from '../../lib/i18n';
  *
  * Global rather than per-surface on purpose: a taller composer only for the
  * empty state would jump the instant the first message is sent, and the overlay
- * shares this component. The empty state is now the personal workbench, so the
- * vertical space a permanently three-line composer used to hold belongs to the
- * cards above it.
+ * shares this component.
  *
  * The floor is 56 and not lower because the mobile send button is anchored to
  * the textarea's own bottom-right (`absolute bottom-2`) and is a 44px touch

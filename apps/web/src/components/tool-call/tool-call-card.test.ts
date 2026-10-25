@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { summarizeToolInput, summarizeToolOutput, toolDisplayName } from './tool-call-card';
 
 describe('tool call summaries', () => {
-  it('turns saved-workbench calls into a quiet human summary instead of raw JSON', () => {
-    const summary = summarizeToolInput('workbench_query', { action: 'get', widget_id: 'w_1' });
+  it('turns an action call into a quiet human summary instead of raw JSON', () => {
+    const summary = summarizeToolInput('memory', { action: 'get', memory_id: 'm_1' });
     expect(summary).toBe('Get');
     expect(summary).not.toContain('{');
   });

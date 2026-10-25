@@ -26,6 +26,7 @@ import { IconButton, Input, toast } from '../ui';
 import { FullHistoryModal } from '../history-modal';
 import { chatWorkspaceLabel } from '../chat/chat-workspace-navigation';
 import type { ChatWorkspaceView } from '../../stores';
+import { isConversationRoute } from '../../platform/navigation';
 
 type Route =
   | 'home'
@@ -195,12 +196,13 @@ export function TopBar({
 
   // Check for sub-module breadcrumb
   const subMeta = subPath ? resolveSubModule(route, subPath, t) : null;
-  const isChatConversation = route === 'chat' && chatWorkspaceView === 'conversation';
-  const chatUtilityTitle = route === 'chat' ? chatWorkspaceLabel(chatWorkspaceView, t) : null;
+  const isConversation = isConversationRoute(route);
+  const isChatConversation = isConversation && chatWorkspaceView === 'conversation';
+  const chatUtilityTitle = isConversation ? chatWorkspaceLabel(chatWorkspaceView, t) : null;
 
   // Fallback page titles
   const pageTitles: Record<string, string> = {
-    home: t('navigation.home'),
+    home: chatUtilityTitle || sessionTitle || t('chat.newConversation'),
     chat: chatUtilityTitle || sessionTitle || t('chat.newConversation'),
     automations: t('navigation.automation'),
     projects: t('app.projects'),
@@ -219,7 +221,7 @@ export function TopBar({
   // header, so this breadcrumb bar would duplicate it — hide it on desktop and
   // keep only the mobile nav trigger. Chat has no page header of its own, so its
   // session title/tags/share bar stays visible at every width.
-  const visibility = route === 'chat' ? 'flex' : 'flex md:hidden';
+  const visibility = isConversation ? 'flex' : 'flex md:hidden';
 
   return (
     <header
@@ -262,7 +264,7 @@ export function TopBar({
         {isChatConversation && <ChatTopBarSessionActions share={chatShare} />}
         {children}
         <div className="flex items-center gap-1 md:hidden">
-          {route === 'chat' && (
+          {isConversation && (
             <IconButton onClick={() => setShowMobileHistory(true)} label={t('chat.sessionHistory')}>
               <History size={18} />
             </IconButton>

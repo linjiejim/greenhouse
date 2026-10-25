@@ -337,9 +337,10 @@ export function createDriveService(db: Db) {
 
     /**
      * The newest active knowledge-cabinet files one user may read (team files +
-     * their own personal ones), for activity feeds. Bounded by `limit` (≤ 50).
+     * their own personal ones), for activity feeds. Bounded by `limit` (≤ 50);
+     * `before` keeps only files created strictly earlier (the feed's paging cursor).
      */
-    async listRecentKbFiles(opts: { userId: string; limit?: number }): Promise<DriveFileRow[]> {
+    async listRecentKbFiles(opts: { userId: string; limit?: number; before?: string | null }): Promise<DriveFileRow[]> {
       const limit = Math.min(Math.max(opts.limit ?? 20, 1), 50);
       const rows = await db
         .select(fileColumns)
@@ -350,6 +351,7 @@ export function createDriveService(db: Db) {
             eq(driveFiles.scope, 'kb'),
             eq(driveFiles.status, 'active'),
             sql`(${driveFiles.visibility} = 'team' OR ${driveFiles.owner_user_id} = ${opts.userId})`,
+            opts.before ? sql`${driveFiles.created_at} < ${opts.before}::timestamptz` : undefined,
           ),
         )
         .orderBy(desc(driveFiles.created_at), desc(driveFiles.id))

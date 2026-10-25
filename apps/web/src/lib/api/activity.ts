@@ -54,12 +54,22 @@ export async function exportActivityCsv(filters: ActivityFilters): Promise<void>
   await downloadAuthenticatedFile(activityExportUrl(filters), 'activity.csv');
 }
 
-/** Home "recent changes": the team's latest changes the viewer may read. */
-export async function fetchRecentChanges(limit = 12): Promise<ActivityItem[]> {
-  const args = { query: { limit: String(limit) } };
-  const response = await rpc.api.activity.recent.$get(args);
+export interface RecentChangesPage {
+  items: ActivityItem[];
+  /** Pass back as `before` for the next page; null when there is no more. */
+  next_before: string | null;
+}
+
+/** Team activity (the bell's third tab): the team's latest changes the viewer may read, newest first. */
+export async function fetchRecentChanges(
+  page: { limit?: number; before?: string | null } = {},
+): Promise<RecentChangesPage> {
+  const query: Record<string, string> = { limit: String(page.limit ?? 20) };
+  if (page.before) query.before = page.before;
+  const response = await rpc.api.activity.recent.$get({ query });
   const data: unknown = await response.json();
   if (!response.ok) throw new Error(errorMessage(data, `Unable to load recent changes (${response.status})`));
   // The route hands back the shared ActivityItem shape (packages/types/src/activity.ts).
-  return (data as { items: ActivityItem[] }).items;
+  const body = data as { items: ActivityItem[]; next_before?: string | null };
+  return { items: body.items, next_before: body.next_before ?? null };
 }

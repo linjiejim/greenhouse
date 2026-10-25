@@ -56,6 +56,7 @@ import { InlineCell } from './inline-cell';
 import { buildPasteBatch, parseClipboardMatrix, parsePastedCell } from './grid-utils';
 import { TablesGridToolbar } from './grid-toolbar';
 import { renderTableFieldValue } from './field-value';
+import { useRelationLabels } from './relation-labels';
 import { useT, type TranslationKey } from '../../lib/i18n';
 
 interface TablesGridViewProps {
@@ -69,6 +70,7 @@ const ROLE_RANK: Record<TableBaseRole, number> = { viewer: 0, editor: 1, builder
 
 /** Freeze more than this and the frozen block itself stops fitting on screen. */
 const MAX_FROZEN_COLUMNS = 4;
+const NO_FIELDS: TableField[] = [];
 
 const FIELD_LABEL_KEYS: Record<TableFieldType, TranslationKey> = {
   text: 'tables.fieldType.text',
@@ -209,6 +211,7 @@ export function TablesGridView({ table, tables, role, users }: TablesGridViewPro
   const { menu, openMenu, closeMenu } = useContextMenu();
 
   const usersById = useMemo(() => new Map(users.map((user) => [user.id, user])), [users]);
+  const relationLabel = useRelationLabels(schema?.fields ?? NO_FIELDS, records);
 
   const loadSchema = useCallback(async () => {
     const next = await getTableSchema(table.id);
@@ -705,6 +708,7 @@ export function TablesGridView({ table, tables, role, users }: TablesGridViewPro
                             ? record.values[String(field.id)]
                             : record.computed_values[String(field.id)],
                           usersById,
+                          relationLabel,
                         )}
                       </InlineCell>
                     </td>

@@ -207,7 +207,7 @@ export function prepareProxyToolCall(
  *
  * `usageClient` counts one `tool_call` (fire-and-forget) once every check has
  * passed, keyed by the canonical tool id; omit it for internal evaluations
- * (workbench refresh) that are not a client calling a tool.
+ * that are not a client calling a tool.
  */
 export async function executeProxyTool(
   registry: ToolRegistry,

@@ -1,7 +1,11 @@
 /**
- * Chat History Panel — sidebar contextual panel for Chat tab.
+ * Chat History Panel — sidebar contextual panel for Home and conversations.
  * Shows recent sessions grouped by date (Today / Yesterday / This Week / Earlier)
  * with search/filter capabilities and auto-refresh on new session creation.
+ *
+ * `compact` is the same list for module pages: a collapsible "Recent
+ * conversations" section under the module's own panel — five rows, no search,
+ * scopes or grouping, and "All" back to Home where the full list lives.
  */
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
@@ -43,6 +47,21 @@ interface ChatHistoryPanelProps {
   currentSessionId: string | null;
   onSelectSession: (sessionId: string) => void;
   collapsed?: boolean;
+  /** Module pages: a collapsible five-row "Recent conversations" section. */
+  compact?: boolean;
+  /** Compact mode's "All" (back to Home and its full history). */
+  onShowAll?: () => void;
+}
+
+const COMPACT_ROWS = 5;
+const COMPACT_COLLAPSED_STORAGE_KEY = 'sidebar-recent-chats-collapsed';
+
+function loadCompactCollapsed(): boolean {
+  try {
+    return localStorage.getItem(COMPACT_COLLAPSED_STORAGE_KEY) === 'true';
+  } catch {
+    return false;
+  }
 }
 
 // ── Date grouping helpers ────────────────────────────────
@@ -234,8 +253,26 @@ function SessionContextMenu({
   );
 }
 
-export function ChatHistoryPanel({ currentSessionId, onSelectSession, collapsed }: ChatHistoryPanelProps) {
+export function ChatHistoryPanel({
+  currentSessionId,
+  onSelectSession,
+  collapsed,
+  compact = false,
+  onShowAll,
+}: ChatHistoryPanelProps) {
   const t = useT();
+  const [compactCollapsed, setCompactCollapsed] = useState(loadCompactCollapsed);
+  const toggleCompactCollapsed = useCallback(() => {
+    setCompactCollapsed((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem(COMPACT_COLLAPSED_STORAGE_KEY, String(next));
+      } catch {
+        /* ignore quota errors */
+      }
+      return next;
+    });
+  }, []);
   const [sessions, setSessions] = useState<api.Session[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -411,7 +448,8 @@ export function ChatHistoryPanel({ currentSessionId, onSelectSession, collapsed 
   const loadSessions = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await api.listSessions('active', false, 500, effectiveScope);
+      // Compact mode only ever shows the newest few of the caller's own.
+      const data = await api.listSessions('active', false, compact ? 20 : 500, compact ? 'mine' : effectiveScope);
       // Keep the full set (server caps at 500): pinned sessions must
       // survive even when older than the 50 most-recent. Date buckets cap
       // their own render below.
@@ -424,7 +462,7 @@ export function ChatHistoryPanel({ currentSessionId, onSelectSession, collapsed 
       console.error('Failed to load sessions:', err);
     }
     setLoading(false);
-  }, [effectiveScope]);
+  }, [compact, effectiveScope]);
 
   useEffect(() => {
     loadSessions();
@@ -712,7 +750,7 @@ export function ChatHistoryPanel({ currentSessionId, onSelectSession, collapsed 
     // select mode so the two don't stack.
     // All rows are draggable (onto Pinned to pin); only Pinned rows reorder
     // within their section.
-    const draggable = !isRenaming && !selectMode;
+    const draggable = !isRenaming && !selectMode && !compact;
     const isDragging = dragState?.draggingId === session.id;
 
     // Long-press (touch) enters select mode; the click that follows is then
@@ -724,7 +762,7 @@ export function ChatHistoryPanel({ currentSessionId, onSelectSession, collapsed 
       }
     };
     const handlePointerDown = (e: React.PointerEvent) => {
-      if (e.pointerType !== 'touch' || isRenaming || selectMode) return;
+      if (e.pointerType !== 'touch' || isRenaming || selectMode || compact) return;
       longPressFired.current = false;
       clearLongPress();
       longPressTimer.current = setTimeout(() => {
@@ -742,7 +780,7 @@ export function ChatHistoryPanel({ currentSessionId, onSelectSession, collapsed 
       }
       if (selectMode) {
         handleRowSelectClick(session.id, rowKey, e);
-      } else if (e.metaKey || e.ctrlKey) {
+      } else if ((e.metaKey || e.ctrlKey) && !compact) {
         // Cmd/Ctrl-click from normal mode: enter select mode + tick this row.
         enterSelectModeWith(session.id, rowKey);
       } else {
@@ -908,128 +946,167 @@ export function ChatHistoryPanel({ currentSessionId, onSelectSession, collapsed 
     );
   };
 
+  const compactSessions = compact ? sessions.slice(0, COMPACT_ROWS) : [];
+
   return (
     <>
-      <div className="flex flex-col flex-1 min-h-0">
-        {/* Search + quick actions */}
-        <div className="px-3 py-1.5 flex-shrink-0 space-y-1.5">
-          <SidebarToolbar
-            value={searchQuery}
-            onChange={setSearchQuery}
-            placeholder={t('common.search')}
-            actions={[
-              {
-                label: t('sessionGroups.select'),
-                icon: CheckSquare,
-                onClick: () => (selectMode ? exitSelectMode() : setSelectMode(true)),
-              },
-              { label: t('history.viewAll'), icon: History, onClick: () => setShowFullHistory(true) },
-            ]}
-          />
-        </div>
-
-        {/* Scope tabs — mine (default) / shared with me / team (super only).
-            `segment`, not pills: this is a switch where one option is always on. */}
-        <div className="px-3 pb-1.5 flex-shrink-0">
-          <FilterPills
-            variant="segment"
-            items={[
-              { key: 'mine', label: t('history.scopeMine') },
-              {
-                key: 'shared',
-                label: t('history.scopeShared'),
-                count: unreadShareCount > 0 ? unreadShareCount : undefined,
-              },
-              ...(isSuper ? [{ key: 'team', label: t('history.scopeTeam') }] : []),
-            ]}
-            activeKey={effectiveScope}
-            onChange={(k) => changeScope((k as SessionScope) ?? 'mine')}
-            selectLabel={t('history.scopeFilterLabel')}
-            fill
-          />
-        </div>
-
-        {/* Session list — grouped by date. In select mode, a click on the empty
-            padding (target === the scroll container itself) exits. */}
-        <div
-          className="flex-1 overflow-y-auto"
-          onClick={(e) => {
-            if (selectMode && e.target === e.currentTarget) exitSelectMode();
-          }}
-        >
-          {loading && sessions.length === 0 && (
-            <div className="flex justify-center py-6">
-              <Spinner className="h-4 w-4 text-fg-faint" />
-            </div>
-          )}
-
-          {!loading && filteredSessions.length === 0 && (
-            <div className="px-3 py-6 text-center text-xs text-fg-faint">
-              {searchQuery ? t('chat.noMatches') : t('chat.noConversationsFound')}
-            </div>
-          )}
-
-          {/* Pinned — cross-cutting, lifted above date buckets */}
-          {pinnedSessions.length > 0 &&
-            renderSection({
-              key: 'pinned',
-              title: t('sessionGroups.pinned'),
-              count: pinnedSessions.length,
-              sessions: pinnedSessions,
-              orderable: true,
-              showPinIcon: true,
-            })}
-
-          {/* Date buckets — the unpinned rest. */}
-          <div>
-            {groupedSessions.map((group) => {
-              const sectionKey = `date:${group.group}`;
-              const isCollapsed = collapsedSections.has(sectionKey);
-              return (
-                <div key={group.group}>
-                  <button
-                    type="button"
-                    onClick={() => toggleSection(sectionKey)}
-                    aria-expanded={!isCollapsed}
-                    className="mt-1 flex w-full items-center gap-1.5 px-3 py-1 text-fg-faint transition-colors first:mt-0 hover:text-fg-secondary"
-                  >
-                    {isCollapsed ? <ChevronRight size={11} /> : <ChevronDown size={11} />}
-                    <span className="flex-1 truncate text-left text-caption font-semibold uppercase tracking-wider">
-                      {t(group.label as TranslationKey)}
-                    </span>
-                    <span className="text-caption tabular-nums">{group.sessions.length}</span>
-                  </button>
-                  {!isCollapsed && group.sessions.map((session) => renderRow(session, `date:${group.group}`))}
-                </div>
-              );
-            })}
-            {hasMoreDateBuckets && (
+      {compact ? (
+        <div className="flex-shrink-0 border-t border-edge py-1" data-testid="sidebar-recent-chats">
+          <div className="flex items-center gap-1 px-3">
+            <button
+              type="button"
+              onClick={toggleCompactCollapsed}
+              aria-expanded={!compactCollapsed}
+              className="flex min-w-0 flex-1 items-center gap-1.5 py-1 text-fg-faint transition-colors hover:text-fg-secondary"
+            >
+              {compactCollapsed ? <ChevronRight size={11} /> : <ChevronDown size={11} />}
+              <span className="truncate text-left text-caption font-semibold uppercase tracking-wider">
+                {t('home.recentConversations')}
+              </span>
+            </button>
+            {onShowAll && (
               <button
-                onClick={() => setDateBucketLimit((n) => n + DATE_BUCKET_PAGE)}
-                className="w-full px-3 py-2 text-caption text-fg-faint hover:text-fg-secondary hover:bg-surface-muted transition-colors"
+                type="button"
+                onClick={onShowAll}
+                className="flex-shrink-0 text-caption text-fg-faint transition-colors hover:text-fg-secondary"
               >
-                {t('sessionGroups.showMore')}
+                {t('home.all')}
               </button>
             )}
           </div>
+          {!compactCollapsed &&
+            (loading && sessions.length === 0 ? (
+              <div className="flex justify-center py-3">
+                <Spinner className="h-4 w-4 text-fg-faint" />
+              </div>
+            ) : compactSessions.length === 0 ? (
+              <div className="px-3 py-2 text-caption text-fg-faint">{t('chat.noConversationsFound')}</div>
+            ) : (
+              compactSessions.map((session) => renderRow(session, 'recent'))
+            ))}
         </div>
+      ) : (
+        <div className="flex flex-col flex-1 min-h-0">
+          {/* Search + quick actions */}
+          <div className="px-3 py-1.5 flex-shrink-0 space-y-1.5">
+            <SidebarToolbar
+              value={searchQuery}
+              onChange={setSearchQuery}
+              placeholder={t('common.search')}
+              actions={[
+                {
+                  label: t('sessionGroups.select'),
+                  icon: CheckSquare,
+                  onClick: () => (selectMode ? exitSelectMode() : setSelectMode(true)),
+                },
+                { label: t('history.viewAll'), icon: History, onClick: () => setShowFullHistory(true) },
+              ]}
+            />
+          </div>
 
-        {/* Batch action bar (multi-select mode) */}
-        {selectMode && (
-          <BatchActionBar
-            count={selectedIds.size}
-            busy={batchBusy}
-            onArchive={() => setBatchConfirm('archive')}
-            onDelete={() => setBatchConfirm('delete')}
-            onDone={exitSelectMode}
-            onSelectAll={() => setSelectedIds(new Set(visibleRows.map((r) => r.id)))}
-            onClear={() => {
-              setSelectedIds(new Set());
-              setLastClickedKey(null);
+          {/* Scope tabs — mine (default) / shared with me / team (super only).
+            `segment`, not pills: this is a switch where one option is always on. */}
+          <div className="px-3 pb-1.5 flex-shrink-0">
+            <FilterPills
+              variant="segment"
+              items={[
+                { key: 'mine', label: t('history.scopeMine') },
+                {
+                  key: 'shared',
+                  label: t('history.scopeShared'),
+                  count: unreadShareCount > 0 ? unreadShareCount : undefined,
+                },
+                ...(isSuper ? [{ key: 'team', label: t('history.scopeTeam') }] : []),
+              ]}
+              activeKey={effectiveScope}
+              onChange={(k) => changeScope((k as SessionScope) ?? 'mine')}
+              selectLabel={t('history.scopeFilterLabel')}
+              fill
+            />
+          </div>
+
+          {/* Session list — grouped by date. In select mode, a click on the empty
+            padding (target === the scroll container itself) exits. */}
+          <div
+            className="flex-1 overflow-y-auto"
+            onClick={(e) => {
+              if (selectMode && e.target === e.currentTarget) exitSelectMode();
             }}
-          />
-        )}
-      </div>
+          >
+            {loading && sessions.length === 0 && (
+              <div className="flex justify-center py-6">
+                <Spinner className="h-4 w-4 text-fg-faint" />
+              </div>
+            )}
+
+            {!loading && filteredSessions.length === 0 && (
+              <div className="px-3 py-6 text-center text-xs text-fg-faint">
+                {searchQuery ? t('chat.noMatches') : t('chat.noConversationsFound')}
+              </div>
+            )}
+
+            {/* Pinned — cross-cutting, lifted above date buckets */}
+            {pinnedSessions.length > 0 &&
+              renderSection({
+                key: 'pinned',
+                title: t('sessionGroups.pinned'),
+                count: pinnedSessions.length,
+                sessions: pinnedSessions,
+                orderable: true,
+                showPinIcon: true,
+              })}
+
+            {/* Date buckets — the unpinned rest. */}
+            <div>
+              {groupedSessions.map((group) => {
+                const sectionKey = `date:${group.group}`;
+                const isCollapsed = collapsedSections.has(sectionKey);
+                return (
+                  <div key={group.group}>
+                    <button
+                      type="button"
+                      onClick={() => toggleSection(sectionKey)}
+                      aria-expanded={!isCollapsed}
+                      className="mt-1 flex w-full items-center gap-1.5 px-3 py-1 text-fg-faint transition-colors first:mt-0 hover:text-fg-secondary"
+                    >
+                      {isCollapsed ? <ChevronRight size={11} /> : <ChevronDown size={11} />}
+                      <span className="flex-1 truncate text-left text-caption font-semibold uppercase tracking-wider">
+                        {t(group.label as TranslationKey)}
+                      </span>
+                      <span className="text-caption tabular-nums">{group.sessions.length}</span>
+                    </button>
+                    {!isCollapsed && group.sessions.map((session) => renderRow(session, `date:${group.group}`))}
+                  </div>
+                );
+              })}
+              {hasMoreDateBuckets && (
+                <button
+                  onClick={() => setDateBucketLimit((n) => n + DATE_BUCKET_PAGE)}
+                  className="w-full px-3 py-2 text-caption text-fg-faint hover:text-fg-secondary hover:bg-surface-muted transition-colors"
+                >
+                  {t('sessionGroups.showMore')}
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Batch action bar (multi-select mode) */}
+          {selectMode && (
+            <BatchActionBar
+              count={selectedIds.size}
+              busy={batchBusy}
+              onArchive={() => setBatchConfirm('archive')}
+              onDelete={() => setBatchConfirm('delete')}
+              onDone={exitSelectMode}
+              onSelectAll={() => setSelectedIds(new Set(visibleRows.map((r) => r.id)))}
+              onClear={() => {
+                setSelectedIds(new Set());
+                setLastClickedKey(null);
+              }}
+            />
+          )}
+        </div>
+      )}
 
       <FullHistoryModal
         open={showFullHistory}

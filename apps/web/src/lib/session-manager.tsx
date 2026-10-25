@@ -16,7 +16,6 @@ import { handleStreamEvent } from './stream-events';
 import { collectVisibleSessionIds } from './session-visibility';
 import { wsClient } from './ws';
 import type { ChatTurnEnvironment } from '@greenhouse/types/api';
-import { notifyWorkbenchChanged } from './workbench/sync';
 import { entityDomainForTool, notifyEntityChanged } from './entity-sync';
 
 // ─── Types ───────────────────────────────────────────────
@@ -241,7 +240,6 @@ export function SessionManagerProvider({ children }: { children: React.ReactNode
                     data.toolCalls = data.toolCalls.map((tc) =>
                       tc.id === id ? { ...tc, output, status: 'done' as const } : tc,
                     );
-                    if (toolName === 'workbench_mutation') notifyWorkbenchChanged();
                     // A record open in the side pane was fetched before this
                     // turn wrote to it; without this it would keep showing the
                     // pre-edit version while the user watches.

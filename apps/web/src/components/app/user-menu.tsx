@@ -1,13 +1,12 @@
-/** Sidebar account menu and its account/inbox dialogs. */
+/** Sidebar account menu and its account dialogs. (The inbox is the bell beside Search.) */
 
 import React, { useEffect, useState } from 'react';
-import { Settings as SettingsIcon, ArrowLeft, Inbox, Users, Shield, Monitor, Moon, Sun } from '../../lib/icons';
+import { Settings as SettingsIcon, ArrowLeft, Users, Shield, Monitor, Moon, Sun } from '../../lib/icons';
 import { Avatar, Badge, Dialog, EmptyState, StatusDot } from '../ui';
 import type { AuthenticatedUser } from '../../lib/auth';
 import { APP_VERSION, roleBadgeStyles } from '../../lib/utils';
 import { useT } from '../../lib/i18n';
 import { useWsStore } from '../../stores';
-import { InboxModal } from './inbox-modal';
 import { useHoverFlyout } from '../../hooks/use-hover-flyout';
 import { applyTheme, getActiveTheme, type ThemeKey } from '../../lib/theme';
 import { ExecutionCenterLink } from './execution-center-link';
@@ -40,7 +39,6 @@ export function SidebarAccountMenu({
 }) {
   const t = useT();
   const { open, setOpen, openNow, closeNow, closeSoon } = useHoverFlyout();
-  const [inboxOpen, setInboxOpen] = useState(false);
   const [onlineOpen, setOnlineOpen] = useState(false);
   const [activeTheme, setActiveTheme] = useState<ThemeKey>(() =>
     typeof window === 'undefined' ? 'system' : getActiveTheme(),
@@ -52,12 +50,8 @@ export function SidebarAccountMenu({
   }, [open]);
 
   const isSuper = user?.role === 'super';
-  const shareCount = useWsStore((s) => s.shareCount);
-  const notificationCount = useWsStore((s) => s.notificationCount);
   const onlineUsers = useWsStore((s) => s.onlineUsers);
   const wsConnected = useWsStore((s) => s.status === 'connected');
-  const totalInboxCount = shareCount + notificationCount;
-  const showInboxBadge = totalInboxCount > 0;
 
   const goSettings = () => {
     setOpen(false);
@@ -130,11 +124,6 @@ export function SidebarAccountMenu({
         )}
         <span className="relative flex-shrink-0">
           <Avatar name={user?.nickname} size={compact ? 'md' : 'sm'} />
-          {showInboxBadge && (
-            <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 flex items-center justify-center text-caption leading-none font-bold text-white bg-danger rounded-full ring-2 ring-surface-raised">
-              {totalInboxCount > 99 ? '99+' : totalInboxCount}
-            </span>
-          )}
         </span>
         {!compact && (
           <>
@@ -238,27 +227,6 @@ export function SidebarAccountMenu({
           </div>
 
           <div className="py-0.5">
-            {/* Inbox — opens the shares modal */}
-            <button
-              type="button"
-              onClick={() => {
-                setOpen(false);
-                setInboxOpen(true);
-              }}
-              className="w-full text-left flex items-center gap-2.5 px-3 py-1.5 text-sm text-fg-secondary hover:bg-surface-sunken transition-colors"
-              role="menuitem"
-            >
-              <span className="w-5 text-center text-fg-faint">
-                <Inbox size={15} />
-              </span>
-              <span className="flex-1">{t('userMenu.inbox')}</span>
-              {totalInboxCount > 0 && (
-                <span className="min-w-[18px] h-[18px] px-1 flex items-center justify-center text-caption font-bold text-white bg-danger rounded-full">
-                  {totalInboxCount > 99 ? '99+' : totalInboxCount}
-                </span>
-              )}
-            </button>
-
             <ExecutionCenterLink
               active={executionCenterActive}
               menu
@@ -317,8 +285,6 @@ export function SidebarAccountMenu({
           </div>
         </div>
       )}
-
-      <InboxModal open={inboxOpen} onClose={() => setInboxOpen(false)} />
 
       {isSuper && (
         <Dialog

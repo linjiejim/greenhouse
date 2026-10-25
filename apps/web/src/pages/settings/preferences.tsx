@@ -1,5 +1,6 @@
 /**
- * Preferences panel — personal notes, theme, language.
+ * Preferences panel — personal notes, theme, language, and (this device only)
+ * how many recent conversations Home lists.
  * Embedded as a sub-module of the Settings page.
  * Title/description shown in TopBar breadcrumb — not repeated here.
  */
@@ -10,7 +11,8 @@ import { FormActions, FormError } from '../../components/form';
 import { SettingsPanel, SettingsSection } from '../../components/settings';
 import { ModulePage } from '../../components/app/module-page';
 import { authFetch } from '../../lib/auth';
-import { Check, Globe, Monitor, Moon, Palette, Sparkles, Sun } from '../../lib/icons';
+import { Check, Globe, History, Monitor, Moon, Palette, Sparkles, Sun } from '../../lib/icons';
+import { HOME_RECENT_CHOICES, readHomeRecent, writeHomeRecent, type HomeRecent } from '../../lib/home';
 import { color } from '@greenhouse/ui/tokens';
 import { applyTheme, getActiveTheme, getThemeDefinition } from '../../lib/theme';
 import type { ThemeKey } from '../../lib/theme';
@@ -29,6 +31,7 @@ export function PreferencesPanel() {
   const [error, setError] = useState<string | null>(null);
   const [activeTheme, setActiveTheme] = useState<ThemeKey>(getActiveTheme());
   const [, setSystemThemeVersion] = useState(0);
+  const [homeRecent, setHomeRecent] = useState<HomeRecent>(readHomeRecent);
 
   useEffect(() => {
     setNotes(currentUser?.notes ?? '');
@@ -194,6 +197,30 @@ export function PreferencesPanel() {
                 }`}
               >
                 <span className="text-sm">{opt.nativeLabel}</span>
+              </button>
+            ))}
+          </div>
+        </SettingsSection>
+
+        <SettingsSection title={t('home.recentCount')} description={t('home.recentCountDescription')} icon={History}>
+          <div className="flex gap-2" role="radiogroup" aria-label={t('home.recentCount')}>
+            {HOME_RECENT_CHOICES.map((choice) => (
+              <button
+                key={choice}
+                type="button"
+                role="radio"
+                aria-checked={homeRecent === choice}
+                onClick={() => {
+                  writeHomeRecent(choice);
+                  setHomeRecent(choice);
+                }}
+                className={`flex min-w-12 items-center justify-center px-4 py-2 rounded-md border-2 transition-all ${
+                  homeRecent === choice
+                    ? 'border-accent bg-primary-subtle/50 text-primary-fg-strong font-medium shadow-sm'
+                    : 'border-edge text-fg-secondary hover:border-edge-strong hover:bg-surface-sunken'
+                }`}
+              >
+                <span className="text-sm tabular-nums">{choice === 0 ? t('home.recentCountNone') : choice}</span>
               </button>
             ))}
           </div>

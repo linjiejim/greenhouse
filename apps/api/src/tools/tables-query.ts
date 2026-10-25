@@ -72,7 +72,7 @@ Use bases.list to discover Base IDs, tables.list/schema.get to discover stable t
 A Base's or table's "description" is the team's usage note — what the data is, which field is the key, what values mean. Read it before you query or write; when it is empty, ask rather than infer meaning from field names.`,
   category: 'team',
   is_global: false,
-  surface: { proxy: 'read', mcp: 'tables', workbench: true, unattendedReplaySafe: true },
+  surface: { proxy: 'read', mcp: 'tables', unattendedReplaySafe: true },
   icon: 'Table2',
   sort_order: 28,
 };

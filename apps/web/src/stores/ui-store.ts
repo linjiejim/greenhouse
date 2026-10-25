@@ -14,6 +14,9 @@ export const SIDEBAR_MAX_WIDTH = 420;
 
 export type ChatWorkspaceView = 'conversation' | 'automations';
 
+/** The bell dialog's tabs. */
+export type InboxTab = 'notifications' | 'shares' | 'activity';
+
 function clampSidebarWidth(width: number): number {
   return Math.min(SIDEBAR_MAX_WIDTH, Math.max(SIDEBAR_MIN_WIDTH, width));
 }
@@ -57,11 +60,10 @@ interface UIStore {
   // The mounted full Chat pane owns session mutations; this callback lets the
   // global TopBar edit the title without creating a second session state.
   chatTitleEdit: { readonly: boolean; onRename: (title: string) => Promise<void> } | null;
-  // Home workbench controls, registered by the panel while it is on screen so
-  // the TopBar can host Customize next to the session title. Null means
-  // no workbench is mounted — which is also how the TopBar knows not to draw
-  // them (rather than re-deriving "is this an empty new conversation").
-  homeWorkbench: { editing: boolean; onToggleEdit: () => void } | null;
+  // The bell (inbox) dialog — one instance at the app root, opened from the
+  // sidebar bell or Home's "waiting for you" line.
+  inboxOpen: boolean;
+  inboxTab: InboxTab;
   // Version counter — incremented when a new session is created (triggers sidebar refresh)
   sessionListVersion: number;
 
@@ -80,7 +82,9 @@ interface UIStore {
   setCurrentChatSessionId: (id: string | null) => void;
   setChatShare: (v: { shareCount: number; onOpen: () => void } | null) => void;
   setChatTitleEdit: (v: UIStore['chatTitleEdit']) => void;
-  setHomeWorkbench: (v: { editing: boolean; onToggleEdit: () => void } | null) => void;
+  openInbox: (tab?: InboxTab) => void;
+  closeInbox: () => void;
+  setInboxTab: (tab: InboxTab) => void;
   bumpSessionListVersion: () => void;
   setActiveWorkspace: (ws: string) => void;
 }
@@ -99,7 +103,8 @@ export const useUIStore = create<UIStore>((set) => ({
   currentChatSessionId: null,
   chatShare: null,
   chatTitleEdit: null,
-  homeWorkbench: null,
+  inboxOpen: false,
+  inboxTab: 'notifications',
   sessionListVersion: 0,
 
   activeWorkspace: typeof window !== 'undefined' ? localStorage.getItem('active-workspace') || '' : '',
@@ -124,7 +129,9 @@ export const useUIStore = create<UIStore>((set) => ({
   setCurrentChatSessionId: (currentChatSessionId) => set({ currentChatSessionId }),
   setChatShare: (chatShare) => set({ chatShare }),
   setChatTitleEdit: (chatTitleEdit) => set({ chatTitleEdit }),
-  setHomeWorkbench: (homeWorkbench) => set({ homeWorkbench }),
+  openInbox: (tab) => set((state) => ({ inboxOpen: true, inboxTab: tab ?? state.inboxTab })),
+  closeInbox: () => set({ inboxOpen: false }),
+  setInboxTab: (inboxTab) => set({ inboxTab }),
   bumpSessionListVersion: () => set((state) => ({ sessionListVersion: state.sessionListVersion + 1 })),
   setActiveWorkspace: (activeWorkspace) => {
     localStorage.setItem('active-workspace', activeWorkspace);

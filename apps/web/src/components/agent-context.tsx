@@ -20,6 +20,7 @@ import { pageContextKey } from '../lib/page-context-key';
 import { parseExecutionSubPath } from '../lib/execution-route';
 import { isSearchShortcut } from './search/shortcut';
 import { useGlobalSearchStore } from '../stores/global-search-store';
+import { newChatHash } from '../lib/hash-router';
 export type { PageContext } from '@greenhouse/types/agent-context';
 
 // Import and init all frontend context-providers (triggers registration)
@@ -52,11 +53,12 @@ export function resolveUrlContext(hash: string): PageContext | null {
   const cleaned = hash.replace(/^#\/?/, '');
   const [path, query] = cleaned.split('?');
   const segments = path.split('/').filter(Boolean);
-  const route = segments[0] || 'chat';
+  const route = segments[0] || 'home';
   const subPath = segments.slice(1).join('/');
   const params = new URLSearchParams(query || '');
 
   switch (route) {
+    case 'home':
     case 'chat':
       return {
         type: 'chat',
@@ -119,9 +121,9 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
   const launchIdRef = React.useRef(0);
 
   // ── URL-driven context ──
-  const [hash, setHash] = useState(window.location.hash || '#/chat');
+  const [hash, setHash] = useState(window.location.hash || '#/home');
   useEffect(() => {
-    const handler = () => setHash(window.location.hash || '#/chat');
+    const handler = () => setHash(window.location.hash || '#/home');
     window.addEventListener('hashchange', handler);
     return () => window.removeEventListener('hashchange', handler);
   }, []);
@@ -203,7 +205,7 @@ export function AgentProvider({ children }: { children: React.ReactNode }) {
       // Cmd+N / Ctrl+N: new chat session (always intercept to prevent browser new window)
       if ((e.metaKey || e.ctrlKey) && e.key === 'n') {
         e.preventDefault();
-        window.location.hash = `#/chat?new=${Date.now()}`;
+        window.location.hash = newChatHash();
         return;
       }
     };

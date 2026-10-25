@@ -3,7 +3,7 @@
  * Screenshot + smoke tour of a running Greenhouse instance.
  *
  * Logs in as the seeded super admin, seeds a little demo content over the API
- * (a Tables base, a Home workbench layout, two skills, one automation run),
+ * (a Tables base, two skills, one automation run),
  * walks every major surface, and writes screenshots (WebP, plus a short chat
  * video → gif/mp4) into docs/assets/screens/. Every step records console errors
  * and failed /api requests, so the run doubles as an end-to-end smoke check.
@@ -317,55 +317,6 @@ async function seedTables(client, users) {
   return { baseId, tableId };
 }
 
-async function seedWorkbench(client) {
-  const current = await client.get('/api/platform/me/workbench');
-  const cfg = current.body?.preferences ?? current.body ?? {};
-  if (Array.isArray(cfg.widgets) && cfg.widgets.length > 0) return;
-  const card = (id, title, recipeId, status, layout, display = 'table') => ({
-    kind: 'data',
-    id,
-    title,
-    recipeId,
-    layout: { tabId: 'default', ...layout },
-    display,
-    source: {
-      toolId: 'project_query',
-      input: status ? { action: 'list', status, limit: 15 } : { action: 'list', limit: 15 },
-    },
-    map: {
-      rows: 'projects',
-      columns: [
-        { key: 'title', type: 'text' },
-        { key: 'status', type: 'badge' },
-      ],
-    },
-  });
-  const body = {
-    version: 2,
-    appOrder: ['knowledge', 'projects', 'tables'],
-    pinnedAppIds: ['knowledge', 'projects'],
-    hiddenAppIds: [],
-    defaultAppId: null,
-    density: 'comfortable',
-    tabs: [],
-    widgets: [
-      {
-        kind: 'text',
-        id: 'welcome',
-        title: 'This week',
-        layout: { tabId: 'default', x: 0, y: 0, w: 4, h: 4 },
-        markdown:
-          '**Launch week checklist**\n\n- [x] Pricing page copy\n- [x] Security packet for Vandelay\n- [ ] SOC 2 evidence review (Thu)\n- [ ] Launch blog post — draft in chat',
-      },
-      card('active', 'Active projects', 'projects.active', 'active', { x: 4, y: 0, w: 8, h: 4 }),
-      card('planning', 'Planned projects', 'projects.planning', 'planning', { x: 0, y: 4, w: 6, h: 4 }),
-      card('on_hold', 'Paused projects', 'projects.on_hold', 'on_hold', { x: 6, y: 4, w: 6, h: 4 }),
-    ],
-  };
-  const r = await client.put('/api/platform/me/workbench', body);
-  if (r.status >= 300) throw new Error(`workbench PUT ${r.status}: ${JSON.stringify(r.body)}`);
-}
-
 async function seedSkills(client) {
   const list = await client.get('/api/skills');
   const names = new Set((list.body?.skills ?? []).map((s) => s.name));
@@ -477,7 +428,6 @@ await step('seed', async () => {
   users = (await client.get('/api/admin/users')).body?.users ?? [];
   if (!ONLY || FORCE_CLEANUP) await cleanupTourSessions(client);
   tables = await seedTables(client, users);
-  await seedWorkbench(client);
   await seedSkills(client);
   await seedAgent(client);
   await seedMachineClient(client, users);
@@ -487,11 +437,11 @@ await step('seed', async () => {
   if (digest && !ONLY) await client.post(`/api/tasks/${digest.id}/run`, {});
 });
 
-await step('workbench', async () => {
-  await page.goto(`${BASE}/#/chat`);
+await step('home', async () => {
+  await page.goto(`${BASE}/#/home`);
   await page.reload();
   await settle(page, 1500);
-  await snap(page, 'home-workbench');
+  await snap(page, 'home');
 });
 
 let answeredSessionUrl = null;
@@ -664,17 +614,15 @@ await step('administration', async () => {
 });
 
 await step('inbox', async () => {
-  await page.goto(`${BASE}/#/chat`);
+  await page.goto(`${BASE}/#/home`);
   await settle(page);
-  // The user menu opens on hover — a click on the trigger navigates to Settings.
+  // The bell sits next to search in the sidebar header.
   await page
-    .getByRole('button', { name: /Maya Chen/ })
+    .getByRole('button', { name: /^Inbox/ })
     .first()
-    .hover();
-  await page.getByRole('menuitem', { name: /Inbox/ }).first().click();
+    .click();
   await snap(page, 'inbox', { wait: 1200 });
   await page.keyboard.press('Escape');
-  await page.mouse.move(700, 450);
 });
 
 await step('extension', async () => {
@@ -733,14 +681,9 @@ await step('dark-theme', async () => {
   await page.goto(`${BASE}/#/tables/${tables.baseId}/table/${tables.tableId}`);
   await page.reload();
   await snap(page, 'tables-grid-dark', { wait: 1800 });
-  await page.goto(`${BASE}/#/chat`);
+  await page.goto(`${BASE}/#/home`);
   await page.reload();
-  await page
-    .getByRole('button', { name: 'New Chat' })
-    .first()
-    .click()
-    .catch(() => {});
-  await snap(page, 'home-workbench-dark', { wait: 1500 });
+  await snap(page, 'home-dark', { wait: 1500 });
   await page.evaluate(() => localStorage.setItem('greenhouse-theme', 'light'));
 });
 

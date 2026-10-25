@@ -111,7 +111,6 @@ import skillRoutes from './routes/skills.js';
 import reportTemplateRoutes from './routes/report-templates.js';
 import { seedDefaultReportTemplates } from './reports/defaults.js';
 import tablesRoutes from './routes/tables.js';
-import { createWorkbenchRoutes } from './routes/workbench.js';
 import { getSkillStore } from './skills/store.js';
 import { seedSkillhub } from './skills/boot-seed.js';
 import { sweepUnscannedSkills } from './skills/center.js';
@@ -361,12 +360,6 @@ function mountRoutes(toolRegistry: ToolRegistry) {
       .route(CLIENT_ACTIONS_API_PREFIX, clientActionRoutes)
       // ── Registry-dependent routes (need DB-backed toolRegistry) ──
       .route('/api/chat', createChatRoute(toolRegistry))
-      // Home workbench card evaluation — every internal user. Cards are
-      // evaluated as the requesting user through the read-only tool allowlist,
-      // so this widens nothing the user could not already query; a user with no
-      // cards never calls it at all.
-      .use('/api/workbench/*', requireInternal())
-      .route('/api/workbench', createWorkbenchRoutes(toolRegistry))
       .use('/api/tasks/*', requireInternal())
       .route('/api/tasks', createTasksRoute())
       // Runtime is the cross-domain Execution Center read model. Domain drivers
