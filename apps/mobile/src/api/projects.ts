@@ -32,6 +32,18 @@ export const getProject = (id: string) => get<ProjectDetail>(`/api/projects/${se
 export const gantt = () =>
   get<{ projects: (Project & { tasks: ProjectTask[] })[] }>('/api/projects/gantt');
 
+/** A new task in a project (`POST /api/projects/:id/tasks`, body from src/projects/task-draft.ts). */
+export const createTask = (projectId: string, body: Record<string, string>) =>
+  post<{ task: ProjectTask }>(`/api/projects/${seg(String(projectId))}/tasks`, body);
+
+/** Change a task's fields (only those given; null clears an assignee or a due day). */
+export const updateTask = (taskId: string, patchBody: Record<string, string | null>) =>
+  patch<{ task: ProjectTask }>(`/api/projects/tasks/${seg(String(taskId))}`, patchBody);
+
+/** The people a task may be assigned to (active members). */
+export const listAssignableUsers = () =>
+  get<{ users: { id: string; nickname: string; role: string }[] }>('/api/projects/meta/users');
+
 export const updateTaskStatus = (taskId: string, status: TaskStatus) =>
   patch<{ task: ProjectTask }>(`/api/projects/tasks/${seg(String(taskId))}`, { status });
 

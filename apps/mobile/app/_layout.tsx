@@ -10,7 +10,7 @@ import { clearHandoffs } from '../src/lib/handoff';
  *                        form sheet; sheets stack on sheets up to three deep
  *  - `me`                「我」: account, station, text size, My Agents, settings (page sheet with
  *                        its own stack)
- *  - `notifications`, `conversations`, `move`, `tables/new-record`, `sheets/stations`, `sheets/station-add`  sheets
+ *  - `notifications`, `conversations`, `move`, `task-form`, `tables/new-record`, `sheets/stations`, `sheets/station-add`  sheets
  *  - `peek/*`, `table`   full-screen viewers for rich blocks (html preview, diagram, table)
  *  - `login`             full screen, shown when signed out
  *
@@ -196,6 +196,7 @@ export default function RootLayout() {
                 <Stack.Screen name="conversations" options={sheetScreen([1], { header: true })} />
                 <Stack.Screen name="move" options={sheetScreen([0.7, 1], { header: true })} />
                 <Stack.Screen name="doc-new" options={sheetScreen([1], { header: true })} />
+                <Stack.Screen name="task-form" options={sheetScreen([1], { header: true })} />
                 <Stack.Screen name="sheets/stations" options={sheetScreen([0.6, 1], { header: true })} />
                 <Stack.Screen name="sheets/station-add" options={sheetScreen([0.5, 1], { header: true })} />
                 <Stack.Screen name="tables/new-record" options={sheetScreen([1], { header: true })} />

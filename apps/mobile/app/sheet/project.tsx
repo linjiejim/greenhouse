@@ -1,13 +1,14 @@
 /**
  * One project as an object sheet (`/sheet/project?id=`): its status, owner, dates and progress,
  * then its tasks by status (open ones first; subtasks flattened under the tree order). A task
- * opens as a sheet stacked on this one. A project the member cannot read answers 404 — "not
- * available", not an error with a retry.
+ * opens as a sheet stacked on this one. Tasks are made by asking Sprouty (a quiet row opens a new
+ * conversation drafted "在「<project>」里新建任务：") or, exactly, with + (app/task-form.tsx). A
+ * project the member cannot read answers 404 — "not available", not an error with a retry.
  */
 
 import React, { useCallback, useMemo } from 'react';
 import { FlatList, ScrollView, Text, View } from 'react-native';
-import { useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { getProject } from '../../src/api/projects';
 import { noAccess, notFound } from '../../src/data/access';
 import { dueBucket, flattenTasks, localDay, TASK_STATUSES } from '../../src/data/tasks';
@@ -19,10 +20,10 @@ import { dueTone, statusIcon, statusTint } from '../../src/projects/look';
 import type { ProjectTask } from '../../src/shared/greenhouse-types';
 import { makeStyles, radius, space, squircle, typo, useTheme } from '../../src/theme';
 import { EmptyState, LoadingState } from '../../src/ui/empty';
-import { Badge, Row, SectionHeader, rowPosition, type RowPosition } from '../../src/ui/list';
+import { Badge, Row, Section, SectionHeader, rowPosition, type RowPosition } from '../../src/ui/list';
 import { usePullRefresh } from '../../src/ui/refresh';
 import { SheetScreen } from '../../src/ui/screen';
-import { useOpenObject } from '../../src/shell/open-object';
+import { useOpenObject, useStartChat } from '../../src/shell/open-object';
 import { objectId } from '../../src/lib/object-id';
 
 type Item =
@@ -34,6 +35,8 @@ export default function ProjectSheet() {
   const id = objectId(raw);
   const t = useT();
   const openObject = useOpenObject();
+  const startChat = useStartChat();
+  const router = useRouter();
   const { colors: c } = useTheme();
   const styles = useStyles(c);
   const load = useCallback(() => getProject(id ?? '0'), [id]);
@@ -78,35 +81,60 @@ export default function ProjectSheet() {
   const project = detail?.project;
   const today = localDay(new Date());
   const header = project ? (
-    <View style={styles.card}>
-      <View style={styles.badges}>
-        <Badge label={t(`projects.projectStatus.${project.status}`)} tone="accent" />
-        <Badge label={t('projects.progress', { n: detail.progress })} />
-        <Badge label={t('projects.taskCount', { n: detail.stats.total })} />
-      </View>
-      {project.description ? (
-        <Text style={styles.description} numberOfLines={4}>
-          {plainText(project.description)}
+    <View>
+      <View style={styles.card}>
+        <View style={styles.badges}>
+          <Badge label={t(`projects.projectStatus.${project.status}`)} tone="accent" />
+          <Badge label={t('projects.progress', { n: detail.progress })} />
+          <Badge label={t('projects.taskCount', { n: detail.stats.total })} />
+        </View>
+        {project.description ? (
+          <Text style={styles.description} numberOfLines={4}>
+            {plainText(project.description)}
+          </Text>
+        ) : null}
+        <Text style={styles.meta}>
+          {[
+            project.owner_nickname ? `${t('projects.owner')}: ${project.owner_nickname}` : '',
+            project.start_date || project.end_date
+              ? `${t('projects.dates')}: ${[project.start_date, project.end_date]
+                  .map((day) => (day ? calendarDateLabel(day.slice(0, 10)) : '…'))
+                  .join(' – ')}`
+              : '',
+          ]
+            .filter(Boolean)
+            .join('\n')}
         </Text>
-      ) : null}
-      <Text style={styles.meta}>
-        {[
-          project.owner_nickname ? `${t('projects.owner')}: ${project.owner_nickname}` : '',
-          project.start_date || project.end_date
-            ? `${t('projects.dates')}: ${[project.start_date, project.end_date]
-                .map((day) => (day ? calendarDateLabel(day.slice(0, 10)) : '…'))
-                .join(' – ')}`
-            : '',
-        ]
-          .filter(Boolean)
-          .join('\n')}
-      </Text>
+      </View>
+      <Section style={styles.ask}>
+        <Row
+          title={t('projects.askSprouty')}
+          icon="sparkle"
+          quiet
+          accessory="chevron"
+          onPress={() => startChat(t('projects.askDraft', { project: project.title }))}
+        />
+      </Section>
     </View>
   ) : null;
 
   return (
     <>
-      <SheetScreen title={project?.title ?? ''} busy={resource.loading && !!detail && !pull.refreshing} />
+      <SheetScreen
+        title={project?.title ?? ''}
+        busy={resource.loading && !!detail && !pull.refreshing}
+        actions={
+          project
+            ? [
+                {
+                  icon: 'plus',
+                  label: t('projects.newTask'),
+                  onPress: () => router.push({ pathname: '/task-form', params: { project: project.id } }),
+                },
+              ]
+            : []
+        }
+      />
       <FlatList<Item>
         style={styles.root}
         contentInsetAdjustmentBehavior="automatic"
@@ -173,4 +201,5 @@ const useStyles = makeStyles((c) => ({
   badges: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
   description: { ...typo.body, color: c.label },
   meta: { ...typo.subheadline, color: c.secondaryLabel },
+  ask: { marginTop: space.md, marginBottom: 0 },
 }));

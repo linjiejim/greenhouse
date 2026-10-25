@@ -2,13 +2,22 @@
  * One task (`/projects/task?project=&task=`, or the detail pane on an iPad): there is no task-by-id route, so it is read from its
  * project's tree. Its status changes from a menu, optimistically, one save at a time: the last
  * choice is sent after the save in flight settles, so the server and the screen end on it
- * (src/data/latest-choice.ts); assignee, due date, priority and the project are shown;
- * then the description and the comments, with a toolbar button to add one.
+ * (src/data/latest-choice.ts); assignee and priority change from menus too (saved at once, put
+ * back when refused); ✎ (and the due row) opens the task form (app/task-form.tsx) for the title
+ * and due day; then the project, the description and the comments, with a toolbar button to add one.
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ScrollView, Text, View } from 'react-native';
-import { addTaskComment, getProject, listTaskComments, updateTaskStatus } from '../api/projects';
+import { useRouter } from 'expo-router';
+import {
+  addTaskComment,
+  getProject,
+  listAssignableUsers,
+  listTaskComments,
+  updateTask,
+  updateTaskStatus,
+} from '../api/projects';
 import { noAccess, notFound } from '../data/access';
 import { captureIdentity } from '../data/identity';
 import { LatestChoice } from '../data/latest-choice';
@@ -18,7 +27,8 @@ import { useT } from '../lib/i18n';
 import { calendarDateLabel, relativeTimeNow } from '../lib/time-words';
 import { Markdown } from '../markdown';
 import { dueTone, statusIcon, statusTint } from '../projects/look';
-import type { ProjectTask, TaskComment, TaskStatus } from '../shared/greenhouse-types';
+import type { ProjectTask, TaskComment, TaskPriority, TaskStatus } from '../shared/greenhouse-types';
+import { TASK_PRIORITIES } from './task-draft';
 import { useAuth } from '../store/auth';
 import { makeStyles, radius, space, squircle, typo, useTheme, weight } from '../theme';
 import { alertError, promptText } from '../ui/dialogs';
@@ -42,10 +52,12 @@ export function TaskView({
   onChanged?: () => void;
 }) {
   const t = useT();
+  const router = useRouter();
   const openObject = useOpenObject();
   const { colors: c } = useTheme();
   const styles = useStyles(c);
   const load = useCallback(() => getProject(projectId ?? '0'), [projectId]);
+  const users = useResource(listAssignableUsers);
   const resource = useResource(load);
   const { setData } = resource;
   const task = useMemo(
@@ -130,6 +142,32 @@ export function TaskView({
     [task, setData, t, onChanged],
   );
 
+  // assignee and priority: saved at once from their menus, put back when the station refuses
+  const changeField = useCallback(
+    async (patch: { assignee_id?: string | null; priority?: TaskPriority }, local: Partial<ProjectTask>, before: Partial<ProjectTask>) => {
+      if (!task) return;
+      const id = task.id;
+      const current = captureIdentity();
+      selectionTick();
+      setData((detail) => (detail ? { ...detail, tasks: withTaskPatched(detail.tasks, id, local) } : detail));
+      const result = await updateTask(id, patch);
+      if (!current()) return;
+      if (!result.ok) {
+        setData((detail) => (detail ? { ...detail, tasks: withTaskPatched(detail.tasks, id, before) } : detail));
+        alertError(t('projects.saveTaskFailed'), result.message || undefined);
+        return;
+      }
+      notifySuccess();
+      onChanged?.();
+    },
+    [task, setData, t, onChanged],
+  );
+
+  const editTask = useCallback(() => {
+    if (!task) return;
+    router.push({ pathname: '/task-form', params: { project: task.project_id, id: task.id } });
+  }, [task, router]);
+
   const comment = useCallback(async () => {
     if (taskId == null) return;
     const text = await promptText({ title: t('projects.addComment'), placeholder: t('projects.commentPlaceholder') });
@@ -167,7 +205,14 @@ export function TaskView({
     <>
       <SheetScreen
         title={resource.data?.project.title ?? ''}
-        actions={task ? [{ icon: 'comment', label: t('projects.addComment'), onPress: () => void comment() }] : []}
+        actions={
+          task
+            ? [
+                { icon: 'pen', label: t('projects.editTask'), onPress: editTask },
+                { icon: 'comment', label: t('projects.addComment'), onPress: () => void comment() },
+              ]
+            : []
+        }
       />
       <ScrollView style={styles.root} contentInsetAdjustmentBehavior="automatic" contentContainerStyle={styles.content}>
         {!task ? (
@@ -202,30 +247,71 @@ export function TaskView({
                   menuTrigger
                 />
               </NativeMenu>
-              <Row
+              <NativeMenu
+                items={[
+                  { id: UNASSIGNED, title: t('projects.unassigned'), checked: !task.assignee_id },
+                  ...people(users.data?.users ?? [], task).map((person) => ({
+                    id: person.id,
+                    title: person.name,
+                    checked: person.id === task.assignee_id,
+                  })),
+                ]}
                 title={t('projects.assignee')}
-                value={task.assignee_nickname || t('projects.unassigned')}
-                icon="person"
-                accessory="none"
-              />
+                onSelect={(value) => {
+                  const next = value === UNASSIGNED ? null : value;
+                  if (next === (task.assignee_id ?? null)) return;
+                  const name = next ? (people(users.data?.users ?? [], task).find((p) => p.id === next)?.name ?? null) : null;
+                  void changeField(
+                    { assignee_id: next },
+                    { assignee_id: next, assignee_nickname: name },
+                    { assignee_id: task.assignee_id, assignee_nickname: task.assignee_nickname },
+                  );
+                }}
+                fill
+              >
+                <Row
+                  title={t('projects.assignee')}
+                  value={task.assignee_nickname || t('projects.unassigned')}
+                  icon="person"
+                  accessory="chevron"
+                  menuTrigger
+                />
+              </NativeMenu>
               <Row
                 title={t('projects.due')}
                 value={task.due_date ? calendarDateLabel(task.due_date.slice(0, 10)) : t('projects.noDue')}
                 icon="clock"
+                onPress={editTask}
                 accessory={
                   task.due_date && task.status !== 'done' && task.status !== 'cancelled' && bucket !== 'later' && bucket !== 'soon' ? (
                     <Badge label={t(`projects.dueGroup.${bucket}`)} tone={dueTone(bucket)} />
                   ) : (
-                    'none'
+                    'chevron'
                   )
                 }
               />
-              <Row
+              <NativeMenu
+                items={TASK_PRIORITIES.map((priority) => ({
+                  id: priority,
+                  title: t(`projects.priority.${priority}`),
+                  checked: priority === task.priority,
+                }))}
                 title={t('projects.priorityLabel')}
-                value={t(`projects.priority.${task.priority}`)}
-                icon="filter"
-                accessory="none"
-              />
+                onSelect={(value) => {
+                  if (value === task.priority) return;
+                  const priority = value as TaskPriority;
+                  void changeField({ priority }, { priority }, { priority: task.priority });
+                }}
+                fill
+              >
+                <Row
+                  title={t('projects.priorityLabel')}
+                  value={t(`projects.priority.${task.priority}`)}
+                  icon="filter"
+                  accessory="chevron"
+                  menuTrigger
+                />
+              </NativeMenu>
               <Row
                 title={t('projects.project')}
                 value={resource.data?.project.title}
@@ -262,6 +348,18 @@ export function TaskView({
       </ScrollView>
     </>
   );
+}
+
+/** The assignee menu's "nobody" item. */
+const UNASSIGNED = '__unassigned';
+
+/** Whom a task may be assigned to; its current assignee stays listed when no longer assignable. */
+function people(users: readonly { id: string; nickname: string }[], task: ProjectTask): { id: string; name: string }[] {
+  const list = users.map((user) => ({ id: user.id, name: user.nickname }));
+  if (task.assignee_id && !list.some((person) => person.id === task.assignee_id)) {
+    list.unshift({ id: task.assignee_id, name: task.assignee_nickname || task.assignee_id });
+  }
+  return list;
 }
 
 const useStyles = makeStyles((c) => ({
