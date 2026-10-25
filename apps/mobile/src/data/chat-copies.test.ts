@@ -19,4 +19,12 @@ describe('conversations kept on the phone', () => {
     expect(parseChatCopy({ page: {} })).toBeNull();
     expect(parseChatList(['a', 3, 'b'])).toEqual(['a', 'b']);
   });
+
+  it('keeps whose conversation it is, and leaves it unknown in older copies', () => {
+    const page = { messages: [] };
+    expect(parseChatCopy({ page, shared: null })?.shared).toBeNull();
+    expect(parseChatCopy({ page, shared: { by: 'Leo' } })?.shared).toEqual({ by: 'Leo' });
+    expect(parseChatCopy({ page, shared: { by: 7 } })?.shared).toEqual({ by: null });
+    expect(parseChatCopy({ page })).not.toHaveProperty('shared');
+  });
 });

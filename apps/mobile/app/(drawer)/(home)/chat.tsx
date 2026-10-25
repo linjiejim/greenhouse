@@ -120,6 +120,15 @@ export default function Chat() {
   const [offline, setOffline] = useState(false);
   /** Shared with me, not mine: read-only (who shared it, when the station says). */
   const [shared, setShared] = useState<{ by: string | null } | null>(null);
+  // whose it is is known (the station said, a copy kept it, or I just made it): until then the
+  // reply's cards and questions stay inert, so a shared one opened offline writes nothing
+  const ownership = useRef<{ by: string | null } | null | undefined>(params.session ? undefined : null);
+  const [ownerKnown, setOwnerKnown] = useState(!params.session);
+  const knowOwner = useCallback((value: { by: string | null } | null) => {
+    ownership.current = value;
+    setShared(value);
+    setOwnerKnown(true);
+  }, []);
   /** The agent this conversation runs as (its session's profile). */
   const [profileId, setProfileId] = useState<string | null>(null);
   const input = useRef<TextInput>(null);
@@ -155,12 +164,13 @@ export default function Chat() {
         if (made.status !== 0) alertError(t('assistant.sendFailed'), made.message || undefined);
         return null;
       }
+      knowOwner(null);
       setSessionId(made.data.id);
       router.setParams({ session: made.data.id, draft: undefined });
       return made.data.id;
     })();
     return making.current;
-  }, [sessionId, router, t, agentId]);
+  }, [sessionId, router, t, agentId, knowOwner]);
 
   const conversation = useMemo(() => {
     if (!sessionId) return null;
@@ -168,7 +178,7 @@ export default function Chat() {
       title: async () => {
         const result = await getSessionInfo(sessionId);
         if (result.ok) {
-          setShared(
+          knowOwner(
             result.data.session.is_owner === false ? { by: result.data.share_info?.shared_by_nickname ?? null } : null,
           );
           setProfileId(result.data.session.profile_id);
@@ -176,7 +186,10 @@ export default function Chat() {
         }
         if (result.status === 0) {
           const copy = await readChatCopy(sessionId);
-          if (copy) return { ok: true, data: { title: copy.title } };
+          if (copy) {
+            if (copy.shared !== undefined) knowOwner(copy.shared);
+            return { ok: true, data: { title: copy.title } };
+          }
         }
         return result;
       },
@@ -184,7 +197,11 @@ export default function Chat() {
         const result = await getMessages(sessionId);
         if (result.ok) {
           setOffline(false);
-          void saveChatCopy(sessionId, { title: conversationTitle.current, page: result.data });
+          void saveChatCopy(sessionId, {
+            title: conversationTitle.current,
+            page: result.data,
+            ...(ownership.current !== undefined ? { shared: ownership.current } : {}),
+          });
           return result;
         }
         if (result.status === 0) {
@@ -208,7 +225,7 @@ export default function Chat() {
       stillCurrent: captureIdentity(),
       wait: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
     });
-  }, [sessionId]);
+  }, [sessionId, knowOwner]);
   const state = useSyncExternalStore(conversation?.subscribe ?? noSubscription, conversation?.getState ?? closed);
   const conversationTitle = useRef<string | null>(null);
   conversationTitle.current = state.title;
@@ -426,9 +443,10 @@ export default function Chat() {
   );
 
   // a shared conversation is read-only: no reply for its buttons (they show disabled)
+  const writable = ownerKnown && !shared;
   const env = useCallback(
     (followUp?: string) =>
-      shared
+      !writable
         ? { followUp }
         : {
             reply: async (text: string) => {
@@ -437,10 +455,10 @@ export default function Chat() {
             },
             followUp,
           },
-    [send, state.busy, shared],
+    [send, state.busy, writable],
   );
   // the session the reply cards save into (a task, a schema): none when it is not mine to write in
-  const cardSession = shared ? null : sessionId;
+  const cardSession = writable ? sessionId : null;
 
   // long-press actions: quote into the composer, regenerate the latest reply
   const quote = useCallback((text: string) => {

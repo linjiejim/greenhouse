@@ -113,19 +113,21 @@ function Home() {
 
   // a conversation is made the first time a file is picked; sending moves to its page
   const made = useRef<string | null>(null);
-  // once made, its agent is settled: the picker steps away until the message goes
+  // once a conversation is being made, its agent is settled: the picker steps away until the message goes
   const [agentSettled, setAgentSettled] = useState(false);
   const ensureSession = useCallback(async () => {
     if (made.current) return made.current;
     const current = captureIdentity();
+    // settled from the moment it is asked for: a pick made while it is being made would be lost
+    setAgentSettled(true);
     const result = await createSession(agentId);
     if (!current()) return null;
     if (!result.ok) {
+      setAgentSettled(false);
       if (result.status !== 0) alertError(t('assistant.sendFailed'), result.message || undefined);
       return null;
     }
     made.current = result.data.id;
-    setAgentSettled(true);
     return made.current;
   }, [t, agentId]);
   const files = useComposerFiles(ensureSession);

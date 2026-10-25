@@ -12,6 +12,8 @@ export const KEPT_CHATS = 12;
 export interface ChatCopy {
   title: string | null;
   page: MessagePage<ChatMessage>;
+  /** Whose it is, when known: null mine, else shared with me (by whom). Absent in older copies. */
+  shared?: { by: string | null } | null;
 }
 
 /** The kept list with this conversation first, and the ones that fell off it. */
@@ -33,6 +35,11 @@ export function parseChatCopy(saved: unknown): ChatCopy | null {
   );
   return {
     title: typeof value.title === 'string' ? value.title : null,
+    ...(value.shared === null
+      ? { shared: null }
+      : value.shared && typeof value.shared === 'object'
+        ? { shared: { by: typeof value.shared.by === 'string' ? value.shared.by : null } }
+        : {}),
     page: { messages, has_more: page.has_more === true, next_before_seq: typeof page.next_before_seq === 'number' ? page.next_before_seq : null },
   };
 }
