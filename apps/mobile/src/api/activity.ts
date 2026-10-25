@@ -1,6 +1,6 @@
 /**
  * Team activity (`GET /api/activity/recent`, apps/api/src/routes/activity.ts): the last 14 days of
- * changes across the team that I may read, newest first, paged with `before` (the last item's `at`).
+ * changes across the team that I may read, newest first, paged with `before` = the previous page's opaque `next_before`.
  * Answers an `ApiResult` (./client.ts), never throws.
  */
 

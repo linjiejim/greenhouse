@@ -90,19 +90,32 @@ function inList(column: SQL, values: readonly string[]): SQL {
   )})`;
 }
 
+/**
+ * One page of a "recent changes" source: rows strictly older than `cursor` in
+ * the source's (at, key) order, inside [since, now). Each source's `key` is
+ * the feed item id it becomes, so the API can merge sources and resume.
+ */
+export interface RecentWindow {
+  since: string;
+  cursor?: ActivityCursor | null;
+  limit: number;
+}
+
 export interface RecentKnowledgeEditRow {
+  key: string;
   version_id: string;
   doc_pk: string;
   slug: string;
   title: string;
   version: number;
-  changed_by: string | null;
+  changed_by: string;
   visibility: 'team' | 'private';
   owner_user_id: string | null;
   at: string;
 }
 
 export interface RecentProjectActivityRow {
+  key: string;
   id: string;
   project_id: string;
   task_id: string | null;
@@ -112,9 +125,20 @@ export interface RecentProjectActivityRow {
 }
 
 export interface RecentTableChangeRow {
+  key: string;
   table_id: string;
   updated_by: string;
   records: number;
+  at: string;
+}
+
+export interface RecentKbFileRow {
+  key: string;
+  id: string;
+  name: string;
+  folder_id: string | null;
+  visibility: 'team' | 'private';
+  uploaded_by: string;
   at: string;
 }
 
@@ -219,51 +243,50 @@ export function createActivityService(db: Db) {
     // window and a LIMIT; the caller authorizes every row it shows.
 
     /**
-     * Saved knowledge versions (one row per edit) of documents that are not
-     * archived and that the user may plausibly read: team documents, their own,
-     * and shared private ones (the caller confirms each with resolveKbAccess).
+     * Saved knowledge edits of documents that are not archived and that the user
+     * may plausibly read: team documents, their own, and shared private ones
+     * (the caller confirms each with resolveKbAccess). Several saves of one
+     * document by one person in the window read as one change: the latest.
      */
-    async recentKnowledgeEdits(input: {
-      userId: string;
-      since: string;
-      /** Only edits strictly older than this (the feed's paging cursor). */
-      before?: string | null;
-      limit: number;
-    }): Promise<RecentKnowledgeEditRow[]> {
+    async recentKnowledgeEdits(input: RecentWindow & { userId: string }): Promise<RecentKnowledgeEditRow[]> {
       const rows = await db.execute(sql`
-        SELECT v.id AS version_id, kb.id AS doc_pk, kb.doc_id AS slug, kb.title, v.version, v.changed_by,
-               kb.visibility, kb.owner_user_id, ${ISO(sql`v.created_at`)} AS at
-        FROM kb_versions v
-        JOIN kb_documents kb ON kb.id = v.doc_id
-        WHERE v.created_at >= ${input.since}::timestamptz
-          ${input.before ? sql`AND v.created_at < ${input.before}::timestamptz` : sql``}
-          AND kb.status <> 'archived'
-          AND (kb.visibility = 'team' OR kb.owner_user_id = ${input.userId}
-               OR EXISTS (SELECT 1 FROM shares s WHERE s.resource_type = 'kb_document' AND s.resource_id = kb.id))
-        ORDER BY v.created_at DESC, v.id DESC
+        SELECT key, version_id, doc_pk, slug, title, version, changed_by, visibility, owner_user_id, ${ISO(sql`created`)} AS at
+        FROM (
+          SELECT DISTINCT ON (v.doc_id, v.changed_by)
+                 ('kb:' || v.id) AS key, v.id AS version_id, kb.id AS doc_pk, kb.doc_id AS slug, kb.title, v.version,
+                 v.changed_by, kb.visibility, kb.owner_user_id, v.created_at AS created
+          FROM kb_versions v
+          JOIN kb_documents kb ON kb.id = v.doc_id
+          WHERE v.created_at >= ${input.since}::timestamptz
+            AND v.changed_by IS NOT NULL
+            AND kb.status <> 'archived'
+            AND (kb.visibility = 'team' OR kb.owner_user_id = ${input.userId}
+                 OR EXISTS (SELECT 1 FROM shares s WHERE s.resource_type = 'kb_document' AND s.resource_id = kb.id))
+          ORDER BY v.doc_id, v.changed_by, v.created_at DESC, v.id DESC
+        ) latest
+        WHERE ${cursorClause(sql`created`, sql`key`, input.cursor)}
+        ORDER BY created DESC, key COLLATE "C" DESC
         LIMIT ${bound(input.limit)}
       `);
       return rows as unknown as RecentKnowledgeEditRow[];
     },
 
     /** Project activity rows (audit_events, capability `projects.activity`) of the given (already authorized) projects. */
-    async recentProjectActivities(input: {
-      projectIds: readonly string[];
-      since: string;
-      before?: string | null;
-      limit: number;
-    }): Promise<RecentProjectActivityRow[]> {
+    async recentProjectActivities(
+      input: RecentWindow & { projectIds: readonly string[] },
+    ): Promise<RecentProjectActivityRow[]> {
       if (input.projectIds.length === 0) return [];
+      const key = sql`('pa:' || a.id)`;
       const rows = await db.execute(sql`
-        SELECT a.id, (a.summary ->> 'project_id') AS project_id, (a.summary ->> 'task_id') AS task_id,
+        SELECT ${key} AS key, a.id, (a.summary ->> 'project_id') AS project_id, (a.summary ->> 'task_id') AS task_id,
                a.actor_id AS user_id, a.action_id AS action, ${ISO(sql`a.created_at`)} AS at
         FROM audit_events a
         WHERE a.app_id = 'projects'
           AND a.capability = ${PROJECT_ACTIVITY_CAPABILITY}
           AND ${inList(sql`(a.summary ->> 'project_id')`, input.projectIds.map(String))}
           AND a.created_at >= ${input.since}::timestamptz
-          ${input.before ? sql`AND a.created_at < ${input.before}::timestamptz` : sql``}
-        ORDER BY a.created_at DESC, a.id DESC
+          AND ${cursorClause(sql`a.created_at`, key, input.cursor)}
+        ORDER BY a.created_at DESC, ${key} COLLATE "C" DESC
         LIMIT ${bound(input.limit)}
       `);
       return rows as unknown as RecentProjectActivityRow[];
@@ -271,31 +294,49 @@ export function createActivityService(db: Db) {
 
     /**
      * Record changes in the given (already authorized) tables, one row per
-     * (table, person) with how many records they touched — record values are
-     * never read.
+     * (table, person) with how many records they touched in the whole window —
+     * record values are never read. Groups are formed before paging, so a
+     * group is one row ordered by its latest change and never split across
+     * pages.
      */
-    async recentTableChanges(input: {
-      tableIds: readonly string[];
-      since: string;
-      before?: string | null;
-      limit: number;
-    }): Promise<RecentTableChangeRow[]> {
+    async recentTableChanges(input: RecentWindow & { tableIds: readonly string[] }): Promise<RecentTableChangeRow[]> {
       if (input.tableIds.length === 0) return [];
       const rows = await db.execute(sql`
-        SELECT r.table_id, r.updated_by, count(*)::int AS records, ${ISO(sql`max(r.updated_at)`)} AS at
-        FROM table_records r
-        WHERE r.table_id IN (${sql.join(
-          input.tableIds.map((id) => sql`${id}`),
-          sql`, `,
-        )})
-          AND r.updated_at >= ${input.since}::timestamptz
-          ${input.before ? sql`AND r.updated_at < ${input.before}::timestamptz` : sql``}
-          AND r.deleted_at IS NULL
-        GROUP BY r.table_id, r.updated_by
-        ORDER BY max(r.updated_at) DESC
+        SELECT key, table_id, updated_by, records, ${ISO(sql`latest`)} AS at
+        FROM (
+          SELECT ('tr:' || r.table_id || ':' || r.updated_by) AS key, r.table_id, r.updated_by,
+                 count(*)::int AS records, max(r.updated_at) AS latest
+          FROM table_records r
+          WHERE ${inList(sql`r.table_id`, input.tableIds)}
+            AND r.updated_at >= ${input.since}::timestamptz
+            AND r.deleted_at IS NULL
+          GROUP BY r.table_id, r.updated_by
+        ) g
+        WHERE ${cursorClause(sql`latest`, sql`key`, input.cursor)}
+        ORDER BY latest DESC, key COLLATE "C" DESC
         LIMIT ${bound(input.limit)}
       `);
-      return rows as unknown as RecentTableChangeRow[];
+      return (rows as unknown as RecentTableChangeRow[]).map((row) => ({ ...row, records: Number(row.records) }));
+    },
+
+    /** New active knowledge-cabinet files one user may read (team files + their own personal ones). */
+    async recentKbFiles(input: RecentWindow & { userId: string }): Promise<RecentKbFileRow[]> {
+      const key = sql`('df:' || f.id)`;
+      const rows = await db.execute(sql`
+        SELECT ${key} AS key, f.id, f.name, f.folder_id, f.visibility, f.created_by AS uploaded_by,
+               ${ISO(sql`f.created_at`)} AS at
+        FROM files f
+        WHERE f.source = 'drive'
+          AND f.scope = 'kb'
+          AND f.status = 'active'
+          AND f.created_by IS NOT NULL
+          AND (f.visibility = 'team' OR f.owner_user_id = ${input.userId})
+          AND f.created_at >= ${input.since}::timestamptz
+          AND ${cursorClause(sql`f.created_at`, key, input.cursor)}
+        ORDER BY f.created_at DESC, ${key} COLLATE "C" DESC
+        LIMIT ${bound(input.limit)}
+      `);
+      return rows as unknown as RecentKbFileRow[];
     },
 
     /**

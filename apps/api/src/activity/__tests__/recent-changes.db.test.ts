@@ -18,6 +18,8 @@ import { projectsRegistration } from '../../platform/projects/application.js';
 import { tablesRegistration } from '../../platform/tables/application.js';
 import { knowledgeRegistration } from '../../platform/knowledge/registration.js';
 import { listRecentChanges } from '../recent-changes.js';
+import type { ActivityItem } from '@greenhouse/types/activity';
+import { sql } from 'drizzle-orm';
 import type { ToolRegistry } from '../../agent.js';
 import { governProxyWrite } from '../../agent-access/governed-write.js';
 import { moveToRestrictedRole, withoutCapability } from '../../../../../tests/helpers/restricted-role.js';
@@ -44,7 +46,21 @@ async function doc(owner: UserRow, visibility: 'team' | 'private', title: string
   return row;
 }
 
-const feed = (viewer: UserRow) => listRecentChanges(db, viewer, { limit: 50 }, { runtime });
+const feed = async (viewer: UserRow) => (await listRecentChanges(db, viewer, { limit: 50 }, { runtime })).items;
+
+/** Every item a viewer reaches by following next_before with small pages. */
+async function pageThrough(viewer: UserRow, limit: number) {
+  const items: ActivityItem[] = [];
+  let before: string | null = null;
+  for (let page = 0; page < 200; page++) {
+    const result = await listRecentChanges(db, viewer, { limit, before }, { runtime });
+    expect(result.items.length).toBeLessThanOrEqual(limit);
+    items.push(...result.items);
+    if (!result.next_before) return items;
+    before = result.next_before;
+  }
+  throw new Error('paging did not end');
+}
 
 beforeEach(async () => {
   db = await initDatabase({ type: 'pg', pgConnectionString: TEST_DATABASE_URL });
@@ -210,32 +226,81 @@ describe('recent changes', () => {
     });
   });
 
-  it('pages with a before cursor: strictly older, no repeats, same window', async () => {
+  it('pages with an opaque cursor: no repeats, newest first, nothing skipped, same window', async () => {
     const titles: string[] = [];
-    for (let i = 0; i < 3; i++) {
-      titles.push((await doc(alice, 'team', unique(`Paged ${i}`))).title);
-      await new Promise((resolve) => setTimeout(resolve, 5));
+    for (let i = 0; i < 3; i++) titles.push((await doc(alice, 'team', unique(`Paged ${i}`))).title);
+    const items = await pageThrough(bob, 2);
+    const ids = items.map((item) => item.id);
+    expect(new Set(ids).size, 'an item repeated across pages').toBe(ids.length);
+    for (let i = 1; i < items.length; i++) {
+      expect(Date.parse(items[i].at)).toBeLessThanOrEqual(Date.parse(items[i - 1].at));
     }
-    const seen = new Set<string>();
-    const found = new Set<string>();
-    let before: string | null = null;
-    let lastAt = Infinity;
-    for (let page = 0; page < 50 && found.size < titles.length; page++) {
-      const items = await listRecentChanges(db, bob, { limit: 2, before }, { runtime });
-      if (items.length === 0) break;
-      for (const item of items) {
-        expect(seen.has(item.id), `item ${item.id} repeated across pages`).toBe(false);
-        seen.add(item.id);
-        expect(Date.parse(item.at)).toBeLessThanOrEqual(lastAt);
-        if (titles.includes(item.target?.label ?? '')) found.add(item.target!.label!);
-      }
-      lastAt = Date.parse(items[items.length - 1].at);
-      before = items[items.length - 1].at;
-    }
-    expect([...found].sort()).toEqual([...titles].sort());
+    expect(items.map((item) => item.target?.label)).toEqual(expect.arrayContaining(titles));
 
-    // A cursor at or before the window's start has nothing older to show.
+    // A plain ISO timestamp (older clients) still pages: strictly older only.
     const old = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
-    expect(await listRecentChanges(db, bob, { limit: 2, before: old }, { runtime })).toEqual([]);
+    expect(await listRecentChanges(db, bob, { limit: 2, before: old }, { runtime })).toEqual({
+      items: [],
+      next_before: null,
+    });
+  });
+
+  it('does not skip changes that share the page boundary’s timestamp', async () => {
+    const docs: Array<{ id: string; title: string }> = [];
+    for (let i = 0; i < 5; i++) docs.push(await doc(alice, 'team', unique(`Same instant ${i}`)));
+    const at = new Date(Date.now() - 60_000).toISOString();
+    await db.executeRaw(
+      sql`UPDATE kb_versions SET created_at = ${at}::timestamptz WHERE doc_id IN (${sql.join(
+        docs.map((row) => sql`${row.id}`),
+        sql`, `,
+      )})`,
+    );
+    const labels = (await pageThrough(bob, 2)).map((item) => item.target?.label);
+    expect(labels).toEqual(expect.arrayContaining(docs.map((row) => row.title)));
+    expect(labels.filter((label) => docs.some((row) => row.title === label))).toHaveLength(5);
+  });
+
+  it('keeps reading past rows the viewer may not see instead of ending the feed early', async () => {
+    const project = await db.projects.createProject({
+      title: unique('Project under tasks'),
+      owner_id: alice.id,
+      created_by: alice.id,
+      visibility: 'public',
+    });
+    for (let i = 0; i < 6; i++) {
+      await db.projects.createTask({ project_id: project.id, title: unique(`Unreadable ${i}`), created_by: alice.id });
+    }
+    const projectCapabilities = [
+      ...new Set(Object.values(projectsManifest.actions).map((action) => action.capability)),
+    ];
+    await moveToRestrictedRole(db, bob.id, {
+      capabilities: withoutCapability('projects.execution.read', { 'projects.*': projectCapabilities }),
+    });
+    // The newest project rows are all about tasks Bob may not read; the project row is older.
+    const labels = (await pageThrough(bob, 2)).map((item) => item.target?.label);
+    expect(labels).toContain(project.title);
+  });
+
+  it('counts a person’s table edits once for the whole window, never split across pages', async () => {
+    const base = await db.tables.createBase({
+      name: unique('Base'),
+      visibility: 'team',
+      owner_id: alice.id,
+      created_by: alice.id,
+    });
+    const { table, fields } = await db.tables.createTable({
+      base_id: base.id,
+      name: unique('Table'),
+      created_by: alice.id,
+    });
+    const values = Object.fromEntries(fields.filter((field) => field.required).map((field) => [field.id, 'x']));
+    for (let i = 0; i < 3; i++) await db.tables.createRecord({ table_id: table.id, values, user_id: alice.id });
+    await db.tables.createRecord({ table_id: table.id, values, user_id: bob.id });
+
+    const rows = (await pageThrough(alice, 1)).filter((item) => item.target?.id === String(table.id));
+    expect(rows.map((item) => [item.actor.id, item.detail])).toEqual([
+      [bob.id, '1'],
+      [alice.id, '3'],
+    ]);
   });
 });
