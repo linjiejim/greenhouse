@@ -1,9 +1,9 @@
 # Connector catalog
 
 The official, vetted list of remote MCP servers a Greenhouse administrator can install with one click
-(Administration → MCP Servers → **Add from catalog**). Members then use them from chat and from their
-Bots — public ones right away, the ones that work with each member's own account after the member
-connects (Settings → **Connectors**).
+(Administration → Connectors → **Add from catalog**). Members' agents then use them through the
+`mcp_call` tool — public ones right away, the ones that work with each member's own account after the
+member connects (Settings → Connections on the web, Me → Connections on iOS).
 
 Each file here is one connector. Adding a file is how you contribute one.
 
@@ -51,10 +51,11 @@ uses `per_user` with a personal access token instead.
 
 ### `read_only_tools`
 
-Tools not marked read-only (`readOnlyHint`) by their server ask before they run: a confirmation in
-chat, an approval card in Bots. List a tool here only if you verified that it never changes anything
-(DeepWiki's tools, for instance, only read public repositories but carry no annotation). A server that
-calls a tool destructive overrides this list.
+Read-only tools are switched on when a connector is installed; every other tool stays off until an
+administrator turns it on. A tool counts as read-only when its server marks it `readOnlyHint` or it is
+listed here. List a tool here only if you verified that it never changes anything (DeepWiki's tools,
+for instance, only read public repositories but carry no annotation). A server that calls a tool
+destructive overrides this list.
 
 ### `verification`
 
@@ -74,7 +75,7 @@ Say how far you checked the entry against the live server — the catalog never 
    look-alikes of a well-known service — they do not belong here.
 3. Use the Registry `name` when the server is listed there; otherwise the vendor's reverse domain.
 4. Fill in `verification` honestly and give the date you checked.
-5. Run the catalog check: `pnpm vitest run apps/api/src/mcp-client/__tests__/catalog.test.ts`.
+5. Run the catalog check: `pnpm vitest run apps/api/src/connectors/__tests__/catalog.test.ts`.
 
 Credentials never go in a catalog file — per-member keys are pasted by each member in Greenhouse, and
 OAuth clients are registered by each Greenhouse instance for itself.
