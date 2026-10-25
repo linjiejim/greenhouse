@@ -20,29 +20,11 @@ export function sidebarWidth(window: { width: number; persistent: boolean }): nu
   return Math.round(Math.min(320, window.width * 0.82));
 }
 
-/** A place's route as the drawer sees it: its nested stack state may be missing or partial. */
-export interface PlaceRoute {
-  state?: { index?: number; routes?: readonly unknown[] };
-  params?: object;
-}
-
-/**
- * How deep a place's stack is (0 on its first page). The nested state can be partial: a page
- * pushed by path may arrive without `index` (the last route is the focused one, as React
- * Navigation rehydrates it), or before the stack has any state at all (then `params.screen`
- * names the page being opened; every place's first page is `index`).
- */
-export function placeDepth(route: PlaceRoute): number {
-  const routes = route.state?.routes;
-  if (routes?.length) return route.state?.index ?? routes.length - 1;
-  const screen = (route.params as { screen?: unknown } | undefined)?.screen;
-  return typeof screen === 'string' && screen !== 'index' ? 1 : 0;
-}
-
 /**
  * The edge swipe opens the drawer only on a place's first page: deeper (search, a conversation,
- * a folder), the same swipe is the system back gesture.
+ * a folder), the same swipe is the system back gesture. `depth` is the place's stack index (0 on
+ * its first page); each place's stack reports it as its pages gain focus (src/ui/place-swipe.ts).
  */
-export function drawerSwipes(persistent: boolean, route: PlaceRoute): boolean {
-  return !persistent && placeDepth(route) === 0;
+export function drawerSwipes(persistent: boolean, depth: number): boolean {
+  return !persistent && depth === 0;
 }

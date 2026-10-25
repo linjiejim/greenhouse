@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { drawerSwipes, persistentSidebar, placeDepth, sidebarWidth } from './layout-rule';
+import { drawerSwipes, persistentSidebar, sidebarWidth } from './layout-rule';
 
 describe('sidebar', () => {
   it('stays on screen only on an iPad window at regular width', () => {
@@ -19,25 +19,11 @@ describe('sidebar', () => {
   });
 
   it('opens by edge swipe only where the swipe is not the back gesture', () => {
-    const first = { state: { index: 0, routes: [{ name: 'index' }] } };
-    const pushed = { state: { index: 1, routes: [{ name: 'index' }, { name: 'search' }] } };
-    expect(drawerSwipes(false, first)).toBe(true);
+    expect(drawerSwipes(false, 0)).toBe(true);
     // a pushed page (search, a conversation, a folder): the swipe goes back
-    expect(drawerSwipes(false, pushed)).toBe(false);
-    expect(drawerSwipes(true, first)).toBe(false);
-    // a place never opened yet has no stack state: its first page
-    expect(drawerSwipes(false, {})).toBe(true);
-  });
-
-  it('reads the depth of a partial stack state', () => {
-    // pushed by path: the nested state may come without an index, the last route is focused
-    expect(placeDepth({ state: { routes: [{ name: 'index' }, { name: 'search' }] } })).toBe(1);
-    expect(placeDepth({ state: { routes: [{ name: 'index' }] } })).toBe(0);
-    // no state yet: the page being opened is named in the params
-    expect(placeDepth({ params: { screen: 'search' } })).toBe(1);
-    expect(placeDepth({ params: { screen: 'index' } })).toBe(0);
-    expect(placeDepth({ params: {} })).toBe(0);
-    // a folder pushed as another `index` still counts by position
-    expect(placeDepth({ state: { index: 1, routes: [{ name: 'index' }, { name: 'index' }] } })).toBe(1);
+    expect(drawerSwipes(false, 1)).toBe(false);
+    expect(drawerSwipes(false, 3)).toBe(false);
+    // the sidebar on screen beside the place never slides
+    expect(drawerSwipes(true, 0)).toBe(false);
   });
 });

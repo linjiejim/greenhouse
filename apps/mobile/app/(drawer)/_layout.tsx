@@ -15,7 +15,7 @@ import React from 'react';
 import { Platform, StyleSheet, useWindowDimensions } from 'react-native';
 import { Drawer } from 'expo-router/drawer';
 import { SidebarContent } from '../../src/shell/sidebar-content';
-import { drawerSwipes, sidebarWidth, type PlaceRoute } from '../../src/shell/layout-rule';
+import { drawerSwipes, sidebarWidth } from '../../src/shell/layout-rule';
 import { useTheme } from '../../src/theme';
 import { usePersistentSidebar } from '../../src/ui/sidebar';
 
@@ -29,11 +29,12 @@ export default function DrawerLayout() {
     <Drawer
       backBehavior="firstRoute"
       drawerContent={(props) => <SidebarContent {...props} />}
-      screenOptions={({ route }) => ({
+      screenOptions={{
         headerShown: false,
         drawerType: persistent ? 'permanent' : Platform.OS === 'ios' ? 'back' : 'slide',
         drawerPosition: 'left',
-        swipeEnabled: drawerSwipes(persistent, route as PlaceRoute),
+        // a place's stack turns this off on its deeper pages (src/ui/place-swipe.ts)
+        swipeEnabled: drawerSwipes(persistent, 0),
         swipeEdgeWidth: 32,
         overlayColor: hex.scrim,
         keyboardDismissMode: 'on-drag',
@@ -51,7 +52,7 @@ export default function DrawerLayout() {
               : { shadowColor: hex.label, shadowOffset: { width: -2, height: 0 }, shadowOpacity: 0.14, shadowRadius: 10 }
             : null,
         ],
-      })}
+      }}
     >
       <Drawer.Screen name="(home)" />
       <Drawer.Screen name="knowledge" />

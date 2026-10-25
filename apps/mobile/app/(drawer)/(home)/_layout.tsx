@@ -8,11 +8,13 @@ import React from 'react';
 import { Stack } from 'expo-router';
 import { useTheme } from '../../../src/theme';
 import { detailScreen, pageScreen, stackDefaults } from '../../../src/ui/nav';
+import { usePlaceSwipe } from '../../../src/ui/place-swipe';
 
 export default function HomeLayout() {
   const { colors: c, hex, isDark } = useTheme();
+  const placeSwipe = usePlaceSwipe();
   return (
-    <Stack screenOptions={{ ...stackDefaults(c, hex, isDark), ...pageScreen(c, { grouped: true, compact: true }) }}>
+    <Stack screenListeners={placeSwipe} screenOptions={{ ...stackDefaults(c, hex, isDark), ...pageScreen(c, { grouped: true, compact: true }) }}>
       <Stack.Screen name="index" />
       <Stack.Screen name="search" />
       {/* the conversation scrolls a long, busy list under its title: a hard edge keeps the title legible */}
