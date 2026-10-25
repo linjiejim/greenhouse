@@ -34,7 +34,7 @@
       "package": "app.greenhouse.mobile",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#2E8B3D"
+        "backgroundColor": "#235D4D"
       }
     },
     "web": {

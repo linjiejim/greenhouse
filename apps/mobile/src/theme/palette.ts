@@ -28,6 +28,8 @@ export const lightHex = {
    * in iOS Settings. On the accent itself use `onAccent`.
    */
   onTint: '#FFFFFF',
+  /** The Greenhouse mark's body (Haven, logos/README.md); its seed keeps its own colour. */
+  mark: '#235D4D',
 
   // ── Backgrounds (plain + grouped) — `--t-surface*` ──
   background: '#F4F8F1',
@@ -103,6 +105,7 @@ export const darkHex: HexPalette = {
   accentFill: 'rgba(118,201,125,0.16)',
   accentText: '#A5DDA9',
   onTint: '#FFFFFF',
+  mark: '#D7EFDD',
 
   background: '#000000',
   secondaryBackground: '#1C1C1E',

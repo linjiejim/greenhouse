@@ -1,42 +1,24 @@
 /**
- * The Greenhouse V1 mark — the house with a sprout, drawn in strokes and tinted with the accent.
- * Canonical geometry: logos/greenhouse-mark.svg (keep in step if the brand mark changes; the app
- * icon in assets/ is rendered from the same paths). With `animate`, the house appears and the
- * sprout grows (instantly with Reduce Motion); `onBuilt` fires when the mark is whole.
+ * The Greenhouse mark, Haven: a rounded greenhouse with an arch cut out of its centre and a seed
+ * growing in it (logos/README.md). The body takes the palette's `mark` (forest, pale green in dark
+ * mode), the seed keeps its own colour. Geometry comes from ./brand.generated.ts, a generated copy
+ * of packages/ui/src/assets/greenhouse-mark.svg on main; never hand-copy the paths. With `animate`,
+ * the two sides close in and then the seed grows (static at once with Reduce Motion); `onBuilt`
+ * fires when the mark is whole.
  */
 
 import React, { useEffect, useRef, useState } from 'react';
 import { AccessibilityInfo, Animated, View } from 'react-native';
-import Svg, { G, Path } from 'react-native-svg';
+import Svg, { Path } from 'react-native-svg';
 import { useTheme } from '../theme';
+import { GREENHOUSE_PATHS } from './brand.generated';
 
 /** How long the mark takes to build itself (the launch splash can leave earlier when content is ready). */
 export const MARK_BUILD_MS = 650;
 
-const HOUSE = [
-  'M22 104 L22 56 L65 22 L108 56 L108 104 Z',
-  'M22 56 L108 56',
-  'M44 56 L44 104',
-  'M86 56 L86 104',
-];
-const SPROUT = [
-  'M65 104 L65 84',
-  'M65 84 C69 78 74 75 76 65 C72 69 67 77 65 84 Z',
-  'M65 84 C61 78 56 75 54 65 C58 69 63 77 65 84 Z',
-];
-const VIEWBOX = '9 7 112 112';
-
-function Strokes({ paths, color, size }: { paths: string[]; color: string; size: number }) {
-  return (
-    <Svg viewBox={VIEWBOX} width={size} height={size} accessible={false}>
-      <G fill="none" stroke={color} strokeWidth={6} strokeLinecap="round" strokeLinejoin="round">
-        {paths.map((d) => (
-          <Path key={d} d={d} />
-        ))}
-      </G>
-    </Svg>
-  );
-}
+const VIEWBOX = '0 0 224 224';
+const SEED = GREENHOUSE_PATHS.find(({ id }) => id === 'seed')!;
+const SIDES = GREENHOUSE_PATHS.filter(({ id }) => id !== 'seed');
 
 export function GreenhouseMark({
   size = 72,
@@ -45,6 +27,7 @@ export function GreenhouseMark({
   onBuilt,
 }: {
   size?: number;
+  /** One colour for the whole mark (body and seed), e.g. on a filled tile. */
   color?: string;
   animate?: boolean;
   /** `animate`: the mark is whole — built, or static at once with Reduce Motion. */
@@ -96,37 +79,50 @@ export function GreenhouseMark({
     };
   }, [animate, progress]);
 
-  const markColor = color ?? hex.accent;
+  const body = color ?? hex.mark;
+  const seed = color ?? SEED.fill;
   const still = !animate || motionFinished;
   return (
     <View style={{ width: size, height: size }} accessible accessibilityLabel="Greenhouse">
       {still ? (
-        <Strokes paths={[...HOUSE, ...SPROUT]} color={markColor} size={size} />
+        <Svg viewBox={VIEWBOX} width={size} height={size} accessible={false}>
+          {/* both sides in one path: they share a winding, so their overlap stays solid */}
+          <Path d={SIDES.map(({ d }) => d).join(' ')} fill={body} />
+          <Path d={SEED.d} fill={seed} />
+        </Svg>
       ) : (
-        <>
-          <Animated.View
-            style={{
-              position: 'absolute',
-              opacity: progress.interpolate({ inputRange: [0, 0.6, 1], outputRange: [0, 1, 1] }),
-              transform: [
-                { translateY: progress.interpolate({ inputRange: [0, 0.6, 1], outputRange: [size * 0.06, 0, 0] }) },
-              ],
-            }}
-          >
-            <Strokes paths={HOUSE} color={markColor} size={size} />
-          </Animated.View>
-          <Animated.View
-            style={{
-              position: 'absolute',
-              opacity: progress.interpolate({ inputRange: [0, 0.4, 0.7, 1], outputRange: [0, 0, 1, 1] }),
-              transform: [
-                { scale: progress.interpolate({ inputRange: [0, 0.4, 0.9, 1], outputRange: [0.2, 0.2, 1.05, 1] }) },
-              ],
-            }}
-          >
-            <Strokes paths={SPROUT} color={markColor} size={size} />
-          </Animated.View>
-        </>
+        GREENHOUSE_PATHS.map(({ id, d }) => {
+          const isSeed = id === 'seed';
+          return (
+            <Animated.View
+              key={id}
+              style={{
+                position: 'absolute',
+                width: size,
+                height: size,
+                opacity: progress.interpolate({
+                  inputRange: isSeed ? [0, 0.35, 1] : [0, 0.65, 1],
+                  outputRange: [0, isSeed ? 0 : 1, 1],
+                }),
+                transform: isSeed
+                  ? [{ scale: progress.interpolate({ inputRange: [0, 0.35, 0.9, 1], outputRange: [0.05, 0.05, 1.04, 1] }) }]
+                  : [
+                      {
+                        // the sides close in from either hand
+                        translateX: progress.interpolate({
+                          inputRange: [0, 0.7, 1],
+                          outputRange: [((id === 'house-left' ? -28 : 28) * size) / 224, 0, 0],
+                        }),
+                      },
+                    ],
+              }}
+            >
+              <Svg viewBox={VIEWBOX} width={size} height={size} accessible={false}>
+                <Path d={d} fill={isSeed ? seed : body} />
+              </Svg>
+            </Animated.View>
+          );
+        })
       )}
     </View>
   );

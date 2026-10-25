@@ -1,12 +1,1 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="9.0 7.0 112.0 112.0" role="img" aria-label="Greenhouse" color="#0D9488">
-  <title>Greenhouse</title>
-  <g fill="none" stroke="currentColor" stroke-width="6" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M22 104 L22 56 L65 22 L108 56 L108 104 Z"/>
-    <path d="M22 56 L108 56"/>
-    <path d="M44 56 L44 104"/>
-    <path d="M86 56 L86 104"/>
-    <path d="M65 104 L65 84"/>
-    <path d="M65 84 C69 78 74 75 76 65 C72 69 67 77 65 84 Z"/>
-    <path d="M65 84 C61 78 56 75 54 65 C58 69 63 77 65 84 Z"/>
-  </g>
-</svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 224 224" role="img" aria-label="Greenhouse"><title>Greenhouse</title><path d="M112.4 28C105 28 100 30 96 34L36 80Q30 85 30 94V171Q30 192 51 192H82V130Q82 99 112.4 99Z M112 99Q142 99 142 130V192H173Q194 192 194 171V94Q194 85 188 80L128 34C124 30 119 28 112 28Z" fill="#235D4D"/><path d="M112 177C86 163 88 134 112 115C137 134 138 163 112 177Z" fill="#B6CA68"/></svg>
