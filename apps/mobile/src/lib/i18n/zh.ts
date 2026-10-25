@@ -359,7 +359,7 @@ export const zh: Catalog = {
       night: '夜深了，{name}',
     },
     needsYou: '{n} 件事等你确认',
-    recent: '最近对话',
+    recent: '最近',
     all: '全部',
     allTitle: '全部对话',
     noConversations: '还没有对话，在下面问点什么吧。',

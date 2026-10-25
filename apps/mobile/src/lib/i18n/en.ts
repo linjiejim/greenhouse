@@ -365,7 +365,7 @@ export const en = {
       night: 'Still up, {name}?',
     },
     needsYou: '{n} waiting for you',
-    recent: 'Recent Conversations',
+    recent: 'Recent',
     all: 'All',
     allTitle: 'All Conversations',
     noConversations: 'No conversations yet. Ask anything below.',
