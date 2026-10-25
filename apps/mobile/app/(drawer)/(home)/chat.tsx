@@ -56,6 +56,7 @@ import { sendDirect } from '../../../src/chat/direct-send';
 import { followRun, regenerateReply, sendMessage } from '../../../src/chat/send';
 import { useComposerBridge } from '../../../src/chat/composer-bridge';
 import { useComposerFiles } from '../../../src/chat/use-composer-files';
+import { useChatAgents } from '../../../src/chat/use-agents';
 import { visibleMessages } from '../../../src/data/chat-stream';
 import {
   CLOSED_CONVERSATION,
@@ -141,13 +142,17 @@ export default function Chat() {
   const shape = useRef({ head: '', tail: '' });
   const firstTurn = useRef<FirstTurn | null>(getHandoff<FirstTurn>(params.k, 'first-turn') ?? null);
 
+  // the agent a new conversation starts with (offered only where there is more than Sprouty)
+  const agents = useChatAgents();
+  const [agentId, setAgentId] = useState<string | null>(null);
+
   // a new conversation is made once, the first time it is needed (send, attach)
   const making = useRef<Promise<string | null> | null>(null);
   const ensureSession = useCallback(async (): Promise<string | null> => {
     if (sessionId) return sessionId;
     making.current ??= (async () => {
       const current = captureIdentity();
-      const made = await createSession();
+      const made = await createSession(agentId);
       if (!current()) return null;
       if (!made.ok) {
         making.current = null;
@@ -159,7 +164,7 @@ export default function Chat() {
       return made.data.id;
     })();
     return making.current;
-  }, [sessionId, router, t]);
+  }, [sessionId, router, t, agentId]);
 
   const conversation = useMemo(() => {
     if (!sessionId) return null;
@@ -781,6 +786,9 @@ export default function Chat() {
             autoFocus={!sessionId && !params.k}
             onHeight={setComposerHeight}
             bottomInset={insets.bottom}
+            agents={sessionId ? undefined : agents}
+            agentId={agentId}
+            onAgent={setAgentId}
           />
         )}
       </KeyboardStickyView>

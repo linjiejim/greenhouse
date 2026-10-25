@@ -5,7 +5,9 @@
  *   ( +  picked files · growing text field  ↑ / ■ )
  *
  *  - `+` opens a native menu: Photos, Camera, Files. Files upload as soon as they are picked
- *    (./use-composer-files.ts) and retry in place; send waits until every one is up.
+ *    (./use-composer-files.ts) and retry in place; send waits until every one is up. A new
+ *    conversation on a station with more than one agent (./use-agents.ts) also picks its agent
+ *    there.
  *  - ↑ sends, and is dimmed and disabled while there is nothing to send; while the assistant
  *    answers, an empty composer offers ■ (stop) instead.
  *  - The field grows with the text up to six lines and shrinks back as it empties.
@@ -27,9 +29,13 @@ import { NativeButton } from '../ui/button';
 import { Icon, Spinner, Touchable } from '../ui/core';
 import { FileIcon } from '../ui/file-icon';
 import { Glass } from '../ui/glass';
-import { NativeMenu, type MenuItem } from '../ui/menu';
+import { NativeMenu, menuSections, type MenuItem } from '../ui/menu';
+import type { ChatAgent } from './use-agents';
 import { MAX_FILES, canSendMessage, type ComposerFile } from './composer-files';
 import type { AttachSource } from './use-composer-files';
+
+/** The + menu's agent items: `agent:<profile id>`. */
+const AGENT = 'agent:';
 
 /** A one-line field: roomier than a plain control (HIT). */
 const FIELD = HIT + space.sm;
@@ -61,6 +67,10 @@ export const Composer = memo(
       bottomInset: number;
       /** The page is grouped (home): the band takes the grouped surface. */
       grouped?: boolean;
+      /** A new conversation's agents (offered only when more than one) and the one chosen (null: the first). */
+      agents?: readonly ChatAgent[];
+      agentId?: string | null;
+      onAgent?: (id: string) => void;
     }
   >(function Composer(
     {
@@ -78,6 +88,9 @@ export const Composer = memo(
       onHeight,
       bottomInset,
       grouped,
+      agents,
+      agentId,
+      onAgent,
     },
     ref,
   ) {
@@ -99,6 +112,21 @@ export const Composer = memo(
       { id: 'camera', title: t('composer.camera'), icon: 'camera', disabled: full },
       { id: 'files', title: t('composer.files'), icon: 'attach', disabled: full },
     ];
+    const chosen = agents?.find((agent) => agent.id === agentId) ?? agents?.[0];
+    const menuItems: MenuItem[] =
+      agents && agents.length > 1 && onAgent
+        ? menuSections([
+            attachItems,
+            [
+              {
+                id: 'agent',
+                title: t('composer.agent', { name: chosen?.name ?? '' }),
+                icon: 'sparkle',
+                children: agents.map((agent) => ({ id: `${AGENT}${agent.id}`, title: agent.name, checked: agent.id === chosen?.id })),
+              },
+            ],
+          ])
+        : attachItems;
 
     return (
       <View
@@ -159,8 +187,8 @@ export const Composer = memo(
           <View style={styles.row}>
             <NativeMenu
               title={full ? t('composer.maxFiles', { n: MAX_FILES }) : undefined}
-              items={attachItems}
-              onSelect={(id) => onAttach(id as AttachSource)}
+              items={menuItems}
+              onSelect={(id) => (id.startsWith(AGENT) ? onAgent?.(id.slice(AGENT.length)) : onAttach(id as AttachSource))}
             >
               <View style={styles.slot} accessible accessibilityRole="button" accessibilityLabel={t('composer.add')}>
                 <View style={styles.plus}>

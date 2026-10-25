@@ -22,7 +22,9 @@ export const listSessions = (offset: number) =>
     page_meta: 1,
   });
 
-export const createSession = () => post<ChatSession>('/api/sessions', {});
+/** A new conversation; `profileId` starts it with another agent than Sprouty (`/api/profiles`). */
+export const createSession = (profileId?: string | null) =>
+  post<ChatSession>('/api/sessions', profileId ? { profile_id: profileId } : {});
 
 /**
  * The conversation without its messages (title, and 404 when it is gone or not mine to read).

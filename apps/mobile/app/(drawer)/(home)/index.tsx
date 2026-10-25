@@ -25,6 +25,7 @@ import { Composer } from '../../../src/chat/composer';
 import { sentParts } from '../../../src/chat/composer-files';
 import { ConversationRow } from '../../../src/chat/conversation-row';
 import { useComposerFiles } from '../../../src/chat/use-composer-files';
+import { useChatAgents } from '../../../src/chat/use-agents';
 import { greetingFor } from '../../../src/data/home';
 import { usePrefs } from '../../../src/store/prefs';
 import { captureIdentity } from '../../../src/data/identity';
@@ -71,6 +72,9 @@ function Home() {
   const [draft, setDraft] = useState('');
   const [composerHeight, setComposerHeight] = useState(64);
   const input = useRef<TextInput>(null);
+  // the agent a new conversation starts with (offered only where there is more than Sprouty)
+  const agents = useChatAgents();
+  const [agentId, setAgentId] = useState<string | null>(null);
 
   // back on home (from a conversation, a sheet): the list catches up
   useFocusEffect(
@@ -93,7 +97,7 @@ function Home() {
   const ensureSession = useCallback(async () => {
     if (made.current) return made.current;
     const current = captureIdentity();
-    const result = await createSession();
+    const result = await createSession(agentId);
     if (!current()) return null;
     if (!result.ok) {
       if (result.status !== 0) alertError(t('assistant.sendFailed'), result.message || undefined);
@@ -101,7 +105,7 @@ function Home() {
     }
     made.current = result.data.id;
     return made.current;
-  }, [t]);
+  }, [t, agentId]);
   const files = useComposerFiles(ensureSession);
 
   const send = async () => {
@@ -233,6 +237,9 @@ function Home() {
           onHeight={setComposerHeight}
           bottomInset={insets.bottom}
           grouped
+          agents={agents}
+          agentId={agentId}
+          onAgent={setAgentId}
         />
       </KeyboardStickyView>
     </View>

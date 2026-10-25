@@ -416,6 +416,7 @@ export const zh: Catalog = {
     cameraDenied: '相机权限未开启',
     cameraDeniedHint: '请在系统设置中允许 Greenhouse 使用相机后再拍照。',
     openSettings: '前往设置',
+    agent: 'Agent：{name}',
   },
   conversation: {
     title: '对话',

@@ -430,6 +430,7 @@ export const en = {
     cameraDenied: 'Camera access is off',
     cameraDeniedHint: 'Allow Greenhouse to use the camera in Settings, then try again.',
     openSettings: 'Open Settings',
+    agent: 'Agent: {name}',
   },
   conversation: {
     title: 'Conversation',
