@@ -405,7 +405,7 @@ v1 只接 DeepSeek 与 OpenAI 兼容服务，它们**自动**缓存 prompt 前�
 返回可点开的记录时，结果行带一个 `url` 字段，模型在正文里把它写成 Markdown 链接，用户点击就地浮出详情。方案见 [spec](../../../docs/specs/20260804-entity-references-and-peek.md)。
 
 - **深链格式的唯一真源是 `@greenhouse/types/entity-links` 的 `entityUrl()`**，构造与解析共用一张表（浏览器侧靠 `parseEntityUrl` 认出这些链接）。**别再手写 `#/knowledge/doc/${id}-${slug}` 这种模板**——`knowledge-mutation.ts` 手抄过一份，两边已经开始漂移，这次一并收敛了。
-- **引用指令写在工具 description，措辞取自零 import 叶子模块 `tools/cite-url.ts` 的 `CITE_URL_INSTRUCTION`**（今天 6 个工具在用）。写在 description 而不是 profile prompt，是因为它随 function definition 下发、自动覆盖 chat / proxy / MCP 三个面；抽成常量是因为六份同义句必然漂移。**「verbatim，不许自己拼」是这句话的重点**——伪造的链接和真链接长得一模一样，直到有人点开。
+- **引用指令写在工具 description，措辞取自零 import 叶子模块 `tools/cite-url.ts` 的 `CITE_URL_INSTRUCTION`**（今天 7 个工具在用）。写在 description 而不是 profile prompt，是因为它随 function definition 下发、自动覆盖 chat / proxy / MCP 三个面；抽成常量是因为六份同义句必然漂移。**「verbatim，不许自己拼」是这句话的重点**——伪造的链接和真链接长得一模一样，直到有人点开。
 - **加这句话要付描述预算**（`__tests__/description-budget.test.ts`）：这次的 ~600 字符是靠删工具里 zod schema 已经 `.describe()` 过的筛选/排序字段清单付的，ceiling 没动。下次同理——先删重复，别先抬预算。
 
 ### Tables 的对话式 Schema 编辑（`tables_schema_plan` + `/api/tables/schema-plan/apply`）

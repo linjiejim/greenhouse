@@ -9,7 +9,9 @@
 import { tool } from 'ai';
 import { z } from 'zod';
 import { toErrorMessage } from '@greenhouse/utils/error';
+import { entityUrl } from '@greenhouse/types/entity-links';
 import { defineTool, type ToolMeta } from './define.js';
+import { CITE_URL_INSTRUCTION } from './cite-url.js';
 import { dispatchProjectAgentAction } from '../platform/projects/agent-adapter.js';
 
 const projectMutationSchema = z.object({
@@ -50,6 +52,15 @@ const projectMutationSchema = z.object({
 
 type ProjectMutationInput = z.infer<typeof projectMutationSchema>;
 
+/**
+ * A task's in-app link: its project's address with `?task=` (the task link
+ * packages/types/src/object-refs.ts parses), so a task written in chat shows as
+ * an object chip that opens the task.
+ */
+function taskUrl(projectId: string | number, taskId: string | number): string {
+  return `${entityUrl({ kind: 'project', id: String(projectId) })}?task=${encodeURIComponent(String(taskId))}`;
+}
+
 export interface ProjectMutationContext {
   userId: string;
 }
@@ -63,7 +74,7 @@ const meta: ToolMeta = {
 
 A finished project is status=completed, an abandoned one is archived — deletion is deliberately absent. When closing or updating a task, record the conclusion (task.update description or comment.add) so query_tasks listings stay informative.
 
-Every call requires explicit user confirmation via the cloud proxy (confirm:true) and is audited. Always read the project first with project_query, summarize the intended changes, and wait for user approval before calling. Project/task writes reuse the project repository and enforce project visibility/membership checks.`,
+Every call requires explicit user confirmation via the cloud proxy (confirm:true) and is audited. Always read the project first with project_query, summarize the intended changes, and wait for user approval before calling. Project/task writes reuse the project repository and enforce project visibility/membership checks. ${CITE_URL_INSTRUCTION}`,
   category: 'team',
   is_global: true,
   surface: { proxy: 'write', mcp: 'projects' },
@@ -100,6 +111,7 @@ export function createProjectMutationTool(ctx: ProjectMutationContext) {
               title: project.project.title,
               status: project.project.status,
               owner_id: project.project.owner_id,
+              url: entityUrl({ kind: 'project', id: String(project.project.id) }),
             },
           };
         }
@@ -133,7 +145,13 @@ export function createProjectMutationTool(ctx: ProjectMutationContext) {
           return {
             action: input.action,
             status: 'updated',
-            project: { id: project.id, title: project.title, status: project.status, priority: project.priority },
+            project: {
+              id: project.id,
+              title: project.title,
+              status: project.status,
+              priority: project.priority,
+              url: entityUrl({ kind: 'project', id: String(project.id) }),
+            },
           };
         }
 
@@ -168,7 +186,13 @@ export function createProjectMutationTool(ctx: ProjectMutationContext) {
           return {
             action: input.action,
             status: 'created',
-            task: { id: task.id, project_id: task.project_id, title: task.title, status: task.status },
+            task: {
+              id: task.id,
+              project_id: task.project_id,
+              title: task.title,
+              status: task.status,
+              url: taskUrl(task.project_id, task.id),
+            },
           };
         }
 
@@ -224,7 +248,13 @@ export function createProjectMutationTool(ctx: ProjectMutationContext) {
         return {
           action: input.action,
           status: 'updated',
-          task: { id: task.id, project_id: task.project_id, title: task.title, status: task.status },
+          task: {
+            id: task.id,
+            project_id: task.project_id,
+            title: task.title,
+            status: task.status,
+            url: taskUrl(task.project_id, task.id),
+          },
         };
       } catch (err) {
         return { action: input.action, error: toErrorMessage(err) };
