@@ -25,6 +25,8 @@ export function DirectorySearch({ filter }: { filter: ReturnType<typeof useDirec
     <Stack.SearchBar
       ref={filter.ref}
       placeholder={t('common.search')}
+      // searches match words as typed: no automatic capital ("launch" stays "launch")
+      autoCapitalize="none"
       // a bar button beside +, on the title's row (iOS 26); never a second row under the title
       placement="integratedButton"
       allowToolbarIntegration={false}
