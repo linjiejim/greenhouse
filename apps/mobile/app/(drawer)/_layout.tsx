@@ -36,7 +36,8 @@ export default function DrawerLayout() {
         // a place's stack turns this off on its deeper pages (src/ui/place-swipe.ts)
         swipeEnabled: drawerSwipes(persistent, 0),
         swipeEdgeWidth: 32,
-        overlayColor: hex.scrim,
+        // iOS: the place slides aside over the sidebar and stays lit (a scrim would make it read as the lower layer)
+        overlayColor: Platform.OS === 'ios' ? 'transparent' : hex.scrim,
         keyboardDismissMode: 'on-drag',
         drawerStyle: {
           width: sidebarWidth({ width, persistent }),
