@@ -134,7 +134,13 @@ export function assertSafePublicPageUrl(input: string): URL {
   return url;
 }
 
-const publicOnlyLookup: LookupFunction = (hostname, options, callback) => {
+/**
+ * DNS lookup that refuses any answer with a non-public address. Used as the
+ * socket connector's `lookup`, so the check happens at connect time (no gap
+ * for DNS rebinding) and on every redirect connection. Shared with the MCP
+ * connector client (connectors/network.ts).
+ */
+export const publicOnlyLookup: LookupFunction = (hostname, options, callback) => {
   dnsLookup(
     hostname,
     {
