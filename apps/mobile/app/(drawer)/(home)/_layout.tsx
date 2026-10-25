@@ -17,8 +17,7 @@ export default function HomeLayout() {
     <Stack screenListeners={placeSwipe} screenOptions={{ ...stackDefaults(c, hex, isDark), ...pageScreen(c, { grouped: true, compact: true }) }}>
       <Stack.Screen name="index" />
       <Stack.Screen name="search" />
-      {/* the conversation scrolls a long, busy list under its title: a hard edge keeps the title legible */}
-      <Stack.Screen name="chat" options={{ ...detailScreen(c), scrollEdgeEffects: { top: 'hard' } }} />
+      <Stack.Screen name="chat" options={detailScreen(c)} />
     </Stack>
   );
 }

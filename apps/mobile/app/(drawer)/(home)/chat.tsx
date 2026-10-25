@@ -27,7 +27,7 @@ import { KeyboardStickyView, useKeyboardState } from 'react-native-keyboard-cont
 import Animated, { FadeIn, FadeOut, ReduceMotion } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { chatRun, createSession, getMessages, getSessionInfo, stopRun } from '../../../src/api/assistant';
-import { HeaderTitle, TalkingAvatar, TalkingBand, TalkingRoom, useTalking } from '../../../src/chat/header-avatar';
+import { HeaderBand, HeaderTitle, TalkingAvatar, TalkingBand, TalkingRoom, useTalking } from '../../../src/chat/header-avatar';
 import { useStepsSheet } from '../../../src/chat/steps-sheet';
 import type { ApiResult } from '../../../src/api/client';
 import { Composer } from '../../../src/chat/composer';
@@ -714,6 +714,7 @@ export default function Chat() {
           ]}
         />
       </OpenOrigin.Provider>
+      <HeaderBand height={headerInset} />
       {avatarOut ? <TalkingBand out={out} height={headerInset} /> : null}
       {avatarOut ? <TalkingAvatar state={face} out={out} origin={rootOrigin} /> : null}
       <KeyboardStickyView offset={{ opened: insets.bottom }} style={styles.composerWrap}>

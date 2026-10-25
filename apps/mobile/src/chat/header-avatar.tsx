@@ -18,6 +18,7 @@
  */
 
 import React, { useEffect, useRef, useState } from 'react';
+import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 import { LayoutAnimation, Text, View, useWindowDimensions } from 'react-native';
 import Animated, {
   Easing,
@@ -247,6 +248,31 @@ export function TalkingBand({ out, height }: { out: SharedValue<number>; height:
   const { colors: c } = useTheme();
   const style = useAnimatedStyle(() => ({ height: height + out.value * ROOM, opacity: Math.min(1, out.value * 2) }));
   return <Animated.View pointerEvents="none" style={[{ position: 'absolute', left: 0, right: 0, top: 0, backgroundColor: c.background }, style]} />;
+}
+
+const FADE = 14;
+
+/**
+ * Behind the bar, always: a band of the page's background under the title and a short fade
+ * below it, so a long reply scrolling up never shows through the title. (The list sets its
+ * insets by hand, so UIKit's scroll-edge effect does not reach it.)
+ */
+export function HeaderBand({ height }: { height: number }) {
+  const { colors: c, hex } = useTheme();
+  return (
+    <View pointerEvents="none" style={{ position: 'absolute', left: 0, right: 0, top: 0 }}>
+      <View style={{ height, backgroundColor: c.background }} />
+      <Svg height={FADE} width="100%" accessible={false}>
+        <Defs>
+          <LinearGradient id="headerFade" x1="0" y1="0" x2="0" y2="1">
+            <Stop offset="0" stopColor={hex.background} stopOpacity={1} />
+            <Stop offset="1" stopColor={hex.background} stopOpacity={0} />
+          </LinearGradient>
+        </Defs>
+        <Rect x="0" y="0" width="100%" height={FADE} fill="url(#headerFade)" />
+      </Svg>
+    </View>
+  );
 }
 
 /** The list's top grows with the header, so its first message starts below the sprout. */
