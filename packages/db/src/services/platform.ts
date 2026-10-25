@@ -93,6 +93,31 @@ function assertResourceIds(input: { app_id: string; module_id: string; entity_id
 }
 
 export function createPlatformService(db: Db) {
+  /**
+   * The roles a member holds: custom roles from `role_members`, and the
+   * protected system role named by an active member's `users.role` (super →
+   * super, team → team). Protected bindings are synchronized from the account
+   * role (boot, `platform bootstrap`, user writes), so `users.role` decides
+   * them here too: a missing binding (a row copied by hand, a role changed in
+   * SQL) neither locks a member out nor does a stale one outlive a demotion
+   * until the next restart.
+   */
+  async function memberRoleIds(userId: string): Promise<string[]> {
+    const [bound, system] = await Promise.all([
+      db
+        .select({ role_id: platformRoleBindings.role_id })
+        .from(platformRoleBindings)
+        .innerJoin(platformRoles, eq(platformRoles.id, platformRoleBindings.role_id))
+        .where(and(eq(platformRoleBindings.user_id, userId), eq(platformRoles.system_protected, false))),
+      db
+        .select({ role_id: platformRoles.id })
+        .from(users)
+        .innerJoin(platformRoles, and(eq(platformRoles.code, users.role), eq(platformRoles.system_protected, true)))
+        .where(and(eq(users.id, userId), eq(users.status, 'active'))),
+    ]);
+    return [...new Set([...bound, ...system].map((row) => row.role_id))];
+  }
+
   const service = {
     async createRole(input: PlatformRoleInput): Promise<PlatformRoleRow> {
       const now = nowIso();
@@ -279,15 +304,16 @@ export function createPlatformService(db: Db) {
     },
 
     async getAuthorizationSnapshot(userId: string, _orgId?: string): Promise<PlatformAuthorizationSnapshot> {
+      const roleIds = await memberRoleIds(userId);
+      if (roleIds.length === 0) return { roleGrants: [], userOverrides: [] };
       const roleRows = await db
         .select({
           role_id: platformRoleCapabilities.role_id,
           capability: platformRoleCapabilities.capability,
         })
-        .from(platformRoleBindings)
-        .innerJoin(platformRoles, eq(platformRoles.id, platformRoleBindings.role_id))
-        .innerJoin(platformRoleCapabilities, eq(platformRoleCapabilities.role_id, platformRoles.id))
-        .where(and(eq(platformRoleBindings.user_id, userId), eq(platformRoles.status, 'active')));
+        .from(platformRoleCapabilities)
+        .innerJoin(platformRoles, eq(platformRoles.id, platformRoleCapabilities.role_id))
+        .where(and(inArray(platformRoleCapabilities.role_id, roleIds), eq(platformRoles.status, 'active')));
 
       return {
         roleGrants: roleRows.map((row) => ({
@@ -357,17 +383,18 @@ export function createPlatformService(db: Db) {
       appId: string;
       entityId: string;
     }): Promise<PlatformEntityPolicySnapshot> {
+      const roleIds = await memberRoleIds(input.userId);
+      if (roleIds.length === 0) return { rolePolicies: [] };
       const roleRows = await db
         .select({
           scopes: platformRoleEntityPolicies.scopes,
           field_policies: platformRoleEntityPolicies.field_policies,
         })
-        .from(platformRoleBindings)
-        .innerJoin(platformRoles, eq(platformRoles.id, platformRoleBindings.role_id))
-        .innerJoin(platformRoleEntityPolicies, eq(platformRoleEntityPolicies.role_id, platformRoles.id))
+        .from(platformRoleEntityPolicies)
+        .innerJoin(platformRoles, eq(platformRoles.id, platformRoleEntityPolicies.role_id))
         .where(
           and(
-            eq(platformRoleBindings.user_id, input.userId),
+            inArray(platformRoleEntityPolicies.role_id, roleIds),
             eq(platformRoles.status, 'active'),
             eq(platformRoleEntityPolicies.app_id, input.appId),
             eq(platformRoleEntityPolicies.entity_id, input.entityId),

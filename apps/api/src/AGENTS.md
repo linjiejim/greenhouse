@@ -429,7 +429,7 @@ v1 只接 DeepSeek 与 OpenAI 兼容服务，它们**自动**缓存 prompt 前�
 - Tables 的表单、仪表盘、表内自动化与通知已在 3.0 删除（manifest `1.3.0`）——**改 action 表必须 bump**，否则 API 启动即 fatal。
 
 ### Platform Kernel v2
-- `platform/` 是内部应用的统一运行时：应用以确定性 Manifest v2 声明 module/entity/field/action/navigation，运行时代码只放在 registration/adapter，不写入 Manifest。`bootstrap.ts` 负责激活已注册 manifest、建立受保护的 `super/team` baseline roles，并只同步 active 内部用户绑定；历史 `external` 用户不再建立 Platform role。3.0 不存应用 release，也没有组织表：`orgId` 固定传 `PLATFORM_ORG_ID`（`'default'`）。
+- `platform/` 是内部应用的统一运行时：应用以确定性 Manifest v2 声明 module/entity/field/action/navigation，运行时代码只放在 registration/adapter，不写入 Manifest。`bootstrap.ts` 负责激活已注册 manifest、建立受保护的 `super/team` baseline roles，并只同步 active 内部用户绑定；历史 `external` 用户不再建立 Platform role。判定时系统角色直接取 `users.role`（`db.platform` 的 snapshot），所以手工改库 / 复制账号行后不必重启或重跑 bootstrap 也不会 403；护栏 `tests/db/platform-service.db.test.ts`。3.0 不存应用 release，也没有组织表：`orgId` 固定传 `PLATFORM_ORG_ID`（`'default'`）。
 - `runtime.dispatch()` 是受保护 action 的唯一入口，固定顺序为 capability → record/field policy → handler → platform audit。HTTP、Chat Tool、Agent Proxy 与 MCP 只能做协议适配，不得各自复制一套权限判断。
 - 已接入 `projects`、`knowledge`、`tables`。各应用的 `access.ts` 把 Entity Policy 转成业务查询的 SQL scope，并对读取/导出结果执行字段投影；未授权的记录按 404 处理，避免 IDOR 存在性泄露。
 - **响应里的计算字段必须写进 Manifest**：投影只保留 Manifest 声明过的列，未声明的键（含 `owner_name`/`user_name` 这类服务端拼的展示字段）会被静默丢掉。加字段要同时 bump 对应 manifest 的 `version` 并更新 `platform/__tests__/manifest-hash.test.ts` 的 hash（3.0 不再在启动时比对 release，这个测试是唯一护栏）。投影丢字段静态检查测不出，只有起服务才暴露。
