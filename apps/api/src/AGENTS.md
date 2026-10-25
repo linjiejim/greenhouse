@@ -66,7 +66,7 @@ Automation、Tasks、Agents 的 `Mine / Shared / Team` 口径见 [personal asset
 - 固定提示必须明确 Context 可能无关或过期、不是用户请求/指令/授权；只有与当前用户消息自然相关时才使用，歧义时先询问。
 - 浏览器 Client Actions 必须同时带 `client_action_scope_id`；有 Ambient Context 时两个 scope 必须一致，否则不装配 UI 工具。`local-tool-request` 回传同一 scope，由浏览器在当前页面实例中 fail closed。
 - **请求体只有一份定义**：`@greenhouse/types/api` 的 `ChatRequestBody`（字段表 `CHAT_REQUEST_BODY_KEYS` 编译期穷举），路由和 web 共用。服务端不再读的字段必须从类型里删掉，让还在发的客户端编译失败——已移除的浏览器扩展曾在服务端改契约后继续发 `context_hint` / `omit_write_tools` 近两个月，页面上下文和浏览器工具全部静默消失。准入规则在 `chat/turn-environment.ts`（`admitTurnEnvironment`，`chat/turn-environment.test.ts` 钉住）；Envelope 各字段上限是共享的 `AMBIENT_CONTEXT_LIMITS`，客户端按它裁剪，本地只做同一份常量的兜底截断。结果回传路径是 `CLIENT_ACTION_RESULT_PATH`，`index.ts` 以 `CLIENT_ACTIONS_API_PREFIX` 挂载（`routes/__tests__/client-actions-route.test.ts` 钉住）。
-- **浏览器扩展会话（`channel='browser'`，扩展已于 1.5 移除，存量会话仍在）的内联工具面 fail-closed**：`agent-runtime/tool-resolution.ts` 的 `filterBrowserSessionToolIds` 只放行 `surface.proxy:'read'` 的工具加 `ask_user` / `export_data`，业务写工具、`memory`、`workbench_mutation`、`feature_request`、起草类与会话编排类一律不在。理由是**输入不可信**：这些会话的历史里有网页选区/正文，web 续聊同样只读。**按服务端记录的会话 channel 判定，不接受客户端逐轮 flag**。与 `UNATTENDED_TOOL_DENYLIST`（没人能按确认）、`FEISHU_DENIED_TOOL_IDS`（交互形态承载不了）刻意分开。`POST /api/sessions` 忽略客户端传的 `channel`（一律服务端分配）；带 `channel` 的列表查询不做置顶回填（= 本人在该 channel 的会话）。
+- **浏览器扩展会话（`channel='browser'`，扩展已于 1.5 移除，存量会话仍在）的内联工具面 fail-closed**：`agent-runtime/tool-resolution.ts` 的 `filterBrowserSessionToolIds` 只放行 `surface.proxy:'read'` 的工具加 `ask_user` / `export_data`，业务写工具、`memory`、`feature_request`、起草类与会话编排类一律不在。理由是**输入不可信**：这些会话的历史里有网页选区/正文，web 续聊同样只读。**按服务端记录的会话 channel 判定，不接受客户端逐轮 flag**。与 `UNATTENDED_TOOL_DENYLIST`（没人能按确认）、`FEISHU_DENIED_TOOL_IDS`（交互形态承载不了）刻意分开。`POST /api/sessions` 忽略客户端传的 `channel`（一律服务端分配）；带 `channel` 的列表查询不做置顶回填（= 本人在该 channel 的会话）。
 - **`routes/chat.ts` 不直接 import 工具目录（`tools/registry.ts`）**：目录会加载每个已启用的扩展，而 chat 路由测试 mock 的是 `agent-runtime/tool-resolution`、`@greenhouse/db` 只给了 `getDb`。私有 fork 带着自己的扩展跑上游测试时，直接 import 会让 `chat-*` 路由测试在模块加载阶段就失败（v1.3.1 的 fork 同步踩过：`registerExtensionServices` 不在 mock 里）。需要工具元数据的逻辑放进 `tool-resolution.ts`，路由只调函数。
 - Client Actions 只处理当前浏览器的读取、导航、填充等 UI 动作；真实数据写入继续走既有服务端 mutation 工具、确认门与 Platform 权限链。
 
@@ -323,7 +323,6 @@ v1 只接 DeepSeek 与 OpenAI 兼容服务，它们**自动**缓存 prompt 前�
 - 代理集合由每个工具的 `meta.surface` 声明并在 `tools/registry.ts` 派生，`agent-runtime/tool-proxy.ts` 只消费这些集合：
   - `READONLY_PROXY_ALLOWLIST` — 只读工具（如 `project_query`、`session_query`、`knowledge_query`、`tables_query`）
   - `MUTATING_PROXY_ALLOWLIST` — 写工具（如 `project_mutation`、`knowledge_mutation`、`tables_mutation`）
-  - `WORKBENCH_READ_TOOL_IDS` — `surface.workbench:true` 的自动刷新安全子集；必须同时是 read proxy，但 read proxy 不自动进入工作台（生图、附件分析、开放网页搜索等明确排除）
 - **写工具默认 DENY**：必须同时在写白名单内、调用方写权限包含它、且每次调用带 `confirm:true`，否则 400。每次调用写入 agent audit。
 - **工具元数据 = 各工具文件内 co-located**：每个工具在自己的 `.ts` 里用 `defineTool({ meta, kind, create? })` 声明 metadata（`meta.description` 直接喂给 `tool({ description })`，无需再回 registry 取）。`tools/registry.ts` 是显式 catalog：导入各模块后由 `TOOL_MODULES` 派生 `TOOL_DEFINITIONS`、内部默认 id、proxy/MCP surface、lazy id、`STATIC_TOOL_MODULES` 与 `getAllToolIds()`，没有平行手维护清单。`kind`：`static`（带 `create(db)`，进共享 registry）/ `lazy`（core 工具无 create，按请求在 `buildLazyServerTools` 按 id 装配；扩展工具带 `createLazy(ctx)` 走通用路径）/ `special`（在路由里就地构造，metadata 进 registry 的 `SPECIAL_METAS`——**当前无人使用**）。
 - 新增工具：① 在该工具文件 `export const xxxTool = defineTool({ meta, kind, create? })`（static 带 `create(db)`，lazy 不带），需要 Agent proxy/MCP 时同时声明 `meta.surface`；② 在 `tools/registry.ts` 的 `CORE_TOOL_MODULES` 加 import + 数组项（`TOOL_MODULES` 是 core + 已启用扩展工具的派生值，不在那里加）；③ core 的 lazy 工具在 `agent-runtime/tool-resolution.ts` 的 `buildLazyServerTools` 按 id 加构造分支（会话绑定的放进 `if (sessionId)` 块）——通用的 `createLazy` 路径只遍历扩展工具，core 工具写了 `createLazy` 会进目录却永远不被构造。所有集合自动派生，禁止再维护独立 allowlist；`tools/__tests__/surface-derivation.test.ts` 钉住 core 工具每个派生集合的精确成员，改暴露面要连测试一起改。
@@ -463,7 +462,7 @@ v1 只接 DeepSeek 与 OpenAI 兼容服务，它们**自动**缓存 prompt 前�
 - 审计提示：handler 成功结果可带 `audit: { recordId?, summary? }`（`PlatformAuditHint`），内核把它并进成功审计并从返回值里剥掉——用于「新建时请求还不知道 id」和「删除后还要能叫出名字」（Projects 的建/删项目与任务记 `title`）。只放标题这类本来就给读者看的事实，绝不放内容或密钥；显示时仍按查看者规则把关。知识库 HTTP 新建从 201 响应里取 id；编辑心跳（`editing-presence`）审计带 `activity:false`，不进操作记录；评论记 `change:'comment'`。
 - 导出 `GET /api/activity/export` 与列表同一筛选、同一顺序，最多 5000 行，CSV 单元格防公式注入。
 - 网页：`#/activity`（成员）与 Administration › Activity log（super）是同一个页面；运行详情沿用 `#/activity/<kind>/<id>`。
-- **首页「团队动态」`GET /api/activity/recent`**（`activity/recent-changes.ts`）是另一件事：近 14 天**全团队**的改动，但只含查看者读得到的对象。数据源各用本域自己的记录：知识库 `kb_versions`（逐篇过 `resolveKbAccess`，同一人连续保存合并为一条）、项目动态 `audit_events`（`app_id='projects'`；只取 `listProjects` dispatch 给查看者列出的项目，实体策略因此生效）、表格 `table_records`（只取 `listBases` 列出的 Base 下的表，按「表 × 人」聚合计数，**从不读记录值**）、云盘新文件（团队架 + 本人）。每条 lane 各自 try/catch，一扇门关着不等于整个 feed 故障。
+- **铃铛「团队动态」`GET /api/activity/recent`**（`activity/recent-changes.ts`）是另一件事：近 14 天**全团队**的改动，每页 ≤ 50，`before`（上一页最后一条的 `at`）翻页、返回 `next_before`，每条 lane 都按同一窗口过滤，但只含查看者读得到的对象。数据源各用本域自己的记录：知识库 `kb_versions`（逐篇过 `resolveKbAccess`，同一人连续保存合并为一条）、项目动态 `audit_events`（`app_id='projects'`；只取 `listProjects` dispatch 给查看者列出的项目，实体策略因此生效）、表格 `table_records`（只取 `listBases` 列出的 Base 下的表，按「表 × 人」聚合计数，**从不读记录值**）、云盘新文件（团队架 + 本人）。每条 lane 各自 try/catch，一扇门关着不等于整个 feed 故障。
   - 「经由哪个 Agent」靠对时间：同一成员、同一模块、落在某条成功的 `agent_write` run 的 `[created_at, settled_at]` 之内就标上客户端名；**不留余量**——Agent 刚写完、本人紧接着手改的那一条必须仍算本人。
   - 应用内助手（Chat）的写入不在操作记录里单列：它们的平台审计 `actor_type='agent'` 且没有客户端 id，与 MCP 写入分不开；MCP 写入以 agent_write run 为准。
 
@@ -536,7 +535,7 @@ v1 只接 DeepSeek 与 OpenAI 兼容服务，它们**自动**缓存 prompt 前�
 
 - 只计数：每日 `(day, kind, key, client)` 合计，不记用户、参数或内容。v1.4 起计数，用来判断冻结模块的去留（1.5 据此移除了桌面端；历史计数里的 `desktop` 等 client 仍可读）。
 - **计数永不失败、永不拖慢**：一律走 `countUsage()`（不 await，写失败只 `logger.warn`，`getDb()` 同步抛错也吞掉）。新计数点别直接 `await db.usageCounters.increment()`。
-- 工具调用只在真实执行边界计一次：`countToolCalls(tools, client)` 克隆 per-turn 工具表包 `execute`（不改共享 registry）；MCP / Agent API 在 `executeProxyTool({ usageClient })` 里所有检查通过后按规范 id 计（旧别名记成 `knowledge_query` 等，被拒的调用不计）。workbench 刷新不传 `usageClient`，不计。
+- 工具调用只在真实执行边界计一次：`countToolCalls(tools, client)` 克隆 per-turn 工具表包 `execute`（不改共享 registry）；MCP / Agent API 在 `executeProxyTool({ usageClient })` 里所有检查通过后按规范 id 计（旧别名记成 `knowledge_query` 等，被拒的调用不计）。
 - client：Chat 按会话 channel（`feishu`；`browser` 只出现在 1.5 前的历史会话里），否则看 `X-Greenhouse-Client` 头（`mobile`），否则 `web_chat`；`runAgentInSession` 的 `toolCallClient` **必填**（`automation` / `feishu`；历史计数里还有已退役的 `subagent`），与 `usageContext` 同理，免得新 headless 调用方悄悄漏计；Agent API 默认 `agent_api`，移动端带头时记成 `mobile`。历史计数里的 `browser` / `desktop` 仍可读。
 - Chat 的计数包在 Runtime 证据包装**里面**（只有真正进入工具才计），并且只包目录工具：Client Action 的名字由浏览器声明，**绝不能**成为计数 key。
 - `X-Greenhouse-Client` 只是标签，永远不是鉴权输入（CORS 已放行该头）。
@@ -609,7 +608,7 @@ v1 只接 DeepSeek 与 OpenAI 兼容服务，它们**自动**缓存 prompt 前�
 
 ### 成员偏好与 Agent 头像（`/api/me/preferences`、`/api/agent-access/connections`）
 
-- `GET / PATCH /api/me/preferences` 读写 `users.preferences`（`fontScale` 0.9 / 1 / 1.1 / 1.2 / 1.35，zod 校验，未知键 400），跟账号走不跟设备；写入经 `db.users.mutatePreferences()` 的行锁。工作台布局共用这个 blob 但只走自己的接口，PATCH 不碰 `workbench`。
+- `GET / PATCH /api/me/preferences` 读写 `users.preferences`（`fontScale` 0.9 / 1 / 1.1 / 1.2 / 1.35，zod 校验，未知键 400），跟账号走不跟设备；写入经 `db.users.mutatePreferences()` 的行锁。`surface.workbench` 是 3.0 起被忽略的废弃字段（4.0 删）。
 - 成员可给每个已连接的 Agent 选植物头像 `{plant, tint}`（`@greenhouse/types/agent-avatar`）：存 `oauth_grants.avatar`，`GET /api/agent-access/connections` 返回，`PATCH /api/agent-access/connections/:clientId` 设置，null 恢复客户端默认。
 
 ### Agent Profiles

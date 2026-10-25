@@ -185,9 +185,9 @@
     <div class="mt-12 grid gap-6 lg:grid-cols-[19rem_1fr]" data-tour>
       <!-- tabs -->
       <div class="flex gap-2 overflow-x-auto pb-1 lg:flex-col lg:overflow-visible lg:pb-0" role="tablist" aria-label="Product tour">
-        <button type="button" class="tour-tab shrink-0 rounded-xl border bg-white px-4 py-3 text-left transition hover:bg-brand-50/60 lg:w-full" role="tab" aria-selected="true" data-tour-tab="workbench">
-          <span class="tour-tab-title block text-sm font-semibold text-ink" data-i18n="tour.t1">Home workbench</span>
-          <span class="mt-0.5 hidden text-[12.5px] leading-snug text-ink-mut lg:block" data-i18n="tour.d1">Live cards backed by the same tools the agent uses.</span>
+        <button type="button" class="tour-tab shrink-0 rounded-xl border bg-white px-4 py-3 text-left transition hover:bg-brand-50/60 lg:w-full" role="tab" aria-selected="true" data-tour-tab="home">
+          <span class="tour-tab-title block text-sm font-semibold text-ink" data-i18n="tour.t1">Home</span>
+          <span class="mt-0.5 hidden text-[12.5px] leading-snug text-ink-mut lg:block" data-i18n="tour.d1">Open the app and you are already in a conversation.</span>
         </button>
         <button type="button" class="tour-tab shrink-0 rounded-xl border bg-white px-4 py-3 text-left transition hover:bg-brand-50/60 lg:w-full" role="tab" aria-selected="false" data-tour-tab="data">
           <span class="tour-tab-title block text-sm font-semibold text-ink" data-i18n="tour.t2">Ask across your data</span>
@@ -221,11 +221,11 @@
 
       <!-- panels -->
       <div class="min-w-0">
-        <figure class="tour-panel" data-tour-panel="workbench">
+        <figure class="tour-panel" data-tour-panel="home">
           <div class="overflow-hidden rounded-2xl border border-edge bg-white shot-shadow">
-            <img src="./assets/screens/home-workbench.webp" alt="Home workbench with a notes card and live project cards" width="1440" height="900" class="block w-full" />
+            <img src="./assets/screens/home.webp" alt="Home: the assistant, a greeting, the composer and recent conversations" width="1440" height="900" class="block w-full" />
           </div>
-          <figcaption class="mt-3 text-sm leading-relaxed text-ink-mut" data-i18n="tour.c1">Your day on one screen. Every card is a tool call with a saved recipe — rearrange by drag-and-drop, or ask the agent to change the layout for you.</figcaption>
+          <figcaption class="mt-3 text-sm leading-relaxed text-ink-mut" data-i18n="tour.c1">Home is a new conversation: the assistant, what is waiting for you, the composer and your recent conversations. Team activity lives behind the bell.</figcaption>
         </figure>
         <figure class="tour-panel" data-tour-panel="data" hidden>
           <div class="overflow-hidden rounded-2xl border border-edge bg-white shot-shadow">
@@ -507,8 +507,8 @@
     </div>
     <div class="group rounded-2xl border border-edge bg-white p-6 soft-shadow transition hover:border-brand-300">
       <div class="mb-4 grid h-10 w-10 place-items-center rounded-xl bg-brand-50 text-brand-600"><svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12l9-9 9 9M5 10v10h14V10" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
-      <h3 class="text-base font-semibold text-ink" data-i18n="feat.wbT">Home workbench</h3>
-      <p class="mt-1.5 text-sm leading-relaxed text-ink-mut" data-i18n="feat.wbB">A personal dashboard of live cards backed by the same tools — recipes and templates, editable by drag-and-drop or by asking the agent.</p>
+      <h3 class="text-base font-semibold text-ink" data-i18n="feat.wbT">Home is a conversation</h3>
+      <p class="mt-1.5 text-sm leading-relaxed text-ink-mut" data-i18n="feat.wbB">No dashboard to configure: Home is the composer, with your recent conversations under it and the team's latest changes one tap away on the bell.</p>
     </div>
     <div class="group rounded-2xl border border-edge bg-white p-6 soft-shadow transition hover:border-brand-300">
       <div class="mb-4 grid h-10 w-10 place-items-center rounded-xl bg-brand-50 text-brand-600"><svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
@@ -664,7 +664,7 @@ docker compose exec api pnpm admin:create
     </div>
     <figure>
       <div class="overflow-hidden rounded-2xl border border-edge bg-white shot-shadow">
-        <img src="./assets/screens/extension-example-page.webp" alt="An extension's own page rendered in the workbench" width="1440" height="900" class="block w-full" loading="lazy" />
+        <img src="./assets/screens/extension-example-page.webp" alt="An extension's own page rendered in the app" width="1440" height="900" class="block w-full" loading="lazy" />
       </div>
       <figcaption class="mt-3 text-sm leading-relaxed text-ink-mut" data-i18n="ext.figA">The reference extension shipping with the repo: its own page, table, tool and API — the template you copy.</figcaption>
     </figure>
@@ -841,8 +841,8 @@ docker compose exec api pnpm admin:create
 
     'tour.kicker': '产品导览',
     'tour.h2': '一个地方干活，Agent 无处不在。',
-    'tour.t1': '首页工作台',
-    'tour.d1': '由 Agent 同一套工具驱动的实时卡片。',
+    'tour.t1': '首页',
+    'tour.d1': '一打开就在对话里。',
     'tour.t2': '跨数据提问',
     'tour.d2': '答案直接以真正可排序的表格返回。',
     'tour.t3': '知识库',
@@ -857,7 +857,7 @@ docker compose exec api pnpm admin:create
     'tour.d7': '全组织共享的带版本 Agent 技能库。',
     'tour.t8': '运行配置',
     'tour.d8': '一段提示词、一组工具、一张脸，给自动化用。',
-    'tour.c1': '一天的工作，一屏看完。每张卡片都是一次带保存配方的工具调用——拖拽重排，或者直接让 Agent 帮你改布局。',
+    'tour.c1': '首页就是新对话：助手、等你处理的事、输入框和最近对话。团队动态在铃铛里。',
     'tour.c2': '“哪些反馈是负面的？各渠道平均分是多少？”——Agent 查询多维表格，用可排序、可导出的表格作答，并指出真正需要行动的缺口。',
     'tour.c3': '像样的编辑器、文件夹、页面互链、版本历史，还有认得中文的搜索——Agent 在对话里引用的就是这里。',
     'tour.c4': '像表格一样的多维表：真正的字段类型、视图、记录关联。在对话里说清楚要什么，Agent 先起个草给你确认。',
@@ -916,8 +916,8 @@ docker compose exec api pnpm admin:create
     'feat.projB': '项目和任务，支持看板、甘特图、树状三种视图，带成员、评论和活动日志。',
     'feat.tablesT': '多维表格',
     'feat.tablesB': '像表格一样的多维表：真正的字段类型、视图和记录关联——跟 Agent 聊着就设计好了。',
-    'feat.wbT': '首页工作台',
-    'feat.wbB': '由同一套工具驱动的个人实时仪表盘——配方与模板，拖拽即可编辑，或者直接让 Agent 来改。',
+    'feat.wbT': '首页就是对话',
+    'feat.wbB': '不用配置仪表盘：首页就是输入框，下面是最近对话，团队最新改动在铃铛里一点就到。',
     'feat.execT': '操作记录 + 自动化',
     'feat.execB': 'cron 定时的助手运行，以及成员的 Agent 做的每次写入，汇集在一处，每一步和每次工具调用都有记录。',
     'feat.memT': '记忆',

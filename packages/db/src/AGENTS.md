@@ -109,10 +109,10 @@
 - 源库只读，永不写入。
 - 目标库为空时先套 3.0 baseline；已有数据时先清空，所以可重复跑直到对账报告干净。`--dry-run` 不需要 `--to`，只出报告。
 - 按域逐表搬：保留原 id（serial 转十进制字符串），JSON 文本转 jsonb，日期转 date，表格配置 / 单元格 / 快照里的表 id 改成字符串，非法 JSON 换默认值并记 note。
-- 折叠：会话置顶 → `conversations.pinned_at` / `conversation_share_reads.pinned_at`；工作台偏好 → `users.preferences.workbench`；自定义 Agent 的当前版本 → `run_profiles`。
+- 折叠：会话置顶 → `conversations.pinned_at` / `conversation_share_reads.pinned_at`；自定义 Agent 的当前版本 → `run_profiles`。
 - 合表记来源（判别列 + 报告）；serial id 可能撞车的来源加前缀：`pac_`（project_activities）、`esl_`（email_send_log）、`frc_`（tool_frictions）、`kbs_`（knowledge_base_shares）、`tbm_`（table_base_members）、`pin_`（置顶折成的 share read）。
 - 扩展表（1.x core 链没建过的 public 表，如 `crm_*` / `sellfox_*`）和 `extension_migrations` 原样复制：按源库 catalog 重建 DDL，COPY 流式搬数据，序列位置同步。
-- 不搬：退役表（eval、Missions、Workflows、api_clients）、已删功能（会话标签、用户组、文档评论 / 互链、表格表单 / 仪表盘 / 表内自动化 / 表格通知、组织、个人权限覆盖、app releases）、已结算 Run 30 天前的事件、已投递 outbox、过期凭证、限流桶、30 天前的请求日志、评测数据。每一行跳过都带原因计入报告。
+- 不搬：退役表（eval、Missions、Workflows、api_clients）、已删功能（Home 工作台偏好、会话标签、用户组、文档评论 / 互链、表格表单 / 仪表盘 / 表内自动化 / 表格通知、组织、个人权限覆盖、app releases）、已结算 Run 30 天前的事件、已投递 outbox、过期凭证、限流桶、30 天前的请求日志、评测数据。每一行跳过都带原因计入报告。
 - 加新表或改表时同步更新 carry 的映射，并用 `carry/v1-fixture.ts`（归档链 + `tests/fixtures/v1-6-seed.sql`）的测试覆盖。
 
 ### 保留期
@@ -125,9 +125,9 @@
 
 ### users.preferences
 
-- `users.preferences` 是跟账号走的偏好 blob：`fontScale`（0.9 / 1 / 1.1 / 1.2 / 1.35）与 Home 工作台 `workbench`；类型与 zod 在 `@greenhouse/types/preferences`。
+- `users.preferences` 是跟账号走的偏好 blob：`fontScale`（0.9 / 1 / 1.1 / 1.2 / 1.35）；类型与 zod 在 `@greenhouse/types/preferences`。
 - 读写只经 `db.users.getPreferences()` / `mutatePreferences()`（锁用户行的 read-modify-write）；不在事务外整 blob 覆盖。
-- `GET / PATCH /api/me/preferences` 只改成员可编辑的键，未知键拒绝；`workbench` 只经工作台接口（`db.platform` 的 `mutateUserWorkbenchPreferences`）写。
+- `GET / PATCH /api/me/preferences` 只改成员可编辑的键，未知键拒绝。
 - 偏好不承载授权；读到损坏或旧版本数据回落默认值。
 
 ### 身份与凭证

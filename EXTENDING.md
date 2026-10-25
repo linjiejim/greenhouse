@@ -104,7 +104,7 @@ Every field is optional and maps 1:1 onto a core registry:
 
 | Field | Lands in | Notes |
 |---|---|---|
-| `tools` | tool catalog → chat, `/api/agent`, `/api/mcp`, workbench | `meta.surface` decides exposure exactly like a core tool. Lazy tools implement `createLazy(ctx)` (user, session, db, `unattended`) — no per-tool case in core, and `defineExtension` refuses a lazy tool without it. Ids must not collide. |
+| `tools` | tool catalog → chat, `/api/agent`, `/api/mcp` | `meta.surface` decides exposure exactly like a core tool. Lazy tools implement `createLazy(ctx)` (user, session, db, `unattended`) — no per-tool case in core, and `defineExtension` refuses a lazy tool without it. Ids must not collide. |
 | `routes` | mounted after the typed core chain | Convention `/api/ext/<id>`; `guards` run for every request under the prefix. Extension routes are not part of the public `AppType` contract. |
 | `applications` | platform kernel (`bootstrapPlatform` + `initializePlatformRuntime`) | Manifest v2 + handlers; scaffold with `pnpm cli platform create-app <id>`. |
 | `featureFlags` / `featurePoints` | `user_grants` (`kind='feature'`), the permissions dialog, feature-owned tool sets | Extension flags are strings (the compile-time `FeatureKey` union stays core-only). A non-global tool must belong to exactly one point. |
@@ -122,7 +122,7 @@ Every field is optional and maps 1:1 onto a core registry:
 | `applications[].platformTools` | MCP tool visibility | Ties `crm_query` / `crm_mutation` to the application's query / command actions, so a fully denied tool disappears from `tools/list` like core's do. |
 | `dependsOn` | a boot-time check | Ids this extension needs switched on too. Two extensions in one build can import each other by path; this makes the configuration requirement explicit and fails fast instead of deep inside a request. Reserve it for the genuinely unshareable — an authenticated transport, a credential chain. |
 | `driveScopes` | the shared Drive (`folders` / `files` rows with `source='drive'`) | Your own file cabinet inside core's tables: rows carry `scope: '<your scope>'` and `owner_key` (any text — a record id), and the `authorize(ownerKey, ctx)` you declare is the only rule core applies. |
-| `workbenchRecipes` | Home workbench card picker + `workbench_query.recipes` | Backed by one of the extension's own read tools; `labelKey` / `descriptionKey` translate it. |
+| `workbenchRecipes` | nothing (deprecated) | The Home workbench was removed in 3.0; the field is accepted and ignored so 2.x extensions compile, and goes in 4.0. Same for `meta.surface.workbench` and the kit's `WidgetRecipe`. |
 | `skillPacks` | Skill Center seed at boot | Same layout as `skillhub/`. |
 | `onBoot` / `onShutdown` | after the tool registry exists, before routes serve; on SIGTERM | |
 
@@ -221,10 +221,8 @@ the variable is unset), so a private extension gets the sweep and its own specs 
 
 ### What the seam does not cover (yet)
 
-Notification transports (email / WeCom / Feishu) and workbench **pinning** of extension records
-are still closed in core — pinning needs a read tool plus an action mapping per kind, which no
-extension has asked for yet. If your module needs one, extend the registry upstream rather than
-patching around it: that is a contribution, not a fork.
+Notification transports (email / WeCom / Feishu) are still closed in core. If your module needs
+one, extend the registry upstream rather than patching around it: that is a contribution, not a fork.
 
 ### Keeping a fork thin
 
