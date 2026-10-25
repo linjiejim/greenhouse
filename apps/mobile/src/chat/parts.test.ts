@@ -45,6 +45,23 @@ describe('a reply’s cards', () => {
     expect(capture && 'actionKey' in capture && capture.actionKey).toBe('artifact:m1:5:capture_task');
   });
 
+  it('turns mcp_call’s connect-first answer into a connect card, and nothing else it says', () => {
+    const connectSteps = pipelineSteps(
+      JSON.stringify([
+        {
+          step: 1,
+          tool: 'mcp_call',
+          output: { needs_connection: true, connector: 'desk', connector_id: 'mcc_1', connector_name: 'Desk', auth_kind: 'key', reason: 'not_connected', error: 'x' },
+        },
+        { step: 2, tool: 'mcp_call', output: { connector: 'desk', tool: 'lookup', result: 'ok' } },
+      ]),
+    );
+    const cards = replyCards(connectSteps, 'm1', '');
+    expect(cards).toEqual([
+      { kind: 'connect', key: expect.any(String), need: { connectorId: 'mcc_1', name: 'Desk', authKind: 'key', reason: 'not_connected' } },
+    ]);
+  });
+
   it('leaves out a generated image the words already show', () => {
     expect(replyCards(steps, 'm1', '![p](/api/upload/p.png)').some((c) => c.kind === 'image')).toBe(false);
   });

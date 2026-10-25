@@ -139,6 +139,9 @@ export function createRuntimeNotificationProjector(db: DatabaseProvider) {
     // connections › Activity; only a failure or an unknown outcome needs the
     // member's attention.
     if (run.kind === 'agent_write' && eventStatus === 'succeeded') return;
+    // A connector write answers in the conversation (or the automation's own
+    // report) that ran it; the record is for the Activity log, not the inbox.
+    if (run.kind === 'connector_write') return;
     const label = runLabel(run);
     const failed = eventStatus !== 'succeeded';
     const eventError = typeof immutableResult.error_message === 'string' ? immutableResult.error_message : null;

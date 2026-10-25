@@ -28,12 +28,16 @@ const MAX_SNIPPET_LENGTH = 500;
  * Returns cleaned text wrapped in an XML envelope that clearly marks
  * the content as untrusted external data.
  */
-export function sanitizeContent(content: string, sourceUrl: string): SanitizeResult {
+export function sanitizeContent(
+  content: string,
+  sourceUrl: string,
+  maxLength: number = MAX_RESULT_CONTENT,
+): SanitizeResult {
   const flagReasons: string[] = [];
   let flagged = false;
 
   // 1. Length truncation
-  let text = content.slice(0, MAX_RESULT_CONTENT);
+  let text = content.slice(0, maxLength);
 
   // 2. Strip any remaining HTML/script content
   text = stripDangerousContent(text);

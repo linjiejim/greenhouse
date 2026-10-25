@@ -5,7 +5,8 @@
  * An item is one change: who made it, through which agent if any, what kind of
  * change, to what, and when. Sources:
  *   person      a member, in the app (platform audit)
- *   agent       a member's own agent over MCP (a recorded `agent_write` run)
+ *   agent       a member's own agent over MCP (a recorded `agent_write` run), or
+ *               any agent's write through a connector (`connector_write`)
  *   automation  a scheduled automation run
  *   admin       an administrator changing workspace settings, users or MCP access
  */
@@ -27,6 +28,7 @@ export const ACTIVITY_MODULES = [
   'settings',
   'users',
   'mcp',
+  'connectors',
 ] as const;
 export type CoreActivityModule = (typeof ACTIVITY_MODULES)[number];
 

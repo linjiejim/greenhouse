@@ -42,6 +42,11 @@ export interface AgentProfile {
   access: AccessConfig; // declarative access control
   model: ModelConfig;
   tools: string[]; // tool names from the registry
+  /**
+   * Connector ids a custom agent may call through mcp_call. null / absent = every
+   * connector the member can use; the list only narrows. Unreadable = none.
+   */
+  connectors?: string[] | null;
   system_prompt: string;
   max_steps?: number; // default: 8
   tool_choice?: 'auto' | 'none' | 'required'; // default: "auto"
@@ -375,6 +380,13 @@ export async function resolveProfileAsync(
       baseProfile = getDefaultProfile();
     }
     const tools: string[] = Array.isArray(version.tools) ? version.tools : [];
+    const rawConnectors: unknown = version.connectors;
+    const connectors: string[] | null =
+      rawConnectors === null || rawConnectors === undefined
+        ? null
+        : Array.isArray(rawConnectors)
+          ? rawConnectors.filter((id): id is string => typeof id === 'string')
+          : [];
 
     return {
       id: `custom:${reference.profileId}@${versionNumber}`,
@@ -390,6 +402,7 @@ export async function resolveProfileAsync(
           ? { ...baseProfile.model, id: version.model_id }
           : baseProfile.model,
       tools,
+      connectors,
       system_prompt: version.system_prompt,
       max_steps: version.max_steps,
       tool_choice: 'auto',

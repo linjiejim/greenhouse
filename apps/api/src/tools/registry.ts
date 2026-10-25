@@ -42,6 +42,7 @@ import { automationMutationTool } from './automation-mutation.js';
 import { emailQueryTool } from './email-query.js';
 import { emailMutationTool } from './email-mutation.js';
 import { memoryTool } from './memory.js';
+import { mcpCallTool } from './mcp-call.js';
 import { logFrictionTool } from './log-friction.js';
 import { filesQueryTool } from './files-query.js';
 import { filesMutationTool } from './files-mutation.js';
@@ -80,6 +81,7 @@ const CORE_TOOL_MODULES: ToolModule[] = [
   emailQueryTool,
   emailMutationTool,
   memoryTool,
+  mcpCallTool,
   logFrictionTool,
   filesQueryTool,
   filesMutationTool,

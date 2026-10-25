@@ -21,6 +21,9 @@ tokens.)
 > resources over the standard MCP protocol with OAuth 2.1. Tokens are scoped by action and
 > resource group, and the proxy can only narrow the bound user's permissions — it is a
 > restricted subset, not a separate plane. See `apps/api/src/AGENTS.md`.
+>
+> **Connectors** are the other direction: agents call remote MCP servers through one `mcp_call`
+> tool; the vetted catalog is `connectors/*.json`. See `apps/api/src/AGENTS.md` → Connectors.
 
 ## Rules
 
@@ -237,6 +240,7 @@ greenhouse/
 │   │       ├── reports/      # report templates + server-side PDF/DOCX/PPTX rendering into Files (fonts in apps/api/assets/fonts)
 │   │       ├── storage/      # upload storage (local disk / COS) + s3-lite (SigV4 client)
 │   │       ├── hub-context/  # team context for members' agents: MCP prompts/resources, team_context, data catalog
+│   │       ├── connectors/   # MCP client: remote connectors, credentials, OAuth sign-in, directory behind mcp_call
 │   │       ├── retro/        # monthly retro (复盘) doc: aggregates, suggestions, writer
 │   │       └── cli/          # `pnpm cli` console: index.ts dispatcher + commands/*
 │   ├── web/              # React SPA — pages (administration/, settings/, executions/, …), components,

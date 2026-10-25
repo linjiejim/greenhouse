@@ -1,0 +1,32 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "com.atlassian/atlassian-mcp-server",
+  "title": "Atlassian (Jira, Confluence)",
+  "description": "Search, create and update Jira issues and Confluence pages.",
+  "version": "2.0.0",
+  "websiteUrl": "https://support.atlassian.com/atlassian-ai-gateway/docs/get-started-with-the-atlassian-remote-mcp-server/",
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "https://mcp.atlassian.com/v2/mcp"
+    }
+  ],
+  "_meta": {
+    "com.linjiejim.greenhouse/connector": {
+      "slug": "atlassian",
+      "category": "productivity",
+      "title_zh": "Atlassian（Jira / Confluence）",
+      "description_zh": "检索、创建、更新 Jira issue 与 Confluence 页面。",
+      "auth": {
+        "mode": "oauth",
+        "zero_config": true
+      },
+      "read_only_tools": [],
+      "verification": {
+        "level": "sign_in",
+        "date": "2026-10-09",
+        "notes": "v2 endpoint (the v1 connections switch to v2 tools on 2027-03-01)."
+      }
+    }
+  }
+}

@@ -5,6 +5,7 @@ import { brandFont as font } from '../../src/ui/brand-font';
  *  - account: the initial, name and email, the role; the 工作站 row (→ stations page);
  *  - 阅读: the in-app text size (seven steps on top of the system size, src/settings/text-size.ts);
  *  - 我的 Agent: the agents I connected (src/api/agent.ts) and their writes and spend (→ agents);
+ *    连接: the outside services my agent uses through connectors (→ connectors);
  *  - 通用: 通知 (→ notifications), theme (this phone's), language (the account's) and how many recent conversations home lists (this phone's);
  *  - 关于 (version, update, 发送反馈 → feedback), then 退出登录 (destructive, confirmed; the sheet closes first).
  */
@@ -147,6 +148,7 @@ export default function Me() {
             </Button>
           ))}
           <FormNavRow label={t('me.agentActivity')} value="" onPress={() => router.push('/me/agents')} />
+          <FormNavRow label={t('connectors.title')} value="" onPress={() => router.push('/me/connectors')} />
         </Section>
 
         {/* ── general ── */}

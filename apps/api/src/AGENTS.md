@@ -511,6 +511,22 @@ v1 只接 DeepSeek 与 OpenAI 兼容服务，它们**自动**缓存 prompt 前�
   - 协议层工具 `team_context` / `data_catalog`（与 `tool_output_read` 同层，不进 registry）：每个 grant 都列出、只读，回复同样经 `boundReplyText`，按 `mcp` 计 `tool_call`。`SERVER_INSTRUCTIONS` 要求新任务先调 `team_context`。
   - 「成员能到哪些 MCP 工具」的平台过滤在 `agent-runtime/mcp-tool-visibility.ts`（`filterMcpToolIdsByPlatform`、`memberMcpToolIds`），`routes/mcp.ts` 只是转出；别在别处再写一份能力→工具表。
 
+### Connectors (`connectors/` + `/api/connectors` + `/api/admin/connectors` + `mcp_call`)
+
+- Greenhouse as an MCP client: one `mcp_call` tool (list / describe / call) reaches every connector; never one model tool per remote tool.
+- Routes live at `/api/connectors` and `/api/admin/connectors`; never mount anything under `/api/mcp…` (the MCP server owns that prefix).
+- The OAuth callback `/api/connectors/oauth/callback` is in `PUBLIC_PATHS`; it trusts only the stored state row, never the query.
+- Remote servers only (Streamable HTTP / SSE); never spawn a local process. Every connect goes through `connectors/network.ts` (public addresses only unless `private_network`; loopback only in dev/test).
+- Secrets are write-only: `shared_secret` / member keys / OAuth tokens are sealed, never returned, never logged; errors pass `redactSecrets`.
+- Changing a connector's url or auth wipes every member credential in the same transaction (`manage.ts`).
+- The directory (`directory.ts`) is an in-memory snapshot reloaded after every write; `connectorDirectoryVersion()` is part of the `/api/mcp` context cache key.
+- Tool switches: read-only on by default, everything else off; destructive tools always take mcp_call's preview → `confirm` round trip.
+- Automations never run destructive tools; `/api/agent` and browser-extension sessions never get `mcp_call`; Feishu bot denies it.
+- On `/api/mcp` (group `connectors`): writes need `mcp:write`; a connector with a team credential (or none) also needs `allow_external_writes`.
+- Every call writes an `audit_events` row (app `connectors`) without arguments or content; every write also records a `connector_write` run, shown in the Activity log under module `connectors`.
+- Agents' `connectors` field holds connector ids (null = all); `connectorsForUser` applies it.
+- Tests use the local fixture server (`connectors/__tests__/fixture-server.ts`); never a real third-party endpoint.
+
 ### 团队上下文与数据目录（`hub-context/` + `/api/admin/team-context` + `/api/data-catalog`，v1.7）
 
 - 配置存工作区设置 `team_context.conventions`（文档 id 数组，≤10）/ `team_context.glossary` / `team_context.timezone`（env `WORKSPACE_TIMEZONE`，缺省 `Asia/Shanghai`），不建表；只在 Administration › Team context 编辑，Runtime Config 不渲染这一组。

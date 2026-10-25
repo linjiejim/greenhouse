@@ -119,6 +119,7 @@
 - 扩展表（1.x core 链没建过的 public 表，如 `crm_*` / `sellfox_*`）和 `extension_migrations` 原样复制：按源库 catalog 重建 DDL，COPY 流式搬数据，序列位置同步。
 - 扩展表与 3.0 核心表重名：`--dry-run` 写进报告（`extensionClashes`），真跑在写入前拒绝。报告的 `extensionMigrations` 按已启用扩展的车道逐文件列出代际与 3.0 的处理（carried / pending / skipped / missing）。
 - 不搬：退役表（eval、Missions、Workflows、api_clients）、已删功能（Home 工作台偏好、会话标签、用户组、文档评论 / 互链、表格表单 / 仪表盘 / 表内自动化 / 表格通知、组织、个人权限覆盖、app releases）、已结算 Run 30 天前的事件、已投递 outbox、过期凭证、限流桶、30 天前的请求日志、评测数据。每一行跳过都带原因计入报告。
+- 1.6 没有 MCP 客户端表：`mcp_connectors` 与 `mcp:<id>` 连接不搬，搬完的库从空连接器开始。
 - 加新表或改表时同步更新 carry 的映射，并用 `carry/v1-fixture.ts`（归档链 + `tests/fixtures/v1-6-seed.sql`）的测试覆盖。
 
 ### 保留期
@@ -145,6 +146,7 @@
 - `login_states.id` 只存值的 SHA-256（service 里哈希）；消费只经 `oauthLoginStates.consume()` 的单条条件 UPDATE；TTL 由调用方给（state 10 分钟、兑换码 60 秒）。
 - `gateway_keys` 只存 SHA-256（`create` / `findBySecret` 收原值）；可用性由调用方用 `gatewayKeyUsability` + 用户状态判断；撤销只打 `revoked_at`，首次撤销为准。
 - 会话、自动化与自定义 Agent 的基础 Profile 默认 `team`。
+- 连接器（`db.mcpConnectors`）：service 只存密文，加解密（带 AAD）在 `apps/api/src/connectors/`；改 `url` / `transport` / `auth_mode` / `auth_kind` 与删除连接器在同一事务删全部成员凭证（`dropCredentials`）；OAuth 刷新与团队登录写入都是比较后写（只覆盖自己读到的密文）。
 - MCP、Agent 代理与其他内部集成必须绑定真实内部用户；新写入的主体不能是匿名身份。
 - `request_log` 新行只写 `a2a`（MCP `recordMcpAudit`）与 `cli`（Agent 代理）；`api` / `relay` 只是搬来的历史。
 - 已删除功能的表不以兼容或占位为由加回来。

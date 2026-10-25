@@ -44,6 +44,7 @@ export const KNOWN_TOOLS = [
   'automation_query',
   'automation_mutation',
   'report_render',
+  'mcp_call',
 ] as const;
 
 /** Argument names with their own label (`tools.arg.*`). */

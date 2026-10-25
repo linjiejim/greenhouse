@@ -1,0 +1,36 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "com.deepwiki/mcp",
+  "title": "DeepWiki",
+  "description": "Ask questions about public GitHub repositories and read their generated wikis.",
+  "version": "2.14.3",
+  "websiteUrl": "https://docs.devin.ai/work-with-devin/deepwiki-mcp",
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "https://mcp.deepwiki.com/mcp"
+    }
+  ],
+  "_meta": {
+    "com.linjiejim.greenhouse/connector": {
+      "slug": "deepwiki",
+      "category": "dev",
+      "title_zh": "DeepWiki",
+      "description_zh": "针对公开 GitHub 仓库提问，阅读 DeepWiki 生成的代码库文档。",
+      "auth": {
+        "mode": "none",
+        "zero_config": true
+      },
+      "read_only_tools": [
+        "ask_wiki_question",
+        "read_wiki_contents",
+        "read_wiki_structure"
+      ],
+      "verification": {
+        "level": "call",
+        "date": "2026-10-09",
+        "notes": "Not listed in the MCP Registry. The three tools only read public repositories but carry no readOnlyHint, so the catalog vouches for them."
+      }
+    }
+  }
+}

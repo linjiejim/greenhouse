@@ -112,6 +112,12 @@ labels differ in 3.0.
 - **Model gateway** *(off by default)* — personal `ghgw_…` keys for OpenAI- and Anthropic-compatible
   endpoints on the team's catalog models, metered in the same budgets.
 
+- **Connectors** — the other direction: Sprouty and members' agents call remote MCP servers
+  (Linear, Notion, DeepWiki, … — 13 vetted in `connectors/`) through one `mcp_call` tool.
+  Administration → Connectors adds them (public, a team credential, or each member's own key or
+  OAuth sign-in); read-only tools are on by default, writes are switched on per tool, destructive
+  ones preview first. Every call is audited without its arguments; writes land in the Activity log.
+
 Details: [MCP & agent access](#mcp--agent-access).
 
 ### Sprouty, the built-in assistant
@@ -208,9 +214,9 @@ that gate optional modules. Auth is fail-closed — the server refuses to start 
 
 ### Tools
 
-39 built-in tools, one catalog (`apps/api/src/tools/registry.ts`). **Chat** = Sprouty (web,
-iOS, Feishu, automations); **MCP** = the resource group a member grants; every MCP tool is also on
-`/api/agent`.
+40 built-in tools, one catalog (`apps/api/src/tools/registry.ts`). **Chat** = Sprouty (web,
+iOS, Feishu, automations); **MCP** = the resource group a member grants; every MCP tool except
+`mcp_call` is also on `/api/agent`.
 
 | Area | Read | Write | MCP group |
 |---|---|---|---|
@@ -225,6 +231,7 @@ iOS, Feishu, automations); **MCP** = the resource group a member grants; every M
 | Reports | `report_templates` | `report_render` (new file in Files) | `reports` |
 | Paid services | `analyze_image`; `web_search`, `read_url` (external only); `external_search` (Chat only) | `generate_image` | `services` |
 | Cloud computer (external only) | `computer_files` | `computer_exec`, `computer_transfer`, `computer_stop` | `computer` |
+| Connectors | `mcp_call` (list / describe / call) | through the same tool, per the connector's switches | `connectors` (not on `/api/agent`) |
 | Email | `email_query` | `email_mutation` (confirm card) | — not on MCP |
 | Chat helpers | `ask_user`, `read_attachment`, `compute`, `call_llm`, `memory` (flag `memory`) | `export_data`, `task_capture` | — |
 

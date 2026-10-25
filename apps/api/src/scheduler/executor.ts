@@ -8,6 +8,7 @@
  * - generateText() (non-streaming) for execution
  */
 
+import { buildConnectorsContext } from '../tools/mcp-call.js';
 import { toErrorMessage } from '@greenhouse/utils/error';
 import { budgetRefusalReason } from '../usage/budget-errors.js';
 import { normalizeAutomationOptInTools } from '@greenhouse/types/automation-tools';
@@ -248,13 +249,25 @@ export async function executeTaskInSession(
         profileId: profile.id,
         toolRegistry,
         unattended: true,
+        connectors: { surface: 'automation', client: 'automation', allowed: profile.connectors ?? null },
       }),
     );
     // Scheduled runs act for their owner, so they get the owner's memory index
     // (same gate as chat). Without this, "remember I want X" silently fails to
     // apply on exactly the unattended runs the user isn't watching.
     const memoryBlock = await resolveMemoryContext(owner.id, owner.role as UserRole);
-    const systemPrompt = buildSystemPrompt(profile, memoryBlock ? { userInfo: memoryBlock } : undefined);
+    // Connectors the run may call (reads and switched-on writes; never destructive ones).
+    const connectorsBlock =
+      'mcp_call' in tools
+        ? await buildConnectorsContext({
+            db,
+            userId: owner.id,
+            connectors: profile.connectors ?? null,
+            surface: 'automation',
+          })
+        : null;
+    const systemPrompt =
+      buildSystemPrompt(profile, memoryBlock ? { userInfo: memoryBlock } : undefined) + (connectorsBlock ?? '');
     const maxSteps = task.max_steps ?? profile.max_steps ?? 12;
 
     const result = await runAgentInSession({

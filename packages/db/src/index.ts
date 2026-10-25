@@ -113,6 +113,7 @@ export * from './services/report-templates.js';
 export * from './services/member-computers.js';
 export * from './services/workspace-settings.js';
 export * from './services/retention.js';
+export * from './services/mcp-connectors.js';
 
 // ─── Configuration ───────────────────────────────────────
 

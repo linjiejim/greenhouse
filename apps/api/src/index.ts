@@ -123,6 +123,10 @@ import { settleRetiredRuntimeRuns } from './runtime/retired-kinds.js';
 import { startRuntimeWorker } from './runtime/worker.js';
 import { reconcileInterruptedChatRuntimeRuns } from './chat/runtime.js';
 import { reconcileInterruptedAgentWrites } from './agent-access/governed-write.js';
+import { reconcileInterruptedConnectorWrites } from './connectors/writes.js';
+import { refreshConnectorDirectory } from './connectors/directory.js';
+import adminConnectorRoutes from './routes/admin-connectors.js';
+import { connectorOAuthCallbackRoutes, memberConnectorRoutes } from './routes/connectors.js';
 import { sweepExpiredToolOutputs } from './agent-runtime/tool-output-store.js';
 import { scheduleRetention } from './upkeep/retention.js';
 import { createAutomationRuntimeDriver } from './scheduler/runtime-driver.js';
@@ -268,6 +272,11 @@ function mountRoutes(toolRegistry: ToolRegistry) {
       .route('/', oauthRoutes)
       .route('/api/auth', authRoutes)
       .route('/api/me', meRoutes)
+      // A member's own connectors (connect / disconnect team ones, CRUD personal
+      // ones); the router also requires the mcp_call tool.
+      .use('/api/me/connectors', requireInternal())
+      .use('/api/me/connectors/*', requireInternal())
+      .route('/api/me/connectors', memberConnectorRoutes)
       .route('/api/profiles', profileRoutes)
       .route('/api/sessions', sessionRoutes)
       .route('/health', healthRoutes)
@@ -284,8 +293,13 @@ function mountRoutes(toolRegistry: ToolRegistry) {
       // exchange serve the not-yet-logged-in QR login), so no wildcard role guard;
       // `/oauth/start` and `/binding` guard themselves.
       .route('/api/feishu', feishuOAuthRoutes)
+      // A connector's OAuth provider redirects the browser to `/oauth/callback`
+      // without a Bearer (a public path, rate-limited); it only redirects back to
+      // the app. Must sit before every wildcard role guard.
+      .route('/api/connectors', connectorOAuthCallbackRoutes)
       // Super-admin-only routes
       .use('/api/admin/*', requireSuper())
+      .route('/api/admin/connectors', adminConnectorRoutes)
       .route('/api/admin/platform', platformAdminRoutes)
       .route('/api/admin/operations', costValueRoutes)
       .route('/api/admin/metering', adminMeteringRoutes)
@@ -469,6 +483,10 @@ async function main() {
   await reconcileInterruptedAgentWrites(dbProvider).catch((error) => {
     logger.error('[agent-access] boot reconciliation unavailable', { error: String(error) });
   });
+  await reconcileInterruptedConnectorWrites(dbProvider).catch((error) => {
+    logger.error('[connectors] boot reconciliation unavailable', { error: String(error) });
+  });
+  await refreshConnectorDirectory(dbProvider);
   let runtimeWorker: Awaited<ReturnType<typeof startRuntimeWorker>> | null = null;
   let notificationDeliveryWorker: Awaited<ReturnType<typeof startNotificationDeliveryWorker>> | null = null;
 

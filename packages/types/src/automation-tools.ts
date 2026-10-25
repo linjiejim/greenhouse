@@ -67,6 +67,10 @@ export const AUTOMATION_OPT_IN_TOOLS: readonly AutomationOptInTool[] = [
   // write, so it sits with the other reversible business writes. Its read
   // half, report_templates, is replay-safe and granted automatically.
   { id: 'report_render', tier: 'write' },
+  // Connectors: reads plus the remote writes an admin switched on, recorded as
+  // connector_write runs under the owner; destructive tools never run unattended
+  // (tools/mcp-call.ts hides them on the automation surface).
+  { id: 'mcp_call', tier: 'write' },
 ];
 
 export const AUTOMATION_OPT_IN_TOOL_IDS: ReadonlySet<string> = new Set(AUTOMATION_OPT_IN_TOOLS.map((t) => t.id));

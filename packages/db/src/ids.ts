@@ -72,6 +72,7 @@ export const ID_PREFIX = {
   skillVersion: 'skv',
   prompt: 'prm',
   memory: 'mem',
+  mcpConnector: 'mcc',
 } as const;
 export type IdKind = keyof typeof ID_PREFIX;
 

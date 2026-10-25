@@ -36,8 +36,20 @@ export type RuntimePayload = RuntimeJsonValue;
  * over MCP (`source_kind='proxy_call'`): it runs at once when its risk tier
  * allows, otherwise it waits on a `mutation_approval` interrupt and the
  * member's decision runs it at most once. See `apps/api/src/agent-access/`.
+ *
+ * `connector_write` is one write tool a member's agent (chat, an automation
+ * or their external agent) ran on a remote MCP connector through `mcp_call`
+ * (`source_kind='connector_call'`). See `apps/api/src/connectors/`.
  */
-export type RuntimeRunKind = 'chat' | 'automation' | 'workflow' | 'mission' | 'subagent' | 'eval' | 'agent_write';
+export type RuntimeRunKind =
+  | 'chat'
+  | 'automation'
+  | 'workflow'
+  | 'mission'
+  | 'subagent'
+  | 'eval'
+  | 'agent_write'
+  | 'connector_write';
 
 export const RUNTIME_RUN_KINDS = [
   'chat',
@@ -47,6 +59,7 @@ export const RUNTIME_RUN_KINDS = [
   'subagent',
   'eval',
   'agent_write',
+  'connector_write',
 ] as const satisfies readonly RuntimeRunKind[];
 
 export type RuntimeRunStatus =

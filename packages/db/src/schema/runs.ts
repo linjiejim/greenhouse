@@ -17,7 +17,16 @@ import { at, createdAt, id, json, jsonOrNull, oneOf, updatedAt } from './_column
 /** Stored runtime JSON (input / output / payload / decision). */
 export type RuntimeJson = unknown;
 
-export const RUN_KINDS = ['chat', 'automation', 'workflow', 'mission', 'subagent', 'eval', 'agent_write'] as const;
+export const RUN_KINDS = [
+  'chat',
+  'automation',
+  'workflow',
+  'mission',
+  'subagent',
+  'eval',
+  'agent_write',
+  'connector_write',
+] as const;
 export const RUN_STATUSES = [
   'queued',
   'claimed',

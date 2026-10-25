@@ -53,7 +53,13 @@
 | `oauth_codes` | PK `code_hash` | 授权码（只存 hash）；PKCE S256、`redirect_uri`、`resource`、`scopes`、`used_at` |
 | `oauth_tokens` | PK `id`；UK `token_hash` | access / refresh 令牌 hash；`resource`、`scopes`、过期 / 撤销 / 最近使用 |
 | `gateway_keys` | PK `id`；UK `key_hash` | 成员的模型网关 Key；`key_prefix`、`allowed_models`（null = 全部）、过期、撤销（只打 `revoked_at`） |
-| `provider_connections` | PK `id`；UK `(user_id, provider, workspace_id)` NULLS NOT DISTINCT | 成员与飞书 / 企微等的绑定；`access_token_enc` / `refresh_token_enc` / `credential_enc`（身份型绑定为 null）、`provider_user_id`（企微 UserId / 飞书 open_id，个人推送收件人与扫码登录查表键）、`metadata` |
+| `provider_connections` | PK `id`；UK `(user_id, provider, workspace_id)` NULLS NOT DISTINCT | 成员与飞书 / 企微等的绑定；`access_token_enc` / `refresh_token_enc` / `credential_enc`（身份型绑定为 null）、`provider_user_id`（企微 UserId / 飞书 open_id，个人推送收件人与扫码登录查表键）、`metadata`；`provider = 'mcp:<连接器 id>'` 是成员自己的连接器 Key / 登录（AAD 绑定连接器与成员，`metadata` 带 status / last_error / last_verified_at） |
+
+### 连接器（connectors.ts）
+
+| 表 | 主键 / 唯一 | 用途与关键列 |
+|---|---|---|
+| `mcp_connectors` | PK `id`（`mcc_`）；UK `(scope, owner_user_id, slug)` NULLS NOT DISTINCT | `mcp_call` 调用的远端 MCP 服务器；`scope` team / personal（`owner_user_id` FK CASCADE，仅 personal）、`url`、`transport`、`auth_mode` none / shared / per_member + `auth_kind` key / oauth、Key 放置（`auth_header` / `auth_query_param` / `auth_value_prefix`）、`shared_secret_enc`（团队 Key 或团队登录 JSON，AAD `mcp:<id>:shared`）、`oauth_client_enc`（AAD `mcp:<id>:oauth-client`）、`oauth_discovery`、`private_network`（仅 team）、`allow_external_writes`、`tool_policy` `{工具: on/off}`、`vouched_read_only`、`tools`（上次刷新的工具缓存）、`last_error`、`enabled`、`catalog_id` |
 
 ### 对话（conversations.ts）
 
@@ -67,7 +73,7 @@
 
 ### 运行（runs.ts）
 
-Chat 与 Automation 共用的执行内核：Run / Step 走 version CAS，worker 用 `FOR UPDATE SKIP LOCKED` + lease 领取，状态变化与 Event + Outbox 同事务提交。`kind` 里 workflow / mission / subagent / eval 只剩历史行。
+Chat 与 Automation 共用的执行内核：Run / Step 走 version CAS，worker 用 `FOR UPDATE SKIP LOCKED` + lease 领取，状态变化与 Event + Outbox 同事务提交。`kind` 里 workflow / mission / subagent / eval 只剩历史行；`connector_write` 是 `mcp_call` 的写操作记录（`source_kind='connector_call'`，一条 Run + 一个 Step，不建 tool_call 行）。
 
 | 表 | 主键 / 唯一 | 用途与关键列 |
 |---|---|---|
@@ -86,7 +92,7 @@ Chat 与 Automation 共用的执行内核：Run / Step 走 version CAS，worker 
 |---|---|---|
 | `automations` | PK `id` | 成员的定时任务；`profile_id`、`task_prompt`、cron `schedule` + `timezone`、`notify` jsonb `{webhook, email, wecom, feishu}`、`quiet_when_empty`、`unattended_tools`、`last_status` / `next_run_at` / `run_count` |
 | `automation_occurrences` | PK `runtime_run_id` | 自动化 Run 终态的一次性投影（幂等键 = run id）；`task_id` / `owner_user_id` 逻辑 |
-| `run_profiles` | PK `id`；UK `(user_id, slug)` | 成员的自定义 Agent（`custom:<id>`）：`base_profile_id`、`model_id`、`tools`、`system_prompt`、`is_shared`（只有 super 能开）、`avatar`、purpose / audience / `risk_level` / `budget_policy`、`owner_backup_user_id`（FK SET NULL）；`version` 只计编辑次数，`custom:<id>@<n>` 解析到当前配置 |
+| `run_profiles` | PK `id`；UK `(user_id, slug)` | 成员的自定义 Agent（`custom:<id>`）：`base_profile_id`、`model_id`、`tools`、`system_prompt`、`is_shared`（只有 super 能开）、`avatar`、purpose / audience / `risk_level` / `budget_policy`、`owner_backup_user_id`（FK SET NULL）；`version` 只计编辑次数，`custom:<id>@<n>` 解析到当前配置；`connectors`（连接器 id 数组，null = 全部，只收窄） |
 
 ### 知识库（knowledge.ts）
 
@@ -227,6 +233,7 @@ Chat 与 Automation 共用的执行内核：Run / Step 走 version CAS，worker 
 | `oauth_tokens.grant_id` | `oauth_grants.id` | CASCADE |
 | `gateway_keys.user_id` | `users.id` | CASCADE |
 | `provider_connections.user_id` | `users.id` | CASCADE |
+| `mcp_connectors.owner_user_id` | `users.id` | CASCADE |
 | `messages.session_id` | `conversations.id` | CASCADE |
 | `conversation_shares.session_id` | `conversations.id` | CASCADE |
 | `conversation_share_reads.session_id` | `conversations.id` | CASCADE |
@@ -312,6 +319,8 @@ Chat 与 Automation 共用的执行内核：Run / Step 走 version CAS，worker 
 | `skills.owner_user_id` | `users.id` | 技能作者 |
 | `prompts.user_id` / `source_session_id` | `users.id` / `conversations.id` | 任务比来源会话长寿 |
 | `memories.source_session_id` | `conversations.id` | 记忆来源 |
+| `provider_connections.provider`（`mcp:<id>`） | `mcp_connectors.id` | 成员的连接器凭证；改地址 / 认证方式与删除连接器时同一事务删除 |
+| `runs.source_id`（`kind='connector_write'`） | `mcp_connectors.id` | 连接器写操作记录 |
 
 ## 关系图
 
@@ -336,6 +345,8 @@ erDiagram
     oauth_grants ||--o{ oauth_tokens : "FK CASCADE"
     users ||--o{ gateway_keys : "FK CASCADE"
     users ||--o{ provider_connections : "FK CASCADE"
+    users ||--o{ mcp_connectors : "FK CASCADE (personal)"
+    mcp_connectors ||--o{ provider_connections : "逻辑 provider=mcp:id"
     users ||--o{ push_devices : "FK CASCADE"
     users ||--o{ email_accounts : "FK CASCADE"
     users ||--o{ member_computers : "FK CASCADE"

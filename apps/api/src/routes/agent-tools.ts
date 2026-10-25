@@ -19,6 +19,7 @@ import { getDb } from '@greenhouse/db';
 import type { ToolRegistry } from '../agent.js';
 import { resolveProfileAsync } from '../profiles/profile.js';
 import { resolveEffectiveTools, buildLazyServerTools } from '../agent-runtime/tool-resolution.js';
+import { MCP_CALL_TOOL_ID } from '../tools/mcp-call.js';
 import { buildExternalServiceTools, listableExternalToolIds } from '../agent-runtime/service-tools.js';
 import {
   resolveProxyToolIds,
@@ -91,10 +92,12 @@ export function createAgentRoutes(toolRegistry: ToolRegistry) {
       profile,
       profileId: pinnedProfileId,
     });
+    // Connectors are not offered to the CLI proxy: their writes are governed per
+    // surface (tools/mcp-call.ts) and only chat, automations and /api/mcp carry them.
     const toolIds = resolveProxyToolIds(effectiveTools, {
       allowedTools: identity.allowedTools,
       allowedWriteTools: identity.allowedWriteTools,
-    });
+    }).filter((id) => id !== MCP_CALL_TOOL_ID);
     const registry: ToolRegistry = {
       ...toolRegistry,
       ...buildLazyServerTools(getDb(), effectiveTools, {

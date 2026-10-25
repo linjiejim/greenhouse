@@ -2795,7 +2795,9 @@ export function createRuntimeService(db: Db) {
         ),
       ) as Record<RuntimeRunStatus, number>;
       const byKind = Object.fromEntries(
-        ['chat', 'automation', 'workflow', 'mission', 'subagent', 'eval', 'agent_write'].map((kind) => [kind, 0]),
+        ['chat', 'automation', 'workflow', 'mission', 'subagent', 'eval', 'agent_write', 'connector_write'].map(
+          (kind) => [kind, 0],
+        ),
       ) as Record<RuntimeRunKind, number>;
       let total = 0;
       for (const row of runRows) {

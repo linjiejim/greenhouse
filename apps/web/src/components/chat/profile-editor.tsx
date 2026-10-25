@@ -28,6 +28,7 @@ import type { Profile, ToolMeta, CustomProfileInput } from '../../lib/api';
 import { useT, type TranslationKey } from '../../lib/i18n';
 import { FormActions, FormError, FormField, FormGrid } from '../form';
 import { useProfileStore } from '../../stores';
+import { AgentConnectorsField } from '../connectors/agent-connectors-field';
 
 const MAX_PROMPT_CHARS = 8000;
 const PREVIEW_STATES = ['idle', 'thinking', 'speaking', 'waiting', 'done', 'error'] as const;
@@ -54,6 +55,8 @@ interface ProfileFormData {
   base_profile_id: string;
   model_id: string;
   tools: string[];
+  /** mcp_call narrowing: null = every connector the member can use. */
+  connectors: string[] | null;
   system_prompt: string;
   max_steps: number;
   purpose: string;
@@ -80,6 +83,7 @@ function createEmptyForm(): ProfileFormData {
     base_profile_id: 'sprouty',
     model_id: 'flash',
     tools: [],
+    connectors: null,
     system_prompt: '',
     max_steps: 12,
     purpose: '',
@@ -96,6 +100,7 @@ function createProfileForm(profile: Profile): ProfileFormData {
     base_profile_id: profile.base_profile_id || 'sprouty',
     model_id: profile.model_id || 'flash',
     tools: profile.tools || [],
+    connectors: profile.connectors ?? null,
     system_prompt: profile.system_prompt || '',
     max_steps: profile.max_steps || 12,
     purpose: profile.purpose || '',
@@ -250,6 +255,7 @@ export function ProfileEditorDrawer({
         base_profile_id: form.base_profile_id,
         model_id: offeredModelId,
         tools: form.tools,
+        connectors: form.connectors,
         system_prompt: form.system_prompt.trim(),
         max_steps: form.max_steps,
         purpose: form.purpose.trim() || undefined,
@@ -564,6 +570,11 @@ export function ProfileEditorDrawer({
                   size="sm"
                 />
               </FormField>
+
+              <AgentConnectorsField
+                value={form.connectors}
+                onChange={(connectors) => setForm({ ...form, connectors })}
+              />
             </div>
 
             {/* Tool Selection — its own independently scrolling workspace. */}

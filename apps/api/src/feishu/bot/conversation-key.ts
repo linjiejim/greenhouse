@@ -37,12 +37,14 @@ export function feishuConversationKey(refs: FeishuThreadRefs): string {
  *    分钟、烧模型额度的任务（spec D4，Jim 拍板禁用）。
  *  - **会话编排**（call_llm）：本就 session-scoped 且只在带 sessionId 的
  *    chat 面装配，这里显式列出是为了让「飞书面有什么」可以只读这一处。
+ *  - **连接器**（mcp_call）：未连接时要靠聊天里的「连接」卡片，破坏性工具要先
+ *    预览再确认，IM 里都承载不了。
  *
  * 注意这**不是** `UNATTENDED_TOOL_DENYLIST`——飞书面对面有真人在等回答，不是
  * 无人值守（spec D6）。两者刻意分开：那份禁的是「没人能按确认」，这份禁的是
  * 「这个交互形态承载不了」。
  */
-export const FEISHU_DENIED_TOOL_IDS: readonly string[] = ['tables_schema_plan', 'task_capture', 'call_llm'];
+export const FEISHU_DENIED_TOOL_IDS: readonly string[] = ['tables_schema_plan', 'task_capture', 'call_llm', 'mcp_call'];
 
 const DENIED = new Set(FEISHU_DENIED_TOOL_IDS);
 

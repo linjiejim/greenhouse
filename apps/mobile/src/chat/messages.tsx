@@ -32,6 +32,7 @@ import { toast } from '../ui/toast';
 import {
   AskUserCard,
   AttachmentRow,
+  ConnectCard,
   ExtensionCard,
   FileCard,
   GeneratedImage,
@@ -240,6 +241,8 @@ export const AssistantReply = memo(function AssistantReply({
             return <SchemaPlanCard key={card.key} plan={card.plan} actionKey={card.actionKey} sessionId={sessionId} />;
           case 'extension':
             return <ExtensionCard key={card.key} title={card.title} summary={card.summary} url={card.url} />;
+          case 'connect':
+            return <ConnectCard key={card.key} need={card.need} onContinue={env.reply} />;
         }
       })}
     </>

@@ -57,6 +57,8 @@ export interface Profile {
   /** Registry model id this agent is pinned to (v3: one agent = one model). */
   model_id?: string;
   tools: string[];
+  /** Custom agents: the connectors mcp_call may use (null = all the member can use). */
+  connectors?: string[] | null;
   max_steps?: number;
   tool_choice?: string;
   system_prompt?: string;

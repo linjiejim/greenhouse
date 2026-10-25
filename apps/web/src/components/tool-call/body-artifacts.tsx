@@ -28,6 +28,8 @@ import { FileAttachmentCard } from '../files/file-attachment-card';
 import { downloadAuthenticatedFile } from '../../lib/file-download';
 import { toast } from '../ui';
 import { MediaPreviewDialog } from '../media-preview-dialog';
+import { isConnectorNeedsConnection } from '@greenhouse/types/connectors';
+import { ConnectorConnectCard } from '../connectors/connect-card';
 
 // ─── Types ───────────────────────────────────────────────
 
@@ -110,6 +112,9 @@ export function isArtifactCall(call: { name: string; output?: unknown }): boolea
       // Same rule: a rejected draft (a variable with no placeholder) stays a
       // trace row, so the model's corrected retry reads as one conversation.
       return out?.type === 'task_capture';
+    case 'mcp_call':
+      // Only "connect first" becomes a card; every other answer stays a trace row.
+      return isConnectorNeedsConnection(out);
     default:
       return false;
   }
@@ -258,6 +263,11 @@ function BodyArtifactItem({ call, ctx }: { call: ArtifactCall; ctx: ArtifactCtx 
     case 'task_capture':
       return out?.type === 'task_capture' ? (
         <TaskCaptureCard data={out as unknown as TaskCaptureData} actionId={actionId} sessionId={writableSessionId} />
+      ) : null;
+
+    case 'mcp_call':
+      return isConnectorNeedsConnection(out) ? (
+        <ConnectorConnectCard data={out} onContinue={ctx.onAskUserSubmit} canAct={ctx.canAct !== false} />
       ) : null;
 
     default: {

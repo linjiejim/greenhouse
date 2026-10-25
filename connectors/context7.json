@@ -1,0 +1,32 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.upstash/context7",
+  "title": "Context7",
+  "description": "Up-to-date library and framework docs and code examples for any prompt.",
+  "version": "4.2.1",
+  "websiteUrl": "https://context7.com",
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "https://mcp.context7.com/mcp"
+    }
+  ],
+  "_meta": {
+    "com.linjiejim.greenhouse/connector": {
+      "slug": "context7",
+      "category": "dev",
+      "title_zh": "Context7",
+      "description_zh": "按需获取各类库与框架的最新文档和代码示例。",
+      "auth": {
+        "mode": "none",
+        "zero_config": true
+      },
+      "read_only_tools": [],
+      "verification": {
+        "level": "call",
+        "date": "2026-10-09",
+        "notes": "Works without a key (rate-limited). A team that wants its own quota can switch it to a shared credential in the Authorization header."
+      }
+    }
+  }
+}

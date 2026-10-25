@@ -18,6 +18,7 @@ import {
   Mail,
   Users,
   Key,
+  Plug,
   Cloud,
   Package,
   Palette,
@@ -262,6 +263,15 @@ const ADMINISTRATION_MODULES: NavModule[] = [
     description: 'OAuth clients for external agents (MCP server)',
     requireRole: ['super'],
   },
+  {
+    id: 'admin.connectors',
+    label: 'Connectors',
+    icon: Plug,
+    path: '#/administration/connectors',
+    parent: 'administration',
+    description: 'Outside services (MCP servers) the team’s agents can use',
+    requireRole: ['super'],
+  },
 ];
 
 export const administrationModules = ADMINISTRATION_MODULES;
@@ -381,6 +391,7 @@ const NAV_COPY: Record<string, { label: TranslationKey; description?: Translatio
   'admin.issues': { label: 'navigation.issues', description: 'navigation.issuesDesc' },
   'admin.activity': { label: 'navigation.activityLog', description: 'navigation.activityLogAdminDesc' },
   'admin.mcp-keys': { label: 'navigation.mcpAccess', description: 'navigation.mcpAccessDesc' },
+  'admin.connectors': { label: 'navigation.connectors', description: 'navigation.connectorsDesc' },
   'admin.team-context': { label: 'navigation.teamContext', description: 'navigation.teamContextDesc' },
   'workspace.data-catalog': { label: 'navigation.dataCatalog', description: 'navigation.dataCatalogDesc' },
   'workspace.files': { label: 'navigation.files', description: 'navigation.filesDesc' },
