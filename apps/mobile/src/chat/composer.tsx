@@ -81,7 +81,7 @@ export const Composer = memo(
     },
     ref,
   ) {
-    const { colors: c } = useTheme();
+    const { colors: c, isDark } = useTheme();
     const styles = useStyles(c);
     const t = useT();
     const { fontScale, height } = useWindowDimensions();
@@ -169,6 +169,10 @@ export const Composer = memo(
               </View>
             </NativeMenu>
             <TextInput
+              // a live light/dark switch restyles the native field and its placeholder stops
+              // drawing until relaunch (iOS); a fresh field per scheme draws it (the draft is
+              // controlled, so nothing typed is lost)
+              key={isDark ? 'dark' : 'light'}
               ref={ref}
               value={value}
               onChangeText={onChangeText}
