@@ -40,7 +40,6 @@
     "mermaid": "^11.16.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "react-grid-layout": "^2.2.4",
     "zustand": "^5.0.13"
   },
   "devDependencies": {
