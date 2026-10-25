@@ -18,6 +18,7 @@ vi.mock('zustand', () => ({
     return Object.assign(() => state, { getState: get, setState: set, subscribe: () => () => {} });
   },
 }));
+vi.mock('react', () => ({ useEffect: () => {} }));
 vi.mock('react-native', () => ({ AppState: { addEventListener: () => ({ remove: () => {} }) } }));
 vi.mock('./auth', () => ({ useAuth: { getState: () => ({ user: { id: 'u' } }), subscribe: () => () => {} } }));
 vi.mock('./stations', () => ({ useStations: { getState: () => ({ activeId: 's' }), subscribe: () => () => {} } }));
