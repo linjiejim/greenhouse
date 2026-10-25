@@ -7,7 +7,7 @@
  */
 
 import React, { useState } from 'react';
-import { Modal, ScrollView, StatusBar, Text, View, useWindowDimensions } from 'react-native';
+import { Modal, ScrollView, Text, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { TableGrid, type TableData } from '../markdown';
 import { useT } from '../lib/i18n';
@@ -43,7 +43,6 @@ export function SidewaysTable({
       supportedOrientations={['portrait']}
       onRequestClose={onClose}
     >
-      <StatusBar hidden={visible} />
       <View style={styles.root}>
         <View
           style={[
