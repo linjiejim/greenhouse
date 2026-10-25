@@ -6,9 +6,13 @@
  * sheets are dismissed first, because a page pushed over a sheet would land inside the sheet's
  * own presentation. A link to a place (a tab, a table, My Agents) goes there the same way; other
  * station pages open in the in-app Safari view, other sites in Safari.
+ *
+ * A screen can name itself as the origin of what opens from it (`OpenOrigin`; the conversation
+ * does): sheets then carry `from` and say where they came from above their title, so a stack of
+ * sheets keeps its context.
  */
 
-import { useCallback } from 'react';
+import { createContext, useCallback, useContext } from 'react';
 import { useNavigationContainerRef, useRouter } from 'expo-router';
 import { linkTarget, webUrl, type AppTarget } from '../lib/deep-links';
 import { openLink } from '../lib/links';
@@ -41,19 +45,23 @@ function leavePresented(router: Router, routes: readonly StackRoute[], then: () 
   } else then();
 }
 
-export function openObject(router: Router, container: ContainerRef, ref: ObjectRef): void {
+/** The title of the screen things open from (a conversation); sheets show it as their origin. */
+export const OpenOrigin = createContext<string | null>(null);
+
+export function openObject(router: Router, container: ContainerRef, ref: ObjectRef, from?: string | null): void {
   const opening = openingOf(ref);
   const routes = rootRoutes(container);
   if (opening.via === 'page') {
     leavePresented(router, routes, () => router.push({ pathname: opening.pathname, params: opening.params }));
     return;
   }
-  const href = { pathname: opening.pathname, params: opening.params };
+  const params = from ? { ...opening.params, from: from.slice(0, 120) } : opening.params;
+  const href = { pathname: opening.pathname, params };
   if (sheetMove(sheetDepth(routes)) === 'replace') router.replace(href);
   else router.push(href);
 }
 
-export function openPlace(router: Router, container: ContainerRef, place: Place, accent?: string): void {
+export function openPlace(router: Router, container: ContainerRef, place: Place, accent?: string, from?: string | null): void {
   const routes = rootRoutes(container);
   switch (place.kind) {
     case 'tab':
@@ -61,7 +69,7 @@ export function openPlace(router: Router, container: ContainerRef, place: Place,
       return;
     case 'drive':
       if (place.folderId) {
-        openObject(router, container, { kind: 'folder', scope: 'drive', shelf: place.shelf, id: place.folderId });
+        openObject(router, container, { kind: 'folder', scope: 'drive', shelf: place.shelf, id: place.folderId }, from);
         return;
       }
       leavePresented(router, routes, () => router.navigate({ pathname: '/drive', params: { shelf: place.shelf } }));
@@ -88,21 +96,23 @@ export function openPlace(router: Router, container: ContainerRef, place: Place,
 export function useOpenObject(): (ref: ObjectRef) => void {
   const router = useRouter();
   const container = useNavigationContainerRef();
-  return useCallback((ref: ObjectRef) => openObject(router, container, ref), [router, container]);
+  const from = useContext(OpenOrigin);
+  return useCallback((ref: ObjectRef) => openObject(router, container, ref, from), [router, container, from]);
 }
 
 /** Open a link target (src/lib/deep-links.ts): one object, or a place. */
-export function openTarget(router: Router, container: ContainerRef, target: AppTarget, accent?: string): void {
+export function openTarget(router: Router, container: ContainerRef, target: AppTarget, accent?: string, from?: string | null): void {
   const next = refOfTarget(target);
-  if ('ref' in next) openObject(router, container, next.ref);
-  else openPlace(router, container, next.place, accent);
+  if ('ref' in next) openObject(router, container, next.ref, from);
+  else openPlace(router, container, next.place, accent, from);
 }
 
 export function useOpenTarget(): (target: AppTarget) => void {
   const router = useRouter();
   const container = useNavigationContainerRef();
   const { hex } = useTheme();
-  return useCallback((target: AppTarget) => openTarget(router, container, target, hex.accent), [router, container, hex.accent]);
+  const from = useContext(OpenOrigin);
+  return useCallback((target: AppTarget) => openTarget(router, container, target, hex.accent, from), [router, container, hex.accent, from]);
 }
 
 /** A link as written in content; false when it goes nowhere the app can open. */
@@ -110,6 +120,7 @@ export function useOpenHref(): (href: string) => boolean {
   const router = useRouter();
   const container = useNavigationContainerRef();
   const { hex } = useTheme();
+  const from = useContext(OpenOrigin);
   return useCallback(
     (href: string) => {
       const value = href.trim();
@@ -119,9 +130,9 @@ export function useOpenHref(): (href: string) => boolean {
       }
       const target = linkTarget(value, getApiBase());
       if (!target) return false;
-      openTarget(router, container, target, hex.accent);
+      openTarget(router, container, target, hex.accent, from);
       return true;
     },
-    [router, container, hex.accent],
+    [router, container, hex.accent, from],
   );
 }

@@ -427,6 +427,7 @@ export const zh: Catalog = {
     removeQueued: '移除',
     keepQueued: '保留，稍后再试',
     outboxFull: '待发送的消息太多了。这条还留在输入框里，等前面的发出去再试。',
+    fromConversation: '来自：{title}',
   },
   cards: {
     questions: '有几个问题',

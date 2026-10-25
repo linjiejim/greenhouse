@@ -441,6 +441,7 @@ export const en = {
     removeQueued: 'Remove',
     keepQueued: 'Keep and Try Later',
     outboxFull: 'Too many messages are waiting to send. Your message is still in the box; try again once some have gone.',
+    fromConversation: 'From: {title}',
   },
   cards: {
     questions: 'A few questions',
