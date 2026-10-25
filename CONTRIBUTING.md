@@ -28,7 +28,7 @@ pnpm db:migrate
 # create the first super admin
 pnpm admin:create
 
-# run the app (web :3100 with HMR + API :3101; open http://localhost:3100)
+# run the app (web :3100 with HMR + API :3000; open http://localhost:3100)
 pnpm dev
 ```
 
@@ -42,7 +42,8 @@ Both must pass — CI enforces them on every PR:
 ```bash
 pnpm typecheck
 pnpm lint          # eslint + prettier --check
-pnpm test          # vitest unit
+pnpm test          # every vitest layer: unit + db + db-commit (needs Postgres)
+pnpm test:unit     # unit tests only, for fast feedback
 ```
 
 When your change touches the relevant area, also run:
@@ -89,7 +90,8 @@ protected — CI must be green and at least one review is required before merge.
 **PRs are squash-merged, and the squash commit must be a
 [Conventional Commit](https://www.conventionalcommits.org/)** (`feat(web): …`,
 `fix(api:export): …`) — that one line per PR is what drives automated versioning
-and the changelog. `feat` → minor bump, `fix` → patch (pre-1.0). See
+and the changelog. `feat` → minor bump, `fix` → patch, a breaking change (`!`) →
+major. See
 [RELEASING.md](./RELEASING.md) for how a release is cut; you don't need to touch
 `CHANGELOG.md` or any `version` field — release automation handles both.
 

@@ -3,21 +3,21 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Greenhouse — an organization's shared AI brain</title>
-<meta name="description" content="An open-source AI assistant for your whole team, on your own server. It knows your documents, projects and data, and the same tools work in team chat, in your apps, and in Claude or Cursor." />
+<title>Greenhouse — the team's Agent hub</title>
+<meta name="description" content="The self-hosted Agent hub for your team. Members connect their own agents (Codex, Claude Code, Cursor, any MCP client) to the team's knowledge, files, projects and data; every write is recorded, every paid call metered. Sprouty is the built-in assistant." />
 <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
 <link rel="apple-touch-icon" href="./apple-touch-icon.png" />
 <meta name="theme-color" content="#0d9488" />
 <meta property="og:type" content="website" />
 <meta property="og:url" content="https://greenhouse.linjiejim.com/" />
-<meta property="og:title" content="Greenhouse — an organization's shared AI brain" />
-<meta property="og:description" content="An open-source AI assistant for your whole team, on your own server. It knows your documents, projects and data, and the same tools work in team chat, in your apps, and in Claude or Cursor." />
+<meta property="og:title" content="Greenhouse — the team's Agent hub" />
+<meta property="og:description" content="The self-hosted Agent hub for your team. Members connect their own agents (Codex, Claude Code, Cursor, any MCP client) to the team's knowledge, files, projects and data; every write is recorded, every paid call metered. Sprouty is the built-in assistant." />
 <meta property="og:image" content="https://greenhouse.linjiejim.com/og.png" />
 <meta property="og:image:width" content="1200" />
 <meta property="og:image:height" content="630" />
 <meta name="twitter:card" content="summary_large_image" />
-<meta name="twitter:title" content="Greenhouse — an organization's shared AI brain" />
-<meta name="twitter:description" content="Open-source, AI-native agent workbench. One tool layer for your team, your app, and any MCP client." />
+<meta name="twitter:title" content="Greenhouse — the team's Agent hub" />
+<meta name="twitter:description" content="Open-source, self-hosted Agent hub: your members' own agents over MCP, one tool layer, every write on record." />
 <link rel="stylesheet" href="./tailwind.css" />
 <style>
   @font-face{ font-family:'Inter'; font-style:normal; font-weight:400 800; font-display:swap; src:url('./fonts/inter-var.woff2') format('woff2'); }
@@ -96,13 +96,13 @@
         <span data-i18n="hero.badge">Open source · MIT · self-hosted</span>
       </div>
       <h1 class="text-[2.7rem] font-extrabold leading-[1.05] tracking-tight text-ink sm:text-[3.4rem]" data-i18n="hero.h1">
-        Put the agent at the<br><span class="text-brand-600">center</span> of your organization.
+        Every agent on your team,<br><span class="text-brand-600">one hub</span>.
       </h1>
       <p class="mx-auto mt-6 max-w-2xl text-lg leading-relaxed text-ink-soft" data-i18n="hero.lede">
-        An open-source AI assistant for your whole team, running on your own server. It knows your
-        documents, your projects and your data, and every tool you give it works the same way in team chat,
-        in your own apps, and in Claude or Cursor —
-        <span class="font-semibold text-ink">one file per new capability.</span>
+        Members connect their own agents — Codex, Claude Code, Cursor or any MCP client — to the team's
+        knowledge, files, projects and data, cut to their own permissions. Every write is recorded in their
+        name, every paid call is metered, and Sprouty, the built-in assistant, uses the same tools —
+        <span class="font-semibold text-ink">self-hosted, one process.</span>
       </span>
       </p>
       <div class="mt-8 flex flex-wrap items-center justify-center gap-3">
@@ -206,16 +206,16 @@
           <span class="mt-0.5 hidden text-[12.5px] leading-snug text-ink-mut lg:block" data-i18n="tour.d5">Portfolio timeline, boards and task trees.</span>
         </button>
         <button type="button" class="tour-tab shrink-0 rounded-xl border bg-white px-4 py-3 text-left transition hover:bg-brand-50/60 lg:w-full" role="tab" aria-selected="false" data-tour-tab="executions">
-          <span class="tour-tab-title block text-sm font-semibold text-ink" data-i18n="tour.t6">Execution center</span>
-          <span class="mt-0.5 hidden text-[12.5px] leading-snug text-ink-mut lg:block" data-i18n="tour.d6">Scheduled jobs and sub-agents, in one place.</span>
+          <span class="tour-tab-title block text-sm font-semibold text-ink" data-i18n="tour.t6">Activity log</span>
+          <span class="mt-0.5 hidden text-[12.5px] leading-snug text-ink-mut lg:block" data-i18n="tour.d6">Automations and your agents' writes, in one place.</span>
         </button>
         <button type="button" class="tour-tab shrink-0 rounded-xl border bg-white px-4 py-3 text-left transition hover:bg-brand-50/60 lg:w-full" role="tab" aria-selected="false" data-tour-tab="skills">
-          <span class="tour-tab-title block text-sm font-semibold text-ink" data-i18n="tour.t7">Skill Center</span>
+          <span class="tour-tab-title block text-sm font-semibold text-ink" data-i18n="tour.t7">SkillHub</span>
           <span class="mt-0.5 hidden text-[12.5px] leading-snug text-ink-mut lg:block" data-i18n="tour.d7">An org-wide library of versioned agent skills.</span>
         </button>
         <button type="button" class="tour-tab shrink-0 rounded-xl border bg-white px-4 py-3 text-left transition hover:bg-brand-50/60 lg:w-full" role="tab" aria-selected="false" data-tour-tab="agents">
-          <span class="tour-tab-title block text-sm font-semibold text-ink" data-i18n="tour.t8">My Agents</span>
-          <span class="mt-0.5 hidden text-[12.5px] leading-snug text-ink-mut lg:block" data-i18n="tour.d8">Virtual coworkers: a prompt, a subset of tools, a face.</span>
+          <span class="tour-tab-title block text-sm font-semibold text-ink" data-i18n="tour.t8">Run profiles</span>
+          <span class="mt-0.5 hidden text-[12.5px] leading-snug text-ink-mut lg:block" data-i18n="tour.d8">A prompt, a subset of tools and a face, for your automations.</span>
         </button>
       </div>
 
@@ -259,16 +259,16 @@
         </figure>
         <figure class="tour-panel" data-tour-panel="executions" hidden>
           <div class="overflow-hidden rounded-2xl border border-edge bg-white shot-shadow">
-            <img src="./assets/screens/execution-center.webp" alt="Execution center listing completed automation runs" width="1440" height="900" class="block w-full" loading="lazy" />
+            <img src="./assets/screens/execution-center.webp" alt="Activity log listing completed automation runs" width="1440" height="900" class="block w-full" loading="lazy" />
           </div>
           <figcaption class="mt-3 text-sm leading-relaxed text-ink-mut" data-i18n="tour.c6">
-        Everything running in the background on one screen — scheduled jobs and sub-agents —
+        Who changed what, on one screen — members, their agents over MCP, automations and admins —
               with every step, tool call and event on record.
       </figcaption>
         </figure>
         <figure class="tour-panel" data-tour-panel="skills" hidden>
           <div class="overflow-hidden rounded-2xl border border-edge bg-white shot-shadow">
-            <img src="./assets/screens/skillhub.webp" alt="Skill Center listing published skills" width="1440" height="900" class="block w-full" loading="lazy" />
+            <img src="./assets/screens/skillhub.webp" alt="SkillHub listing published skills" width="1440" height="900" class="block w-full" loading="lazy" />
           </div>
           <figcaption class="mt-3 text-sm leading-relaxed text-ink-mut" data-i18n="tour.c7">
         Reusable know-how the agent can pick up, versioned so an update never rewrites history.
@@ -277,9 +277,9 @@
         </figure>
         <figure class="tour-panel" data-tour-panel="agents" hidden>
           <div class="overflow-hidden rounded-2xl border border-edge bg-white shot-shadow">
-            <img src="./assets/screens/agents.webp" alt="My Agents page with a custom agent" width="1440" height="900" class="block w-full" loading="lazy" />
+            <img src="./assets/screens/agents.webp" alt="Run profiles tab in Automations" width="1440" height="900" class="block w-full" loading="lazy" />
           </div>
-          <figcaption class="mt-3 text-sm leading-relaxed text-ink-mut" data-i18n="tour.c8">A profile is a system prompt, a chosen subset of tools and a face. Keep it private, publish it to the team after review, fork someone else's, or run it on a schedule.</figcaption>
+          <figcaption class="mt-3 text-sm leading-relaxed text-ink-mut" data-i18n="tour.c8">A run profile is a system prompt, a chosen subset of tools and a face. Keep it private or share it with the team, and run it on a schedule.</figcaption>
         </figure>
       </div>
     </div>
@@ -450,14 +450,14 @@
         <div class="overflow-hidden rounded-2xl border border-edge bg-white shot-shadow">
           <img src="./assets/screens/automations.webp" alt="Automation page with a scheduled daily standup digest" width="1440" height="900" class="block w-full" loading="lazy" />
         </div>
-        <figcaption class="mt-3 text-sm leading-relaxed text-ink-mut" data-i18n="prof.figcap">A profile on a cron schedule: the daily standup digest runs itself, lands in the Execution center and notifies the owner.</figcaption>
+        <figcaption class="mt-3 text-sm leading-relaxed text-ink-mut" data-i18n="prof.figcap">A run profile on a cron schedule: the daily standup digest runs itself, lands in the Activity log and notifies the owner.</figcaption>
       </figure>
       <div class="order-1 lg:order-2">
-        <p class="text-sm font-semibold uppercase tracking-widest text-brand-600" data-i18n="prof.kicker">Agent profiles</p>
+        <p class="text-sm font-semibold uppercase tracking-widest text-brand-600" data-i18n="prof.kicker">Run profiles</p>
         <h2 class="mt-4 text-3xl font-extrabold tracking-tight text-ink sm:text-4xl" data-i18n="prof.h2">Distill best practices into virtual coworkers.</h2>
         <p class="mt-5 text-lg leading-relaxed text-ink-soft" data-i18n="prof.p1">
-        A profile is a name, a face, a set of instructions and the tools it may use — one person's way
-        of doing a job, saved so anyone can use it. Publish it to the team, or copy someone's and improve it.
+        A run profile is a name, a face, a set of instructions and the tools it may use — one person's way
+        of doing a job, saved so it can run again. Keep it to yourself or share it with the team.
       </p>
         <p class="mt-4 text-lg leading-relaxed text-ink-soft" data-i18n="prof.p2">
           Pair it with <span class="font-semibold text-ink">automations</span> — a cron schedule that runs a profile's
@@ -481,7 +481,7 @@
       <h3 class="text-base font-semibold text-ink" data-i18n="feat.chatT">Chat</h3>
       <p class="mt-1.5 text-sm leading-relaxed text-ink-mut" data-i18n="feat.chatB">
         Streaming replies you can watch work, attachments of any type, a different model per
-          message, plus branching, sharing, tags and ⌘P search.
+          message, plus branching, sharing, pinning and ⌘P search.
       </p>
     </div>
     <div class="group rounded-2xl border border-edge bg-white p-6 soft-shadow transition hover:border-brand-300">
@@ -512,8 +512,8 @@
     </div>
     <div class="group rounded-2xl border border-edge bg-white p-6 soft-shadow transition hover:border-brand-300">
       <div class="mb-4 grid h-10 w-10 place-items-center rounded-xl bg-brand-50 text-brand-600"><svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
-      <h3 class="text-base font-semibold text-ink" data-i18n="feat.execT">Execution center + automations</h3>
-      <p class="mt-1.5 text-sm leading-relaxed text-ink-mut" data-i18n="feat.execB">Cron-scheduled agent runs and sub-agents in one surface, with every step and tool call on record.</p>
+      <h3 class="text-base font-semibold text-ink" data-i18n="feat.execT">Activity log + automations</h3>
+      <p class="mt-1.5 text-sm leading-relaxed text-ink-mut" data-i18n="feat.execB">Cron-scheduled assistant runs and every write your members' agents make, in one log, with every step and tool call on record.</p>
     </div>
     <div class="group rounded-2xl border border-edge bg-white p-6 soft-shadow transition hover:border-brand-300">
       <div class="mb-4 grid h-10 w-10 place-items-center rounded-xl bg-brand-50 text-brand-600"><svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a7 7 0 0 0-7 7c0 3 2 4 2 7h10c0-3 2-4 2-7a7 7 0 0 0-7-7zM9 21h6" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
@@ -524,7 +524,7 @@
     </div>
     <div class="group rounded-2xl border border-edge bg-white p-6 soft-shadow transition hover:border-brand-300">
       <div class="mb-4 grid h-10 w-10 place-items-center rounded-xl bg-brand-50 text-brand-600"><svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" stroke-linejoin="round"/><path d="M3.3 7L12 12l8.7-5M12 22V12" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
-      <h3 class="text-base font-semibold text-ink" data-i18n="feat.skillT">Skill Center</h3>
+      <h3 class="text-base font-semibold text-ink" data-i18n="feat.skillT">SkillHub</h3>
       <p class="mt-1.5 text-sm leading-relaxed text-ink-mut" data-i18n="feat.skillB">
         A shared library of agent know-how: versioned, change-logged and security-scanned, with
           a starter set in the box.
@@ -767,7 +767,7 @@ docker compose exec api pnpm admin:create
     <div class="flex items-center gap-2.5">
       <svg viewBox="9 7 112 112" class="h-6 w-6 text-brand-600" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"><path d="M22 104 L22 56 L65 22 L108 56 L108 104 Z"/><path d="M22 56 L108 56"/><path d="M44 56 L44 104"/><path d="M86 56 L86 104"/></g></svg>
       <span class="text-sm font-semibold text-ink">Greenhouse</span>
-      <span class="text-sm text-ink-faint" data-i18n="footer.tagline">— an organization's shared AI brain</span>
+      <span class="text-sm text-ink-faint" data-i18n="footer.tagline">— the team's Agent hub</span>
     </div>
     <div class="flex items-center gap-6 text-sm text-ink-mut">
       <a href="https://github.com/linjiejim/greenhouse" class="hover:text-brand-700">GitHub</a>
@@ -810,8 +810,8 @@ docker compose exec api pnpm admin:create
   var SUPPORTED = ['en', 'zh'];
 
   var ZH = {
-    'meta.title': 'Greenhouse — 组织共享的 AI 大脑',
-    'meta.desc': '一套开源的团队 AI 助手，跑在你自己的服务器上。它认得你们的文档、项目和数据；同一套工具，在团队对话里、在你的应用里、在 Claude 或 Cursor 里都一样用。',
+    'meta.title': 'Greenhouse — 团队的 Agent 中台',
+    'meta.desc': '团队自己部署的 Agent 中台。成员把自己的 Agent（Codex、Claude Code、Cursor 或任何 MCP 客户端）接进来，拿到团队的知识、文件、项目和数据；每次写入都留痕，每次付费调用都计量。Sprouty 是内置助手。',
 
     'nav.why': '理念',
     'nav.tour': '产品导览',
@@ -822,8 +822,8 @@ docker compose exec api pnpm admin:create
     'nav.getStarted': '开始使用',
 
     'hero.badge': '开源 · MIT · 自托管',
-    'hero.h1': '让 Agent 站在组织的<br><span class="text-brand-600">正中心</span>。',
-    'hero.lede': '一套开源的团队 AI 助手，跑在你自己的服务器上。它认得你们的文档、项目和数据；你给它的每一样工具，在团队对话里、在你自己的应用里、在 Claude 或 Cursor 里，用起来都是同一套——<span class="font-semibold text-ink">加一样能力，写一个文件。</span>',
+    'hero.h1': '团队的每个 Agent，<br><span class="text-brand-600">一个中台</span>。',
+    'hero.lede': '成员把自己的 Agent——Codex、Claude Code、Cursor 或任何 MCP 客户端——接到团队的知识、文件、项目和数据上，权限按本人裁剪。每次写入都以本人名义留痕，每次付费调用都计量；内置助手 Sprouty 用的也是同一套工具——<span class="font-semibold text-ink">自己部署，一个进程。</span>',
     'hero.star': '在 GitHub 上 Star',
     'hero.tour': '看看产品导览',
     'hero.liveBadge': '真实录屏 · 无任何假数据',
@@ -851,20 +851,20 @@ docker compose exec api pnpm admin:create
     'tour.d4': '类型化字段、视图与记录关联——自带 Agent 的结构化数据。',
     'tour.t5': '项目',
     'tour.d5': '组合时间线、看板与任务树。',
-    'tour.t6': '执行中心',
-    'tour.d6': '定时任务和子 Agent，都在一个地方。',
-    'tour.t7': '技能中心',
+    'tour.t6': '操作记录',
+    'tour.d6': '自动化和你的 Agent 写入，都在一个地方。',
+    'tour.t7': 'SkillHub',
     'tour.d7': '全组织共享的带版本 Agent 技能库。',
-    'tour.t8': '我的 Agent',
-    'tour.d8': '虚拟同事：一段提示词、一组工具、一张脸。',
+    'tour.t8': '运行配置',
+    'tour.d8': '一段提示词、一组工具、一张脸，给自动化用。',
     'tour.c1': '一天的工作，一屏看完。每张卡片都是一次带保存配方的工具调用——拖拽重排，或者直接让 Agent 帮你改布局。',
     'tour.c2': '“哪些反馈是负面的？各渠道平均分是多少？”——Agent 查询多维表格，用可排序、可导出的表格作答，并指出真正需要行动的缺口。',
     'tour.c3': '像样的编辑器、文件夹、页面互链、版本历史，还有认得中文的搜索——Agent 在对话里引用的就是这里。',
     'tour.c4': '像表格一样的多维表：真正的字段类型、视图、记录关联。在对话里说清楚要什么，Agent 先起个草给你确认。',
     'tour.c5': '组合时间线、看板与任务树，带成员、评论和活动日志——Agent 还能直接从对话里创建任务。',
-    'tour.c6': '所有在后台跑的东西都在一屏里——定时任务和子 Agent——每一步、每次工具调用和事件都有记录。',
+    'tour.c6': '谁改了什么，一屏看完——成员、成员通过 MCP 接入的 Agent、自动化和管理员——每一步、每次工具调用和事件都有记录。',
     'tour.c7': '可复用的经验，Agent 随手就能拿来用；版本化保存，更新不会改写历史。项目自带一套入门包。',
-    'tour.c8': '一个档案 = 一段系统提示词 + 一组挑选好的工具 + 一张脸。可以私有使用，评审后发布给团队，复刻别人的，或者定时运行。',
+    'tour.c8': '一个运行配置 = 一段系统提示词 + 一组挑选好的工具 + 一张脸。可以自己用，也可以共享给团队，并且定时运行。',
 
     'tool.kicker': '工具层',
     'tool.h2': '一次定义，三处可用。',
@@ -900,16 +900,16 @@ docker compose exec api pnpm admin:create
     'perm.figA': '每位用户一个权限对话框：基础访问、应用访问、高级访问与用量上限，全局工具如实标明。',
     'perm.figB': '外部 Agent 用 OAuth 登录，每个只拿到你勾选的那几组工具。',
 
-    'prof.kicker': 'Agent 档案',
+    'prof.kicker': '运行配置',
     'prof.h2': '把最佳实践，沉淀成一个个虚拟同事。',
-    'prof.p1': '一个「分身」就是一个名字、一张脸、一套指令和它能用的工具——把一个人做某件事的方法存下来，谁都能用。可以发布给全团队，也可以抄别人的再改得更好。',
+    'prof.p1': '一个运行配置就是一个名字、一张脸、一套指令和它能用的工具——把一个人做某件事的方法存下来，随时再跑。可以自己用，也可以共享给团队。',
     'prof.p2': '再配上<span class="font-semibold text-ink">自动化</span>：用 cron 定时让某个档案的提示词自己跑起来，每天的站会汇报、早上的数据巡检就全自动了。团队用得越久，这条虚拟同事的板凳就越深，像复利一样越滚越大。',
-    'prof.figcap': '定时运行的档案：每日站会摘要自己跑完，进入执行中心，并通知负责人。',
+    'prof.figcap': '定时运行的配置：每日站会摘要自己跑完，进入操作记录，并通知负责人。',
 
     'feat.kicker': '同一个平台',
     'feat.h2': '所有功能，共享同一套工具层。',
     'feat.chatT': '聊天',
-    'feat.chatB': '流式回答，能看着它干活；任意类型的附件；每条消息都能换模型；还有分支、分享、标签和 ⌘P 搜索。',
+    'feat.chatB': '流式回答，能看着它干活；任意类型的附件；每条消息都能换模型；还有分支、分享、置顶和 ⌘P 搜索。',
     'feat.kbT': '知识库',
     'feat.kbB': '团队、个人和共享文档——像样的编辑器、页面互链、版本历史，以及认得中文的搜索。',
     'feat.projT': '项目',
@@ -918,11 +918,11 @@ docker compose exec api pnpm admin:create
     'feat.tablesB': '像表格一样的多维表：真正的字段类型、视图和记录关联——跟 Agent 聊着就设计好了。',
     'feat.wbT': '首页工作台',
     'feat.wbB': '由同一套工具驱动的个人实时仪表盘——配方与模板，拖拽即可编辑，或者直接让 Agent 来改。',
-    'feat.execT': '执行中心 + 自动化',
-    'feat.execB': 'cron 定时的 Agent 运行与子 Agent 汇集在一个界面，每一步和每次工具调用都有记录。',
+    'feat.execT': '操作记录 + 自动化',
+    'feat.execB': 'cron 定时的助手运行，以及成员的 Agent 做的每次写入，汇集在一处，每一步和每次工具调用都有记录。',
     'feat.memT': '记忆',
     'feat.memB': 'Agent 记住每个人让它记的事，也会记下工具在哪里绊住了它。',
-    'feat.skillT': '技能中心',
+    'feat.skillT': 'SkillHub',
     'feat.skillB': '团队共享的经验库：版本化、有变更记录、过安全扫描，开箱带一套入门包。',
     'feat.emailT': '邮件与集成 <span class="ml-1 rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium text-ink-mut">可选</span>',
     'feat.emailB': 'IMAP/SMTP 邮箱（服务端草稿确认）、企业微信与飞书账号绑定，通知直接送到大家已经在用的地方。',
@@ -968,7 +968,7 @@ docker compose exec api pnpm admin:create
     'cta.star': '在 GitHub 上 Star',
     'cta.docs': '阅读文档',
 
-    'footer.tagline': '— 组织共享的 AI 大脑',
+    'footer.tagline': '— 团队的 Agent 中台',
     'footer.docs': '文档',
     'footer.philosophy': '理念',
     'footer.privacy': '隐私'

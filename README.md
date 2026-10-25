@@ -531,7 +531,7 @@ tables they mention are simply absent; they are kept for readers still on 1.x.
 
 Everything is environment-driven; see [.env.example](./.env.example) for the full list.
 
-**Required** (the server fails to start without the auth/encryption keys):
+**Required** (the server refuses to start without `TOKEN_SIGNING_KEY`; stored secrets need `PROVIDER_TOKEN_ENCRYPTION_KEY`):
 
 | Variable | Purpose |
 |---|---|
