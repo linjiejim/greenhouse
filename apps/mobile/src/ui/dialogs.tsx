@@ -25,6 +25,7 @@
  */
 
 import { Alert } from 'react-native';
+import { recordError } from '../feedback/last-error';
 import { translate } from '../lib/i18n';
 import { usePrefs } from '../store/prefs';
 
@@ -59,6 +60,7 @@ export function confirmAction(opts: {
  * message, one tap away behind 详情.
  */
 export function alertError(title: string, message?: string, detail?: string): void {
+  recordError(title, message);
   const ok = { text: tr('common.ok') };
   Alert.alert(
     title,

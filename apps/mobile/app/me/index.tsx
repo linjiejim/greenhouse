@@ -6,7 +6,7 @@ import { brandFont as font } from '../../src/ui/brand-font';
  *  - 阅读: the in-app text size (seven steps on top of the system size, src/settings/text-size.ts);
  *  - 我的 Agent: the agents I connected (src/api/agent.ts) and their writes and spend (→ agents);
  *  - 通用: 通知 (→ notifications), theme (this phone's) and language (the account's);
- *  - 关于, then 退出登录 (destructive, confirmed; the sheet closes first).
+ *  - 关于 (version, update, 发送反馈 → feedback), then 退出登录 (destructive, confirmed; the sheet closes first).
  */
 
 import React, { useCallback } from 'react';
@@ -156,6 +156,7 @@ export default function Me() {
           <LabeledContent label={t('settings.update')}>
             <Text>{s.update}</Text>
           </LabeledContent>
+          <FormNavRow label={t('feedback.title')} value="" onPress={() => router.push('/me/feedback')} />
         </Section>
 
         <Section>

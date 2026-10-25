@@ -368,6 +368,15 @@ export const en = {
     queuedTitle: 'Saved to send later',
     queuedHint: 'The station can’t be reached. Your message goes as soon as it can.',
   },
+  feedback: {
+    title: 'Send Feedback',
+    send: 'Send',
+    placeholder: 'What happened, or what would help?',
+    hint: 'The app version, this station’s address and the last error the app showed go along, so the team can follow up.',
+    thanks: 'Thanks — the team will read it',
+    failed: 'Couldn’t send the feedback',
+    unsupported: 'This station is too old to take feedback from the app.',
+  },
   me: {
     title: 'Me',
     reading: 'Reading',

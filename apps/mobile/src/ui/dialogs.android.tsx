@@ -14,6 +14,7 @@ import React from 'react';
 import { create } from 'zustand';
 import { AlertDialog, OutlinedTextField, TextButton } from '@expo/ui/jetpack-compose';
 import { fillMaxWidth, onGloballyPositioned } from '@expo/ui/jetpack-compose/modifiers';
+import { recordError } from '../feedback/last-error';
 import { translate } from '../lib/i18n';
 import { usePrefs } from '../store/prefs';
 import { M3Host, useM3 } from './m3';
@@ -69,6 +70,7 @@ export function confirmAction(opts: {
 
 /** Report a failed action: title + optional message, single OK; `detail` (a raw technical reason) behind 详情. */
 export function alertError(title: string, message?: string, detail?: string): void {
+  recordError(title, message);
   push({ kind: 'alert', title, message: message || undefined, detail: detail || undefined });
 }
 

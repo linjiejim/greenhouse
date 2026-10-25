@@ -362,6 +362,15 @@ export const zh: Catalog = {
     queuedTitle: '已存下，稍后发送',
     queuedHint: '现在连不上工作站，连上后会自动发出。',
   },
+  feedback: {
+    title: '发送反馈',
+    send: '发送',
+    placeholder: '遇到了什么问题，或者希望怎样改进？',
+    hint: '会附上应用版本、工作站地址和应用最近显示的一次错误，方便团队跟进。',
+    thanks: '谢谢，团队会看到的',
+    failed: '反馈没有发出',
+    unsupported: '这个工作站版本太旧，暂时收不到应用里的反馈。',
+  },
   me: {
     title: '我',
     reading: '阅读',
