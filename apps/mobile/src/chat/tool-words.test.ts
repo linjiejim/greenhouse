@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { TFunction } from '../lib/i18n';
-import { humanize, toolActivity, toolArgs, toolName, toolResult } from './tool-words';
+import { humanize, toolActivity, toolArgs, toolName, toolResult, toolSummary } from './tool-words';
 import type { ToolStep } from './parts';
 
 // the catalog key and its vars, so the test reads which words were picked
@@ -42,5 +42,18 @@ describe('tool steps in words', () => {
     expect(toolResult(step({ output: { docs: 10, root: '/' } }), t)).toBe('tools.results{"n":10}');
     expect(toolResult(step({ output: { message: 'Saved' } }), t)).toBe('Saved');
     expect(toolResult(step({ output: { ok: true } }), t)).toBe('tools.finished');
+  });
+
+  it('sums a collapsed step up in one line: the error, the key argument, else the result', () => {
+    expect(toolSummary(step({ status: 'failed', input: { query: 'x' }, output: { error: 'no access' } }), t)).toBe('no access');
+    expect(toolSummary(step({ input: { limit: 5, query: 'onboarding  plan\n2026' }, output: { results: [] } }), t)).toBe(
+      'onboarding plan 2026',
+    );
+    expect(toolSummary(step({ tool: 'knowledge_mutation', input: '{"action":"create","title":"Q4 notes"}' }), t)).toBe('Q4 notes');
+    expect(toolSummary(step({ status: 'running', input: { query: 'roadmap' } }), t)).toBe('roadmap');
+    expect(toolSummary(step({ status: 'running', input: { limit: 3 } }), t)).toBeNull();
+    expect(toolSummary(step({ input: {}, output: { message: 'Saved' } }), t)).toBe('Saved');
+    expect(toolSummary(step({ input: {}, output: { ok: true } }), t)).toBeNull();
+    expect(toolSummary(step({ input: { query: 'a'.repeat(120) } }), t)).toBe(`${'a'.repeat(80)}…`);
   });
 });

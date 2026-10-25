@@ -5,7 +5,9 @@
  *    ("Searching knowledge…", or "3 steps" once nothing runs);
  *  - `toolName` — what a tool is called in the steps sheet ("Knowledge");
  *  - `toolArgs` — what was asked, as label/value pairs (never raw JSON);
- *  - `toolResult` — what came back, as one short line (the raw value stays behind a toggle).
+ *  - `toolResult` — what came back, as one short line (the raw value stays behind a toggle);
+ *  - `toolSummary` — the one line a collapsed step shows beside its name: a failure's error, else
+ *    the argument that matters most (the query, the title), else what came back.
  *
  * Known tools have their own words in the catalogs (`tools.name.<id>`, `tools.doing.<id>`);
  * anything else reads as its humanized id.
@@ -198,4 +200,28 @@ export function rawValue(value: unknown): string {
   } catch {
     return String(value);
   }
+}
+
+/** Arguments that say what a step was about, the most telling first. */
+const KEY_ARGS = ['query', 'q', 'title', 'name', 'filename', 'url', 'path', 'question', 'prompt'];
+const MAX_SUMMARY = 80;
+
+function oneLine(text: string | null): string | null {
+  const line = text?.replace(/\s+/g, ' ').trim();
+  if (!line) return null;
+  return line.length > MAX_SUMMARY ? `${line.slice(0, MAX_SUMMARY)}…` : line;
+}
+
+/** A collapsed step's one line beside its name; null when there is nothing worth saying. */
+export function toolSummary(step: ToolStep, t: TFunction): string | null {
+  if (step.status === 'failed') return oneLine(toolResult(step, t));
+  const args = record(step.input);
+  if (!args && typeof step.input === 'string') return oneLine(step.input);
+  for (const key of KEY_ARGS) {
+    const value = args?.[key];
+    if (typeof value === 'string' && value.trim()) return oneLine(value);
+  }
+  if (step.status === 'running') return null;
+  const result = toolResult(step, t);
+  return result === t('tools.finished') ? null : oneLine(result);
 }

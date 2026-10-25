@@ -19,7 +19,7 @@
 ## Conversation
 
 - The assistant is Sprouty in every language; its living face is in the header (src/chat/header-avatar.tsx) and glides below the title while a reply is written; the header grows and the list makes the same room, so it never covers a message; it is Sprouty's one presence: message rows carry no avatar, only a compact "Sprouty" line with the tappable status, and home's greeting sprout is the only other one.
-- A reply's tool steps never change the reply's height: one line beside "Sprouty" says what runs now, else how many steps it took, and opens the steps sheet (what was asked, what came back, raw on demand).
+- A reply's tool steps never change the reply's height: one line beside "Sprouty" says what runs now, else how many steps it took, and opens the steps sheet: every step starts collapsed to one line (status, name, what it was about or the short error, chevron); a tap opens what was asked, what came back and raw on demand.
 - My bubble grows to 80% of the content width; the cap sits on the long-press menu's wrapper, never as a percentage on the bubble inside it.
 - The composer is one rounded glass field, 52 pt tall on one line, on an opaque band of the page's surface that reaches through the bottom safe area (nothing shows through under it): + at the leading edge, send (dimmed and disabled with nothing to send) or stop at the trailing edge. There is no voice input; the keyboard's dictation covers it.
 - The page's ⋯ menu holds Pin, Rename and Delete; new conversation sits left of it. The first load is a small spinner, never a list skeleton.
