@@ -10,15 +10,21 @@
   <a href="https://github.com/linjiejim/greenhouse/stargazers"><img alt="Stars" src="https://img.shields.io/github/stars/linjiejim/greenhouse?style=social"></a>
 </p>
 
-**An open-source, AI-native enterprise agent workbench.** One command to self-host, members
-log in with accounts (no app to install), and every capability is also callable by external
-agents over [MCP](https://modelcontextprotocol.io/). Admins author tools in code that
-auto-expose over chat, `/api/agent`, and `/api/mcp` — add a tool by writing one file.
+**The self-hosted Agent hub for your team.** Every member connects their own agent — Codex,
+Claude Code, Cursor or any [MCP](https://modelcontextprotocol.io/) client — and it gets the
+team's knowledge, files, projects, tables, skills, report templates and paid services, cut to
+that member's own permissions. Every write an agent makes is recorded in the member's name; a
+delete shows a preview first. Every paid call is priced, budgeted and attributed to the member
+and the agent that made it. Members can also run their own agents on the team's models through
+an OpenAI- and Anthropic-compatible model gateway.
 
-Greenhouse is built around the idea that the agent *is* the product, not a feature bolted on
-the side. Chat, the knowledge base, projects, tables, automations and email all share
-one tool layer and one permission model; the same tools your team uses in chat are the ones you
-expose to Claude, Cursor, or any MCP client.
+Inside the app, **Sprouty** is the built-in assistant: chat on the web and the iOS app (and,
+optionally, in Feishu), automations on a schedule, all over the same tool layer and the same
+permission model your members' agents use. One command to self-host; one process, one
+PostgreSQL database.
+
+A full, code-checked list of what 3.0 does lives in **[docs/capabilities.md](docs/capabilities.md)**
+(Chinese).
 
 ## A quick look
 
@@ -30,8 +36,8 @@ expose to Claude, Cursor, or any MCP client.
 <table>
   <tr>
     <td width="50%" valign="top">
-      <img src="docs/assets/screens/home-workbench.webp" alt="Home workbench with live project cards" />
-      <b>Home workbench</b> — live cards backed by the same tools; edit by drag-and-drop or ask the agent.
+      <img src="docs/assets/screens/home-workbench.webp" alt="Live project cards backed by the agent tools" />
+      <b>Live cards</b> — cards backed by the same tools (on Home in 3.0, under the team's recent changes); edit by drag-and-drop or ask the assistant.
     </td>
     <td width="50%" valign="top">
       <img src="docs/assets/screens/chat-tables-answer.webp" alt="Chat answer with a rendered data table from a Tables base" />
@@ -54,14 +60,14 @@ expose to Claude, Cursor, or any MCP client.
       <b>Projects</b> — portfolio timeline, boards and task trees with members, comments and activity.
     </td>
     <td width="50%" valign="top">
-      <img src="docs/assets/screens/execution-center.webp" alt="Execution center listing runs" />
-      <b>Execution center</b> — automations and your agents’ writes in one place.
+      <img src="docs/assets/screens/execution-center.webp" alt="Activity log listing runs" />
+      <b>Activity log</b> — automations and your agents’ writes in one place.
     </td>
   </tr>
   <tr>
     <td width="50%" valign="top">
-      <img src="docs/assets/screens/skillhub.webp" alt="Skill Center" />
-      <b>Skill Center</b> — versioned SKILL.md bundles with changelogs and security scanning.
+      <img src="docs/assets/screens/skillhub.webp" alt="SkillHub" />
+      <b>SkillHub</b> — versioned SKILL.md bundles with changelogs and security scanning.
     </td>
     <td width="50%" valign="top">
       <img src="docs/assets/screens/admin-permissions-dialog.webp" alt="Per-user permissions dialog" />
@@ -74,87 +80,197 @@ expose to Claude, Cursor, or any MCP client.
   <img src="docs/assets/screens/chat-knowledge-answer-dark.webp" alt="Dark theme" width="66%" />
   <img src="docs/assets/screens/mobile-chat.webp" alt="Mobile layout" width="19%" />
 </p>
-<p align="center"><sub>Light / dark / system themes and a responsive layout; the <a href="apps/mobile">Expo app</a> covers chat, knowledge and projects natively.</sub></p>
+<p align="center"><sub>Light / dark / system themes and a responsive layout; the <a href="apps/mobile">iOS app</a> is described under <a href="#clients">Clients</a>.</sub></p>
 
 Every image above is produced by `node scripts/capture-screens.mjs` against a seeded dev stack — the
-same script doubles as an end-to-end smoke tour (see [Development](#development)).
+same script doubles as an end-to-end smoke tour (see [Development](#development)). The images
+currently in the repository were captured on an earlier release: navigation, branding and some
+labels differ in 3.0.
 
-## Features
+## What it can do
 
-- **Chat** — streaming agent with tool-call traces, attachments of any file type (the agent
-  reads text / CSV / JSON / xlsx / docx / PDF), per-turn model switching from a config catalog,
-  a side pane for artifacts and records, session forking, background runs, sharing / grouping /
-  tagging, and a global ⌘P search.
+### Members' own agents (MCP)
+
+- **Connect** — `/api/mcp` over OAuth 2.1: a member authorizes Codex, Claude Code, Cursor or any
+  MCP client from their own account and picks which resource groups it may reach; automation uses
+  machine clients a super binds to a least-privilege user. Settings → Agent connections → Connect
+  walks a member through it and checks that the connection arrived.
+- **Scoped** — an agent sees the member's permissions, narrowed by the granted groups and by
+  `mcp:read` / `mcp:write`; it never sees more than the member could do in the app.
+- **Recorded** — every write runs at once, as the member, and becomes a write record (client,
+  tool, action, exact input and output) in Settings → Agent connections → Activity and the
+  Activity log. No approval queue.
+- **Deletes preview first** — a delete-like call returns `needs_confirmation` with a preview and
+  changes nothing; the agent calls again with `confirm: true` once its user agrees.
+- **Bounded replies** — a reply over 12,000 characters comes back as a preview plus an
+  `output_id`; the agent pages through the rest with `tool_output_read` (kept 24 hours, private to
+  that member and client).
+- **Team context** — `team_context`, `data_catalog`, `greenhouse://context/*` resources, and
+  SkillHub skills plus saved prompts as MCP prompts.
+- **Metered** — paid calls are priced in USD, reserved against budgets and attributed to the
+  member and the OAuth client.
+- **Model gateway** *(off by default)* — personal `ghgw_…` keys for OpenAI- and Anthropic-compatible
+  endpoints on the team's catalog models, metered in the same budgets.
+
+Details: [MCP & agent access](#mcp--agent-access).
+
+### Sprouty, the built-in assistant
+
+- Streaming chat with tool-call traces, background runs, attachments of any type (the assistant
+  reads text / CSV / JSON / xlsx / docx / PDF; images go to multimodal models directly), a
+  per-turn model picker from the catalog, forking, sharing, pinning, and a global ⌘P search.
+- Rich answers: charts, sortable tables, stats, cards, steps, Mermaid diagrams and sandboxed HTML
+  previews; confirm cards for the things a person must approve (a Tables schema change, a captured
+  task, an email draft), each executed exactly once.
+- The same assistant runs on the web, in the iOS app, in Feishu (optional bot) and unattended in
+  automations.
+
+### Modules
+
 - **Knowledge Base** — team, personal and shared documents with a Tiptap editor, Markdown-first
-  storage, folders plus a file cabinet, templates, version
-  history, per-person sharing, and segmented full-text search (CJK-aware).
-- **Projects** — projects, tasks (board / gantt / tree views), members, comments, activity log.
-- **Tables** — multidimensional bases: typed fields, views, record links, formulas and rollups,
-  and conversational schema planning (the agent drafts a base, you confirm).
+  storage, folders plus a file cabinet, templates, version history and restore, per-person
+  sharing, AI rewrite / enrich / generate, live updates and editing presence, and segmented
+  full-text search (CJK-aware).
 - **Files** — the team's file cabinet and your own: folders, upload, preview (images, PDF,
-  text), rename / move / delete and name search; members' agents reach it over MCP too.
+  text), rename / move / delete and name search.
+- **Projects** — projects, members, tasks in list / board / Gantt views, task comments, activity.
+- **Tables** — multidimensional bases: typed fields, views, record links, formulas, lookups and
+  rollups, archive and restore, and conversational schema planning (the assistant drafts, you
+  confirm).
 - **Home** — the team's recent changes (knowledge edits, project and table changes, new files,
-  and which agent made them) above a personal dashboard of live cards backed by the same tools
-  (recipes and templates), editable by drag-and-drop or by asking the agent.
-- **Activity log** — who changed what: members in the app, their own agents over MCP (with the
+  and which agent made them) above your own live cards backed by the same tools.
+- **Activity log** — who changed what: members in the app, their agents over MCP (with the
   client's name), automations and admin setting changes, filterable and exportable as CSV.
   Each automation run and agent write keeps its full step, tool-call and event evidence; a run
   cut off mid-way is never re-run on its own: it ends "outcome unknown" and its owner is told
   which writes were in flight.
+- **Automations** — cron-scheduled assistant runs with run profiles (saved instructions, a
+  model and a tool set) and result delivery to WeCom, Feishu or email. Unattended runs only get
+  replay-safe reads plus the tools the owner ticked; they can never create automations or send
+  email.
 - **Issues & requests** — feature requests and frictions in one admin queue; members' agents
   can file both over MCP.
-- **Monthly retro (复盘)** — at 09:00 on the 1st (workspace time zone) a team document
-  "YYYY-MM 复盘" lands in the knowledge folder 复盘: module usage, members' agent writes by client
-  (failed / outcome unknown), top frictions and requests, and spend by service — aggregates only —
-  plus a short list of suggestions the model writes from those numbers (charged to the team;
-  skipped, with the reason, when the budget is used up or no model is set). Admins can also
-  generate this month's from Issues & requests.
+- **Monthly retro (复盘)** — at 09:00 on the 1st, in the time zone set under Administration →
+  Team context (default Asia/Shanghai), a team document "YYYY-MM 复盘" lands in the knowledge
+  folder 复盘: module usage, members' agent writes by client (failed / outcome unknown), top
+  frictions and requests, and spend by service — aggregates only — plus a short list of
+  suggestions the model writes from those numbers (charged to the team; skipped, with the
+  reason, when the budget is used up or no model is set). Admins can also generate this month's
+  from Issues & requests.
 - **Data catalog** — Tables › Data catalog lists the bases and extension data sources a member
   can read (row counts, owner, last change) and which MCP tool their agent reaches each with.
-- **Memory** — per-user memories with titles, pinning and lifecycle, plus the friction signals
-  the agent logs when tooling gets in its way.
-- **Skill Center** — an org-wide library of agent skills (SKILL.md bundles) with immutable
-  versions, changelogs, security scanning, and first-party packs shipped from `skillhub/`. Its
-  *My prompts* tab holds your reusable prompts (Tasks), called from the chat composer with `/`.
+- **SkillHub** — an org-wide library of agent skills (SKILL.md bundles) with immutable versions,
+  changelogs and security scanning; packs placed under `skillhub/` sync in on boot (this
+  repository ships none). Its *My prompts* tab holds your reusable prompts, called from the chat
+  composer with `/`.
 - **Report templates** — the team's required shape for reports and decks (SkillHub › Report
   templates): ordered sections with writing guidance, cover fields and allowed formats. Any
-  agent — a member's Codex over MCP or the in-app assistant — writes content against a template
-  and the server renders it to PDF, Word or PowerPoint in the workspace brand (pure JS, Chinese
+  agent — a member's Codex over MCP or Sprouty — writes content against a template and the
+  server renders it to PDF, Word or PowerPoint in the workspace brand (pure JS, Chinese
   included), saving the file to Files. A weekly report and a project review deck ship by default.
 - **Email** *(optional)* — personal IMAP/SMTP mailboxes and a shared team mailbox; search,
-  read, draft and send with a server-side draft confirmation.
-- **Notifications** — an in-app notification center with durable delivery to email, WeCom and
-  Feishu.
-- **Integrations** *(optional)* — WeCom and Feishu account binding, direct-message push, Feishu
-  sign-in, and a Feishu bot that runs the agent from a chat.
-- **MCP server + agent tool-proxy** — OAuth 2.1 (PKCE for people, client credentials for
-  machines) with scopes per resource group; the same tools over the structured `/api/agent`
-  proxy.
-- **Services & pricing** — every paid call (models, web search, page reads, images) is priced
-  in USD (defaults in `models.yaml` `price` and `services.yaml`, editable by an admin on the
-  Services & pricing page, each call keeping the price it was settled at), reserved against monthly member, service and
-  team budgets before it runs, and attributed to the member, service and client — including
-  which of a member's agents made it over MCP. Members are told at 80% and 100%; an exhausted
-  budget refuses the call with a message the agent can read. Administration → Services &
-  pricing shows spend, prices (a banner while anything in use is unpriced) and budgets — review the
-  default limits ($50 per member, $2,000 for the team); Settings → Usage shows a
-  member their own month. Organization and provider monthly token budgets still run alongside.
+  read, draft and send with a confirmation card. Not exposed over MCP.
+- **Notifications** — an in-app notification center, durable delivery to email, WeCom and
+  Feishu, and iOS push (`MOBILE_PUSH_ENABLED`).
+- **Memory** — per-user memories with titles, pinning and lifecycle (feature flag `memory`, on by
+  default).
+- **Services & pricing** — every paid call (models, web search, page reads, images, cloud
+  computer minutes) is priced in USD (defaults in `models.yaml` `price` and `services.yaml`,
+  editable by an admin, each call keeping the price it was settled at), reserved against monthly
+  member, service and team budgets before it runs, and attributed to the member, service and
+  client. Members are told at 80% and 100%; an exhausted budget refuses the call with a message
+  the agent can read. Review the default limits ($50 per member, $2,000 for the team); Settings
+  → Usage shows a member their own month.
+- **Cloud computer** *(off by default)* — a hosted Linux sandbox (E2B) per member for their
+  agent: created on first use, stopped after 15 idle minutes, at most `COMPUTER_MAX_RUNNING`
+  (default 5) at once, billed per minute. Members' agents use it over MCP or `/api/agent`;
+  members see its status and start or stop it under Settings → Cloud computer.
 - **Module usage** — Administration → Usage → By Modules shows tool calls by tool and client
-  (MCP, Agent API, web chat, mobile, Feishu, automations), page
-  opens by module and app (web, mobile) and the prompt-cache hit
-  rate per model over 7 / 30 / 90 days. Only daily totals are stored — no users, arguments or
-  content — and counting started with v1.4.
+  (MCP, Agent API, web chat, mobile, Feishu, automations), page opens by module and app, and the
+  prompt-cache hit rate per model. Only daily totals are stored — no users, arguments or content.
 - **Platform kernel** — applications declare a manifest (modules, entities, fields, actions);
   roles, capabilities and record / field policies are enforced once for HTTP, chat tools, the
   proxy and MCP. One permissions dialog per user.
 - **Workspace branding & runtime config** — rebrand from the web (name, logo, theme tokens) and
   manage runtime credentials (LLM / media / search) in Administration; values live in the
   database with env-var fallback and apply without a restart, from the login screen on.
-- **Plant avatars** — the assistant and every agent are flat geometric plants (16 species, 7 tints) whose face follows what they are doing; members' connected agents get one by client.
+- **Integrations** *(optional)* — Feishu: account binding, sign-in (web and iOS), direct-message
+  push and a bot that runs Sprouty in a chat (`FEISHU_BOT_ENABLED=1`). WeCom: account binding and
+  direct-message push (no sign-in).
+- **Plant avatars** — the assistant and every agent are flat geometric plants (16 species, 7
+  tints) whose face follows what they are doing; members' connected agents get one by client.
 
-Roles: **super > team**, plus per-user feature flags and platform policies that gate optional
-modules. Auth is fail-closed — the server refuses to start without `TOKEN_SIGNING_KEY`, and
-stored secrets need `PROVIDER_TOKEN_ENCRYPTION_KEY`.
+Roles: **super** and **team** (historical `external` accounts must be converted to team before
+they can be activated), plus per-user feature flags (`tables`, `memory`) and platform policies
+that gate optional modules. Auth is fail-closed — the server refuses to start without
+`TOKEN_SIGNING_KEY`, and stored secrets need `PROVIDER_TOKEN_ENCRYPTION_KEY`.
+
+### Tools
+
+39 built-in tools, one catalog (`apps/api/src/tools/registry.ts`). **Chat** = Sprouty (web,
+iOS, Feishu, automations); **MCP** = the resource group a member grants; every MCP tool is also on
+`/api/agent`.
+
+| Area | Read | Write | MCP group |
+|---|---|---|---|
+| Knowledge | `knowledge_query` | `knowledge_mutation` | `knowledge` |
+| Files | `files_query` | `files_mutation` | `files` |
+| Projects | `project_query` | `project_mutation` | `projects` |
+| Tables (flag `tables`) | `tables_query` | `tables_mutation`; `tables_schema_plan` (Chat only, confirm card) | `tables` |
+| Skills | `skill_query` | `skill_mutation` | `skills` |
+| Conversations | `session_query` | — | `chat` |
+| Automations | `automation_query` | `automation_mutation` (Chat and `/api/agent` only) | `automation` (read) |
+| Issues & requests | `feedback_query` | `feature_request`, `log_friction` | `feedback` |
+| Reports | `report_templates` | `report_render` (new file in Files) | `reports` |
+| Paid services | `analyze_image`; `web_search`, `read_url` (external only); `external_search` (Chat only) | `generate_image` | `services` |
+| Cloud computer (external only) | `computer_files` | `computer_exec`, `computer_transfer`, `computer_stop` | `computer` |
+| Email | `email_query` | `email_mutation` (confirm card) | — not on MCP |
+| Chat helpers | `ask_user`, `read_attachment`, `compute`, `call_llm`, `workbench_query`, `memory` (flag `memory`) | `export_data`, `task_capture`, `workbench_mutation` | — |
+
+MCP adds three protocol tools for every grant: `team_context`, `data_catalog` and
+`tool_output_read`. Writes whose action deletes (`delete`, `remove`, `purge`, `destroy`, `drop`)
+take the preview round trip on MCP; on `/api/agent` every write needs `confirm: true`.
+
+Deliberately **not** on MCP: email (its safety is a person reading the draft), `automation_mutation`
+(an unattended client that creates automations multiplies), and the confirm-card tools.
+
+### Clients
+
+- **Web** — Home, Knowledge, Files, Tables (with the Data catalog), Projects, SkillHub (Skills /
+  My prompts / Report templates), Automations (with Run profiles) and Chat; the ⌘P palette, an
+  inbox for notifications and shares, the Activity log, and the assistant as an overlay on any
+  page. Settings: preferences, Agent connections (connected agents, their writes, model gateway
+  keys, connect wizard), Feishu / WeCom binding, email accounts, usage, cloud computer, memory.
+  Administration: users and permissions, usage, Services & pricing (spend, prices, budgets,
+  gateway, computers), activity, Issues & requests, team context, Branding Studio, Runtime Config,
+  MCP Access.
+- **iOS app** ([`apps/mobile`](apps/mobile), Expo) — chat with Sprouty (attachments, offline
+  outbox, card actions), conversations, Knowledge (browse, create, rename / move / delete; reading
+  only, no body editing), Files (upload from Photos, camera or Files; folders) with Tables (browse,
+  add simple records), Projects (create projects, change task status, comment), notifications with
+  push, and Me (theme, language, text size, push switches, feedback, servers, and a read-only view
+  of your agents' spend, writes and gateway keys). Password and Feishu sign-in; several servers
+  ("stations") side by side; "My tasks" and "Recent documents" widgets; iPad split view; offline
+  copies of recent content; OTA updates.
+- **Android** — Material 3 screens exist in the Expo project, but no Android build is published
+  and push is not configured.
+- **CLI** — `pnpm cli` (see [Quick start](#quick-start-local-development)).
+
+There is no desktop app and no browser extension in 3.0.
+
+### Off by default
+
+Model gateway (`gateway.enabled` / `GATEWAY_ENABLED`) · cloud computer (`computer.enabled` /
+`COMPUTER_ENABLED` plus an E2B key) · Feishu bot (`FEISHU_BOT_ENABLED=1`) · mobile push
+(`MOBILE_PUSH_ENABLED`) · email (needs mailboxes) · extensions (`greenhouse.config.ts` /
+`GREENHOUSE_EXTENSIONS`).
+
+### Removed
+
+Bots, Missions, rooms, evaluations, Workflows, the team LLM relay of 1.x, the desktop app, the
+browser extension, session tags and groups, sub-sessions, user groups, document comments and
+backlinks, and table forms / dashboards / in-table automations. Old conversations and runs of
+removed kinds stay readable.
 
 ## Architecture
 
@@ -167,8 +283,8 @@ greenhouse/
 │   ├── api/                  # Hono backend — routes, agent runtime, platform kernel, auth,
 │   │                         #   scheduler, runtime kernel, CLI; also serves the web SPA at `/`
 │   ├── web/                  # React + Vite single-page app (hash router)
-│   └── mobile/               # Expo (React Native) team-hub app — notifications + push, stations,
-│                             #   settings (knowledge, files, projects, tables follow);
+│   └── mobile/               # Expo (React Native) iOS app — Sprouty chat, knowledge, files +
+│                             #   tables, projects, notifications + push, widgets, stations;
 │                             #   isolated install (pnpm mobile:install, then pnpm mobile)
 ├── packages/
 │   ├── agent-core/           # Agent kernel — streamText loop, OpenAI-compatible model factory
@@ -178,11 +294,13 @@ greenhouse/
 │   ├── utils/                # Shared helpers (date, json, crypto, logger, semver, webhooks)
 │   ├── db/                   # Database layer — Drizzle schema + domain services
 │   ├── knowledge-editor/     # Tiptap schema + server-side Markdown ↔ Tiptap JSON
-│   ├── crud/                 # Low-code CRUD framework (one schema → list / form / detail)
+│   ├── crud/                 # Low-code CRUD pages for the web (one schema → list / form / detail)
+│   ├── ui/                   # Shared UI pieces — the plant-avatar renderer (web + mobile)
 │   └── contract/             # Typed API contract — re-exports the API's AppType + hc
-├── skillhub/                 # First-party skill packs (synced into the Skill Center on boot)
+├── skillhub/                 # Skill-pack format + sync source for SkillHub (no packs shipped)
 ├── drizzle/                  # Migration files (the single source of truth for the schema)
-├── scripts/                  # gen-secrets, backup-db, run-dev, e2e-ci, agent-runtime build
+├── scripts/                  # gen-secrets, backup-db, run-dev, e2e-ci, capture-screens,
+│                             #   build-landing, check-extension-overlay, skillhub-sync, …
 └── tests/                    # unit / db / e2e (API) / e2e-ui (Playwright)
 ```
 
@@ -234,7 +352,7 @@ frontend changes hot-reload.
 > `.env` (or as shell vars, which take precedence); the web dev proxy follows `API_PORT`.
 
 > **Example dataset** — `pnpm seed` loads a small, de-identified fictional company (users,
-> knowledge base, projects, chats, automations, a custom agent, sharing) so you can experience
+> knowledge base, projects, chats, automations, a run profile, sharing) so you can experience
 > and validate every major feature. Every seeded user logs in with the password `greenhouse`
 > (e.g. `maya@greenhouse.example`). See [`data/examples/README.md`](data/examples/README.md).
 > On a non-empty database it refuses unless you pass `--reset` (wipe first) or `--keep`.
@@ -264,7 +382,7 @@ Prefer the published image over a source build? Use
 pulls `ghcr.io/linjiejim/greenhouse` (no Node/pnpm toolchain needed):
 
 ```bash
-docker compose -f docker-compose.ghcr.yml up -d    # tracks :latest; pin via GREENHOUSE_IMAGE in .env
+docker compose -f docker-compose.ghcr.yml up -d    # defaults to :latest; pin a 3.x tag via GREENHOUSE_IMAGE in .env
 ```
 
 ## Releases & stability
@@ -274,78 +392,20 @@ stable:
 
 | You want… | Use | Stability |
 |---|---|---|
-| A version to run in production | A **tagged release** `vX.Y.Z` — [Releases](https://github.com/linjiejim/greenhouse/releases) · image `ghcr.io/linjiejim/greenhouse:X.Y.Z` (or `:X.Y`, `:latest`) | **Stable** — a cut we stand behind |
+| A version to run in production | A **tagged release** `vX.Y.Z` — [Releases](https://github.com/linjiejim/greenhouse/releases) · image `ghcr.io/linjiejim/greenhouse:X.Y.Z` (or `:X.Y`) | **Stable** — a cut we stand behind |
 | The bleeding edge / to test `main` | `ghcr.io/linjiejim/greenhouse:edge` (or `:main-<sha>`) | **Unstable** — CI builds off `main`; may break between releases |
 
-`:latest` always points at the newest **stable** release — never at `main`.
-Every release is stamped: `GET /health` returns the `version` + commit `revision`
-the running build was cut from, so a bug report can be matched to exact code.
+What the release workflow (`.github/workflows/release.yml`) does today: a `v*` tag publishes
+`:X.Y.Z` and `:X.Y`; a push to `main` publishes `:edge` and `:main-<sha>`. It never moves
+`:latest`, so `docker-compose.ghcr.yml` (which defaults to `:latest`) should be pinned to a 3.x
+tag with `GREENHOUSE_IMAGE`. The image carries its version and commit as the
+`APP_VERSION` / `APP_REVISION` environment variables and the matching OCI labels;
+`GET /health` reports database status, the runtime kill-switches and the push switch, not the
+version.
 
-The **mobile app** ships on its own cadence via EAS: JS-only changes
-roll out as over-the-air updates; native changes auto-build and upload to
-TestFlight. On the 1.x line the new team-hub app is not published before 3.0 (the
-store app still ships from the v2 line). Maintainer runbook: **[RELEASING.md](./RELEASING.md)**.
-
-### Upgrading
-
-Database migrations ship inside the image and are applied by a one-shot `migrate`
-service **before** the API starts — an upgraded deployment never runs new code
-against an old schema, and already-applied migrations are skipped. Optional but
-wise before a big jump: `./scripts/backup-db.sh`.
-
-**Coming from 1.x?** 3.0 does not upgrade a 1.x database in place — the `migrate`
-service and the API refuse it. Follow [Upgrading from 1.x to 3.0](#upgrading-from-1x-to-30)
-instead of the commands below.
-
-```bash
-# Docker, published image (docker-compose.ghcr.yml):
-docker compose -f docker-compose.ghcr.yml pull
-docker compose -f docker-compose.ghcr.yml up -d
-
-# Docker, built from source (a fork / local checkout):
-git pull && docker compose up -d --build
-
-# Bare-metal source checkout:
-git pull && pnpm install && pnpm db:migrate   # then restart the API
-```
-
-> **Upgrading to 1.5** — Greenhouse narrows to a team agent hub: members bring their own
-> agents over MCP, and the in-app agent is an assistant. The desktop app (Tauri shell) is
-> removed — use the web app in a browser; installed shells stop receiving updates. The browser
-> extension (Greenhouse Bridge) is removed and no longer attached to releases; conversations it
-> started stay readable and keep their read-only tool face. Session tags and custom session
-> folders are removed from the web and mobile apps (`/api/session-tags`, `/api/session-groups`
-> are gone; pinning stays). There is no migration: the tables stay untouched in 1.5 and are
-> dropped in the next release. Sub-sessions (the `spawn_session` tool and its background
-> Subagent runs) are removed: Subagent runs still active at upgrade are closed on first boot,
-> historical ones stay readable in the Execution center, and `RUNTIME_SUBAGENT_DRIVER_ENABLED`
-> can be removed from `.env`. *My prompts* (formerly the standalone Tasks page, `#/tasks`) moved
-> into SkillHub as its second tab, and *My Agents* (`#/agents`) into Automations as the
-> *Run profiles* tab; old links redirect. Custom agents, the chat agent picker and
-> automations that run as `custom:<id>@<v>` are unchanged.
-
-> **Upgrading to 1.4** — Evaluation, Missions (the cloud-agent sandbox), the team LLM relay
-> (`/api/llm`, relay keys, AI Gateway admin page) and Workflows are removed. There is no
-> migration: their tables stay untouched so a rollback to 1.3.x keeps working, and are
-> dropped in the following release. Old Mission / Workflow conversations stay readable but
-> can no longer be continued, historical Eval / Mission / Workflow runs stay readable in the
-> Execution center (runs still active at upgrade are closed on first boot), and the
-> sandbox host setup (`runsc`, the agent-runtime image, `MISSION_*` / `SANDBOX_RUNNER_*`
-> env) can be decommissioned. MCP machine clients and their audit log are unaffected.
-> Custom agents lose the review lifecycle (draft → review → pilot → verified) and the
-> automatic review worker (`AGENT_GOVERNANCE_ENABLED` can be removed): an agent is private to
-> its owner unless a super makes it available to the team, and everyone who picks it gets its
-> current version. Agents that were verified or in pilot stay shared; previously archived or
-> suspended agents become visible to their owners again. Automations may now run every 15
-> minutes.
-
-> **Upgrading from 0.6.x** — this line removes the public/guest surface (`/api/v1`, the
-> `default` profile, external accounts) and the database-managed LLM gateway upstreams in
-> favour of the model catalog below. The migration retires external accounts, disables
-> legacy agent-to-agent API keys, and drops email accounts (they must be re-added under
-> Settings → Email with explicit IMAP/SMTP settings). Existing custom agents become
-> immutable draft v1 and stay unshared until a super publishes them. Knowledge documents are
-> re-tokenized for search on the first boot.
+The **mobile app** ships on its own cadence via EAS (`.github/workflows/mobile.yml`, on
+`main`): JS-only changes roll out as over-the-air updates; native changes build and upload to
+TestFlight. Maintainer runbook: **[RELEASING.md](./RELEASING.md)**.
 
 ### Upgrading from 1.x to 3.0
 
@@ -401,6 +461,72 @@ boot; fix the cause and run the same command again. To roll back, point
 the 1.x deployment at the untouched old database; anything written in 3.0 afterwards stays in
 the new one.
 
+### Upgrading within 3.x
+
+Database migrations ship inside the image and are applied by a one-shot `migrate`
+service **before** the API starts — an upgraded deployment never runs new code
+against an old schema, and already-applied migrations are skipped. Optional but
+wise before a big jump: `./scripts/backup-db.sh`.
+
+**Coming from 1.x?** 3.0 does not upgrade a 1.x database in place — the `migrate`
+service and the API refuse it. Follow [Upgrading from 1.x to 3.0](#upgrading-from-1x-to-30)
+above instead of the commands below.
+
+```bash
+# Docker, published image (docker-compose.ghcr.yml):
+docker compose -f docker-compose.ghcr.yml pull
+docker compose -f docker-compose.ghcr.yml up -d
+
+# Docker, built from source (a fork / local checkout):
+git pull && docker compose up -d --build
+
+# Bare-metal source checkout:
+git pull && pnpm install && pnpm db:migrate   # then restart the API
+```
+
+### Historical 1.x upgrade notes
+
+These describe upgrades inside the 1.x line. A 3.0 install starts from the new baseline, so the
+tables they mention are simply absent; they are kept for readers still on 1.x.
+
+> **Upgrading to 1.5** — Greenhouse narrows to a team agent hub: members bring their own
+> agents over MCP, and the in-app agent is an assistant. The desktop app (Tauri shell) is
+> removed — use the web app in a browser; installed shells stop receiving updates. The browser
+> extension (Greenhouse Bridge) is removed and no longer attached to releases; conversations it
+> started stay readable and keep their read-only tool face. Session tags and custom session
+> folders are removed from the web and mobile apps (`/api/session-tags`, `/api/session-groups`
+> are gone; pinning stays). There is no migration: the tables stay untouched in 1.5 and are
+> dropped in the next release. Sub-sessions (the `spawn_session` tool and its background
+> Subagent runs) are removed: Subagent runs still active at upgrade are closed on first boot,
+> historical ones stay readable in the Execution center, and `RUNTIME_SUBAGENT_DRIVER_ENABLED`
+> can be removed from `.env`. *My prompts* (formerly the standalone Tasks page, `#/tasks`) moved
+> into SkillHub as its second tab, and *My Agents* (`#/agents`) into Automations as the
+> *Run profiles* tab; old links redirect. Custom agents, the chat agent picker and
+> automations that run as `custom:<id>@<v>` are unchanged.
+
+> **Upgrading to 1.4** — Evaluation, Missions (the cloud-agent sandbox), the team LLM relay
+> (`/api/llm`, relay keys, AI Gateway admin page) and Workflows are removed. There is no
+> migration: their tables stay untouched so a rollback to 1.3.x keeps working, and are
+> dropped in the following release. Old Mission / Workflow conversations stay readable but
+> can no longer be continued, historical Eval / Mission / Workflow runs stay readable in the
+> Execution center (runs still active at upgrade are closed on first boot), and the
+> sandbox host setup (`runsc`, the agent-runtime image, `MISSION_*` / `SANDBOX_RUNNER_*`
+> env) can be decommissioned. MCP machine clients and their audit log are unaffected.
+> Custom agents lose the review lifecycle (draft → review → pilot → verified) and the
+> automatic review worker (`AGENT_GOVERNANCE_ENABLED` can be removed): an agent is private to
+> its owner unless a super makes it available to the team, and everyone who picks it gets its
+> current version. Agents that were verified or in pilot stay shared; previously archived or
+> suspended agents become visible to their owners again. Automations may now run every 15
+> minutes.
+
+> **Upgrading from 0.6.x** — this line removes the public/guest surface (`/api/v1`, the
+> `default` profile, external accounts) and the database-managed LLM gateway upstreams in
+> favour of the model catalog below. The migration retires external accounts, disables
+> legacy agent-to-agent API keys, and drops email accounts (they must be re-added under
+> Settings → Email with explicit IMAP/SMTP settings). Existing custom agents become
+> immutable draft v1 and stay unshared until a super publishes them. Knowledge documents are
+> re-tokenized for search on the first boot.
+
 ## Configuration
 
 Everything is environment-driven; see [.env.example](./.env.example) for the full list.
@@ -426,8 +552,8 @@ its payload. Set `LLM_VISION=false` when `LLM_MODEL` is text-only, and images go
 Optional: media (vision `analyze_image` + `generate_image` through `MEDIA_*`, falling back to
 the LLM endpoint; `IMAGE_BASE_URL` + `IMAGE_API_KEY` move generation alone to an image
 provider), external web search, email mailboxes, WeCom / Feishu, usage budgets, and
-object storage. Uploads default to local disk (`data/uploads`), Skill Center
-bundles to `data/skills` — set `SKILLS_S3_*` to keep bundles in S3-compatible storage.
+object storage. Uploads default to local disk (`data/uploads`), SkillHub
+bundles to `data/skills` — set all four `SKILLS_S3_*` to keep bundles in S3-compatible storage.
 
 **Admin-configurable at runtime**: the LLM / media / search credentials and the product name
 can also be set in **Administration → Runtime Config** (and branding in **Branding Studio**) —
@@ -437,22 +563,38 @@ values saved there are stored in the database (secrets encrypted with
 **Structure lives in code**: [`greenhouse.config.ts`](./greenhouse.config.ts) (typed, validated
 at boot) declares which extensions are switched on, where content packs live (skill packs,
 agent profiles, a seed dataset) and how client builds (the mobile app) treat server
-stations. `GREENHOUSE_EXTENSIONS=crm,example` overrides the extension list per deployment.
+stations. `GREENHOUSE_EXTENSIONS=example` (a comma-separated list) overrides it per deployment.
 
 ## MCP & agent access
 
-Every capability is reachable three ways from the same tool layer:
+One tool layer, three surfaces; each can only narrow what the member may do:
 
-- **Chat** — tools the user is entitled to are passed to the model in `/api/chat`.
-- **`/api/agent`** — structured tool proxy for programmatic clients: `GET /runtime-manifest`
+- **Chat** — Sprouty gets every tool the user is entitled to except the external-only ones
+  (`web_search`, `read_url`, the cloud computer).
+- **`/api/agent`** — structured tool proxy for programmatic clients and the CLI, authenticated
+  with the member's own login access token (no separate API keys): `GET /runtime-manifest`
   lists the caller's available tools (with input schemas), `POST /tools/:id/call` invokes one.
-  Read tools run freely; write tools are deny-by-default and require `confirm: true`.
-- **`/api/mcp`** — the same proxy wrapped in the standard MCP protocol (Streamable HTTP), so
-  any MCP client (Claude, Cursor, …) can connect. Auth is **OAuth 2.1**: people authorize with
-  Authorization Code + PKCE from their own account; automation uses machine clients
-  (client credentials) that a super binds to a least-privilege internal user under
-  Administration → MCP Access. Scopes combine an action (`mcp:read` / `mcp:write`) with
-  resource groups (`mcp:knowledge`, `mcp:projects`, `mcp:tables`, …).
+  Read tools run freely; every write requires `confirm: true`. Calls land in the request log;
+  they are not write records.
+- **`/api/mcp`** — the standard MCP protocol (stateless Streamable HTTP), so any MCP client
+  (Codex, Claude Code, Cursor, …) can connect. Auth is **OAuth 2.1 only**: discovery metadata
+  (RFC 9728 / RFC 8414), dynamic client registration, Authorization Code + PKCE with a consent
+  screen for people, and machine clients (client credentials) that a super binds to a
+  least-privilege internal user under Administration → MCP Access. Tokens are stored hashed and
+  rate-limited (120 per minute, 10,000 per day). Scopes combine an action (`mcp:read` /
+  `mcp:write`) with resource groups (`mcp:knowledge`, `mcp:files`, `mcp:projects`, `mcp:tables`,
+  `mcp:skills`, `mcp:chat`, `mcp:automation`, `mcp:feedback`, `mcp:services`, `mcp:computer`,
+  `mcp:reports`; extensions add their own). Tools carry the standard annotations (`readOnlyHint`,
+  `destructiveHint`, `openWorldHint`).
+- **Writes over MCP** run at once as the member and become a write record (run kind
+  `agent_write`, risk r1 own / r2 shared / r3 delete-like) with the client, tool, action and exact
+  input and output. An r3 call first returns `{"status":"needs_confirmation", …}` with a preview
+  and changes nothing; the agent calls again with `confirm: true`. A write whose outcome could not
+  be recorded settles as "outcome unknown" and is never replayed.
+- **Bounded replies** — a reply longer than 12,000 characters is stored for 24 hours (private to
+  the member and the OAuth client) and returned as an 8,000-character preview plus an
+  `output_id`; `tool_output_read` pages through the rest and re-checks the caller's current
+  permissions on every read.
 - **Team context over MCP** — an admin picks team documents as the conventions and the glossary
   (Administration → Team context). Every member's agent gets them, cut to its grant, as
   resources (`greenhouse://context/overview`, `…/conventions`, `…/glossary`), as the
@@ -559,7 +701,7 @@ if (effectiveTools.includes('my_user_tool')) {
 
 There is no per-tool access guard to declare. Who may call a tool is resolved before anything
 is built: `super` gets every tool; a `team` member gets the `is_global` tools, the tools owned
-by each feature flag they have, and any tools assigned to them individually. A custom Agent can
+by each feature flag they have, and any tools assigned to them individually. A run profile can
 only narrow that set, and each surface narrows it again (the proxy allowlists and OAuth scopes,
 the unattended denylist for scheduled runs). Ownership of the data itself is checked inside the
 tool, against the `userId` its factory received.
@@ -574,7 +716,7 @@ descriptions, since every one is sent to the model on every step.
 
 The other `meta` fields: `surface.workbench` (safe to re-run as a Home card),
 `surface.unattendedReplaySafe` (may run with nobody present and be retried), `builtin` (part of
-every Agent, even a custom one that did not list it), `runtime_risk` (the risk class recorded
+every run profile, even one that did not list it), `runtime_risk` (the risk class recorded
 on each call when the surface does not imply it) and `presentation` (`'artifact'` marks a
 result that renders as an inline card rather than a trace row). The header of
 `apps/api/src/tools/define.ts` is the field-by-field reference.
@@ -655,7 +797,7 @@ smoke test. Re-run it after visible UI changes so the README and landing page st
 
 A husky + lint-staged pre-commit hook runs `eslint --fix` + `prettier --write` on staged
 files. CI (`.github/workflows/ci.yml`) runs lint → typecheck → test → e2e → secret-scan on
-`main` and every PR.
+pushes to `main` and `v1` and on every pull request.
 
 ### Database migrations
 
