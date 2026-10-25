@@ -8,10 +8,10 @@
  *  - one row per station (name + origin, ✓ on the active one); tap switches,
  *    swipe left or touch-and-hold for 移除 (system swipe actions / context
  *    menu, confirmed with a destructive alert),
- *  - an 添加工作站 section: address + optional name fields, validated with
- *    `normalizeBaseUrl` and probed (`probeStation`: is there a Greenhouse API?)
- *    before saving, with an inline progress state; a failure is a system alert
- *    (`alertError`: 无法添加工作站 + the reason).
+ *  - + in the bar opens 添加工作站 in its own sheet (StationAddForm below, app/sheets/station-add.tsx):
+ *    address + optional name, validated with `normalizeBaseUrl` and probed (`probeStation`: is
+ *    there a Greenhouse API?) before saving; a failure is a system alert (`alertError`:
+ *    无法添加工作站 + the reason).
  *
  * Rows are the shared `FormCheckRow` (server symbol, name, origin, ✓ active).
  *
@@ -26,6 +26,7 @@
  */
 
 import React, { useCallback, useRef, useState } from 'react';
+import { Stack, useRouter } from 'expo-router';
 import {
   Button,
   ContextMenu,
@@ -53,6 +54,7 @@ import type { StationRecord } from '../store/stations';
 import { useT } from '../lib/i18n';
 import { useTheme } from '../theme';
 import { FormCheckRow, NativeForm } from '../ui/native-form';
+import { toolbarIcon } from '../ui/toolbar-icon';
 import { useStationsForm } from './use-stations-form';
 
 export function StationsForm({ onDone, onLeave }: {
@@ -62,76 +64,92 @@ export function StationsForm({ onDone, onLeave }: {
   onLeave: () => void;
 }) {
   const t = useT();
-  const { stations, activeId, active, locked, busy, select, remove, add: addStation } = useStationsForm({ onDone, onLeave });
+  const router = useRouter();
+  const { stations, activeId, active, locked, select, remove } = useStationsForm({ onDone, onLeave });
 
+  return (
+    <>
+      {/* adding is rare: + opens its own sheet (app/sheets/station-add.tsx) */}
+      {!locked ? (
+        <Stack.Toolbar placement="right">
+          <Stack.Toolbar.Button icon={toolbarIcon('plus')} accessibilityLabel={t('station.add')} onPress={() => router.push('/sheets/station-add')} />
+        </Stack.Toolbar>
+      ) : null}
+      <NativeForm>
+        <Section
+          footer={<Text>{locked ? t('station.lockedHint', { name: active?.name ?? '' }) : t('station.hint')}</Text>}
+        >
+          {stations.length === 0 ? (
+            <Text modifiers={[foregroundStyle({ type: 'hierarchical', style: 'secondary' })]}>{t('station.empty')}</Text>
+          ) : (
+            stations.map((station) => (
+              <StationRow
+                key={station.id}
+                station={station}
+                active={station.id === activeId}
+                locked={locked}
+                onPress={() => select(station)}
+                onRemove={() => void remove(station)}
+              />
+            ))
+          )}
+        </Section>
+      </NativeForm>
+    </>
+  );
+}
+
+/**
+ * 添加工作站 on its own (app/sheets/station-add.tsx): address + optional name and 添加, with an
+ * inline progress state while the address is probed. A good address becomes the active station
+ * (`onLeave` dismisses every sheet first, ./use-stations-form.ts).
+ */
+export function StationAddForm({ onLeave }: { onLeave: () => void }) {
+  const t = useT();
+  const { busy, add: addStation } = useStationsForm({ onDone: onLeave, onLeave });
   // The native fields own the text (`url` mirrors it to enable 添加); onTextChange
   // is async, so submitting reads the native values.
   const urlState = useNativeState('');
   const nameState = useNativeState('');
   const nameRef = useRef<TextFieldRef>(null);
   const [url, setUrl] = useState('');
-  const add = useCallback(
-    () => addStation(urlState.get() ?? url, nameState.get() ?? ''),
-    [addStation, urlState, nameState, url],
-  );
-
+  const add = useCallback(() => addStation(urlState.get() ?? url, nameState.get() ?? ''), [addStation, urlState, nameState, url]);
   const canAdd = !busy && !!url.trim();
-
   return (
     <NativeForm>
-      <Section
-        footer={<Text>{locked ? t('station.lockedHint', { name: active?.name ?? '' }) : t('station.hint')}</Text>}
-      >
-        {stations.length === 0 ? (
-          <Text modifiers={[foregroundStyle({ type: 'hierarchical', style: 'secondary' })]}>{t('station.empty')}</Text>
-        ) : (
-          stations.map((station) => (
-            <StationRow
-              key={station.id}
-              station={station}
-              active={station.id === activeId}
-              locked={locked}
-              onPress={() => select(station)}
-              onRemove={() => void remove(station)}
-            />
-          ))
-        )}
+      <Section footer={<Text>{t('station.addHint')}</Text>}>
+        <TextField
+          text={urlState}
+          placeholder={t('station.urlPlaceholder')}
+          onTextChange={setUrl}
+          autoFocus
+          modifiers={[
+            keyboardType('url'),
+            textContentType('URL'),
+            textInputAutocapitalization('never'),
+            autocorrectionDisabled(),
+            submitLabel('next'),
+            onSubmit(() => void nameRef.current?.focus()),
+            disabled(busy),
+          ]}
+        />
+        <TextField
+          ref={nameRef}
+          text={nameState}
+          placeholder={t('station.namePlaceholder')}
+          modifiers={[submitLabel('go'), onSubmit(() => void add()), disabled(busy)]}
+        />
+        <Button onPress={() => void add()} modifiers={[disabled(!canAdd)]}>
+          {busy ? (
+            <HStack spacing={8}>
+              <ProgressView />
+              <Text modifiers={[foregroundStyle({ type: 'hierarchical', style: 'secondary' })]}>{t('station.checking')}</Text>
+            </HStack>
+          ) : (
+            <Text>{t('station.addAction')}</Text>
+          )}
+        </Button>
       </Section>
-
-      {!locked ? (
-        <Section title={t('station.add')} footer={<Text>{t('station.addHint')}</Text>}>
-          <TextField
-            text={urlState}
-            placeholder={t('station.urlPlaceholder')}
-            onTextChange={setUrl}
-            modifiers={[
-              keyboardType('url'),
-              textContentType('URL'),
-              textInputAutocapitalization('never'),
-              autocorrectionDisabled(),
-              submitLabel('next'),
-              onSubmit(() => void nameRef.current?.focus()),
-              disabled(busy),
-            ]}
-          />
-          <TextField
-            ref={nameRef}
-            text={nameState}
-            placeholder={t('station.namePlaceholder')}
-            modifiers={[submitLabel('go'), onSubmit(() => void add()), disabled(busy)]}
-          />
-          <Button onPress={() => void add()} modifiers={[disabled(!canAdd)]}>
-            {busy ? (
-              <HStack spacing={8}>
-                <ProgressView />
-                <Text modifiers={[foregroundStyle({ type: 'hierarchical', style: 'secondary' })]}>{t('station.checking')}</Text>
-              </HStack>
-            ) : (
-              <Text>{t('station.addAction')}</Text>
-            )}
-          </Button>
-        </Section>
-      ) : null}
     </NativeForm>
   );
 }

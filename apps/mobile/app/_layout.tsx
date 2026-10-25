@@ -10,7 +10,7 @@ import { clearHandoffs } from '../src/lib/handoff';
  *                        form sheet; sheets stack on sheets up to three deep
  *  - `me`                「我」: account, station, text size, My Agents, settings (page sheet with
  *                        its own stack)
- *  - `notifications`, `conversations`, `move`, `tables/new-record`, `sheets/stations`  sheets
+ *  - `notifications`, `conversations`, `move`, `tables/new-record`, `sheets/stations`, `sheets/station-add`  sheets
  *  - `peek/*`, `table`   full-screen viewers for rich blocks (html preview, diagram, table)
  *  - `login`             full screen, shown when signed out
  *
@@ -81,7 +81,7 @@ useStations.subscribe(followHandoffs);
 export const unstable_settings = { initialRouteName: '(tabs)' };
 
 /** Routes a signed-out member may be on: the login page and the stations sheet it opens. */
-const SIGNED_OUT_ROUTES = new Set(['login', 'sheets/stations']);
+const SIGNED_OUT_ROUTES = new Set(['login', 'sheets/stations', 'sheets/station-add']);
 
 export default function RootLayout() {
   const [fontsLoaded, fontError] = useFonts({
@@ -198,6 +198,7 @@ export default function RootLayout() {
                 <Stack.Screen name="move" options={sheetScreen([0.7, 1], { header: true })} />
                 <Stack.Screen name="doc-new" options={sheetScreen([1], { header: true })} />
                 <Stack.Screen name="sheets/stations" options={sheetScreen([0.6, 1], { header: true })} />
+                <Stack.Screen name="sheets/station-add" options={sheetScreen([0.5, 1], { header: true })} />
                 <Stack.Screen name="tables/new-record" options={sheetScreen([1], { header: true })} />
 
                 {/* ── full-screen viewers of rich blocks ── */}
