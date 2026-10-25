@@ -18,7 +18,7 @@ module.exports = {
   },
   // The key shape is `{ light, dark }` (the plugin README's `{ color, darkColor }` yields empty colorsets).
   colors: {
-    $accent: { light: '#2E8B3D', dark: '#76C97D' },
+    $accent: { light: '#235D4D', dark: '#B1D2BF' },
     $widgetBackground: { light: '#FFFFFF', dark: '#1C1C1E' },
   },
 };

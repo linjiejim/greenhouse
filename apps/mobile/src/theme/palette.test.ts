@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { contrastRatio } from './contrast';
-import { darkHex, lightHex } from './palette';
+import { categorical, categoricalFor, darkHex, lightHex } from './palette';
 
 const PALETTES = [
   ['light', lightHex],
@@ -74,5 +74,15 @@ describe('palette contrast', () => {
 
   it('sets sign-in on the brand canvas, not the system grey', () => {
     expect(lightHex.brandCanvas).not.toBe('#F2F2F7');
+  });
+});
+
+describe('categorical colours for user-chosen hexes', () => {
+  it('snaps saturated project colours onto the categorical pairs per appearance', () => {
+    expect(categoricalFor('#ef4444', false)).toEqual(categorical.light.red);
+    expect(categoricalFor('#8b5cf6', true)).toEqual(categorical.dark.purple);
+    expect(categoricalFor('#3b82f6', false)).toEqual(categorical.light.blue);
+    expect(categoricalFor('#888888', false)).toEqual(categorical.light.gray);
+    expect(categoricalFor('not a colour', false)).toBeNull();
   });
 });

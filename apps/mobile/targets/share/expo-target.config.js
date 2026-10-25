@@ -18,6 +18,6 @@ module.exports = {
     'com.apple.security.application-groups': ['group.app.greenhouse.mobile'],
   },
   colors: {
-    $accent: { light: '#2E8B3D', dark: '#76C97D' },
+    $accent: { light: '#235D4D', dark: '#B1D2BF' },
   },
 };

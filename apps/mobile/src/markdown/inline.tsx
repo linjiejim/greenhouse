@@ -6,10 +6,9 @@
  * link text is itself run through the parser (`**see `sorted()`**` renders
  * the code span inside the bold); inline code is the only leaf.
  *
- * Inline code sits on a tinted fill, padded with no-break spaces so the
- * padding never wraps away from the code onto its own line as an empty chip;
- * short space-free spans are glued with word joiners so `/v1` or `a.b()`
- * moves to the next line whole instead of splitting into two grey fragments.
+ * Inline code is mono 13 on a light subtle fill: short space-free spans (identifiers, paths,
+ * flags) are a rounded chip that moves to the next line whole; longer spans stay text on the fill,
+ * padded with no-break spaces so the padding never wraps away onto its own line.
  *
  * Bare URLs and `<https://…>` are links too (GFM autolinks; a URL ends at
  * whitespace, a CJK character or trailing punctuation), and an HTML `<br>` —
@@ -21,19 +20,17 @@
  */
 import { type ReactNode, useCallback, useContext } from 'react';
 import { CalmContext, PreviewContext } from './context';
-import { Text } from 'react-native';
+import { Text, View } from 'react-native';
 import { useT } from '../lib/i18n';
-import { makeStyles, mono, type ThemeColors, typo, useTheme, weight } from '../theme';
+import { makeStyles, mono, radius, space, type ThemeColors, typo, useTheme, weight } from '../theme';
 import { alertError } from '../ui/dialogs';
 import { useOpenHref } from '../shell/open-object';
 import { chipFor, LinkChip } from './link-chip';
 
 /** No-break space — keeps inline-code padding glued to the code when lines wrap. */
 const NBSP = '\u00a0';
-/** Word joiner (zero-width, no break) — keeps a short token like `/v1` from splitting at its `/`. */
-const WJ = '\u2060';
-/** Short, space-free code spans (identifiers, paths, flags) never wrap mid-token. */
-const glue = (code: string) => (code.length <= 24 && !/\s/.test(code) ? Array.from(code).join(WJ) : code);
+/** Short, space-free code spans (identifiers, paths, flags) are one chip that never wraps mid-token. */
+const isShortCode = (code: string) => code.length <= 24 && !/\s/.test(code);
 
 const useStyles = makeStyles((c: ThemeColors) => ({
   link: { color: c.link },
@@ -42,13 +39,23 @@ const useStyles = makeStyles((c: ThemeColors) => ({
   bold: { fontWeight: weight.semibold, color: c.label },
   italic: { fontStyle: 'italic' as const },
   strike: { textDecorationLine: 'line-through' as const, color: c.secondaryLabel },
-  // inline code: monospaced, slightly smaller, on the system tertiary fill
+  // inline code: mono 13 (the footnote step) on a light subtle fill. Long spans stay text so they
+  // can wrap; short space-free tokens draw as a rounded chip (nested Text cannot round corners).
   inlineCode: {
     fontFamily: mono,
-    fontSize: typo.subheadline.fontSize,
+    fontSize: typo.footnote.fontSize,
     color: c.label,
-    backgroundColor: c.tertiaryFill,
+    backgroundColor: c.quaternaryFill,
   },
+  codeChip: {
+    backgroundColor: c.quaternaryFill,
+    borderRadius: radius.xs,
+    paddingHorizontal: space.xs,
+    // an inline view sits on the text baseline; drop it by the body's descent so the code's own
+    // baseline lines up with the words around it
+    transform: [{ translateY: Math.round(typo.body.fontSize * 0.22) }],
+  },
+  codeChipText: { fontFamily: mono, fontSize: typo.footnote.fontSize, lineHeight: typo.footnote.lineHeight, color: c.label },
 }));
 
 type InlineStyles = ReturnType<typeof useStyles>;
@@ -158,11 +165,20 @@ const INLINE_TOKENS: InlineTok[] = [
   },
   {
     re: /^`([^`]+?)`/,
-    node: (m, k, { s, calm }) => (
-      <Text key={k} style={[s.inlineCode, calm && s.plainCode]}>
-        {calm ? m[1] : `${NBSP}${glue(m[1])}${NBSP}`}
-      </Text>
-    ),
+    node: (m, k, { s, calm }) =>
+      calm ? (
+        <Text key={k} style={[s.inlineCode, s.plainCode]}>
+          {m[1]}
+        </Text>
+      ) : isShortCode(m[1]) ? (
+        <View key={k} style={s.codeChip}>
+          <Text style={s.codeChipText}>{m[1]}</Text>
+        </View>
+      ) : (
+        <Text key={k} style={s.inlineCode}>
+          {`${NBSP}${m[1]}${NBSP}`}
+        </Text>
+      ),
   },
   {
     // <https://…> — a CommonMark autolink

@@ -3,11 +3,15 @@
 import { t } from '../lib/i18n';
 import { timeWords } from '../lib/time-words';
 import { nextRunLabel } from './model';
-import { describeSchedule } from './schedule';
+import { describeSchedule, zonePlace } from './schedule';
 
-/** "每天 09:00", or the raw cron for an uncommon shape. */
-export function scheduleLabel(cron: string): string {
-  return describeSchedule(cron, {
+/**
+ * "每天 09:00", or the raw cron for an uncommon shape; the clock is the automation's own zone, so
+ * a zone other than the phone's is named after it ("工作日 13:00 (Los Angeles)").
+ */
+export function scheduleLabel(cron: string, timeZone?: string | null): string {
+  const place = zonePlace(timeZone, Intl.DateTimeFormat().resolvedOptions().timeZone);
+  const words = describeSchedule(cron, {
     daily: t('automations.schedule.daily'),
     weekdays: t('automations.schedule.weekdays'),
     weekends: t('automations.schedule.weekends'),
@@ -18,6 +22,7 @@ export function scheduleLabel(cron: string): string {
     dayNames: t('automations.schedule.dayNames').split(','),
     listSep: t('automations.schedule.listSep'),
   });
+  return place ? `${words} (${place})` : words;
 }
 
 /** "明天 09:00" in the phone's time zone; '' without a next run. */

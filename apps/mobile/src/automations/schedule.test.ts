@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { describeSchedule, type ScheduleWords } from './schedule';
+import { describeSchedule, zonePlace, type ScheduleWords } from './schedule';
 
 const zh: ScheduleWords = {
   daily: '每天 {time}',
@@ -72,5 +72,14 @@ describe('describeSchedule', () => {
     expect(describeSchedule('0 25 * * *', zh)).toBe('0 25 * * *');
     expect(describeSchedule('@daily', zh)).toBe('@daily');
     expect(describeSchedule('  0 9 * * *  ', zh)).toBe('每天 09:00');
+  });
+});
+
+describe('zonePlace', () => {
+  it('names the zone only when it is not the phone\'s', () => {
+    expect(zonePlace('America/Los_Angeles', 'Asia/Shanghai')).toBe('Los Angeles');
+    expect(zonePlace('Asia/Shanghai', 'Asia/Shanghai')).toBe('');
+    expect(zonePlace('UTC', 'Asia/Shanghai')).toBe('UTC');
+    expect(zonePlace(undefined, 'Asia/Shanghai')).toBe('');
   });
 });

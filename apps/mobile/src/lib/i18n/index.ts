@@ -29,7 +29,9 @@ function lookup(cat: Catalog, key: string): string | undefined {
 }
 
 export function translate(lang: LangPref, key: TranslationKey, vars?: Record<string, string | number>): string {
-  const raw = lookup(catalogs[lang], key) ?? lookup(en, key) ?? key;
+  // A count of 1 (`n` or `count`) uses the sibling `<key>_one` when there is one ("1 row").
+  const one = vars && (vars.n === 1 || vars.count === 1) ? (lookup(catalogs[lang], `${key}_one`) ?? lookup(en, `${key}_one`)) : undefined;
+  const raw = one ?? lookup(catalogs[lang], key) ?? lookup(en, key) ?? key;
   if (!vars) return raw;
   return interpolate(lang, raw, vars);
 }

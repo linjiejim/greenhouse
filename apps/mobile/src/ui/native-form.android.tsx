@@ -100,14 +100,23 @@ export function useLocaleEnv(): null {
 
 /* ------------------------------ containers ------------------------------ */
 
-export function NativeForm({ children, style }: { children: React.ReactNode; style?: StyleProp<ViewStyle> }) {
+export function NativeForm({
+  children,
+  style,
+  background: canvas,
+}: {
+  children: React.ReactNode;
+  style?: StyleProp<ViewStyle>;
+  /** A page colour instead of the Material surface (sign-in sits on `brandCanvas`). */
+  background?: string;
+}) {
   const m = useM3();
   return (
     <M3Host style={[{ flex: 1 }, style]}>
       <LazyColumn
         verticalArrangement={{ spacedBy: 20 }}
         contentPadding={{ start: 16, end: 16, top: 12, bottom: 40 }}
-        modifiers={[fillMaxSize(), imePadding(), background(m.surface)]}
+        modifiers={[fillMaxSize(), imePadding(), background(canvas ?? m.surface)]}
       >
         {children}
       </LazyColumn>

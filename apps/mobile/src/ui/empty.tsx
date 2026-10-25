@@ -1,33 +1,30 @@
 /**
- * Empty / unavailable states — SwiftUI `ContentUnavailableView` (the system
- * "No Results" layout: large symbol, title, description); Android draws the
- * Material equivalent (./empty.android.tsx, same API). Use for empty
- * lists, no search results, and load failures. Centers itself in the space
- * it's given; pass `style` for list placement.
- *
- * Below the view: `onRetry` adds the standard 重试 button (load failures), or
- * pass any `action` (usually a `NativeButton`, e.g. 新建项目).
+ * Empty / unavailable states, the same on iOS and Android and the same family as the web's
+ * EmptyState: Sprouty (asleep when there is nothing here, its error face when a load failed),
+ * the title in the brand face, a supporting line, and the one action under it — `onRetry` adds
+ * the standard 重试 button (load failures), or pass any `action` (usually a `NativeButton`, e.g.
+ * 新建项目). Use for empty lists, no search results, load failures and not-allowed states.
+ * Centers itself in the space it's given; pass `style` for list placement.
  */
 
 import React from 'react';
-import { View, type StyleProp, type ViewStyle } from 'react-native';
-import { ContentUnavailableView, Host } from '@expo/ui/swift-ui';
+import { Text, View, type StyleProp, type ViewStyle } from 'react-native';
 import { useT } from '../lib/i18n';
-import { useTheme } from '../theme';
+import { makeStyles, space, typo, useTheme, weight } from '../theme';
+import { AssistantAvatar } from './avatar';
 import { NativeButton } from './button';
-import { sfSymbol, type IconName } from './core';
-import { useLocaleEnv } from './native-form';
+import type { IconName } from './core';
 
 export { LoadingState } from './loading-state';
 
 export function EmptyState({
-  icon,
   title,
   message,
   action,
   onRetry,
   style,
 }: {
+  /** The subject's symbol. Kept for callers; Sprouty stands in for it so every state reads alike. */
   icon: IconName;
   title: string;
   message?: string;
@@ -37,22 +34,27 @@ export function EmptyState({
   onRetry?: () => void;
   style?: StyleProp<ViewStyle>;
 }) {
-  const { isDark } = useTheme();
+  const { colors: c } = useTheme();
+  const styles = useStyles(c);
   const t = useT();
-  const locale = useLocaleEnv();
   const below = action ?? (onRetry ? <NativeButton label={t('common.retry')} icon="refresh" onPress={onRetry} /> : null);
   return (
-    <View style={[{ alignItems: 'stretch', paddingVertical: 24 }, style]}>
-      <Host
-        matchContents={{ vertical: true }}
-        ignoreSafeArea="all"
-        colorScheme={isDark ? 'dark' : 'light'}
-        modifiers={[locale]}
-      >
-        <ContentUnavailableView title={title} systemImage={sfSymbol(icon)} description={message} />
-      </Host>
-      {below ? <View style={{ alignItems: 'center', marginTop: 8 }}>{below}</View> : null}
+    <View style={[styles.root, style]}>
+      <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+        <AssistantAvatar size={64} state={onRetry ? 'error' : 'sleep'} animate={false} />
+      </View>
+      <Text style={styles.title} accessibilityRole="header">
+        {title}
+      </Text>
+      {message ? <Text style={styles.message}>{message}</Text> : null}
+      {below ? <View style={styles.action}>{below}</View> : null}
     </View>
   );
 }
 
+const useStyles = makeStyles((c) => ({
+  root: { alignItems: 'center', paddingVertical: space.xxl, paddingHorizontal: space.xxl, gap: space.sm },
+  title: { ...typo.title3, fontWeight: weight.semibold, color: c.label, textAlign: 'center', marginTop: space.xs },
+  message: { ...typo.subheadline, color: c.secondaryLabel, textAlign: 'center' },
+  action: { marginTop: space.md },
+}));

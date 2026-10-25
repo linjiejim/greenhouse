@@ -99,30 +99,38 @@ export function AskUserCard({
       {ask.description ? <Text style={styles.body}>{ask.description}</Text> : null}
       {ask.questions.map((q) => {
         const value = answers[q.id];
+        const multi = q.type === 'multi_choice';
         return (
           <View key={q.id} style={styles.question}>
+            {/* the question first, then how to answer it, then the options */}
             <Text style={styles.label}>
               {q.label}
               {q.required ? <Text style={{ color: c.red }}> *</Text> : null}
             </Text>
-            {q.type === 'single_choice' || q.type === 'multi_choice' ? (
-              <View style={styles.options}>
-                {(q.options ?? []).map((option) => {
-                  const on = Array.isArray(value) ? value.includes(option.value) : value === option.value;
-                  return (
-                    <Touchable
-                      key={option.value}
-                      onPress={() => choose(q.id, option.value, q.type === 'multi_choice')}
-                      style={[styles.option, on && styles.optionOn]}
-                      accessibilityRole={q.type === 'multi_choice' ? 'checkbox' : 'radio'}
-                      accessibilityState={{ checked: on }}
-                    >
-                      {on ? <Icon name="check" size={12} weight="bold" color={c.onAccent} /> : null}
-                      <Text style={[styles.optionText, on && { color: c.onAccent }]}>{option.label}</Text>
-                    </Touchable>
-                  );
-                })}
-              </View>
+            {q.type === 'single_choice' || multi ? (
+              <>
+                <Text style={styles.hint}>{multi ? t('cards.chooseAny') : t('cards.chooseOne')}</Text>
+                <View style={styles.options}>
+                  {(q.options ?? []).map((option) => {
+                    const on = Array.isArray(value) ? value.includes(option.value) : value === option.value;
+                    return (
+                      <Touchable
+                        key={option.value}
+                        onPress={() => choose(q.id, option.value, multi)}
+                        style={[styles.option, on && styles.optionOn]}
+                        accessibilityRole={multi ? 'checkbox' : 'radio'}
+                        accessibilityState={{ checked: on }}
+                      >
+                        {/* round for one answer, square for several; filled with a check when chosen */}
+                        <View style={[styles.mark, multi ? styles.markSquare : styles.markRound, on && styles.markOn]}>
+                          {on ? <Icon name="check" size={11} weight="bold" color={c.onAccent} /> : null}
+                        </View>
+                        <Text style={[styles.optionText, on && styles.optionTextOn]}>{option.label}</Text>
+                      </Touchable>
+                    );
+                  })}
+                </View>
+              </>
             ) : (
               <TextInput
                 value={typeof value === 'string' ? value : ''}
@@ -138,7 +146,14 @@ export function AskUserCard({
         );
       })}
       <View style={styles.actions}>
-        <NativeButton label={t('cards.answer')} variant="prominent" loading={sending} disabled={!complete || !onAnswer} onPress={() => void submit()} />
+        {/* Prominent only when it can send: a disabled prominent button draws white words on grey. */}
+        <NativeButton
+          label={t('cards.answer')}
+          variant={complete && onAnswer ? 'prominent' : 'tinted'}
+          loading={sending}
+          disabled={!complete || !onAnswer}
+          onPress={() => void submit()}
+        />
       </View>
     </ChatCard>
   );
@@ -288,7 +303,13 @@ function OnceCard({
         ) : state === 'done' ? (
           <Text style={styles.doneText}>{doneLabel}</Text>
         ) : (
-          <NativeButton label={actionLabel} variant="prominent" loading={state === 'working'} disabled={!onAction} onPress={() => onAction?.()} />
+          <NativeButton
+            label={actionLabel}
+            variant={onAction ? 'prominent' : 'tinted'}
+            loading={state === 'working'}
+            disabled={!onAction}
+            onPress={() => onAction?.()}
+          />
         )}
       </View>
     </ChatCard>
@@ -445,20 +466,40 @@ const useStyles = makeStyles((c) => ({
   title: { ...typo.headline, color: c.label, flex: 1 },
   body: { ...typo.subheadline, color: c.secondaryLabel },
   error: { ...typo.footnote, color: c.red },
-  question: { gap: space.xs },
+  question: { gap: space.xs, marginTop: space.sm },
   label: { ...typo.subheadline, fontWeight: weight.semibold, color: c.label },
-  options: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
+  hint: { ...typo.footnote, color: c.secondaryLabel },
+  // Options are rows, not pills: a modest radius from the scale that still looks right when an
+  // option wraps to two or three lines; the mark stays on the first line.
+  options: { gap: space.xs, marginTop: space.xxs },
   option: {
-    minHeight: HIT - space.sm,
+    minHeight: HIT - space.xs,
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: space.xs,
+    alignItems: 'flex-start',
+    gap: space.sm,
     paddingHorizontal: space.md,
-    borderRadius: radius.full,
+    paddingVertical: space.sm + 2,
+    borderRadius: radius.md,
+    borderWidth: 1.5,
+    borderColor: 'transparent',
     backgroundColor: c.tertiaryFill,
+    ...squircle,
   },
-  optionOn: { backgroundColor: c.accent },
-  optionText: { ...typo.subheadline, color: c.label },
+  optionOn: { backgroundColor: c.accentFill, borderColor: c.accent },
+  optionText: { ...typo.subheadline, color: c.label, flex: 1 },
+  optionTextOn: { color: c.accentText, fontWeight: weight.medium },
+  mark: {
+    width: 18,
+    height: 18,
+    marginTop: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.5,
+    borderColor: c.tertiaryLabel,
+  },
+  markRound: { borderRadius: 9 },
+  markSquare: { borderRadius: radius.xs - 1 },
+  markOn: { backgroundColor: c.accent, borderColor: c.accent },
   field: {
     ...typo.body,
     color: c.label,
@@ -470,7 +511,7 @@ const useStyles = makeStyles((c) => ({
     ...squircle,
   },
   area: { minHeight: HIT * 2, textAlignVertical: 'top' },
-  actions: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
+  actions: { flexDirection: 'row', alignItems: 'center', gap: space.sm, marginTop: space.xs },
   doneText: { ...typo.subheadline, fontWeight: weight.semibold, color: c.green },
   quietLine: { flexDirection: 'row', alignItems: 'center', gap: space.xs, paddingVertical: space.xs },
   quietText: { ...typo.footnote, color: c.secondaryLabel },

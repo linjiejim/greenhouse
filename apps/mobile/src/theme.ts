@@ -1,6 +1,6 @@
 /**
- * Greenhouse V1 content colors (./theme/palette.ts), with UIKit/SwiftUI and Material owning
- * native controls.
+ * Greenhouse content colors (./theme/palette.ts, generated from the shared token module), with
+ * UIKit/SwiftUI and Material owning native controls.
  * RN content selects an explicit palette with the app theme: nested dynamic
  * UIColors can resolve against different traits inside a native header or Host.
  * Dark content values mirror system surfaces; controls still use system styling.
@@ -16,6 +16,8 @@ import { DEFAULT_TEXT_STEP, scaleText, TEXT_STEPS } from './theme/type-scale';
 /* ------------------------------ hex mirrors ------------------------------ */
 
 import { lightHex, darkHex, type HexPalette } from './theme/palette';
+export { categoricalFor, type CategoricalPair } from './theme/palette';
+import { motionTokens, radiusScale } from './theme/tokens.generated';
 export type { HexPalette } from './theme/palette';
 const BRAND_LIGHT = lightHex.accent;
 
@@ -166,11 +168,22 @@ export const weight = {
 export const space = { xxs: 2, xs: 4, sm: 8, md: 12, lg: 16, xl: 20, xxl: 24, xxxl: 32, margin: 16 } as const;
 
 /**
- * Corner radii. Pair every rounded rect with `borderCurve: 'continuous'`
- * (`squircle`) for the native iOS shape. `group` matches inset-grouped list
- * sections; `bubble` the chat bubbles.
+ * Corner radii from the shared scale (packages/ui/src/tokens/tokens.ts, via ./theme/tokens.generated.ts;
+ * names here keep the app's own steps: xs 6 = sm, sm 8 = md, md 12 = lg, lg 16 = xl, xl 20 = 2xl).
+ * Pair every rounded rect with `borderCurve: 'continuous'` (`squircle`) for the native iOS shape.
+ * `bubble` (20) is the scale's 2xl. `group` is the one native exception: it matches the corners
+ * UIKit gives inset-grouped list sections (26 on iOS 26), so RN cards sit flush with SwiftUI forms.
  */
-export const radius = { xs: 6, sm: 8, md: 12, lg: 16, xl: 22, group: 26, bubble: 20, full: 999 } as const;
+export const radius = {
+  xs: radiusScale.sm,
+  sm: radiusScale.md,
+  md: radiusScale.lg,
+  lg: radiusScale.xl,
+  xl: radiusScale['2xl'],
+  group: 26,
+  bubble: radiusScale['2xl'],
+  full: 999,
+} as const;
 
 /** Spread into any rounded style: iOS continuous (squircle) corners. */
 export const squircle = { borderCurve: 'continuous' } as const;
@@ -208,8 +221,13 @@ export function alpha(color: string, a: number): string {
   return `rgba(${rgb.map(Math.round).join(',')},${out})`;
 }
 
-/** Motion durations; system navigation owns its own transitions. */
-export const motion = { fast: 140, base: 200, slow: 240, exit: 180 } as const;
+/** Motion durations (shared tokens, ms); system navigation owns its own transitions. */
+export const motion = {
+  fast: motionTokens.fast,
+  base: motionTokens.base,
+  slow: motionTokens.slow,
+  exit: motionTokens.exit,
+} as const;
 
 /** Minimum touch target (HIG). */
 export const HIT = 44;

@@ -468,6 +468,7 @@ export const zh: Catalog = {
     failed: '没有成功',
     finished: '完成',
     results: '{n} 条结果',
+    results_one: '1 条结果',
     noArgs: '无参数',
     noSteps: '还没有步骤',
     name: {
@@ -544,9 +545,12 @@ export const zh: Catalog = {
   cards: {
     questions: '有几个问题',
     answer: '提交回答',
+    chooseOne: '单选',
+    chooseAny: '可多选',
     answered: '已回答：{title}',
     answerFailed: '回答没发出去',
     rows: '{n} 行',
+    rows_one: '1 行',
     taskTitle: '存为任务',
     taskSave: '保存任务',
     taskSaved: '已存进任务',

@@ -73,11 +73,11 @@ func shareUsesChinese(appLanguage: String?, preferred: [String]) -> Bool {
   }
 }
 
-/// The V1 brand green and the text on it, as 0xRRGGBB (src/theme/palette.ts `accent` /
-/// `onAccent`; src/share/share-logic.test.ts keeps them equal).
+/// The Haven accent and the text on it, as 0xRRGGBB (src/theme/palette.ts `accent` /
+/// `onAccent`, from the shared tokens; src/share/share-logic.test.ts keeps them equal).
 enum Brand {
-  static let accentLight = 0x2E8B3D
-  static let accentDark = 0x76C97D
+  static let accentLight = 0x235D4D
+  static let accentDark = 0xB1D2BF
   static let onAccentLight = 0xFFFFFF
-  static let onAccentDark = 0x0F1510
+  static let onAccentDark = 0x10291F
 }

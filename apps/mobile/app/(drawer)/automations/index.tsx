@@ -85,7 +85,7 @@ export default function Automations() {
         onRefresh={pull.onRefresh}
         renderItem={({ item, index }) => {
           const result = lastResult(item);
-          const schedule = scheduleLabel(item.schedule);
+          const schedule = scheduleLabel(item.schedule, item.timezone);
           const next = item.enabled ? nextRunNow(item.next_run_at) : '';
           const when = item.enabled ? (next ? t('automations.nextRun', { when: next }) : '') : t('automations.paused');
           return (

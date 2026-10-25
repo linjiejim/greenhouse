@@ -55,12 +55,12 @@ private func loadSnapshot() -> WidgetSnapshot? {
 
 // MARK: - Brand
 
-/// The V1 green, light and dark (src/theme/palette.ts `accent`). Named colorsets do not reach
-/// `Color.accentColor` in an extension, so it is spelled out here.
+/// The Haven accent, light and dark (src/theme/palette.ts `accent`, from the shared tokens). Named
+/// colorsets do not reach `Color.accentColor` in an extension, so it is spelled out here.
 private let brand = Color(UIColor { traits in
   traits.userInterfaceStyle == .dark
-    ? UIColor(red: 0x76 / 255, green: 0xC9 / 255, blue: 0x7D / 255, alpha: 1)
-    : UIColor(red: 0x2E / 255, green: 0x8B / 255, blue: 0x3D / 255, alpha: 1)
+    ? UIColor(red: 0xB1 / 255, green: 0xD2 / 255, blue: 0xBF / 255, alpha: 1)
+    : UIColor(red: 0x23 / 255, green: 0x5D / 255, blue: 0x4D / 255, alpha: 1)
 })
 
 // MARK: - Words

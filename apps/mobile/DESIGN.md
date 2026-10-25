@@ -32,13 +32,13 @@
 - Chip (src/ui/chip.tsx) is the only capsule for links, files and objects; Badge is the only status capsule.
 - Avatar is a person's initial; AssistantAvatar and AgentAvatar are plants (src/ui/avatar.tsx); never draw a plant for a person.
 - FileIcon (src/ui/file-icon.tsx) shows a file's kind; never pick a file icon by hand.
-- EmptyState covers empty, failed (with retry) and not-allowed (without retry); Skeleton covers a list's first load; LoadingState is for small inline waits.
+- EmptyState covers empty, failed (with retry) and not-allowed (without retry), with Sprouty asleep (its error face on a failure) like the web; Skeleton covers a list's first load and never moves; LoadingState is for small inline waits.
 
 ## Spacing and shape
 
 - Page margin is space.margin (16); text inside cards starts at space.margin + space.xs.
 - Spacing follows the 4-pt scale in src/theme.ts and lands on the 8-pt rhythm between blocks (space.sm, space.lg, space.xxl).
-- Radii come from radius.* with squircle; cards use radius.group, chips radius.md (inline radius.sm), bubbles radius.bubble.
+- Radii come from radius.* (the shared scale, src/theme.ts) with squircle; cards use radius.group (26, matching UIKit's inset-grouped sections), chips radius.md (inline radius.sm), bubbles radius.bubble; a choice that may wrap is a row with radius.md, never a pill.
 - Touch targets are at least HIT (44); chips under messages are HIT - space.sm tall with HIT hit slop around them.
 
 ## Type
@@ -52,7 +52,7 @@
 ## Icons and color
 
 - Icons come from ICONS in src/ui/core.tsx at three sizes: 13 in chips and text, 17–20 in rows and controls, 28+ only for empty states.
-- Colors come from useTheme(); hex.* only where a string is required; no raw hex in app/ or feature folders except data colors marked as such.
+- Colors come from useTheme(); hex.* only where a string is required; no raw hex in app/ or feature folders except data colors marked as such; a stored project or tag colour draws through categoricalFor().
 - Content sits on solid system surfaces; Liquid Glass is only for the control layer (composer, floating buttons).
 
 ## States and feedback

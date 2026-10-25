@@ -28,7 +28,7 @@ import {
   type TextStyle,
   type ViewStyle,
 } from 'react-native';
-import { HIT, alpha, makeStyles, radius, space, squircle, typo, useTheme, weight } from '../theme';
+import { HIT, alpha, categoricalFor, makeStyles, radius, space, squircle, typo, useTheme, weight } from '../theme';
 import { Icon, type IconName } from './core';
 import { useFontScaleKey } from './font-scale';
 
@@ -301,6 +301,12 @@ function RowTarget({
 export function IconTile({ icon, tint, size = TILE }: { icon: IconName; tint?: ColorValue; size?: number }) {
   const { colors: c, hex } = useTheme();
   const onAccent = !tint || tint === c.accent || tint === hex.accent;
+  // A data colour (a project's stored hex) draws as its categorical colour, never the raw
+  // saturated hex; tiles take the light fg in both appearances so the white glyph stays readable.
+  const fill =
+    typeof tint === 'string' && !onAccent && !(Object.values(hex) as string[]).includes(tint)
+      ? (categoricalFor(tint, false)?.fg ?? tint)
+      : tint;
   return (
     <View
       style={[
@@ -309,7 +315,7 @@ export function IconTile({ icon, tint, size = TILE }: { icon: IconName; tint?: C
           width: size,
           height: size,
           borderRadius: size * 0.27,
-          backgroundColor: tint ?? c.accent,
+          backgroundColor: fill ?? c.accent,
           alignItems: 'center',
           justifyContent: 'center',
         },
@@ -341,7 +347,7 @@ export function Badge({
   color?: string;
   style?: StyleProp<ViewStyle>;
 }) {
-  const { colors: c } = useTheme();
+  const { colors: c, isDark } = useTheme();
   const styles = useStyles(c);
   const tones: Record<BadgeTone, [ColorValue, ColorValue]> = {
     neutral: [c.secondaryLabel, c.tertiaryFill],
@@ -351,11 +357,13 @@ export function Badge({
     green: [c.green, c.greenFill],
     blue: [c.blue, c.blueFill],
   };
-  const [fg, bg] = color ? [c.label, alpha(color, 0.16)] : tones[tone];
+  // A data colour (a tag's or project's stored hex) is shown as its categorical fg-on-fill pair.
+  const pair = color ? categoricalFor(color, isDark) : null;
+  const [fg, bg] = color ? (pair ? [pair.fg, pair.fill] : [c.label, alpha(color, 0.16)]) : tones[tone];
   return (
     <View style={[styles.badge, { backgroundColor: bg }, style]}>
       {color ? (
-        <View style={[styles.badgeDot, { backgroundColor: color }]} />
+        <View style={[styles.badgeDot, { backgroundColor: pair?.fg ?? color }]} />
       ) : icon ? (
         <Icon name={icon} size={11} weight="semibold" color={fg} />
       ) : null}

@@ -99,7 +99,7 @@ final class ShareViewModel: ObservableObject {
 }
 
 extension Color {
-  /// The V1 green, light and dark (ShareLogic.swift `Brand`).
+  /// The Haven accent, light and dark (ShareLogic.swift `Brand`).
   static let greenhouse = Color(dynamic: Brand.accentLight, Brand.accentDark)
   /// Text and glyphs on the green.
   static let onGreenhouse = Color(dynamic: Brand.onAccentLight, Brand.onAccentDark)

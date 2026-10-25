@@ -70,7 +70,7 @@
 - targets/widget holds the 我的任务 and 最近文档 widgets; they read only the App Group snapshot src/widget/publish.ts writes through modules/widget-bridge (shape: src/widget/model.ts, a parity test checks the Swift decoder). Never put a token or private body text in it.
 - The widget works due buckets out per timeline entry (targets/widget/DueBuckets.swift, the rule of src/data/tasks.ts `dueBucket`); src/widget/swift.test.ts compiles it with swiftc against the JS rule (on a Mac also under Buddhist and Japanese calendar settings) wherever swiftc exists, and typechecks the widget where the iOS simulator SDK is installed.
 - Widget links carry `station=`; it stays on the route until checked, and the item's screen (src/widget/station-gate.tsx) waits for the stations to load, then opens only on that station.
-- Colorsets do not reach Color.accentColor in an extension: spell the V1 green out in Swift.
+- Colorsets do not reach Color.accentColor in an extension: spell the Haven accent out in Swift.
 - Object sheets render their title, actions and ✕ through SheetScreen (src/ui/screen.tsx); toolbar buttons must be direct children of Stack.Toolbar.
 - Widget links keep their `greenhouse://knowledge/doc` and `greenhouse://projects/task` addresses; src/widget/model.ts `widgetLinkPath` maps them to the sheets.
 
@@ -88,7 +88,7 @@
 - targets/share ("存到 Greenhouse", @bacons/apple-targets type `share`, SwiftUI) uploads shared photos, videos and files into Files on the active station: shelf and folder picker, then init → bytes → complete.
 - It reads only the station and a short-lived access token from the App Group keychain item `greenhouse.share.session` (src/share/session.ts writes it on every token change; src/share/payload.ts is the shape). Never put the refresh token there: a single-use refresh in the extension would sign the app out. An expired token tells the member to open the app.
 - Keep the keychain key, service and App Group in payload.ts and ShareModel.swift identical; the extension's Info.plist activation rule caps what it accepts.
-- The session carries the app's language; the extension speaks it (else the phone's) and uses the V1 green from ShareLogic.swift `Brand`, kept equal to src/theme/palette.ts.
+- The session carries the app's language; the extension speaks it (else the phone's) and uses the Haven accent from ShareLogic.swift `Brand`, kept equal to src/theme/palette.ts.
 - Logic the extension needs goes in Foundation-only targets/share/ShareLogic.swift; src/share/share-logic.test.ts compiles it with src/share/ShareLogicCheck.swift and runs the checks (skipped without swiftc). A retry uploads only attachments that failed for a passing reason (no answer, 408, 429, 5xx); other 4xx refusals are listed with their reason and only another folder tries them again.
 - The camera captures photos only (src/files/picker-options.ts); the app has no voice input (members use the keyboard's dictation), so expo-image-picker's `microphonePermission` stays false and nothing may record sound.
 
@@ -115,7 +115,8 @@
 - A sheet's list or ScrollView is its root element (after SheetScreen); a ScrollView wrapped in a flex View renders nothing in a form sheet.
 - Zustand selectors return stored values; derive filtered arrays with useMemo (a fresh array from a selector loops forever).
 - Use system components: the expo-router native Stack, @expo/ui/swift-ui and NativeMenu (src/ui/menu.tsx); never JS-drawn headers, bottom sheets, action sheets, calendars or switches.
-- Brand: V1 green (#2E8B3D, src/theme/palette.ts from apps/web/src/app.css) and Nunito; dark content surfaces mirror UIKit's; native controls keep system styling with the accent as tint. Palette contrast is tested (src/theme/palette.test.ts).
+- Brand: Haven forest #235D4D / pale sage #B1D2BF in dark, the seed lime #B6CA68 never as text; Nunito. Colours come from the shared token module (packages/ui/src/tokens/tokens.ts) through the generated src/theme/tokens.generated.ts — run `pnpm tokens:build` at the repo root, never edit a hex in src/theme/palette.ts; dark content surfaces keep UIKit's system base; native controls keep system styling with the accent as tint. Contrast and web parity are tested (src/theme/palette.test.ts, packages/ui/src/tokens/platform-parity.test.ts).
+- A user-chosen colour (project, tag) draws through categoricalFor() (src/theme/palette.ts) as its categorical fg/fill pair, never the raw hex.
 - `colors.*` are opaque ColorValues: never concatenate or compute alpha on them; use `hex.*` for strings and alpha() for transparency.
 - Text and icons on the accent use onAccent, on other solid fills onTint; no hex literals except data colors.
 - Take typo, weight, radius (with squircle) and HIT from src/theme.ts; never disable allowFontScaling.

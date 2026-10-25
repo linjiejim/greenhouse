@@ -6,7 +6,7 @@ space suggests an agent growing inside a shared workspace.
 | Element | Default |
 | --- | --- |
 | Mark | Forest `#235D4D`; seed `#B6CA68` |
-| Dark mark | Pale green `#D7EFDD`; the seed keeps its colour |
+| Dark mark | Pale sage `#B1D2BF` (tokens `brandMark`); the seed keeps its colour |
 | Startup | The two sides close in, then the seed grows; once, static with Reduce Motion |
 
 ## Files

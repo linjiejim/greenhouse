@@ -26,7 +26,7 @@ import {
 import { makeStyles, space, typo, useTheme } from '../src/theme';
 
 export default function Login() {
-  const { colors: c } = useTheme();
+  const { colors: c, hex } = useTheme();
   const styles = useStyles(c);
   const t = useT();
   const { width } = useWindowDimensions();
@@ -55,7 +55,7 @@ export default function Login() {
   return (
     <>
       <Stack.Screen options={{ headerShown: false }} />
-      <NativeForm>
+      <NativeForm background={hex.brandCanvas}>
         <RNHostView matchContents>
           <View style={[styles.brand, { width: width - 32 }]}>
             <GreenhouseMark size={64} />

@@ -23,3 +23,46 @@ export type CategoricalPair = { fg: string; fill: string };
 
 /** User-chosen colours (project and tag colours) as fg-on-fill pairs per appearance. */
 export const categorical: Record<'light' | 'dark', Record<CategoricalName, CategoricalPair>> = categoricalHex;
+
+const CATEGORICAL_HUES: Array<[CategoricalName, number]> = [
+  ['red', 4],
+  ['orange', 25],
+  ['amber', 42],
+  ['green', 150],
+  ['teal', 174],
+  ['blue', 214],
+  ['purple', 268],
+  ['pink', 326],
+];
+
+/**
+ * A user-chosen colour (a project's or tag's stored hex) as the categorical fg/fill pair for the
+ * appearance: the nearest categorical hue, gray when unsaturated, null when unreadable. Draw dots,
+ * bars and icons in `fg`, chips on `fill` with `fg` text — never the raw saturated hex. Same rule
+ * as the web's apps/web/src/lib/categorical.ts.
+ */
+export function categoricalFor(hex: string | null | undefined, isDark: boolean): CategoricalPair | null {
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex?.trim() ?? '');
+  if (!m) return null;
+  const n = parseInt(m[1], 16);
+  const [r, g, b] = [(n >> 16) & 255, (n >> 8) & 255, n & 255].map((v) => v / 255);
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const delta = max - min;
+  const lightness = (max + min) / 2;
+  const saturation = delta === 0 ? 0 : delta / (1 - Math.abs(2 * lightness - 1));
+  const set = categorical[isDark ? 'dark' : 'light'];
+  if (saturation < 0.18) return set.gray;
+  let hue = max === r ? ((g - b) / delta) % 6 : max === g ? (b - r) / delta + 2 : (r - g) / delta + 4;
+  hue = (hue * 60 + 360) % 360;
+  let best: CategoricalName = 'gray';
+  let bestDistance = Infinity;
+  for (const [name, target] of CATEGORICAL_HUES) {
+    const distance = Math.min(Math.abs(hue - target), 360 - Math.abs(hue - target));
+    if (distance < bestDistance) {
+      best = name;
+      bestDistance = distance;
+    }
+  }
+  return set[best];
+}

@@ -482,6 +482,7 @@ export const en = {
     failed: 'Didn’t work',
     finished: 'Done',
     results: '{n} results',
+    results_one: '1 result',
     noArgs: 'Nothing asked',
     noSteps: 'No steps yet',
     name: {
@@ -558,9 +559,12 @@ export const en = {
   cards: {
     questions: 'A few questions',
     answer: 'Send Answers',
+    chooseOne: 'Choose one',
+    chooseAny: 'Choose any that apply',
     answered: 'Answered: {title}',
     answerFailed: 'Couldn’t send your answers',
     rows: '{n} rows',
+    rows_one: '1 row',
     taskTitle: 'Save as a Task',
     taskSave: 'Save Task',
     taskSaved: 'Saved to Tasks',

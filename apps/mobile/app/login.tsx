@@ -69,7 +69,7 @@ export default function Login() {
   return (
     <>
       <Stack.Screen options={{ headerShown: false }} />
-      <NativeForm>
+      <NativeForm background={hex.brandCanvas}>
         <Section
           header={
             <RNHostView matchContents>

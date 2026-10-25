@@ -35,12 +35,14 @@ import { Button, Form, HStack, Host, Image, Spacer, Text, VStack } from '@expo/u
 import {
   accessibilityAddTraits,
   accessibilityHidden,
+  background,
   environment,
   frame,
   foregroundStyle,
   lineLimit,
   listRowBackground,
   redacted,
+  scrollContentBackground,
   tint,
 } from '@expo/ui/swift-ui/modifiers';
 import type { SymbolViewProps } from 'expo-symbols';
@@ -58,7 +60,16 @@ export function useLocaleEnv() {
   return environment('locale', lang === 'zh' ? 'zh_Hans_CN' : 'en_US');
 }
 
-export function NativeForm({ children, style }: { children: React.ReactNode; style?: StyleProp<ViewStyle> }) {
+export function NativeForm({
+  children,
+  style,
+  background: canvas,
+}: {
+  children: React.ReactNode;
+  style?: StyleProp<ViewStyle>;
+  /** A page colour instead of the system grouped grey (sign-in sits on `brandCanvas`). */
+  background?: string;
+}) {
   const { hex, isDark } = useTheme();
   const locale = useLocaleEnv();
   return (
@@ -67,7 +78,7 @@ export function NativeForm({ children, style }: { children: React.ReactNode; sty
       style={[{ flex: 1 }, style]}
       modifiers={[font({ textStyle: 'body' }), tint(hex.accent), locale]}
     >
-      <Form>{children}</Form>
+      <Form modifiers={canvas ? [scrollContentBackground('hidden'), background(canvas)] : undefined}>{children}</Form>
     </Host>
   );
 }

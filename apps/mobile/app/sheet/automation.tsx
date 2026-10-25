@@ -178,7 +178,7 @@ export default function AutomationSheet() {
         <NativeToggle label={t('automations.enabled')} value={task.enabled} onChange={(on) => void toggle(on)} />
       </Card>
       <Section>
-        <Row title={t('automations.scheduleLabel')} value={scheduleLabel(task.schedule)} icon="clock" />
+        <Row title={t('automations.scheduleLabel')} value={scheduleLabel(task.schedule, task.timezone)} icon="clock" />
         {task.enabled && next ? (
           <Row title={t('automations.nextRunLabel')} value={next} icon="hourglass" iconTint={c.blueTile} />
         ) : !task.enabled ? (

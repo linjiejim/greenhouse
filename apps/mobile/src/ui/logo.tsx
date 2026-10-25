@@ -1,7 +1,7 @@
 /**
  * The Greenhouse mark, Haven: a rounded greenhouse with an arch cut out of its centre and a seed
- * growing in it (logos/README.md). The body takes the palette's `mark` (forest, pale green in dark
- * mode), the seed keeps its own colour. Geometry comes from ./brand.generated.ts, a generated copy
+ * growing in it (logos/README.md). The body takes the palette's `mark` (forest, pale sage in dark
+ * mode), the seed its `seed` lime (both from the shared tokens). Geometry comes from ./brand.generated.ts, a generated copy
  * of packages/ui/src/assets/greenhouse-mark.svg on main; never hand-copy the paths. With `animate`,
  * the two sides close in and then the seed grows (static at once with Reduce Motion); `onBuilt`
  * fires when the mark is whole.
@@ -80,7 +80,7 @@ export function GreenhouseMark({
   }, [animate, progress]);
 
   const body = color ?? hex.mark;
-  const seed = color ?? SEED.fill;
+  const seed = color ?? hex.seed;
   const still = !animate || motionFinished;
   return (
     <View style={{ width: size, height: size }} accessible accessibilityLabel="Greenhouse">

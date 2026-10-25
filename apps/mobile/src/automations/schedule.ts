@@ -107,3 +107,14 @@ export function describeSchedule(cron: string, words: ScheduleWords): string {
   }
   return raw;
 }
+
+/**
+ * The place a schedule's clock belongs to, when it is not the phone's own: "Los Angeles" for
+ * `America/Los_Angeles`. '' when the zones match (or either is unknown), so the time reads as local.
+ */
+export function zonePlace(timeZone: string | null | undefined, deviceZone: string | null | undefined): string {
+  if (!timeZone || !deviceZone || timeZone === deviceZone) return '';
+  if (timeZone === 'UTC' || timeZone === 'Etc/UTC') return 'UTC';
+  const place = timeZone.split('/').pop() ?? timeZone;
+  return place.replace(/_/g, ' ');
+}
