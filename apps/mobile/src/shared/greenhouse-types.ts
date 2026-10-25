@@ -128,15 +128,6 @@ export interface KbSearchHit {
   scope: 'team' | 'personal' | 'shared';
 }
 
-export interface KbComment {
-  id: string;
-  author_user_id: string;
-  author_nickname: string;
-  content: string;
-  created_at: string;
-  can_delete: boolean;
-}
-
 // ─── drive: the knowledge cabinet (/api/drive, scope kb) ────────────
 
 export interface DriveFolder {

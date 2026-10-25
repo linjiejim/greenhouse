@@ -101,11 +101,6 @@ export const zh: Catalog = {
     notFound: '这篇文档不可用',
     savedCopy: '离线中——显示的是这台手机上保存的副本。',
     updated: '更新于 {when}',
-    comments: '评论（{n}）',
-    addComment: '添加评论',
-    commentPlaceholder: '你的评论',
-    commentFailed: '评论没有发出去',
-    commentAdded: '已添加评论',
   },
   files: {
     shelf: { team: '团队', personal: '我的' },

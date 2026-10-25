@@ -3,24 +3,20 @@
  * phone has one (offline reading), the server's version replaces it and is saved again
  * (src/store/knowledge.ts); a document that is gone or no longer readable (403 / 404) loses its
  * copy at once — only an unreachable station falls back to it (src/data/recent-docs.ts `docMiss`).
- * Below it, the comments, and a toolbar button to add one.
  */
 
-import React, { useCallback, useEffect, useState } from 'react';
-import { ScrollView, Text, View } from 'react-native';
-import { addComment, getDoc, getDocBySlug, listComments } from '../api/knowledge';
+import React, { useEffect, useState } from 'react';
+import { ScrollView, Text } from 'react-native';
+import { getDoc, getDocBySlug } from '../api/knowledge';
 import { captureIdentity } from '../data/identity';
 import { docMiss, type SavedDoc } from '../data/recent-docs';
 import { useT } from '../lib/i18n';
 import { relativeTimeNow } from '../lib/time-words';
 import { Markdown } from '../markdown';
-import type { KbComment, KbDoc } from '../shared/greenhouse-types';
+import type { KbDoc } from '../shared/greenhouse-types';
 import { forgetDoc, rememberDoc, savedDoc } from '../store/knowledge';
-import { makeStyles, radius, space, squircle, typo, useTheme, weight } from '../theme';
-import { alertError, promptText } from '../ui/dialogs';
+import { makeStyles, space, typo, useTheme } from '../theme';
 import { EmptyState, LoadingState } from '../ui/empty';
-import { notifySuccess } from '../ui/haptics';
-import { toast } from '../ui/toast';
 import { SheetScreen } from '../ui/screen';
 
 type Shown = Pick<KbDoc, 'id' | 'title' | 'content_markdown' | 'updated_at'>;
@@ -37,7 +33,6 @@ export function DocView({ id: given, slug }: { id: string | null; slug?: string 
   const [offline, setOffline] = useState(false);
   const [missing, setMissing] = useState(false);
   const [failed, setFailed] = useState(false);
-  const [comments, setComments] = useState<KbComment[] | null>(null);
   const [attempt, setAttempt] = useState(0);
   const [found, setFound] = useState<string | null>(null);
   const id = given ?? found;
@@ -103,29 +98,10 @@ export function DocView({ id: given, slug }: { id: string | null; slug?: string 
       setOffline(false);
       setFailed(true);
     });
-    void listComments(id).then((result) => {
-      if (alive && current() && result.ok) setComments(result.data.comments);
-    });
     return () => {
       alive = false;
     };
   }, [id, attempt]);
-
-  const comment = useCallback(async () => {
-    if (id == null) return;
-    const text = await promptText({ title: t('knowledge.addComment'), placeholder: t('knowledge.commentPlaceholder') });
-    if (!text) return;
-    const current = captureIdentity();
-    const result = await addComment(id, text.slice(0, 5000));
-    if (!current()) return;
-    if (!result.ok) {
-      alertError(t('knowledge.commentFailed'), result.message || undefined);
-      return;
-    }
-    notifySuccess();
-    setComments((list) => [...(list ?? []), result.data.comment]);
-    toast(t('knowledge.commentAdded'), 'check');
-  }, [id, t]);
 
   if ((id == null && !slug) || missing) {
     return (
@@ -140,10 +116,7 @@ export function DocView({ id: given, slug }: { id: string | null; slug?: string 
 
   return (
     <>
-      <SheetScreen
-        title={doc?.title ?? ''}
-        actions={doc && !offline ? [{ icon: 'comment', label: t('knowledge.addComment'), onPress: () => void comment() }] : []}
-      />
+      <SheetScreen title={doc?.title ?? ''} />
       <ScrollView style={styles.root} contentInsetAdjustmentBehavior="automatic" contentContainerStyle={styles.content}>
         {!doc ? (
           failed ? (
@@ -164,21 +137,6 @@ export function DocView({ id: given, slug }: { id: string | null; slug?: string 
             </Text>
             <Text style={styles.meta}>{t('knowledge.updated', { when: relativeTimeNow(doc.updated_at) })}</Text>
             <Markdown source={doc.content_markdown} />
-            {comments && comments.length ? (
-              <View style={styles.comments}>
-                <Text style={styles.commentsTitle} accessibilityRole="header">
-                  {t('knowledge.comments', { n: comments.length })}
-                </Text>
-                {comments.map((entry) => (
-                  <View key={entry.id} style={styles.comment}>
-                    <Text style={styles.commentMeta}>
-                      {entry.author_nickname} · {relativeTimeNow(entry.created_at)}
-                    </Text>
-                    <Markdown source={entry.content} />
-                  </View>
-                ))}
-              </View>
-            ) : null}
           </>
         )}
       </ScrollView>
@@ -194,13 +152,4 @@ const useStyles = makeStyles((c) => ({
   offline: { ...typo.footnote, color: c.secondaryLabel, marginTop: space.md },
   title: { ...typo.title1, color: c.label, marginTop: space.md },
   meta: { ...typo.footnote, color: c.secondaryLabel, marginTop: space.xs, marginBottom: space.md },
-  comments: { marginTop: space.xxl, gap: space.md },
-  commentsTitle: { ...typo.headline, fontWeight: weight.semibold, color: c.label },
-  comment: {
-    padding: space.md,
-    borderRadius: radius.md,
-    backgroundColor: c.secondaryBackground,
-    ...squircle,
-  },
-  commentMeta: { ...typo.footnote, color: c.secondaryLabel, marginBottom: space.xs },
 }));

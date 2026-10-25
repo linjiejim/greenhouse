@@ -1,10 +1,10 @@
 /**
  * The knowledge base (`/api/knowledge`, apps/api/src/routes/knowledge.ts): documents of the team
- * shelf and my own (plus those shared with me), their folders (drive scope `kb`), search, one
- * document by id, and its comments. Every call answers an `ApiResult`, never throws.
+ * shelf and my own (plus those shared with me), their folders (drive scope `kb`), search and one
+ * document by id. Every call answers an `ApiResult`, never throws.
  */
 
-import type { DriveFolder, KbComment, KbDoc, KbSearchHit } from '../shared/greenhouse-types';
+import type { DriveFolder, KbDoc, KbSearchHit } from '../shared/greenhouse-types';
 import { collectPages } from '../data/paging';
 import { del, get, post, put, seg, type ApiResult } from './client';
 
@@ -43,12 +43,6 @@ export const getDocBySlug = (slug: string) => get<{ doc: KbDoc }>(`/api/knowledg
 
 export const searchDocs = (q: string) =>
   get<{ results: KbSearchHit[]; query: string }>('/api/knowledge/search', { q, scope: 'all', limit: 30 });
-
-export const listComments = (docId: string) =>
-  get<{ comments: KbComment[] }>(`/api/knowledge/docs/${seg(String(docId))}/comments`);
-
-export const addComment = (docId: string, content: string) =>
-  post<{ comment: KbComment }>(`/api/knowledge/docs/${seg(String(docId))}/comments`, { content });
 
 /** A new document on a shelf, in a folder or at the top. */
 export const createDoc = (input: { title: string; content: string; shelf: KbShelf; folderId: string | null }) =>

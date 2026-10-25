@@ -107,11 +107,6 @@ export const en = {
     notFound: 'This document isn’t available',
     savedCopy: 'Offline — showing the copy saved on this phone.',
     updated: 'Updated {when}',
-    comments: 'Comments ({n})',
-    addComment: 'Add Comment',
-    commentPlaceholder: 'Your comment',
-    commentFailed: 'Couldn’t add the comment',
-    commentAdded: 'Comment added',
   },
   files: {
     shelf: { team: 'Team', personal: 'Mine' },
