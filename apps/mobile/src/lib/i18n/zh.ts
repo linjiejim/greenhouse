@@ -67,6 +67,7 @@ export const zh: Catalog = {
     switchFailed: '无法切换工作站',
     timeout: '工作站 10 秒内未响应。请重试或选择其他工作站，已保存的登录信息会保留。',
     connectionFailed: '无法连接工作站，请重试或选择其他工作站。',
+    manage: '管理工作站…',
   },
   mismatch: {
     unsupportedTitle: '这个 App 不支持该服务器',
