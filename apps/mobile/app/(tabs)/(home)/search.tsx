@@ -1,5 +1,5 @@
 /**
- * 搜索 — the system search tab (iOS 26 puts its field in the tab bar): one query across
+ * 搜索 — pushed from home's search button (the bar's magnifier), the field focused: one query across
  * conversations, documents, projects (the station's search), 云盘 files and my tasks (kept on
  * the phone, so they are found offline too). Rules in src/data/search.ts. A hit opens as its
  * sheet, a conversation as its page.
@@ -86,6 +86,11 @@ export default function Search() {
       <Stack.Screen options={{ title: t('common.search') }} />
       <Stack.SearchBar
         placeholder={t('search.placeholder')}
+        // searches match words as typed: no automatic capital ("launch" stays "launch")
+        autoCapitalize="none"
+        autoFocus
+        placement="stacked"
+        hideWhenScrolling={false}
         onChangeText={(event) => setQuery(event.nativeEvent.text)}
         onCancelButtonPress={() => setQuery('')}
       />

@@ -2,7 +2,7 @@
 
 ## Scope
 
-- The app is the team's Agent hub on the phone: 首页 (greeting, recent conversations, a composer), 知识库, 云盘 (with Tables), 项目, the search tab, the conversation page, 通知 and 「我」 (account, station, text size, My Agents, settings). It is not a web wrapper and not an agent console.
+- The app is the team's Agent hub on the phone: 首页 (greeting, recent conversations, a composer; search and the bell in its bar), 知识库, 云盘 (with Tables), 项目, search, the conversation page, 通知 and 「我」 (account, station, text size, My Agents, settings). It is not a web wrapper and not an agent console.
 - The root is NativeTabs (app/(tabs)/_layout.tsx); Tables is a segment of 云盘 only with the `tables` feature (src/shell/modules.ts `hasTables`, supers always). There are no placeholder screens.
 - Page, sheet, type, color and state rules live in DESIGN.md; read it before adding a screen.
 - Experience bar: content within 1.5 s of a cold start (cache first, refresh in background), 60 fps lists, haptics and optimistic updates, offline reading of recent items, dark mode, Dynamic Type, VoiceOver.

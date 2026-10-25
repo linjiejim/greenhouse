@@ -1,8 +1,8 @@
 /**
  * 首页 — where a conversation starts:
  *
- *  - the bar: my avatar (→ 「我」 sheet: account, station, text size, my agents, settings) and
- *    the bell with the unread count (→ the notifications sheet);
+ *  - the bar: 「我」 (→ the sheet: account, station, text size, my agents, settings) on the left;
+ *    search (→ the search page) and the bell with the unread count (→ notifications) on the right;
  *  - the assistant's sprout (tap: it waves) and a greeting; a quiet line when something waits
  *    for me;
  *  - my five latest conversations, one line each, pinned first (swipe to pin), and 全部 (→ the
@@ -35,7 +35,7 @@ import { useNotifications } from '../../../src/store/notifications';
 import { queueTurn } from '../../../src/store/outbox';
 import { useSessions } from '../../../src/store/sessions';
 import { HIT, makeStyles, space, typo, useTheme, weight } from '../../../src/theme';
-import { AssistantAvatar, Avatar } from '../../../src/ui/avatar';
+import { AssistantAvatar } from '../../../src/ui/avatar';
 import { Icon, Touchable } from '../../../src/ui/core';
 import { alertError, promptText } from '../../../src/ui/dialogs';
 import { EmptyState } from '../../../src/ui/empty';
@@ -142,13 +142,10 @@ function Home() {
     <View style={styles.root}>
       <Stack.Screen options={{ title: '', headerLargeTitleEnabled: false }} />
       <Stack.Toolbar placement="left">
-        <Stack.Toolbar.View hidesSharedBackground>
-          <Touchable onPress={() => router.push('/me')} accessibilityRole="button" accessibilityLabel={t('me.title')} style={styles.me}>
-            <Avatar name={name || '?'} size={34} />
-          </Touchable>
-        </Stack.Toolbar.View>
+        <Stack.Toolbar.Button icon={toolbarIcon('person')} accessibilityLabel={t('me.title')} onPress={() => router.push('/me')} />
       </Stack.Toolbar>
       <Stack.Toolbar placement="right">
+        <Stack.Toolbar.Button icon={toolbarIcon('search')} accessibilityLabel={t('common.search')} onPress={() => router.push('/search')} />
         <Stack.Toolbar.Button
           icon={toolbarIcon('bell')}
           accessibilityLabel={unread > 0 ? t('home.notificationsUnread', { n: unread }) : t('notifications.title')}
@@ -232,7 +229,6 @@ function Home() {
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.groupedBackground },
   content: { paddingTop: space.md },
-  me: { width: HIT, height: HIT, alignItems: 'center', justifyContent: 'center' },
   hero: { alignSelf: 'flex-start', marginHorizontal: space.margin + space.xs, marginBottom: space.md },
   greeting: { ...typo.title1, color: c.label, marginHorizontal: space.margin + space.xs },
   waiting: {

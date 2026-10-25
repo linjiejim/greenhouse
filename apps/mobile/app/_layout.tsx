@@ -3,7 +3,7 @@ import { clearHandoffs } from '../src/lib/handoff';
  * Root layout — bootstraps auth + prefs, applies the appearance, gates routes, and declares the
  * app's native navigation map:
  *
- *  - `(tabs)`            the system tab bar: 首页 · 知识库 · 云盘 · 项目 and the search tab
+ *  - `(tabs)`            the system tab bar: 首页 · 知识库 · 云盘 · 项目 (search opens from home)
  *                        (a sidebar on iPad); each tab has its own stack
  *  - `chat`              one conversation, a full pushed page (the only object that is not a sheet)
  *  - `sheet/*`           every other object, opened by openObject (src/shell/open-object.ts) as a

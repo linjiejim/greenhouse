@@ -2,7 +2,7 @@
 
 ## Structure
 
-- The root is the system tab bar: 首页 · 知识库 · 云盘 · 项目 and the search tab; each tab has its own native stack.
+- The root is the system tab bar: 首页 · 知识库 · 云盘 · 项目; each tab has its own native stack. Search is a bar button on home that pushes the search page.
 - A conversation is the only full pushed page; every other object opens through openObject (src/shell/open-object.ts) as a form sheet.
 - Sheets stack on sheets up to three; the fourth replaces the top one. ✕ closes only the sheet it sits on.
 - Documents, files, folders and projects open full height; tasks, records, notifications, runs and writes open at 0.6 and grow.
