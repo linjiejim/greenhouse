@@ -20,6 +20,18 @@ import {
 } from '../../apps/api/src/auth/crypto.js';
 
 describe('Auth Crypto (Provider Tokens)', () => {
+  it('binds a ciphertext to its AAD and still reads values sealed without one', () => {
+    const sealed = encryptToken('member-key', 'mcp:mcc_1:usr_1:credential');
+    expect(decryptToken(sealed, 'mcp:mcc_1:usr_1:credential')).toBe('member-key');
+    // Copied into another member's row, or read without the binding, it fails.
+    expect(() => decryptToken(sealed, 'mcp:mcc_1:usr_2:credential')).toThrow();
+    expect(() => decryptToken(sealed)).toThrow();
+    // Older rows were sealed without AAD and keep decrypting the old way.
+    const legacy = encryptToken('old-secret');
+    expect(decryptToken(legacy)).toBe('old-secret');
+    expect(() => decryptToken(legacy, 'mcp:mcc_1:shared')).toThrow();
+  });
+
   it('encrypts and decrypts a string round-trip', () => {
     const plaintext = 'sk-abc123-secret-token-value';
     const encrypted = encryptToken(plaintext);

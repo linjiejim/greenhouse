@@ -553,6 +553,7 @@ export default {
         subagent: 'Subagent (retired)',
         eval: 'Eval (retired)',
         agent_write: 'Agent write',
+        connector_write: 'Connector write',
       },
       runtimeStatus: {
         queued: 'Queued',
@@ -2861,6 +2862,7 @@ export default {
       eval: 'Eval (retired)',
       chat: 'Chat',
       agent_write: 'Agent write',
+      connector_write: 'Connector write',
     },
     axis: {
       lifecycle: 'Run',

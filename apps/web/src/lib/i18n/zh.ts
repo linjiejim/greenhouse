@@ -556,6 +556,7 @@ const zh: Messages = {
         subagent: 'Subagent（已下线）',
         eval: 'Eval（已下线）',
         agent_write: 'Agent 写入',
+        connector_write: '连接器写入',
       },
       runtimeStatus: {
         queued: '排队中',
@@ -2800,6 +2801,7 @@ const zh: Messages = {
       eval: '评测（已下线）',
       chat: '对话',
       agent_write: 'Agent 写入',
+      connector_write: '连接器写入',
     },
     axis: {
       lifecycle: '运行状态',

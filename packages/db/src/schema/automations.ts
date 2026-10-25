@@ -5,7 +5,7 @@
  */
 
 import { boolean, index, integer, pgTable, text, unique } from 'drizzle-orm/pg-core';
-import { at, createdAt, id, json, oneOf, updatedAt } from './_columns.js';
+import { at, createdAt, id, json, jsonOrNull, oneOf, updatedAt } from './_columns.js';
 import { users } from './identity.js';
 
 /** Where an automation reports a finished run. `webhook` null = no webhook. */
@@ -98,6 +98,8 @@ export const runProfiles = pgTable(
     base_profile_id: text('base_profile_id').notNull().default('team'),
     model_id: text('model_id'),
     tools: json<string[]>('tools', []),
+    /** MCP connector ids this Agent may reach; null = every connector its user may use (only narrows). */
+    connectors: jsonOrNull<string[]>('connectors'),
     system_prompt: text('system_prompt').notNull(),
     max_steps: integer('max_steps').notNull().default(12),
     is_shared: boolean('is_shared').notNull().default(false),

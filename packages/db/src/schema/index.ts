@@ -25,3 +25,4 @@ export * from './skills.js';
 export * from './prompts.js';
 export * from './memories.js';
 export * from './workspace.js';
+export * from './connectors.js';

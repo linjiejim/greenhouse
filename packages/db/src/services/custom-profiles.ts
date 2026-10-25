@@ -42,6 +42,8 @@ export interface CustomProfileInput extends CustomProfileGovernanceInput {
   /** Registry model id this agent runs on (omit to inherit the base preset). */
   model_id?: string | null;
   tools: string[];
+  /** MCP connector ids this Agent may reach; null / omitted = all the user may use. */
+  connectors?: string[] | null;
   system_prompt: string;
   max_steps?: number;
   /** Ignored: a new Agent is always private; a super shares it with `setShared`. */
@@ -55,6 +57,7 @@ export interface CustomProfileUpdateInput extends CustomProfileGovernanceInput {
   base_profile_id?: string;
   model_id?: string | null;
   tools?: string[];
+  connectors?: string[] | null;
   system_prompt?: string;
   max_steps?: number;
   avatar?: Record<string, unknown>;
@@ -77,6 +80,8 @@ export interface CustomProfileVersionRow {
   base_profile_id: string;
   model_id: string | null;
   tools: string[];
+  /** Null = every connector the user may use. */
+  connectors: string[] | null;
   system_prompt: string;
   max_steps: number;
   avatar: Record<string, unknown>;
@@ -111,6 +116,8 @@ function versionOf(row: CustomProfileRow, version = row.version): CustomProfileV
     base_profile_id: row.base_profile_id,
     model_id: row.model_id,
     tools: row.tools ?? [],
+    // Left out of the hash while unset, so adding the column kept every existing hash.
+    connectors: row.connectors ?? undefined,
     system_prompt: row.system_prompt,
     max_steps: row.max_steps,
     avatar: row.avatar ?? {},
@@ -127,6 +134,7 @@ function versionOf(row: CustomProfileRow, version = row.version): CustomProfileV
     manifest_hash: createHash('sha256').update(canonical(manifest)).digest('hex'),
     change_log: '',
     ...manifest,
+    connectors: row.connectors ?? null,
     created_by: row.user_id,
     created_at: row.updated_at,
   };
@@ -148,6 +156,7 @@ export function createCustomProfileService(db: Db) {
           base_profile_id: input.base_profile_id ?? 'team',
           model_id: input.model_id ?? null,
           tools: input.tools,
+          connectors: input.connectors ?? null,
           system_prompt: input.system_prompt,
           max_steps: input.max_steps ?? 12,
           // Private until a super makes it available to the team.
@@ -218,6 +227,7 @@ export function createCustomProfileService(db: Db) {
       if (updates.base_profile_id !== undefined) set.base_profile_id = updates.base_profile_id;
       if (updates.model_id !== undefined) set.model_id = updates.model_id;
       if (updates.tools !== undefined) set.tools = updates.tools;
+      if (updates.connectors !== undefined) set.connectors = updates.connectors;
       if (updates.system_prompt !== undefined) set.system_prompt = updates.system_prompt;
       if (updates.max_steps !== undefined) set.max_steps = updates.max_steps;
       if (updates.avatar !== undefined) set.avatar = updates.avatar;

@@ -12,7 +12,8 @@ export function isExecutionRouteKind(value: unknown): value is ExecutionRouteKin
     value === 'automation' ||
     value === 'subagent' ||
     value === 'eval' ||
-    value === 'agent_write'
+    value === 'agent_write' ||
+    value === 'connector_write'
   );
 }
 

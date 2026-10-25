@@ -66,13 +66,22 @@ const KIND_KEYS: Partial<Record<RuntimeRunKind, TranslationKey>> = {
   eval: 'taskCenter.kind.eval',
   chat: 'taskCenter.kind.chat',
   agent_write: 'taskCenter.kind.agent_write',
+  connector_write: 'taskCenter.kind.connector_write',
 };
 
 export function RuntimeKindTag({ kind }: { kind: RuntimeRunKind }) {
   const t = useT();
   const key = KIND_KEYS[kind];
   return (
-    <Tag tone={kind === 'mission' ? 'primary' : kind === 'workflow' || kind === 'agent_write' ? 'info' : 'neutral'}>
+    <Tag
+      tone={
+        kind === 'mission'
+          ? 'primary'
+          : kind === 'workflow' || kind === 'agent_write' || kind === 'connector_write'
+            ? 'info'
+            : 'neutral'
+      }
+    >
       {key ? t(key) : kind}
     </Tag>
   );
