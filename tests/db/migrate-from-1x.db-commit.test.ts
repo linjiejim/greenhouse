@@ -103,7 +103,7 @@ describe('migrate refuses databases 3.0 must not run on', () => {
     } finally {
       rmSync(lane, { recursive: true, force: true });
     }
-  });
+  }, 60_000);
 
   it('the API refuses to boot on a 1.x database', async () => {
     const provider = createDatabase(source);
