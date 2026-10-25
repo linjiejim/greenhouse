@@ -167,14 +167,7 @@ export function AppSidebar({
 }: AppSidebarProps) {
   const t = useT();
   const { currentUser } = useAuthStore();
-  const {
-    chatWorkspaceView,
-    sidebarCollapsed,
-    sidebarWidth,
-    setChatWorkspaceView,
-    setSidebarCollapsed,
-    setSidebarWidth,
-  } = useUIStore();
+  const { sidebarCollapsed, sidebarWidth, setSidebarCollapsed, setSidebarWidth } = useUIStore();
   const { hasApplication } = usePlatformCatalog();
   const minWidth = SIDEBAR_MIN_WIDTH;
   const maxWidth = SIDEBAR_MAX_WIDTH;
@@ -266,8 +259,6 @@ export function AppSidebar({
                   extensionRoute={extensionRoute}
                   navigation={navigation}
                   route={route}
-                  chatWorkspaceView={chatWorkspaceView}
-                  onSelectChatWorkspace={setChatWorkspaceView}
                   compact
                 />
               </>
@@ -338,8 +329,6 @@ export function AppSidebar({
                 extensionRoute={extensionRoute}
                 navigation={navigation}
                 route={route}
-                chatWorkspaceView={chatWorkspaceView}
-                onSelectChatWorkspace={setChatWorkspaceView}
                 className="pb-2"
               />
 

@@ -398,7 +398,6 @@ function AppShell({ route, subPath, params, extensionRoute }: AppShellProps) {
       files: t('navigation.files'),
       skillhub: t('app.skillhub'),
       automations: t('navigation.automation'),
-      chat: t('app.chat'),
       applications: {
         knowledge: t('app.knowledge'),
         tables: t('navigation.tables'),
@@ -487,8 +486,6 @@ function AppShell({ route, subPath, params, extensionRoute }: AppShellProps) {
                     navigation={primaryNavigation}
                     route={route}
                     extensionRoute={extensionRoute}
-                    chatWorkspaceView={chatWorkspaceView}
-                    onSelectChatWorkspace={setChatWorkspaceView}
                     onNavigate={() => setNavOpen(false)}
                     morePlacement="inline"
                     className="pb-2"

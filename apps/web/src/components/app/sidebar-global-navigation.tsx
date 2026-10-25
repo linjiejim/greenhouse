@@ -2,7 +2,6 @@ import { useEffect, useRef } from 'react';
 
 import { ChevronDown, ChevronRight, MoreHorizontal } from '../../lib/icons';
 import { useT } from '../../lib/i18n';
-import type { ChatWorkspaceView } from '../../stores';
 import { activeNavigationKey, type PrimaryNavigation, type PrimaryNavigationItem } from '../../platform/navigation';
 import { useHoverFlyout } from '../../hooks/use-hover-flyout';
 import { useAuthStore } from '../../stores';
@@ -15,8 +14,6 @@ interface SidebarGlobalNavigationProps {
   extensionRoute?: string;
   navigation: PrimaryNavigation;
   route: string;
-  chatWorkspaceView: ChatWorkspaceView;
-  onSelectChatWorkspace: (view: ChatWorkspaceView) => void;
   onNavigate?: () => void;
   compact?: boolean;
   morePlacement?: 'flyout' | 'inline';
@@ -75,8 +72,6 @@ export function SidebarGlobalNavigation({
   navigation,
   route,
   extensionRoute,
-  chatWorkspaceView,
-  onSelectChatWorkspace,
   onNavigate,
   compact = false,
   morePlacement = 'flyout',
@@ -94,7 +89,7 @@ export function SidebarGlobalNavigation({
   const moreRef = useRef<HTMLDivElement>(null);
   const hoverEnabled = morePlacement === 'flyout';
   // One answer for "where am I" across the primary list and More.
-  const activeKey = activeNavigationKey(route, chatWorkspaceView);
+  const activeKey = activeNavigationKey(route);
   const overflowActive = navigation.overflow.some((item) => item.key === activeKey);
   const { currentUser } = useAuthStore();
   const activeExtensions = useExtensionsStore((s) => s.extensions);
@@ -136,10 +131,7 @@ export function SidebarGlobalNavigation({
           item={item}
           active={item.key === activeKey}
           compact={compact}
-          onNavigate={() => {
-            if (item.key === 'chat') onSelectChatWorkspace('conversation');
-            onNavigate?.();
-          }}
+          onNavigate={() => onNavigate?.()}
         />
       ))}
 

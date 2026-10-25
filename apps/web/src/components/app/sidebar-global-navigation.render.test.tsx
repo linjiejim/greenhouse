@@ -1,5 +1,5 @@
 import { renderToStaticMarkup } from 'react-dom/server';
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 
 import { MessageCircle } from '../../lib/icons';
 import { I18nProvider } from '../../lib/i18n';
@@ -8,7 +8,7 @@ import { SidebarGlobalNavigation } from './sidebar-global-navigation';
 
 const navigation: PrimaryNavigation = {
   primary: [
-    { key: 'chat', label: 'Chat', icon: MessageCircle, href: '#/chat' },
+    { key: 'home', label: 'Home', icon: MessageCircle, href: '#/home' },
     { key: 'knowledge', label: 'Knowledge', icon: MessageCircle, href: '#/knowledge' },
     { key: 'projects', label: 'Projects', icon: MessageCircle, href: '#/projects' },
     { key: 'crm', label: 'CRM', icon: MessageCircle, href: '#/crm' },
@@ -19,16 +19,10 @@ const navigation: PrimaryNavigation = {
   ],
 };
 
-function render(route = 'chat') {
+function render(route = 'home') {
   return renderToStaticMarkup(
     <I18nProvider initialLocale="en">
-      <SidebarGlobalNavigation
-        navigation={navigation}
-        route={route}
-        chatWorkspaceView="conversation"
-        onSelectChatWorkspace={vi.fn()}
-        defaultMoreOpen
-      />
+      <SidebarGlobalNavigation navigation={navigation} route={route} defaultMoreOpen />
     </I18nProvider>,
   );
 }
@@ -37,13 +31,13 @@ describe('SidebarGlobalNavigation', () => {
   it('keeps primary destinations visible before More', () => {
     const html = render();
 
-    expect(html.indexOf('Chat')).toBeLessThan(html.indexOf('Knowledge'));
+    expect(html.indexOf('Home')).toBeLessThan(html.indexOf('Knowledge'));
     expect(html.indexOf('Knowledge')).toBeLessThan(html.indexOf('Projects'));
     expect(html.indexOf('Projects')).toBeLessThan(html.indexOf('CRM'));
     expect(html.indexOf('CRM')).toBeLessThan(html.indexOf('More'));
     expect(html).toContain('md:min-h-8');
-    expect(html).toMatch(/href="#\/chat"[^>]*aria-current="page"[^>]*class="[^"]*sidebar-active-item/);
-    expect(html).toMatch(/href="#\/chat"[^>]*class="[^"]*sidebar-active-item/);
+    expect(html).toMatch(/href="#\/home"[^>]*aria-current="page"[^>]*class="[^"]*sidebar-active-item/);
+    expect(html).toMatch(/href="#\/home"[^>]*class="[^"]*sidebar-active-item/);
   });
 
   it('keeps only overflow applications under More — automations, prompts and run profiles live elsewhere', () => {
@@ -61,7 +55,7 @@ describe('SidebarGlobalNavigation', () => {
 
   it('lights exactly the item of the current page, and none on the Activity log', () => {
     const full: PrimaryNavigation = {
-      primary: ['home', 'knowledge', 'files', 'tables', 'projects', 'skillhub', 'automations', 'chat'].map((key) => ({
+      primary: ['home', 'knowledge', 'files', 'tables', 'projects', 'skillhub', 'automations'].map((key) => ({
         key,
         label: key,
         icon: MessageCircle,
@@ -72,12 +66,7 @@ describe('SidebarGlobalNavigation', () => {
     const markup = (route: string) =>
       renderToStaticMarkup(
         <I18nProvider initialLocale="en">
-          <SidebarGlobalNavigation
-            navigation={full}
-            route={route}
-            chatWorkspaceView="conversation"
-            onSelectChatWorkspace={vi.fn()}
-          />
+          <SidebarGlobalNavigation navigation={full} route={route} />
         </I18nProvider>,
       );
     const current = (html: string) => [...html.matchAll(/href="#\/(\w+)"[^>]*aria-current="page"/g)].map((m) => m[1]);
@@ -86,17 +75,14 @@ describe('SidebarGlobalNavigation', () => {
     // `#/agents` lands on `#/automations?tab=profiles`: the route is automations.
     expect(current(markup('automations'))).toEqual(['automations']);
     expect(current(markup('activity'))).toEqual([]);
+    // a conversation has no item of its own (New Chat is its way in)
+    expect(current(markup('chat'))).toEqual([]);
   });
 
   it('draws no More at all when nothing would be in it', () => {
     const html = renderToStaticMarkup(
       <I18nProvider initialLocale="en">
-        <SidebarGlobalNavigation
-          navigation={{ primary: navigation.primary, overflow: [] }}
-          route="chat"
-          chatWorkspaceView="conversation"
-          onSelectChatWorkspace={vi.fn()}
-        />
+        <SidebarGlobalNavigation navigation={{ primary: navigation.primary, overflow: [] }} route="chat" />
       </I18nProvider>,
     );
     expect(html).not.toContain('aria-haspopup="menu"');
