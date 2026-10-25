@@ -29,7 +29,7 @@ import { useUIStore, useAuthStore, useWsStore } from '../../../stores';
 import * as api from '../../../lib/api';
 import { runWithConcurrency } from '@greenhouse/utils/concurrency';
 import { FullHistoryModal } from '../../history-modal';
-import { useT } from '../../../lib/i18n';
+import { useT, type TranslationKey } from '../../../lib/i18n';
 import { BatchActionBar } from './batch-action-bar';
 import { pruneMissing, rangeSelect, toggleOne, type SelectableRow } from './selection';
 import type { SessionScope } from '@greenhouse/types/api';
@@ -63,11 +63,11 @@ function getDateGroup(dateStr: string): 'today' | 'yesterday' | 'this-week' | 'e
   return 'earlier';
 }
 
-const GROUP_LABELS: Record<string, string> = {
-  today: 'Today',
-  yesterday: 'Yesterday',
-  'this-week': 'This Week',
-  earlier: 'Earlier',
+const GROUP_LABELS: Record<string, TranslationKey> = {
+  today: 'common.today',
+  yesterday: 'chat.historyYesterday',
+  'this-week': 'chat.historyThisWeek',
+  earlier: 'chat.historyEarlier',
 };
 
 const GROUP_ORDER = ['today', 'yesterday', 'this-week', 'earlier'];
@@ -995,7 +995,7 @@ export function ChatHistoryPanel({ currentSessionId, onSelectSession, collapsed 
                   >
                     {isCollapsed ? <ChevronRight size={11} /> : <ChevronDown size={11} />}
                     <span className="flex-1 truncate text-left text-caption font-semibold uppercase tracking-wider">
-                      {group.label}
+                      {t(group.label as TranslationKey)}
                     </span>
                     <span className="text-caption tabular-nums">{group.sessions.length}</span>
                   </button>

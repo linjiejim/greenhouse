@@ -59,6 +59,8 @@
 - 有“图标 + 标题 + 说明 + 下一步”语义的状态统一使用 `<EmptyState>`，禁止在页面外层手写 `flex + justify-center + py-*` 复制结构。
 - `variant="section"`（默认）用于列表/搜索/主要内容区，视觉基线是 Automations；`page` 仅用于路由级 not-found/unavailable/Error Boundary；`compact` 用于 Dialog、Drawer 与密集卡片。
 - 图标必须来自 `lib/icons.ts`，`EmptyState` 不接受 string/emoji；普通为空用 `primary`，筛选/弹层用 `neutral`，没有待办/已最新用 `success`，不可用/失败用 `danger`。
+- `section` / `page` 画 Sprouty（`danger` 为 error 表情，其余为 sleep；与 iOS 的 EmptyState 一致），`compact` 仍画图标；图标参数照传。
+- 富块与对话卡（RichBlockShell、ArtifactCard：ask_user / 任务 / 表格计划）是同一张卡：`rounded-lg`、`bg-surface-card`、无灰色页眉页脚带、卡里不再套卡；stats 是一张发丝线网格（`statsLayout()` 让最后一格补满一行）。ask_user 先问题、再「单选/可多选」提示、再选项行（圆/方标记，选中=填充+描边+勾）。徽章/标签是浅填充+前景字，无描边。
 - action 是可选的唯一下一步：页头/工具栏已有常驻主操作时不要在空状态重复；只有唯一入口或返回/重试恢复动作才传 `action`。禁止 `<EmptyState />` 后另拼居中 `<Button>`。
 - 表格单元格、KPI 子卡、侧栏树、下拉项、表单“暂无可选项”保留 `—` 或一行弱提示；这些是密集占位，不扩成大块缺省态。
 - 首次加载用 Skeleton/Spinner；失败不能伪装成空数据；筛选无匹配使用 `neutral` 并告诉用户如何调整。完整决策见 [空状态收敛 spec](../../../docs/specs/20260812-empty-state-convergence.md)。
@@ -100,7 +102,7 @@
   - **图片批注（`side-pane/image-annotator.tsx`）**：lightbox 的「批注修改」→ 分栏里画圈/框/箭头/自由笔/文字 → 合成 PNG 上传 → 经 `lib/composer-draft.ts` 把**双图 + 可编辑文案**填进 composer（原图在前作底、批注图在后作空间参考；只传批注图会把红圈烤进结果）。三条约束：**坐标全存图片自身像素**（overlay 按 pane 宽显示、导出按原分辨率，存屏幕坐标必错位）；**换算按 `object-contain` 的适配尺寸**而不是元素尺寸（否则整体偏移一个留白带的距离）；**`setPointerCapture` 必须 try/catch**（pointer 失效时它抛 `NotFoundError`，而它在 `pointerdown` 头部，异常会让整笔画根本不开始）。草稿**只填不发**——画错一个圈不该等于一次真金白银的生图。见 [spec](../../../docs/specs/20260808-image-annotation-editing.md)
   - **对话式编辑的实时刷新走 `lib/entity-sync.ts`**：SessionManager 在 `project_mutation`/`knowledge_mutation`/… 的 tool result 到达时按**域**广播（不是记录 id——mutation 工具不上报改了哪一行，在这里编一个 id 等于在最该刷新的时候静默失效），分栏把它折进 `bodyKey` 触发重挂载重取。形状抄 `onWorkbenchChanged`。
 - **实体 peek（`components/entity-peek/`）**：右侧 Drawer + 栈（`stores/entity-peek-store.ts`），直接复用既有详情组件（Projects + KB 适配器），**不用 iframe**。URL 不变、不进浏览器历史——peek 是「看一眼」，要固定地址就按头部的「在完整页面打开」。详情组件里两处只在整页成立的行为（返回列表按钮、跨记录 `window.location.hash` 跳转）经 `useInEntityPeek()` / `useEntityNavigate()` 分流：在 peek 里前者隐藏、后者压栈。新增可 peek 的实体 = 在 `@greenhouse/types/entity-links` 加 kind + 在 `entity-peek/registry.tsx` 加一行，别在调用侧写 if。方案见 [spec](../../../docs/specs/20260804-entity-references-and-peek.md)。
-- 两套 prose 的正文继承全站 `Nunito Sans`，标题沿用全局 display family，颜色只用语义 token：正文常规字重、强调/标题最高 `font-semibold`；`prose-base` 用文档级层级与宽松行距，`prose-compact` 保持 `text-sm` 与紧凑节奏。Markdown 表格必须保留原生 table layout，由 `.md-table-shell > .md-table-scroll` 负责工具栏与横向滚动，禁止再给 `<table>` 本身加 `display:block`；工具栏的 CSV 导出、全屏与复制统一为 icon-only + tooltip，复制为可直接粘贴到 Sheets/Excel 的 TSV。CSV/TSV 都收敛在共享 `lib/csv-export.ts`，不得各写一套表格序列化。
+- 两套 prose 都用 Nunito，颜色只用语义 token：正文常规字重、强调/标题最高 `font-semibold`；`prose-base`（文档、用户气泡）与对话里的 `.chat-reading .prose-compact` 是 16/26 主文字色的阅读字号，其余 `prose-compact`（任务描述、卡片）保持 `text-sm` 紧凑节奏。Markdown 表格必须保留原生 table layout，由 `.md-table-shell > .md-table-scroll` 负责工具栏与横向滚动，禁止再给 `<table>` 本身加 `display:block`；工具栏的 CSV 导出、全屏与复制统一为 icon-only + tooltip，复制为可直接粘贴到 Sheets/Excel 的 TSV。CSV/TSV 都收敛在共享 `lib/csv-export.ts`，不得各写一套表格序列化。
 - **图片**：任何 prose 里的 `<img>` 点击都开 lightbox（`markdown.tsx` 上的委托点击，故 CSS 给了 `cursor: zoom-in`）。`compact` 时额外跑 `groupImageRuns()`：连续的「只含图片的段落」合并成一个 `div.md-image-row` flex 行，缩略图**固定 260px 宽**——1:1 的生成图原来会撑满整条消息列。marked 开了 `breaks: true`，所以「空行分隔」得到多个 `<p>`、「单换行分隔」得到一个带 `<br>` 的 `<p>`，两种都要归并（否则 DOM 形状取决于作者怎么敲空行）。**只在 compact 生效**，文档页要的是全宽阅读尺寸；CSS 也必须整段挂在 `.prose-compact` 下。
 - `generate_image` 进入 calling 且尚无 output 时，`BodyArtifacts` 立即渲染与最终缩略图同宽的 1:1 Skeleton；成功后原位换成图片，失败仍回到工具轨迹展示错误。不要用只有文字/Spinner 的等待态——高耗时生图需要稳定占住最终布局。
 - ⚠️ 宽度上限必须挂在 **`.prose-compact img` 自己**身上，不能只挂在 `.md-image-row` 上：流式过程中 `breaks: true` 会把 `![img](url)\n**文字**` 先解析成**一个**段落（img + `<br>` + 文字），要等第二个换行到达才拆开——那一刻它不是「只含图片的段落」，进不了 image-row。宽度若只由行容器给，图片会先按 `max-w-full` 撑到 ~890px 再跳回 260px，每次生图都闪一下（20260728 实测复现）。行容器现在只管布局。
@@ -254,8 +256,9 @@ stores/
 
 ### 样式规范
 - **Tailwind v4（编译模式）**——CSS 入口：`app.css`（由 `app.tsx` import），经 `@tailwindcss/vite` 插件构建，打进 `public/assets/index-*.css`
+- **Token 唯一来源**：`packages/ui/src/tokens/tokens.ts`（颜色角色、绿色色阶、categorical、type、radius、shadow、motion）。`pnpm tokens:build` 生成 `packages/ui/src/tokens/tokens.css`（app.css import 的 `--t-*` / `--primary-*` / `--gh-*` 与 Tailwind `@theme`）和移动端 `apps/mobile/src/theme/tokens.generated.ts`；`tokens.test.ts`（生成物过期 / 对比度）与 `platform-parity.test.ts`（web 与 mobile 同一角色同值、app.css 不得自定义 token 值）把关。**不要在 app.css 或 JS 里写 token 值**；`lib/theme.ts` 只切 `.dark-theme` 并写入 Branding Studio 覆盖。
 - **语义化颜色 token**——使用自动适配明暗主题的语义 class：
-  - 表面：`bg-surface-canvas`（页面/阅读画布）、`bg-surface-chrome`（侧栏与 Composer）、`bg-surface-card`（数据卡片）、`bg-surface-raised`（输入框/顶栏/弹窗）、`bg-surface-muted`（高亮区域）、`bg-surface-sunken`（内嵌低层区域）。Light 下页面必须是白色，卡片用轻微浅绿，侧栏使用更明显的浅绿 chrome；禁止再把 `surface-sunken` 当整页底色
+  - 表面：`bg-surface-canvas`（页面/阅读画布）、`bg-surface-chrome`（侧栏、品牌画布）、`bg-surface-card`（数据卡片、富块）、`bg-surface-raised`（输入框/Composer/顶栏/弹窗）、`bg-surface-muted`（hover/高亮区域）、`bg-surface-sunken`（内嵌低层区域）。Light 下页面是白色，其余为带一点 Haven 绿的中性色；Dark 是中性炭灰层（#111113 / #1C1C1E / #242426），用表面层级而不是阴影表达高度；禁止再把 `surface-sunken` 当整页底色
   - 文字：`text-fg`（主要）、`text-fg-secondary`（正文）、`text-fg-muted`（标签）、`text-fg-faint`（提示）
   - 边框：`border-edge`（普通）、`border-edge-strong`（输入框）、`divide-edge`
   - 状态：`text-danger`/`bg-danger-subtle`、`text-success`/`bg-success-subtle`、`text-warning`/`bg-warning-subtle`、`text-info`/`bg-info-subtle`
@@ -263,9 +266,9 @@ stores/
   - 星级评分：`text-star`/`text-star-hover`——禁止直接用 `text-amber-*`
   - **禁止使用 `bg-white`、`text-gray-*`、`border-gray-*`、`bg-gray-*`、`bg-red-*`、`text-red-*`**——始终用上述语义 token
   - 开关/Toggle 圆点用 `bg-surface-raised` 替代 `bg-white`
-- 主色：基于 CSS 变量的 `primary-*` 品牌色板（如 `primary-500`、`primary-600`）
-  - 主题定义在 `lib/theme.ts`，通过 CSS 自定义属性应用；固定锚点为品牌绿 `#2E8B3D`、深绿 `#1F6B34`、青柠 `#8CC63F`
-  - **禁止硬编码颜色名**（如 `teal-500`、`emerald-500`）——始终用 `primary-*` 或语义 token（`text-success`、`bg-success-subtle`）
+- 主色：Haven 森林绿 `#235D4D`（Light）/ 淡鼠尾草 `#B1D2BF`（Dark）。实心主操作与指示用 `bg-accent text-on-accent hover:bg-accent-hover`、`border-accent`、`text-accent`（随明暗切换）；`primary-*` 色阶（600 = Light 主色，300 = Dark 主色）只用于不随模式变化的装饰，**不要再用 `bg-primary-500/600` 当按钮底色**（Dark 下是深绿压炭灰）。种子青柠 `#B6CA68` 只做点缀，永不做文字色。品牌渐变已移除
+  - 用户选择的颜色（项目色等）一律经 `lib/categorical.ts` 映射为 categorical 色（`text-cat-*` / `bg-cat-*-fill` / `var(--t-cat-*)`），不直接画存储的饱和 hex
+  - **禁止硬编码颜色名**（如 `teal-500`、`emerald-500`、`purple-50`）——始终用语义 token、`accent` 或 `cat-*`；暗色补丁规则已全部删除，没有兜底
   - 用户主题偏好为 `Follow System` / `Light` / `Dark`；`Follow System` 只动态解析到既有 Light/Dark，不是第三套皮肤。两种实际模式共享同一品牌主色，只切换 surface/text/edge/status 语义 token。新增皮肤或换品牌主色前必须先更新品牌规范，不得恢复多皮肤选择器
 - **选中态分两种形状，别混用**——判据是「这个元素本来有没有边界」：
   - **行状**（侧栏导航、`More` 悬浮项、Chat 历史行、下拉菜单项）= **只有底色**。用 `.sidebar-active-item`（底色 + `primary-fg-strong` + 字重 + `aria-current`），**不加内描边、不加左侧竖条**。一行横跨整个容器、左右没有可比对象，底色本身就没有歧义；再叠描边会让导航读成一个被框起来的控件。
@@ -279,13 +282,13 @@ stores/
   - **选中态不能只靠颜色**：自造的 chip 组必须带 `aria-pressed`（`role="radio"` 只在真的实现了方向键 roving 时才写，否则是虚假承诺）。`Tabs` 已经是 `role="tab"` + `aria-selected`，不要重复包一层。
 - **焦点环由 `:root …:focus-visible` 统一提供**，颜色取 `--t-focus-ring`（Light `primary-600` 5.36:1 / Dark `primary-400`）。那条规则里的 `:root` 是承重的——它把特异性抬到 (0,2,1) 才压得住 Tailwind 的 `.focus\:outline-none:focus` (0,1,1)，去掉就会打平并输给后出现的规则。组件自己的 `focus:ring-primary-500/30` 在白底只有 1.47:1，只能当装饰，不要当作已经有焦点指示。
 - 暗色模式：通过 CSS 变量自动切换——不需要 `dark:` 前缀。切换主题 = 切换 `--t-*` 变量值
-- 主题过渡：bg/border/color 平滑 0.2s；`theme-loading` class 在首次渲染时抑制动画
+- 主题切换即时生效，没有全局 transition。动效只用 motion token：`--gh-duration-fast/base/slow/exit`（140/200/240/180ms）与 `ease-standard` / `ease-enter` / `ease-exit`（Tailwind 默认 transition 已是 140ms standard）；`prefers-reduced-motion` 下全部静止；骨架屏静止不闪
 - 侧栏一级导航、`More` 当前项与 Chat 历史当前会话统一使用 `.sidebar-active-item`：**主色背景 + 强前景 + 字重**，并暴露 `aria-current="page"`。禁止再加内描边或左右指示条（见上方「选中态分两种形状」）。Chat 历史的批量勾选行用更浅的 `bg-primary-subtle` 与当前会话区分，勾选语义由 checkbox 承担。
 - 动画：`animate-fade-in`、`animate-slide-up`、`animate-slide-in-left/right`、`animate-toast-in/out`、`animate-skeleton`
 - 间距：`px-3 md:px-4` 区块、`p-3` 卡片、`gap-2` flex
-- 圆角：`rounded-md` 小、`rounded-lg` 卡片、`rounded-xl` 弹窗、`rounded-full` 徽章
+- 圆角（共享刻度）：`rounded-xs` 4 复选框、`rounded-sm` 6 徽章/标签、`rounded-md` 8 按钮/输入/菜单项、`rounded-lg` 12 卡片/富块/弹出层、`rounded-xl` 16 对话框/气泡、`rounded-2xl` 20 Composer、`rounded-sheet` 24、`rounded-full` 胶囊。阴影只有两级：`shadow-sm`（control）与 `shadow-md` 及以上（floating）
 - z-index：`z-10` sticky、`z-20` dropdown、`z-40` backdrop、`z-50` modal、`z-[60]` 嵌套弹窗
-- 字号：`text-[10px]` 时间戳、`text-xs` 标签、`text-sm` 正文、`text-base` 标题、`text-lg` 大标题
+- 字号：最小 12px。`text-caption`（12/16）时间戳与徽章、`text-label`（13/18）字段标签、`text-sm` 界面正文、`text-body-lg`（16/26）阅读正文、`text-base`/`text-lg` 标题；禁止 `text-[8–11px]` 等任意小字号，`lib/type-scale-guard.test.ts` 会失败。字体为打包的 Nunito（`packages/ui/src/styles/fonts.css`），中文回退系统字体
 - 文本截断：`truncate` 旁边始终加 `title={value}`，悬停显示完整内容
 - 扁平内容布局：详情/文章类视图（如知识库文档、设置子面板）正文**直接平铺**，不套 `<Card>` 凸显；元信息（标题/标签/时间）与操作（编辑/归档/历史）放在顶栏 `border-b border-edge bg-surface-raised` 行内；侧栏目录用 `border-r border-edge` 竖线分隔，**不加** `bg-surface-raised` 背景，可折叠。只有真正的数据容器才用单层 Card。
 - 复杂内容/多步骤的新建编辑使用**整页视图**（顶栏 Back/Cancel 在左、Save 在右上角），表单字段组件抽出复用（如知识库的 `EditorInline`/`EditorView`）；列表内的常规 CRUD 仍按上方约定使用 Dialog。

@@ -262,7 +262,8 @@ greenhouse/
 │   │                     #   migrate / version detection, carry/ (migrate-from-1x), db-schema.md
 │   ├── knowledge-editor/ # Tiptap schema + server Markdown↔Tiptap JSON
 │   ├── crud/             # low-code CRUD pages (defineCrud + CrudPage); server half unused
-│   ├── ui/               # shared React UI: the plant-avatar renderer (SVG builder + motion + <PlantAvatar>)
+│   ├── ui/               # shared UI: design tokens (the one source for web + mobile), Nunito, the Haven mark,
+│   │                     #   the plant-avatar renderer (SVG builder + motion + <PlantAvatar>)
 │   └── contract/         # typed API contract — re-exports apps/api's AppType + hc (web client)
 ├── skillhub/             # skill-pack format; packs here sync into SkillHub on boot (none shipped)
 ├── drizzle/              # migration files (single source of truth): 0000_v3_baseline + later;
@@ -283,7 +284,7 @@ greenhouse/
 | `@greenhouse/utils` | `packages/utils/` | Shared helpers |
 | `@greenhouse/db` | `packages/db/` | Database layer |
 | `@greenhouse/knowledge-editor` | `packages/knowledge-editor/` | KB editor: Tiptap schema + Markdown↔Tiptap JSON. Markdown is canonical; `content_json='{}'` is legal |
-| `@greenhouse/ui` | `packages/ui/` | Plant-avatar renderer (`./components/plant-avatar`, React-free `./components/plant-avatar/svg`); ids + legacy resolver live in `@greenhouse/types` |
+| `@greenhouse/ui` | `packages/ui/` | Design tokens (`./tokens`; `pnpm tokens:build` renders the web CSS and the mobile copy), bundled Nunito, the Haven mark (`./components/brand`), the plant-avatar renderer (`./components/plant-avatar`, React-free `./components/plant-avatar/svg`); ids + legacy resolver live in `@greenhouse/types` |
 | `@greenhouse/crud` | `packages/crud/` | Low-code CRUD — `defineCrud` + `CrudPage` client (automations, email accounts, SkillHub prompts). `createCrudRoutes` is exported but only its own tests use it |
 | `@greenhouse/contract` | `packages/contract/` | Typed API contract (AppType + hc; **type-only import of `@greenhouse/api`**) |
 | `@greenhouse/api` | `apps/api/` | Backend app |

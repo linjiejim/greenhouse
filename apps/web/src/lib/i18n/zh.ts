@@ -305,6 +305,9 @@ const zh: Messages = {
     askSubmit: '提交回答',
     askChooseOne: '单选',
     askChooseAny: '可多选',
+    historyYesterday: '昨天',
+    historyThisWeek: '本周',
+    historyEarlier: '更早',
     removePrompt: '移除提示词 {title}',
     removeAgent: '移除 Agent {name}',
     agentChipTitle: 'Agent：{name}',
@@ -546,7 +549,7 @@ const zh: Messages = {
         disabled: '停用',
       },
       runtimeKind: {
-        chat: 'Chat',
+        chat: '对话',
         automation: '自动化',
         workflow: 'Workflow（已下线）',
         mission: 'Mission（已下线）',
@@ -2439,7 +2442,7 @@ const zh: Messages = {
     },
     sidebar: {
       newBase: '新建 Base',
-      bases: 'Bases',
+      bases: 'Base 列表',
       noBases: '暂无 Base',
       selectBase: '选择一个 Base 以浏览其中的数据表。',
       actionsFor: '{name} 的操作',
