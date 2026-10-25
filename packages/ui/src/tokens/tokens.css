@@ -83,6 +83,7 @@
   --t-info-fg: #2a64ad;
   --t-destructive: #c23a34;
   --t-destructive-hover: #a8302b;
+  --t-on-destructive: #ffffff;
   --t-star: #9c6100;
   --t-star-hover: #7d4e00;
   --t-accent: rgb(var(--primary-600));
@@ -156,8 +157,9 @@
   --t-info: #8cbbf5;
   --t-info-subtle: #1b2a3d;
   --t-info-fg: #8cbbf5;
-  --t-destructive: #ff8a84;
-  --t-destructive-hover: #ffa19c;
+  --t-destructive: #b8352f;
+  --t-destructive-hover: #a12e29;
+  --t-on-destructive: #ffffff;
   --t-star: #ffcb47;
   --t-star-hover: #ffd873;
   --t-accent: rgb(var(--primary-300));

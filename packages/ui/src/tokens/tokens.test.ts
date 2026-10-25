@@ -41,6 +41,8 @@ describe('token contrast', () => {
     ['faint', 'raised', 4.5],
     ['onAccent', 'accent', 4.5],
     ['onAccent', 'accentHover', 4.5],
+    ['onDanger', 'dangerSolid', 4.5],
+    ['onDanger', 'dangerSolidHover', 4.5],
     ['accentText', 'canvas', 4.5],
     ['accentText', 'chrome', 4.5],
     ['accentText', 'raised', 4.5],

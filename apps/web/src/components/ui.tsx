@@ -32,7 +32,7 @@ export function Button({ variant = 'default', size = 'md', className = '', child
       'bg-accent text-on-accent hover:bg-accent-hover disabled:bg-surface-muted disabled:text-fg-faint disabled:hover:bg-surface-muted',
     secondary: 'bg-surface-muted text-fg-secondary hover:text-fg disabled:opacity-50',
     ghost: 'text-fg-muted hover:text-fg hover:bg-surface-muted disabled:opacity-50',
-    destructive: 'bg-destructive text-white hover:bg-destructive-hover disabled:opacity-50',
+    destructive: 'bg-destructive text-on-destructive hover:bg-destructive-hover disabled:opacity-50',
     outline: 'border border-edge-strong text-fg-secondary hover:bg-surface-sunken disabled:opacity-50',
   };
   const sizes: Record<string, string> = {

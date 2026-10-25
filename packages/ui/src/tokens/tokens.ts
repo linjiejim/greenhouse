@@ -95,6 +95,10 @@ export const color = {
   danger: { light: '#C23A34', dark: '#FF8A84' },
   dangerHover: { light: '#A8302B', dark: '#FFA19C' },
   dangerFill: { light: '#FCEBE9', dark: '#43231F' },
+  // A solid delete button: the fill stays a deep red in dark mode so white words read on it.
+  dangerSolid: { light: '#C23A34', dark: '#B8352F' },
+  dangerSolidHover: { light: '#A8302B', dark: '#A12E29' },
+  onDanger: { light: '#FFFFFF', dark: '#FFFFFF' },
   info: { light: '#2A64AD', dark: '#8CBBF5' },
   infoFill: { light: '#E6EEF9', dark: '#1B2A3D' },
   star: { light: '#9C6100', dark: '#FFCB47' },

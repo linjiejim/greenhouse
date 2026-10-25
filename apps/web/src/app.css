@@ -375,6 +375,7 @@ textarea,
   /* Destructive action */
   --color-destructive: var(--t-destructive);
   --color-destructive-hover: var(--t-destructive-hover);
+  --color-on-destructive: var(--t-on-destructive);
 
   /* Star rating */
   --color-star: var(--t-star);
