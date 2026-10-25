@@ -40,6 +40,7 @@ import { registerNavigationGuard } from '../lib/navigation-guard';
 import { useT } from '../lib/i18n';
 import { timeAgo, formatDate } from '../lib/utils';
 import { isRowId } from '@greenhouse/utils/id';
+import { parseObjectUrl } from '@greenhouse/types/object-refs';
 import {
   Archive,
   ChevronDown,
@@ -74,18 +75,20 @@ import type { KnowledgeEditor as KnowledgeEditorPresence } from '@greenhouse/typ
 /**
  * Resolve the canonical `#/knowledge/doc/<id>-<slug>` deeplink: fetch by id
  * (authoritative) and redirect to the scope-specific route so a renamed slug
- * never breaks the link.
+ * never breaks the link. A segment without a leading id (`#/knowledge/doc/runbook`,
+ * as models sometimes write) is a slug and is fetched by slug; the shared parser
+ * decides which, as it does for chips and `/api/refs/resolve`.
  */
 function DocByIdRedirect({ idSlug, basePath }: { idSlug: string; basePath: string }) {
   const t = useT();
   const [error, setError] = useState(false);
   useEffect(() => {
-    const id = idSlug.split('-')[0] || '';
-    if (!isRowId(id)) {
+    const ref = parseObjectUrl(`#/knowledge/doc/${idSlug}`);
+    if (ref?.type !== 'doc') {
       setError(true);
       return;
     }
-    getKnowledgeDocById(id)
+    (ref.slug !== undefined ? getKnowledgeDoc(ref.slug) : getKnowledgeDocById(ref.id))
       .then((doc) => {
         // Raw (un-encoded) segments — the router compares/fetches on raw values,
         // matching the sidebar nav (which navigates to raw Chinese slugs).

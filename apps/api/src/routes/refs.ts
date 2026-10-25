@@ -12,8 +12,9 @@
  * - every item is authorized with the same helper its own read route uses; an object the
  *   caller may not read — or that does not exist — comes back with `title: null`, never an
  *   error, and the two cases look the same (no existence oracle);
- * - a doc may be named by id (`#/knowledge/doc/<id>-…`) or by the slug the scope routes show
- *   (`#/knowledge/internal/<space>/<slug>`); a slug link reports the doc's id only when readable;
+ * - a doc may be named by id (`#/knowledge/doc/<id>-…`) or by slug (`#/knowledge/doc/<slug>`
+ *   without an id, or the scope routes `#/knowledge/internal/<space>/<slug>`); a slug link
+ *   reports the doc's id only when readable;
  * - URLs that name no object are left out;
  * - absolute URLs count only on this workspace's own origin (request origin, `Origin`,
  *   `PUBLIC_BASE_URL`, `WEB_BASE_URL`): `#/projects/3` on another instance is another project.

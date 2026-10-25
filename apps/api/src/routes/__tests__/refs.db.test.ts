@@ -131,6 +131,63 @@ describe('POST /api/refs/resolve', () => {
     expect(theirs.body.items[2]).toEqual({ url: urls[2], type: 'doc', id: `${token}-nothing-here`, title: null });
   });
 
+  it('resolves a doc link that names a slug and no id, with the same rules', async () => {
+    const token = marker();
+    const { owner, stranger, app } = await people(token);
+    const doc = (slug: string, title: string, visibility: 'team' | 'private', status = 'published') =>
+      db.knowledgeBase.create({
+        doc_id: slug,
+        scope: 'shared',
+        title,
+        content: 'body',
+        visibility,
+        owner_user_id: owner.id,
+        status,
+        created_by: owner.id,
+        updated_by: owner.id,
+      });
+    const team = await doc(`${token}-incident-response-runbook`, `${token} Incident runbook`, 'team');
+    const secret = await doc(`${token}-salary-bands`, `${token} Salary bands`, 'private');
+    await doc(`${token}-old-runbook`, `${token} Old runbook`, 'team', 'archived');
+    const urls = [
+      `#/knowledge/doc/${token}-incident-response-runbook`,
+      `http://green.test/#/knowledge/doc/${token}-salary-bands`,
+      `#/knowledge/doc/${token}-no-such-doc`,
+      `#/knowledge/doc/${token}-old-runbook`,
+      `#/knowledge/doc/${team.id}-${token}-incident-response-runbook`,
+    ];
+
+    const mine = await resolve(app, owner.id, urls);
+    expect(mine.status).toBe(200);
+    expect(mine.body.items[0]).toEqual({
+      url: urls[0],
+      type: 'doc',
+      id: String(team.id),
+      title: `${token} Incident runbook`,
+    });
+    expect(mine.body.items[1]).toEqual({
+      url: urls[1],
+      type: 'doc',
+      id: String(secret.id),
+      title: `${token} Salary bands`,
+    });
+    expect(mine.body.items[2]).toEqual({ url: urls[2], type: 'doc', id: `${token}-no-such-doc`, title: null });
+    expect(mine.body.items[3]).toEqual({ url: urls[3], type: 'doc', id: `${token}-old-runbook`, title: null });
+    // The id form still goes by id.
+    expect(mine.body.items[4]).toEqual({
+      url: urls[4],
+      type: 'doc',
+      id: String(team.id),
+      title: `${token} Incident runbook`,
+    });
+
+    // Forbidden and missing look the same: the slug from the link, no title.
+    const theirs = await resolve(app, stranger.id, urls);
+    expect(titleOf(theirs.body, urls[0]!)).toBe(`${token} Incident runbook`);
+    expect(theirs.body.items[1]).toEqual({ url: urls[1], type: 'doc', id: `${token}-salary-bands`, title: null });
+    expect(theirs.body.items[2]).toEqual({ url: urls[2], type: 'doc', id: `${token}-no-such-doc`, title: null });
+  });
+
   it('hides a missing object the same way as a forbidden one', async () => {
     const token = marker();
     const { stranger, app } = await people(token);

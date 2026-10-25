@@ -29,6 +29,12 @@ describe('parseObjectUrl — web hash routes', () => {
     ['#/knowledge/personal/my-notes', { type: 'doc', slug: 'my-notes' }],
     ['#/knowledge/shared/their-notes', { type: 'doc', slug: 'their-notes' }],
     ['#/knowledge/folder/5/legacy-slug', { type: 'doc', slug: 'legacy-slug' }],
+    // A doc link with a slug and no id (models write these) names the doc by slug.
+    ['#/knowledge/doc/incident-response-runbook', { type: 'doc', slug: 'incident-response-runbook' }],
+    ['#/knowledge/doc/abc-slug', { type: 'doc', slug: 'abc-slug' }],
+    ['#/knowledge/doc/runbook', { type: 'doc', slug: 'runbook' }],
+    ['#/knowledge/doc/%E6%8C%87%E5%8D%97', { type: 'doc', slug: '指南' }],
+    ['#/knowledge/doc/01-plan', { type: 'doc', slug: '01-plan' }],
   ])('%s', (url, expected) => {
     expect(parseObjectUrl(url)).toEqual(expected);
   });
@@ -39,7 +45,6 @@ describe('parseObjectUrl — web hash routes', () => {
     '#/files?shelf=personal',
     '#/knowledge',
     '#/knowledge/doc/',
-    '#/knowledge/doc/abc-slug',
     '#/knowledge/internal',
     '#/knowledge/internal/general',
     '#/knowledge/personal',

@@ -120,10 +120,12 @@ function parseHashRoute(route: string): ObjectRef | null {
 
   if (head === 'knowledge') {
     // #/knowledge/doc/<id>-<slug> (or a bare id): the canonical, rename-proof link.
+    // A segment that does not start with an id is a slug alone (`#/knowledge/doc/runbook`),
+    // which models sometimes write; it names the doc like the address-bar routes do.
     if (a === 'doc' && segments.length === 3) {
       const dash = b!.indexOf('-');
       const id = rowId(dash === -1 ? b : b!.slice(0, dash));
-      return id === null ? null : { type: 'doc', id };
+      return id === null ? slugRef([b!]) : { type: 'doc', id };
     }
     // #/knowledge/folder/<id> · #/knowledge/folder/<id>/<slug> (legacy in-folder doc link)
     if (a === 'folder') {

@@ -17,4 +17,4 @@
  * green and the API fails to boot.
  */
 export const CITE_URL_INSTRUCTION =
-  'Link any record you name using the `url` from its result — verbatim, never assembled by hand.';
+  'Link any record you name using the `url` from its result — verbatim, never assembled from an id or slug.';
