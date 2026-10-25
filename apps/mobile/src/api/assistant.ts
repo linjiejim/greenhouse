@@ -24,9 +24,14 @@ export const listSessions = (offset: number) =>
 
 export const createSession = () => post<ChatSession>('/api/sessions', {});
 
-/** The conversation without its messages (title, and 404 when it is gone or not mine). */
+/**
+ * The conversation without its messages (title, and 404 when it is gone or not mine to read).
+ * `is_owner` false is a conversation shared with me (read-only); `share_info` names who shared it.
+ */
 export const getSessionInfo = (id: string) =>
-  get<{ session: ChatSession }>(`/api/sessions/${seg(id)}`, { include_messages: 0 });
+  get<{ session: ChatSession; share_info?: { shared_by_nickname: string } | null }>(`/api/sessions/${seg(id)}`, {
+    include_messages: 0,
+  });
 
 /** The latest page of messages, or the page before `beforeSeq`. */
 export const getMessages = async (id: string, beforeSeq?: number) => {

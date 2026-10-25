@@ -13,6 +13,10 @@
  * (src/store/outbox.ts) and goes from here once it can. Everything belongs to the station and
  * account that opened the conversation.
  *
+ * A conversation shared with me (`is_owner` false) reads the same but is not mine to write in: a
+ * quiet band says who shared it where the composer would be, and nothing on the page sends,
+ * regenerates, renames or deletes.
+ *
  * Chrome: the title carries Sprouty's living face, which glides below the title while a reply is
  * written (src/chat/header-avatar.tsx); on the right a new-conversation button and the ⋯ menu
  * (Pin / Unpin, Rename, Delete). The list rides the keyboard (KeyboardChatScrollView adds the
@@ -27,7 +31,14 @@ import { KeyboardStickyView, useKeyboardState } from 'react-native-keyboard-cont
 import Animated, { FadeIn, FadeOut, ReduceMotion } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { chatRun, createSession, getMessages, getSessionInfo, stopRun } from '../../../src/api/assistant';
-import { HeaderBand, HeaderTitle, TalkingAvatar, TalkingBand, TalkingRoom, useTalking } from '../../../src/chat/header-avatar';
+import {
+  HeaderBand,
+  HeaderTitle,
+  TalkingAvatar,
+  TalkingBand,
+  TalkingRoom,
+  useTalking,
+} from '../../../src/chat/header-avatar';
 import { useStepsSheet } from '../../../src/chat/steps-sheet';
 import type { ApiResult } from '../../../src/api/client';
 import { Composer } from '../../../src/chat/composer';
@@ -67,7 +78,7 @@ import { HIT, makeStyles, motion, space, typo, useTheme } from '../../../src/the
 import { alertError, confirmAction, promptText } from '../../../src/ui/dialogs';
 import { EmptyState } from '../../../src/ui/empty';
 import { usePlantWorkState } from '../../../src/ui/plant-avatar/use-plant-work';
-import { Spinner } from '../../../src/ui/core';
+import { Icon, Spinner } from '../../../src/ui/core';
 import { GlassIconButton } from '../../../src/ui/glass';
 import { notifySuccess, notifyWarning } from '../../../src/ui/haptics';
 import { toast } from '../../../src/ui/toast';
@@ -110,6 +121,8 @@ export default function Chat() {
   const [draft, setDraft] = useState(params.draft ?? '');
   const [composerHeight, setComposerHeight] = useState(64);
   const [offline, setOffline] = useState(false);
+  /** Shared with me, not mine: read-only (who shared it, when the station says). */
+  const [shared, setShared] = useState<{ by: string | null } | null>(null);
   const input = useRef<TextInput>(null);
   const list = useRef<FlatList<Item>>(null);
   const viewport = useRef(0);
@@ -153,7 +166,12 @@ export default function Chat() {
     return new Conversation<ChatMessage>({
       title: async () => {
         const result = await getSessionInfo(sessionId);
-        if (result.ok) return { ok: true, data: { title: result.data.session.title } };
+        if (result.ok) {
+          setShared(
+            result.data.session.is_owner === false ? { by: result.data.share_info?.shared_by_nickname ?? null } : null,
+          );
+          return { ok: true, data: { title: result.data.session.title } };
+        }
         if (result.status === 0) {
           const copy = await readChatCopy(sessionId);
           if (copy) return { ok: true, data: { title: copy.title } };
@@ -410,12 +428,12 @@ export default function Chat() {
   const env = useCallback(
     (followUp?: string) => ({
       reply: async (text: string) => {
-        if (state.busy) return false;
+        if (state.busy || shared) return false;
         return send(text, []);
       },
       followUp,
     }),
-    [send, state.busy],
+    [send, state.busy, shared],
   );
 
   // long-press actions: quote into the composer, regenerate the latest reply
@@ -438,7 +456,8 @@ export default function Chat() {
     },
     [conversation, state.busy, t],
   );
-  const userActions = useMemo(() => ({ onQuote: quote }), [quote]);
+  // a shared conversation is read-only: nothing to quote into, nothing to regenerate
+  const userActions = useMemo(() => (shared ? {} : { onQuote: quote }), [quote, shared]);
 
   // the ⋯ menu: pin, rename, delete (the conversation list's own store, so home follows)
   const session = useSessions((s) => s.items.find((item) => item.id === sessionId));
@@ -504,7 +523,7 @@ export default function Chat() {
           accessibilityLabel={t('conversation.newChat')}
           onPress={() => router.replace('/chat')}
         />
-        {sessionId ? (
+        {sessionId && !shared ? (
           <Stack.Toolbar.Menu icon={toolbarIcon('more')} accessibilityLabel={t('conversation.menu')}>
             <Stack.Toolbar.MenuAction
               icon={session?.pinned ? 'pin.slash' : 'pin'}
@@ -564,7 +583,9 @@ export default function Chat() {
           answered={item.index < lastUser || state.pending !== null}
           env={env(next?.role === 'user' ? next.content : undefined)}
           actions={
-            isLatest && !state.busy ? { onQuote: quote, onRegenerate: () => void regenerate(message.id) } : userActions
+            isLatest && !state.busy && !shared
+              ? { onQuote: quote, onRegenerate: () => void regenerate(message.id) }
+              : userActions
           }
           onSteps={() => openSteps(message.id, steps)}
         />
@@ -732,22 +753,36 @@ export default function Chat() {
             />
           </Animated.View>
         ) : null}
-        <Composer
-          ref={input}
-          value={draft}
-          onChangeText={setDraft}
-          onSend={() => void submit()}
-          working={state.busy}
-          onStop={sessionId ? () => void stopRun(sessionId) : undefined}
-          onAttach={(from) => void files.attach(from)}
-          files={files.files}
-          onRemoveFile={files.remove}
-          onRetryFiles={files.retry}
-          placeholder={t(messages.length ? 'composer.followUp' : 'composer.placeholder')}
-          autoFocus={!sessionId && !params.k}
-          onHeight={setComposerHeight}
-          bottomInset={insets.bottom}
-        />
+        {shared ? (
+          <View
+            style={[styles.readOnly, { paddingBottom: Math.max(insets.bottom, space.sm) }]}
+            onLayout={(e) => setComposerHeight(e.nativeEvent.layout.height)}
+            accessible
+            accessibilityRole="text"
+          >
+            <Icon name="users" size={13} color={c.secondaryLabel} />
+            <Text style={styles.readOnlyText} numberOfLines={2}>
+              {shared.by ? t('conversation.sharedReadOnly', { name: shared.by }) : t('conversation.readOnly')}
+            </Text>
+          </View>
+        ) : (
+          <Composer
+            ref={input}
+            value={draft}
+            onChangeText={setDraft}
+            onSend={() => void submit()}
+            working={state.busy}
+            onStop={sessionId ? () => void stopRun(sessionId) : undefined}
+            onAttach={(from) => void files.attach(from)}
+            files={files.files}
+            onRemoveFile={files.remove}
+            onRetryFiles={files.retry}
+            placeholder={t(messages.length ? 'composer.followUp' : 'composer.placeholder')}
+            autoFocus={!sessionId && !params.k}
+            onHeight={setComposerHeight}
+            bottomInset={insets.bottom}
+          />
+        )}
       </KeyboardStickyView>
     </View>
   );
@@ -788,4 +823,14 @@ const useStyles = makeStyles((c) => ({
   composerWrap: { position: 'absolute', left: 0, right: 0, bottom: 0 },
   jump: { position: 'absolute', right: space.margin, top: -(HIT + space.xs) },
   loading: { height: HIT * 2, alignItems: 'center', justifyContent: 'center', marginTop: space.xxxl },
+  readOnly: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: space.xs,
+    paddingHorizontal: space.margin,
+    paddingTop: space.md,
+    backgroundColor: c.background,
+  },
+  readOnlyText: { ...typo.footnote, color: c.secondaryLabel, flexShrink: 1, textAlign: 'center' },
 }));
