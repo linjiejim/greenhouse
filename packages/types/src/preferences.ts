@@ -4,9 +4,6 @@
  *
  * - `fontScale`: the mobile app's in-app text size, multiplied onto the system
  *   size (最小 / 更小 / 小 / 标准 / 大 / 特大 / 超大).
- * - `workbench`: the Home workbench layout (versioned blob owned by
- *   `apps/api/src/platform/workbench-preferences.ts`); never written through the
- *   generic PATCH.
  */
 
 import { z } from 'zod';
@@ -28,10 +25,9 @@ export type MemberPreferencesPatch = z.infer<typeof memberPreferencesPatchSchema
 /** The whole stored blob. */
 export interface UserPreferences {
   fontScale?: FontScale;
-  workbench?: unknown;
 }
 
-/** The member-editable view returned by the API (the workbench layout has its own endpoint). */
+/** The member-editable view returned by the API. */
 export interface MemberPreferences {
   fontScale: FontScale;
 }

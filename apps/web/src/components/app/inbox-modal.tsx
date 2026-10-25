@@ -1,20 +1,29 @@
-/** Unified Inbox — platform notifications and sessions shared with me. */
+/**
+ * The bell's dialog — platform notifications, sessions shared with me, and team
+ * activity (what people and their agents changed lately, only what the viewer
+ * may read). One instance lives at the app root; `useUIStore` opens it.
+ */
 
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import type { ShareItem } from '@greenhouse/types/api';
 import type { PlatformNotification } from '@greenhouse/types/notification';
+import type { ActivityItem } from '@greenhouse/types/activity';
 
-import { CheckCheck, Inbox, MessageSquare, Users } from '../../lib/icons';
+import { CheckCheck, History, Inbox, MessageSquare, Users } from '../../lib/icons';
 import { useT } from '../../lib/i18n';
 import { executionNotificationHref } from '../../lib/execution-route';
 import { notificationCopy } from '../../lib/notification-copy';
 import { timeAgo, markdownPreview } from '../../lib/utils';
 import * as api from '../../lib/api';
-import { useWsStore } from '../../stores';
-import { Badge, Dialog, EmptyState, Spinner } from '../ui';
+import { useUIStore, useWsStore } from '../../stores';
+import type { InboxTab } from '../../stores/ui-store';
+import { fetchRecentChanges } from '../../lib/api/activity';
+import { ACTIVITY_ROOT_HASH } from '../../lib/execution-route';
+import { ActivityRow } from '../activity/activity-row';
+import { Badge, Button, Dialog, EmptyState, Spinner } from '../ui';
 import { AUTOMATIONS_PROFILES_HASH } from '../../lib/workspace-routes';
 
-type InboxTab = 'notifications' | 'shares';
+const ACTIVITY_PAGE = 20;
 
 function notificationHref(item: PlatformNotification): string | null {
   if (item.run_id) {
@@ -32,9 +41,109 @@ function notificationHref(item: PlatformNotification): string | null {
   return null;
 }
 
-export function InboxModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+/**
+ * Team activity: loaded the first time its tab opens, then paged with the
+ * `before` cursor. It has no unread state, so the tab has no "mark all read".
+ */
+function TeamActivityTab({ onNavigate }: { onNavigate: () => void }) {
   const t = useT();
-  const [tab, setTab] = useState<InboxTab>('notifications');
+  const [items, setItems] = useState<ActivityItem[] | null>(null);
+  const [nextBefore, setNextBefore] = useState<string | null>(null);
+  const [error, setError] = useState('');
+  const [loadingMore, setLoadingMore] = useState(false);
+  const requested = useRef(false);
+
+  const load = useCallback(
+    async (before: string | null) => {
+      try {
+        const page = await fetchRecentChanges({ limit: ACTIVITY_PAGE, before });
+        setItems((current) => (before ? [...(current ?? []), ...page.items] : page.items));
+        setNextBefore(page.next_before);
+        setError('');
+      } catch (cause) {
+        setError(cause instanceof Error ? cause.message : t('inbox.activity.failed'));
+        setItems((current) => current ?? []);
+      }
+    },
+    [t],
+  );
+
+  useEffect(() => {
+    if (requested.current) return;
+    requested.current = true;
+    void load(null);
+  }, [load]);
+
+  const loadMore = async () => {
+    if (!nextBefore || loadingMore) return;
+    setLoadingMore(true);
+    await load(nextBefore);
+    setLoadingMore(false);
+  };
+
+  if (items === null) {
+    return (
+      <div className="flex justify-center py-12">
+        <Spinner />
+      </div>
+    );
+  }
+  return (
+    <div className="space-y-2">
+      <p className="px-1 text-xs text-fg-muted">{t('inbox.activity.hint')}</p>
+      {error && items.length === 0 ? (
+        <EmptyState
+          icon={History}
+          variant="compact"
+          tone="danger"
+          title={t('inbox.activity.failed')}
+          description={error}
+        />
+      ) : items.length === 0 ? (
+        <EmptyState
+          icon={History}
+          variant="compact"
+          tone="neutral"
+          title={t('inbox.activity.empty')}
+          description={t('inbox.activity.emptyHint')}
+        />
+      ) : (
+        <div
+          className="-mx-1 divide-y divide-edge"
+          role="list"
+          data-testid="inbox-team-activity"
+          // Rows are links; following one leaves the dialog behind.
+          onClickCapture={(event) => {
+            if ((event.target as HTMLElement).closest('a[href]')) onNavigate();
+          }}
+        >
+          {items.map((item) => (
+            <div role="listitem" key={item.id}>
+              <ActivityRow item={item} compact />
+            </div>
+          ))}
+        </div>
+      )}
+      {nextBefore && (
+        <div className="flex justify-center pt-1">
+          <Button variant="ghost" size="sm" onClick={() => void loadMore()} disabled={loadingMore}>
+            {loadingMore ? <Spinner className="h-3.5 w-3.5" /> : null}
+            {t('inbox.activity.loadMore')}
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function InboxModal() {
+  const t = useT();
+  const open = useUIStore((s) => s.inboxOpen);
+  const tab = useUIStore((s) => s.inboxTab);
+  const setTab = useUIStore((s) => s.setInboxTab);
+  const onClose = useUIStore((s) => s.closeInbox);
+  // The activity tab mounts on first visit and stays mounted while the dialog is open.
+  const [activityVisited, setActivityVisited] = useState(false);
   const [shares, setShares] = useState<ShareItem[]>([]);
   const [notifications, setNotifications] = useState<PlatformNotification[]>([]);
   const [loading, setLoading] = useState(true);
@@ -61,11 +170,16 @@ export function InboxModal({ open, onClose }: { open: boolean; onClose: () => vo
 
   useEffect(() => {
     if (open) void loadInbox();
+    else setActivityVisited(false);
   }, [open, loadInbox]);
+
+  useEffect(() => {
+    if (open && tab === 'activity') setActivityVisited(true);
+  }, [open, tab]);
 
   const unreadShares = shares.filter((item) => !item.read_at).length;
   const unreadNotifications = notifications.filter((item) => !item.read_at).length;
-  const activeUnread = tab === 'notifications' ? unreadNotifications : unreadShares;
+  const activeUnread = tab === 'notifications' ? unreadNotifications : tab === 'shares' ? unreadShares : 0;
 
   const openShare = async (share: ShareItem) => {
     if (!share.read_at) {
@@ -125,7 +239,8 @@ export function InboxModal({ open, onClose }: { open: boolean; onClose: () => vo
             [
               ['notifications', t('inbox.notifications'), unreadNotifications],
               ['shares', t('inbox.sharedWithMe'), unreadShares],
-            ] as const
+              ['activity', t('inbox.activityTab'), 0],
+            ] as Array<[InboxTab, string, number]>
           ).map(([value, label, unread]) => (
             <button
               key={value}
@@ -143,19 +258,27 @@ export function InboxModal({ open, onClose }: { open: boolean; onClose: () => vo
               {unread > 0 && <Badge variant="destructive">{unread > 99 ? '99+' : unread}</Badge>}
             </button>
           ))}
-          <button
-            type="button"
-            onClick={() => void markAllRead()}
-            disabled={activeUnread === 0 || markingAll}
-            className="ml-auto mb-1 inline-flex items-center gap-1.5 rounded-sm px-2 py-1 text-xs text-fg-muted transition-colors hover:bg-surface-muted hover:text-fg-secondary disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            <CheckCheck size={14} />
-            {t('inbox.markAllRead')}
-          </button>
+          {tab !== 'activity' && (
+            <button
+              type="button"
+              onClick={() => void markAllRead()}
+              disabled={activeUnread === 0 || markingAll}
+              className="ml-auto mb-1 inline-flex items-center gap-1.5 rounded-sm px-2 py-1 text-xs text-fg-muted transition-colors hover:bg-surface-muted hover:text-fg-secondary disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <CheckCheck size={14} />
+              {t('inbox.markAllRead')}
+            </button>
+          )}
         </div>
 
         <div className="max-h-[60vh] overflow-y-auto p-3">
-          {loading && (
+          {activityVisited && (
+            <div hidden={tab !== 'activity'}>
+              <TeamActivityTab onNavigate={onClose} />
+            </div>
+          )}
+
+          {loading && tab !== 'activity' && (
             <div className="flex justify-center py-12">
               <Spinner />
             </div>
@@ -251,6 +374,14 @@ export function InboxModal({ open, onClose }: { open: boolean; onClose: () => vo
             </div>
           )}
         </div>
+
+        {tab === 'activity' && (
+          <div className="flex justify-end border-t border-edge px-4 py-2">
+            <a href={ACTIVITY_ROOT_HASH} onClick={onClose} className="text-xs text-fg-muted hover:text-fg">
+              {t('inbox.activity.viewAll')}
+            </a>
+          </div>
+        )}
       </div>
     </Dialog>
   );

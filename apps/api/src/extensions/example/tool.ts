@@ -21,7 +21,7 @@ export const exampleNotesQueryTool = defineTool({
     is_global: false,
     icon: 'StickyNote',
     sort_order: 900,
-    surface: { proxy: 'read', mcp: 'example', workbench: true, unattendedReplaySafe: true },
+    surface: { proxy: 'read', mcp: 'example', unattendedReplaySafe: true },
   },
   kind: 'lazy',
   createLazy: ({ db, userId }) =>

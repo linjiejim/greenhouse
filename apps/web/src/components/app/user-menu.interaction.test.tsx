@@ -25,7 +25,7 @@ afterEach(async () => {
 });
 
 describe('SidebarAccountMenu destinations', () => {
-  it('places the Activity log immediately below Inbox in the account flyout', async () => {
+  it('leads the account flyout with the Activity log (the inbox is the bell)', async () => {
     container = document.createElement('div');
     document.body.append(container);
     root = createRoot(container);
@@ -46,8 +46,9 @@ describe('SidebarAccountMenu destinations', () => {
     });
 
     const items = Array.from(container.querySelectorAll<HTMLElement>('[role="menuitem"]'));
-    expect(items.slice(0, 2).map((item) => item.textContent?.trim())).toEqual(['Inbox', 'Activity log']);
-    expect(items[1]?.getAttribute('href')).toBe('#/activity');
+    expect(items[0]?.textContent?.trim()).toBe('Activity log');
+    expect(items[0]?.getAttribute('href')).toBe('#/activity');
+    expect(items.map((item) => item.textContent?.trim())).not.toContain('Inbox');
   });
 
   it('switches between system, dark, and light without leaving the account flyout', async () => {

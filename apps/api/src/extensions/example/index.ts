@@ -80,22 +80,6 @@ export const exampleExtension = defineExtension({
       },
     },
   ],
-  // …and a Home workbench card backed by its read tool.
-  workbenchRecipes: [
-    {
-      id: 'example.notes',
-      toolId: 'example_notes_query',
-      label: 'Example notes',
-      description: 'Your latest notes from the Example extension',
-      labelKey: 'ext.example.recipe.notes',
-      descriptionKey: 'ext.example.recipe.notesDesc',
-      display: 'table',
-      source: { toolId: 'example_notes_query', input: { limit: 10 } },
-      map: { rows: 'notes', columns: [{ key: 'body', type: 'text' }] },
-      size: { w: 6, h: 5 },
-    },
-  ],
-
   featureFlags: [
     {
       key: 'example',

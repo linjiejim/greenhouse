@@ -126,9 +126,9 @@ describe('migrate-from-1x carry', () => {
     expect(report.notes.join('\n')).not.toMatch(/has no carry rule/);
   });
 
-  it('keeps ids (serials become strings) and the users and their workbench', async () => {
+  it('keeps ids (serials become strings) and the users, without the retired workbench', async () => {
     expect(await queryRows(target, `SELECT id, preferences FROM users ORDER BY id`)).toEqual([
-      { id: 'u-ann', preferences: { workbench: { version: 1, cards: [] } } },
+      { id: 'u-ann', preferences: {} },
       { id: 'u-bob', preferences: {} },
     ]);
     expect(await queryRows(target, `SELECT id, title FROM kb_documents ORDER BY id`)).toEqual([
@@ -149,7 +149,13 @@ describe('migrate-from-1x carry', () => {
     expect(line(report, 'api_audit_log').skipped).toEqual({ 'request log older than 30 days': 1 });
     expect(line(report, 'knowledge_base_shares').skipped).toEqual({ 'shared with a user group (removed in 3.0)': 1 });
     const retired = Object.fromEntries(report.retired.map((entry) => [entry.table, entry.rows]));
-    expect(retired).toMatchObject({ eval_datasets: 1, kb_comments: 1, table_dashboards: 1, rate_limit_buckets: 1 });
+    expect(retired).toMatchObject({
+      eval_datasets: 1,
+      kb_comments: 1,
+      table_dashboards: 1,
+      rate_limit_buckets: 1,
+      platform_user_workbench_preferences: 1,
+    });
   });
 
   it('keeps an old event whose outbox row still waits, and every event of an active run', async () => {

@@ -143,7 +143,7 @@ export function createUserService(db: Db) {
       });
     },
 
-    /** The stored preferences blob (font scale, workbench layout); `{}` for an unknown user. */
+    /** The stored preferences blob (font scale); `{}` for an unknown user. */
     async getPreferences(id: string): Promise<UserPreferences> {
       const rows = await db.select({ preferences: users.preferences }).from(users).where(eq(users.id, id));
       return rows[0]?.preferences ?? {};

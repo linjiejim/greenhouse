@@ -5,7 +5,6 @@
  * stays free of React and network concerns.
  */
 
-import { DEFAULT_WORKBENCH_CONFIG, parseWorkbenchConfig, type WorkbenchConfig } from '@greenhouse/types/workbench';
 import {
   BookOpen,
   Building2,
@@ -55,36 +54,9 @@ export interface PlatformApplication {
   capabilities: string[];
 }
 
-/**
- * Workbench config shape comes from `@greenhouse/types/workbench` — the same parser
- * the API validator and the database service run, so the three cannot drift
- * (spec D6). Re-exported here so page code keeps importing from one place.
- */
-export type WorkbenchPreferences = WorkbenchConfig;
-export const DEFAULT_WORKBENCH_PREFERENCES: WorkbenchConfig = { ...DEFAULT_WORKBENCH_CONFIG };
-
-/**
- * Defensive client-side normalization: shape only.
- *
- * Application visibility is filtered server-side on read, so this no longer
- * re-derives it — dropping IDs here as well would just be a second, weaker copy
- * of an authorization decision the browser can't make.
- */
-export function normalizeWorkbenchPreferences(input: unknown): WorkbenchConfig {
-  return parseWorkbenchConfig(input);
-}
-
-export function orderPlatformApplications(
-  applications: readonly PlatformApplication[],
-  preferences: WorkbenchPreferences,
-): PlatformApplication[] {
-  const order = new Map(preferences.appOrder.map((appId, index) => [appId, index]));
-  return [...applications].sort((left, right) => {
-    const leftIndex = order.get(left.id) ?? Number.MAX_SAFE_INTEGER;
-    const rightIndex = order.get(right.id) ?? Number.MAX_SAFE_INTEGER;
-    if (leftIndex !== rightIndex) return leftIndex - rightIndex;
-    return left.title.localeCompare(right.title);
-  });
+/** Applications in a stable, readable order (by title). */
+export function orderPlatformApplications(applications: readonly PlatformApplication[]): PlatformApplication[] {
+  return [...applications].sort((left, right) => left.title.localeCompare(right.title));
 }
 
 export function platformApplicationHref(application: PlatformApplication): string | null {

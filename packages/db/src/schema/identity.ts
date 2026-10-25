@@ -28,7 +28,7 @@ export const users = pgTable(
     status: text('status', { enum: USER_STATUSES }).notNull().default('active'),
     notes: text('notes'),
     locale: text('locale').notNull().default('en'),
-    /** Member preferences that follow the account (font scale, Home workbench layout). */
+    /** Member preferences that follow the account (font scale). */
     preferences: json<UserPreferences>('preferences', {}),
     created_by: text('created_by'),
     created_at: createdAt(),

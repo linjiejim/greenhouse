@@ -30,7 +30,6 @@ export const exampleMessages = {
       label: 'Example notes',
       description: 'Read the notes saved in the Example extension',
     },
-    recipe: { notes: 'Example notes', notesDesc: 'Your latest notes from the Example extension' },
     docPanel: 'Example extension: this section is rendered on every knowledge document while the extension is active.',
     context: {
       label: 'Example notes',
@@ -69,7 +68,6 @@ export const exampleMessages = {
       label: '示例笔记',
       description: '读取示例扩展里保存的笔记',
     },
-    recipe: { notes: '示例笔记', notesDesc: '示例扩展里最新的几条笔记' },
     docPanel: '示例扩展：只要扩展处于启用状态，每篇知识库文档都会显示这一段。',
     context: {
       label: '示例笔记',

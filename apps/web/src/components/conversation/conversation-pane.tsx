@@ -12,7 +12,6 @@ import { composePromptMessage } from '../chat/prompt-selection';
 import { ProfileSelector, profileAvatarProps } from '../chat/profile-selector';
 import { AssistantPresence } from '../chat/assistant-presence';
 import { ModelSelector } from '../chat/model-selector';
-import { PlantAvatar } from '@greenhouse/ui/components/plant-avatar';
 import { useAgentContext } from '../agent-context';
 import { useSessionManager } from '../../lib/session-manager';
 import { useUIStore, useAuthStore, useProfileStore } from '../../stores';
@@ -40,7 +39,8 @@ import { DEFAULT_AGENT_ID, LEGACY_AGENT_IDS } from '../../lib/agent-constants';
 import { acceptAttachments, uploadPendingAttachments, MAX_ATTACHMENTS, type PendingAttachment } from './attachments';
 import { uploadChatFile, type ChatFileRef } from '../../lib/api/chat-files';
 import { ForkConfirmationDialog } from './fork-confirmation-dialog';
-import { useLocalized, useT } from '../../lib/i18n';
+import { HomeEmptyState } from './home-empty-state';
+import { useT } from '../../lib/i18n';
 import type { AssistantLaunchRequest } from '@greenhouse/types/agent-context';
 import type { ChatTurnEnvironment } from '@greenhouse/types/api';
 import { snapshotClientActions } from '../../lib/client-actions/registry';
@@ -1093,6 +1093,77 @@ export function ConversationPane({
     if (request) void handleForkSession(request.messageId, request.preserveDraft);
   }, [handleForkSession, pendingFork]);
 
+  // A new conversation on the full page is Home: the composer moves into the
+  // middle of the empty state and leaves it once the first message is out.
+  const homeLayout =
+    surface === 'full' && !sessionId && !isLoadingSession && messages.length === 0 && !showStreamOverlay;
+
+  const composer = (
+    <ChatInput
+      input={input}
+      setInput={setInput}
+      isStreaming={effectiveIsStreaming}
+      pendingImages={pendingImages}
+      onSend={() => handleSend()}
+      onStop={handleStop}
+      onImageSelect={handleImageSelect}
+      onRemoveImage={removeImage}
+      maxImages={MAX_IMAGES}
+      sendWaiting={imageUploadWaiting}
+      autoFocus={typeof window !== 'undefined' && window.innerWidth >= 768}
+      sendDisabled={effectiveIsStopping || attachmentsUploading}
+      pendingAttachments={pendingAttachments}
+      onAttachmentSelect={handleFileSelect}
+      onRemoveAttachment={handleRemoveAttachment}
+      maxAttachments={MAX_ATTACHMENTS}
+      inputRef={chatInputRef}
+      slashPrompts={slashPrompts}
+      selectedPrompt={selectedPrompt}
+      taskValues={taskValues}
+      onTaskValueChange={(key, value) => setTaskValues((prev) => ({ ...prev, [key]: value }))}
+      onSelectPrompt={(prompt) => {
+        setSelectedPrompt(prompt);
+        // Values belong to the task that was attached; carrying them
+        // across a swap would silently fill a different task's fields.
+        setTaskValues({});
+      }}
+      onRemovePrompt={() => {
+        setSelectedPrompt(null);
+        setTaskValues({});
+      }}
+      profiles={displayProfiles}
+      selectedProfileId={sessionId ? sessionProfileId : selectedProfileId}
+      mentionEnabled={!sessionId && displayProfiles.length > 1}
+      onMentionProfile={handleMentionProfile}
+      profileChip={
+        !sessionId && mentionedProfileId ? (displayProfiles.find((p) => p.id === mentionedProfileId) ?? null) : null
+      }
+      onRemoveProfileChip={handleRemoveProfileChip}
+      annotations={annotations}
+      onUpdateAnnotation={(id, note) => setAnnotations((prev) => prev.map((a) => (a.id === id ? { ...a, note } : a)))}
+      onDeleteAnnotation={(id) => setAnnotations((prev) => prev.filter((a) => a.id !== id))}
+      onClearAnnotations={() => setAnnotations([])}
+      rightSlot={
+        <>
+          <ProfileSelector
+            profiles={displayProfiles}
+            selectedProfileId={sessionId ? sessionProfileId : selectedProfileId}
+            onSelectProfile={handleProfileChange}
+            readonly={!!sessionId}
+          />
+          {activeProfile?.id === DEFAULT_AGENT_ID && (
+            <ModelSelector
+              models={models}
+              selectedModelId={selectedModelId}
+              onSelect={handleModelChange}
+              disabled={effectiveRunActive}
+            />
+          )}
+        </>
+      }
+    />
+  );
+
   return (
     <div className="flex flex-col h-full bg-surface-canvas">
       {/* Main chat area */}
@@ -1139,7 +1210,11 @@ export function ConversationPane({
         <div ref={scrollContainerRef} onScroll={handleScroll} className="flex-1 overflow-y-auto">
           {/* Center the conversation to the same width as the composer (max-w-5xl)
               so the content doesn't stretch edge-to-edge on wide screens. */}
-          <div className="mx-auto w-full max-w-5xl px-3 md:px-4 py-4 space-y-4">
+          <div
+            className={`mx-auto w-full max-w-5xl px-3 md:px-4 py-4 space-y-4 ${
+              homeLayout ? 'flex min-h-full flex-col justify-center' : ''
+            }`}
+          >
             {isLoadingSession ? (
               <ChatHistorySkeleton label={t('chat.loadingHistory')} />
             ) : (
@@ -1151,8 +1226,11 @@ export function ConversationPane({
                   onSelect={(prompt) => setInput((prev) => (prev ? `${prev}${prompt}` : prompt))}
                 />
               ) : (
-                <ProfileEmptyState
+                <HomeEmptyState
                   profile={displayProfiles.find((p) => p.id === (sessionId ? sessionProfileId : selectedProfileId))}
+                  composer={homeLayout ? composer : undefined}
+                  hasText={input.trim().length > 0}
+                  showRecent={homeLayout}
                 />
               ))
             )}
@@ -1347,74 +1425,8 @@ export function ConversationPane({
               </>
             }
           />
-        ) : (
-          <ChatInput
-            input={input}
-            setInput={setInput}
-            isStreaming={effectiveIsStreaming}
-            pendingImages={pendingImages}
-            onSend={() => handleSend()}
-            onStop={handleStop}
-            onImageSelect={handleImageSelect}
-            onRemoveImage={removeImage}
-            maxImages={MAX_IMAGES}
-            sendWaiting={imageUploadWaiting}
-            autoFocus={typeof window !== 'undefined' && window.innerWidth >= 768}
-            sendDisabled={effectiveIsStopping || attachmentsUploading}
-            pendingAttachments={pendingAttachments}
-            onAttachmentSelect={handleFileSelect}
-            onRemoveAttachment={handleRemoveAttachment}
-            maxAttachments={MAX_ATTACHMENTS}
-            inputRef={chatInputRef}
-            slashPrompts={slashPrompts}
-            selectedPrompt={selectedPrompt}
-            taskValues={taskValues}
-            onTaskValueChange={(key, value) => setTaskValues((prev) => ({ ...prev, [key]: value }))}
-            onSelectPrompt={(prompt) => {
-              setSelectedPrompt(prompt);
-              // Values belong to the task that was attached; carrying them
-              // across a swap would silently fill a different task's fields.
-              setTaskValues({});
-            }}
-            onRemovePrompt={() => {
-              setSelectedPrompt(null);
-              setTaskValues({});
-            }}
-            profiles={displayProfiles}
-            selectedProfileId={sessionId ? sessionProfileId : selectedProfileId}
-            mentionEnabled={!sessionId && displayProfiles.length > 1}
-            onMentionProfile={handleMentionProfile}
-            profileChip={
-              !sessionId && mentionedProfileId
-                ? (displayProfiles.find((p) => p.id === mentionedProfileId) ?? null)
-                : null
-            }
-            onRemoveProfileChip={handleRemoveProfileChip}
-            annotations={annotations}
-            onUpdateAnnotation={(id, note) =>
-              setAnnotations((prev) => prev.map((a) => (a.id === id ? { ...a, note } : a)))
-            }
-            onDeleteAnnotation={(id) => setAnnotations((prev) => prev.filter((a) => a.id !== id))}
-            onClearAnnotations={() => setAnnotations([])}
-            rightSlot={
-              <>
-                <ProfileSelector
-                  profiles={displayProfiles}
-                  selectedProfileId={sessionId ? sessionProfileId : selectedProfileId}
-                  onSelectProfile={handleProfileChange}
-                  readonly={!!sessionId}
-                />
-                {activeProfile?.id === DEFAULT_AGENT_ID && (
-                  <ModelSelector
-                    models={models}
-                    selectedModelId={selectedModelId}
-                    onSelect={handleModelChange}
-                    disabled={effectiveRunActive}
-                  />
-                )}
-              </>
-            }
-          />
+        ) : homeLayout ? null : (
+          composer
         )}
       </div>
 
@@ -1488,40 +1500,6 @@ function lastAnswerAwaitsUser(
   if (!last || last.role !== 'assistant') return false;
   return !!last.pipeline?.some(
     (s) => s.tool === 'ask_user' || (s.output as { type?: string } | null | undefined)?.type === 'ask_user',
-  );
-}
-
-// ─── Profile Empty State ───────────────────────────────
-
-/**
- * What a new conversation shows: who the user is talking to. The workbench
- * cards live on Home (v1.5), so Chat opens onto the assistant alone.
- *
- * The capability list ("Try asking") that used to fill the right half is gone on
- * purpose (spec D16). The first thing this screen owes the user is their own
- * data; a catalogue of what the assistant can do is neither that nor something
- * anyone reads twice. Profile capabilities were removed outright afterwards —
- * YAML, type, column, editor section and all.
- */
-function ProfileEmptyState({ profile }: { profile?: api.Profile }) {
-  const t = useT();
-  const localized = useLocalized();
-  const description = localized(profile?.description_i18n, profile?.description ?? '');
-
-  return (
-    <div className="mx-auto flex max-w-xl flex-col items-center gap-3 px-2 py-10 text-center md:py-16">
-      <PlantAvatar
-        {...(profile ? profileAvatarProps(profile) : { avatar: null, stableId: DEFAULT_AGENT_ID })}
-        size="xl"
-        intro
-      />
-      <div>
-        <h3 className="text-lg font-medium text-fg-secondary">
-          {localized(profile?.name_i18n, profile?.name ?? '') || t('chat.startConversation')}
-        </h3>
-        <p className="mt-1 text-sm text-fg-faint leading-snug">{description || t('chat.defaultDescription')}</p>
-      </div>
-    </div>
   );
 }
 

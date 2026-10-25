@@ -25,7 +25,6 @@ const SkillHubPage = lazy(() => import('./pages/skillhub').then((m) => ({ defaul
 const ActivityPage = lazy(() => import('./pages/activity').then((m) => ({ default: m.ActivityPage })));
 const TablesPage = lazy(() => import('./pages/tables').then((m) => ({ default: m.TablesPage })));
 const FilesPage = lazy(() => import('./pages/files').then((m) => ({ default: m.FilesPage })));
-const HomePage = lazy(() => import('./pages/home').then((m) => ({ default: m.HomePage })));
 const OAuthConsentPage = lazy(() => import('./pages/oauth-consent').then((m) => ({ default: m.OAuthConsentPage })));
 const AccountPasswordPage = lazy(() =>
   import('./pages/account-password').then((m) => ({ default: m.AccountPasswordPage })),
@@ -63,10 +62,12 @@ import { initWorkspaceBranding } from './lib/workspace-branding';
 import { initScrollActivity } from './lib/scroll-activity';
 import { I18nProvider, useT, getStoredLocale } from './lib/i18n';
 import type { Locale } from './lib/i18n';
-import { buildPrimaryNavigation } from './platform/navigation';
+import { buildPrimaryNavigation, isConversationRoute } from './platform/navigation';
 import { usePlatformCatalog, usePlatformStore } from './stores/platform-store';
 import { useMobileKeyboardViewport } from './hooks/use-mobile-keyboard-viewport';
-import { CORE_ROUTES, useHashRouter } from './lib/hash-router';
+import { CORE_ROUTES, newChatHash, useHashRouter } from './lib/hash-router';
+import { InboxModal } from './components/app/inbox-modal';
+import { InboxBellButton } from './components/app/inbox-bell';
 
 // Initialize theme from localStorage on app load
 initTheme();
@@ -134,7 +135,7 @@ function parseRoute(hash: string): ParsedRoute {
   const cleaned = hash.replace(/^#\/?/, '');
   const [path, query] = cleaned.split('?');
   const segments = path.split('/');
-  // Home (team activity) is the landing page.
+  // Home (a new conversation) is the landing page.
   const topLevel = segments[0] || 'home';
   const coreOwned = CORE_ROUTES.has(topLevel);
 
@@ -149,7 +150,8 @@ function parseRoute(hash: string): ParsedRoute {
     };
   }
 
-  const route = (coreOwned ? topLevel : 'chat') as Route;
+  // An unknown top-level segment lands on Home.
+  const route = (coreOwned ? topLevel : 'home') as Route;
   const subPath = segments.slice(1).join('/');
   return { route, subPath, params: new URLSearchParams(query || '') };
 }
@@ -344,20 +346,29 @@ function AppShell({ route, subPath, params, extensionRoute }: AppShellProps) {
 
   // Session ID from store (synced by ChatPage internally)
   const currentSessionId = currentChatSessionId;
-  const previousNonSettingsHashRef = useRef('#/chat');
-  const lastChatHashRef = useRef('#/chat');
+  const previousNonSettingsHashRef = useRef('#/home');
+  const lastChatHashRef = useRef('#/home');
 
   // Settings + Administration are full-screen overlay routes with a Back button.
   const isOverlayRoute = route === 'settings' || route === 'administration';
 
   useEffect(() => {
-    if (route === 'chat') {
-      lastChatHashRef.current = window.location.hash || '#/chat';
+    if (isConversationRoute(route)) {
+      lastChatHashRef.current = window.location.hash || '#/home';
     }
     if (!isOverlayRoute) {
-      previousNonSettingsHashRef.current = window.location.hash || '#/chat';
+      previousNonSettingsHashRef.current = window.location.hash || '#/home';
     }
   }, [isOverlayRoute, params, route, subPath]);
+
+  // Home's first message moves the address to `#/chat?session=…` in place
+  // (replaceState, no hashchange), so Back must follow the session, not Home.
+  useEffect(() => {
+    if (!currentSessionId || !isConversationRoute(route)) return;
+    const hash = `#/chat?session=${currentSessionId}`;
+    lastChatHashRef.current = hash;
+    if (!isOverlayRoute) previousNonSettingsHashRef.current = hash;
+  }, [currentSessionId, isOverlayRoute, route]);
 
   const _onSignOut = useCallback(() => {
     clearToken();
@@ -378,7 +389,7 @@ function AppShell({ route, subPath, params, extensionRoute }: AppShellProps) {
 
   const handleNewChat = useCallback(() => {
     setChatWorkspaceView('conversation');
-    window.location.hash = `#/chat?new=${Date.now()}`;
+    window.location.hash = newChatHash();
   }, [setChatWorkspaceView]);
 
   const handleSelectSession = useCallback(
@@ -394,7 +405,6 @@ function AppShell({ route, subPath, params, extensionRoute }: AppShellProps) {
   const primaryNavigation = buildPrimaryNavigation({
     applications: orderedApplications,
     labels: {
-      home: t('navigation.home'),
       files: t('navigation.files'),
       skillhub: t('app.skillhub'),
       automations: t('navigation.automation'),
@@ -440,6 +450,7 @@ function AppShell({ route, subPath, params, extensionRoute }: AppShellProps) {
                 <AppLogo size="sm" showVersion />
                 <div className="flex items-center gap-0">
                   <SearchNavButton />
+                  <InboxBellButton />
                   <IconButton onClick={() => setNavOpen(false)} label={t('common.close')}>
                     <X size={16} />
                   </IconButton>
@@ -491,7 +502,7 @@ function AppShell({ route, subPath, params, extensionRoute }: AppShellProps) {
                     className="pb-2"
                   />
                   <div className="mx-3 border-t border-edge" />
-                  {route === 'chat' ? (
+                  {isConversationRoute(route) ? (
                     <div className="flex min-h-0 flex-1 flex-col pt-1">
                       <ChatHistoryPanel
                         currentSessionId={currentSessionId}
@@ -501,29 +512,44 @@ function AppShell({ route, subPath, params, extensionRoute }: AppShellProps) {
                         }}
                       />
                     </div>
-                  ) : route === 'knowledge' ? (
-                    // The tree is the ONLY way to reach an internal doc (the page
-                    // body stopped listing documents when the tree shipped), so
-                    // without this the whole team library is unreachable on a
-                    // phone — you'd land on the public wiki and stop there.
-                    <div className="flex min-h-0 flex-1 flex-col pt-1">
-                      <KnowledgeNavPanel activeModule={subPath} onNavigate={() => setNavOpen(false)} />
-                    </div>
-                  ) : route === 'activity' ? (
-                    <div className="min-h-0 flex-1" />
-                  ) : route === 'extension' ? (
-                    <div className="min-h-0 flex-1 overflow-y-auto">
-                      <ExtensionSidebarPanel
-                        route={extensionRoute ?? ''}
-                        subPath={subPath}
-                        onNavigate={() => setNavOpen(false)}
-                      />
-                    </div>
                   ) : (
-                    <div className="min-h-0 flex-1 overflow-y-auto">
-                      <MobilePinnedSection
-                        currentHash={`#/${route}${subPath ? '/' + subPath : ''}`}
-                        onNavigate={() => setNavOpen(false)}
+                    <div className="flex min-h-0 flex-1 flex-col">
+                      {route === 'knowledge' ? (
+                        // The tree is the ONLY way to reach an internal doc (the page
+                        // body stopped listing documents when the tree shipped), so
+                        // without this the whole team library is unreachable on a
+                        // phone — you'd land on the public wiki and stop there.
+                        <div className="flex min-h-0 flex-1 flex-col pt-1">
+                          <KnowledgeNavPanel activeModule={subPath} onNavigate={() => setNavOpen(false)} />
+                        </div>
+                      ) : route === 'activity' ? (
+                        <div className="min-h-0 flex-1" />
+                      ) : route === 'extension' ? (
+                        <div className="min-h-0 flex-1 overflow-y-auto">
+                          <ExtensionSidebarPanel
+                            route={extensionRoute ?? ''}
+                            subPath={subPath}
+                            onNavigate={() => setNavOpen(false)}
+                          />
+                        </div>
+                      ) : (
+                        <div className="min-h-0 flex-1 overflow-y-auto">
+                          <MobilePinnedSection
+                            currentHash={`#/${route}${subPath ? '/' + subPath : ''}`}
+                            onNavigate={() => setNavOpen(false)}
+                          />
+                        </div>
+                      )}
+                      <ChatHistoryPanel
+                        compact
+                        currentSessionId={currentSessionId}
+                        onSelectSession={(sessionId) => {
+                          handleSelectSession(sessionId);
+                          setNavOpen(false);
+                        }}
+                        onShowAll={() => {
+                          handleNewChat();
+                        }}
                       />
                     </div>
                   )}
@@ -559,10 +585,11 @@ function AppShell({ route, subPath, params, extensionRoute }: AppShellProps) {
                     <Spinner className="h-6 w-6 text-fg-faint" />
                   </div>
                 )}
-                {route === 'chat' && (
+                {/* Home is a new conversation; `#/chat?session=` opens an existing one. */}
+                {isConversationRoute(route) && (
                   <ChatPage
-                    key={params.get('session') || params.get('new') || 'new'}
-                    initialSessionId={params.get('session') || undefined}
+                    key={(route === 'chat' && params.get('session')) || params.get('new') || 'new'}
+                    initialSessionId={(route === 'chat' && params.get('session')) || undefined}
                   />
                 )}
                 {route === 'automations' && <AutomationsPage params={params} />}
@@ -582,7 +609,6 @@ function AppShell({ route, subPath, params, extensionRoute }: AppShellProps) {
                 )}
                 {route === 'tables' && hasApplication('tables') && <TablesPage subPath={subPath} />}
                 {route === 'files' && <FilesPage params={params} />}
-                {route === 'home' && <HomePage />}
                 {route === 'activity' && <ActivityPage subPath={subPath} />}
                 {route === 'extension' && (
                   <ExtensionPageHost route={extensionRoute ?? ''} subPath={subPath} params={params} />
@@ -600,6 +626,7 @@ function AppShell({ route, subPath, params, extensionRoute }: AppShellProps) {
           </ErrorBoundary>
 
           <AssistantPanel />
+          <InboxModal />
           <EntityPeekHost />
           <GlobalSearchDialog />
         </div>

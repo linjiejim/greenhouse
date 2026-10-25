@@ -1,6 +1,6 @@
 /** Shared desktop/mobile primary navigation composition. */
 
-import { FolderOpen, House, Package, Zap, type LucideIcon } from '../lib/icons';
+import { FolderOpen, Package, Zap, type LucideIcon } from '../lib/icons';
 import { platformApplicationHref, platformApplicationIcon, type PlatformApplication } from './catalog';
 
 export interface PrimaryNavigationItem {
@@ -23,7 +23,6 @@ export interface PrimaryNavigation {
 }
 
 export interface PrimaryNavigationLabels {
-  home: string;
   files: string;
   skillhub: string;
   automations: string;
@@ -38,22 +37,14 @@ interface BuildPrimaryNavigationArgs {
 
 /**
  * The workspace, ordered by what the team comes for (v1.5, "navigation by
- * goal"): Home (team activity) · Knowledge · Files · Tables · Projects ·
- * SkillHub · Automations. The assistant has no item of its own: New Chat above
- * the list opens it, and its history shows under the list while it is open.
+ * goal"): Knowledge · Files · Tables · Projects · SkillHub · Automations. Home
+ * is the conversation itself (3.0): New Chat and the logo open it, and its
+ * history shows under the list.
  *
  * Knowledge, Tables and Projects are applications: each appears only when the
  * server-filtered catalog authorizes it and it has a host route.
  */
-export const PRIMARY_NAV_ORDER = [
-  'home',
-  'knowledge',
-  'files',
-  'tables',
-  'projects',
-  'skillhub',
-  'automations',
-] as const;
+export const PRIMARY_NAV_ORDER = ['knowledge', 'files', 'tables', 'projects', 'skillhub', 'automations'] as const;
 
 const APPLICATION_SLOTS = new Set<string>(['knowledge', 'tables', 'projects']);
 
@@ -74,7 +65,6 @@ export function buildPrimaryNavigation({ applications, labels }: BuildPrimaryNav
   const applicationItemById = new Map(applicationItems.map((item) => [item.key, item]));
 
   const fixed: Record<string, PrimaryNavigationItem> = {
-    home: { key: 'home', label: labels.home, icon: House, href: '#/home' },
     files: { key: 'files', label: labels.files, icon: FolderOpen, href: '#/files' },
     skillhub: { key: 'skillhub', label: labels.skillhub, icon: Package, href: '#/skillhub' },
     automations: { key: 'automations', label: labels.automations, icon: Zap, href: '#/automations' },
@@ -95,14 +85,19 @@ export function buildPrimaryNavigation({ applications, labels }: BuildPrimaryNav
  * The navigation item the current page belongs to, or null when the page has
  * no home in the navigation (the Activity log is reached from the account menu
  * and Administration; Settings, Administration and the design page are their
- * own workspaces; a conversation is reached from New Chat, not the list). Read from the canonical route only — the query (`?tab=…`)
+ * own workspaces; Home and a conversation are reached from New Chat, not the list). Read from the canonical route only — the query (`?tab=…`)
  * picks a tab inside the page, never a different item — so a retired hash that
  * redirected (`#/agents` → `#/automations?tab=profiles`) highlights where it
  * landed.
  */
 export function activeNavigationKey(route: string): string | null {
-  if (route === 'chat') return null;
+  if (isConversationRoute(route)) return null;
   if (route === 'activity' || route === 'settings' || route === 'administration' || route === 'design') return null;
   if (route === 'extension') return null;
   return route;
+}
+
+/** Home and `#/chat` are the same screen: a conversation (Home is a new one). */
+export function isConversationRoute(route: string): boolean {
+  return route === 'chat' || route === 'home';
 }

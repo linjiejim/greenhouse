@@ -14,7 +14,6 @@ import { registerFeatureFlags } from '@greenhouse/types/features';
 import { registerWorkspaceSettings } from '@greenhouse/types/workspace-settings';
 import { registerEntityKinds } from '@greenhouse/types/entity-links';
 import { registerMcpResourceGroups } from '@greenhouse/types/mcp';
-import { registerWidgetRecipes } from '@greenhouse/types/workbench';
 import { registerExtensionResetTables, registerExtensionServices } from '@greenhouse/db';
 import { extensionEnabled } from '../config/greenhouse-config.js';
 import { registerPublicPaths } from '../auth/public-paths.js';
@@ -78,5 +77,4 @@ for (const ext of EXTENSIONS) {
   if (ext.searchSources?.length) registerSearchSources(ext.searchSources);
   if (ext.driveScopes?.length) registerDriveScopes(ext.driveScopes);
   if (ext.exportSources?.length) registerExportSources(ext.exportSources);
-  if (ext.workbenchRecipes?.length) registerWidgetRecipes(ext.workbenchRecipes);
 }

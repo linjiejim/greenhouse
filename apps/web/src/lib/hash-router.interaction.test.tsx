@@ -30,6 +30,14 @@ describe('canonicalHash', () => {
     // A core route is never aliased away.
     expect(canonicalHash('#/files', new Map([['files', 'elsewhere']]))).toBe('#/files');
   });
+
+  it('makes Home the new-conversation screen; #/chat only opens an existing conversation', () => {
+    expect(canonicalHash('#/chat')).toBe('#/home');
+    expect(canonicalHash('#/chat?new=123')).toBe('#/home?new=123');
+    expect(canonicalHash('#/chat?session=abc')).toBe('#/chat?session=abc');
+    expect(canonicalHash('#/inbox')).toBe('#/home');
+    expect(canonicalHash('#/home?new=5')).toBe('#/home?new=5');
+  });
 });
 
 describe('useHashRouter', () => {

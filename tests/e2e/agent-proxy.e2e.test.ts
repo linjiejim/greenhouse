@@ -89,8 +89,8 @@ describe('E2E: Agent runtime manifest', () => {
     const ids = data.tools.map((t: { id: string }) => t.id);
     // Global read-only tools are present for any internal user.
     expect(ids).toContain('knowledge_query');
-    // Non-allowlisted tools are never exposed (workbench_* is chat-only by design).
-    expect(ids).not.toContain('workbench_query');
+    // Non-allowlisted tools are never exposed (tables_schema_plan is chat-only by design).
+    expect(ids).not.toContain('tables_schema_plan');
     // Each tool carries a JSON Schema for its input (agents need it to call).
     const sourceTool = data.tools.find((t: { id: string }) => t.id === 'knowledge_query');
     expect(sourceTool.inputSchema).toBeDefined();
@@ -113,7 +113,7 @@ describe('E2E: Agent tool call', () => {
   });
 
   it('rejects a non-allowlisted tool (403)', async () => {
-    const res = await fetch(`${BASE_URL}/api/agent/tools/workbench_query/call`, {
+    const res = await fetch(`${BASE_URL}/api/agent/tools/tables_schema_plan/call`, {
       method: 'POST',
       headers: h(memberToken),
       body: JSON.stringify({ profile_id: 'team', input: {} }),

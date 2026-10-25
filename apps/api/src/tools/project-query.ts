@@ -1,6 +1,6 @@
 /**
  * Project Query tool — read-only project/task access on every channel
- * (chat / proxy / MCP / workbench). Writes live in project_mutation.
+ * (chat / proxy / MCP). Writes live in project_mutation.
  */
 
 import { tool } from 'ai';
@@ -40,7 +40,7 @@ const meta: ToolMeta = {
   description: `Read-only project and task query tool. Actions: list, get, tasks, query_tasks (returns available_users for assignment), summary (progress report: overdue tasks, per-assignee breakdown, recent activity). Respects project visibility and membership rules; private projects are only returned to members or super users. ${CITE_URL_INSTRUCTION}`,
   category: 'team',
   is_global: true,
-  surface: { proxy: 'read', mcp: 'projects', workbench: true, unattendedReplaySafe: true },
+  surface: { proxy: 'read', mcp: 'projects', unattendedReplaySafe: true },
   icon: 'FolderKanban',
   sort_order: 26,
 };

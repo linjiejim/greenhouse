@@ -22,13 +22,7 @@ import { createReportTemplatesTool } from '../tools/report-templates.js';
 import { createReportRenderTool } from '../tools/report-render.js';
 import { createFeedbackQueryTool } from '../tools/feedback-query.js';
 // Derived from the catalog (kind !== 'static' + route-constructed special metas) — see registry.
-import {
-  BUILTIN_AGENT_TOOL_IDS,
-  getToolMeta,
-  LAZY_TOOL_IDS,
-  RETIRED_TOOL_ALIASES,
-  WORKBENCH_READ_TOOL_IDS,
-} from '../tools/registry.js';
+import { BUILTIN_AGENT_TOOL_IDS, getToolMeta, LAZY_TOOL_IDS, RETIRED_TOOL_ALIASES } from '../tools/registry.js';
 export { LAZY_TOOL_IDS };
 import { createCallLlmTool } from '../tools/call-llm.js';
 import { createProjectQueryTool } from '../tools/project-query.js';
@@ -42,11 +36,6 @@ import { createAutomationMutationTool } from '../tools/automation-mutation.js';
 import { createEmailQueryTool } from '../tools/email-query.js';
 import { createEmailMutationTool } from '../tools/email-mutation.js';
 import { createMemoryTool } from '../tools/memory.js';
-import type { ToolSource } from '@greenhouse/types/workbench';
-import { createWorkbenchQueryTool, createWorkbenchMutationTool } from '../tools/workbench.js';
-import { createWorkbenchEvaluator } from '../workbench/evaluate.js';
-import { delegatedAgentActor } from '../platform/actor.js';
-import { getPlatformRuntime } from '../platform/runtime.js';
 import { createLogFrictionTool } from '../tools/log-friction.js';
 import { createGenerateImageTool } from '../tools/generate-image.js';
 import { createAnalyzeImageTool } from '../tools/analyze-image.js';
@@ -125,8 +114,8 @@ export interface LazyServerToolContext {
   /** Profile of the running session — used to pick the sub-call model. */
   profileId?: string | null;
   /**
-   * The shared static tool registry, so workbench tools can evaluate cards that
-   * bind static tools. Absent on surfaces that don't pass it.
+   * The shared static tool registry, for tools that need to call other static
+   * tools. Absent on surfaces that don't pass it.
    */
   toolRegistry?: ToolRegistry;
   /**
@@ -338,38 +327,6 @@ export function buildLazyServerTools(
   }
   if (effectiveTools.includes('log_friction')) {
     tools.log_friction = createLogFrictionTool(db, { sessionId });
-  }
-
-  // Home workbench — owner-scoped inside the tools. Cards may only bind tools
-  // the user can already read, so the evaluator gets the read-only intersection
-  // and the registry it should run against.
-  //
-  // That registry is read *when a card is evaluated*, not now: `tools` is still
-  // being filled in on this line, and building a second registry here would
-  // recurse straight back into this function.
-  if (effectiveTools.includes('workbench_query') || effectiveTools.includes('workbench_mutation')) {
-    const readableToolIds = effectiveTools.filter((id) => WORKBENCH_READ_TOOL_IDS.has(id));
-    const evaluator = createWorkbenchEvaluator({
-      userId,
-      registry: { ...(ctx.toolRegistry ?? {}), ...tools },
-      readableToolIds,
-    });
-    const workbenchContext = {
-      userId,
-      readableToolIds,
-      evaluate: (source: ToolSource) => evaluator.evaluateSource(source),
-      evaluateNav: evaluator.evaluateNavTarget,
-      listVisibleApplicationIds: async () =>
-        (await getPlatformRuntime().listVisibleApplications(delegatedAgentActor({ userId }))).map(
-          ({ manifest }) => manifest.id,
-        ),
-    };
-    if (effectiveTools.includes('workbench_query')) {
-      tools.workbench_query = createWorkbenchQueryTool(db, workbenchContext);
-    }
-    if (effectiveTools.includes('workbench_mutation')) {
-      tools.workbench_mutation = createWorkbenchMutationTool(db, workbenchContext);
-    }
   }
 
   // ── Session-scoped tools ──

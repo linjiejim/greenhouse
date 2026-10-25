@@ -19,7 +19,7 @@ describe('browser-channel tool face', () => {
   });
 
   it('drops the writers the proxy never sees, and the drafts the panel cannot confirm', () => {
-    const offPanel = ['memory', 'workbench_mutation', 'feature_request', 'log_friction', 'call_llm'];
+    const offPanel = ['memory', 'feature_request', 'log_friction', 'call_llm'];
     for (const id of [...offPanel, ...DISPATCH_TOOL_IDS]) expect(kept, id).not.toContain(id);
   });
 

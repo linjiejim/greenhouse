@@ -127,6 +127,7 @@ const RETIRED_TABLES: Record<string, string> = {
   platform_user_capability_overrides: 'per-user permission overrides (removed in 3.0)',
   platform_user_entity_policy_overrides: 'per-user permission overrides (removed in 3.0)',
   platform_app_releases: 'stored app releases (removed in 3.0)',
+  platform_user_workbench_preferences: 'Home workbench (removed in 3.0)',
   rate_limit_buckets: 'rate-limit counters (transient)',
 };
 
@@ -372,40 +373,22 @@ async function carry(
 const ts = (value: unknown): unknown => value ?? null;
 
 async function carryIdentity(ctx: Ctx): Promise<void> {
-  const workbench = new Map<string, unknown>();
-  await eachRow(ctx, 'platform_user_workbench_preferences', async (row) => {
-    workbench.set(strReq(row.user_id), parseJson(row.preferences, null, ctx, 'workbench preferences'));
-  });
-  const wbLine = ctx.line('platform_user_workbench_preferences', 'users.preferences');
-  wbLine.read = workbench.size;
-
-  await carry(ctx, 'users', 'users', (row) => {
-    const prefs: Row = {};
-    const stored = workbench.get(strReq(row.id));
-    if (stored && typeof stored === 'object') {
-      prefs.workbench = stored;
-      wbLine.written += 1;
-    }
-    return {
-      id: strReq(row.id),
-      email: row.email,
-      password_hash: row.password_hash,
-      auth_version: row.auth_version,
-      nickname: row.nickname,
-      role: row.role,
-      status: row.status,
-      notes: row.notes,
-      locale: row.locale,
-      preferences: prefs,
-      created_by: row.created_by,
-      created_at: ts(row.created_at),
-      updated_at: ts(row.updated_at),
-      last_login_at: row.last_login_at,
-    };
-  });
-  for (const userId of workbench.keys()) {
-    if (!ctx.idSet('users').has(userId)) ctx.skip(wbLine, 'user no longer exists');
-  }
+  await carry(ctx, 'users', 'users', (row) => ({
+    id: strReq(row.id),
+    email: row.email,
+    password_hash: row.password_hash,
+    auth_version: row.auth_version,
+    nickname: row.nickname,
+    role: row.role,
+    status: row.status,
+    notes: row.notes,
+    locale: row.locale,
+    preferences: {},
+    created_by: row.created_by,
+    created_at: ts(row.created_at),
+    updated_at: ts(row.updated_at),
+    last_login_at: row.last_login_at,
+  }));
 
   const users = ctx.idSet('users');
   const known = (userId: unknown) => users.has(String(userId));

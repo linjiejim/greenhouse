@@ -21,7 +21,6 @@ export interface ToolMeta {
   surface?: {
     proxy?: 'read' | 'write' | 'none';
     mcp?: McpResourceGroup | (string & {});
-    workbench?: boolean;
     unattendedReplaySafe?: boolean;
   };
 }

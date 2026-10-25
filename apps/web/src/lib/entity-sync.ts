@@ -6,8 +6,7 @@
  * `project_mutation` that changed it happened entirely on the server.
  *
  * So the chat stream announces which domains a turn wrote to, and anything
- * displaying a record from one of them re-reads. Same shape as the workbench's
- * `onWorkbenchChanged` (lib/workbench/sync.ts) — a window Event rather than a
+ * displaying a record from one of them re-reads. A window Event rather than a
  * store subscription, so the global stream manager stays decoupled from every
  * feature that might be listening.
  *

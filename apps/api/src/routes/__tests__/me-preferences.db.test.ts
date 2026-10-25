@@ -43,8 +43,7 @@ describe('member preferences', () => {
     _resetProvider();
   });
 
-  it('defaults the font scale, saves a valid one and keeps the workbench layout', async () => {
-    await db.platform.setUserWorkbenchPreferences('default', user.id, { version: 1, cards: [] } as never);
+  it('defaults the font scale and saves a valid one', async () => {
     const server = app(user);
     expect(await (await server.request('/api/me/preferences')).json()).toEqual({ fontScale: 1 });
 
@@ -55,7 +54,6 @@ describe('member preferences', () => {
 
     const stored = await db.users.getPreferences(user.id);
     expect(stored.fontScale).toBe(1.2);
-    expect(stored.workbench).toBeTruthy();
   });
 
   it('accepts the small steps 0.8 and 0.85', async () => {

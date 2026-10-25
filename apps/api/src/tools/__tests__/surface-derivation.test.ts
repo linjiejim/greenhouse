@@ -23,7 +23,6 @@ import {
   MUTATING_PROXY_ALLOWLIST,
   MCP_EXPOSED_TOOL_IDS,
   MCP_TOOL_IDS_BY_GROUP,
-  WORKBENCH_READ_TOOL_IDS,
   LAZY_TOOL_IDS,
   TOOL_DEFINITIONS,
   CORE_TOOL_IDS,
@@ -169,16 +168,6 @@ describe('surface-derived exposure sets', () => {
     }
   });
 
-  it('WORKBENCH_READ_TOOL_IDS matches the pinned automatic-refresh surface', () => {
-    expect(core(WORKBENCH_READ_TOOL_IDS)).toEqual(['knowledge_query', 'project_query', 'tables_query'].sort());
-    for (const id of WORKBENCH_READ_TOOL_IDS) {
-      expect(READONLY_PROXY_ALLOWLIST.has(id), `${id} is workbench:true but not read-only proxied`).toBe(true);
-    }
-    for (const id of ['generate_image', 'analyze_image', 'external_search', 'email_query']) {
-      expect(WORKBENCH_READ_TOOL_IDS.has(id), `${id} must never auto-run from Home`).toBe(false);
-    }
-  });
-
   it('every MCP-exposed tool also carries a proxy tier (reachability invariant)', () => {
     for (const id of MCP_EXPOSED_TOOL_IDS) {
       expect(
@@ -217,8 +206,6 @@ describe('surface-derived exposure sets', () => {
         'automation_mutation',
         'memory',
         'log_friction',
-        'workbench_query',
-        'workbench_mutation',
         'email_query',
         'email_mutation',
         'files_query',
@@ -234,16 +221,6 @@ describe('surface-derived exposure sets', () => {
         'report_render',
       ].sort(),
     );
-  });
-
-  it('the workbench pair is chat-only — never proxied or MCP-exposed', () => {
-    // Personal home-page configuration has no automation consumer, and its
-    // write side pairs with a screen the user is looking at (spec D15).
-    for (const id of ['workbench_query', 'workbench_mutation']) {
-      expect(READONLY_PROXY_ALLOWLIST.has(id)).toBe(false);
-      expect(MUTATING_PROXY_ALLOWLIST.has(id)).toBe(false);
-      expect(MCP_EXPOSED_TOOL_IDS.has(id)).toBe(false);
-    }
   });
 
   it('tables_schema_plan is chat-only — never proxied or MCP-exposed', () => {

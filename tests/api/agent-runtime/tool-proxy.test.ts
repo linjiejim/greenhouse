@@ -16,8 +16,8 @@ import {
 
 describe('resolveProxyToolIds', () => {
   it('keeps only allowlisted tools from the effective set', () => {
-    const effective = ['knowledge_query', 'knowledge_mutation', 'workbench_query', 'analyze_image', 'project_query'];
-    // knowledge_mutation is mutating but not opted-in → excluded; workbench_query has no surface
+    const effective = ['knowledge_query', 'knowledge_mutation', 'tables_schema_plan', 'analyze_image', 'project_query'];
+    // knowledge_mutation is mutating but not opted-in → excluded; tables_schema_plan has no surface
     expect(resolveProxyToolIds(effective).sort()).toEqual(['analyze_image', 'knowledge_query', 'project_query']);
   });
 
@@ -72,7 +72,7 @@ describe('resolveProxyToolIds', () => {
   });
 
   it('never includes non-allowlisted tools even if effective', () => {
-    const other = ['workbench_query', 'memory'];
+    const other = ['tables_schema_plan', 'memory'];
     expect(resolveProxyToolIds(other, { allowedWriteTools: other })).toEqual([]);
     for (const id of other) {
       expect(READONLY_PROXY_ALLOWLIST.has(id)).toBe(false);

@@ -24,8 +24,13 @@ import { legacyExecutionRedirect } from './execution-route';
 import { navigationBlocked } from './navigation-guard';
 import { retiredWorkspaceRedirect } from './workspace-routes';
 
-/** The landing page: Home (team activity). */
+/** The landing page: Home, which is the new-conversation screen. */
 export const DEFAULT_HASH = '#/home';
+
+/** A fresh new conversation on Home; the timestamp forces a new one even when Home is already open. */
+export function newChatHash(now: number = Date.now()): string {
+  return `#/home?new=${now}`;
+}
 
 /** Top-level hashes core owns; an extension alias can never take one over. */
 export const CORE_ROUTES: ReadonlySet<string> = new Set([
@@ -59,11 +64,20 @@ function redirectOnce(hash: string, aliases: ReadonlyMap<string, string>): strin
   const workspaceRedirect = retiredWorkspaceRedirect(topLevel, new URLSearchParams(query).get('view'));
   if (workspaceRedirect) return workspaceRedirect;
 
-  // The retired Apps page lands on Home, which shows the workbench cards.
+  // The retired Apps / workbench page lands on Home.
   if (topLevel === 'workbench') return DEFAULT_HASH;
-  // The old full-page inbox duplicated the account-menu dialog; history became
-  // the History dialog; dashboard / inquiry were earlier product areas.
-  if (['history', 'inbox', 'dashboard', 'inquiry'].includes(topLevel)) return '#/chat';
+  // The old full-page inbox became the bell dialog; history became the History
+  // dialog; dashboard / inquiry were earlier product areas.
+  if (['history', 'inbox', 'dashboard', 'inquiry'].includes(topLevel)) return DEFAULT_HASH;
+  // `#/chat` only opens an existing conversation; a new one is Home. `?new=`
+  // rides along so it still forces a fresh conversation.
+  if (topLevel === 'chat') {
+    const params = new URLSearchParams(query);
+    if (!params.get('session')) {
+      const fresh = params.get('new');
+      return fresh ? `${DEFAULT_HASH}?new=${encodeURIComponent(fresh)}` : DEFAULT_HASH;
+    }
+  }
 
   // Legacy hashes an extension claims (`pages[].aliases`) redirect into the
   // extension, tail and query intact. A core route can never be aliased away.

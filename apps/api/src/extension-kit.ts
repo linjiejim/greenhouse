@@ -31,7 +31,8 @@ export type { SearchSource, SearchSourceContext } from './search/sources.js';
 export type { SearchHit } from '@greenhouse/types/search';
 export { entityUrl, parseEntityUrl } from '@greenhouse/types/entity-links';
 export type { EntityRef, ExtensionEntityKindDef } from '@greenhouse/types/entity-links';
-export type { WidgetRecipe } from '@greenhouse/types/workbench';
+/** @deprecated The Home workbench was removed in 3.0; recipes are ignored. Removed in 4.0. */
+export type WidgetRecipe = unknown;
 export type { FeatureFlag } from '@greenhouse/types/features';
 export type { WorkspaceSettingDef } from '@greenhouse/types/workspace-settings';
 export type { GreenhouseConfig } from '@greenhouse/types/config';

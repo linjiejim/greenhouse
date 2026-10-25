@@ -8,7 +8,7 @@
 
 import { describe, it, expect } from 'vitest';
 import type { DatabaseProvider } from '@greenhouse/db';
-import { parseWorkbenchConfig } from '@greenhouse/types/workbench';
+import { normalizeAutomationOptInTools } from '@greenhouse/types/automation-tools';
 import { resolveEffectiveTools, buildLazyServerTools } from '../tool-resolution.js';
 import { BUILTIN_AGENT_TOOL_IDS, RETIRED_TOOL_ALIASES, getAllToolIds } from '../../tools/registry.js';
 import type { AgentProfile } from '../../profiles/profile.js';
@@ -110,25 +110,35 @@ describe('buildLazyServerTools — session-scoped orchestration tools', () => {
   });
 });
 
-describe('buildLazyServerTools — workbench cards can only bind what the user can read', () => {
-  const DB_WITH_EMPTY_WORKBENCH = {
-    platform: { getUserWorkbenchPreferences: async () => parseWorkbenchConfig({}) },
-  } as unknown as DatabaseProvider;
+/**
+ * 3.0 removed the Home workbench and its `workbench_query` / `workbench_mutation`
+ * tools. Saved Agents and automations may still name them; an unknown id must be
+ * dropped quietly, never fail the run.
+ */
+describe('stored ids of removed tools', () => {
+  const REMOVED = ['workbench_query', 'workbench_mutation'];
 
-  it('hands the workbench tools the read-only intersection, not the whole tool set', async () => {
-    const tools = buildLazyServerTools(
-      DB_WITH_EMPTY_WORKBENCH,
-      ['workbench_query', 'workbench_mutation', 'project_query', 'project_mutation', 'memory'],
-      { userId: 'u1', userRole: 'team' },
-    );
+  it('a custom Agent that ticked the workbench tools still resolves, without them', async () => {
+    const result = await resolveEffectiveTools({
+      userId: 'u-super',
+      userRole: 'super',
+      profile: makeProfile({ id: 'custom:old', tools: [...REMOVED, 'knowledge_query'] }),
+      profileId: 'custom:old',
+    });
+    expect(result.effectiveTools).toContain('knowledge_query');
+    for (const id of REMOVED) expect(result.effectiveTools).not.toContain(id);
+  });
 
-    // A card is re-run as this user forever after, so binding a tool they cannot
-    // call — or a WRITE tool — would be a standing request they never made.
-    const execute = (tools.workbench_query as { execute: (i: unknown, o: unknown) => Promise<unknown> }).execute;
-    const result = (await execute({ action: 'get' }, { toolCallId: 't', messages: [] })) as {
-      bindable_tool_ids: string[];
-    };
-    expect(result.bindable_tool_ids).toEqual(['project_query']);
+  it('building tools for an unknown id is a no-op, not an error', () => {
+    const tools = buildLazyServerTools({} as DatabaseProvider, [...REMOVED, 'memory'], {
+      userId: 'u1',
+      userRole: 'team',
+    });
+    expect(Object.keys(tools)).toEqual(['memory']);
+  });
+
+  it('an automation opt-in list naming them normalizes them away', () => {
+    expect(normalizeAutomationOptInTools([...REMOVED, 'memory'])).toEqual(['memory']);
   });
 });
 

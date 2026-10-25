@@ -5,7 +5,8 @@
  * 1. Brand + global actions
  * 2. + New Chat
  * 3. Global destinations + Chat utilities + More
- * 4. Contextual panel (varies by active destination)
+ * 4. Contextual panel (varies by active destination); module pages add a
+ *    collapsible "Recent conversations" under their own panel
  * 5. User profile + settings + collapse control (bottom)
  */
 
@@ -22,7 +23,9 @@ import { useT } from '../../lib/i18n';
 import { SidebarPrimaryAction } from './sidebar-primary-action';
 import { SidebarGlobalNavigation } from './sidebar-global-navigation';
 import { WsStatusIndicator } from './top-bar';
-import type { PrimaryNavigation } from '../../platform/navigation';
+import { InboxBellButton } from './inbox-bell';
+import { newChatHash } from '../../lib/hash-router';
+import { isConversationRoute, type PrimaryNavigation } from '../../platform/navigation';
 import {
   ChatHistoryPanel,
   SettingsNavPanel,
@@ -122,7 +125,16 @@ export function SidebarBrandHeader(props: SidebarBrandHeaderProps) {
   return (
     <div className="flex h-14 w-full flex-shrink-0 items-center gap-2 border-b border-edge px-3">
       <div className="sidebar-brand-identity group relative flex min-w-0 flex-1 items-center overflow-hidden rounded-md px-1">
-        <a href="#/home" className="absolute inset-0 z-0 rounded-md" aria-label={t('navigation.greenHouseHome')} />
+        <a
+          href="#/home"
+          onClick={(event) => {
+            // Always a fresh conversation, even when Home is already open.
+            event.preventDefault();
+            window.location.hash = newChatHash();
+          }}
+          className="absolute inset-0 z-0 rounded-md"
+          aria-label={t('navigation.greenHouseHome')}
+        />
         <div className="pointer-events-none relative z-[1] flex items-center gap-2 transition-opacity group-hover:opacity-80">
           <AppLogo size="sm" logoOnly />
           <div className="flex min-w-0 flex-col">
@@ -243,6 +255,7 @@ export function AppSidebar({
               <>
                 <div className="mb-2 flex flex-col items-center gap-1 border-b border-edge pb-2">
                   <SearchNavButton />
+                  <InboxBellButton />
                   <AssistantNavButton />
                   <WsStatusIndicator />
                 </div>
@@ -264,7 +277,7 @@ export function AppSidebar({
               </>
             )}
 
-            {!isOverlayRoute && route !== 'chat' && route !== 'activity' && (
+            {!isOverlayRoute && !isConversationRoute(route) && route !== 'activity' && (
               <PinnedSectionCollapsed currentHash={`#/${route}${subPath ? '/' + subPath : ''}`} />
             )}
 
@@ -292,6 +305,7 @@ export function AppSidebar({
             <>
               <WsStatusIndicator />
               <SearchNavButton />
+              <InboxBellButton />
               <AssistantNavButton />
             </>
           }
@@ -342,7 +356,7 @@ export function AppSidebar({
 
               {/* Contextual Panel */}
               <div className="flex-1 min-h-0 overflow-hidden flex flex-col mt-1">
-                {route === 'chat' && (
+                {isConversationRoute(route) && (
                   <ChatHistoryPanel currentSessionId={currentSessionId} onSelectSession={onSelectSession} />
                 )}
                 {route === 'projects' && <ProjectsListPanel />}
@@ -355,6 +369,16 @@ export function AppSidebar({
                   <ExtensionSidebarPanel route={extensionRoute} subPath={subPath} />
                 )}
               </div>
+
+              {/* Module pages keep their own panel above and the history below. */}
+              {!isConversationRoute(route) && (
+                <ChatHistoryPanel
+                  compact
+                  currentSessionId={currentSessionId}
+                  onSelectSession={onSelectSession}
+                  onShowAll={onNewChat}
+                />
+              )}
             </>
           )}
 

@@ -43,7 +43,6 @@ import { emailQueryTool } from './email-query.js';
 import { emailMutationTool } from './email-mutation.js';
 import { memoryTool } from './memory.js';
 import { logFrictionTool } from './log-friction.js';
-import { workbenchQueryTool, workbenchMutationTool } from './workbench.js';
 import { filesQueryTool } from './files-query.js';
 import { filesMutationTool } from './files-mutation.js';
 import { feedbackQueryTool } from './feedback-query.js';
@@ -82,8 +81,6 @@ const CORE_TOOL_MODULES: ToolModule[] = [
   emailMutationTool,
   memoryTool,
   logFrictionTool,
-  workbenchQueryTool,
-  workbenchMutationTool,
   filesQueryTool,
   filesMutationTool,
   feedbackQueryTool,
@@ -201,16 +198,6 @@ export function mcpToolIdsForGroups(groups: Iterable<string>): Set<string> {
   }
   return ids;
 }
-
-/**
- * Read tools safe to persist and execute automatically from the Home workbench.
- * A proxy-readable tool is not automatically a dashboard data source: image
- * generation, image analysis and open-web search all sit on the read proxy but
- * have cost or side effects that make background refresh inappropriate.
- */
-export const WORKBENCH_READ_TOOL_IDS = new Set<string>(
-  TOOL_DEFINITIONS.filter((m) => m.surface?.proxy === 'read' && m.surface.workbench === true).map((m) => m.id),
-);
 
 /**
  * Tools every Agent has, whether or not its author ticked them.

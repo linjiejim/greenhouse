@@ -1,7 +1,7 @@
 /**
  * MCP Server — `/api/mcp`
  *
- * Exposes the workbench's internal capability layer to external MCP clients (Claude,
+ * Exposes Greenhouse's internal capability layer to external MCP clients (Claude,
  * Cursor, any MCP-speaking agent) over Streamable HTTP. This is a thin protocol
  * adapter in front of the existing agent tool-proxy — it does NOT define its own
  * resource access:
@@ -107,7 +107,7 @@ const SERVER_VERSION = '0.1.0';
 
 /** Sent to clients in the initialize response — the agent-facing bootstrap hint. */
 const SERVER_INSTRUCTIONS =
-  'Greenhouse team workbench. The tool list is your permission list: a missing tool has not been ' +
+  'Greenhouse team hub. The tool list is your permission list: a missing tool has not been ' +
   'granted to you, and each tool documents its own usage. You act as the member who connected you, ' +
   'with their permissions, and every write (tools ending in `mutation`) is recorded in their name. ' +
   'Before changing data other people rely on, make sure your user wants that change. A delete first ' +

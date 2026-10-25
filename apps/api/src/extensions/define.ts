@@ -16,7 +16,6 @@ import type { ApplicationRegistration } from '@greenhouse/platform-kernel';
 import type { DatabaseProvider, Db } from '@greenhouse/db';
 import type { FeatureFlag } from '@greenhouse/types/features';
 import type { ExtensionEntityKindDef } from '@greenhouse/types/entity-links';
-import type { WidgetRecipe } from '@greenhouse/types/workbench';
 import type { SearchSource } from '../search/sources.js';
 import type { DriveScopeDef } from '../drive/access.js';
 import type { ExtensionExportSource } from '../tools/export-sources.js';
@@ -126,8 +125,8 @@ export interface GreenhouseExtension {
    * can then be granted `mcp:<group>` alone; tools join it via `surface.mcp`.
    */
   mcpGroups?: string[];
-  /** Home-workbench cards this extension offers, backed by its own read tools. */
-  workbenchRecipes?: WidgetRecipe[];
+  /** @deprecated Ignored since 3.0 (the Home workbench was removed); kept so 2.x extensions compile. Removed in 4.0. */
+  workbenchRecipes?: unknown[];
   /** Paths that skip authentication (OAuth callbacks, webhooks). Keep this list minimal. */
   publicPaths?: { exact?: string[]; prefixes?: string[] };
   /** Periodic jobs started with the scheduler. */

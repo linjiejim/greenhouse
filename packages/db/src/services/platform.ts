@@ -6,8 +6,7 @@
  * parameter is kept for the kernel's interface and ignored. Per-user
  * capability / entity-policy overrides and stored app releases were retired in
  * 3.0 — precedence is role allow > default deny, and the manifest golden-hash
- * test guards releases. The Home workbench layout lives in
- * `users.preferences.workbench`; the workbench methods here are its facade.
+ * test guards releases.
  */
 
 import { and, desc, eq, inArray } from 'drizzle-orm';
@@ -21,7 +20,6 @@ import type {
   UserEntityPolicyOverride,
 } from '@greenhouse/platform-kernel';
 import { isCapabilityPattern, isStableId, validateEntityPolicy } from '@greenhouse/platform-kernel';
-import { DEFAULT_WORKBENCH_CONFIG, parseWorkbenchConfig, type WorkbenchConfig } from '@greenhouse/types/workbench';
 import { nowIso } from '@greenhouse/utils/date';
 
 import type { Db } from '../client.js';
@@ -400,50 +398,6 @@ export function createPlatformService(db: Db) {
       return {
         rolePolicies: roleRows.map((row) => parseStoredEntityPolicy(row.scopes, row.field_policies)),
       };
-    },
-
-    async getUserWorkbenchPreferences(_orgId: string, userId: string): Promise<WorkbenchConfig> {
-      const rows = await db.select({ preferences: users.preferences }).from(users).where(eq(users.id, userId)).limit(1);
-      const stored = rows[0]?.preferences?.workbench;
-      return stored ? parseWorkbenchConfig(stored) : { ...DEFAULT_WORKBENCH_CONFIG };
-    },
-
-    async setUserWorkbenchPreferences(
-      _orgId: string,
-      userId: string,
-      preferences: WorkbenchConfig,
-    ): Promise<WorkbenchConfig> {
-      return service.mutateUserWorkbenchPreferences(_orgId, userId, () => preferences);
-    },
-
-    /**
-     * Serialize a read-modify-write of one user's workbench layout. Agent
-     * calls, browser tabs and the Home editor can all update it; the user row
-     * lock makes concurrent writers queue instead of dropping each other's
-     * change (other preference keys are preserved).
-     */
-    async mutateUserWorkbenchPreferences(
-      _orgId: string,
-      userId: string,
-      mutate: (current: WorkbenchConfig) => WorkbenchConfig,
-    ): Promise<WorkbenchConfig> {
-      return db.transaction(async (tx) => {
-        const rows = await tx
-          .select({ preferences: users.preferences })
-          .from(users)
-          .where(eq(users.id, userId))
-          .for('update');
-        const stored = rows[0]?.preferences ?? {};
-        const current = stored.workbench ? parseWorkbenchConfig(stored.workbench) : { ...DEFAULT_WORKBENCH_CONFIG };
-        const normalized = parseWorkbenchConfig(mutate(current));
-        if (rows[0]) {
-          await tx
-            .update(users)
-            .set({ preferences: { ...stored, workbench: normalized }, updated_at: nowIso() })
-            .where(eq(users.id, userId));
-        }
-        return normalized;
-      });
     },
 
     async recordAudit(event: PlatformAuditEvent): Promise<PlatformAuditEventRow> {
