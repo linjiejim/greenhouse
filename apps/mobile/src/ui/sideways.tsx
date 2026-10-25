@@ -8,23 +8,37 @@
 
 import React, { useState } from 'react';
 import { Modal, ScrollView, Text, useWindowDimensions, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { TableGrid, type TableData } from '../markdown';
 import { useT } from '../lib/i18n';
 import { HIT, makeStyles, space, typo, useTheme, weight } from '../theme';
 import { Icon, Touchable } from './core';
 
-export function SidewaysTable({
-  data,
-  title,
-  visible,
-  onClose,
-}: {
+interface SidewaysProps {
   data: TableData | null;
   title: string;
   visible: boolean;
   onClose: () => void;
-}) {
+}
+
+export function SidewaysTable(props: SidewaysProps) {
+  return (
+    <Modal
+      visible={props.visible}
+      animationType="fade"
+      presentationStyle="fullScreen"
+      supportedOrientations={['portrait']}
+      onRequestClose={props.onClose}
+    >
+      {/* its own provider: the screen's insets include the tab bar (83 at the bottom, not the 34 of the home indicator) */}
+      <SafeAreaProvider>
+        <Turned {...props} />
+      </SafeAreaProvider>
+    </Modal>
+  );
+}
+
+function Turned({ data, title, onClose }: SidewaysProps) {
   const t = useT();
   const { colors: c } = useTheme();
   const styles = useStyles(c);
@@ -39,60 +53,52 @@ export function SidewaysTable({
   const lead = Math.max(insets.top, space.margin);
   const trail = Math.max(insets.bottom, space.margin);
   return (
-    <Modal
-      visible={visible}
-      animationType="fade"
-      presentationStyle="fullScreen"
-      supportedOrientations={['portrait']}
-      onRequestClose={onClose}
+    <View
+      style={styles.root}
+      onLayout={(e) => {
+        const { width: w, height: h } = e.nativeEvent.layout;
+        if (w && h && (w !== screen?.width || h !== screen?.height)) setScreen({ width: w, height: h });
+      }}
     >
       <View
-        style={styles.root}
-        onLayout={(e) => {
-          const { width: w, height: h } = e.nativeEvent.layout;
-          if (w && h && (w !== screen?.width || h !== screen?.height)) setScreen({ width: w, height: h });
-        }}
+        style={[
+          styles.turned,
+          {
+            width: height,
+            height: width,
+            left: (width - height) / 2,
+            top: (height - width) / 2,
+            paddingLeft: lead,
+            paddingRight: trail,
+            // the turned top and bottom run along the phone's side edges (no insets in portrait)
+            paddingTop: Math.max(insets.right, space.sm),
+            paddingBottom: Math.max(insets.left, space.sm),
+          },
+        ]}
       >
-        <View
-          style={[
-            styles.turned,
-            {
-              width: height,
-              height: width,
-              left: (width - height) / 2,
-              top: (height - width) / 2,
-              paddingLeft: lead,
-              paddingRight: trail,
-              // the turned top and bottom run along the phone's side edges (no insets in portrait)
-              paddingTop: Math.max(insets.right, space.sm),
-              paddingBottom: Math.max(insets.left, space.sm),
-            },
-          ]}
-        >
-          <View style={styles.bar}>
-            <Text style={styles.title} numberOfLines={1} accessibilityRole="header">
-              {title}
-            </Text>
-            <Touchable
-              onPress={onClose}
-              accessibilityRole="button"
-              accessibilityLabel={t('common.close')}
-              style={styles.close}
-            >
-              <Icon name="x" size={17} color={c.secondaryLabel} />
-            </Touchable>
-          </View>
-          {data ? (
-            <ScrollView style={styles.fill} contentContainerStyle={styles.content}>
-              {/* the grid scrolls sideways itself */}
-              <View onLayout={(e) => setAvail(Math.floor(e.nativeEvent.layout.width))}>
-                <TableGrid data={data} big avail={avail || undefined} />
-              </View>
-            </ScrollView>
-          ) : null}
+        <View style={styles.bar}>
+          <Text style={styles.title} numberOfLines={1} accessibilityRole="header">
+            {title}
+          </Text>
+          <Touchable
+            onPress={onClose}
+            accessibilityRole="button"
+            accessibilityLabel={t('common.close')}
+            style={styles.close}
+          >
+            <Icon name="x" size={17} color={c.secondaryLabel} />
+          </Touchable>
         </View>
+        {data ? (
+          <ScrollView style={styles.fill} contentContainerStyle={styles.content}>
+            {/* the grid scrolls sideways itself */}
+            <View onLayout={(e) => setAvail(Math.floor(e.nativeEvent.layout.width))}>
+              <TableGrid data={data} big avail={avail || undefined} />
+            </View>
+          </ScrollView>
+        ) : null}
       </View>
-    </Modal>
+    </View>
   );
 }
 
