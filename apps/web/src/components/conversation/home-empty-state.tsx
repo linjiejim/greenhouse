@@ -7,8 +7,9 @@
  *   3. "N waiting for you" — only while unread runtime_attention notifications
  *      exist; it opens the bell;
  *   4. the composer, centred (passed in: the pane owns it);
- *   5. recent conversations, one line each, with "All". They fade while the
- *      composer is focused or holds text, like the phone. How many is a
+ *   5. recent conversations, one line each, with "All". They fade once the
+ *      composer holds text (on narrow screens also while it is focused, like
+ *      the phone; desktop focuses it on load). How many is a
  *      per-device choice (Settings → Preferences), 0 hides the list.
  */
 
@@ -18,6 +19,9 @@ import { profileAvatarProps } from '../chat/profile-selector';
 import { DEFAULT_AGENT_ID } from '../../lib/agent-constants';
 import { greetingFor, greetingName, readHomeRecent } from '../../lib/home';
 import { relativeTime } from '../../lib/utils';
+
+/** Narrow screens, where the composer is not focused on load (conversation-pane's autoFocus rule). */
+const isTouchLayout = () => typeof window !== 'undefined' && window.innerWidth < 768;
 import { useT } from '../../lib/i18n';
 import { Bell, Pin } from '../../lib/icons';
 import * as api from '../../lib/api';
@@ -108,7 +112,8 @@ export function HomeEmptyState({
 
   const name = greetingName(currentUser);
   const greeting = t(`home.greeting.${greetingFor(new Date().getHours())}`, { name });
-  const quiet = composerFocused || hasText;
+  // Desktop focuses the composer on load, so focus alone must not hide the list there.
+  const quiet = hasText || (composerFocused && isTouchLayout());
 
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col items-center gap-3 px-2 py-8 text-center" data-testid="home">

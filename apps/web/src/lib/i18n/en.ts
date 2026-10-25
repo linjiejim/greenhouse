@@ -2401,7 +2401,7 @@ export default {
     bell: 'Inbox',
     bellUnread: 'Inbox, {count} unread',
     notifications: 'Notifications',
-    sharedWithMe: 'Sessions shared with me',
+    sharedWithMe: 'Shared with me',
     activityTab: 'Team activity',
     activity: {
       hint: 'What people and their agents changed in the last two weeks — only what you can open.',

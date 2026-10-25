@@ -135,17 +135,20 @@ export function SidebarBrandHeader(props: SidebarBrandHeaderProps) {
           className="absolute inset-0 z-0 rounded-md"
           aria-label={t('navigation.greenHouseHome')}
         />
-        <div className="pointer-events-none relative z-[1] flex items-center gap-2 transition-opacity group-hover:opacity-80">
+        <div className="pointer-events-none relative z-[1] flex min-w-0 items-center gap-2 transition-opacity group-hover:opacity-80">
           <AppLogo size="sm" logoOnly />
           <div className="flex min-w-0 flex-col">
-            <span className="text-sm font-bold leading-tight text-fg">Greenhouse</span>
-            <div className="flex h-4 items-center gap-1 text-caption leading-4 text-fg-faint">
-              <span>{t('navigation.brandTagline')}</span>
+            <span className="truncate text-sm font-bold leading-tight text-fg">Greenhouse</span>
+            <div className="flex h-4 min-w-0 items-center gap-1 text-caption leading-4 text-fg-faint">
+              <span className="truncate whitespace-nowrap">{t('navigation.brandTagline')}</span>
             </div>
           </div>
         </div>
       </div>
-      {globalActions && <div className="flex flex-shrink-0 items-center gap-0">{globalActions}</div>}
+      {globalActions && (
+        // Four header actions beside the wordmark: 32px each so "Greenhouse" still fits the default width.
+        <div className="flex flex-shrink-0 items-center gap-0 [&_button]:h-8 [&_button]:w-8">{globalActions}</div>
+      )}
     </div>
   );
 }

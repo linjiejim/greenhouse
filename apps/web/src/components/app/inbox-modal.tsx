@@ -248,7 +248,7 @@ export function InboxModal() {
               role="tab"
               aria-selected={tab === value}
               onClick={() => setTab(value)}
-              className={`flex items-center gap-1.5 rounded-t-md border-b-2 px-3 py-2 text-xs transition-colors ${
+              className={`flex flex-shrink-0 items-center gap-1.5 whitespace-nowrap rounded-t-md border-b-2 px-3 py-2 text-xs transition-colors ${
                 tab === value
                   ? 'border-accent text-primary-fg-strong'
                   : 'border-transparent text-fg-muted hover:text-fg-secondary'
@@ -263,7 +263,7 @@ export function InboxModal() {
               type="button"
               onClick={() => void markAllRead()}
               disabled={activeUnread === 0 || markingAll}
-              className="ml-auto mb-1 inline-flex items-center gap-1.5 rounded-sm px-2 py-1 text-xs text-fg-muted transition-colors hover:bg-surface-muted hover:text-fg-secondary disabled:cursor-not-allowed disabled:opacity-40"
+              className="ml-auto mb-1 inline-flex flex-shrink-0 items-center gap-1.5 whitespace-nowrap rounded-sm px-2 py-1 text-xs text-fg-muted transition-colors hover:bg-surface-muted hover:text-fg-secondary disabled:cursor-not-allowed disabled:opacity-40"
             >
               <CheckCheck size={14} />
               {t('inbox.markAllRead')}

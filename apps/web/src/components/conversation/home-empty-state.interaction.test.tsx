@@ -85,6 +85,14 @@ describe('HomeEmptyState', () => {
     expect(container!.querySelector('[data-testid="home-recent"]')?.className).toContain('opacity-0');
   });
 
+  it('keeps the list visible when the desktop composer is merely focused', async () => {
+    await render({ composer: createElement('textarea', { 'aria-label': 'composer' }) });
+    await act(async () => {
+      container!.querySelector('textarea')!.focus();
+    });
+    expect(container!.querySelector('[data-testid="home-recent"]')?.className).toContain('opacity-100');
+  });
+
   it('shows "waiting for you" for unread attention notifications and opens the bell', async () => {
     useWsStore.setState({ notificationCount: 2 });
     mocks.fetchNotifications.mockResolvedValue({

@@ -2348,7 +2348,7 @@ const zh: Messages = {
     },
     title: '收件箱',
     notifications: '通知',
-    sharedWithMe: '分享给我的会话',
+    sharedWithMe: '分享给我',
     unreadCount: '{count} 条未读',
     markAllRead: '全部已读',
     noShares: '暂无分享的会话',
