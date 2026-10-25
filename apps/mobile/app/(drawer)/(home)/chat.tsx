@@ -348,7 +348,7 @@ export default function Chat() {
     if (!id) {
       // never reached the station: the message waits for it
       if (!parts.attachments.length) {
-        if (!queueTurn({ sessionId: null, text, images: parts.images })) {
+        if (!queueTurn({ sessionId: null, ...(agentId ? { agentId } : {}), text, images: parts.images })) {
           alertError(t('conversation.outboxFull'));
           return;
         }
@@ -425,16 +425,22 @@ export default function Chat() {
     [router],
   );
 
+  // a shared conversation is read-only: no reply for its buttons (they show disabled)
   const env = useCallback(
-    (followUp?: string) => ({
-      reply: async (text: string) => {
-        if (state.busy || shared) return false;
-        return send(text, []);
-      },
-      followUp,
-    }),
+    (followUp?: string) =>
+      shared
+        ? { followUp }
+        : {
+            reply: async (text: string) => {
+              if (state.busy) return false;
+              return send(text, []);
+            },
+            followUp,
+          },
     [send, state.busy, shared],
   );
+  // the session the reply cards save into (a task, a schema): none when it is not mine to write in
+  const cardSession = shared ? null : sessionId;
 
   // long-press actions: quote into the composer, regenerate the latest reply
   const quote = useCallback((text: string) => {
@@ -587,7 +593,7 @@ export default function Chat() {
       return (
         <AssistantReply
           messageId={message.id}
-          sessionId={sessionId}
+          sessionId={cardSession}
           text={message.content}
           steps={steps}
           references={message.references_}
@@ -626,7 +632,7 @@ export default function Chat() {
       <View>
         <AssistantReply
           messageId="live"
-          sessionId={sessionId}
+          sessionId={cardSession}
           text={reply.text}
           steps={reply.steps}
           live

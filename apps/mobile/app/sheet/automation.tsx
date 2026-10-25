@@ -59,6 +59,8 @@ export default function AutomationSheet() {
   const task = resource.data?.task ?? null;
   const [running, setRunning] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  // one toggle save at a time: an older answer landing last would leave the opposite state saved
+  const [toggling, setToggling] = useState(false);
 
   const patchTask = useCallback(
     (patch: Partial<Automation>) => setData((data) => (data ? { ...data, task: { ...data.task, ...patch } } : data)),
@@ -67,12 +69,14 @@ export default function AutomationSheet() {
 
   const toggle = useCallback(
     async (enabled: boolean) => {
-      if (!task) return;
+      if (!task || toggling) return;
       const current = captureIdentity();
       selectionTick();
       patchTask({ enabled });
+      setToggling(true);
       const result = await setAutomationEnabled(task.id, enabled);
       if (!current()) return;
+      setToggling(false);
       if (!result.ok) {
         patchTask({ enabled: !enabled });
         alertError(t('automations.toggleFailed'), result.message || undefined);
@@ -82,7 +86,7 @@ export default function AutomationSheet() {
       notifySuccess();
       toast(t(enabled ? 'automations.resumed' : 'automations.pausedToast'), 'check');
     },
-    [task, patchTask, t],
+    [task, toggling, patchTask, t],
   );
 
   const runNow = useCallback(async () => {
@@ -175,7 +179,7 @@ export default function AutomationSheet() {
         </Text>
       </Card>
       <Card style={[styles.card, styles.toggle]}>
-        <NativeToggle label={t('automations.enabled')} value={task.enabled} onChange={(on) => void toggle(on)} />
+        <NativeToggle label={t('automations.enabled')} value={task.enabled} onChange={(on) => void toggle(on)} disabled={toggling} />
       </Card>
       <Section>
         <Row title={t('automations.scheduleLabel')} value={scheduleLabel(task.schedule, task.timezone)} icon="clock" />

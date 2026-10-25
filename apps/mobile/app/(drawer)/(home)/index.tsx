@@ -113,6 +113,8 @@ function Home() {
 
   // a conversation is made the first time a file is picked; sending moves to its page
   const made = useRef<string | null>(null);
+  // once made, its agent is settled: the picker steps away until the message goes
+  const [agentSettled, setAgentSettled] = useState(false);
   const ensureSession = useCallback(async () => {
     if (made.current) return made.current;
     const current = captureIdentity();
@@ -123,6 +125,7 @@ function Home() {
       return null;
     }
     made.current = result.data.id;
+    setAgentSettled(true);
     return made.current;
   }, [t, agentId]);
   const files = useComposerFiles(ensureSession);
@@ -152,7 +155,7 @@ function Home() {
     if (!sessionId) {
       // the station cannot be reached: the message waits and goes once it can
       if (parts.attachments.length) return;
-      if (!queueTurn({ sessionId: null, text, images: parts.images })) {
+      if (!queueTurn({ sessionId: null, ...(agentId ? { agentId } : {}), text, images: parts.images })) {
         // the outbox is full: the words stay in the box
         alertError(t('conversation.outboxFull'));
         return;
@@ -164,6 +167,7 @@ function Home() {
     }
     const turn: FirstTurn = { text, images: parts.images, attachments: parts.attachments };
     made.current = null;
+    setAgentSettled(false);
     setDraft('');
     files.clear();
     router.push({ pathname: '/chat', params: { session: sessionId, k: putHandoff('first-turn', turn) } });
@@ -225,16 +229,15 @@ function Home() {
             <Text style={styles.sectionTitle} accessibilityRole="header">
               {t('home.recent')}
             </Text>
-            {sessions.length ? (
-              <Touchable
-                onPress={() => router.push('/conversations')}
-                accessibilityRole="button"
-                hitSlop={8}
-                style={styles.all}
-              >
-                <Text style={styles.allText}>{t('home.all')}</Text>
-              </Touchable>
-            ) : null}
+            {/* always there: conversations shared with me live behind it too */}
+            <Touchable
+              onPress={() => router.push('/conversations')}
+              accessibilityRole="button"
+              hitSlop={8}
+              style={styles.all}
+            >
+              <Text style={styles.allText}>{t('home.all')}</Text>
+            </Touchable>
           </View>
           {offline ? <Text style={styles.offline}>{t('common.savedCopy')}</Text> : null}
           {recentCount === 0 ? null : recent.length ? (
@@ -280,7 +283,7 @@ function Home() {
           onHeight={setComposerHeight}
           bottomInset={insets.bottom}
           grouped
-          agents={agents}
+          agents={agentSettled ? undefined : agents}
           agentId={agentId}
           onAgent={setAgentId}
           onFocusChange={setComposing}

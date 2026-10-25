@@ -171,7 +171,7 @@ export async function flushOutbox(): Promise<void> {
         inFlight.add(snapshot.id);
         let made: Awaited<ReturnType<typeof createSession>>;
         try {
-          made = await createSession();
+          made = await createSession(snapshot.agentId);
         } finally {
           inFlight.delete(snapshot.id);
         }

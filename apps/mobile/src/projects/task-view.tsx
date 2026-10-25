@@ -142,19 +142,42 @@ export function TaskView({
     [task, setData, t, onChanged],
   );
 
-  // assignee and priority: saved at once from their menus, put back when the station refuses
+  // assignee and priority: saved at once from their menus, one save in flight per field so the
+  // member's last choice is what the server ends on; put back when the station refuses
+  type Field = 'assignee_id' | 'priority';
+  const fieldChoices = useRef<{
+    taskId: string;
+    current: () => boolean;
+    byField: Map<Field, LatestChoice<Partial<ProjectTask>, ProjectTask>>;
+  } | null>(null);
   const changeField = useCallback(
-    async (patch: { assignee_id?: string | null; priority?: TaskPriority }, local: Partial<ProjectTask>, before: Partial<ProjectTask>) => {
+    async (field: Field, local: Partial<ProjectTask>, before: Partial<ProjectTask>) => {
       if (!task) return;
       const id = task.id;
-      const current = captureIdentity();
+      if (fieldChoices.current?.taskId !== id || !fieldChoices.current.current()) {
+        fieldChoices.current = { taskId: id, current: captureIdentity(), byField: new Map() };
+      }
+      const slot = fieldChoices.current;
+      let choice = slot.byField.get(field);
+      if (!choice || choice.idle) {
+        choice = new LatestChoice<Partial<ProjectTask>, ProjectTask>(
+          before,
+          async (value) => {
+            const result = await updateTask(id, { [field]: (value[field] as string | null | undefined) ?? null });
+            return result.ok ? { ok: true, data: result.data.task } : { ok: false, message: result.message };
+          },
+          slot.current,
+        );
+        slot.byField.set(field, choice);
+      }
       selectionTick();
       setData((detail) => (detail ? { ...detail, tasks: withTaskPatched(detail.tasks, id, local) } : detail));
-      const result = await updateTask(id, patch);
-      if (!current()) return;
-      if (!result.ok) {
-        setData((detail) => (detail ? { ...detail, tasks: withTaskPatched(detail.tasks, id, before) } : detail));
-        alertError(t('projects.saveTaskFailed'), result.message || undefined);
+      const outcome = await choice.choose(local);
+      // a later choice took over, or the station / account changed
+      if (!outcome || !slot.current()) return;
+      if (!outcome.ok) {
+        setData((detail) => (detail ? { ...detail, tasks: withTaskPatched(detail.tasks, id, outcome.rollbackTo) } : detail));
+        alertError(t('projects.saveTaskFailed'), outcome.message || undefined);
         return;
       }
       notifySuccess();
@@ -262,7 +285,7 @@ export function TaskView({
                   if (next === (task.assignee_id ?? null)) return;
                   const name = next ? (people(users.data?.users ?? [], task).find((p) => p.id === next)?.name ?? null) : null;
                   void changeField(
-                    { assignee_id: next },
+                    'assignee_id',
                     { assignee_id: next, assignee_nickname: name },
                     { assignee_id: task.assignee_id, assignee_nickname: task.assignee_nickname },
                   );
@@ -300,7 +323,7 @@ export function TaskView({
                 onSelect={(value) => {
                   if (value === task.priority) return;
                   const priority = value as TaskPriority;
-                  void changeField({ priority }, { priority }, { priority: task.priority });
+                  void changeField('priority', { priority }, { priority: task.priority });
                 }}
                 fill
               >

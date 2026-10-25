@@ -23,6 +23,8 @@ export interface QueuedTurn {
   /** Also the turn's `client_turn_id`, the same on every attempt. */
   id: string;
   sessionId: string | null;
+  /** A first message's agent (absent: the station's default), used when its conversation is made. */
+  agentId?: string;
   text: string;
   images: { id: string; url: string }[];
   createdAt: number;
@@ -56,6 +58,7 @@ export function parseOutbox(saved: unknown): QueuedTurn[] {
       {
         id: item.id,
         sessionId: typeof item.sessionId === 'string' ? item.sessionId : null,
+        ...(typeof item.agentId === 'string' ? { agentId: item.agentId } : {}),
         text: item.text,
         images,
         createdAt: item.createdAt,

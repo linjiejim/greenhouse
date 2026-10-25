@@ -31,8 +31,13 @@ vi.mock('../ui/dialogs', () => ({
 }));
 
 const api = { send: vi.fn() };
-const session: { answer: unknown } = { answer: { ok: true, data: { id: 'ses_new' } } };
-vi.mock('../api/assistant', () => ({ createSession: async () => session.answer }));
+const session: { answer: unknown; agents: (string | null | undefined)[] } = { answer: { ok: true, data: { id: 'ses_new' } }, agents: [] };
+vi.mock('../api/assistant', () => ({
+  createSession: async (agentId?: string | null) => {
+    session.agents.push(agentId);
+    return session.answer;
+  },
+}));
 vi.mock('../chat/send', () => ({ sendMessage: (...args: unknown[]) => api.send(...args) }));
 
 const { useOutbox, deliverQueued, flushOutbox, claimConversation, _resetOutbox } = await import('./outbox');
@@ -51,6 +56,7 @@ beforeEach(() => {
   _resetOutbox();
   api.send.mockReset();
   session.answer = { ok: true, data: { id: 'ses_new' } };
+  session.agents = [];
   confirm.answers = [];
   confirm.pending = undefined;
 });
@@ -152,6 +158,14 @@ describe('sending queued messages', () => {
     useOutbox.setState({ items: saved });
     await flushOutbox();
     expect(asked).toBe(2);
+  });
+
+  it('starts a queued first message with the agent it was written to, across a restart', async () => {
+    const saved = parseOutbox(JSON.parse(JSON.stringify([turn('n', { sessionId: null, agentId: 'bot_7' })])));
+    useOutbox.setState({ items: saved });
+    api.send.mockResolvedValue({ ok: true });
+    await flushOutbox();
+    expect(session.agents).toEqual(['bot_7']);
   });
 
   it('starts a conversation again for a first message saved as failed by an older build', () => {

@@ -180,6 +180,7 @@ export const AssistantReply = memo(function AssistantReply({
   onSteps,
 }: {
   messageId: string;
+  /** The session its cards save into; null leaves them inert (a read-only conversation). */
   sessionId: string | null;
   text: string;
   steps: ToolStep[];
