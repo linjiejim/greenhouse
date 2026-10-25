@@ -13,6 +13,8 @@ export interface ActivityFeedState {
   next: string | null;
   status: 'idle' | 'loading' | 'ready' | 'error';
   loadingMore: boolean;
+  /** A refresh is in flight: load-more waits for it (it would page from the old cursor). */
+  refreshing: boolean;
   generation: number;
 }
 
@@ -22,17 +24,17 @@ export interface ActivityLoad {
   before: string | null;
 }
 
-export const NO_ACTIVITY: ActivityFeedState = { items: [], next: null, status: 'idle', loadingMore: false, generation: 0 };
+export const NO_ACTIVITY: ActivityFeedState = { items: [], next: null, status: 'idle', loadingMore: false, refreshing: false, generation: 0 };
 
 /** The load to start (and the state while it runs), or null when a load-more has nothing to do. */
 export function beginActivityLoad(state: ActivityFeedState, more: boolean): { state: ActivityFeedState; load: ActivityLoad } | null {
   if (more) {
-    if (!state.next || state.loadingMore || state.status !== 'ready') return null;
+    if (!state.next || state.loadingMore || state.refreshing || state.status !== 'ready') return null;
     return { state: { ...state, loadingMore: true }, load: { more, generation: state.generation, before: state.next } };
   }
   const generation = state.generation + 1;
   return {
-    state: { ...state, generation, loadingMore: false, status: state.items.length ? state.status : 'loading' },
+    state: { ...state, generation, loadingMore: false, refreshing: true, status: state.items.length ? state.status : 'loading' },
     load: { more, generation, before: null },
   };
 }
@@ -45,8 +47,10 @@ export function finishActivityLoad(
 ): ActivityFeedState {
   if (load.generation !== state.generation) return state;
   if (!result.ok) {
-    return load.more ? { ...state, loadingMore: false } : { ...state, status: state.items.length ? 'ready' : 'error' };
+    return load.more
+      ? { ...state, loadingMore: false }
+      : { ...state, refreshing: false, status: state.items.length ? 'ready' : 'error' };
   }
   const items = load.more ? [...state.items, ...result.data.items] : result.data.items;
-  return { ...state, items, next: result.data.next_before, status: 'ready', loadingMore: false };
+  return { ...state, items, next: result.data.next_before, status: 'ready', loadingMore: false, refreshing: load.more ? state.refreshing : false };
 }

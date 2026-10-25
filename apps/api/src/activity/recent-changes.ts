@@ -102,6 +102,13 @@ const placeOf = (item: Draft): Cursor => ({ at: item.at, key: item.id });
 
 const ISO_MICROS = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z$/;
 
+/** Microsecond ISO that names a real calendar instant (2026-13-26 matches the shape but not this). */
+function isRealInstant(value: string): boolean {
+  if (!ISO_MICROS.test(value)) return false;
+  const ms = Date.parse(value);
+  return Number.isFinite(ms) && new Date(ms).toISOString().slice(0, 19) === value.slice(0, 19);
+}
+
 export function encodeRecentCursor(cursor: Cursor): string {
   return Buffer.from(JSON.stringify([cursor.at, cursor.key]), 'utf8').toString('base64url');
 }
@@ -115,8 +122,10 @@ export function decodeRecentCursor(value: string | null | undefined): Cursor | n
       Array.isArray(parsed) &&
       parsed.length === 2 &&
       typeof parsed[0] === 'string' &&
-      ISO_MICROS.test(parsed[0]) &&
-      typeof parsed[1] === 'string'
+      isRealInstant(parsed[0]) &&
+      typeof parsed[1] === 'string' &&
+      parsed[1].length <= 200 &&
+      !parsed[1].includes('\u0000')
     ) {
       return { at: parsed[0], key: parsed[1] };
     }
@@ -126,7 +135,7 @@ export function decodeRecentCursor(value: string | null | undefined): Cursor | n
   const ms = Date.parse(value);
   if (!Number.isFinite(ms)) return null;
   // Key '' sorts before every id, so only strictly older instants remain.
-  return { at: ISO_MICROS.test(value) ? value : new Date(ms).toISOString().replace('Z', '000Z'), key: '' };
+  return { at: isRealInstant(value) ? value : new Date(ms).toISOString().replace('Z', '000Z'), key: '' };
 }
 
 function draft(base: Omit<Draft, 'agent' | 'action_title' | 'status' | 'run' | 'detail'> & Partial<Draft>): Draft {

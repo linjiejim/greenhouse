@@ -33,6 +33,14 @@ describe('the team activity feed', () => {
     expect(late.next).toBe('c2');
   });
 
+  it('starts no load-more while a refresh is in flight', () => {
+    const state = loaded(['a', 'b'], 'c1');
+    const refresh = beginActivityLoad(state, false)!;
+    expect(beginActivityLoad(refresh.state, true)).toBeNull();
+    const fresh = finishActivityLoad(refresh.state, refresh.load, page(['z', 'a'], 'c2'));
+    expect(beginActivityLoad(fresh, true)!.load.before).toBe('c2');
+  });
+
   it('lets only the latest of two refreshes land', () => {
     const first = beginActivityLoad(NO_ACTIVITY, false)!;
     const second = beginActivityLoad(first.state, false)!;
