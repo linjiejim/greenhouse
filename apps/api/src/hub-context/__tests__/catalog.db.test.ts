@@ -205,6 +205,7 @@ describe('data catalog: extension sources', () => {
     });
     expect(example!.reach).toEqual([
       expect.objectContaining({ tool: 'example_notes_query', access: 'read', group: 'example' }),
+      expect.objectContaining({ tool: 'example_notes_mutation', access: 'write', group: 'example' }),
       expect.objectContaining({ tool: 'export_data', group: null }),
     ]);
   });
