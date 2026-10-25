@@ -1154,6 +1154,10 @@ const zh: Messages = {
     },
     computer: { label: '云电脑', description: '在你自己的云电脑里运行命令、传送文件。运行期间按分钟计费。' },
     reports: { label: '报告', description: '读取团队的报告模板，渲染报告与演示稿并存入你的云盘。' },
+    connectors: {
+      label: '连接器',
+      description: '使用团队接入的外部服务（以及你自己的）：可读取；同时允许修改且管理员放开时，也能写入。',
+    },
   },
 
   oauthConsent: {

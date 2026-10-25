@@ -101,6 +101,16 @@ import {
 } from '../hub-context/team-context.js';
 import { buildDataCatalog } from '../hub-context/catalog.js';
 import { getTeamPrompt, listTeamPrompts } from '../hub-context/prompts.js';
+import {
+  executeMcpCall,
+  mcpCallExternalDescription,
+  mcpCallInputSchema,
+  visibleConnectors,
+  MCP_CALL_INPUT_JSON_SCHEMA,
+  MCP_CALL_TOOL_ID,
+  type McpCallToolContext,
+} from '../tools/mcp-call.js';
+import { connectorDirectoryVersion } from '../connectors/directory.js';
 
 const SERVER_NAME = 'greenhouse';
 const SERVER_VERSION = '0.1.0';
@@ -189,6 +199,8 @@ export async function composeMcpContext(identity: AgentIdentity, toolRegistry: T
     identity.allowedTools ? [...identity.allowedTools].sort().join(',') : '*',
     [...identity.allowedWriteTools].sort().join(','),
     [...effectiveTools].sort().join(','),
+    // A connector added, changed or removed changes what mcp_call lists.
+    `connectors@${connectorDirectoryVersion()}`,
   ].join(':');
   const cached = contextCache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) {
@@ -271,6 +283,12 @@ export function mcpToolAnnotations(entry: ProxyToolManifestEntry) {
   };
 }
 
+/**
+ * mcp_call reaches other services and may run a remote write or delete (each
+ * per its connector's policy), so it is announced as the most cautious kind.
+ */
+const MCP_CALL_ANNOTATIONS = { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true };
+
 /** Build a fresh per-request MCP server wired to this request's tool context. */
 export function buildMcpServer(c: Context, ctx: McpContext): Server {
   const server = new Server(
@@ -286,15 +304,43 @@ export function buildMcpServer(c: Context, ctx: McpContext): Server {
     authMethod: oauthAuthMethod ?? 'oauth',
   });
 
+  // mcp_call: remote writes need the grant's write scope (and, on a team
+  // credential, an administrator's allow_external_writes — see surfaceTools).
+  const scopes = (c.get('oauthScopes') as readonly string[] | undefined) ?? [];
+  const connectorCtx = (): McpCallToolContext => ({
+    db: getDb(),
+    userId: identity.userId,
+    sessionId: null,
+    surface: 'mcp',
+    client: 'mcp',
+    writesAllowed: scopes.includes('mcp:write'),
+    clientId: oauthClientId ?? null,
+    clientName: null,
+  });
+
   server.setRequestHandler(ListToolsRequestSchema, async () => {
     // A cloud-computer tool is not listed at all while the workspace switch is off.
     const entries = buildProxyManifest(await listableExternalToolIds(ctx.toolIds), ctx.registry);
-    const tools: Array<Record<string, unknown>> = entries.map((entry) => ({
-      name: entry.id,
-      description: entry.mutating ? `${entry.description}${WRITE_TOOL_NOTE}` : entry.description,
-      inputSchema: toMcpInputSchema(entry),
-      annotations: mcpToolAnnotations(entry),
-    }));
+    const tools: Array<Record<string, unknown>> = [];
+    for (const entry of entries) {
+      if (entry.id === MCP_CALL_TOOL_ID) {
+        // Not listed while this member has no connector; the list rides the description.
+        if (visibleConnectors(connectorCtx()).length === 0) continue;
+        tools.push({
+          name: entry.id,
+          description: await mcpCallExternalDescription(connectorCtx()),
+          inputSchema: MCP_CALL_INPUT_JSON_SCHEMA,
+          annotations: MCP_CALL_ANNOTATIONS,
+        });
+        continue;
+      }
+      tools.push({
+        name: entry.id,
+        description: entry.mutating ? `${entry.description}${WRITE_TOOL_NOTE}` : entry.description,
+        inputSchema: toMcpInputSchema(entry),
+        annotations: mcpToolAnnotations(entry),
+      });
+    }
     if (entries.length > 0) {
       tools.push({ ...toolOutputReadToolDef(), annotations: { readOnlyHint: true, openWorldHint: false } });
     }
@@ -362,6 +408,35 @@ export function buildMcpServer(c: Context, ctx: McpContext): Server {
           meta: { tool: name, ...(bounded.outputId ? { output_id: bounded.outputId } : {}) },
         });
         return { content: bounded.content };
+      }
+
+      if (name === MCP_CALL_TOOL_ID) {
+        if (!ctx.toolIds.includes(name)) {
+          throw new ProxyToolError(`Tool "${name}" is not available for this credential`, 403);
+        }
+        const parsed = mcpCallInputSchema.safeParse(rawArgs);
+        if (!parsed.success) throw new ProxyToolError(`Invalid input: ${parsed.error.message}`, 400);
+        const client = oauthClientId ? await getDb().platformOAuth.getClient(oauthClientId) : undefined;
+        const output = await executeMcpCall(
+          { ...connectorCtx(), clientName: client?.client_name ?? null },
+          parsed.data,
+        );
+        const bounded = await boundReplyText(JSON.stringify(output), outputCaller, name);
+        const failed = 'error' in output;
+        await recordMcpAudit(c, {
+          endpoint: 'mcp:tools/call',
+          statusCode: 200,
+          durationMs: Date.now() - start,
+          ...(failed ? { error: 'connector_error' } : {}),
+          meta: {
+            tool: name,
+            action: parsed.data.action,
+            ...(parsed.data.connector ? { connector: parsed.data.connector } : {}),
+            ...(parsed.data.tool ? { connector_tool: parsed.data.tool } : {}),
+            ...(bounded.outputId ? { output_id: bounded.outputId } : {}),
+          },
+        });
+        return { content: bounded.content, ...(failed ? { isError: true } : {}) };
       }
 
       // A tool this grant reaches but the workspace has switched off (the cloud

@@ -1188,6 +1188,11 @@ export default {
       label: 'Reports',
       description: "Read the team's report templates and render reports and decks into your Files.",
     },
+    connectors: {
+      label: 'Connectors',
+      description:
+        'Use the outside services your team connected (and your own): reads, plus writes when you also allow changes and an administrator lets agents write.',
+    },
   },
 
   oauthConsent: {
