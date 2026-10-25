@@ -289,7 +289,7 @@ function QuestionField({
           onChange={(e) => onTextChange(id, e.target.value)}
           placeholder={placeholder || ''}
           disabled={disabled}
-          className="w-full bg-surface-sunken border border-edge-strong rounded-lg px-3 py-2 text-sm text-fg placeholder-fg-faint focus:outline-none focus:ring-2 focus:ring-primary-500/40 focus:border-primary-500 disabled:opacity-60 disabled:cursor-not-allowed"
+          className="w-full bg-surface-sunken border border-edge-strong rounded-md px-3 py-2 text-sm text-fg placeholder-fg-faint focus:outline-none focus:ring-2 focus:ring-accent/40 focus:border-accent disabled:opacity-60 disabled:cursor-not-allowed"
         />
       )}
 
@@ -300,7 +300,7 @@ function QuestionField({
           placeholder={placeholder || ''}
           disabled={disabled}
           rows={3}
-          className="w-full bg-surface-sunken border border-edge-strong rounded-lg px-3 py-2 text-sm text-fg placeholder-fg-faint focus:outline-none focus:ring-2 focus:ring-primary-500/40 focus:border-primary-500 resize-none disabled:opacity-60 disabled:cursor-not-allowed"
+          className="w-full bg-surface-sunken border border-edge-strong rounded-md px-3 py-2 text-sm text-fg placeholder-fg-faint focus:outline-none focus:ring-2 focus:ring-accent/40 focus:border-accent resize-none disabled:opacity-60 disabled:cursor-not-allowed"
         />
       )}
 
@@ -309,7 +309,7 @@ function QuestionField({
           {options.map((opt) => (
             <label
               key={opt.value}
-              className={`flex items-center gap-2.5 px-3 py-2 rounded-lg border transition-colors cursor-pointer ${
+              className={`flex items-center gap-2.5 px-3 py-2 rounded-md border transition-colors cursor-pointer ${
                 disabled
                   ? 'opacity-60 cursor-not-allowed'
                   : value === opt.value
@@ -339,7 +339,7 @@ function QuestionField({
             return (
               <label
                 key={opt.value}
-                className={`flex items-center gap-2.5 px-3 py-2 rounded-lg border transition-colors cursor-pointer ${
+                className={`flex items-center gap-2.5 px-3 py-2 rounded-md border transition-colors cursor-pointer ${
                   disabled
                     ? 'opacity-60 cursor-not-allowed'
                     : checked

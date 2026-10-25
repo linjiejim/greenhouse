@@ -160,7 +160,7 @@ export function ShareDialog({ open, onClose, sessionId, sessionTitle, onShareCha
 
           {/* Existing shares */}
           {existingShares.length > 0 && (
-            <div className="bg-surface-muted rounded-lg p-3 space-y-2">
+            <div className="bg-surface-muted rounded-md p-3 space-y-2">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-medium text-fg-muted uppercase tracking-wider">
                   {t('shareDialog.current')}
@@ -237,7 +237,7 @@ export function ShareDialog({ open, onClose, sessionId, sessionTitle, onShareCha
                   size="sm"
                 />
               </div>
-              <div className="max-h-48 overflow-y-auto border border-edge rounded-lg divide-y divide-edge">
+              <div className="max-h-48 overflow-y-auto border border-edge rounded-md divide-y divide-edge">
                 {filteredUsers.length === 0 && (
                   <div className="px-3 py-4 text-center text-xs text-fg-muted">{t('shareDialog.noMembers')}</div>
                 )}
@@ -260,7 +260,7 @@ export function ShareDialog({ open, onClose, sessionId, sessionTitle, onShareCha
                       {/* Checkbox */}
                       <div
                         className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 ${
-                          isSelected || isAlready ? 'bg-primary-500 border-primary-500' : 'border-edge-strong'
+                          isSelected || isAlready ? 'bg-accent border-accent' : 'border-edge-strong'
                         }`}
                       >
                         {(isSelected || isAlready) && <Check size={10} className="text-white" />}

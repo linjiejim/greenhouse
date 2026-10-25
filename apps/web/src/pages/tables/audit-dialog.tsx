@@ -56,7 +56,7 @@ export function TablesAuditDialog({ open, baseId, users, onClose }: TablesAuditD
             <Spinner className="h-6 w-6 text-fg-faint" />
           </div>
         ) : error ? (
-          <p className="rounded-md border border-danger bg-danger-subtle px-3 py-2 text-xs text-danger">{error}</p>
+          <p className="rounded-sm border border-danger bg-danger-subtle px-3 py-2 text-xs text-danger">{error}</p>
         ) : events.length === 0 ? (
           <EmptyState
             icon={History}

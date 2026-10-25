@@ -7,7 +7,7 @@ const PALETTES = [
   ['dark', darkHex],
 ] as const;
 
-describe('V1 palette contrast', () => {
+describe('palette contrast', () => {
   for (const [name, palette] of PALETTES) {
     it(`${name}: main text on content surfaces meets 7:1`, () => {
       for (const background of [palette.background, palette.secondaryGroupedBackground, palette.groupedBackground]) {
@@ -23,8 +23,7 @@ describe('V1 palette contrast', () => {
     }
 
     it(`${name}: labels on the accent (semibold, large) and accent text on its fill are readable`, () => {
-      // the V1 brand green carries white button labels at the large-text level (3:1)
-      expect(contrastRatio(palette.onAccent, palette.accent)).toBeGreaterThanOrEqual(3);
+      expect(contrastRatio(palette.onAccent, palette.accent)).toBeGreaterThanOrEqual(4.5);
       expect(contrastRatio(palette.accentText, palette.accentFill, palette.background)).toBeGreaterThanOrEqual(4.5);
       expect(contrastRatio(palette.link, palette.secondaryGroupedBackground)).toBeGreaterThanOrEqual(4.5);
     });
@@ -60,7 +59,20 @@ describe('V1 palette contrast', () => {
     expect(contrastRatio(lightHex.separator, lightHex.background)).toBeGreaterThanOrEqual(1.45);
   });
 
-  it('keeps the V1 brand green', () => {
-    expect(lightHex.accent).toBe('#2E8B3D');
+  it('takes the Haven accents: forest green in light, pale sage in dark', () => {
+    expect(lightHex.accent).toBe('#235D4D');
+    expect(darkHex.accent).toBe('#B1D2BF');
+  });
+
+  it('keeps the seed lime off every text role', () => {
+    for (const palette of [lightHex, darkHex]) {
+      for (const role of ['label', 'secondaryLabel', 'tertiaryLabel', 'placeholder', 'link', 'accentText'] as const) {
+        expect(palette[role]).not.toBe(palette.seed);
+      }
+    }
+  });
+
+  it('sets sign-in on the brand canvas, not the system grey', () => {
+    expect(lightHex.brandCanvas).not.toBe('#F2F2F7');
   });
 });

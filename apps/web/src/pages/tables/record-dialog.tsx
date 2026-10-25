@@ -127,7 +127,7 @@ export function RecordDialog({ open, baseId, fields, record, users, saving, onCl
             return (
               <div key={field.id}>
                 <FieldLabel field={field} />
-                <div className="rounded-md border border-edge bg-surface-sunken px-3 py-2 text-sm text-fg-secondary">
+                <div className="rounded-sm border border-edge bg-surface-sunken px-3 py-2 text-sm text-fg-secondary">
                   {value === null || value === undefined || value === ''
                     ? '—'
                     : Array.isArray(value)
@@ -187,7 +187,7 @@ export function RecordDialog({ open, baseId, fields, record, users, saving, onCl
             return (
               <div key={field.id}>
                 <FieldLabel field={field} />
-                <div className="flex flex-wrap gap-x-4 gap-y-2 rounded-md border border-edge px-3 py-2">
+                <div className="flex flex-wrap gap-x-4 gap-y-2 rounded-sm border border-edge px-3 py-2">
                   {(config.options ?? []).map((option) => (
                     <Checkbox
                       key={option.id}
@@ -228,7 +228,7 @@ export function RecordDialog({ open, baseId, fields, record, users, saving, onCl
             return (
               <div key={field.id}>
                 <FieldLabel field={field} />
-                <div className="grid max-h-40 grid-cols-1 gap-2 overflow-y-auto rounded-md border border-edge px-3 py-2 sm:grid-cols-2">
+                <div className="grid max-h-40 grid-cols-1 gap-2 overflow-y-auto rounded-sm border border-edge px-3 py-2 sm:grid-cols-2">
                   {users.map((user) => (
                     <Checkbox
                       key={user.id}

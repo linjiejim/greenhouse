@@ -89,7 +89,7 @@ function ProgressBar({ progress, stats }: { progress: number; stats: ProjectStat
     <div className="flex items-center gap-2 w-full">
       <div className="flex-1 h-1.5 bg-surface-muted rounded-full overflow-hidden">
         <div
-          className="h-full rounded-full transition-all duration-300 bg-primary-500"
+          className="h-full rounded-full transition-all duration-(--gh-duration-base) bg-accent"
           style={{ width: `${progress}%` }}
         />
       </div>
@@ -113,7 +113,7 @@ function ProjectCard({ project, onClick }: { project: Project; onClick: () => vo
   return (
     <div
       onClick={onClick}
-      className={`bg-surface-raised border rounded-xl p-4 hover:border-primary-300 hover:shadow-sm transition-all cursor-pointer group ${isOverdue ? 'border-danger' : 'border-edge'}`}
+      className={`bg-surface-raised border rounded-lg p-4 hover:border-primary-300 hover:shadow-sm transition-all cursor-pointer group ${isOverdue ? 'border-danger' : 'border-edge'}`}
     >
       <div className="flex items-start justify-between gap-3 mb-3">
         <div className="flex-1 min-w-0">
@@ -162,7 +162,7 @@ function ProjectCard({ project, onClick }: { project: Project; onClick: () => vo
               {project.end_date}
             </span>
           )}
-          <ChevronRight size={14} className="text-fg-faint group-hover:text-primary-500 transition-colors" />
+          <ChevronRight size={14} className="text-fg-faint group-hover:text-accent transition-colors" />
         </div>
       </div>
     </div>
@@ -351,7 +351,7 @@ export function ProjectsPage() {
       toolbar={
         <div className="flex flex-wrap items-center gap-2">
           {/* View toggle */}
-          <div className="flex items-center gap-0.5 bg-surface-muted p-0.5 rounded-lg">
+          <div className="flex items-center gap-0.5 bg-surface-muted p-0.5 rounded-md">
             {[
               { key: 'cards' as const, icon: LayoutGrid, label: t('projects.cards') },
               { key: 'gantt' as const, icon: GanttChart, label: t('projects.globalGantt'), hideOnMobile: true },
@@ -359,7 +359,7 @@ export function ProjectsPage() {
               <button
                 key={v.key}
                 onClick={() => handleViewChange(v.key)}
-                className={`flex items-center gap-1 px-2.5 py-1 rounded-md text-xs transition-colors ${
+                className={`flex items-center gap-1 px-2.5 py-1 rounded-sm text-xs transition-colors ${
                   view === v.key
                     ? 'bg-surface-raised text-primary-fg-strong font-medium shadow-sm'
                     : 'text-fg-muted hover:text-fg-secondary'
@@ -402,12 +402,12 @@ export function ProjectsPage() {
 
           {view === 'gantt' && (
             <>
-              <div className="hidden sm:flex items-center gap-0.5 bg-surface-muted p-0.5 rounded-lg">
+              <div className="hidden sm:flex items-center gap-0.5 bg-surface-muted p-0.5 rounded-md">
                 {(['day', 'week', 'month', 'year'] as GlobalGanttZoom[]).map((z) => (
                   <button
                     key={z}
                     onClick={() => handleZoomChange(z)}
-                    className={`px-2 py-1 rounded-md text-[11px] transition-colors ${
+                    className={`px-2 py-1 rounded-sm text-[11px] transition-colors ${
                       ganttZoom === z
                         ? 'bg-surface-raised text-primary-fg-strong font-medium shadow-sm'
                         : 'text-fg-muted hover:text-fg-secondary'

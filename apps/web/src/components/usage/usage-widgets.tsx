@@ -32,16 +32,16 @@ export function periodToSince(value: string): string | undefined {
 
 export const CALLER_COLORS: Record<string, string> = {
   chat: 'bg-info',
-  compiler: 'bg-primary-500',
+  compiler: 'bg-accent',
   judge: 'bg-warning',
   api: 'bg-fg-muted',
 };
 
-export const PROFILE_COLORS = ['bg-primary-500', 'bg-info', 'bg-danger', 'bg-warning', 'bg-success', 'bg-fg-muted'];
+export const PROFILE_COLORS = ['bg-accent', 'bg-info', 'bg-danger', 'bg-warning', 'bg-success', 'bg-fg-muted'];
 
 export function KpiCard({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <div className="bg-surface-card border border-edge rounded-xl p-4 shadow-sm">
+    <div className="bg-surface-card border border-edge rounded-lg p-4 shadow-sm">
       <div className="text-[10px] font-semibold text-fg-faint uppercase tracking-wider mb-2">{title}</div>
       {children}
     </div>

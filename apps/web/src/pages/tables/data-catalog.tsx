@@ -55,7 +55,7 @@ export function DataCatalogPage() {
       layout="list"
       notice={
         error ? (
-          <div className="rounded-md border border-danger bg-danger-subtle px-4 py-2 text-xs text-danger">{error}</div>
+          <div className="rounded-sm border border-danger bg-danger-subtle px-4 py-2 text-xs text-danger">{error}</div>
         ) : (
           <p className="text-xs text-fg-muted">{t('dataCatalog.intro')}</p>
         )
@@ -107,7 +107,7 @@ export function DataCatalogPage() {
                       )}
                     </div>
                     {base.tables.length > 0 && (
-                      <ul className="mt-3 divide-y divide-edge rounded-lg border border-edge">
+                      <ul className="mt-3 divide-y divide-edge rounded-md border border-edge">
                         {base.tables.map((table) => (
                           <li key={table.id} className="flex items-center gap-3 px-3 py-1.5 text-xs">
                             <a

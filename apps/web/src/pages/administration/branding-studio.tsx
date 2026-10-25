@@ -124,7 +124,7 @@ interface StylePreset {
 }
 
 const STYLE_PRESETS: StylePreset[] = [
-  { key: 'greenhouse', swatch: '#2e8b3d', brand: '#2e8b3d', fontSans: FONT_DEFAULT, textScale: 1, radiusScale: 1 },
+  { key: 'greenhouse', swatch: '#235d4d', brand: '#235d4d', fontSans: FONT_DEFAULT, textScale: 1, radiusScale: 1 },
   { key: 'slate', swatch: '#4f46e5', brand: '#4f46e5', fontSans: FONT_INTER, textScale: 1, radiusScale: 0.5 },
   { key: 'sunset', swatch: '#ea580c', brand: '#ea580c', fontSans: FONT_HUMANIST, textScale: 1, radiusScale: 1.75 },
   { key: 'editorial', swatch: '#9f1239', brand: '#9f1239', fontSans: FONT_SERIF, textScale: 1.05, radiusScale: 0.75 },
@@ -145,7 +145,7 @@ function currentBrandHex(): string {
   if (triplet.length === 3 && triplet.every((n) => Number.isFinite(n))) {
     return rgbToHex({ r: triplet[0], g: triplet[1], b: triplet[2] });
   }
-  return '#2e8b3d';
+  return '#235d4d';
 }
 
 function isDarkPreviewActive(): PreviewMode {
@@ -229,7 +229,7 @@ function SwatchInput({
   onChange: (hex: string) => void;
 }) {
   return (
-    <div className="flex items-center gap-2 px-2 py-1.5 rounded-lg border border-edge">
+    <div className="flex items-center gap-2 px-2 py-1.5 rounded-md border border-edge">
       <input
         type="color"
         value={value}
@@ -485,7 +485,7 @@ export function BrandingStudioPanel() {
                       onClick={() => applyPreset(p)}
                       className={`flex items-center gap-1.5 pl-1.5 pr-2.5 py-1 rounded-full border transition-all ${
                         isActive
-                          ? 'border-primary-500 bg-primary-subtle/50 text-primary-fg-strong font-medium shadow-sm'
+                          ? 'border-accent bg-primary-subtle/50 text-primary-fg-strong font-medium shadow-sm'
                           : 'border-edge text-fg-secondary hover:border-edge-strong hover:bg-surface-sunken'
                       }`}
                     >
@@ -510,7 +510,7 @@ export function BrandingStudioPanel() {
                     applyBrandColor(e.target.value);
                     setActivePreset(null);
                   }}
-                  className="h-9 w-12 rounded-md border border-edge-strong bg-surface cursor-pointer"
+                  className="h-9 w-12 rounded-sm border border-edge-strong bg-surface cursor-pointer"
                   aria-label={t('brandingStudio.brandColor')}
                 />
                 <Input
@@ -528,7 +528,7 @@ export function BrandingStudioPanel() {
                 />
               </div>
               {palette && (
-                <div className="mt-3 flex rounded-lg overflow-hidden border border-edge">
+                <div className="mt-3 flex rounded-md overflow-hidden border border-edge">
                   {PALETTE_SHADES.map((shade) => (
                     <div
                       key={shade}
@@ -594,9 +594,9 @@ export function BrandingStudioPanel() {
                       applyFontSans('');
                       setActivePreset(null);
                     }}
-                    className={`px-2.5 py-1 text-xs rounded-lg border transition-all ${
+                    className={`px-2.5 py-1 text-xs rounded-md border transition-all ${
                       fontSans === ''
-                        ? 'border-primary-500 bg-primary-subtle/50 text-primary-fg-strong font-medium'
+                        ? 'border-accent bg-primary-subtle/50 text-primary-fg-strong font-medium'
                         : 'border-edge text-fg-secondary hover:border-edge-strong'
                     }`}
                   >
@@ -611,9 +611,9 @@ export function BrandingStudioPanel() {
                         setActivePreset(null);
                       }}
                       style={{ fontFamily: preset.stack }}
-                      className={`px-2.5 py-1 text-xs rounded-lg border transition-all ${
+                      className={`px-2.5 py-1 text-xs rounded-md border transition-all ${
                         fontSans === preset.stack
-                          ? 'border-primary-500 bg-primary-subtle/50 text-primary-fg-strong font-medium'
+                          ? 'border-accent bg-primary-subtle/50 text-primary-fg-strong font-medium'
                           : 'border-edge text-fg-secondary hover:border-edge-strong'
                       }`}
                     >
@@ -694,14 +694,14 @@ export function BrandingStudioPanel() {
                       <img
                         src={logoDataUrl}
                         alt={t('brandingStudio.logo')}
-                        className="w-10 h-10 rounded-lg object-contain border border-edge bg-surface"
+                        className="w-10 h-10 rounded-md object-contain border border-edge bg-surface"
                       />
                     ) : (
-                      <div className="w-10 h-10 rounded-lg border border-dashed border-edge flex items-center justify-center text-fg-faint text-[9px]">
+                      <div className="w-10 h-10 rounded-md border border-dashed border-edge flex items-center justify-center text-fg-faint text-[9px]">
                         —
                       </div>
                     )}
-                    <label className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-lg border border-edge text-fg-secondary hover:border-edge-strong cursor-pointer transition-all">
+                    <label className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-md border border-edge text-fg-secondary hover:border-edge-strong cursor-pointer transition-all">
                       <Upload size={13} />
                       {t('brandingStudio.logoUpload')}
                       <input
@@ -719,7 +719,7 @@ export function BrandingStudioPanel() {
                       <button
                         type="button"
                         onClick={() => setLogoDataUrl(null)}
-                        className="p-1.5 rounded-md text-fg-faint hover:text-fg-secondary hover:bg-surface-muted transition-colors"
+                        className="p-1.5 rounded-sm text-fg-faint hover:text-fg-secondary hover:bg-surface-muted transition-colors"
                         title={t('brandingStudio.logoRemove')}
                       >
                         <X size={14} />
@@ -754,7 +754,7 @@ export function BrandingStudioPanel() {
                 </span>
               </div>
               {/* Preview mode — also selects which mode's color edits you're making */}
-              <div className="inline-flex rounded-lg border border-edge p-0.5">
+              <div className="inline-flex rounded-md border border-edge p-0.5">
                 {(['light', 'dark'] as const).map((mode) => {
                   const Icon = mode === 'light' ? Sun : Moon;
                   const isActive = previewMode === mode;
@@ -763,7 +763,7 @@ export function BrandingStudioPanel() {
                       key={mode}
                       type="button"
                       onClick={() => switchPreviewMode(mode)}
-                      className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs transition-colors ${
+                      className={`flex items-center gap-1.5 px-2.5 py-1 rounded-sm text-xs transition-colors ${
                         isActive ? 'bg-surface-muted text-fg font-medium' : 'text-fg-muted hover:text-fg-secondary'
                       }`}
                       aria-pressed={isActive}

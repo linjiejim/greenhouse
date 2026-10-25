@@ -39,11 +39,11 @@ export function SidebarToolbar({ value, onChange, placeholder, actions = [] }: S
           onBlur={() => setSearchFocused(false)}
           placeholder={placeholder}
           size="sm"
-          className="min-w-0 basis-0 flex-1 transition-[flex-basis,width] duration-200"
+          className="min-w-0 basis-0 flex-1 transition-[flex-basis,width] duration-(--gh-duration-base)"
         />
         {actions.length > 0 && (
           <div
-            className={`flex flex-shrink-0 items-center overflow-hidden transition-[max-width,opacity,transform] duration-200 ${
+            className={`flex flex-shrink-0 items-center overflow-hidden transition-[max-width,opacity,transform] duration-(--gh-duration-base) ${
               searchFocused ? 'pointer-events-none max-w-0 translate-x-2 opacity-0' : 'max-w-32 opacity-100'
             }`}
             aria-hidden={searchFocused}

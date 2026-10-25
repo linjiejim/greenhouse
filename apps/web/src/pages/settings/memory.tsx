@@ -34,9 +34,9 @@ interface Memory {
 }
 
 const CATEGORY_META: Record<string, { labelKey: TranslationKey; icon: React.ElementType; color: string }> = {
-  preference: { labelKey: 'memory.preference', icon: Sparkles, color: 'text-purple-500' },
-  fact: { labelKey: 'memory.fact', icon: User, color: 'text-blue-500' },
-  behavior: { labelKey: 'memory.behavior', icon: Wrench, color: 'text-green-500' },
+  preference: { labelKey: 'memory.preference', icon: Sparkles, color: 'text-cat-purple' },
+  fact: { labelKey: 'memory.fact', icon: User, color: 'text-cat-blue' },
+  behavior: { labelKey: 'memory.behavior', icon: Wrench, color: 'text-cat-green' },
 };
 
 const STATUS_TONE: Record<MemoryStatus, 'neutral' | 'warning' | 'info'> = {
@@ -188,9 +188,9 @@ export function MemoryPanel() {
     <ModulePage moduleId="settings.memory" layout="list">
       <div className="space-y-4">
         {/* Header info */}
-        <div className="flex items-center gap-3 bg-surface-card border border-edge rounded-xl p-4">
-          <div className="p-2 rounded-lg bg-purple-500/10">
-            <Brain className="w-5 h-5 text-purple-500" />
+        <div className="flex items-center gap-3 bg-surface-card border border-edge rounded-lg p-4">
+          <div className="p-2 rounded-md bg-cat-purple-fill">
+            <Brain className="w-5 h-5 text-cat-purple" />
           </div>
           <div className="flex-1">
             <p className="text-sm text-fg-muted">{t('memory.intro')}</p>
@@ -226,7 +226,7 @@ export function MemoryPanel() {
         </div>
 
         {error && error !== 'not_enabled' && (
-          <div className="bg-danger-subtle text-danger text-sm px-4 py-2 rounded-lg border border-edge">{error}</div>
+          <div className="bg-danger-subtle text-danger text-sm px-4 py-2 rounded-md border border-edge">{error}</div>
         )}
 
         {loading && <div className="text-center text-fg-muted py-12">{t('memory.loading')}</div>}
@@ -246,7 +246,7 @@ export function MemoryPanel() {
             const items = grouped[category];
 
             return (
-              <div key={category} className="bg-surface-card border border-edge rounded-xl overflow-hidden">
+              <div key={category} className="bg-surface-card border border-edge rounded-lg overflow-hidden">
                 <div className="flex items-center gap-2 px-4 py-2.5 bg-surface-sunken border-b border-edge">
                   <Icon className={`w-4 h-4 ${meta?.color ?? 'text-fg-muted'}`} />
                   <span className="text-sm font-medium text-fg">{meta ? t(meta.labelKey) : category}</span>
@@ -299,7 +299,7 @@ export function MemoryPanel() {
                         <div className="flex items-start gap-3">
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-1.5 flex-wrap">
-                              {mem.pinned && <Pin className="w-3 h-3 text-primary-600 shrink-0" />}
+                              {mem.pinned && <Pin className="w-3 h-3 text-accent shrink-0" />}
                               <p className="text-sm text-fg font-medium">{mem.title}</p>
                               {mem.status !== 'active' && (
                                 <Tag tone={STATUS_TONE[mem.status]} truncate title={t(STATUS_HINT[mem.status])}>
@@ -318,7 +318,7 @@ export function MemoryPanel() {
                             <button
                               onClick={() => patchMemory(mem.id, { pinned: !mem.pinned })}
                               disabled={busyId === mem.id}
-                              className={`p-1 rounded transition-colors ${mem.pinned ? 'text-primary-600' : 'text-fg-muted hover:text-primary-600'}`}
+                              className={`p-1 rounded transition-colors ${mem.pinned ? 'text-accent' : 'text-fg-muted hover:text-accent'}`}
                               title={mem.pinned ? t('memory.unpin') : t('memory.pin')}
                             >
                               <Pin className="w-3.5 h-3.5" />

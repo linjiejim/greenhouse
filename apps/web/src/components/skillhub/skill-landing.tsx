@@ -34,12 +34,12 @@ function CopyBlock({ text }: { text: string }) {
   const t = useT();
   return (
     <div className="flex items-stretch gap-2">
-      <pre className="flex-1 min-w-0 overflow-x-auto rounded-md bg-surface-sunken border border-edge px-3 py-2 text-xs font-mono text-fg-secondary">
+      <pre className="flex-1 min-w-0 overflow-x-auto rounded-sm bg-surface-sunken border border-edge px-3 py-2 text-xs font-mono text-fg-secondary">
         {text}
       </pre>
       <button
         onClick={() => copy(text, t('common.copied'), t('skillHub.copyFailed'))}
-        className="flex-shrink-0 px-2 rounded-md border border-edge text-fg-muted hover:text-fg hover:bg-surface-muted transition-colors"
+        className="flex-shrink-0 px-2 rounded-sm border border-edge text-fg-muted hover:text-fg hover:bg-surface-muted transition-colors"
         title={t('common.copy')}
         aria-label={t('skillHub.copyToClipboard')}
       >
@@ -65,7 +65,7 @@ export function SkillHubLanding({ showHeader = true }: { showHeader?: boolean })
     <div className={`max-w-3xl space-y-6 ${showHeader ? 'mx-auto py-6' : 'py-1'}`}>
       {showHeader && (
         <div className="flex items-start gap-3">
-          <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-surface-muted flex items-center justify-center">
+          <div className="flex-shrink-0 w-10 h-10 rounded-md bg-surface-muted flex items-center justify-center">
             <Package size={20} className="text-fg-muted" />
           </div>
           <div className="min-w-0 flex-1">
@@ -82,7 +82,7 @@ export function SkillHubLanding({ showHeader = true }: { showHeader?: boolean })
       {/* Group counts */}
       <div className="grid grid-cols-3 gap-3">
         {ORIGIN_ORDER.map((key) => (
-          <div key={key} className="rounded-lg border border-edge bg-surface-card px-4 py-3">
+          <div key={key} className="rounded-md border border-edge bg-surface-card px-4 py-3">
             <div className="text-2xl font-semibold text-fg">{loading ? '—' : counts[key]}</div>
             <div className="text-xs text-fg-muted mt-0.5">{t(`skillHub.group.${key}`)}</div>
           </div>
@@ -90,7 +90,7 @@ export function SkillHubLanding({ showHeader = true }: { showHeader?: boolean })
       </div>
 
       {/* Getting started */}
-      <div className="rounded-lg border border-edge bg-surface-card p-4 md:p-5 space-y-4">
+      <div className="rounded-md border border-edge bg-surface-card p-4 md:p-5 space-y-4">
         <div>
           <h2 className="text-sm font-medium text-fg">{t('skillHub.useInOwnTool')}</h2>
           <p className="mt-1 text-xs text-fg-muted">{t('skillHub.useInOwnToolHint')}</p>

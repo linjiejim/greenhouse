@@ -55,7 +55,7 @@ export function FileAttachmentCard({
       target="_blank"
       rel="noopener noreferrer"
       download={name}
-      className="inline-flex items-center rounded-md border border-edge px-2.5 py-1.5 text-xs font-medium text-fg hover:bg-surface-muted"
+      className="inline-flex items-center rounded-sm border border-edge px-2.5 py-1.5 text-xs font-medium text-fg hover:bg-surface-muted"
     >
       <Download size={14} className="mr-1.5" />
       {downloadLabel}
@@ -63,8 +63,8 @@ export function FileAttachmentCard({
   ) : null;
 
   return (
-    <div className="flex flex-wrap items-center gap-3 rounded-lg border border-edge bg-surface-card px-3 py-2.5">
-      <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-primary-subtle text-primary-700">
+    <div className="flex flex-wrap items-center gap-3 rounded-md border border-edge bg-surface-card px-3 py-2.5">
+      <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-md bg-primary-subtle text-primary-fg-strong">
         <FileDown size={18} aria-hidden="true" />
       </div>
       <div className="min-w-0 flex-1">

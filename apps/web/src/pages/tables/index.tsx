@@ -95,7 +95,7 @@ function TablesHome() {
       }
       notice={
         error ? (
-          <div className="rounded-md border border-danger bg-danger-subtle px-4 py-2 text-xs text-danger">{error}</div>
+          <div className="rounded-sm border border-danger bg-danger-subtle px-4 py-2 text-xs text-danger">{error}</div>
         ) : undefined
       }
       toolbar={
@@ -124,10 +124,10 @@ function TablesHome() {
             <a
               key={base.id}
               href={`#/tables/${base.id}`}
-              className="group rounded-xl border border-edge bg-surface-card p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-primary-300 hover:shadow-md"
+              className="group rounded-lg border border-edge bg-surface-card p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-primary-300 hover:shadow-md"
             >
               <div className="flex items-start justify-between gap-3">
-                <div className="rounded-lg bg-primary-subtle p-2 text-primary-fg">
+                <div className="rounded-md bg-primary-subtle p-2 text-primary-fg">
                   <Table2 size={18} />
                 </div>
                 <Tag tone="neutral">{t(`tables.home.role.${base.role}`)}</Tag>
@@ -266,7 +266,7 @@ function ShareDialog({
           <p className="mt-1.5 text-[11px] text-fg-faint">{t('tables.home.ownerOnlyHint')}</p>
         </div>
         <div className="space-y-2 border-t border-edge pt-4">
-          <div className="flex items-center justify-between rounded-lg bg-surface-sunken px-3 py-2">
+          <div className="flex items-center justify-between rounded-md bg-surface-sunken px-3 py-2">
             <div className="min-w-0">
               <p className="truncate text-sm font-medium text-fg">
                 {usersById.get(workspace.base.owner_id)?.nickname ?? t('tables.home.baseOwner')}
@@ -282,7 +282,7 @@ function ShareDialog({
             .map((member) => {
               const user = usersById.get(member.user_id);
               return (
-                <div key={member.user_id} className="flex items-center gap-2 rounded-lg border border-edge px-3 py-2">
+                <div key={member.user_id} className="flex items-center gap-2 rounded-md border border-edge px-3 py-2">
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-medium text-fg">{user?.nickname ?? member.user_id}</p>
                     <p className="truncate text-xs text-fg-faint">{user?.email ?? member.user_id}</p>
@@ -416,7 +416,7 @@ function BaseWorkspace({
       <header className="flex flex-shrink-0 items-center gap-3 border-b border-edge bg-surface-raised px-3 py-2">
         <a
           href="#/tables"
-          className="rounded-md p-2 text-fg-muted hover:bg-surface-muted hover:text-fg"
+          className="rounded-sm p-2 text-fg-muted hover:bg-surface-muted hover:text-fg"
           aria-label={t('tables.home.backToTables')}
         >
           <ArrowLeft size={16} />
@@ -452,7 +452,7 @@ function BaseWorkspace({
             <a
               key={table.id}
               href={`#/tables/${baseId}/table/${table.id}`}
-              className={`flex min-w-max items-center gap-2 rounded-md px-2.5 py-2 text-xs transition-colors ${selectedTable?.id === table.id ? 'bg-primary-subtle font-medium text-primary-fg-strong' : 'text-fg-muted hover:bg-surface-muted hover:text-fg'}`}
+              className={`flex min-w-max items-center gap-2 rounded-sm px-2.5 py-2 text-xs transition-colors ${selectedTable?.id === table.id ? 'bg-primary-subtle font-medium text-primary-fg-strong' : 'text-fg-muted hover:bg-surface-muted hover:text-fg'}`}
             >
               <Table2 size={14} />
               {table.name}

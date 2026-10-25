@@ -133,9 +133,9 @@ export function InboxModal({ open, onClose }: { open: boolean; onClose: () => vo
               role="tab"
               aria-selected={tab === value}
               onClick={() => setTab(value)}
-              className={`flex items-center gap-1.5 rounded-t-lg border-b-2 px-3 py-2 text-xs transition-colors ${
+              className={`flex items-center gap-1.5 rounded-t-md border-b-2 px-3 py-2 text-xs transition-colors ${
                 tab === value
-                  ? 'border-primary-500 text-primary-fg-strong'
+                  ? 'border-accent text-primary-fg-strong'
                   : 'border-transparent text-fg-muted hover:text-fg-secondary'
               }`}
             >
@@ -147,7 +147,7 @@ export function InboxModal({ open, onClose }: { open: boolean; onClose: () => vo
             type="button"
             onClick={() => void markAllRead()}
             disabled={activeUnread === 0 || markingAll}
-            className="ml-auto mb-1 inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-fg-muted transition-colors hover:bg-surface-muted hover:text-fg-secondary disabled:cursor-not-allowed disabled:opacity-40"
+            className="ml-auto mb-1 inline-flex items-center gap-1.5 rounded-sm px-2 py-1 text-xs text-fg-muted transition-colors hover:bg-surface-muted hover:text-fg-secondary disabled:cursor-not-allowed disabled:opacity-40"
           >
             <CheckCheck size={14} />
             {t('inbox.markAllRead')}
@@ -189,14 +189,14 @@ export function InboxModal({ open, onClose }: { open: boolean; onClose: () => vo
                     key={item.id}
                     type="button"
                     onClick={() => void openNotification(item)}
-                    className={`flex w-full gap-3 rounded-lg border px-3 py-2.5 text-left transition-colors ${
+                    className={`flex w-full gap-3 rounded-md border px-3 py-2.5 text-left transition-colors ${
                       item.read_at
                         ? 'border-edge bg-surface-raised hover:border-edge-strong'
                         : 'border-primary-edge bg-primary-subtle hover:bg-primary-subtle-hover'
                     }`}
                   >
                     <span className="mt-1.5 w-2 flex-shrink-0">
-                      {!item.read_at && <span className="block h-2 w-2 rounded-full bg-primary-500" />}
+                      {!item.read_at && <span className="block h-2 w-2 rounded-full bg-accent" />}
                     </span>
                     <span className="min-w-0 flex-1">
                       <span
@@ -222,14 +222,14 @@ export function InboxModal({ open, onClose }: { open: boolean; onClose: () => vo
                   key={share.id}
                   type="button"
                   onClick={() => void openShare(share)}
-                  className={`flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-colors ${
+                  className={`flex w-full items-center gap-3 rounded-md border px-3 py-2.5 text-left transition-colors ${
                     share.read_at
                       ? 'border-edge bg-surface-raised hover:border-edge-strong'
                       : 'border-primary-edge bg-primary-subtle hover:bg-primary-subtle-hover'
                   }`}
                 >
                   <span className="w-2 flex-shrink-0">
-                    {!share.read_at && <span className="block h-2 w-2 rounded-full bg-primary-500" />}
+                    {!share.read_at && <span className="block h-2 w-2 rounded-full bg-accent" />}
                   </span>
                   <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-surface-muted">
                     {share.shared_with === '__team__' ? <Users size={14} /> : <MessageSquare size={14} />}

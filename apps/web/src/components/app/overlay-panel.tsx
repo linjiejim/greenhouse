@@ -70,7 +70,7 @@ export function OverlayPanel({
   if (variant === 'bottom') {
     return (
       <div className="mobile-visual-viewport fixed inset-0 flex flex-col justify-end" style={{ zIndex: zPanel }}>
-        <div className={`absolute inset-0 bg-black/20 ${backdropClassName}`} onClick={onClose} />
+        <div className={`absolute inset-0 bg-black/20 dark:bg-black/45 ${backdropClassName}`} onClick={onClose} />
         <div
           ref={panelRef}
           role="dialog"
@@ -80,7 +80,7 @@ export function OverlayPanel({
           aria-label={ariaLabel}
           className={`safe-area-panel ${
             className ||
-            'relative bg-surface-raised rounded-t-2xl shadow-xl max-h-[min(70dvh,42rem)] flex flex-col animate-slide-up'
+            'relative bg-surface-raised rounded-t-xl shadow-xl max-h-[min(70dvh,42rem)] flex flex-col animate-slide-up'
           }`}
           style={style}
         >
@@ -108,7 +108,7 @@ export function OverlayPanel({
     <>
       {/* Backdrop */}
       <div
-        className={`fixed inset-0 bg-black/20 ${backdropMotionClass} ${backdropClassName}`}
+        className={`fixed inset-0 bg-black/20 dark:bg-black/45 ${backdropMotionClass} ${backdropClassName}`}
         style={{ zIndex: zBackdrop }}
         onClick={onClose}
       />
@@ -122,7 +122,7 @@ export function OverlayPanel({
         aria-label={ariaLabel}
         className={`safe-area-panel mobile-visual-viewport ${
           className ||
-          'fixed inset-0 md:inset-auto md:bottom-4 md:right-4 bg-surface-raised md:rounded-2xl shadow-2xl md:border md:border-edge flex flex-col overflow-hidden'
+          'fixed inset-0 md:inset-auto md:bottom-4 md:right-4 bg-surface-raised md:rounded-xl shadow-2xl md:border md:border-edge flex flex-col overflow-hidden'
         } ${panelMotionClass}`}
         style={{ zIndex: zPanel, ...style }}
         onAnimationEnd={(event) => {

@@ -89,7 +89,7 @@ function AnnotationItem({
   };
 
   return (
-    <div className="flex items-start gap-2 px-2.5 py-2 bg-surface-sunken border border-edge rounded-lg group/ann">
+    <div className="flex items-start gap-2 px-2.5 py-2 bg-surface-sunken border border-edge rounded-md group/ann">
       {/* Index badge */}
       <span className="flex-shrink-0 w-5 h-5 flex items-center justify-center rounded-full bg-primary-subtle text-primary-fg-strong text-[10px] font-bold mt-0.5">
         {index}
@@ -115,7 +115,7 @@ function AnnotationItem({
                   setEditNote(annotation.note);
                 }
               }}
-              className="flex-1 text-xs bg-surface-raised border border-edge-strong rounded px-2 py-1 text-fg focus:outline-none focus:ring-1 focus:ring-primary-500/40"
+              className="flex-1 text-xs bg-surface-raised border border-edge-strong rounded px-2 py-1 text-fg focus:outline-none focus:ring-1 focus:ring-accent/40"
               placeholder={t('chat.yourNote')}
             />
             <button

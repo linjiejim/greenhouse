@@ -166,7 +166,7 @@ export function ChatTopBarSessionActions({ share }: { share: ChatShareControls |
         >
           <Share2 size={16} />
           {share.shareCount !== 0 && (
-            <span className="absolute right-0 top-0 inline-flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-primary-600 px-0.5 text-[8px] leading-none text-white ring-2 ring-surface-raised">
+            <span className="absolute right-0 top-0 inline-flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-accent px-0.5 text-[8px] leading-none text-on-accent ring-2 ring-surface-raised">
               {share.shareCount === -1 ? <Users size={8} /> : share.shareCount}
             </span>
           )}
@@ -295,7 +295,7 @@ export function WsStatusIndicator() {
 
   return (
     <div
-      className={`p-1.5 rounded-md ${isConnecting ? 'text-warning animate-pulse' : 'text-fg-faint'}`}
+      className={`p-1.5 rounded-sm ${isConnecting ? 'text-warning animate-pulse' : 'text-fg-faint'}`}
       title={isConnecting ? 'Reconnecting...' : 'Disconnected — real-time notifications paused'}
     >
       <WifiOff size={16} />

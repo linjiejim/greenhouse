@@ -309,7 +309,7 @@ export function TaskDetailDrawer({
               {task.description && (
                 <div>
                   <h4 className="text-xs font-medium text-fg-secondary mb-1">{t('common.description')}</h4>
-                  <div className="bg-surface-sunken rounded-lg p-3">
+                  <div className="bg-surface-sunken rounded-md p-3">
                     <Markdown content={task.description} compact />
                   </div>
                 </div>
@@ -401,7 +401,7 @@ export function TaskDetailDrawer({
                                         }}
                                         className="w-full text-left px-2 py-1 text-xs hover:bg-primary-subtle flex items-center gap-1.5"
                                       >
-                                        <Plus size={10} className="text-primary-500" />
+                                        <Plus size={10} className="text-accent" />
                                         <StatusIcon status={t.status} size={10} />
                                         <span className="truncate" title={t.title}>
                                           {t.title}
@@ -480,7 +480,7 @@ export function TaskDetailDrawer({
               ) : (
                 <div className="space-y-2">
                   {comments.map((cm) => (
-                    <div key={cm.id} className="bg-surface-sunken rounded-lg p-2.5">
+                    <div key={cm.id} className="bg-surface-sunken rounded-md p-2.5">
                       <div className="flex items-center gap-2 mb-1">
                         <span className="text-[10px] font-medium text-fg-secondary">{cm.user_nickname}</span>
                         <span className="text-[10px] text-fg-faint">{timeAgo(cm.created_at)}</span>
@@ -503,7 +503,7 @@ export function TaskDetailDrawer({
                       handleAddComment();
                     }
                   }}
-                  className="flex-1 text-xs px-3 py-2 border border-edge rounded-lg focus:outline-none focus:ring-1 focus:ring-primary-500"
+                  className="flex-1 text-xs px-3 py-2 border border-edge rounded-md focus:outline-none focus:ring-1 focus:ring-accent"
                 />
                 <IconButton
                   label={t('task.addComment')}

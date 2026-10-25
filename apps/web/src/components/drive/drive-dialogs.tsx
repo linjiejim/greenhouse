@@ -128,7 +128,7 @@ export function DriveMoveDialog({
       type="button"
       onClick={() => setTarget(id)}
       aria-pressed={target === id}
-      className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors ${
+      className={`flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm transition-colors ${
         target === id ? 'bg-primary-subtle text-primary-fg-strong' : 'text-fg-secondary hover:bg-surface-muted'
       }`}
       style={{ paddingLeft: `${8 + depth * 16}px` }}
@@ -141,7 +141,7 @@ export function DriveMoveDialog({
   return (
     <Dialog open={open} onClose={onClose} title={t('drive.moveTitle', { name })} size="md">
       <div className="space-y-3">
-        <div className="max-h-[50vh] overflow-y-auto rounded-lg border border-edge p-1">
+        <div className="max-h-[50vh] overflow-y-auto rounded-md border border-edge p-1">
           {folders === null ? (
             <div className="flex justify-center py-6">
               <Spinner />

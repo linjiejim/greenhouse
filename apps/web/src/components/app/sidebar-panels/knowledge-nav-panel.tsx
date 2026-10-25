@@ -981,7 +981,7 @@ function FolderPickerDialog({
         <button
           key={f.id}
           onClick={() => onPick(f.id)}
-          className="w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-xs text-fg-secondary hover:text-fg hover:bg-surface-sunken transition-colors"
+          className="w-full flex items-center gap-2 px-2 py-1.5 rounded-sm text-xs text-fg-secondary hover:text-fg hover:bg-surface-sunken transition-colors"
           style={{ paddingLeft: 8 + depth * 14 }}
         >
           <Folder size={13} className="text-fg-faint flex-shrink-0" />
@@ -1001,7 +1001,7 @@ function FolderPickerDialog({
       <div className="max-h-72 overflow-y-auto space-y-0.5">
         <button
           onClick={() => onPick(null)}
-          className="w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-xs text-fg-secondary hover:text-fg hover:bg-surface-sunken transition-colors"
+          className="w-full flex items-center gap-2 px-2 py-1.5 rounded-sm text-xs text-fg-secondary hover:text-fg hover:bg-surface-sunken transition-colors"
         >
           <FolderOpen size={13} className="text-fg-faint flex-shrink-0" />
           <span className="truncate">{t('knowledge.rootFolder')}</span>
@@ -1028,7 +1028,7 @@ function DocRow({
   return (
     <button
       onClick={onClick}
-      className={`w-full text-left px-3 py-1.5 rounded-md text-xs transition-colors flex items-center gap-2 ${
+      className={`w-full text-left px-3 py-1.5 rounded-sm text-xs transition-colors flex items-center gap-2 ${
         active
           ? 'bg-primary-subtle text-primary-fg-strong font-medium'
           : 'text-fg-secondary hover:text-fg hover:bg-surface-sunken'
@@ -1332,7 +1332,7 @@ export function KnowledgeTree({
 
   const DropLine = ({ depth }: { depth: number }) => (
     <div className="h-0 -my-px" style={{ paddingLeft: depth * 12 }} aria-hidden>
-      <div className="border-t-2 border-primary-500 rounded-full" />
+      <div className="border-t-2 border-accent rounded-full" />
     </div>
   );
 
@@ -1352,7 +1352,7 @@ export function KnowledgeTree({
             onOpenDoc(doc);
           }}
           onContextMenu={(e) => onDocMenu(e, doc)}
-          className={`flex-1 min-w-0 cursor-grab text-left pl-2 pr-1 py-1.5 rounded-md text-xs transition-colors flex items-center gap-2 active:cursor-grabbing ${
+          className={`flex-1 min-w-0 cursor-grab text-left pl-2 pr-1 py-1.5 rounded-sm text-xs transition-colors flex items-center gap-2 active:cursor-grabbing ${
             active
               ? 'bg-primary-subtle text-primary-fg-strong font-medium'
               : 'text-fg-secondary hover:text-fg hover:bg-surface-sunken'
@@ -1387,8 +1387,8 @@ export function KnowledgeTree({
             <React.Fragment key={`folder-${f.id}`}>
               {line('folder', i, depth)}
               <div
-                className={`flex cursor-grab items-center group/row rounded-md active:cursor-grabbing ${
-                  isDropTarget ? 'ring-1 ring-primary-500 bg-primary-subtle/40' : ''
+                className={`flex cursor-grab items-center group/row rounded-sm active:cursor-grabbing ${
+                  isDropTarget ? 'ring-1 ring-accent bg-primary-subtle/40' : ''
                 } ${isBlocked ? 'opacity-40' : ''}`}
                 style={{ paddingLeft: depth * 12 }}
                 onContextMenu={(e) => onFolderMenu(e, f)}
@@ -1406,7 +1406,7 @@ export function KnowledgeTree({
                   >
                     <ChevronDown
                       size={12}
-                      className={`transition-transform duration-200 ${open ? '' : '-rotate-90'}`}
+                      className={`transition-transform duration-(--gh-duration-base) ${open ? '' : '-rotate-90'}`}
                     />
                   </button>
                 ) : (
@@ -1417,7 +1417,7 @@ export function KnowledgeTree({
                     if (drag.didDrag()) return;
                     toggle(f.id);
                   }}
-                  className="flex-1 min-w-0 flex items-center gap-2 px-2 py-1.5 rounded-md text-xs text-fg-secondary hover:text-fg hover:bg-surface-sunken transition-colors"
+                  className="flex-1 min-w-0 flex items-center gap-2 px-2 py-1.5 rounded-sm text-xs text-fg-secondary hover:text-fg hover:bg-surface-sunken transition-colors"
                 >
                   {open ? (
                     <FolderOpen size={14} className="text-fg-faint flex-shrink-0" />

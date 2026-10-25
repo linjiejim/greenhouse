@@ -68,7 +68,7 @@ export function InlineMultiSelectEditor({
       ref={rootRef}
       role="group"
       aria-label={label}
-      className="absolute left-0 top-0 z-30 w-72 max-w-[calc(100vw-2rem)] rounded-lg border border-edge bg-surface-raised p-2 shadow-xl"
+      className="absolute left-0 top-0 z-30 w-72 max-w-[calc(100vw-2rem)] rounded-md border border-edge bg-surface-raised p-2 shadow-xl"
       onClick={(event) => event.stopPropagation()}
       onKeyDown={(event) => {
         if (event.key === 'Escape') {
@@ -126,7 +126,7 @@ export function InlineMultiSelectEditor({
             >
               <span
                 className={`flex h-3.5 w-3.5 flex-shrink-0 items-center justify-center rounded border ${
-                  checked ? 'border-primary-600 bg-primary-600 text-white' : 'border-edge-strong'
+                  checked ? 'border-accent bg-accent text-on-accent' : 'border-edge-strong'
                 }`}
               >
                 {checked ? '✓' : ''}

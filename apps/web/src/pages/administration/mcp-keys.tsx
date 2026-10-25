@@ -296,10 +296,10 @@ export function McpKeysPanel() {
     >
       <div>
         {/* Collapsible — how to connect */}
-        <div className="mb-3 rounded-lg border border-edge bg-surface-raised">
+        <div className="mb-3 rounded-md border border-edge bg-surface-raised">
           <button
             onClick={() => setShowConnect((v) => !v)}
-            className="w-full flex items-center justify-between px-3 py-2 text-xs font-semibold text-fg hover:bg-surface-sunken rounded-lg"
+            className="w-full flex items-center justify-between px-3 py-2 text-xs font-semibold text-fg hover:bg-surface-sunken rounded-md"
           >
             <span className="flex items-center gap-1.5">
               <Globe size={12} className="text-fg-muted" />
@@ -322,7 +322,7 @@ export function McpKeysPanel() {
 
         {/* One-time credential reveal */}
         {revealed && (
-          <div className="mb-3 rounded-lg border border-warning/40 bg-warning/10 p-3">
+          <div className="mb-3 rounded-md border border-warning/40 bg-warning/10 p-3">
             <div className="flex items-center gap-1.5 text-xs font-semibold text-warning mb-1">
               <AlertTriangle size={12} />
               {t('mcpAccess.secretOnce')}
@@ -349,7 +349,7 @@ export function McpKeysPanel() {
 
         {/* Machine clients */}
         <div className="mb-1 text-xs font-semibold text-fg">{t('mcpAccess.machineClients')}</div>
-        <div className="bg-surface-raised border border-edge rounded-lg overflow-x-auto mb-4">
+        <div className="bg-surface-raised border border-edge rounded-md overflow-x-auto mb-4">
           <table className="min-w-[760px] w-full text-xs">
             <thead className="bg-surface-sunken text-fg-muted">
               <tr>
@@ -417,7 +417,7 @@ export function McpKeysPanel() {
         {/* Interactive (public) clients — registered via DCR when users log in */}
         <div className="mb-1 text-xs font-semibold text-fg">{t('mcpAccess.interactiveClients')}</div>
         <p className="text-[11px] text-fg-muted mb-2">{t('mcpAccess.interactiveDescription')}</p>
-        <div className="bg-surface-raised border border-edge rounded-lg overflow-x-auto">
+        <div className="bg-surface-raised border border-edge rounded-md overflow-x-auto">
           <table className="min-w-[640px] w-full text-xs">
             <thead className="bg-surface-sunken text-fg-muted">
               <tr>
@@ -493,7 +493,7 @@ export function McpKeysPanel() {
               label={t('mcpAccess.allowWrites')}
             />
             <FormField label={t('mcpAccess.capabilities')} help={t('mcpAccess.capabilitiesHint')}>
-              <div className="max-h-52 divide-y divide-edge overflow-y-auto rounded-lg border border-edge">
+              <div className="max-h-52 divide-y divide-edge overflow-y-auto rounded-md border border-edge">
                 {groupIds.map((id) => (
                   <label key={id} className="flex cursor-pointer items-start gap-2 p-2 hover:bg-surface-muted">
                     <Checkbox

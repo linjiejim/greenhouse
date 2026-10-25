@@ -79,7 +79,7 @@ export function CoverFieldsField({
       {REPORT_COVER_FIELD_KEYS.map((key) => {
         const field = find(key);
         return (
-          <div key={key} className="flex items-center justify-between gap-3 rounded-lg border border-edge px-3 py-2">
+          <div key={key} className="flex items-center justify-between gap-3 rounded-md border border-edge px-3 py-2">
             <Checkbox
               checked={Boolean(field)}
               onChange={(event) => set(key, event.target.checked ? { key, required: false } : null)}
@@ -136,7 +136,7 @@ export function SectionsField({
         return (
           <div
             key={index}
-            className="space-y-2 rounded-lg border border-edge bg-surface-raised p-3"
+            className="space-y-2 rounded-md border border-edge bg-surface-raised p-3"
             data-testid="report-template-section"
           >
             <div className="flex flex-wrap items-center gap-2">

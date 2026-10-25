@@ -71,7 +71,7 @@ export function NoteInputDialog({ quote, anchorRect, onSubmit, onDismiss }: Note
   return (
     <div
       ref={containerRef}
-      className="fixed z-40 max-w-[calc(100vw-1rem)] animate-fade-in rounded-xl border border-edge bg-surface-raised p-3 shadow-xl"
+      className="fixed z-40 max-w-[calc(100vw-1rem)] animate-fade-in rounded-lg border border-edge bg-surface-raised p-3 shadow-xl"
       style={{ top, left, width: dialogWidth }}
     >
       {/* Quote preview */}
@@ -101,11 +101,11 @@ export function NoteInputDialog({ quote, anchorRect, onSubmit, onDismiss }: Note
           }}
           placeholder={t('chat.yourNoteOptional')}
           rows={1}
-          className="min-h-9 max-h-[72px] min-w-0 flex-1 resize-none overflow-y-auto rounded-lg border border-edge-strong bg-surface-sunken px-3 py-2 text-sm text-fg placeholder-fg-faint focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/40"
+          className="min-h-9 max-h-[72px] min-w-0 flex-1 resize-none overflow-y-auto rounded-md border border-edge-strong bg-surface-sunken px-3 py-2 text-sm text-fg placeholder-fg-faint focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/40"
         />
         <button
           onClick={handleSubmit}
-          className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-primary-600 text-white transition-colors hover:bg-primary-700"
+          className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-md bg-accent text-on-accent transition-colors hover:bg-accent-hover"
           title={t('chat.addAnnotation')}
         >
           <Send size={14} />

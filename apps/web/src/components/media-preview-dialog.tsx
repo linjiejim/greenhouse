@@ -232,7 +232,7 @@ export function MediaPreviewDialog({ open, files, initialIndex = 0, onClose }: M
               onClick={goPrev}
               disabled={!hasPrev}
               aria-label={t('media.prev')}
-              className="flex h-11 w-11 items-center justify-center gap-1 rounded-md border border-edge bg-surface-muted text-xs text-fg-secondary transition-colors hover:bg-surface-sunken disabled:cursor-not-allowed disabled:opacity-30 sm:h-auto sm:w-auto sm:px-2.5 sm:py-1.5"
+              className="flex h-11 w-11 items-center justify-center gap-1 rounded-sm border border-edge bg-surface-muted text-xs text-fg-secondary transition-colors hover:bg-surface-sunken disabled:cursor-not-allowed disabled:opacity-30 sm:h-auto sm:w-auto sm:px-2.5 sm:py-1.5"
             >
               <ArrowLeft size={15} /> <span className="hidden sm:inline">{t('media.prev')}</span>
             </button>
@@ -240,7 +240,7 @@ export function MediaPreviewDialog({ open, files, initialIndex = 0, onClose }: M
               onClick={goNext}
               disabled={!hasNext}
               aria-label={t('media.next')}
-              className="flex h-11 w-11 items-center justify-center gap-1 rounded-md border border-edge bg-surface-muted text-xs text-fg-secondary transition-colors hover:bg-surface-sunken disabled:cursor-not-allowed disabled:opacity-30 sm:h-auto sm:w-auto sm:px-2.5 sm:py-1.5"
+              className="flex h-11 w-11 items-center justify-center gap-1 rounded-sm border border-edge bg-surface-muted text-xs text-fg-secondary transition-colors hover:bg-surface-sunken disabled:cursor-not-allowed disabled:opacity-30 sm:h-auto sm:w-auto sm:px-2.5 sm:py-1.5"
             >
               <span className="hidden sm:inline">{t('media.next')}</span> <ArrowRight size={15} />
             </button>
@@ -252,7 +252,7 @@ export function MediaPreviewDialog({ open, files, initialIndex = 0, onClose }: M
                 disabled={zoom <= MIN_ZOOM}
                 aria-label={t('media.zoomOut')}
                 title={t('media.zoomOut')}
-                className="flex h-11 w-11 items-center justify-center rounded-md border border-edge bg-surface-muted text-fg-secondary transition-colors hover:bg-surface-sunken disabled:cursor-not-allowed disabled:opacity-30 sm:h-8 sm:w-8"
+                className="flex h-11 w-11 items-center justify-center rounded-sm border border-edge bg-surface-muted text-fg-secondary transition-colors hover:bg-surface-sunken disabled:cursor-not-allowed disabled:opacity-30 sm:h-8 sm:w-8"
               >
                 <ZoomOut size={15} />
               </button>
@@ -260,7 +260,7 @@ export function MediaPreviewDialog({ open, files, initialIndex = 0, onClose }: M
                 onClick={resetView}
                 aria-label={t('media.resetZoom')}
                 title={t('media.resetZoom')}
-                className="flex h-11 min-w-[3.5rem] items-center justify-center gap-1 rounded-md border border-edge bg-surface-muted px-1 text-xs tabular-nums text-fg-secondary transition-colors hover:bg-surface-sunken sm:h-8"
+                className="flex h-11 min-w-[3.5rem] items-center justify-center gap-1 rounded-sm border border-edge bg-surface-muted px-1 text-xs tabular-nums text-fg-secondary transition-colors hover:bg-surface-sunken sm:h-8"
               >
                 <Maximize2 size={13} /> {Math.round(zoom * 100)}%
               </button>
@@ -269,7 +269,7 @@ export function MediaPreviewDialog({ open, files, initialIndex = 0, onClose }: M
                 disabled={zoom >= MAX_ZOOM}
                 aria-label={t('media.zoomIn')}
                 title={t('media.zoomIn')}
-                className="flex h-11 w-11 items-center justify-center rounded-md border border-edge bg-surface-muted text-fg-secondary transition-colors hover:bg-surface-sunken disabled:cursor-not-allowed disabled:opacity-30 sm:h-8 sm:w-8"
+                className="flex h-11 w-11 items-center justify-center rounded-sm border border-edge bg-surface-muted text-fg-secondary transition-colors hover:bg-surface-sunken disabled:cursor-not-allowed disabled:opacity-30 sm:h-8 sm:w-8"
               >
                 <ZoomIn size={15} />
               </button>
@@ -291,7 +291,7 @@ export function MediaPreviewDialog({ open, files, initialIndex = 0, onClose }: M
                   onClose();
                 }}
                 aria-label={t('annotate.open')}
-                className="flex h-11 w-11 flex-shrink-0 items-center justify-center gap-1 rounded-md border border-edge bg-surface-muted text-xs text-fg-secondary transition-colors hover:bg-surface-sunken sm:h-auto sm:w-auto sm:px-2.5 sm:py-1.5"
+                className="flex h-11 w-11 flex-shrink-0 items-center justify-center gap-1 rounded-sm border border-edge bg-surface-muted text-xs text-fg-secondary transition-colors hover:bg-surface-sunken sm:h-auto sm:w-auto sm:px-2.5 sm:py-1.5"
               >
                 <Pencil size={15} /> <span className="hidden sm:inline">{t('annotate.open')}</span>
               </button>
@@ -299,7 +299,7 @@ export function MediaPreviewDialog({ open, files, initialIndex = 0, onClose }: M
             <button
               onClick={handleDownload}
               aria-label={t('media.download')}
-              className="flex h-11 w-11 flex-shrink-0 items-center justify-center gap-1 rounded-md border border-edge bg-surface-muted text-xs text-fg-secondary transition-colors hover:bg-surface-sunken sm:h-auto sm:w-auto sm:px-2.5 sm:py-1.5"
+              className="flex h-11 w-11 flex-shrink-0 items-center justify-center gap-1 rounded-sm border border-edge bg-surface-muted text-xs text-fg-secondary transition-colors hover:bg-surface-sunken sm:h-auto sm:w-auto sm:px-2.5 sm:py-1.5"
             >
               <Download size={15} /> <span className="hidden sm:inline">{t('media.download')}</span>
             </button>
@@ -316,7 +316,7 @@ export function MediaPreviewDialog({ open, files, initialIndex = 0, onClose }: M
               style={{
                 transform: `translate(${offset.x}px, ${offset.y}px) scale(${zoom})`,
                 // No transition while dragging — a lagging image feels broken.
-                transition: panRef.current ? 'none' : 'transform 120ms ease-out',
+                transition: panRef.current ? 'none' : 'transform var(--gh-duration-fast) var(--gh-ease-standard)',
                 cursor: zoom > MIN_ZOOM ? (panRef.current ? 'grabbing' : 'grab') : 'zoom-in',
               }}
               draggable={false}
@@ -360,7 +360,7 @@ export function MediaPreviewDialog({ open, files, initialIndex = 0, onClose }: M
           {category === 'pdf' && (
             <iframe
               src={`${current.src}#toolbar=1&navpanes=1&scrollbar=1`}
-              className="w-full h-full border-none rounded-md"
+              className="w-full h-full border-none rounded-sm"
               title={current.name || 'PDF Preview'}
             />
           )}

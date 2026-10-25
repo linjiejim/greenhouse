@@ -232,8 +232,8 @@ export function SkillUploadDialog({ open, onClose, skill, onPublished }: Props) 
             void ingest(Array.from(e.dataTransfer.files));
           }}
           onClick={() => inputRef.current?.click()}
-          className={`rounded-lg border border-dashed px-4 py-6 text-center cursor-pointer transition-colors ${
-            dragging ? 'border-primary-500 bg-primary-subtle' : 'border-edge-strong hover:bg-surface-muted'
+          className={`rounded-md border border-dashed px-4 py-6 text-center cursor-pointer transition-colors ${
+            dragging ? 'border-accent bg-primary-subtle' : 'border-edge-strong hover:bg-surface-muted'
           }`}
         >
           <Upload size={20} className="mx-auto text-fg-faint" />
@@ -255,7 +255,7 @@ export function SkillUploadDialog({ open, onClose, skill, onPublished }: Props) 
         </div>
 
         {parseError && (
-          <div className="rounded-md border border-danger bg-danger-subtle px-3 py-2 text-xs text-danger">
+          <div className="rounded-sm border border-danger bg-danger-subtle px-3 py-2 text-xs text-danger">
             {parseError}
           </div>
         )}
@@ -263,7 +263,7 @@ export function SkillUploadDialog({ open, onClose, skill, onPublished }: Props) 
         {parsed && (
           <>
             {isOfficial && (
-              <div className="flex items-start gap-2 rounded-md border border-warning bg-warning-subtle px-3 py-2 text-xs text-warning">
+              <div className="flex items-start gap-2 rounded-sm border border-warning bg-warning-subtle px-3 py-2 text-xs text-warning">
                 <AlertTriangle size={14} className="mt-0.5 flex-shrink-0" />
                 <span>{t('skillHub.uploadDialog.officialWarning')}</span>
               </div>
@@ -312,7 +312,7 @@ export function SkillUploadDialog({ open, onClose, skill, onPublished }: Props) 
                   size: formatSize(parsed.sizeBytes),
                 })}
               </div>
-              <div className="mt-1 max-h-40 overflow-y-auto rounded-md border border-edge bg-surface-sunken p-2 space-y-0.5">
+              <div className="mt-1 max-h-40 overflow-y-auto rounded-sm border border-edge bg-surface-sunken p-2 space-y-0.5">
                 {parsed.files.map((f) => (
                   <div key={f.path} className="flex items-center gap-2 text-[11px]">
                     <span className="font-mono text-fg-secondary truncate" title={f.path}>

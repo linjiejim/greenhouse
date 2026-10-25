@@ -113,7 +113,7 @@ export function KnowledgeShareDialog({ open, onClose, docId, docTitle, onChanged
 
           {/* Existing grants */}
           {shares.length > 0 && (
-            <div className="bg-surface-muted rounded-lg p-3 space-y-1">
+            <div className="bg-surface-muted rounded-md p-3 space-y-1">
               <span className="text-xs font-medium text-fg-muted uppercase tracking-wider">
                 {t('knowledge.sharedWith')}
               </span>
@@ -154,7 +154,7 @@ export function KnowledgeShareDialog({ open, onClose, docId, docTitle, onChanged
               onChange={(e) => setSearch(e.target.value)}
               size="sm"
             />
-            <div className="mt-2 max-h-48 overflow-y-auto border border-edge rounded-lg divide-y divide-edge">
+            <div className="mt-2 max-h-48 overflow-y-auto border border-edge rounded-md divide-y divide-edge">
               {filteredUsers.length === 0 && (
                 <div className="px-3 py-4 text-center text-xs text-fg-muted">{t('knowledge.noMembers')}</div>
               )}
@@ -172,7 +172,7 @@ export function KnowledgeShareDialog({ open, onClose, docId, docTitle, onChanged
                   >
                     <div
                       className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 ${
-                        selected || already ? 'bg-primary-500 border-primary-500' : 'border-edge-strong'
+                        selected || already ? 'bg-accent border-accent' : 'border-edge-strong'
                       }`}
                     >
                       {(selected || already) && <Check size={10} className="text-white" />}

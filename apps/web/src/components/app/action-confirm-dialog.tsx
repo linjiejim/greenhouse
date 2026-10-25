@@ -52,7 +52,7 @@ export function ActionConfirmDialog() {
         {prompt.description && <p className="text-xs text-fg-muted break-words">{prompt.description}</p>}
 
         {hasReasons && (
-          <div className="mt-3 flex gap-2 rounded-lg bg-warning-subtle p-2.5">
+          <div className="mt-3 flex gap-2 rounded-md bg-warning-subtle p-2.5">
             <AlertTriangle size={14} className="text-warning shrink-0 mt-0.5" />
             <ul className="text-xs text-fg-secondary space-y-0.5">
               {prompt.reasons!.map((reason) => (

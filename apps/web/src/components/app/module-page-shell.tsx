@@ -31,7 +31,7 @@ interface MobileModuleTabsProps {
 
 function mobileTabClasses(active: boolean) {
   return joinClasses(
-    'flex min-h-11 items-center gap-1.5 rounded-lg border px-3 py-2 text-xs whitespace-nowrap transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500/40',
+    'flex min-h-11 items-center gap-1.5 rounded-md border px-3 py-2 text-xs whitespace-nowrap transition-colors focus:outline-none focus:ring-2 focus:ring-accent/40',
     active
       ? 'bg-primary-subtle text-primary-fg-strong font-medium border-primary-edge'
       : 'text-fg-muted hover:text-fg-secondary border-transparent',

@@ -136,7 +136,7 @@ export function FeatureRequestsPanel({ tabs, actions }: { tabs?: React.ReactNode
 
         {/* Table */}
         {!loading && requests.length > 0 && (
-          <div className="bg-surface-raised border border-edge rounded-lg overflow-x-auto">
+          <div className="bg-surface-raised border border-edge rounded-md overflow-x-auto">
             <table className="w-full min-w-[720px] text-sm">
               <thead className="bg-surface-sunken text-fg-muted">
                 <tr>

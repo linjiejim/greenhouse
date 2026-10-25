@@ -96,9 +96,9 @@ export function WidgetCard({ widget, state, applications, editing, onEdit, onRem
       return (
         <a
           href={href}
-          className="flex h-full items-center gap-3 rounded-md px-1 text-left transition-colors hover:bg-surface-muted"
+          className="flex h-full items-center gap-3 rounded-sm px-1 text-left transition-colors hover:bg-surface-muted"
         >
-          <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-md bg-surface-muted text-fg-secondary">
+          <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-sm bg-surface-muted text-fg-secondary">
             <Icon size={18} />
           </span>
           <span className="min-w-0">
@@ -137,7 +137,7 @@ export function WidgetCard({ widget, state, applications, editing, onEdit, onRem
           }
           action={
             isForbidden ? undefined : (
-              <button type="button" onClick={onRefresh} className="text-xs text-primary-600 hover:underline">
+              <button type="button" onClick={onRefresh} className="text-xs text-accent hover:underline">
                 {t('common.retry')}
               </button>
             )
@@ -214,7 +214,7 @@ export function WidgetCard({ widget, state, applications, editing, onEdit, onRem
   }, [applications, onRefresh, state, t, widget]);
 
   return (
-    <div className="group flex h-full flex-col rounded-lg border border-edge bg-surface-card">
+    <div className="group flex h-full flex-col rounded-md border border-edge bg-surface-card">
       <div
         className={`flex flex-shrink-0 items-center gap-1.5 border-b border-edge px-3 py-1 ${
           editing ? `${WIDGET_DRAG_HANDLE_CLASS} cursor-move` : ''
@@ -244,7 +244,7 @@ export function WidgetCard({ widget, state, applications, editing, onEdit, onRem
           )
         )}
       </div>
-      <div className="min-h-0 flex-1 overflow-hidden rounded-b-lg px-3 py-2.5">{body}</div>
+      <div className="min-h-0 flex-1 overflow-hidden rounded-b-md px-3 py-2.5">{body}</div>
     </div>
   );
 }

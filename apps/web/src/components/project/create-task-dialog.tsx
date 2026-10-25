@@ -105,7 +105,7 @@ export function CreateTaskDialog({
         }}
       >
         {isMilestone && (
-          <div className="flex items-center gap-2 p-2 bg-warning-subtle border border-warning rounded-lg text-xs text-warning">
+          <div className="flex items-center gap-2 p-2 bg-warning-subtle border border-warning rounded-md text-xs text-warning">
             <span className="text-star text-sm">◆</span>
             {t('task.milestoneHint')}
           </div>

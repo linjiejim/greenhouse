@@ -126,7 +126,7 @@ export function RuntimeConfigPanel() {
   if (error) {
     return (
       <ModulePage moduleId="admin.runtime-config" layout="form">
-        <div className="text-sm text-danger bg-danger-subtle px-3 py-2 rounded-lg">{error}</div>
+        <div className="text-sm text-danger bg-danger-subtle px-3 py-2 rounded-md">{error}</div>
       </ModulePage>
     );
   }
@@ -146,7 +146,7 @@ export function RuntimeConfigPanel() {
         <p className="text-xs text-fg-muted leading-relaxed">{t('runtimeConfig.intro')}</p>
 
         {[...grouped.keys()].map((group) => (
-          <section key={group} className="bg-surface-raised border border-edge rounded-xl p-4">
+          <section key={group} className="bg-surface-raised border border-edge rounded-lg p-4">
             <h3 className="text-sm font-semibold text-fg mb-3">{groupLabel(group)}</h3>
             <div className="space-y-3">
               {(grouped.get(group) ?? []).map((v) => {

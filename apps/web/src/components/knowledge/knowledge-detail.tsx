@@ -197,7 +197,7 @@ function DocOutline({
           >
             <span
               className={`h-0.5 rounded-full transition-colors ${
-                h.id === activeId ? 'bg-primary-600' : 'bg-edge-strong group-hover:bg-fg-faint'
+                h.id === activeId ? 'bg-accent' : 'bg-edge-strong group-hover:bg-fg-faint'
               }`}
               style={{ width: `${16 - Math.min(h.level - 1, 3) * 3}px` }}
             />
@@ -208,7 +208,7 @@ function DocOutline({
       {peeking && (
         <div className="absolute top-2 right-full w-[196px] pr-1 z-20">
           {/* Padding preserves the visual gap while keeping one continuous hover target. */}
-          <div className="w-full max-h-[70vh] overflow-y-auto rounded-lg border border-edge bg-surface-raised shadow-lg p-2">
+          <div className="w-full max-h-[70vh] overflow-y-auto rounded-md border border-edge bg-surface-raised shadow-lg p-2">
             <div className="flex items-center gap-1 mb-1">
               {heading}
               <button
@@ -331,7 +331,7 @@ export function KnowledgeVersionsDialog({
       ) : (
         <div className="space-y-2">
           {/* Compare any two versions (or a version vs current). */}
-          <div className="border border-edge rounded-md p-2 bg-surface-muted/40">
+          <div className="border border-edge rounded-sm p-2 bg-surface-muted/40">
             <div className="flex items-center gap-2 text-xs flex-wrap">
               <span className="text-fg-faint">{t('knowledge.compareVersions')}:</span>
               <div className="flex items-center gap-2">
@@ -365,7 +365,7 @@ export function KnowledgeVersionsDialog({
             const isLatest = idx === 0;
             const showDiff = diffVersion === v.version;
             return (
-              <div key={v.id} className="text-sm border border-edge rounded-md px-3 py-2">
+              <div key={v.id} className="text-sm border border-edge rounded-sm px-3 py-2">
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
                   <div className="min-w-0">
                     <span className="font-medium text-fg">v{v.version}</span>

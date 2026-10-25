@@ -942,7 +942,7 @@ export function GanttCore<TData, GData>({
             {/* Drag-to-create preview */}
             {createDrag && (
               <div
-                className="absolute z-[4] bg-primary-500 opacity-25 rounded"
+                className="absolute z-[4] bg-accent opacity-25 rounded"
                 style={{
                   left: Math.min(createDrag.startDay, createDrag.currentDay) * DAY_WIDTH,
                   top: 40,
@@ -991,7 +991,7 @@ export function GanttCore<TData, GData>({
                     {bar && !isMilestone && (
                       <div
                         data-gantt-bar
-                        className={`absolute rounded-sm cursor-pointer hover:brightness-110 transition-all ${bar.bgColor} ${bar.isParent ? 'h-3 opacity-70' : 'h-5'} group`}
+                        className={`absolute rounded-xs cursor-pointer hover:brightness-110 transition-all ${bar.bgColor} ${bar.isParent ? 'h-3 opacity-70' : 'h-5'} group`}
                         style={{
                           left: bar.left,
                           width: Math.max(bar.width, DAY_WIDTH / 2),
@@ -1015,15 +1015,15 @@ export function GanttCore<TData, GData>({
                         {/* Progress fill */}
                         {!bar.isParent && bar.progress > 0 && bar.progress < 100 && (
                           <div
-                            className="absolute inset-0 rounded-sm opacity-30 bg-black"
+                            className="absolute inset-0 rounded-xs opacity-30 bg-black"
                             style={{ width: `${bar.progress}%` }}
                           />
                         )}
                         {/* Resize handles */}
                         {!bar.isParent && (
                           <>
-                            <div className="absolute left-0 top-0 bottom-0 w-1.5 cursor-col-resize opacity-0 group-hover:opacity-100 bg-surface-raised/40 rounded-l-sm" />
-                            <div className="absolute right-0 top-0 bottom-0 w-1.5 cursor-col-resize opacity-0 group-hover:opacity-100 bg-surface-raised/40 rounded-r-sm" />
+                            <div className="absolute left-0 top-0 bottom-0 w-1.5 cursor-col-resize opacity-0 group-hover:opacity-100 bg-surface-raised/40 rounded-l-xs" />
+                            <div className="absolute right-0 top-0 bottom-0 w-1.5 cursor-col-resize opacity-0 group-hover:opacity-100 bg-surface-raised/40 rounded-r-xs" />
                           </>
                         )}
                         {/* Enhanced label with assignee, days, status */}

@@ -35,7 +35,7 @@ export function RecordDetailContent({
     <div className="space-y-6 p-5">
       <DetailHeader
         icon={
-          <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-primary-subtle text-primary-fg-strong">
+          <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-md bg-primary-subtle text-primary-fg-strong">
             <Eye size={18} />
           </div>
         }

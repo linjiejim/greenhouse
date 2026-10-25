@@ -98,7 +98,7 @@ export function AttachmentChips<Ref>({
       {attachments.map((att, i) => (
         <div
           key={`${att.file.name}-${i}`}
-          className={`flex max-w-[240px] items-center gap-1.5 rounded-lg border px-2 py-1 text-xs ${
+          className={`flex max-w-[240px] items-center gap-1.5 rounded-md border px-2 py-1 text-xs ${
             att.error ? 'border-danger bg-danger-subtle text-danger' : 'border-edge bg-surface-muted text-fg-secondary'
           }`}
           title={att.error || att.file.name}

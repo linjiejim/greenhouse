@@ -66,7 +66,7 @@ export function ModelSelector({
         aria-haspopup="listbox"
         aria-expanded={open}
         title={lockedReason ? `${current.name} · ${lockedReason}` : current.name}
-        className="flex h-8 items-center gap-1 rounded-lg px-2 text-xs text-fg-muted transition-colors hover:bg-surface-muted hover:text-fg-secondary disabled:opacity-40"
+        className="flex h-8 items-center gap-1 rounded-md px-2 text-xs text-fg-muted transition-colors hover:bg-surface-muted hover:text-fg-secondary disabled:opacity-40"
       >
         <span className="max-w-[7rem] truncate font-mono">{current.id}</span>
         {!lockedReason && <ChevronDown size={12} className="flex-shrink-0" />}
@@ -75,7 +75,7 @@ export function ModelSelector({
       {open && (
         <div
           role="listbox"
-          className="absolute bottom-full right-0 z-20 mb-1 min-w-[13rem] max-w-[calc(100vw-2rem)] overflow-hidden rounded-lg border border-edge bg-surface-raised py-1 shadow-lg"
+          className="absolute bottom-full right-0 z-20 mb-1 min-w-[13rem] max-w-[calc(100vw-2rem)] overflow-hidden rounded-md border border-edge bg-surface-raised py-1 shadow-lg"
         >
           {models.map((model) => (
             <button

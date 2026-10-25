@@ -18,7 +18,7 @@ describe('AskUserCard submitted summary', () => {
     );
 
     expect(html).toContain('data-chat-artifact-card="true"');
-    expect(html).toContain('rounded-lg');
+    expect(html).toContain('rounded-md');
     expect(html).toContain('bg-surface-sunken');
   });
 

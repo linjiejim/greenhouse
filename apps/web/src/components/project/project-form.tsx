@@ -118,7 +118,7 @@ export function ProjectForm({
               aria-label={t('projects.projectColorOption', { index: index + 1 })}
               aria-pressed={value.color === color}
               onClick={() => set('color', value.color === color ? '' : color)}
-              className={`h-7 w-7 rounded-full border-2 transition-transform focus:outline-none focus:ring-2 focus:ring-primary-500/40 focus:ring-offset-2 focus:ring-offset-surface-raised ${
+              className={`h-7 w-7 rounded-full border-2 transition-transform focus:outline-none focus:ring-2 focus:ring-accent/40 focus:ring-offset-2 focus:ring-offset-surface-raised ${
                 value.color === color
                   ? 'scale-110 border-fg'
                   : 'border-transparent hover:scale-105 hover:border-edge-strong'

@@ -80,7 +80,7 @@ function createMenuRenderer() {
       selected = 0;
       el = document.createElement('div');
       el.className =
-        'fixed z-50 min-w-[200px] max-w-[320px] max-h-64 overflow-y-auto rounded-md border border-edge bg-surface-raised shadow-lg py-1';
+        'fixed z-50 min-w-[200px] max-w-[320px] max-h-64 overflow-y-auto rounded-sm border border-edge bg-surface-raised shadow-lg py-1';
       document.body.appendChild(el);
       paint();
       place(props.clientRect?.() ?? null);

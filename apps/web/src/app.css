@@ -1,4 +1,6 @@
 @import 'tailwindcss';
+/* The one token source for web + mobile: packages/ui/src/tokens/tokens.ts → `pnpm tokens:build`. */
+@import '../../../packages/ui/src/tokens/tokens.css';
 
 @source "../**/*.{tsx,ts}";
 /* Workspace packages with Tailwind-classed JSX (pnpm-symlinked → outside auto-detection) */
@@ -73,7 +75,7 @@ html {
 
   .mobile-keyboard-lift {
     transform: translate3d(0, calc(-1 * var(--mobile-keyboard-inset, 0px)), 0);
-    transition: transform 160ms ease-out;
+    transition: transform var(--gh-duration-base) var(--gh-ease-standard);
     will-change: transform;
   }
 
@@ -295,31 +297,31 @@ textarea,
 }
 
 .animate-panel-enter {
-  animation: slide-up 0.3s ease-out;
+  animation: slide-up var(--gh-duration-slow) var(--gh-ease-enter);
 }
 
 .animate-panel-exit {
-  animation: panel-slide-down 0.25s ease-in forwards;
+  animation: panel-slide-down var(--gh-duration-exit) var(--gh-ease-exit) forwards;
 }
 
 @media (min-width: 768px) {
   .animate-panel-enter {
-    animation: panel-pop 0.2s cubic-bezier(0.22, 1, 0.36, 1);
+    animation: panel-pop var(--gh-duration-base) var(--gh-ease-enter);
     transform-origin: top left;
   }
 
   .animate-panel-exit {
-    animation: panel-pop-out 0.18s cubic-bezier(0.4, 0, 1, 1) forwards;
+    animation: panel-pop-out var(--gh-duration-exit) var(--gh-ease-exit) forwards;
     transform-origin: top left;
   }
 }
 
 .animate-backdrop-fade {
-  animation: backdrop-fade 0.15s ease-out;
+  animation: backdrop-fade var(--gh-duration-base) var(--gh-ease-standard);
 }
 
 .animate-backdrop-fade-out {
-  animation: backdrop-fade-out 0.18s ease-in forwards;
+  animation: backdrop-fade-out var(--gh-duration-exit) var(--gh-ease-exit) forwards;
 }
 
 /* ─── Custom dark variant: driven by .dark-theme class ─── */
@@ -350,8 +352,8 @@ textarea,
   --color-primary-200: rgb(var(--primary-200));
   --color-primary-300: rgb(var(--primary-300));
   --color-primary-400: rgb(var(--primary-400));
-  --color-primary-500: rgb(var(--primary-500));
-  --color-primary-600: rgb(var(--primary-600));
+  --color-primary-500: var(--t-primary-fg);
+  --color-primary-600: var(--t-primary-fg);
   --color-primary-700: rgb(var(--primary-700));
   --color-primary-800: rgb(var(--primary-800));
   --color-primary-900: rgb(var(--primary-900));
@@ -390,170 +392,35 @@ textarea,
   --color-primary-edge: var(--t-primary-edge);
   --color-primary-fg: var(--t-primary-fg);
   --color-primary-fg-strong: var(--t-primary-fg-strong);
+
+  /* Accent action: the primary fill and the text on it (light forest green, dark pale sage). */
+  --color-accent: var(--t-accent);
+  --color-accent-hover: var(--t-accent-hover);
+  --color-accent-pressed: var(--t-accent-pressed);
+  --color-on-accent: var(--t-on-accent);
+
+  /* User-chosen colours (project/tag colours, select options): `text-cat-x` on `bg-cat-x-fill`. */
+  --color-cat-gray: var(--t-cat-gray);
+  --color-cat-gray-fill: var(--t-cat-gray-fill);
+  --color-cat-red: var(--t-cat-red);
+  --color-cat-red-fill: var(--t-cat-red-fill);
+  --color-cat-orange: var(--t-cat-orange);
+  --color-cat-orange-fill: var(--t-cat-orange-fill);
+  --color-cat-amber: var(--t-cat-amber);
+  --color-cat-amber-fill: var(--t-cat-amber-fill);
+  --color-cat-green: var(--t-cat-green);
+  --color-cat-green-fill: var(--t-cat-green-fill);
+  --color-cat-teal: var(--t-cat-teal);
+  --color-cat-teal-fill: var(--t-cat-teal-fill);
+  --color-cat-blue: var(--t-cat-blue);
+  --color-cat-blue-fill: var(--t-cat-blue-fill);
+  --color-cat-purple: var(--t-cat-purple);
+  --color-cat-purple-fill: var(--t-cat-purple-fill);
+  --color-cat-pink: var(--t-cat-pink);
+  --color-cat-pink-fill: var(--t-cat-pink-fill);
 }
 
-/* ─── Light (default) ─── */
-:root {
-  /* Greenhouse brand: wash → sage/lime → green → deep green. */
-  --primary-50: 244 248 241;
-  --primary-100: 238 245 234;
-  --primary-200: 221 235 213;
-  --primary-300: 199 217 216;
-  --primary-400: 140 198 63;
-  --primary-500: 46 139 61;
-  --primary-600: 39 122 53;
-  --primary-700: 31 107 52;
-  --primary-800: 24 85 42;
-  --primary-900: 18 63 32;
-
-  /* Surface */
-  --t-surface-canvas: #ffffff;
-  --t-surface-chrome: #f1f7ed;
-  --t-surface: #f4f8f1;
-  --t-surface-card: #f7faf5;
-  --t-surface-raised: #ffffff;
-  --t-surface-muted: #eef5ea;
-  --t-surface-sunken: #f7f9f5;
-
-  /* Text */
-  --t-fg: #2b2b2b;
-  --t-fg-secondary: #455147;
-  --t-fg-muted: #5f6a61;
-  --t-fg-faint: #657067;
-
-  /* Border */
-  --t-edge: #e6ece3;
-  --t-edge-strong: #cbd6c8;
-
-  /* Status: Success */
-  --t-success: #2e8b3d;
-  --t-success-subtle: #eef5ea;
-  --t-success-fg: #1f6b34;
-
-  /* Status: Warning */
-  --t-warning: #a84d21;
-  --t-warning-subtle: #fff3ec;
-  --t-warning-fg: #7a3517;
-
-  /* Status: Danger */
-  --t-danger: #c2413b;
-  --t-danger-subtle: #fff0ef;
-  --t-danger-fg: #8f2f2b;
-
-  /* Destructive action */
-  --t-destructive: #c2413b;
-  --t-destructive-hover: #a93631;
-
-  /* Star rating */
-  --t-star: #b7791f;
-  --t-star-hover: #925f18;
-
-  /* Status: Info */
-  --t-info: #2d6e8e;
-  --t-info-subtle: #edf7fa;
-  --t-info-fg: #24566e;
-
-  /*
-   * Primary semantic — these carry SELECTED / ACTIVE state across the app, so in
-   * light mode they must not be drawn from the brand wash the neutral surfaces are
-   * already made of. They used to be primary-50/100/200, which made
-   * `primary-subtle` byte-identical to `--t-surface` and `primary-subtle-hover`
-   * byte-identical to `--t-surface-muted`: a selected chip differed from its
-   * unselected neighbour by 1.01:1, i.e. not at all. Values below keep dark-green
-   * label text at 5.4:1 while giving the fill a ~5 L* step off every neutral.
-   *
-   * The load-bearing cue is the EDGE, not the fill: no light fill can reach the
-   * 3:1 that WCAG 2.2 SC 1.4.11 wants for a state indicator and still take dark
-   * green text (the best candidate tops out near 1.26:1). primary-500 clears 3:1
-   * against the fill, the hover fill, the canvas and the sunken track alike.
-   */
-  --t-primary-subtle: #e1edd6;
-  --t-primary-subtle-hover: #d8e7cc;
-  --t-primary-edge: rgb(var(--primary-500));
-  --t-primary-fg: rgb(var(--primary-600));
-  --t-primary-fg-strong: rgb(var(--primary-700));
-
-  /*
-   * Reading surfaces opt out. Inline code, @-mentions and entity-link hover want a
-   * brand tint, not a state indicator — they sit inside running prose, where the
-   * selection-strength fill above reads as highlighting half the paragraph. This is
-   * the old primary-subtle value, kept for exactly those three consumers.
-   */
-  --t-primary-wash: rgb(var(--primary-50));
-
-  /* Focus indicator — see the `:root …:focus-visible` rule near the bottom. */
-  --t-focus-ring: rgb(var(--primary-600));
-}
-
-/* ─── Dark ─── */
-.dark-theme {
-  color-scheme: dark;
-
-  /* Surface */
-  --t-surface-canvas: #0f1510;
-  --t-surface-chrome: #1a231b;
-  --t-surface: #151c16;
-  --t-surface-card: #1a231b;
-  --t-surface-raised: #1a231b;
-  --t-surface-muted: #243026;
-  --t-surface-sunken: #0f1510;
-
-  /* Text */
-  --t-fg: #f2f6f0;
-  --t-fg-secondary: #c6d0c3;
-  --t-fg-muted: #95a292;
-  --t-fg-faint: #82917f;
-
-  /* Border */
-  --t-edge: #2c392e;
-  --t-edge-strong: #405143;
-
-  /* Status: Success */
-  --t-success: #76c97d;
-  --t-success-subtle: rgba(76, 175, 80, 0.14);
-  --t-success-fg: #a5dda9;
-
-  /* Status: Warning */
-  --t-warning: #e7a16b;
-  --t-warning-subtle: rgba(217, 102, 43, 0.15);
-  --t-warning-fg: #f0b98f;
-
-  /* Status: Danger */
-  --t-danger: #ee837d;
-  --t-danger-subtle: rgba(224, 80, 73, 0.14);
-  --t-danger-fg: #f4aaa6;
-
-  /* Destructive action */
-  --t-destructive: #d75650;
-  --t-destructive-hover: #e16c66;
-
-  /* Star rating */
-  --t-star: #e6b45d;
-  --t-star-hover: #f0c472;
-
-  /* Status: Info */
-  --t-info: #72b4cf;
-  --t-info-subtle: rgba(70, 145, 176, 0.15);
-  --t-info-fg: #a1cfe1;
-
-  /* Primary semantic (dark — translucent overlays instead of pastel).
-     Dark never had the light mode's problem: a green overlay on a near-black
-     surface already separates selected from unselected by 1.30:1, so these are
-     deliberately left alone. */
-  --t-primary-subtle: rgb(var(--primary-500) / 0.12);
-  --t-primary-subtle-hover: rgb(var(--primary-500) / 0.2);
-  --t-primary-edge: rgb(var(--primary-500) / 0.25);
-  --t-primary-fg: rgb(var(--primary-300));
-  --t-primary-fg-strong: rgb(var(--primary-200));
-  --t-primary-wash: rgb(var(--primary-500) / 0.12);
-
-  --t-focus-ring: rgb(var(--primary-400));
-}
-
-/* Brand signature — reserved for title/section bars. */
-.brand-gradient {
-  background: linear-gradient(90deg, #1f6b34 0%, #2e8b3d 45%, #8cc63f 100%);
-}
+/* Light :root and .dark-theme token values: packages/ui/src/tokens/tokens.css (generated, imported above). */
 
 .brand-auth-background {
   --auth-glow-x: 50%;
@@ -610,23 +477,8 @@ textarea,
   }
 }
 
-/* ─── Theme transition (smooth theme switching) ─── */
-* {
-  transition:
-    background-color 0.2s ease,
-    border-color 0.2s ease,
-    color 0.15s ease,
-    box-shadow 0.2s ease;
-}
-/* Opt-out for elements that shouldn't animate (inputs during typing, etc.) */
-.no-theme-transition,
-.no-theme-transition * {
-  transition: none !important;
-}
-/* Performance: skip transition on page load — JS removes this class after first paint */
-.theme-loading * {
-  transition: none !important;
-}
+/* Theme switches are instant: there is no global transition. Components animate their own
+   hover/press with Tailwind `transition-*` (default 140ms, standard easing — tokens.css). */
 
 @media (prefers-reduced-motion: reduce) {
   .brand-auth-background {
@@ -665,7 +517,7 @@ textarea,
   border: 3px solid transparent;
   border-radius: 9px;
   background-clip: padding-box;
-  transition: background-color 0.18s ease;
+  transition: background-color var(--gh-duration-exit) var(--gh-ease-standard);
 }
 ::-webkit-scrollbar-corner {
   background: transparent;
@@ -753,11 +605,11 @@ textarea,
 /* ── Links ── */
 .prose-base a,
 .prose-compact a {
-  @apply text-primary-fg underline decoration-primary-500/45 underline-offset-2;
+  @apply text-primary-fg underline decoration-accent/45 underline-offset-2;
 }
 .prose-base a:hover,
 .prose-compact a:hover {
-  @apply text-primary-fg-strong decoration-primary-600;
+  @apply text-primary-fg-strong decoration-accent;
 }
 
 /* ── Record references ──
@@ -774,7 +626,7 @@ textarea,
 .prose-base a.entity-link::before,
 .prose-compact a.entity-link::before {
   content: '';
-  @apply inline-block h-[0.62em] w-[0.62em] flex-shrink-0 self-center rounded-[2px] bg-primary-500/70;
+  @apply inline-block h-[0.62em] w-[0.62em] flex-shrink-0 self-center rounded-[2px] bg-accent/70;
 }
 .prose-base a.entity-link:hover,
 .prose-compact a.entity-link:hover {
@@ -789,7 +641,7 @@ textarea,
    original link text until React has drawn the chip into the slot. */
 .prose-base a.md-chip,
 .prose-compact a.md-chip {
-  @apply inline-flex max-w-full items-center gap-1 rounded-md border border-edge bg-surface-muted px-1.5 align-middle font-medium text-fg no-underline;
+  @apply inline-flex max-w-full items-center gap-1 rounded-sm border border-edge bg-surface-muted px-1.5 align-middle font-medium text-fg no-underline;
   line-height: 1.5;
   white-space: nowrap;
   overflow: hidden;
@@ -849,14 +701,14 @@ textarea,
 /* ── Inline code ── */
 .prose-base code,
 .prose-compact code {
-  @apply rounded-md px-1 py-0.5 font-mono text-[0.86em] font-medium text-primary-fg-strong;
+  @apply rounded-sm px-1 py-0.5 font-mono text-[0.86em] font-medium text-primary-fg-strong;
   background-color: var(--t-primary-wash);
 }
 
 /* ── Code blocks ── */
 .prose-base pre,
 .prose-compact pre {
-  @apply max-h-96 overflow-auto rounded-md border border-edge/70 bg-surface-sunken font-mono;
+  @apply max-h-96 overflow-auto rounded-sm border border-edge/70 bg-surface-sunken font-mono;
 }
 .prose-base pre code,
 .prose-compact pre code {
@@ -866,7 +718,7 @@ textarea,
 /* ── Blockquote ── */
 .prose-base blockquote,
 .prose-compact blockquote {
-  @apply rounded-r-md border-l-2 border-primary-500 bg-surface-muted py-2 pl-3 pr-3 text-fg-secondary;
+  @apply rounded-r-sm border-l-2 border-accent bg-surface-muted py-2 pl-3 pr-3 text-fg-secondary;
 }
 .prose-base blockquote p,
 .prose-compact blockquote p {
@@ -876,7 +728,7 @@ textarea,
 /* ── Table ── */
 .prose-base .md-table-shell,
 .prose-compact .md-table-shell {
-  @apply w-full overflow-hidden rounded-lg border border-edge;
+  @apply w-full overflow-hidden rounded-md border border-edge;
 }
 .prose-base .md-table-toolbar,
 .prose-compact .md-table-toolbar {
@@ -884,7 +736,7 @@ textarea,
 }
 .prose-base .md-table-icon-action,
 .prose-compact .md-table-icon-action {
-  @apply inline-flex h-7 w-7 items-center justify-center rounded-md text-fg-muted transition-colors hover:bg-surface-muted hover:text-fg focus:outline-none focus:ring-2 focus:ring-primary-500/40;
+  @apply inline-flex h-7 w-7 items-center justify-center rounded-sm text-fg-muted transition-colors hover:bg-surface-muted hover:text-fg focus:outline-none focus:ring-2 focus:ring-accent/40;
 }
 .prose-base .md-table-scroll,
 .prose-compact .md-table-scroll {
@@ -919,7 +771,7 @@ textarea,
 .prose-base img,
 .prose-compact img {
   /* Every prose image opens a lightbox on click (see <Markdown>), so advertise it. */
-  @apply max-w-full cursor-zoom-in rounded-lg border border-edge shadow-sm;
+  @apply max-w-full cursor-zoom-in rounded-md border border-edge shadow-sm;
 }
 
 /* Document images are thumbnails too, just a roomier one than chat: a screenshot
@@ -972,7 +824,7 @@ textarea,
 }
 .prose-base li::marker,
 .prose-compact li::marker {
-  color: rgb(var(--primary-600));
+  color: var(--t-primary-fg);
   font-weight: 600;
 }
 .prose-base li > ul,
@@ -1101,7 +953,7 @@ textarea,
 }
 .prose-base .md-code-icon-action,
 .prose-compact .md-code-icon-action {
-  @apply absolute right-1.5 top-1.5 z-10 inline-flex h-7 w-7 items-center justify-center rounded-md border border-edge bg-surface-raised/90 text-fg-muted shadow-sm backdrop-blur-sm transition-colors hover:bg-surface-muted hover:text-fg focus:outline-none focus:ring-2 focus:ring-primary-500/40;
+  @apply absolute right-1.5 top-1.5 z-10 inline-flex h-7 w-7 items-center justify-center rounded-sm border border-edge bg-surface-raised/90 text-fg-muted shadow-sm backdrop-blur-sm transition-colors hover:bg-surface-muted hover:text-fg focus:outline-none focus:ring-2 focus:ring-accent/40;
 }
 .hl-lang {
   @apply absolute top-2 right-11 text-[10px] text-fg-faint uppercase tracking-wider select-none;
@@ -1133,7 +985,7 @@ textarea,
   }
 }
 .animate-pulse-dot {
-  animation: pulse-dot 1.5s ease-in-out infinite;
+  animation: pulse-dot calc(var(--gh-duration-loop) * 1.5) ease-in-out infinite;
 }
 
 @keyframes fade-in {
@@ -1147,7 +999,7 @@ textarea,
   }
 }
 .animate-fade-in {
-  animation: fade-in 0.2s ease-out;
+  animation: fade-in var(--gh-duration-base) var(--gh-ease-standard);
 }
 
 /* Typewriter animation for AI-generated session titles */
@@ -1174,7 +1026,7 @@ textarea,
   }
 }
 .animate-slide-up {
-  animation: slide-up 0.3s ease-out;
+  animation: slide-up var(--gh-duration-slow) var(--gh-ease-enter);
 }
 
 @keyframes slide-in-left {
@@ -1186,7 +1038,7 @@ textarea,
   }
 }
 .animate-slide-in-left {
-  animation: slide-in-left 0.25s ease-out;
+  animation: slide-in-left var(--gh-duration-slow) var(--gh-ease-enter);
 }
 
 @keyframes slide-in-right {
@@ -1198,7 +1050,7 @@ textarea,
   }
 }
 .animate-slide-in-right {
-  animation: slide-in-right 0.25s ease-out;
+  animation: slide-in-right var(--gh-duration-slow) var(--gh-ease-enter);
 }
 
 @keyframes slide-out-left {
@@ -1210,7 +1062,7 @@ textarea,
   }
 }
 .animate-slide-out-left {
-  animation: slide-out-left 0.2s ease-in forwards;
+  animation: slide-out-left var(--gh-duration-exit) var(--gh-ease-exit) forwards;
 }
 
 @keyframes slide-out-right {
@@ -1222,7 +1074,7 @@ textarea,
   }
 }
 .animate-slide-out-right {
-  animation: slide-out-right 0.2s ease-in forwards;
+  animation: slide-out-right var(--gh-duration-exit) var(--gh-ease-exit) forwards;
 }
 
 @keyframes toast-in {
@@ -1246,30 +1098,21 @@ textarea,
   }
 }
 .animate-toast-in {
-  animation: toast-in 0.2s ease-out;
+  animation: toast-in var(--gh-duration-base) var(--gh-ease-enter);
 }
 .animate-toast-out {
-  animation: toast-out 0.15s ease-in forwards;
+  animation: toast-out var(--gh-duration-exit) var(--gh-ease-exit) forwards;
 }
 
-@keyframes skeleton-pulse {
-  0% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.4;
-  }
-  100% {
-    opacity: 1;
-  }
-}
+/* Skeletons are static placeholders: no shimmer, no pulse (motion spec). The class stays so
+   call sites need not change. */
 .animate-skeleton {
-  animation: skeleton-pulse 1.5s ease-in-out infinite;
+  animation: none;
 }
 
 /* ─── Table row hover ─── */
 table tbody tr {
-  transition: background-color 0.1s;
+  transition: background-color var(--gh-duration-fast) var(--gh-ease-standard);
 }
 table tbody tr:hover {
   background-color: var(--t-surface-muted) !important;
@@ -1306,248 +1149,17 @@ table tbody tr:hover {
   }
 }
 
-/* ─── Dark theme form overrides (inputs use semantic tokens now but fallback) ─── */
-.dark-theme input,
-.dark-theme select,
-.dark-theme textarea {
-  background-color: var(--t-surface-muted) !important;
-  border-color: var(--t-edge) !important;
-  color: var(--t-fg) !important;
-}
-.dark-theme input::placeholder,
-.dark-theme textarea::placeholder {
-  color: var(--t-fg-faint) !important;
-}
-
-/* The composer is one continuous card. Keep its textarea transparent so the
-   generic dark-form fallback cannot reveal a square fill beyond the card radius. */
-.dark-theme textarea.chat-composer-textarea {
-  background-color: transparent !important;
-}
-
-/* ─── Dark theme: remaining non-semantic color overrides ─── */
-
-/* --- Pastel backgrounds: too bright on dark surfaces --- */
-.dark-theme .bg-purple-50 {
-  background-color: rgba(168, 85, 247, 0.12);
-}
-.dark-theme .bg-purple-100 {
-  background-color: rgba(168, 85, 247, 0.18);
-}
-.dark-theme .bg-orange-50 {
-  background-color: rgba(249, 115, 22, 0.12);
-}
-.dark-theme .bg-orange-100 {
-  background-color: rgba(249, 115, 22, 0.18);
-}
-.dark-theme .bg-blue-50 {
-  background-color: rgba(59, 130, 246, 0.12);
-}
-.dark-theme .bg-blue-100 {
-  background-color: rgba(59, 130, 246, 0.18);
-}
-.dark-theme .bg-green-50 {
-  background-color: rgba(34, 197, 94, 0.12);
-}
-.dark-theme .bg-green-100 {
-  background-color: rgba(34, 197, 94, 0.18);
-}
-.dark-theme .bg-green-200 {
-  background-color: rgba(34, 197, 94, 0.22);
-}
-.dark-theme .bg-red-50 {
-  background-color: rgba(239, 68, 68, 0.12);
-}
-.dark-theme .bg-red-100 {
-  background-color: rgba(239, 68, 68, 0.18);
-}
-.dark-theme .bg-yellow-50 {
-  background-color: rgba(234, 179, 8, 0.12);
-}
-.dark-theme .bg-yellow-100 {
-  background-color: rgba(234, 179, 8, 0.18);
-}
-.dark-theme .bg-indigo-50,
-.dark-theme .bg-indigo-50\/50,
-.dark-theme .bg-indigo-50\/30 {
-  background-color: rgba(99, 102, 241, 0.12);
-}
-.dark-theme .bg-violet-50 {
-  background-color: rgba(139, 92, 246, 0.12);
-}
-.dark-theme .bg-violet-100 {
-  background-color: rgba(139, 92, 246, 0.18);
-}
-.dark-theme .bg-cyan-50 {
-  background-color: rgba(6, 182, 212, 0.12);
-}
-.dark-theme .bg-amber-50 {
-  background-color: rgba(245, 158, 11, 0.12);
-}
-.dark-theme .bg-gray-50 {
-  background-color: var(--t-surface-muted);
-}
-.dark-theme .bg-gray-100 {
-  background-color: var(--t-surface-muted);
-}
-.dark-theme .bg-white {
-  background-color: var(--t-surface-raised);
-}
-
-/* --- Dark text colors that are too dark on dark surfaces --- */
-.dark-theme .text-purple-700,
-.dark-theme .text-purple-600 {
-  color: #c4b5fd;
-}
-.dark-theme .text-orange-700,
-.dark-theme .text-orange-600 {
-  color: #fdba74;
-}
-.dark-theme .text-green-700,
-.dark-theme .text-green-800,
-.dark-theme .text-green-900 {
-  color: #86efac;
-}
-.dark-theme .text-blue-800,
-.dark-theme .text-blue-700 {
-  color: #93c5fd;
-}
-.dark-theme .text-yellow-700 {
-  color: #fde047;
-}
-.dark-theme .text-indigo-600,
-.dark-theme .text-indigo-500 {
-  color: #a5b4fc;
-}
-.dark-theme .text-indigo-400 {
-  color: #818cf8;
-}
-.dark-theme .text-violet-700,
-.dark-theme .text-violet-600 {
-  color: #c4b5fd;
-}
-.dark-theme .text-cyan-700 {
-  color: #67e8f9;
-}
-.dark-theme .text-amber-800 {
-  color: #fcd34d;
-}
-.dark-theme .text-red-900,
-.dark-theme .text-red-800 {
-  color: #fca5a5;
-}
-.dark-theme .text-gray-700 {
-  color: var(--t-fg-secondary);
-}
-.dark-theme .text-gray-500,
-.dark-theme .text-gray-400 {
-  color: var(--t-fg-muted);
-}
-.dark-theme .text-gray-300 {
-  color: var(--t-fg-faint);
-}
-.dark-theme .text-gray-200 {
-  color: var(--t-fg-faint);
-}
-
-/* --- Dark border overrides --- */
-.dark-theme .border-purple-200,
-.dark-theme .border-purple-100 {
-  border-color: rgba(168, 85, 247, 0.25);
-}
-.dark-theme .border-orange-200,
-.dark-theme .border-orange-300 {
-  border-color: rgba(249, 115, 22, 0.25);
-}
-.dark-theme .border-green-200 {
-  border-color: rgba(34, 197, 94, 0.25);
-}
-.dark-theme .border-blue-100,
-.dark-theme .border-blue-300 {
-  border-color: rgba(59, 130, 246, 0.25);
-}
-.dark-theme .border-yellow-200 {
-  border-color: rgba(234, 179, 8, 0.25);
-}
-.dark-theme .border-indigo-200,
-.dark-theme .border-indigo-300 {
-  border-color: rgba(99, 102, 241, 0.25);
-}
-.dark-theme .border-violet-200 {
-  border-color: rgba(139, 92, 246, 0.25);
-}
-.dark-theme .border-red-100,
-.dark-theme .border-red-200,
-.dark-theme .border-red-600 {
-  border-color: rgba(239, 68, 68, 0.25);
-}
-.dark-theme .border-amber-100,
-.dark-theme .border-amber-300 {
-  border-color: rgba(245, 158, 11, 0.25);
-}
-.dark-theme .border-gray-200 {
-  border-color: var(--t-edge);
-}
-
-/* --- Diff view dark mode --- */
-.dark-theme .bg-green-50 {
-  background-color: rgba(34, 197, 94, 0.12);
-}
-.dark-theme .bg-green-200.text-green-900 {
-  background-color: rgba(34, 197, 94, 0.25);
-  color: #86efac;
-}
-.dark-theme .bg-red-200.text-red-900 {
-  background-color: rgba(239, 68, 68, 0.25);
-  color: #fca5a5;
-}
-
-/* --- Flat workbench shadow scale --- */
+/* --- Two elevation levels (packages/ui/src/tokens/tokens.ts `shadow`) ---
+   control: small raised items inside a surface; floating: menus, popovers, dialogs, drawers, toasts.
+   Dark mode shows elevation by surface layer, so its shadows only add a hairline separation. */
 .shadow-sm {
-  box-shadow: 0 1px 2px 0 rgba(15, 23, 42, 0.04);
+  box-shadow: var(--t-shadow-control);
 }
-.shadow-md {
-  box-shadow:
-    0 3px 8px -4px rgba(15, 23, 42, 0.12),
-    0 1px 3px -2px rgba(15, 23, 42, 0.08);
-}
-.shadow-lg {
-  box-shadow:
-    0 10px 22px -16px rgba(15, 23, 42, 0.18),
-    0 4px 10px -8px rgba(15, 23, 42, 0.12);
-}
+.shadow-md,
+.shadow-lg,
 .shadow-xl,
 .shadow-2xl {
-  box-shadow:
-    0 16px 34px -24px rgba(15, 23, 42, 0.22),
-    0 8px 18px -18px rgba(15, 23, 42, 0.16);
-}
-.dark-theme .shadow-sm {
-  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.18);
-}
-.dark-theme .shadow-md {
-  box-shadow:
-    0 3px 8px -4px rgba(0, 0, 0, 0.28),
-    0 1px 3px -2px rgba(0, 0, 0, 0.22);
-}
-.dark-theme .shadow-lg {
-  box-shadow:
-    0 10px 22px -16px rgba(0, 0, 0, 0.38),
-    0 4px 10px -8px rgba(0, 0, 0, 0.3);
-}
-.dark-theme .shadow-xl,
-.dark-theme .shadow-2xl {
-  box-shadow:
-    0 16px 34px -24px rgba(0, 0, 0, 0.46),
-    0 8px 18px -18px rgba(0, 0, 0, 0.36);
-}
-
-/* --- Dialog/Modal dark overlay: stronger backdrop on dark --- */
-.dark-theme .bg-black\/30 {
-  background-color: rgba(0, 0, 0, 0.55);
-}
-.dark-theme .bg-black\/20 {
-  background-color: rgba(0, 0, 0, 0.45);
+  box-shadow: var(--t-shadow-floating);
 }
 
 /* --- Table zebra striping --- */
@@ -1563,7 +1175,7 @@ table tbody tr:nth-child(even) {
  *
  * This rule used to be scoped to `.dark-theme`, which left light mode with no
  * app-level focus indicator at all: the shared Button/IconButton set
- * `focus:outline-none` and replace it with `ring-primary-500/40`, which is
+ * `focus:outline-none` and replace it with `ring-accent/40`, which is
  * 1.69:1 on white — below the 3:1 WCAG 2.2 wants for a focus indicator, and with
  * the UA outline suppressed there was nothing else to see. `--t-focus-ring` is
  * primary-600 in light (5.36:1 on canvas) and primary-400 in dark.
@@ -1581,25 +1193,6 @@ table tbody tr:nth-child(even) {
   outline-offset: 1px;
 }
 
-/* --- hover:bg-blue-100 / hover:bg-violet-100 dark fix --- */
-.dark-theme .hover\:bg-blue-100:hover {
-  background-color: rgba(59, 130, 246, 0.18);
-}
-.dark-theme .hover\:bg-violet-100:hover {
-  background-color: rgba(139, 92, 246, 0.18);
-}
-.dark-theme .hover\:bg-orange-50:hover {
-  background-color: rgba(249, 115, 22, 0.12);
-}
-.dark-theme .hover\:bg-gray-50:hover {
-  background-color: var(--t-surface-muted);
-}
-
-/* --- Empty state icon visibility in dark mode --- */
-.dark-theme .text-primary-500 {
-  color: rgb(var(--primary-400));
-}
-
 /* --- EditorJS integration styles --- */
 
 /* Editor content area padding */
@@ -1615,7 +1208,7 @@ table tbody tr:nth-child(even) {
 
 /* Links in editor content */
 .ce-block a {
-  color: rgb(var(--primary-500));
+  color: var(--t-primary-fg);
 }
 
 /*

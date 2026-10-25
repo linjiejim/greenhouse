@@ -15,7 +15,7 @@ export function renderDiffWords(words: WordSegment[], type: 'add' | 'remove') {
     w.changed ? (
       <span
         key={i}
-        className={`${type === 'add' ? 'bg-success-subtle text-success' : 'bg-danger-subtle text-danger'} rounded-sm`}
+        className={`${type === 'add' ? 'bg-success-subtle text-success' : 'bg-danger-subtle text-danger'} rounded-xs`}
       >
         {w.text}
       </span>

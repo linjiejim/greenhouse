@@ -11,7 +11,7 @@ export function SidebarPrimaryAction({ icon: Icon, children, className = '', ...
   return (
     <button
       type="button"
-      className={`flex w-full items-center justify-center gap-2 rounded-lg bg-primary-500 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-primary-600 ${className}`}
+      className={`flex w-full items-center justify-center gap-2 rounded-md bg-accent px-3 py-2 text-sm font-medium text-on-accent transition-colors hover:bg-accent-hover ${className}`}
       {...props}
     >
       <Icon size={14} />

@@ -136,7 +136,7 @@ export function RuntimeEventsSection({ events }: { events: readonly RuntimeEvent
       <ol className="relative ml-2 border-l border-edge pl-5">
         {events.map((event) => (
           <li key={event.id} className="relative pb-4 last:pb-0">
-            <span className="absolute -left-[1.56rem] top-1.5 h-2 w-2 rounded-full border border-primary-edge bg-primary-500" />
+            <span className="absolute -left-[1.56rem] top-1.5 h-2 w-2 rounded-full border border-primary-edge bg-accent" />
             <div className="flex flex-wrap items-center gap-2">
               <span className="font-mono text-xs font-semibold text-fg">{event.type}</span>
               <span className="text-[10px] text-fg-faint">#{event.seq}</span>

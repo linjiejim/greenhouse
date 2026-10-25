@@ -69,7 +69,7 @@ function VersionFiles({ name, version }: { name: string; version: string }) {
           </button>
           {file.encoding === 'base64' && <span className="ml-2 text-fg-faint">{t('skillHub.binaryBase64')}</span>}
           {openPath === file.path && file.encoding !== 'base64' && (
-            <pre className="mt-1 mb-2 p-2 rounded-md bg-surface-sunken border border-edge max-h-64 overflow-auto whitespace-pre-wrap break-words text-[11px] leading-relaxed">
+            <pre className="mt-1 mb-2 p-2 rounded-sm bg-surface-sunken border border-edge max-h-64 overflow-auto whitespace-pre-wrap break-words text-[11px] leading-relaxed">
               {file.content}
             </pre>
           )}
@@ -126,7 +126,7 @@ export function SkillHistory({ skill, usersById }: { skill: SkillSummary; usersB
         <div className="text-xs font-medium text-fg-muted mb-1.5">{t('skillHub.versionHistory')}</div>
         <div className="space-y-2">
           {versions.map((v) => (
-            <div key={v.version} className="rounded-md border border-edge bg-surface-card p-2.5">
+            <div key={v.version} className="rounded-sm border border-edge bg-surface-card p-2.5">
               <div className="flex items-center gap-2 flex-wrap">
                 <Tag tone={v.version === skill.latest_version ? 'primary' : 'neutral'}>v{v.version}</Tag>
                 <span className="text-xs text-fg-faint" title={v.created_at}>

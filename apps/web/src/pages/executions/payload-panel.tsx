@@ -14,7 +14,7 @@ export function RuntimePayloadPanel({
 }) {
   if (value === null) return null;
   return (
-    <details open={open} className="group overflow-hidden rounded-lg border border-edge bg-surface-sunken">
+    <details open={open} className="group overflow-hidden rounded-md border border-edge bg-surface-sunken">
       <summary className="flex min-h-10 cursor-pointer items-center gap-2 px-3 py-2 text-xs font-medium text-fg-secondary hover:bg-surface-muted">
         <ChevronRight
           size={13}

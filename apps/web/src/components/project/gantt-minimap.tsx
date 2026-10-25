@@ -86,7 +86,7 @@ export function GanttMiniMap({
       aria-valuemin={0}
       aria-valuemax={Math.round(maxScroll)}
       aria-valuenow={Math.round(timeline?.scrollLeft ?? 0)}
-      className="relative bg-surface-sunken border-t border-edge cursor-pointer touch-none select-none flex-shrink-0 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-primary-500/50"
+      className="relative bg-surface-sunken border-t border-edge cursor-pointer touch-none select-none flex-shrink-0 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-accent/50"
       style={{ height: MINI_HEIGHT }}
       onPointerDown={(event) => {
         if (event.button !== 0) return;
@@ -133,10 +133,10 @@ export function GanttMiniMap({
       })}
       {/* Viewport indicator */}
       <div
-        className="absolute top-0 bottom-0 border-2 border-primary-500 bg-primary-500/10 rounded-sm pointer-events-none flex items-center justify-center"
+        className="absolute top-0 bottom-0 border-2 border-accent bg-accent/10 rounded-xs pointer-events-none flex items-center justify-center"
         style={{ left: viewState.left, width: Math.max(viewState.width, 4) }}
       >
-        {viewState.width >= 24 && <span className="h-3 w-1 rounded-full bg-primary-500/50" />}
+        {viewState.width >= 24 && <span className="h-3 w-1 rounded-full bg-accent/50" />}
       </div>
     </div>
   );

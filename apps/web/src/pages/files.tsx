@@ -139,7 +139,7 @@ export function FilesSearchList({ result, onOpen }: { result: CabinetSearchResul
 
   return (
     <div
-      className="divide-y divide-edge overflow-hidden rounded-lg border border-edge"
+      className="divide-y divide-edge overflow-hidden rounded-md border border-edge"
       data-testid="files-search-results"
     >
       {result.folders.map((folder) => (

@@ -132,7 +132,7 @@ export function OAuthConsentPage() {
           <>
             <div className="py-5">
               <div className="flex items-start gap-3">
-                <div className="h-10 w-10 rounded-lg bg-primary-subtle text-primary-fg-strong flex items-center justify-center flex-shrink-0">
+                <div className="h-10 w-10 rounded-md bg-primary-subtle text-primary-fg-strong flex items-center justify-center flex-shrink-0">
                   <Key size={18} />
                 </div>
                 <div className="min-w-0">
@@ -147,7 +147,7 @@ export function OAuthConsentPage() {
                 {actionScopes.map((scope) => {
                   const label = actionScopeLabel(scope);
                   return (
-                    <div key={scope} className="rounded-lg border border-edge bg-surface-muted p-3">
+                    <div key={scope} className="rounded-md border border-edge bg-surface-muted p-3">
                       <div className="flex items-center justify-between gap-2">
                         <span className="text-sm font-medium text-fg">{t(label.title)}</span>
                         <Badge variant="secondary">{scope}</Badge>
@@ -167,7 +167,7 @@ export function OAuthConsentPage() {
                     </span>
                   </div>
                   <p className="text-xs text-fg-muted mb-2">{t('oauthConsent.capabilitiesHint')}</p>
-                  <div className="rounded-lg border border-edge divide-y divide-edge">
+                  <div className="rounded-md border border-edge divide-y divide-edge">
                     {offeredGroups.map((id) => {
                       const scope = `mcp:${id}`;
                       return (

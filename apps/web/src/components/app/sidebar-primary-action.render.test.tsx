@@ -19,7 +19,7 @@ describe('SidebarPrimaryAction', () => {
     );
 
     expect(newChat).toContain('justify-center');
-    expect(newChat).toContain('rounded-lg');
+    expect(newChat).toContain('rounded-md');
     expect(newChat).toContain('bg-primary-500');
     expect(newChat).toContain('hover:bg-primary-600');
     expect(newChat).toContain('New Chat');

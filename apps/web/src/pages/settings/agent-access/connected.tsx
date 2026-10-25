@@ -90,7 +90,7 @@ export function ConnectedAgents({ onConnect }: { onConnect: () => void }) {
         }),
         slots: {
           banner: () => (
-            <div className="mb-3 rounded-lg border border-edge bg-info-subtle p-3 flex items-start gap-2">
+            <div className="mb-3 rounded-md border border-edge bg-info-subtle p-3 flex items-start gap-2">
               <Shield size={15} className="text-info flex-shrink-0 mt-0.5" />
               <p className="text-xs text-fg-secondary">{t('oauthGrants.banner')}</p>
             </div>

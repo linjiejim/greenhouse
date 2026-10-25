@@ -111,7 +111,7 @@ export function TeamContextPanel() {
             {conventions.length === 0 ? (
               <p className="text-xs text-fg-faint">{t('teamContext.noConventions')}</p>
             ) : (
-              <ul className="divide-y divide-edge rounded-lg border border-edge">
+              <ul className="divide-y divide-edge rounded-md border border-edge">
                 {conventions.map((doc) => (
                   <li key={doc.doc_id} className="flex items-center gap-2 px-3 py-2">
                     <span className="min-w-0 flex-1 truncate text-sm text-fg" title={doc.title ?? doc.doc_id}>

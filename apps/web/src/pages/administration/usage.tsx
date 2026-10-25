@@ -323,7 +323,7 @@ export function UsagePanelWithUsers() {
                   onClick={() => setActiveTab(tab.key)}
                   className={`flex flex-shrink-0 items-center gap-1.5 px-4 py-2 text-sm border-b-2 transition-colors ${
                     isActive
-                      ? 'border-primary-500 text-primary-fg-strong font-medium'
+                      ? 'border-accent text-primary-fg-strong font-medium'
                       : 'border-transparent text-fg-muted hover:text-fg-secondary hover:border-edge-strong'
                   }`}
                 >
@@ -333,13 +333,13 @@ export function UsagePanelWithUsers() {
               );
             })}
           </div>
-          <div className="flex max-w-full gap-1 overflow-x-auto scrollbar-hide bg-surface-muted p-0.5 rounded-lg">
+          <div className="flex max-w-full gap-1 overflow-x-auto scrollbar-hide bg-surface-muted p-0.5 rounded-md">
             {activeTab === 'modules'
               ? USAGE_RANGE_DAYS.map((days) => (
                   <button
                     key={days}
                     onClick={() => setModuleDays(days)}
-                    className={`flex-shrink-0 px-3 py-1 text-xs rounded-md transition-colors ${
+                    className={`flex-shrink-0 px-3 py-1 text-xs rounded-sm transition-colors ${
                       moduleDays === days
                         ? 'bg-surface-raised text-primary-fg-strong font-medium shadow-sm'
                         : 'text-fg-muted hover:text-fg-secondary'
@@ -352,7 +352,7 @@ export function UsagePanelWithUsers() {
                   <button
                     key={p.value}
                     onClick={() => setPeriod(p.value)}
-                    className={`flex-shrink-0 px-3 py-1 text-xs rounded-md transition-colors ${
+                    className={`flex-shrink-0 px-3 py-1 text-xs rounded-sm transition-colors ${
                       period === p.value
                         ? 'bg-surface-raised text-primary-fg-strong font-medium shadow-sm'
                         : 'text-fg-muted hover:text-fg-secondary'
@@ -370,7 +370,7 @@ export function UsagePanelWithUsers() {
         <ModuleUsageTab days={moduleDays} />
       ) : loading && !summary ? (
         <div className="flex justify-center py-20">
-          <Spinner className="text-primary-500" />
+          <Spinner className="text-accent" />
         </div>
       ) : !summary && activeTab !== 'users' ? (
         <div className="text-center py-20 text-fg-faint">{t('common.loadFailed')}</div>

@@ -23,6 +23,7 @@
     "seed": "tsx apps/api/src/cli/index.ts seed",
     "db:migrate": "tsx apps/api/src/cli/index.ts db migrate",
     "migrate-from-1x": "tsx apps/api/src/cli/index.ts migrate-from-1x",
+    "tokens:build": "tsx scripts/build-tokens.ts",
     "test": "vitest run",
     "test:unit": "VITEST_UNIT_MAX_WORKERS=4 vitest run --project unit",
     "test:db": "VITEST_DB_MAX_WORKERS=4 vitest run --project db --project db-commit",

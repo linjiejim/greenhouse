@@ -47,7 +47,7 @@ export function ComposerChips({ profile, onRemoveProfile, prompt, onRemovePrompt
       )}
       {prompt && (
         <span className="group relative block min-w-0" tabIndex={0} data-selected-task>
-          <span className="flex w-full items-center gap-2 rounded-lg border border-edge bg-surface-muted px-2.5 py-2 text-left text-xs font-medium text-fg-secondary">
+          <span className="flex w-full items-center gap-2 rounded-md border border-edge bg-surface-muted px-2.5 py-2 text-left text-xs font-medium text-fg-secondary">
             <Zap size={12} className="flex-shrink-0 text-primary-fg" />
             <span className="min-w-0 flex-1 truncate" title={prompt.title}>
               {prompt.title}
@@ -65,7 +65,7 @@ export function ComposerChips({ profile, onRemoveProfile, prompt, onRemovePrompt
           </span>
           <span
             role="tooltip"
-            className="pointer-events-none absolute bottom-full left-0 z-40 mb-2 hidden max-h-40 w-max min-w-56 max-w-[min(28rem,calc(100vw-2rem))] overflow-y-auto whitespace-pre-wrap rounded-lg border border-edge bg-surface-raised px-3 py-2 text-left text-xs font-normal leading-relaxed text-fg-secondary shadow-lg group-hover:block group-focus-within:block"
+            className="pointer-events-none absolute bottom-full left-0 z-40 mb-2 hidden max-h-40 w-max min-w-56 max-w-[min(28rem,calc(100vw-2rem))] overflow-y-auto whitespace-pre-wrap rounded-md border border-edge bg-surface-raised px-3 py-2 text-left text-xs font-normal leading-relaxed text-fg-secondary shadow-lg group-hover:block group-focus-within:block"
           >
             <span className="mb-1 block font-medium text-fg">{prompt.title}</span>
             {prompt.content}

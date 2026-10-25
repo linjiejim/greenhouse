@@ -88,7 +88,7 @@ export function DriveFilePreview({ file, onClose }: { file: DriveFile | null; on
       <Dialog open onClose={onClose} title={file.name} size="lg">
         <pre
           data-testid="drive-text-preview"
-          className="max-h-[70vh] overflow-auto whitespace-pre-wrap break-words rounded-lg border border-edge bg-surface-sunken p-3 font-mono text-xs text-fg-secondary"
+          className="max-h-[70vh] overflow-auto whitespace-pre-wrap break-words rounded-md border border-edge bg-surface-sunken p-3 font-mono text-xs text-fg-secondary"
         >
           {loaded.text}
         </pre>

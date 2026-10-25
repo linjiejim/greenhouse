@@ -191,7 +191,7 @@ function ScheduleField({ value, onChange }: CrudFieldRenderProps) {
             type="button"
             aria-pressed={sched.freq === opt.value}
             onClick={() => patch({ freq: opt.value, raw: opt.value === 'cron' ? schedule : sched.raw })}
-            className={`px-2.5 py-1 rounded-md text-xs transition-colors ${
+            className={`px-2.5 py-1 rounded-sm text-xs transition-colors ${
               sched.freq === opt.value
                 ? 'bg-primary-subtle text-primary-fg-strong border border-primary-edge font-medium'
                 : 'bg-surface-sunken text-fg-muted border border-edge hover:text-fg-secondary'
@@ -230,7 +230,7 @@ function ScheduleField({ value, onChange }: CrudFieldRenderProps) {
                     onClick={() =>
                       patch({ weekdays: active ? sched.weekdays.filter((w) => w !== d) : [...sched.weekdays, d] })
                     }
-                    className={`w-10 py-1.5 rounded-md text-xs transition-colors ${
+                    className={`w-10 py-1.5 rounded-sm text-xs transition-colors ${
                       active
                         ? 'bg-primary-subtle text-primary-fg-strong border border-primary-edge font-medium'
                         : 'bg-surface-sunken text-fg-muted border border-edge hover:text-fg-secondary'
@@ -377,7 +377,7 @@ function OptInToolsField({ value, onChange, disabled }: CrudFieldRenderProps) {
         );
       })}
       {writesGranted && (
-        <div className="flex gap-2 rounded-md bg-warning-subtle px-3 py-2 text-xs text-fg-secondary">
+        <div className="flex gap-2 rounded-sm bg-warning-subtle px-3 py-2 text-xs text-fg-secondary">
           <AlertTriangle size={14} className="text-warning shrink-0 mt-0.5" />
           <span>{t('automations.toolsWriteWarning')}</span>
         </div>

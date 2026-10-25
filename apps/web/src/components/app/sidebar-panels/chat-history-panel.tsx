@@ -209,7 +209,7 @@ function SessionContextMenu({
   return (
     <div
       ref={menuRef}
-      className="fixed z-50 min-w-[140px] py-1 bg-surface-raised border border-edge rounded-lg shadow-lg animate-fade-in"
+      className="fixed z-50 min-w-[140px] py-1 bg-surface-raised border border-edge rounded-md shadow-lg animate-fade-in"
       style={{ left: x, top: y }}
     >
       {items.map((item) => (
@@ -813,7 +813,7 @@ export function ChatHistoryPanel({ currentSessionId, onSelectSession, collapsed 
             onBlur={handleRenameSubmit}
             onKeyDown={handleRenameKeyDown}
             onClick={(e) => e.stopPropagation()}
-            className="flex-1 min-w-0 text-xs bg-surface-sunken border border-primary-500 rounded px-1.5 py-0.5 focus:outline-none text-fg"
+            className="flex-1 min-w-0 text-xs bg-surface-sunken border border-accent rounded px-1.5 py-0.5 focus:outline-none text-fg"
             autoFocus
           />
         ) : (

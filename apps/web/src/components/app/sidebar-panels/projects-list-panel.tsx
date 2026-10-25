@@ -20,9 +20,9 @@ interface ProjectSummary {
 
 const statusColors: Record<string, string> = {
   planning: 'bg-surface-muted',
-  active: 'bg-blue-400',
-  on_hold: 'bg-yellow-400',
-  completed: 'bg-green-400',
+  active: 'bg-cat-blue',
+  on_hold: 'bg-cat-amber',
+  completed: 'bg-cat-green',
   archived: 'bg-fg-faint',
 };
 

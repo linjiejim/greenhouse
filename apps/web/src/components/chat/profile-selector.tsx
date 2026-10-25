@@ -135,7 +135,7 @@ function ToolsPreviewTooltip({ profile, isRowHovered }: { profile: Profile; isRo
       {t('profileSelector.toolCount', { count: tools.length })}
       {visible && style && (
         <span
-          className="fixed z-40 block w-[260px] overflow-hidden rounded-xl border border-edge bg-surface-raised shadow-xl animate-fade-in pointer-events-auto"
+          className="fixed z-40 block w-[260px] overflow-hidden rounded-lg border border-edge bg-surface-raised shadow-xl animate-fade-in pointer-events-auto"
           style={style}
           onMouseEnter={() => {
             surfaceHoveredRef.current = true;
@@ -155,7 +155,7 @@ function ToolsPreviewTooltip({ profile, isRowHovered }: { profile: Profile; isRo
               {visibleTools.map((tool) => {
                 const Icon = getToolIcon(tool);
                 return (
-                  <span key={tool} className="flex items-start gap-2 rounded-md px-2 py-1.5">
+                  <span key={tool} className="flex items-start gap-2 rounded-sm px-2 py-1.5">
                     <Icon size={13} className="mt-0.5 flex-shrink-0 text-primary-fg" />
                     <span className="min-w-0">
                       <span
@@ -211,7 +211,7 @@ function renderProfileRow(
       onMouseEnter={() => setHoveredId(p.id)}
       onMouseLeave={() => setHoveredId(null)}
       onFocus={() => setHoveredId(p.id)}
-      className={`h-[42px] w-full overflow-hidden text-left px-2 py-1.5 rounded-lg transition-colors flex items-center gap-2 ${
+      className={`h-[42px] w-full overflow-hidden text-left px-2 py-1.5 rounded-md transition-colors flex items-center gap-2 ${
         isSelected
           ? 'bg-primary-subtle border border-primary-edge'
           : isHovered
@@ -295,7 +295,7 @@ function ProfilePickerPopover({
 
   return (
     <div ref={ref} className="fixed z-30 animate-fade-in" style={{ bottom: pos.bottom, left: pos.left }}>
-      <div className="w-[340px] max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border border-edge bg-surface-raised shadow-xl">
+      <div className="w-[340px] max-w-[calc(100vw-2rem)] overflow-hidden rounded-lg border border-edge bg-surface-raised shadow-xl">
         <div className="border-b border-edge px-3 py-2.5 flex items-center gap-2">
           <Bot size={14} className="text-primary-fg" />
           <span className="text-xs font-medium text-fg-muted">{t('profileSelector.selectAgent')}</span>
@@ -305,7 +305,7 @@ function ProfilePickerPopover({
               onClose();
               window.location.hash = AUTOMATIONS_PROFILES_HASH;
             }}
-            className="ml-auto rounded-md px-1.5 py-0.5 text-[11px] text-fg-secondary transition-colors hover:bg-surface-muted hover:text-fg"
+            className="ml-auto rounded-sm px-1.5 py-0.5 text-[11px] text-fg-secondary transition-colors hover:bg-surface-muted hover:text-fg"
           >
             {t('profileSelector.manage')}
           </button>
@@ -395,7 +395,7 @@ function ProfilePickerDrawer({
           onSelect(p.id);
           onClose();
         }}
-        className={`w-full text-left px-4 py-3 rounded-xl transition-colors flex items-start gap-3 ${
+        className={`w-full text-left px-4 py-3 rounded-lg transition-colors flex items-start gap-3 ${
           isSelected ? 'bg-primary-subtle' : 'hover:bg-surface-sunken'
         }`}
       >
@@ -441,11 +441,11 @@ function ProfilePickerDrawer({
               onClose();
               window.location.hash = AUTOMATIONS_PROFILES_HASH;
             }}
-            className="rounded-md px-2 py-1 text-xs text-fg-secondary transition-colors hover:bg-surface-muted hover:text-fg"
+            className="rounded-sm px-2 py-1 text-xs text-fg-secondary transition-colors hover:bg-surface-muted hover:text-fg"
           >
             {t('profileSelector.manage')}
           </button>
-          <button onClick={onClose} className="p-1 rounded-md hover:bg-surface-muted text-fg-faint">
+          <button onClick={onClose} className="p-1 rounded-sm hover:bg-surface-muted text-fg-faint">
             <X size={16} />
           </button>
         </div>
@@ -528,7 +528,7 @@ export function ProfileSelector({
       <button
         onClick={() => !readonly && profiles.length > 1 && setShowPicker(!showPicker)}
         disabled={readonly || profiles.length <= 1}
-        className={`inline-flex min-h-11 sm:min-h-0 items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-colors ${
+        className={`inline-flex min-h-11 sm:min-h-0 items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
           readonly ? 'text-fg-muted cursor-default' : 'text-primary-fg-strong hover:bg-primary-subtle cursor-pointer'
         }`}
       >

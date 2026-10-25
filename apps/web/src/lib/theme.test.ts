@@ -1,5 +1,14 @@
+/** @vitest-environment happy-dom */
+
 import { describe, expect, it } from 'vitest';
-import { getThemeDefinition, normalizeThemeKey, resolveThemeKey, THEMES } from './theme.js';
+import {
+  applyTheme,
+  getThemeDefinition,
+  normalizeThemeKey,
+  resolveThemeKey,
+  setThemeOverrideProvider,
+  THEMES,
+} from './theme.js';
 
 describe('Greenhouse theme modes', () => {
   it('keeps exactly one light and one dark resolved palette', () => {
@@ -12,17 +21,25 @@ describe('Greenhouse theme modes', () => {
     expect(getThemeDefinition('system', true).key).toBe('dark');
   });
 
-  it('keeps content canvas and application chrome distinct in both modes', () => {
-    const light = getThemeDefinition('light').surface;
-    const dark = getThemeDefinition('dark').surface;
+  it('switches appearance by class and writes no token values inline', () => {
+    const root = document.documentElement;
+    applyTheme('dark');
+    expect(root.classList.contains('dark-theme')).toBe(true);
+    expect(root.style.getPropertyValue('--t-surface-canvas')).toBe('');
+    expect(root.style.getPropertyValue('--primary-500')).toBe('');
+    applyTheme('light');
+    expect(root.classList.contains('dark-theme')).toBe(false);
+    expect(root.getAttribute('style') ?? '').not.toMatch(/--(t|primary)-/);
+  });
 
-    expect(light.canvas).toBe('#FFFFFF');
-    expect(light.chrome).not.toBe(light.canvas);
-    expect(light.surfaceCard).not.toBe(light.canvas);
-    expect(light.surfaceCard).not.toBe(light.chrome);
-    expect(dark.canvas).toBe(dark.surfaceSunken);
-    expect(dark.chrome).toBe(dark.surfaceRaised);
-    expect(dark.surfaceCard).toBe(dark.surfaceRaised);
+  it('applies only Branding Studio overrides inline, and drops them on the next mode', () => {
+    const root = document.documentElement;
+    setThemeOverrideProvider((mode) => (mode === 'dark' ? { '--t-surface-canvas': '#000000' } : null));
+    applyTheme('dark');
+    expect(root.style.getPropertyValue('--t-surface-canvas')).toBe('#000000');
+    applyTheme('light');
+    expect(root.style.getPropertyValue('--t-surface-canvas')).toBe('');
+    setThemeOverrideProvider(null);
   });
 
   it('migrates historical dark themes to dark', () => {

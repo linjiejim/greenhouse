@@ -285,7 +285,7 @@ export function ProfileEditorDrawer({
       >
         {/* Fullscreen Prompt Editor Overlay */}
         {promptFullscreen && (
-          <div className="absolute inset-0 z-10 bg-surface-raised flex flex-col rounded-xl overflow-hidden">
+          <div className="absolute inset-0 z-10 bg-surface-raised flex flex-col rounded-lg overflow-hidden">
             <div className="flex items-center justify-between px-5 py-3 border-b border-edge flex-shrink-0">
               <div className="flex items-center gap-2">
                 <h3 className="text-sm font-semibold text-fg-secondary">{t('profileEditor.systemPrompt')}</h3>
@@ -299,7 +299,7 @@ export function ProfileEditorDrawer({
               </div>
               <button
                 onClick={() => setPromptFullscreen(false)}
-                className="p-1.5 rounded-md hover:bg-surface-muted text-fg-faint hover:text-fg-secondary transition-colors"
+                className="p-1.5 rounded-sm hover:bg-surface-muted text-fg-faint hover:text-fg-secondary transition-colors"
                 title={t('profileEditor.exitFullscreen')}
               >
                 <X size={16} />
@@ -325,7 +325,7 @@ export function ProfileEditorDrawer({
           <div className="min-h-0 flex-1 overflow-y-auto lg:grid lg:grid-cols-[minmax(0,1.15fr)_minmax(20rem,0.85fr)] lg:overflow-hidden">
             <div className="min-h-0 space-y-5 px-4 py-4 sm:px-6 lg:overflow-y-auto lg:overscroll-contain lg:[scrollbar-gutter:stable]">
               {/* Appearance stays compact until the user chooses to personalize it. */}
-              <section className="overflow-hidden rounded-xl border border-edge bg-surface-sunken">
+              <section className="overflow-hidden rounded-lg border border-edge bg-surface-sunken">
                 <button
                   type="button"
                   onClick={() => setShowAppearance((visible) => !visible)}
@@ -502,7 +502,7 @@ export function ProfileEditorDrawer({
               </FormGrid>
 
               {profile && (
-                <div className="space-y-1 rounded-lg border border-edge bg-surface-muted px-3 py-2 text-xs text-fg-muted">
+                <div className="space-y-1 rounded-md border border-edge bg-surface-muted px-3 py-2 text-xs text-fg-muted">
                   <div>{t('profileEditor.versionSummary', { version: profile.current_version ?? 1 })}</div>
                   {profile.is_shared && <div className="text-warning">{t('profileEditor.sharedEditWarning')}</div>}
                 </div>
@@ -535,7 +535,7 @@ export function ProfileEditorDrawer({
                     </span>
                     <button
                       onClick={() => setPromptFullscreen(true)}
-                      className="p-1 rounded-md text-fg-faint hover:text-primary-fg hover:bg-primary-subtle transition-colors"
+                      className="p-1 rounded-sm text-fg-faint hover:text-primary-fg hover:bg-primary-subtle transition-colors"
                       title={t('profileEditor.editFullscreen')}
                     >
                       <Maximize2 size={13} />
@@ -601,7 +601,7 @@ export function ProfileEditorDrawer({
                     type="button"
                     aria-pressed={selectedToolsOnly}
                     onClick={() => setSelectedToolsOnly((current) => !current)}
-                    className={`ml-auto rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-colors ${
+                    className={`ml-auto rounded-md border px-2.5 py-1.5 text-xs font-medium transition-colors ${
                       selectedToolsOnly
                         ? 'border-primary-edge bg-primary-subtle text-primary-fg-strong'
                         : 'border-edge bg-surface-raised text-fg-muted hover:bg-surface-muted hover:text-fg'

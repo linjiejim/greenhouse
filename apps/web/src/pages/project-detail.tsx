@@ -278,7 +278,7 @@ export function ProjectDetailPage({ projectId, initialTaskId }: { projectId: str
             {/* Members avatars */}
             <button
               onClick={() => setShowMembers(true)}
-              className="inline-flex h-9 w-9 sm:h-auto sm:w-auto items-center justify-center gap-1 sm:px-2 sm:py-1 text-xs text-fg-muted hover:text-primary-fg rounded-md hover:bg-surface-muted transition-colors"
+              className="inline-flex h-9 w-9 sm:h-auto sm:w-auto items-center justify-center gap-1 sm:px-2 sm:py-1 text-xs text-fg-muted hover:text-primary-fg rounded-sm hover:bg-surface-muted transition-colors"
               title={t('projects.members')}
             >
               <Users size={13} />
@@ -299,7 +299,7 @@ export function ProjectDetailPage({ projectId, initialTaskId }: { projectId: str
                   visibility: project.visibility || 'public',
                 });
               }}
-              className="inline-flex h-9 w-9 items-center justify-center text-fg-faint hover:text-primary-fg rounded-md hover:bg-surface-muted"
+              className="inline-flex h-9 w-9 items-center justify-center text-fg-faint hover:text-primary-fg rounded-sm hover:bg-surface-muted"
               title={t('projects.editProject')}
             >
               <Edit3 size={14} />
@@ -309,7 +309,7 @@ export function ProjectDetailPage({ projectId, initialTaskId }: { projectId: str
                 setShowActivities(true);
                 loadActivities();
               }}
-              className="inline-flex h-9 w-9 items-center justify-center text-fg-faint hover:text-primary-fg rounded-md hover:bg-surface-muted"
+              className="inline-flex h-9 w-9 items-center justify-center text-fg-faint hover:text-primary-fg rounded-sm hover:bg-surface-muted"
               title={t('projects.changelog')}
             >
               <Clock size={14} />
@@ -334,7 +334,7 @@ export function ProjectDetailPage({ projectId, initialTaskId }: { projectId: str
           </span>
           {stats && (
             <div className="flex-1 max-w-[200px] h-1.5 bg-surface-muted rounded-full overflow-hidden">
-              <div className="h-full rounded-full bg-primary-500 transition-all" style={{ width: `${progress}%` }} />
+              <div className="h-full rounded-full bg-accent transition-all" style={{ width: `${progress}%` }} />
             </div>
           )}
         </div>
@@ -343,7 +343,7 @@ export function ProjectDetailPage({ projectId, initialTaskId }: { projectId: str
       {/* View tabs + Zoom + Filter + Add Task */}
       <div className="flex flex-wrap items-center justify-between gap-2 px-3 md:px-6 py-2 border-b border-edge bg-surface-sunken/50">
         <div className="flex items-center gap-2 flex-wrap">
-          <div className="flex items-center gap-0.5 bg-surface-muted p-0.5 rounded-lg">
+          <div className="flex items-center gap-0.5 bg-surface-muted p-0.5 rounded-md">
             {[
               { key: 'gantt' as const, icon: GanttChart, label: t('projects.gantt'), hideOnMobile: true },
               { key: 'list' as const, icon: List, label: t('projects.list'), hideOnMobile: false },
@@ -352,7 +352,7 @@ export function ProjectDetailPage({ projectId, initialTaskId }: { projectId: str
               <button
                 key={v.key}
                 onClick={() => setView(v.key)}
-                className={`items-center gap-1 px-2.5 py-1 rounded-md text-xs transition-colors ${
+                className={`items-center gap-1 px-2.5 py-1 rounded-sm text-xs transition-colors ${
                   view === v.key
                     ? 'bg-surface-raised text-primary-fg-strong font-medium shadow-sm'
                     : 'text-fg-muted hover:text-fg-secondary'
@@ -365,12 +365,12 @@ export function ProjectDetailPage({ projectId, initialTaskId }: { projectId: str
           </div>
           {view === 'gantt' && (
             <>
-              <div className="hidden sm:flex items-center gap-0.5 bg-surface-muted p-0.5 rounded-lg">
+              <div className="hidden sm:flex items-center gap-0.5 bg-surface-muted p-0.5 rounded-md">
                 {(['day', 'week', 'month', 'year'] as GanttZoom[]).map((z) => (
                   <button
                     key={z}
                     onClick={() => setGanttZoom(z)}
-                    className={`px-2 py-1 rounded-md text-[11px] transition-colors ${
+                    className={`px-2 py-1 rounded-sm text-[11px] transition-colors ${
                       ganttZoom === z
                         ? 'bg-surface-raised text-primary-fg-strong font-medium shadow-sm'
                         : 'text-fg-muted hover:text-fg-secondary'

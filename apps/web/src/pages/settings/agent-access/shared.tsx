@@ -51,7 +51,7 @@ export function JsonBlock({ value, maxHeight = 'max-h-64' }: { value: unknown; m
   const text = typeof value === 'string' ? value : JSON.stringify(value ?? null, null, 2);
   return (
     <pre
-      className={`text-[11px] leading-relaxed font-mono bg-surface-sunken text-fg-secondary rounded-lg p-2.5 overflow-auto whitespace-pre-wrap break-all ${maxHeight}`}
+      className={`text-[11px] leading-relaxed font-mono bg-surface-sunken text-fg-secondary rounded-md p-2.5 overflow-auto whitespace-pre-wrap break-all ${maxHeight}`}
     >
       {text}
     </pre>
@@ -85,7 +85,7 @@ export function InputFields({ value }: { value: unknown }) {
   if (!record) return <JsonBlock value={value} />;
   const entries = Object.entries(record).filter(([, v]) => v !== undefined && v !== null && v !== '');
   return (
-    <dl className="rounded-lg bg-surface-sunken p-2.5 space-y-1.5 text-[11px] leading-relaxed">
+    <dl className="rounded-md bg-surface-sunken p-2.5 space-y-1.5 text-[11px] leading-relaxed">
       {entries.map(([key, v]) => (
         <div key={key} className="grid grid-cols-[7rem_minmax(0,1fr)] gap-2">
           <dt className="font-mono text-fg-faint truncate" title={key}>

@@ -167,7 +167,7 @@ export function SkillDetail({ name, backHref }: { name: string; backHref?: strin
       <header className="flex-shrink-0 border-b border-edge bg-surface-raised px-4 md:px-6 py-3">
         <div className="flex flex-col md:flex-row md:items-start gap-3">
           <div className="flex items-start gap-3 min-w-0 flex-1">
-            <div className="mt-0.5 flex-shrink-0 w-9 h-9 rounded-lg bg-surface-muted flex items-center justify-center">
+            <div className="mt-0.5 flex-shrink-0 w-9 h-9 rounded-md bg-surface-muted flex items-center justify-center">
               <Package size={18} className="text-fg-muted" />
             </div>
             <div className="min-w-0 flex-1">
@@ -428,7 +428,7 @@ export function ScanPanel({
 
   return (
     <div
-      className={`mb-4 rounded-lg border p-3 ${blocked ? 'border-danger bg-danger-subtle' : 'border-warning bg-warning-subtle'}`}
+      className={`mb-4 rounded-md border p-3 ${blocked ? 'border-danger bg-danger-subtle' : 'border-warning bg-warning-subtle'}`}
     >
       <div className={`flex items-start gap-2 ${blocked ? 'text-danger' : 'text-warning'}`}>
         <ShieldAlert size={16} className="mt-0.5 flex-shrink-0" />

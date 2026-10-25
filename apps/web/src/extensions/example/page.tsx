@@ -63,7 +63,7 @@ export function ExampleNotesPage(_props: ExtensionPageProps) {
     <div className="h-full overflow-y-auto">
       <div className="mx-auto max-w-2xl px-6 py-8" data-testid="example-notes-page">
         <div className="mb-6 flex items-center gap-3">
-          <span className="grid h-10 w-10 place-items-center rounded-xl bg-primary-subtle text-primary-fg-strong">
+          <span className="grid h-10 w-10 place-items-center rounded-lg bg-primary-subtle text-primary-fg-strong">
             <StickyNote size={20} />
           </span>
           <div>
@@ -96,7 +96,7 @@ export function ExampleNotesPage(_props: ExtensionPageProps) {
             <Spinner className="h-5 w-5 text-fg-faint" />
           </div>
         ) : notes.length === 0 ? (
-          <p className="rounded-xl border border-dashed border-edge px-4 py-8 text-center text-sm text-fg-faint">
+          <p className="rounded-lg border border-dashed border-edge px-4 py-8 text-center text-sm text-fg-faint">
             {t('ext.example.empty')}
           </p>
         ) : (
@@ -104,13 +104,13 @@ export function ExampleNotesPage(_props: ExtensionPageProps) {
             {notes.map((note) => (
               <li
                 key={note.id}
-                className="flex items-start gap-3 rounded-xl border border-edge bg-surface-raised px-4 py-3"
+                className="flex items-start gap-3 rounded-lg border border-edge bg-surface-raised px-4 py-3"
               >
                 <p className="min-w-0 flex-1 whitespace-pre-wrap text-sm text-fg">{note.body}</p>
                 <button
                   type="button"
                   onClick={() => void remove(note.id)}
-                  className="rounded-md p-1 text-fg-faint transition-colors hover:bg-surface-muted hover:text-fg"
+                  className="rounded-sm p-1 text-fg-faint transition-colors hover:bg-surface-muted hover:text-fg"
                   aria-label={t('ext.example.delete')}
                   title={t('ext.example.delete')}
                 >
@@ -185,7 +185,7 @@ export function ExampleNotePeek({ id }: { id: string }) {
 export function ExampleDocPanel(_props: { docId: string }) {
   const t = useT();
   return (
-    <section className="mt-6 rounded-xl border border-dashed border-edge px-4 py-3">
+    <section className="mt-6 rounded-lg border border-dashed border-edge px-4 py-3">
       <p className="text-xs text-fg-muted">{t('ext.example.docPanel')}</p>
     </section>
   );

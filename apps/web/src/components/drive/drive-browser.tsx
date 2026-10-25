@@ -311,7 +311,7 @@ export function DriveBrowser({
           description={t('drive.emptyHintKb')}
         />
       ) : (
-        <div className="border border-edge rounded-lg divide-y divide-edge overflow-hidden">
+        <div className="border border-edge rounded-md divide-y divide-edge overflow-hidden">
           {folders.map((f) => (
             <div
               key={`fd${f.id}`}

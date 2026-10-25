@@ -125,7 +125,7 @@ function CodeSnippet({ code, label = 'Show Code' }: { code: string; label?: stri
         {label}
       </button>
       {open && (
-        <pre className="mt-1.5 p-3 bg-surface-sunken rounded-md text-[11px] font-mono text-fg-secondary overflow-x-auto border border-edge">
+        <pre className="mt-1.5 p-3 bg-surface-sunken rounded-sm text-[11px] font-mono text-fg-secondary overflow-x-auto border border-edge">
           {code}
         </pre>
       )}
@@ -138,7 +138,7 @@ function CodeSnippet({ code, label = 'Show Code' }: { code: string; label?: stri
 function ColorSwatch({ name, className }: { name: string; className: string }) {
   return (
     <div className="flex flex-col items-center gap-1.5">
-      <div className={`w-12 h-12 rounded-lg border border-edge shadow-sm ${className}`} />
+      <div className={`w-12 h-12 rounded-md border border-edge shadow-sm ${className}`} />
       <span className="text-[10px] font-mono text-fg-muted text-center leading-tight">{name}</span>
     </div>
   );
@@ -241,7 +241,7 @@ export function DesignPage() {
                   setActiveSection(s.id);
                   document.getElementById(s.id)?.scrollIntoView({ behavior: 'smooth' });
                 }}
-                className={`flex items-center gap-2 px-2 py-1.5 text-sm rounded-md transition-colors ${
+                className={`flex items-center gap-2 px-2 py-1.5 text-sm rounded-sm transition-colors ${
                   activeSection === s.id
                     ? 'bg-primary-subtle text-primary-fg-strong font-medium'
                     : 'text-fg-muted hover:text-fg hover:bg-surface-muted'
@@ -263,7 +263,7 @@ export function DesignPage() {
               setActiveSection(s.id);
               document.getElementById(s.id)?.scrollIntoView({ behavior: 'smooth' });
             }}
-            className={`flex-shrink-0 px-2.5 py-1 text-xs rounded-md transition-colors ${
+            className={`flex-shrink-0 px-2.5 py-1 text-xs rounded-sm transition-colors ${
               activeSection === s.id
                 ? 'bg-primary-subtle text-primary-fg-strong font-medium'
                 : 'text-fg-muted hover:text-fg'
@@ -364,7 +364,7 @@ function ColorsSection() {
       </SubSection>
 
       <SubSection title="Foreground (Text)">
-        <div className="space-y-2 bg-surface-raised rounded-lg p-4 border border-edge">
+        <div className="space-y-2 bg-surface-raised rounded-md p-4 border border-edge">
           <p className="text-fg text-sm font-medium">text-fg — Primary text</p>
           <p className="text-fg-secondary text-sm">text-fg-secondary — Body text</p>
           <p className="text-fg-muted text-sm">text-fg-muted — Labels, captions</p>
@@ -382,10 +382,10 @@ function ColorsSection() {
 
       <SubSection title="Borders">
         <DemoRow>
-          <div className="w-24 h-12 rounded-lg border border-edge flex items-center justify-center text-[10px] text-fg-muted font-mono">
+          <div className="w-24 h-12 rounded-md border border-edge flex items-center justify-center text-[10px] text-fg-muted font-mono">
             edge
           </div>
-          <div className="w-24 h-12 rounded-lg border-2 border-edge-strong flex items-center justify-center text-[10px] text-fg-muted font-mono">
+          <div className="w-24 h-12 rounded-md border-2 border-edge-strong flex items-center justify-center text-[10px] text-fg-muted font-mono">
             edge-strong
           </div>
         </DemoRow>
@@ -404,16 +404,16 @@ function ColorsSection() {
 
       <SubSection title="Status Colors">
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <div className="rounded-lg p-3 bg-success-subtle border border-success">
+          <div className="rounded-md p-3 bg-success-subtle border border-success">
             <span className="text-xs font-medium text-success">Success</span>
           </div>
-          <div className="rounded-lg p-3 bg-warning-subtle border border-warning">
+          <div className="rounded-md p-3 bg-warning-subtle border border-warning">
             <span className="text-xs font-medium text-warning">Warning</span>
           </div>
-          <div className="rounded-lg p-3 bg-danger-subtle border border-danger">
+          <div className="rounded-md p-3 bg-danger-subtle border border-danger">
             <span className="text-xs font-medium text-danger">Danger</span>
           </div>
-          <div className="rounded-lg p-3 bg-info-subtle border border-info">
+          <div className="rounded-md p-3 bg-info-subtle border border-info">
             <span className="text-xs font-medium text-info">Info</span>
           </div>
         </div>
@@ -421,16 +421,16 @@ function ColorsSection() {
 
       <SubSection title="Primary Semantic">
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-          <div className="rounded-lg p-3 bg-primary-subtle border border-primary-edge">
+          <div className="rounded-md p-3 bg-primary-subtle border border-primary-edge">
             <span className="text-xs font-medium text-primary-fg-strong">primary-subtle</span>
           </div>
-          <div className="rounded-lg p-3 bg-primary-subtle-hover border border-primary-edge">
+          <div className="rounded-md p-3 bg-primary-subtle-hover border border-primary-edge">
             <span className="text-xs font-medium text-primary-fg-strong">primary-subtle-hover</span>
           </div>
           {/* Not a Tailwind colour on purpose: the prose wash has exactly three
               consumers (inline code, @-mentions, entity-link hover) and should not
               become a general-purpose fill people reach for instead of the state one. */}
-          <div className="rounded-lg border border-edge p-3" style={{ backgroundColor: 'var(--t-primary-wash)' }}>
+          <div className="rounded-md border border-edge p-3" style={{ backgroundColor: 'var(--t-primary-wash)' }}>
             <span className="text-xs font-medium text-primary-fg-strong">primary-wash (prose only)</span>
           </div>
         </div>
@@ -442,7 +442,7 @@ function ColorsSection() {
 function TypographySection() {
   return (
     <Section id="typography" title="Typography" description="Font scale and weight conventions used across the app.">
-      <div className="space-y-3 bg-surface-raised rounded-lg p-4 border border-edge">
+      <div className="space-y-3 bg-surface-raised rounded-md p-4 border border-edge">
         <div className="flex items-baseline gap-3">
           <CodeLabel>text-lg</CodeLabel>
           <span className="text-lg font-semibold text-fg">Heading Large — page titles</span>
@@ -466,7 +466,7 @@ function TypographySection() {
       </div>
 
       <SubSection title="Font Weights">
-        <div className="space-y-1 bg-surface-raised rounded-lg p-4 border border-edge">
+        <div className="space-y-1 bg-surface-raised rounded-md p-4 border border-edge">
           <p className="text-sm font-normal text-fg">font-normal (400) — body text</p>
           <p className="text-sm font-medium text-fg">font-medium (500) — labels, table headers</p>
           <p className="text-sm font-semibold text-fg">font-semibold (600) — headings, emphasis</p>
@@ -475,7 +475,7 @@ function TypographySection() {
       </SubSection>
 
       <SubSection title="Truncation Pattern">
-        <div className="bg-surface-raised rounded-lg p-4 border border-edge max-w-xs">
+        <div className="bg-surface-raised rounded-md p-4 border border-edge max-w-xs">
           <p
             className="truncate text-sm text-fg"
             title="This is a very long text that should be truncated with an ellipsis when it overflows the container width"
@@ -501,9 +501,9 @@ function SpacingSection() {
       <SubSection title="Border Radius">
         <DemoRow>
           {[
-            { label: 'rounded-md', cls: 'rounded-md', usage: 'buttons, inputs' },
-            { label: 'rounded-lg', cls: 'rounded-lg', usage: 'cards, panels' },
-            { label: 'rounded-xl', cls: 'rounded-xl', usage: 'dialogs, modals' },
+            { label: 'rounded-sm', cls: 'rounded-sm', usage: 'buttons, inputs' },
+            { label: 'rounded-md', cls: 'rounded-md', usage: 'cards, panels' },
+            { label: 'rounded-lg', cls: 'rounded-lg', usage: 'dialogs, modals' },
             { label: 'rounded-full', cls: 'rounded-full', usage: 'badges, avatars' },
           ].map((r) => (
             <div key={r.label} className="flex flex-col items-center gap-2">
@@ -516,7 +516,7 @@ function SpacingSection() {
       </SubSection>
 
       <SubSection title="Standard Spacing">
-        <div className="bg-surface-raised rounded-lg p-4 border border-edge space-y-1">
+        <div className="bg-surface-raised rounded-md p-4 border border-edge space-y-1">
           <p className="text-sm text-fg-secondary">
             <CodeLabel>gap-2</CodeLabel> — flex items spacing
           </p>
@@ -533,7 +533,7 @@ function SpacingSection() {
       </SubSection>
 
       <SubSection title="Z-Index Layers">
-        <div className="bg-surface-raised rounded-lg p-4 border border-edge">
+        <div className="bg-surface-raised rounded-md p-4 border border-edge">
           <div className="space-y-1.5">
             {[
               { z: 'z-10', label: 'Sticky headers' },
@@ -588,7 +588,7 @@ function AnimationsSection() {
         {showAnim && (
           <Card key={`${showAnim}-${animKey}`} className={`p-4 max-w-sm mt-3 ${showAnim}`}>
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-primary-subtle flex items-center justify-center">
+              <div className="w-10 h-10 rounded-md bg-primary-subtle flex items-center justify-center">
                 <ChevronRight size={16} className="text-primary-fg" />
               </div>
               <div>
@@ -603,7 +603,7 @@ function AnimationsSection() {
       <SubSection title="Continuous Animations">
         <DemoRow>
           <div className="flex items-center gap-3">
-            <Spinner className="h-5 w-5 text-primary-500" />
+            <Spinner className="h-5 w-5 text-accent" />
             <span className="text-sm text-fg-muted">animate-spin</span>
           </div>
           <div className="flex items-center gap-3">
@@ -690,7 +690,7 @@ function ButtonsSection() {
             <Trash2 size={16} />
           </IconButton>
         </DemoRow>
-        <div className="mt-3 flex h-28 max-w-xl overflow-hidden rounded-lg border border-edge bg-surface-canvas">
+        <div className="mt-3 flex h-28 max-w-xl overflow-hidden rounded-md border border-edge bg-surface-canvas">
           <div
             className="flex flex-shrink-0 items-center justify-center bg-surface-chrome text-xs text-fg-muted"
             style={{ width: paneWidth }}
@@ -807,7 +807,7 @@ function PaginationSection() {
       description="components/ui.tsx — unified list footer: range text + page-size selector (20/50/100) + prev/next + jump-to-page. Pair with usePersistedPageSize. page is 0-based."
     >
       <SubSection title="Interactive">
-        <div className="border border-edge rounded-lg overflow-hidden">
+        <div className="border border-edge rounded-md overflow-hidden">
           <Pagination
             page={page}
             pageSize={pageSize}
@@ -836,7 +836,7 @@ function ModulePageSection() {
       title="Module Page"
       description="components/app/module-page.tsx — registry-driven page identity, responsive actions, optional tabs/notice/toolbar slots, and form/list/canvas width contracts."
     >
-      <div className="h-[440px] overflow-hidden rounded-xl border border-edge bg-surface-canvas">
+      <div className="h-[440px] overflow-hidden rounded-lg border border-edge bg-surface-canvas">
         <ModulePage
           moduleId="admin.users"
           layout="list"
@@ -885,10 +885,10 @@ function DetailKitSection() {
       title="Detail Kit"
       description="components/detail/ — shared primitives for record detail (view) & edit screens. Flat layout, label-above fields, status badges single-line."
     >
-      <div className="border border-edge rounded-lg p-4 space-y-6">
+      <div className="border border-edge rounded-md p-4 space-y-6">
         <DetailHeader
           icon={
-            <div className="w-12 h-12 rounded-xl bg-surface-muted flex items-center justify-center flex-shrink-0">
+            <div className="w-12 h-12 rounded-lg bg-surface-muted flex items-center justify-center flex-shrink-0">
               <Mail size={22} className="text-fg-muted" />
             </div>
           }
@@ -1212,7 +1212,7 @@ function DialogsSection() {
               {Array.from({ length: 18 }, (_, index) => (
                 <div
                   key={index}
-                  className="rounded-lg border border-edge bg-surface-sunken p-3 text-sm text-fg-secondary"
+                  className="rounded-md border border-edge bg-surface-sunken p-3 text-sm text-fg-secondary"
                 >
                   Activity item {index + 1}
                 </div>
@@ -1373,7 +1373,7 @@ toast('Item deleted', 'info', {
             <span className="text-sm text-fg-secondary">Default (h-4 w-4)</span>
           </div>
           <div className="flex items-center gap-2">
-            <Spinner className="h-6 w-6 text-primary-500" />
+            <Spinner className="h-6 w-6 text-accent" />
             <span className="text-sm text-fg-secondary">Large + colored</span>
           </div>
           <div className="flex items-center gap-2">
@@ -1404,7 +1404,7 @@ function InlineEditCellSection() {
       title="Inline Edit Cell"
       description="components/tables/inline-edit-cell.tsx — shared double-click and keyboard editing for data grids."
     >
-      <div className="max-w-5xl overflow-x-auto rounded-lg border border-edge">
+      <div className="max-w-5xl overflow-x-auto rounded-md border border-edge">
         <table className="w-full min-w-[860px]">
           <thead className="bg-surface-muted">
             <tr className="border-b border-edge">
@@ -1809,10 +1809,10 @@ function ChatArtifactCardsSection() {
             }
           >
             <div className="space-y-2 text-xs text-fg-secondary">
-              <div className="rounded-md border border-edge bg-surface-raised px-2.5 py-2">
+              <div className="rounded-sm border border-edge bg-surface-raised px-2.5 py-2">
                 1. What should the email do?
               </div>
-              <div className="rounded-md border border-edge bg-surface-raised px-2.5 py-2">
+              <div className="rounded-sm border border-edge bg-surface-raised px-2.5 py-2">
                 2. Who is the recipient?
               </div>
             </div>

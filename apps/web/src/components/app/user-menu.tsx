@@ -98,7 +98,7 @@ export function SidebarAccountMenu({
         className={
           compact
             ? 'flex items-center justify-center hover:opacity-80 transition-opacity'
-            : `flex items-center gap-2 w-full min-w-0 rounded-md px-2 py-1 transition-colors ${
+            : `flex items-center gap-2 w-full min-w-0 rounded-sm px-2 py-1 transition-colors ${
                 settingsActive ? 'bg-primary-subtle' : 'hover:bg-surface-muted'
               }`
         }
@@ -169,7 +169,7 @@ export function SidebarAccountMenu({
       {open && user && (
         <div
           role="menu"
-          className={`absolute z-50 bg-surface-raised border border-edge rounded-xl shadow-xl overflow-hidden animate-fade-in ${
+          className={`absolute z-50 bg-surface-raised border border-edge rounded-lg shadow-xl overflow-hidden animate-fade-in ${
             compact
               ? 'bottom-full left-0 w-72 max-w-[calc(100vw-2rem)]'
               : 'bottom-full left-0 w-[calc(100cqw-1.5rem)] max-w-[calc(100cqw-1.5rem)]'
@@ -224,7 +224,7 @@ export function SidebarAccountMenu({
                       applyTheme(theme);
                       setActiveTheme(theme);
                     }}
-                    className={`flex h-8 min-w-0 items-center justify-center rounded-lg transition-colors ${
+                    className={`flex h-8 min-w-0 items-center justify-center rounded-md transition-colors ${
                       selected
                         ? 'bg-primary-subtle text-primary-fg-strong ring-1 ring-primary-edge'
                         : 'text-fg-muted hover:bg-surface-sunken hover:text-fg-secondary'
@@ -332,7 +332,7 @@ export function SidebarAccountMenu({
           ) : (
             <div className="space-y-1 max-h-[60vh] overflow-y-auto">
               {onlineUsers.map((u) => (
-                <div key={u.userId} className="flex items-center gap-2.5 px-2 py-2 rounded-lg hover:bg-surface-sunken">
+                <div key={u.userId} className="flex items-center gap-2.5 px-2 py-2 rounded-md hover:bg-surface-sunken">
                   <Avatar name={u.nickname} size="sm" />
                   <span className="text-sm text-fg-secondary truncate flex-1" title={u.nickname}>
                     {u.nickname}

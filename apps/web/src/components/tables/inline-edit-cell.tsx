@@ -164,7 +164,7 @@ export function InlineEditCell<T>({
         tabIndex={0}
         aria-label={t('tables.editFieldLabel', { label })}
         title={t('tables.inlineEditHint')}
-        className={`group/cell relative flex min-h-6 items-center gap-1 rounded px-1 py-0.5 outline-none focus:ring-2 focus:ring-primary-500/40 ${className}`}
+        className={`group/cell relative flex min-h-6 items-center gap-1 rounded px-1 py-0.5 outline-none focus:ring-2 focus:ring-accent/40 ${className}`}
         onKeyDown={(event) => {
           if (event.key === 'Enter' || event.key === 'F2') {
             event.preventDefault();

@@ -24,9 +24,9 @@ interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
 
 export function Button({ variant = 'default', size = 'md', className = '', children, ...props }: ButtonProps) {
   const base =
-    'inline-flex items-center justify-center gap-1.5 font-semibold rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500/40 focus:ring-offset-1 focus:ring-offset-surface-raised disabled:opacity-50 disabled:cursor-not-allowed';
+    'inline-flex items-center justify-center gap-1.5 font-semibold rounded-md transition-colors focus:outline-none focus:ring-2 focus:ring-accent/40 focus:ring-offset-1 focus:ring-offset-surface-raised disabled:opacity-50 disabled:cursor-not-allowed';
   const variants: Record<string, string> = {
-    default: 'bg-primary-600 text-white shadow-sm shadow-primary-900/10 hover:bg-primary-700',
+    default: 'bg-accent text-on-accent shadow-sm shadow-primary-900/10 hover:bg-accent-hover',
     secondary: 'bg-surface-muted text-fg-secondary hover:bg-surface-muted',
     ghost: 'text-fg-muted hover:text-fg hover:bg-surface-muted',
     destructive: 'bg-destructive text-white hover:bg-destructive-hover',
@@ -121,7 +121,7 @@ export function IconButton({
         ref={buttonRef}
         type="button"
         aria-label={label}
-        className={`inline-flex ${dimensions} items-center justify-center rounded-md transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500/40 disabled:opacity-50 disabled:cursor-not-allowed ${variants[variant]} ${className}`}
+        className={`inline-flex ${dimensions} items-center justify-center rounded-sm transition-colors focus:outline-none focus:ring-2 focus:ring-accent/40 disabled:opacity-50 disabled:cursor-not-allowed ${variants[variant]} ${className}`}
         onMouseEnter={(event) => {
           updatePortalPosition();
           onMouseEnter?.(event);
@@ -271,7 +271,7 @@ export function ResizeHandle({
       aria-valuenow={Math.round(value)}
       aria-valuetext={`${Math.round(value)} pixels`}
       title={`${label}. Use arrow keys to resize${defaultValue == null ? '' : '; double-click to reset'}${onCollapse == null ? '' : '; drag past the minimum to collapse'}.`}
-      className={`group touch-none select-none focus:outline-none focus:ring-2 focus:ring-inset focus:ring-primary-500/50 ${
+      className={`group touch-none select-none focus:outline-none focus:ring-2 focus:ring-inset focus:ring-accent/50 ${
         orientation === 'vertical'
           ? 'flex w-2 cursor-col-resize items-stretch justify-center'
           : 'flex h-2 cursor-row-resize items-center'
@@ -561,7 +561,7 @@ export function Pagination({
 export function Card({ children, className = '', ...props }: React.HTMLAttributes<HTMLDivElement>) {
   return (
     <div
-      className={`bg-surface-card border border-edge rounded-xl shadow-sm shadow-primary-900/5 dark:shadow-black/20 ${className}`}
+      className={`bg-surface-card border border-edge rounded-lg shadow-sm shadow-primary-900/5 dark:shadow-black/20 ${className}`}
       {...props}
     >
       {children}
@@ -580,11 +580,11 @@ export function Input({ size = 'md', className = '', ...props }: InputProps) {
     xs: 'px-1 py-0.5 text-[11px]',
     sm: 'px-2 py-1.5 text-xs',
     md: 'px-3 py-2 text-sm',
-    lg: 'px-4 py-3 text-sm rounded-xl',
+    lg: 'px-4 py-3 text-sm rounded-lg',
   };
   return (
     <input
-      className={`w-full bg-surface-raised border border-edge-strong rounded-lg text-fg placeholder-fg-faint shadow-sm shadow-primary-900/5 focus:outline-none focus:ring-2 focus:ring-primary-500/30 focus:border-primary-500 ${sizes[size]} ${className}`}
+      className={`w-full bg-surface-raised border border-edge-strong rounded-md text-fg placeholder-fg-faint shadow-sm shadow-primary-900/5 focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent ${sizes[size]} ${className}`}
       {...props}
     />
   );
@@ -613,7 +613,7 @@ export function Tabs({ tabs, active, onChange, ariaLabel }: TabsProps) {
     <div
       role="tablist"
       aria-label={ariaLabel}
-      className="flex max-w-full gap-1 overflow-x-auto scrollbar-hide bg-surface-muted p-1 rounded-xl border border-edge"
+      className="flex max-w-full gap-1 overflow-x-auto scrollbar-hide bg-surface-muted p-1 rounded-lg border border-edge"
     >
       {tabs.map((tab, index) => (
         <button
@@ -641,7 +641,7 @@ export function Tabs({ tabs, active, onChange, ariaLabel }: TabsProps) {
               selectTab(tabs.length - 1);
             }
           }}
-          className={`flex-shrink-0 px-3 py-1.5 text-sm rounded-md whitespace-nowrap transition-colors ${
+          className={`flex-shrink-0 px-3 py-1.5 text-sm rounded-sm whitespace-nowrap transition-colors ${
             active === tab.key
               ? 'bg-surface-raised text-primary-fg-strong font-semibold shadow-sm border border-edge'
               : 'text-fg-muted hover:text-fg-secondary border border-transparent'
@@ -717,7 +717,7 @@ export function Dialog({
               {headerActions}
               <button
                 onClick={close}
-                className="h-11 w-11 sm:h-9 sm:w-9 -my-2 -mr-2 flex-shrink-0 inline-flex items-center justify-center text-fg-faint hover:text-fg-secondary rounded-md hover:bg-surface-muted transition-colors"
+                className="h-11 w-11 sm:h-9 sm:w-9 -my-2 -mr-2 flex-shrink-0 inline-flex items-center justify-center text-fg-faint hover:text-fg-secondary rounded-sm hover:bg-surface-muted transition-colors"
                 aria-label={t('common.close')}
               >
                 <X size={18} />
@@ -792,7 +792,7 @@ export function EmptyState({
     page: 26,
     compact: 20,
   } as const;
-  const iconShell = variant === 'compact' ? 'h-10 w-10 rounded-xl' : 'h-12 w-12 rounded-2xl';
+  const iconShell = variant === 'compact' ? 'h-10 w-10 rounded-lg' : 'h-12 w-12 rounded-xl';
 
   return (
     <section
@@ -849,7 +849,7 @@ export function StarRating({
           disabled={readonly}
           className={`transition-all ${readonly ? 'cursor-default' : 'cursor-pointer hover:scale-110'}`}
         >
-          <StarIcon size={16} className={i <= value ? 'text-yellow-400 fill-yellow-400' : 'text-fg-faint'} />
+          <StarIcon size={16} className={i <= value ? 'text-star fill-current' : 'text-fg-faint'} />
         </button>
       ))}
     </div>
@@ -868,11 +868,11 @@ export function Select({ size = 'md', inline = false, className = '', ...props }
     xs: 'px-1 py-0.5 text-[11px]',
     sm: 'px-2 py-1.5 text-xs',
     md: 'px-3 py-2 text-sm',
-    lg: 'px-4 py-3 text-sm rounded-xl',
+    lg: 'px-4 py-3 text-sm rounded-lg',
   };
   return (
     <select
-      className={`${inline ? 'w-auto' : 'w-full'} bg-surface-raised border border-edge-strong rounded-lg text-fg shadow-sm shadow-primary-900/5 focus:outline-none focus:ring-2 focus:ring-primary-500/30 focus:border-primary-500 ${sizes[size]} ${className}`}
+      className={`${inline ? 'w-auto' : 'w-full'} bg-surface-raised border border-edge-strong rounded-md text-fg shadow-sm shadow-primary-900/5 focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent ${sizes[size]} ${className}`}
       {...props}
     />
   );
@@ -883,7 +883,7 @@ export function Select({ size = 'md', inline = false, className = '', ...props }
 export function Textarea({ className = '', ...props }: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
   return (
     <textarea
-      className={`w-full bg-surface-raised border border-edge-strong rounded-lg px-3 py-2 text-sm text-fg placeholder-fg-faint shadow-sm shadow-primary-900/5 focus:outline-none focus:ring-2 focus:ring-primary-500/30 focus:border-primary-500 resize-none ${className}`}
+      className={`w-full bg-surface-raised border border-edge-strong rounded-md px-3 py-2 text-sm text-fg placeholder-fg-faint shadow-sm shadow-primary-900/5 focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent resize-none ${className}`}
       {...props}
     />
   );
@@ -961,7 +961,7 @@ export function AppLogo({
 }) {
   const t = useT();
   const sizeClasses = { sm: 'w-6 h-6', md: 'w-8 h-8', lg: 'w-10 h-10', xl: 'w-16 h-16' };
-  const logoRounding = size === 'xl' ? 'rounded-2xl' : 'rounded-lg';
+  const logoRounding = size === 'xl' ? 'rounded-xl' : 'rounded-md';
   // Workspace branding (Administration → Branding Studio) wins over the bundled mark.
   const productName = getRuntimeProductName();
   const logoSrc = getRuntimeLogo() ?? '/favicon.svg';
@@ -1120,7 +1120,7 @@ export function ToastContainer() {
       {toasts.map((t) => (
         <div
           key={t.id}
-          className={`pointer-events-auto px-4 py-2.5 rounded-lg border shadow-lg text-sm font-medium flex items-center gap-3 ${
+          className={`pointer-events-auto px-4 py-2.5 rounded-md border shadow-lg text-sm font-medium flex items-center gap-3 ${
             variantStyles[t.variant]
           } ${t.exiting ? 'animate-toast-out' : 'animate-toast-in'}`}
         >
@@ -1175,7 +1175,7 @@ export function SkeletonRow({ cols = 4 }: { cols?: number }) {
 /** Pre-built skeleton card */
 export function SkeletonCard() {
   return (
-    <div className="bg-surface-card border border-edge rounded-lg p-4 space-y-3">
+    <div className="bg-surface-card border border-edge rounded-md p-4 space-y-3">
       <Skeleton className="h-4 w-3/4" />
       <Skeleton className="h-3 w-1/2" />
       <Skeleton className="h-3 w-2/3" />
@@ -1385,7 +1385,7 @@ export function FilterPills({
     <>
       <div
         className={`flex items-center gap-1 ${
-          isSegment ? 'gap-0.5 rounded-md border border-edge bg-surface-sunken p-0.5' : ''
+          isSegment ? 'gap-0.5 rounded-sm border border-edge bg-surface-sunken p-0.5' : ''
         } ${wrap ? 'flex-wrap overflow-visible' : 'overflow-x-auto scrollbar-hide'} ${
           collapseInSidebar ? 'sidebar-filter-pills' : ''
         } ${fill ? 'w-full' : ''} ${className}`}
@@ -1437,8 +1437,8 @@ export function Toggle({ checked, onChange, size = 'md', disabled = false, class
       aria-label={label}
       onClick={() => !disabled && onChange(!checked)}
       disabled={disabled}
-      className={`relative inline-flex ${trackSize} items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500/40 disabled:opacity-50 disabled:cursor-not-allowed ${
-        checked ? 'bg-primary-600' : 'bg-surface-muted border border-edge-strong'
+      className={`relative inline-flex ${trackSize} items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-accent/40 disabled:opacity-50 disabled:cursor-not-allowed ${
+        checked ? 'bg-accent' : 'bg-surface-muted border border-edge-strong'
       } ${className}`}
     >
       <span
@@ -1466,7 +1466,7 @@ export function StatusDot({ color = 'muted', size = 'md', pulse = false, classNa
     warning: 'bg-warning',
     danger: 'bg-danger',
     info: 'bg-info',
-    primary: 'bg-primary-500',
+    primary: 'bg-accent',
     muted: 'bg-fg-faint',
   };
   return (
@@ -1486,7 +1486,7 @@ export function Checkbox({ label, className = '', ...props }: CheckboxProps) {
   const input = (
     <input
       type="checkbox"
-      className={`rounded border-edge-strong text-primary-600 focus:ring-primary-500 focus:ring-offset-0 ${className}`}
+      className={`rounded border-edge-strong text-accent focus:ring-accent focus:ring-offset-0 ${className}`}
       {...props}
     />
   );

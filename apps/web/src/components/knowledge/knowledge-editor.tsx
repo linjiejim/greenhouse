@@ -112,7 +112,7 @@ export function KnowledgeEditor({ value, onChange }: KnowledgeEditorProps) {
         class:
           `prose-base min-h-[360px] px-4 py-3 max-w-none text-sm text-fg focus:outline-none [&_p.is-editor-empty:first-child::before]:text-fg-faint [&_p.is-editor-empty:first-child::before]:content-[attr(data-placeholder)] [&_p.is-editor-empty:first-child::before]:float-left [&_p.is-editor-empty:first-child::before]:h-0 [&_p.is-editor-empty:first-child::before]:pointer-events-none ` +
           // Tables/images are schema nodes now — give them visible structure.
-          '[&_table]:border-collapse [&_table]:my-2 [&_th]:border [&_td]:border [&_th]:border-edge [&_td]:border-edge [&_th]:px-2 [&_td]:px-2 [&_th]:py-1 [&_td]:py-1 [&_th]:bg-surface-sunken [&_img]:max-w-full [&_img]:rounded-md',
+          '[&_table]:border-collapse [&_table]:my-2 [&_th]:border [&_td]:border [&_th]:border-edge [&_td]:border-edge [&_th]:px-2 [&_td]:px-2 [&_th]:py-1 [&_td]:py-1 [&_th]:bg-surface-sunken [&_img]:max-w-full [&_img]:rounded-sm',
       },
     },
     onUpdate: ({ editor: current }) => {
@@ -149,7 +149,7 @@ export function KnowledgeEditor({ value, onChange }: KnowledgeEditorProps) {
     // No `overflow-hidden` on this shell: it makes the box a scroll container,
     // which is exactly what stops the toolbar below from sticking to the page's
     // scrollport. The corners are rounded on the children instead.
-    <div className="border border-edge rounded-lg bg-surface-raised">
+    <div className="border border-edge rounded-md bg-surface-raised">
       <input
         ref={fileInputRef}
         type="file"
@@ -167,7 +167,7 @@ export function KnowledgeEditor({ value, onChange }: KnowledgeEditorProps) {
       />
       {/* Sticky so the formatting controls stay reachable while writing a long
           doc. `top-0` is relative to the editor page's scroll container. */}
-      <div className="sticky top-0 z-10 flex items-center gap-1 flex-wrap px-2 py-2 border-b border-edge bg-surface-sunken rounded-t-lg">
+      <div className="sticky top-0 z-10 flex items-center gap-1 flex-wrap px-2 py-2 border-b border-edge bg-surface-sunken rounded-t-md">
         <Button
           size="icon"
           variant="ghost"
@@ -333,7 +333,7 @@ export function KnowledgeEditor({ value, onChange }: KnowledgeEditorProps) {
       {/* The shell no longer clips, so wide content (tables, code) scrolls here
           instead of spilling past the border — and this box is a sibling of the
           toolbar, so it doesn't capture its sticky positioning. */}
-      <div className="overflow-x-auto rounded-b-lg">
+      <div className="overflow-x-auto rounded-b-md">
         <EditorContent editor={editor} />
       </div>
     </div>

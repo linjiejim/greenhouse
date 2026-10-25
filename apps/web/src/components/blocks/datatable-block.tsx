@@ -155,7 +155,7 @@ export function DataTableBlock({ data, compact = false }: { data: DataTableData;
   const sortIndicator = (key: string) => {
     if (sortKey !== key) return <ArrowUpDown size={12} className="ml-1 inline text-fg-faint" aria-hidden="true" />;
     const SortIcon = sortDir === 'asc' ? ArrowUp : ArrowDown;
-    return <SortIcon size={12} className="ml-1 inline text-primary-600" aria-hidden="true" />;
+    return <SortIcon size={12} className="ml-1 inline text-accent" aria-hidden="true" />;
   };
 
   const header = (

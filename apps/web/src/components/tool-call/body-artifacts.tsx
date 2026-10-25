@@ -275,14 +275,14 @@ function GeneratedImageLoadingCard() {
   const t = useT();
   return (
     <div
-      className="relative h-[260px] w-[260px] max-w-full overflow-hidden rounded-lg border border-edge bg-surface-sunken"
+      className="relative h-[260px] w-[260px] max-w-full overflow-hidden rounded-md border border-edge bg-surface-sunken"
       role="status"
       aria-label={t('chat.generatingImage')}
     >
       <Skeleton className="absolute inset-0 h-full w-full rounded-none" />
       <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 bg-surface-raised/40 text-fg-muted">
-        <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-edge bg-surface-raised shadow-sm">
-          <Image size={18} className="animate-pulse text-primary-500" />
+        <div className="flex h-10 w-10 items-center justify-center rounded-md border border-edge bg-surface-raised shadow-sm">
+          <Image size={18} className="animate-pulse text-accent" />
         </div>
         <span className="text-xs font-medium">{t('chat.generatingImage')}</span>
       </div>
@@ -299,7 +299,7 @@ function GeneratedImageCard({ url, imageId, prompt }: { url: string; imageId?: s
       <button
         type="button"
         onClick={() => setPreviewOpen(true)}
-        className="block w-[260px] max-w-full overflow-hidden rounded-lg border border-edge shadow-sm transition-colors hover:border-primary-400"
+        className="block w-[260px] max-w-full overflow-hidden rounded-md border border-edge shadow-sm transition-colors hover:border-primary-400"
         title={prompt}
       >
         <img

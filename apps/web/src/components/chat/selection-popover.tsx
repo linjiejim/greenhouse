@@ -43,10 +43,10 @@ export function SelectionPopover({ rect, text, onActivate }: SelectionPopoverPro
         e.stopPropagation();
         onActivate(capturedTextRef.current, capturedRectRef.current);
       }}
-      className="fixed z-30 w-7 h-7 flex items-center justify-center rounded-lg
+      className="fixed z-30 w-7 h-7 flex items-center justify-center rounded-md
         bg-surface-raised border border-edge shadow-md
         text-fg-faint hover:text-primary-fg hover:border-primary-300 hover:bg-primary-subtle
-        transition-all duration-150 animate-fade-in"
+        transition-all animate-fade-in"
       style={{ top: pos.top, left: pos.left }}
       title={t('chat.quoteAndNote')}
     >

@@ -227,7 +227,7 @@ function BlockBoundary({ children }: { children: React.ReactNode }) {
   return (
     <ErrorBoundary
       fallback={
-        <div className="my-2 rounded-md border border-edge bg-surface-muted px-3 py-2 text-xs text-fg-muted">
+        <div className="my-2 rounded-sm border border-edge bg-surface-muted px-3 py-2 text-xs text-fg-muted">
           {t('common.blockRenderFailed')}
         </div>
       }

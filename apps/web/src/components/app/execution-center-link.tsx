@@ -35,10 +35,10 @@ export function ExecutionCenterLink({
               active ? 'bg-primary-subtle text-primary-fg-strong' : 'text-fg-secondary hover:bg-surface-sunken'
             }`
           : compact
-            ? `relative flex h-9 w-9 items-center justify-center rounded-lg transition-colors ${
+            ? `relative flex h-9 w-9 items-center justify-center rounded-md transition-colors ${
                 active ? 'sidebar-active-item' : 'text-fg-muted hover:bg-surface-muted hover:text-fg'
               }`
-            : `flex min-h-11 w-full items-center gap-2 rounded-lg px-2.5 text-xs font-medium transition-colors md:min-h-8 ${
+            : `flex min-h-11 w-full items-center gap-2 rounded-md px-2.5 text-xs font-medium transition-colors md:min-h-8 ${
                 active ? 'sidebar-active-item font-semibold' : 'text-fg-muted hover:bg-surface-muted hover:text-fg'
               }`
       }

@@ -325,7 +325,7 @@ export function WorkbenchPanel() {
           return (
             <ErrorBoundary
               fallback={
-                <div className="flex h-full items-center justify-center gap-2 rounded-lg border border-edge bg-surface-card text-xs text-fg-faint">
+                <div className="flex h-full items-center justify-center gap-2 rounded-md border border-edge bg-surface-card text-xs text-fg-faint">
                   <AlertTriangle size={16} />
                   {t('common.blockRenderFailed')}
                 </div>

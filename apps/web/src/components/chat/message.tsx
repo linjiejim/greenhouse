@@ -235,7 +235,7 @@ function MessageBubbleImpl(props: MessageProps) {
       <>
         <div className="flex justify-end animate-fade-in">
           <div
-            className={`group relative max-w-[80%] rounded-2xl rounded-br-md border border-edge bg-surface-muted px-4 py-3 shadow-sm shadow-primary-900/5 ${
+            className={`group relative max-w-[80%] rounded-xl rounded-br-sm border border-edge bg-surface-muted px-4 py-3 shadow-sm shadow-primary-900/5 ${
               isEditing ? 'w-[min(28rem,80vw)]' : ''
             }`}
           >
@@ -249,7 +249,7 @@ function MessageBubbleImpl(props: MessageProps) {
                     key={img.id}
                     onClick={() => setPreviewImageIndex(imageIndex)}
                     aria-label={t('media.viewAttachment', { current: imageIndex + 1, total: images.length })}
-                    className="block h-20 w-20 flex-shrink-0 overflow-hidden rounded-lg border border-edge-strong transition-colors hover:border-primary-400"
+                    className="block h-20 w-20 flex-shrink-0 overflow-hidden rounded-md border border-edge-strong transition-colors hover:border-primary-400"
                   >
                     <img src={img.url} alt="" className="h-full w-full object-cover" loading="lazy" />
                   </button>
@@ -284,7 +284,7 @@ function MessageBubbleImpl(props: MessageProps) {
                       }
                     }}
                     disabled={!editText.trim() || editText.trim() === content}
-                    className="px-2.5 py-1 text-xs text-white bg-primary-600 hover:bg-primary-700 rounded disabled:opacity-40"
+                    className="px-2.5 py-1 text-xs text-on-accent bg-accent hover:bg-accent-hover rounded disabled:opacity-40"
                   >
                     {t('chat.saveAndResend')}
                   </button>
@@ -555,7 +555,7 @@ function MessageBubbleImpl(props: MessageProps) {
             {!compact && hasPipeline && pipeline!.length > 0 && (
               <PipelineStageChart steps={pipeline!} totalDurationMs={durationMs} />
             )}
-            <div className="flex flex-wrap gap-3 text-[11px] text-fg-muted bg-surface-sunken border border-edge rounded-md px-3 py-2">
+            <div className="flex flex-wrap gap-3 text-[11px] text-fg-muted bg-surface-sunken border border-edge rounded-sm px-3 py-2">
               {model && <span className="font-mono">{model}</span>}
               {inputTokens != null && (
                 <span>{t('chat.inputTokensShort', { count: inputTokens.toLocaleString() })}</span>

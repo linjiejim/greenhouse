@@ -333,7 +333,7 @@ export function UserManagementPanel() {
   if (loading)
     return (
       <ModulePage moduleId="admin.users" layout="list">
-        <div className="overflow-hidden rounded-xl border border-edge bg-surface-raised">
+        <div className="overflow-hidden rounded-lg border border-edge bg-surface-raised">
           <table className="w-full">
             <tbody>
               {[...Array(5)].map((_, i) => (
@@ -398,7 +398,7 @@ export function UserManagementPanel() {
       }
     >
       <div className="space-y-4">
-        {!showCreate && error && <p className="text-sm text-danger bg-danger-subtle px-3 py-2 rounded-lg">{error}</p>}
+        {!showCreate && error && <p className="text-sm text-danger bg-danger-subtle px-3 py-2 rounded-md">{error}</p>}
 
         <Dialog
           open={showCreate}
@@ -477,7 +477,7 @@ export function UserManagementPanel() {
         </Dialog>
 
         {/* User table */}
-        <div className="bg-surface-raised border border-edge rounded-xl overflow-hidden overflow-x-auto">
+        <div className="bg-surface-raised border border-edge rounded-lg overflow-hidden overflow-x-auto">
           <table className="w-full text-sm min-w-[720px]">
             <thead>
               <tr className="bg-surface-sunken border-b border-edge text-xs text-fg-muted font-medium">
@@ -770,7 +770,7 @@ export function UserManagementPanel() {
               <option value="direct_password">{t('settings.setPasswordDirectly')}</option>
             </Select>
             {resetMode === 'email_link' ? (
-              <div className="rounded-lg border border-warning/30 bg-warning-subtle px-3 py-2 text-xs leading-5 text-fg-secondary">
+              <div className="rounded-md border border-warning/30 bg-warning-subtle px-3 py-2 text-xs leading-5 text-fg-secondary">
                 <Mail size={14} className="mr-1.5 inline" />
                 {t('settings.resetLinkImmediateWarning')}
                 {passwordLinkUnavailableText && <p className="mt-1 text-warning">{passwordLinkUnavailableText}</p>}

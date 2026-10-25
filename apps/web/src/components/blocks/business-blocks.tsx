@@ -89,7 +89,7 @@ export function StatsBlock({ data, ...actionProps }: { data: StatsData } & Block
         {data.items.map((item, index) => (
           <div
             key={index}
-            className="flex min-w-0 flex-col gap-0.5 rounded-md border border-edge bg-surface-raised p-2.5"
+            className="flex min-w-0 flex-col gap-0.5 rounded-sm border border-edge bg-surface-raised p-2.5"
           >
             <span className="truncate text-xs text-fg-muted">{item.label}</span>
             <span className="text-lg font-semibold tabular-nums text-fg">
@@ -156,7 +156,7 @@ export function CardsBlock({ data, ...actionProps }: { data: CardsData } & Block
               ) : null}
             </>
           );
-          const frame = 'flex flex-col gap-1 rounded-md border border-edge bg-surface-raised p-2.5';
+          const frame = 'flex flex-col gap-1 rounded-sm border border-edge bg-surface-raised p-2.5';
           return (
             <li key={index}>
               {item.url ? (
@@ -184,7 +184,7 @@ export function CardsBlock({ data, ...actionProps }: { data: CardsData } & Block
 
 const STEP_DOT = {
   done: 'bg-success border-success',
-  active: 'bg-primary-500 border-primary-500 ring-2 ring-primary-500/25',
+  active: 'bg-accent border-accent ring-2 ring-accent/25',
   pending: 'bg-surface-card border-edge-strong',
   blocked: 'bg-danger border-danger',
   skipped: 'bg-surface-muted border-edge',

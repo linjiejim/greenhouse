@@ -123,7 +123,7 @@ export function AddWidgetDialog({
           />
         </div>
 
-        <div className="flex gap-1 rounded-lg border border-edge bg-surface-muted p-1">
+        <div className="flex gap-1 rounded-md border border-edge bg-surface-muted p-1">
           {(
             [
               ['recipe', t('home.modeRecipe')],
@@ -136,7 +136,7 @@ export function AddWidgetDialog({
               key={value}
               type="button"
               onClick={() => setMode(value)}
-              className={`flex-1 rounded-md px-2 py-1.5 text-xs transition-colors ${
+              className={`flex-1 rounded-sm px-2 py-1.5 text-xs transition-colors ${
                 mode === value
                   ? 'bg-surface-raised font-semibold text-fg shadow-sm'
                   : 'text-fg-muted hover:text-fg-secondary'
@@ -233,7 +233,7 @@ function RecipeList({ recipes, onPick }: { recipes: WidgetRecipe[]; onPick: (rec
           key={recipe.id}
           type="button"
           onClick={() => onPick(recipe)}
-          className="rounded-lg border border-edge bg-surface-card p-3 text-left transition-colors hover:border-primary-400 hover:bg-surface-muted"
+          className="rounded-md border border-edge bg-surface-card p-3 text-left transition-colors hover:border-primary-400 hover:bg-surface-muted"
         >
           <span className="block text-sm font-medium text-fg">{t(recipeLabels(recipe).labelKey)}</span>
           <span className="mt-0.5 block text-xs text-fg-faint">{t(recipeLabels(recipe).descriptionKey)}</span>
@@ -483,7 +483,7 @@ function NavPicker({
               key={application.id}
               type="button"
               onClick={() => onPick({ type: 'app', appId: application.id }, application.title)}
-              className="flex items-center gap-1.5 rounded-md border border-edge px-2 py-1 text-xs text-fg-secondary transition-colors hover:border-primary-400 hover:bg-surface-muted"
+              className="flex items-center gap-1.5 rounded-sm border border-edge px-2 py-1 text-xs text-fg-secondary transition-colors hover:border-primary-400 hover:bg-surface-muted"
             >
               <LayoutGrid size={12} />
               {application.title}
@@ -501,7 +501,7 @@ function NavPicker({
               key={`entity-${hit.ref.kind}-${hit.ref.id}`}
               type="button"
               onClick={() => onPick({ type: 'entity', ref: hit.ref }, hit.title)}
-              className="block w-full rounded-md border border-edge px-2.5 py-1.5 text-left transition-colors hover:border-primary-400 hover:bg-surface-muted"
+              className="block w-full rounded-sm border border-edge px-2.5 py-1.5 text-left transition-colors hover:border-primary-400 hover:bg-surface-muted"
             >
               <span className="block truncate text-sm text-fg">{hit.title}</span>
               {hit.subtitle && <span className="block truncate text-xs text-fg-faint">{hit.subtitle}</span>}

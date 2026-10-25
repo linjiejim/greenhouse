@@ -102,7 +102,7 @@ function ChatHistorySkeleton({ label }: { label: string }) {
   return (
     <div className="animate-fade-in space-y-2" aria-busy="true" aria-live="polite">
       <div className="max-w-[90%] min-w-0">
-        <div className="rounded-xl border border-edge bg-surface-card px-4 py-3 shadow-sm space-y-3">
+        <div className="rounded-lg border border-edge bg-surface-card px-4 py-3 shadow-sm space-y-3">
           <div className="flex items-center gap-2">
             <Skeleton className="h-7 w-7 rounded-full" />
             <span className="text-xs text-fg-faint">{label}</span>
@@ -1105,11 +1105,11 @@ export function ConversationPane({
       >
         {/* Drag-drop overlay */}
         {isDragging && !isRetiredChannel && (
-          <div className="absolute inset-0 z-50 bg-primary-subtle/80 border-2 border-dashed border-primary-400 rounded-lg flex items-center justify-center pointer-events-none">
+          <div className="absolute inset-0 z-50 bg-primary-subtle/80 border-2 border-dashed border-primary-400 rounded-md flex items-center justify-center pointer-events-none">
             <div className="text-center">
               <Image size={36} className="mx-auto mb-2 text-primary-fg-strong" />
               <p className="text-sm font-medium text-primary-fg-strong">{t('chat.dropImages')}</p>
-              <p className="text-xs text-primary-500 mt-1">{t('chat.imageLimit', { count: MAX_IMAGES })}</p>
+              <p className="text-xs text-accent mt-1">{t('chat.imageLimit', { count: MAX_IMAGES })}</p>
             </div>
           </div>
         )}
@@ -1120,7 +1120,7 @@ export function ConversationPane({
 
         {/* Shared session banner — shown to non-owners */}
         {sessionId && shareInfo && !isOwner && !shareBannerDismissed && (
-          <div className="mx-3 md:mx-4 mt-2 flex items-center gap-2 px-3 py-2 rounded-lg bg-info-subtle border border-info text-sm text-info animate-fade-in">
+          <div className="mx-3 md:mx-4 mt-2 flex items-center gap-2 px-3 py-2 rounded-md bg-info-subtle border border-info text-sm text-info animate-fade-in">
             <Share2 size={14} className="flex-shrink-0" />
             <span className="flex-1 min-w-0">
               {t('chat.sharedWithYou', { name: shareInfo.shared_by_nickname })}
@@ -1180,7 +1180,7 @@ export function ConversationPane({
                   <ErrorBoundary
                     key={msg.clientKey}
                     fallback={
-                      <div className="mx-auto my-2 max-w-3xl rounded-lg border border-dashed border-edge px-3 py-2 text-xs text-fg-muted">
+                      <div className="mx-auto my-2 max-w-3xl rounded-md border border-dashed border-edge px-3 py-2 text-xs text-fg-muted">
                         {t('common.messageRenderFailed')}
                       </div>
                     }
@@ -1469,7 +1469,7 @@ function ConversationSuggestions({
           <button
             key={`${suggestion.label}:${suggestion.message}`}
             onClick={() => onSelect(suggestion.message)}
-            className="flex w-full items-center gap-2 rounded-lg border border-edge bg-surface-card px-3 py-2 text-left text-sm text-fg-secondary transition-colors hover:border-primary-300 hover:bg-primary-subtle/30"
+            className="flex w-full items-center gap-2 rounded-md border border-edge bg-surface-card px-3 py-2 text-left text-sm text-fg-secondary transition-colors hover:border-primary-300 hover:bg-primary-subtle/30"
           >
             {Icon && <Icon size={14} className="flex-shrink-0 text-fg-faint" />}
             <span>{suggestion.label}</span>

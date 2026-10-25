@@ -2,6 +2,8 @@
  * Shared utility functions for the web frontend.
  */
 
+import { categorical, chartSeries, color as tokenColor } from '@greenhouse/ui/tokens';
+
 /** App version — injected at build time by esbuild, falls back to 0.0.0 */
 declare const __APP_VERSION__: string;
 export const APP_VERSION: string = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '0.0.0';
@@ -147,8 +149,8 @@ const WORKSPACE_COLORS: Record<string, WorkspaceColorConfig> = {
   local: { dot: 'bg-fg-faint', text: 'text-fg-faint', badge: 'bg-surface-muted text-fg-muted', label: 'local' },
   dev: { dot: 'bg-warning', text: 'text-warning', badge: 'bg-warning-subtle text-warning', label: 'dev' },
   prod: {
-    dot: 'bg-primary-500',
-    text: 'text-primary-500',
+    dot: 'bg-accent',
+    text: 'text-accent',
     badge: 'bg-primary-subtle text-primary-fg-strong',
     label: 'prod',
   },
@@ -268,16 +270,17 @@ export function stripHtmlToText(html: string): string {
 
 // ─── Chart / Data-Viz Color Palette (theme-adaptive) ─────
 
-/** Restrained Greenhouse brand palette for charts and data-viz.
- *  `rgb` is kept in sync with the fixed primary anchors in theme.ts for canvas
- *  consumers such as Chart.js. */
-export const CHART_PALETTE = [
-  { bg: 'bg-primary-500', text: 'text-primary-fg-strong', light: 'bg-primary-subtle', rgb: '46, 139, 61' },
-  { bg: 'bg-primary-400', text: 'text-primary-fg-strong', light: 'bg-primary-subtle', rgb: '140, 198, 63' },
-  { bg: 'bg-primary-700', text: 'text-primary-fg-strong', light: 'bg-primary-subtle', rgb: '31, 107, 52' },
-  { bg: 'bg-primary-300', text: 'text-primary-fg', light: 'bg-primary-subtle', rgb: '199, 217, 216' },
-  { bg: 'bg-primary-600', text: 'text-primary-fg-strong', light: 'bg-primary-subtle', rgb: '39, 122, 53' },
-] as const;
+/** Chart series colours for one appearance, as hex for canvas consumers such as Chart.js:
+ *  the accent first, then the categorical hues (packages/ui/src/tokens/tokens.ts `chartSeries`). */
+export function chartPalette(mode: 'light' | 'dark'): string[] {
+  return chartSeries.map((series) => (series === 'accent' ? tokenColor.accent[mode] : categorical[series].fg[mode]));
+}
+
+/** `#RRGGBB` at `alpha`, for translucent chart fills. */
+export function hexAlpha(hex: string, alpha: number): string {
+  const n = parseInt(hex.slice(1), 16);
+  return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`;
+}
 
 // ─── Domain → Tag tone maps ──────────────────────────────
 // Single source of truth for enum → color, consumed by <Tag tone>. Add a new

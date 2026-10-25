@@ -71,7 +71,7 @@ export function ModulePage({
     >
       <header className="flex flex-shrink-0 flex-col gap-2.5 border-b border-edge pb-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="flex min-w-0 items-start gap-2.5">
-          <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg border border-primary-edge bg-primary-subtle text-primary-fg shadow-sm">
+          <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-md border border-primary-edge bg-primary-subtle text-primary-fg shadow-sm">
             <Icon size={16} />
           </span>
           <div className="min-w-0">

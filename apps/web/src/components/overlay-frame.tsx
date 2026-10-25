@@ -47,15 +47,15 @@ const VARIANTS: Record<OverlayVariant, VariantSpec> = {
     backdrop: 'absolute inset-0 bg-black/30 dark:bg-black/55 backdrop-blur-sm',
     animateBackdrop: true,
     surface:
-      'relative flex w-full flex-col overflow-hidden rounded-xl border border-edge bg-surface-raised shadow-xl max-h-full',
+      'relative flex w-full flex-col overflow-hidden rounded-lg border border-edge bg-surface-raised shadow-xl max-h-full',
   },
   alert: {
     role: 'alertdialog',
     container:
       'fixed inset-0 flex items-end justify-center p-3 pt-[max(0.75rem,env(safe-area-inset-top))] pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:items-center',
-    backdrop: 'absolute inset-0 bg-black/20',
+    backdrop: 'absolute inset-0 bg-black/20 dark:bg-black/45',
     animateBackdrop: false,
-    surface: 'relative w-full overflow-y-auto rounded-xl border border-edge bg-surface-raised shadow-xl max-h-full',
+    surface: 'relative w-full overflow-y-auto rounded-lg border border-edge bg-surface-raised shadow-xl max-h-full',
   },
   // Search palette: `center` but anchored near the top. A palette's height is
   // driven by how many results came back, and a vertically centred one slides up
@@ -67,7 +67,7 @@ const VARIANTS: Record<OverlayVariant, VariantSpec> = {
     backdrop: 'absolute inset-0 bg-black/30 dark:bg-black/55 backdrop-blur-sm',
     animateBackdrop: true,
     surface:
-      'relative flex w-full flex-col overflow-hidden rounded-xl border border-edge bg-surface-raised shadow-xl max-h-full',
+      'relative flex w-full flex-col overflow-hidden rounded-lg border border-edge bg-surface-raised shadow-xl max-h-full',
   },
 };
 

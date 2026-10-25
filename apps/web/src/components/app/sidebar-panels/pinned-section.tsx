@@ -60,7 +60,7 @@ function PinItem({ moduleId, isActive, onNavigate, onContextMenu, dragProps, isD
       {...dragProps}
       onClick={() => onNavigate(mod.path)}
       onContextMenu={onContextMenu ? (e) => onContextMenu(e, moduleId) : undefined}
-      className={`group relative flex flex-col items-center justify-center gap-1 p-1.5 rounded-lg text-center transition-colors ${
+      className={`group relative flex flex-col items-center justify-center gap-1 p-1.5 rounded-md text-center transition-colors ${
         isDragging ? 'opacity-40' : ''
       } ${
         isActive ? 'bg-primary-subtle text-primary-fg-strong' : 'text-fg-secondary hover:text-fg hover:bg-surface-muted'
@@ -142,7 +142,10 @@ export function PinnedSection({ currentHash }: PinnedSectionProps) {
           onClick={() => setExpanded(!expanded)}
           className="w-full flex items-center justify-center gap-1 py-1 text-[10px] text-fg-faint hover:text-fg-secondary transition-colors"
         >
-          <ChevronDown size={10} className={`transition-transform duration-200 ${expanded ? '' : '-rotate-90'}`} />
+          <ChevronDown
+            size={10}
+            className={`transition-transform duration-(--gh-duration-base) ${expanded ? '' : '-rotate-90'}`}
+          />
           <span>{expanded ? t('navigation.showLess') : t('navigation.moreCount', { count: hiddenCount })}</span>
         </button>
       )}
@@ -190,7 +193,7 @@ export function PinnedSectionCollapsed({ currentHash }: PinnedSectionProps) {
           <button
             key={id}
             onClick={() => handleNavigate(mod.path)}
-            className={`w-8 h-8 flex items-center justify-center rounded-lg transition-colors ${
+            className={`w-8 h-8 flex items-center justify-center rounded-md transition-colors ${
               isActive
                 ? 'bg-primary-subtle text-primary-fg-strong'
                 : 'text-fg-muted hover:text-fg-secondary hover:bg-surface-muted'
@@ -205,7 +208,7 @@ export function PinnedSectionCollapsed({ currentHash }: PinnedSectionProps) {
       {hasOverflow && (
         <button
           onClick={() => setShowOverflow(!showOverflow)}
-          className="w-8 h-8 flex items-center justify-center rounded-lg text-fg-faint hover:text-fg-secondary hover:bg-surface-muted transition-colors"
+          className="w-8 h-8 flex items-center justify-center rounded-md text-fg-faint hover:text-fg-secondary hover:bg-surface-muted transition-colors"
           title={t('navigation.morePinnedCount', { count: visiblePinnedIds.length - COLLAPSED_VISIBLE_LIMIT })}
         >
           <MoreHorizontal size={14} />
@@ -254,7 +257,7 @@ export function MobilePinnedSection({ currentHash, onNavigate }: MobilePinnedPro
             <button
               key={id}
               onClick={() => handleNavigate(mod.path)}
-              className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
+              className={`w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors ${
                 isActive
                   ? 'bg-primary-subtle text-primary-fg-strong font-medium'
                   : 'text-fg-secondary hover:text-fg hover:bg-surface-sunken'

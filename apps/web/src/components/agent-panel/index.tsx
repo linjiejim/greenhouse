@@ -45,7 +45,7 @@ export function AssistantNavButton() {
     >
       <Bot size={16} />
       {activeCount > 0 && (
-        <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 flex items-center justify-center rounded-full text-[10px] font-bold text-white bg-primary-500 animate-pulse">
+        <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 flex items-center justify-center rounded-full text-[10px] font-bold text-on-accent bg-accent animate-pulse">
           {activeCount}
         </span>
       )}
@@ -142,7 +142,7 @@ export function AssistantPanel() {
         <span className="truncate">{getContextLabel(effectiveContext)}</span>
         <button
           onClick={() => setContextDismissed(true)}
-          className="ml-0.5 inline-flex min-h-7 min-w-7 items-center justify-center text-primary-400 transition-colors hover:text-primary-fg-strong"
+          className="ml-0.5 inline-flex min-h-7 min-w-7 items-center justify-center text-primary-fg transition-colors hover:text-primary-fg-strong"
           title={t('agent.removeReference')}
           aria-label={t('agent.removeReference')}
         >
@@ -170,7 +170,7 @@ export function AssistantPanel() {
       panelRef={panelRef}
       motionState={closing ? 'exit' : 'enter'}
       onExited={handleExited}
-      className="fixed inset-0 z-50 flex flex-col overflow-hidden bg-surface-raised shadow-2xl md:inset-auto md:bottom-4 md:right-4 md:rounded-2xl md:border md:border-edge"
+      className="fixed inset-0 z-50 flex flex-col overflow-hidden bg-surface-raised shadow-2xl md:inset-auto md:bottom-4 md:right-4 md:rounded-xl md:border md:border-edge"
       style={{
         width: window.innerWidth >= 768 ? `${panelWidth}px` : undefined,
         height: window.innerWidth >= 768 ? `${panelHeight}px` : undefined,
@@ -212,7 +212,7 @@ export function AssistantPanel() {
           <div className="flex items-center gap-1">
             <button
               onClick={toggleHistory}
-              className={`flex min-h-11 min-w-11 items-center justify-center rounded-md p-1.5 transition-colors md:min-h-0 md:min-w-0 ${
+              className={`flex min-h-11 min-w-11 items-center justify-center rounded-sm p-1.5 transition-colors md:min-h-0 md:min-w-0 ${
                 showHistory
                   ? 'bg-primary-subtle text-primary-fg-strong'
                   : 'text-fg-faint hover:text-fg-secondary hover:bg-surface-muted'
@@ -226,7 +226,7 @@ export function AssistantPanel() {
                 setShowHistory(false);
                 launchAssistant({ newConversation: true });
               }}
-              className="flex min-h-11 min-w-11 items-center justify-center rounded-md p-1.5 text-fg-faint transition-colors hover:bg-surface-muted hover:text-fg-secondary md:min-h-0 md:min-w-0"
+              className="flex min-h-11 min-w-11 items-center justify-center rounded-sm p-1.5 text-fg-faint transition-colors hover:bg-surface-muted hover:text-fg-secondary md:min-h-0 md:min-w-0"
               title={t('agent.newConversation')}
             >
               <Plus size={14} />
@@ -237,14 +237,14 @@ export function AssistantPanel() {
                 close();
                 window.location.hash = currentSessionId ? `#/chat?session=${currentSessionId}` : '#/chat';
               }}
-              className="flex min-h-11 min-w-11 items-center justify-center rounded-md p-1.5 text-fg-faint transition-colors hover:bg-surface-muted hover:text-fg-secondary md:min-h-0 md:min-w-0"
+              className="flex min-h-11 min-w-11 items-center justify-center rounded-sm p-1.5 text-fg-faint transition-colors hover:bg-surface-muted hover:text-fg-secondary md:min-h-0 md:min-w-0"
               title={t('agent.openInChat')}
             >
               <Maximize2 size={14} />
             </button>
             <button
               onClick={close}
-              className="flex min-h-11 min-w-11 items-center justify-center rounded-md p-1.5 text-fg-faint transition-colors hover:bg-surface-muted hover:text-fg-secondary md:min-h-0 md:min-w-0"
+              className="flex min-h-11 min-w-11 items-center justify-center rounded-sm p-1.5 text-fg-faint transition-colors hover:bg-surface-muted hover:text-fg-secondary md:min-h-0 md:min-w-0"
               title={t('common.close')}
             >
               <X size={14} />

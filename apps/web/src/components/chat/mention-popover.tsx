@@ -125,7 +125,7 @@ export function MentionPopover({
               }}
               onMouseEnter={() => setSelectedIndex(idx)}
               className={`flex w-full items-center gap-2 px-2.5 py-1.5 text-left transition-colors ${
-                isSelected ? 'bg-primary-600 text-white' : 'text-fg hover:bg-surface-muted'
+                isSelected ? 'bg-accent text-on-accent' : 'text-fg hover:bg-surface-muted'
               }`}
             >
               <PlantAvatar {...profileAvatarProps(p)} size="xs" animate={isSelected} />

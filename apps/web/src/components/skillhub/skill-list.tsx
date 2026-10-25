@@ -43,7 +43,7 @@ function SkillRow({ skill, active, dimmed }: { skill: SkillSummary; active: bool
     <>
       <a
         href={`#/skillhub/${skill.name}`}
-        className={`group flex w-full min-w-0 items-center gap-1.5 px-2 py-1 rounded-md overflow-hidden text-xs transition-colors ${
+        className={`group flex w-full min-w-0 items-center gap-1.5 px-2 py-1 rounded-sm overflow-hidden text-xs transition-colors ${
           active
             ? 'bg-primary-subtle text-primary-fg-strong font-medium'
             : 'text-fg-secondary hover:text-fg hover:bg-surface-sunken'

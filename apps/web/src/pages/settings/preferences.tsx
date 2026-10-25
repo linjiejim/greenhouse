@@ -11,6 +11,7 @@ import { SettingsPanel, SettingsSection } from '../../components/settings';
 import { ModulePage } from '../../components/app/module-page';
 import { authFetch } from '../../lib/auth';
 import { Check, Globe, Monitor, Moon, Palette, Sparkles, Sun } from '../../lib/icons';
+import { color } from '@greenhouse/ui/tokens';
 import { applyTheme, getActiveTheme, getThemeDefinition } from '../../lib/theme';
 import type { ThemeKey } from '../../lib/theme';
 import { useI18n, LOCALE_OPTIONS } from '../../lib/i18n';
@@ -107,12 +108,7 @@ export function PreferencesPanel() {
           <FormError>{error}</FormError>
         </SettingsSection>
 
-        <SettingsSection
-          title={t('preferences.theme')}
-          description={t('preferences.themeDescription')}
-          icon={Palette}
-          accent
-        >
+        <SettingsSection title={t('preferences.theme')} description={t('preferences.themeDescription')} icon={Palette}>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             {THEME_CHOICES.map((themeKey) => {
               const theme = getThemeDefinition(themeKey);
@@ -141,19 +137,19 @@ export function PreferencesPanel() {
                     applyTheme(themeKey);
                     setActiveTheme(themeKey);
                   }}
-                  className={`group relative overflow-hidden rounded-xl border p-3 text-left transition-all ${
+                  className={`group relative overflow-hidden rounded-lg border p-3 text-left transition-all ${
                     isActive
-                      ? 'border-primary-500 bg-primary-subtle shadow-sm ring-1 ring-primary-500/15'
+                      ? 'border-accent bg-primary-subtle shadow-sm ring-1 ring-accent/15'
                       : 'border-edge bg-surface-raised hover:border-primary-300 hover:bg-surface-sunken'
                   }`}
                 >
                   <div className="flex items-start gap-3">
                     <span
-                      className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg border"
+                      className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-md border"
                       style={{
-                        backgroundColor: theme.surface.surfaceMuted,
-                        borderColor: theme.surface.edgeStrong,
-                        color: theme.dark ? '#A5DDA9' : '#1F6B34',
+                        backgroundColor: color.fill[theme.key],
+                        borderColor: color.lineStrong[theme.key],
+                        color: color.accentText[theme.key],
                       }}
                     >
                       <Icon size={17} />
@@ -164,21 +160,19 @@ export function PreferencesPanel() {
                     </span>
                     <span
                       className={`flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full border ${
-                        isActive
-                          ? 'border-primary-600 bg-primary-600 text-white'
-                          : 'border-edge-strong text-transparent'
+                        isActive ? 'border-accent bg-accent text-on-accent' : 'border-edge-strong text-transparent'
                       }`}
                     >
                       <Check size={12} strokeWidth={3} />
                     </span>
                   </div>
                   <span
-                    className="mt-3 flex h-8 overflow-hidden rounded-lg border"
-                    style={{ borderColor: theme.surface.edge }}
+                    className="mt-3 flex h-8 overflow-hidden rounded-md border"
+                    style={{ borderColor: color.line[theme.key] }}
                   >
-                    <span className="w-1/4" style={{ backgroundColor: theme.surface.chrome }} />
-                    <span className="flex-1" style={{ backgroundColor: theme.surface.canvas }} />
-                    <span className="w-1/5" style={{ backgroundColor: 'rgb(46 139 61)' }} />
+                    <span className="w-1/4" style={{ backgroundColor: color.chrome[theme.key] }} />
+                    <span className="flex-1" style={{ backgroundColor: color.canvas[theme.key] }} />
+                    <span className="w-1/5" style={{ backgroundColor: color.accent[theme.key] }} />
                   </span>
                 </button>
               );
@@ -193,9 +187,9 @@ export function PreferencesPanel() {
                 key={opt.value}
                 type="button"
                 onClick={() => setLocale(opt.value)}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg border-2 transition-all ${
+                className={`flex items-center gap-2 px-4 py-2 rounded-md border-2 transition-all ${
                   locale === opt.value
-                    ? 'border-primary-500 bg-primary-subtle/50 text-primary-fg-strong font-medium shadow-sm'
+                    ? 'border-accent bg-primary-subtle/50 text-primary-fg-strong font-medium shadow-sm'
                     : 'border-edge text-fg-secondary hover:border-edge-strong hover:bg-surface-sunken'
                 }`}
               >

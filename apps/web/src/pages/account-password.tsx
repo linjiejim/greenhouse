@@ -97,10 +97,9 @@ export function AccountPasswordPage({
 
   return (
     <div className="brand-auth-background app-viewport overflow-y-auto flex items-center justify-center px-4 py-[max(1rem,env(safe-area-inset-top))]">
-      <div className="relative w-full max-w-md overflow-hidden rounded-2xl border border-edge bg-surface-raised p-6 shadow-xl shadow-primary-900/10 md:p-8 dark:shadow-black/30">
-        <div className="brand-gradient absolute inset-x-0 top-0 h-1" aria-hidden="true" />
+      <div className="relative w-full max-w-md overflow-hidden rounded-xl border border-edge bg-surface-raised p-6 shadow-xl shadow-primary-900/10 md:p-8 dark:shadow-black/30">
         <div className="text-center">
-          <div className="mx-auto flex w-fit justify-center rounded-2xl bg-logo-safe p-2">
+          <div className="mx-auto flex w-fit justify-center rounded-xl bg-logo-safe p-2">
             <AppLogo size="xl" logoOnly />
           </div>
           <h1 className="font-display mt-3 text-xl font-bold text-fg">
@@ -119,7 +118,7 @@ export function AccountPasswordPage({
           </div>
         ) : inspection ? (
           <form className="mt-6 space-y-4" onSubmit={submit}>
-            <div className="rounded-xl border border-edge bg-surface-sunken px-4 py-3 text-sm">
+            <div className="rounded-lg border border-edge bg-surface-sunken px-4 py-3 text-sm">
               <div className="text-fg-secondary">{inspection.masked_email}</div>
               <div className="mt-1 text-xs text-fg-muted">{t('accountPassword.linkExpires', { remaining })}</div>
             </div>
@@ -144,14 +143,14 @@ export function AccountPasswordPage({
             <Button
               type="submit"
               size="lg"
-              className="w-full rounded-xl"
+              className="w-full rounded-lg"
               disabled={submitting || password.length < 8 || confirmPassword.length < 8}
             >
               {submitting ? t('accountPassword.settingPassword') : t('accountPassword.setPassword')}
             </Button>
           </form>
         ) : (
-          <div className="mt-6 rounded-xl border border-danger/30 bg-danger-subtle px-4 py-4 text-center">
+          <div className="mt-6 rounded-lg border border-danger/30 bg-danger-subtle px-4 py-4 text-center">
             <p className="text-sm font-medium text-danger">{t('accountPassword.unavailableTitle')}</p>
             <p className="mt-1 text-xs leading-5 text-fg-muted">{error || t('accountPassword.invalid')}</p>
             <Button variant="ghost" size="sm" className="mt-3" onClick={() => (window.location.hash = '#/chat')}>

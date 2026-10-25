@@ -316,8 +316,8 @@ export function ExportPdfButton({ markdown, label, isStreaming, iconOnly = false
       disabled={exporting}
       className={
         iconOnly
-          ? 'inline-flex h-7 w-7 items-center justify-center rounded-md text-fg-faint transition-colors hover:bg-info-subtle hover:text-info disabled:opacity-40'
-          : 'inline-flex items-center gap-1.5 rounded-md border border-edge px-2.5 py-1 text-[11px] text-fg-muted transition-colors hover:border-primary-300 hover:bg-info-subtle hover:text-info disabled:opacity-40'
+          ? 'inline-flex h-7 w-7 items-center justify-center rounded-sm text-fg-faint transition-colors hover:bg-info-subtle hover:text-info disabled:opacity-40'
+          : 'inline-flex items-center gap-1.5 rounded-sm border border-edge px-2.5 py-1 text-[11px] text-fg-muted transition-colors hover:border-primary-300 hover:bg-info-subtle hover:text-info disabled:opacity-40'
       }
       title={t('common.exportPdf')}
       aria-label={t('common.exportPdf')}

@@ -135,7 +135,7 @@ export function ToolCallCard({ call, variant }: ToolCallCardProps) {
         ) : hasError ? (
           <AlertTriangle size={11} className="text-danger flex-shrink-0" />
         ) : (
-          <CheckCircle size={11} className="text-primary-500 flex-shrink-0" />
+          <CheckCircle size={11} className="text-accent flex-shrink-0" />
         )}
         <span className="flex-shrink-0">
           <ToolIcon size={11} />
@@ -195,7 +195,7 @@ export function ToolCallCard({ call, variant }: ToolCallCardProps) {
           {call.input != null && (
             <div className="flex-shrink-0">
               <span className="text-xs font-medium text-fg-muted">{t('chat.toolInput')}</span>
-              <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap break-words rounded-md border border-edge bg-surface-sunken p-2.5 text-[11px] text-fg-secondary">
+              <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap break-words rounded-sm border border-edge bg-surface-sunken p-2.5 text-[11px] text-fg-secondary">
                 {formatJson(call.input)}
               </pre>
             </div>
@@ -203,7 +203,7 @@ export function ToolCallCard({ call, variant }: ToolCallCardProps) {
           {output !== undefined && (
             <div className="flex min-h-0 flex-1 flex-col">
               <span className="text-xs font-medium text-fg-muted">{t('chat.toolOutput')}</span>
-              <div className="mt-1 min-h-0 flex-1 overflow-auto rounded-md border border-edge bg-surface-sunken p-2.5 text-[11px] text-fg-secondary">
+              <div className="mt-1 min-h-0 flex-1 overflow-auto rounded-sm border border-edge bg-surface-sunken p-2.5 text-[11px] text-fg-secondary">
                 <JsonDataView value={parseJsonValue(output)} />
               </div>
             </div>

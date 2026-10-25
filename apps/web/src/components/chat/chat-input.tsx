@@ -340,14 +340,14 @@ export function ChatInput({
           </div>
         )}
 
-        <div className="relative z-10 overflow-visible rounded-2xl border border-edge bg-surface-chrome shadow-xl transition-[border-color,box-shadow] focus-within:border-primary-500 focus-within:ring-2 focus-within:ring-primary-500/30">
+        <div className="relative z-10 overflow-visible rounded-xl border border-edge bg-surface-chrome shadow-xl transition-[border-color,box-shadow] focus-within:border-accent focus-within:ring-2 focus-within:ring-accent/30">
           {/* Image preview */}
           {pendingImages.length > 0 && (
             <div className="px-3 pt-3 pb-1 flex gap-2 flex-wrap">
               {pendingImages.map((img, i) => (
                 <div
                   key={i}
-                  className="relative group w-14 h-14 md:w-16 md:h-16 rounded-lg overflow-hidden border border-edge flex-shrink-0 bg-surface-muted"
+                  className="relative group w-14 h-14 md:w-16 md:h-16 rounded-md overflow-hidden border border-edge flex-shrink-0 bg-surface-muted"
                 >
                   <img src={img.preview} alt="" className="w-full h-full object-cover" />
                   {img.uploading && (
@@ -511,7 +511,7 @@ export function ChatInput({
                 <button
                   onClick={() => attachmentInputRef.current?.click()}
                   disabled={attachmentsUploading || pendingAttachments.length >= maxAttachments}
-                  className="h-11 w-11 sm:h-8 sm:w-8 inline-flex items-center justify-center rounded-lg text-fg-muted hover:text-fg-secondary hover:bg-surface-muted disabled:opacity-40 transition-colors"
+                  className="h-11 w-11 sm:h-8 sm:w-8 inline-flex items-center justify-center rounded-md text-fg-muted hover:text-fg-secondary hover:bg-surface-muted disabled:opacity-40 transition-colors"
                   title={t('chat.attach', { count: maxAttachments })}
                   aria-label={t('chat.attach', { count: maxAttachments })}
                 >
@@ -522,7 +522,7 @@ export function ChatInput({
                   <button
                     onClick={() => fileInputRef.current?.click()}
                     disabled={isStreaming || pendingImages.length >= maxImages}
-                    className="h-11 w-11 sm:h-8 sm:w-8 inline-flex items-center justify-center rounded-lg text-fg-muted hover:text-fg-secondary hover:bg-surface-muted disabled:opacity-40 transition-colors"
+                    className="h-11 w-11 sm:h-8 sm:w-8 inline-flex items-center justify-center rounded-md text-fg-muted hover:text-fg-secondary hover:bg-surface-muted disabled:opacity-40 transition-colors"
                     title={`Upload image (max ${maxImages})`}
                   >
                     <Paperclip size={15} />

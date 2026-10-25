@@ -121,7 +121,7 @@ export function CrudForm<TRow>({ schema, mode, initial, onClose, onSaved }: Crud
               key={tb.key}
               onClick={() => setTab(tb.key)}
               className={`px-3 py-1.5 text-sm border-b-2 -mb-px transition-colors ${
-                tab === tb.key ? 'border-primary-500 text-fg' : 'border-transparent text-fg-muted hover:text-fg'
+                tab === tb.key ? 'border-accent text-fg' : 'border-transparent text-fg-muted hover:text-fg'
               }`}
             >
               {tr(t, tb.label)}

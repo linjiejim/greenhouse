@@ -511,7 +511,7 @@ export function GlobalGanttView({
               <ChevronRight size={12} className="text-fg-muted" />
             )}
           </span>
-          <span className="w-2.5 h-2.5 rounded-sm flex-shrink-0" style={{ backgroundColor: p.color }} />
+          <span className="w-2.5 h-2.5 rounded-xs flex-shrink-0" style={{ backgroundColor: p.color }} />
           <span
             className="font-semibold text-fg truncate flex-1 hover:text-primary-fg-strong transition-colors"
             title={p.title}
@@ -588,7 +588,7 @@ export function GlobalGanttView({
         <div className="relative border-b border-edge bg-surface-sunken/30" style={{ height: ROW_HEIGHT }}>
           {pBar && (
             <div
-              className="absolute rounded-sm h-2.5 opacity-25"
+              className="absolute rounded-xs h-2.5 opacity-25"
               style={{
                 left: pBar.left,
                 width: Math.max(pBar.width, DAY_WIDTH),
@@ -598,7 +598,7 @@ export function GlobalGanttView({
               title={`${p.title}: ${p.start_date || '?'} → ${p.end_date || '?'}`}
             >
               <div
-                className="h-full rounded-sm opacity-60"
+                className="h-full rounded-xs opacity-60"
                 style={{ width: `${p.progress}%`, backgroundColor: p.color }}
               />
             </div>

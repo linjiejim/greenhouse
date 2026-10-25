@@ -121,7 +121,7 @@ function ConnectionField({ value, onChange, disabled }: CrudFieldRenderProps) {
         ))}
       </Select>
 
-      <div className="rounded-lg border border-edge bg-surface-muted p-3">
+      <div className="rounded-md border border-edge bg-surface-muted p-3">
         <p className="text-xs font-medium text-fg-secondary mb-1.5">{t('emailAccounts.help.title')}</p>
         <ol className="text-xs text-fg-muted space-y-1 list-decimal list-inside">
           {steps.map((line, i) => (
@@ -367,7 +367,7 @@ export function EmailAccountsPanel() {
         slots: {
           banner: () =>
             shared.available ? (
-              <div className="flex items-center gap-2 rounded-lg border border-edge bg-surface-muted px-3 py-2">
+              <div className="flex items-center gap-2 rounded-md border border-edge bg-surface-muted px-3 py-2">
                 <CheckCircle size={14} className="text-success flex-shrink-0" />
                 <span className="text-xs text-fg-muted">
                   {t('emailAccounts.sharedAvailable', { address: shared.address ?? '' })}

@@ -131,7 +131,7 @@ export function GanttContextMenu({
   return (
     <div
       ref={menuRef}
-      className="fixed bg-surface-raised rounded-lg shadow-xl border border-edge py-1 z-[60] min-w-[180px]"
+      className="fixed bg-surface-raised rounded-md shadow-xl border border-edge py-1 z-[60] min-w-[180px]"
       style={{ left: x, top: y }}
     >
       {items.map((item, i) => {
@@ -163,7 +163,7 @@ export function GanttContextMenu({
                     onClose();
                   }}
                 >
-                  <span className="w-2 h-2 rounded-sm flex-shrink-0" style={{ backgroundColor: p.color }} />
+                  <span className="w-2 h-2 rounded-xs flex-shrink-0" style={{ backgroundColor: p.color }} />
                   <span className="truncate">{p.title}</span>
                 </SubmenuButton>
               ))}
@@ -269,7 +269,7 @@ function SubmenuTrigger({
         <ChevronRight size={10} className="ml-auto text-fg-faint" />
       </button>
       {active && (
-        <div className="absolute left-full top-0 bg-surface-raised rounded-lg shadow-xl border border-edge py-1 min-w-[180px] max-h-[240px] overflow-y-auto">
+        <div className="absolute left-full top-0 bg-surface-raised rounded-md shadow-xl border border-edge py-1 min-w-[180px] max-h-[240px] overflow-y-auto">
           {children}
         </div>
       )}

@@ -36,9 +36,9 @@ export function TemplateDialog({ open, templates, onClose, onSelect }: TemplateD
               type="button"
               onClick={() => onSelect(template)}
               aria-label={`${t('home.replaceWithTemplate')}: ${title}`}
-              className="group flex min-h-56 flex-col rounded-xl border border-edge bg-surface-card p-4 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-primary-400 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-primary-500/40"
+              className="group flex min-h-56 flex-col rounded-lg border border-edge bg-surface-card p-4 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-primary-400 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-accent/40"
             >
-              <span className="mb-3 inline-flex h-10 w-10 items-center justify-center rounded-lg bg-primary-subtle text-primary-fg-strong">
+              <span className="mb-3 inline-flex h-10 w-10 items-center justify-center rounded-md bg-primary-subtle text-primary-fg-strong">
                 <Icon size={20} />
               </span>
               <span className="text-sm font-semibold text-fg">{title}</span>
@@ -50,7 +50,7 @@ export function TemplateDialog({ open, templates, onClose, onSelect }: TemplateD
                   </span>
                 ))}
               </span>
-              <span className="mt-auto flex w-full items-center justify-between pt-4 text-xs font-medium text-primary-700">
+              <span className="mt-auto flex w-full items-center justify-between pt-4 text-xs font-medium text-primary-fg-strong">
                 {t('home.templateCardCount', { count: template.cards.length })}
                 <ArrowRight size={14} className="transition-transform group-hover:translate-x-0.5" />
               </span>

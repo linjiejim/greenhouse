@@ -26,10 +26,10 @@ interface SidebarGlobalNavigationProps {
 
 function directItemClasses(active: boolean, compact: boolean): string {
   return compact
-    ? `relative flex h-9 w-9 items-center justify-center rounded-lg transition-colors ${
+    ? `relative flex h-9 w-9 items-center justify-center rounded-md transition-colors ${
         active ? 'sidebar-active-item' : 'text-fg-muted hover:bg-surface-muted hover:text-fg'
       }`
-    : `flex min-h-11 w-full items-center gap-2 rounded-lg px-2.5 text-left text-xs font-medium transition-colors md:min-h-8 ${
+    : `flex min-h-11 w-full items-center gap-2 rounded-md px-2.5 text-left text-xs font-medium transition-colors md:min-h-8 ${
         active ? 'sidebar-active-item font-semibold' : 'text-fg-muted hover:bg-surface-muted hover:text-fg'
       }`;
 }
@@ -188,7 +188,7 @@ export function SidebarGlobalNavigation({
               <div
                 className={
                   morePlacement === 'flyout'
-                    ? 'w-48 max-w-[calc(100vw-2rem)] overflow-hidden rounded-lg border border-edge bg-surface-raised py-1 shadow-lg'
+                    ? 'w-48 max-w-[calc(100vw-2rem)] overflow-hidden rounded-md border border-edge bg-surface-raised py-1 shadow-lg'
                     : ''
                 }
               >

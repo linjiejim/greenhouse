@@ -142,7 +142,7 @@ export function MessageActions({
             setShowCopyMenu((open) => !open);
             setShowMoreMenu(false);
           }}
-          className="inline-flex h-7 w-7 items-center justify-center rounded-md text-fg-faint transition-colors hover:bg-surface-muted hover:text-fg-secondary"
+          className="inline-flex h-7 w-7 items-center justify-center rounded-sm text-fg-faint transition-colors hover:bg-surface-muted hover:text-fg-secondary"
           title={t('common.copy')}
           aria-label={t('common.copy')}
         >
@@ -154,7 +154,7 @@ export function MessageActions({
           <button
             onClick={handleRegenerate}
             disabled={isStreaming}
-            className="inline-flex h-7 w-7 items-center justify-center rounded-md text-fg-faint transition-colors hover:bg-warning-subtle hover:text-warning disabled:opacity-40"
+            className="inline-flex h-7 w-7 items-center justify-center rounded-sm text-fg-faint transition-colors hover:bg-warning-subtle hover:text-warning disabled:opacity-40"
             title={t('chat.regenerateResponse')}
             aria-label={t('chat.regenerateResponse')}
           >
@@ -183,7 +183,7 @@ export function MessageActions({
                 setShowMoreMenu(true);
                 setShowCopyMenu(false);
               }}
-              className="inline-flex h-7 w-7 items-center justify-center rounded-md text-fg-faint transition-colors hover:bg-surface-muted hover:text-fg-secondary"
+              className="inline-flex h-7 w-7 items-center justify-center rounded-sm text-fg-faint transition-colors hover:bg-surface-muted hover:text-fg-secondary"
               title={t('common.more')}
               aria-label={t('common.more')}
               aria-haspopup="menu"
@@ -194,7 +194,7 @@ export function MessageActions({
 
             {showMoreMenu && (
               <div role="menu" className="absolute bottom-full right-0 z-20 min-w-[180px] pb-1 animate-fade-in">
-                <div className="rounded-lg border border-edge bg-surface-raised py-1 shadow-lg">
+                <div className="rounded-md border border-edge bg-surface-raised py-1 shadow-lg">
                   {onFullscreen && (
                     <button
                       role="menuitem"
@@ -259,7 +259,7 @@ export function MessageActions({
 
       {/* Copy format dropdown */}
       {showCopyMenu && (
-        <div className="absolute bottom-full right-0 mb-1 bg-surface-raised border border-edge rounded-lg shadow-lg py-1 z-10 min-w-[140px] animate-fade-in">
+        <div className="absolute bottom-full right-0 mb-1 bg-surface-raised border border-edge rounded-md shadow-lg py-1 z-10 min-w-[140px] animate-fade-in">
           <button
             onClick={() => handleCopy('markdown')}
             className="w-full px-3 py-1.5 text-left text-xs text-fg-secondary hover:bg-surface-sunken flex items-center gap-2"

@@ -96,7 +96,7 @@ export function CommandMenuPopover({ query, prompts, onSelectPrompt, onDismiss, 
           <p className="text-[11px] text-fg-faint">
             <button
               type="button"
-              className="text-primary-500 hover:underline"
+              className="text-accent hover:underline"
               onMouseDown={(event) => {
                 event.preventDefault();
                 event.stopPropagation();
@@ -200,7 +200,7 @@ function PromptRow({
       }}
       onMouseEnter={onHover}
       className={`flex w-full items-center gap-3 px-2.5 py-1.5 text-left transition-colors ${
-        isSelected ? 'bg-primary-600 text-white' : 'text-fg hover:bg-surface-muted'
+        isSelected ? 'bg-accent text-on-accent' : 'text-fg hover:bg-surface-muted'
       }`}
     >
       <span className="min-w-0 flex-1 truncate text-sm font-medium" title={prompt.title}>

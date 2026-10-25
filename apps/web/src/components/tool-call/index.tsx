@@ -66,7 +66,7 @@ export function ToolCallRenderer({ calls, variant, defaultCollapsed }: ToolCallR
         {callingCount > 0 ? (
           <span className="w-2 h-2 rounded-full bg-warning animate-pulse flex-shrink-0" />
         ) : (
-          <CheckCircle size={12} className="text-primary-500 flex-shrink-0" />
+          <CheckCircle size={12} className="text-accent flex-shrink-0" />
         )}
         <span className="flex-shrink-0">{t('chat.toolCalls', { count: traceCalls.length })}</span>
         {callingCount > 0 && (

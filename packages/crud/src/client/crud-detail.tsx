@@ -64,7 +64,7 @@ export function CrudDetail<TRow>({ schema, row, onClose, onEdit }: CrudDetailPro
                 onClick={() => setTab(tb.key)}
                 className={`px-3 py-2 text-sm border-b-2 -mb-px transition-colors ${
                   (activeTab?.key ?? '') === tb.key
-                    ? 'border-primary-500 text-fg'
+                    ? 'border-accent text-fg'
                     : 'border-transparent text-fg-muted hover:text-fg'
                 }`}
               >

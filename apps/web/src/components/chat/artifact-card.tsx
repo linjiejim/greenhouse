@@ -66,7 +66,7 @@ export function ArtifactCard({
   return (
     <section
       data-chat-artifact-card
-      className={`overflow-hidden rounded-lg border bg-surface-canvas ${FRAME_TONE[tone]} ${className}`}
+      className={`overflow-hidden rounded-md border bg-surface-canvas ${FRAME_TONE[tone]} ${className}`}
     >
       {onToggle ? (
         <button

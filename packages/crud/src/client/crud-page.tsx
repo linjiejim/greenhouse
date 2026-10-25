@@ -265,7 +265,7 @@ export function CrudPage<TRow>({ schema }: CrudPageProps<TRow>) {
           ))}
         </div>
       ) : (
-        <div className="bg-surface-raised border border-edge rounded-lg overflow-x-auto">
+        <div className="bg-surface-raised border border-edge rounded-md overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-surface-sunken text-fg-muted">
               <tr>

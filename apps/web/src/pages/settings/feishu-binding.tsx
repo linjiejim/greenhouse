@@ -71,7 +71,7 @@ export function FeishuBindingCard() {
   if (!state.available) return null;
 
   return (
-    <div className="rounded-xl border border-edge bg-surface-card p-4">
+    <div className="rounded-lg border border-edge bg-surface-card p-4">
       <div className="flex flex-wrap items-center gap-3">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">

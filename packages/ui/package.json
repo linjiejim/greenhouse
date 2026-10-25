@@ -11,7 +11,12 @@
     "./components/plant-avatar/svg": {
       "import": "./src/components/plant-avatar/plant-avatar-svg.ts",
       "types": "./src/components/plant-avatar/plant-avatar-svg.ts"
-    }
+    },
+    "./tokens": {
+      "import": "./src/tokens/tokens.ts",
+      "types": "./src/tokens/tokens.ts"
+    },
+    "./tokens/tokens.css": "./src/tokens/tokens.css"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"

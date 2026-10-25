@@ -90,7 +90,7 @@ export function AttachmentPicker({ baseId, value, onChange }: AttachmentPickerPr
             return (
               <span
                 key={entry}
-                className="inline-flex items-center gap-1 rounded-md border border-edge bg-surface-sunken px-2 py-1 text-xs text-fg-secondary"
+                className="inline-flex items-center gap-1 rounded-sm border border-edge bg-surface-sunken px-2 py-1 text-xs text-fg-secondary"
               >
                 <Paperclip size={11} />
                 {file?.name ?? t('tables.attachments.fileNumber', { id: entry })}
@@ -150,7 +150,7 @@ export function AttachmentPicker({ baseId, value, onChange }: AttachmentPickerPr
               onChange={(event) => void upload(event.target.files)}
             />
           </div>
-          {error && <p className="rounded-md bg-danger-subtle px-3 py-2 text-xs text-danger">{error}</p>}
+          {error && <p className="rounded-sm bg-danger-subtle px-3 py-2 text-xs text-danger">{error}</p>}
           {loading ? (
             <div className="flex justify-center py-12">
               <Spinner />
@@ -164,7 +164,7 @@ export function AttachmentPicker({ baseId, value, onChange }: AttachmentPickerPr
               description={t('tables.attachments.emptyDescription')}
             />
           ) : (
-            <div className="max-h-[50vh] overflow-y-auto rounded-lg border border-edge">
+            <div className="max-h-[50vh] overflow-y-auto rounded-md border border-edge">
               {folders.map((folder) => (
                 <button
                   key={`folder-${folder.id}`}

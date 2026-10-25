@@ -54,7 +54,7 @@ export function CrudTabs({ tabs, active, onActiveChange }: CrudTabsProps) {
               key={tb.key}
               onClick={() => select(tb.key)}
               className={`inline-flex items-center gap-1.5 px-3 py-2 text-sm border-b-2 -mb-px transition-colors ${
-                on ? 'border-primary-500 text-fg font-medium' : 'border-transparent text-fg-muted hover:text-fg'
+                on ? 'border-accent text-fg font-medium' : 'border-transparent text-fg-muted hover:text-fg'
               }`}
             >
               {Icon && <Icon size={15} />}

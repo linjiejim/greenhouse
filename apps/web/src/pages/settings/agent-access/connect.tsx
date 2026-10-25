@@ -57,7 +57,7 @@ function Snippet({ title, code, testId }: { title: string; code: string; testId?
         <span className="text-xs font-medium text-fg-secondary">{title}</span>
         <CopyButton text={code} />
       </div>
-      <pre className="text-[11px] leading-relaxed font-mono bg-surface-sunken text-fg-secondary rounded-lg p-2.5 overflow-x-auto">
+      <pre className="text-[11px] leading-relaxed font-mono bg-surface-sunken text-fg-secondary rounded-md p-2.5 overflow-x-auto">
         {code}
       </pre>
     </div>
@@ -68,7 +68,7 @@ function UrlBox({ label, value }: { label: string; value: string }) {
   return (
     <div>
       <div className="text-xs font-medium text-fg-secondary mb-1">{label}</div>
-      <code className="block truncate text-xs font-mono text-fg bg-surface-sunken rounded-lg px-2.5 py-2">{value}</code>
+      <code className="block truncate text-xs font-mono text-fg bg-surface-sunken rounded-md px-2.5 py-2">{value}</code>
     </div>
   );
 }
@@ -336,9 +336,9 @@ export function ConnectGuide({
                 aria-checked={client === kind}
                 data-testid={`connect-client-${kind}`}
                 onClick={() => setClient(kind)}
-                className={`rounded-lg border px-3 py-2 text-left text-sm font-medium transition-colors ${
+                className={`rounded-md border px-3 py-2 text-left text-sm font-medium transition-colors ${
                   client === kind
-                    ? 'border-primary-500 bg-primary-subtle text-primary-fg-strong'
+                    ? 'border-accent bg-primary-subtle text-primary-fg-strong'
                     : 'border-edge text-fg-secondary hover:bg-surface-sunken'
                 }`}
               >
@@ -353,7 +353,7 @@ export function ConnectGuide({
               <div>
                 <div className="text-xs font-medium text-fg-secondary mb-1">{t('agentAccess.endpoint')}</div>
                 <div className="flex items-center gap-2">
-                  <code className="flex-1 min-w-0 truncate text-xs font-mono text-fg bg-surface-sunken rounded-lg px-2.5 py-2">
+                  <code className="flex-1 min-w-0 truncate text-xs font-mono text-fg bg-surface-sunken rounded-md px-2.5 py-2">
                     {mcpUrl}
                   </code>
                   <CopyButton text={mcpUrl} />

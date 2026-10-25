@@ -90,7 +90,7 @@ export function TablesGridToolbar({
             label={t('tables.addRecord')}
             tooltip="top"
             onClick={onAddRecord}
-            className="bg-primary-500 text-white hover:bg-primary-600 hover:text-white sm:h-8 sm:w-8"
+            className="bg-accent text-on-accent hover:bg-accent-hover hover:text-on-accent sm:h-8 sm:w-8"
           >
             <Plus size={14} />
           </IconButton>

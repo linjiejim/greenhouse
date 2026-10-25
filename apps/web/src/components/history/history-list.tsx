@@ -102,7 +102,7 @@ function SessionRow({
 
   return (
     <div
-      className="bg-surface-card border border-edge rounded-md px-3 py-2 hover:border-primary-300 hover:bg-primary-subtle/30 transition-colors cursor-pointer group"
+      className="bg-surface-card border border-edge rounded-sm px-3 py-2 hover:border-primary-300 hover:bg-primary-subtle/30 transition-colors cursor-pointer group"
       onClick={() => onOpen(session)}
     >
       {/* Row 1 */}

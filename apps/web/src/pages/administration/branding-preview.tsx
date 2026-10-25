@@ -28,7 +28,7 @@ export function BrandingPreview() {
   const [toggleOn, setToggleOn] = useState(true);
 
   return (
-    <div className="bg-surface border border-edge rounded-2xl overflow-hidden shadow-sm">
+    <div className="bg-surface border border-edge rounded-xl overflow-hidden shadow-sm">
       {/* Typography */}
       <Row title={t('brandingStudio.pvTypography')}>
         <h2 className="text-lg font-semibold text-fg mb-1">{t('brandingStudio.sampleHeading')}</h2>
@@ -80,7 +80,7 @@ export function BrandingPreview() {
       <Row title={t('brandingStudio.pvChat')}>
         <div className="space-y-3">
           <div className="flex justify-end">
-            <div className="max-w-[80%] bg-primary-subtle border border-primary-edge rounded-xl rounded-br-md px-4 py-3">
+            <div className="max-w-[80%] bg-primary-subtle border border-primary-edge rounded-lg rounded-br-sm px-4 py-3">
               <p className="text-sm text-fg">{t('brandingStudio.sampleUserMsg')}</p>
             </div>
           </div>

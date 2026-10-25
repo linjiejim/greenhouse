@@ -7,20 +7,15 @@
 
 import React, { useRef, useEffect, useMemo, useState } from 'react';
 import type { ChartData } from './index';
-import { CHART_PALETTE } from '../../lib/utils';
+import { chartPalette, hexAlpha } from '../../lib/utils';
 import { RichBlockShell, richBlockBodyClass } from './rich-block-shell';
 
 // ─── Default Colors ──────────────────────────────────────
-// Chart.js renders to canvas, so it needs literal color strings rather than
-// Tailwind classes. We derive both from the shared CHART_PALETTE `rgb` triplets
-// (the single source of truth — see lib/utils.ts), keeping fills semi-transparent
-// and borders solid.
+// Chart.js renders to canvas, so it needs literal colours rather than Tailwind
+// classes: the shared chart series for the current appearance (lib/utils.ts
+// chartPalette), fills semi-transparent and borders solid.
 
-const translucent = (rgb: string) => `rgba(${rgb}, 0.48)`;
-const solid = (rgb: string) => `rgb(${rgb})`;
-
-const PIE_PALETTE = CHART_PALETTE.map((c) => translucent(c.rgb));
-const PIE_BORDER_PALETTE = CHART_PALETTE.map((c) => solid(c.rgb));
+const translucent = (hex: string) => hexAlpha(hex, 0.48);
 
 function readThemeColor(variable: string, fallback: string): string {
   if (typeof document === 'undefined') return fallback;
@@ -28,7 +23,9 @@ function readThemeColor(variable: string, fallback: string): string {
 }
 
 function readChartTheme(_revision: number) {
+  const dark = typeof document !== 'undefined' && document.documentElement.classList.contains('dark-theme');
   return {
+    series: chartPalette(dark ? 'dark' : 'light'),
     text: readThemeColor('--t-fg-secondary', '#455147'),
     textMuted: readThemeColor('--t-fg-muted', '#5f6a61'),
     edge: readThemeColor('--t-edge', '#e6ece3'),
@@ -70,14 +67,14 @@ export function ChartBlock({
   // Build Chart.js config
   const config = useMemo(() => {
     const datasets = data.datasets.map((ds, i) => {
-      const color = CHART_PALETTE[i % CHART_PALETTE.length];
+      const color = themeColors.series[i % themeColors.series.length];
 
       if (isPieType) {
         return {
           label: ds.label,
           data: ds.data,
-          backgroundColor: PIE_PALETTE.slice(0, ds.data.length),
-          borderColor: PIE_BORDER_PALETTE.slice(0, ds.data.length),
+          backgroundColor: ds.data.map((_, j) => translucent(themeColors.series[j % themeColors.series.length])),
+          borderColor: ds.data.map((_, j) => themeColors.series[j % themeColors.series.length]),
           borderWidth: 1,
         };
       }
@@ -88,8 +85,8 @@ export function ChartBlock({
         // Rich blocks are model-authored, so accepting arbitrary color literals
         // would let every response bypass the product theme. Always normalize to
         // the shared Greenhouse palette.
-        backgroundColor: translucent(color.rgb),
-        borderColor: solid(color.rgb),
+        backgroundColor: translucent(color),
+        borderColor: color,
         borderWidth: data.type === 'line' ? 2 : 1,
         tension: data.type === 'line' ? 0.3 : undefined,
         fill: data.type === 'line' ? false : undefined,
@@ -116,15 +113,15 @@ export function ChartBlock({
             // messages. Keeping it below the plot centers the chart and remains
             // readable when the message becomes narrow.
             position: isPieType ? ('bottom' as const) : ('top' as const),
-            labels: { color: themeColors.text, font: { size: 11 }, padding: 12 },
+            labels: { color: themeColors.text, font: { size: 12 }, padding: 12 },
           },
           title: {
             display: false, // We render title ourselves
           },
           tooltip: {
             enabled: true,
-            titleFont: { size: 11 },
-            bodyFont: { size: 11 },
+            titleFont: { size: 12 },
+            bodyFont: { size: 12 },
             backgroundColor: themeColors.surface,
             titleColor: themeColors.text,
             bodyColor: themeColors.text,
@@ -139,11 +136,11 @@ export function ChartBlock({
                 r: {
                   angleLines: { color: themeColors.edge },
                   grid: { color: themeColors.edge },
-                  pointLabels: { color: themeColors.text, font: { size: 11 } },
+                  pointLabels: { color: themeColors.text, font: { size: 12 } },
                   ticks: {
                     color: themeColors.textMuted,
                     backdropColor: 'transparent',
-                    font: { size: 10 },
+                    font: { size: 12 },
                   },
                 },
               }
@@ -151,12 +148,12 @@ export function ChartBlock({
                 x: {
                   border: { color: themeColors.edge },
                   grid: { display: false },
-                  ticks: { color: themeColors.textMuted, font: { size: 11 } },
+                  ticks: { color: themeColors.textMuted, font: { size: 12 } },
                 },
                 y: {
                   border: { color: themeColors.edge },
                   grid: { color: themeColors.edge },
-                  ticks: { color: themeColors.textMuted, font: { size: 11 } },
+                  ticks: { color: themeColors.textMuted, font: { size: 12 } },
                 },
               },
       },

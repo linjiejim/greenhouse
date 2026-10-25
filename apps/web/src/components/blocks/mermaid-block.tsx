@@ -13,6 +13,7 @@
  *    syntax wrong, and showing what they drew beats an empty card.
  */
 
+import { color as tokenColor, font as tokenFont } from '@greenhouse/ui/tokens';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Copy, Download } from 'lucide-react';
 import { RichBlockShell, richBlockBodyClass } from './rich-block-shell';
@@ -29,7 +30,9 @@ function readMermaidTheme(_revision: number) {
   const surface = readThemeVar('--t-surface-raised', '#ffffff');
   const text = readThemeVar('--t-fg', '#1f2a20');
   const edge = readThemeVar('--t-edge-strong', '#cbd7c8');
-  const primary = readThemeVar('--t-primary-500', '#2E8B3D');
+  const dark = typeof document !== 'undefined' && document.documentElement.classList.contains('dark-theme');
+  // The accent is a ramp reference in CSS; mermaid needs a literal, so read the token module.
+  const primary = tokenColor.accent[dark ? 'dark' : 'light'];
   const muted = readThemeVar('--t-surface-muted', '#f2f6f0');
   return {
     // `base` is the only built-in theme that honours themeVariables wholesale.
@@ -51,7 +54,7 @@ function readMermaidTheme(_revision: number) {
     clusterBorder: edge,
     titleColor: text,
     edgeLabelBackground: surface,
-    fontFamily: '"Nunito Sans", system-ui, sans-serif',
+    fontFamily: tokenFont.sans,
     fontSize: '14px',
   };
 }
@@ -192,7 +195,7 @@ export function MermaidBlock({ code, compact = false }: { code: string; compact?
             dangerouslySetInnerHTML={{ __html: svg }}
           />
         ) : (
-          <div className="h-24 animate-skeleton rounded-md bg-surface-muted" />
+          <div className="h-24 animate-skeleton rounded-sm bg-surface-muted" />
         )}
       </div>
     </RichBlockShell>

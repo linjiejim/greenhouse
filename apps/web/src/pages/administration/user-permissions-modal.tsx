@@ -70,7 +70,7 @@ function EntityPolicyView({ entity }: { entity: AccessEntity }) {
   const t = useT();
   const fields = entity.effectivePolicy.fields as Record<string, FieldPolicy>;
   return (
-    <details className="rounded-lg border border-edge bg-surface-raised">
+    <details className="rounded-md border border-edge bg-surface-raised">
       <summary className="cursor-pointer list-none px-3 py-2 flex items-center justify-between gap-3">
         <span className="text-xs font-medium text-fg">{entity.title}</span>
         <span className="flex flex-wrap gap-1">
@@ -86,7 +86,7 @@ function EntityPolicyView({ entity }: { entity: AccessEntity }) {
         </span>
       </summary>
       <div className="border-t border-edge p-3">
-        <div className="overflow-x-auto rounded-lg border border-edge">
+        <div className="overflow-x-auto rounded-md border border-edge">
           <table className="w-full min-w-[480px] text-xs">
             <thead className="bg-surface-sunken text-fg-muted">
               <tr>
@@ -141,9 +141,9 @@ function FeaturePointCard({
   const hasFiner = isApp && ((point.capabilities?.length ?? 0) > 0 || (point.entities?.length ?? 0) > 0);
 
   return (
-    <div className="rounded-xl border border-edge bg-surface-raised overflow-hidden">
+    <div className="rounded-lg border border-edge bg-surface-raised overflow-hidden">
       <div className="flex items-center gap-3 px-3.5 py-3">
-        <span className="w-9 h-9 rounded-lg bg-surface-sunken flex items-center justify-center flex-shrink-0">
+        <span className="w-9 h-9 rounded-md bg-surface-sunken flex items-center justify-center flex-shrink-0">
           <FeatureIcon name={point.icon} className="text-fg-secondary" />
         </span>
         <div className="min-w-0 flex-1">
@@ -377,7 +377,7 @@ export function UserPermissionsModal({
               aria-selected={tab === key}
               className={`-mb-px border-b-2 px-3 py-2 text-sm transition-colors ${
                 tab === key
-                  ? 'border-primary-500 text-fg font-medium'
+                  ? 'border-accent text-fg font-medium'
                   : 'border-transparent text-fg-muted hover:text-fg-secondary'
               }`}
             >

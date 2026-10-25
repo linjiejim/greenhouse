@@ -22,9 +22,12 @@ import { PRODUCT_NAME } from '../components/ui';
 
 // ─── Tailwind v4 scale bases (shared with the Branding Studio) ──
 
-/** Tailwind v4 default text sizes (rem) — scaled by the font-size slider.
- *  Line heights are unitless ratios, so they follow automatically. */
+/** Text sizes (rem) — scaled by the font-size slider: Tailwind's defaults plus the type-scale
+ *  roles from packages/ui/src/tokens/tokens.ts (caption 12, label 13, body-lg 16). */
 export const TEXT_SIZE_DEFAULTS: Record<string, number> = {
+  '--text-caption': 0.75,
+  '--text-label': 0.8125,
+  '--text-body-lg': 1,
   '--text-xs': 0.75,
   '--text-sm': 0.875,
   '--text-base': 1,
@@ -32,16 +35,16 @@ export const TEXT_SIZE_DEFAULTS: Record<string, number> = {
   '--text-xl': 1.25,
 };
 
-/** Tailwind v4 default radii (rem) — scaled by the roundness slider. */
+/** The radius scale (rem; packages/ui/src/tokens/tokens.ts `radius`) — scaled by the roundness slider. */
 export const RADIUS_DEFAULTS: Record<string, number> = {
-  '--radius-xs': 0.125,
-  '--radius-sm': 0.25,
-  '--radius-md': 0.375,
-  '--radius-lg': 0.5,
-  '--radius-xl': 0.75,
-  '--radius-2xl': 1,
-  '--radius-3xl': 1.5,
-  '--radius-4xl': 2,
+  '--radius': 0.25,
+  '--radius-xs': 0.25,
+  '--radius-sm': 0.375,
+  '--radius-md': 0.5,
+  '--radius-lg': 0.75,
+  '--radius-xl': 1,
+  '--radius-2xl': 1.25,
+  '--radius-sheet': 1.5,
 };
 
 export const scaledRem = (base: number, scale: number) => `${+(base * scale).toFixed(4)}rem`;

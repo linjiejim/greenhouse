@@ -160,7 +160,7 @@ export function CostValuePanel() {
             />
           </div>
 
-          <div className="rounded-md border border-info/30 bg-info-subtle px-3 py-2 text-xs text-fg-secondary">
+          <div className="rounded-sm border border-info/30 bg-info-subtle px-3 py-2 text-xs text-fg-secondary">
             {t('agents.costValue.accountingNote')}
           </div>
 
@@ -292,7 +292,7 @@ export function CostValuePanel() {
             {report.recent_runs.length === 0 ? (
               <EmptyLine text={t('agents.costValue.noRuns')} />
             ) : (
-              <div className="overflow-x-auto rounded-md border border-edge">
+              <div className="overflow-x-auto rounded-sm border border-edge">
                 <table className="min-w-[780px] w-full text-xs [&_td]:whitespace-nowrap [&_th]:whitespace-nowrap">
                   <thead className="bg-surface-sunken text-fg-muted">
                     <tr>
@@ -342,7 +342,7 @@ export function CostValuePanel() {
 
 function Metric({ icon: Icon, label, value }: { icon: LucideIcon; label: string; value: string }) {
   return (
-    <div className="rounded-md border border-edge bg-surface-muted px-3 py-2">
+    <div className="rounded-sm border border-edge bg-surface-muted px-3 py-2">
       <div className="flex items-center gap-1 text-[10px] text-fg-muted">
         <Icon size={12} />
         {label}
@@ -354,7 +354,7 @@ function Metric({ icon: Icon, label, value }: { icon: LucideIcon; label: string;
 
 function Section({ title, icon: Icon, children }: { title: string; icon: LucideIcon; children: React.ReactNode }) {
   return (
-    <div className="rounded-md border border-edge px-3 py-2">
+    <div className="rounded-sm border border-edge px-3 py-2">
       <div className="flex items-center gap-1 border-b border-edge pb-2 text-xs font-medium text-fg-muted">
         <Icon size={13} />
         {title}

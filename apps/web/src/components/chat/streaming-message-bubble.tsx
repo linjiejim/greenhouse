@@ -125,7 +125,7 @@ export function StreamingMessageBubble({ text, reasoning, toolCalls, isStreaming
           <div className="relative">
             <RichMarkdown content={displayText} compact linkTarget="new-window" />
             {(isStreaming || catchingUp) && (
-              <span className="inline-block animate-pulse-dot text-primary-500 ml-0.5">▊</span>
+              <span className="inline-block animate-pulse-dot text-accent ml-0.5">▊</span>
             )}
           </div>
         )}

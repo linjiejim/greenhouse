@@ -32,17 +32,17 @@ export function BoardColumn({
 
   return (
     <div className="w-full md:flex-1 md:min-w-[220px] md:max-w-[320px]">
-      <div className={`flex items-center gap-2 px-3 py-2 rounded-t-lg border ${cfg.bg}`}>
+      <div className={`flex items-center gap-2 px-3 py-2 rounded-t-md border ${cfg.bg}`}>
         <StatusIcon status={status} size={13} />
         <span className="text-xs font-medium">{t(cfg.label)}</span>
         <span className="text-[10px] text-fg-faint ml-auto">{flatTasks.length}</span>
       </div>
-      <div className="space-y-1.5 p-1.5 bg-surface-sunken/50 rounded-b-lg border border-t-0 border-edge min-h-[100px]">
+      <div className="space-y-1.5 p-1.5 bg-surface-sunken/50 rounded-b-md border border-t-0 border-edge min-h-[100px]">
         {flatTasks.map((task) => (
           <div
             key={task.id}
             onClick={() => onSelect(task)}
-            className="bg-surface-card rounded-lg border border-edge p-2.5 cursor-pointer hover:border-primary-300 hover:shadow-sm transition-all text-xs"
+            className="bg-surface-card rounded-md border border-edge p-2.5 cursor-pointer hover:border-primary-300 hover:shadow-sm transition-all text-xs"
           >
             <p className="text-fg font-medium mb-1.5 line-clamp-2">{task.title}</p>
             <div className="flex items-center justify-between text-fg-faint">

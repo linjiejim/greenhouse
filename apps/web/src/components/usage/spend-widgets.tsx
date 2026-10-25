@@ -58,7 +58,7 @@ export function SpendTable({
 export function BudgetBar({ spent, reserved, limit }: { spent: number; reserved: number; limit: number }) {
   const spentPct = Math.min(100, usedFraction(spent, limit) * 100);
   const reservedPct = Math.min(100 - spentPct, usedFraction(reserved, limit) * 100);
-  const tone = spentPct >= 100 ? 'bg-danger' : spentPct >= 80 ? 'bg-warning' : 'bg-primary-500';
+  const tone = spentPct >= 100 ? 'bg-danger' : spentPct >= 80 ? 'bg-warning' : 'bg-accent';
   return (
     <div className="flex h-2 w-full overflow-hidden rounded-full bg-surface-muted" aria-hidden="true">
       <div className={`h-full ${tone}`} style={{ width: `${spentPct}%` }} />

@@ -16,7 +16,7 @@ export function PopoverWrapper({
     <div
       ref={popRef}
       style={{ position: 'absolute', bottom: '100%', left: 0, right: 0, marginBottom: 4, zIndex: 50 }}
-      className="bg-surface-raised border border-edge rounded-lg shadow-lg overflow-hidden max-w-full md:max-w-[360px]"
+      className="bg-surface-raised border border-edge rounded-md shadow-lg overflow-hidden max-w-full md:max-w-[360px]"
     >
       {children}
     </div>

@@ -170,7 +170,7 @@ export function TaskRunDetail({ runId, backHref = '#/activity' }: { runId: strin
           onBack={() => (window.location.hash = backHref)}
           backLabel={t('common.back')}
           icon={
-            <div className="rounded-lg bg-primary-subtle p-2 text-primary-fg">
+            <div className="rounded-md bg-primary-subtle p-2 text-primary-fg">
               <ClipboardList size={18} aria-hidden="true" />
             </div>
           }
@@ -189,7 +189,7 @@ export function TaskRunDetail({ runId, backHref = '#/activity' }: { runId: strin
         />
 
         {error && (
-          <div className="mt-4 rounded-lg border border-danger bg-danger-subtle px-3 py-2 text-xs text-danger">
+          <div className="mt-4 rounded-md border border-danger bg-danger-subtle px-3 py-2 text-xs text-danger">
             {error}
           </div>
         )}
@@ -211,7 +211,7 @@ export function TaskRunDetail({ runId, backHref = '#/activity' }: { runId: strin
                 run.session_id ? (
                   <a
                     href={`#/chat?session=${encodeURIComponent(run.session_id)}`}
-                    className="text-primary-600 hover:underline"
+                    className="text-accent hover:underline"
                   >
                     {run.session_id}
                   </a>
@@ -221,7 +221,7 @@ export function TaskRunDetail({ runId, backHref = '#/activity' }: { runId: strin
             <Field label={t('taskCenter.waitReason')} value={run.wait_reason} />
           </FieldGrid>
           {(run.error_code || run.error_message) && (
-            <p className="selectable mt-3 rounded-lg border border-danger bg-danger-subtle px-3 py-2 text-xs text-danger">
+            <p className="selectable mt-3 rounded-md border border-danger bg-danger-subtle px-3 py-2 text-xs text-danger">
               {[run.error_code, run.error_message].filter(Boolean).join(' — ')}
             </p>
           )}

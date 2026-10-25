@@ -159,11 +159,10 @@ export function LoginScreen({ onSuccess }: { onSuccess: (user: AuthenticatedUser
     >
       <form
         onSubmit={handleSubmit}
-        className="relative w-full max-w-sm overflow-hidden rounded-2xl border border-edge bg-surface-raised p-6 shadow-xl shadow-primary-900/10 md:p-8 dark:shadow-black/30"
+        className="relative w-full max-w-sm overflow-hidden rounded-xl border border-edge bg-surface-raised p-6 shadow-xl shadow-primary-900/10 md:p-8 dark:shadow-black/30"
       >
-        <div className="brand-gradient absolute inset-x-0 top-0 h-1" aria-hidden="true" />
         <div className="text-center mb-6">
-          <div className="mx-auto flex w-fit justify-center rounded-2xl bg-logo-safe p-2">
+          <div className="mx-auto flex w-fit justify-center rounded-xl bg-logo-safe p-2">
             <AppLogo size="xl" logoOnly />
           </div>
           <h1 className="font-display text-xl font-bold text-fg mt-3">{t('login.title')}</h1>
@@ -208,7 +207,7 @@ export function LoginScreen({ onSuccess }: { onSuccess: (user: AuthenticatedUser
           size="lg"
           data-testid="login-submit"
           disabled={loading || !password.trim() || !email.trim()}
-          className="mt-5 w-full rounded-xl"
+          className="mt-5 w-full rounded-lg"
         >
           {loading ? t('login.signingIn') : t('login.signIn')}
         </Button>
@@ -226,7 +225,7 @@ export function LoginScreen({ onSuccess }: { onSuccess: (user: AuthenticatedUser
               variant="outline"
               disabled={feishuBusy}
               onClick={handleFeishuLogin}
-              className="mt-4 w-full rounded-xl"
+              className="mt-4 w-full rounded-lg"
             >
               {feishuBusy ? t('login.feishuSigningIn') : t('login.feishu')}
             </Button>

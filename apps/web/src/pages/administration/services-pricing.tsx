@@ -541,7 +541,7 @@ function UnpricedBanner({ overview, onOpenPrices }: { overview: MeteringOverview
     <div
       role="status"
       data-testid="metering-unpriced-banner"
-      className="flex flex-col gap-2 rounded-lg border border-warning bg-warning-subtle px-3 py-2.5 sm:flex-row sm:items-center sm:justify-between"
+      className="flex flex-col gap-2 rounded-md border border-warning bg-warning-subtle px-3 py-2.5 sm:flex-row sm:items-center sm:justify-between"
     >
       <div className="min-w-0">
         <div className="flex items-center gap-1.5 text-sm font-semibold text-warning">

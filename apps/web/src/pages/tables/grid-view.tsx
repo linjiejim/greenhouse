@@ -816,7 +816,7 @@ export function TablesGridView({ table, tables, role, users }: TablesGridViewPro
             </div>
           )}
           {fieldType === 'relation' && (
-            <div className="space-y-3 rounded-md border border-edge bg-surface-sunken p-3">
+            <div className="space-y-3 rounded-sm border border-edge bg-surface-sunken p-3">
               <div>
                 <label className="mb-1 block text-xs font-medium text-fg-muted">{t('tables.relatedTable')}</label>
                 <Select
@@ -839,7 +839,7 @@ export function TablesGridView({ table, tables, role, users }: TablesGridViewPro
             </div>
           )}
           {fieldType === 'formula' && (
-            <div className="grid grid-cols-1 gap-3 rounded-md border border-edge bg-surface-sunken p-3 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-3 rounded-sm border border-edge bg-surface-sunken p-3 sm:grid-cols-2">
               <div>
                 <label className="mb-1 block text-xs font-medium text-fg-muted">{t('tables.leftField')}</label>
                 <Select value={formulaLeftFieldId} onChange={(event) => setFormulaLeftFieldId(event.target.value)}>
@@ -900,7 +900,7 @@ export function TablesGridView({ table, tables, role, users }: TablesGridViewPro
             </div>
           )}
           {fieldType === 'rollup' && (
-            <div className="grid grid-cols-1 gap-3 rounded-md border border-edge bg-surface-sunken p-3 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-3 rounded-sm border border-edge bg-surface-sunken p-3 sm:grid-cols-2">
               <div>
                 <label className="mb-1 block text-xs font-medium text-fg-muted">{t('tables.relationField')}</label>
                 <Select
@@ -987,7 +987,7 @@ export function TablesGridView({ table, tables, role, users }: TablesGridViewPro
       >
         <div className="space-y-4">
           {pendingFrozenCount !== null && (
-            <p className="rounded-md bg-info-subtle px-3 py-2 text-xs text-info">
+            <p className="rounded-sm bg-info-subtle px-3 py-2 text-xs text-info">
               {t('tables.frozenColumnsHint', { count: pendingFrozenCount })}
             </p>
           )}
@@ -1128,7 +1128,7 @@ export function TablesGridView({ table, tables, role, users }: TablesGridViewPro
               );
             })}
             {filterDrafts.length === 0 && (
-              <p className="rounded-md border border-dashed border-edge px-3 py-6 text-center text-xs text-fg-faint">
+              <p className="rounded-sm border border-dashed border-edge px-3 py-6 text-center text-xs text-fg-faint">
                 {t('tables.noFilterConditions')}
               </p>
             )}

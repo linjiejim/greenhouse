@@ -34,7 +34,7 @@ export function CopyField({ value, testId }: { value: string; testId?: string })
   return (
     <div className="flex items-center gap-2">
       <code
-        className="flex-1 min-w-0 truncate text-xs font-mono text-fg bg-surface-sunken rounded-lg px-2.5 py-2"
+        className="flex-1 min-w-0 truncate text-xs font-mono text-fg bg-surface-sunken rounded-md px-2.5 py-2"
         data-testid={testId}
       >
         {value}
@@ -255,7 +255,7 @@ export function GatewayKeys({ onOpenGuide }: { onOpenGuide: () => void }) {
     <div className="space-y-4">
       {!enabled && overview && (
         <div
-          className="rounded-lg border border-edge bg-warning-subtle p-3 flex items-start gap-2"
+          className="rounded-md border border-edge bg-warning-subtle p-3 flex items-start gap-2"
           data-testid="gateway-disabled"
         >
           <AlertTriangle size={15} className="text-warning flex-shrink-0 mt-0.5" />

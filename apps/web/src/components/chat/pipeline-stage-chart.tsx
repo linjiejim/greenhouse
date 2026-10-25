@@ -10,14 +10,14 @@ import { useT, type TranslationKey } from '../../lib/i18n';
 // ─── Stage Colors ────────────────────────────────────────
 
 const STAGE_COLORS = [
-  { bg: 'bg-primary-500', text: 'text-primary-fg-strong', light: 'bg-primary-subtle' },
+  { bg: 'bg-accent', text: 'text-primary-fg-strong', light: 'bg-primary-subtle' },
   { bg: 'bg-info', text: 'text-info', light: 'bg-info-subtle' },
   { bg: 'bg-warning', text: 'text-warning', light: 'bg-warning-subtle' },
-  { bg: 'bg-purple-500', text: 'text-purple-700', light: 'bg-purple-50' },
+  { bg: 'bg-cat-purple', text: 'text-cat-purple', light: 'bg-cat-purple-fill' },
   { bg: 'bg-danger', text: 'text-danger', light: 'bg-danger-subtle' },
   { bg: 'bg-success', text: 'text-success', light: 'bg-success-subtle' },
-  { bg: 'bg-orange-500', text: 'text-orange-700', light: 'bg-orange-50' },
-  { bg: 'bg-cyan-500', text: 'text-cyan-700', light: 'bg-cyan-50' },
+  { bg: 'bg-cat-orange', text: 'text-cat-orange', light: 'bg-cat-orange-fill' },
+  { bg: 'bg-cat-teal', text: 'text-cat-teal', light: 'bg-cat-teal-fill' },
 ];
 
 const TOOL_LABELS: Record<string, TranslationKey> = {
@@ -125,7 +125,7 @@ export function PipelineStageChart({ steps, totalDurationMs, compact, className 
               onMouseEnter={() => setHoveredIdx(i)}
               onMouseLeave={() => setHoveredIdx(null)}
             >
-              <span className={`w-2 h-2 rounded-sm ${stage.color.bg} inline-block`} />
+              <span className={`w-2 h-2 rounded-xs ${stage.color.bg} inline-block`} />
               <span className={`${stage.color.text} font-medium`}>{stage.label}</span>
               <span className="text-fg-faint">{(stage.durationMs / 1000).toFixed(2)}s</span>
               <span className="text-fg-faint">({stage.percent.toFixed(0)}%)</span>
@@ -133,7 +133,7 @@ export function PipelineStageChart({ steps, totalDurationMs, compact, className 
           ))}
           {otherMs > 0 && (
             <div className="flex items-center gap-1 text-[10px]">
-              <span className="w-2 h-2 rounded-sm bg-edge-strong inline-block" />
+              <span className="w-2 h-2 rounded-xs bg-edge-strong inline-block" />
               <span className="text-fg-muted font-medium">{t('pipeline.llmOther')}</span>
               <span className="text-fg-faint">{(otherMs / 1000).toFixed(2)}s</span>
               <span className="text-fg-faint">({otherPercent.toFixed(0)}%)</span>

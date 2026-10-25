@@ -121,7 +121,7 @@ export function ActivityLogPage({ moduleId }: { moduleId: 'workspace.activity' |
       }
       notice={
         error ? (
-          <div className="flex flex-wrap items-center gap-2 rounded-lg border border-danger bg-danger-subtle px-3 py-2 text-xs text-danger">
+          <div className="flex flex-wrap items-center gap-2 rounded-md border border-danger bg-danger-subtle px-3 py-2 text-xs text-danger">
             <span className="min-w-0 flex-1">{error}</span>
             <Button variant="outline" size="sm" onClick={() => void load()}>
               {t('common.tryAgain')}
@@ -195,7 +195,7 @@ export function ActivityLogPage({ moduleId }: { moduleId: 'workspace.activity' |
           description={t('activity.emptyDescription')}
         />
       ) : (
-        <div className="divide-y divide-edge overflow-hidden rounded-lg border border-edge" role="list">
+        <div className="divide-y divide-edge overflow-hidden rounded-md border border-edge" role="list">
           {items.map((item) => (
             <div role="listitem" key={item.id}>
               <ActivityRow item={item} />

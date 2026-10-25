@@ -122,7 +122,7 @@ export function SettingsNavPanel({ activeModule, collapsed, onSignOut }: Setting
           <button
             type="button"
             onClick={() => setConfirmOpen(true)}
-            className="w-full flex items-center gap-2.5 px-3 py-1.5 rounded-md text-xs text-danger hover:bg-danger-subtle transition-colors"
+            className="w-full flex items-center gap-2.5 px-3 py-1.5 rounded-sm text-xs text-danger hover:bg-danger-subtle transition-colors"
           >
             <LogOut size={14} />
             <span className="flex-1 text-left font-medium">{t('app.logout')}</span>
@@ -167,7 +167,7 @@ function NavItem({
     <button
       onClick={onClick}
       onContextMenu={onContextMenu}
-      className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-md text-xs transition-colors ${
+      className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-sm text-xs transition-colors ${
         isActive
           ? 'bg-primary-subtle text-primary-fg-strong font-medium'
           : 'text-fg-secondary hover:text-fg hover:bg-surface-sunken'

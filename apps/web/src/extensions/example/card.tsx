@@ -9,7 +9,7 @@ export function ExampleNotesCard({ call }: { call: ExtensionToolCallView }) {
   const out = call.output as { count?: number; notes?: Array<{ id: number; body: string }> } | undefined;
   const notes = out?.notes ?? [];
   return (
-    <div className="my-2 rounded-xl border border-edge bg-surface-raised p-3" data-testid="example-notes-card">
+    <div className="my-2 rounded-lg border border-edge bg-surface-raised p-3" data-testid="example-notes-card">
       <div className="mb-2 flex items-center gap-2 text-sm font-medium text-fg">
         <StickyNote size={14} className="text-primary-fg-strong" />
         <span>{t('ext.example.card.title')}</span>

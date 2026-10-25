@@ -83,8 +83,8 @@ export function SidebarBackButton({ onClick, compact = false, label }: SidebarBa
       onClick={onClick}
       className={
         compact
-          ? 'flex h-9 w-9 items-center justify-center rounded-lg text-fg-muted transition-colors hover:bg-surface-muted hover:text-fg-secondary'
-          : 'flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-fg-secondary transition-colors hover:bg-surface-muted hover:text-fg'
+          ? 'flex h-9 w-9 items-center justify-center rounded-md text-fg-muted transition-colors hover:bg-surface-muted hover:text-fg-secondary'
+          : 'flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-fg-secondary transition-colors hover:bg-surface-muted hover:text-fg'
       }
       title={resolvedLabel}
       aria-label={resolvedLabel}
@@ -106,7 +106,7 @@ export function SidebarBrandHeader(props: SidebarBrandHeaderProps) {
         <button
           type="button"
           onClick={props.onToggle}
-          className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg text-fg-faint transition-colors hover:bg-surface-muted hover:text-fg-secondary"
+          className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-md text-fg-faint transition-colors hover:bg-surface-muted hover:text-fg-secondary"
           title={t('navigation.expandSidebar')}
           aria-expanded={false}
           aria-label={t('navigation.expandSidebar')}
@@ -121,8 +121,8 @@ export function SidebarBrandHeader(props: SidebarBrandHeaderProps) {
 
   return (
     <div className="flex h-14 w-full flex-shrink-0 items-center gap-2 border-b border-edge px-3">
-      <div className="sidebar-brand-identity group relative flex min-w-0 flex-1 items-center overflow-hidden rounded-lg px-1">
-        <a href="#/home" className="absolute inset-0 z-0 rounded-lg" aria-label={t('navigation.greenHouseHome')} />
+      <div className="sidebar-brand-identity group relative flex min-w-0 flex-1 items-center overflow-hidden rounded-md px-1">
+        <a href="#/home" className="absolute inset-0 z-0 rounded-md" aria-label={t('navigation.greenHouseHome')} />
         <div className="pointer-events-none relative z-[1] flex items-center gap-2 transition-opacity group-hover:opacity-80">
           <AppLogo size="sm" logoOnly />
           <div className="flex min-w-0 flex-col">
@@ -144,7 +144,7 @@ export function SidebarCollapseButton({ onClick }: { onClick: () => void }) {
     <button
       type="button"
       onClick={onClick}
-      className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg text-fg-faint transition-colors hover:bg-surface-muted hover:text-fg-secondary"
+      className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-md text-fg-faint transition-colors hover:bg-surface-muted hover:text-fg-secondary"
       title={t('navigation.collapseSidebar')}
       aria-expanded={true}
       aria-label={t('navigation.collapseSidebar')}
@@ -235,7 +235,7 @@ export function AppSidebar({
       <>
         <div
           className={`hidden h-full flex-shrink-0 flex-col items-center border-r border-edge bg-surface-chrome md:flex ${
-            sidebarResizing ? '' : 'transition-[width] duration-200 ease-in-out'
+            sidebarResizing ? '' : 'transition-[width] duration-(--gh-duration-base) ease-standard'
           }`}
           style={{ width: visibleSidebarWidth }}
         >
@@ -256,7 +256,7 @@ export function AppSidebar({
                 <button
                   type="button"
                   onClick={onNewChat}
-                  className="mb-1 flex h-9 w-9 items-center justify-center rounded-lg text-fg-muted transition-colors hover:bg-surface-muted hover:text-fg-secondary"
+                  className="mb-1 flex h-9 w-9 items-center justify-center rounded-md text-fg-muted transition-colors hover:bg-surface-muted hover:text-fg-secondary"
                   title={t('navigation.newChat')}
                   aria-label={t('navigation.newChat')}
                 >
@@ -291,7 +291,7 @@ export function AppSidebar({
     <>
       <div
         className={`relative hidden h-full flex-shrink-0 flex-col overflow-visible border-r border-edge bg-surface-chrome md:flex ${
-          sidebarResizing ? '' : 'transition-[width] duration-200 ease-in-out'
+          sidebarResizing ? '' : 'transition-[width] duration-(--gh-duration-base) ease-standard'
         }`}
         style={{ width: visibleSidebarWidth, containerType: 'inline-size', containerName: 'app-sidebar' }}
       >

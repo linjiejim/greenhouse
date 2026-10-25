@@ -12,7 +12,6 @@ export function SettingsSection({
   icon: Icon,
   action,
   children,
-  accent = false,
   className = '',
 }: {
   title?: React.ReactNode;
@@ -20,12 +19,10 @@ export function SettingsSection({
   icon?: LucideIcon;
   action?: React.ReactNode;
   children: React.ReactNode;
-  accent?: boolean;
   className?: string;
 }) {
   return (
     <Card className={`overflow-hidden ${className}`}>
-      {accent && <div className="brand-gradient h-1" aria-hidden="true" />}
       <section className="p-4">
         {(title || description || action) && (
           <div className="mb-3 flex items-start justify-between gap-3">

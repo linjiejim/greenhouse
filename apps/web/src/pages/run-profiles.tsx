@@ -227,7 +227,7 @@ export function RunProfilesPanel({ sectionTabs }: { sectionTabs?: React.ReactNod
                   <button
                     key={p.id}
                     onClick={() => openFromTemplate(p)}
-                    className="group flex min-h-20 items-start gap-3 rounded-lg border border-edge bg-surface-raised px-3 py-3 text-left transition-colors hover:border-primary-edge hover:bg-primary-subtle/30"
+                    className="group flex min-h-20 items-start gap-3 rounded-md border border-edge bg-surface-raised px-3 py-3 text-left transition-colors hover:border-primary-edge hover:bg-primary-subtle/30"
                   >
                     <PlantAvatar {...profileAvatarProps(p)} size="sm" animate={false} />
                     <div className="min-w-0 flex-1">
@@ -261,7 +261,7 @@ export function RunProfilesPanel({ sectionTabs }: { sectionTabs?: React.ReactNod
           ) : (
             <>
               {scope === 'mine' && myProfiles.length > 0 && (
-                <div className="bg-surface-raised border border-edge rounded-lg overflow-hidden">
+                <div className="bg-surface-raised border border-edge rounded-md overflow-hidden">
                   <table className="w-full text-sm">
                     <thead className="bg-surface-sunken text-fg-muted">
                       <tr>
@@ -349,7 +349,7 @@ export function RunProfilesPanel({ sectionTabs }: { sectionTabs?: React.ReactNod
                   <h3 className="text-xs font-medium text-fg-muted mb-2 uppercase tracking-wider">
                     {t(scope === 'team' ? 'agents.teamAgents' : 'agents.sharedAgents')}
                   </h3>
-                  <div className="bg-surface-raised border border-edge rounded-lg overflow-hidden">
+                  <div className="bg-surface-raised border border-edge rounded-md overflow-hidden">
                     <table className="w-full text-sm">
                       <tbody className="divide-y divide-edge">
                         {scopedProfiles.map((p) => (
