@@ -8,7 +8,7 @@
  *    marks are optimistic and come back on failure.
  *  - Pull to refresh, endless paging.
  *  - A segmented control switches to team activity: the last 14 days of changes I may read
- *    (`/api/activity/recent`, loaded on first visit, paged with `before`); a row opens its object.
+ *    (`/api/activity/recent`, loaded on first visit, paged with `before`; a pull to refresh drops a load-more still in flight); a row opens its object.
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -20,6 +20,7 @@ import { clearAllStationBanners } from '../src/push/handler';
 import type { PlatformNotification } from '../src/shared/greenhouse-types';
 import { openNotificationOrTarget } from '../src/shell/open-notification';
 import { listRecentChanges } from '../src/api/activity';
+import { beginActivityLoad, finishActivityLoad, NO_ACTIVITY, type ActivityFeedState } from '../src/data/activity-feed';
 import { ActivityRow } from '../src/notifications/activity-row';
 import type { ActivityItem } from '../src/shared/greenhouse-types';
 import { useOpenObject, useOpenTarget } from '../src/shell/open-object';
@@ -36,31 +37,19 @@ import { Segmented } from '../src/ui/segmented';
 
 type Tab = 'notifications' | 'activity';
 
-interface ActivityState {
-  items: ActivityItem[];
-  next: string | null;
-  status: 'idle' | 'loading' | 'ready' | 'error';
-  loadingMore: boolean;
-}
-
-const NO_ACTIVITY: ActivityState = { items: [], next: null, status: 'idle', loadingMore: false };
-
-/** The team activity feed: first page on demand, then `before` pages. */
+/** The team activity feed: first page on demand, then `before` pages; a refresh drops loads it overtook. */
 function useTeamActivity() {
-  const [state, setState] = useState<ActivityState>(NO_ACTIVITY);
+  const [state, setState] = useState<ActivityFeedState>(NO_ACTIVITY);
   const current = useRef(state);
   current.current = state;
   const load = useCallback(async (more: boolean) => {
-    const s = current.current;
-    if (more && (!s.next || s.loadingMore || s.status !== 'ready')) return;
-    const before = more ? s.next : null;
-    setState((prev) => (more ? { ...prev, loadingMore: true } : { ...prev, status: prev.items.length ? prev.status : 'loading' }));
-    const result = await listRecentChanges({ before });
-    setState((prev) => {
-      if (!result.ok) return more ? { ...prev, loadingMore: false } : { ...prev, status: prev.items.length ? 'ready' : 'error' };
-      const items = more ? [...prev.items, ...result.data.items] : result.data.items;
-      return { items, next: result.data.next_before, status: 'ready', loadingMore: false };
-    });
+    const started = beginActivityLoad(current.current, more);
+    if (!started) return;
+    // kept in the ref at once so a second tap in the same frame sees the load already running
+    current.current = started.state;
+    setState(started.state);
+    const result = await listRecentChanges({ before: started.load.before });
+    setState((prev) => finishActivityLoad(prev, started.load, result));
   }, []);
   return { ...state, refresh: () => load(false), loadMore: () => load(true) };
 }
