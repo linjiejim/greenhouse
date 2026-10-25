@@ -30,6 +30,7 @@ export const ADMIN_REDIRECTS: Record<string, string> = {
   frictions: 'issues',
   activity: 'activity',
   'mcp-keys': 'mcp-keys',
+  connectors: 'connectors',
   'runtime-config': 'runtime-config',
   'team-context': 'team-context',
   branding: 'branding',

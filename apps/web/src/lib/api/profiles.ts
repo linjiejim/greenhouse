@@ -77,6 +77,8 @@ export interface CustomProfileInput {
   /** Registry model id this agent runs on. */
   model_id?: string;
   tools: string[];
+  /** mcp_call narrowing: null = every connector the member can use; ids otherwise. */
+  connectors?: string[] | null;
   system_prompt: string;
   capabilities?: Array<{ icon: string; label: string; prompt: string }>;
   max_steps?: number;

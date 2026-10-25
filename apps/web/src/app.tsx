@@ -6,6 +6,7 @@
  * UI 子组件拆分到 components/app/ 目录下。
  */
 
+import { CONNECTOR_OAUTH_FINISH_HASH } from '@greenhouse/types/connectors';
 import './app.css';
 import React, { useState, useEffect, useMemo, useCallback, useRef, Suspense, lazy } from 'react';
 import { createRoot } from 'react-dom/client';
@@ -27,6 +28,9 @@ const TablesPage = lazy(() => import('./pages/tables').then((m) => ({ default: m
 const FilesPage = lazy(() => import('./pages/files').then((m) => ({ default: m.FilesPage })));
 const HomePage = lazy(() => import('./pages/home').then((m) => ({ default: m.HomePage })));
 const OAuthConsentPage = lazy(() => import('./pages/oauth-consent').then((m) => ({ default: m.OAuthConsentPage })));
+const ConnectorOAuthFinishPage = lazy(() =>
+  import('./pages/connector-oauth-finish').then((m) => ({ default: m.ConnectorOAuthFinishPage })),
+);
 const AccountPasswordPage = lazy(() =>
   import('./pages/account-password').then((m) => ({ default: m.AccountPasswordPage })),
 );
@@ -270,6 +274,18 @@ function App() {
             useAuthStore.getState().setAuthState('authenticated');
           }}
         />
+        <ToastContainer />
+      </I18nProvider>
+    );
+  }
+
+  // A connector sign-in coming back (usually in a popup): finish it without the app shell.
+  if (window.location.hash.startsWith(CONNECTOR_OAUTH_FINISH_HASH)) {
+    return (
+      <I18nProvider initialLocale={userLocale} onLocaleChange={handleLocaleChange}>
+        <Suspense fallback={<LoadingScreen />}>
+          <ConnectorOAuthFinishPage />
+        </Suspense>
         <ToastContainer />
       </I18nProvider>
     );
