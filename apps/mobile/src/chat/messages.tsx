@@ -6,13 +6,12 @@
  *    fence never shows as text). A quiet mark beside the bubble says where it is: a clock while it
  *    is on its way or waits for the station (queued offline, with a retry), a check once the
  *    station has it (my latest message only).
- *  - `AssistantReply` — the reply without a bubble: the sprout and "Sprouty" with, on the right of
- *    that row, what the reply is doing ("Searching knowledge…") or how many steps it took; tapping
+ *  - `AssistantReply` — the reply without a bubble: a compact "Sprouty" line (no avatar: Sprouty's
+ *    one presence is the living face in the header) with, on the right of that row, what the reply is doing ("Searching knowledge…") or how many steps it took; tapping
  *    it opens the steps sheet. Tool steps never add or remove rows in the body, so the reply does
  *    not jump as they start and finish. Then the words with their rich blocks and link chips, the
  *    cards (questions, files, pictures, things to save or apply, extension cards) and the objects
- *    it cites or wrote. Sprouty's living face is in the page header (./header-avatar.tsx); the
- *    sprout here rests.
+ *    it cites or wrote. Sprouty's living face is in the page header (./header-avatar.tsx).
  *
  * Long press on either opens the message menu: Copy, Share, Quote Reply, and Regenerate on the
  * latest reply.
@@ -25,7 +24,6 @@ import { useT } from '../lib/i18n';
 import { Markdown, RichContext, type RichEnv } from '../markdown';
 import { Inline } from '../markdown/inline';
 import { HIT, makeStyles, radius, space, squircle, typo, useTheme, weight } from '../theme';
-import { AssistantAvatar } from '../ui/avatar';
 import { NativeButton } from '../ui/button';
 import { Icon, Spinner, Touchable } from '../ui/core';
 import { NativeMenu } from '../ui/menu';
@@ -258,7 +256,6 @@ export const AssistantReply = memo(function AssistantReply({
     <View style={styles.reply}>
       {/* one row, one height: the status changes words in place, never the rows below */}
       <View style={styles.author}>
-        <AssistantAvatar size={28} />
         <Text style={styles.authorName} numberOfLines={1}>
           {t('conversation.assistant')}
         </Text>
@@ -324,7 +321,7 @@ const useStyles = makeStyles((c) => ({
     marginBottom: space.sm,
     minHeight: HIT - space.sm,
   },
-  authorName: { ...typo.subheadline, fontWeight: weight.semibold, color: c.secondaryLabel, flexShrink: 0 },
+  authorName: { ...typo.footnote, fontWeight: weight.semibold, color: c.secondaryLabel, flexShrink: 0 },
   status: { flex: 1, alignItems: 'flex-end' },
   statusButton: { minHeight: HIT - space.sm, justifyContent: 'center' },
   statusInner: { flexDirection: 'row', alignItems: 'center', gap: space.xs, maxWidth: '100%' },
