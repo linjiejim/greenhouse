@@ -9,7 +9,7 @@
  */
 
 import React from 'react';
-import { Platform, useWindowDimensions } from 'react-native';
+import { Keyboard, Platform, useWindowDimensions } from 'react-native';
 import { Stack, useNavigation } from 'expo-router';
 import { DrawerActions, useNavigationState } from 'expo-router/react-navigation';
 import { useT } from '../lib/i18n';
@@ -34,7 +34,11 @@ export function SidebarToolbar() {
       <Stack.Toolbar.Button
         icon={toolbarIcon('menu')}
         accessibilityLabel={t('nav.sidebar')}
-        onPress={() => navigation.dispatch(DrawerActions.openDrawer())}
+        onPress={() => {
+          // the drawer covers the composer: its keyboard goes first (a swipe dismisses it on drag)
+          Keyboard.dismiss();
+          navigation.dispatch(DrawerActions.openDrawer());
+        }}
       />
     </Stack.Toolbar>
   );
