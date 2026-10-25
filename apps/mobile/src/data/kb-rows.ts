@@ -1,8 +1,12 @@
 /**
- * The rows of a knowledge shelf's top or folder level. React-free (./kb-rows.test.ts). At a
- * shelf's top the recently opened documents come first — whether or not the shelf itself loaded,
- * so on a cold launch without the station they still open from their saved copies; below them
- * the shelf's folders and documents, or, while it loads or when it failed, a row saying so.
+ * The rows of the knowledge page. React-free (./kb-rows.test.ts).
+ *
+ *  - 最近打开 (the first segment): the documents this member opened on this phone, newest first,
+ *    from the per-station + member list src/store/knowledge.ts keeps (there is no recent-documents
+ *    endpoint). It needs no station, so on a cold launch offline they still open from their saved copies.
+ *  - A shelf's level (团队 / 我的 / 共享): its folders, then its documents, in one card.
+ *
+ * Every document row is one line: the title, and its date at the trailing edge.
  */
 
 import type { DriveFolder, KbDoc } from '../shared/greenhouse-types';
@@ -13,58 +17,50 @@ import { rowPosition, type RowPosition } from './row-position';
 export type Position = RowPosition;
 
 export type KbRow =
-  | { key: string; type: 'header'; title: string }
   | { key: string; type: 'folder'; folder: DriveFolder; position: Position }
-  | { key: string; type: 'doc'; id: string; title: string; subtitle?: string; position: Position }
-  | { key: string; type: 'loading' }
-  | { key: string; type: 'failed' };
-
-/** How many recently opened documents the top of a shelf lists. */
-export const RECENT_ON_SHELF = 5;
+  | { key: string; type: 'doc'; id: string; title: string; subtitle?: string; date?: string; position: Position };
 
 export function positioned<T>(items: readonly T[], make: (item: T, position: Position) => KbRow): KbRow[] {
-  return items.map((item, index) =>
-    make(item, rowPosition(index, items.length)),
-  );
+  return items.map((item, index) => make(item, rowPosition(index, items.length)));
 }
 
-export function shelfRows(input: {
-  /** At the shelf's top (not inside a folder). */
-  atTop: boolean;
-  recent: readonly RecentDoc[];
-  /** The level's folders and documents, or null while it has not loaded. */
-  level: { folders: DriveFolder[]; docs: KbDoc[] } | null;
-  loading: boolean;
-  titles: { recent: string; shelf: string };
-  docSubtitle: (doc: KbDoc) => string | undefined;
-}): KbRow[] {
-  const recent = input.atTop ? input.recent.slice(0, RECENT_ON_SHELF) : [];
-  const out: KbRow[] = [];
-  if (recent.length) {
-    out.push({ key: 'h-recent', type: 'header', title: input.titles.recent });
-    out.push(
-      ...positioned(recent, (entry, position) => ({ key: `recent-${entry.id}`, type: 'doc', id: entry.id, title: entry.title, position })),
-    );
-  }
-  if (!input.level) {
-    // with nothing above, the screen's own empty state says loading / failed
-    if (out.length) out.push(input.loading ? { key: 'loading', type: 'loading' } : { key: 'failed', type: 'failed' });
-    return out;
-  }
-  if (recent.length) out.push({ key: 'h-shelf', type: 'header', title: input.titles.shelf });
-  // folders and documents share one card
-  const level = input.level;
+/** The recently opened documents, with the time each was opened. */
+export function recentRows(recent: readonly RecentDoc[], dateOf: (entry: RecentDoc) => string): KbRow[] {
+  return positioned(recent, (entry, position) => ({
+    key: `recent-${entry.id}`,
+    type: 'doc',
+    id: entry.id,
+    title: entry.title,
+    date: dateOf(entry) || undefined,
+    position,
+  }));
+}
+
+/** A shelf level's folders and documents (none until it has loaded). */
+export function shelfRows(
+  level: { folders: DriveFolder[]; docs: KbDoc[] } | null,
+  dateOf: (doc: KbDoc) => string,
+): KbRow[] {
+  if (!level) return [];
   const count = level.folders.length + level.docs.length;
-  level.folders.forEach((folder, index) => out.push({ key: `f-${folder.id}`, type: 'folder', folder, position: rowPosition(index, count) }));
-  level.docs.forEach((doc, index) =>
-    out.push({
-      key: `d-${doc.id}`,
-      type: 'doc',
-      id: doc.id,
-      title: doc.title,
-      subtitle: input.docSubtitle(doc),
-      position: rowPosition(level.folders.length + index, count),
-    }),
-  );
-  return out;
+  return [
+    ...level.folders.map(
+      (folder, index): KbRow => ({
+        key: `f-${folder.id}`,
+        type: 'folder',
+        folder,
+        position: rowPosition(index, count),
+      }),
+    ),
+    ...level.docs.map(
+      (doc, index): KbRow => ({
+        key: `d-${doc.id}`,
+        type: 'doc',
+        id: doc.id,
+        title: doc.title,
+        date: dateOf(doc) || undefined,
+        position: rowPosition(level.folders.length + index, count),
+      }),
+    ),
+  ];
 }

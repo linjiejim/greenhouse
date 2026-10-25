@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { DriveFolder, KbDoc } from '../shared/greenhouse-types';
-import { shelfRows } from './kb-rows';
+import { recentRows, shelfRows } from './kb-rows';
 
 const recent = [
   { id: '7', title: 'Brand Voice', openedAt: 2 },
@@ -10,28 +10,29 @@ const level = {
   folders: [{ id: '1', name: 'Marketing', parent_id: null } as DriveFolder],
   docs: [{ id: '9', title: 'FAQ', updated_at: '2026-06-22' } as KbDoc],
 };
-const base = { atTop: true, recent, level, loading: false, titles: { recent: 'Recent', shelf: 'Team' }, docSubtitle: () => undefined };
-const kinds = (rows: { type: string; key: string }[]) => rows.map((row) => row.key);
 
-describe('the rows of a knowledge shelf', () => {
-  it('lists recently opened documents above the shelf', () => {
-    expect(kinds(shelfRows(base))).toEqual(['h-recent', 'recent-7', 'recent-3', 'h-shelf', 'f-1', 'd-9']);
+describe('the rows of the knowledge page', () => {
+  it('lists the recently opened documents, newest first, each with when it was opened', () => {
+    const rows = recentRows(recent, (entry) => `t${entry.openedAt}`);
+    expect(rows).toEqual([
+      { key: 'recent-7', type: 'doc', id: '7', title: 'Brand Voice', date: 't2', position: 'first' },
+      { key: 'recent-3', type: 'doc', id: '3', title: 'Handbook', date: 't1', position: 'last' },
+    ]);
   });
 
-  it('still lists the recent, saved documents on a cold offline launch when the shelf failed', () => {
-    const rows = shelfRows({ ...base, level: null, loading: false });
-    expect(kinds(rows)).toEqual(['h-recent', 'recent-7', 'recent-3', 'failed']);
+  it('puts a shelf level’s folders before its documents in one card, dates on the documents', () => {
+    const rows = shelfRows(level, (doc) => doc.updated_at ?? '');
+    expect(rows.map((row) => row.key)).toEqual(['f-1', 'd-9']);
+    expect(rows[1]).toMatchObject({ title: 'FAQ', date: '2026-06-22', position: 'last' });
+    expect(rows[0]).toMatchObject({ position: 'first' });
   });
 
-  it('shows them while the shelf is still loading', () => {
-    expect(kinds(shelfRows({ ...base, level: null, loading: true }))).toEqual(['h-recent', 'recent-7', 'recent-3', 'loading']);
+  it('has no rows before the level has loaded, so the screen’s own state speaks', () => {
+    expect(shelfRows(null, () => '')).toEqual([]);
+    expect(recentRows([], () => '')).toEqual([]);
   });
 
-  it('leaves the screen’s empty state to speak when there is nothing recent', () => {
-    expect(shelfRows({ ...base, recent: [], level: null })).toEqual([]);
-  });
-
-  it('lists no recent documents inside a folder', () => {
-    expect(kinds(shelfRows({ ...base, atTop: false }))).toEqual(['f-1', 'd-9']);
+  it('leaves out an unreadable date', () => {
+    expect(shelfRows(level, () => '')[1]).not.toHaveProperty('date', '');
   });
 });

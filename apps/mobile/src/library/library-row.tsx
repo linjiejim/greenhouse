@@ -16,7 +16,14 @@ import { useLibraryActions } from './use-library-actions';
 
 export type LibraryItem =
   | { kind: 'folder'; id: string; name: string; shelf: FilesShelf; scope: 'kb' | 'drive' }
-  | { kind: 'doc'; id: string; name: string; shelf: FilesShelf; subtitle?: string }
+  | {
+      kind: 'doc';
+      id: string;
+      name: string;
+      shelf: FilesShelf;
+      subtitle?: string;
+      /** One line: the date trails the title. */ date?: string;
+    }
   | { kind: 'file'; id: string; name: string; shelf: FilesShelf; subtitle?: string; contentType?: string | null };
 
 /** The question a new conversation starts with when asking about an item (a link the assistant can read). */
@@ -62,7 +69,9 @@ export function LibraryRow({
           { id: 'move', title: t('library.move'), icon: 'moveTo' },
         ];
     const remove: MenuItem[] =
-      readOnly || item.kind === 'doc' ? [] : [{ id: 'delete', title: t('library.delete'), icon: 'trash', destructive: true }];
+      readOnly || item.kind === 'doc'
+        ? []
+        : [{ id: 'delete', title: t('library.delete'), icon: 'trash', destructive: true }];
     return menuSections([create, edit, [{ id: 'ask', title: t('library.ask'), icon: 'sparkle' }], remove]);
   }, [item, readOnly, t]);
 
@@ -72,7 +81,8 @@ export function LibraryRow({
     else if (id === 'rename') void actions.rename(movable);
     else if (id === 'move') actions.move(movable);
     else if (id === 'delete') void actions.remove(movable);
-    else if (id === 'ask') router.push({ pathname: '/chat', params: { draft: askAbout(item, t('library.askPrompt')) } });
+    else if (id === 'ask')
+      router.push({ pathname: '/chat', params: { draft: askAbout(item, t('library.askPrompt')) } });
   };
 
   const flat = items.flatMap((group) => group.children ?? [group]);
@@ -82,6 +92,7 @@ export function LibraryRow({
         title={item.name}
         titleEllipsize={item.kind === 'file' ? 'middle' : 'tail'}
         subtitle={item.kind === 'folder' ? undefined : item.subtitle}
+        value={item.kind === 'doc' ? item.date : undefined}
         icon={item.kind === 'folder' ? 'folder' : undefined}
         leading={
           item.kind === 'doc' ? (
