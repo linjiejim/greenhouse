@@ -17,7 +17,7 @@ import {
 } from '../../extension-kit.js';
 import { exampleRoutes } from './routes.js';
 import { createExampleServices, type ExampleServices } from './service.js';
-import { exampleNotesQueryTool } from './tool.js';
+import { exampleNotesMutationTool, exampleNotesQueryTool } from './tool.js';
 import { z } from 'zod';
 
 export const exampleExtension = defineExtension({
@@ -28,7 +28,8 @@ export const exampleExtension = defineExtension({
   sdk: 1,
   core: '>=3.0 <4',
 
-  tools: [exampleNotesQueryTool],
+  // A read tool and a governed write tool (see tool.ts: writes must declare `proxy: 'write'`).
+  tools: [exampleNotesQueryTool, exampleNotesMutationTool],
   routes: [{ path: '/api/ext/example', app: exampleRoutes, guards: [requireFeature('example')] }],
 
   // Its own MCP consent group, so a token can be granted `mcp:example` alone.
@@ -120,7 +121,7 @@ export const exampleExtension = defineExtension({
       kind: 'flag',
       group: 'advanced',
       flag: 'example',
-      toolIds: ['example_notes_query'],
+      toolIds: ['example_notes_query', 'example_notes_mutation'],
     },
   ],
   workspaceSettings: [

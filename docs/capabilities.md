@@ -39,7 +39,7 @@
 | 管理后台 | 用户与权限（一个弹窗管角色、功能开关和工具）、用量（按人 / 运行配置 / 客户端 / 模块）、服务与计价、操作记录、问题与需求、团队上下文、品牌工作室、运行时配置、MCP 接入。 |
 | 账号 | 密码登录，邀请与重置走一次性链接。飞书：绑定 + 扫码登录。企微：只能绑定，不能登录。角色只有 super 和 team。 |
 | 飞书机器人（可选） | 在飞书对话里运行 Sprouty。需 `FEISHU_BOT_ENABLED=1`。 |
-| 扩展 | `defineExtension` / `defineWebExtension` 可加工具、页面、路由、数据表与迁移、权限点、MCP 授权分组、命令行。由 `greenhouse.config.ts` 或 `GREENHOUSE_EXTENSIONS` 启用。仓库只带 `example`，默认不启用。 |
+| 扩展 | `defineExtension` / `defineWebExtension` 可加工具、页面、路由、数据表与迁移、权限点、MCP 授权分组、命令行。由 `greenhouse.config.ts` 或 `GREENHOUSE_EXTENSIONS` 启用。仓库只带 `example`，默认不启用。扩展只能用两个 extension-kit、`@greenhouse/types` 和 `@greenhouse/crud`（kit 导出有快照锁定）；`sdk` / `core` 声明不兼容时拒绝启用。扩展迁移随 `pnpm db:migrate` 一起跑，标了 1.x 代际的迁移在 3.0 上不执行。扩展写工具声明 `proxy:'write'` 后，经 `/api/mcp` 调用同样记一次 run、删除先预览。 |
 | 从 1.x 搬家 | `pnpm cli migrate-from-1x --from <1.6 库> --to <新库>`：只读旧库，保留原 ID，输出对账报告，可重复执行。只接受 1.6.x，拒绝 2.x。 |
 | 运维 | Docker Compose（Postgres + migrate + api）；`scripts/backup-db.sh` 做带校验的备份；每日清理过期数据（运行事件 30 天、请求日志 30 天、预算流水 13 个月等）；`pnpm cli` 管用户、库、知识库、表格、自检（`doctor`）。 |
 

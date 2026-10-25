@@ -419,7 +419,10 @@ rollback path.
 - **2.x databases are refused** — 3.0 can neither run on nor carry a 2.x database.
 - Ids are kept (old numeric ids become strings), so links, extension rows that store a user id
   and ids an external agent remembered keep working; connected agents don't re-authorize.
-- Extension tables (`crm_*`, …) and `extension_migrations` are copied verbatim.
+- Extension tables (`crm_*`, …) and `extension_migrations` are copied verbatim. The report (also
+  on `--dry-run`) flags extension tables named like a 3.0 core table and says, per extension
+  migration, what 3.0 will do with it; a migration marked `-- greenhouse:core-generation 1x` that
+  1.x never applied makes 3.0 refuse to start until it is applied on 1.x and the carry repeated.
 - Not carried: retired and removed features (evaluation, Missions, Workflows, session tags,
   user groups, document comments / backlinks, table forms / dashboards / in-table automations),
   run events older than 30 days, delivered outbox rows, expired tokens, rate-limit counters and
@@ -805,7 +808,9 @@ Migration files are the single source of truth for the schema. The chain starts 
 baseline `drizzle/0000_v3_baseline.sql`; the 1.x chain lives in `drizzle/archive-1x/` and is
 only read to recognize a 1.x database. Edit `packages/db/src/schema/*.ts`, run
 `pnpm drizzle-kit generate`, review the generated SQL, commit it, and apply it with
-`pnpm db:migrate` (it refuses 1.x and 2.x databases). **On persistent / shared databases use
+`pnpm db:migrate` (it refuses 1.x and 2.x databases, and also applies the enabled extensions'
+migration lane, so a deploy can migrate before it switches traffic; `pnpm cli db status` shows
+both). **On persistent / shared databases use
 `pnpm db:migrate` only — never `push`** (`push` is for throwaway local scratch DBs). See
 [packages/db/src/AGENTS.md](./packages/db/src/AGENTS.md) and the table map in
 [packages/db/src/db-schema.md](./packages/db/src/db-schema.md).

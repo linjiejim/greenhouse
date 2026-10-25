@@ -70,7 +70,7 @@ export const exampleWebExtension = defineWebExtension({
     },
   ],
   toolCards: [{ tool: 'example_notes_query', component: ExampleNotesCard }],
-  toolIcons: { example_notes_query: StickyNote },
+  toolIcons: { example_notes_query: StickyNote, example_notes_mutation: StickyNote },
   // A record kind: `#/example/notes/42` opens a peek instead of navigating.
   entityKinds: [
     {

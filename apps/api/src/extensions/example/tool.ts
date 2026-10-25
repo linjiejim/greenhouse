@@ -46,3 +46,47 @@ export const exampleNotesQueryTool = defineTool({
       },
     }),
 });
+
+/**
+ * `example_notes_mutation` — the reference WRITE tool. Declaring
+ * `surface.proxy: 'write'` is what puts it under governed writes when a
+ * member's own agent calls it over `/api/mcp`: the call runs as the member, is
+ * recorded as an `agent_write` run, and a delete-like action (`notes.delete`)
+ * first returns a preview and only runs again with `confirm: true`.
+ * A tool that changes data must never declare `proxy: 'read'`.
+ */
+export const exampleNotesMutationTool = defineTool({
+  meta: {
+    id: 'example_notes_mutation',
+    name: 'Example notes (write)',
+    brief: 'Add or delete a note in the Example extension',
+    description:
+      'Add a note for the current user (`notes.add` with `body`) or delete one of their notes ' +
+      '(`notes.delete` with `id`). Deleting is permanent.',
+    category: 'team',
+    is_global: false,
+    icon: 'StickyNote',
+    sort_order: 901,
+    surface: { proxy: 'write', mcp: 'example' },
+  },
+  kind: 'lazy',
+  createLazy: ({ db, userId }) =>
+    tool({
+      description: 'Add a note (notes.add + body) or delete one (notes.delete + id) for the current user.',
+      inputSchema: z.object({
+        action: z.enum(['notes.add', 'notes.delete']).describe('What to do'),
+        body: z.string().trim().min(1).max(500).optional().describe('Note text, for notes.add'),
+        id: z.number().int().positive().optional().describe('Note id, for notes.delete'),
+      }),
+      execute: async ({ action, body, id }) => {
+        const { notes } = getExtensionServices<ExampleServices>(db, 'example');
+        if (action === 'notes.add') {
+          if (!body) return { ok: false, error: 'body is required for notes.add' };
+          const note = await notes.add(userId, body);
+          return { ok: true, note: { id: note.id, body: note.body } };
+        }
+        if (id === undefined) return { ok: false, error: 'id is required for notes.delete' };
+        return { ok: await notes.remove(userId, id), id };
+      },
+    }),
+});

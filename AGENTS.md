@@ -321,6 +321,18 @@ greenhouse/
   - Extension tables use the migration lane (`migrations/*.sql`, `--> statement-breakpoint`);
     never append extension DDL to `drizzle/`. Applied files are checksummed — add a new file
     instead of editing one.
+  - `pnpm db:migrate` runs the extension lane right after the core chain; boot runs it again.
+    A file headed `-- greenhouse:core-generation 1x` targets the 1.x core and never runs on 3.0
+    (skipped on fresh databases, refused on a carried one that lacks its row); the marker is
+    outside the checksum. A lane file may not `CREATE TABLE` a core table (derived from `drizzle/`).
+  - Extensions import only their own directory, their app's `extension-kit`, `@greenhouse/types/*`,
+    `@greenhouse/crud` and third-party packages (tests exempt). The kits are the stable API; their
+    export lists are snapshot-locked — a removal or rename updates the snapshot plus an
+    `extension-kit:` CHANGELOG line. Add a kit symbol only when an extension needs it.
+  - `defineExtension` / `defineWebExtension` declare `sdk` (= `EXTENSION_SDK`) and `core` (semver
+    range vs `APP_VERSION`, else root package.json); a mismatch refuses activation, absence warns.
+  - Extension tools that change data declare `surface.proxy: 'write'` (governed writes, delete
+    preview + `confirm`); never `proxy: 'read'` on a writing tool.
   - Extension copy lives under `ext.<id>.*` (`registerExtensionMessages`); core `en.ts`/`zh.ts`
     stay untouched. `visible-copy.test.ts` still scans extension TSX.
   - The `example` extension is the reference and the test fixture: keep it exercising every
@@ -335,7 +347,8 @@ greenhouse/
     `create()` and a `lazy` tool without `createLazy()` (core has no per-tool case for extension
     tools, so such a tool reaches the catalog but is never handed to the agent).
   - Forks: private modules only under the seam, content under `packs/`; `scripts/check-extension-overlay.mjs`
-    must pass against `upstream/main`. Anything generic goes upstream first.
+    must pass against `upstream/main` (`--base` / `OVERLAY_UPSTREAM_REF`; `--strict` also fails on
+    deep imports). Upstream CI runs `--all --strict` on the example. Anything generic goes upstream first.
   - **Adopting an existing database** (an instance moving onto this codebase): `pnpm cli db baseline`
     records the core chain (drizzle's own journal, identical hashes) and every enabled extension's
     migrations as applied without executing them. Always `--dry-run` first and compare against
@@ -343,9 +356,8 @@ greenhouse/
     written specifically to finish the adoption still runs instead of being recorded away.
     It is not for 1.x databases: 1.x data moves through `migrate-from-1x` into a new database,
     which copies extension tables and `extension_migrations` verbatim.
-  - A database no server has booted against (a fresh test database) gets the core chain from
-    `pnpm db:migrate` and the extension lane from
-    `DATABASE_URL=… pnpm tsx scripts/apply-ext-migrations.mjs`.
+  - A database no server has booted against (a fresh test database) gets both the core chain and
+    the enabled extensions' lane from `pnpm db:migrate`; `pnpm cli db status` shows where it stands.
 - **Client stations**: `clients.stations` (`multi` | `single` + `defaults`) describes how client
   builds treat servers. No server code reads it; the mobile app mirrors it through
   `EXPO_PUBLIC_STATIONS_MODE` / `EXPO_PUBLIC_API_BASE_URL` (see `apps/mobile/AGENTS.md`).

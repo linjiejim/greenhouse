@@ -82,6 +82,8 @@ import { defineExtension, extensionPath, requireFeature } from '../../extension-
 export const crmExtension = defineExtension({
   id: 'crm',                        // lowercase, digits, dashes — also the config switch
   name: 'CRM',
+  sdk: 1,                           // the contract revision (EXTENSION_SDK) it was written for
+  core: '>=3.0 <4',                 // Greenhouse versions it supports
   tools: [crmQueryTool, crmMutationTool],                  // defineTool(); lazy tools use createLazy(ctx)
   routes: [{ path: '/api/ext/crm', app: crmRoutes, guards: [requireFeature('crm')] }],
   applications: [{ manifest: crmManifest, handlers: crmHandlers, teamCapabilities: ['crm.*'] }],
@@ -104,7 +106,8 @@ Every field is optional and maps 1:1 onto a core registry:
 
 | Field | Lands in | Notes |
 |---|---|---|
-| `tools` | tool catalog → chat, `/api/agent`, `/api/mcp`, workbench | `meta.surface` decides exposure exactly like a core tool. Lazy tools implement `createLazy(ctx)` (user, session, db, `unattended`) — no per-tool case in core, and `defineExtension` refuses a lazy tool without it. Ids must not collide. |
+| `sdk` / `core` | activation | `sdk` must equal the core's `EXTENSION_SDK` (from the kit); `core` is a semver range checked against `APP_VERSION` (else the root `package.json`), where a pre-release counts as its release (`3.0.0-rc.3` satisfies `>=3.0 <4`). A mismatch refuses to start; leaving them out only warns in 3.x and is an error from 4.0. |
+| `tools` | tool catalog → chat, `/api/agent`, `/api/mcp`, workbench | `meta.surface` decides exposure exactly like a core tool. Lazy tools implement `createLazy(ctx)` (user, session, db, `unattended`) — no per-tool case in core, and `defineExtension` refuses a lazy tool without it. Ids must not collide. A tool that changes data must declare `surface.proxy: 'write'` (see "Writing tools" below). |
 | `routes` | mounted after the typed core chain | Convention `/api/ext/<id>`; `guards` run for every request under the prefix. Extension routes are not part of the public `AppType` contract. |
 | `applications` | platform kernel (`bootstrapPlatform` + `initializePlatformRuntime`) | Manifest v2 + handlers; scaffold with `pnpm cli platform create-app <id>`. |
 | `featureFlags` / `featurePoints` | `user_grants` (`kind='feature'`), the permissions dialog, feature-owned tool sets | Extension flags are strings (the compile-time `FeatureKey` union stays core-only). A non-global tool must belong to exactly one point. |
@@ -112,7 +115,7 @@ Every field is optional and maps 1:1 onto a core registry:
 | `publicPaths` | `isPublicPath()` in the auth middleware | Keep minimal — OAuth callbacks, webhooks. |
 | `jobs` | started/stopped with the scheduler | croner syntax; zone defaults to `SCHEDULER_TIMEZONE`. |
 | `commands` | `pnpm cli <name>` and `pnpm cli --help` | Namespace with the id: `crm:import`. |
-| `migrations` | the extension migration lane | Ordered `NNNN_name.sql` files, `--> statement-breakpoint` between statements (what `drizzle-kit generate` emits). Applied at boot under an advisory lock, tracked in `extension_migrations` with a checksum — editing an applied file fails fast. Core DDL stays in `drizzle/`. |
+| `migrations` | the extension migration lane | Ordered `NNNN_name.sql` files, `--> statement-breakpoint` between statements (what `drizzle-kit generate` emits). Applied by `pnpm db:migrate` right after the core chain (same advisory lock) and again, idempotently, at boot; tracked in `extension_migrations` with a checksum — editing an applied file fails fast. A file may not `CREATE TABLE` a core table name. Core DDL stays in `drizzle/`. See "Migrations across core generations" below. |
 | `services` / `resetTables` | `db.extensions[<id>]`, integration-test truncation | Keep a typed accessor: `getExtensionServices<CrmServices>(db, 'crm')`. |
 | `entityKinds` | in-app deeplinks (`entityUrl` / `parseEntityUrl`) and chat peeks | `{ kind: 'ext:crm:company', route: '#/crm/companies/:id' }` — one template drives both directions. Put the URL in a tool result and the chat renders a peek instead of a link. |
 | `searchSources` | the ⌘P palette | One lane per record kind; it applies its own permission check and a failure only empties its own group. |
@@ -144,9 +147,63 @@ Every field is optional and maps 1:1 onto a core registry:
   carried), so the lane keeps running from where it was. An extension that stored a 1.x numeric
   user id keeps resolving because carried users keep that id as a string.
 
-Import what you need from `apps/api/src/extension-kit.ts` (`defineTool`, `getDb`,
-`getAuthUser`, `requireFeature`, `getWorkspaceValue`, `GREENHOUSE_CONFIG`, types). Deeper
-imports into core stay possible; the kit is the documented stable subset.
+### Stable surface vs internals
+
+An extension may import only:
+
+- its own directory (and another extension's, for a declared `dependsOn`);
+- its app's kit — `apps/api/src/extension-kit.ts` / `apps/web/src/extension-kit.ts`;
+- the shared contracts in `@greenhouse/types/*` and the CRUD kit `@greenhouse/crud`;
+- third-party packages.
+
+That is the stable surface, together with the `defineExtension` / `defineWebExtension` types.
+Everything else — `apps/*/src/**` outside the kit, `@greenhouse/db`, `@greenhouse/utils`,
+`@greenhouse/platform-kernel` — is internal and may change in any release; the kits re-export the
+parts an extension needs (actors, the platform runtime, storage, export sources, CLI helpers,
+`compileApp` / `defineApp` and policy helpers, `nowIso` / `toErrorMessage` / `safeJsonParse`; on
+the web side icons, navigation, page shells, UI and detail components, `fetchJson`, formatters).
+Each kit's export list is locked by a snapshot test (`apps/*/src/__tests__/extension-kit.snapshot.test.ts`):
+a removal or rename updates the snapshot and adds a CHANGELOG line starting `extension-kit:`.
+Test files are exempt from the import rule (they may reach core test hooks such as
+`routes/mcp`, `tools/registry` or the platform runtime's reset).
+
+`scripts/check-extension-overlay.mjs` checks these import edges and prints `file:line` for each
+one past the surface; `--strict` fails on them. Upstream CI runs `--all --strict` over the
+example extension.
+
+### Writing tools
+
+A tool that changes data declares `surface.proxy: 'write'`. That alone puts it under governed
+writes when a member's own agent calls it over `/api/mcp`: it runs as the
+member, is recorded as an `agent_write` run with a risk tier, and a delete-like action
+(`delete` / `remove` / `purge` / `destroy` / `drop`, e.g. `notes.delete`) first returns a
+`needs_confirmation` preview and runs only when called again with `confirm: true`. A writing tool
+declared `proxy: 'read'` bypasses all of that — never do it. The example's
+`example_notes_mutation` is the reference (`apps/api/src/extensions/example/tool.ts`, tested
+over `/api/mcp` in `__tests__/example-write-tool.db.test.ts`).
+
+If the tool is backed by a platform application, list it in `applications[].platformTools` —
+`{ query: ['crm_query'], command: ['crm_mutation'] }` — so MCP hides it once every query
+(respectively command) capability of that application is denied to the member, exactly as core
+does for its own tools.
+
+### Migrations across core generations
+
+A migration written against the **1.x** core tables (it alters or reads a 1.x table) starts with
+the line
+
+```sql
+-- greenhouse:core-generation 1x
+```
+
+3.0 never executes such a file. On a database that was never carried from 1.x it is recorded as
+satisfied and reported as *skipped*; on a carried database whose copied `extension_migrations`
+has the row nothing happens; on a carried database where the extension ran on 1.x but this row
+is missing, 1.x never applied the file, so 3.0 refuses to start — apply it on 1.x and run
+`migrate-from-1x` again. The marker line is not part of the checksum, so marking an already
+applied file is not an edit. `pnpm cli db status` lists every file with its generation and state;
+`migrate-from-1x --dry-run` reports the same per file, plus any extension table whose name a 3.0
+core table already uses. The example's `0002_v1_session_note_count.sql` shows the form.
 
 ### The web half — `defineWebExtension`
 
@@ -157,6 +214,8 @@ import { defineWebExtension } from '../../extension-kit';
 
 export const crmWebExtension = defineWebExtension({
   id: 'crm',
+  sdk: 1,                // same compatibility declaration as the API half
+  core: '>=3.0 <4',
   messages: { en: { title: 'CRM', … }, zh: { title: '客户', … } },   // merged under ext.crm.*
   pages: [
     {
@@ -236,8 +295,11 @@ patch that will conflict on the next merge:
 
 ```bash
 git remote add upstream https://github.com/linjiejim/greenhouse.git && git fetch upstream
-node scripts/check-extension-overlay.mjs upstream/main
+node scripts/check-extension-overlay.mjs --base upstream/main   # or OVERLAY_UPSTREAM_REF=…
 ```
+
+The same run reports extension imports past the stable surface (`file:line`). Start in report
+mode; once the list is empty add `--strict` so a new deep import fails CI.
 
 Upstream's workflows (`ci.yml`, `release.yml`, `release-please.yml`, `mobile.yml`, `deploy.yml`)
 are gated to `linjiejim/greenhouse` and stay inert in a fork — `ci.yml` included, because it
