@@ -323,6 +323,9 @@ export default function Drive() {
               {t('library.newFolder')}
             </Stack.Toolbar.MenuAction>
           </Stack.Toolbar.Menu>
+        ) : !noAccess(resource.error) ? (
+          // 表格: + makes another base (the empty state's 新建数据表 covers only the first)
+          <Stack.Toolbar.Button icon={toolbarIcon('plus')} accessibilityLabel={t('tables.newBase')} onPress={() => void newBase()} />
         ) : null}
       </Stack.Toolbar>
       <FlatList<Item>
