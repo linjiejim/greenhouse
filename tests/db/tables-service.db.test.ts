@@ -325,6 +325,35 @@ describe('Tables domain service', () => {
     expect(sum).toEqual([{ group: null, value: 11 }]);
   });
 
+  it('reads many records by id in one query, only from its own table and never deleted ones', async () => {
+    const { schema, primary } = await fixture();
+    const other = await db.tables.createTable({ base_id: schema.table.base_id, name: 'Other', created_by: ownerId });
+    const make = (tableId: string, primaryId: string, name: string) =>
+      db.tables.createRecord({ table_id: tableId, values: { [primaryId]: name }, user_id: ownerId });
+    const a = await make(schema.table.id, primary.id, 'A');
+    const b = await make(schema.table.id, primary.id, 'B');
+    const gone = await make(schema.table.id, primary.id, 'Gone');
+    await make(schema.table.id, primary.id, 'Not asked');
+    const foreign = await make(other.table.id, other.fields[0]!.id, 'Foreign');
+    await db.tables.deleteRecord({ table_id: schema.table.id, record_id: gone.id, revision: gone.revision, user_id: ownerId });
+
+    const page = await db.tables.queryRecords(schema.table.id, {
+      recordIds: [a.id, b.id, gone.id, foreign.id, 'rec_missing'],
+      limit: 5,
+    });
+    expect(page.records.map((record) => record.id).sort()).toEqual([a.id, b.id].sort());
+    expect(page.total).toBe(2);
+    expect((await db.tables.queryRecords(schema.table.id, { recordIds: [] })).records).toEqual([]);
+    await expect(
+      db.tables.queryRecords(schema.table.id, { recordIds: 'nope' as unknown as string[] }),
+    ).rejects.toBeInstanceOf(TablesValidationError);
+    await expect(
+      db.tables.queryRecords(schema.table.id, {
+        recordIds: Array.from({ length: 501 }, (_, index) => `rec_${index}`),
+      }),
+    ).rejects.toBeInstanceOf(TablesValidationError);
+  });
+
   it('enforces optimistic revision and rejects invalid field/user/select values', async () => {
     const { schema, primary } = await fixture();
     const status = await createStatusField(schema.table.id);

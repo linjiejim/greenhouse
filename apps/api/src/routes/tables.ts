@@ -25,7 +25,7 @@
  * GET    /tables/:tableId/views                      — 视图列表
  * POST   /tables/:tableId/views                      — 创建视图
  * PATCH  /views/:viewId                              — 更新视图
- * POST   /tables/:tableId/records/query              — 查询记录
+ * POST   /tables/:tableId/records/query              — 查询记录（recordIds 一次按 id 取多条）
  * POST   /tables/:tableId/records                    — 创建记录
  * GET    /tables/:tableId/records/:recordId          — 读取记录
  * PATCH  /tables/:tableId/records/:recordId          — revision 更新记录

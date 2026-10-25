@@ -261,6 +261,15 @@ function normalizeQueryShape(query: TableQuery): TableQuery {
   if (query.cursor !== undefined && typeof query.cursor !== 'string') {
     throw new TablesValidationError('cursor must be text');
   }
+  if (query.recordIds !== undefined) {
+    if (
+      !Array.isArray(query.recordIds) ||
+      query.recordIds.length > MAX_QUERY_LIMIT ||
+      !query.recordIds.every((id) => idOf(id) !== undefined)
+    ) {
+      throw new TablesValidationError(`recordIds must be a list of at most ${MAX_QUERY_LIMIT} record ids`);
+    }
+  }
   if (query.where !== undefined) {
     if (
       !query.where ||
@@ -299,6 +308,7 @@ function normalizeQueryShape(query: TableQuery): TableQuery {
   }
   return {
     ...query,
+    ...(query.recordIds ? { recordIds: query.recordIds.map((id) => idOf(id)!) } : {}),
     ...(query.where
       ? {
           where: {
@@ -612,6 +622,7 @@ function queryFingerprint(tableId: string, query: TableQuery): string {
       JSON.stringify({
         tableId,
         where: query.where ?? null,
+        recordIds: query.recordIds ?? null,
         search: query.search ?? null,
         sort: query.sort ?? [],
       }),
@@ -2019,6 +2030,9 @@ export function createTablesService(db: Db) {
       const byId = new Map(fields.map((field) => [field.id, field]));
       const activeUserIds = await service.activeInternalUserIds();
       const conditions: SQL[] = [eq(tableRecords.table_id, tableId), isNull(tableRecords.deleted_at)];
+      if (query.recordIds) {
+        conditions.push(query.recordIds.length > 0 ? inArray(tableRecords.id, query.recordIds) : sql`false`);
+      }
 
       if (query.where) {
         const clauses = query.where.clauses.map((clause) => {

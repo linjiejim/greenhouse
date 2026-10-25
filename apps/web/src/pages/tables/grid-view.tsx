@@ -56,7 +56,7 @@ import { InlineCell } from './inline-cell';
 import { buildPasteBatch, parseClipboardMatrix, parsePastedCell } from './grid-utils';
 import { TablesGridToolbar } from './grid-toolbar';
 import { renderTableFieldValue } from './field-value';
-import { useRelationLabels } from './relation-labels';
+import { invalidateRelationLabels, useRelationLabels } from './relation-labels';
 import { useT, type TranslationKey } from '../../lib/i18n';
 
 interface TablesGridViewProps {
@@ -70,7 +70,6 @@ const ROLE_RANK: Record<TableBaseRole, number> = { viewer: 0, editor: 1, builder
 
 /** Freeze more than this and the frozen block itself stops fitting on screen. */
 const MAX_FROZEN_COLUMNS = 4;
-const NO_FIELDS: TableField[] = [];
 
 const FIELD_LABEL_KEYS: Record<TableFieldType, TranslationKey> = {
   text: 'tables.fieldType.text',
@@ -211,7 +210,6 @@ export function TablesGridView({ table, tables, role, users }: TablesGridViewPro
   const { menu, openMenu, closeMenu } = useContextMenu();
 
   const usersById = useMemo(() => new Map(users.map((user) => [user.id, user])), [users]);
-  const relationLabel = useRelationLabels(schema?.fields ?? NO_FIELDS, records);
 
   const loadSchema = useCallback(async () => {
     const next = await getTableSchema(table.id);
@@ -222,6 +220,8 @@ export function TablesGridView({ table, tables, role, users }: TablesGridViewPro
   const loadPage = useCallback(async () => {
     setLoading(true);
     setError('');
+    // A reload is when renames / deletes elsewhere show up: linked-record labels are read again too.
+    invalidateRelationLabels();
     try {
       let cursor = cursorByPage.current.get(0);
       let result = await queryTableRecords(table.id, {
@@ -438,6 +438,8 @@ export function TablesGridView({ table, tables, role, users }: TablesGridViewPro
 
   const commitCell = async (record: TableRecord, field: TableField, value: unknown) => {
     const updated = await updateTableRecord(table.id, record.id, record.revision, { [String(field.id)]: value });
+    // A record of this table may be the target of a relation shown here (a self-link).
+    invalidateRelationLabels(table.id);
     setRecords((current) => current.map((entry) => (entry.id === record.id ? updated : entry)));
   };
 
@@ -490,6 +492,8 @@ export function TablesGridView({ table, tables, role, users }: TablesGridViewPro
     const ids = selectedViewConfig.fieldIds?.length ? new Set(selectedViewConfig.fieldIds) : null;
     return (schema?.fields ?? []).filter((field) => !ids || ids.has(field.id));
   }, [schema?.fields, selectedViewConfig.fieldIds]);
+  // Only the columns on screen need their linked records' labels.
+  const relationLabel = useRelationLabels(visibleFields, records);
 
   const frozenCount = Math.min(selectedViewConfig.frozenCount ?? 0, visibleFields.length, MAX_FROZEN_COLUMNS);
 

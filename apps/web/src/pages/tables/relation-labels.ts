@@ -2,13 +2,15 @@
  * Relation cells show the linked record's primary field, not its id.
  *
  * The record query answers ids only, so the labels are looked up here: the target table's schema
- * once (its primary field, else its first), then each linked record by id. Answers are cached per
- * page load (a renamed record shows its new name after a reload); a record the viewer cannot read
- * or that is gone stays `#<id>`.
+ * once (its primary field, else its first), then the linked records of each target table in one
+ * query by id (`recordIds`), each table's labels filling in as soon as its answer lands. Answers are
+ * cached until `invalidateRelationLabels()` — the grid calls it whenever it reloads records or
+ * changes one — and a failed lookup is not cached, so the next render asks again. A record the
+ * viewer cannot read or that is gone stays `#<id>`.
  */
 
 import { useEffect, useMemo, useState } from 'react';
-import { getTableRecord, getTableSchema, type TableField, type TableRecord } from '../../lib/api/tables';
+import { getTableSchema, queryTableRecords, type TableField, type TableRecord } from '../../lib/api/tables';
 
 export type RelationLabelLookup = (field: TableField, recordId: string) => string | undefined;
 
@@ -47,10 +49,27 @@ export function relationTargetsOf(
   return targets;
 }
 
-const primaryFields = new Map<string, Promise<string | null>>();
-const labels = new Map<string, Promise<string | null>>();
+/** Ids per query: the record query's own page cap. */
+const BATCH = 500;
 
-function primaryFieldOf(tableId: string): Promise<string | null> {
+/** Target table → its label field id, null when it has no fields, undefined when the lookup failed. */
+const primaryFields = new Map<string, Promise<string | null | undefined>>();
+/** `<table>:<record>` → the label, null for a record that is unreadable or gone, undefined when the lookup failed. */
+const labels = new Map<string, Promise<string | null | undefined>>();
+
+/** Forget a promise once it settled as a failure, so a later render asks again. */
+function forgetOnFailure<T>(
+  cache: Map<string, Promise<T>>,
+  key: string,
+  pending: Promise<T>,
+  failed: (value: T) => boolean,
+) {
+  void pending.then((value) => {
+    if (failed(value) && cache.get(key) === pending) cache.delete(key);
+  });
+}
+
+function primaryFieldOf(tableId: string): Promise<string | null | undefined> {
   let pending = primaryFields.get(tableId);
   if (!pending) {
     pending = getTableSchema(tableId)
@@ -58,66 +77,93 @@ function primaryFieldOf(tableId: string): Promise<string | null> {
         const field = schema.fields.find((entry) => entry.is_primary) ?? schema.fields[0];
         return field ? String(field.id) : null;
       })
-      .catch(() => null);
+      .catch(() => undefined);
     primaryFields.set(tableId, pending);
+    forgetOnFailure(primaryFields, tableId, pending, (value) => value === undefined);
   }
   return pending;
 }
 
-function labelOf(tableId: string, recordId: string): Promise<string | null> {
-  const key = `${tableId}:${recordId}`;
-  let pending = labels.get(key);
-  if (!pending) {
-    pending = primaryFieldOf(tableId).then((primary) =>
-      primary === null
-        ? null
-        : getTableRecord(tableId, recordId)
-            .then((record) => primaryLabelOf(record, primary))
-            .catch(() => null),
-    );
-    labels.set(key, pending);
+/** Labels of these records of one table: cached ones as they are, the rest in one query per batch. */
+function labelsOf(tableId: string, recordIds: readonly string[]): Promise<Map<string, string | null | undefined>> {
+  const missing = recordIds.filter((id) => !labels.has(`${tableId}:${id}`));
+  for (let start = 0; start < missing.length; start += BATCH) {
+    const chunk = missing.slice(start, start + BATCH);
+    const answers = primaryFieldOf(tableId).then(async (primary) => {
+      if (primary === undefined) return undefined;
+      if (primary === null) return new Map<string, string | null>();
+      try {
+        const page = await queryTableRecords(tableId, { recordIds: chunk, limit: chunk.length });
+        return new Map(page.records.map((record) => [String(record.id), primaryLabelOf(record, primary)]));
+      } catch {
+        return undefined;
+      }
+    });
+    for (const id of chunk) {
+      const key = `${tableId}:${id}`;
+      const pending = answers.then((found) => (found === undefined ? undefined : (found.get(id) ?? null)));
+      labels.set(key, pending);
+      forgetOnFailure(labels, key, pending, (value) => value === undefined);
+    }
   }
-  return pending;
+  return Promise.all(recordIds.map(async (id) => [id, await labels.get(`${tableId}:${id}`)!] as const)).then(
+    (entries) => new Map(entries),
+  );
+}
+
+/**
+ * Drop cached labels — all of them, or those of records in one table — so the next render reads
+ * them again (a record was renamed, deleted or restored, or the table was reloaded).
+ */
+export function invalidateRelationLabels(tableId?: string): void {
+  if (tableId === undefined) {
+    primaryFields.clear();
+    labels.clear();
+    return;
+  }
+  primaryFields.delete(tableId);
+  for (const key of labels.keys()) if (key.startsWith(`${tableId}:`)) labels.delete(key);
 }
 
 /** Tests only. */
 export function resetRelationLabelCache(): void {
-  primaryFields.clear();
-  labels.clear();
+  invalidateRelationLabels();
 }
 
-/** Labels for the relation values of `records`, filled in as they arrive. */
+/** Labels for the relation values of `records` in `fields` (pass only the fields on screen), filled in as they arrive. */
 export function useRelationLabels(fields: readonly TableField[], records: readonly TableRecord[]): RelationLabelLookup {
   const [known, setKnown] = useState<ReadonlyMap<string, string>>(() => new Map());
   const targets = useMemo(() => relationTargetsOf(fields, records), [fields, records]);
-  const wanted = useMemo(
-    () => [...targets].flatMap(([tableId, ids]) => [...ids].map((id) => [tableId, id] as const)),
-    [targets],
-  );
 
   useEffect(() => {
-    if (wanted.length === 0) return;
+    if (targets.size === 0) return;
     let cancelled = false;
-    void Promise.all(
-      wanted.map(async ([tableId, id]) => [`${tableId}:${id}`, await labelOf(tableId, id)] as const),
-    ).then((answers) => {
-      if (cancelled) return;
-      setKnown((prev) => {
-        const next = new Map(prev);
-        let changed = false;
-        for (const [key, label] of answers) {
-          if (label !== null && next.get(key) !== label) {
-            next.set(key, label);
-            changed = true;
+    // One request per target table; each table's labels show as soon as they land.
+    for (const [tableId, ids] of targets) {
+      void labelsOf(tableId, [...ids]).then((answers) => {
+        if (cancelled) return;
+        setKnown((prev) => {
+          const next = new Map(prev);
+          let changed = false;
+          for (const [id, label] of answers) {
+            const key = `${tableId}:${id}`;
+            // A failed lookup keeps what is shown; a record now unreadable or gone loses its label.
+            if (label === undefined) continue;
+            if (label === null) {
+              if (next.delete(key)) changed = true;
+            } else if (next.get(key) !== label) {
+              next.set(key, label);
+              changed = true;
+            }
           }
-        }
-        return changed ? next : prev;
+          return changed ? next : prev;
+        });
       });
-    });
+    }
     return () => {
       cancelled = true;
     };
-  }, [wanted]);
+  }, [targets]);
 
   return useMemo<RelationLabelLookup>(
     () => (field, recordId) => {

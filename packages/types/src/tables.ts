@@ -124,6 +124,8 @@ export interface TableSort {
 
 export interface TableQuery {
   where?: TableFilterGroup;
+  /** Only these records (by id, at most 500) — e.g. the labels of linked records in one call. */
+  recordIds?: string[];
   search?: string;
   sort?: TableSort[];
   /** Opaque cursor returned by a previous query with the same filters/sort. */

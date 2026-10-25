@@ -8,14 +8,20 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { TableField, TableRecord } from '../../lib/api/tables';
 import { RecordDetailContent } from './record-detail-drawer';
 import { renderTableFieldValue } from './field-value';
-import { relationIdsOf, resetRelationLabelCache, useRelationLabels } from './relation-labels';
+import {
+  invalidateRelationLabels,
+  relationIdsOf,
+  resetRelationLabelCache,
+  useRelationLabels,
+  type RelationLabelLookup,
+} from './relation-labels';
 
-const mocks = vi.hoisted(() => ({ getTableSchema: vi.fn(), getTableRecord: vi.fn() }));
+const mocks = vi.hoisted(() => ({ getTableSchema: vi.fn(), queryTableRecords: vi.fn() }));
 
 vi.mock('../../lib/api/tables', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../lib/api/tables')>()),
   getTableSchema: mocks.getTableSchema,
-  getTableRecord: mocks.getTableRecord,
+  queryTableRecords: mocks.queryTableRecords,
 }));
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -76,9 +82,9 @@ beforeEach(() => {
     ],
     views: [],
   });
-  mocks.getTableRecord.mockReset().mockImplementation(async (_table: string, id: string) => {
-    if (!customers[id]) throw new Error('not found');
-    return customers[id];
+  mocks.queryTableRecords.mockReset().mockImplementation(async (_table: string, query: { recordIds: string[] }) => {
+    const records = query.recordIds.map((id) => customers[id]).filter(Boolean);
+    return { records, total: records.length, nextCursor: null };
   });
 });
 
@@ -114,8 +120,10 @@ describe('relation values show the linked record', () => {
     expect(text).not.toMatch(/(^|[^#])501/);
     // A record that cannot be read stays an id.
     expect(text).toContain('#599');
-    // The target schema is read once for all three ids.
+    // The target schema is read once, and the linked records in one query for both fields.
     expect(mocks.getTableSchema).toHaveBeenCalledTimes(1);
+    expect(mocks.queryTableRecords).toHaveBeenCalledTimes(1);
+    expect(mocks.queryTableRecords).toHaveBeenCalledWith('9', { recordIds: ['501', '502', '599'], limit: 3 });
   });
 
   it('labels grid cells through the same lookup, #id until known', async () => {
@@ -134,6 +142,56 @@ describe('relation values show the linked record', () => {
     await flush();
     expect(seen[0]).toContain('#502');
     expect(seen.at(-1)).toContain('Globex');
+  });
+
+  it('reads labels again after an invalidation, and retries a lookup that failed', async () => {
+    mocks.queryTableRecords.mockRejectedValueOnce(new Error('offline'));
+    let lookup: RelationLabelLookup = () => undefined;
+    function Probe({ rows }: { rows: TableRecord[] }) {
+      lookup = useRelationLabels(fields, rows);
+      return null;
+    }
+    container = document.createElement('div');
+    root = createRoot(container);
+    const render = async (rows: TableRecord[]) => {
+      await act(async () => root?.render(<Probe rows={rows} />));
+      await flush();
+    };
+    await render([record('1', { '2': '501' })]);
+    // The failure is not remembered: the next records ask again.
+    expect(lookup(fields[1]!, '501')).toBeUndefined();
+    await render([record('1', { '2': '501' })]);
+    expect(lookup(fields[1]!, '501')).toBe('Acme Ltd');
+    expect(mocks.queryTableRecords).toHaveBeenCalledTimes(2);
+
+    // Cached until invalidated: a rename shows once the table is reloaded.
+    await render([record('1', { '2': '501' })]);
+    expect(mocks.queryTableRecords).toHaveBeenCalledTimes(2);
+    customers['501'] = record('501', { '90': 'Acme Group' }, '9');
+    try {
+      invalidateRelationLabels('9');
+      await render([record('1', { '2': '501' })]);
+      expect(lookup(fields[1]!, '501')).toBe('Acme Group');
+      // A linked record that is gone loses its label.
+      delete customers['501'];
+      invalidateRelationLabels();
+      await render([record('1', { '2': '501' })]);
+      expect(lookup(fields[1]!, '501')).toBeUndefined();
+    } finally {
+      customers['501'] = record('501', { '90': 'Acme Ltd' }, '9');
+    }
+  });
+
+  it('looks up only the fields it is given', async () => {
+    function Probe() {
+      useRelationLabels([fields[0]!], [record('1', { '2': '501' })]);
+      return null;
+    }
+    container = document.createElement('div');
+    root = createRoot(container);
+    await act(async () => root?.render(<Probe />));
+    await flush();
+    expect(mocks.queryTableRecords).not.toHaveBeenCalled();
   });
 
   it('reads single, multiple and legacy numeric values', () => {
