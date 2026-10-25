@@ -3,7 +3,7 @@ import { clearHandoffs } from '../src/lib/handoff';
  * Root layout — bootstraps auth + prefs, applies the appearance, gates routes, and declares the
  * app's native navigation map:
  *
- *  - `(drawer)`          the sidebar and its places: 首页 · 知识库 · 云盘 · 项目, each with its own
+ *  - `(drawer)`          the sidebar and its places: 首页 · 知识库 · 云盘 · 项目 · 定时任务, each with its own
  *                        stack; home's holds search and the conversation page (`/chat`, the only
  *                        object that is not a sheet); a drawer on a phone, a column on an iPad
  *  - `sheet/*`           every other object, opened by openObject (src/shell/open-object.ts) as a
@@ -189,6 +189,7 @@ export default function RootLayout() {
                 <Stack.Screen name="sheet/run" options={sheetScreen([0.6, 1], { header: true })} />
                 <Stack.Screen name="sheet/write" options={sheetScreen([0.6, 1], { header: true })} />
                 <Stack.Screen name="sheet/steps" options={sheetScreen([0.6, 1], { header: true })} />
+                <Stack.Screen name="sheet/automation" options={sheetScreen([0.6, 1], { header: true })} />
 
                 {/* ── home's sheets and pickers ── */}
                 <Stack.Screen name="notifications" options={sheetScreen([0.7, 1], { header: true })} />

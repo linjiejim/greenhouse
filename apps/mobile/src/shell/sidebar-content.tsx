@@ -1,6 +1,6 @@
 /**
  * The sidebar: the product's mark and name with search beside them, the hub's places — 首页,
- * 知识库, 云盘, 项目 — and, at its foot, 「我」 (account, station, text size, My Agents, settings).
+ * 知识库, 云盘, 项目, 定时任务 — and, at its foot, 「我」 (account, station, text size, My Agents, settings).
  * Choosing a place swaps the content beside it (each place keeps its own stack); search is a tool,
  * not a place: the round button in the header opens home's search page; 「我」 is its page sheet.
  *
@@ -32,6 +32,7 @@ const PLACES: { id: string; route: string; icon: IconName; title: TranslationKey
   { id: 'knowledge', route: 'knowledge', icon: 'book', title: 'nav.knowledge' },
   { id: 'drive', route: 'drive', icon: 'cloud', title: 'nav.files' },
   { id: 'projects', route: 'projects', icon: 'checklist', title: 'nav.projects' },
+  { id: 'automations', route: 'automations', icon: 'clock', title: 'nav.automations' },
 ];
 
 /**

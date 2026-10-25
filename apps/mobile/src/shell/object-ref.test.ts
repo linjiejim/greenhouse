@@ -19,6 +19,7 @@ describe('openObject', () => {
       params: { project: '2', id: '9' },
     });
     expect(openingOf({ kind: 'record', baseId: null, tableId: '3', id: '4' }).params).toEqual({ table: '3', id: '4' });
+    expect(openingOf({ kind: 'automation', id: '5' })).toEqual({ via: 'sheet', pathname: '/sheet/automation', params: { id: '5' } });
     expect(openingOf({ kind: 'folder', scope: 'kb', shelf: 'team', id: '5' }).params).toEqual({
       id: '5',
       scope: 'kb',
@@ -53,5 +54,8 @@ describe('openObject', () => {
     expect(refOfTarget({ kind: 'web', hash: '#/x' })).toEqual({ place: { kind: 'web', hash: '#/x' } });
     expect(refOfTarget({ kind: 'web', hash: '#/activity/automation/run_1' })).toEqual({ ref: { kind: 'run', id: 'run_1' } });
     expect(refOfTarget({ kind: 'web', hash: '#/activity/run_2' })).toEqual({ ref: { kind: 'run', id: 'run_2' } });
+    expect(refOfTarget({ kind: 'web', hash: '#/automations' })).toEqual({ place: { kind: 'tab', href: '/automations' } });
+    expect(refOfTarget({ kind: 'web', hash: '#/automations?tab=profiles' })).toEqual({ place: { kind: 'tab', href: '/automations' } });
+    expect(refOfTarget({ kind: 'web', hash: '#/automationsx' })).toEqual({ place: { kind: 'web', hash: '#/automationsx' } });
   });
 });

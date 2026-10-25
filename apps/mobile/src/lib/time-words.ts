@@ -3,7 +3,8 @@
 import { calendarDate, relativeTime, shortAge, type TimeWords } from '../data/time';
 import { t } from './i18n';
 
-function words(): TimeWords {
+/** The calendar words in the app's language (../data/time.ts). */
+export function timeWords(): TimeWords {
   const months = t('time.months');
   return {
     justNow: t('time.justNow'),
@@ -17,7 +18,7 @@ function words(): TimeWords {
 
 /** content.md's relative time for this moment ('' for an unreadable time). */
 export function relativeTimeNow(iso: string | null | undefined): string {
-  return relativeTime(iso, words(), Date.now(), undefined);
+  return relativeTime(iso, timeWords(), Date.now(), undefined);
 }
 
 /** A compact age (3m, 8h, 1d, 2w; ../data/time.ts `shortAge`), '' for an unreadable time. */
@@ -28,5 +29,5 @@ export function shortAgeNow(iso: string | null | undefined): string {
 }
 
 export function calendarDateLabel(iso: string): string {
-  return calendarDate(iso, words(), undefined);
+  return calendarDate(iso, timeWords(), undefined);
 }

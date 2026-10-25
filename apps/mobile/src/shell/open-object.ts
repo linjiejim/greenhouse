@@ -100,6 +100,21 @@ export function useOpenObject(): (ref: ObjectRef) => void {
   return useCallback((ref: ObjectRef) => openObject(router, container, ref, from), [router, container, from]);
 }
 
+/**
+ * A new conversation with the assistant, its composer filled with `draft` and the keyboard up
+ * (the conversation-first way to make things: "帮我创建一个定时任务：…"). Open sheets close first.
+ */
+export function useStartChat(): (draft: string) => void {
+  const router = useRouter();
+  const container = useNavigationContainerRef();
+  return useCallback(
+    (draft: string) => {
+      leavePresented(router, rootRoutes(container), () => router.push({ pathname: '/chat', params: { draft } }));
+    },
+    [router, container],
+  );
+}
+
 /** Open a link target (src/lib/deep-links.ts): one object, or a place. */
 export function openTarget(router: Router, container: ContainerRef, target: AppTarget, accent?: string, from?: string | null): void {
   const next = refOfTarget(target);

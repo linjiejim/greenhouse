@@ -2,7 +2,7 @@
 
 ## Scope
 
-- The app is the team's Agent hub on the phone: 首页 (greeting, recent conversations, a composer; search and the bell in its bar), 知识库, 云盘 (with Tables), 项目, search, the conversation page, 通知 and 「我」 (account, station, text size, My Agents, settings). It is not a web wrapper and not an agent console.
+- The app is the team's Agent hub on the phone: 首页 (greeting, recent conversations, a composer; search and the bell in its bar), 知识库, 云盘 (with Tables), 项目, 定时任务 (automations), search, the conversation page, 通知 and 「我」 (account, station, text size, My Agents, settings). It is not a web wrapper and not an agent console.
 - The root is a sidebar drawer (app/(drawer)/_layout.tsx, expo-router's vendored Drawer on react-native-drawer-layout; panel src/shell/sidebar-content.tsx, rules src/shell/layout-rule.ts): each place swaps in with its own stack, the edge swipe opens it only on a place's first page (deeper it is the back gesture; depth comes from `placeDepth`, which reads partial nested states), search is the sidebar header's round button and never a place, an iPad at regular width keeps it permanent; the conversation page `/chat` lives in home's stack; Tables is a segment of 云盘 only with the `tables` feature (src/shell/modules.ts `hasTables`, supers always). There are no placeholder screens.
 - Page, sheet, type, color and state rules live in DESIGN.md; read it before adding a screen.
 - Experience bar: content within 1.5 s of a cold start (cache first, refresh in background), 60 fps lists, haptics and optimistic updates, offline reading of recent items, dark mode, Dynamic Type, VoiceOver.
@@ -36,6 +36,7 @@
 - Card actions: task capture `POST /api/prompts`, table plans `POST /api/tables/schema-plan/apply`, both with the action id `artifact:<message>:<step>:<tool>`; receipts `GET /api/artifact-actions/:id` (src/api/artifacts.ts). An ask_user answer is a normal message in the web's English words (src/chat/parts.ts `askUserAnswer`); my bubble renders inline Markdown, as the web's does.
 - Link titles: `POST /api/refs/resolve` `{ urls }` → `{ items: [{ url, type, id, title|null, meta? }] }` (src/store/refs.ts); a 404 means the station predates it and chips keep the link's words.
 - Text size: `GET`/`PATCH /api/me/preferences` `{ fontScale }` (src/settings/text-size.ts); a 404 keeps it on the phone. Older stations refuse 0.8 and 0.85 (400): the phone keeps them.
+- Automations (定时任务): `/api/tasks` (a super's list holds every member's; the phone shows mine, src/automations/model.ts), `/:id`, `PUT /:id` `{ enabled }` (pause / resume), `POST /:id/run` (answers `session_id`, opened as the conversation), `/:id/runs` (a run opens its run sheet), `DELETE /:id`. New ones and changes are asked of the assistant in a conversation with a drafted message (`useStartChat`, src/shell/open-object.ts); there is no cron form. The run profile's name comes from `/api/profiles`.
 - Feedback: `POST /api/me/feedback` `{ message, context }` (src/feedback); a 404 says the station is too old.
 - Search: `GET /api/search?q=&kind=` (conversations, projects, documents) and `/api/drive/search`; my tasks are matched from the saved copy. Runs: `GET /api/runtime/runs/:id`. My agents: `/api/agent-access/connections`.
 - Folders and files: `POST /api/drive/folders`, `PUT /folders/:id` `{ name?, parent_id? }`, `DELETE /folders/:id` (409 when not empty), `PUT /files/:id` `{ name?, folder_id? }`, `DELETE /files/:id`; documents `POST /api/knowledge/docs`, `PUT /docs/:id` `{ title?, folder_id? }`. Moves never cross shelves.
@@ -148,4 +149,4 @@
 ## i18n
 
 - en.ts is the key source and zh must match; delete unused keys after searching dynamic uses (`t(module.title)`, notification kind labels).
-- Words: 首页, 知识库, 云盘 (never 档案库), 项目, 表格, 通知, 工作站, 「我」.
+- Words: 首页, 知识库, 云盘 (never 档案库), 项目, 定时任务, 表格, 通知, 工作站, 「我」.

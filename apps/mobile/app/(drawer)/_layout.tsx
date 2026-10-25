@@ -1,5 +1,5 @@
 /**
- * The hub's places behind a sidebar (src/shell/sidebar-content.tsx): 首页 · 知识库 · 云盘 · 项目, each
+ * The hub's places behind a sidebar (src/shell/sidebar-content.tsx): 首页 · 知识库 · 云盘 · 项目 · 定时任务, each
  * with its own native stack; search is a page of home's stack and 「我」 opens from the sidebar's
  * foot. There is no tab bar.
  *
@@ -59,6 +59,7 @@ export default function DrawerLayout() {
       <Drawer.Screen name="knowledge" />
       <Drawer.Screen name="drive" />
       <Drawer.Screen name="projects" />
+      <Drawer.Screen name="automations" />
     </Drawer>
   );
 }

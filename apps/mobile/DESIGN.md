@@ -2,10 +2,10 @@
 
 ## Structure
 
-- There is no tab bar: a sidebar (the mark, the product name and a round search button on top; 首页 · 知识库 · 云盘 · 项目; 「我」 at its foot) swaps the places, each with its own native stack; search is a tool, not a place. On a phone the sidebar lies a layer under the place, on its own deeper surface (sidebarBackground), and an edge swipe on a place's first page or the bar button at the top left slides the place aside (iOS drawerType 'back'); deeper pages keep that swipe for back. An iPad at regular width keeps it on screen as a split view. Search and the bell stay at the top right of home.
+- There is no tab bar: a sidebar (the mark, the product name and a round search button on top; 首页 · 知识库 · 云盘 · 项目 · 定时任务; 「我」 at its foot) swaps the places, each with its own native stack; search is a tool, not a place. On a phone the sidebar lies a layer under the place, on its own deeper surface (sidebarBackground), and an edge swipe on a place's first page or the bar button at the top left slides the place aside (iOS drawerType 'back'); deeper pages keep that swipe for back. An iPad at regular width keeps it on screen as a split view. Search and the bell stay at the top right of home.
 - A conversation is the only full pushed page (in home's stack, so the iPad sidebar stays beside it); every other object opens through openObject (src/shell/open-object.ts) as a form sheet.
 - Sheets stack on sheets up to three; the fourth replaces the top one. ✕ closes only the sheet it sits on.
-- Documents, files, folders and projects open full height; tasks, records, notifications, runs and writes open at 0.6 and grow.
+- Documents, files, folders and projects open full height; tasks, records, notifications, runs, writes and automations open at 0.6 and grow.
 - Lists are compact: a document is one line, title then date at the trailing edge; 知识库's first segment is 最近 (opened on this phone).
 - Place lists (知识库, 云盘, 项目, and pages pushed in them) have a compact bar: inline title, then search as a bar button and + on the same row; no large titles, no second row.
 - A refresh the app starts never moves a list: a pull shows the pull spinner, any other refresh with rows on screen a small spinner in the bar (src/ui/refresh.tsx), a first load Skeleton or LoadingState.
@@ -14,6 +14,7 @@
 
 ## Home
 
+- Things are made by asking Sprouty first: 定时任务's + and its empty state open a new conversation with a drafted request (never a cron form); a form, where one exists, is the secondary path.
 - Home is where a conversation starts: the greeting, then my recent conversations as quiet one-line titles with a short age (3m, 8h, 1d, 2w), no snippet; 3 by default, 0/3/5/10 in 「我」 (src/store/prefs.ts `homeRecent`), and All for the rest.
 
 ## Conversation

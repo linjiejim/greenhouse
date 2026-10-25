@@ -3,7 +3,7 @@
  *
  * Every object of the hub opens the same way: a native form sheet over whatever is on screen
  * (documents, files, folders, projects, tasks, table records, notifications, runs, agent
- * writes). A sheet opened from a sheet stacks on top of it, up to MAX_SHEETS; the next one
+ * writes, automations). A sheet opened from a sheet stacks on top of it, up to MAX_SHEETS; the next one
  * replaces the top sheet instead of stacking deeper. Only a conversation is a full pushed page.
  * Links (src/lib/deep-links.ts `AppTarget`), search hits and cards all become an `ObjectRef`.
  */
@@ -24,6 +24,7 @@ export type ObjectRef =
   | { kind: 'notification'; id: string }
   | { kind: 'run'; id: string }
   | { kind: 'write'; id: string }
+  | { kind: 'automation'; id: string }
   | { kind: 'chat'; sessionId: string };
 
 /** The sheet routes (app/sheet/*), each with its own detents in app/_layout.tsx. */
@@ -37,6 +38,7 @@ export const SHEET_ROUTES = {
   notification: 'sheet/notification',
   run: 'sheet/run',
   write: 'sheet/write',
+  automation: 'sheet/automation',
 } as const;
 
 export type SheetKind = keyof typeof SHEET_ROUTES;
@@ -105,13 +107,14 @@ export function openingOf(ref: ObjectRef): Opening {
     case 'notification':
     case 'run':
     case 'write':
+    case 'automation':
       return { via: 'sheet', pathname: `/${SHEET_ROUTES[ref.kind]}`, params: { id: ref.id } };
   }
 }
 
 /** Where a link leads that is not one object: a tab, a place in a tab, or a web page. */
 export type Place =
-  | { kind: 'tab'; href: '/' | '/knowledge' | '/drive' | '/projects' }
+  | { kind: 'tab'; href: '/' | '/knowledge' | '/drive' | '/projects' | '/automations' }
   | { kind: 'drive'; shelf: FilesShelf; folderId: string | null }
   | { kind: 'tables'; baseId: string | null; tableId: string | null }
   | { kind: 'agents' }
@@ -143,6 +146,8 @@ export function refOfTarget(target: AppTarget): { ref: ObjectRef } | { place: Pl
       // a run in the Activity log opens as its sheet (src/lib/deep-links.ts notificationTarget)
       const run = /^#\/activity\/(?:[a-z_]+\/)?([^/?#]+)$/.exec(target.hash);
       if (run) return { ref: { kind: 'run', id: decodeURIComponent(run[1]!) } };
+      // the web's automations page is a place on the phone too
+      if (/^#\/automations(?:\?|$)/.test(target.hash)) return { place: { kind: 'tab', href: '/automations' } };
       return { place: { kind: 'web', hash: target.hash } };
     }
     case 'external':
