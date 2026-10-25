@@ -2,7 +2,7 @@
 
 ## Structure
 
-- There is no tab bar: a sidebar (首页 · 搜索 · 知识库 · 云盘 · 项目, 「我」 at its foot) swaps the places, each with its own native stack; a phone slides it out by an edge swipe on a place's first page or the bar button at the top left, an iPad at regular width keeps it on screen as a split view. Search and the bell stay at the top right of home.
+- There is no tab bar: a sidebar (the mark, the product name and a round search button on top; 首页 · 知识库 · 云盘 · 项目; 「我」 at its foot) swaps the places, each with its own native stack; search is a tool, not a place. On a phone the sidebar lies a layer under the place, on its own deeper surface (sidebarBackground), and an edge swipe on a place's first page or the bar button at the top left slides the place aside (iOS drawerType 'back'); deeper pages keep that swipe for back. An iPad at regular width keeps it on screen as a split view. Search and the bell stay at the top right of home.
 - A conversation is the only full pushed page (in home's stack, so the iPad sidebar stays beside it); every other object opens through openObject (src/shell/open-object.ts) as a form sheet.
 - Sheets stack on sheets up to three; the fourth replaces the top one. ✕ closes only the sheet it sits on.
 - Documents, files, folders and projects open full height; tasks, records, notifications, runs and writes open at 0.6 and grow.
@@ -58,7 +58,7 @@
 
 - Every list has an empty, a loading and a failed state; a cached copy shown offline says 离线中 above the list.
 - Success says itself with toast and notifySuccess; failure with alertError (technical detail behind 详情); never both.
-- Selection changes tick (selectionTick); long presses and holds tap (tapMedium); nothing else vibrates.
+- Selection changes tick (selectionTick); long presses and holds tap (tapMedium); the drawer reaching fully open taps once (tapLight); Sprouty on home answers each tap (tapLight) and its easter egg with notifySuccess; nothing else vibrates.
 - Optimistic writes (pin, read marks, task status) roll back and say so when the station refuses.
 
 ## Guard

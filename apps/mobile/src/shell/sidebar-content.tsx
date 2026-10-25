@@ -1,16 +1,19 @@
 /**
- * The sidebar: the hub's places — 首页, 搜索, 知识库, 云盘, 项目 — and, at its foot, 「我」 (account,
- * station, text size, My Agents, settings). Choosing a place swaps the content beside it (each
- * place keeps its own stack); search is a page of home's stack; 「我」 is its page sheet.
+ * The sidebar: the product's mark and name with search beside them, the hub's places — 首页,
+ * 知识库, 云盘, 项目 — and, at its foot, 「我」 (account, station, text size, My Agents, settings).
+ * Choosing a place swaps the content beside it (each place keeps its own stack); search is a tool,
+ * not a place: the round button in the header opens home's search page; 「我」 is its page sheet.
  *
- * On a phone it is a drawer over home (an edge swipe or the bar button slides it out; choosing
- * closes it). On an iPad at regular width it stays on screen as the split view's first column.
+ * On a phone it lies under the place (an edge swipe or the bar button slides the place aside;
+ * choosing closes it), on a deeper surface than home's; reaching fully open taps once. On an iPad
+ * at regular width it stays on screen as the split view's first column.
  */
 
 import React from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
-import type { DrawerContentComponentProps } from 'expo-router/drawer';
+import { useDrawerProgress, type DrawerContentComponentProps } from 'expo-router/drawer';
+import { runOnJS, useAnimatedReaction, useSharedValue } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useT, type TranslationKey } from '../lib/i18n';
 import { useAuth } from '../store/auth';
@@ -18,17 +21,42 @@ import { HIT, makeStyles, radius, space, squircle, typo, useTheme, weight } from
 import { Avatar } from '../ui/avatar';
 import { Icon, type IconName } from '../ui/core';
 import { useFontScaleKey } from '../ui/font-scale';
-import { selectionTick } from '../ui/haptics';
+import { GlassIconButton } from '../ui/glass';
+import { selectionTick, tapLight } from '../ui/haptics';
+import { GreenhouseMark } from '../ui/logo';
 import { usePersistentSidebar } from '../ui/sidebar';
 
 /** The places, in order; `route` is the drawer screen they swap in. */
-const PLACES: { id: string; route: string | null; icon: IconName; title: TranslationKey }[] = [
+const PLACES: { id: string; route: string; icon: IconName; title: TranslationKey }[] = [
   { id: 'home', route: '(home)', icon: 'home', title: 'nav.home' },
-  { id: 'search', route: null, icon: 'search', title: 'common.search' },
   { id: 'knowledge', route: 'knowledge', icon: 'book', title: 'nav.knowledge' },
   { id: 'drive', route: 'drive', icon: 'cloud', title: 'nav.files' },
   { id: 'projects', route: 'projects', icon: 'checklist', title: 'nav.projects' },
 ];
+
+/**
+ * One light tap when the drawer reaches fully open, by a swipe or the bar button: once per
+ * opening (it re-arms only when the drawer is shut again), never for the permanent column.
+ */
+function useOpenedTap(persistent: boolean) {
+  const progress = useDrawerProgress();
+  const armed = useSharedValue(false);
+  useAnimatedReaction(
+    () => progress.value,
+    (now, before) => {
+      if (before === null || persistent) {
+        armed.value = !persistent && now < 0.5;
+        return;
+      }
+      if (now <= 0.02) armed.value = true;
+      else if (now >= 0.98 && armed.value) {
+        armed.value = false;
+        runOnJS(tapLight)();
+      }
+    },
+    [persistent],
+  );
+}
 
 export function SidebarContent({ state, navigation }: DrawerContentComponentProps) {
   const { colors: c } = useTheme();
@@ -42,28 +70,42 @@ export function SidebarContent({ state, navigation }: DrawerContentComponentProp
   const user = useAuth((s) => s.user);
   const current = state.routes[state.index]?.name;
 
+  useOpenedTap(persistent);
+
   const close = () => {
     if (!persistent) navigation.closeDrawer();
   };
   const open = (place: (typeof PLACES)[number]) => {
     selectionTick();
     close();
-    if (place.route) navigation.navigate(place.route);
-    else router.push('/search');
+    navigation.navigate(place.route);
   };
 
   return (
     <View style={[styles.root, { paddingTop: insets.top + space.sm }]}>
-      <Text key={`brand:${fontKey}`} style={styles.brand} accessibilityRole="header" numberOfLines={1}>
-        {productName}
-      </Text>
+      <View style={styles.header}>
+        <GreenhouseMark size={30} />
+        <Text key={`brand:${fontKey}`} style={styles.brand} accessibilityRole="header" numberOfLines={1}>
+          {productName}
+        </Text>
+        <GlassIconButton
+          icon="search"
+          size={HIT - space.xs}
+          iconSize={18}
+          accessibilityLabel={t('common.search')}
+          onPress={() => {
+            close();
+            router.push('/search');
+          }}
+        />
+      </View>
       <ScrollView style={styles.list} contentContainerStyle={styles.listContent}>
         {PLACES.map((place) => (
           <Place
             key={place.id}
             icon={place.icon}
             label={t(place.title)}
-            current={place.route !== null && place.route === current}
+            current={place.route === current}
             onPress={() => open(place)}
           />
         ))}
@@ -115,15 +157,17 @@ function Place({ icon, label, current, onPress }: { icon: IconName; label: strin
 }
 
 const useStyles = makeStyles((c) => ({
-  root: { flex: 1, backgroundColor: c.groupedBackground },
-  brand: {
-    ...typo.title2,
-    fontWeight: weight.bold,
-    color: c.label,
-    paddingHorizontal: space.margin + space.xs,
-    paddingTop: space.sm,
+  root: { flex: 1, backgroundColor: c.sidebarBackground },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.sm,
+    paddingLeft: space.margin + space.xs,
+    paddingRight: space.margin,
+    paddingTop: space.xs,
     paddingBottom: space.md,
   },
+  brand: { ...typo.title2, fontWeight: weight.bold, color: c.label, flex: 1, minWidth: 0 },
   list: { flex: 1 },
   listContent: { gap: space.xxs },
   place: {
@@ -137,7 +181,7 @@ const useStyles = makeStyles((c) => ({
     borderRadius: radius.md,
     ...squircle,
   },
-  current: { backgroundColor: c.accentFill },
+  current: { backgroundColor: c.sidebarSelection },
   texts: { flex: 1, minWidth: 0 },
   label: { ...typo.body, color: c.label, flexShrink: 1 },
   labelCurrent: { fontWeight: weight.semibold, color: c.accentText },

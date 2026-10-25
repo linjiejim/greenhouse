@@ -36,6 +36,10 @@ export const lightHex = {
   groupedBackground: '#F1F7ED',
   secondaryGroupedBackground: '#FFFFFF',
   tertiaryGroupedBackground: '#F4F8F1',
+  /** The sidebar: one layer under home, a step deeper sage than its surfaces. */
+  sidebarBackground: '#E5EEDF',
+  /** The current place in the sidebar (accentFill would melt into the deeper surface). */
+  sidebarSelection: 'rgba(46,139,61,0.15)',
 
   // ── Text — `--t-fg*` ──
   label: '#2B2B2B',
@@ -106,6 +110,9 @@ export const darkHex: HexPalette = {
   groupedBackground: '#000000',
   secondaryGroupedBackground: '#1C1C1E',
   tertiaryGroupedBackground: '#2C2C2E',
+  // nothing is deeper than black: the scene sliding off it (drawerType 'back') draws the edge
+  sidebarBackground: '#000000',
+  sidebarSelection: 'rgba(118,201,125,0.16)',
 
   label: '#FFFFFF',
   secondaryLabel: 'rgba(235,235,245,0.6)',

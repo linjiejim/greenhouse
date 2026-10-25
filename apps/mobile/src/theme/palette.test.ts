@@ -42,6 +42,19 @@ describe('V1 palette contrast', () => {
     }
   }
 
+  for (const [name, palette] of PALETTES) {
+    it(`${name}: the sidebar's labels and its current place are readable`, () => {
+      expect(contrastRatio(palette.label, palette.sidebarBackground)).toBeGreaterThanOrEqual(7);
+      expect(contrastRatio(palette.secondaryLabel, palette.sidebarBackground)).toBeGreaterThanOrEqual(4.5);
+      expect(contrastRatio(palette.accentText, palette.sidebarSelection, palette.sidebarBackground)).toBeGreaterThanOrEqual(4.5);
+    });
+  }
+
+  it('sets the light sidebar a layer under home, its current place visible on it', () => {
+    expect(contrastRatio(lightHex.groupedBackground, lightHex.sidebarBackground)).toBeGreaterThan(1.05);
+    expect(contrastRatio(lightHex.sidebarSelection, lightHex.sidebarBackground, lightHex.sidebarBackground)).toBeGreaterThan(1.1);
+  });
+
   it('separates light surfaces and lines from the canvas', () => {
     expect(contrastRatio(lightHex.tertiaryBackground, lightHex.background)).toBeGreaterThan(1.05);
     expect(contrastRatio(lightHex.separator, lightHex.background)).toBeGreaterThanOrEqual(1.45);

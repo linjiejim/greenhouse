@@ -24,6 +24,8 @@ export function materialPalette(base: HexPalette, scheme: 'light' | 'dark', seed
     groupedBackground: m.surface,
     secondaryGroupedBackground: m.surfaceContainer,
     tertiaryGroupedBackground: m.surfaceContainerHigh,
+    sidebarBackground: m.surfaceContainerLow,
+    sidebarSelection: m.primaryContainer,
     label: m.onSurface,
     secondaryLabel: m.onSurfaceVariant,
     tertiaryLabel: m.onSurfaceVariant,
