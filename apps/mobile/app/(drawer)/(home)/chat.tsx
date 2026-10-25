@@ -17,8 +17,8 @@
  * quiet band says who shared it where the composer would be, and nothing on the page sends,
  * regenerates, renames or deletes.
  *
- * Chrome: the title carries Sprouty's living face, which glides below the title while a reply is
- * written (src/chat/header-avatar.tsx); on the right a new-conversation button and the ⋯ menu
+ * Chrome: the title carries Sprouty's living face at its left (src/chat/header-avatar.tsx) and a
+ * quiet line under it: the agent's name, or while a reply is written what it is doing now; on the right a new-conversation button and the ⋯ menu
  * (Pin / Unpin, Rename, Delete). The list rides the keyboard (KeyboardChatScrollView adds the
  * keyboard to the scroll view's bottom inset, so the end is reachable with it up) and follows
  * the end only while the member is there; scrolled up during a reply, a ↓ button jumps back.
@@ -31,14 +31,10 @@ import { KeyboardStickyView, useKeyboardState } from 'react-native-keyboard-cont
 import Animated, { FadeIn, FadeOut, ReduceMotion } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { chatRun, createSession, getMessages, getSessionInfo, stopRun } from '../../../src/api/assistant';
-import {
-  HeaderBand,
-  HeaderTitle,
-  TalkingAvatar,
-  TalkingBand,
-  TalkingRoom,
-  useTalking,
-} from '../../../src/chat/header-avatar';
+import { HeaderBand, HeaderTitle } from '../../../src/chat/header-avatar';
+import { headerSubtitle } from '../../../src/chat/header-words';
+import { findProfile } from '../../../src/api/profiles';
+import { conversationAgent } from '../../../src/data/home';
 import { useStepsSheet } from '../../../src/chat/steps-sheet';
 import type { ApiResult } from '../../../src/api/client';
 import { Composer } from '../../../src/chat/composer';
@@ -124,6 +120,8 @@ export default function Chat() {
   const [offline, setOffline] = useState(false);
   /** Shared with me, not mine: read-only (who shared it, when the station says). */
   const [shared, setShared] = useState<{ by: string | null } | null>(null);
+  /** The agent this conversation runs as (its session's profile). */
+  const [profileId, setProfileId] = useState<string | null>(null);
   const input = useRef<TextInput>(null);
   const list = useRef<FlatList<Item>>(null);
   const viewport = useRef(0);
@@ -137,8 +135,6 @@ export default function Chat() {
   const dragging = useRef(false);
   /** Scrolled away from the end (shows the ↓ button). */
   const [away, setAway] = useState(false);
-  const [rootOrigin, setRootOrigin] = useState({ x: 0, y: 0, width: 0 });
-  const root = useRef<View>(null);
   const shape = useRef({ head: '', tail: '' });
   const firstTurn = useRef<FirstTurn | null>(getHandoff<FirstTurn>(params.k, 'first-turn') ?? null);
 
@@ -175,6 +171,7 @@ export default function Chat() {
           setShared(
             result.data.session.is_owner === false ? { by: result.data.share_info?.shared_by_nickname ?? null } : null,
           );
+          setProfileId(result.data.session.profile_id);
           return { ok: true, data: { title: result.data.session.title } };
         }
         if (result.status === 0) {
@@ -415,8 +412,6 @@ export default function Chat() {
     waiting: waitingForMe,
     failed: !!live?.error || state.streamFailed,
   });
-  const talking = state.busy && !!state.reply;
-  const { out, visible: avatarOut, room } = useTalking(talking);
 
   // the steps sheet keeps up with the live reply while it is open
   useEffect(() => {
@@ -514,12 +509,23 @@ export default function Chat() {
   };
 
   const headerTitle = title || t(sessionId ? 'assistant.untitled' : 'assistant.newChat');
+  // under the title: who answers here, or what the reply is doing now
+  const agentRef = sessionId ? profileId : agentId;
+  const listed = findProfile(agents, agentRef);
+  const agentName = listed ? listed.name : conversationAgent(agentRef) ? t('conversation.customAgent') : t('nav.assistant');
+  const subtitle = headerSubtitle(
+    agentName,
+    live
+      ? { busy: state.busy, tool: live.tool, steps: live.steps, hasText: !!live.text }
+      : { busy: state.busy, tool: null, steps: [], hasText: false },
+    t,
+  );
   const header = (
     <>
       <Stack.Screen
         options={{
           title: headerTitle,
-          headerTitle: () => <HeaderTitle title={headerTitle} state={face} away={avatarOut} />,
+          headerTitle: () => <HeaderTitle title={headerTitle} subtitle={subtitle} state={face} />,
         }}
       />
       <Stack.Toolbar placement="right">
@@ -642,15 +648,7 @@ export default function Chat() {
   };
 
   return (
-    <View
-      ref={root}
-      style={styles.root}
-      onLayout={() =>
-        root.current?.measureInWindow((x, y, width) =>
-          setRootOrigin((now) => (now.x === x && now.y === y && now.width === width ? now : { x, y, width })),
-        )
-      }
-    >
+    <View style={styles.root}>
       {header}
       {/* what opens from here (link chips, cards) says it came from this conversation */}
       <OpenOrigin.Provider value={sessionId ? headerTitle : null}>
@@ -677,7 +675,7 @@ export default function Chat() {
               contentHeight: contentSize.height + (contentInset?.bottom ?? 0),
             });
             // only the member's own scrolling lets go of the end: content growing under a scroll
-            // that is still catching up (a long delta, chips resolving titles, the avatar's room)
+            // that is still catching up (a long delta, chips resolving titles)
             // passes through "not at the end" for a moment and must not stop the follow
             if (dragging.current) pinned.current = end;
             else if (end) pinned.current = true;
@@ -713,8 +711,6 @@ export default function Chat() {
           }}
           ListHeaderComponent={
             <>
-              {/* room for Sprouty while it talks below the title, so it never covers a message */}
-              <TalkingRoom open={room} />
               {offline ? <Text style={styles.offline}>{t('common.savedCopy')}</Text> : null}
               {state.loadingOlder ? <Spinner style={styles.older} /> : null}
             </>
@@ -741,8 +737,6 @@ export default function Chat() {
         />
       </OpenOrigin.Provider>
       <HeaderBand height={headerInset} />
-      {avatarOut ? <TalkingBand out={out} height={headerInset} /> : null}
-      {avatarOut ? <TalkingAvatar state={face} out={out} origin={rootOrigin} /> : null}
       <KeyboardStickyView offset={{ opened: insets.bottom }} style={styles.composerWrap}>
         {away && items.length ? (
           <Animated.View
