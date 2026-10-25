@@ -7,10 +7,14 @@
  * with `extensions.enabled: ['example']` in greenhouse.config.ts or
  * `GREENHOUSE_EXTENSIONS=example`. Copy this folder to start your own.
  */
-import { logger } from '@greenhouse/utils/logger';
-import { getDb, getExtensionServices } from '@greenhouse/db';
-import { requireFeature } from '../../auth/middleware.js';
-import { defineExtension, extensionPath } from '../define.js';
+import {
+  defineExtension,
+  extensionPath,
+  getDb,
+  getExtensionServices,
+  logger,
+  requireFeature,
+} from '../../extension-kit.js';
 import { exampleRoutes } from './routes.js';
 import { createExampleServices, type ExampleServices } from './service.js';
 import { exampleNotesQueryTool } from './tool.js';
@@ -20,6 +24,9 @@ export const exampleExtension = defineExtension({
   id: 'example',
   name: 'Example notes',
   description: 'Reference extension: per-user notes with a tool, routes, a flag, a setting and a job.',
+  // Compatibility: the contract revision (EXTENSION_SDK) and the Greenhouse versions it supports.
+  sdk: 1,
+  core: '>=3.0 <4',
 
   tools: [exampleNotesQueryTool],
   routes: [{ path: '/api/ext/example', app: exampleRoutes, guards: [requireFeature('example')] }],

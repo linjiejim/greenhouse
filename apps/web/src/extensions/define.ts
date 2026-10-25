@@ -130,6 +130,13 @@ export interface WebExtensionToolCard {
 
 export interface WebExtension {
   id: string;
+  /**
+   * The extension contract revision this was written for (`EXTENSION_SDK` from
+   * the kit). A mismatch keeps the extension off. Optional in 3.x (warns), required from 4.0.
+   */
+  sdk?: number;
+  /** Greenhouse versions this supports, as a semver range (`'>=3.0 <4'`); a pre-release counts as its release. */
+  core?: string;
   pages?: WebExtensionPage[];
   /** Entries for the sidebar "More" menu. */
   navigation?: WebExtensionNavItem[];

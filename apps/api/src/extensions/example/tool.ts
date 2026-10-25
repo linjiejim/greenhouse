@@ -4,9 +4,8 @@
  */
 import { tool } from 'ai';
 import { z } from 'zod';
-import { getExtensionServices } from '@greenhouse/db';
 import { entityUrl } from '@greenhouse/types/entity-links';
-import { defineTool } from '../../tools/define.js';
+import { defineTool, getExtensionServices } from '../../extension-kit.js';
 import type { ExampleServices } from './service.js';
 
 export const exampleNotesQueryTool = defineTool({

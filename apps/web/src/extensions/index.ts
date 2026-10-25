@@ -10,6 +10,8 @@ import { registerExtensionMessages } from '../lib/i18n';
 import { registerExtensionNavModules, registerExtensionPageModules } from '../lib/nav-registry';
 import { registerExtensionContextProvider } from '../lib/context-registry';
 import { useExtensionsStore } from '../stores/extensions-store';
+import { checkExtensionCompat } from '@greenhouse/utils/extension-compat';
+import { APP_VERSION } from '../lib/utils';
 import {
   registerEntityKindUi,
   registerKnowledgeDocPanels,
@@ -47,6 +49,19 @@ const ROUTE_ALIASES = new Map<string, string>();
   }
 }
 
+// ─── Compatibility ──────────────────────────────────────
+// A web half written for another contract revision or core range stays off
+// even when the API reports the id active; missing declarations only warn.
+const INCOMPATIBLE = new Set<string>();
+for (const ext of COMPILED_WEB_EXTENSIONS) {
+  const { errors, warnings } = checkExtensionCompat(ext, APP_VERSION === '0.0.0' ? null : APP_VERSION);
+  if (errors.length > 0) {
+    INCOMPATIBLE.add(ext.id);
+    console.error(`[extensions] ${errors.join(' ')}`);
+  }
+  if (import.meta.env?.DEV) for (const warning of warnings) console.warn(`[extensions] ${warning}`);
+}
+
 // ─── Load-time registrations (compiled set) ─────────────
 
 for (const ext of COMPILED_WEB_EXTENSIONS) {
@@ -74,7 +89,12 @@ for (const ext of COMPILED_WEB_EXTENSIONS) {
 
 /** Ids the connected API reports as active (empty until the extensions store loads). */
 function activeIds(): Set<string> {
-  return new Set(useExtensionsStore.getState().extensions.map((e) => e.id));
+  return new Set(
+    useExtensionsStore
+      .getState()
+      .extensions.map((e) => e.id)
+      .filter((id) => !INCOMPATIBLE.has(id)),
+  );
 }
 
 export function isActiveWebExtension(id: string): boolean {

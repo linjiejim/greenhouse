@@ -16,7 +16,9 @@ import { registerEntityKinds } from '@greenhouse/types/entity-links';
 import { registerMcpResourceGroups } from '@greenhouse/types/mcp';
 import { registerWidgetRecipes } from '@greenhouse/types/workbench';
 import { registerExtensionResetTables, registerExtensionServices } from '@greenhouse/db';
+import { logger } from '@greenhouse/utils/logger';
 import { extensionEnabled } from '../config/greenhouse-config.js';
+import { checkExtensionCompat, runningAppVersion } from './compat.js';
 import { registerPublicPaths } from '../auth/public-paths.js';
 import { registerSearchSources } from '../search/sources.js';
 import { registerDriveScopes } from '../drive/access.js';
@@ -35,6 +37,13 @@ function activate(compiled: readonly GreenhouseExtension[]): readonly Greenhouse
     seen.add(ext.id);
   }
   const active = compiled.filter((ext) => extensionEnabled(ext.id));
+  // Compatibility: a contract or core version the extension was not written for refuses here.
+  const version = active.length > 0 ? runningAppVersion() : null;
+  for (const ext of active) {
+    const { errors, warnings } = checkExtensionCompat(ext, version);
+    if (errors.length > 0) throw new Error(errors.join('\n'));
+    for (const warning of warnings) logger.warn(`[Extensions] ${warning}`);
+  }
   // A declared dependency that is switched off is a configuration mistake, and
   // one that otherwise surfaces as a confusing failure deep inside a request.
   const activeIds = new Set(active.map((ext) => ext.id));

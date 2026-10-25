@@ -79,6 +79,18 @@ export interface GreenhouseExtension {
   description?: string;
 
   /**
+   * The extension contract revision this was written for (`EXTENSION_SDK` from
+   * the kit). A mismatch refuses activation. Optional in 3.x (warns), required from 4.0.
+   */
+  sdk?: number;
+  /**
+   * Greenhouse versions this extension supports, as a semver range, e.g.
+   * `'>=3.0 <4'`. A pre-release counts as its release. Checked against the
+   * running version (`APP_VERSION`, else the root package.json) at activation.
+   */
+  core?: string;
+
+  /**
    * Other extensions this one needs, by id.
    *
    * Two extensions in the same build can import each other's exports by

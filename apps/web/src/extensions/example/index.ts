@@ -4,9 +4,7 @@
  * tool, and agent-panel context for the page. Copy this folder to start your own.
  */
 import { createElement, lazy } from 'react';
-import { StickyNote } from '../../lib/icons';
-import { translate, type Locale } from '../../lib/i18n';
-import { defineWebExtension } from '../define';
+import { StickyNote, defineWebExtension, translate, type Locale } from '../../extension-kit';
 import { exampleMessages } from './messages';
 import { ExampleNotesCard } from './card';
 
@@ -25,6 +23,9 @@ function tx(key: string, params?: Record<string, string | number>): string {
 
 export const exampleWebExtension = defineWebExtension({
   id: 'example',
+  // Compatibility: the contract revision (EXTENSION_SDK) and the Greenhouse versions it supports.
+  sdk: 1,
+  core: '>=3.0 <4',
   messages: exampleMessages,
   pages: [
     {

@@ -1,8 +1,6 @@
 /** Chat card for `example_notes_query` results — replaces the generic trace row. */
 import React from 'react';
-import { StickyNote } from '../../lib/icons';
-import { useT } from '../../lib/i18n';
-import type { ExtensionToolCallView } from '../define';
+import { StickyNote, useT, type ExtensionToolCallView } from '../../extension-kit';
 
 export function ExampleNotesCard({ call }: { call: ExtensionToolCallView }) {
   const t = useT();

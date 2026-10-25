@@ -62,6 +62,7 @@ export default defineConfig({
       '@greenhouse/utils/error': resolve(__dirname, 'packages/utils/src/error.ts'),
       '@greenhouse/utils/prompts': resolve(__dirname, 'packages/utils/src/prompts.ts'),
       '@greenhouse/utils/semver': resolve(__dirname, 'packages/utils/src/semver.ts'),
+      '@greenhouse/utils/extension-compat': resolve(__dirname, 'packages/utils/src/extension-compat.ts'),
       '@greenhouse/utils/html': resolve(__dirname, 'packages/utils/src/html.ts'),
       '@greenhouse/db/test-config': resolve(__dirname, 'packages/db/src/test-config.ts'),
       '@greenhouse/db': resolve(__dirname, 'packages/db/src/index.ts'),

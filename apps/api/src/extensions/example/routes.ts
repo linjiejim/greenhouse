@@ -4,8 +4,7 @@
  */
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { getDb, getExtensionServices } from '@greenhouse/db';
-import type { AppEnv } from '../../app-env.js';
+import { getDb, getExtensionServices, type AppEnv } from '../../extension-kit.js';
 import type { ExampleServices } from './service.js';
 
 const NoteInput = z.object({ body: z.string().trim().min(1).max(500) });

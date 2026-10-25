@@ -1,11 +1,17 @@
 /** `#/example` — the example extension's page: list, add and delete personal notes. */
 import React, { useCallback, useEffect, useState } from 'react';
-import { Button, Input, Spinner, toast } from '../../components/ui';
-import { ModulePage } from '../../components/app/module-page';
-import { StickyNote, Trash2 } from '../../lib/icons';
-import { useT } from '../../lib/i18n';
-import { authFetch } from '../../lib/auth';
-import type { ExtensionPageProps } from '../define';
+import {
+  Button,
+  Input,
+  ModulePage,
+  Spinner,
+  StickyNote,
+  Trash2,
+  authFetch,
+  toast,
+  useT,
+  type ExtensionPageProps,
+} from '../../extension-kit';
 
 interface Note {
   id: number;
