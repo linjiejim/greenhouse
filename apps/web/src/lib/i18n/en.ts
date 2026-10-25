@@ -883,6 +883,7 @@ export default {
       settings: 'Workspace settings',
       users: 'Users',
       mcp: 'Agent access',
+      connectors: 'Connectors',
     },
     verb: {
       create: 'created',

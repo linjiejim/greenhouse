@@ -877,6 +877,7 @@ const zh: Messages = {
       settings: '工作区设置',
       users: '用户',
       mcp: 'Agent 接入',
+      connectors: '连接器',
     },
     verb: {
       create: '创建了',

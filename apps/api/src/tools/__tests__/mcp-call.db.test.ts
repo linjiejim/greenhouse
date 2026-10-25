@@ -15,6 +15,7 @@ import { _setConnectorDirectory } from '../../connectors/directory.js';
 import { createConnector, updateConnector } from '../../connectors/manage.js';
 import { sealMemberKey } from '../../connectors/credentials.js';
 import { startMcpTestServer, type McpTestServer } from '../../connectors/__tests__/fixture-server.js';
+import { listActivity } from '../../activity/activity-log.js';
 import { buildConnectorsContext, executeMcpCall, type McpCallToolContext } from '../mcp-call.js';
 
 vi.setConfig({ testTimeout: 20_000 });
@@ -110,6 +111,17 @@ describe('mcp_call', () => {
     expect(open.tickets).toEqual(['Printer jam']);
     const run = await db.runtime.getRun(res.recorded_as);
     expect(run).toMatchObject({ kind: 'connector_write', owner_user_id: alice.id, status: 'succeeded' });
+
+    // It shows in the member's Activity log under 连接器, as their agent's.
+    const page = await listActivity(db, alice, { module: 'connectors' }, { manifests: [] });
+    expect(page.items[0]).toMatchObject({
+      source: 'agent',
+      module: 'connectors',
+      action: 'create_ticket',
+      status: 'succeeded',
+      target: { label: 'Desk' },
+      run: { id: res.recorded_as, kind: 'connector_write' },
+    });
   });
 
   it('a destructive tool returns a preview first and runs only with confirm:true', async () => {

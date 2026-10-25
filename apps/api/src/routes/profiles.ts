@@ -130,6 +130,8 @@ function formatCustomProfile(
     description: manifest.description,
     base_profile_id: manifest.base_profile_id,
     tools: Array.isArray(manifest.tools) ? manifest.tools : [],
+    /** mcp_call narrowing: null = every connector the user can use. */
+    connectors: manifest.connectors ?? null,
     system_prompt: manifest.system_prompt,
     max_steps: manifest.max_steps,
     is_shared: row.is_shared,
@@ -159,6 +161,30 @@ function formatCustomProfile(
 /** Everyone who may see an Agent sees its current configuration — there is no separate published channel. */
 async function currentVersionOf(row: CustomProfileRow) {
   return getDb().customProfiles.getVersion(row.id, row.version);
+}
+
+/** An Agent narrows mcp_call to at most this many connectors. */
+const MAX_AGENT_CONNECTORS = 50;
+
+/**
+ * `connectors` on an Agent: null (every connector its user can use) or the ids
+ * it may use — each a team connector or one of the author's own. Returns the
+ * value to store, or an error message.
+ */
+async function parseAgentConnectors(value: unknown, userId: string): Promise<string[] | null | { error: string }> {
+  if (value === null) return null;
+  if (!Array.isArray(value) || value.some((id) => typeof id !== 'string')) {
+    return { error: 'connectors must be null or an array of connector ids' };
+  }
+  const ids = [...new Set(value as string[])];
+  if (ids.length > MAX_AGENT_CONNECTORS) return { error: `At most ${MAX_AGENT_CONNECTORS} connectors` };
+  const db = getDb();
+  const usable = new Set(
+    [...(await db.mcpConnectors.listTeam()), ...(await db.mcpConnectors.listPersonal(userId))].map((row) => row.id),
+  );
+  const unknown = ids.filter((id) => !usable.has(id));
+  if (unknown.length > 0) return { error: `Unknown connectors: ${unknown.join(', ')}` };
+  return ids;
 }
 
 const SHARING_IS_SUPER_ONLY =
@@ -254,6 +280,7 @@ const profiles = new Hono<AppEnv>()
       risk_level,
       budget_policy,
       owner_backup_user_id,
+      connectors,
     } = body;
 
     // Validation
@@ -314,6 +341,8 @@ const profiles = new Hono<AppEnv>()
     if (is_shared === true) {
       return c.json({ error: SHARING_IS_SUPER_ONLY }, 400);
     }
+    const agentConnectors = connectors === undefined ? null : await parseAgentConnectors(connectors, authUser.id);
+    if (agentConnectors && !Array.isArray(agentConnectors)) return c.json({ error: agentConnectors.error }, 400);
     if (risk_level !== undefined && !['low', 'medium', 'high'].includes(risk_level)) {
       return c.json({ error: 'risk_level must be low, medium, or high' }, 400);
     }
@@ -336,6 +365,7 @@ const profiles = new Hono<AppEnv>()
         base_profile_id: baseId,
         model_id: modelId,
         tools,
+        connectors: agentConnectors,
         system_prompt: sanitizeForPrompt(system_prompt.trim()),
         max_steps: max_steps || 12,
         is_shared: false,
@@ -476,6 +506,11 @@ const profiles = new Hono<AppEnv>()
         }
       }
       updates.tools = body.tools;
+    }
+    if (body.connectors !== undefined) {
+      const parsed = await parseAgentConnectors(body.connectors, authUser.id);
+      if (parsed && !Array.isArray(parsed)) return c.json({ error: parsed.error }, 400);
+      updates.connectors = parsed;
     }
     if (body.system_prompt !== undefined) {
       if (typeof body.system_prompt !== 'string' || body.system_prompt.trim().length === 0) {

@@ -402,11 +402,22 @@ async function fetchPending(
 
   if (q.sources.includes('agent')) {
     const toolIds = q.module ? [...MUTATING_PROXY_ALLOWLIST].filter((id) => moduleOfTool(id) === q.module) : null;
-    jobs.push(
-      db.activity
-        .listRuns({ ...window, kinds: ['agent_write'], ownerUserId: q.userId, toolIds })
-        .then((rows) => rows.map((row) => ({ kind: 'run', source: 'agent', row }) as const)),
-    );
+    if (q.module !== 'connectors') {
+      jobs.push(
+        db.activity
+          .listRuns({ ...window, kinds: ['agent_write'], ownerUserId: q.userId, toolIds })
+          .then((rows) => rows.map((row) => ({ kind: 'run', source: 'agent', row }) as const)),
+      );
+    }
+    // Remote writes through a connector (connectors/writes.ts), from chat,
+    // automations or an outside agent — always the owner's own agent.
+    if (wants('connectors')) {
+      jobs.push(
+        db.activity
+          .listRuns({ ...window, kinds: ['connector_write'], ownerUserId: q.userId })
+          .then((rows) => rows.map((row) => ({ kind: 'run', source: 'agent', row }) as const)),
+      );
+    }
   }
 
   if (q.sources.includes('automation') && wants('automations')) {
@@ -658,7 +669,9 @@ function runStatus(row: ActivityRunRow): ActivityStatus {
   if (row.status === 'succeeded') return 'succeeded';
   if (row.status === 'failed') return 'failed';
   if (row.status === 'canceled') return 'canceled';
-  if (row.status === 'interrupted') return row.kind === 'agent_write' ? 'outcome_unknown' : 'failed';
+  if (row.status === 'interrupted') {
+    return row.kind === 'agent_write' || row.kind === 'connector_write' ? 'outcome_unknown' : 'failed';
+  }
   return 'running';
 }
 
@@ -759,6 +772,25 @@ async function hydrateRun(
     run: { id: row.id, kind: row.kind },
     detail: row.error_message,
   };
+  if (source === 'agent' && row.kind === 'connector_write') {
+    const connector = text(input.connector_name, input.connector) ?? 'Connector';
+    const tool = text(input.tool) ?? 'tool';
+    return {
+      ...base,
+      agent: {
+        client_id: null,
+        client_name: text(input.client_name) ?? (input.origin === 'automation' ? 'Automation' : 'Agent'),
+        avatar: null,
+      },
+      module: 'connectors',
+      verb: 'other',
+      entity: null,
+      action: tool,
+      action_title: `${tool} · ${connector}`,
+      // The connector is the member's own or a team one; its name is no secret.
+      target: { id: typeof input.connector_id === 'string' ? input.connector_id : null, label: connector, url: null },
+    };
+  }
   if (source === 'agent') {
     const toolId = typeof input.tool_id === 'string' ? input.tool_id : 'unknown';
     const action = typeof input.action === 'string' && input.action ? input.action : null;
