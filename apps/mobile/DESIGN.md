@@ -11,6 +11,14 @@
 - Edits happen in sheets (SwiftUI Form on iOS, Material on Android); the page underneath never changes behind them.
 - Long-press menus are system context menus (NativeMenu) and every item is also a VoiceOver action.
 
+## Conversation
+
+- The assistant is Sprouty in every language; its living face is in the header (src/chat/header-avatar.tsx) and glides below the title while a reply is written; message rows keep a resting sprout.
+- A reply's tool steps never change the reply's height: one line beside "Sprouty" says what runs now, else how many steps it took, and opens the steps sheet (what was asked, what came back, raw on demand).
+- My bubble grows to 80% of the content width; the cap sits on the long-press menu's wrapper, never as a percentage on the bubble inside it.
+- The composer is one rounded glass field: + at the leading edge, send (dimmed and disabled with nothing to send) or stop at the trailing edge. There is no voice input; the keyboard's dictation covers it.
+- The page's ⋯ menu holds Pin, Rename and Delete; new conversation sits left of it. The first load is a small spinner, never a list skeleton.
+
 ## Skeleton components
 
 - Screen and SheetScreen (src/ui/screen.tsx) declare the title, actions and ✕; the list or scroll view after them is the screen's root.

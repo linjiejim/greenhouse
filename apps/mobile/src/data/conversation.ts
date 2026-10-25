@@ -34,6 +34,8 @@ export interface ConversationDeps<M extends TranscriptMessage = TranscriptMessag
   latestPage(): Promise<ApiResult<MessagePage<M>>>;
   olderPage(before: number): Promise<ApiResult<MessagePage<M>>>;
   send(text: string, onEvent: (event: ChatEvent) => void, signal: AbortSignal, images?: readonly SentImage[], clientTurnId?: string): Promise<StreamOutcome>;
+  /** Write the latest reply again (optional: without it a conversation never offers Regenerate). */
+  regenerate?(messageId: string, onEvent: (event: ChatEvent) => void, signal: AbortSignal): Promise<StreamOutcome>;
   /** Whether a reply is being written now. */
   runActive(): Promise<ApiResult<{ active: boolean }>>;
   /** Attach to the reply being written (replayed from its start). */
@@ -204,6 +206,35 @@ export class Conversation<M extends TranscriptMessage = TranscriptMessage> {
       // a reply is still being written: keep my words and follow that reply
       if (notice === 'busy') void this.followActive();
       return failed;
+    }
+    if (!this.live()) return { sent: true };
+    if (!outcome.finished) await this.waitForRun();
+    await this.reconcile();
+    return { sent: true };
+  }
+
+  /**
+   * Write the latest reply again: it leaves the transcript at once and the new one streams in its
+   * place; a refusal puts it back. Only the latest reply can be regenerated (the station checks).
+   */
+  async regenerate(messageId: string): Promise<SendResult> {
+    const transcript = this.state.transcript;
+    if (this.state.busy || !this.deps.regenerate || !transcript) {
+      return { sent: false, restore: '', notice: 'busy', message: '', status: 409 };
+    }
+    this.start = exchangeStart(transcript);
+    this.set({
+      transcript: { ...transcript, messages: transcript.messages.filter((message) => message.id !== messageId) },
+      reply: EMPTY_REPLY,
+      busy: true,
+      unreconciled: false,
+      streamFailed: false,
+    });
+    const outcome = await this.deps.regenerate(messageId, this.onEvent, this.abort.signal);
+    if (!outcome.ok) {
+      const notice = outcome.status === 0 ? 'offline' : outcome.status === 409 ? 'busy' : 'failed';
+      if (this.live()) this.set({ transcript, reply: null, busy: false });
+      return { sent: false, restore: '', notice, message: outcome.message, status: outcome.status, code: outcome.code };
     }
     if (!this.live()) return { sent: true };
     if (!outcome.finished) await this.waitForRun();

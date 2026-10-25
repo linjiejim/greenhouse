@@ -12,12 +12,11 @@
  *  - `ExtensionCard` — a card an extension's tool returns: its title and summary here, its own
  *    view on the web.
  *  - `ObjectCards` — documents, tasks, projects and files the reply cites or wrote.
- *  - `ToolSummary` — "用了 3 个工具", unfolding into the tools used.
  *
  * Content layer: solid colors inside ChatCard frames, never glass.
  */
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { ScrollView, Text, TextInput, View } from 'react-native';
 import { Image } from 'expo-image';
 import { applySchemaPlan, getReceipt, saveCapturedTask, type ActionReceipt, type PlanResult } from '../api/artifacts';
@@ -37,7 +36,7 @@ import { useFontScaleKey } from '../ui/font-scale';
 import { notifySuccess, selectionTick } from '../ui/haptics';
 import { toast } from '../ui/toast';
 import { ChatCard } from './chat-card';
-import { askUserAnswer, type AskUser, type CitedObject, type SchemaPlan, type TaskCapture, type ToolStep } from './parts';
+import { askUserAnswer, type AskUser, type CitedObject, type SchemaPlan, type TaskCapture } from './parts';
 
 const absolute = (url: string) => (/^https?:\/\//i.test(url) ? url : `${getApiBase()}${url}`);
 
@@ -440,50 +439,6 @@ export function ObjectCards({ objects }: { objects: CitedObject[] }) {
   );
 }
 
-/** "用了 3 个工具", unfolding into the tools, each with its state. */
-export function ToolSummary({ steps, toolName }: { steps: ToolStep[]; toolName: (tool: string) => string }) {
-  const { colors: c } = useTheme();
-  const styles = useStyles(c);
-  const t = useT();
-  const [open, setOpen] = useState(false);
-  const running = steps.some((step) => step.status === 'running');
-  const label = useMemo(() => {
-    const names = [...new Set(steps.map((step) => step.tool))];
-    if (running) return steps.length === 1 ? t('cards.toolRunning') : t('cards.toolsRunning', { n: steps.length });
-    return names.length === 1 ? t('cards.toolUsed') : t('cards.toolsUsed', { n: names.length });
-  }, [steps, running, t]);
-  if (!steps.length) return null;
-  return (
-    <View style={styles.tools}>
-      <Touchable
-        onPress={() => setOpen((v) => !v)}
-        style={styles.toolsHead}
-        accessibilityRole="button"
-        accessibilityState={{ expanded: open }}
-        accessibilityLabel={label}
-      >
-        {running ? <Spinner /> : <Icon name="wrench" size={13} color={c.secondaryLabel} />}
-        <Text style={styles.toolsText}>{label}</Text>
-        <Icon name={open ? 'chevU' : 'chevD'} size={11} weight="semibold" color={c.tertiaryLabel} />
-      </Touchable>
-      {open
-        ? steps.map((step) => (
-            <View key={step.id} style={styles.toolRow}>
-              <Icon
-                name={step.status === 'failed' ? 'alertCircle' : step.status === 'running' ? 'hourglass' : 'checkCircle'}
-                size={13}
-                color={step.status === 'failed' ? c.red : c.secondaryLabel}
-              />
-              <Text style={styles.toolName} numberOfLines={1}>
-                {toolName(step.tool)}
-              </Text>
-            </View>
-          ))
-        : null}
-    </View>
-  );
-}
-
 const useStyles = makeStyles((c) => ({
   card: { gap: space.sm, marginVertical: space.xs, padding: space.lg },
   head: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
@@ -534,9 +489,4 @@ const useStyles = makeStyles((c) => ({
   op: { ...typo.footnote, color: c.label },
   objectsRow: { flexGrow: 0, marginTop: space.sm },
   objects: { gap: space.sm },
-  tools: { alignSelf: 'flex-start', marginBottom: space.sm, borderRadius: radius.md, backgroundColor: c.tertiaryFill, ...squircle },
-  toolsHead: { flexDirection: 'row', alignItems: 'center', gap: space.xs, paddingHorizontal: space.md, minHeight: HIT - space.sm },
-  toolsText: { ...typo.footnote, color: c.secondaryLabel },
-  toolRow: { flexDirection: 'row', alignItems: 'center', gap: space.xs, paddingHorizontal: space.md, paddingBottom: space.sm },
-  toolName: { ...typo.footnote, color: c.label, flexShrink: 1 },
 }));

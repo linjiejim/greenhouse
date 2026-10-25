@@ -47,6 +47,25 @@ export async function sendMessage(
   );
 }
 
+/** Write the latest reply again (`regenerate_assistant_message_id`; 409 when it is no longer the latest). */
+export function regenerateReply(
+  sessionId: string,
+  messageId: string,
+  onEvent: (event: ChatEvent) => void,
+  signal?: AbortSignal,
+): Promise<SendOutcome> {
+  return stream(
+    '/api/chat',
+    {
+      method: 'POST',
+      signal,
+      headers: { 'Content-Type': 'application/json', Accept: 'application/x-ndjson' },
+      body: JSON.stringify({ session_id: sessionId, regenerate_assistant_message_id: messageId, rich_blocks: MOBILE_RICH_BLOCKS }),
+    },
+    onEvent,
+  );
+}
+
 /** Attach to the reply being written for a session, replayed from its start. */
 export function followRun(sessionId: string, onEvent: (event: ChatEvent) => void, signal?: AbortSignal): Promise<SendOutcome> {
   return stream(`/api/chat/runs/${seg(sessionId)}/stream`, { signal, headers: { Accept: 'application/x-ndjson' } }, onEvent);

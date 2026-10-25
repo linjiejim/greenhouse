@@ -44,6 +44,9 @@ export const pinSession = (id: string, pinned: boolean) =>
 
 export const renameSession = (id: string, title: string) => patch<ChatSession>(`/api/sessions/${seg(id)}`, { title });
 
+/** Delete a conversation for good (409 while a reply is being written). */
+export const deleteSession = (id: string) => del<unknown>(`/api/sessions/${seg(id)}`);
+
 /** Stop the reply being written. */
 export const stopRun = (sessionId: string) => post<unknown>(`/api/chat/runs/${seg(sessionId)}/stop`, {});
 

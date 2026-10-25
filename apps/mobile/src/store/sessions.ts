@@ -2,12 +2,12 @@
  * My conversations (the first page of `/api/sessions`, newest first, pinned ones included), shared
  * by home's recent five and the all-conversations sheet. Cache first: the copy saved on this phone
  * shows at once, offline too, and the station's answer replaces it (rules in ../data/home.ts).
- * Pinning and renaming are optimistic and come back on failure. Resets on any station or member
+ * Pinning, renaming and deleting are optimistic and come back on failure. Resets on any station or member
  * change; late answers for another identity are dropped.
  */
 
 import { create } from 'zustand';
-import { listSessions, pinSession, renameSession } from '../api/assistant';
+import { deleteSession, listSessions, pinSession, renameSession } from '../api/assistant';
 import { captureIdentity } from '../data/identity';
 import { orderConversations, parseSessions, withPinned } from '../data/home';
 import { t } from '../lib/i18n';
@@ -27,6 +27,8 @@ interface Sessions {
   refresh: () => Promise<void>;
   pin: (id: string, pinned: boolean) => Promise<void>;
   rename: (id: string, title: string) => Promise<void>;
+  /** Delete a conversation; true once the station has (or it was gone already). */
+  remove: (id: string) => Promise<boolean>;
 }
 
 export const useSessions = create<Sessions>((set, get) => ({
@@ -75,6 +77,20 @@ export const useSessions = create<Sessions>((set, get) => ({
       return;
     }
     writeOffline(KIND, get().items);
+  },
+  remove: async (id) => {
+    const before = get().items;
+    set({ items: before.filter((s) => s.id !== id) });
+    const current = captureIdentity();
+    const result = await deleteSession(id);
+    if (!current()) return false;
+    if (!result.ok && result.status !== 404) {
+      set({ items: before });
+      alertError(t('conversation.deleteFailed'), result.message || undefined);
+      return false;
+    }
+    writeOffline(KIND, get().items);
+    return true;
   },
 }));
 

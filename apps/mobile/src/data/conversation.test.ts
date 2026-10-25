@@ -274,3 +274,37 @@ describe('an open conversation', () => {
     expect(c.state.reply?.text).toBe('Partial');
   });
 });
+
+describe('regenerating the latest reply', () => {
+  it('takes the reply off at once and shows the new one the station saves', async () => {
+    const s = station();
+    s.deps.regenerate = vi.fn(async (messageId: string, onEvent: (e: ChatEvent) => void): Promise<StreamOutcome> => {
+      const at = s.deps.saved.findIndex((x) => x.id === messageId);
+      s.deps.saved.splice(at, 1);
+      onEvent({ type: 'text-delta', text: 'Again' });
+      // while it streams, the old reply is gone and the live one is on screen
+      expect(seqsOf(c)).toEqual([3]);
+      onEvent({ type: 'finish' });
+      s.deps.saved.push({ id: 'msg_4b', role: 'assistant', content: 'Again', seq: 4 });
+      return { ok: true, finished: true };
+    });
+    const c = new Conversation(s.deps);
+    const seqsOf = (x: Conversation) => x.state.transcript?.messages.map((y) => y.seq);
+    await c.open();
+    expect(await c.regenerate('msg_4')).toEqual({ sent: true });
+    expect(c.state.transcript?.messages.at(-1)).toMatchObject({ id: 'msg_4b', content: 'Again' });
+    expect(c.state.reply).toBeNull();
+    expect(c.state.busy).toBe(false);
+  });
+
+  it('puts the reply back when the station refuses', async () => {
+    const s = station();
+    s.deps.regenerate = vi.fn(async (): Promise<StreamOutcome> => ({ ok: false, status: 409, code: 'conflict', message: 'not the latest' }));
+    const c = new Conversation(s.deps);
+    await c.open();
+    const result = await c.regenerate('msg_4');
+    expect(result).toMatchObject({ sent: false, notice: 'busy', message: 'not the latest' });
+    expect(seqs(c)).toEqual([3, 4]);
+    expect(c.state.busy).toBe(false);
+  });
+});

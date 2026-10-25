@@ -12,25 +12,48 @@
  * offline. A message sent while the station cannot be reached waits in the outbox
  * (src/store/outbox.ts) and goes from here once it can. Everything belongs to the station and
  * account that opened the conversation.
+ *
+ * Chrome: the title carries Sprouty's living face, which glides below the title while a reply is
+ * written (src/chat/header-avatar.tsx); on the right a new-conversation button and the ⋯ menu
+ * (Pin / Unpin, Rename, Delete). The list rides the keyboard (KeyboardChatScrollView adds the
+ * keyboard to the scroll view's bottom inset, so the end is reachable with it up) and follows
+ * the end only while the member is there; scrolled up during a reply, a ↓ button jumps back.
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import { FlatList, Text, View, type TextInput } from 'react-native';
+import { FlatList, Text, View, type ScrollView, type TextInput } from 'react-native';
 import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
-import { KeyboardStickyView } from 'react-native-keyboard-controller';
+import { KeyboardChatScrollView, KeyboardStickyView } from 'react-native-keyboard-controller';
+import Animated, { FadeIn, FadeOut, ReduceMotion } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { chatRun, createSession, getMessages, getSessionInfo, stopRun } from '../src/api/assistant';
+import { HeaderTitle, TalkingAvatar, useTalking } from '../src/chat/header-avatar';
+import { useStepsSheet } from '../src/chat/steps-sheet';
 import type { ApiResult } from '../src/api/client';
 import { Composer } from '../src/chat/composer';
 import { sentParts } from '../src/chat/composer-files';
 import { AssistantReply, UserMessage } from '../src/chat/messages';
-import { attachmentsFence, messageImages, pipelineSteps, splitAttachments, type AttachedFile } from '../src/chat/parts';
+import {
+  attachmentsFence,
+  messageImages,
+  pipelineSteps,
+  splitAttachments,
+  type AttachedFile,
+  type ToolStep,
+} from '../src/chat/parts';
 import { sendDirect } from '../src/chat/direct-send';
-import { followRun, sendMessage } from '../src/chat/send';
+import { followRun, regenerateReply, sendMessage } from '../src/chat/send';
 import { useComposerBridge } from '../src/chat/composer-bridge';
 import { useComposerFiles } from '../src/chat/use-composer-files';
 import { visibleMessages } from '../src/data/chat-stream';
-import { CLOSED_CONVERSATION, Conversation, headOf, tailOf, type ConversationState, type SentImage } from '../src/data/conversation';
+import {
+  CLOSED_CONVERSATION,
+  Conversation,
+  headOf,
+  tailOf,
+  type ConversationState,
+  type SentImage,
+} from '../src/data/conversation';
 import { atEnd, shouldFollowEnd } from '../src/data/follow-end';
 import { captureIdentity } from '../src/data/identity';
 import { newTurnId } from '../src/data/outbox';
@@ -40,12 +63,19 @@ import { useT } from '../src/lib/i18n';
 import type { ChatMessage } from '../src/shared/greenhouse-types';
 import { readChatCopy, saveChatCopy } from '../src/store/chat-copies';
 import { claimConversation, deliverQueued, queueTurn, unqueueTurn, useOutbox } from '../src/store/outbox';
-import { makeStyles, space, typo, useTheme } from '../src/theme';
-import { alertError } from '../src/ui/dialogs';
-import { EmptyState, LoadingState } from '../src/ui/empty';
+import { HIT, makeStyles, motion, space, typo, useTheme } from '../src/theme';
+import { alertError, confirmAction, promptText } from '../src/ui/dialogs';
+import { EmptyState } from '../src/ui/empty';
 import { usePlantWorkState } from '../src/ui/plant-avatar/use-plant-work';
-import type { PlantStateInput } from '../src/ui/plant-avatar/plant-ids';
 import { Spinner } from '../src/ui/core';
+import { GlassIconButton } from '../src/ui/glass';
+import { notifySuccess, notifyWarning } from '../src/ui/haptics';
+import { toast } from '../src/ui/toast';
+import { toolbarIcon } from '../src/ui/toolbar-icon';
+import { useHeaderInset } from '../src/ui/header-inset';
+import { OpenOrigin } from '../src/shell/open-object';
+import { useSessions } from '../src/store/sessions';
+import { forgetChatCopy } from '../src/store/chat-copies';
 
 /** What home hands over for the first message of a conversation it made. */
 export interface FirstTurn {
@@ -60,8 +90,8 @@ type Item =
   | { key: string; kind: 'reply' }
   | { key: string; kind: 'queued'; id: string; text: string; images: SentImage[]; failed: boolean };
 
-/** The navigation bar's height under the status bar; the list's top inset when following the end. */
-const NAV_BAR = 56;
+/** The list's native scroll view (its own scrollToEnd counts padding and the keyboard inset). */
+const scrollRef = (list: FlatList<Item> | null) => list?.getNativeScrollRef() as ScrollView | null | undefined;
 
 const noSubscription = () => () => {};
 const closed = (): ConversationState<ChatMessage> => CLOSED_CONVERSATION;
@@ -73,14 +103,21 @@ export default function Chat() {
   const { colors: c } = useTheme();
   const styles = useStyles(c);
   const insets = useSafeAreaInsets();
-  const [sessionId, setSessionId] = useState<string | null>(params.session && /^[A-Za-z0-9_-]{1,128}$/.test(params.session) ? params.session : null);
+  const [sessionId, setSessionId] = useState<string | null>(
+    params.session && /^[A-Za-z0-9_-]{1,128}$/.test(params.session) ? params.session : null,
+  );
   const [draft, setDraft] = useState(params.draft ?? '');
   const [composerHeight, setComposerHeight] = useState(64);
   const [offline, setOffline] = useState(false);
   const input = useRef<TextInput>(null);
   const list = useRef<FlatList<Item>>(null);
   const viewport = useRef(0);
+  const headerInset = useHeaderInset();
   const pinned = useRef(true);
+  /** Scrolled away from the end (shows the ↓ button). */
+  const [away, setAway] = useState(false);
+  const [rootOrigin, setRootOrigin] = useState({ x: 0, y: 0 });
+  const root = useRef<View>(null);
   const shape = useRef({ head: '', tail: '' });
   const firstTurn = useRef<FirstTurn | null>(getHandoff<FirstTurn>(params.k, 'first-turn') ?? null);
 
@@ -133,12 +170,14 @@ export default function Chat() {
         return result;
       },
       olderPage: (before) => getMessages(sessionId, before),
-      send: (text, onEvent, signal, images, clientTurnId) => sendMessage(sessionId, text.slice(0, 20_000), onEvent, signal, images, clientTurnId),
+      send: (text, onEvent, signal, images, clientTurnId) =>
+        sendMessage(sessionId, text.slice(0, 20_000), onEvent, signal, images, clientTurnId),
       runActive: async () => {
         const result = await chatRun(sessionId);
         return result.ok ? { ok: true, data: { active: result.data.active } } : result;
       },
       follow: (onEvent, signal) => followRun(sessionId, onEvent, signal),
+      regenerate: (messageId, onEvent, signal) => regenerateReply(sessionId, messageId, onEvent, signal),
       stillCurrent: captureIdentity(),
       wait: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
     });
@@ -157,13 +196,28 @@ export default function Chat() {
       if (!conversation) return false;
       pinned.current = true;
       return sendDirect(
-        { send: (turnId) => conversation.send(text, images, turnId), stillCurrent: captureIdentity(), sessionId, text, images, turnId: newTurnId() },
+        {
+          send: (turnId) => conversation.send(text, images, turnId),
+          stillCurrent: captureIdentity(),
+          sessionId,
+          text,
+          images,
+          turnId: newTurnId(),
+        },
         {
           queue: (turn) => queueTurn(turn),
           setOffline: () => setOffline(true),
           // my words come back to the box whatever refused them (or when the outbox is full)
           restoreDraft: (words) => setDraft((now) => now || words),
-          alert: (why, message) => alertError(why === 'full' ? t('conversation.outboxFull') : why === 'busy' ? t('assistant.busy') : t('assistant.sendFailed'), message),
+          alert: (why, message) =>
+            alertError(
+              why === 'full'
+                ? t('conversation.outboxFull')
+                : why === 'busy'
+                  ? t('assistant.busy')
+                  : t('assistant.sendFailed'),
+              message,
+            ),
         },
       );
     },
@@ -179,7 +233,9 @@ export default function Chat() {
         id,
         async (turn) => {
           const result = await conversation.send(turn.text, turn.images, turn.id);
-          return result.sent ? { ok: true } : { ok: false, status: result.status, code: result.code, message: result.message };
+          return result.sent
+            ? { ok: true }
+            : { ok: false, status: result.status, code: result.code, message: result.message };
         },
         { manual },
       );
@@ -253,8 +309,8 @@ export default function Chat() {
 
   const files = useComposerFiles(ensureSession);
 
-  const submit = async (spoken?: string) => {
-    const text = spoken ?? draft;
+  const submit = async () => {
+    const text = draft;
     const parts = sentParts(files.files);
     if (!text.trim() && !parts.images.length && !parts.attachments.length) return;
     if (state.busy) {
@@ -296,23 +352,53 @@ export default function Chat() {
 
   const items: Item[] = [
     ...messages.map((message, index): Item => ({ key: `m-${message.seq}`, kind: 'message', message, index })),
-    ...(state.pending !== null ? [{ key: 'pending', kind: 'pending', text: state.pending, images: state.pendingImages } as Item] : []),
+    ...(state.pending !== null
+      ? [{ key: 'pending', kind: 'pending', text: state.pending, images: state.pendingImages } as Item]
+      : []),
     ...(state.reply ? [{ key: 'reply', kind: 'reply' } as Item] : []),
-    ...queued.map((turn): Item => ({ key: `q-${turn.id}`, kind: 'queued', id: turn.id, text: turn.text, images: turn.images, failed: turn.status === 'failed' })),
+    ...queued.map(
+      (turn): Item => ({
+        key: `q-${turn.id}`,
+        kind: 'queued',
+        id: turn.id,
+        text: turn.text,
+        images: turn.images,
+        failed: turn.status === 'failed',
+      }),
+    ),
   ];
 
-  // the sprout of the latest reply follows the turn
+  // Sprouty's face follows the turn (header title, and below it while a reply is written)
   const live = state.reply;
   const lastReply = [...messages].reverse().find((m) => m.role === 'assistant');
-  const waitingForMe = !!lastReply && !state.busy && !state.pending && pipelineSteps(lastReply.pipeline).some((s) => (s.output as { type?: string } | null)?.type === 'ask_user') && messages.at(-1)?.role === 'assistant';
-  const latestState = usePlantWorkState({
+  const waitingForMe =
+    !!lastReply &&
+    !state.busy &&
+    !state.pending &&
+    pipelineSteps(lastReply.pipeline).some((s) => (s.output as { type?: string } | null)?.type === 'ask_user') &&
+    messages.at(-1)?.role === 'assistant';
+  const face = usePlantWorkState({
     working: state.busy,
     streaming: state.busy && !!live?.text,
     hasText: !!live?.text,
     toolRunning: !!live?.tool,
     waiting: waitingForMe,
-    failed: !!live?.error,
+    failed: !!live?.error || state.streamFailed,
   });
+  const talking = state.busy && !!state.reply;
+  const { out, visible: avatarOut } = useTalking(talking);
+
+  // the steps sheet keeps up with the live reply while it is open
+  useEffect(() => {
+    if (live) useStepsSheet.getState().follow('live', live.steps, live.tool);
+  }, [live]);
+  const openSteps = useCallback(
+    (messageId: string, steps: ToolStep[], running: string | null = null) => {
+      useStepsSheet.getState().show(messageId, steps, running);
+      router.push('/sheet/steps');
+    },
+    [router],
+  );
 
   const env = useCallback(
     (followUp?: string) => ({
@@ -323,6 +409,98 @@ export default function Chat() {
       followUp,
     }),
     [send, state.busy],
+  );
+
+  // long-press actions: quote into the composer, regenerate the latest reply
+  const quote = useCallback((text: string) => {
+    const quoted = text
+      .trim()
+      .split('\n')
+      .map((line) => `> ${line}`)
+      .join('\n');
+    setDraft((now) => `${quoted}\n\n${now}`);
+    input.current?.focus();
+  }, []);
+  const regenerate = useCallback(
+    async (messageId: string) => {
+      if (!conversation || state.busy) return;
+      pinned.current = true;
+      const result = await conversation.regenerate(messageId);
+      if (!result.sent && result.notice !== 'offline')
+        alertError(t('conversation.regenerateFailed'), result.message || undefined);
+    },
+    [conversation, state.busy, t],
+  );
+  const userActions = useMemo(() => ({ onQuote: quote }), [quote]);
+
+  // the ⋯ menu: pin, rename, delete (the conversation list's own store, so home follows)
+  const session = useSessions((s) => s.items.find((item) => item.id === sessionId));
+  const [renamed, setRenamed] = useState<string | null>(null);
+  const title = renamed ?? state.title;
+  const rename = async () => {
+    if (!sessionId) return;
+    const next = await promptText({ title: t('home.rename'), defaultValue: title ?? '' });
+    if (!next) return;
+    setRenamed(next.slice(0, 200));
+    await useSessions.getState().rename(sessionId, next.slice(0, 200));
+  };
+  const remove = async () => {
+    if (!sessionId) return;
+    notifyWarning();
+    const ok = await confirmAction({
+      title: t('conversation.deleteTitle'),
+      message: t('conversation.deleteHint'),
+      confirmLabel: t('conversation.delete'),
+      destructive: true,
+    });
+    if (!ok) return;
+    if (state.busy) await stopRun(sessionId);
+    if (await useSessions.getState().remove(sessionId)) {
+      void forgetChatCopy(sessionId);
+      notifySuccess();
+      toast(t('conversation.deleted'), 'trash');
+      router.back();
+    }
+  };
+
+  const jumpToEnd = () => {
+    pinned.current = true;
+    setAway(false);
+    scrollRef(list.current)?.scrollToEnd({ animated: true });
+  };
+
+  const headerTitle = title || t(sessionId ? 'assistant.untitled' : 'assistant.newChat');
+  const header = (
+    <>
+      <Stack.Screen
+        options={{ title: headerTitle, headerTitle: () => <HeaderTitle title={headerTitle} state={face} out={out} /> }}
+      />
+      <Stack.Toolbar placement="right">
+        <Stack.Toolbar.Button
+          icon={toolbarIcon('compose')}
+          accessibilityLabel={t('conversation.newChat')}
+          onPress={() => router.replace('/chat')}
+        />
+        {sessionId ? (
+          <Stack.Toolbar.Menu icon={toolbarIcon('more')} accessibilityLabel={t('conversation.menu')}>
+            <Stack.Toolbar.MenuAction
+              icon={session?.pinned ? 'pin.slash' : 'pin'}
+              onPress={() => {
+                if (sessionId) void useSessions.getState().pin(sessionId, !session?.pinned);
+              }}
+            >
+              {t(session?.pinned ? 'home.unpin' : 'home.pin')}
+            </Stack.Toolbar.MenuAction>
+            <Stack.Toolbar.MenuAction icon="pencil" onPress={() => void rename()}>
+              {t('home.rename')}
+            </Stack.Toolbar.MenuAction>
+            <Stack.Toolbar.MenuAction icon="trash" destructive onPress={() => void remove()}>
+              {t('conversation.delete')}
+            </Stack.Toolbar.MenuAction>
+          </Stack.Toolbar.Menu>
+        ) : null}
+      </Stack.Toolbar>
+    </>
   );
 
   if (sessionId && state.missing) {
@@ -339,26 +517,39 @@ export default function Chat() {
       const { message } = item;
       if (message.role === 'user') {
         const { text, files: attached } = splitAttachments(message.content);
-        return <UserMessage text={text} images={messageImages(message.images)} files={attached} />;
+        const delivered = item.index === lastUser && state.pending === null && !queued.length;
+        return (
+          <UserMessage
+            text={text}
+            images={messageImages(message.images)}
+            files={attached}
+            delivered={delivered}
+            actions={userActions}
+          />
+        );
       }
       const next = messages[item.index + 1];
-      const isLatest = message === lastReply && !state.reply;
+      const steps = pipelineSteps(message.pipeline);
+      const isLatest = message === lastReply && !state.reply && item.index === messages.length - 1;
       return (
         <AssistantReply
           messageId={message.id}
           sessionId={sessionId}
           text={message.content}
-          steps={pipelineSteps(message.pipeline)}
+          steps={steps}
           references={message.references_}
-          state={isLatest ? latestState : 'idle'}
           answered={item.index < lastUser || state.pending !== null}
           env={env(next?.role === 'user' ? next.content : undefined)}
+          actions={
+            isLatest && !state.busy ? { onQuote: quote, onRegenerate: () => void regenerate(message.id) } : userActions
+          }
+          onSteps={() => openSteps(message.id, steps)}
         />
       );
     }
     if (item.kind === 'pending') {
       const { text, files: attached } = splitAttachments(item.text);
-      return <UserMessage text={text} images={[...item.images]} files={attached} />;
+      return <UserMessage text={text} images={[...item.images]} files={attached} sending actions={userActions} />;
     }
     if (item.kind === 'queued') {
       const { text, files: attached } = splitAttachments(item.text);
@@ -369,6 +560,7 @@ export default function Chat() {
           files={attached}
           queued
           failed={item.failed}
+          actions={userActions}
           onRetry={() => void sendQueued(item.id, true)}
           onRemove={item.failed ? () => unqueueTurn(item.id) : undefined}
         />
@@ -382,17 +574,13 @@ export default function Chat() {
           sessionId={sessionId}
           text={reply.text}
           steps={reply.steps}
-          state={latestState as PlantStateInput}
           live
+          working={state.busy}
+          runningTool={reply.tool}
           answered={false}
           env={env()}
+          onSteps={() => openSteps('live', reply.steps, reply.tool)}
         />
-        {state.busy && (!reply.text || reply.tool) ? (
-          <View style={styles.typing} accessibilityLiveRegion="polite">
-            <Spinner size="small" />
-            <Text style={styles.note}>{reply.tool ? t('assistant.usingTool', { tool: reply.tool }) : t('assistant.thinking')}</Text>
-          </View>
-        ) : null}
         {reply.error ? <Text style={styles.error}>{reply.error}</Text> : null}
         {state.streamFailed ? <Text style={styles.error}>{t('assistant.streamFailed')}</Text> : null}
         {state.unreconciled ? (
@@ -406,59 +594,117 @@ export default function Chat() {
 
   return (
     <View
+      ref={root}
       style={styles.root}
-      onLayout={(e) => {
-        viewport.current = e.nativeEvent.layout.height;
-      }}
+      onLayout={() =>
+        root.current?.measureInWindow((x, y) => setRootOrigin((now) => (now.x === x && now.y === y ? now : { x, y })))
+      }
     >
-      <Stack.Screen options={{ title: state.title || t(sessionId ? 'assistant.untitled' : 'assistant.newChat') }} />
-      <FlatList<Item>
-        ref={list}
-        contentInsetAdjustmentBehavior="automatic"
-        data={items}
-        keyExtractor={(item) => item.key}
-        keyboardDismissMode="interactive"
-        keyboardShouldPersistTaps="handled"
-        // older history comes in at the top without moving what is on screen
-        maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
-        onStartReached={() => void conversation?.loadOlder()}
-        onStartReachedThreshold={0.5}
-        scrollEventThrottle={32}
-        onScroll={(e) => {
-          const { contentOffset, layoutMeasurement, contentSize } = e.nativeEvent;
-          pinned.current = atEnd({ offsetY: contentOffset.y, viewportHeight: layoutMeasurement.height, contentHeight: contentSize.height });
-        }}
-        onContentSizeChange={(_, height) => {
-          const next = { head: headOf(state), tail: `${tailOf(state)}|${queued.length}` };
-          const follow = shouldFollowEnd({ pinned: pinned.current, head: next.head, prevHead: shape.current.head, tail: next.tail, prevTail: shape.current.tail });
-          shape.current = next;
-          if (follow && height > viewport.current - insets.top - NAV_BAR) list.current?.scrollToEnd({ animated: true });
-        }}
-        ListHeaderComponent={
-          <>
-            {offline ? <Text style={styles.offline}>{t('common.savedCopy')}</Text> : null}
-            {state.loadingOlder ? <Spinner style={styles.older} /> : null}
-          </>
-        }
-        renderItem={renderItem}
-        ListEmptyComponent={
-          !sessionId || state.transcript ? (
-            <Text style={styles.hint}>{t('assistant.startHint')}</Text>
-          ) : state.loadFailed ? (
-            <EmptyState icon="alert" title={t('assistant.loadFailed')} onRetry={() => void conversation?.refocus()} style={styles.state} />
-          ) : (
-            <LoadingState style={styles.state} />
-          )
-        }
-        contentContainerStyle={[styles.content, { paddingBottom: composerHeight + insets.bottom + space.lg }]}
-      />
+      {header}
+      {/* what opens from here (link chips, cards) says it came from this conversation */}
+      <OpenOrigin.Provider value={sessionId ? headerTitle : null}>
+        <FlatList<Item>
+          ref={list}
+          // the keyboard joins the bottom inset, so the end stays reachable with it up (an empty
+          // conversation stays put: there is nothing to lift, only the hint under the bar)
+          renderScrollComponent={(props) => (
+            <KeyboardChatScrollView
+              {...props}
+              offset={insets.bottom}
+              keyboardLiftBehavior="whenAtEnd"
+              freeze={!items.length}
+            />
+          )}
+          // insets by hand: the keyboard scroll view sets its own offset on mount, which would park a
+          // short conversation under the bar if the bar's inset were the system's adjustment
+          contentInsetAdjustmentBehavior="never"
+          scrollIndicatorInsets={{ top: headerInset }}
+          data={items}
+          keyExtractor={(item) => item.key}
+          keyboardDismissMode="interactive"
+          keyboardShouldPersistTaps="handled"
+          // older history comes in at the top without moving what is on screen
+          maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
+          onStartReached={() => void conversation?.loadOlder()}
+          onStartReachedThreshold={0.5}
+          scrollEventThrottle={32}
+          onScroll={(e) => {
+            const { contentOffset, layoutMeasurement, contentSize, contentInset } = e.nativeEvent;
+            const end = atEnd({
+              offsetY: contentOffset.y,
+              viewportHeight: layoutMeasurement.height,
+              contentHeight: contentSize.height + (contentInset?.bottom ?? 0),
+            });
+            pinned.current = end;
+            setAway((now) => (now === !end ? now : !end));
+          }}
+          onLayout={(e) => {
+            viewport.current = e.nativeEvent.layout.height;
+          }}
+          onContentSizeChange={(_, height) => {
+            const next = { head: headOf(state), tail: `${tailOf(state)}|${queued.length}` };
+            const follow = shouldFollowEnd({
+              pinned: pinned.current,
+              head: next.head,
+              prevHead: shape.current.head,
+              tail: next.tail,
+              prevTail: shape.current.tail,
+            });
+            shape.current = next;
+            // the native scroll view's own end: content, its padding and the keyboard inset
+            // (only when it overflows: a short conversation rests at the top, under the bar)
+            if (follow && height > viewport.current)
+              scrollRef(list.current)?.scrollToEnd({ animated: true });
+          }}
+          ListHeaderComponent={
+            <>
+              {offline ? <Text style={styles.offline}>{t('common.savedCopy')}</Text> : null}
+              {state.loadingOlder ? <Spinner style={styles.older} /> : null}
+            </>
+          }
+          renderItem={renderItem}
+          ListEmptyComponent={
+            !sessionId || state.transcript ? (
+              <Text style={styles.hint}>{t('assistant.startHint')}</Text>
+            ) : state.loadFailed ? (
+              <EmptyState
+                icon="alert"
+                title={t('assistant.loadFailed')}
+                onRetry={() => void conversation?.refocus()}
+                style={styles.state}
+              />
+            ) : (
+              <ConversationLoading />
+            )
+          }
+          contentContainerStyle={[
+            styles.content,
+            { paddingTop: headerInset + space.md, paddingBottom: composerHeight + insets.bottom + space.lg },
+          ]}
+        />
+      </OpenOrigin.Provider>
+      {avatarOut ? <TalkingAvatar state={face} out={out} origin={rootOrigin} /> : null}
       <KeyboardStickyView offset={{ opened: insets.bottom }} style={styles.composerWrap}>
+        {away && items.length ? (
+          <Animated.View
+            entering={FadeIn.duration(motion.fast).reduceMotion(ReduceMotion.System)}
+            exiting={FadeOut.duration(motion.fast).reduceMotion(ReduceMotion.System)}
+            style={styles.jump}
+          >
+            <GlassIconButton
+              icon="arrowDown"
+              size={HIT - space.xs}
+              onPress={jumpToEnd}
+              accessibilityLabel={t('conversation.jumpLatest')}
+            />
+          </Animated.View>
+        ) : null}
         <View style={{ paddingBottom: Math.max(insets.bottom, space.sm) }}>
           <Composer
             ref={input}
             value={draft}
             onChangeText={setDraft}
-            onSend={(spoken) => void submit(spoken)}
+            onSend={() => void submit()}
             working={state.busy}
             onStop={sessionId ? () => void stopRun(sessionId) : undefined}
             onAttach={(from) => void files.attach(from)}
@@ -475,15 +721,39 @@ export default function Chat() {
   );
 }
 
+/** The first load: a small spinner, shown only once the wait is noticeable, where the list starts. */
+function ConversationLoading() {
+  const t = useT();
+  const { colors: c } = useTheme();
+  const styles = useStyles(c);
+  const [slow, setSlow] = useState(false);
+  useEffect(() => {
+    const timer = setTimeout(() => setSlow(true), 300);
+    return () => clearTimeout(timer);
+  }, []);
+  return (
+    <View
+      style={styles.loading}
+      accessible
+      accessibilityRole="progressbar"
+      accessibilityLabel={t('common.loading')}
+      accessibilityState={{ busy: true }}
+    >
+      {slow ? <Spinner /> : null}
+    </View>
+  );
+}
+
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.background },
-  content: { paddingHorizontal: space.margin, paddingTop: space.md, gap: space.lg },
+  content: { paddingHorizontal: space.margin, gap: space.lg },
   state: { paddingTop: space.xxxl },
   older: { paddingVertical: space.md },
-  typing: { flexDirection: 'row', alignItems: 'center', gap: space.sm, paddingVertical: space.xs },
   note: { ...typo.subheadline, color: c.secondaryLabel },
   error: { ...typo.footnote, color: c.red, marginTop: space.xs },
   hint: { ...typo.subheadline, color: c.secondaryLabel, textAlign: 'center', marginTop: space.xxxl },
   offline: { ...typo.footnote, color: c.secondaryLabel, textAlign: 'center', paddingBottom: space.sm },
   composerWrap: { position: 'absolute', left: 0, right: 0, bottom: 0 },
+  jump: { position: 'absolute', right: space.margin, top: -(HIT + space.xs) },
+  loading: { height: HIT * 2, alignItems: 'center', justifyContent: 'center', marginTop: space.xxxl },
 }));

@@ -191,6 +191,7 @@ export default function RootLayout() {
                 <Stack.Screen name="sheet/notification" options={sheetScreen([0.6, 1], { header: true })} />
                 <Stack.Screen name="sheet/run" options={sheetScreen([0.6, 1], { header: true })} />
                 <Stack.Screen name="sheet/write" options={sheetScreen([0.6, 1], { header: true })} />
+                <Stack.Screen name="sheet/steps" options={sheetScreen([0.6, 1], { header: true })} />
 
                 {/* ── home's sheets and pickers ── */}
                 <Stack.Screen name="notifications" options={sheetScreen([0.7, 1], { header: true })} />
