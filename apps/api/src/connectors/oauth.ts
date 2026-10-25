@@ -309,6 +309,8 @@ export interface ConnectorOAuthProviderOptions {
   client?: SignInClient;
   /** callback mode: the PKCE verifier from the sealed state. */
   verifier?: string;
+  /** call mode: every token and client secret this provider handles lands here, for redaction. */
+  secrets?: string[];
 }
 
 export class ConnectorOAuthProvider implements OAuthClientProvider {
@@ -353,7 +355,12 @@ export class ConnectorOAuthProvider implements OAuthClientProvider {
     ) {
       return undefined;
     }
+    if (stored.client_secret) this.remember(stored.client_secret);
     return { client_id: stored.client_id, ...(stored.client_secret ? { client_secret: stored.client_secret } : {}) };
+  }
+
+  private remember(...values: (string | undefined)[]): void {
+    for (const value of values) if (value && !this.opts.secrets?.includes(value)) this.opts.secrets?.push(value);
   }
 
   async saveClientInformation(info: OAuthClientInformationMixed): Promise<void> {
@@ -364,7 +371,14 @@ export class ConnectorOAuthProvider implements OAuthClientProvider {
       redirect_uri: this.opts.redirectUri,
       registered_at: nowIso(),
     });
-    await this.opts.db.mcpConnectors.setOAuthClient(this.connector.id, sealed);
+    // Two first sign-ins at once: the first registration wins; the other person starts again.
+    const wrote = await this.opts.db.mcpConnectors.setOAuthClient(
+      this.connector.id,
+      sealed,
+      this.connector.oauth_client_enc,
+    );
+    if (!wrote)
+      throw new ConnectorSignInError('Someone else is setting up this connector right now — press Connect again.');
     this.connector = { ...this.connector, oauth_client_enc: sealed };
     logger.info('[connectors] registered the instance as an OAuth client', { connector: this.connector.id });
   }
@@ -378,12 +392,12 @@ export class ConnectorOAuthProvider implements OAuthClientProvider {
         const stored = row ? openSharedTokens(row) : null;
         if (!row?.shared_secret_enc || !stored) return undefined;
         this.loaded = row.shared_secret_enc;
-        return toOAuthTokens(stored);
+        return this.remembered(toOAuthTokens(stored));
       }
       const row = await this.opts.db.mcpConnectors.getConnection(owner.userId, this.connector.id);
       if (!row?.access_token_enc) return undefined;
       this.loaded = row.access_token_enc;
-      return openMemberTokens(this.connector.id, owner.userId, row);
+      return this.remembered(openMemberTokens(this.connector.id, owner.userId, row));
     } catch {
       // Unreadable (instance key changed, or bound elsewhere): treated as no
       // sign-in, so the call ends in "reconnect" instead of a decryption error.
@@ -391,13 +405,22 @@ export class ConnectorOAuthProvider implements OAuthClientProvider {
     }
   }
 
+  private remembered<T extends OAuthTokens | undefined>(tokens: T): T {
+    if (tokens) this.remember(tokens.access_token, tokens.refresh_token);
+    return tokens;
+  }
+
   async saveTokens(tokens: OAuthTokens): Promise<void> {
     const { owner, db } = this.opts;
+    this.remembered(tokens);
     const client = readStoredClient(this.connector);
+    // A sign-in that started before an address or auth change must not land after it.
+    const guard = { url: this.connector.url, auth_mode: this.connector.auth_mode, auth_kind: this.connector.auth_kind };
+    const changed = new ConnectorSignInError('The connector changed while you were signing in — connect again.');
     if (owner.kind === 'shared') {
       const sealed = sealShared(this.connector.id, tokens);
       if (this.opts.mode === 'callback') {
-        await db.mcpConnectors.setSharedSecret(this.connector.id, sealed);
+        if (!(await db.mcpConnectors.setSharedSecret(this.connector.id, sealed, undefined, guard))) throw changed;
         await db.mcpConnectors.update(this.connector.id, { last_error: null });
         return;
       }
@@ -407,10 +430,13 @@ export class ConnectorOAuthProvider implements OAuthClientProvider {
     }
     const sealed = sealMember(this.connector.id, owner.userId, tokens);
     if (this.opts.mode === 'callback') {
-      await db.mcpConnectors.saveConnection(owner.userId, this.connector.id, {
-        ...sealed,
-        metadata: { connected_via: 'oauth', ...(client ? { client_id: client.client_id } : {}) },
-      });
+      const saved = await db.mcpConnectors.saveConnection(
+        owner.userId,
+        this.connector.id,
+        { ...sealed, metadata: { connected_via: 'oauth', ...(client ? { client_id: client.client_id } : {}) } },
+        guard,
+      );
+      if (!saved) throw changed;
       return;
     }
     // A refresh. Write only over the tokens this request read: if another

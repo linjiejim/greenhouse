@@ -236,6 +236,48 @@ describe('a member signs in to an OAuth connector', () => {
   });
 });
 
+describe('races and redaction', () => {
+  it('two first sign-ins at once: one registration wins, the other is asked to start again', async () => {
+    const row = await connector();
+    const begin = (user: UserRow) =>
+      beginConnectorSignIn(db, row, {
+        owner: { kind: 'member', userId: user.id },
+        actorUserId: user.id,
+        redirectUri: REDIRECT,
+        client: 'web',
+      });
+    const results = await Promise.allSettled([begin(alice), begin(bob)]);
+    const won = results.filter((r): r is PromiseFulfilledResult<string> => r.status === 'fulfilled');
+    expect(won.length).toBeGreaterThanOrEqual(1);
+    for (const r of results) {
+      if (r.status === 'rejected') expect(String(r.reason)).toMatch(/press Connect again/);
+    }
+    const stored = readStoredClient(await fresh(row))!;
+    for (const r of won) expect(new URL(r.value).searchParams.get('client_id')).toBe(stored.client_id);
+  });
+
+  it('a sign-in finishing after the address changed stores nothing', async () => {
+    const row = await connector();
+    const guard = { url: row.url, auth_mode: row.auth_mode, auth_kind: row.auth_kind };
+    await db.mcpConnectors.update(row.id, { url: `${server.url}?moved=1` }, { dropCredentials: true });
+    const saved = await db.mcpConnectors.saveConnection(alice.id, row.id, { access_token: 'sealed' }, guard);
+    expect(saved).toBeUndefined();
+    expect(await db.mcpConnectors.getConnection(alice.id, row.id)).toBeUndefined();
+    expect(await db.mcpConnectors.setSharedSecret(row.id, 'sealed', undefined, guard)).toBe(false);
+  });
+
+  it("an OAuth call's tokens are collected for redaction", async () => {
+    const row = await connector();
+    await signIn(row, alice);
+    const resolved = await resolveConnectTarget(db, await fresh(row), alice.id);
+    if (!resolved.ok) throw new Error(resolved.error);
+    await withSignInLock(row.id, resolved.owner!, () => callMcpTool(resolved.target, 'whoami', {}));
+    const conn = (await db.mcpConnectors.getConnection(alice.id, row.id))!;
+    const access = decryptToken(conn.access_token_enc!, connectionAad(row.id, alice.id, 'access'));
+    expect(resolved.secrets).toContain(access);
+  });
+});
+
 describe('finish refuses what it should', () => {
   it('a tampered, expired or foreign-purpose state', async () => {
     const row = await connector();

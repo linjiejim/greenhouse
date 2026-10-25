@@ -136,7 +136,10 @@ function base(row: McpConnectorRow): Pick<McpConnectTarget, 'url' | 'transport' 
 function oauthTarget(db: DatabaseProvider, row: McpConnectorRow, owner: SignInOwner): ResolvedTarget {
   const client = readStoredClient(row);
   if (!client) return notConnected(row, 'needs_reauth');
+  // Filled by the provider as it reads or refreshes tokens; redaction reads it after the call.
+  const secrets: string[] = [];
   const provider = new ConnectorOAuthProvider({
+    secrets,
     db,
     connector: row,
     owner,
@@ -144,7 +147,7 @@ function oauthTarget(db: DatabaseProvider, row: McpConnectorRow, owner: SignInOw
     // Only consulted if the SDK would start a new sign-in, which call mode refuses.
     redirectUri: client.redirect_uri ?? 'urn:greenhouse:connector-call',
   });
-  return { ok: true, target: { ...base(row), authProvider: provider }, secrets: [], owner };
+  return { ok: true, target: { ...base(row), authProvider: provider }, secrets, owner };
 }
 
 /**

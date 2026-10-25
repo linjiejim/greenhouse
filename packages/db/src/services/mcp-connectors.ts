@@ -90,6 +90,54 @@ function connectionWhere(userId: string, connectorId: string) {
   );
 }
 
+/** What a credential write is guarded by: the connector still has this address and auth scheme. */
+export type McpCredentialGuard = Pick<McpConnectorRow, 'url' | 'auth_mode' | 'auth_kind'>;
+
+function guardWhere(guard: McpCredentialGuard) {
+  return and(
+    eq(mcpConnectors.url, guard.url),
+    eq(mcpConnectors.auth_mode, guard.auth_mode),
+    guard.auth_kind === null ? isNull(mcpConnectors.auth_kind) : eq(mcpConnectors.auth_kind, guard.auth_kind),
+  );
+}
+
+async function writeConnection(
+  db: Pick<Db, 'insert'>,
+  userId: string,
+  connectorId: string,
+  input: McpConnectionInput,
+): Promise<ProviderTokenRow> {
+  const now = nowIso();
+
+  const metadata = { ...(input.metadata ?? {}), status: 'active', last_error: null, last_verified_at: now };
+  const values = {
+    access_token_enc: input.access_token ?? null,
+    refresh_token_enc: input.refresh_token ?? null,
+    credential_enc: input.credential ?? null,
+    token_type: input.token_type ?? 'Bearer',
+    scope: input.scope ?? null,
+    expires_at: input.expires_at ?? null,
+    metadata,
+  };
+  const [row] = await db
+    .insert(providerConnections)
+    .values({
+      id: newId('providerConnection'),
+      user_id: userId,
+      provider: mcpConnectionProvider(connectorId),
+      workspace_id: null,
+      ...values,
+      created_at: now,
+      updated_at: now,
+    })
+    .onConflictDoUpdate({
+      target: [providerConnections.user_id, providerConnections.provider, providerConnections.workspace_id],
+      set: { ...values, created_at: now, updated_at: now },
+    })
+    .returning();
+  return row!;
+}
+
 export function createMcpConnectorService(db: Db) {
   const service = {
     async create(input: McpConnectorCreate): Promise<McpConnectorRow> {
@@ -162,10 +210,11 @@ export function createMcpConnectorService(db: Db) {
     ): Promise<McpConnectorRow | undefined> {
       return db.transaction(async (tx) => {
         const set: Record<string, unknown> = { ...patch, updated_at: nowIso() };
+        // Row first: its lock makes a sign-in finishing meanwhile wait, then see the change (saveConnection's guard).
+        const [row] = await tx.update(mcpConnectors).set(set).where(eq(mcpConnectors.id, id)).returning();
         if (opts.dropCredentials) {
           await tx.delete(providerConnections).where(eq(providerConnections.provider, mcpConnectionProvider(id)));
         }
-        const [row] = await tx.update(mcpConnectors).set(set).where(eq(mcpConnectors.id, id)).returning();
         return row;
       });
     },
@@ -192,11 +241,20 @@ export function createMcpConnectorService(db: Db) {
       return row;
     },
 
-    async setOAuthClient(id: string, sealed: string | null): Promise<void> {
-      await db
+    /** With `expected` it is a compare-and-set: false when another sign-in registered a client first. */
+    async setOAuthClient(id: string, sealed: string | null, expected?: string | null): Promise<boolean> {
+      const where =
+        expected === undefined
+          ? eq(mcpConnectors.id, id)
+          : expected === null
+            ? and(eq(mcpConnectors.id, id), isNull(mcpConnectors.oauth_client_enc))
+            : and(eq(mcpConnectors.id, id), eq(mcpConnectors.oauth_client_enc, expected));
+      const rows = await db
         .update(mcpConnectors)
         .set({ oauth_client_enc: sealed, updated_at: nowIso() })
-        .where(eq(mcpConnectors.id, id));
+        .where(where)
+        .returning({ id: mcpConnectors.id });
+      return rows.length > 0;
     },
 
     async setOAuthDiscovery(id: string, discovery: Record<string, unknown> | null): Promise<void> {
@@ -207,13 +265,19 @@ export function createMcpConnectorService(db: Db) {
      * Replace the shared credential. With `expected` it is a compare-and-set
      * (a refreshed shared sign-in only overwrites the tokens it read).
      */
-    async setSharedSecret(id: string, sealed: string | null, expected?: string | null): Promise<boolean> {
+    async setSharedSecret(
+      id: string,
+      sealed: string | null,
+      expected?: string | null,
+      guard?: McpCredentialGuard,
+    ): Promise<boolean> {
+      const base = guard ? and(eq(mcpConnectors.id, id), guardWhere(guard)) : eq(mcpConnectors.id, id);
       const where =
         expected === undefined
-          ? eq(mcpConnectors.id, id)
+          ? base
           : expected === null
-            ? and(eq(mcpConnectors.id, id), isNull(mcpConnectors.shared_secret_enc))
-            : and(eq(mcpConnectors.id, id), eq(mcpConnectors.shared_secret_enc, expected));
+            ? and(base, isNull(mcpConnectors.shared_secret_enc))
+            : and(base, eq(mcpConnectors.shared_secret_enc, expected));
       const rows = await db
         .update(mcpConnectors)
         .set({ shared_secret_enc: sealed, updated_at: nowIso() })
@@ -229,36 +293,30 @@ export function createMcpConnectorService(db: Db) {
       return row;
     },
 
-    /** Store (or replace) a member's credential; status becomes active. */
-    async saveConnection(userId: string, connectorId: string, input: McpConnectionInput): Promise<ProviderTokenRow> {
-      const now = nowIso();
-      const metadata = { ...(input.metadata ?? {}), status: 'active', last_error: null, last_verified_at: now };
-      const values = {
-        access_token_enc: input.access_token ?? null,
-        refresh_token_enc: input.refresh_token ?? null,
-        credential_enc: input.credential ?? null,
-        token_type: input.token_type ?? 'Bearer',
-        scope: input.scope ?? null,
-        expires_at: input.expires_at ?? null,
-        metadata,
-      };
-      const [row] = await db
-        .insert(providerConnections)
-        .values({
-          id: newId('providerConnection'),
-          user_id: userId,
-          provider: mcpConnectionProvider(connectorId),
-          workspace_id: null,
-          ...values,
-          created_at: now,
-          updated_at: now,
-        })
-        .onConflictDoUpdate({
-          target: [providerConnections.user_id, providerConnections.provider, providerConnections.workspace_id],
-          set: { ...values, created_at: now, updated_at: now },
-        })
-        .returning();
-      return row!;
+    /**
+     * Store (or replace) a member's credential; status becomes active. With
+     * `guard`, only while the connector still has that address and auth scheme
+     * (undefined otherwise): a sign-in that started before a change must not
+     * land after the change dropped every credential.
+     */
+    async saveConnection(
+      userId: string,
+      connectorId: string,
+      input: McpConnectionInput,
+      guard?: McpCredentialGuard,
+    ): Promise<ProviderTokenRow | undefined> {
+      if (guard) {
+        return db.transaction(async (tx) => {
+          const [held] = await tx
+            .select({ id: mcpConnectors.id })
+            .from(mcpConnectors)
+            .where(and(eq(mcpConnectors.id, connectorId), guardWhere(guard)))
+            .for('update');
+          if (!held) return undefined;
+          return writeConnection(tx, userId, connectorId, input);
+        });
+      }
+      return writeConnection(db, userId, connectorId, input);
     },
 
     /**

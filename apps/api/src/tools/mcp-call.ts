@@ -41,6 +41,7 @@ import {
   connectorsForUser,
   discoverIfEmpty,
   findConnector,
+  toDirectoryConnector,
   type DirectoryConnector,
   type DirectoryTool,
 } from '../connectors/directory.js';
@@ -112,7 +113,9 @@ export function surfaceTools(
     if (ctx.surface === 'mcp') {
       if (!ctx.writesAllowed) return false;
       // The team's credential acting for an outside agent: only when an admin allowed it.
-      if (connector.auth_mode !== 'per_member' && !connector.allow_external_writes) return false;
+      if (connector.scope === 'team' && connector.auth_mode !== 'per_member' && !connector.allow_external_writes) {
+        return false;
+      }
     }
     return true;
   });
@@ -338,6 +341,13 @@ export async function executeMcpCall(
   const row = await db.mcpConnectors.getById(connector.id);
   if (!row || !row.enabled)
     return { error: `"${connector.handle}" is no longer available — it was disabled or removed.` };
+  // The snapshot may be stale (a failed reload): the switches and classification come from the row.
+  const current = surfaceTools(toDirectoryConnector(row), ctx).find((t) => t.name === remote.name);
+  if (!current || current.kind !== remote.kind) {
+    return {
+      error: `"${remote.name}" on "${connector.handle}" changed or was switched off just now. Run list again before calling it.`,
+    };
+  }
 
   // Whose account — settled before any preview: a preview of a call that cannot run asks nothing.
   const resolved = await resolveConnectTarget(db, row, ctx.userId);

@@ -208,6 +208,34 @@ describe('mcp_call', () => {
     expect(open.tickets).toEqual(['x']);
   });
 
+  it("external agents: a member's own unauthenticated connector writes with mcp:write", async () => {
+    const me = { userId: alice.id, role: alice.role };
+    const row = await createConnector(db, me, 'personal', { slug: slug(), name: 'Mine', url: open.url });
+    const mine = await updateConnector(db, me, row, { tool_policy: { create_ticket: 'on' } });
+    const listed = await executeMcpCall(ctx({ surface: 'mcp', client: 'mcp', writesAllowed: true }), {
+      action: 'call',
+      connector: `me/${mine.slug}`,
+      tool: 'create_ticket',
+      arguments: { title: 'mine' },
+    });
+    expect(listed).toMatchObject({ is_error: false });
+    expect(open.tickets).toEqual(['mine']);
+  });
+
+  it('a stale directory never lets a switched-off write run', async () => {
+    const row = await deskWithWrites();
+    // Switched off in the database without reloading the snapshot (a failed reload).
+    await db.mcpConnectors.update(row.id, { tool_policy: { create_ticket: 'off', delete_ticket: 'on' } });
+    const out = await executeMcpCall(ctx(), {
+      action: 'call',
+      connector: row.slug,
+      tool: 'create_ticket',
+      arguments: { title: 'stale' },
+    });
+    expect(out).toMatchObject({ error: expect.stringMatching(/switched off just now/) });
+    expect(open.tickets).toEqual([]);
+  });
+
   it('per-member connector: needs_connection until the member adds a key, then calls with their key', async () => {
     const row = await createConnector(db, actor(), 'team', {
       slug: slug(),
