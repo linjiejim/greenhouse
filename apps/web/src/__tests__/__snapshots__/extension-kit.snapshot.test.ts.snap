@@ -20,6 +20,7 @@ exports[`apps/web extension-kit > exports exactly the documented names 1`] = `
   "Badge",
   "Ban",
   "BarChart3",
+  "Bell",
   "Bold",
   "Bookmark",
   "BookOpen",
