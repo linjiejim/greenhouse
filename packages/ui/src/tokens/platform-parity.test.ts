@@ -88,7 +88,7 @@ describe('web ↔ mobile token parity', () => {
     }
   }
 
-  it('dark grouped cells on mobile are the web chrome layer (#1C1C1E)', () => {
+  it('dark grouped cells on mobile are the web chrome layer', () => {
     expect(normalize(darkHex.secondaryGroupedBackground)).toBe(web('dark', '--t-surface-chrome'));
   });
 

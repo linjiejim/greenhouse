@@ -4,9 +4,9 @@
  * (packages/ui/src/tokens/tokens.ts) through ./tokens.generated.ts — run `pnpm tokens:build` at the
  * repo root after changing a token; never edit a hex here.
  *
- * Light: Haven forest green on neutral, faintly green surfaces. Dark: content surfaces keep
- * UIKit's system base (#000 under #1C1C1E grouped cells) so RN content and native Hosts never mix
- * traits; the accent is the pale sage. Native controls keep system styling with the accent as tint.
+ * Light: Haven forest green on neutral, faintly green surfaces. Dark: the web's deep ink-green
+ * layers (canvas page under chrome cells); the accent is the pale sage. Native controls keep
+ * system styling with the accent as tint.
  */
 
 import { categoricalHex, nativePalette } from './tokens.generated';

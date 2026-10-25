@@ -11,7 +11,7 @@
  *
  * Names are roles, not hues. The brand is Haven: forest green #235D4D (light accent), pale sage
  * #B1D2BF (dark accent) and the seed lime #B6CA68, which is an accent only and never a text colour.
- * Dark mode is neutral charcoal layers (#111113 / #1C1C1E / #242426) that show elevation by
+ * Dark mode is deep ink-green layers (#0F1510 / #1A231B / #202A21) that show elevation by
  * surface, not by shadow.
  */
 
@@ -50,25 +50,25 @@ export type PrimaryShade = keyof typeof primaryRamp;
 /** Semantic colours shared by every platform. */
 export const color = {
   // Surfaces, back to front.
-  canvas: { light: '#FFFFFF', dark: '#111113' }, // the reading page: conversations, documents
-  sunken: { light: '#F6F8F7', dark: '#161618' }, // inset tracks, code blocks, table toolbars
-  chrome: { light: '#F2F5F3', dark: '#1C1C1E' }, // sidebar, grouped backgrounds
-  deep: { light: '#E8EDE9', dark: '#000000' }, // the layer under a place (mobile sidebar)
-  surface: { light: '#F6F8F7', dark: '#1C1C1E' }, // quiet panels on the canvas
-  card: { light: '#F8FAF9', dark: '#1C1C1E' }, // data cards
-  raised: { light: '#FFFFFF', dark: '#242426' }, // inputs, menus, dialogs, drawers
-  fill: { light: '#ECF0ED', dark: '#2A2A2D' }, // neutral fills: hover, muted areas, skeletons
+  canvas: { light: '#FFFFFF', dark: '#0F1510' }, // the reading page: conversations, documents
+  sunken: { light: '#F6F8F7', dark: '#131A14' }, // inset tracks, code blocks, table toolbars
+  chrome: { light: '#F2F5F3', dark: '#1A231B' }, // sidebar, grouped backgrounds
+  deep: { light: '#E8EDE9', dark: '#0A0F0B' }, // the layer under a place (mobile sidebar)
+  surface: { light: '#F6F8F7', dark: '#151C16' }, // quiet panels on the canvas
+  card: { light: '#F8FAF9', dark: '#1A231B' }, // data cards
+  raised: { light: '#FFFFFF', dark: '#202A21' }, // inputs, menus, dialogs, drawers
+  fill: { light: '#ECF0ED', dark: '#243026' }, // neutral fills: hover, muted areas, skeletons
   scrim: { light: 'rgba(17, 17, 19, 0.32)', dark: 'rgba(0, 0, 0, 0.6)' },
 
   // Lines.
-  line: { light: '#E1E7E2', dark: '#2E2E31' }, // card and section borders
-  lineStrong: { light: '#C2CBC5', dark: '#3E3E43' }, // inputs, separators that must read
+  line: { light: '#E1E7E2', dark: '#2C392E' }, // card and section borders
+  lineStrong: { light: '#C2CBC5', dark: '#405143' }, // inputs, separators that must read
 
   // Text and icons.
-  text: { light: '#1C1C1E', dark: '#F5F5F7' },
-  secondary: { light: '#424944', dark: '#AEAEB2' }, // body and supporting text
-  tertiary: { light: '#555C57', dark: '#9A9AA0' }, // labels, meta, placeholders (≥ 4.5:1)
-  faint: { light: '#616863', dark: '#8E8E93' }, // hints (≥ 4.5:1 on the canvas)
+  text: { light: '#1C1C1E', dark: '#F2F6F0' },
+  secondary: { light: '#424944', dark: '#C6D0C3' }, // body and supporting text
+  tertiary: { light: '#555C57', dark: '#9DAA9A' }, // labels, meta, placeholders (≥ 4.5:1)
+  faint: { light: '#616863', dark: '#8E9C8B' }, // hints (≥ 4.5:1 on the canvas)
 
   // Brand accent. A workspace brand colour regenerates the web ramp, and these follow it there.
   accent: { light: primaryRamp[600], dark: primaryRamp[300] }, // primary fill, selected indicator
@@ -204,13 +204,13 @@ export const zIndex = {
 } as const;
 
 /**
- * Native-only values. iOS keeps its system base in dark mode (pure black under #1C1C1E grouped
- * cells), its translucent system fills and an always-dark code card; everything else on mobile
- * reads the shared roles above.
+ * Native-only values. In dark mode the page is the ink-green canvas under chrome cells, like the
+ * web; iOS keeps its translucent system fills and an always-dark code card; everything else on
+ * mobile reads the shared roles above.
  */
 export const native = {
-  base: { light: color.surface.light, dark: '#000000' }, // plain page background
-  elevated: { light: '#FFFFFF', dark: '#2C2C2E' }, // tertiary backgrounds
+  base: { light: color.surface.light, dark: color.canvas.dark }, // plain page background
+  elevated: { light: '#FFFFFF', dark: color.fill.dark }, // tertiary backgrounds
   separator: { light: color.lineStrong.light, dark: 'rgba(84, 84, 88, 0.6)' },
   opaqueSeparator: { light: color.lineStrong.light, dark: '#38383A' },
   quaternaryLabel: { light: 'rgba(60, 60, 67, 0.18)', dark: 'rgba(235, 235, 245, 0.16)' },

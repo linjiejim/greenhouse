@@ -258,7 +258,7 @@ stores/
 - **Tailwind v4（编译模式）**——CSS 入口：`app.css`（由 `app.tsx` import），经 `@tailwindcss/vite` 插件构建，打进 `public/assets/index-*.css`
 - **Token 唯一来源**：`packages/ui/src/tokens/tokens.ts`（颜色角色、绿色色阶、categorical、type、radius、shadow、motion）。`pnpm tokens:build` 生成 `packages/ui/src/tokens/tokens.css`（app.css import 的 `--t-*` / `--primary-*` / `--gh-*` 与 Tailwind `@theme`）和移动端 `apps/mobile/src/theme/tokens.generated.ts`；`tokens.test.ts`（生成物过期 / 对比度）与 `platform-parity.test.ts`（web 与 mobile 同一角色同值、app.css 不得自定义 token 值）把关。**不要在 app.css 或 JS 里写 token 值**；`lib/theme.ts` 只切 `.dark-theme` 并写入 Branding Studio 覆盖。
 - **语义化颜色 token**——使用自动适配明暗主题的语义 class：
-  - 表面：`bg-surface-canvas`（页面/阅读画布）、`bg-surface-chrome`（侧栏、品牌画布）、`bg-surface-card`（数据卡片、富块）、`bg-surface-raised`（输入框/Composer/顶栏/弹窗）、`bg-surface-muted`（hover/高亮区域）、`bg-surface-sunken`（内嵌低层区域）。Light 下页面是白色，其余为带一点 Haven 绿的中性色；Dark 是中性炭灰层（#111113 / #1C1C1E / #242426），用表面层级而不是阴影表达高度；禁止再把 `surface-sunken` 当整页底色
+  - 表面：`bg-surface-canvas`（页面/阅读画布）、`bg-surface-chrome`（侧栏、品牌画布）、`bg-surface-card`（数据卡片、富块）、`bg-surface-raised`（输入框/Composer/顶栏/弹窗）、`bg-surface-muted`（hover/高亮区域）、`bg-surface-sunken`（内嵌低层区域）。Light 下页面是白色，其余为带一点 Haven 绿的中性色；Dark 是深墨绿层（#0F1510 / #1A231B / #202A21，手机同一套），用表面层级而不是阴影表达高度；禁止再把 `surface-sunken` 当整页底色
   - 文字：`text-fg`（主要）、`text-fg-secondary`（正文）、`text-fg-muted`（标签）、`text-fg-faint`（提示）
   - 边框：`border-edge`（普通）、`border-edge-strong`（输入框）、`divide-edge`
   - 状态：`text-danger`/`bg-danger-subtle`、`text-success`/`bg-success-subtle`、`text-warning`/`bg-warning-subtle`、`text-info`/`bg-info-subtle`
@@ -266,7 +266,7 @@ stores/
   - 星级评分：`text-star`/`text-star-hover`——禁止直接用 `text-amber-*`
   - **禁止使用 `bg-white`、`text-gray-*`、`border-gray-*`、`bg-gray-*`、`bg-red-*`、`text-red-*`**——始终用上述语义 token
   - 开关/Toggle 圆点用 `bg-surface-raised` 替代 `bg-white`
-- 主色：Haven 森林绿 `#235D4D`（Light）/ 淡鼠尾草 `#B1D2BF`（Dark）。实心主操作与指示用 `bg-accent text-on-accent hover:bg-accent-hover`、`border-accent`、`text-accent`（随明暗切换）；`primary-*` 色阶（600 = Light 主色，300 = Dark 主色）只用于不随模式变化的装饰，**不要再用 `bg-primary-500/600` 当按钮底色**（Dark 下是深绿压炭灰）。种子青柠 `#B6CA68` 只做点缀，永不做文字色。品牌渐变已移除
+- 主色：Haven 森林绿 `#235D4D`（Light）/ 淡鼠尾草 `#B1D2BF`（Dark）。实心主操作与指示用 `bg-accent text-on-accent hover:bg-accent-hover`、`border-accent`、`text-accent`（随明暗切换）；`primary-*` 色阶（600 = Light 主色，300 = Dark 主色）只用于不随模式变化的装饰，**不要再用 `bg-primary-500/600` 当按钮底色**（Dark 下是深绿压墨绿底）。种子青柠 `#B6CA68` 只做点缀，永不做文字色。品牌渐变已移除
   - 用户选择的颜色（项目色等）一律经 `lib/categorical.ts` 映射为 categorical 色（`text-cat-*` / `bg-cat-*-fill` / `var(--t-cat-*)`），不直接画存储的饱和 hex
   - **禁止硬编码颜色名**（如 `teal-500`、`emerald-500`、`purple-50`）——始终用语义 token、`accent` 或 `cat-*`；暗色补丁规则已全部删除，没有兜底
   - 用户主题偏好为 `Follow System` / `Light` / `Dark`；`Follow System` 只动态解析到既有 Light/Dark，不是第三套皮肤。两种实际模式共享同一品牌主色，只切换 surface/text/edge/status 语义 token。新增皮肤或换品牌主色前必须先更新品牌规范，不得恢复多皮肤选择器

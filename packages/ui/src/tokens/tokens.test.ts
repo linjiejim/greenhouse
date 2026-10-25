@@ -116,11 +116,13 @@ describe('token contrast', () => {
     expect(selectedOnRaised).toBeGreaterThanOrEqual(1.25);
   });
 
-  it('dark: surfaces are neutral charcoal layers, back to front', () => {
+  it('dark: surfaces are deep ink-green layers, back to front', () => {
     const order = ['canvas', 'chrome', 'raised', 'fill'] as const;
     for (const name of order) {
       const [r, g, b] = [1, 3, 5].map((i) => parseInt(color[name].dark.slice(i, i + 2), 16));
-      expect(Math.max(r!, g!, b!) - Math.min(r!, g!, b!), `${name} is neutral`).toBeLessThanOrEqual(3);
+      // green leads, quietly: a tint, never a coloured panel
+      expect(g!, `${name} leans green`).toBeGreaterThan(Math.max(r!, b!));
+      expect(g! - Math.min(r!, b!), `${name} stays a tint`).toBeLessThanOrEqual(14);
     }
     for (let i = 1; i < order.length; i++) {
       expect(lightness(color[order[i]!].dark)).toBeGreaterThan(lightness(color[order[i - 1]!].dark));
