@@ -28,3 +28,16 @@ export function sidebarWidth(window: { width: number; persistent: boolean }): nu
 export function drawerSwipes(persistent: boolean, depth: number): boolean {
   return !persistent && depth === 0;
 }
+
+/** How far from the leading edge a swipe opens the drawer on most pages. */
+export const EDGE_SWIPE = 32;
+
+/**
+ * How wide the strip is where a swipe opens the drawer. Home's first page takes a rightward swipe
+ * anywhere (`wholePage`), except while the composer has the keyboard or holds picked files (a
+ * horizontal drag there moves the caret or scrolls the files) and while the drawer is open (its
+ * own swipe closes it); every other page keeps the edge.
+ */
+export function drawerSwipeWidth(o: { wholePage: boolean; composing: boolean; open: boolean; windowWidth: number }): number {
+  return o.wholePage && !o.composing && !o.open ? Math.max(EDGE_SWIPE, Math.round(o.windowWidth)) : EDGE_SWIPE;
+}

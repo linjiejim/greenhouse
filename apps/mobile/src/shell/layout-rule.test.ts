@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { drawerSwipes, persistentSidebar, sidebarWidth } from './layout-rule';
+import { EDGE_SWIPE, drawerSwipeWidth, drawerSwipes, persistentSidebar, sidebarWidth } from './layout-rule';
 
 describe('sidebar', () => {
   it('stays on screen only on an iPad window at regular width', () => {
@@ -25,5 +25,13 @@ describe('sidebar', () => {
     expect(drawerSwipes(false, 3)).toBe(false);
     // the sidebar on screen beside the place never slides
     expect(drawerSwipes(true, 0)).toBe(false);
+  });
+
+  it('opens from anywhere on home, from the edge elsewhere', () => {
+    expect(drawerSwipeWidth({ wholePage: true, composing: false, open: false, windowWidth: 402 })).toBe(402);
+    expect(drawerSwipeWidth({ wholePage: false, composing: false, open: false, windowWidth: 402 })).toBe(EDGE_SWIPE);
+    // writing (caret drags, file thumbnails) and an open drawer keep the edge
+    expect(drawerSwipeWidth({ wholePage: true, composing: true, open: false, windowWidth: 402 })).toBe(EDGE_SWIPE);
+    expect(drawerSwipeWidth({ wholePage: true, composing: false, open: true, windowWidth: 402 })).toBe(EDGE_SWIPE);
   });
 });

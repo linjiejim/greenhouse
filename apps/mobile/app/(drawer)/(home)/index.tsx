@@ -12,14 +12,19 @@
  *    conversation made for them). Sending opens the conversation page with the
  *    message on its way; offline it waits in the outbox. While it has focus the recent list
  *    fades away (in place, nothing moves) and comes back when it lets go.
-
+ *
+ * A rightward swipe anywhere on home opens the sidebar (not only from the edge; src/shell/
+ * layout-rule.ts `drawerSwipeWidth`): leftward swipes stay the recent rows' pin action, and while
+ * writing the edge rule comes back so drags in the text move the caret.
  *
  * The launch splash waits for the first list (saved or fresh) under it.
  */
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ScrollView, Text, View, type TextInput } from 'react-native';
-import { Stack, useFocusEffect, useRouter } from 'expo-router';
+import { ScrollView, Text, View, useWindowDimensions, type TextInput } from 'react-native';
+import { Stack, useFocusEffect, useIsFocused, useNavigation, useRouter } from 'expo-router';
+import { useDrawerStatus } from 'expo-router/drawer';
+import type { PanGesture } from 'react-native-gesture-handler';
 import { KeyboardStickyView } from 'react-native-keyboard-controller';
 import Animated, { ReduceMotion, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -48,7 +53,8 @@ import { GreetingSprout } from '../../../src/ui/greeting-sprout';
 import { Skeleton } from '../../../src/ui/skeleton';
 import { rowPosition } from '../../../src/ui/list';
 import { toolbarIcon } from '../../../src/ui/toolbar-icon';
-import { SidebarToolbar } from '../../../src/ui/sidebar';
+import { SidebarToolbar, usePersistentSidebar } from '../../../src/ui/sidebar';
+import { drawerSwipeWidth } from '../../../src/shell/layout-rule';
 import type { FirstTurn } from './chat';
 
 /** A provider of its own, so the insets are this screen's: the composer's solid band reaches the bottom edge. */
@@ -120,6 +126,23 @@ function Home() {
     return made.current;
   }, [t, agentId]);
   const files = useComposerFiles(ensureSession);
+
+  // a rightward swipe anywhere on home opens the sidebar (the drawer reads the focused screen's options)
+  const navigation = useNavigation();
+  const focused = useIsFocused();
+  const drawerOpen = useDrawerStatus() === 'open';
+  const persistent = usePersistentSidebar();
+  const { width: windowWidth } = useWindowDimensions();
+  const swipeWidth = drawerSwipeWidth({
+    wholePage: focused && !persistent,
+    composing: composing || files.files.length > 0,
+    open: drawerOpen,
+    windowWidth,
+  });
+  useEffect(() => {
+    const wide = swipeWidth > windowWidth / 2;
+    navigation.getParent()?.setOptions({ swipeEdgeWidth: swipeWidth, configureGestureHandler: wide ? rightwardOnly : undefined });
+  }, [navigation, swipeWidth, windowWidth]);
 
   const send = async () => {
     const text = draft;
@@ -266,6 +289,9 @@ function Home() {
     </View>
   );
 }
+
+/** Home's whole-page swipe opens the drawer only rightward: a leftward one is a row's pin swipe. */
+const rightwardOnly = (gesture: PanGesture) => gesture.activeOffsetX([-100_000, 5]);
 
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.groupedBackground },
