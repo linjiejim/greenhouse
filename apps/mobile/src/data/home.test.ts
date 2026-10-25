@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ChatSession } from '../shared/greenhouse-types';
-import { greetingFor, orderConversations, parseSessions, withPinned } from './home';
+import { conversationAgent, greetingFor, orderConversations, parseSessions, withPinned } from './home';
 
 const s = (id: string, updated: string, pinned = false, pin_sort?: number): ChatSession => ({
   id,
@@ -14,6 +14,12 @@ const s = (id: string, updated: string, pinned = false, pin_sort?: number): Chat
 });
 
 describe('home', () => {
+  it('names an agent only when the conversation was not with Sprouty', () => {
+    expect([null, '', 'sprouty', 'team', 'desktop'].map(conversationAgent)).toEqual([null, null, null, null, null]);
+    expect(conversationAgent('custom:01ABC@3')).toBe('custom:01ABC');
+    expect(conversationAgent('custom:01ABC')).toBe('custom:01ABC');
+  });
+
   it('greets by the hour', () => {
     expect([6, 12, 15, 20, 2].map(greetingFor)).toEqual(['morning', 'noon', 'afternoon', 'evening', 'night']);
   });

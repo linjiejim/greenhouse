@@ -364,6 +364,21 @@ function sessionListConditions(opts: SessionListOpts) {
 const { digest: _digestColumn, ...sessionListColumns } = getTableColumns(sessions);
 
 /**
+ * List rows also carry `last_message`: the start of the newest member or assistant message
+ * (240 characters, not cleaned up), so a list can show what a conversation is at. One indexed
+ * lookup per row (`uq_messages_session_seq`); null for a conversation with no words yet.
+ * The outer row is named by table (`${sessions}.id`): a bare column would bind to `m.id`.
+ */
+const sessionListRowColumns = {
+  ...sessionListColumns,
+  last_message: sql<string | null>`(
+    SELECT left(m.content, 240) FROM ${messages} m
+    WHERE m.session_id = ${sessions}.id AND m.role IN ('user', 'assistant') AND m.content <> ''
+    ORDER BY m.seq DESC LIMIT 1
+  )`.as('last_message'),
+};
+
+/**
  * Drop the rolling digest when the transcript changes at or below the point it
  * summarises. A digest cannot be partially un-summarised, so any edit inside
  * the folded range clears it; the next turn falls back to the plain history
@@ -496,7 +511,7 @@ export function createSessionService(db: Db) {
       const { limit = 200, offset = 0 } = opts;
       const conditions = sessionListConditions(opts);
 
-      let query = db.select(sessionListColumns).from(sessions);
+      let query = db.select(sessionListRowColumns).from(sessions);
       if (conditions.length > 0) {
         query = query.where(conditions.length === 1 ? conditions[0] : and(...conditions)) as any;
       }
@@ -524,7 +539,7 @@ export function createSessionService(db: Db) {
       ];
 
       return (await db
-        .select(sessionListColumns)
+        .select(sessionListRowColumns)
         .from(sessions)
         .where(and(...conditions))
         .orderBy(desc(sessions.updated_at))

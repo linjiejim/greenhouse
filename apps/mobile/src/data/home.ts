@@ -18,6 +18,16 @@ export function greetingFor(hour: number): Greeting {
 
 export const RECENT_ON_HOME = 5;
 
+/** The profiles that are Sprouty (the built-in assistant); anything else is an agent of its own. */
+const SPROUTY_PROFILES = new Set(['sprouty', 'team', 'desktop']);
+
+/** The agent a conversation was held with when it is not Sprouty (`custom:<id>[@v]`), else null. */
+export function conversationAgent(profileId: string | null | undefined): string | null {
+  const id = profileId?.trim();
+  if (!id || SPROUTY_PROFILES.has(id)) return null;
+  return id.replace(/@\d+$/, '');
+}
+
 export function orderConversations(sessions: readonly ChatSession[]): ChatSession[] {
   const time = (s: ChatSession) => {
     const ms = parseMs(s.updated_at);

@@ -54,6 +54,18 @@ describe('Session Repository', () => {
     expect(page.length).toBe(2);
   });
 
+  it('lists each conversation with the start of its newest member or assistant message', async () => {
+    const talked = await db.sessions.create('Talked', 'team', 'u1');
+    const quiet = await db.sessions.create('Quiet', 'team', 'u1');
+    await db.sessions.addMessage({ session_id: talked.id, role: 'user', content: 'First question' });
+    await db.sessions.addMessage({ session_id: talked.id, role: 'assistant', content: 'A'.repeat(300) });
+    await db.sessions.addMessage({ session_id: talked.id, role: 'tool', content: 'tool output' });
+
+    const rows = (await db.sessions.list({ userId: 'u1' })) as Array<{ id: string; last_message?: string | null }>;
+    expect(rows.find((row) => row.id === talked.id)?.last_message).toBe('A'.repeat(240));
+    expect(rows.find((row) => row.id === quiet.id)?.last_message).toBeNull();
+  });
+
   it('hides excluded channels but keeps them reachable by explicit filter', async () => {
     await db.sessions.create('Chat', 'team', 'u1', undefined, 'web');
     await db.sessions.create('[workflow] node-a #1', 'team', 'u1', undefined, 'workflow');

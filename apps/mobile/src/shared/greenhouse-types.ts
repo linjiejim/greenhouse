@@ -413,6 +413,8 @@ export interface ChatSession {
   is_owner?: boolean;
   pinned?: boolean;
   pin_sort?: number;
+  /** The start of the newest member or assistant message (newer stations only; raw Markdown). */
+  last_message?: string | null;
 }
 
 export interface ChatMessage {
