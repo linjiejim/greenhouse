@@ -23,11 +23,11 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { FlatList, Text, View, type ScrollView, type TextInput } from 'react-native';
 import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
-import { KeyboardChatScrollView, KeyboardStickyView } from 'react-native-keyboard-controller';
+import { KeyboardStickyView, useKeyboardState } from 'react-native-keyboard-controller';
 import Animated, { FadeIn, FadeOut, ReduceMotion } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { chatRun, createSession, getMessages, getSessionInfo, stopRun } from '../src/api/assistant';
-import { HeaderTitle, TalkingAvatar, useTalking } from '../src/chat/header-avatar';
+import { HeaderTitle, TalkingAvatar, TalkingBand, TalkingRoom, useTalking } from '../src/chat/header-avatar';
 import { useStepsSheet } from '../src/chat/steps-sheet';
 import type { ApiResult } from '../src/api/client';
 import { Composer } from '../src/chat/composer';
@@ -94,6 +94,7 @@ type Item =
 const scrollRef = (list: FlatList<Item> | null) => list?.getNativeScrollRef() as ScrollView | null | undefined;
 
 const noSubscription = () => () => {};
+const KEEP_PLACE = { minIndexForVisible: 0 };
 const closed = (): ConversationState<ChatMessage> => CLOSED_CONVERSATION;
 
 export default function Chat() {
@@ -112,8 +113,14 @@ export default function Chat() {
   const input = useRef<TextInput>(null);
   const list = useRef<FlatList<Item>>(null);
   const viewport = useRef(0);
+  // the keyboard covers the bottom of the list (the composer rides above it): the list's end
+  // must sit above it too, so its height joins the bottom padding (it already covers the safe area)
+  const keyboard = useKeyboardState((k) => (k.isVisible ? k.height : 0));
+  const keyboardRoom = Math.max(0, keyboard - insets.bottom);
   const headerInset = useHeaderInset();
   const pinned = useRef(true);
+  /** The member's finger (or its momentum) is moving the list. */
+  const dragging = useRef(false);
   /** Scrolled away from the end (shows the ↓ button). */
   const [away, setAway] = useState(false);
   const [rootOrigin, setRootOrigin] = useState({ x: 0, y: 0 });
@@ -386,7 +393,7 @@ export default function Chat() {
     failed: !!live?.error || state.streamFailed,
   });
   const talking = state.busy && !!state.reply;
-  const { out, visible: avatarOut } = useTalking(talking);
+  const { out, visible: avatarOut, room } = useTalking(talking);
 
   // the steps sheet keeps up with the live reply while it is open
   useEffect(() => {
@@ -463,6 +470,19 @@ export default function Chat() {
     }
   };
 
+  // follow a reply as it streams: content-size events are sparse while text grows inside a row,
+  // so every change at the end (a delta, a tool, my message) scrolls once laid out
+  const tail = `${tailOf(state)}|${queued.length}`;
+  useEffect(() => {
+    if (!pinned.current || !state.busy) return;
+    const frame = requestAnimationFrame(() => scrollRef(list.current)?.scrollToEnd({ animated: false }));
+    return () => cancelAnimationFrame(frame);
+  }, [tail, state.busy]);
+
+  useEffect(() => {
+    if (pinned.current && keyboardRoom) scrollRef(list.current)?.scrollToEnd({ animated: true });
+  }, [keyboardRoom]);
+
   const jumpToEnd = () => {
     pinned.current = true;
     setAway(false);
@@ -473,7 +493,7 @@ export default function Chat() {
   const header = (
     <>
       <Stack.Screen
-        options={{ title: headerTitle, headerTitle: () => <HeaderTitle title={headerTitle} state={face} out={out} /> }}
+        options={{ title: headerTitle, headerTitle: () => <HeaderTitle title={headerTitle} state={face} away={avatarOut} /> }}
       />
       <Stack.Toolbar placement="right">
         <Stack.Toolbar.Button
@@ -605,18 +625,7 @@ export default function Chat() {
       <OpenOrigin.Provider value={sessionId ? headerTitle : null}>
         <FlatList<Item>
           ref={list}
-          // the keyboard joins the bottom inset, so the end stays reachable with it up (an empty
-          // conversation stays put: there is nothing to lift, only the hint under the bar)
-          renderScrollComponent={(props) => (
-            <KeyboardChatScrollView
-              {...props}
-              offset={insets.bottom}
-              keyboardLiftBehavior="whenAtEnd"
-              freeze={!items.length}
-            />
-          )}
-          // insets by hand: the keyboard scroll view sets its own offset on mount, which would park a
-          // short conversation under the bar if the bar's inset were the system's adjustment
+          // insets by hand: the top clears the bar, the bottom the composer and the keyboard
           contentInsetAdjustmentBehavior="never"
           scrollIndicatorInsets={{ top: headerInset }}
           data={items}
@@ -624,7 +633,8 @@ export default function Chat() {
           keyboardDismissMode="interactive"
           keyboardShouldPersistTaps="handled"
           // older history comes in at the top without moving what is on screen
-          maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
+          // (not while a reply streams: holding the first row in place fights the follow to the end)
+          maintainVisibleContentPosition={state.busy ? undefined : KEEP_PLACE}
           onStartReached={() => void conversation?.loadOlder()}
           onStartReachedThreshold={0.5}
           scrollEventThrottle={32}
@@ -635,8 +645,22 @@ export default function Chat() {
               viewportHeight: layoutMeasurement.height,
               contentHeight: contentSize.height + (contentInset?.bottom ?? 0),
             });
-            pinned.current = end;
-            setAway((now) => (now === !end ? now : !end));
+            // only the member's own scrolling lets go of the end: content growing under a scroll
+            // that is still catching up (a long delta, chips resolving titles, the avatar's room)
+            // passes through "not at the end" for a moment and must not stop the follow
+            if (dragging.current) pinned.current = end;
+            else if (end) pinned.current = true;
+            setAway((now) => (now === !pinned.current ? now : !pinned.current));
+          }}
+          onScrollBeginDrag={() => {
+            dragging.current = true;
+          }}
+          onScrollEndDrag={(e) => {
+            const { velocity } = e.nativeEvent;
+            if (!velocity || Math.abs(velocity.y) < 0.01) dragging.current = false;
+          }}
+          onMomentumScrollEnd={() => {
+            dragging.current = false;
           }}
           onLayout={(e) => {
             viewport.current = e.nativeEvent.layout.height;
@@ -653,11 +677,14 @@ export default function Chat() {
             shape.current = next;
             // the native scroll view's own end: content, its padding and the keyboard inset
             // (only when it overflows: a short conversation rests at the top, under the bar)
+            // (while a reply streams, at once: an animated scroll restarted on every delta never lands)
             if (follow && height > viewport.current)
-              scrollRef(list.current)?.scrollToEnd({ animated: true });
+              scrollRef(list.current)?.scrollToEnd({ animated: !state.busy });
           }}
           ListHeaderComponent={
             <>
+              {/* room for Sprouty while it talks below the title, so it never covers a message */}
+              <TalkingRoom open={room} />
               {offline ? <Text style={styles.offline}>{t('common.savedCopy')}</Text> : null}
               {state.loadingOlder ? <Spinner style={styles.older} /> : null}
             </>
@@ -679,10 +706,11 @@ export default function Chat() {
           }
           contentContainerStyle={[
             styles.content,
-            { paddingTop: headerInset + space.md, paddingBottom: composerHeight + insets.bottom + space.lg },
+            { paddingTop: headerInset + space.md, paddingBottom: composerHeight + insets.bottom + keyboardRoom + space.lg },
           ]}
         />
       </OpenOrigin.Provider>
+      {avatarOut ? <TalkingBand out={out} height={headerInset} /> : null}
       {avatarOut ? <TalkingAvatar state={face} out={out} origin={rootOrigin} /> : null}
       <KeyboardStickyView offset={{ opened: insets.bottom }} style={styles.composerWrap}>
         {away && items.length ? (

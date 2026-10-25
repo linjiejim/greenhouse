@@ -7,10 +7,10 @@
  * PUBLIC API (also used by the knowledge and projects areas — keep stable):
  *   <Markdown source={string} animated?={boolean} />
  *     - `source`   the markdown text.
- *     - `animated` streaming replies only: each block mounts with a soft
- *       fade-in, so the reply unfolds block by block (read only at a block's
- *       mount, so rendered blocks never re-animate), and a rich fence that
- *       hasn't closed yet shows a placeholder. Static renders omit it.
+ *     - `animated` streaming replies only: a rich fence that hasn't closed yet
+ *       shows a placeholder. Static renders omit it. (Blocks no longer fade in:
+ *       a Reanimated entering animation in a list that scrolls to follow the
+ *       reply left the rows above it painted at their old place.)
  *   <RichContext value={{ reply, followUp }}>  around a chat reply: lets a
  *       ```confirm send its pick (absent → inert buttons).
  *   <TableGrid data big? avail? />  the bare table grid (the /table viewer).
@@ -33,8 +33,6 @@
  */
 import { memo, useMemo } from 'react';
 import { View } from 'react-native';
-import { motion } from '../theme';
-import Animated, { FadeIn, ReduceMotion } from 'react-native-reanimated';
 import { CalmContext, PreviewContext } from './context';
 import { parseBlocks, type Block } from './parse';
 import { fenceBlocks } from './registry';
@@ -116,12 +114,7 @@ export function Markdown({
       <PreviewContext.Provider value={preview}>
         <View>
           {blocks.map((b, i) => (
-            <Animated.View
-              key={i}
-              entering={animated ? FadeIn.duration(motion.base).reduceMotion(ReduceMotion.System) : undefined}
-            >
-              {renderBlock(b, i, animated, safe, preview)}
-            </Animated.View>
+            <View key={i}>{renderBlock(b, i, animated, safe, preview)}</View>
           ))}
         </View>
       </PreviewContext.Provider>

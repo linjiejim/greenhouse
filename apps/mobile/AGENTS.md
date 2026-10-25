@@ -122,7 +122,7 @@
 - Forms use NativeForm with FormNavRow; content buttons use NativeButton, never Pressable plus Text.
 - Every SwiftUI Host you create gets the useLocaleEnv() modifier, and inline hosts in RN content get ignoreSafeArea="all".
 - Lists use src/ui/list.tsx; virtualized rows pass rowPosition() instead of sitting in a Section; show Skeleton or LoadingState and EmptyState.
-- Use react-native-keyboard-controller; never KeyboardAvoidingView. A list under a sticky composer scrolls in KeyboardChatScrollView (`renderScrollComponent`, `offset` = the bottom safe area) so the keyboard joins its bottom inset; scroll to its end with the native scroll view's scrollToEnd, never VirtualizedList's (it ignores padding and insets).
+- Use react-native-keyboard-controller; never KeyboardAvoidingView. A list under a sticky composer adds the keyboard's height (useKeyboardState, minus the bottom safe area) to its bottom padding so its end stays reachable; scroll to its end with the native scroll view's scrollToEnd, never VirtualizedList's (it ignores padding). Follow a streaming reply on every change at the end, not only on content-size events, and let only a drag release the follow.
 
 ## Native pitfalls
 

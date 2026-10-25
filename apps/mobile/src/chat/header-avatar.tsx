@@ -6,8 +6,11 @@
  *    when idle it gives a small wiggle now and then, so it feels alive.
  *  - `TalkingAvatar` — while a reply is being written, the sprout leaves the title and glides down
  *    to just below it, larger, as if talking to you; when the reply ends it glides back and the
- *    title's sprout takes over again. It floats over the top of the transcript, never takes
- *    touches, and lives only while it is out.
+ *    title's sprout takes over again. It never takes touches and lives only while it is out.
+ *  - `TalkingBand` and `TalkingRoom` — while it is out the header grows to hold it: a band of the
+ *    page's background extends the bar down to below the sprout (content scrolls under it as
+ *    under the bar), and the list's top grows by the same room, so a short conversation moves
+ *    down instead of sitting under the sprout. Both follow the glide, out and back.
  *
  * The two share one anchor (where the title's sprout is on screen, measured in window
  * coordinates) and one progress value (react-native-reanimated, on the UI thread). Reduce Motion:
@@ -15,7 +18,7 @@
  */
 
 import React, { useEffect, useRef, useState } from 'react';
-import { Text, View, useWindowDimensions } from 'react-native';
+import { LayoutAnimation, Text, View, useWindowDimensions } from 'react-native';
 import Animated, {
   Easing,
   cancelAnimation,
@@ -38,6 +41,10 @@ export const SMALL = 24;
 /** The talking sprout below the title. */
 export const LARGE = 56;
 const GLIDE_MS = 520;
+/** How long a reply must stay finished before the sprout glides back. */
+const SETTLE_MS = 900;
+/** What the header grows by while the sprout is out: the sprout and a gap above and below. */
+export const ROOM = LARGE + space.sm * 2;
 
 interface Frame {
   x: number;
@@ -66,7 +73,16 @@ const STATE_WORDS = {
 } as const;
 
 /** The navigation bar's title: the sprout (hidden while it is out talking) and the title. */
-export function HeaderTitle({ title, state, out }: { title: string; state: PlantState; out: SharedValue<number> }) {
+export function HeaderTitle({
+  title,
+  state,
+  away,
+}: {
+  title: string;
+  state: PlantState;
+  /** The sprout is out talking (or on its way back): the title keeps only its place. */
+  away: boolean;
+}) {
   const { colors: c } = useTheme();
   const styles = useStyles(c);
   const { width } = useWindowDimensions();
@@ -102,8 +118,6 @@ export function HeaderTitle({ title, state, out }: { title: string; state: Plant
   }, [state, reduced, wiggle]);
 
   const avatarStyle = useAnimatedStyle(() => ({
-    // the talking sprout takes over the moment it leaves, and hands back when it lands
-    opacity: out.value > 0.001 ? 0 : 1,
     transform: [{ rotate: `${wiggle.value}deg` }],
   }));
 
@@ -125,7 +139,7 @@ export function HeaderTitle({ title, state, out }: { title: string; state: Plant
       accessibilityRole="header"
       accessibilityLabel={title}
     >
-      <Animated.View ref={avatarRef} style={avatarStyle} onLayout={measure}>
+      <Animated.View ref={avatarRef} style={[avatarStyle, { opacity: away ? 0 : 1 }]} onLayout={measure}>
         <AssistantAvatar size={SMALL} state={state} animate />
       </Animated.View>
       <Text style={styles.title} numberOfLines={1}>
@@ -139,25 +153,36 @@ export function HeaderTitle({ title, state, out }: { title: string; state: Plant
  * Drives the glide: `talking` sends the sprout out below the title, and back when it ends.
  * Returns the progress value the title and the floating sprout read, and whether it is out.
  */
-export function useTalking(talking: boolean): { out: SharedValue<number>; visible: boolean } {
+export function useTalking(talking: boolean): { out: SharedValue<number>; visible: boolean; room: boolean } {
   const out = useSharedValue(0);
   const [visible, setVisible] = useState(false);
+  const [room, setRoom] = useState(false);
   const reduced = useReducedMotion();
+  // the list's room changes through React layout (LayoutAnimation), never a UI-thread height:
+  // a height animated outside React leaves rows React does not re-render at stale positions
+  const makeRoom = (open: boolean) => {
+    if (!reduced) LayoutAnimation.configureNext(LayoutAnimation.create(GLIDE_MS, 'easeInEaseOut', 'scaleY'));
+    setRoom(open);
+  };
   useEffect(() => {
     if (talking) {
       setVisible(true);
+      makeRoom(true);
       out.value = withTiming(1, { duration: reduced ? 200 : GLIDE_MS, easing: Easing.inOut(Easing.cubic) });
-    } else {
-      out.value = withTiming(
-        0,
-        { duration: reduced ? 200 : GLIDE_MS, easing: Easing.inOut(Easing.cubic) },
-        (finished) => {
-          if (finished) runOnJS(setVisible)(false);
-        },
-      );
+      return;
     }
+    // a reply settling (re-read, the moment between stream and save) flickers "not busy": come
+    // back only once it has stayed done for a beat, so the sprout never bobs mid-reply
+    const timer = setTimeout(() => {
+      makeRoom(false);
+      out.value = withTiming(0, { duration: reduced ? 200 : GLIDE_MS, easing: Easing.inOut(Easing.cubic) }, (finished) => {
+        if (finished) runOnJS(setVisible)(false);
+      });
+    }, SETTLE_MS);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- makeRoom reads only `reduced`
   }, [talking, reduced, out]);
-  return { out, visible };
+  return { out, visible, room };
 }
 
 /** The sprout out below the title while a reply is written (mounted only while out). */
@@ -215,3 +240,15 @@ const useStyles = makeStyles((c) => ({
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
   title: { ...typo.headline, fontWeight: weight.semibold, color: c.label, flexShrink: 1 },
 }));
+
+/** The header's extension while the sprout is out: the page background from the top of the screen down to below the sprout. */
+export function TalkingBand({ out, height }: { out: SharedValue<number>; height: number }) {
+  const { colors: c } = useTheme();
+  const style = useAnimatedStyle(() => ({ height: height + out.value * ROOM, opacity: Math.min(1, out.value * 2) }));
+  return <Animated.View pointerEvents="none" style={[{ position: 'absolute', left: 0, right: 0, top: 0, backgroundColor: c.background }, style]} />;
+}
+
+/** The list's top grows with the header, so its first message starts below the sprout. */
+export function TalkingRoom({ open }: { open: boolean }) {
+  return <View style={{ height: open ? ROOM : 0 }} />;
+}
