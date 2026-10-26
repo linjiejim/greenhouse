@@ -92,7 +92,6 @@ export function toolDisplayName(name: string): string {
     session_history: 'Conversation history',
     session_query: 'Conversations',
     project_query: 'Projects',
-    knowledge_query: 'Knowledge',
     tables_query: 'Tables',
   };
   return aliases[name] ?? humanizeIdentifier(name);

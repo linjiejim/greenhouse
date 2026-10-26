@@ -266,12 +266,12 @@ export function driveKeyFor(opts: {
   if (opts.scope === 'tables') return `${DRIVE_PREFIX}tables/${opts.baseId ?? 'none'}/${uid}${ext}`;
   // An extension scope is namespaced by its own owner key, sanitized — the key is
   // extension data and must never be able to escape the prefix.
-  if (opts.scope !== 'kb') {
+  const scope = opts.scope.replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 32);
+  if (!opts.visibility) {
     const owner = (opts.ownerKey ?? 'none').replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 64) || 'none';
-    const scope = opts.scope.replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 32);
     return `${DRIVE_PREFIX}${scope}/${owner}/${uid}${ext}`;
   }
-  return `${DRIVE_PREFIX}kb/${opts.visibility ?? 'team'}/${uid}${ext}`;
+  return `${DRIVE_PREFIX}${scope}/${opts.visibility ?? 'team'}/${uid}${ext}`;
 }
 
 /** Build a server-owned key for a generated file attached to a chat session. */

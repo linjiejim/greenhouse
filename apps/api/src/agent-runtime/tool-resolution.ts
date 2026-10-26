@@ -22,8 +22,6 @@ import { BUILTIN_AGENT_TOOL_IDS, getToolMeta, LAZY_TOOL_IDS, RETIRED_TOOL_ALIASE
 export { LAZY_TOOL_IDS };
 import { createCallLlmTool } from '../tools/call-llm.js';
 import { createSessionQueryTool } from '../tools/session-query.js';
-import { createKnowledgeQueryTool } from '../tools/knowledge-query.js';
-import { createKnowledgeMutationTool } from '../tools/knowledge-mutation.js';
 import { createAutomationQueryTool } from '../tools/automation-query.js';
 import { createAutomationMutationTool } from '../tools/automation-mutation.js';
 import { createGenerateImageTool } from '../tools/generate-image.js';
@@ -261,12 +259,6 @@ export function buildLazyServerTools(
 
   if (effectiveTools.includes('session_query')) {
     tools.session_query = createSessionQueryTool(db, { userId, userRole, sessionId });
-  }
-  if (effectiveTools.includes('knowledge_query')) {
-    tools.knowledge_query = createKnowledgeQueryTool(db, { userId });
-  }
-  if (effectiveTools.includes('knowledge_mutation')) {
-    tools.knowledge_mutation = createKnowledgeMutationTool(db, { userId });
   }
   // Files (the knowledge cabinet) — every node is authorized inside
   // drive/kb-cabinet.ts, and like automations they belong to a user, not to a

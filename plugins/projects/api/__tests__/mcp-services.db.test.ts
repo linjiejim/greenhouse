@@ -74,7 +74,7 @@ import { buildMcpServer, composeMcpContext } from '../../../../apps/api/src/rout
 import { identityFromOAuthScopes } from '../../../../apps/api/src/agent-runtime/mcp-auth.js';
 import { initializePlatformRuntime, resetPlatformRuntimeForTests } from '../../../../apps/api/src/platform/runtime.js';
 import { projectsRegistration } from '../platform/application.js';
-import { knowledgeRegistration } from '../../../../apps/api/src/platform/knowledge/registration.js';
+import { knowledgeRegistration } from '../../../knowledge/api/platform/registration.js';
 import { tablesRegistration } from '../../../tables/api/platform/application.js';
 import { uploadCabinetFile } from '../../../../apps/api/src/drive/kb-cabinet.js';
 import { delegatedAgentActor } from '../../../../apps/api/src/platform/actor.js';

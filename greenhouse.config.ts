@@ -23,6 +23,8 @@ export default defineConfig({
     './plugins/skills',
     './plugins/projects',
     './plugins/tables',
+    './plugins/knowledge',
+    './plugins/retro',
   ],
   extensions: {
     // Packages above and SDK 1 in-tree registrations are compiled in; this switches them on.

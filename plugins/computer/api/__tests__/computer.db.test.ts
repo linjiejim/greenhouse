@@ -56,7 +56,7 @@ import { identityFromOAuthScopes } from '../../../../apps/api/src/agent-runtime/
 import { buildExternalServiceTools } from '../../../../apps/api/src/agent-runtime/service-tools.js';
 import { initializePlatformRuntime, resetPlatformRuntimeForTests } from '../../../../apps/api/src/platform/runtime.js';
 import { projectsRegistration } from '../../../projects/api/platform/application.js';
-import { knowledgeRegistration } from '../../../../apps/api/src/platform/knowledge/registration.js';
+import { knowledgeRegistration } from '../../../knowledge/api/platform/registration.js';
 import { tablesRegistration } from '../../../tables/api/platform/application.js';
 import { runWithMeteringScope, type MeteringScope } from '../../../../apps/api/src/usage/metering.js';
 import { setPriceOverridesForTests, syncPriceOverrides } from '../../../../apps/api/src/usage/pricing.js';

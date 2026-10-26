@@ -13,5 +13,4 @@ export { usePinStore } from './pin-store.js';
 export { usePlatformCatalog, usePlatformStore } from './platform-store.js';
 export { useProfileStore } from './profile-store.js';
 export { useWsStore } from './ws-store.js';
-export { useKnowledgeStore } from './knowledge-store.js';
 export { useSidePaneStore } from './side-pane-store.js';

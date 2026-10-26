@@ -17,6 +17,8 @@ import {
   createModelFromConfig,
   buildProviderOptions,
   summarizeOutput,
+  summarizeToolInput,
+  toolResultReferences,
   CHAT_STREAM_TIMEOUT,
 } from '@greenhouse/agent-core';
 import type { ModelConfig, ProviderAttemptHook } from '@greenhouse/agent-core';
@@ -381,22 +383,8 @@ export function extractPipelineAndReferences(steps: any[]): {
         duration_ms: 0,
       });
 
-      // Extract references from knowledge documents actually read.
-      if (
-        toolName === 'knowledge_query' &&
-        typeof toolOutput?.doc_id === 'string' &&
-        typeof toolOutput?.title === 'string' &&
-        !toolOutput?.error &&
-        !referencesMap.has(toolOutput.doc_id)
-      ) {
-        referencesMap.set(toolOutput.doc_id, {
-          slug: toolOutput.doc_id,
-          title: toolOutput.title || toolOutput.doc_id,
-          type: 'kb_doc',
-          ...(typeof toolOutput.url === 'string' ? { url: toolOutput.url } : {}),
-          category: toolOutput.folder,
-        });
-      }
+      for (const reference of toolResultReferences(toolName, toolOutput))
+        if (!referencesMap.has(reference.slug)) referencesMap.set(reference.slug, reference);
     }
   }
 
@@ -427,22 +415,7 @@ export function extractExactToolEvidence(steps: any[]): RunAgentResult['toolEvid
 }
 
 /** Summarize tool input for pipeline recording. */
-function summarizeInput(toolName: string, input: Record<string, unknown>): unknown {
-  if (!input || typeof input !== 'object') return {};
-  switch (toolName) {
-    case 'knowledge_query':
-      return input.action === 'get' || input.action === 'versions'
-        ? { action: input.action ?? '', scope: input.scope ?? '', doc_id: input.doc_id ?? '' }
-        : {
-            action: input.action ?? '',
-            scope: input.scope ?? '',
-            query: input.query ?? '',
-            ...(input.folder ? { folder: input.folder } : {}),
-          };
-    default:
-      return input;
-  }
-}
+const summarizeInput = summarizeToolInput;
 
 // Tool output summarization is shared with the streaming chat path
 // (`summarizeOutput` from @greenhouse/agent-core) so a scheduled session's

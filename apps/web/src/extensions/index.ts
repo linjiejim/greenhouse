@@ -1,3 +1,4 @@
+import { registerDefaultQuickActions } from '../lib/extension-registries';
 import { registerEntitySync } from '../lib/entity-sync';
 import { registerApplicationPage, registerHostTitle } from '../lib/extension-registries';
 import { registerContextProvider } from '../lib/context-registry';
@@ -80,6 +81,7 @@ const ROUTE_ALIASES = new Map<string, string>();
 {
   const routes = new Set(LOADED_WEB_EXTENSIONS.flatMap((ext) => (ext.pages ?? []).map((page) => page.route)));
   for (const ext of LOADED_WEB_EXTENSIONS) {
+    if (ext.defaultQuickActions) registerDefaultQuickActions(ext.id, ext.defaultQuickActions);
     for (const page of ext.pages ?? []) {
       for (const [from, to] of Object.entries(page.aliases ?? {})) {
         if (routes.has(from))
@@ -119,7 +121,7 @@ for (const ext of LOADED_WEB_EXTENSIONS) {
     registerKnowledgeDocPanels(ext.knowledgeDocPanels.map((panel) => ({ ...panel, extensionId: ext.id })));
   }
   for (const page of ext.pages ?? []) {
-    if (page.applicationId) registerApplicationPage(ext.id, page.applicationId, page.route);
+    if (page.applicationId) registerApplicationPage(ext.id, page.applicationId, page.route, page.navigationOrder);
     if (page.titleKey) registerHostTitle(ext.id, page.route, page.titleKey);
     if (page.titleKey && page.applicationId && page.applicationId !== page.route)
       registerHostTitle(ext.id, page.applicationId, page.titleKey);
@@ -271,4 +273,13 @@ export function extensionNotificationTransports(active?: ReadonlySet<string>) {
   return LOADED_WEB_EXTENSIONS.filter((e) => (active ? active.has(e.id) : isActiveWebExtension(e.id))).flatMap(
     (e) => e.notificationTransports ?? [],
   );
+}
+
+export function dispatchExtensionWsEvent(event: import('@greenhouse/types/ws').ServerWsEvent) {
+  for (const ext of LOADED_WEB_EXTENSIONS)
+    if (isActiveWebExtension(ext.id)) for (const handle of ext.wsEvents ?? []) handle(event);
+}
+
+export function reconnectExtensions() {
+  for (const ext of LOADED_WEB_EXTENSIONS) if (isActiveWebExtension(ext.id)) ext.onReconnect?.();
 }

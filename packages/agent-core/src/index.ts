@@ -69,3 +69,13 @@ export {
   DEFAULT_COMPACTION_THRESHOLD,
 } from './context-budget.js';
 export type { HistoryWindowResult } from './context-budget.js';
+
+export {
+  registerToolResultAdapters,
+  toolResultReferences,
+  toolResultRelevance,
+  summarizeToolInput,
+  type ToolResultAdapter,
+} from './tool-results.js';
+
+export { normalizePluginToolCall } from './tool-results.js';

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { getUpload, isValidUploadId, normalizeKeyPrefix } from './uploads.js';
+import { driveKeyFor, getUpload, isValidUploadId, normalizeKeyPrefix } from './uploads.js';
 
 describe('upload storage boundary', () => {
   it.each([
@@ -65,5 +65,21 @@ describe('object-key prefix from the environment', () => {
     expect(() => normalizeKeyPrefix(raw, 'TENCENT_CLOUD_COS_PREFIX', 'uploads/')).toThrow(
       /TENCENT_CLOUD_COS_PREFIX is not a valid object-key prefix/,
     );
+  });
+});
+
+describe('drive object-key namespaces', () => {
+  it('keeps cabinet keys within their scope for team and personal shelves', () => {
+    expect(driveKeyFor({ scope: 'drive', visibility: 'team', filename: 'notes.TXT' })).toMatch(
+      /drive\/team\/[^/]+\.txt$/,
+    );
+    expect(driveKeyFor({ scope: 'kb', visibility: 'private', filename: 'notes.txt' })).toMatch(
+      /kb\/private\/[^/]+\.txt$/,
+    );
+  });
+  it.each([undefined, 'team'])('sanitizes plugin scope names with visibility %s', (visibility) => {
+    const key = driveKeyFor({ scope: '../outside', ownerKey: '../owner', visibility, filename: 'notes.txt' });
+    expect(key).not.toContain('..');
+    expect(key).not.toContain('/outside/');
   });
 });

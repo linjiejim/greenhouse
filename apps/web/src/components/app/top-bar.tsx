@@ -38,7 +38,6 @@ type Route =
   | 'settings'
   | 'administration'
   | 'design'
-  | 'knowledge'
   | 'tables'
   | 'files'
   | 'skillhub'
@@ -209,7 +208,6 @@ export function TopBar({
     automations: t('navigation.automation'),
     settings: t('app.settings'),
     administration: t('app.administration'),
-    knowledge: t('app.knowledge'),
     tables: 'Tables',
     files: t('navigation.files'),
     skillhub: t((registeredHostTitle('skillhub')?.titleKey as `ext.${string}`) ?? 'savedPrompts.title'),

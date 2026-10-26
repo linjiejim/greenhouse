@@ -6,13 +6,11 @@ import { registeredHostTitle } from './lib/extension-registries';
  * LAYOUT: Full-height global/contextual sidebar + right-side top bar and content.
  * UI 子组件拆分到 components/app/ 目录下。
  */
-
 import { CONNECTOR_OAUTH_FINISH_HASH } from '@greenhouse/types/connectors';
 import './app.css';
 import React, { useState, useEffect, useMemo, useCallback, useRef, Suspense, lazy } from 'react';
 import { createRoot } from 'react-dom/client';
 import { ChatPage } from './pages/chat';
-
 // Lazy-loaded route pages for code splitting
 const SettingsPage = lazy(() => import('./pages/settings').then((m) => ({ default: m.SettingsPage })));
 const AdministrationPage = lazy(() =>
@@ -21,7 +19,6 @@ const AdministrationPage = lazy(() =>
 const DesignPage = import.meta.env.DEV
   ? lazy(() => import('./pages/design').then((m) => ({ default: m.DesignPage })))
   : null;
-const KnowledgePage = lazy(() => import('./pages/knowledge').then((m) => ({ default: m.KnowledgePage })));
 const AutomationsPage = lazy(() => import('./pages/automations').then((m) => ({ default: m.AutomationsPage })));
 const SkillHubPage = lazy(() => import('./pages/skillhub').then((m) => ({ default: m.SkillHubPage })));
 const ActivityPage = lazy(() => import('./pages/activity').then((m) => ({ default: m.ActivityPage })));
@@ -50,7 +47,6 @@ import { LoginScreen, AppSidebar, SidebarAccountMenu, SidebarBackButton, TopBar 
 import { ActionConfirmDialog } from './components/app/action-confirm-dialog';
 import {
   ChatHistoryPanel,
-  KnowledgeNavPanel,
   MobilePinnedSection,
   SettingsNavPanel,
   AdministrationNavPanel,
@@ -72,14 +68,11 @@ import { useMobileKeyboardViewport } from './hooks/use-mobile-keyboard-viewport'
 import { CORE_ROUTES, newChatHash, useHashRouter } from './lib/hash-router';
 import { InboxModal } from './components/app/inbox-modal';
 import { InboxBellButton } from './components/app/inbox-bell';
-
 // Initialize theme from localStorage on app load
 initTheme();
 // Reveal scrollbars only while scrolling (they're transparent at rest)
 initScrollActivity();
-
 // ─── Router ──────────────────────────────────────────────
-
 type Route =
   | 'home'
   | 'chat'
@@ -88,11 +81,9 @@ type Route =
   | 'settings'
   | 'administration'
   | 'design'
-  | 'knowledge'
   | 'files'
   | 'skillhub'
   | 'activity';
-
 interface ParsedRoute {
   route: Route;
   subPath: string;
@@ -100,7 +91,6 @@ interface ParsedRoute {
   /** The extension page route (`#/<extensionRoute>`) when `route === 'extension'`. */
   extensionRoute?: string;
 }
-
 /**
  * Asks before a guarded screen is navigated away from. Rendered at the app root
  * because the guard lives in the router, not in any one screen — the screen that
@@ -128,7 +118,6 @@ function LeaveConfirmDialog({
     />
   );
 }
-
 /**
  * Which page a canonical hash shows. Pure: retired hashes were already resolved
  * by the router (`lib/hash-router.ts`), so nothing here touches the URL.
@@ -140,7 +129,6 @@ function parseRoute(hash: string): ParsedRoute {
   // Home (a new conversation) is the landing page.
   const topLevel = segments[0] || 'home';
   const coreOwned = CORE_ROUTES.has(topLevel);
-
   // Extension pages answer their own top-level segment; the host checks the
   // extension is active before rendering anything.
   if (!coreOwned && compiledExtensionRoutes().has(topLevel)) {
@@ -151,15 +139,12 @@ function parseRoute(hash: string): ParsedRoute {
       params: new URLSearchParams(query || ''),
     };
   }
-
   // An unknown top-level segment lands on Home.
   const route = (coreOwned ? topLevel : 'home') as Route;
   const subPath = segments.slice(1).join('/');
   return { route, subPath, params: new URLSearchParams(query || '') };
 }
-
 // ─── App ─────────────────────────────────────────────────
-
 function App() {
   // One viewport coordinator covers login, route pages and every shared
   // overlay. Call it above the auth branches so no mobile input falls back to
@@ -173,7 +158,6 @@ function App() {
   const passwordLinkToken = passwordLinkRoute
     ? new URLSearchParams(hash.includes('?') ? hash.slice(hash.indexOf('?') + 1) : '').get('token')
     : null;
-
   // Sync locale to backend when user changes it
   const handleLocaleChange = useCallback(
     (locale: Locale) => {
@@ -188,20 +172,17 @@ function App() {
     },
     [currentUser],
   );
-
   const handleUnauthorized = useCallback(() => {
     clearToken();
     logout();
     useProfileStore.getState().clear();
   }, [logout]);
-
   useEffect(() => {
     // The one-time link page owns its unauthenticated session lifecycle. A
     // stale access-token validation must not race a successful completion and
     // clear the freshly issued session.
     if (passwordLinkRoute) return;
     setOnUnauthorized(handleUnauthorized);
-
     (async () => {
       const user = await validateSession();
       if (user) {
@@ -216,7 +197,6 @@ function App() {
       }
     })();
   }, [handleUnauthorized, login, passwordLinkRoute]);
-
   // ── WebSocket lifecycle: connect on login, disconnect on logout ──
   useEffect(() => {
     const unsub = useAuthStore.subscribe((state, prev) => {
@@ -233,7 +213,6 @@ function App() {
     }
     return unsub;
   }, []);
-
   if (passwordLinkRoute) {
     return (
       <I18nProvider initialLocale={userLocale} onLocaleChange={handleLocaleChange}>
@@ -253,7 +232,6 @@ function App() {
       </I18nProvider>
     );
   }
-
   if (authState === 'checking') {
     return (
       <I18nProvider initialLocale={userLocale} onLocaleChange={handleLocaleChange}>
@@ -261,7 +239,6 @@ function App() {
       </I18nProvider>
     );
   }
-
   if (authState === 'needs-login') {
     return (
       <I18nProvider initialLocale={userLocale} onLocaleChange={handleLocaleChange}>
@@ -278,7 +255,6 @@ function App() {
       </I18nProvider>
     );
   }
-
   // A connector sign-in coming back (usually in a popup): finish it without the app shell.
   if (window.location.hash.startsWith(CONNECTOR_OAUTH_FINISH_HASH)) {
     return (
@@ -290,7 +266,6 @@ function App() {
       </I18nProvider>
     );
   }
-
   if (new URLSearchParams(window.location.search).get('oauth_authorize') === '1') {
     return (
       <I18nProvider initialLocale={userLocale} onLocaleChange={handleLocaleChange}>
@@ -301,7 +276,6 @@ function App() {
       </I18nProvider>
     );
   }
-
   return (
     <I18nProvider initialLocale={userLocale} onLocaleChange={handleLocaleChange}>
       <AgentProvider>
@@ -315,38 +289,30 @@ function App() {
     </I18nProvider>
   );
 }
-
 // ─── App Shell — new sidebar-first layout ────────────────
-
 interface AppShellProps {
   route: Route;
   extensionRoute?: string;
   subPath: string;
   params: URLSearchParams;
 }
-
 function AppShell({ route, subPath, params, extensionRoute }: AppShellProps) {
   const t = useT();
   const { currentUser, logout } = useAuthStore();
   const { chatWorkspaceView, navOpen, setChatWorkspaceView, setNavOpen, currentSessionTitle, currentChatSessionId } =
     useUIStore();
-
-  const { orderedApplications, hasApplication, loading: catalogLoading } = usePlatformCatalog();
+  const { orderedApplications } = usePlatformCatalog();
   const loadPlatformCatalog = usePlatformStore((state) => state.load);
-
   useEffect(() => {
     void loadPlatformCatalog(true);
   }, [loadPlatformCatalog]);
-
   const loadExtensions = useExtensionsStore((state) => state.load);
   useEffect(() => {
     void loadExtensions();
   }, [loadExtensions]);
-
   useEffect(() => {
     setChatWorkspaceView('conversation');
   }, [route, setChatWorkspaceView]);
-
   // Module usage: one page_open per module per page view. Moving within a
   // module (doc → doc, settings tab → same tab) is not a new open.
   const usageModule = pageModuleForRoute({
@@ -357,15 +323,12 @@ function AppShell({ route, subPath, params, extensionRoute }: AppShellProps) {
   useEffect(() => {
     if (usageModule) reportPageOpen(usageModule);
   }, [usageModule]);
-
   // Session ID from store (synced by ChatPage internally)
   const currentSessionId = currentChatSessionId;
   const previousNonSettingsHashRef = useRef('#/home');
   const lastChatHashRef = useRef('#/home');
-
   // Settings + Administration are full-screen overlay routes with a Back button.
   const isOverlayRoute = route === 'settings' || route === 'administration';
-
   useEffect(() => {
     if (isConversationRoute(route)) {
       lastChatHashRef.current = window.location.hash || '#/home';
@@ -374,7 +337,6 @@ function AppShell({ route, subPath, params, extensionRoute }: AppShellProps) {
       previousNonSettingsHashRef.current = window.location.hash || '#/home';
     }
   }, [isOverlayRoute, params, route, subPath]);
-
   // Home's first message moves the address to `#/chat?session=…` in place
   // (replaceState, no hashchange), so Back must follow the session, not Home.
   useEffect(() => {
@@ -383,14 +345,12 @@ function AppShell({ route, subPath, params, extensionRoute }: AppShellProps) {
     lastChatHashRef.current = hash;
     if (!isOverlayRoute) previousNonSettingsHashRef.current = hash;
   }, [currentSessionId, isOverlayRoute, route]);
-
   const _onSignOut = useCallback(() => {
     clearToken();
     logout();
     setNavOpen(false);
     useProfileStore.getState().clear();
   }, [logout, setNavOpen]);
-
   const handleBackFromPage = useCallback(() => {
     const previousPage = previousNonSettingsHashRef.current;
     const overlayTarget =
@@ -400,12 +360,10 @@ function AppShell({ route, subPath, params, extensionRoute }: AppShellProps) {
     const target = isOverlayRoute ? overlayTarget || lastChatHashRef.current : lastChatHashRef.current;
     window.location.hash = target;
   }, [isOverlayRoute]);
-
   const handleNewChat = useCallback(() => {
     setChatWorkspaceView('conversation');
     window.location.hash = newChatHash();
   }, [setChatWorkspaceView]);
-
   const handleSelectSession = useCallback(
     (sessionId: string) => {
       setChatWorkspaceView('conversation');
@@ -413,7 +371,6 @@ function AppShell({ route, subPath, params, extensionRoute }: AppShellProps) {
     },
     [setChatWorkspaceView],
   );
-
   // One permission-aware navigation model feeds both the desktop sidebar and
   // mobile drawer. Presentation differs, visibility and ordering do not.
   const primaryNavigation = buildPrimaryNavigation({
@@ -429,7 +386,6 @@ function AppShell({ route, subPath, params, extensionRoute }: AppShellProps) {
             return title ? [[application.id, t(title.titleKey as `ext.${string}`)]] : [];
           }),
         ),
-        knowledge: t('app.knowledge'),
       },
     },
   });
@@ -532,15 +488,7 @@ function AppShell({ route, subPath, params, extensionRoute }: AppShellProps) {
                     </div>
                   ) : (
                     <div className="flex min-h-0 flex-1 flex-col">
-                      {route === 'knowledge' ? (
-                        // The tree is the ONLY way to reach an internal doc (the page
-                        // body stopped listing documents when the tree shipped), so
-                        // without this the whole team library is unreachable on a
-                        // phone — you'd land on the public wiki and stop there.
-                        <div className="flex min-h-0 flex-1 flex-col pt-1">
-                          <KnowledgeNavPanel activeModule={subPath} onNavigate={() => setNavOpen(false)} />
-                        </div>
-                      ) : route === 'activity' ? (
+                      {route === 'activity' ? (
                         <div className="min-h-0 flex-1" />
                       ) : route === 'extension' ? (
                         <div className="min-h-0 flex-1 overflow-y-auto">
@@ -598,11 +546,6 @@ function AppShell({ route, subPath, params, extensionRoute }: AppShellProps) {
               }
             >
               <main className="flex-1 overflow-hidden min-h-0">
-                {catalogLoading && route === 'knowledge' && (
-                  <div className="flex h-full items-center justify-center">
-                    <Spinner className="h-6 w-6 text-fg-faint" />
-                  </div>
-                )}
                 {/* Home is a new conversation; `#/chat?session=` opens an existing one. */}
                 {isConversationRoute(route) && (
                   <ChatPage
@@ -615,18 +558,10 @@ function AppShell({ route, subPath, params, extensionRoute }: AppShellProps) {
                 {route === 'settings' && <SettingsPage subPath={subPath} />}
                 {route === 'administration' && <AdministrationPage subPath={subPath} />}
                 {route === 'design' && DesignPage && <DesignPage />}
-                {route === 'knowledge' && hasApplication('knowledge') && (
-                  <KnowledgePage subPath={subPath} basePath="#/knowledge" />
-                )}
                 {route === 'files' && <FilesPage params={params} />}
                 {route === 'activity' && <ActivityPage subPath={subPath} />}
                 {route === 'extension' && (
                   <ExtensionPageHost route={extensionRoute ?? ''} subPath={subPath} params={params} />
-                )}
-                {!catalogLoading && route === 'knowledge' && !hasApplication('knowledge') && (
-                  <div className="flex h-full items-center justify-center text-sm text-fg-faint">
-                    {t('app.noPermission')}
-                  </div>
                 )}
               </main>
             </Suspense>
@@ -641,9 +576,7 @@ function AppShell({ route, subPath, params, extensionRoute }: AppShellProps) {
     </>
   );
 }
-
 // ─── Loading Screen ──────────────────────────────────────
-
 function LoadingScreen() {
   const t = useT();
   return (
@@ -657,9 +590,7 @@ function LoadingScreen() {
     </div>
   );
 }
-
 // ─── Mount ───────────────────────────────────────────────
-
 const container = document.getElementById('root');
 if (container) {
   // Workspace branding (name / logo / theme) loads before first paint so the

@@ -77,9 +77,6 @@ importers:
       '@greenhouse/db':
         specifier: workspace:*
         version: link:../../packages/db
-      '@greenhouse/knowledge-editor':
-        specifier: workspace:*
-        version: link:../../packages/knowledge-editor
       '@greenhouse/platform-kernel':
         specifier: workspace:*
         version: link:../../packages/platform-kernel
@@ -698,6 +695,85 @@ importers:
         specifier: ^19.2.0
         version: 19.3.0(@types/react@19.3.0)
 
+  plugins/knowledge:
+    dependencies:
+      '@greenhouse/api':
+        specifier: workspace:*
+        version: link:../../apps/api
+      '@greenhouse/knowledge-editor':
+        specifier: workspace:*
+        version: link:../../packages/knowledge-editor
+      '@greenhouse/types':
+        specifier: workspace:*
+        version: link:../../packages/types
+      '@greenhouse/web':
+        specifier: workspace:*
+        version: link:../../apps/web
+      '@modelcontextprotocol/sdk':
+        specifier: ^1.29.0
+        version: 1.29.0(zod@4.4.3)
+      '@tiptap/core':
+        specifier: ^3.24.0
+        version: 3.24.0(@tiptap/pm@3.24.0)
+      '@tiptap/extension-placeholder':
+        specifier: ^3.24.0
+        version: 3.24.0(@tiptap/extensions@3.24.0(@tiptap/core@3.24.0(@tiptap/pm@3.24.0))(@tiptap/pm@3.24.0))
+      '@tiptap/pm':
+        specifier: ^3.24.0
+        version: 3.24.0
+      '@tiptap/react':
+        specifier: ^3.24.0
+        version: 3.24.0(@floating-ui/dom@1.7.6)(@tiptap/core@3.24.0(@tiptap/pm@3.24.0))(@tiptap/pm@3.24.0)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
+      '@tiptap/suggestion':
+        specifier: ^3.28.0
+        version: 3.31.3(@floating-ui/dom@1.7.6)(@tiptap/core@3.24.0(@tiptap/pm@3.24.0))(@tiptap/pm@3.24.0)
+      ai:
+        specifier: ^6.0.176
+        version: 6.0.176(zod@4.4.3)
+      chalk:
+        specifier: ^5.6.2
+        version: 5.6.2
+      drizzle-orm:
+        specifier: ^0.45.2
+        version: 0.45.2(@opentelemetry/api@1.9.0)(@types/better-sqlite3@7.6.13)(better-sqlite3@12.10.0)(postgres@3.4.9)
+      fflate:
+        specifier: ^0.8.3
+        version: 0.8.3
+      hono:
+        specifier: ^4.12.18
+        version: 4.12.18
+      react:
+        specifier: ^19.0.0
+        version: 19.2.6
+      react-dom:
+        specifier: ^19.0.0
+        version: 19.2.6(react@19.2.6)
+      zod:
+        specifier: ^4.4.3
+        version: 4.4.3
+      zustand:
+        specifier: ^5.0.13
+        version: 5.0.13(@types/react@19.3.0)(react@19.2.6)(use-sync-external-store@1.6.0(react@19.2.6))
+    devDependencies:
+      '@greenhouse/agent-core':
+        specifier: workspace:*
+        version: link:../../packages/agent-core
+      '@greenhouse/db':
+        specifier: workspace:*
+        version: link:../../packages/db
+      '@playwright/test':
+        specifier: ^1.61.1
+        version: 1.61.1
+      '@types/react':
+        specifier: ^19.2.0
+        version: 19.3.0
+      '@types/react-dom':
+        specifier: ^19.2.0
+        version: 19.3.0(@types/react@19.3.0)
+      drizzle-kit:
+        specifier: ^0.31.10
+        version: 0.31.10
+
   plugins/memory:
     dependencies:
       '@greenhouse/api':
@@ -874,6 +950,58 @@ importers:
       unpdf:
         specifier: ^1.8.0
         version: 1.8.1
+
+  plugins/retro:
+    dependencies:
+      '@greenhouse/api':
+        specifier: workspace:*
+        version: link:../../apps/api
+      '@greenhouse/plugin-knowledge':
+        specifier: workspace:*
+        version: link:../knowledge
+      '@greenhouse/types':
+        specifier: workspace:*
+        version: link:../../packages/types
+      '@greenhouse/web':
+        specifier: workspace:*
+        version: link:../../apps/web
+      ai:
+        specifier: ^6.0.176
+        version: 6.0.176(zod@4.4.3)
+      croner:
+        specifier: ^10.0.1
+        version: 10.0.1
+      hono:
+        specifier: ^4.12.18
+        version: 4.12.18
+      react:
+        specifier: ^19.0.0
+        version: 19.2.6
+    devDependencies:
+      '@greenhouse/agent-core':
+        specifier: workspace:*
+        version: link:../../packages/agent-core
+      '@greenhouse/db':
+        specifier: workspace:*
+        version: link:../../packages/db
+      '@playwright/test':
+        specifier: ^1.61.1
+        version: 1.61.1
+      '@types/react':
+        specifier: ^19.2.0
+        version: 19.3.0
+      '@types/react-dom':
+        specifier: ^19.2.0
+        version: 19.3.0(@types/react@19.3.0)
+      drizzle-kit:
+        specifier: ^0.31.10
+        version: 0.31.10
+      drizzle-orm:
+        specifier: ^0.45.2
+        version: 0.45.2(@opentelemetry/api@1.9.0)(@types/better-sqlite3@7.6.13)(better-sqlite3@12.10.0)(postgres@3.4.9)
+      react-dom:
+        specifier: ^19.0.0
+        version: 19.2.6(react@19.2.6)
 
   plugins/skills:
     dependencies:

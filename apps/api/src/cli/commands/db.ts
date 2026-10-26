@@ -42,7 +42,7 @@ import {
 } from './shared.js';
 
 /** Core tables surfaced in the overview (missing tables render as n/a). */
-const STAT_TABLES = ['users', 'conversations', 'messages', 'kb_documents', 'run_profiles', 'automations'];
+const STAT_TABLES = ['users', 'conversations', 'messages', 'run_profiles', 'automations'];
 
 export async function run(args: string[]): Promise<number> {
   const { sub, rest } = splitSub(args, 'stats');

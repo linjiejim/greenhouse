@@ -21,6 +21,15 @@ export async function assertPluginDisabled(id: string, routes: string[], toolIds
     expect(settings.allWorkspaceSettings().some((setting) => setting.group === id)).toBe(false);
     expect(groups.allMcpResourceGroups()).not.toContain(id);
     expect(prices.getServiceCatalog()).not.toHaveProperty(id);
+    for (const field of [
+      'teamContextSources',
+      'mcpResources',
+      'toolResults',
+      'workspaceTimeZoneChanged',
+      'schedules',
+      'settingValueValidators',
+    ] as const)
+      expect(extensions.fromExtensions(field)).toEqual([]);
     expect(extensions.fromExtensions('jobs')).toEqual([]);
     expect(extensions.fromExtensions('automationTools')).toEqual([]);
     expect(extensions.fromExtensions('retiredToolAliases')).toEqual([]);
@@ -33,6 +42,7 @@ export async function assertPluginDisabled(id: string, routes: string[], toolIds
     expect(extensions.fromExtensions('discriminators')).toEqual([]);
     const drive = await import('../../drive/access.js');
     expect(drive.isKnownDriveScope(id)).toBe(false);
+    if (id === 'knowledge') expect(drive.isKnownDriveScope('kb')).toBe(false);
     expect(extensions.fromExtensions('recentChanges')).toEqual([]);
     expect(extensions.fromExtensions('objectRefs')).toEqual([]);
     expect(extensions.fromExtensions('searchSources')).toEqual([]);

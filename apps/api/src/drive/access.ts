@@ -1,3 +1,4 @@
+import { registerDriveFolderContents } from '@greenhouse/db';
 import { registerDrivePlacements } from '@greenhouse/types/discriminators';
 import { registerDiscriminators } from '@greenhouse/types/discriminators';
 /**
@@ -40,12 +41,16 @@ export interface DriveScopeContext {
 export interface DriveScopeDef {
   /** Stored in `folders.scope` / `files.scope`; namespace it with your id. */
   scope: string;
+  /** Reuse a legacy team/personal cabinet for Files while this scope is enabled. */
+  cabinet?: boolean;
   /** `owner_key` is whatever the extension put there; return null to deny. */
   validatePlacement?: (input: import('@greenhouse/types/discriminators').DrivePlacementInput) => boolean;
   placement?: (
     input: { base_id?: string | null; visibility?: 'team' | 'private'; owner_key?: string | null },
     userId: string,
   ) => DrivePlacement | { error: string };
+  hasFolderContents?: (db: import('@greenhouse/db').Db, folderId: string) => Promise<boolean>;
+  authorizeSync?: (node: DriveAccessNode, userId: string) => DriveAccess;
   authorizeNode?: (node: DriveAccessNode, ctx: DriveScopeContext) => Promise<DriveAccess>;
   authorize: (ownerKey: string | null, ctx: DriveScopeContext) => Promise<DriveAccess>;
 }
@@ -55,14 +60,17 @@ const extensionScopes = new Map<string, DriveScopeDef>();
 export function registerDriveScopes(defs: readonly DriveScopeDef[]): void {
   for (const def of defs) {
     if (extensionScopes.has(def.scope)) throw new Error(`Drive scope "${def.scope}" is already registered`);
+    if (def.cabinet && [...extensionScopes.values()].some((scope) => scope.cabinet))
+      throw new Error('Only one plugin file cabinet may be selected');
     extensionScopes.set(def.scope, def);
+    if (def.hasFolderContents) registerDriveFolderContents(def.scope, def.hasFolderContents);
     registerDiscriminators({ folderScopes: [def.scope] });
     if (def.validatePlacement) registerDrivePlacements([{ scope: def.scope, validate: def.validatePlacement }]);
   }
 }
 
 export function isKnownDriveScope(scope: string): boolean {
-  return scope === 'kb' || extensionScopes.has(scope);
+  return scope === 'drive' || extensionScopes.has(scope);
 }
 
 export function extensionDriveScopes(): readonly DriveScopeDef[] {
@@ -85,14 +93,9 @@ export async function resolveDriveAccessAsync(node: DriveAccessNode, ctx: DriveS
 }
 
 export function resolveDriveAccess(node: DriveAccessNode, userId: string, _ctx: object): DriveAccess {
-  // An extension scope never resolves here — `resolveDriveAccessAsync` routes it
-  // to the owning extension first, so reaching this point means "unknown scope".
-  if (node.scope !== 'kb') return null;
-
-  // kb scope
-  if (node.owner_user_id === userId) return 'owner';
-  if (node.visibility === 'team') return 'editor';
-  return null; // private node owned by someone else (no folder sharing yet)
+  if (node.scope === 'drive')
+    return node.owner_user_id === userId ? 'owner' : node.visibility === 'team' ? 'editor' : null;
+  return extensionScopes.get(node.scope)?.authorizeSync?.(node, userId) ?? null;
 }
 
 /** Read (list / download). */
@@ -130,6 +133,13 @@ export function extensionDrivePlacement(
   input: { base_id?: string | null; visibility?: 'team' | 'private'; owner_key?: string | null },
   userId: string,
 ): DrivePlacement | { error: string } {
+  if (scope === 'drive')
+    return {
+      base_id: null,
+      owner_key: null,
+      visibility: input.visibility ?? 'team',
+      owner_user_id: input.visibility === 'private' ? userId : null,
+    };
   const def = extensionScopes.get(scope);
   if (!def) return { error: 'unknown scope' };
   if (def.placement) return def.placement(input, userId);
@@ -137,12 +147,6 @@ export function extensionDrivePlacement(
   return { base_id: null, visibility: null, owner_user_id: null, owner_key: input.owner_key };
 }
 
-registerDrivePlacements([
-  {
-    scope: 'kb',
-    validate: (i) =>
-      i.base_id == null &&
-      i.owner_key == null &&
-      (i.visibility === 'team' || (i.visibility === 'private' && i.owner_user_id != null)),
-  },
-]);
+export function cabinetDriveScope(): string {
+  return [...extensionScopes.values()].find((scope) => scope.cabinet)?.scope ?? 'drive';
+}

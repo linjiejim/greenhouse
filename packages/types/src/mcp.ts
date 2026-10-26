@@ -36,15 +36,7 @@
  * The groups, in the order the consent screen lists them. Identity only —
  * display copy comes from `mcpGroups.<id>.{label,description}` in the locales.
  */
-export const MCP_RESOURCE_GROUP_IDS = [
-  'knowledge',
-  'files',
-  'chat',
-  'automation',
-  'image',
-  'services',
-  'connectors',
-] as const;
+export const MCP_RESOURCE_GROUP_IDS = ['files', 'chat', 'automation', 'image', 'services', 'connectors'] as const;
 
 export type McpResourceGroup = (typeof MCP_RESOURCE_GROUP_IDS)[number];
 

@@ -35,6 +35,7 @@ export default defineWebExtension({
     {
       route: 'projects',
       applicationId: 'projects',
+      navigationOrder: 40,
       component: Page,
       titleKey: 'ext.projects.projects.title',
       sidebarPanel: () => <ProjectsListPanel />,

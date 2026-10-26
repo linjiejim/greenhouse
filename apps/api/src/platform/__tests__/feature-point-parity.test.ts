@@ -87,7 +87,11 @@ describe('flag-owned tool sets', () => {
       EXTENSIONS.some((e) => e.id === 'tables') ? ['tables_query', 'tables_mutation', 'tables_schema_plan'] : undefined,
     );
     expect(byKey.memory).toEqual(allFeatureFlags().some((flag) => flag.key === 'memory') ? ['memory'] : undefined);
-    expect(byKey.knowledge).toEqual(['knowledge_query', 'knowledge_mutation']);
+    expect(byKey.knowledge).toEqual(
+      EXTENSIONS.some((extension) => extension.id === 'knowledge')
+        ? ['knowledge_query', 'knowledge_mutation']
+        : undefined,
+    );
     expect(byKey.projects).toEqual(
       EXTENSIONS.some((extension) => extension.id === 'projects') ? ['project_query', 'project_mutation'] : undefined,
     );

@@ -232,11 +232,6 @@ const ADMINISTRATION_MODULES: NavModule[] = [
 export const administrationModules = ADMINISTRATION_MODULES;
 // ─── Knowledge list modules ─────────────────────────────
 //
-// The knowledge page owns its own scope views (team / personal / shared) and
-// resolves everything else as a document slug, so there is nothing here to
-// register today. Kept as the seam for the next collection view that does need
-// a ModulePage identity.
-const KNOWLEDGE_MODULES: NavModule[] = [];
 // ─── Standalone workspace pages ─────────────────────────
 //
 // These routes live in the primary application shell rather than a contextual
@@ -281,12 +276,7 @@ const STANDALONE_MODULES: NavModule[] = [
   },
 ];
 // ─── Full Registry ───────────────────────────────────────
-const ALL_MODULES: NavModule[] = [
-  ...KNOWLEDGE_MODULES,
-  ...SETTINGS_ALL,
-  ...ADMINISTRATION_MODULES,
-  ...STANDALONE_MODULES,
-];
+const ALL_MODULES: NavModule[] = [...SETTINGS_ALL, ...ADMINISTRATION_MODULES, ...STANDALONE_MODULES];
 type Translate = (key: TranslationKey, params?: Record<string, string | number>) => string;
 const NAV_COPY: Record<
   string,
@@ -459,34 +449,10 @@ export function resolveSubModule(
   const routeLabels: Record<string, string> = {
     settings: t('app.settings'),
     administration: t('app.administration'),
-    knowledge: t('app.knowledge'),
   };
   const extensionTitle = EXTENSION_ROUTE_TITLES.get(route);
   const primary = routeLabels[route] ?? (extensionTitle ? t(extensionTitle as TranslationKey) : undefined);
   if (!primary) return null;
-  // Knowledge sub-routes (not in module registry)
-  if (route === 'knowledge') {
-    const segments = subPath.split('/').filter(Boolean);
-    const KNOWLEDGE_SUBS: Record<
-      string,
-      {
-        label: string;
-        description: string;
-      }
-    > = {
-      internal: { label: t('navigation.internalKnowledge'), description: t('navigation.internalKnowledgeDesc') },
-      personal: { label: t('navigation.personalKnowledge'), description: t('navigation.personalKnowledgeDesc') },
-      new: { label: t('navigation.newDocument'), description: t('navigation.newDocumentDesc') },
-    };
-    const sub = KNOWLEDGE_SUBS[segments[0]];
-    if (sub) {
-      if (segments.length > 1 && segments[0] === 'internal') {
-        return { primary, secondary: `${sub.label} › ${decodeURIComponent(segments[1])}` };
-      }
-      return { primary, secondary: sub.label, description: sub.description };
-    }
-    return null;
-  }
   // Build the hash path from route + subPath and look up
   const hashPath = `#/${route}/${subPath}`;
   // Direct match

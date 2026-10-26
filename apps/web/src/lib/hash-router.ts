@@ -40,7 +40,6 @@ export const CORE_ROUTES: ReadonlySet<string> = new Set([
   'settings',
   'administration',
   'design',
-  'knowledge',
   'files',
   'skillhub',
   'activity',

@@ -32,8 +32,6 @@ import { createScheduledTaskService } from './services/scheduled-tasks.js';
 import { createProviderTokenService } from './services/provider-tokens.js';
 import { createCustomProfileService } from './services/custom-profiles.js';
 import { createSessionPinService } from './services/session-pins.js';
-import { createKnowledgeBaseService } from './services/knowledge-base.js';
-import { createKnowledgeShareService } from './services/knowledge-shares.js';
 import { createUserFeatureService } from './services/user-features.js';
 import { createDriveService } from './services/drive.js';
 import { createActivityService } from './services/activity.js';
@@ -83,8 +81,6 @@ function createDatabaseProvider(db: Db, client: DbClient['client'] | null) {
     providerTokens: createProviderTokenService(db),
     customProfiles: createCustomProfileService(db),
     sessionPins: createSessionPinService(db),
-    knowledgeBase: createKnowledgeBaseService(db),
-    knowledgeShares: createKnowledgeShareService(db),
     userFeatures: createUserFeatureService(db),
     drive: createDriveService(db),
     activity: createActivityService(db),

@@ -148,7 +148,7 @@ export { findSensitiveSpans, redactEvidence } from './security/evidence.js';
 export type { HydrateContext } from './activity/activity-log.js';
 export type { ActivityAuditRow } from '@greenhouse/db';
 
-export { groupFrictions, clip } from './retro/insight-utils.js';
+export { groupFrictions, clip } from './usage/summary-insights.js';
 
 export { isUniqueViolation } from '@greenhouse/utils/error';
 
@@ -235,3 +235,42 @@ export type { CatalogInput } from './hub-context/catalog.js';
 export type { PlatformAuditEventRow } from '@greenhouse/db';
 
 export type { FieldPolicy } from '@greenhouse/platform-kernel';
+
+export { putUpload } from './storage/uploads.js';
+export type { DriveFolderRow } from '@greenhouse/db';
+export { getUpload } from './storage/uploads.js';
+export { createCabinetFolder } from './drive/kb-cabinet.js';
+export type { CabinetCaller } from './drive/kb-cabinet.js';
+export { connectionManager } from './ws/connection-manager.js';
+export { segmentForFts } from '@greenhouse/db';
+export { buildSegmentedTsQuery } from '@greenhouse/db';
+export { buildSnippet } from '@greenhouse/db';
+export { jsonArrayToText } from '@greenhouse/db';
+export { contentDisposition } from './http/content-disposition.js';
+export { resolveDriveAccess } from './drive/access.js';
+export { canWriteDrive } from './drive/access.js';
+export { checkPromptInjection } from './security/security.js';
+export { completeJson } from './llm/complete.js';
+export { searchColumns } from '@greenhouse/db/plugin-schema';
+export { folders } from '@greenhouse/db/plugin-schema';
+export { queueMobilePush } from './notifications/push/queue.js';
+export { workspaceTimeZone } from './hub-context/settings.js';
+export { collectRetroAggregates } from './usage/summary.js';
+export { monthKey } from './usage/summary.js';
+export { retroMonth } from './usage/summary.js';
+export type { RetroAggregates } from './usage/summary.js';
+export type { FrictionErrorClass } from './usage/summary.js';
+export { getAvailableProviders } from '@greenhouse/agent-core';
+export { createOrganizationAttemptBudgetHook } from './llm/usage-budget.js';
+
+export type { RecentChangeDraft } from './activity/recent-source.js';
+
+export {
+  readTeamContextConfig,
+  type TeamContextConfig,
+  type TeamContextDocumentSource,
+} from './hub-context/settings.js';
+
+export type { ToolResultAdapter } from '@greenhouse/agent-core';
+
+export { runExtensionJob } from './scheduler/extension-job.js';

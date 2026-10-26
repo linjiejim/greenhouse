@@ -106,7 +106,7 @@ describe('extension seam', { timeout: 60_000 }, () => {
     // its own drive scope — core's two are untouched, the extension's is known
     expect(m.drive.extensionDriveScopes().map((d) => d.scope)).toEqual(['example-note']);
     expect(m.drive.isKnownDriveScope('example-note')).toBe(true);
-    expect(m.drive.isKnownDriveScope('kb')).toBe(true);
+    expect(m.drive.isKnownDriveScope('drive')).toBe(true);
     expect(m.drive.isKnownDriveScope('nope')).toBe(false);
 
     // an export_data lane of its own

@@ -461,7 +461,6 @@ export const TOOL_ICONS: Record<string, LucideIcon> = {
   ask_user: ClipboardList,
   generate_image: Palette,
   project_manager: FolderKanban,
-  knowledge_query: BookOpen,
 
   compute: Calculator,
   files_query: FolderOpen,
@@ -483,7 +482,6 @@ export const TOOL_BRIEFS: Record<string, string> = {
   ask_user: 'Ask the user clarifying questions',
   generate_image: 'Generate images from text descriptions',
   project_manager: 'Create and manage projects & tasks',
-  knowledge_query: 'Browse, search and read team, personal and shared knowledge',
   compute: 'Execute code for precise data analysis & calculations',
 };
 

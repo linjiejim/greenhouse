@@ -1,3 +1,4 @@
+import { services as knowledgeServices } from '../../../knowledge/api/services.js';
 import { services as projectsServices } from '../services.js';
 /**
  * Global search: aggregation and, mostly, what it must NOT return.
@@ -15,7 +16,7 @@ import { TEST_DATABASE_URL } from '@greenhouse/db/test-config';
 import type { GlobalSearchResponse } from '@greenhouse/types/search';
 import type { AppEnv } from '../../../../apps/api/src/app-env.js';
 import { createSearchRoute } from '../../../../apps/api/src/routes/search.js';
-import { knowledgeRegistration } from '../../../../apps/api/src/platform/knowledge/registration.js';
+import { knowledgeRegistration } from '../../../knowledge/api/platform/registration.js';
 import { projectsRegistration } from '../platform/application.js';
 import { initializePlatformRuntime, resetPlatformRuntimeForTests } from '../../../../apps/api/src/platform/runtime.js';
 import { createInternalTestUser } from '../../../../tests/helpers/internal-user.js';
@@ -72,7 +73,7 @@ describe('global search', () => {
       owner_id: user.id,
       created_by: user.id,
     });
-    await db.knowledgeBase.create({
+    await knowledgeServices(db).knowledgeBase.create({
       doc_id: `${token}-doc`,
       scope: 'shared',
       title: `${token} pricing`,
@@ -184,7 +185,7 @@ describe('global search', () => {
       createInternalTestUser(db, { email: `search-owner-${token}@test.local`, role: 'team' }),
       createInternalTestUser(db, { email: `search-other-${token}@test.local`, role: 'team' }),
     ]);
-    await db.knowledgeBase.create({
+    await knowledgeServices(db).knowledgeBase.create({
       doc_id: `${token}-private`,
       scope: 'shared',
       title: `${token} private notes`,

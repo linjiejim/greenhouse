@@ -23,7 +23,6 @@ import { sql } from 'drizzle-orm';
 import chalk from 'chalk';
 import { DATA_DIR } from '../../paths.js';
 import { hashPassword } from '../../auth/password.js';
-import { markdownToTiptapJson } from '@greenhouse/knowledge-editor/markdown';
 import { getProductName } from '@greenhouse/utils/brand';
 import { openDb, parseFlags, flagStr, flagBool, confirmExact, heading, dim, dbName } from './shared.js';
 
@@ -39,8 +38,7 @@ const EXAMPLES_DIR = GREENHOUSE_CONFIG.packs.seeds
  */
 const LOAD_ORDER = [
   'users',
-  'kb_documents',
-  'kb_versions',
+
   'shares',
   'conversations',
   'messages',
@@ -158,9 +156,6 @@ export async function run(args: string[]): Promise<number> {
       }
       // KB docs are authored as canonical Markdown only; derive the Tiptap
       // editor state the same way the knowledge_mutation tool does at runtime.
-      if (table === 'kb_documents' && !row.content_json && typeof row.content === 'string') {
-        row.content_json = markdownToTiptapJson(row.content);
-      }
       // Ids are text (3.0): the dataset may author them as numbers.
       if (typeof row.id === 'number') row.id = String(row.id);
       await db.executeRaw(buildInsert(table, row));

@@ -20,14 +20,15 @@ const labels = { files: 'Files', skillhub: 'SkillHub', automations: 'Automation'
 
 describe('Primary navigation', () => {
   it('orders the workspace by goal and puts the assistant last', () => {
+    registerApplicationPage('fixture', 'library', 'library', 10);
     registerApplicationPage('fixture', 'fixture', 'fixture');
     useExtensionsStore.setState({ extensions: [{ id: 'fixture', name: 'Fixture', description: null }] });
     const { primary, overflow } = buildPrimaryNavigation({
-      applications: [application('analytics'), application('fixture'), application('knowledge')],
+      applications: [application('analytics'), application('fixture'), application('library')],
       labels,
     });
 
-    expect(primary.map((item) => item.key)).toEqual(['knowledge', 'files', 'fixture', 'skillhub', 'automations']);
+    expect(primary.map((item) => item.key)).toEqual(['library', 'files', 'fixture', 'skillhub', 'automations']);
     expect(primary.map((item) => item.href)).toContain('#/files');
     // Agent/MCP-only catalog entries have no browser route, so they never
     // surface as a tab — not even in More.
@@ -35,8 +36,8 @@ describe('Primary navigation', () => {
   });
 
   it('omits unauthorized apps but keeps the fixed destinations', () => {
-    const { primary } = buildPrimaryNavigation({ applications: [application('knowledge')], labels });
-    expect(primary.map((item) => item.key)).toEqual(['knowledge', 'files', 'skillhub', 'automations']);
+    const { primary } = buildPrimaryNavigation({ applications: [application('analytics')], labels });
+    expect(primary.map((item) => item.key)).toEqual(['files', 'skillhub', 'automations']);
   });
 
   it('has no Home item (Home is the conversation) and keeps the Activity log out of the primary list', () => {

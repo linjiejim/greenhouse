@@ -121,9 +121,9 @@ export function _resetExtensionRegistries(): void {
   hostTitles.clear();
 }
 
-const applicationPages = new Map<string, { owner: string; route: string }>();
-export function registerApplicationPage(owner: string, application: string, route: string): void {
-  applicationPages.set(application, { owner, route });
+const applicationPages = new Map<string, { owner: string; route: string; order: number }>();
+export function registerApplicationPage(owner: string, application: string, route: string, order = 30): void {
+  applicationPages.set(application, { owner, route, order });
 }
 export function registeredApplicationRoute(application: string): string | null {
   const entry = applicationPages.get(application);
@@ -138,4 +138,20 @@ export function registerHostTitle(owner: string, host: string, titleKey: string,
 export function registeredHostTitle(host: string) {
   const active = useExtensionsStore.getState().extensions;
   return hostTitles.get(host)?.find((entry) => active.some((ext) => ext.id === entry.owner));
+}
+
+export function registeredApplicationOrder(application: string) {
+  return applicationPages.get(application)?.order ?? 30;
+}
+
+const defaultActions = new Map<string, () => import('@greenhouse/types/agent-context').QuickAction[]>();
+export function registerDefaultQuickActions(
+  owner: string,
+  actions: () => import('@greenhouse/types/agent-context').QuickAction[],
+) {
+  defaultActions.set(owner, actions);
+}
+export function registeredDefaultQuickActions() {
+  const active = useExtensionsStore.getState().extensions;
+  return [...defaultActions].flatMap(([owner, actions]) => (active.some((ext) => ext.id === owner) ? actions() : []));
 }

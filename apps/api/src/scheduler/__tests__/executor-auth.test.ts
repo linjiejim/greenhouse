@@ -136,9 +136,9 @@ describe('scheduled task executor authorization', () => {
   it('runs a system-profile task with the owner allow-set narrowed to replay-safe reads', async () => {
     const adminTool = { execute: vi.fn() };
     await executeTaskInSession(task(), 'session-1', {
-      knowledge_query: { execute: vi.fn() },
+      automation_query: { execute: vi.fn() },
       session_query: { execute: vi.fn() },
-      knowledge_mutation: adminTool,
+      files_mutation: adminTool,
       project_mutation: adminTool,
       generate_image: adminTool,
     });
@@ -148,18 +148,18 @@ describe('scheduled task executor authorization', () => {
     // System profiles run with the owner's full allow-set (chat parity) — the
     // YAML tools list is not a runtime narrowing. Global read tools are in.
     expect(tools).toHaveProperty('session_query');
-    expect(tools).toHaveProperty('knowledge_query');
+    expect(tools).toHaveProperty('automation_query');
     // Tools without a replay-safe declaration never survive the
     // unattended filter, whatever the owner's role.
-    expect(tools).not.toHaveProperty('knowledge_mutation');
+    expect(tools).not.toHaveProperty('files_mutation');
     expect(tools).not.toHaveProperty('project_mutation');
     expect(tools).not.toHaveProperty('generate_image');
   });
 
   it('re-resolves a role downgrade and never adds tools absent from the profile', async () => {
     const registry = {
-      knowledge_query: { execute: vi.fn() },
-      knowledge_mutation: { execute: vi.fn() },
+      automation_query: { execute: vi.fn() },
+      files_mutation: { execute: vi.fn() },
       project_mutation: { execute: vi.fn() },
       generate_image: { execute: vi.fn() },
       session_query: { execute: vi.fn() },
@@ -168,7 +168,7 @@ describe('scheduled task executor authorization', () => {
     await executeTaskInSession(task(), 'session-super', registry);
 
     const superTools = mocks.runAgentInSession.mock.calls[0]?.[0].tools;
-    expect(superTools).not.toHaveProperty('knowledge_mutation');
+    expect(superTools).not.toHaveProperty('files_mutation');
     expect(superTools).not.toHaveProperty('project_mutation');
     expect(superTools).toHaveProperty('session_query');
     expect(superTools).not.toHaveProperty('generate_image');
@@ -178,15 +178,15 @@ describe('scheduled task executor authorization', () => {
 
     const teamTools = mocks.runAgentInSession.mock.calls[1]?.[0].tools;
     expect(teamTools).toHaveProperty('session_query');
-    expect(teamTools).not.toHaveProperty('knowledge_mutation');
+    expect(teamTools).not.toHaveProperty('files_mutation');
     expect(teamTools).not.toHaveProperty('project_mutation');
     expect(teamTools).not.toHaveProperty('generate_image');
   });
 
   it('never lets writes or human-gated tools into the scheduled tool base', () => {
-    expect(scheduledToolBase(['knowledge_query', 'knowledge_query', 'knowledge_mutation', 'call_llm'])).toEqual([
-      'knowledge_query',
-      'knowledge_query',
+    expect(scheduledToolBase(['automation_query', 'automation_query', 'files_mutation', 'call_llm'])).toEqual([
+      'automation_query',
+      'automation_query',
     ]);
   });
 

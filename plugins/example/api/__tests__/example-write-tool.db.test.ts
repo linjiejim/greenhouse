@@ -22,7 +22,7 @@ import { extensionMigrationSources } from '../../../../apps/api/src/extensions/b
 import { EXTENSIONS } from '../../../../apps/api/src/extensions/index.js';
 import { initializePlatformRuntime, resetPlatformRuntimeForTests } from '../../../../apps/api/src/platform/runtime.js';
 import { projectsRegistration } from '../../../projects/api/platform/application.js';
-import { knowledgeRegistration } from '../../../../apps/api/src/platform/knowledge/registration.js';
+import { knowledgeRegistration } from '../../../knowledge/api/platform/registration.js';
 import { tablesRegistration } from '../../../tables/api/platform/application.js';
 import {
   generateAccessToken,

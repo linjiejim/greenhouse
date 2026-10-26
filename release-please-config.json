@@ -120,6 +120,16 @@
           "type": "json",
           "path": "plugins/tables/package.json",
           "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "plugins/knowledge/package.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "plugins/retro/package.json",
+          "jsonpath": "$.version"
         }
       ]
     }

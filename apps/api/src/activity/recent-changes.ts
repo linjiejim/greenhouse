@@ -1,3 +1,4 @@
+import { cabinetDriveScope } from '../drive/access.js';
 import {
   scanRecentChanges,
   recentChangeDraft,
@@ -29,16 +30,11 @@ import { fromExtensions } from '../extensions/index.js';
  * not see until it has enough or runs out, so a short page never hides older
  * items. A plain ISO timestamp is still accepted as `before` (older clients).
  */
-
 import type { ActivityCursor, DatabaseProvider } from '@greenhouse/db';
 import type { ActivityItem } from '@greenhouse/types/activity';
-import { entityUrl } from '@greenhouse/types/entity-links';
 import { filesPageHref, shelfOfVisibility } from '@greenhouse/types/files';
-import { canRead as canReadKb, resolveKbAccess } from '../knowledge/access.js';
-import { humanActor } from '../platform/actor.js';
 import type { PlatformRuntime } from '../platform/runtime.js';
 import { moduleOfTool } from './activity-log.js';
-
 type Cursor = ActivityCursor;
 export const RECENT_DAYS = 14;
 export const RECENT_MAX_ITEMS = 50;
@@ -49,31 +45,24 @@ export const RECENT_MAX_ITEMS = 50;
  * finished must stay theirs.
  */
 const AGENT_MATCH_SLACK_MS = 0;
-
 const EMPTY_LANE: RecentChangeLane = { items: [], exhausted: true, frontier: null };
-
 /** Feed order: newer first; same instant → greater id first (byte-wise, like `COLLATE "C"`). */
 function compare(a: Cursor, b: Cursor): number {
   if (a.at !== b.at) return a.at < b.at ? 1 : -1;
   if (a.key === b.key) return 0;
   return a.key < b.key ? 1 : -1;
 }
-
 const placeOf = (item: RecentChangeDraft): Cursor => ({ at: item.at, key: item.id });
-
 const ISO_MICROS = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z$/;
-
 /** Microsecond ISO that names a real calendar instant (2026-13-26 matches the shape but not this). */
 function isRealInstant(value: string): boolean {
   if (!ISO_MICROS.test(value)) return false;
   const ms = Date.parse(value);
   return Number.isFinite(ms) && new Date(ms).toISOString().slice(0, 19) === value.slice(0, 19);
 }
-
 export function encodeRecentCursor(cursor: Cursor): string {
   return Buffer.from(JSON.stringify([cursor.at, cursor.key]), 'utf8').toString('base64url');
 }
-
 /** The cursor `next_before` encodes, a plain ISO timestamp (strictly older than it), or null when unreadable. */
 export function decodeRecentCursor(value: string | null | undefined): Cursor | null {
   if (!value) return null;
@@ -98,54 +87,12 @@ export function decodeRecentCursor(value: string | null | undefined): Cursor | n
   // Key '' sorts before every id, so only strictly older instants remain.
   return { at: isRealInstant(value) ? value : new Date(ms).toISOString().replace('Z', '000Z'), key: '' };
 }
-
-async function knowledgeChanges(db: DatabaseProvider, viewer: RecentViewer, window: RecentChangeWindow, need: number) {
-  return scanRecentChanges(
-    window,
-    need,
-    (cursor, limit) => db.activity.recentKnowledgeEdits({ userId: viewer.id, since: window.since, cursor, limit }),
-    async (rows) => {
-      const items: RecentChangeDraft[] = [];
-      for (const row of rows) {
-        const readable =
-          row.visibility === 'team' ||
-          row.owner_user_id === viewer.id ||
-          canReadKb(
-            await resolveKbAccess(
-              db,
-              { id: row.doc_pk, visibility: row.visibility, owner_user_id: row.owner_user_id },
-              viewer.id,
-            ),
-          );
-        if (!readable) continue;
-        items.push(
-          recentChangeDraft({
-            id: row.key,
-            source: 'person',
-            at: row.at,
-            actorId: row.changed_by,
-            module: 'knowledge',
-            verb: row.version <= 1 ? 'create' : 'update',
-            entity: 'document',
-            action: row.version <= 1 ? 'createDocument' : 'updateDocument',
-            target: {
-              id: String(row.doc_pk),
-              label: row.title,
-              url: entityUrl({ kind: 'kb_doc', id: row.doc_pk, slug: row.slug }),
-            },
-          }),
-        );
-      }
-      return items;
-    },
-  );
-}
-
 async function fileChanges(db: DatabaseProvider, viewer: RecentViewer, window: RecentChangeWindow, need: number) {
   return scanRecentChanges(
     window,
     need,
-    (cursor, limit) => db.activity.recentKbFiles({ userId: viewer.id, since: window.since, cursor, limit }),
+    (cursor, limit) =>
+      db.activity.recentKbFiles({ scope: cabinetDriveScope(), userId: viewer.id, since: window.since, cursor, limit }),
     async (rows) =>
       rows.map((row) => {
         const shelf = shelfOfVisibility(row.visibility);
@@ -167,14 +114,13 @@ async function fileChanges(db: DatabaseProvider, viewer: RecentViewer, window: R
       }),
   );
 }
-
 /** Say which agent made a change, when a recorded agent write of that member covers it. */
 async function attachAgents(db: DatabaseProvider, items: RecentChangeDraft[]): Promise<void> {
   if (items.length === 0) return;
   const times = items.map((item) => Date.parse(item.at));
   const writes = await db.activity.agentWritesOf({
     ownerIds: [...new Set(items.map((item) => item.actorId))],
-    from: new Date(Math.min(...times) - 10 * 60_000).toISOString(),
+    from: new Date(Math.min(...times) - 10 * 60000).toISOString(),
     to: new Date(Math.max(...times) + 1).toISOString(),
     limit: 200,
   });
@@ -194,31 +140,32 @@ async function attachAgents(db: DatabaseProvider, items: RecentChangeDraft[]): P
     }
   }
 }
-
 export interface RecentChangesPage {
   items: ActivityItem[];
   /** Opaque cursor for the next page (`before`); null when nothing older is left in the window. */
   next_before: string | null;
 }
-
 export async function listRecentChanges(
   db: DatabaseProvider,
   viewer: RecentViewer,
-  opts: { limit?: number; now?: number; before?: string | null },
-  deps: { runtime: PlatformRuntime },
+  opts: {
+    limit?: number;
+    now?: number;
+    before?: string | null;
+  },
+  deps: {
+    runtime: PlatformRuntime;
+  },
 ): Promise<RecentChangesPage> {
   const limit = Math.min(Math.max(Math.trunc(opts.limit ?? 20) || 20, 1), RECENT_MAX_ITEMS);
   const since = new Date((opts.now ?? Date.now()) - RECENT_DAYS * 24 * 60 * 60 * 1000).toISOString();
   // An unreadable cursor reads as "from the top" rather than an error page.
   const window: RecentChangeWindow = { since, cursor: decodeRecentCursor(opts.before) };
   if (window.cursor && Date.parse(window.cursor.at) <= Date.parse(since)) return { items: [], next_before: null };
-  const knowledgeAllowed = (await deps.runtime.authorize(humanActor(viewer), 'knowledge.library.read')).allowed;
-
   // One more than a page tells whether anything is left after it.
   const need = limit + 1;
   // Each lane fails on its own: one closed door is not an outage of the feed.
   const lanes = await Promise.all([
-    knowledgeAllowed ? knowledgeChanges(db, viewer, window, need).catch(() => EMPTY_LANE) : EMPTY_LANE,
     ...fromExtensions('recentChanges').map((source) =>
       source.load(db, deps.runtime, viewer, window, need).catch(() => EMPTY_LANE),
     ),
@@ -237,7 +184,6 @@ export async function listRecentChanges(
   const items = merged.slice(0, limit);
   const next = merged.length > limit ? placeOf(items[items.length - 1]) : (boundary ?? null);
   await attachAgents(db, items).catch(() => undefined);
-
   const ids = [...new Set(items.map((item) => item.actorId))];
   const users = await Promise.all(ids.map((id) => db.users.getById(id).catch(() => undefined)));
   const names = new Map(ids.map((id, index) => [id, users[index]?.nickname ?? null]));

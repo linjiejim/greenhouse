@@ -78,6 +78,12 @@ export interface ExtensionPromptContext {
 }
 
 export interface ExtensionActivity {
+  writeLabels?: Record<string, (db: DatabaseProvider, userId: string, input: unknown) => Promise<string | null>>;
+  writeRisks?: Record<string, (input: unknown) => 'r1' | 'r2' | 'r3' | null>;
+  auditShape?: (
+    row: import('@greenhouse/db').ActivityAuditRow,
+    summary: Record<string, unknown>,
+  ) => import('../activity/activity-log.js').WriteShape | null;
   auditCapabilities?: string[];
   actionEntities?: Record<string, string>;
   auditShapes?: Record<string, import('../activity/activity-log.js').WriteShape>;
@@ -143,6 +149,10 @@ export interface GreenhouseExtension {
    */
   dependsOn?: string[];
 
+  teamContextSources?: import('../hub-context/settings.js').TeamContextDocumentSource[];
+  workspaceTimeZoneChanged?: Array<() => Promise<void>>;
+  schedules?: Array<{ nextRun: () => Date | null }>;
+  mcpResources?: import('./mcp-resources.js').ExtensionMcpResources[];
   discriminators?: import('@greenhouse/types/discriminators').DiscriminatorValues;
   notificationTransports?: import('../notifications/transports.js').NotificationTransport[];
   notificationKinds?: string[];
@@ -184,6 +194,9 @@ export interface GreenhouseExtension {
   }>;
   recentChanges?: import('../activity/recent-source.js').RecentChangeSource[];
   objectRefs?: import('../routes/refs.js').ObjectRefSource[];
+  settingValueValidators?: Array<
+    (key: string, value: unknown) => import('../settings/workspace-config.js').ValidationResult | null
+  >;
   settingValidators?: Array<(key: string, value: string) => string | null>;
   /** Optional data sources consumed by system summaries. */
   summarySources?: Array<{
@@ -191,9 +204,10 @@ export interface GreenhouseExtension {
     load: (
       db: DatabaseProvider,
       window: { from: string; to: string },
-    ) => Promise<Partial<import('../retro/aggregate.js').RetroAggregates>>;
+    ) => Promise<Partial<import('../usage/summary.js').RetroAggregates>>;
   }>;
   /** Agent tools — auto-exposed to chat, `/api/agent` and `/api/mcp` per each tool's `meta.surface`. */
+  toolResults?: import('@greenhouse/agent-core').ToolResultAdapter[];
   tools?: ToolModule[];
   /** HTTP routes mounted after the core chain. */
   routes?: ExtensionRoute[];

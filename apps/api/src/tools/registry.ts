@@ -27,8 +27,6 @@ import { sessionQueryTool } from './session-query.js';
 import { taskCaptureTool } from './task-capture.js';
 import { readAttachmentTool } from './read-attachment.js';
 import { callLlmTool } from './call-llm.js';
-import { knowledgeQueryTool } from './knowledge-query.js';
-import { knowledgeMutationTool } from './knowledge-mutation.js';
 import { exportDataTool } from './export-data.js';
 import { automationQueryTool } from './automation-query.js';
 import { automationMutationTool } from './automation-mutation.js';
@@ -50,8 +48,6 @@ const CORE_TOOL_MODULES: ToolModule[] = [
   taskCaptureTool,
   readAttachmentTool,
   callLlmTool,
-  knowledgeQueryTool,
-  knowledgeMutationTool,
   exportDataTool,
   automationQueryTool,
   automationMutationTool,
@@ -96,8 +92,6 @@ export const TOOL_DEFINITIONS: ToolMeta[] = [...TOOL_MODULES.map((m) => m.meta),
  */
 const retiredAliases: Record<string, readonly string[]> = {
   session_history: ['session_query'],
-  team_knowledge: ['knowledge_query'],
-  personal_knowledge: ['knowledge_query'],
 };
 for (const aliases of fromExtensions('retiredToolAliases')) {
   for (const [retired, successors] of Object.entries(aliases)) {

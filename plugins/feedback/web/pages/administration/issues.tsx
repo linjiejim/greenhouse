@@ -12,7 +12,7 @@ import { Tabs } from '@greenhouse/web/extension-kit';
 import { useT } from '@greenhouse/web/extension-kit';
 import { FeatureRequestsPanel } from './feature-requests';
 import { FrictionsPanel } from './frictions';
-import { RetroButton } from '@greenhouse/web/extension-kit';
+import { extensionSlots } from '@greenhouse/web/extension-kit';
 
 export type IssuesTab = 'requests' | 'frictions';
 
@@ -37,7 +37,13 @@ export function IssuesPanel({ subPath = '' }: { subPath?: string }) {
     />
   );
   // The monthly retro is built from what this page collects (plus usage and spend).
-  const actions = <RetroButton />;
+  const actions = (
+    <>
+      {extensionSlots('feedback.actions').map(({ component: Component }, index) => (
+        <Component key={index} />
+      ))}
+    </>
+  );
   return tab === 'frictions' ? (
     <FrictionsPanel tabs={tabs} actions={actions} />
   ) : (

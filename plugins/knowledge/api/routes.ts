@@ -1,0 +1,739 @@
+import { services } from './services.js';
+/**
+ * Knowledge routes — /api/knowledge (team + personal docs)
+ *
+ * GET    /api/knowledge/docs                          — 文档列表（默认：团队 + 本人个人文档）
+ * POST   /api/knowledge/docs                          — 创建文档（body 可含 folder_id 直接入目录）
+ * GET    /api/knowledge/docs/id/:id                   — 按 id 获取文档详情（规范深链解析）
+ * GET    /api/knowledge/docs/:slug                    — 按 slug 获取文档详情
+ * PUT    /api/knowledge/docs/:id                      — 更新文档并记录版本（body 可含 folder_id 移动目录）
+ * DELETE /api/knowledge/docs/:id                      — 归档文档（软删除）
+ * GET    /api/knowledge/docs/:id/versions             — 获取文档版本历史
+ * POST   /api/knowledge/docs/:id/versions/:v/restore  — 回滚到指定版本（记录为新版本）
+ * POST   /api/knowledge/docs/generate                 — AI 生成文档草稿
+ * POST   /api/knowledge/docs/:id/ai/rewrite           — AI 改写当前文档
+ * POST   /api/knowledge/docs/:id/enrich               — AI 生成 summary/questions/topics/tags
+ * GET    /api/knowledge/search                        — 搜索团队知识库
+ * GET    /api/knowledge/docs/:id/shares               — 私有文档的共享列表
+ * POST   /api/knowledge/docs/:id/shares               — 添加/更新共享（user, reader/editor）
+ * DELETE /api/knowledge/docs/:id/shares/:target       — 撤销共享
+ * GET    /api/knowledge/docs/templates                — team 可见模板列表（从模板新建）
+ * POST   /api/knowledge/docs/:id/editing-presence     — 编辑心跳，返回其他在编辑者
+ * POST   /api/knowledge/tree/reorder                  — 侧栏树同级手动排序（只写顺序，不移动）
+ * GET    /api/knowledge/export                        — 整库导出为 Markdown zip（仅 super）
+ *
+ * 隔离规则：个人文档（visibility='private'）按 owner_user_id 隔离 —— 列表只返回
+ * 调用者本人的个人文档，单文档读取/修改/归档/回滚都校验归属；团队文档
+ * （visibility='team'）对全体内部用户协作可见可改。与 agent 知识工具一致。
+ */
+
+import { meteringClientForRequest } from '@greenhouse/api/extension-kit';
+import { Hono } from 'hono';
+import { getDb } from '@greenhouse/api/extension-kit';
+import type { KnowledgeDoc } from './knowledge-base.js';
+import type { KnowledgeDocVersionRow } from './schema.js';
+import type { KnowledgeShareRole } from './knowledge-shares.js';
+import { toRowId } from '@greenhouse/api/extension-kit';
+import { logger } from '@greenhouse/api/extension-kit';
+import { markdownToTiptapJson } from '@greenhouse/knowledge-editor/markdown';
+import { getAuthUser, requireSuper } from '@greenhouse/api/extension-kit';
+import { contentDisposition } from '@greenhouse/api/extension-kit';
+import { buildKnowledgeExport } from './knowledge/export.js';
+import { resolveDriveAccess, canWriteDrive } from '@greenhouse/api/extension-kit';
+import { nowIso } from '@greenhouse/api/extension-kit';
+import { checkPromptInjection, sanitizeForPrompt } from '@greenhouse/api/extension-kit';
+import { completeJson } from '@greenhouse/api/extension-kit';
+import { resolveKbAccess, canRead, canWrite, canArchive, canManageSharing } from './knowledge/access.js';
+import { KNOWLEDGE_SEARCH_SCOPES, searchKnowledgeScopes, type KnowledgeSearchScope } from './knowledge/search.js';
+import { touchEditingPresence, listEditingPresence } from './knowledge/presence.js';
+import { type AppEnv } from '@greenhouse/api/extension-kit';
+import { knowledgePlatformHttpMiddleware } from './platform/http-adapter.js';
+
+type Visibility = 'team' | 'private';
+type Status = 'draft' | 'published' | 'archived';
+
+interface KnowledgeAiResult {
+  title: string;
+  slug: string;
+  content_markdown: string;
+  summary: string;
+  questions: string[];
+  topics: string[];
+  tags: string[];
+}
+
+interface KnowledgeRewriteResult {
+  title?: string;
+  content_markdown: string;
+  change_summary: string;
+}
+
+interface KnowledgeEnrichResult {
+  summary: string;
+  questions: string[];
+  topics: string[];
+  tags: string[];
+}
+
+function slugify(input: string): string {
+  const ascii = input
+    .trim()
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9\u4e00-\u9fff]+/g, '-')
+    .replace(/(^-|-$)/g, '')
+    .slice(0, 80);
+  return ascii || `doc-${Date.now()}`;
+}
+
+function normalizeVisibility(value: unknown): Visibility {
+  return value === 'private' ? 'private' : 'team';
+}
+
+function normalizeStatus(value: unknown): Status {
+  return value === 'draft' || value === 'archived' ? value : 'published';
+}
+
+function normalizeStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((v) => String(v).trim())
+    .filter(Boolean)
+    .slice(0, 20);
+}
+
+function docToApi(row: KnowledgeDoc) {
+  const meta = row.meta ?? {};
+  return {
+    id: row.id,
+    slug: row.doc_id,
+    title: row.title,
+    content_markdown: row.content,
+    content_json: row.content_json ?? {},
+    summary: row._summary || '',
+    questions: row._questions ?? [],
+    topics: row._topics ?? [],
+    tags: row.tags ?? [],
+    space: typeof meta.space === 'string' ? meta.space : 'general',
+    folder_id: row.folder_id,
+    sort_order: row.sort_order,
+    is_template: row.is_template,
+    visibility: normalizeVisibility(row.visibility),
+    status: normalizeStatus(row.status),
+    owner_user_id: row.owner_user_id,
+    created_by: row.created_by,
+    updated_by: row.updated_by,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+  };
+}
+
+function versionToApi(row: KnowledgeDocVersionRow) {
+  return {
+    id: row.id,
+    doc_id: row.doc_id,
+    version: row.version,
+    title: row.title,
+    content_markdown: row.content,
+    content_json: row.content_json ?? {},
+    summary: row.summary || '',
+    changed_by: row.changed_by,
+    change_reason: row.change_reason,
+    created_at: row.created_at,
+  };
+}
+
+function normalizeRole(value: unknown): KnowledgeShareRole {
+  return value === 'editor' ? 'editor' : 'reader';
+}
+
+function buildMeta(space: unknown, meta: unknown): Record<string, unknown> {
+  const base =
+    typeof meta === 'object' && meta !== null && !Array.isArray(meta) ? { ...(meta as Record<string, unknown>) } : {};
+  base.space = typeof space === 'string' && space.trim() ? space.trim() : (base.space as string) || 'general';
+  return base;
+}
+
+/** Serialize a doc with the caller's effective access role, so the UI can gate controls. */
+async function docToApiWithAccess(row: KnowledgeDoc, userId: string) {
+  const access = await resolveKbAccess(getDb(), row, userId);
+  return { ...docToApi(row), access };
+}
+
+// ─── Sharing helpers (private docs) ──────────────────────
+
+type OwnedDoc = { ok: true; doc: KnowledgeDoc } | { ok: false; status: 404 | 403; error: string };
+
+/** Resolve the doc + assert the caller owns it (only owners manage sharing). */
+async function resolveOwnedDoc(userId: string, id: string): Promise<OwnedDoc> {
+  const doc = await services(getDb()).knowledgeBase.getById(id);
+  if (!doc) return { ok: false, status: 404, error: 'Document not found' };
+  const access = await resolveKbAccess(getDb(), doc, userId);
+  if (!canManageSharing(access)) return { ok: false, status: 403, error: 'Only the owner can manage sharing' };
+  return { ok: true, doc };
+}
+
+/**
+ * Resolve a user's display nickname. The access token carries only uid/role, so
+ * `AuthUser.nickname` is normally undefined — look it up rather than falling back
+ * to the raw UUID in comment authorship / presence banners.
+ */
+async function nicknameOf(userId: string, hint?: string): Promise<string> {
+  if (hint) return hint;
+  const u = await getDb()
+    .users.getById(userId)
+    .catch(() => undefined);
+  return u?.nickname ?? userId;
+}
+
+/**
+ * Validate a folder move target for a doc. `null` = move to root (always ok).
+ * The target must be an existing scope='kb' folder whose access domain matches
+ * the doc: a team doc goes in a team folder; a private doc goes only in the
+ * owner's own private folder. Returns an error string, or null when allowed.
+ */
+async function validateFolderTarget(
+  folderId: string | null,
+  docVisibility: Visibility,
+  docOwnerId: string | null,
+): Promise<string | null> {
+  if (folderId == null) return null;
+  const folder = await getDb().drive.getFolder(folderId);
+  if (!folder || folder.scope !== 'kb') return 'Target folder not found';
+  if (docVisibility === 'team') {
+    if (folder.visibility !== 'team') return 'Team docs can only move into a team folder';
+  } else {
+    if (folder.visibility !== 'private' || folder.owner_user_id !== docOwnerId) {
+      return 'Private docs can only move into your own folder';
+    }
+  }
+  return null;
+}
+
+const knowledgeRoutes = new Hono<AppEnv>()
+  .use('*', knowledgePlatformHttpMiddleware())
+
+  // ─── Sidebar tree ordering ──────────────────────────────
+  //
+  // Placement (which folder) keeps going through the existing PUT endpoints —
+  // they already own the cross-scope / cycle / ownership checks. This one only
+  // writes sibling order, and refuses anything that isn't already a sibling, so
+  // it can never become a second way to move a node.
+  .post('/tree/reorder', async (c) => {
+    const user = getAuthUser(c);
+    const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+    const kind = body.kind === 'folder' || body.kind === 'doc' ? body.kind : null;
+    if (!kind) return c.json({ error: 'kind must be "doc" or "folder"' }, 400);
+
+    const ids = Array.isArray(body.ids) ? body.ids.map(toRowId).filter((id): id is string => id !== null) : [];
+    if (ids.length === 0) return c.json({ error: 'ids is required' }, 400);
+    if (ids.length !== new Set(ids).size) return c.json({ error: 'ids must be unique' }, 400);
+    if (ids.length > 500) return c.json({ error: 'too many ids' }, 400);
+
+    const parentId = body.parent_id == null ? null : toRowId(body.parent_id);
+    if (body.parent_id != null && parentId === null) return c.json({ error: 'invalid parent_id' }, 400);
+
+    const db = getDb();
+    if (kind === 'doc') {
+      const docs = await services(db).knowledgeBase.listByIds(ids);
+      if (docs.length !== ids.length) return c.json({ error: 'document not found' }, 404);
+      // One ordered group = one folder AND one access domain. At the root both
+      // team docs and someone's private docs live side by side, and they render
+      // in different trees — ordering across them is meaningless, not merely odd.
+      const domain = `${docs[0].visibility}:${docs[0].owner_user_id ?? ''}`;
+      for (const doc of docs) {
+        if ((doc.folder_id ?? null) !== parentId) return c.json({ error: 'documents are not siblings' }, 400);
+        if (`${doc.visibility}:${doc.owner_user_id ?? ''}` !== domain) {
+          return c.json({ error: 'documents span different scopes' }, 400);
+        }
+        if (!canWrite(await resolveKbAccess(db, doc, user.id))) return c.json({ error: 'document not found' }, 404);
+      }
+      await services(db).knowledgeBase.reorderDocs(ids);
+      return c.json({ ok: true });
+    }
+
+    const folders = await Promise.all(ids.map((id) => db.drive.getFolder(id)));
+    const rows = folders.filter((f): f is NonNullable<typeof f> => !!f);
+    if (rows.length !== ids.length) return c.json({ error: 'folder not found' }, 404);
+    const domain = `${rows[0].visibility}:${rows[0].owner_user_id ?? ''}`;
+    for (const folder of rows) {
+      if (folder.scope !== 'kb') return c.json({ error: 'folder not found' }, 404);
+      if ((folder.parent_id ?? null) !== parentId) return c.json({ error: 'folders are not siblings' }, 400);
+      if (`${folder.visibility}:${folder.owner_user_id ?? ''}` !== domain) {
+        return c.json({ error: 'folders span different scopes' }, 400);
+      }
+      if (!canWriteDrive(resolveDriveAccess(folder, user.id, {}))) {
+        return c.json({ error: 'forbidden' }, 403);
+      }
+    }
+    await db.drive.reorderFolders(ids);
+    return c.json({ ok: true });
+  })
+
+  // ─── Whole-library export (super only) ──────────────────
+  //
+  // The guard is on the bare path: Hono's `/*` does not match `/export` itself,
+  // so `.use('/export/*')` would leave this wide open to any internal user.
+  .use('/export', requireSuper())
+  .get('/export', async (c) => {
+    // Optional scope narrows the download; it never widens what may be packed
+    // (the team-visibility filter inside applies to all three shapes).
+    const result = await buildKnowledgeExport(getDb(), nowIso(), {
+      folderId: toRowId(c.req.query('folder_id')) ?? undefined,
+      docId: toRowId(c.req.query('doc_id')) ?? undefined,
+    });
+    logger.info('[knowledge] exported library', { by: getAuthUser(c).id, ...result.stats, notes: undefined });
+    // Copy into an ArrayBuffer-backed view: fflate's Uint8Array is typed over
+    // ArrayBufferLike, which Hono's body type does not accept.
+    return c.body(new Uint8Array(result.bytes), 200, {
+      'Content-Type': 'application/zip',
+      'Content-Disposition': contentDisposition(result.filename),
+      'Cache-Control': 'no-store',
+      'X-Content-Type-Options': 'nosniff',
+    });
+  })
+
+  // ─── CRUD ───────────────────────────────────────────────
+
+  .get('/docs', async (c) => {
+    const user = getAuthUser(c);
+    const search = c.req.query('search') || undefined;
+    const space = c.req.query('space') || undefined;
+    const status = normalizeStatus(c.req.query('status'));
+    const visibility = c.req.query('visibility'); // 'team' | 'private' | 'shared' | undefined
+    const limit = Math.min(parseInt(c.req.query('limit') ?? '50', 10), 100);
+    const offset = Math.max(parseInt(c.req.query('offset') ?? '0', 10), 0);
+    const base = { scope: 'shared', status, space, search, limit, offset } as const;
+    const db = getDb();
+
+    // Private docs that OTHER people shared with the caller.
+    const sharedWithMe = async (): Promise<KnowledgeDoc[]> => {
+      const ids = await services(db).knowledgeShares.listDocIdsForUser(user.id);
+      if (ids.length === 0) return [];
+      const docs = await services(db).knowledgeBase.listByIds(ids, { status });
+      // listByIds is not owner-scoped; keep only private docs the caller does NOT own
+      // (own docs already come from the private branch) and apply the space filter.
+      return docs.filter(
+        (d) => d.visibility === 'private' && d.owner_user_id !== user.id && (!space || d.meta?.space === space),
+      );
+    };
+
+    let rows: KnowledgeDoc[];
+    if (visibility === 'team') {
+      rows = await services(db).knowledgeBase.list({ ...base, visibility: 'team' });
+    } else if (visibility === 'private') {
+      // Personal scope: strictly the caller's own private docs.
+      rows = await services(db).knowledgeBase.list({ ...base, visibility: 'private', ownerUserId: user.id });
+    } else if (visibility === 'shared') {
+      // Only docs others shared with the caller.
+      rows = await sharedWithMe();
+    } else {
+      // Default: team + the caller's own private + private docs shared with the caller.
+      const [team, mine, shared] = await Promise.all([
+        services(db).knowledgeBase.list({ ...base, visibility: 'team' }),
+        services(db).knowledgeBase.list({ ...base, visibility: 'private', ownerUserId: user.id }),
+        sharedWithMe(),
+      ]);
+      rows = [...team, ...mine, ...shared];
+    }
+    return c.json({ docs: await Promise.all(rows.map((r) => docToApiWithAccess(r, user.id))) });
+  })
+  .post('/docs', async (c) => {
+    const user = getAuthUser(c);
+    const body = await c.req.json().catch(() => ({}));
+    const title = String(body.title || '').trim();
+    if (!title) return c.json({ error: 'title is required' }, 400);
+
+    const content = String(body.content_markdown ?? body.content ?? '');
+    const explicitSlug = String(body.slug || body.doc_id || '').trim();
+    const slug = slugify(explicitSlug || title);
+    const existing = await services(getDb()).knowledgeBase.get(slug, 'shared');
+    if (existing) return c.json({ error: 'slug already exists', slug }, 409);
+
+    // Optional folder placement, so "new doc in this folder" from the sidebar tree
+    // is one request instead of create-then-move.
+    const visibility = normalizeVisibility(body.visibility);
+    let folderId: string | null = null;
+    if (body.folder_id !== undefined && body.folder_id !== null) {
+      folderId = toRowId(body.folder_id);
+      if (!folderId) return c.json({ error: 'Invalid folder_id' }, 400);
+      const err = await validateFolderTarget(folderId, visibility, user.id);
+      if (err) return c.json({ error: err }, 400);
+    }
+
+    const row = await services(getDb()).knowledgeBase.create({
+      doc_id: slug,
+      scope: 'shared',
+      title,
+      content,
+      // An object, or the editor's serialized string (the service normalizes both).
+      content_json: body.content_json != null ? body.content_json : markdownToTiptapJson(content),
+      visibility,
+      status: normalizeStatus(body.status),
+      is_template: body.is_template === true,
+      folder_id: folderId,
+      tags: normalizeStringArray(body.tags),
+      meta: buildMeta(body.space, body.meta),
+      owner_user_id: user.id,
+      created_by: user.id,
+      updated_by: user.id,
+      _summary: String(body.summary || ''),
+      _questions: normalizeStringArray(body.questions),
+      _topics: normalizeStringArray(body.topics),
+    });
+    return c.json({ doc: docToApi(row) }, 201);
+  })
+  .get('/docs/templates', async (c) => {
+    // Team-visible templates for "new from template". Static segment — must be
+    // registered before /docs/:slug so it isn't captured as a slug.
+    const rows = await services(getDb()).knowledgeBase.listTemplates();
+    return c.json({ templates: rows.map((r) => ({ id: r.id, slug: r.doc_id, title: r.title })) });
+  })
+  .get('/docs/id/:id', async (c) => {
+    // Canonical id-based read backing the stable `#/knowledge/doc/<id>-<slug>` deeplink
+    // (id is authoritative; slug can be renamed). The `id/` static segment can't
+    // collide with `/docs/:slug` (single segment) or `/docs/:id/versions`.
+    const user = getAuthUser(c);
+    const id = toRowId(c.req.param('id'));
+    if (!id) return c.json({ error: 'Invalid id' }, 400);
+    const doc = await services(getDb()).knowledgeBase.getById(id);
+    if (!doc || doc.status === 'archived') return c.json({ error: 'Document not found' }, 404);
+    const access = await resolveKbAccess(getDb(), doc, user.id);
+    if (!canRead(access)) return c.json({ error: 'Document not found' }, 404);
+    return c.json({ doc: { ...docToApi(doc), access } });
+  })
+  .get('/docs/:slug', async (c) => {
+    const user = getAuthUser(c);
+    // Hono already URL-decodes path params — a second decode would corrupt slugs containing '%'
+    const slug = c.req.param('slug');
+    const doc = await services(getDb()).knowledgeBase.get(slug, 'shared');
+    if (!doc || doc.status === 'archived') return c.json({ error: 'Document not found' }, 404);
+    const access = await resolveKbAccess(getDb(), doc, user.id);
+    if (!canRead(access)) return c.json({ error: 'Document not found' }, 404);
+    return c.json({ doc: { ...docToApi(doc), access } });
+  })
+  .put('/docs/:id', async (c) => {
+    const user = getAuthUser(c);
+    const id = toRowId(c.req.param('id'));
+    if (!id) return c.json({ error: 'Invalid id' }, 400);
+
+    const existing = await services(getDb()).knowledgeBase.getById(id);
+    if (!existing) return c.json({ error: 'Document not found' }, 404);
+    const access = await resolveKbAccess(getDb(), existing, user.id);
+    if (!canWrite(access)) return c.json({ error: 'Document not found' }, 404);
+
+    const body = await c.req.json().catch(() => ({}));
+
+    const updates: Record<string, unknown> = {};
+    if (body.slug !== undefined || body.doc_id !== undefined) {
+      // Only normalize a slug the caller actually changed. The editor echoes the
+      // doc's current slug back on every save, and other writers create doc_ids
+      // holding characters slugify rewrites (the brand import namespaces with
+      // '/'), so normalizing unconditionally renamed docs on plain content edits.
+      const requested = String(body.slug ?? body.doc_id);
+      if (requested !== existing.doc_id) updates.doc_id = slugify(requested);
+    }
+    if (body.title !== undefined) updates.title = String(body.title).trim();
+    const contentChanged = body.content_markdown !== undefined || body.content !== undefined;
+    if (contentChanged) {
+      updates.content = String(body.content_markdown ?? body.content ?? '');
+    }
+    if (body.content_json !== undefined) {
+      updates.content_json = body.content_json ?? {};
+    } else if (contentChanged) {
+      // Markdown changed without fresh editor JSON — derive it so the two stay in sync.
+      updates.content_json = markdownToTiptapJson(updates.content as string);
+    }
+    if (body.visibility !== undefined) {
+      // Changing visibility (e.g. publishing a private doc to the whole team, or
+      // locking it back down) is an ownership-level action.
+      const next = normalizeVisibility(body.visibility);
+      if (next !== existing.visibility && !canManageSharing(access)) {
+        return c.json({ error: 'Only the owner can change visibility' }, 403);
+      }
+      updates.visibility = next;
+    }
+    if (body.status !== undefined) updates.status = normalizeStatus(body.status);
+    if (body.is_template !== undefined) updates.is_template = body.is_template === true;
+    if (body.tags !== undefined) updates.tags = normalizeStringArray(body.tags);
+    if (body.space !== undefined || body.meta !== undefined) updates.meta = buildMeta(body.space, body.meta);
+    if (body.folder_id !== undefined) {
+      const folderId = body.folder_id === null ? null : toRowId(body.folder_id);
+      if (body.folder_id !== null && folderId === null) return c.json({ error: 'Invalid folder_id' }, 400);
+      // Validate against the doc's resulting visibility/owner (either may change in this PUT).
+      const nextVisibility = (updates.visibility as Visibility) ?? normalizeVisibility(existing.visibility);
+      const err = await validateFolderTarget(folderId, nextVisibility, existing.owner_user_id);
+      if (err) return c.json({ error: err }, 400);
+      updates.folder_id = folderId;
+    }
+    if (body.summary !== undefined) updates._summary = String(body.summary || '');
+    if (body.questions !== undefined) updates._questions = normalizeStringArray(body.questions);
+    if (body.topics !== undefined) updates._topics = normalizeStringArray(body.topics);
+
+    // Last-write-wins conflict detection (D2): if the client sent the
+    // base_updated_at it loaded and the row moved on since, we still save (LWW)
+    // but flag it so the UI can offer a diff against the other person's version.
+    let conflicted: { conflicted: true; updated_by: string | null; updated_at: string | null } | undefined;
+    if (
+      typeof body.base_updated_at === 'string' &&
+      existing.updated_at &&
+      body.base_updated_at !== existing.updated_at
+    ) {
+      conflicted = { conflicted: true, updated_by: existing.updated_by, updated_at: existing.updated_at };
+    }
+
+    const doc = await services(getDb()).knowledgeBase.update(
+      id,
+      updates as any,
+      user.id,
+      String(body.change_reason || 'Updated from editor'),
+    );
+    if (!doc) return c.json({ error: 'Document not found' }, 404);
+    return c.json({ doc: { ...docToApi(doc), access }, ...(conflicted ? { conflict: conflicted } : {}) });
+  })
+  .delete('/docs/:id', async (c) => {
+    const user = getAuthUser(c);
+    const id = toRowId(c.req.param('id'));
+    if (!id) return c.json({ error: 'Invalid id' }, 400);
+    const existing = await services(getDb()).knowledgeBase.getById(id);
+    if (!existing) return c.json({ error: 'Document not found' }, 404);
+    const access = await resolveKbAccess(getDb(), existing, user.id);
+    if (!canArchive(access, existing)) return c.json({ error: 'Document not found' }, 404);
+    const ok = await services(getDb()).knowledgeBase.archive(id, user.id);
+    if (!ok) return c.json({ error: 'Document not found' }, 404);
+    return c.json({ success: true });
+  })
+  .get('/docs/:id/versions', async (c) => {
+    const user = getAuthUser(c);
+    const id = toRowId(c.req.param('id'));
+    if (!id) return c.json({ error: 'Invalid id' }, 400);
+    const doc = await services(getDb()).knowledgeBase.getById(id);
+    if (!doc || !canRead(await resolveKbAccess(getDb(), doc, user.id))) {
+      return c.json({ error: 'Document not found' }, 404);
+    }
+    const versions = await services(getDb()).knowledgeBase.listVersions(id);
+    return c.json({ versions: versions.map(versionToApi) });
+  })
+  .post('/docs/:id/versions/:version/restore', async (c) => {
+    const user = getAuthUser(c);
+    const id = toRowId(c.req.param('id'));
+    const version = parseInt(c.req.param('version'), 10);
+    if (!id || !Number.isFinite(version)) return c.json({ error: 'Invalid id or version' }, 400);
+    const doc = await services(getDb()).knowledgeBase.getById(id);
+    if (!doc) return c.json({ error: 'Document not found' }, 404);
+    const access = await resolveKbAccess(getDb(), doc, user.id);
+    if (!canWrite(access)) return c.json({ error: 'Document not found' }, 404);
+    const restored = await services(getDb()).knowledgeBase.restoreVersion(id, version, user.id);
+    if (!restored) return c.json({ error: 'Version not found' }, 404);
+    return c.json({ doc: { ...docToApi(restored), access } });
+  })
+  // ─── Sharing (private docs) ──────────────────────────────
+
+  .get('/docs/:id/shares', async (c) => {
+    const user = getAuthUser(c);
+    const id = toRowId(c.req.param('id'));
+    if (!id) return c.json({ error: 'Invalid id' }, 400);
+    const r = await resolveOwnedDoc(user.id, id);
+    if (!r.ok) return c.json({ error: r.error }, r.status);
+
+    const grants = await services(getDb()).knowledgeShares.listForDoc(id);
+    const enriched = await Promise.all(
+      grants.map(async (g) => {
+        const u = await getDb().users.getById(g.shared_with);
+        return { target: g.shared_with, name: u?.nickname || 'Unknown', role: g.role };
+      }),
+    );
+    return c.json({ shares: enriched });
+  })
+  .post('/docs/:id/shares', async (c) => {
+    const user = getAuthUser(c);
+    const id = toRowId(c.req.param('id'));
+    if (!id) return c.json({ error: 'Invalid id' }, 400);
+    const r = await resolveOwnedDoc(user.id, id);
+    if (!r.ok) return c.json({ error: r.error }, r.status);
+    if (r.doc.visibility !== 'private') {
+      return c.json(
+        { error: 'Only private docs can be shared with specific people (team docs are already team-wide)' },
+        400,
+      );
+    }
+
+    const body = await c.req.json().catch(() => ({}));
+    const role = normalizeRole(body.role);
+    const message = typeof body.message === 'string' ? body.message : undefined;
+    const userIds: string[] = Array.isArray(body.user_ids) ? body.user_ids.map(String) : [];
+    if (userIds.length === 0) return c.json({ error: 'user_ids required' }, 400);
+
+    for (const uid of userIds) {
+      if (uid === user.id) continue; // owner already has full access
+      await services(getDb()).knowledgeShares.grant(id, uid, role, user.id, message);
+    }
+    logger.info('[Knowledge] doc shared', { docId: id, by: user.id, userIds, role });
+    return c.json({ success: true });
+  })
+  .delete('/docs/:id/shares/:target', async (c) => {
+    const user = getAuthUser(c);
+    const id = toRowId(c.req.param('id'));
+    if (!id) return c.json({ error: 'Invalid id' }, 400);
+    const r = await resolveOwnedDoc(user.id, id);
+    if (!r.ok) return c.json({ error: r.error }, r.status);
+    const target = c.req.param('target'); // Hono already URL-decodes params
+    const ok = await services(getDb()).knowledgeShares.revoke(id, target);
+    if (!ok) return c.json({ error: 'Share not found' }, 404);
+    logger.info('[Knowledge] share revoked', { docId: id, by: user.id, target });
+    return c.json({ success: true });
+  })
+  // ─── Editing presence (in-memory; no table) ─────────────
+
+  .post('/docs/:id/editing-presence', async (c) => {
+    const user = getAuthUser(c);
+    const id = toRowId(c.req.param('id'));
+    if (!id) return c.json({ error: 'Invalid id' }, 400);
+    const db = getDb();
+    const doc = await services(db).knowledgeBase.getById(id);
+    if (!doc || !canWrite(await resolveKbAccess(db, doc, user.id))) return c.json({ error: 'Document not found' }, 404);
+    touchEditingPresence(id, user.id, await nicknameOf(user.id, user.nickname));
+    // Return the OTHER current editors (exclude self).
+    return c.json({ editors: listEditingPresence(id).filter((e) => e.userId !== user.id) });
+  })
+  // ─── Search ─────────────────────────────────────────────
+
+  .get('/search', async (c) => {
+    const user = getAuthUser(c);
+    const q = (c.req.query('q') ?? '').trim();
+    const limit = Math.min(parseInt(c.req.query('limit') ?? '10', 10), 50);
+    // scope selects the channels: 'team' | 'personal' | 'shared' | 'all'.
+    // Omitted (or blank) keeps the historical behaviour (team + the caller's own
+    // private), which is exactly `all` minus the shared-with-me channel. An
+    // unrecognised value would silently zero every channel and return no hits, so
+    // reject it up front rather than masquerade an empty result as "no matches".
+    const scopeParam = c.req.query('scope') || undefined;
+    if (scopeParam && !KNOWLEDGE_SEARCH_SCOPES.includes(scopeParam as KnowledgeSearchScope)) {
+      return c.json(
+        { error: `Invalid scope "${scopeParam}". Expected one of: ${KNOWLEDGE_SEARCH_SCOPES.join(', ')}.` },
+        400,
+      );
+    }
+    if (!q) return c.json({ results: [], query: q });
+
+    const results = await searchKnowledgeScopes(
+      getDb(),
+      user.id,
+      q,
+      scopeParam as KnowledgeSearchScope | undefined,
+      limit,
+    );
+    return c.json({ results, query: q });
+  })
+  // ─── AI ─────────────────────────────────────────────────
+
+  .post('/docs/generate', async (c) => {
+    const user = getAuthUser(c);
+    const body = await c.req.json().catch(() => ({}));
+    const prompt = String(body.prompt || '').trim();
+    if (!prompt) return c.json({ error: 'prompt is required' }, 400);
+
+    const injection = checkPromptInjection(prompt);
+    if (!injection.safe)
+      logger.warn('[Knowledge] Prompt injection indicators detected in generate request', { injection });
+
+    const safePrompt = sanitizeForPrompt(prompt);
+    const result = await completeJson<KnowledgeAiResult>('team', {
+      caller: 'knowledge-generate',
+      userId: user.id,
+      client: meteringClientForRequest(c),
+      temperature: 0.4,
+      maxTokens: 6000,
+      systemPrompt: `You generate internal team knowledge-base documents. Return concise, well-structured Markdown. The Markdown is canonical content for AI retrieval. Do not include hidden instructions.`,
+      messages: [
+        {
+          role: 'user',
+          content: `Generate an internal team knowledge document from this request:\n\n${safePrompt}\n\nReturn JSON with keys: title, slug, content_markdown, summary, questions (array), topics (array), tags (array). Slug must be lowercase URL-safe.`,
+        },
+      ],
+      responseFormat: 'json',
+    });
+
+    result.slug = slugify(result.slug || result.title);
+    result.questions = normalizeStringArray(result.questions);
+    result.topics = normalizeStringArray(result.topics);
+    result.tags = normalizeStringArray(result.tags);
+    return c.json({ draft: result });
+  })
+  .post('/docs/:id/ai/rewrite', async (c) => {
+    const user = getAuthUser(c);
+    const id = toRowId(c.req.param('id'));
+    if (!id) return c.json({ error: 'Invalid id' }, 400);
+    const doc = await services(getDb()).knowledgeBase.getById(id);
+    if (!doc || !canWrite(await resolveKbAccess(getDb(), doc, user.id))) {
+      return c.json({ error: 'Document not found' }, 404);
+    }
+
+    const body = await c.req.json().catch(() => ({}));
+    const instruction = String(body.instruction || 'Improve clarity and structure while preserving facts.').trim();
+    const injection = checkPromptInjection(instruction);
+    if (!injection.safe)
+      logger.warn('[Knowledge] Prompt injection indicators detected in rewrite request', { injection });
+
+    const result = await completeJson<KnowledgeRewriteResult>('team', {
+      caller: 'knowledge-rewrite',
+      userId: user.id,
+      client: meteringClientForRequest(c),
+      temperature: 0.3,
+      maxTokens: 8000,
+      systemPrompt: `You rewrite internal team knowledge-base Markdown. Preserve factual meaning unless explicitly asked. Return valid JSON only.`,
+      messages: [
+        {
+          role: 'user',
+          content: `Instruction:\n${sanitizeForPrompt(instruction)}\n\nTitle: ${sanitizeForPrompt(doc.title)}\n\nCurrent Markdown:\n${sanitizeForPrompt(doc.content)}\n\nReturn JSON with keys: title (optional), content_markdown, change_summary.`,
+        },
+      ],
+      responseFormat: 'json',
+    });
+
+    return c.json({ rewrite: result });
+  })
+  .post('/docs/:id/enrich', async (c) => {
+    const user = getAuthUser(c);
+    const id = toRowId(c.req.param('id'));
+    if (!id) return c.json({ error: 'Invalid id' }, 400);
+    const doc = await services(getDb()).knowledgeBase.getById(id);
+    if (!doc || !canWrite(await resolveKbAccess(getDb(), doc, user.id))) {
+      return c.json({ error: 'Document not found' }, 404);
+    }
+
+    const result = await completeJson<KnowledgeEnrichResult>('team', {
+      caller: 'knowledge-enrich',
+      userId: user.id,
+      client: meteringClientForRequest(c),
+      temperature: 0.2,
+      maxTokens: 3000,
+      systemPrompt: `Extract metadata for internal knowledge-base search and AI retrieval. Return JSON only.`,
+      messages: [
+        {
+          role: 'user',
+          content: `Title: ${sanitizeForPrompt(doc.title)}\n\nMarkdown:\n${sanitizeForPrompt(doc.content)}\n\nReturn JSON with keys: summary (50-150 Chinese chars if source is Chinese, otherwise concise English), questions (array), topics (array), tags (array).`,
+        },
+      ],
+      responseFormat: 'json',
+    });
+
+    const tags = normalizeStringArray(result.tags);
+    await services(getDb()).knowledgeBase.update(
+      id,
+      {
+        _summary: String(result.summary || ''),
+        _questions: normalizeStringArray(result.questions),
+        _topics: normalizeStringArray(result.topics),
+        tags,
+      },
+      user.id,
+      'AI enrichment',
+    );
+
+    const updated = await services(getDb()).knowledgeBase.getById(id);
+    return c.json({ doc: updated ? docToApi(updated) : null });
+  });
+
+export default knowledgeRoutes;

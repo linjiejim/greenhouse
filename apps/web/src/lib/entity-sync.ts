@@ -23,9 +23,7 @@ export type EntityDomain = string;
 
 /** Mutation tools whose success means "something on screen may be stale". */
 const owners = new Map<string, string>();
-const TOOL_DOMAINS: Record<string, EntityDomain> = {
-  knowledge_mutation: 'knowledge',
-};
+const TOOL_DOMAINS: Record<string, EntityDomain> = {};
 
 export function entityDomainForTool(toolName: string): EntityDomain | null {
   const owner = owners.get(toolName);

@@ -1,3 +1,4 @@
+import { toolResultAdapter, toolResultReferences, toolResultRelevance } from './tool-results.js';
 /**
  * Chat Engine — the single streaming agent loop for every host
  * (/api/chat NDJSON and scheduled tasks).
@@ -107,38 +108,9 @@ export const CHAT_STREAM_TIMEOUT = {
  * Uses actual registered tool names (knowledge_query, analyze_image, etc.)
  */
 export function summarizeOutput(toolName: string, output: Record<string, unknown>): unknown {
+  const summarize = toolResultAdapter(toolName)?.summarizeOutput;
+  if (summarize) return summarize(output);
   switch (toolName) {
-    // knowledge_query has no `action` field in its output, so it is summarized
-    // by shape. Without a case it fell to `default: return output`, which
-    // stored every document body it read in messages.pipeline — cheap to miss
-    // while it was one of three KB tools, expensive now that it is the only one.
-    case 'knowledge_query':
-      if (output.error) return { error: output.error };
-      if (typeof output.total_folders === 'number') {
-        return { action: 'folders', scope: output.scope, root: output.root, folders: output.total_folders };
-      }
-      if (Array.isArray(output.folders)) {
-        return { action: 'tree', scope: output.scope, root: output.root, docs: output.total_docs };
-      }
-      if (Array.isArray(output.versions)) {
-        return { action: 'versions', doc_id: output.doc_id, found: output.found };
-      }
-      if (Array.isArray(output.results)) {
-        return {
-          action: 'search',
-          scope: output.scope,
-          found: output.found,
-          ...(output.weak_match ? { weak_match: true } : {}),
-        };
-      }
-      return {
-        action: 'get',
-        scope: output.scope,
-        doc_id: output.doc_id ?? output.source_id,
-        title: output.title,
-        chars: ((output.content as string) ?? '').length,
-        ...(output.mode ? { mode: output.mode } : {}),
-      };
     case 'analyze_image':
       return output.error
         ? { error: output.error }
@@ -637,33 +609,13 @@ export function processStreamPart(part: any, collectors: StreamCollectors): void
         duration_ms: stepDuration,
       });
 
-      // Track knowledge search relevance scores
-      if (part.toolName === 'knowledge_query' && Array.isArray(toolOutput.results)) {
-        for (const result of toolOutput.results as Array<{ doc_id?: string; id?: number; relevance?: number }>) {
-          const key = result.doc_id ?? (result.id != null ? String(result.id) : '');
-          if (key && result.relevance != null) {
-            collectors.searchRelevance.set(key, result.relevance);
-          }
-        }
-      }
-
-      // Collect references from knowledge documents actually read
-      if (
-        part.toolName === 'knowledge_query' &&
-        typeof toolOutput.doc_id === 'string' &&
-        typeof toolOutput.title === 'string' &&
-        !toolOutput.error
-      ) {
-        const slug = toolOutput.doc_id as string;
-        if (slug) {
-          collectors.referencesMap.set(slug, {
-            slug,
-            title: (toolOutput.title as string) ?? '',
-            type: 'kb_doc',
-            category: (toolOutput.folder as string) ?? undefined,
-            relevance: collectors.searchRelevance.get(slug),
-          });
-        }
+      for (const score of toolResultRelevance(part.toolName, toolOutput))
+        collectors.searchRelevance.set(score.key, score.value);
+      for (const reference of toolResultReferences(part.toolName, toolOutput)) {
+        collectors.referencesMap.set(reference.slug, {
+          ...reference,
+          relevance: collectors.searchRelevance.get(reference.slug),
+        });
       }
 
       collectors.activeToolInputs.delete(part.toolCallId);

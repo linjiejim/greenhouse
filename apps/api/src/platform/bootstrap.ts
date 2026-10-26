@@ -10,7 +10,6 @@
 import { randomUUID } from 'node:crypto';
 import type { ApplicationManifest, DataScope, FieldPolicy } from '@greenhouse/platform-kernel';
 import type { DatabaseProvider, PlatformRoleRow, UserRole } from '@greenhouse/db';
-import { knowledgeManifest } from './manifests/knowledge.js';
 import { PLATFORM_ORG_ID } from './runtime.js';
 import { extensionApplicationPlans } from '../extensions/boot.js';
 
@@ -65,12 +64,7 @@ const SYSTEM_ROLES: ReadonlyArray<{
   },
 ];
 
-const CORE_APPLICATIONS: readonly ApplicationBootstrapPlan[] = [
-  {
-    manifest: knowledgeManifest,
-    teamCapabilities: ['knowledge.*'],
-  },
-];
+const CORE_APPLICATIONS: readonly ApplicationBootstrapPlan[] = [];
 
 /** Core applications followed by the ones active extensions own. */
 const APPLICATIONS: readonly ApplicationBootstrapPlan[] = [...CORE_APPLICATIONS, ...extensionApplicationPlans()];

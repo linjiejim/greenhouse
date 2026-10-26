@@ -47,7 +47,7 @@ import { resolveProfileAsync } from '../../../../apps/api/src/profiles/profile.j
 import { scheduledToolBase } from '../../../../apps/api/src/scheduler/executor.js';
 import { initializePlatformRuntime, resetPlatformRuntimeForTests } from '../../../../apps/api/src/platform/runtime.js';
 import { projectsRegistration } from '../../../projects/api/platform/application.js';
-import { knowledgeRegistration } from '../../../../apps/api/src/platform/knowledge/registration.js';
+import { knowledgeRegistration } from '../../../knowledge/api/platform/registration.js';
 import { tablesRegistration } from '../../../tables/api/platform/application.js';
 import { createTemplate } from '../templates.js';
 import { listActivity } from '../../../../apps/api/src/activity/activity-log.js';

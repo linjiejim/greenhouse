@@ -195,13 +195,9 @@ stores/
 - 服务端只收 `@greenhouse/types/usage` 的 `PAGE_MODULE_IDS` 封闭清单；`lib/usage/page-module.test.ts` 双向钉住它与导航注册表——新增 Settings / Administration 模块或顶层页时两边一起改，否则测试红。
 - Administration › Usage › By Modules（`pages/administration/module-usage.tsx`）读 `/api/admin/usage/modules`：7 / 30 / 90 天、按客户端汇总、按工具 / 模块的计数与合计、按模型的 Prompt 缓存命中率，并注明计数从 v1.4 开始。
 
-### 团队上下文、复盘与数据目录（v1.7）
+### Team context and optional reviews
 
-- Administration › Team context（`pages/administration/team-context.tsx`）选团队约定与术语表（只列团队文档，失效的选项打标签说明原因）和工作区时区；读写 `/api/admin/team-context`，Runtime Config 不渲染 `team_context.*`。
-- Issues & requests 页头的「生成本月复盘」（`retro-button.tsx`，两个 tab 共用 `actions`）调 `POST /api/admin/retro`，成功后给出文档链接，跳过建议时用 warning toast 说明原因。
-- 数据目录是 Tables 下的 `#/tables/catalog`（`plugins/tables/web/pages/data-catalog.tsx`，模块 `tables.catalog`，用量仍计 `tables`），入口在 Tables 首页 actions；内容与 MCP `data_catalog` 同源，只读。
-- 接入指南（`settings/agent-access/connect.tsx`）是按客户端的四步向导：选客户端 → 该客户端的配置（MCP 地址、OAuth 登录方式、该客户端能用的模型网关部分）→ 检查连接（`/api/agent-access/connections`，10 分钟内有调用算连上）→ 提示（先调 team_context）。新增客户端加进 `CLIENTS` 与 `agentAccess.wizard.client.*`，服务端 `agentClientKind` 同步。
-- 铃铛通知页签：通知 payload 带 `url`（`#/` 开头）时点击直达该页（复盘通知用它链到文档）。
+Core Administration edits Markdown and workspace timezone. Knowledge contributes team-context.documents; Retro contributes its admin module and feedback.actions. Save each surface's own fields only, so editing Markdown never resets a document selection. Application pages contribute navigationOrder; inactive owners add no destination or peek.
 
 ### 构建与开发模式（Vite，2026-06 起）
 
@@ -555,19 +551,9 @@ stores/
 
 **仍未收敛的两处**：`chat-history-panel` 的会话重排与 `gantt-core` 的任务重排还在用 HTML5 DnD。它们**当前能用**，所以不为统一而统一；差别只在触屏拖不动。会话历史另有一个具体阻碍：那里的**长按已经被批量多选占用了**（450ms 进入选择模式），触屏长按拖拽会和它抢同一个手势，得先定夺哪个赢。等下次真要动这两处时再迁。
 
-### 知识库模块布局规范
+### Knowledge classic UI
 
-适用范围：`pages/knowledge.tsx` 以及 `components/knowledge/` 中由知识库路由承载的页面。
-
-- **内部/个人文档只从侧栏树导航**（`components/app/sidebar-panels/knowledge-nav-panel.tsx` 的 `KnowledgeTree`：目录 + 文档同树、多级展开、拖拽移动、右键/`⋯` 菜单）。主区**不再渲染已发布文档列表**——未选中文档时给「从左侧选择」落地态 + 「已归档」货架；目录页 `#/knowledge/folder/<id>` 只放附件（`DriveBrowser`）。新增文档级操作（移动/分享/归档/复制链接…）加到树的菜单里，不要在主区复制第二套入口。方案见 [20260725-knowledge-tree-navigator](../../../docs/specs/20260725-knowledge-tree-navigator.md)。
-- **知识集合页的身份只由 `ModulePage` 渲染一次**：团队 / 个人 / 共享知识集合使用注册表页头；其工具栏和列表不得再放同名 `<h1>`。文档详情、目录附件和编辑器不套集合页头，继续由 TopBar 面包屑与自身 Detail/Editor 结构表达上下文。
-- **列表页顶部使用紧凑单行工具栏**（对外源列表仍适用）：搜索在左，结果计数和操作按钮在右；使用 `flex items-center gap-2 flex-wrap`，窄屏允许自然换行。
-- **搜索框统一用 `<SearchInput size="sm" />`**，不要用普通 `<Input>` 或手写 Search icon。
-- **详情页顶部工具条只放导航和操作**：如 `Back / Rewrite / Archive`；不要再展示 `内部知识库 / space / title` 这类路径文本，因为 TopBar 已有面包屑。正文中的文档标题属于内容标题，可以保留。
-- **公开知识库分类筛选**：桌面端继续使用左侧分类栏，移动端使用分类抽屉；顶部工具栏仅保留分类入口、搜索和计数。
-- **文档编辑表单只有三个「必答项」**：Title（50%）/ Visibility（25%）/ Status（25%）排一行，其余（Slug、标签、摘要）在**恒默认收起**的高级选项里，开关右侧标注哪几项已有值——收起不等于藏起来。**不要再加第四个首屏字段**；也不要恢复 `Space`：一级 `meta.space` 分组在目录树上线时就被取代，留着等于问「这篇放在哪」的第二个更弱的答案（服务端字段与 `internal/<space>/` URL 段刻意保留，文档按 slug 取、那段只是装饰，删了只会让历史链接失效）。见 [spec D3/D4/D5](../../../docs/specs/20260811-kb-editing-ergonomics.md)。
-- **slug 是文档的链接身份，改标题不动它**：侧栏 Rename 只发 `PUT { title }`，编辑器里已保存的文档也不自动重算 slug——复制的链接、`[[ref]]`、导出文件名都指着它。只有**新文档**的 slug 跟随标题，且作者手改过就停止跟随；规则在零依赖叶子模块 `components/knowledge/doc-slug.ts`，不要在组件里重写（旧的 `slug || slugify(title)` 在第一个字符就冻结，新建文档全都拿到单字符永久链接）。
-- ⚠️ **富文本编辑器外壳不能加 `overflow-hidden`**：它会让外壳成为滚动容器，里面的 sticky 工具栏于是只相对它定位、永远不动（改 `top`/`z-index` 都没用）。圆角挂在子元素上，宽内容用内层 `overflow-x-auto` 承接。
+Knowledge pages, sidebar, editor, store, peek, translations and document picker belong to [plugins/knowledge](../../../plugins/knowledge/AGENTS.md). Core editor primitives are exposed by the web kit; active wsEvents/onReconnect contributions own plugin invalidation.
 
 ### Plugin packages
 - Package web halves import `@greenhouse/web/extension-kit` (same snapshot-locked barrel as SDK 1 overlays).

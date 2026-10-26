@@ -85,7 +85,10 @@ export function mountExtensionRoutes(app: Hono<AppEnv>): void {
     app.route(provider.path, createIdentityProviderRoutes(provider));
   for (const ext of EXTENSIONS) {
     for (const route of ext.routes ?? []) {
-      for (const guard of route.guards ?? []) app.use(`${route.path}/*`, guard);
+      for (const guard of route.guards ?? []) {
+        app.use(route.path, guard);
+        app.use(`${route.path}/*`, guard);
+      }
       app.route(route.path, route.app);
       logger.info(`[Extensions] ${ext.id}: mounted ${route.path}`);
     }

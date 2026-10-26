@@ -18,27 +18,27 @@ import { scheduledToolBase } from '../../scheduler/executor.js';
 
 describe('unattended-context tool denylist', () => {
   it('drops automation_mutation from a scheduled run even when the owner holds it', () => {
-    const effective = ['knowledge_query', 'automation_query', 'automation_mutation'];
+    const effective = ['external_search', 'automation_query', 'automation_mutation'];
 
-    expect(scheduledToolBase(effective)).toEqual(['knowledge_query', 'automation_query']);
+    expect(scheduledToolBase(effective)).toEqual(['external_search', 'automation_query']);
   });
 
   it('defaults every unattended surface to catalogued read-only tools', () => {
     expect(
       filterUnattendedToolIds([
-        'knowledge_query',
-        'knowledge_mutation',
+        'external_search',
+        'automation_mutation',
         'session_query',
         'files_mutation',
         'tables_mutation',
         'memory',
       ]),
-    ).toEqual(['knowledge_query', 'session_query']);
+    ).toEqual(['external_search', 'session_query']);
   });
 
   it('requires an explicit replay-safe declaration instead of trusting proxy read', () => {
-    expect(filterUnattendedToolIds(['generate_image', 'analyze_image', 'knowledge_query'])).toEqual([
-      'knowledge_query',
+    expect(filterUnattendedToolIds(['generate_image', 'analyze_image', 'external_search'])).toEqual([
+      'external_search',
     ]);
   });
 

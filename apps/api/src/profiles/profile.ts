@@ -62,7 +62,6 @@ const KNOWN_TOOLS = new Set([
   'ask_user',
   'session_query',
   'compute',
-  'knowledge_query',
 ]);
 
 /**

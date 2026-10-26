@@ -215,7 +215,6 @@ greenhouse/
 │   │   └── src/
 │   │       ├── routes/       # HTTP routes (one file per resource)
 │   │       ├── chat/         # chat turn pipeline: turn, runtime, persist, runs, vision, ambient context
-│   │       ├── knowledge/    # knowledge base domain: access, search, folders, sections, export, backfill
 │   │       ├── sessions/     # session access rules + creation
 │   │       ├── drive/        # drive access + upload policy
 │   │       ├── auth/         # token, middleware, password, crypto, features, public paths
@@ -237,7 +236,6 @@ greenhouse/
 │   │       ├── storage/      # upload storage (local disk / COS) + s3-lite (SigV4 client)
 │   │       ├── hub-context/  # team context for members' agents: MCP prompts/resources, team_context, data catalog
 │   │       ├── connectors/   # MCP client: remote connectors, credentials, OAuth sign-in, directory behind mcp_call
-│   │       ├── retro/        # monthly retro (复盘) doc: aggregates, suggestions, writer
 │   │       └── cli/          # `pnpm cli` console: index.ts dispatcher + commands/*
 │   ├── web/              # React SPA — pages (administration/, settings/, executions/, …), components,
 │   │                     #   lib, stores, platform catalog, extensions/ (web half of the seam)
@@ -582,3 +580,5 @@ advances without DROP; plugin adoption preserves all rows. Tests enable `all`; c
 ### Tables plugin (4.0)
 
 Tables is a default-on package under `plugins/tables`, owning schema/services, routes/tools/CLI, data catalog lane, classic grid/sidebar/cards/messages and MCP group. Core FEATURE_FLAGS is empty; active plugins register flags, so `/api/auth/me` still reports `features.tables` when enabled. Disabled Tables contributes no route, tool, catalog base, navigation, context provider or flag. Plugin cards use host-provided action/session handles. Shared inline cell editing remains in the web kit.
+
+Knowledge server conversion may import the shared `@greenhouse/knowledge-editor/markdown` package directly; it owns that dependency. The classic editor host exposes its browser primitives through the web kit. This shared leaf package is the sole conversion implementation; API core has no dependency on it.

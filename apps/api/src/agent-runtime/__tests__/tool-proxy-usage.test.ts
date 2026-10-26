@@ -18,8 +18,8 @@ import { executeProxyTool, ProxyToolError, canonicalProxyToolId } from '../tool-
 
 const execute = vi.fn();
 const registry = {
-  knowledge_query: { execute },
-  knowledge_mutation: { execute },
+  session_query: { execute },
+  files_mutation: { execute },
 };
 
 beforeEach(() => {
@@ -31,37 +31,37 @@ beforeEach(() => {
 describe('executeProxyTool usage counting', () => {
   it('counts one call under the given client', async () => {
     await expect(
-      executeProxyTool(registry, 'knowledge_query', ['knowledge_query'], { action: 'tree' }, { usageClient: 'mcp' }),
+      executeProxyTool(registry, 'session_query', ['session_query'], { action: 'tree' }, { usageClient: 'mcp' }),
     ).resolves.toEqual({ ok: true });
-    expect(increment).toHaveBeenCalledWith('tool_call', 'knowledge_query', 'mcp');
+    expect(increment).toHaveBeenCalledWith('tool_call', 'session_query', 'mcp');
   });
 
   it('counts a legacy alias under the canonical tool id', async () => {
     await executeProxyTool(
       registry,
-      'search_team_knowledge',
-      ['knowledge_query'],
+      'session_history',
+      ['session_query'],
       { query: 'x' },
       {
         usageClient: 'agent_api',
       },
     );
-    expect(increment).toHaveBeenCalledWith('tool_call', 'knowledge_query', 'agent_api');
+    expect(increment).toHaveBeenCalledWith('tool_call', 'session_query', 'agent_api');
   });
 
   it('does not count a call the proxy refused', async () => {
-    await expect(executeProxyTool(registry, 'knowledge_query', [], {}, { usageClient: 'mcp' })).rejects.toBeInstanceOf(
+    await expect(executeProxyTool(registry, 'session_query', [], {}, { usageClient: 'mcp' })).rejects.toBeInstanceOf(
       ProxyToolError,
     );
     await expect(
-      executeProxyTool(registry, 'knowledge_mutation', ['knowledge_mutation'], {}, { usageClient: 'mcp' }),
+      executeProxyTool(registry, 'files_mutation', ['files_mutation'], {}, { usageClient: 'mcp' }),
     ).rejects.toMatchObject({ status: 400 });
     expect(increment).not.toHaveBeenCalled();
     expect(execute).not.toHaveBeenCalled();
   });
 
   it('does not count internal evaluations that pass no client', async () => {
-    await executeProxyTool(registry, 'knowledge_query', ['knowledge_query'], {});
+    await executeProxyTool(registry, 'session_query', ['session_query'], {});
     expect(increment).not.toHaveBeenCalled();
   });
 
@@ -69,7 +69,7 @@ describe('executeProxyTool usage counting', () => {
     const warn = vi.spyOn(logger, 'warn').mockImplementation(() => undefined);
     increment.mockRejectedValue(new Error('db down'));
     await expect(
-      executeProxyTool(registry, 'knowledge_query', ['knowledge_query'], {}, { usageClient: 'mcp' }),
+      executeProxyTool(registry, 'session_query', ['session_query'], {}, { usageClient: 'mcp' }),
     ).resolves.toEqual({ ok: true });
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('db down'));
@@ -80,7 +80,7 @@ describe('executeProxyTool usage counting', () => {
 describe('canonicalProxyToolId', () => {
   it('names the tool a legacy alias runs as, so paged output keeps its real source', () => {
     expect(canonicalProxyToolId('session_history')).toBe('session_query');
-    expect(canonicalProxyToolId('team_knowledge')).toBe('knowledge_query');
+    expect(canonicalProxyToolId('session_history')).toBe('session_query');
     expect(canonicalProxyToolId('tables_query')).toBe('tables_query');
   });
 });

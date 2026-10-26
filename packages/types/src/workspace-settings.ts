@@ -237,21 +237,28 @@ const WORKSPACE_SETTINGS_LITERAL = [
   // Edited on Administration › Team context (team visibility is checked there
   // and again on every read); not rendered by Runtime Config.
   {
-    key: 'team_context.conventions',
+    key: 'team_context.overview_markdown',
     group: 'team_context',
-    label: 'Team conventions',
-    description:
-      "Team-visible knowledge documents (ids) members' agents receive as the team's conventions over MCP (`greenhouse://context/conventions`, `team_context`)",
-    type: 'json',
-    maxLength: 2000,
+    label: 'Overview',
+    description: 'Markdown shared with members’ agents',
+    type: 'text',
+    maxLength: 20000,
   },
   {
-    key: 'team_context.glossary',
+    key: 'team_context.conventions_markdown',
+    group: 'team_context',
+    label: 'Conventions',
+    description: 'Markdown shared with members’ agents',
+    type: 'text',
+    maxLength: 20000,
+  },
+  {
+    key: 'team_context.glossary_markdown',
     group: 'team_context',
     label: 'Glossary',
-    description: "One team-visible knowledge document (id) members' agents receive as the team glossary over MCP",
-    type: 'string',
-    maxLength: 200,
+    description: 'Markdown shared with members’ agents',
+    type: 'text',
+    maxLength: 20000,
   },
   {
     key: 'team_context.timezone',

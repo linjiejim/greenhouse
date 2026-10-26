@@ -64,6 +64,13 @@
       "when": 1793045097691,
       "tag": "0008_plugin_artifact_kinds",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1793047080800,
+      "tag": "0009_knowledge_plugin_ownership",
+      "breakpoints": true
     }
   ]
 }

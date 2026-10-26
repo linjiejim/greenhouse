@@ -23,8 +23,8 @@ describe('parseStoredOAuthScopes', () => {
 
   it('drops the groups of extensions that are not active, and keeps the rest of the grant', () => {
     // A 1.6 grant carried into 3.0 names groups of extensions that were not ported.
-    const stored = ['mcp:read', 'mcp:write', 'mcp:knowledge', 'mcp:letpot-admin', 'mcp:letpot-content'];
-    expect(parseStoredOAuthScopes(stored)).toEqual(['mcp:read', 'mcp:write', 'mcp:knowledge']);
+    const stored = ['mcp:read', 'mcp:write', 'mcp:files', 'mcp:letpot-admin', 'mcp:letpot-content'];
+    expect(parseStoredOAuthScopes(stored)).toEqual(['mcp:read', 'mcp:write', 'mcp:files']);
   });
 
   it('rejects a grant left with nothing once inactive extension groups are dropped', () => {
@@ -32,8 +32,8 @@ describe('parseStoredOAuthScopes', () => {
   });
 
   it('returns exactly the stored resource groups', () => {
-    const stored = ['mcp:read', 'mcp:knowledge', 'mcp:files'];
-    expect(parseStoredOAuthScopes(stored)).toEqual(['mcp:read', 'mcp:knowledge', 'mcp:files']);
+    const stored = ['mcp:read', 'mcp:files', 'mcp:chat'];
+    expect(parseStoredOAuthScopes(stored)).toEqual(['mcp:read', 'mcp:files', 'mcp:chat']);
   });
 
   /**
@@ -55,13 +55,13 @@ describe('normalizeOAuthScopes', () => {
     // resources" has to mean "asking for all", or every existing client breaks.
     const scopes = normalizeOAuthScopes('mcp:read mcp:write');
     for (const scope of OAUTH_RESOURCE_SCOPES) expect(scopes).toContain(scope);
-    expect(normalizeOAuthScopes(undefined)).toContain('mcp:knowledge');
+    expect(normalizeOAuthScopes(undefined)).toContain('mcp:files');
   });
 
   it('leaves an explicit resource selection alone', () => {
-    const scopes = normalizeOAuthScopes('mcp:read mcp:knowledge');
-    expect(resourceGroupsFromScopes(scopes)).toEqual(['knowledge']);
-    expect(scopes).not.toContain('mcp:files');
+    const scopes = normalizeOAuthScopes('mcp:read mcp:files');
+    expect(resourceGroupsFromScopes(scopes)).toEqual(['files']);
+    expect(scopes).not.toContain('mcp:chat');
   });
 
   it('implies mcp:read for a write request', () => {

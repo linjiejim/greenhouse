@@ -33,7 +33,6 @@ import {
   AdministrationNavPanel,
   PinnedSection,
   PinnedSectionCollapsed,
-  KnowledgeNavPanel,
 } from './sidebar-panels';
 import { ExtensionSidebarPanel } from '../../extensions/host';
 
@@ -45,7 +44,6 @@ type Route =
   | 'settings'
   | 'administration'
   | 'design'
-  | 'knowledge'
   | 'tables'
   | 'files'
   | 'skillhub'
@@ -361,7 +359,6 @@ export function AppSidebar({
 
                 {/* Knowledge gets the FULL sub-path: its tree highlights the open
                     document, which lives in the later segments. */}
-                {route === 'knowledge' && <KnowledgeNavPanel activeModule={subPath} />}
                 {route === 'skillhub' && <LibrarySidebar subPath={subPath} />}
                 {route === 'extension' && extensionRoute && (
                   <ExtensionSidebarPanel route={extensionRoute} subPath={subPath} />

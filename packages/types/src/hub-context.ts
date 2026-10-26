@@ -46,6 +46,8 @@ export interface TeamContextCandidate {
 }
 
 export interface TeamContextSettingsView {
+  markdown?: { overview: string; conventions: string; glossary: string };
+  document_source?: boolean;
   conventions: TeamContextDocRef[];
   glossary: TeamContextDocRef | null;
   /** The configured zone, or null for the default. */
@@ -59,8 +61,9 @@ export interface TeamContextSettingsView {
 }
 
 export interface TeamContextSettingsInput {
-  conventions: string[];
-  glossary: string | null;
+  markdown?: { overview: string; conventions: string; glossary: string };
+  conventions?: string[];
+  glossary?: string | null;
   /** Null clears it (back to the default). Omit to leave it unchanged. */
   timezone?: string | null;
 }

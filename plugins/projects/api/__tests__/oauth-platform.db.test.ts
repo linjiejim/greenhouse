@@ -11,7 +11,7 @@ import { sql } from 'drizzle-orm';
 import { _resetProvider, initDatabase, type DatabaseProvider, type UserRow } from '@greenhouse/db';
 import type { AppEnv } from '../../../../apps/api/src/app-env.js';
 import oauthRoutes from '../../../../apps/api/src/routes/oauth.js';
-import { knowledgeRegistration } from '../../../../apps/api/src/platform/knowledge/registration.js';
+import { knowledgeRegistration } from '../../../knowledge/api/platform/registration.js';
 import { projectsRegistration } from '../platform/application.js';
 import { initializePlatformRuntime, resetPlatformRuntimeForTests } from '../../../../apps/api/src/platform/runtime.js';
 import { mcpCredentialMiddleware } from '../../../../apps/api/src/agent-runtime/mcp-auth.js';

@@ -32,9 +32,9 @@
 
 ### Service 模式
 
-- 所有数据库操作走 `getDb()` 返回的 `DatabaseProvider` 上的域 service：`db.users.getById(...)`、`db.knowledgeBase.search(...)`。
+- 所有数据库操作走 `getDb()` 返回的 `DatabaseProvider` 上的域 service：`db.users.getById(...)`、`db.drive.listFiles(...)`。
 - 数据流：业务逻辑 → `index.ts`（单例入口）→ `provider.ts`（装配）→ `services/<域>.ts`。
-- service 名沿用 1.x（`db.sessions`、`db.knowledgeBase`、`db.drive`、`db.scheduledTasks`、`db.customProfiles`…），表名是 3.0 的；改 service 前先看它写哪张表。
+- service 名沿用 1.x（`db.sessions`、`db.drive`、`db.scheduledTasks`、`db.customProfiles`…），表名是 3.0 的；改 service 前先看它写哪张表。
 - `db.users`、`db.drive`、`db.platform` 是扩展契约，方法形状不变（id 现在是字符串）。
 - 类型全部推导：`DatabaseProvider = ReturnType<typeof createDatabase>`；Row 类型 = `typeof table.$inferSelect`，导出在对应 `schema/*.ts` 底部；union 别名 = `XxxRow['col']`；参数类型与 service 同文件；一切从包根 `@greenhouse/db` 重导出。
 - service 是返回对象字面量的工厂 `createXxxService(db: Db)`；对象内自调用用 `const service = {...}; return service;`，不用 `this`。
@@ -177,28 +177,9 @@
 - `sessionReferencesImage()` 是鉴权查询：图片不进 `files`，「这张图属不属于这个会话」只能在 `parts.images` / `parts.pipeline` / `content` 里找；唯一消费者是 `apps/api/src/files/conversation-files.ts`。
 - 没有会话评分 / 反馈 / 子会话谱系 / 标签 / 分组；不加回来。
 
-### 知识库
+### Knowledge plugin and shared text helpers
 
-- 文档在 `kb_documents`，版本在 `kb_versions`，单人分享在 `shares`（`resource_type='kb_document'`），目录在 `folders`（`scope='kb'`）。
-- `knowledgeBase.create/update` 写完同步调 `onKnowledgeDocChange` 监听（API 推 WS `knowledge.changed`）；新增改内容 / 可见性 / 状态的方法要么走 `update`，要么自己 emit；监听不抛、不阻塞。
-- `kb_documents.folder_id` → `folders` ON DELETE SET NULL：文档不因目录操作被删；`drive.deleteFolder` 在 kb 域拒绝还挂着非归档文档的目录。
-- 目录改名 / 移动走 `drive.updateFolder(id, {name?, parent_id?})`；移进自己或后代返回 `{ok:false, reason:'cycle'}`。service 只管数据，鉴权在路由层。
-- `is_template` 是显式布尔；`listTemplates()` 只列 team 可见模板。
-- 编辑态 presence 在进程内存（`apps/api/src/knowledge/presence.ts`），无表。
-- `meta.space` 没有写入方，不当分组维度用。
-- 没有文档评论与互链。
-
-### 全文搜索
-
-- `kb_documents` 的检索列来自 `searchColumns()`：应用层用 `segmentForFts`（jieba，`services/fts.ts`）写 `search_a`（title + tags）、`search_b`（summary + questions）、`search_c`（content + topics）；`search_tsv` 是生成列 + GIN 索引，配置 `simple`。
-- 写路径（create / update / upsert、`updateEnrichment`）每次重算 `search_a/b/c`；存量补齐由启动时的 `backfillKnowledgeTokens` 或 `pnpm cli knowledge reindex`。
-- 查询侧用同一个 `segmentForFts` → `buildSegmentedTsQuery`；存储与查询必须走同一分词，否则 token 不对齐。
-- AND 命中不足用 OR 补位（两个 pass 都跑，AND 排前，OR 按 id 去重填满），仍不够才 `ILIKE`；`search` 与 `searchShared` 同款，改一处改两处。
-- CJK 片段用 `buildSnippet`（按首个命中 token 截原文），拉丁词才用 `ts_headline`。
-- `folderIds` 是收窄语义：`undefined` = 不限，空数组 = 零行。调用方传已展开的子树 id（`kbFolderSubtreeIds`）。
-- 四条检索 SQL（`search` / `searchShared` / `searchLike` / `searchSharedLike`）都要 SELECT `folder_id`。
-- 消息正文没有分词列：查询词用 `segmentForFts` 切词后对 `content` 做 `strpos` 子串匹配，AND → OR 补位，OR 去掉单字词。
-- `memories.search()` 刻意用裸 `ILIKE`（记忆正文英文、每人几十行）；规模或语言变了扩 `segmentForFts` 那条线，不造第三套。
+Knowledge tables and services belong to [plugins/knowledge](../../../plugins/knowledge/AGENTS.md). Core sessions and plugins share `segmentForFts`; stored and queried tokens must use the same function. Drive's scope-owned occupancy hook prevents orphaning live documents without importing plugin schema.
 
 ### 目录、文件与共享
 
@@ -334,10 +315,12 @@ Saved prompts remain core. Skill services are absent from DatabaseProvider.
 - Feishu receipt retention (7 days) is contributed by that plugin, never hard-coded in core cleanup.
 
 - Migration 0006 advances SkillHub/Projects ownership without DDL. Their six tables are adopted
-  by plugin lanes; current core schema has 51 tables and the complete 3.0 data set still has 73.
+  by plugin lanes; current core schema has 49 tables and the complete 3.0 data set still has 73.
 - Activity cursor SQL and bounded feed scans are shared host helpers. Plugin domain-event
   capabilities are excluded from the platform-action view through activity contributions.
 
 Migration 0007 removes closed share/link/scope/run checks; new writes validate active discriminators. Reads preserve historical plugin values. Files retain the source/ownership envelope CHECK. Register plugin drive placement validation alongside its scope.
 
 Migration 0008 opens card receipt kinds; active plugins register artifactKinds, and claims reject inactive kinds while historic receipts remain readable.
+
+Knowledge ownership advances in 0009 without DDL. The two tables and version events are absent from DatabaseProvider; shared folders/files/shares remain core. The upgrade db-commit test covers all 24 moved tables across disabled/re-enabled Knowledge.

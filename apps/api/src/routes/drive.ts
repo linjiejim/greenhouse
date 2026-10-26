@@ -50,6 +50,7 @@ import {
   resolveDriveAccessAsync,
   extensionDrivePlacement,
   isKnownDriveScope,
+  cabinetDriveScope,
   canReadDrive,
   canWriteDrive,
   sameDriveCabinet,
@@ -88,19 +89,8 @@ function buildScopeKeys(
   scope: DriveScope,
   input: { base_id?: string | null; visibility?: 'team' | 'private'; owner_key?: string | null },
 ): ScopeKeys | { error: string } {
-  if (scope !== 'kb') {
-    const placement = extensionDrivePlacement(scope, input, getAuthUser(c).id);
-    return 'error' in placement ? placement : { scope, ...placement };
-  }
-  const visibility = input.visibility ?? 'team';
-  const user = getAuthUser(c);
-  return {
-    scope,
-    base_id: null,
-    visibility,
-    owner_user_id: visibility === 'private' ? user.id : null,
-    owner_key: null,
-  };
+  const placement = extensionDrivePlacement(scope, input, getAuthUser(c).id);
+  return 'error' in placement ? placement : { scope, ...placement };
 }
 
 /** Authorize against a node (folder/file row, or a scope-root descriptor). */
@@ -197,6 +187,7 @@ const fileUpdateSchema = z
 
 const drive = new Hono<AppEnv>()
   // ── Folders ──
+  .get('/cabinet', (c) => c.json({ scope: cabinetDriveScope() }))
   .get('/folders', async (c) => {
     const scope = parseScopeParam(c.req.query('scope'));
     if (!scope) return c.json({ error: 'invalid scope' }, 400);

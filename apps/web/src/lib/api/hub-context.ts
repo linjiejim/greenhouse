@@ -4,12 +4,7 @@
  * apps/api/src/routes/admin-team-context.ts and routes/data-catalog.ts.
  */
 
-import type {
-  DataCatalog,
-  RetroResult,
-  TeamContextSettingsInput,
-  TeamContextSettingsView,
-} from '@greenhouse/types/hub-context';
+import type { DataCatalog, TeamContextSettingsInput, TeamContextSettingsView } from '@greenhouse/types/hub-context';
 import { rpc } from './client';
 
 async function errorOf(res: Response, fallback: string): Promise<Error> {
@@ -28,14 +23,6 @@ export async function saveTeamContextSettings(input: TeamContextSettingsInput): 
   const res = await rpc.api.admin['team-context'].$put(args);
   if (!res.ok) throw await errorOf(res, `Failed to save team context: ${res.status}`);
   return (await res.json()) as TeamContextSettingsView;
-}
-
-/** Write (or update) a month's retro now; no month = the current one. */
-export async function generateRetro(month?: string): Promise<RetroResult> {
-  const args = { json: month ? { month } : {} };
-  const res = await rpc.api.admin.retro.$post(args);
-  if (!res.ok) throw await errorOf(res, `Failed to generate the retro: ${res.status}`);
-  return (await res.json()) as RetroResult;
 }
 
 export async function fetchDataCatalog(): Promise<DataCatalog> {

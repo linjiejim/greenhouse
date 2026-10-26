@@ -1,3 +1,8 @@
+import { registerToolResultAdapters } from '@greenhouse/agent-core';
+import { registerWriteRisks } from '../agent-access/risk.js';
+import { registerSummarySources } from '../usage/summary.js';
+import { registerTeamContextDocumentSources } from '../hub-context/settings.js';
+import { registerWorkspaceSettingValueValidators } from '../settings/validation-registry.js';
 import { registerDiscriminators } from '@greenhouse/types/discriminators';
 import { registerSkillPacks } from './skill-packs.js';
 import { registerExtensionRateLimits } from '../security/extension-rate-limits.js';
@@ -144,10 +149,10 @@ registerExtensionRateLimits(fromExtensions('rateLimits'));
 
 registerSkillPacks(fromExtensions('skillPacks'));
 
-// The remaining core application registers through the same path until its package move.
-registerDiscriminators({
-  shareResources: ['kb_document'],
-  fileLinkTargets: ['kb_document'],
-  folderScopes: ['kb'],
-  auditApps: ['knowledge'],
-});
+registerSummarySources(fromExtensions('summarySources'));
+registerTeamContextDocumentSources(fromExtensions('teamContextSources'));
+registerWorkspaceSettingValueValidators(fromExtensions('settingValueValidators'));
+
+registerWriteRisks(fromExtensions('activity').flatMap((entry) => (entry.writeRisks ? [entry.writeRisks] : [])));
+
+registerToolResultAdapters(fromExtensions('toolResults'));

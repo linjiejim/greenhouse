@@ -11,7 +11,9 @@ describe('coreTableNames', () => {
     const declared = Object.values(schema)
       .filter((value) => is(value, PgTable))
       .map((table) => getTableConfig(table as PgTable).name);
-    expect(declared.length).toBeGreaterThan(50);
+    expect(declared).toContain('users');
+    expect(declared).toContain('conversations');
+    expect(derived).toEqual(new Set(declared));
     expect(declared.filter((name) => !derived.has(name))).toEqual([]);
   });
 

@@ -1,3 +1,4 @@
+import { services as knowledgeServices } from '../../../knowledge/api/services.js';
 import { services as tableServices } from '../../../tables/api/services.js';
 import { services as projectsServices } from '../services.js';
 /**
@@ -18,7 +19,7 @@ import {
 } from '../../../../apps/api/src/platform/runtime.js';
 import { projectsRegistration } from '../platform/application.js';
 import { tablesRegistration } from '../../../tables/api/platform/application.js';
-import { knowledgeRegistration } from '../../../../apps/api/src/platform/knowledge/registration.js';
+import { knowledgeRegistration } from '../../../knowledge/api/platform/registration.js';
 import { listRecentChanges } from '../../../../apps/api/src/activity/recent-changes.js';
 import type { ActivityItem } from '@greenhouse/types/activity';
 import { sql } from 'drizzle-orm';
@@ -37,14 +38,14 @@ function unique(label: string): string {
 }
 
 async function doc(owner: UserRow, visibility: 'team' | 'private', title: string) {
-  const row = await db.knowledgeBase.create({
+  const row = await knowledgeServices(db).knowledgeBase.create({
     doc_id: unique('doc'),
     title,
     content: 'x',
     visibility,
     owner_user_id: visibility === 'private' ? owner.id : undefined,
   });
-  await db.knowledgeBase.createVersion(row, owner.id, 'edit');
+  await knowledgeServices(db).knowledgeBase.createVersion(row, owner.id, 'edit');
   return row;
 }
 

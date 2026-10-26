@@ -91,3 +91,5 @@ and per-user feature flags (`user_grants` with `kind='feature'`).
 - `usage_events`, `request_log`, `runs` — telemetry, produced by real usage.
 
 Memory and Feedback JSONL files now live in `plugins/memory/seeds` and `plugins/feedback/seeds`; seed loads only enabled plugin contributions after core rows.
+
+Knowledge 的 `kb_documents.json` / `kb_versions.json` 已随模块移到 `plugins/knowledge/seeds/`，只在该插件启用时加载；核心示例集不再持有知识表。Markdown 为规范内容，空编辑器状态合法。

@@ -49,8 +49,6 @@ ${chalk.bold('Manage')}
   db baseline               Adopt an existing database: record the migration chain as applied (--dry-run, --yes)
   platform bootstrap        Synchronize system roles / baseline policies with the manifests
   platform create-app <id>  Scaffold a fail-closed Platform app (--title, --output, --dry-run)
-  knowledge reindex         Recompute segmented FTS tokens (--batch)
-  knowledge import <dir>    Seed a folder of Markdown files into the team knowledge base
   seed                      Load the example dataset from data/examples (--reset | --keep)
 
 ${chalk.bold('Diagnose')}
@@ -110,9 +108,6 @@ async function dispatch(command: string, rest: string[]): Promise<number> {
       return (await import('./commands/plugins.js')).run(rest);
     case 'platform':
       return (await import('./commands/platform.js')).run(rest);
-    case 'knowledge':
-    case 'kb':
-      return (await import('./commands/knowledge.js')).run(rest);
     case 'seed':
       return (await import('./commands/seed.js')).run(rest);
     case 'migrate-from-1x':

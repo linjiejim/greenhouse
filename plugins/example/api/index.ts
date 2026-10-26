@@ -58,6 +58,43 @@ export const exampleExtension = defineExtension({
       },
     ],
   },
+  mcpResources: [
+    {
+      toolIds: ['example_notes_query'],
+      list: async (ctx) =>
+        (await getExtensionServices<ExampleServices>(ctx.db, 'example').notes.list(ctx.userId)).map((note) => ({
+          uri: `greenhouse://ext/example/note/${note.id}`,
+          name: `note-${note.id}`,
+          title: note.body.slice(0, 80),
+          mimeType: 'text/markdown',
+        })),
+      templates: async () => [
+        { name: 'example-note', uriTemplate: 'greenhouse://ext/example/note/{id}', mimeType: 'text/markdown' },
+      ],
+      read: async (uri, ctx) => {
+        const match = /^greenhouse:\/\/ext\/example\/note\/(\d+)$/.exec(uri);
+        if (!match) return undefined;
+        const note = await getExtensionServices<ExampleServices>(ctx.db, 'example').notes.get(
+          ctx.userId,
+          Number(match[1]),
+        );
+        return note ? { uri, mimeType: 'text/markdown', text: note.body } : undefined;
+      },
+    },
+  ],
+  toolResults: [
+    {
+      toolId: 'example_notes_query',
+      summarizeOutput: (out) =>
+        out.error ? { error: out.error } : { notes: Array.isArray(out.notes) ? out.notes.length : 0 },
+    },
+  ],
+  settingValueValidators: [
+    (key, value) =>
+      key === 'example.greeting' && typeof value === 'string' && value.includes('\u0000')
+        ? { ok: false, error: 'Greeting must not contain NUL' }
+        : null,
+  ],
   mcpGroups: ['example'],
   // Its records get deeplinks (`#/example/notes/42`) and peeks in chat.
   entityKinds: [{ kind: 'ext:example:note', route: '#/example/notes/:id' }],

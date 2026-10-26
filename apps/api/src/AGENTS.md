@@ -268,66 +268,15 @@ Saved prompts and task_capture stay core. Skill tools, storage, scanning, pack s
 - **工具元数据 = 各工具文件内 co-located**：每个工具在自己的 `.ts` 里用 `defineTool({ meta, kind, create? })` 声明 metadata（`meta.description` 直接喂给 `tool({ description })`，无需再回 registry 取）。`tools/registry.ts` 是显式 catalog：导入各模块后由 `TOOL_MODULES` 派生 `TOOL_DEFINITIONS`、内部默认 id、proxy/MCP surface、lazy id、`STATIC_TOOL_MODULES` 与 `getAllToolIds()`，没有平行手维护清单。`kind`：`static`（带 `create(db)`，进共享 registry）/ `lazy`（core 工具无 create，按请求在 `buildLazyServerTools` 按 id 装配；扩展工具带 `createLazy(ctx)` 走通用路径）/ `special`（在路由里就地构造，metadata 进 registry 的 `SPECIAL_METAS`——**当前无人使用**）。
 - 新增工具：① 在该工具文件 `export const xxxTool = defineTool({ meta, kind, create? })`（static 带 `create(db)`，lazy 不带），需要 Agent proxy/MCP 时同时声明 `meta.surface`；② 在 `tools/registry.ts` 的 `CORE_TOOL_MODULES` 加 import + 数组项（`TOOL_MODULES` 是 core + 已启用扩展工具的派生值，不在那里加）；③ core 的 lazy 工具在 `agent-runtime/tool-resolution.ts` 的 `buildLazyServerTools` 按 id 加构造分支（会话绑定的放进 `if (sessionId)` 块）——通用的 `createLazy` 路径只遍历扩展工具，core 工具写了 `createLazy` 会进目录却永远不被构造。所有集合自动派生，禁止再维护独立 allowlist；`tools/__tests__/surface-derivation.test.ts` 钉住 core 工具每个派生集合的精确成员，改暴露面要连测试一起改。
 
-### 知识库的 Agent 读模型（`knowledge_query` 单一实现）
+### Knowledge plugin
 
-方案与决策见 [spec](../../../docs/specs/20260814-kb-agent-read-model-upgrade.md)。读面从三个工具收敛成一个，
-并从「只有 grep」补成 **tree（ls）→ search（grep）→ get（cat/outline/section）** 三层。
-
-- **`team_knowledge` / `personal_knowledge` 已退役（2026-08-14）**，等价于 `knowledge_query` 的
-  `scope='team'|'personal'`。旧 id 由 `RETIRED_TOOL_ALIASES` 展开（custom profile 存的数组仍有效）、
-  由 `normalizeLegacyToolCall` 接住 proxy 直呼（输入形状本就兼容，只补一个 scope）、由 DSML 别名表接住
-  模型写出的旧名。**退役前逐 action 核对过，它不是纯子集**：scoped 那对的**数字 id 兜底**（模型拿搜索结果里的
-  数字 `id` 来 get，拒收会造成一串假 not-found）与**产品栏目的权威口径**必须搬进 `knowledge_query`，
-  否则等于把修过的坑重新挖开、把唯一事实源的约束丢掉。
-- **目录树是读路径的一部分，不只是 UI**：`action='tree'` 返回目录 + 每个目录的文档标题（空目录也列），
-  `search`/`list` 的 `folder` 参数把范围限定到某棵子树。路径解析复用 `resolveKbFolderPath`（错误列同级、
-  歧义拒绝），子树展开在应用层（`kbFolderSubtreeIds`，KB 树浅、量小，不上递归 CTE）。
-  `action='folders'` 只列目录（id / 路径 / 层级 / 直属文档数），有界（`depth` ≤8、≤200 个目录、`truncated` +
-  `total_folders`），一次查出整棵可见树再在内存里走（`kbFolderTree`）。**它是 `knowledge_query` 的一个 action，
-  不是第二个读工具**——读面单一实现的约定不因「列目录」破例。
-- **写入时可顺手建目录**：`knowledge_mutation` 的 `create_folders:true` 让 `folder` 路径上缺的段逐级新建，走
-  Files 的 `createCabinetFolder`（同一条 drive 权限、命名规则和审计）；只能建在调用者自己能建的架上——团队文档建团队目录，
-  个人文档建在**本人**私有树里；编辑别人共享来的个人文档时不在 owner 的树里建任何东西。不传时缺目录仍报错，错误里提示该参数。
-  ⚠️ **folder 过滤只准收窄**：`folderIds` 传空数组必须匹配零行（`folderFilter` 里的 `AND false`），
-  放宽成「无过滤」会把一次限定范围的提问静默答成全库范围。
-- **弱命中要出声不要过滤**：全部命中的 `relevance` 都低于 `WEAK_RELEVANCE_MAX` 时返回 `weak_match:true` +
-  提示句。阈值按 `ts_rank` 的权重标度定（A≈0.6 / C≈0.1），刻意压在正文命中之下——它防的是「拿 0.02 分的命中
-  当权威引用」，不是替模型否决普通正文命中。**不做服务端硬过滤**：模型能判断 snippet，被藏起来的结果没人能判断。
-- **长文档读粒度与写侧共用寻址**：`mode='outline'|'section'` 与 `knowledge_mutation` 的 `update_section`
-  都走 `knowledge/sections.ts`。两份实现必然漂移，而漂移的表现是「模型读了一节、改回去落在另一节」，全程无报错。
-- **`knowledge_query` 必须有 `summarizeOutput` 分支**（`agent-core/chat-engine.ts`）：它的输出没有顶层 `action`
-  字段，靠形状分派。没有分支就落到 `default: return output`，于是**每次读文档都把全文写进 `messages.parts.pipeline`**。
-- **写入时富化是 `_summary` 的唯一来源**：`knowledge_mutation` 的 `summary` 参数写 `_summary`（FTS 的 B 权重）
-  并置 `_enriched_at`；内容变更时不传就清空。**刻意没有批量富化管线**（spec D3）——`sources` 那条 enricher 服务的是
-  无头单轮的对外 RAG，team KB 的消费者是会换关键词重试、有目录可浏览的交互式模型，对称不是需求。
-
-### 知识库实时更新（`knowledge/live.ts` + WS `knowledge.changed`）
-- 文档被创建、编辑、归档时，看得见它的人收到 `{type:'knowledge.changed', docId, change:'created'|'updated'|'archived'}`，只带 id，接收端经鉴权 API 重拉。
-- **挂在 service 的唯一写路径上**：`db.knowledgeBase.create/update`（`archive`、`restoreVersion` 都走 `update`）调 `onKnowledgeDocChange` 的监听；网页路由、聊天 `knowledge_mutation`、MCP 的 agent 写入都经过这里。**别在路由或工具里再发一遍**。不发：`upsert`（CLI 批量导入，另一个进程）、`updateEnrichment`（派生字段）、`delete`。
-- 受众 = 变更前**或**后能看到它的人：team 文档（含刚从 team 改成 private 的）广播给所有在线连接（WS 只接内部账号）；private 文档发给 owner（新旧都发）+ 直接共享与组共享的成员（`knowledgeShares.userIdsWithAccess`）。监听里的异步错误只记 warn，绝不回到写入方。
-- 网页：`ws-store` 收到后调 `useKnowledgeStore.remoteChanged()`（400ms 合并一批）→ `version` +1 → 侧栏树、打开的文档、已归档列表各自重拉。编辑器的冲突基线是**打开编辑器时**的 `updated_at`（`EditorState.baseUpdatedAt`），不能取会被实时刷新的 `selectedDoc.updated_at`，否则别人的保存会把冲突检测抹掉。
-
-### 知识库侧栏树的排序与整库导出
-
-方案与决策见 [spec](../../../docs/specs/20260811-kb-tree-order-and-export.md)。
-
-- **放置与排序是两条路，刻意的**：拖进目录仍走既有 `PUT /api/drive/folders/:id` 与 `PUT /api/knowledge/docs/:id`（那两处已经持有 scope/归属/环检测），新增的 `POST /api/knowledge/tree/reorder` **只写 `sort_order`**，并在写之前逐条校验「这些 id 现在就是该 parent 的同级」。这道校验是承重的：它是唯一绕过 move 端点那套跨域检查的写路径，一旦允许非同级 id，reorder 就成了第二个（且无校验的）移动接口。同理它还拒绝跨访问域的一组（根级下 team 文档与某人的私有文档并排存在，但渲染在两棵树里）。
-- **`sort_order = 0` 表示「从没拖过」，读侧把它排在最后**（`orderKey()`，web 侧比较器）。反过来（0 排最前）会让每一篇新建/刚移入的文档跳到手工排好的列表顶端。全 0 的目录 = 纯字母序，也就是排序功能上线前的行为，所以存量零变化。
-- **写入是单条 `UPDATE … FROM (VALUES …)`**（`db.knowledgeBase.reorderDocs` / `db.drive.reorderFolders`），一条语句天然原子，不需要事务；service 只管数据，鉴权在路由。
-- **`GET /api/knowledge/export`（super）范围钉死 `visibility='team'`**。`db.knowledgeBase.listAll()` 就在隔壁且**不过滤 visibility/owner**——用它等于把全公司的私人笔记打进管理员的下载包。注意 super 在 `/docs` 列表上并不比普通成员看得多，所以这个 super 门是「批量导出是管理动作」，不是「super 能看更多」。
-- **守卫必须写裸路径 `.use('/export', requireSuper())`**：Hono 的 `/*` 匹配不到 `/export` 本身，写成 `/export/*` 等于对所有内部用户敞开。
-- ⚠️ **知识库新增任何路由，同时要在 `platform/knowledge/http-adapter.ts` 的 `matchKnowledgeAction()` 里登记**（并在同目录 `.test.ts` 补一条断言）。那个 middleware 罩着整个 knowledge router 且 **fail-closed**：没登记的路径直接 404，不是「跳过鉴权」而是「根本走不通」。落地时正好撞上：这两条路由与那道护栏分别在两条分支上开发，rebase 后 reorder/export 全 404，10 条测试一起红——路由能不能用取决于映射表，别只改路由文件。`/tree/reorder` → `updateDocument`（与「把文档移进目录」同一个 `knowledge.library.update`），`/export` → `listDocuments`（能力就是普通读，super 门在路由自己身上）。
-- **导出可限定范围**：`?folder_id=`（该目录及其子树，压缩包根就是这个目录）或 `?doc_id=`（单篇，平铺不带空目录链）。范围只影响**打包多少**，不影响**能打包什么**——团队可见过滤在三种形态下逐字相同，一条对私有文档的 `doc_id` 请求得到的是一个不含它的包。
-- **导出是 `importSeedTree()` 的逆运算**（目录→文件夹、doc→`<title>.md`、`/api/upload/<id>`→`assets/`），front matter 带 `doc_id` 以便往返；**缺图、超限一律写进包内 `EXPORT-NOTES.md`**，不静默丢。zip 用 `fflate`（isomorphic，web 侧早已在用），图片以 level 0 入包——PNG 再压一遍只烧 CPU。
-- **`user-select: none` 在 WebKit 里连带禁掉拖拽**（`app.css`，2026-08-11 修）：Safari 认为不可选的元素也不可拖，而知识库侧栏的文档行本身就是 `<button>`——按住拖动完全没反应，没有拖影也没有落点高亮。Chrome/Blink 没有这条联动，所以只在 Safari 复现，**在 Chrome 里怎么测都是绿的**。修法是给 `[draggable='true']` 显式 `-webkit-user-drag: element`。新增拖拽交互时记得：只在 Chrome 验过 ≠ 拖拽能用。
-- **`contentDisposition()` 现在是 `http/content-disposition.ts` 的单一实现**，chat-files / drive 共用（drive 那份原先只有 `filename=`、没有 `filename*`，中文名下载下来是 percent-encoded 乱码）。
+Knowledge routes, ACL, FTS, exports, presence and live updates belong to [plugins/knowledge](../../../plugins/knowledge/AGENTS.md). Core consumes registries only.
 
 ### 全局聚合搜索（`GET /api/search`）
 
 ⌘P palette 的后端：跨本人会话标题 / 本人定时任务 / 项目 / 知识库，按种类分组返回。会话 lane 按 `user_id` 过滤、只排除已退役的 `workflow` 转录与 eval（定时任务产生的 `task` 会话、飞书、手机会话都要搜得到），命中带 `updatedAt` 由客户端本地化，`subtitle` 不再塞原始 ISO。`automation` lane 只搜本人 automations（名称 + prompt，每人 ≤10 条，内存过滤），命中带 `automationId` / `enabled`，super 也只搜自己的（跨用户是管理面，不是搜索）。实体部分方案见 [spec](../../../docs/specs/20260804-entity-references-and-peek.md) D14–D18。
 
 - **每域一条独立 lane，各自 dispatch、各自 try/catch**。任何一域不可用（未开通、无权限、报错）只让那一组为空——一扇门关着不是一次故障。
-- **知识库那三种安全参数组合只有一份**：`knowledge/search.ts` 的 `searchKnowledgeScopes()`，`/api/knowledge/search` 与本路由共用。`db.knowledgeBase.search()` 的 visibility/owner 都是**可选**参数，省略即返回全公司私有文档——这是一行代码就能捅出泄露的地方，别在第二处重写组合。
 - **不做跨域相关性排序**：项目/会话全是 ILIKE 无 relevance，知识库是 `ts_rank`(<1)，不可比；混排会让回退通道把真命中挤掉（知识库内部早踩过）。
 - **守卫写在路由文件内 `.use('*', requireInternal())`**，不是挂载点的 `.use('/api/search/*')`——`/*` 匹配不到裸路径本身，那样只剩全局 Bearer 兜底。
 
@@ -423,7 +372,7 @@ Tables routes, schema plans, CLI restoration, tools and authorization live in [p
   - chat：只读 `session_query`（已在只读白名单；`session_history` 2026-08-07 并入其 search/messages，旧名经 `normalizeLegacyToolCall` 别名兼容）；MCP 不提供直接驱动聊天的端点。
   - skills：技能中心 `skill_query`(读：find/get/download/check_updates)/`skill_mutation`(写：publish/update_meta/archive/unarchive/delete)——owner/super 校验在 `plugins/skills/api/skills/center.ts`，与 `/api/skills` 路由共用同一实现；外部 agent 可经 MCP 发布/同步团队技能。
   - feedback（v1.5，独立资源组 `mcp:feedback`，存量 grant 不自动获得）：问题与需求——`feature_request`（写：submit；super 另有 list/update，MCP 上同样记名）、`log_friction`（写）、`feedback_query`（读：本人提交的需求及管理员回复，super 可 `everyone`）。friction 仍然没有读动作。
-  - files（v1.5，独立资源组 `mcp:files`，存量 grant 不自动获得）：云盘 `files_query`（读：files.list/search/get/read/download_url）/`files_mutation`（写：folders.create/update/delete、files.upload/update/delete）。只覆盖知识库档案（drive scope `kb`：团队架 + 本人个人架），实现只有一份 `drive/kb-cabinet.ts`，每个节点都过 `resolveDriveAccess`，移动不跨架；上传 ≤5MB（`drive/cabinet-limits.ts`）、改名同样过上传黑名单；下载链接只在配了对象存储时给（5 分钟预签名），本地存储明确报错并指向 files.read。删除类动作自动走预览 → confirm:true。
+  - files（v1.5，独立资源组 `mcp:files`，存量 grant 不自动获得）：云盘 `files_query`（读：files.list/search/get/read/download_url）/`files_mutation`（写：folders.create/update/delete、files.upload/update/delete）。覆盖当前档案柜（Knowledge 启用时为其 legacy `kb` scope，禁用时为核心 `drive` scope：团队架 + 本人个人架），实现只有一份 `drive/kb-cabinet.ts`，每个节点都过 `resolveDriveAccess`，移动不跨架；上传 ≤5MB（`drive/cabinet-limits.ts`）、改名同样过上传黑名单；下载链接只在配了对象存储时给（5 分钟预签名），本地存储明确报错并指向 files.read。删除类动作自动走预览 → confirm:true。
   - reports（v1.7，独立资源组 `mcp:reports`，存量 grant 不自动获得）：`report_templates`（读：list/get/validate，`unattendedReplaySafe`）/`report_render`（写，`additiveOnly` → `destructiveHint:false`，无 confirm 往返）。详见「报告模板与渲染」。
 - 审计：每次 `tools/call` 经 `recordMcpAudit` 写 `request_log`（`channel='a2a'` 枚举沿用、`app_id`=OAuth client id、绑定 `user_id`）；平台侧 actor `authMethod` 区分 `oauth`（人授权）/`oauth-client`（机器凭证）。
 - 机器客户端管理：`/api/admin/platform/oauth/machine-clients`（仅 super，routes/platform-admin.ts）：create（返回一次性 `lpoa_cs_` secret）/rotate-secret/disable（级联撤 grant+token，re-enable 自动恢复机器 grant）/delete/per-client audit；创建即校验被绑用户 active/内部并 upsert 机器 grant。DCR (`/oauth/register`) 保持 public-only，机器客户端不可自助注册。
@@ -431,7 +380,7 @@ Tables routes, schema plans, CLI restoration, tools and authorization live in [p
 - 管理 UI：Settings › Administration › MCP Access（`apps/web/src/pages/administration/mcp-keys.tsx`，super-only）：建/轮换/禁用/删 key、复制客户端配置（折叠的 "How to connect"）、per-key Activity（读 `/:id/audit` 看最近调用）。
 - 纯逻辑（`toMcpInputSchema` 的 schema 归一化 + confirm 注入、协议往返）已单测：`routes/__tests__/mcp.test.ts`（用 SDK `InMemoryTransport`+`Client`，不连 DB）。
 - **团队上下文（v1.7，`hub-context/`）**：服务器声明 `tools` + `resources` + `prompts` 三种能力，内容一律按本次 grant 可达的工具集（`ctx.toolIds` = scope ∩ 成员权限）裁剪，见下方「团队上下文与数据目录」。
-  - resources：`greenhouse://context/overview`（任何 grant 都有）、`/conventions`、`/glossary`（要能到 `knowledge_query`）；知识库文档资源同样要 `knowledge_query`（v1.7 前 resources 只看平台权限、不看资源组，已收紧）。
+  - resources：`greenhouse://context/overview`（任何 grant 都有）、`/conventions`、`/glossary` 的 Markdown 来自工作区设置；插件文档源按可达工具集裁剪，Knowledge 的选定文档及文档资源要能到 `knowledge_query`（v1.7 前 resources 只看平台权限、不看资源组，已收紧）。
   - prompts：`skill-<name>`（技能中心里本人能下载的技能，隔离规则即 `downloadSkill` 的 `skillUsableBy`）与 `prompt-<id>`（本人的 + 共享给团队的 Tasks），都要能到 `skill_query`。
   - 协议层工具 `team_context` / `data_catalog`（与 `tool_output_read` 同层，不进 registry）：每个 grant 都列出、只读，回复同样经 `boundReplyText`，按 `mcp` 计 `tool_call`。`SERVER_INSTRUCTIONS` 要求新任务先调 `team_context`。
   - 「成员能到哪些 MCP 工具」的平台过滤在 `agent-runtime/mcp-tool-visibility.ts`（`filterMcpToolIdsByPlatform`、`memberMcpToolIds`），`routes/mcp.ts` 只是转出；别在别处再写一份能力→工具表。
@@ -452,25 +401,17 @@ Tables routes, schema plans, CLI restoration, tools and authorization live in [p
 - Agents' `connectors` field holds connector ids (null = all); `connectorsForUser` applies it.
 - Tests use the local fixture server (`connectors/__tests__/fixture-server.ts`); never a real third-party endpoint.
 
-### 团队上下文与数据目录（`hub-context/` + `/api/admin/team-context` + `/api/data-catalog`，v1.7）
+### Team context and data catalog
 
-- 配置存工作区设置 `team_context.conventions`（文档 id 数组，≤10）/ `team_context.glossary` / `team_context.timezone`（env `WORKSPACE_TIMEZONE`，缺省 `Asia/Shanghai`），不建表；只在 Administration › Team context 编辑，Runtime Config 不渲染这一组。
-- 只有已发布的团队文档能被选：保存时 `validateTeamContextSelection` 校验，**每次读取再校验一次**（`resolveTeamContextDocs`），之后改成私有 / 归档 / 删除的文档直接停止下发，管理页标出原因。下发前仍逐篇过 `resolveKbAccess`。
-- 写走 `applyWorkspaceSettingValues`（`routes/admin-settings.ts`，与 Runtime Config 同一条校验 + 审计路径）；改时区立即 `startMonthlyRetroJob()` 重排。
-- 数据目录 `hub-context/catalog.ts` 只有一份实现，网页（`GET /api/data-catalog`，成员全部 MCP 可达工具 `memberMcpToolIds`）与 MCP（`data_catalog`，本 grant 的工具）共用：
-  - Tables：要能到 `tables_query`；base 列表来自 Tables 应用自己的 `listBases` dispatch（角色、实体策略照常），行数与最近改动来自 `db.tables.recordStats`，**只计数不读记录值**；写入路径只给 editor 及以上且能到 `tables_mutation` 的人。
-  - 扩展：从启用扩展的契约派生（`tools` 里带 `surface.mcp` 的工具、`searchSources` 的 kind、`exportSources` 的 type/describe），成员一个工具都到不了就不列（功能开关 / 平台能力 / grant 的资源组决定）。`export_data` 只在应用内，标为 in-app only，不冒充 MCP 可达。扩展不需要新字段。
-- 检查连接 `GET /api/agent-access/connections`（`hub-context/connections.ts`）：本人有效 grant + 其 access token 最近一次 `last_used_at`（`mcpCredentialMiddleware` 每请求都 touch，所以 initialize / tools/list 也算），按客户端名归类 codex / claude-code / cursor / other。
+- Core context is Markdown in `team_context.{overview,conventions,glossary}_markdown` (type text); timezone stays core. Optional document sources register through teamContextSources and preserve legacy selections.
+- MCP templates/resources come from active mcpResources providers. The host gates by reachable tools; each provider rechecks capabilities and record ACL. Existing protocol names stay with their owner.
+- PUT /api/admin/team-context accepts independent Markdown/timezone and legacy document selections; omitted fields are preserved. All writes use the existing settings validation/audit path. Timezone changes call active workspaceTimeZoneChanged hooks.
+- The existing data catalog consumes active catalogSources and reachable tool metadata only. Core knows no application id.
+- File cabinet operations stay core. An active driveScopes contribution may select its legacy cabinet; otherwise use core scope drive. Scope placement and occupied-folder checks come from their owner.
 
-### 每月复盘（`retro/` + `POST /api/admin/retro`，v1.7）
+### Retro plugin
 
-- 每月 1 日 09:00（工作区时区）写刚结束那个月，但**不早于该 UTC 月结束 + 15 分钟**（`retro/schedule.ts` 的 `planMonthlyRetro`：Pacific/Auckland 这类东侧时区的本地 09:00 早于 UTC 月末）。`startMonthlyRetroJob` 每次只排下一次（croner 单次任务），跑完再排下一个月；改时区立即重排；Issues & requests 的「生成本月复盘」（super）写当月。统计区间是 UTC 自然月，与计价、用量计数同口径。
-- 文档 id 按月固定 `team-retro-YYYY-MM`，标题「YYYY-MM 复盘」，首次写进团队根目录文件夹「复盘」（没有就建）；再次生成更新同一篇（多一个版本），被移动的保持原位、被归档的重新发布。作者是点按钮的 super，定时任务取最早的在职 super。
-- **只放汇总**（`retro/aggregate.ts`）：页面打开 / 工具调用按模块与客户端、Agent 写入按客户端（成功 / 失败 / 结果未知 = `interrupted`）、本月活跃的踩坑、本月提交的需求标题、花费按服务与客户端。绝不放消息内容、成员姓名、私有文档标题。
-- 踩坑的 `summary` 是自由文本（可能带文档名、人名），**只在 `frictionErrorClass` 里读**，出去的只有「工具 × 类型 × 错误类别（封闭清单）× 条数 / 累计次数」，文档和模型提示词里都没有原文。
-- 踩坑行只存首次 / 最近一次出现，没有逐次记录，所以「本月活跃」= `first_seen_at < 月末 AND last_seen_at >= 月初`（`listActiveBetween`）：10 月出现、11 月 1 日又出现的仍算 10 月；代价是首尾跨过本月但本月没出现的也会算进来。累计次数不是本月次数，文中写明。要精确就得加逐次表（迁移），目前不做。
-- 「下月建议」由模型根据同一份汇总写（`retro/suggest.ts`），走 `createOrganizationAttemptBudgetHook`：只预留 `llm` 服务 + 组织 USD 账户（`reserveSpend({ organizationOnly: true })`，不报「漏设 scope」），client `system`，`usage_events.user_id` 为空。超额 / 没配模型 / 调用失败都只跳过这一节并在文中写明原因，复盘照常落库。
-- 写完给每位在职 super 发 `system` 通知（payload `url` = 文档深链，网页收件箱点开直达；dedupe 按「月份 + 文档 updated_at」，每次生成一条），随后 `queueMobilePush`。
+Monthly reviews and their schedule belong to [plugins/retro](../../../plugins/retro/AGENTS.md). Core exposes only aggregate usage and timezone hooks.
 
 ### 模块用量计数（`usage/counters.ts` + `/api/usage` + `module_usage_daily`）
 

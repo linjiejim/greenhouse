@@ -1,3 +1,4 @@
+import { services as knowledgeServices } from '../../../knowledge/api/services.js';
 import { services as tableServices } from '../../../tables/api/services.js';
 import { services as projectsServices } from '../services.js';
 /**
@@ -13,7 +14,7 @@ import { TEST_DATABASE_URL } from '@greenhouse/db/test-config';
 import type { ResolveRefsResponse } from '@greenhouse/types/object-refs';
 import type { AppEnv } from '../../../../apps/api/src/app-env.js';
 import { createRefsRoutes } from '../../../../apps/api/src/routes/refs.js';
-import { knowledgeRegistration } from '../../../../apps/api/src/platform/knowledge/registration.js';
+import { knowledgeRegistration } from '../../../knowledge/api/platform/registration.js';
 import { projectsRegistration } from '../platform/application.js';
 import { tablesRegistration } from '../../../tables/api/platform/application.js';
 import { initializePlatformRuntime, resetPlatformRuntimeForTests } from '../../../../apps/api/src/platform/runtime.js';
@@ -69,7 +70,7 @@ describe('POST /api/refs/resolve', () => {
     const token = marker();
     const { owner, stranger, app } = await people(token);
     const doc = (title: string, visibility: 'team' | 'private') =>
-      db.knowledgeBase.create({
+      knowledgeServices(db).knowledgeBase.create({
         doc_id: `${token}-${visibility}`,
         scope: 'shared',
         title,
@@ -98,7 +99,7 @@ describe('POST /api/refs/resolve', () => {
     const token = marker();
     const { owner, stranger, app } = await people(token);
     const doc = (slug: string, title: string, visibility: 'team' | 'private') =>
-      db.knowledgeBase.create({
+      knowledgeServices(db).knowledgeBase.create({
         doc_id: slug,
         scope: 'shared',
         title,
@@ -137,7 +138,7 @@ describe('POST /api/refs/resolve', () => {
     const token = marker();
     const { owner, stranger, app } = await people(token);
     const doc = (slug: string, title: string, visibility: 'team' | 'private', status = 'published') =>
-      db.knowledgeBase.create({
+      knowledgeServices(db).knowledgeBase.create({
         doc_id: slug,
         scope: 'shared',
         title,

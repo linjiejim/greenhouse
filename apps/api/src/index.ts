@@ -76,7 +76,7 @@ import {
   runExtensionShutdownHooks,
 } from './extensions/boot.js';
 import adminSettingsRoutes from './routes/admin-settings.js';
-import { adminRetroRoutes, adminTeamContextRoutes } from './routes/admin-team-context.js';
+import { adminTeamContextRoutes } from './routes/admin-team-context.js';
 import dataCatalogRoutes from './routes/data-catalog.js';
 import { applyWorkspaceEnvOverlay } from './settings/workspace-config.js';
 import uploadRoutes from './routes/upload.js';
@@ -85,10 +85,8 @@ import costValueRoutes from './routes/cost-value.js';
 import platformRoutes from './routes/platform.js';
 import platformAdminRoutes from './routes/platform-admin.js';
 import { bootstrapPlatform } from './platform/bootstrap.js';
-import { knowledgeRegistration } from './platform/knowledge/registration.js';
 import { initializePlatformRuntime } from './platform/runtime.js';
 import promptRoutes from './routes/prompts.js';
-import knowledgeRoutes from './routes/knowledge.js';
 import { createSearchRoute } from './routes/search.js';
 import { createRefsRoutes } from './routes/refs.js';
 import { createActivityRoutes } from './routes/activity.js';
@@ -101,7 +99,6 @@ import toolsRoutes from './routes/tools.js';
 import driveRoutes from './routes/drive.js';
 import chatFileRoutes from './routes/chat-files.js';
 import artifactActionRoutes from './routes/artifact-actions.js';
-import { backfillKnowledgeTokens } from './knowledge/backfill.js';
 import { initScheduler } from './scheduler/index.js';
 import { createTasksRoute } from './routes/tasks.js';
 import runtimeRoutes from './routes/runtime.js';
@@ -132,7 +129,6 @@ import * as _ws from 'ws';
 const WsServer = _ws.WebSocketServer ?? (_ws as any).default?.WebSocketServer;
 import wsRoutes from './ws/index.js';
 import { connectionManager } from './ws/connection-manager.js';
-import { startKnowledgeLiveUpdates } from './knowledge/live.js';
 import { chatRunRegistry } from './chat/runs.js';
 import { startUsageBudgetSweeper } from './llm/usage-budget-sweeper.js';
 
@@ -285,7 +281,6 @@ function mountRoutes(toolRegistry: ToolRegistry) {
       .route('/api/admin', adminRoutes)
       .route('/api/admin/settings', adminSettingsRoutes)
       .route('/api/admin/team-context', adminTeamContextRoutes)
-      .route('/api/admin/retro', adminRetroRoutes)
       .use('/api/platform/*', requireInternal())
       .route('/api/platform', platformRoutes)
       // Email accounts — every internal user (mailbox binding is per-user and
@@ -293,8 +288,6 @@ function mountRoutes(toolRegistry: ToolRegistry) {
       // Prompts, knowledge docs & shares — all internal users
       .use('/api/prompts/*', requireInternal())
       .route('/api/prompts', promptRoutes)
-      .use('/api/knowledge/*', requireInternal())
-      .route('/api/knowledge', knowledgeRoutes)
       // Global search — guards live inside the route (a bare `/api/search` is not
       // matched by a `/*` prefix middleware), and each domain lane gates itself.
       .route('/api/search', createSearchRoute())
@@ -374,8 +367,6 @@ const HOSTNAME = process.env.API_HOST;
 async function main() {
   assertAuthEnv(); // fail fast before binding if the signing key is absent
   dbProvider = await initDatabase({ type: 'pg', pgConnectionString: DATABASE_URL });
-  // Announce knowledge writes over WS (`knowledge.changed`) from the service's single write path.
-  startKnowledgeLiveUpdates(dbProvider);
   // Extension-owned tables live in their own migration lane (core DDL stays in
   // drizzle/*.sql, applied before boot). Pending files are applied here, under
   // an advisory lock, before anything can want the tables.
@@ -390,7 +381,7 @@ async function main() {
   initServiceCatalog();
   const usageBudgetSweeper = await startUsageBudgetSweeper(dbProvider);
   const platformBootstrap = await bootstrapPlatform(dbProvider);
-  initializePlatformRuntime(dbProvider, [knowledgeRegistration, ...extensionApplicationRegistrations()]);
+  initializePlatformRuntime(dbProvider, extensionApplicationRegistrations());
   if (
     platformBootstrap.rolesCreated.length > 0 ||
     platformBootstrap.capabilitiesAdded > 0 ||
@@ -401,7 +392,6 @@ async function main() {
 
   // Knowledge docs written before segmented FTS tokens existed are invisible to
   // search until tokenized. One-off backfill, fire-and-forget like the sweeps.
-  void backfillKnowledgeTokens(dbProvider);
 
   const toolRegistry = createToolRegistry(dbProvider);
   await runExtensionBootHooks(dbProvider);

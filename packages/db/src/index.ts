@@ -88,8 +88,6 @@ export * from './services/custom-profiles.js';
 // must segment writes and queries with the SAME function core uses, or the two
 // sides stop matching — so this is exported rather than copied.
 export { segmentForFts, buildSegmentedTsQuery } from './services/fts.js';
-export * from './services/knowledge-base.js';
-export * from './services/knowledge-shares.js';
 export * from './services/user-features.js';
 export * from './services/drive.js';
 export * from './services/activity.js';
@@ -163,3 +161,7 @@ export function _resetProvider(): void {
 
 export { registerExtensionRetention } from './extensions.js';
 export type { ExtensionRetentionRule } from './extensions.js';
+
+export { buildSnippet, jsonArrayToText } from './services/fts.js';
+
+export { registerDriveFolderContents } from './drive-content.js';

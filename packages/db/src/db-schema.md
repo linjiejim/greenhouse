@@ -2,7 +2,7 @@
 
 > 事实源：`packages/db/src/schema/*.ts`（每个域一个文件，文件头写着本域的表）。迁移链从 `drizzle/0000_v3_baseline.sql` 起步；1.x 的 0000–0013 归档在 `drizzle/archive-1x/`，只用来识别 1.x 库。
 >
-> 当前完整安装共 **73 张表**：核心 schema **51 张**，九个数据插件管理 22 张表（迁移车道记账另计）。字段类型、默认值、索引以 schema 与最新 snapshot 为准；本文只写用途、关键列和关系。
+> 当前完整安装共 **73 张表**：核心 schema **49 张**，十个数据插件管理 24 张表（迁移车道记账另计）。字段类型、默认值、索引以 schema 与最新 snapshot 为准；本文只写用途、关键列和关系。
 
 ## 设计约定
 
@@ -110,14 +110,9 @@ Chat 与 Automation 共用的执行内核：Run / Step 走 version CAS，worker 
 | `automation_occurrences` | PK `runtime_run_id` | 自动化 Run 终态的一次性投影（幂等键 = run id）；`task_id` / `owner_user_id` 逻辑 |
 | `run_profiles` | PK `id`；UK `(user_id, slug)` | 成员的自定义 Agent（`custom:<id>`）：`base_profile_id`、`model_id`、`tools`、`system_prompt`、`is_shared`（只有 super 能开）、`avatar`、purpose / audience / `risk_level` / `budget_policy`、`owner_backup_user_id`（FK SET NULL）；`version` 只计编辑次数，`custom:<id>@<n>` 解析到当前配置；`connectors`（连接器 id 数组，null = 全部，只收窄） |
 
-### 知识库（knowledge.ts）
+### Knowledge 插件
 
-| 表 | 主键 / 唯一 | 用途与关键列 |
-|---|---|---|
-| `kb_documents` | PK `id`；UK `(doc_id, scope)` | 文档；`content`（Markdown 为准）+ `content_json`（Tiptap）、`visibility` team / private + `owner_user_id`、`status`、`is_template`、`tags`、`meta`、`folder_id`（FK SET NULL，`folders.scope='kb'`）、`sort_order`；`_summary` / `_questions` / `_topics` 富化；检索列 `search_a/b/c` + 生成列 `search_tsv`（GIN） |
-| `kb_versions` | PK `id`；UK `(doc_id, version)` | 不可变版本历史；FK `doc_id` CASCADE |
-
-文档的单人分享在 `shares`（`resource_type='kb_document'`）。
+两张文档表与全文检索见 [Knowledge schema](../../../plugins/knowledge/db-schema.md)。核心只保留通用目录、文件与分享。
 
 ### 目录、文件与共享（files.ts）
 
@@ -228,8 +223,6 @@ Chat 与 Automation 共用的执行内核：Run / Step 走 version CAS，worker 
 | `automations.user_id` | `users.id` | CASCADE |
 | `run_profiles.user_id` | `users.id` | CASCADE |
 | `run_profiles.owner_backup_user_id` | `users.id` | SET NULL |
-| `kb_documents.folder_id` | `folders.id` | SET NULL |
-| `kb_versions.doc_id` | `kb_documents.id` | CASCADE |
 | `folders.parent_id` | `folders.id` | CASCADE |
 | `files.folder_id` | `folders.id` | CASCADE |
 | `files.session_id` | `conversations.id` | CASCADE |
@@ -252,7 +245,6 @@ Chat 与 Automation 共用的执行内核：Run / Step 走 version CAS，worker 
 | `run_tool_calls.interrupt_id` / `platform_audit_event_id` | `run_interrupts.id` / `audit_events.id` | 反向链接与审计 |
 | `run_interrupts.assignee_user_id` | `users.id` | 决定人 |
 | `automation_occurrences.runtime_run_id` / `task_id` / `owner_user_id` | `runs.id` / `automations.id` / `users.id` | 历史比任务长寿 |
-| `kb_documents.owner_user_id` | `users.id` | 私有文档的主人 |
 | `folders.owner_user_id` / `base_id` / `owner_key` | `users.id` / `table_bases.id` / 扩展对象 | 按 scope 三选一 |
 | `files.owner_user_id` / `base_id` / `owner_key` / `run_id` | `users.id` / `table_bases.id` / 扩展对象 / `runs.id` | 按 source 与 scope |
 | `file_links.target_id` | `table_records.id` / `messages.id` / `tasks.id` / `kb_documents.id` | 按 `target_type`；硬删目标的 service 负责删链接 |
@@ -335,11 +327,8 @@ erDiagram
 ```mermaid
 erDiagram
     folders ||--o{ folders : "FK CASCADE parent_id"
-    folders ||--o{ kb_documents : "FK SET NULL"
-    kb_documents ||--o{ kb_versions : "FK CASCADE"
     folders ||--o{ files : "FK CASCADE"
     files ||--o{ file_links : "FK CASCADE"
-    kb_documents ||--o{ shares : "逻辑 resource_id"
 ```
 
 ### 用量、预算与审计
@@ -361,8 +350,7 @@ erDiagram
 
 ## 全文搜索
 
-- `kb_documents`：应用层用 jieba 分词（`segmentForFts`，`services/fts.ts`）写 `search_a`（title + tags）、`search_b`（summary + questions）、`search_c`（content + topics）；`search_tsv` 是生成列，GIN 索引 `idx_kb_documents_search`，配置 `simple`。
-- 查询侧同一个 `segmentForFts`，AND → OR 补位 → `ILIKE` 兜底。
+- 核心会话与插件共用 `segmentForFts`；知识库的索引与检索规则由插件维护。
 - 消息正文没有分词列：查询词分词后对 `content` 做 `strpos` 子串匹配。
 
 ## 维护检查
@@ -381,3 +369,5 @@ erDiagram
 共享判别列 `shares.resource_type`、`file_links.target_type`、`folders.scope`、`audit_events.app_id`、`runs.kind` 在写入时按核心值 + 启用插件注册值校验；历史读取不裁剪。
 
 卡片回执的 `kind` 同样由 `artifactKinds` 注册表校验新 claim（0008），停用后历史回执仍可读取。
+
+核心文件柜 scope 为 `drive`；Knowledge 启用时通过 driveScopes 选择原有 `kb` 文件柜。0009 仅推进表归属 snapshot，无 DDL。完整升级验证见 `tests/db/plugin-upgrade.db-commit.test.ts`，覆盖全部 24 张已迁移业务表。

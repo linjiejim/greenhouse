@@ -1,3 +1,4 @@
+import { normalizePluginToolCall } from '@greenhouse/agent-core';
 /**
  * Agent runtime — cloud tool proxy.
  *
@@ -242,23 +243,10 @@ export function canonicalProxyToolId(toolId: string): string {
 }
 
 function normalizeLegacyToolCall(toolId: string, input: unknown): { toolId: string; input: unknown } {
+  const contributed = normalizePluginToolCall(toolId, input);
+  if (contributed.toolId !== toolId) return contributed;
   const inputObj = typeof input === 'object' && input !== null && !Array.isArray(input) ? input : {};
   switch (toolId) {
-    // team_knowledge / personal_knowledge (retired 2026-08-14) were
-    // knowledge_query with the scope fixed. The input shapes are otherwise
-    // identical (action / query / doc_id / limit), so scope is the only thing
-    // added — and re-adding it is idempotent, which this function must be
-    // (the proxy normalizes twice; see the note below).
-    case 'search_team_knowledge':
-    case 'search_greenhouse_doc':
-      return { toolId: 'knowledge_query', input: { ...inputObj, scope: 'team', action: 'search' } };
-    case 'get_team_knowledge':
-    case 'get_greenhouse_doc':
-      return { toolId: 'knowledge_query', input: { ...inputObj, scope: 'team', action: 'get' } };
-    case 'team_knowledge':
-      return { toolId: 'knowledge_query', input: { scope: 'team', ...inputObj } };
-    case 'personal_knowledge':
-      return { toolId: 'knowledge_query', input: { scope: 'personal', ...inputObj } };
     // session_history (retired 2026-08-07, once proxy/MCP-exposed) ⊂ session_query:
     // search-with-query → search; search-without-query (recent list) → list of the
     // user's web conversations; get (read messages) → messages. NOTE the proxy

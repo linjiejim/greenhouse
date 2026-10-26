@@ -13,7 +13,7 @@ import { create } from 'zustand';
 import { wsClient, type WsStatus } from '../lib/ws';
 import type { OnlineUser, ServerWsEvent } from '@greenhouse/types/ws';
 import { toast } from '../components/ui';
-import { useKnowledgeStore } from './knowledge-store';
+import { dispatchExtensionWsEvent, reconnectExtensions } from '../extensions/index';
 import { notifyRuntimeInvalidated } from '../lib/runtime-invalidation';
 
 interface WsStore {
@@ -36,7 +36,7 @@ export const useWsStore = create<WsStore>((set) => {
     if (status === 'connected') {
       notifyRuntimeInvalidated();
       // Knowledge events are not replayed: on a REconnect, catch up on anything missed.
-      if (connectedBefore) useKnowledgeStore.getState().remoteChanged();
+      if (connectedBefore) reconnectExtensions();
       connectedBefore = true;
     }
     // Clear presence data on disconnect (will be re-pushed on reconnect)
@@ -47,6 +47,7 @@ export const useWsStore = create<WsStore>((set) => {
 
   // Subscribe to server events
   wsClient.onEvent((event: ServerWsEvent) => {
+    dispatchExtensionWsEvent(event);
     switch (event.type) {
       case 'share:count':
         set({ shareCount: event.count });
@@ -86,11 +87,6 @@ export const useWsStore = create<WsStore>((set) => {
 
       case 'runtime:invalidate':
         notifyRuntimeInvalidated(event.runId);
-        break;
-
-      case 'knowledge.changed':
-        // The knowledge tree and an open document refetch on the store version.
-        useKnowledgeStore.getState().remoteChanged();
         break;
     }
   });

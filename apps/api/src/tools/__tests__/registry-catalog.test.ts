@@ -37,7 +37,7 @@ describe('catalog-driven registry', () => {
     // Lazy/per-request tools are NOT in the static registry (injected per-request).
     expect(reg.feature_request).toBeUndefined();
     expect(reg.analyze_image).toBeUndefined();
-    expect(reg.knowledge_query).toBeUndefined();
+    expect(reg.files_query).toBeUndefined();
   });
 
   it('getAllToolIds covers static + lazy with no duplicates', () => {
@@ -48,7 +48,7 @@ describe('catalog-driven registry', () => {
     for (const id of [
       'analyze_image', // lazy, authenticated-owner budget attribution
       ...(TOOL_DEFINITIONS.some((meta) => meta.id === 'feature_request') ? ['feature_request'] : []), // lazy
-      'knowledge_mutation', // lazy
+      'files_mutation', // lazy
     ]) {
       expect(ids, `missing ${id}`).toContain(id);
     }

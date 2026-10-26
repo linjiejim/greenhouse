@@ -1,3 +1,4 @@
+import { services as knowledgeServices } from '../../../knowledge/api/services.js';
 import { services as projectsServices } from '../services.js';
 /**
  * The activity log on the real audit and Runtime tables: which changes count,
@@ -12,7 +13,7 @@ import type { ActivityItem } from '@greenhouse/types/activity';
 import type { RuntimeJsonValue } from '@greenhouse/types/runtime';
 import { createInternalTestUser } from '../../../../tests/helpers/internal-user.js';
 import { projectsManifest } from '../platform/manifest.js';
-import { knowledgeManifest } from '../../../../apps/api/src/platform/manifests/knowledge.js';
+import { knowledgeManifest } from '../../../knowledge/api/platform/manifest.js';
 import { tablesManifest } from '../../../tables/api/platform/manifest.js';
 import {
   initializePlatformRuntime,
@@ -207,7 +208,7 @@ describe('activity log', () => {
   });
 
   it('never names a document the viewer cannot read', async () => {
-    const doc = await db.knowledgeBase.create({
+    const doc = await knowledgeServices(db).knowledgeBase.create({
       doc_id: unique('secret'),
       title: 'Alice private plan',
       content: 'x',
@@ -230,7 +231,7 @@ describe('activity log', () => {
   });
 
   it('names the document an agent wrote only for a viewer who may read it, in the list and the CSV', async () => {
-    const doc = await db.knowledgeBase.create({
+    const doc = await knowledgeServices(db).knowledgeBase.create({
       doc_id: unique('agent-secret'),
       title: 'Alice private roadmap',
       content: 'x',
@@ -263,7 +264,7 @@ describe('activity log', () => {
   });
 
   it('names what an agent created from its result, only for a viewer who may read it', async () => {
-    const doc = await db.knowledgeBase.create({
+    const doc = await knowledgeServices(db).knowledgeBase.create({
       doc_id: unique('agent-created'),
       title: 'Q4 customer interview notes',
       content: 'x',
@@ -387,7 +388,7 @@ describe('activity log', () => {
   });
 
   it('leaves editor heartbeats out and reads a knowledge reorder as a move', async () => {
-    const doc = await db.knowledgeBase.create({
+    const doc = await knowledgeServices(db).knowledgeBase.create({
       doc_id: unique('team-doc'),
       title: 'Team handbook',
       content: 'x',

@@ -15,11 +15,11 @@ const CONSOLE: TaskActor = { ...OWNER, scope: 'any', canGrantTools: true };
 
 /** A realistic effective set: the automatic reads plus writes the owner holds. */
 const EFFECTIVE = [
-  'knowledge_query',
+  'session_query',
   'tables_query',
-  'knowledge_query',
+  'session_query',
   'tables_mutation',
-  'knowledge_mutation',
+  'generate_image',
   'generate_image',
   'email_mutation',
   'automation_mutation',
@@ -50,14 +50,14 @@ describe('scheduledToolBase', () => {
     const base = scheduledToolBase(EFFECTIVE, ['tables_mutation']);
     expect(base.includes('tables_mutation')).toBe(EFFECTIVE.includes('tables_mutation'));
     expect(base.includes('tables_query')).toBe(EFFECTIVE.includes('tables_query'));
-    expect(base).not.toContain('knowledge_mutation');
+    expect(base).not.toContain('generate_image');
   });
 
   it('cannot grant a tool the owner does not have', () => {
     // The grant is a filter over effectiveTools, never a permission of its own.
-    const base = scheduledToolBase(['knowledge_query'], ['knowledge_mutation']);
-    expect(base).not.toContain('knowledge_mutation');
-    expect(base).toEqual(['knowledge_query']);
+    const base = scheduledToolBase(['session_query'], ['generate_image']);
+    expect(base).not.toContain('generate_image');
+    expect(base).toEqual(['session_query']);
   });
 
   it('cannot reach a denylisted or draft-only tool even when stored', () => {
@@ -90,12 +90,12 @@ describe('validateUnattendedTools', () => {
     expect(result).toMatchObject({ ok: false, code: 'invalid' });
     expect((result as { error: string }).error).toContain('"email_mutation"');
     // The message must also say what IS grantable, or the caller is guessing.
-    expect((result as { error: string }).error).toContain('knowledge_mutation');
+    expect((result as { error: string }).error).toContain('generate_image');
   });
 
   it('accepts a catalogued grant and canonicalises it', () => {
-    const result = validateUnattendedTools(['knowledge_mutation', 'analyze_image', 'analyze_image'], CONSOLE);
-    expect(result).toEqual({ tools: ['analyze_image', 'knowledge_mutation'] });
+    const result = validateUnattendedTools(['generate_image', 'analyze_image', 'analyze_image'], CONSOLE);
+    expect(result).toEqual({ tools: ['analyze_image', 'generate_image'] });
   });
 
   it('distinguishes "not supplied" from "supplied empty"', () => {

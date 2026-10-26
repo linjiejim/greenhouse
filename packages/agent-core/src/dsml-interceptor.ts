@@ -1,3 +1,4 @@
+import { normalizePluginToolCall } from './tool-results.js';
 /**
  * DSML Interceptor — AI SDK middleware that recovers DeepSeek DSML
  * tool calls leaked as text-delta stream events.
@@ -53,24 +54,10 @@ interface ParsedToolCall {
 
 // ─── Legacy Tool-Name Aliases ────────────────────────────
 
-// DeepSeek sometimes emits OLD split tool names (get_team_knowledge /
-// search_team_knowledge) that were merged into a single `knowledge_query` tool
-// with an `action` arg. Without this remap, a recovered DSML call targets a
-// non-existent tool and silently no-ops (the user sees garbled DSML or a dead
-// turn). Map the legacy names back to the unified tool + action.
-const LEGACY_TOOL_ALIASES: Record<string, { name: string; action: string }> = {
-  get_team_knowledge: { name: 'knowledge_query', action: 'get' },
-  search_team_knowledge: { name: 'knowledge_query', action: 'search' },
-  get_personal_knowledge: { name: 'knowledge_query', action: 'get' },
-  search_personal_knowledge: { name: 'knowledge_query', action: 'search' },
-};
-
+/** Alias projection is supplied by the active tool owner, including for recovered calls. */
 export function normalizeToolCall(call: ParsedToolCall): ParsedToolCall {
-  const alias = LEGACY_TOOL_ALIASES[call.name];
-  if (!alias) return call;
-  // Existing args win over the injected default action, but legacy names never
-  // carry an `action`, so this just supplies it.
-  return { name: alias.name, args: { action: alias.action, ...call.args } };
+  const normalized = normalizePluginToolCall(call.name, call.args, 'dsml');
+  return { name: normalized.toolId, args: normalized.input as Record<string, unknown> };
 }
 
 // ─── DSML Detection Patterns ─────────────────────────────

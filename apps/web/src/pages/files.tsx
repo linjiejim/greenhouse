@@ -1,3 +1,4 @@
+import { fetchDriveCabinetScope } from '../lib/api/drive';
 /**
  * Files (云盘) — the team's file cabinet and my own, as a first-class page.
  *
@@ -26,6 +27,12 @@ function go(href: string) {
 }
 
 export function FilesPage({ params }: { params: URLSearchParams }) {
+  const [scope, setScope] = useState<string | null>(null);
+  useEffect(() => {
+    fetchDriveCabinetScope()
+      .then(setScope)
+      .catch((error) => toast(String(error), 'error'));
+  }, []);
   const t = useT();
   const location = parseFilesLocation(params);
   const { shelf } = location;
@@ -70,10 +77,12 @@ export function FilesPage({ params }: { params: URLSearchParams }) {
             go(href);
           }}
         />
+      ) : !scope ? (
+        <Spinner />
       ) : (
         <DriveBrowser
           key={shelf}
-          owner={{ scope: 'kb', visibility: shelf === 'personal' ? 'private' : 'team' }}
+          owner={{ scope: scope ?? 'drive', visibility: shelf === 'personal' ? 'private' : 'team' }}
           folderId={location.folderId ?? null}
           onFolderChange={(folderId) => go(filesPageHref({ shelf, folderId }))}
           previewFileId={location.fileId ?? null}

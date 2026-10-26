@@ -16,6 +16,12 @@ extension-kit: expose the existing snapshot-locked API and web kits as `@greenho
 
 ### Changed
 
+- 知识库迁为默认启用的官方插件，接管文档、版本、分享、检索、编辑器、MCP 资源与经典网页；既有 API 和链接不变。
+- 每月复盘迁为依赖 Knowledge、默认关闭的官方插件。核心团队上下文支持 Markdown；Knowledge 启用时继续提供团队文档选择。
+- 24 张已迁移业务表的真实 3.0 升级测试验证行数与完整内容不变，覆盖 Knowledge 停用/重启用。
+
+extension-kit: add shared FTS/schema/file/storage helpers, summary/timezone and replica-safe job facades, context selection types and classic editor/sidebar/settings primitives required by Knowledge and Retro. Remove the plugin-owned RetroButton re-export; use the feedback.actions slot or the Retro package page. Update the locked kit snapshots.
+
 - Tables 成为默认启用的官方插件；表、字段、视图、公式、记录、附件、目录、工具、CLI 与经典网页由插件拥有。既有 API、MCP、功能开关与链接保持兼容，停用不删数据。
 - 分享、文件关联、目录、审计应用、运行种类与卡片回执种类改为按启用插件注册值校验新写入；迁移保留历史记录。
 
@@ -38,6 +44,8 @@ extension-kit: add identity policy/routes, channel runtime/turn execution, notif
 extension-kit: add the DB schema primitives, metering/budget/provider hooks, workspace flags/bootstrap, file-cabinet helpers, redaction, activity types, and shared web form/CRUD/preview/formatting components required by the four plugins; no existing symbols removed.
 
 ### Upgrading from 3.x
+
+Knowledge 默认保持启用；每月复盘现在默认关闭。若要保留全部 3.x 模块，配置 `extensions.enabled: ['knowledge', 'tables', 'skills', 'feedback', 'memory', 'projects', 'reports', 'email', 'wecom', 'feishu', 'computer', 'retro']`，或 `GREENHOUSE_EXTENSIONS=knowledge,tables,skills,feedback,memory,projects,reports,email,wecom,feishu,computer,retro` 后重启。停用不会删除文档、历史版本或任何插件数据。
 
 Projects, Reports, Computer, Email, WeCom and Feishu are now off by default. To keep all six, set `GREENHOUSE_EXTENSIONS=knowledge,tables,skills,feedback,memory,projects,reports,computer,email,wecom,feishu`, or use `extensions: { enabled: ['knowledge', 'tables', 'skills', 'feedback', 'memory', 'projects', 'reports', 'computer', 'email', 'wecom', 'feishu'] }` in `greenhouse.config.ts`. Keep any deployment-specific plugins in that list. Computer also retains its independent credential and workspace-switch checks. Disabled tables and rows remain available when re-enabled.
 

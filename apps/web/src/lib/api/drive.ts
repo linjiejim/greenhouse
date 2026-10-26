@@ -12,7 +12,7 @@ import { authFetch } from '../auth';
 import { downloadAuthenticatedFile } from '../file-download';
 export { formatFileSize } from '../file-download';
 
-export type DriveScope = 'kb' | 'tables';
+export type DriveScope = string;
 
 export interface DriveFolder {
   id: string;
@@ -53,8 +53,8 @@ export interface DriveFile {
  * registered on the API, plus the `owner_key` whose meaning only it knows.
  */
 export type DriveOwner =
-  | { scope: 'kb'; visibility: 'team' | 'private'; owner_key?: never }
-  | { scope: 'tables'; base_id: string; owner_key?: never }
+  | { scope: string; visibility: 'team' | 'private'; base_id?: never; owner_key?: never }
+  | { scope: 'tables'; base_id: string; visibility?: never; owner_key?: never }
   | { scope: string; owner_key: string };
 
 /** The extension member of the union — `scope` alone cannot discriminate it. */
@@ -79,7 +79,7 @@ function ownerQuery(owner: DriveOwner): string {
   if (isExtensionDriveOwner(owner))
     return `scope=${encodeURIComponent(owner.scope)}&owner_key=${encodeURIComponent(owner.owner_key)}`;
   if (owner.scope === 'tables') return `scope=tables&base_id=${owner.base_id}`;
-  return `scope=kb&visibility=${owner.visibility}`;
+  return `scope=${encodeURIComponent(owner.scope)}&visibility=${owner.visibility}`;
 }
 
 /**
@@ -199,4 +199,10 @@ export async function downloadDriveFile(file: DriveFile): Promise<void> {
   return downloadAuthenticatedFile(driveFileContentUrl(file), file.name).catch(() => {
     throw new Error('下载失败');
   });
+}
+
+export async function fetchDriveCabinetScope(): Promise<string> {
+  const response = await authFetch('/api/drive/cabinet');
+  if (!response.ok) throw new Error('Could not load the file cabinet');
+  return ((await response.json()) as { scope: string }).scope;
 }

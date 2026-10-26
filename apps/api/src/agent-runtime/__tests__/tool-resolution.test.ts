@@ -14,7 +14,7 @@ import { resolveEffectiveTools, buildLazyServerTools } from '../tool-resolution.
 import { BUILTIN_AGENT_TOOL_IDS, RETIRED_TOOL_ALIASES, getAllToolIds } from '../../tools/registry.js';
 import type { AgentProfile } from '../../profiles/profile.js';
 
-const DECLARED_TOOLS = ['knowledge_query', 'analyze_image'];
+const DECLARED_TOOLS = ['files_query', 'analyze_image'];
 
 function makeProfile(overrides: Partial<AgentProfile>): AgentProfile {
   return {
@@ -123,10 +123,10 @@ describe('stored ids of removed tools', () => {
     const result = await resolveEffectiveTools({
       userId: 'u-super',
       userRole: 'super',
-      profile: makeProfile({ id: 'custom:old', tools: [...REMOVED, 'knowledge_query'] }),
+      profile: makeProfile({ id: 'custom:old', tools: [...REMOVED, 'files_query'] }),
       profileId: 'custom:old',
     });
-    expect(result.effectiveTools).toContain('knowledge_query');
+    expect(result.effectiveTools).toContain('files_query');
     for (const id of REMOVED) expect(result.effectiveTools).not.toContain(id);
   });
 
@@ -155,15 +155,14 @@ describe('RETIRED_TOOL_ALIASES expansion', () => {
     const result = await resolveEffectiveTools({
       userId: 'u-super',
       userRole: 'super',
-      profile: makeProfile({ id: 'custom:retired', tools: ['team_knowledge', 'personal_knowledge'] }),
+      profile: makeProfile({ id: 'custom:retired', tools: ['session_history'] }),
       profileId: 'custom:retired',
     });
 
     // An Agent whose author ticked the old names still reaches the successor…
-    expect(result.effectiveTools).toContain('knowledge_query');
+    expect(result.effectiveTools).toContain('session_query');
     // …and the retired ids themselves never reach the model.
-    expect(result.effectiveTools).not.toContain('team_knowledge');
-    expect(result.effectiveTools).not.toContain('personal_knowledge');
+    expect(result.effectiveTools).not.toContain('session_history');
   });
 
   it('every alias target is a live tool id', () => {

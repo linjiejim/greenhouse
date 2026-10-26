@@ -126,7 +126,7 @@ export function DriveBrowser({
     ? `${owner.scope}:${owner.owner_key}`
     : owner.scope === 'tables'
       ? `tables:${owner.base_id}`
-      : `kb:${owner.visibility}`;
+      : `${owner.scope}:${owner.visibility}`;
 
   const load = useCallback(async () => {
     setLoading(true);

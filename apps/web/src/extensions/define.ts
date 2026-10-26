@@ -45,6 +45,7 @@ export interface WebExtensionPageModule {
 
 export interface WebExtensionPage {
   applicationId?: string;
+  navigationOrder?: number;
   /** Top-level hash segment: the page answers `#/<route>` and `#/<route>/...`. */
   route: string;
   component: LazyExoticComponent<ComponentType<ExtensionPageProps>> | ComponentType<ExtensionPageProps>;
@@ -154,6 +155,9 @@ export interface WebExtension {
   sdk?: number;
   /** Greenhouse versions this supports, as a semver range (`'>=3.0 <4'`); a pre-release counts as its release. */
   core?: string;
+  defaultQuickActions?: () => import('@greenhouse/types/agent-context').QuickAction[];
+  onReconnect?: () => void;
+  wsEvents?: Array<(event: import('@greenhouse/types/ws').ServerWsEvent) => void>;
   identityProviders?: Array<{
     id: string;
     login?: ComponentType<{

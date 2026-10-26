@@ -1,3 +1,4 @@
+import { registeredApplicationOrder } from '../lib/extension-registries';
 /** Shared desktop/mobile primary navigation composition. */
 
 import { FolderOpen, Package, Zap, type LucideIcon } from '../lib/icons';
@@ -44,9 +45,9 @@ interface BuildPrimaryNavigationArgs {
  * Knowledge, Tables and Projects are applications: each appears only when the
  * server-filtered catalog authorizes it and it has a host route.
  */
-export const PRIMARY_NAV_ORDER = ['knowledge', 'files', 'skillhub', 'automations'] as const;
+export const PRIMARY_NAV_ORDER = ['files', 'skillhub', 'automations'] as const;
 
-const APPLICATION_SLOTS = new Set<string>(['knowledge']);
+const APPLICATION_SLOTS = new Set<string>();
 
 export function buildPrimaryNavigation({ applications, labels }: BuildPrimaryNavigationArgs): PrimaryNavigation {
   const applicationItems = applications.flatMap((application) => {
@@ -81,6 +82,11 @@ export function buildPrimaryNavigation({ applications, labels }: BuildPrimaryNav
     primary.findIndex((item) => item.key === 'skillhub'),
     0,
     ...contributed,
+  );
+  const orders: Record<string, number> = { files: 20, skillhub: 50, automations: 60 };
+  primary.sort(
+    (a, b) =>
+      (orders[a.key] ?? registeredApplicationOrder(a.key)) - (orders[b.key] ?? registeredApplicationOrder(b.key)),
   );
   const overflow: PrimaryNavigationItem[] = [];
 

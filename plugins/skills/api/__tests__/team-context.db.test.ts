@@ -1,3 +1,4 @@
+import { services as knowledgeServices } from '../../../knowledge/api/services.js';
 import { services as skillsServices } from '../services.js';
 /**
  * Team context over MCP (v1.7), driven through the real MCP server (in-memory
@@ -23,7 +24,7 @@ import { buildMcpServer, composeMcpContext } from '../../../../apps/api/src/rout
 import { identityFromOAuthScopes } from '../../../../apps/api/src/agent-runtime/mcp-auth.js';
 import { initializePlatformRuntime, resetPlatformRuntimeForTests } from '../../../../apps/api/src/platform/runtime.js';
 import { projectsRegistration } from '../../../projects/api/platform/application.js';
-import { knowledgeRegistration } from '../../../../apps/api/src/platform/knowledge/registration.js';
+import { knowledgeRegistration } from '../../../knowledge/api/platform/registration.js';
 import { tablesRegistration } from '../../../tables/api/platform/application.js';
 import { invalidateWorkspaceConfigCache } from '../../../../apps/api/src/settings/workspace-config.js';
 import { publishSkill } from '../skills/center.js';
@@ -81,7 +82,7 @@ async function connect(user: UserRow, scopes: string[]) {
 }
 
 async function teamDoc(title: string, content: string, visibility: 'team' | 'private' = 'team') {
-  return db.knowledgeBase.create({
+  return knowledgeServices(db).knowledgeBase.create({
     doc_id: unique('doc'),
     scope: 'shared',
     title,
@@ -143,7 +144,7 @@ beforeEach(async () => {
   await setting('team_context.conventions', [conventions.doc_id, laterPrivate.doc_id]);
   await setting('team_context.glossary', glossary.doc_id);
   // Picked while team-visible, then made private: it must stop serving.
-  await db.knowledgeBase.update(laterPrivate.id, { visibility: 'private' }, admin.id);
+  await knowledgeServices(db).knowledgeBase.update(laterPrivate.id, { visibility: 'private' }, admin.id);
 });
 
 afterEach(async () => {
@@ -196,7 +197,7 @@ describe('team context resources', () => {
     const overview = (
       (await client.readResource({ uri: 'greenhouse://context/overview' })).contents[0] as { text: string }
     ).text;
-    expect(overview).toContain('no knowledge access');
+    expect(overview).toContain('Conventions: none set up');
     expect(overview).not.toContain('How we write');
   });
 
@@ -309,7 +310,7 @@ describe('team_context tool', () => {
     expect(JSON.stringify(full)).not.toContain('MUST-NOT-LEAK');
 
     const narrow = await callJson(await connect(member, TABLES_ONLY), 'team_context');
-    expect(narrow.conventions).toBeNull();
+    expect(narrow.conventions).toEqual([]);
     expect(narrow.glossary).toBeNull();
     expect(narrow.prompts).toBeNull();
     expect(narrow.access.map((entry: { group: string }) => entry.group)).toEqual(['tables']);

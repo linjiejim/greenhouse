@@ -40,7 +40,6 @@ describe('surface-derived exposure sets', () => {
         'compute',
         'analyze_image',
         'session_query',
-        'knowledge_query',
         // 2026-08-03: Automations (scheduled tasks) — the model can inspect and
         // manage the user's own schedules; owner scoping is inside the tools.
         'automation_query',
@@ -65,7 +64,6 @@ describe('surface-derived exposure sets', () => {
   it('MUTATING_PROXY_ALLOWLIST matches the pinned write surface (confirm-gated)', () => {
     expect(core(MUTATING_PROXY_ALLOWLIST)).toEqual(
       [
-        'knowledge_mutation',
         'automation_mutation',
         'files_mutation',
         // v1.5: members' agents file requests and report frictions as recorded writes.
@@ -81,8 +79,6 @@ describe('surface-derived exposure sets', () => {
   it('MCP_EXPOSED_TOOL_IDS matches the pinned MCP surface', () => {
     expect(core(MCP_EXPOSED_TOOL_IDS)).toEqual(
       [
-        'knowledge_query',
-        'knowledge_mutation',
         'session_query',
         // 2026-07-23: image generation opened to MCP so image-producing skills
         // call a tool instead of a REST relay.
@@ -167,8 +163,6 @@ describe('surface-derived exposure sets', () => {
         'analyze_image',
         'generate_image',
         'session_query',
-        'knowledge_query',
-        'knowledge_mutation',
         'call_llm',
         'task_capture',
         'read_attachment',

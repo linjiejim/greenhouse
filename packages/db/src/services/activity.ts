@@ -98,19 +98,6 @@ export interface RecentWindow {
   limit: number;
 }
 
-export interface RecentKnowledgeEditRow {
-  key: string;
-  version_id: string;
-  doc_pk: string;
-  slug: string;
-  title: string;
-  version: number;
-  changed_by: string;
-  visibility: 'team' | 'private';
-  owner_user_id: string | null;
-  at: string;
-}
-
 export interface RecentKbFileRow {
   key: string;
   id: string;
@@ -222,44 +209,15 @@ export function createActivityService(db: Db) {
     // Each reads one domain's own change record, newest first, inside a time
     // window and a LIMIT; the caller authorizes every row it shows.
 
-    /**
-     * Saved knowledge edits of documents that are not archived and that the user
-     * may plausibly read: team documents, their own, and shared private ones
-     * (the caller confirms each with resolveKbAccess). Several saves of one
-     * document by one person in the window read as one change: the latest.
-     */
-    async recentKnowledgeEdits(input: RecentWindow & { userId: string }): Promise<RecentKnowledgeEditRow[]> {
-      const rows = await db.execute(sql`
-        SELECT key, version_id, doc_pk, slug, title, version, changed_by, visibility, owner_user_id, ${ISO(sql`created`)} AS at
-        FROM (
-          SELECT DISTINCT ON (v.doc_id, v.changed_by)
-                 ('kb:' || v.id) AS key, v.id AS version_id, kb.id AS doc_pk, kb.doc_id AS slug, kb.title, v.version,
-                 v.changed_by, kb.visibility, kb.owner_user_id, v.created_at AS created
-          FROM kb_versions v
-          JOIN kb_documents kb ON kb.id = v.doc_id
-          WHERE v.created_at >= ${input.since}::timestamptz
-            AND v.changed_by IS NOT NULL
-            AND kb.status <> 'archived'
-            AND (kb.visibility = 'team' OR kb.owner_user_id = ${input.userId}
-                 OR EXISTS (SELECT 1 FROM shares s WHERE s.resource_type = 'kb_document' AND s.resource_id = kb.id))
-          ORDER BY v.doc_id, v.changed_by, v.created_at DESC, v.id DESC
-        ) latest
-        WHERE ${cursorClause(sql`created`, sql`key`, input.cursor)}
-        ORDER BY created DESC, key COLLATE "C" DESC
-        LIMIT ${bound(input.limit)}
-      `);
-      return rows as unknown as RecentKnowledgeEditRow[];
-    },
-
     /** New active knowledge-cabinet files one user may read (team files + their own personal ones). */
-    async recentKbFiles(input: RecentWindow & { userId: string }): Promise<RecentKbFileRow[]> {
+    async recentKbFiles(input: RecentWindow & { userId: string; scope?: string }): Promise<RecentKbFileRow[]> {
       const key = sql`('df:' || f.id)`;
       const rows = await db.execute(sql`
         SELECT ${key} AS key, f.id, f.name, f.folder_id, f.visibility, f.created_by AS uploaded_by,
                ${ISO(sql`f.created_at`)} AS at
         FROM files f
         WHERE f.source = 'drive'
-          AND f.scope = 'kb'
+          AND f.scope = ${input.scope ?? 'drive'}
           AND f.status = 'active'
           AND f.created_by IS NOT NULL
           AND (f.visibility = 'team' OR f.owner_user_id = ${input.userId})

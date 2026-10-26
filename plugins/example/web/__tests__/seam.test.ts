@@ -111,7 +111,7 @@ describe('web extension seam', () => {
     expect(entityPeekMeta('ext:ghost:thing').icon).toBeTruthy();
 
     expect(mcpGroupLabelKey('example')).toBe('ext.example.mcpGroup.label');
-    expect(mcpGroupLabelKey('knowledge')).toBe('mcpGroups.knowledge.label');
+    expect(mcpGroupLabelKey('knowledge')).toBe('ext.knowledge.mcp.label');
     expect(mcpGroupIds([])).not.toContain('example');
     expect(mcpGroupIds(['example'])).toContain('example');
 

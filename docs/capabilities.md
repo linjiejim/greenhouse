@@ -202,3 +202,5 @@
 ## 4.0 插件开关
 
 记忆和问题反馈默认启用；报告模板及其渲染工具、E2B 云电脑改由官方插件提供，编入但默认关闭。在 `extensions.enabled` 或 `GREENHOUSE_EXTENSIONS` 中加入 `reports` / `computer` 并重启即可启用；云电脑仍需凭证和工作区开关。停用时不提供相关路由、工具和界面，原有数据保留。会话分享可由 `conversations.sharing: false` 部署配置关闭。
+
+知识库由默认启用的 Knowledge 官方插件提供，包含原有编辑、分享、检索、版本和 MCP 文档资源。核心团队上下文可直接填写 Markdown；启用知识库后也可选团队文档。每月复盘属于默认关闭的 Retro 插件，依赖 Knowledge；开启后保留既有生成接口、文档与通知。所有插件停用均保留数据。

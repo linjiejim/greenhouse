@@ -1,3 +1,4 @@
+import { registeredDefaultQuickActions } from '../../lib/extension-registries';
 /**
  * Assistant overlay helpers — registry-based context resolution.
  *
@@ -7,7 +8,7 @@
 
 import type { PageContext } from '../agent-context';
 import type { LucideIcon } from '../../lib/icons';
-import { Search, BarChart3 } from '../../lib/icons';
+import { BarChart3 } from '../../lib/icons';
 import { getContextProvider } from '../../lib/context-registry';
 
 // ─── Defaults ────────────────────────────────────────────
@@ -22,7 +23,6 @@ export interface QuickAction {
 }
 
 const DEFAULT_QUICK_ACTIONS: QuickAction[] = [
-  { icon: Search, label: 'Search knowledge base', msg: 'Search the knowledge base for: ' },
   { icon: BarChart3, label: 'Overview', msg: 'Give me an overview of what you can help with.' },
 ];
 
@@ -46,7 +46,11 @@ export function getEmptyStateMessage(ctx: PageContext | null): string {
 }
 
 export function getQuickActions(ctx: PageContext | null): QuickAction[] {
-  if (!ctx) return DEFAULT_QUICK_ACTIONS;
+  if (!ctx)
+    return [
+      ...registeredDefaultQuickActions().map((action) => ({ ...action, icon: action.icon as LucideIcon })),
+      ...DEFAULT_QUICK_ACTIONS,
+    ];
   const provider = getContextProvider(ctx.type as any, ctx);
   if (provider) {
     const actions = provider.quickActions(ctx as any);
@@ -54,7 +58,10 @@ export function getQuickActions(ctx: PageContext | null): QuickAction[] {
       return actions.map((qa) => ({ ...qa, icon: qa.icon as LucideIcon }));
     }
   }
-  return DEFAULT_QUICK_ACTIONS;
+  return [
+    ...registeredDefaultQuickActions().map((action) => ({ ...action, icon: action.icon as LucideIcon })),
+    ...DEFAULT_QUICK_ACTIONS,
+  ];
 }
 
 /**

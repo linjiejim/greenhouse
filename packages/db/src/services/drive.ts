@@ -1,3 +1,4 @@
+import { driveFolderHasContents } from '../drive-content.js';
 import { assertDrivePlacement } from '@greenhouse/types/discriminators';
 /**
  * Drive service — generic folder/file cabinet over `folders` and the drive rows
@@ -14,7 +15,7 @@ import { nowIso } from '@greenhouse/utils/date';
 
 import type { Db } from '../client.js';
 import { newId } from '../ids.js';
-import { files as driveFiles, folders as driveFolders, kbDocuments } from '../schema/index.js';
+import { files as driveFiles, folders as driveFolders } from '../schema/index.js';
 import type { DriveFolderRow, DriveScope, FileStatus } from '../schema/files.js';
 
 /**
@@ -301,6 +302,7 @@ export function createDriveService(db: Db) {
      * folder sharing). Newest first, capped; the caller still authorizes each row.
      */
     async searchKb(opts: {
+      scope?: string;
       userId: string;
       query: string;
       limit?: number;
@@ -313,7 +315,7 @@ export function createDriveService(db: Db) {
           .from(driveFolders)
           .where(
             and(
-              eq(driveFolders.scope, 'kb'),
+              eq(driveFolders.scope, opts.scope ?? 'drive'),
               sql`${driveFolders.name} ILIKE ${pattern}`,
               sql`(${driveFolders.visibility} = 'team' OR ${driveFolders.owner_user_id} = ${opts.userId})`,
             ),
@@ -326,7 +328,7 @@ export function createDriveService(db: Db) {
           .where(
             and(
               isDrive,
-              eq(driveFiles.scope, 'kb'),
+              eq(driveFiles.scope, opts.scope ?? 'drive'),
               eq(driveFiles.status, 'active'),
               sql`${driveFiles.name} ILIKE ${pattern}`,
               sql`(${driveFiles.visibility} = 'team' OR ${driveFiles.owner_user_id} = ${opts.userId})`,
@@ -343,7 +345,12 @@ export function createDriveService(db: Db) {
      * their own personal ones), for activity feeds. Bounded by `limit` (≤ 50);
      * `before` keeps only files created strictly earlier (the feed's paging cursor).
      */
-    async listRecentKbFiles(opts: { userId: string; limit?: number; before?: string | null }): Promise<DriveFileRow[]> {
+    async listRecentKbFiles(opts: {
+      scope?: string;
+      userId: string;
+      limit?: number;
+      before?: string | null;
+    }): Promise<DriveFileRow[]> {
       const limit = Math.min(Math.max(opts.limit ?? 20, 1), 50);
       const rows = await db
         .select(fileColumns)
@@ -351,7 +358,7 @@ export function createDriveService(db: Db) {
         .where(
           and(
             isDrive,
-            eq(driveFiles.scope, 'kb'),
+            eq(driveFiles.scope, opts.scope ?? 'drive'),
             eq(driveFiles.status, 'active'),
             sql`(${driveFiles.visibility} = 'team' OR ${driveFiles.owner_user_id} = ${opts.userId})`,
             opts.before ? sql`${driveFiles.created_at} < ${opts.before}::timestamptz` : undefined,
@@ -440,17 +447,7 @@ export function createDriveService(db: Db) {
         .limit(1);
       if (activeFile.length > 0) return { ok: false, reason: 'not_empty' };
 
-      // kb scope also holds editable docs (kb_documents.folder_id). `ON DELETE SET
-      // NULL` would silently orphan them to the root, so block a non-empty delete
-      // here too — the doc must be moved out first (D14: docs never cascade-die).
-      if (folder.scope === 'kb') {
-        const attachedDoc = await db
-          .select({ id: kbDocuments.id })
-          .from(kbDocuments)
-          .where(and(eq(kbDocuments.folder_id, id), sql`${kbDocuments.status} <> 'archived'`))
-          .limit(1);
-        if (attachedDoc.length > 0) return { ok: false, reason: 'not_empty' };
-      }
+      if (await driveFolderHasContents(db, folder.scope, id)) return { ok: false, reason: 'not_empty' };
 
       await db.delete(driveFolders).where(eq(driveFolders.id, id));
       return { ok: true };

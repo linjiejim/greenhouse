@@ -1,3 +1,4 @@
+import { fromExtensions } from '../extensions/index.js';
 /**
  * Recorded writes by external agents (MCP).
  *
@@ -46,7 +47,6 @@ import type { ToolRegistry } from '../agent.js';
 import { prepareProxyToolCall } from '../agent-runtime/tool-proxy.js';
 import { hashToolInput, instrumentRuntimeTools } from '../runtime/tool-evidence.js';
 import { countUsage } from '../usage/counters.js';
-import { canRead as canReadKb, resolveKbAccess } from '../knowledge/access.js';
 import { classifyWrite, type WriteClassification } from './risk.js';
 
 export type { AgentWritePreview, AgentWriteStatus, AgentWriteView, WriteBasis };
@@ -205,16 +205,10 @@ export async function targetLabel(
   toolId: string,
   input: unknown,
 ): Promise<string | null> {
-  const args = input && typeof input === 'object' && !Array.isArray(input) ? (input as Record<string, unknown>) : {};
-  if (!toolId.startsWith('knowledge_') || typeof args.doc_id !== 'string' || !args.doc_id) return null;
-  try {
-    const doc = await db.knowledgeBase.get(args.doc_id, 'shared');
-    if (!doc || !canReadKb(await resolveKbAccess(db, doc, ownerUserId))) return null;
-    return doc.title;
-  } catch {
-    // A label is a convenience; the input itself is always shown.
-    return null;
-  }
+  const label = fromExtensions('activity')
+    .map((entry) => entry.writeLabels?.[toolId])
+    .find(Boolean);
+  return label ? label(db, ownerUserId, input).catch(() => null) : null;
 }
 
 export async function agentWriteView(db: DatabaseProvider, run: RuntimeRunRow): Promise<AgentWriteView> {

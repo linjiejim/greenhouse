@@ -60,17 +60,6 @@ export interface FeaturePointDef {
  */
 const CORE_FEATURE_POINTS: readonly FeaturePointDef[] = [
   {
-    key: 'knowledge',
-    title: 'Knowledge',
-    description: 'Team and personal knowledge base, retrieval, and editing.',
-    icon: 'BookOpen',
-    kind: 'app',
-    group: 'apps',
-    appId: 'knowledge',
-    capabilityPrefix: 'knowledge.*',
-    toolIds: ['knowledge_query', 'knowledge_mutation'],
-  },
-  {
     key: 'tools',
     title: 'Advanced tools',
     description: 'Opt-in tools not owned by an application — grant individually.',

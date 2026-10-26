@@ -31,6 +31,7 @@ export default defineWebExtension({
     {
       route: 'tables',
       applicationId: 'tables',
+      navigationOrder: 30,
       component: Page,
       titleKey: 'ext.tables.navigation.tables',
       sidebarPanel: TablesNavPanel,

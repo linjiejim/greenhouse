@@ -1,3 +1,4 @@
+import { cabinetDriveScope } from '../drive/access.js';
 import { fromExtensions } from '../extensions/index.js';
 /**
  * Object references — /api/refs
@@ -37,7 +38,6 @@ import type { ActorContext } from '@greenhouse/platform-kernel';
 import type { AppEnv } from '../app-env.js';
 import { getAuthUser, requireInternal } from '../auth/middleware.js';
 import type { AuthUser } from '../auth/token.js';
-import { canRead, resolveKbAccess } from '../knowledge/access.js';
 import { canReadDrive, resolveDriveAccess } from '../drive/access.js';
 import { canAccessSession } from '../sessions/access.js';
 import { humanActor } from '../platform/actor.js';
@@ -86,25 +86,16 @@ async function resolveRef(ref: ObjectRef, r: ObjectRefResolver): Promise<Resolve
   const contributed = fromExtensions('objectRefs').find((resolver) => resolver.type === ref.type);
   if (contributed) return contributed.resolve(ref, r);
   switch (ref.type) {
-    case 'doc': {
-      if (!(await r.capability('knowledge.library.read'))) return hidden;
-      // By slug exactly like GET /api/knowledge/docs/:slug, the route the slug link opens.
-      const doc =
-        ref.slug !== undefined
-          ? await r.db.knowledgeBase.get(ref.slug, 'shared')
-          : await r.db.knowledgeBase.getById(ref.id);
-      if (!doc || doc.status === 'archived') return hidden;
-      if (!canRead(await resolveKbAccess(r.db, doc, r.user.id))) return hidden;
-      return ref.slug !== undefined ? { title: clip(doc.title), id: String(doc.id) } : { title: clip(doc.title) };
-    }
+    case 'doc':
+      return hidden;
     case 'folder': {
       const folder = await r.db.drive.getFolder(ref.id);
-      if (!folder || folder.scope !== 'kb') return hidden;
+      if (!folder || folder.scope !== cabinetDriveScope()) return hidden;
       return canReadDrive(resolveDriveAccess(folder, r.user.id, {})) ? { title: clip(folder.name) } : hidden;
     }
     case 'file': {
       const file = await r.db.drive.getFile(ref.id);
-      if (!file || file.scope !== 'kb' || file.status !== 'active') return hidden;
+      if (!file || file.scope !== cabinetDriveScope() || file.status !== 'active') return hidden;
       if (!canReadDrive(resolveDriveAccess(file, r.user.id, {}))) return hidden;
       return { title: clip(file.name), meta: { size: file.size, contentType: file.content_type } };
     }

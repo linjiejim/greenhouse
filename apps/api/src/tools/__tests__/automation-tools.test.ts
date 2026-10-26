@@ -274,7 +274,10 @@ describe('automation_mutation — unattended_tools from chat', () => {
   };
 
   it('a person in the web/mobile chat can switch on writes, and sees the run tool list', async () => {
-    setExtensionAutomationTools([{ id: 'fixture_mutation', tier: 'write' }]);
+    setExtensionAutomationTools([
+      { id: 'fixture_write', tier: 'write' },
+      { id: 'fixture_mutation', tier: 'write' },
+    ]);
     const { db, store } = fakeDb([]);
     const result = await asTool(createAutomationMutationTool(db, { ...OWNER, canGrantTools: true })).execute({
       ...CREATE,
@@ -303,12 +306,12 @@ describe('automation_mutation — unattended_tools from chat', () => {
     const result = await asTool(createAutomationMutationTool(db, { ...OWNER, canGrantTools: true })).execute({
       action: 'update',
       id: 3,
-      unattended_tools: ['knowledge_mutation'],
+      unattended_tools: ['fixture_write'],
     });
 
     expect(result.status).toBe('updated');
-    expect(result.unattended_tools).toEqual(['knowledge_mutation']);
-    expect(result.run_tools).toContain('knowledge_mutation');
+    expect(result.unattended_tools).toEqual(['fixture_write']);
+    expect(result.run_tools).toContain('fixture_write');
     expect(result.run_tools).not.toContain('memory');
   });
 

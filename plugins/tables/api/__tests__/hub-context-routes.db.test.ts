@@ -1,3 +1,4 @@
+import { services as knowledgeServices } from '../../../knowledge/api/services.js';
 import { services as tableServices } from '../services.js';
 /**
  * The v1.7 HTTP surfaces behind the same guards `index.ts` mounts them with:
@@ -20,13 +21,14 @@ import type {
 import type { AppEnv } from '../../../../apps/api/src/app-env.js';
 import { requireInternal, requireSuper } from '../../../../apps/api/src/auth/middleware.js';
 import { createInternalTestUser } from '../../../../tests/helpers/internal-user.js';
-import { adminRetroRoutes, adminTeamContextRoutes } from '../../../../apps/api/src/routes/admin-team-context.js';
+import { adminTeamContextRoutes } from '../../../../apps/api/src/routes/admin-team-context.js';
+import adminRetroRoutes from '../../../retro/api/routes.js';
 import dataCatalogRoutes from '../../../../apps/api/src/routes/data-catalog.js';
 import { createAgentAccessRoutes } from '../../../../apps/api/src/routes/agent-access.js';
 import { invalidateWorkspaceConfigCache } from '../../../../apps/api/src/settings/workspace-config.js';
 import { initializePlatformRuntime, resetPlatformRuntimeForTests } from '../../../../apps/api/src/platform/runtime.js';
 import { tablesRegistration } from '../platform/application.js';
-import { knowledgeRegistration } from '../../../../apps/api/src/platform/knowledge/registration.js';
+import { knowledgeRegistration } from '../../../knowledge/api/platform/registration.js';
 import { stopUpkeepJobs } from '../../../../apps/api/src/scheduler/upkeep-jobs.js';
 
 vi.setConfig({ testTimeout: 20_000 });
@@ -69,7 +71,7 @@ async function call(as: UserRow, method: string, path: string, body?: unknown) {
 }
 
 async function doc(title: string, visibility: 'team' | 'private') {
-  return db.knowledgeBase.create({
+  return knowledgeServices(db).knowledgeBase.create({
     doc_id: unique('doc'),
     scope: 'shared',
     title,
@@ -141,7 +143,7 @@ describe('Administration › Team context', () => {
     // The zone change rescheduled the retro.
     expect(view.retro_next_run_at).toEqual(expect.any(String));
 
-    await db.knowledgeBase.update(glossary.id, { visibility: 'private' }, admin.id);
+    await knowledgeServices(db).knowledgeBase.update(glossary.id, { visibility: 'private' }, admin.id);
     const after = (await call(admin, 'GET', '/api/admin/team-context')).json as TeamContextSettingsView;
     expect(after.glossary).toMatchObject({ doc_id: glossary.doc_id, problem: 'not_team' });
 

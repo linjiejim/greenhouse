@@ -1,8 +1,9 @@
+import {cabinetDriveScope} from '../../apps/api/src/drive/access.js';
 /**
  * Drive (云盘) repository integration tests.
  *
  * The drive subsystem is a generic folder/file cabinet shared by two scopes:
- *   - scope='kb'  → knowledge-base folders, keyed by visibility + owner_user_id
+ *   - scope=cabinetDriveScope()  → knowledge-base folders, keyed by visibility + owner_user_id
  *                   (this file's focus: a user's private tree)
  *   - scope='tables' → Base-owned folders/files, keyed by base_id
  *
@@ -26,7 +27,7 @@ async function createUser(db: DatabaseProvider, email: string) {
 
 /** Owner keys for a user's private knowledge tree. */
 function privateKb(ownerId: string) {
-  return { scope: 'kb' as const, visibility: 'private' as const, owner_user_id: ownerId };
+  return { scope: cabinetDriveScope(), visibility: 'private' as const, owner_user_id: ownerId };
 }
 
 describe('Drive — private knowledge folders', () => {
@@ -49,7 +50,7 @@ describe('Drive — private knowledge folders', () => {
     });
 
     expect(folder.id).toMatch(/^fld_/);
-    expect(folder.scope).toBe('kb');
+    expect(folder.scope).toBe(cabinetDriveScope());
     expect(folder.visibility).toBe('private');
     expect(folder.owner_user_id).toBe(alice.id);
     expect(folder.parent_id).toBeNull();
@@ -223,16 +224,16 @@ describe('Drive — updateFolder (rename / move)', () => {
 
   /** Three-level kb team tree: root → child → grandchild. */
   async function kbTree(ownerId: string) {
-    const root = await db.drive.createFolder({ scope: 'kb', visibility: 'team', name: 'root', created_by: ownerId });
+    const root = await db.drive.createFolder({ scope: cabinetDriveScope(), visibility: 'team', name: 'root', created_by: ownerId });
     const child = await db.drive.createFolder({
-      scope: 'kb',
+      scope: cabinetDriveScope(),
       visibility: 'team',
       parent_id: root.id,
       name: 'child',
       created_by: ownerId,
     });
     const grand = await db.drive.createFolder({
-      scope: 'kb',
+      scope: cabinetDriveScope(),
       visibility: 'team',
       parent_id: child.id,
       name: 'grand',
@@ -258,7 +259,7 @@ describe('Drive — updateFolder (rename / move)', () => {
 
     // child (with grand under it) → root's sibling level.
     expect(await db.drive.updateFolder(child.id, { parent_id: null })).toMatchObject({ ok: true });
-    const roots = await db.drive.listFolders({ scope: 'kb', visibility: 'team', parent_id: null });
+    const roots = await db.drive.listFolders({ scope: cabinetDriveScope(), visibility: 'team', parent_id: null });
     expect(roots.map((f) => f.name).sort()).toEqual(['child', 'root']);
     // The subtree followed: grand is still under child.
     expect(await db.drive.breadcrumb(grand.id)).toMatchObject([{ id: child.id }, { id: grand.id }]);

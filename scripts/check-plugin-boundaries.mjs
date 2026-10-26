@@ -11,7 +11,10 @@ function walk(dir) {
     return entry.isDirectory() ? walk(file) : /\.[cm]?[jt]sx?$/.test(file) ? [file] : [];
   });
 }
-const violations = ['apps', 'packages', 'plugins'].flatMap(walk).flatMap((file) => {
+// Exact core import audit: node scripts/check-plugin-boundaries.mjs --core-only
+// AST resolution covers static imports, re-exports, import types and literal dynamic loads.
+const coreOnly = process.argv.includes('--core-only');
+const violations = (coreOnly ? ['apps', 'packages'] : ['apps', 'packages', 'plugins']).flatMap(walk).flatMap((file) => {
   const text = readFileSync(file, 'utf8');
   return [...checkCorePluginImports(file, text), ...checkPluginImports(file, text)].map(
     (v) => `${file}:${v.line} ${v.specifier} — ${v.reason}`,

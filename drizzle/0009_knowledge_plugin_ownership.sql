@@ -1,0 +1,1 @@
+-- Knowledge tables are now owned by the plugin adoption lane. No DDL or data changes.

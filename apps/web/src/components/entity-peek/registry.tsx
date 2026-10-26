@@ -10,45 +10,50 @@
  * is a Markdown link: a global search palette resolves to the same `{kind, id}`
  * and should route through this table unchanged.
  */
-
-import React, { lazy } from 'react';
+import React from 'react';
 import type { CoreEntityKind, EntityKind, EntityRef } from '@greenhouse/types/entity-links';
-import { FileText, HelpCircle, type LucideIcon } from '../../lib/icons';
+import { HelpCircle, type LucideIcon } from '../../lib/icons';
 import type { TranslationKey } from '../../lib/i18n';
 import { registeredEntityKind } from '../../lib/extension-registries';
-
-const KnowledgeDocPeek = lazy(() => import('./knowledge-doc-peek').then((m) => ({ default: m.KnowledgeDocPeek })));
-
 /** Header chrome for every core kind, including the ones with no peek body yet. */
-export const ENTITY_PEEK_META: Partial<Record<CoreEntityKind, { icon: LucideIcon; fallbackTitleKey: TranslationKey }>> =
-  {
-    kb_doc: { icon: FileText, fallbackTitleKey: 'entityPeek.doc' },
-  };
-
+export const ENTITY_PEEK_META: Partial<
+  Record<
+    CoreEntityKind,
+    {
+      icon: LucideIcon;
+      fallbackTitleKey: TranslationKey;
+    }
+  >
+> = {};
 /**
  * Chrome for any kind — core from the table above, extension kinds from the
  * registry their web half fills. Falls back to a neutral icon so an unknown
  * kind renders a plain peek instead of crashing the host.
  */
-export function entityPeekMeta(kind: EntityKind): { icon: LucideIcon; fallbackTitleKey: TranslationKey } {
-  const core = (ENTITY_PEEK_META as Record<string, { icon: LucideIcon; fallbackTitleKey: TranslationKey }>)[kind];
+export function entityPeekMeta(kind: EntityKind): {
+  icon: LucideIcon;
+  fallbackTitleKey: TranslationKey;
+} {
+  const core = (
+    ENTITY_PEEK_META as Record<
+      string,
+      {
+        icon: LucideIcon;
+        fallbackTitleKey: TranslationKey;
+      }
+    >
+  )[kind];
   if (core) return core;
   const registered = registeredEntityKind(kind);
   return registered
     ? { icon: registered.icon, fallbackTitleKey: registered.fallbackTitleKey as TranslationKey }
     : { icon: HelpCircle, fallbackTitleKey: 'entityPeek.record' };
 }
-
 /**
  * The peek body for a record, or null when this kind has no peek yet — the host
  * then offers "open full page" instead of showing an empty panel. Tables records
  * are the one such kind today (their deeplink lands in a later phase).
  */
 export function renderEntityPeekBody(ref: EntityRef): React.ReactNode | null {
-  switch (ref.kind) {
-    case 'kb_doc':
-      return <KnowledgeDocPeek id={String(ref.id)} />;
-    default:
-      return registeredEntityKind(ref.kind)?.render?.(ref) ?? null;
-  }
+  return registeredEntityKind(ref.kind)?.render?.(ref) ?? null;
 }

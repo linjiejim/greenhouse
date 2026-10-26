@@ -540,9 +540,40 @@ specs import only @playwright/test and use the shared authenticated browser stat
 ### Tables extraction seams (4.0)
 
 - `catalogSources: [{id, replaceDefaultSource?, load(CatalogInput)}]` contributes the existing data-catalog `bases` and truncation fields through `fromExtensions`; loaders enforce the caller's reachable tools and platform actor. Core does not know the owning application. `replaceDefaultSource` suppresses the automatic tool-source entry when the plugin owns its full catalog presentation.
-- `discriminators` registers `shareResources`, `fileLinkTargets`, `folderScopes`, `auditApps`, `runKinds`, and `artifactKinds`. Core service writes reject unknown values; historical reads survive disabled plugins. Application ids also register from active applications. Knowledge currently registers its values at the host until its package move.
+- `discriminators` registers `shareResources`, `fileLinkTargets`, `folderScopes`, `auditApps`, `runKinds`, and `artifactKinds`. Core service writes reject unknown values; historical reads survive disabled plugins. Application ids also register from active applications. Knowledge registers its legacy values from its package; the host has no domain bridge.
 - `driveScopes` can add `placement(input,userId)`, `validatePlacement(input)` and `authorizeNode(node,ctx)` for a legacy placement contract. Omitted fields preserve the existing owner_key behavior. Tables keeps base_id without changing stored rows.
 - `meta.interactiveOnly` declares a draft that requires a person at its card; the catalog adds it to the shared headless deny list after catalog construction.
 - Web `toolCards` can add `matches(output)` and receive `actionId` / `sessionId` from the host. Read-only conversations receive neither handle. `placement: below` preserves prose-before-confirm order.
 
 Tables' nine tables are owned by its schema and idempotent adoption lane. It is enabled by default and uses the same boundary rules as private packages. Shared InlineEditCell remains core because other plugins already use that kit primitive.
+
+
+### Knowledge, team context and monthly summaries (4.0)
+
+- Knowledge is enabled by default; Retro is compiled but disabled and depends on Knowledge. Both retain their old URLs, ids and document links. Their schemas/rules live with the packages.
+- `teamContextSources: [{toolIds,resolve(db,config),validate(db,input),candidates(db)}]` supplies published team documents and administrative selection metadata. The built-in Markdown settings remain useful with no plugin. Existing document ids stay in `team_context.conventions/glossary`; disabling their source never clears stored values. One document selection source is installed per deployment.
+- `mcpResources: [{toolIds,list(caller),templates(caller),read(uri,caller)}]` preserves domain URI schemes and dynamic templates. Callers include the actual reachable tool set and actor; providers enforce their own platform/record ACL. Example notes demonstrates direct reads and a template; arbitrary URI probing must return undefined without revealing existence.
+- `toolResults` contributes `ToolResultAdapter` entries (toolId, summarizeInput/Output, references, relevance). Streaming, recovered steps and headless transcripts use the same adapter. The exact Runtime evidence is unaffected. Error outputs produce no references.
+- `settingValueValidators` validates/canonicalizes non-string settings with ValidationResult or null when it does not own the key. Existing string settingValidators remain supported.
+- `workspaceTimeZoneChanged` callbacks replan active schedules; `schedules[].nextRun` supplies existing administrative schedule metadata. `runExtensionJob(id,run,occurrence)` shares claims across replicas. Retro's one-shot planner retains UTC-close protection.
+- driveScopes may supply `authorizeSync`, `hasFolderContents(db,folderId)` and `cabinet: true`. This keeps Knowledge's legacy kb cabinet for the default installation; a zero-plugin host uses its independent drive cabinet. A second cabinet selector is rejected.
+- Classic web `wsEvents` and `onReconnect` are dispatched only to active owners. Page navigationOrder preserves relative application placement without host id cases. Existing slots supply optional document pickers and review actions.
+- Active activity contributions own writeLabels/writeRisks and dynamic auditShape. The host's destructive/base-r3 classification remains authoritative before a lower plugin tier.
+
+The executable import audit is `node scripts/check-plugin-boundaries.mjs --core-only`; the full checker also audits plugin production imports. It parses imports, re-exports, import types and literal dynamic loads instead of relying on line-oriented grep.
+
+Run the populated upgrade rehearsal with:
+
+```sh
+TEST_DATABASE_URL=postgresql://greenhouse:greenhouse@127.0.0.1:55450/gh4_test \
+  VITEST_UNIT_MAX_WORKERS=4 VITEST_DB_MAX_WORKERS=3 \
+  pnpm exec vitest run tests/db/plugin-upgrade.db-commit.test.ts
+```
+
+It creates a throwaway database at the explicit test server, applies the immutable 3.0 migration subset, inserts connected data in every one of the 24 extracted tables, and runs the current core plus plugin lanes. Counts and full-row fingerprints must remain identical, including a Knowledge-off/on cycle. It drops only that uniquely named fixture database.
+
+The shared leaf `@greenhouse/knowledge-editor/markdown` is an allowed plugin import for server conversion (declare its package dependency); classic browser editor primitives are exposed through the web kit. The API host does not depend on that package.
+
+Classic `defaultQuickActions()` contributes optional Assistant launcher actions. The host filters by active owner, so disabling a module removes its launcher entry.
+
+A toolResults adapter may also contribute legacyCalls handlers for proxy and DSML recovery. Only active owners normalize old names; the Knowledge adapter preserves its exact historical action/scope merges.

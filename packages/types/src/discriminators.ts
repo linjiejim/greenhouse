@@ -12,7 +12,7 @@ export type Discriminator = keyof DiscriminatorValues;
 const core: Required<DiscriminatorValues> = {
   shareResources: ['folder', 'file'],
   fileLinkTargets: ['message'],
-  folderScopes: [],
+  folderScopes: ['drive'],
   auditApps: ['platform', 'drive', 'connectors'],
   runKinds: RUNTIME_RUN_KINDS,
   artifactKinds: ['task_capture'],
@@ -54,7 +54,11 @@ export function registerDrivePlacements(
 export function assertDrivePlacement(input: DrivePlacementInput): void {
   assertDiscriminator('folderScopes', input.scope);
   const valid =
-    validators.get(input.scope)?.(input) ??
-    (input.owner_key != null && input.base_id == null && input.visibility == null && input.owner_user_id == null);
+    input.scope === 'drive'
+      ? input.base_id == null &&
+        input.owner_key == null &&
+        (input.visibility === 'team' || (input.visibility === 'private' && input.owner_user_id != null))
+      : (validators.get(input.scope)?.(input) ??
+        (input.owner_key != null && input.base_id == null && input.visibility == null && input.owner_user_id == null));
   if (!valid) throw new Error(`Invalid placement for drive scope: ${input.scope}`);
 }

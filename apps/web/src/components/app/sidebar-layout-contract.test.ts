@@ -13,7 +13,10 @@ describe('Sidebar layout contract', () => {
   });
 
   it('uses the same segmented scope control as Chat in Knowledge', () => {
-    const knowledge = readFileSync(new URL('./sidebar-panels/knowledge-nav-panel.tsx', import.meta.url), 'utf8');
+    const knowledge = readFileSync(
+      new URL('../../../../../plugins/knowledge/web/sidebar/knowledge-nav-panel.tsx', import.meta.url),
+      'utf8',
+    );
 
     expect(knowledge).toMatch(/<FilterPills[\s\S]{0,240}variant="segment"[\s\S]{0,120}fill/);
   });

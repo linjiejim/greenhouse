@@ -133,7 +133,7 @@ Details: [MCP & agent access](#mcp--agent-access).
 
 ### Modules
 
-- **Knowledge Base** — team, personal and shared documents with a Tiptap editor, Markdown-first
+- **Knowledge Base** (official plugin, enabled by default) — team, personal and shared documents with a Tiptap editor, Markdown-first
   storage, folders plus a file cabinet, templates, version history and restore, per-person
   sharing, AI rewrite / enrich / generate, live updates and editing presence, and segmented
   full-text search (CJK-aware).
@@ -158,13 +158,13 @@ Details: [MCP & agent access](#mcp--agent-access).
   the Scheduled tab of conversation history, apart from your own chats.
 - **Issues & requests** — feature requests and frictions in one admin queue; members' agents
   can file both over MCP.
-- **Monthly retro (复盘)** — at 09:00 on the 1st, in the time zone set under Administration →
+- **Monthly retro (复盘)** (optional Retro plugin, disabled by default; requires Knowledge) — at 09:00 on the 1st, in the time zone set under Administration →
   Team context (default Asia/Shanghai), a team document "YYYY-MM 复盘" lands in the knowledge
   folder 复盘: module usage, members' agent writes by client (failed / outcome unknown), top
   frictions and requests, and spend by service — aggregates only — plus a short list of
   suggestions the model writes from those numbers (charged to the team; skipped, with the
   reason, when the budget is used up or no model is set). Admins can also generate this month's
-  from Issues & requests.
+  from Administration → Monthly retro, or Issues & requests when Feedback is enabled.
 - **Data catalog** — Tables › Data catalog lists the bases and extension data sources a member
   can read (row counts, owner, last change) and which MCP tool their agent reaches each with.
 - **SkillHub** — an org-wide library of agent skills (SKILL.md bundles) with immutable versions,
@@ -865,3 +865,10 @@ Email, WeCom and Feishu are also official plugins compiled into the image and di
 SkillHub 是默认启用的官方插件；保存的提示词、`/api/prompts` 和 `task_capture` 仍由核心提供。Projects 已编译进镜像，但在 4.0 默认关闭。若要保留 3.x 的项目页面、手机 API、工具和示例数据，在 `greenhouse.config.ts` 的 `extensions.enabled` 中加入 `projects`，或设置 `GREENHOUSE_EXTENSIONS=knowledge,tables,skills,feedback,memory,projects`（保留其他已启用插件），然后重启。`/api/projects*`、工具 id 和已有链接地址不变。两个插件接管现有表，无需复制或删除数据；停用后数据保留。启用 SkillHub 时，`packs.skills` 配置的目录仍会在启动时同步。
 
 Tables 是默认启用的官方插件（`plugins/tables`）。`extensions.enabled` 保留 `tables` 即可继续使用 3.x 的页面、手机 API、MCP 工具和 `features.tables`；移除后需重启，入口随之消失，九张业务表和已有记录保留。`GREENHOUSE_EXTENSIONS=` 可运行不启用插件的核心。表结构计划仍由用户在卡片确认后经 `/api/tables/schema-plan/apply` 应用。
+
+
+Knowledge 已迁入 `plugins/knowledge`，默认开启，原有 `/api/knowledge/*`、文档链接、分享、检索与 MCP 资源不变。核心 Administration → Team context 可以直接填写 Markdown；Knowledge 启用后可继续选择已有团队文档。关闭插件不会清空这些选择或文档。
+
+每月复盘位于 `plugins/retro`，默认关闭并依赖 Knowledge。保留 3.x 复盘时，在启用列表中加入 `retro`（同时保留 `knowledge`）并重启；例如 `GREENHOUSE_EXTENSIONS=knowledge,tables,skills,feedback,memory,retro`。复盘保留原来的月度文档、通知与时区规则；其管理页独立于 Issues & requests，启用 Feedback 时也在该页提供生成按钮。核心 Files 在没有任何插件时使用独立的 drive 文件柜；Knowledge 启用时继续使用现有 kb 文件柜。
+
+真实升级回归 `tests/db/plugin-upgrade.db-commit.test.ts` 从含数据的 3.0 库验证 24 张迁移表，检查行数和内容摘要在升级、停用及重新启用后完全相同。运行方法见 [插件扩展指南](EXTENDING.md#knowledge-team-context-and-monthly-summaries-40)。

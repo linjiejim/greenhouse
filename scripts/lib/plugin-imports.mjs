@@ -7,7 +7,7 @@ import ts from 'typescript';
 const TEST = /(?:\.(?:test|spec|e2e)\.[cm]?[jt]sx?$|(?:^|\/)(?:__tests__|e2e)\/)/;
 const BUILTINS = new Set(builtinModules.flatMap((id) => [id, `node:${id}`]));
 const publicHost =
-  /^(?:@greenhouse\/(?:api|web)\/extension-kit|@greenhouse\/types\/.+|@greenhouse\/crud|@greenhouse\/ui\/.+)$/;
+  /^(?:@greenhouse\/(?:api|web)\/extension-kit|@greenhouse\/types\/.+|@greenhouse\/crud|@greenhouse\/knowledge-editor\/markdown|@greenhouse\/ui\/.+)$/;
 const packageName = (id) => (id.startsWith('@') ? id.split('/').slice(0, 2).join('/') : id.split('/')[0]);
 
 /** AST parsing covers imports, re-exports, import types, require and dynamic imports. */
