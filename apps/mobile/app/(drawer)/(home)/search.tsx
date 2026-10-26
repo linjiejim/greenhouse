@@ -5,15 +5,16 @@
  * sheet, a conversation as its page.
  */
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState, type ComponentRef } from 'react';
 import { SectionList, Text } from 'react-native';
-import { Stack } from 'expo-router';
+import { Stack, useNavigation } from 'expo-router';
 import { searchAll } from '../../../src/api/assistant';
 import { searchCabinet } from '../../../src/api/drive';
 import { parseMyTasks } from '../../../src/data/recent-items';
 import { fileSection, stationSections, taskSection, type SearchHitView, type SearchSection } from '../../../src/data/search';
 import { formatBytes } from '../../../src/lib/format';
 import { useT, type TranslationKey } from '../../../src/lib/i18n';
+import { relativeTimeNow } from '../../../src/lib/time-words';
 import { useOpenObject } from '../../../src/shell/open-object';
 import { readOffline } from '../../../src/store/offline';
 import { makeStyles, space, typo, useTheme } from '../../../src/theme';
@@ -24,6 +25,7 @@ import { LIST_TILE, Row, SectionHeader, rowPosition } from '../../../src/ui/list
 
 const TITLE: Record<SearchSection['kind'], TranslationKey> = {
   session: 'search.conversations',
+  automation: 'search.automations',
   kb_doc: 'search.docs',
   project: 'search.projects',
   file: 'search.files',
@@ -33,6 +35,7 @@ const TITLE: Record<SearchSection['kind'], TranslationKey> = {
 
 const ICON: Record<SearchSection['kind'], IconName> = {
   session: 'msg',
+  automation: 'clock',
   kb_doc: 'file',
   project: 'checklist',
   file: 'fileOther',
@@ -50,6 +53,25 @@ export default function Search() {
   const [searching, setSearching] = useState(false);
   const [failed, setFailed] = useState(false);
   const q = query.trim();
+  // autoFocus alone does not take on a stacked bar: focus it once the push has finished (the
+  // native bar is attached by then), with a timer as the fallback when no transition runs
+  const bar = useRef<ComponentRef<typeof Stack.SearchBar>>(null);
+  const navigation = useNavigation();
+  useEffect(() => {
+    // once only: a second focus while the user is typing moves the caret and drops letters
+    let done = false;
+    const focus = () => {
+      if (done) return;
+      done = true;
+      bar.current?.focus();
+    };
+    const timer = setTimeout(focus, 700);
+    const off = navigation.addListener('transitionEnd' as never, focus);
+    return () => {
+      clearTimeout(timer);
+      off();
+    };
+  }, [navigation]);
 
   useEffect(() => {
     if (!q) {
@@ -65,7 +87,7 @@ export default function Search() {
         const tasks = (parseMyTasks(saved) ?? []).flatMap((group) => group.tasks);
         setSections(
           [
-            ...(station.ok ? stationSections(station.data.groups) : []),
+            ...(station.ok ? stationSections(station.data.groups, relativeTimeNow) : []),
             files.ok ? fileSection(files.data.files, (size) => (size != null ? formatBytes(size) : '')) : null,
             taskSection(tasks, q),
           ].filter((section): section is SearchSection => !!section),
@@ -85,6 +107,7 @@ export default function Search() {
     <>
       <Stack.Screen options={{ title: t('common.search') }} />
       <Stack.SearchBar
+        ref={bar}
         placeholder={t('search.placeholder')}
         // searches match words as typed: no automatic capital ("launch" stays "launch")
         autoCapitalize="none"

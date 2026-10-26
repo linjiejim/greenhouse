@@ -1,10 +1,11 @@
 /**
- * 云盘 — the team's files, mine, and (with the `tables` feature) the table bases: one segmented
+ * 云盘 — 最近 (the files I opened on this phone, the first segment and where the page opens, like
+ * 知识库), the team's files, mine, and (with the `tables` feature) the table bases: one segmented
  * control at the top, one folder level per page in this tab's stack (`?shelf=&folder=`) under a
- * path bar that jumps back to any level. A file opens as a sheet (Quick Look with share). + uploads
- * from Photos, the camera or Files into the folder on screen, or makes a folder; a long press on a
- * row renames, moves or deletes it (src/library/library-row.tsx). The native search bar searches
- * names on both shelves.
+ * path bar that jumps back to any level. A file opens as a sheet (Quick Look with share). + is
+ * always there: it uploads from Photos, the camera or Files into the folder on screen (on 最近,
+ * into 我的), or makes a folder; a long press on a row renames, moves or deletes it
+ * (src/library/library-row.tsx). The native search bar searches names on both shelves.
  */
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
@@ -30,38 +31,48 @@ import { useOpenObject } from '../../../src/shell/open-object';
 import { useAuth } from '../../../src/store/auth';
 import { recentFiles, rememberFile } from '../../../src/store/offline';
 import { makeStyles, space, useTheme } from '../../../src/theme';
-import { NativeButton } from '../../../src/ui/button';
 import { alertError, promptText } from '../../../src/ui/dialogs';
 import { DirectorySearch, useDirectoryFilter } from '../../../src/ui/directory-search';
 import { SidebarToolbar } from '../../../src/ui/sidebar';
+import { useWholePageDrawerSwipe } from '../../../src/ui/place-swipe';
 import { EmptyState, LoadingState } from '../../../src/ui/empty';
 import { notifySuccess } from '../../../src/ui/haptics';
-import { Row, SectionHeader, rowPosition, type RowPosition } from '../../../src/ui/list';
+import { Row, rowPosition, type RowPosition } from '../../../src/ui/list';
 import { refreshItem, usePullRefresh } from '../../../src/ui/refresh';
 import { Segmented } from '../../../src/ui/segmented';
 import { toast } from '../../../src/ui/toast';
 import { toolbarIcon } from '../../../src/ui/toolbar-icon';
 import { objectId } from '../../../src/lib/object-id';
 
-type View = FilesShelf | 'tables';
+type View = FilesShelf | 'tables' | 'recent';
 
 type Item =
-  | { key: string; type: 'header'; title: string }
-  | { key: string; type: 'failed' }
   | { key: string; type: 'entry'; entry: LibraryItem; position: RowPosition }
   | { key: string; type: 'base'; base: TableBase; position: RowPosition };
 
 export default function Drive() {
   const params = useLocalSearchParams<{ shelf?: string; folder?: string; view?: string }>();
   const t = useT();
+  // a rightward swipe anywhere on the page opens the sidebar, as on home
+  useWholePageDrawerSwipe();
   const router = useRouter();
   const openObject = useOpenObject();
   const actions = useLibraryActions();
   const user = useAuth((s) => s.user);
   const tablesOn = hasTables(user);
-  const view: View = params.view === 'tables' && tablesOn ? 'tables' : params.shelf === 'personal' ? 'personal' : 'team';
-  const shelf: FilesShelf = view === 'personal' ? 'personal' : 'team';
   const folderId = objectId(params.folder);
+  // the page opens on 最近; a folder always belongs to a shelf
+  const view: View =
+    params.view === 'tables' && tablesOn
+      ? 'tables'
+      : params.shelf === 'personal' || params.shelf === 'team'
+        ? params.shelf
+        : folderId == null
+          ? 'recent'
+          : 'team';
+  const showingRecent = view === 'recent';
+  // 最近 has no shelf of its own: + puts new files in 我的, which every member can write
+  const shelf: FilesShelf = view === 'team' ? 'team' : 'personal';
   const { colors: c } = useTheme();
   const styles = useStyles(c);
   const filter = useDirectoryFilter();
@@ -69,6 +80,7 @@ export default function Drive() {
   const [uploading, setUploading] = useState(false);
 
   const load = useCallback(async () => {
+    if (view === 'recent') return { ok: true as const, data: { bases: [] as TableBase[], folders: [], files: [] } };
     if (view === 'tables') {
       const bases = await listBases();
       return bases.ok
@@ -89,8 +101,8 @@ export default function Drive() {
 
   const [recent, setRecent] = useState<RecentFile[]>([]);
   useEffect(() => {
-    if (folderId == null && view !== 'tables') void recentFiles().then(setRecent);
-  }, [folderId, view, resource.data, resource.error]);
+    if (view === 'recent') void recentFiles().then(setRecent);
+  }, [view, version]);
 
   const [path, setPath] = useState<DriveFolder[]>([]);
   useEffect(() => {
@@ -161,24 +173,22 @@ export default function Drive() {
       const bases = resource.data?.bases ?? [];
       return bases.map((base, i) => ({ key: `b-${base.id}`, type: 'base', base, position: rowPosition(i, bases.length) }));
     }
+    if (view === 'recent') {
+      return recent.map((f, i) => ({
+        key: `r-${f.id}`,
+        type: 'entry',
+        entry: {
+          kind: 'file',
+          id: f.id,
+          name: f.name,
+          shelf: f.shelf,
+          subtitle: `${t(`files.shelf.${f.shelf}`)} · ${formatBytes(f.size)} · ${relativeTimeNow(f.updated_at)}`,
+        },
+        position: rowPosition(i, recent.length),
+      }));
+    }
     const out: Item[] = [];
-    const lately = folderId == null ? recent.slice(0, 5) : [];
-    if (lately.length) {
-      out.push({ key: 'h-recent', type: 'header', title: t('files.recent') });
-      lately.forEach((f, i) =>
-        out.push({
-          key: `r-${f.id}`,
-          type: 'entry',
-          entry: { kind: 'file', id: f.id, name: f.name, shelf: f.shelf, subtitle: `${formatBytes(f.size)} · ${relativeTimeNow(f.updated_at)}` },
-          position: rowPosition(i, lately.length),
-        }),
-      );
-    }
-    if (!resource.data) {
-      if (out.length && !resource.loading) out.push({ key: 'failed', type: 'failed' });
-      return out;
-    }
-    if (out.length) out.push({ key: 'h-shelf', type: 'header', title: t(`files.shelf.${shelf}`) });
+    if (!resource.data) return out;
     const { folders, files } = resource.data;
     const count = folders.length + files.length;
     folders.forEach((f, i) =>
@@ -200,7 +210,7 @@ export default function Drive() {
       }),
     );
     return out;
-  }, [hits, view, resource.data, resource.loading, shelf, recent, folderId, t]);
+  }, [hits, view, resource.data, shelf, recent, t]);
 
   const upload = async (from: UploadFrom) => {
     // the whole upload belongs to whoever opened the picker, on this station
@@ -246,12 +256,14 @@ export default function Drive() {
     else router.setParams({ folder: index === 0 ? undefined : String(path[index - 1]!.id) });
   };
 
-  const views: View[] = tablesOn ? ['team', 'personal', 'tables'] : ['team', 'personal'];
+  const views: View[] = tablesOn ? ['recent', 'team', 'personal', 'tables'] : ['recent', 'team', 'personal'];
   const header = hits ? null : folderId == null ? (
     <>
       <Segmented
         value={view}
-        onChange={(value) => router.setParams(value === 'tables' ? { view: 'tables' } : { view: undefined, shelf: value })}
+        onChange={(value) =>
+          router.setParams(value === 'tables' ? { view: 'tables', shelf: undefined } : { view: undefined, shelf: value })
+        }
         options={views.map((value) => ({ value, label: value === 'tables' ? t('nav.tables') : t(`files.shelf.${value}`) }))}
         style={styles.segmented}
       />
@@ -265,7 +277,9 @@ export default function Drive() {
   );
 
   const empty =
-    !resource.data && !hits ? (
+    showingRecent && !hits ? (
+      <EmptyState icon="clock" title={t('files.recentEmpty')} message={t('files.offlineRecent')} style={styles.state} />
+    ) : !resource.data && !hits ? (
       resource.loading ? (
         <LoadingState style={styles.state} />
       ) : view === 'tables' && noAccess(resource.error) ? (
@@ -278,9 +292,6 @@ export default function Drive() {
         icon="table"
         title={t('tables.empty')}
         message={t('tables.emptyHint')}
-        action={
-          <NativeButton label={t('tables.newBase')} icon="plus" variant="prominent" onPress={() => void newBase()} />
-        }
         style={styles.state}
       />
     ) : (
@@ -288,17 +299,6 @@ export default function Drive() {
         icon="folder"
         title={t(hits ? 'common.noMatches' : 'files.empty')}
         message={hits ? undefined : t('files.emptyHint')}
-        action={
-          hits ? undefined : (
-            <NativeButton
-              label={t('files.upload')}
-              icon="plus"
-              variant="prominent"
-              disabled={uploading}
-              onPress={() => void upload('files')}
-            />
-          )
-        }
         style={styles.state}
       />
     );
@@ -309,7 +309,7 @@ export default function Drive() {
       <DirectorySearch filter={filter} />
       <SidebarToolbar />
       <Stack.Toolbar placement="right">
-        {refreshItem(busy, t('common.loading'))}
+        {refreshItem(busy && !showingRecent, t('common.loading'))}
         {view !== 'tables' ? (
           <Stack.Toolbar.Menu icon={toolbarIcon('plus')} accessibilityLabel={t('library.new')} disabled={uploading}>
             <Stack.Toolbar.MenuAction icon="photo.on.rectangle" onPress={() => void upload('photos')}>
@@ -326,7 +326,7 @@ export default function Drive() {
             </Stack.Toolbar.MenuAction>
           </Stack.Toolbar.Menu>
         ) : !noAccess(resource.error) ? (
-          // 表格: + makes another base (the empty state's 新建数据表 covers only the first)
+          // 表格: + makes a base (the empty state has no button of its own: + is always here)
           <Stack.Toolbar.Button icon={toolbarIcon('plus')} accessibilityLabel={t('tables.newBase')} onPress={() => void newBase()} />
         ) : null}
       </Stack.Toolbar>
@@ -335,21 +335,11 @@ export default function Drive() {
         contentInsetAdjustmentBehavior="automatic"
         data={rows}
         keyExtractor={(row) => row.key}
-        refreshing={pull.refreshing}
-        onRefresh={pull.onRefresh}
+        refreshing={showingRecent ? false : pull.refreshing}
+        onRefresh={showingRecent ? () => void recentFiles().then(setRecent) : pull.onRefresh}
         ListHeaderComponent={header}
         renderItem={({ item }) =>
-          item.type === 'header' ? (
-            <SectionHeader title={item.title} />
-          ) : item.type === 'failed' ? (
-            <EmptyState
-              icon="alert"
-              title={t('files.loadFailed')}
-              message={t('files.offlineRecent')}
-              onRetry={() => void resource.refresh()}
-              style={styles.inline}
-            />
-          ) : item.type === 'base' ? (
+          item.type === 'base' ? (
             <Row
               title={item.base.name}
               subtitle={item.base.description || undefined}
@@ -376,5 +366,4 @@ const useStyles = makeStyles((c) => ({
   segmented: { marginHorizontal: space.margin, marginVertical: space.md },
   uploading: { paddingVertical: space.md },
   state: { paddingTop: space.xxxl },
-  inline: { paddingTop: space.xl },
 }));

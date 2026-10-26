@@ -33,10 +33,10 @@ export function drawerSwipes(persistent: boolean, depth: number): boolean {
 export const EDGE_SWIPE = 32;
 
 /**
- * How wide the strip is where a swipe opens the drawer. Home's first page takes a rightward swipe
- * anywhere (`wholePage`), except while the composer has the keyboard or holds picked files (a
- * horizontal drag there moves the caret or scrolls the files) and while the drawer is open (its
- * own swipe closes it); every other page keeps the edge.
+ * How wide the strip is where a swipe opens the drawer. A place's first page (home, 知识库, 云盘,
+ * 项目, 定时任务) takes a rightward swipe anywhere (`wholePage`), except while home's composer has
+ * the keyboard or holds picked files (a horizontal drag there moves the caret or scrolls the
+ * files) and while the drawer is open (its own swipe closes it); deeper pages keep the edge.
  */
 export function drawerSwipeWidth(o: { wholePage: boolean; composing: boolean; open: boolean; windowWidth: number }): number {
   return o.wholePage && !o.composing && !o.open ? Math.max(EDGE_SWIPE, Math.round(o.windowWidth)) : EDGE_SWIPE;

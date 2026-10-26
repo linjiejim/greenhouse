@@ -155,6 +155,8 @@ export interface RowProps {
   last?: boolean;
   /** A quiet row (home's recent conversations): the title in the secondary label color. */
   quiet?: boolean;
+  /** The trailing value in the footnote size (a time beside a one-line title). */
+  smallValue?: boolean;
 }
 
 export function Row({
@@ -180,6 +182,7 @@ export function Row({
   position,
   last,
   quiet,
+  smallValue,
 }: RowProps) {
   const { colors: c } = useTheme();
   const styles = useStyles(c);
@@ -227,7 +230,10 @@ export function Row({
             ) : null}
           </View>
           {value ? (
-            <Text numberOfLines={large ? 0 : 1} style={[styles.value, large && { maxWidth: '100%' }]}>
+            <Text
+              numberOfLines={large ? 0 : 1}
+              style={[styles.value, smallValue && styles.valueSmall, large && { maxWidth: '100%' }]}
+            >
               {value}
             </Text>
           ) : null}
@@ -433,6 +439,7 @@ const useStyles = makeStyles((c) => ({
   title: { ...typo.body, color: c.label },
   subtitle: { ...typo.subheadline, color: c.secondaryLabel, marginTop: 1 },
   value: { ...typo.body, color: c.secondaryLabel, maxWidth: '55%' },
+  valueSmall: { ...typo.footnote },
   badge: {
     flexDirection: 'row',
     alignItems: 'center',

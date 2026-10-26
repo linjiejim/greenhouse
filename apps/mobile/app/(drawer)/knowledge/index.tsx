@@ -5,8 +5,9 @@
  * any level. Every document row is one line: title, and its date at the trailing edge. A document
  * opens as a sheet. A shelf (every folder and document) is kept on the phone and shows at once,
  * offline too; 最近 needs no station at all (src/store/knowledge.ts). The native search bar
- * searches every document I can read. + makes a folder or a document on a shelf; a long press on
- * a row offers new / rename / move / ask (src/library/library-row.tsx).
+ * searches every document I can read. + is always there: it makes a folder or a document on the
+ * shelf on screen (on 最近 and 共享给我, in 我的); a long press on a row offers new / rename / move /
+ * ask (src/library/library-row.tsx).
  */
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
@@ -34,7 +35,7 @@ import { onOfflineChanged } from '../../../src/store/offline-events';
 import { makeStyles, space, typo, useTheme } from '../../../src/theme';
 import { DirectorySearch, useDirectoryFilter } from '../../../src/ui/directory-search';
 import { SidebarToolbar } from '../../../src/ui/sidebar';
-import { NativeButton } from '../../../src/ui/button';
+import { useWholePageDrawerSwipe } from '../../../src/ui/place-swipe';
 import { EmptyState, LoadingState } from '../../../src/ui/empty';
 import { refreshItem, usePullRefresh } from '../../../src/ui/refresh';
 import { Segmented } from '../../../src/ui/segmented';
@@ -58,6 +59,8 @@ export default function Knowledge() {
   // 最近 reads no shelf; the team's loads behind it, the next one most members open
   const shelf: ShelfName = segment === 'recent' ? 'team' : segment;
   const t = useT();
+  // a rightward swipe anywhere on the page opens the sidebar, as on home
+  useWholePageDrawerSwipe();
   const router = useRouter();
   const openObject = useOpenObject();
   const actions = useLibraryActions();
@@ -67,6 +70,10 @@ export default function Knowledge() {
   const query = filter.query.trim();
   const writable = !showingRecent && shelf !== 'shared';
   const owner: KbShelf = shelf === 'personal' ? 'personal' : 'team';
+  // where + puts things: the shelf on screen, or 我的 where that shelf takes no writes
+  const target: { shelf: KbShelf; folder: string | null } = writable
+    ? { shelf: owner, folder: folderId }
+    : { shelf: 'personal', folder: null };
 
   const load = useCallback(async (): Promise<ApiResult<Shelf>> => {
     const [docs, folders] = await Promise.all([
@@ -183,16 +190,6 @@ export default function Knowledge() {
       icon="book"
       title={t(hits ? 'common.noMatches' : 'knowledge.empty')}
       message={hits ? undefined : t('knowledge.emptyHint')}
-      action={
-        !hits && writable ? (
-          <NativeButton
-            label={t('library.newDoc')}
-            icon="plus"
-            variant="prominent"
-            onPress={() => actions.newDoc(owner, folderId)}
-          />
-        ) : undefined
-      }
       style={styles.state}
     />
   );
@@ -204,16 +201,17 @@ export default function Knowledge() {
       <SidebarToolbar />
       <Stack.Toolbar placement="right">
         {refreshItem(busy && !showingRecent, t('common.loading'))}
-        {writable ? (
-          <Stack.Toolbar.Menu icon={toolbarIcon('plus')} accessibilityLabel={t('library.new')}>
-            <Stack.Toolbar.MenuAction icon="folder.badge.plus" onPress={() => void actions.newFolder(owner, folderId)}>
-              {t('library.newFolder')}
-            </Stack.Toolbar.MenuAction>
-            <Stack.Toolbar.MenuAction icon="doc.badge.plus" onPress={() => actions.newDoc(owner, folderId)}>
-              {t('library.newDoc')}
-            </Stack.Toolbar.MenuAction>
-          </Stack.Toolbar.Menu>
-        ) : null}
+        <Stack.Toolbar.Menu icon={toolbarIcon('plus')} accessibilityLabel={t('library.new')}>
+          <Stack.Toolbar.MenuAction
+            icon="folder.badge.plus"
+            onPress={() => void actions.newFolder(target.shelf, target.folder)}
+          >
+            {t('library.newFolder')}
+          </Stack.Toolbar.MenuAction>
+          <Stack.Toolbar.MenuAction icon="doc.badge.plus" onPress={() => actions.newDoc(target.shelf, target.folder)}>
+            {t('library.newDoc')}
+          </Stack.Toolbar.MenuAction>
+        </Stack.Toolbar.Menu>
       </Stack.Toolbar>
       <FlatList<KbRow>
         style={styles.root}

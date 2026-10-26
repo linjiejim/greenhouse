@@ -13,14 +13,19 @@ import { del, get, patch, post, seg } from './client';
 
 export const SESSION_PAGE = 50;
 
-/** One page of my conversations, newest first. */
+/** One page of the conversations I started, newest first (automation runs are listed apart). */
 export const listSessions = (offset: number) =>
   get<{ sessions: ChatSession[]; page?: { has_more: boolean; next_offset: number } }>('/api/sessions', {
     scope: 'mine',
     limit: SESSION_PAGE,
     offset,
     page_meta: 1,
+    exclude_channel: 'task',
   });
+
+/** The conversations my automations' runs wrote (channel `task`), newest first. */
+export const listAutomationRuns = () =>
+  get<{ sessions: ChatSession[] }>('/api/sessions', { scope: 'mine', channel: 'task', limit: SESSION_PAGE });
 
 /** A new conversation; `profileId` starts it with another agent than Sprouty (`/api/profiles`). */
 export const createSession = (profileId?: string | null) =>

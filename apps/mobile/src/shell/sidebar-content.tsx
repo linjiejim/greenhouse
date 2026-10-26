@@ -90,7 +90,8 @@ export function SidebarContent({ state, navigation }: DrawerContentComponentProp
   return (
     <View style={[styles.root, { paddingTop: insets.top + space.sm }]}>
       <View style={styles.header}>
-        <GreenhouseMark size={30} />
+        {/* as tall as the name and the station line beside it */}
+        <GreenhouseMark size={46} />
         <View style={styles.names}>
           <Text key={`brand:${fontKey}`} style={styles.brand} accessibilityRole="header" numberOfLines={1}>
             {productName}

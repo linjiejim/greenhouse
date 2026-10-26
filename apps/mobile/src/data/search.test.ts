@@ -16,6 +16,28 @@ describe('search results', () => {
     expect(sections[2]!.hits[0]!.ref).toEqual({ kind: 'project', id: '7' });
   });
 
+  it('opens automation hits as automations and formats a conversation’s time', () => {
+    const sections = stationSections(
+      [
+        { kind: 'session', hasMore: false, items: [{ title: 'Daily digest', sessionId: 's2', updatedAt: '2026-10-26T01:00:00.000Z' } as never] },
+        { kind: 'automation', hasMore: false, items: [{ title: 'Daily digest', subtitle: 'Summarize yesterday', automationId: 'atm_01JB2Y8Z9QW3E4R5T6Y7V8H9P0', enabled: true } as never] },
+      ],
+      (iso) => `at ${iso.slice(0, 10)}`,
+    );
+    expect(sections.map((s) => s.kind)).toEqual(['session', 'automation']);
+    expect(sections[0]!.hits[0]!.subtitle).toBe('at 2026-10-26');
+    expect(sections[1]!.hits[0]).toMatchObject({ subtitle: 'Summarize yesterday', ref: { kind: 'automation', id: 'atm_01JB2Y8Z9QW3E4R5T6Y7V8H9P0' } });
+  });
+
+  it('keeps an older station’s subtitle and drops a malformed automation id', () => {
+    const sections = stationSections([
+      { kind: 'session', hasMore: false, items: [{ title: 'Old', sessionId: 's3', subtitle: 'yesterday' }] },
+      { kind: 'automation', hasMore: false, items: [{ title: 'Bad', automationId: '../x' } as never] },
+    ]);
+    expect(sections.map((s) => s.kind)).toEqual(['session']);
+    expect(sections[0]!.hits[0]!.subtitle).toBe('yesterday');
+  });
+
   it('finds files and my tasks', () => {
     expect(fileSection([{ id: 'fil_01JB2Y8Z9QW3E4R5T6Y7V8H9P0', name: 'a.pdf', size: 10 }], () => '10 B')?.hits[0]).toMatchObject({ ref: { kind: 'file', id: 'fil_01JB2Y8Z9QW3E4R5T6Y7V8H9P0', name: 'a.pdf' }, subtitle: '10 B' });
     expect(fileSection([], () => '')).toBeNull();

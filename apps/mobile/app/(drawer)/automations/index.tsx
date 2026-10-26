@@ -5,9 +5,9 @@
  * whenever the place comes back into view, so one the assistant just made shows up. An
  * automation opens as a sheet (app/sheet/automation.tsx).
  *
- * There is no form to make one: + (and the empty state) opens a new conversation with the
- * assistant, its composer filled with "帮我创建一个定时任务：", and it is made there with the
- * assistant's automation tool.
+ * There is no form to make one: + opens a new conversation with the assistant, its composer
+ * filled with "帮我创建一个定时任务：", and it is made there with the assistant's automation tool.
+ * The search bar beside + filters the list by name (on the phone: the list is short and kept here).
  */
 
 import React, { useCallback, useMemo } from 'react';
@@ -23,15 +23,18 @@ import { useT } from '../../../src/lib/i18n';
 import { useOpenObject, useStartChat } from '../../../src/shell/open-object';
 import { useAuth } from '../../../src/store/auth';
 import { makeStyles, space, typo, useTheme } from '../../../src/theme';
-import { NativeButton } from '../../../src/ui/button';
+import { DirectorySearch, useDirectoryFilter } from '../../../src/ui/directory-search';
 import { EmptyState, LoadingState } from '../../../src/ui/empty';
 import { Row, rowPosition } from '../../../src/ui/list';
 import { refreshItem, usePullRefresh } from '../../../src/ui/refresh';
 import { SidebarToolbar } from '../../../src/ui/sidebar';
+import { useWholePageDrawerSwipe } from '../../../src/ui/place-swipe';
 import { toolbarIcon } from '../../../src/ui/toolbar-icon';
 
 export default function Automations() {
   const t = useT();
+  // a rightward swipe anywhere on the page opens the sidebar, as on home
+  useWholePageDrawerSwipe();
   const openObject = useOpenObject();
   const startChat = useStartChat();
   const { colors: c } = useTheme();
@@ -46,10 +49,17 @@ export default function Automations() {
   const resource = useOfflineResource('automations', load, parseSavedAutomations);
   const pull = usePullRefresh(resource.refresh);
   const busy = resource.loading && !!resource.data && !pull.refreshing;
-  const rows = useMemo(() => resource.data ?? [], [resource.data]);
+  const filter = useDirectoryFilter();
+  const query = filter.query.trim().toLowerCase();
+  const rows = useMemo(
+    () => (resource.data ?? []).filter((task) => !query || task.name.toLowerCase().includes(query)),
+    [resource.data, query],
+  );
   const create = () => startChat(t('automations.draft'));
 
-  const empty = !resource.data ? (
+  const empty = query ? (
+    <EmptyState icon="search" title={t('common.noMatches')} style={styles.state} />
+  ) : !resource.data ? (
     resource.loading ? (
       <LoadingState style={styles.state} />
     ) : noAccess(resource.error) ? (
@@ -62,7 +72,6 @@ export default function Automations() {
       icon="clock"
       title={t('automations.empty')}
       message={t('automations.emptyHint')}
-      action={<NativeButton label={t('automations.create')} icon="compose" variant="prominent" onPress={create} />}
       style={styles.state}
     />
   );
@@ -70,10 +79,11 @@ export default function Automations() {
   return (
     <>
       <Stack.Screen options={{ title: t('nav.automations') }} />
+      <DirectorySearch filter={filter} />
       <SidebarToolbar />
       <Stack.Toolbar placement="right">
         {refreshItem(busy, t('common.loading'))}
-        <Stack.Toolbar.Button icon={toolbarIcon('compose')} accessibilityLabel={t('automations.create')} onPress={create} />
+        <Stack.Toolbar.Button icon={toolbarIcon('plus')} accessibilityLabel={t('automations.create')} onPress={create} />
       </Stack.Toolbar>
       <FlatList<Automation>
         style={styles.root}

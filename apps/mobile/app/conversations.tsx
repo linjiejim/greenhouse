@@ -1,9 +1,11 @@
 /**
- * 全部对话 — a sheet over home, in two segments. 我的: my conversations, pinned first (swipe to
- * pin, long press to rename), the ones the phone keeps showing at once; search shows the native
- * field only when asked for and searches every conversation I can read on the station
- * (`/api/search?kind=session`). 共享给我: conversations others shared with me (`/api/shares`,
- * newest first, unread marked), each opening read-only; opening one marks it read. The bar:
+ * 全部对话 — a sheet over home, in three segments, one line per conversation (title and time).
+ * 我的: the conversations I started, pinned first (swipe to pin, long press to rename), the ones
+ * the phone keeps showing at once; search shows the native field only when asked for and searches
+ * every conversation I can read on the station (`/api/search?kind=session`). 定时任务: what my
+ * automations' runs wrote (`/api/sessions?channel=task`). 共享给我: conversations others shared
+ * with me (`/api/shares`, newest first, unread marked), each opening read-only; opening one marks
+ * it read. The bar:
  * search (我的 only) and new conversation as one group, ✕ alone at the far right. A conversation
  * opens its page (the sheet closes first).
  */
@@ -11,7 +13,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { FlatList, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
-import { searchAll } from '../src/api/assistant';
+import { listAutomationRuns, searchAll } from '../src/api/assistant';
 import { listShares, markShareRead, type SharedConversation } from '../src/api/shares';
 import { ConversationRow } from '../src/chat/conversation-row';
 import { captureIdentity } from '../src/data/identity';
@@ -32,7 +34,7 @@ import { usePullRefresh } from '../src/ui/refresh';
 import { SheetScreen, type ScreenAction } from '../src/ui/screen';
 import { Segmented } from '../src/ui/segmented';
 
-type Tab = 'mine' | 'shared';
+type Tab = 'mine' | 'scheduled' | 'shared';
 
 type Item =
   | { key: string; type: 'session'; session: ChatSession }
@@ -50,9 +52,11 @@ export default function Conversations() {
   const offline = useSessions((s) => s.offline);
   const shares = useResource(listShares);
   const { refresh: refreshShares, setData: setShares } = shares;
+  const runs = useResource(listAutomationRuns);
+  const { refresh: refreshRuns } = runs;
   const refresh = useCallback(
-    () => (tab === 'mine' ? useSessions.getState().refresh() : refreshShares()),
-    [tab, refreshShares],
+    () => (tab === 'mine' ? useSessions.getState().refresh() : tab === 'scheduled' ? refreshRuns() : refreshShares()),
+    [tab, refreshShares, refreshRuns],
   );
   const pull = usePullRefresh(refresh);
   const filter = useDirectoryFilter();
@@ -109,11 +113,23 @@ export default function Conversations() {
     (): Item[] =>
       tab === 'mine'
         ? sessions.map((session): Item => ({ key: `s-${session.id}`, type: 'session', session }))
-        : shared.map((row): Item => ({ key: `h-${row.share.session_id}`, type: 'share', row })),
-    [tab, sessions, shared],
+        : tab === 'scheduled'
+          ? (runs.data?.sessions ?? []).map((session): Item => ({ key: `r-${session.id}`, type: 'session', session }))
+          : shared.map((row): Item => ({ key: `h-${row.share.session_id}`, type: 'share', row })),
+    [tab, sessions, shared, runs.data],
   );
 
   const empty = useMemo(() => {
+    if (tab === 'scheduled') {
+      if (!runs.data) {
+        return runs.loading ? (
+          <LoadingState style={styles.state} />
+        ) : (
+          <EmptyState icon="alert" title={t('assistant.loadFailed')} onRetry={() => void refreshRuns()} style={styles.state} />
+        );
+      }
+      return <EmptyState icon="clock" title={t('conversation.scheduledEmpty')} style={styles.state} />;
+    }
     if (tab === 'shared') {
       if (!shares.data) {
         return shares.loading ? (
@@ -131,7 +147,7 @@ export default function Conversations() {
     ) : (
       <EmptyState icon="msgs" title={t(hits ? 'common.noMatches' : 'assistant.empty')} style={styles.state} />
     );
-  }, [tab, shares.data, shares.loading, refreshShares, status, hits, styles.state, t]);
+  }, [tab, shares.data, shares.loading, refreshShares, runs.data, runs.loading, refreshRuns, status, hits, styles.state, t]);
 
   const segmented = (
     <View>
@@ -139,9 +155,9 @@ export default function Conversations() {
         value={tab}
         onChange={(value) => {
           setTab(value);
-          if (value === 'shared') setSearching(false);
+          if (value !== 'mine') setSearching(false);
         }}
-        options={(['mine', 'shared'] as const).map((value) => ({ value, label: t(`conversation.tabs.${value}`) }))}
+        options={(['mine', 'scheduled', 'shared'] as const).map((value) => ({ value, label: t(`conversation.tabs.${value}`) }))}
         style={styles.segmented}
       />
       {tab === 'mine' && offline ? <Text style={styles.offline}>{t('common.savedCopy')}</Text> : null}
@@ -173,7 +189,10 @@ export default function Conversations() {
       <SheetScreen
         title={t('home.allTitle')}
         closeApart
-        busy={tab === 'shared' && shares.loading && !!shares.data && !pull.refreshing}
+        busy={
+          ((tab === 'shared' && shares.loading && !!shares.data) || (tab === 'scheduled' && runs.loading && !!runs.data)) &&
+          !pull.refreshing
+        }
         actions={actions}
       />
       <RevealedSearch filter={filter} open={searching && tab === 'mine'} onClose={() => setSearching(false)} />

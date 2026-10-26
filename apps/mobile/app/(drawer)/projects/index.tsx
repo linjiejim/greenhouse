@@ -23,10 +23,10 @@ import { statusIcon, statusTint } from '../../../src/projects/look';
 import type { Project } from '../../../src/shared/greenhouse-types';
 import { useAuth } from '../../../src/store/auth';
 import { makeStyles, space, typo, useTheme } from '../../../src/theme';
-import { NativeButton } from '../../../src/ui/button';
 import { alertError, promptText } from '../../../src/ui/dialogs';
 import { DirectorySearch, useDirectoryFilter } from '../../../src/ui/directory-search';
 import { SidebarToolbar } from '../../../src/ui/sidebar';
+import { useWholePageDrawerSwipe } from '../../../src/ui/place-swipe';
 import { EmptyState, LoadingState } from '../../../src/ui/empty';
 import { notifySuccess } from '../../../src/ui/haptics';
 import { refreshItem, usePullRefresh } from '../../../src/ui/refresh';
@@ -45,6 +45,8 @@ export default function Projects() {
   const params = useLocalSearchParams<{ tab?: string }>();
   const tab: Tab = params.tab === 'mine' ? 'mine' : 'all';
   const t = useT();
+  // a rightward swipe anywhere on the page opens the sidebar, as on home
+  useWholePageDrawerSwipe();
   const router = useRouter();
   const openObject = useOpenObject();
   const { colors: c } = useTheme();
@@ -135,14 +137,6 @@ export default function Projects() {
       icon="checkCircle"
       title={t('projects.empty')}
       message={t('projects.emptyHint')}
-      action={
-        <NativeButton
-          label={t('projects.newProject')}
-          icon="plus"
-          variant="prominent"
-          onPress={() => void newProject()}
-        />
-      }
       style={styles.state}
     />
   );
