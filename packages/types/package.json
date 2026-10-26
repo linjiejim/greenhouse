@@ -131,6 +131,10 @@
     "./activity": {
       "import": "./src/activity.ts",
       "types": "./src/activity.ts"
+    },
+    "./plugins": {
+      "import": "./src/plugins.ts",
+      "types": "./src/plugins.ts"
     }
   },
   "scripts": {

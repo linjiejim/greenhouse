@@ -51,6 +51,7 @@ export default defineConfig({
       '@greenhouse/types/preferences': resolve(__dirname, 'packages/types/src/preferences.ts'),
       '@greenhouse/types/agent-avatar': resolve(__dirname, 'packages/types/src/agent-avatar.ts'),
       '@greenhouse/types/activity': resolve(__dirname, 'packages/types/src/activity.ts'),
+      '@greenhouse/types/plugins': resolve(__dirname, 'packages/types/src/plugins.ts'),
       '@greenhouse/types': resolve(__dirname, 'packages/types/src/index.ts'),
       '@greenhouse/utils/date': resolve(__dirname, 'packages/utils/src/date.ts'),
       '@greenhouse/utils/brand': resolve(__dirname, 'packages/utils/src/brand.ts'),
