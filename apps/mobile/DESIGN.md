@@ -114,3 +114,11 @@
 - Plugin lists use declared columns, filters and sort; records use the same inspector as built-in objects, and writes expose only actions/fields supplied by the station.
 - Embedded plugin pages retain their state through theme changes and can only draft a prompt. Unsupported future page kinds keep the explicit browser fallback.
 - While a browser reply is in progress, Stop remains visible even with a draft; Enter preserves the draft until the reply finishes instead of offering a premature send.
+
+## Desktop polish (C4)
+
+- Document readers and Tiptap editors use 28 px H1, 20 px semibold H2, and 16/28 body text; summary callouts use the accent wash and Edit is secondary.
+- Document metadata shows the shelf Chip, knowledge context, tags, updated date and resolved author when supplied by the station.
+- Declarative lists use 32 px headers and rows; tables keep 40 px data rows, narrow row numbers and field-type icons. Enum values use Chip, money has two fraction digits without assuming a currency, and numeric columns align right.
+- Inspector fields are flat label/value rows with wrapped content and subtle section dividers, using the same actions as the phone.
+- Board columns fill the main area, show status dots and counts, and cards show an assignee avatar, priority and a compact due date. Selection, hover and due urgency use semantic colors in both appearances.

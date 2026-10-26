@@ -171,6 +171,7 @@ export const UserMessage = memo(function UserMessage({
 
 export const AssistantReply = memo(function AssistantReply({
   messageId,
+  answerScope,
   sessionId,
   authorName,
   text,
@@ -185,6 +186,7 @@ export const AssistantReply = memo(function AssistantReply({
   onSteps,
 }: {
   messageId: string;
+  answerScope?: string;
   authorName?: string;
   /** The session its cards save into; null leaves them inert (a read-only conversation). */
   sessionId: string | null;
@@ -222,7 +224,16 @@ export const AssistantReply = memo(function AssistantReply({
       {list.map((card) => {
         switch (card.kind) {
           case 'ask_user':
-            return <AskUserCard key={card.key} ask={card.ask} answered={answered} onAnswer={env.reply} />;
+            return (
+              <AskUserCard
+                key={card.key}
+                ask={card.ask}
+                answerScope={answerScope ?? messageId}
+                answered={answered}
+                working={working}
+                onAnswer={env.reply}
+              />
+            );
           case 'file':
             return (
               <FileCard

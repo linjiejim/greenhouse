@@ -36,14 +36,18 @@ export function fieldText(field: EntityFieldSchema, value: unknown, locale: 'zh'
   if (value == null) return '—';
   if (field.kind === 'boolean') return value ? (locale === 'zh' ? '是' : 'Yes') : locale === 'zh' ? '否' : 'No';
   if (field.kind === 'date' || field.kind === 'dateTime') {
-    const time = Date.parse(String(value));
+    const day = field.kind === 'date' && /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(value));
+    const time = day
+      ? new Date(Number(day[1]), Number(day[2]) - 1, Number(day[3])).getTime()
+      : Date.parse(String(value));
     if (Number.isFinite(time))
       return field.kind === 'date' ? new Date(time).toLocaleDateString(locale) : new Date(time).toLocaleString(locale);
   }
   if (['integer', 'number', 'money'].includes(field.kind) && Number.isFinite(Number(value)))
-    return new Intl.NumberFormat(locale, { maximumFractionDigits: field.kind === 'money' ? 2 : 8 }).format(
-      Number(value),
-    );
+    return new Intl.NumberFormat(locale, {
+      minimumFractionDigits: field.kind === 'money' ? 2 : 0,
+      maximumFractionDigits: field.kind === 'money' ? 2 : 8,
+    }).format(Number(value));
   if (typeof value === 'object') return JSON.stringify(value);
   return String(value);
 }

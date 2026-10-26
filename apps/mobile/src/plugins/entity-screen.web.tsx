@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 
 import { useEntityList } from './entity-hooks';
+import { NativeMenu } from '../ui/menu.web';
+import { FieldValue, FieldTypeIcon } from '../ui/field-value.web';
 import { entityColumns, fieldText } from './surface-model';
 import { localize, type PluginEntitySchema, type PluginEntityListPage } from '../shared/plugins';
 import { usePrefs } from '../store/prefs';
@@ -28,7 +30,11 @@ export function EntityList({
     fields = entityColumns(entity, view);
   const [context, setContext] = useState<PlaceContextPoint | null>(null);
   const list = useEntityList(entity, view, filters, sort);
-  const inspect = (id: string) => open({ kind: 'plugin-entity', plugin, page: detailPage, id, entity: entity.id });
+  const [selected, setSelected] = useState<string>();
+  const inspect = (id: string) => {
+    setSelected(id);
+    open({ kind: 'plugin-entity', plugin, page: detailPage, id, entity: entity.id });
+  };
   return (
     <>
       <Place title={`${localize(page.title, lang)} · ${list.total}`}>
@@ -37,19 +43,28 @@ export function EntityList({
             const f = entity.fields.find((f) => f.key === key && f.filterable);
             if (!f) return null;
             return (
-              <label key={key}>
+              <div className="gh-filter" key={key}>
                 {localize(f.title, lang)}{' '}
                 {f.kind === 'enum' || f.kind === 'boolean' ? (
-                  <select
-                    aria-label={localize(f.title, lang)}
-                    value={filters[key] ?? ''}
-                    onChange={(e) => setFilters((v) => ({ ...v, [key]: e.target.value }))}
+                  <NativeMenu
+                    title={localize(f.title, lang)}
+                    items={[
+                      { id: '', title: t('places.all'), checked: !filters[key] },
+                      ...(f.kind === 'boolean' ? ['true', 'false'] : (f.values ?? [])).map((value) => ({
+                        id: value,
+                        title: fieldText(f, f.kind === 'boolean' ? value === 'true' : value, lang),
+                        checked: filters[key] === value,
+                      })),
+                    ]}
+                    onSelect={(value) => setFilters((v) => ({ ...v, [key]: value }))}
                   >
-                    <option value="">{t('places.all')}</option>
-                    {(f.kind === 'boolean' ? ['true', 'false'] : (f.values ?? [])).map((value) => (
-                      <option key={value}>{value}</option>
-                    ))}
-                  </select>
+                    <button aria-label={localize(f.title, lang)}>
+                      {filters[key]
+                        ? fieldText(f, f.kind === 'boolean' ? filters[key] === 'true' : filters[key], lang)
+                        : t('places.all')}{' '}
+                      ▾
+                    </button>
+                  </NativeMenu>
                 ) : (
                   <input
                     aria-label={localize(f.title, lang)}
@@ -57,31 +72,38 @@ export function EntityList({
                     onChange={(e) => setFilters((v) => ({ ...v, [key]: e.target.value }))}
                   />
                 )}
-              </label>
+              </div>
             );
           })}
-          <label>
+          <div className="gh-filter">
             {t('places.sort')}{' '}
-            <select
-              aria-label={t('places.sort')}
-              value={sort ? `${sort.field}:${sort.dir}` : ''}
-              onChange={(e) => {
-                const [field, dir] = e.target.value.split(':');
+            <NativeMenu
+              title={t('places.sort')}
+              items={[
+                { id: '', title: '—', checked: !sort },
+                ...fields
+                  .filter((f) => f.sortable)
+                  .flatMap((f) =>
+                    (['asc', 'desc'] as const).map((dir) => ({
+                      id: `${f.key}:${dir}`,
+                      title: `${localize(f.title, lang)} ${dir === 'asc' ? '↑' : '↓'}`,
+                      checked: sort?.field === f.key && sort.dir === dir,
+                    })),
+                  ),
+              ]}
+              onSelect={(value) => {
+                const [field, dir] = value.split(':');
                 setSort(field ? { field, dir: dir as 'asc' | 'desc' } : undefined);
               }}
             >
-              <option value="">—</option>
-              {fields
-                .filter((f) => f.sortable)
-                .flatMap((f) =>
-                  (['asc', 'desc'] as const).map((dir) => (
-                    <option key={`${f.key}:${dir}`} value={`${f.key}:${dir}`}>
-                      {localize(f.title, lang)} {dir === 'asc' ? '↑' : '↓'}
-                    </option>
-                  )),
-                )}
-            </select>
-          </label>
+              <button aria-label={t('places.sort')}>
+                {sort
+                  ? `${localize(fields.find((f) => f.key === sort.field)?.title ?? sort.field, lang)} ${sort.dir === 'asc' ? '↑' : '↓'}`
+                  : '—'}{' '}
+                ▾
+              </button>
+            </NativeMenu>
+          </div>
         </div>
         <div
           className="gh-place-scroll"
@@ -91,11 +113,16 @@ export function EntityList({
               list.more();
           }}
         >
-          <table className="gh-data-grid">
+          <table className="gh-data-grid gh-entity-grid">
             <thead>
               <tr>
                 {fields.map((f) => (
-                  <th key={f.key}>{localize(f.title, lang)}</th>
+                  <th key={f.key} className={['integer', 'number', 'money'].includes(f.kind) ? 'gh-number' : undefined}>
+                    <span className="gh-field-heading">
+                      <FieldTypeIcon kind={f.kind} />
+                      {localize(f.title, lang)}
+                    </span>
+                  </th>
                 ))}
               </tr>
             </thead>
@@ -104,6 +131,7 @@ export function EntityList({
                 <tr
                   key={row.id}
                   tabIndex={0}
+                  aria-selected={selected === String(row.id)}
                   aria-label={String(row[entity.title_field] ?? row.id)}
                   onClick={() => inspect(String(row.id))}
                   onContextMenu={(e) => {
@@ -111,7 +139,10 @@ export function EntityList({
                     setContext({ id: String(row.id), x: e.clientX, y: e.clientY });
                   }}
                   onKeyDown={(e) => {
-                    if (e.key === 'Enter') inspect(String(row.id));
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      inspect(String(row.id));
+                    }
                     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
                       e.preventDefault();
                       const next =
@@ -123,7 +154,12 @@ export function EntityList({
                   }}
                 >
                   {fields.map((f) => (
-                    <td key={f.key}>{fieldText(f, row[f.key], lang)}</td>
+                    <td
+                      key={f.key}
+                      className={['integer', 'number', 'money'].includes(f.kind) ? 'gh-number' : undefined}
+                    >
+                      <FieldValue kind={f.kind} text={fieldText(f, row[f.key], lang)} />
+                    </td>
                   ))}
                 </tr>
               ))}

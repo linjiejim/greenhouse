@@ -31,6 +31,7 @@ export function Heading({ level, text }: { level: number; text: string }) {
     <Text
       style={[styles.h, calm ? styles.calmHeading : HEADING[Math.min(Math.max(level, 1), 4) - 1]]}
       accessibilityRole="header"
+      aria-level={level}
     >
       <Inline text={text} />
     </Text>

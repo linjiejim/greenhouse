@@ -16,6 +16,7 @@ import { hasTables } from './modules';
 import { wideLayout, RAIL_WIDTH, SECONDARY_WIDTH } from './wide-model';
 import { useT } from '../lib/i18n';
 import { ConversationRow } from '../chat/conversation-row.web';
+import { webColors } from '../theme/web-colors.generated';
 import { promptText } from '../ui/dialogs';
 import { listShares, markShareRead, type SharedConversation } from '../api/shares';
 import { listAutomationRuns } from '../api/assistant';
@@ -61,8 +62,11 @@ export function WideShell({ children }: { children: React.ReactNode }) {
   );
   useEffect(() => {
     const root = document.documentElement;
+    for (const [name, value] of Object.entries(webColors[isDark ? 'dark' : 'light'])) {
+      root.style.setProperty(`--gh-${name.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)}`, value);
+    }
     root.style.setProperty('--gh-focus', c.accent);
-    root.style.setProperty('--gh-hover', c.tertiaryFill);
+    root.style.setProperty('--gh-hover', webColors[isDark ? 'dark' : 'light'].fill);
     root.style.setProperty('--gh-card', c.secondaryGroupedBackground);
     root.style.setProperty('--gh-line', c.separator);
     root.style.setProperty('--gh-secondary', c.secondaryLabel);

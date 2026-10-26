@@ -13,6 +13,10 @@ import { Place, PlaceRow, PlaceSidebar, PlaceEmpty } from '../ui/place.web';
 import { Segmented } from '../ui/segmented';
 import { useT } from '../lib/i18n';
 import { Markdown } from '../markdown';
+import { Chip } from '../ui/chip';
+import { Icon } from '../ui/core';
+import { parseTags } from '../data/tasks';
+import { calendarDateLabel } from '../lib/time-words';
 import { rememberDoc, recentDocs } from '../store/knowledge';
 import type { RecentDoc } from '../data/recent-docs';
 import type { DriveFolder, KbDoc } from '../shared/greenhouse-types';
@@ -61,6 +65,12 @@ function KnowledgeDesktop() {
     [saving, setSaving] = useState(false);
   const [draft, setDraft] = useState({ markdown: '', json: '{}' });
   const selected = doc.data?.doc;
+  const authors = useResource(
+    useCallback(() => get<{ users: { id: string; nickname: string }[] }>('/api/sessions/shareable-users'), []),
+  );
+  const author = authors.data?.users?.find(
+    (person) => person.id === (selected?.updated_by ?? selected?.owner_user_id),
+  )?.nickname;
   useEffect(() => {
     setEditing(false);
     if (selected) {
@@ -187,7 +197,7 @@ function KnowledgeDesktop() {
                 </button>
               </>
             ) : (
-              <button className="gh-primary" onClick={() => setEditing(true)}>
+              <button className="gh-secondary" onClick={() => setEditing(true)}>
                 {t('places.edit')}
               </button>
             )
@@ -205,7 +215,15 @@ function KnowledgeDesktop() {
             ) : (
               <>
                 <div className="gh-doc-meta">
-                  {t(`knowledge.shelf.${shelf}`)} · {new Date(selected.updated_at).toLocaleDateString()}
+                  <Chip label={t(`knowledge.shelf.${shelf}`)} inline />
+                  <span>{t('nav.knowledge')}</span>
+                  {parseTags(selected.tags).map((tag) => (
+                    <Chip key={tag} label={tag} inline tone="accent" />
+                  ))}
+                  <span>
+                    {t('tables.updated', { when: calendarDateLabel(selected.updated_at) })}
+                    {author ? ` · ${author}` : ''}
+                  </span>
                 </div>
                 <h1>{selected.title}</h1>
                 {editing ? (
@@ -265,8 +283,15 @@ function KnowledgeDesktop() {
                   />
                 ) : (
                   <>
-                    {selected.summary ? <div className="gh-doc-summary">✧ {selected.summary}</div> : null}
-                    <Markdown source={selected.content_markdown} />
+                    {selected.summary ? (
+                      <div className="gh-doc-summary">
+                        <Icon name="sparkle" size={18} />
+                        <span>{selected.summary}</span>
+                      </div>
+                    ) : null}
+                    <div className="gh-doc-reader">
+                      <Markdown source={selected.content_markdown} />
+                    </div>
                   </>
                 )}
               </>

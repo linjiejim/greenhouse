@@ -3,7 +3,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { listBases, getBase, getSchema, queryRecords, createBase } from '../../api/tables';
 import { get } from '../../api/client';
 import { useResource } from '../../data/use-resource';
-import { displayValue, liveFields } from '../../data/table-fields';
+import { displayValue, liveFields, recordTitle, cellValue } from '../../data/table-fields';
 import { useFieldWords } from '../../tables/use-field-words';
 import { PlaceSecondary } from '../../shell/place-secondary.web';
 import { useOpenObject } from '../../shell/open-object';
@@ -19,8 +19,10 @@ export default function TablesPlace() {
     open = useOpenObject();
   const params = useLocalSearchParams<{ base?: string; table?: string }>();
   const [query, setQuery] = useState('');
+  const [selected, setSelected] = useState<string>();
   const [context, setContext] = useState<PlaceContextPoint | null>(null);
   const inspect = (id: string) => {
+    setSelected(id);
     if (tableId) open({ kind: 'record', id, tableId, baseId: baseId ?? null });
   };
   const bases = useResource(useCallback(() => listBases(), []));
@@ -187,15 +189,14 @@ export default function TablesPlace() {
         >
           <TableGrid
             onContext={(id, x, y) => setContext({ id, x, y })}
-            columns={fields.map((f) => ({ id: f.id, name: f.name }))}
+            columns={fields.map((f) => ({ id: f.id, name: f.name, kind: f.type }))}
             rows={records.map((r) => ({
               id: r.id,
-              cells: fields.map((f) => displayValue(f, r.computed_values?.[f.id] ?? r.values[f.id], words)),
+              title: recordTitle(allFields, r, words),
+              cells: fields.map((f) => displayValue(f, cellValue(f, r), words)),
             }))}
-            labels={{ open: t('places.openRecord') }}
-            onOpen={(id) => {
-              if (tableId) open({ kind: 'record', id, tableId, baseId: baseId ?? null });
-            }}
+            selected={selected}
+            onOpen={inspect}
           />
           {cursor ? (
             <button onClick={() => void more()} disabled={loading}>

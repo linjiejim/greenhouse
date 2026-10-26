@@ -2,10 +2,11 @@ import type { Page } from '@playwright/test';
 import { installStation, DOC } from './p2-fixture';
 const at = '2026-10-22T09:00:00Z';
 export const FILE = 'file_01JB2Y8Z9QW3E4R5T6Y7V8H9P0',
-  BASE = 'base-1',
-  TABLE = 'table-1',
-  PROJECT = 'project-1',
-  TASK = 'task-1',
+  // Object routes validate real wire ids (legacy decimal ids are valid too).
+  BASE = '11',
+  TABLE = '12',
+  PROJECT = '21',
+  TASK = '22',
   AUTO = 'auto-1';
 export function officialManifest() {
   return {
@@ -52,6 +53,7 @@ export async function installPlaces(page: Page) {
       visibility: 'team',
       status: 'published',
       tags: '["hr","policy"]',
+      updated_by: 'member',
       summary: '全远程：美西 ±3 小时内工作，核心工时 10:00–14:00，一次性 1,000 美元加每月 75 美元补贴。',
       content_markdown:
         '## 在哪里工作\n\n可以在美西时区 ±3 小时范围内的任何地方工作。\n\n## 核心工时\n\n工作日 10:00–14:00 保持可联系。\n\n## 居家补贴\n\n一次性 1,000 美元，每月 75 美元。\n\n## 休假\n\n无限年假，每年至少休 15 天。',
@@ -91,7 +93,7 @@ export async function installPlaces(page: Page) {
   ].map((f) => ({ ...f, table_id: TABLE, archived_at: null, required: false, config: '{}', ...f }));
   const records = [
     {
-      id: 'record-1',
+      id: '13',
       table_id: TABLE,
       values: {
         'f-customer': 'Wayne Enterprises',
@@ -124,7 +126,7 @@ export async function installPlaces(page: Page) {
       sort_order: 0,
     },
     {
-      id: 'task-2',
+      id: '23',
       project_id: PROJECT,
       parent_id: null,
       title: '写上线公告',
@@ -177,6 +179,7 @@ export async function installPlaces(page: Page) {
           : null;
     const json = (value: unknown) => route.fulfill({ json: value });
     if (!['GET', 'OPTIONS'].includes(method)) writes.push({ path, body, method });
+    if (path === '/api/sessions/shareable-users') return json({ users: [{ id: 'member', nickname: '林杰' }] });
     if (path === '/api/auth/me')
       return json({
         user: {
@@ -218,10 +221,15 @@ export async function installPlaces(page: Page) {
       });
     if (path === `/api/tables/tables/${TABLE}/schema`)
       return json({ table: { id: TABLE, name: '反馈', base_id: BASE }, fields });
-    if (path === `/api/tables/tables/${TABLE}/views`) return json({ views: [] });
+    if (path === `/api/tables/tables/${TABLE}/views`)
+      return json({
+        views: [
+          { id: 'channel', name: '按渠道', config: { fieldIds: ['f-channel', 'f-customer', 'f-score', 'f-summary'] } },
+        ],
+      });
     if (path === `/api/tables/tables/${TABLE}/records/query`)
       return json({ records, hasMore: false, nextCursor: null });
-    if (path === `/api/tables/tables/${TABLE}/records/record-1`) return json({ record: records[0] });
+    if (path === `/api/tables/tables/${TABLE}/records/13`) return json({ record: records[0] });
     if (path === '/api/projects') return json({ projects: [project], total: 1 });
     if (path === '/api/projects/gantt') return json({ projects: [{ ...project, tasks }] });
     if (path === `/api/projects/${PROJECT}`)

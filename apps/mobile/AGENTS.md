@@ -206,3 +206,12 @@
 - Embed navigation accepts client routes; `sendPrompt` opens a chat draft and never submits it. Theme changes preserve the frame, token refresh is identity-bound, and late frame replies are discarded.
 - Browser settings use the existing settings routes in a viewport layer with a persistent preferences/account/navigation column. Administration opens `/classic/#/administration` in a separate tab.
 - `tests/client-e2e/p3.e2e.ts` and `plugins.e2e.ts` cover places and declarative surfaces; the latter serves its static embed fixture through Playwright routing. Restricted runners collect these specs; the reviewer runs Chromium and generates the design/plugin screenshots.
+
+## Client polish (C4)
+
+- Ask-user drafts are scoped to the conversation and user-turn sequence, so live-to-saved row replacement retains answers without sharing them across repeated questions. Submission waits for generation to finish.
+- Table rows use the primary field as their accessible name even when a saved view orders another field first; Enter and Space open the same record inspector as a click.
+- Record and task details reuse their domain loaders and mutations; `ui/detail-fields` adapts only the wide inspector layout, retaining native sections below 760 px.
+- Browser entity filters and sorting use the shared Menu; `ui/field-value.web` supplies field icons and enum Chips for both entity lists and table grids.
+- Browser place CSS uses semantic web tokens for fills, selected rows, urgency, and callouts in both appearances.
+- Client fixtures use valid object ids; never loosen route id validation to accept test placeholders. C4 screenshots start with `c4-`.

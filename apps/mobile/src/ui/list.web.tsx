@@ -14,7 +14,7 @@
  *  - `IconTile` — the rounded square behind a row icon; `Badge` — a small status capsule.
  */
 
-import React, { Children, isValidElement, useState } from 'react';
+import React, { Children, isValidElement, useState, useContext } from 'react';
 import {
   Platform,
   Pressable,
@@ -31,6 +31,7 @@ import {
 } from 'react-native';
 import { HIT, alpha, categoricalFor, makeStyles, radius, space, squircle, typo, useTheme, weight } from '../theme';
 import { Icon, type IconName } from './core';
+import { DetailFieldsContext } from './detail-context.web';
 import { useFontScaleKey } from './font-scale';
 
 /** Default leading tile size (Settings-style icon tile). */
@@ -191,7 +192,26 @@ export function Row({
   const inset = separatorInset(icon ? TILE : leading ? (leadingWidth ?? TILE) : undefined);
   const fontKey = useFontScaleKey();
   const large = Number(fontKey) >= 1.5;
+  const detail = useContext(DetailFieldsContext);
   const isLast = last || position === 'last' || position === 'only';
+  if (detail && width >= 760) {
+    const content = (
+      <>
+        <span className="gh-object-label">{title}</span>
+        <span className="gh-object-value">
+          {value || subtitle || '—'}
+          {accessory && typeof accessory !== 'string' ? accessory : null}
+        </span>
+      </>
+    );
+    return onPress ? (
+      <button className="gh-object-field" disabled={disabled} onClick={onPress}>
+        {content}
+      </button>
+    ) : (
+      <div className="gh-object-field">{content}</div>
+    );
+  }
   return (
     <View
       style={

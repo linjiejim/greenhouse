@@ -74,6 +74,7 @@ import { useT } from '../../../src/lib/i18n';
 import type { ChatMessage } from '../../../src/shared/greenhouse-types';
 import { readChatCopy, saveChatCopy } from '../../../src/store/chat-copies';
 import { claimConversation, deliverQueued, queueTurn, unqueueTurn, useOutbox } from '../../../src/store/outbox';
+import { AskUserDrafts } from '../../../src/chat/cards';
 import { HIT, makeStyles, motion, space, typo, useTheme } from '../../../src/theme';
 import { alertError, confirmAction, promptText } from '../../../src/ui/dialogs';
 import { EmptyState } from '../../../src/ui/empty';
@@ -698,6 +699,7 @@ export default function Chat({ readOnly = false }: { readOnly?: boolean } = {}) 
         <AssistantReply
           authorName={agentName}
           messageId={message.id}
+          answerScope={String(messages.slice(0, item.index).findLast((m) => m.role === 'user')?.seq ?? 0)}
           sessionId={cardSession}
           text={message.content}
           steps={steps}
@@ -742,6 +744,9 @@ export default function Chat({ readOnly = false }: { readOnly?: boolean } = {}) 
         <AssistantReply
           authorName={agentName}
           messageId="live"
+          answerScope={String(
+            state.pending !== null ? (messages.at(-1)?.seq ?? 0) + 1 : (messages[lastUser]?.seq ?? 0),
+          )}
           sessionId={cardSession}
           text={reply.text}
           steps={reply.steps}
@@ -769,90 +774,93 @@ export default function Chat({ readOnly = false }: { readOnly?: boolean } = {}) 
         {header}
         {/* what opens from here (link chips, cards) says it came from this conversation */}
         <OpenOrigin.Provider value={sessionId ? headerTitle : null}>
-          <FlatList<Item>
-            ref={list}
-            // insets by hand: the top clears the bar, the bottom the composer and the keyboard
-            contentInsetAdjustmentBehavior="never"
-            scrollIndicatorInsets={{ top: headerInset }}
-            data={items}
-            keyExtractor={(item) => item.key}
-            keyboardDismissMode="interactive"
-            keyboardShouldPersistTaps="handled"
-            // older history comes in at the top without moving what is on screen
-            // (not while a reply streams: holding the first row in place fights the follow to the end)
-            maintainVisibleContentPosition={state.busy ? undefined : KEEP_PLACE}
-            onStartReached={() => void conversation?.loadOlder()}
-            onStartReachedThreshold={0.5}
-            scrollEventThrottle={32}
-            onScroll={(e) => {
-              const { contentOffset, layoutMeasurement, contentSize, contentInset } = e.nativeEvent;
-              const end = atEnd({
-                offsetY: contentOffset.y,
-                viewportHeight: layoutMeasurement.height,
-                contentHeight: contentSize.height + (contentInset?.bottom ?? 0),
-              });
-              // only the member's own scrolling lets go of the end: content growing under a scroll
-              // that is still catching up (a long delta, chips resolving titles)
-              // passes through "not at the end" for a moment and must not stop the follow
-              if (dragging.current) pinned.current = end;
-              else if (end) pinned.current = true;
-              setAway((now) => (now === !pinned.current ? now : !pinned.current));
-            }}
-            onScrollBeginDrag={() => {
-              dragging.current = true;
-            }}
-            onScrollEndDrag={(e) => {
-              const { velocity } = e.nativeEvent;
-              if (!velocity || Math.abs(velocity.y) < 0.01) dragging.current = false;
-            }}
-            onMomentumScrollEnd={() => {
-              dragging.current = false;
-            }}
-            onLayout={(e) => {
-              viewport.current = e.nativeEvent.layout.height;
-            }}
-            onContentSizeChange={(_, height) => {
-              const next = { head: headOf(state), tail: `${tailOf(state)}|${queued.length}` };
-              const follow = shouldFollowEnd({
-                pinned: pinned.current,
-                head: next.head,
-                prevHead: shape.current.head,
-                tail: next.tail,
-                prevTail: shape.current.tail,
-              });
-              shape.current = next;
-              // the native scroll view's own end: content, its padding and the keyboard inset
-              // (only when it overflows: a short conversation rests at the top, under the bar)
-              // (while a reply streams, at once: an animated scroll restarted on every delta never lands)
-              if (follow && height > viewport.current) scrollRef(list.current)?.scrollToEnd({ animated: !state.busy });
-            }}
-            ListHeaderComponent={
-              <>
-                {offline ? <Text style={styles.offline}>{t('common.savedCopy')}</Text> : null}
-                {state.loadingOlder ? <Spinner style={styles.older} /> : null}
-              </>
-            }
-            renderItem={renderItem}
-            ListEmptyComponent={
-              !sessionId || state.transcript ? (
-                <Text style={styles.hint}>{t('assistant.startHint')}</Text>
-              ) : state.loadFailed ? (
-                <EmptyState
-                  icon="alert"
-                  title={t('assistant.loadFailed')}
-                  onRetry={() => void conversation?.refocus()}
-                  style={styles.state}
-                />
-              ) : (
-                <ConversationLoading />
-              )
-            }
-            contentContainerStyle={[
-              styles.content,
-              layout.content,
-              { paddingTop: headerInset + space.md, paddingBottom: composerHeight + keyboardRoom + space.lg },
-            ]}
-          />
+          <AskUserDrafts key={sessionId ?? 'new'}>
+            <FlatList<Item>
+              ref={list}
+              // insets by hand: the top clears the bar, the bottom the composer and the keyboard
+              contentInsetAdjustmentBehavior="never"
+              scrollIndicatorInsets={{ top: headerInset }}
+              data={items}
+              keyExtractor={(item) => item.key}
+              keyboardDismissMode="interactive"
+              keyboardShouldPersistTaps="handled"
+              // older history comes in at the top without moving what is on screen
+              // (not while a reply streams: holding the first row in place fights the follow to the end)
+              maintainVisibleContentPosition={state.busy ? undefined : KEEP_PLACE}
+              onStartReached={() => void conversation?.loadOlder()}
+              onStartReachedThreshold={0.5}
+              scrollEventThrottle={32}
+              onScroll={(e) => {
+                const { contentOffset, layoutMeasurement, contentSize, contentInset } = e.nativeEvent;
+                const end = atEnd({
+                  offsetY: contentOffset.y,
+                  viewportHeight: layoutMeasurement.height,
+                  contentHeight: contentSize.height + (contentInset?.bottom ?? 0),
+                });
+                // only the member's own scrolling lets go of the end: content growing under a scroll
+                // that is still catching up (a long delta, chips resolving titles)
+                // passes through "not at the end" for a moment and must not stop the follow
+                if (dragging.current) pinned.current = end;
+                else if (end) pinned.current = true;
+                setAway((now) => (now === !pinned.current ? now : !pinned.current));
+              }}
+              onScrollBeginDrag={() => {
+                dragging.current = true;
+              }}
+              onScrollEndDrag={(e) => {
+                const { velocity } = e.nativeEvent;
+                if (!velocity || Math.abs(velocity.y) < 0.01) dragging.current = false;
+              }}
+              onMomentumScrollEnd={() => {
+                dragging.current = false;
+              }}
+              onLayout={(e) => {
+                viewport.current = e.nativeEvent.layout.height;
+              }}
+              onContentSizeChange={(_, height) => {
+                const next = { head: headOf(state), tail: `${tailOf(state)}|${queued.length}` };
+                const follow = shouldFollowEnd({
+                  pinned: pinned.current,
+                  head: next.head,
+                  prevHead: shape.current.head,
+                  tail: next.tail,
+                  prevTail: shape.current.tail,
+                });
+                shape.current = next;
+                // the native scroll view's own end: content, its padding and the keyboard inset
+                // (only when it overflows: a short conversation rests at the top, under the bar)
+                // (while a reply streams, at once: an animated scroll restarted on every delta never lands)
+                if (follow && height > viewport.current)
+                  scrollRef(list.current)?.scrollToEnd({ animated: !state.busy });
+              }}
+              ListHeaderComponent={
+                <>
+                  {offline ? <Text style={styles.offline}>{t('common.savedCopy')}</Text> : null}
+                  {state.loadingOlder ? <Spinner style={styles.older} /> : null}
+                </>
+              }
+              renderItem={renderItem}
+              ListEmptyComponent={
+                !sessionId || state.transcript ? (
+                  <Text style={styles.hint}>{t('assistant.startHint')}</Text>
+                ) : state.loadFailed ? (
+                  <EmptyState
+                    icon="alert"
+                    title={t('assistant.loadFailed')}
+                    onRetry={() => void conversation?.refocus()}
+                    style={styles.state}
+                  />
+                ) : (
+                  <ConversationLoading />
+                )
+              }
+              contentContainerStyle={[
+                styles.content,
+                layout.content,
+                { paddingTop: headerInset + space.md, paddingBottom: composerHeight + keyboardRoom + space.lg },
+              ]}
+            />
+          </AskUserDrafts>
         </OpenOrigin.Provider>
         <HeaderBand height={headerInset} />
         <KeyboardStickyView offset={{ opened: insets.bottom }} style={[styles.composerWrap, layout.composer]}>

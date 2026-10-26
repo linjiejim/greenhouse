@@ -151,20 +151,33 @@ async function ready(page: Page, path: string) {
 }
 async function screenshot(page: Page, name: string) {
   mkdirSync('tests/client-e2e/__screenshots__', { recursive: true });
-  await page.screenshot({ path: `tests/client-e2e/__screenshots__/plugin-${name}.png` });
+  await page.screenshot({ path: `tests/client-e2e/__screenshots__/c4-plugin-${name}.png` });
 }
 test('Plugins entity list filters, sort, infinite pages, inspector edit and confirmed delete', async ({ page }) => {
   const f = await pluginStation(page);
   await ready(page, '/p/crm/companies');
   const list = page.getByTestId('plugin-entity-list');
   await expect(list.getByText('Acme Analytics', { exact: true })).toBeVisible();
+  await expect(list.locator('tbody tr').first()).toHaveCSS('height', '32px');
+  await expect(list.locator('td').filter({ hasText: '100.00' }).first()).toHaveCSS('text-align', 'right');
   await screenshot(page, 'entity-list');
-  await page.getByRole('combobox', { name: '状态', exact: true }).selectOption('open');
+  await page.evaluate(() => localStorage.setItem('greenhouse_pref_theme', 'dark'));
+  await page.reload();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+  await expect(list.getByText('Acme Analytics', { exact: true })).toBeVisible();
+  await screenshot(page, 'entity-list-dark');
+  await page.evaluate(() => localStorage.setItem('greenhouse_pref_theme', 'light'));
+  await page.reload();
+  await expect(list.getByText('Acme Analytics', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: '状态', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'open', exact: true }).click();
   await expect
     .poll(() => f.queries.some((q) => JSON.parse(q.get('filter') || '[]')[0]?.value[0] === 'open'))
     .toBeTruthy();
-  await page.getByRole('combobox', { name: '状态', exact: true }).selectOption('');
-  await page.getByRole('combobox', { name: '排序', exact: true }).selectOption('amount:desc');
+  await page.getByRole('button', { name: '状态', exact: true }).click();
+  await page.getByRole('menuitem', { name: '全部', exact: true }).click();
+  await page.getByRole('button', { name: '排序', exact: true }).click();
+  await page.getByRole('menuitem', { name: '金额 ↓', exact: true }).click();
   await page.getByRole('button', { name: '加载更多', exact: true }).click();
   await expect.poll(() => f.queries.some((q) => q.get('skip') === '50')).toBeTruthy();
   await list.getByRole('row', { name: 'Acme Analytics', exact: true }).click();

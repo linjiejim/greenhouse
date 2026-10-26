@@ -40,11 +40,16 @@ export function selectOptions(field: Pick<TableField, 'config'>): SelectOption[]
 export function liveFields(fields: readonly TableField[]): TableField[] {
   return fields
     .filter((field) => !field.archived_at)
-    .sort((a, b) => Number(b.is_primary) - Number(a.is_primary) || a.position - b.position || compareIds(a.id, b.id));
+    .sort(
+      (a, b) => Number(!!b.is_primary) - Number(!!a.is_primary) || a.position - b.position || compareIds(a.id, b.id),
+    );
 }
 
 /** A field's value on a record: a computed result when there is one, else the stored value. */
-export function cellValue(field: Pick<TableField, 'id'>, record: Pick<TableRecord, 'values' | 'computed_values'>): unknown {
+export function cellValue(
+  field: Pick<TableField, 'id'>,
+  record: Pick<TableRecord, 'values' | 'computed_values'>,
+): unknown {
   const key = String(field.id);
   const computed = record.computed_values?.[key];
   return computed !== undefined && computed !== null ? computed : record.values?.[key];
@@ -88,11 +93,13 @@ export function displayValue(field: Pick<TableField, 'type' | 'config'>, value: 
         .map(words.user)
         .join(', ');
     case 'relation':
-      return list
-        // record ids are text since 3.0; older values hold numbers
-        .filter((id) => typeof id === 'string' || typeof id === 'number')
-        .map((id) => `#${String(id)}`)
-        .join(', ');
+      return (
+        list
+          // record ids are text since 3.0; older values hold numbers
+          .filter((id) => typeof id === 'string' || typeof id === 'number')
+          .map((id) => `#${String(id)}`)
+          .join(', ')
+      );
     case 'attachment':
       return list.length ? String(list.length) : '';
     default:
@@ -149,7 +156,8 @@ export function draftValues(
     }
     if (field.type === 'number') {
       const n = Number(String(text).replace(/,/g, ''));
-      if (!Number.isFinite(n) || String(text).trim() === '') return { ok: false, problem: { kind: 'number', field: field.name } };
+      if (!Number.isFinite(n) || String(text).trim() === '')
+        return { ok: false, problem: { kind: 'number', field: field.name } };
       values[key] = n;
     } else if (field.type === 'date') {
       const day = String(text);
@@ -168,7 +176,8 @@ export function draftValues(
 }
 
 /** Roles that may add records (editor and up). */
-export const canAddRecords = (role: string | null | undefined) => role === 'owner' || role === 'builder' || role === 'editor';
+export const canAddRecords = (role: string | null | undefined) =>
+  role === 'owner' || role === 'builder' || role === 'editor';
 
 /** The people (user ids) a record's user fields name, in field order, each once. */
 export function recordUserIds(

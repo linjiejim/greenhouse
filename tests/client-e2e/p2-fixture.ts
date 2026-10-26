@@ -345,5 +345,7 @@ export async function installStation(page: Page) {
 }
 export async function shot(page: Page, design: string, width: number) {
   mkdirSync('tests/client-e2e/__screenshots__', { recursive: true });
-  await page.screenshot({ path: `tests/client-e2e/__screenshots__/design-${design}-${width}.png` });
+  await page.screenshot({
+    path: `tests/client-e2e/__screenshots__/${design.startsWith('c4-') ? design : `c4-${design}`}-${width}.png`,
+  });
 }

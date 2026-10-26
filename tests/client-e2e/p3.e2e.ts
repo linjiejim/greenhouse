@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { installPlaces, FILE, TASK, AUTO } from './p3-fixture';
+import { installPlaces, FILE, TASK, PROJECT, AUTO } from './p3-fixture';
 import { shot } from './p2-fixture';
 const ready = async (page: import('@playwright/test').Page, path: string) => {
   await page.goto(path);
@@ -9,6 +9,8 @@ test('P3 knowledge tree, Tiptap Markdown save, keyboard and dark document', asyn
   const f = await installPlaces(page);
   await ready(page, '/knowledge');
   await expect(page.getByTestId('knowledge-document')).toContainText('远程办公政策');
+  await expect(page.getByRole('heading', { name: '在哪里工作', exact: true })).toHaveCSS('font-size', '20px');
+  await expect(page.locator('.gh-doc-meta')).toContainText('林杰');
   const sidebar = page.getByTestId('client-secondary');
   await expect(sidebar.getByRole('button', { name: '人事制度' })).toBeVisible();
   await sidebar.getByRole('button', { name: '远程办公政策', exact: true }).last().focus();
@@ -17,6 +19,8 @@ test('P3 knowledge tree, Tiptap Markdown save, keyboard and dark document', asyn
   await page.getByRole('button', { name: '编辑', exact: true }).click();
   const editor = page.getByRole('textbox', { name: 'editor', exact: true });
   await expect(editor).toBeVisible();
+  await expect(editor.locator('h2').first()).toHaveCSS('font-size', '20px');
+  await expect(editor).toHaveCSS('line-height', '28px');
   await editor.fill('这是新政策内容');
   await page.getByRole('button', { name: '保存', exact: true }).click();
   await expect(page.getByTestId('knowledge-document')).toContainText('这是新政策内容');
@@ -64,13 +68,20 @@ test('P3 drive preview, rename, move, delete and dropped upload', async ({ page 
 test('P3 tables grid opens a record in inspector', async ({ page }) => {
   await installPlaces(page);
   await ready(page, '/drive?view=tables');
-  await page.getByRole('row', { name: /Wayne Enterprises/ }).click();
+  await page.getByRole('tab', { name: '按渠道', exact: true }).click();
+  const row = page.getByRole('row', { name: /Wayne Enterprises/ });
+  await row.click();
+  await expect(row).toHaveAttribute('aria-selected', 'true');
   await expect(page.getByTestId('client-inspector').filter({ visible: true })).toContainText('Wayne Enterprises');
 });
 test('P3 project board drag, list, gantt and task inspector', async ({ page }) => {
   const f = await installPlaces(page);
   await ready(page, '/projects');
   const card = page.getByTestId('project-kanban').locator('.gh-task-card').filter({ hasText: '定价页文案' });
+  await card.getByRole('button', { name: '定价页文案', exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(`project=${PROJECT}`));
+  await expect(page.getByTestId('client-inspector').filter({ visible: true })).toContainText('三档价格对比表 + FAQ');
+  await page.keyboard.press('Escape');
   await card.dragTo(page.locator('[data-status="done"]'));
   await expect
     .poll(() => f.writes.some((w) => w.path === `/api/projects/tasks/${TASK}` && w.body?.status === 'done'))
@@ -123,15 +134,31 @@ for (const width of [1440, 1280, 1024, 390])
           await expect(page.getByTestId('client-inspector').filter({ visible: true })).toBeVisible();
         }
       }
-      await shot(page, design, width);
+      await shot(page, `c4-${design}`, width);
     }
     await ready(page, '/knowledge');
     await page.evaluate(() => localStorage.setItem('greenhouse_pref_theme', 'dark'));
     await page.reload();
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
-    await shot(page, '13', width);
+    await shot(page, 'c4-13', width);
+    if (width >= 760) {
+      for (const [design, path] of [
+        ['05-dark', '/drive?view=tables'],
+        ['06-dark', '/projects'],
+      ]) {
+        await ready(page, path);
+        if (design === '05-dark') await page.getByRole('row', { name: /Wayne Enterprises/ }).click();
+        else await page.getByRole('button', { name: '定价页文案', exact: true }).click();
+        await expect(page.getByTestId('client-inspector').filter({ visible: true })).not.toContainText(
+          '这个任务不可用',
+        );
+        await shot(page, `c4-${design}`, width);
+        await page.keyboard.press('Escape');
+      }
+      await ready(page, '/knowledge');
+    }
     await page.keyboard.press('Meta+,');
     if (width >= 760) await expect(page.getByTestId('settings-overlay')).toBeVisible();
     else await expect(page.getByRole('button', { name: '关闭', exact: true }).first()).toBeVisible();
-    await shot(page, '10', width);
+    await shot(page, 'c4-10', width);
   });

@@ -256,7 +256,7 @@ textarea {
   max-width: 812px;
   margin: 24px auto;
   padding: 0 28px 60px;
-  line-height: 1.7;
+  line-height: 1.75;
   font-size: 16px;
 }
 .gh-doc h1 {
@@ -270,12 +270,21 @@ textarea {
 .gh-doc-meta {
   font-size: 12px;
   color: var(--gh-secondary);
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
 }
 .gh-doc-summary {
   padding: 12px 16px;
-  background: var(--gh-hover);
-  color: var(--gh-focus);
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  background: var(--gh-accent-wash);
+  color: var(--gh-accent-text);
   border-radius: 14px;
+  font-weight: 600;
+  margin-bottom: 16px;
 }
 .gh-editor-toolbar {
   display: flex;
@@ -313,38 +322,28 @@ textarea {
 }
 .gh-kanban-column {
   flex: 1;
-  background: var(--gh-hover);
+  background: var(--gh-sunken);
   border-radius: 16px;
   padding: 8px;
+  min-width: 0;
   overflow: auto;
 }
 .gh-kanban-column h3 {
   font-size: 14px;
   margin: 4px 4px 12px;
   display: flex;
-  justify-content: space-between;
-  color: var(--gh-secondary);
+  align-items: center;
+  gap: 6px;
+  color: var(--gh-text);
 }
 .gh-task-card {
-  background: var(--gh-card);
+  position: relative;
+  background: var(--gh-raised);
   border: 1px solid var(--gh-line);
   border-radius: 12px;
   margin-bottom: 8px;
-  padding: 12px;
-  cursor: grab;
-}
-.gh-task-card button {
   padding: 0;
-  text-align: left;
-  width: 100%;
-  font-weight: 700;
-}
-.gh-task-card footer {
-  display: flex;
-  justify-content: space-between;
-  color: var(--gh-secondary);
-  font-size: 12px;
-  margin-top: 12px;
+  cursor: grab;
 }
 .gh-automation {
   max-width: 800px;
@@ -506,22 +505,6 @@ textarea {
   color: inherit;
   font-weight: 700;
 }
-.gh-board-task {
-  color: inherit;
-  font-weight: 700;
-  text-align: left;
-  width: 100%;
-  border: 0;
-  background: transparent;
-}
-.gh-board-status {
-  border: 0;
-  background: transparent;
-  color: var(--gh-secondary);
-  font-size: 12px;
-  margin-top: 8px;
-  max-width: 100%;
-}
 .gh-settings-main {
   display: flex;
   flex-direction: column;
@@ -553,4 +536,244 @@ textarea {
 .gh-editor-suggestion.selected {
   background: var(--gh-hover);
   color: var(--gh-focus);
+}
+
+/* RN prose and the editor share the document type ramp. */
+.gh-doc-reader [dir='auto'],
+.gh-editor .tiptap {
+  font-size: 16px !important;
+  line-height: 1.75 !important;
+}
+.gh-doc-reader [role='heading'],
+.gh-editor .tiptap h2 {
+  font-size: 20px !important;
+  line-height: 1.4 !important;
+  font-weight: 600 !important;
+  margin: 20px 0 10px !important;
+}
+.gh-doc-reader [role='heading'][aria-level='1'],
+.gh-editor .tiptap h1 {
+  font-size: 28px !important;
+  line-height: 1.3 !important;
+  font-weight: 700 !important;
+}
+.gh-doc-reader [role='heading'][aria-level='3'],
+.gh-editor .tiptap h3 {
+  font-size: 18px !important;
+}
+.gh-editor .tiptap p {
+  margin: 6px 0;
+}
+.gh-doc-summary > :first-child {
+  flex-shrink: 0;
+  margin-top: 5px;
+}
+.gh-place .gh-secondary {
+  background: var(--gh-surface);
+  border: 1px solid var(--gh-line);
+  font-weight: 600;
+}
+.gh-place-tabs {
+  align-items: center;
+  flex-wrap: wrap;
+}
+.gh-place-actions .gh-place-tabs {
+  margin: 0;
+}
+.gh-place-tabs[role='tablist'] {
+  min-height: 28px;
+}
+.gh-filter {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--gh-secondary);
+}
+.gh-filter button,
+.gh-filter input {
+  min-height: 28px;
+  border: 1px solid var(--gh-line);
+  background: var(--gh-raised);
+  color: var(--gh-text);
+  border-radius: 6px;
+  padding: 4px 8px;
+}
+.gh-data-grid thead {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+.gh-data-grid th {
+  background: var(--gh-surface);
+}
+.gh-data-grid td {
+  padding-block: 4px;
+}
+.gh-entity-grid td,
+.gh-entity-grid th {
+  height: 32px;
+  padding-block: 3px;
+}
+.gh-data-grid tr[aria-selected='true'] {
+  background: var(--gh-accent-fill);
+}
+.gh-data-grid tr[aria-selected='true']:hover {
+  background: var(--gh-accent-fill-hover);
+}
+.gh-data-grid .gh-number {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.gh-field-heading {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+}
+.gh-data-grid .gh-row-number {
+  width: 44px;
+  max-width: 44px;
+  color: var(--gh-tertiary);
+}
+.gh-field-chip {
+  display: inline-flex;
+  max-width: 100%;
+  vertical-align: middle;
+}
+.gh-field-chip > div {
+  transform: none !important;
+}
+.gh-kanban {
+  width: 100%;
+}
+.gh-column-count {
+  margin-left: auto;
+  color: var(--gh-secondary);
+  font-weight: 400;
+}
+.gh-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--gh-tertiary);
+  flex-shrink: 0;
+}
+.gh-status-dot[data-status='in_progress'] {
+  background: var(--gh-info);
+}
+.gh-status-dot[data-status='in_review'] {
+  background: var(--gh-warning);
+}
+.gh-status-dot[data-status='done'] {
+  background: var(--gh-success);
+}
+.gh-place .gh-board-task {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+  padding: 12px;
+  color: inherit;
+  text-align: left;
+  font-weight: 600;
+}
+.gh-task-title {
+  padding-right: 8px;
+  overflow-wrap: anywhere;
+}
+.gh-task-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  font-size: 12px;
+}
+.gh-task-priority {
+  margin-left: auto;
+  color: var(--gh-secondary);
+  font-weight: 400;
+}
+.gh-task-priority[data-priority='high'],
+.gh-task-priority[data-priority='urgent'] {
+  color: var(--gh-danger);
+}
+.gh-task-due {
+  border-radius: 6px;
+  padding: 2px 6px;
+  background: var(--gh-fill);
+  color: var(--gh-secondary);
+  white-space: nowrap;
+}
+.gh-task-due[data-urgency='today'] {
+  background: var(--gh-warning-fill);
+  color: var(--gh-warning);
+}
+.gh-task-due[data-urgency='overdue'] {
+  background: var(--gh-danger-fill);
+  color: var(--gh-danger);
+}
+.gh-task-card[data-selected='true'] {
+  outline: 2px solid var(--gh-accent-edge);
+  outline-offset: -2px;
+}
+.gh-task-card:hover {
+  border-color: var(--gh-accent-edge);
+}
+.gh-task-menu {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  opacity: 0;
+}
+.gh-task-card:hover .gh-task-menu,
+.gh-task-card:focus-within .gh-task-menu {
+  opacity: 1;
+}
+.gh-task-menu button {
+  padding: 0 4px;
+}
+
+[data-testid='object-detail'] > div > [role='heading'] {
+  font-size: 24px !important;
+  line-height: 1.4 !important;
+  margin: 20px 24px !important;
+}
+.gh-object-fields {
+  margin: 0 24px 20px;
+  border-bottom: 1px solid var(--gh-line);
+  padding-bottom: 16px;
+}
+.gh-object-field {
+  display: grid;
+  grid-template-columns: 80px minmax(0, 1fr);
+  align-items: start;
+  gap: 12px;
+  min-height: 44px;
+  width: 100%;
+  padding: 10px 0;
+  font: inherit;
+  color: var(--gh-text);
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+}
+button.gh-object-field:hover {
+  background: var(--gh-hover);
+}
+.gh-object-label {
+  color: var(--gh-tertiary);
+  font-weight: 600;
+}
+.gh-object-value {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.gh-doc-reader [role='heading'] [dir='auto'] {
+  font-size: inherit !important;
+  line-height: inherit !important;
 }

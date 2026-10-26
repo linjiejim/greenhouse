@@ -44,8 +44,13 @@ describe('declarative surfaces', () => {
   it('formats every field without coercing objects to object Object', () => {
     expect(fieldText({ key: 'x', title: 'X', kind: 'boolean' }, true, 'zh')).toBe('是');
     expect(fieldText({ key: 'x', title: 'X', kind: 'json' }, { a: 1 }, 'en')).toBe('{"a":1}');
-    expect(fieldText(entity.fields[2], 1000, 'en')).toBe('1,000');
+    expect(fieldText(entity.fields[2], 1000, 'en')).toBe('1,000.00');
     expect(fieldText(entity.fields[0], null, 'en')).toBe('—');
+    expect(fieldText(entity.fields[2], 1000.236, 'zh')).toBe('1,000.24');
+    expect(fieldText({ key: 'x', title: 'X', kind: 'date' }, '2026-10-22', 'en')).toBe(
+      new Date(2026, 9, 22).toLocaleDateString('en'),
+    );
+    expect(fieldText({ key: 'x', title: 'X', kind: 'dateTime' }, 'invalid', 'en')).toBe('invalid');
   });
   it('writes only writable keys, parses numbers and rejects invalid input', () => {
     expect(writableValues(entity, { name: 'Acme', status: 'open', amount: '12', secret: 'no' })).toEqual({

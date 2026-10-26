@@ -12,7 +12,7 @@ import { Place, PlaceSidebar, PlaceRow, PlaceEmpty, PlaceContext, type PlaceCont
 import { useT } from '../lib/i18n';
 import { useAuth } from '../store/auth';
 import { alertError, promptText } from '../ui/dialogs';
-import { flattenTasks } from '../data/tasks';
+import { flattenTasks, withTaskPatched } from '../data/tasks';
 import type { TaskStatus, ProjectTask } from '../shared/greenhouse-types';
 export default function ProjectsPlace() {
   const { width } = useWindowDimensions();
@@ -38,11 +38,19 @@ function ProjectsDesktop() {
   const tasks = (
     mine
       ? (all.data?.projects ?? [])
-          .flatMap((p) => flattenTasks(p.tasks))
+          .flatMap((p) => flattenTasks(p.tasks).map((task) => ({ ...task, project_id: p.id })))
           .filter((task) => task.assignee_id === user?.id && task.status !== 'done' && task.status !== 'cancelled')
-      : flattenTasks(detail.data?.tasks ?? [])
+      : flattenTasks(detail.data?.tasks ?? []).map((task) => ({
+          ...task,
+          project_id: detail.data?.project.id ?? task.project_id,
+        }))
   ).filter((task) => !query || task.title.toLowerCase().includes(query.toLowerCase()));
-  const openTask = (task: ProjectTask) => open({ kind: 'task', projectId: task.project_id, id: task.id });
+  const [selected, setSelected] = useState<string>();
+  // The inspector reads the owning project's tree; keep that context on every flattened task.
+  const openTask = (task: ProjectTask) => {
+    setSelected(task.id);
+    open({ kind: 'task', projectId: task.project_id, id: task.id });
+  };
   const statuses: TaskStatus[] = ['todo', 'in_progress', 'in_review', 'done'];
   const move = async (taskId: string, status: TaskStatus) => {
     if (saving) return;
@@ -51,9 +59,7 @@ function ProjectsDesktop() {
     const current = captureIdentity();
     setSaving(true);
     const previous = detail.data;
-    detail.setData((value) =>
-      value ? { ...value, tasks: value.tasks.map((t) => (t.id === taskId ? { ...t, status } : t)) } : value,
-    );
+    detail.setData((value) => (value ? { ...value, tasks: withTaskPatched(value.tasks, taskId, { status }) } : value));
     const r = await updateTaskStatus(taskId, status);
     if (!current()) return;
     setSaving(false);
@@ -162,11 +168,18 @@ function ProjectsDesktop() {
             <ProjectBoard
               onContext={(id, x, y) => setContext({ id, x, y })}
               tasks={tasks}
+              selected={selected}
               view={view}
               busy={saving}
               labels={Object.fromEntries([
                 ...statuses.map((status) => [status, t(`projects.status.${status}` as never)]),
-                ['status', t('places.sort')],
+                ['status', t('projects.changeStatus')],
+                ['today', t('projects.dueGroup.today')],
+                ['unassigned', t('projects.unassigned')],
+                ...['low', 'normal', 'high', 'urgent'].map((priority) => [
+                  priority,
+                  t(`projects.priority.${priority}` as never),
+                ]),
               ])}
               onOpen={(taskId) => {
                 const task = tasks.find((task) => task.id === taskId);

@@ -37,8 +37,13 @@ test('P2 send, incremental stream, stop, regenerate, ask_user and dropped attach
   expect(fixture.calls.some((c) => c.regenerate_assistant_message_id)).toBeTruthy();
   await page.getByTestId('composer-input').filter({ visible: true }).fill('问我补贴用途');
   await page.getByTestId('composer-input').filter({ visible: true }).press('Enter');
-  await page.getByRole('radio', { name: '办公桌椅' }).click();
+  const choice = page.getByRole('radio', { name: '办公桌椅' });
+  await choice.click();
+  await expect(choice).toBeChecked();
   await expect(page.getByTestId('composer-stop').filter({ visible: true })).toHaveCount(0);
+  // Live → saved reconciliation must retain a selection made during the stream.
+  await expect(choice).toBeChecked();
+  await expect(page.getByRole('button', { name: '提交回答', exact: true })).toBeEnabled();
   await page.getByRole('button', { name: '提交回答', exact: true }).click();
   await expect(page.getByTestId('composer-stop').filter({ visible: true })).toBeVisible();
   await expect.poll(() => fixture.calls.some((c) => c.messages?.[0]?.content.includes('办公桌椅'))).toBeTruthy();

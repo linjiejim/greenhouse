@@ -1,5 +1,8 @@
 'use dom';
 import React from 'react';
+import { Avatar } from '../ui/avatar';
+import { NativeMenu } from '../ui/menu.web';
+import { localDay, dueBucket } from '../data/tasks';
 import type { ProjectTask, TaskStatus } from '../shared/greenhouse-types';
 const statuses: TaskStatus[] = ['todo', 'in_progress', 'in_review', 'done'];
 /** Same task tree/status API as classic; the DOM boundary receives only serializable state. */
@@ -11,8 +14,10 @@ export default function ProjectBoard({
   onOpen,
   onMove,
   onContext,
+  selected,
 }: {
   tasks: ProjectTask[];
+  selected?: string;
   view: string;
   busy: boolean;
   labels: Record<string, string>;
@@ -21,44 +26,60 @@ export default function ProjectBoard({
   onContext: (id: string, x: number, y: number) => void;
   dom?: import('expo/dom').DOMProps;
 }) {
-  const row = (task: ProjectTask) => (
-    <div>
-      <button
-        className="gh-board-task"
-        onKeyDown={(e) => {
-          if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-            e.preventDefault();
-            const nodes = Array.from(
-              e.currentTarget.closest('.gh-kanban')?.querySelectorAll<HTMLButtonElement>('.gh-board-task') ?? [],
-            );
-            nodes[
-              (nodes.indexOf(e.currentTarget) + (e.key === 'ArrowDown' ? 1 : -1) + nodes.length) % nodes.length
-            ]?.focus();
-          }
-        }}
-        onClick={() => onOpen(task.id)}
-      >
-        {task.title}
-      </button>
-      <footer>
-        <span>{task.assignee_nickname?.slice(0, 1) || '—'}</span>
-        <span>{task.due_date}</span>
-      </footer>
-      <select
-        className="gh-board-status"
-        aria-label={`${labels.status} ${task.title}`}
-        disabled={busy}
-        value={task.status}
-        onChange={(e) => onMove(task.id, e.target.value as TaskStatus)}
-      >
-        {statuses.map((status) => (
-          <option key={status} value={status}>
-            {labels[status]}
-          </option>
-        ))}
-      </select>
-    </div>
-  );
+  const row = (task: ProjectTask) => {
+    const bucket = dueBucket(task.due_date, localDay(new Date()));
+    const due = bucket === 'today' ? labels.today : task.due_date?.slice(5, 10).replace('-', '/');
+    return (
+      <>
+        <button
+          className="gh-board-task"
+          aria-label={task.title}
+          aria-pressed={selected === task.id}
+          onKeyDown={(e) => {
+            if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+              e.preventDefault();
+              const nodes = Array.from(
+                e.currentTarget.closest('.gh-kanban')?.querySelectorAll<HTMLButtonElement>('.gh-board-task') ?? [],
+              );
+              nodes[
+                (nodes.indexOf(e.currentTarget) + (e.key === 'ArrowDown' ? 1 : -1) + nodes.length) % nodes.length
+              ]?.focus();
+            }
+          }}
+          onClick={() => onOpen(task.id)}
+        >
+          <span className="gh-task-title">{task.title}</span>
+          <span className="gh-task-meta">
+            <span title={task.assignee_nickname || labels.unassigned}>
+              <Avatar name={task.assignee_nickname || '?'} size={24} />
+            </span>
+            <span className="gh-task-priority" data-priority={task.priority}>
+              {labels[task.priority]}
+            </span>
+            {due ? (
+              <span className="gh-task-due" data-urgency={task.status !== 'done' ? bucket : 'later'}>
+                {due}
+              </span>
+            ) : null}
+          </span>
+        </button>
+        <div className="gh-task-menu">
+          <NativeMenu
+            title={labels.status}
+            items={statuses.map((status) => ({
+              id: status,
+              title: labels[status],
+              checked: task.status === status,
+              disabled: busy,
+            }))}
+            onSelect={(status) => onMove(task.id, status as TaskStatus)}
+          >
+            <button aria-label={`${labels.status} ${task.title}`}>⋯</button>
+          </NativeMenu>
+        </div>
+      </>
+    );
+  };
   if (view === 'gantt') {
     const starts = tasks.map((t) => Date.parse(t.start_date || t.due_date || t.created_at)).filter(Number.isFinite);
     const min = Math.min(...starts),
@@ -120,8 +141,9 @@ export default function ProjectBoard({
           }}
         >
           <h3>
+            <span className="gh-status-dot" data-status={status} />
             {labels[status]}
-            <span>{tasks.filter((task) => task.status === status).length}</span>
+            <span className="gh-column-count">{tasks.filter((task) => task.status === status).length}</span>
           </h3>
           {tasks
             .filter((task) => task.status === status)
@@ -129,6 +151,7 @@ export default function ProjectBoard({
               <div
                 key={task.id}
                 className="gh-task-card"
+                data-selected={selected === task.id}
                 draggable={!busy}
                 onDragStart={(e) => e.dataTransfer.setData('application/greenhouse-task', task.id)}
                 onContextMenu={(e) => {

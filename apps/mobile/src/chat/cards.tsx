@@ -17,7 +17,7 @@
  * Content layer: solid colors inside ChatCard frames, never glass.
  */
 
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { createContext, useContext, useRef, useCallback, useEffect, useState } from 'react';
 import { ScrollView, Text, TextInput, View } from 'react-native';
 import { Image } from 'expo-image';
 import { applySchemaPlan, getReceipt, saveCapturedTask, type ActionReceipt, type PlanResult } from '../api/artifacts';
@@ -46,22 +46,45 @@ const absolute = (url: string) => (/^https?:\/\//i.test(url) ? url : `${getApiBa
 
 /* ----------------------------- ask_user ----------------------------- */
 
+type Answers = Record<string, string | string[]>;
+const AnswerDrafts = createContext<Map<string, Answers> | null>(null);
+/** A live reply is replaced by its saved row; drafts belong to the conversation, not that row. */
+export function AskUserDrafts({ children }: { children: React.ReactNode }) {
+  const drafts = useRef(new Map<string, Answers>());
+  return <AnswerDrafts.Provider value={drafts.current}>{children}</AnswerDrafts.Provider>;
+}
+
 export function AskUserCard({
   ask,
   answered,
   onAnswer,
+  working = false,
+  answerScope = '',
 }: {
   ask: AskUser;
   /** A later message of mine exists: the questions were answered (here or on the web). */
   answered: boolean;
   /** Send the answer as my next message; false when it was not sent. */
   onAnswer?: (text: string) => Promise<boolean>;
+  working?: boolean;
+  answerScope?: string;
 }) {
   const { colors: c } = useTheme();
   const styles = useStyles(c);
   const t = useT();
-  const [answers, setAnswers] = useState<Record<string, string | string[]>>({});
+  const drafts = useContext(AnswerDrafts);
+  const draftKey = `${answerScope}:${JSON.stringify(ask)}`;
+  const [answers, setAnswers] = useState<Answers>(() => drafts?.get(draftKey) ?? {});
+  const updateAnswers = (update: (all: Answers) => Answers) =>
+    setAnswers((all) => {
+      const next = update(all);
+      drafts?.set(draftKey, next);
+      return next;
+    });
   const [sending, setSending] = useState(false);
+  useEffect(() => {
+    if (answered) drafts?.delete(draftKey);
+  }, [answered, drafts, draftKey]);
   const complete = ask.questions.every((q) => {
     if (!q.required) return true;
     const value = answers[q.id];
@@ -79,7 +102,7 @@ export function AskUserCard({
 
   const choose = (id: string, value: string, multi: boolean) => {
     selectionTick();
-    setAnswers((all) => {
+    updateAnswers((all) => {
       if (!multi) return { ...all, [id]: value };
       const current = Array.isArray(all[id]) ? (all[id] as string[]) : [];
       return { ...all, [id]: current.includes(value) ? current.filter((v) => v !== value) : [...current, value] };
@@ -87,10 +110,11 @@ export function AskUserCard({
   };
 
   const submit = async () => {
-    if (!onAnswer || sending || !complete) return;
+    if (!onAnswer || sending || working || !complete) return;
     setSending(true);
     const sent = await onAnswer(askUserAnswer(ask, answers));
     setSending(false);
+    if (sent) drafts?.delete(draftKey);
     if (!sent) alertError(t('cards.answerFailed'));
   };
 
@@ -139,7 +163,7 @@ export function AskUserCard({
             ) : (
               <TextInput
                 value={typeof value === 'string' ? value : ''}
-                onChangeText={(text) => setAnswers((all) => ({ ...all, [q.id]: text }))}
+                onChangeText={(text) => updateAnswers((all) => ({ ...all, [q.id]: text }))}
                 placeholder={q.placeholder}
                 placeholderTextColor={c.placeholder}
                 multiline={q.type === 'textarea'}
@@ -156,7 +180,7 @@ export function AskUserCard({
           label={t('cards.answer')}
           variant={complete && onAnswer ? 'prominent' : 'tinted'}
           loading={sending}
-          disabled={!complete || !onAnswer}
+          disabled={working || !complete || !onAnswer}
           onPress={() => void submit()}
         />
       </View>
