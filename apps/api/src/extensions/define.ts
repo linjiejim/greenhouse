@@ -2,7 +2,8 @@
  * The extension contract — one object per extension, every field optional and
  * mapped 1:1 onto an existing core registry (see EXTENDING.md → "Extensions").
  *
- * An extension is a folder under `apps/api/src/extensions/<id>/` (plus, for UI,
+ * An extension is a configured package under `plugins/<id>/`, or an SDK 1 folder under
+ * `apps/api/src/extensions/<id>/` (plus, for UI,
  * `apps/web/src/extensions/<id>/`) that exports `defineExtension({...})` and is
  * listed once in `apps/api/src/extensions/index.ts`. Nothing else in core needs
  * to change — the registries aggregate from that list. Which listed extensions
@@ -76,6 +77,7 @@ export interface GreenhouseExtension {
   /** Human name shown in admin surfaces. */
   name: string;
   description?: string;
+  version?: string;
 
   /**
    * The extension contract revision this was written for (`EXTENSION_SDK` from

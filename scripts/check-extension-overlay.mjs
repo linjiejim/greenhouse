@@ -21,6 +21,7 @@
 import { execFileSync } from 'node:child_process';
 import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
+import { checkPluginImports } from './lib/plugin-imports.mjs';
 import { checkFileImports, extensionFileInfo } from './lib/extension-imports.mjs';
 
 const args = process.argv.slice(2);
@@ -41,6 +42,7 @@ const ALLOWED = [
   'apps/api/src/extensions/**',
   'apps/web/src/extensions/**',
   'greenhouse.config.ts',
+  'plugins/**',
   'packs/**',
   'deploy/**',
   '.env.example',
@@ -86,18 +88,20 @@ function treeExtensionFiles() {
       else out.push(path.split('\\').join('/'));
     }
   };
+  if (existsSync('plugins')) walk('plugins');
   for (const app of ['api', 'web']) {
     const root = `apps/${app}/src/extensions`;
     if (existsSync(root)) walk(root);
   }
-  return out.filter((file) => extensionFileInfo(file));
+  return out.filter((file) => extensionFileInfo(file) || file.startsWith('plugins/'));
 }
 
 function reportImports(files) {
   const violations = [];
   for (const file of files) {
     if (!existsSync(file)) continue; // deleted in the diff
-    for (const v of checkFileImports(file, readFileSync(file, 'utf8'))) violations.push({ file, ...v });
+    const source = readFileSync(file, 'utf8');
+    for (const v of [...checkFileImports(file, source), ...checkPluginImports(file, source)]) violations.push({ file, ...v });
   }
   if (violations.length === 0) {
     console.log(`✓ extension imports: ${files.length} file(s) use only their own code, the kit and allowed packages`);
@@ -121,7 +125,8 @@ try {
   files = execFileSync('git', ['diff', '--name-only', `${ref}...HEAD`], { encoding: 'utf8' })
     .split('\n')
     .map((f) => f.trim())
-    .filter(Boolean);
+    .filter(Boolean)
+    .filter((file) => !/^apps\/(api|web)\/src\/extensions\/compiled\.generated\.ts$/.test(file));
 } catch (err) {
   console.error(`Cannot diff against ${ref}: ${err instanceof Error ? err.message : err}`);
   console.error(
@@ -131,7 +136,7 @@ try {
 }
 
 const leaks = files.filter((f) => !allowed.some((re) => re.test(f)));
-const importStatus = reportImports(files.filter((f) => extensionFileInfo(f)));
+const importStatus = reportImports(files.filter((f) => extensionFileInfo(f) || f.startsWith('plugins/')));
 if (leaks.length === 0) {
   console.log(`✓ overlay is clean: ${files.length} file(s) differ from ${ref}, all inside the extension seam`);
   process.exit(importStatus);

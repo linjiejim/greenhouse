@@ -38,7 +38,7 @@ export type {
   ExtensionMigrationGeneration,
   ExtensionMigrationState,
 } from './extension-migrations.js';
-export { parseMigrationFile, readMigrationFiles } from './extension-migrations.js';
+export { parseMigrationFile, readMigrationFiles, extensionMigrationTables } from './extension-migrations.js';
 export { readCoreMigrations, coreTableNames } from './core-migrations.js';
 export { newId, isNewId, stableId, ulid, ID_PREFIX } from './ids.js';
 export {

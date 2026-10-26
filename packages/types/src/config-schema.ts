@@ -25,6 +25,7 @@ const ClientStationsSchema = z
   });
 
 export const GreenhouseConfigInputSchema = z.object({
+  plugins: z.array(z.string().trim().min(1)).optional(),
   extensions: z
     .object({
       enabled: z.union([z.literal('all'), z.array(z.string().min(1))]).optional(),

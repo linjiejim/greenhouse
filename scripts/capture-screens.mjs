@@ -625,6 +625,12 @@ await step('inbox', async () => {
   await page.keyboard.press('Escape');
 });
 
+await step('plugins', async () => {
+  await page.goto(`${BASE}/#/administration/plugins`);
+  await page.getByTestId('admin-plugins').waitFor();
+  await snap(page, 'administration-plugins', { wait: 1200 });
+});
+
 await step('extension', async () => {
   // Only meaningful when the stack runs with GREENHOUSE_EXTENSIONS=example.
   const active = (await client.get('/api/extensions')).body?.extensions ?? [];

@@ -1,6 +1,6 @@
 /**
  * Tables owned by the example extension. They are created by the extension's
- * own migration lane (`./migrations`), never by the core drizzle chain — keep
+ * own migration lane (`../migrations`), never by the core drizzle chain — keep
  * this file and `migrations/*.sql` in step.
  */
 import { pgTable, serial, text, timestamp } from 'drizzle-orm/pg-core';

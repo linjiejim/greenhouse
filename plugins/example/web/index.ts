@@ -1,10 +1,11 @@
+import manifest from '../manifest.js';
 /**
  * The web half of the example extension: a page under `#/example`, a "More"
  * menu entry, a Settings module, translations, a chat card and an icon for its
  * tool, and agent-panel context for the page. Copy this folder to start your own.
  */
 import { createElement, lazy } from 'react';
-import { StickyNote, defineWebExtension, translate, type Locale } from '../../extension-kit';
+import { StickyNote, defineWebExtension, translate, type Locale } from '@greenhouse/web/extension-kit';
 import { exampleMessages } from './messages';
 import { ExampleNotesCard } from './card';
 
@@ -22,10 +23,7 @@ function tx(key: string, params?: Record<string, string | number>): string {
 }
 
 export const exampleWebExtension = defineWebExtension({
-  id: 'example',
-  // Compatibility: the contract revision (EXTENSION_SDK) and the Greenhouse versions it supports.
-  sdk: 1,
-  core: '>=3.0 <4',
+  ...manifest,
   messages: exampleMessages,
   pages: [
     {
@@ -94,3 +92,5 @@ export const exampleWebExtension = defineWebExtension({
     contextHint: () => tx('context.hint'),
   },
 });
+
+export default exampleWebExtension;

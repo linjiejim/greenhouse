@@ -1,39 +1,26 @@
+import { webCatalog as readWebCatalog, mcpCatalog } from './catalog-fixture.js';
 /**
  * Data catalog (数据目录) permission filtering on the real database, with the
- * example extension switched on so an extension data source is in play.
+ * core compiled without any plugin requirement.
  *
  * Pinned here: Tables bases come from the Tables application's own listing (a
  * private base of another member never appears; counts are row counts only);
- * an extension source appears only when the member reaches one of its MCP tools
- * (its feature flag decides) and, on MCP, only when the grant carries its
- * group; a grant without `mcp:tables` lists no bases.
+ * a grant without `mcp:tables` lists no bases. Plugin-source coverage lives with the plugin.
  */
 
-import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-// Registries are computed at load time: switch the example on before any import.
-vi.hoisted(() => {
-  process.env.GREENHOUSE_EXTENSIONS = 'example';
-});
-
-import type { Context } from 'hono';
-import { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { _resetProvider, initDatabase, type DatabaseProvider, type UserRow } from '@greenhouse/db';
 import { TEST_DATABASE_URL } from '@greenhouse/db/test-config';
-import type { DataCatalog } from '@greenhouse/types/hub-context';
 import { createInternalTestUser } from '../../../../../tests/helpers/internal-user.js';
 import { moveToRestrictedRole, withoutCapability } from '../../../../../tests/helpers/restricted-role.js';
 import { tablesManifest } from '../../platform/manifests/tables.js';
-import { buildMcpServer, composeMcpContext } from '../../routes/mcp.js';
-import { identityFromOAuthScopes } from '../../agent-runtime/mcp-auth.js';
 import { memberMcpToolIds } from '../../agent-runtime/mcp-tool-visibility.js';
 import { initializePlatformRuntime, resetPlatformRuntimeForTests } from '../../platform/runtime.js';
 import { projectsRegistration } from '../../platform/projects/application.js';
 import { knowledgeRegistration } from '../../platform/knowledge/registration.js';
 import { tablesRegistration } from '../../platform/tables/application.js';
 import { humanActor } from '../../platform/actor.js';
-import { buildDataCatalog } from '../catalog.js';
 import { buildTeamContextBundle } from '../team-context.js';
 
 vi.setConfig({ testTimeout: 20_000 });
@@ -62,33 +49,7 @@ async function base(ownerId: string, name: string, visibility: 'team' | 'private
   return created.id;
 }
 
-async function webCatalog(user: UserRow): Promise<DataCatalog> {
-  return buildDataCatalog({
-    db,
-    actor: humanActor(user),
-    reachable: await memberMcpToolIds(user.id, user.role as 'team' | 'super'),
-  });
-}
-
-async function mcpCatalog(user: UserRow, scopes: string[]): Promise<DataCatalog> {
-  const identity = identityFromOAuthScopes({ id: user.id, role: user.role as 'team' | 'super' }, scopes);
-  const ctx = await composeMcpContext(identity, {});
-  const c = {
-    get: (key: string) => (key === 'agentIdentity' ? identity : key === 'oauthClientId' ? 'catalog-client' : undefined),
-    req: { method: 'POST', header: () => undefined },
-  } as unknown as Context;
-  const server = buildMcpServer(c, ctx);
-  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
-  await server.connect(serverTransport);
-  const client = new Client({ name: 'test', version: '1.0.0' });
-  await client.connect(clientTransport);
-  const result = (await client.callTool({ name: 'data_catalog', arguments: {} })) as {
-    content: Array<{ text: string }>;
-    isError?: boolean;
-  };
-  expect(result.isError).toBeFalsy();
-  return JSON.parse(result.content[0]!.text) as DataCatalog;
-}
+const webCatalog = (user: UserRow) => readWebCatalog(db, user);
 
 beforeEach(async () => {
   db = await initDatabase({ type: 'pg', pgConnectionString: TEST_DATABASE_URL });
@@ -101,10 +62,6 @@ beforeEach(async () => {
   teamBaseId = await base(owner.id, unique('Team base'), 'team', 2);
   ownBaseId = await base(member.id, unique('My base'), 'private', 0);
   foreignBaseId = await base(owner.id, unique('Owner private'), 'private', 1);
-});
-
-afterAll(() => {
-  delete process.env.GREENHOUSE_EXTENSIONS;
 });
 
 afterEach(async () => {
@@ -186,37 +143,5 @@ describe('data catalog: Tables bases', () => {
       expect.arrayContaining([teamBaseId, ownBaseId]),
     );
     expect((await mcpCatalog(member, ['mcp:read', 'mcp:knowledge'])).bases).toEqual([]);
-  });
-});
-
-describe('data catalog: extension sources', () => {
-  it('hides an extension whose tools the member does not reach (its flag is off by default)', async () => {
-    expect((await webCatalog(member)).extensions.map((entry) => entry.id)).not.toContain('example');
-  });
-
-  it('lists the example extension once the member has it, with its search kinds, exports and tools', async () => {
-    await db.userFeatures.upsert({ user_id: member.id, feature: 'example', enabled: true });
-    const example = (await webCatalog(member)).extensions.find((entry) => entry.id === 'example');
-    expect(example).toMatchObject({
-      kind: 'extension',
-      name: expect.any(String),
-      record_kinds: ['ext:example:note'],
-      exports: [expect.objectContaining({ type: 'example_notes' })],
-    });
-    expect(example!.reach).toEqual([
-      expect.objectContaining({ tool: 'example_notes_query', access: 'read', group: 'example' }),
-      expect.objectContaining({ tool: 'example_notes_mutation', access: 'write', group: 'example' }),
-      expect.objectContaining({ tool: 'export_data', group: null }),
-    ]);
-  });
-
-  it('on MCP, needs the extension’s own group as well', async () => {
-    await db.userFeatures.upsert({ user_id: member.id, feature: 'example', enabled: true });
-    expect((await mcpCatalog(member, ['mcp:read', 'mcp:tables'])).extensions.map((entry) => entry.id)).not.toContain(
-      'example',
-    );
-    const granted = await mcpCatalog(member, ['mcp:read', 'mcp:example']);
-    expect(granted.extensions.map((entry) => entry.id)).toEqual(['example']);
-    expect(granted.bases).toEqual([]);
   });
 });

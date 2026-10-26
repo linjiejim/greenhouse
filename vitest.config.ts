@@ -17,6 +17,8 @@ const unitWorkers = positiveWorkerCount(
 );
 const dbWorkers = positiveWorkerCount(process.env.VITEST_DB_MAX_WORKERS, 3, 'VITEST_DB_MAX_WORKERS');
 
+const pluginTestExcludes = process.env.GREENHOUSE_PLUGINS?.trim() === '' ? ['plugins/**'] : [];
+
 export default defineConfig({
   resolve: {
     alias: {
@@ -52,6 +54,7 @@ export default defineConfig({
       '@greenhouse/types/agent-avatar': resolve(__dirname, 'packages/types/src/agent-avatar.ts'),
       '@greenhouse/types/activity': resolve(__dirname, 'packages/types/src/activity.ts'),
       '@greenhouse/types/plugins': resolve(__dirname, 'packages/types/src/plugins.ts'),
+      '@greenhouse/types/plugin-host': resolve(__dirname, 'packages/types/src/plugin-host.ts'),
       '@greenhouse/types': resolve(__dirname, 'packages/types/src/index.ts'),
       '@greenhouse/utils/date': resolve(__dirname, 'packages/utils/src/date.ts'),
       '@greenhouse/utils/brand': resolve(__dirname, 'packages/utils/src/brand.ts'),
@@ -84,7 +87,14 @@ export default defineConfig({
     // .claude/** holds agent worktrees (full repo copies) — never collect them.
     // skillhub/** ships in-bundle node:test files (*.test.mjs) that vitest
     // cannot parse; tests/skillhub/bundles.test.ts runs them via `node --test`.
-    exclude: ['tests/e2e/**', 'tests/e2e-ui/**', '**/node_modules/**', '**/.claude/**', 'skillhub/**'],
+    exclude: [
+      'tests/e2e/**',
+      'tests/e2e-ui/**',
+      '**/node_modules/**',
+      '**/.claude/**',
+      'skillhub/**',
+      ...pluginTestExcludes,
+    ],
     // Silence app loggers so error-path tests don't spam the run output.
     // Override with LOG_LEVEL=debug when debugging a specific test.
     env: { LOG_LEVEL: process.env.LOG_LEVEL ?? 'silent' },
@@ -95,6 +105,7 @@ export default defineConfig({
           name: 'unit',
           include: ['**/*.{test,spec}.{ts,tsx}'],
           exclude: [
+            ...pluginTestExcludes,
             '**/*.db.test.ts',
             '**/*.db-commit.test.ts',
             'tests/e2e/**',
@@ -131,6 +142,7 @@ export default defineConfig({
         test: {
           name: 'db',
           include: ['**/*.db.test.ts'],
+          exclude: [...pluginTestExcludes, '**/node_modules/**', '**/.claude/**'],
           globalSetup: ['./tests/setup/db-global.ts'],
           setupFiles: ['./tests/setup/db-transaction.ts'],
           pool: 'forks',
@@ -149,6 +161,7 @@ export default defineConfig({
         test: {
           name: 'db-commit',
           include: ['**/*.db-commit.test.ts'],
+          exclude: [...pluginTestExcludes, '**/node_modules/**', '**/.claude/**'],
           pool: 'forks',
           fileParallelism: false,
           maxWorkers: 1,

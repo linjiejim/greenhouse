@@ -16,15 +16,19 @@ import { Hono } from 'hono';
 import { sql } from 'drizzle-orm';
 import { _resetProvider, initDatabase, type DatabaseProvider, type UserRow } from '@greenhouse/db';
 import { TEST_DATABASE_URL } from '@greenhouse/db/test-config';
-import { createInternalTestUser } from '../../../../../tests/helpers/internal-user.js';
-import { createMcpRoutes } from '../../routes/mcp.js';
-import { extensionMigrationSources } from '../boot.js';
-import { EXTENSIONS } from '../index.js';
-import { initializePlatformRuntime, resetPlatformRuntimeForTests } from '../../platform/runtime.js';
-import { projectsRegistration } from '../../platform/projects/application.js';
-import { knowledgeRegistration } from '../../platform/knowledge/registration.js';
-import { tablesRegistration } from '../../platform/tables/application.js';
-import { generateAccessToken, getMcpResourceUrl, hashOAuthCredential } from '../../platform/oauth.js';
+import { createInternalTestUser } from '../../../../tests/helpers/internal-user.js';
+import { createMcpRoutes } from '../../../../apps/api/src/routes/mcp.js';
+import { extensionMigrationSources } from '../../../../apps/api/src/extensions/boot.js';
+import { EXTENSIONS } from '../../../../apps/api/src/extensions/index.js';
+import { initializePlatformRuntime, resetPlatformRuntimeForTests } from '../../../../apps/api/src/platform/runtime.js';
+import { projectsRegistration } from '../../../../apps/api/src/platform/projects/application.js';
+import { knowledgeRegistration } from '../../../../apps/api/src/platform/knowledge/registration.js';
+import { tablesRegistration } from '../../../../apps/api/src/platform/tables/application.js';
+import {
+  generateAccessToken,
+  getMcpResourceUrl,
+  hashOAuthCredential,
+} from '../../../../apps/api/src/platform/oauth.js';
 
 const TOOL = 'example_notes_mutation';
 

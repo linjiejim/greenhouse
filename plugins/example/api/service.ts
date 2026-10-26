@@ -1,5 +1,5 @@
 import { desc, eq, sql } from 'drizzle-orm';
-import type { Db } from '../../extension-kit.js';
+import type { Db } from '@greenhouse/api/extension-kit';
 import { exampleNotes, type ExampleNoteRow } from './schema.js';
 
 export function createExampleNoteService(db: Db) {

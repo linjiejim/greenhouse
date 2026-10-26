@@ -64,6 +64,7 @@ import oauthRoutes from './routes/oauth.js';
 import healthRoutes from './routes/health.js';
 import bootstrapRoutes from './routes/bootstrap.js';
 import extensionsRoutes from './routes/extensions.js';
+import adminPluginRoutes from './routes/admin-plugins.js';
 import {
   applyExtensionMigrations,
   extensionApplicationRegistrations,
@@ -283,6 +284,7 @@ function mountRoutes(toolRegistry: ToolRegistry) {
       // Pre-login workspace personalization (name / logo / theme) — public.
       .route('/api/bootstrap', bootstrapRoutes)
       .route('/api/extensions', extensionsRoutes)
+      .route('/api/admin/plugins', adminPluginRoutes)
       .route('/api/upload', uploadRoutes)
       // `/oauth/callback` is a browser redirect from WeCom and carries no Bearer,
       // so it is allowed by isPublicPath and this router must not sit behind a

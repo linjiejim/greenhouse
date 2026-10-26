@@ -1,3 +1,4 @@
+import manifest from '../manifest.js';
 /**
  * The example extension — a complete, minimal reference for every field of the
  * contract: a table with its own migration, a service, a lazy tool, routes with a
@@ -14,19 +15,14 @@ import {
   getExtensionServices,
   logger,
   requireFeature,
-} from '../../extension-kit.js';
+} from '@greenhouse/api/extension-kit';
 import { exampleRoutes } from './routes.js';
 import { createExampleServices, type ExampleServices } from './service.js';
 import { exampleNotesMutationTool, exampleNotesQueryTool } from './tool.js';
 import { z } from 'zod';
 
 export const exampleExtension = defineExtension({
-  id: 'example',
-  name: 'Example notes',
-  description: 'Reference extension: per-user notes with a tool, routes, a flag, a setting and a job.',
-  // Compatibility: the contract revision (EXTENSION_SDK) and the Greenhouse versions it supports.
-  sdk: 1,
-  core: '>=3.0 <4',
+  ...manifest,
 
   // A read tool and a governed write tool (see tool.ts: writes must declare `proxy: 'write'`).
   tools: [exampleNotesQueryTool, exampleNotesMutationTool],
@@ -120,7 +116,7 @@ export const exampleExtension = defineExtension({
     },
   ],
 
-  migrations: { dir: extensionPath(import.meta.url, 'migrations') },
+  migrations: { dir: extensionPath(import.meta.url, '../migrations') },
   services: createExampleServices,
   resetTables: ['ext_example_notes'],
 
@@ -150,3 +146,5 @@ export const exampleExtension = defineExtension({
     logger.info('[example] extension ready');
   },
 });
+
+export default exampleExtension;

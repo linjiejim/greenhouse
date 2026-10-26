@@ -20,7 +20,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY . .
 RUN pnpm install --frozen-lockfile
 # Vite builds the web bundle into repo-root public/, which the API serves at `/`.
-RUN pnpm web:build
+RUN pnpm plugins:sync --check && pnpm web:build
 
 # ── Runtime: same filesystem, production env ──
 FROM build AS runtime

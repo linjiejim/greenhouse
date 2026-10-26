@@ -9,7 +9,7 @@
  * transaction.
  */
 
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { randomBytes } from 'node:crypto';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -35,6 +35,10 @@ const run = randomBytes(4).toString('hex');
 const name = (role: string) => `v3db_${role}_${run}_test`;
 const NOW = new Date('2026-10-25T00:00:00Z');
 const created: string[] = [];
+
+// These cases create and migrate entire databases; shared Postgres I/O can
+// exceed Vitest's 5s default before the behavior under test is reached.
+vi.setConfig({ testTimeout: 30_000 });
 
 async function database(role: string): Promise<string> {
   const db = name(role);

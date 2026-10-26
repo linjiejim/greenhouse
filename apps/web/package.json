@@ -50,5 +50,8 @@
     "tailwindcss": "^4.3.0",
     "typescript": "^5.7.0",
     "vite": "^8.0.16"
+  },
+  "exports": {
+    "./extension-kit": "./src/extension-kit.ts"
   }
 }

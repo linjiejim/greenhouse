@@ -25,9 +25,12 @@ import {
   registerToolIcons,
 } from '../lib/extension-registries';
 import type { WebExtension, WebExtensionModule, WebExtensionNavItem, WebExtensionPage } from './define';
-import { exampleWebExtension } from './example';
+import { COMPILED_PLUGINS } from './compiled.generated';
 
-export const COMPILED_WEB_EXTENSIONS: readonly WebExtension[] = [exampleWebExtension];
+/** SDK 1 overlay registrations remain supported alongside packages. */
+const IN_TREE: readonly WebExtension[] = [];
+
+export const COMPILED_WEB_EXTENSIONS: readonly WebExtension[] = [...COMPILED_PLUGINS, ...IN_TREE];
 
 const byId = new Map<string, WebExtension>();
 for (const ext of COMPILED_WEB_EXTENSIONS) {

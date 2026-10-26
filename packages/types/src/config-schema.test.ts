@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { parseGreenhouseConfig } from './config-schema.js';
-import { isExtensionEnabled, parseExtensionsEnv } from './config.js';
+import { defineConfig, isExtensionEnabled, parseExtensionsEnv, parsePluginsEnv } from './config.js';
 
 describe('parseGreenhouseConfig', () => {
   it('fills defaults for an empty file', () => {
     expect(parseGreenhouseConfig({})).toEqual({
+      plugins: [],
       extensions: { enabled: 'all' },
       packs: { skills: [], profiles: [] },
       clients: { stations: { mode: 'multi', defaults: [] } },
@@ -21,6 +22,15 @@ describe('parseGreenhouseConfig', () => {
     expect(config.extensions.enabled).toEqual(['crm']);
     expect(config.packs).toEqual({ skills: ['../packs/skills'], profiles: [] });
     expect(config.clients.stations.mode).toBe('single');
+  });
+
+  it('validates package assembly configuration in defineConfig and the loader', () => {
+    expect(parseGreenhouseConfig(defineConfig({ plugins: ['./plugins/fixture', '@vendor/plugin'] })).plugins).toEqual([
+      './plugins/fixture',
+      '@vendor/plugin',
+    ]);
+    expect(() => parseGreenhouseConfig({ plugins: [''] })).toThrow(/Invalid greenhouse.config/);
+    expect(() => defineConfig({ plugins: [42] } as never)).toThrow(/non-empty/);
   });
 
   it('rejects a single-station build without exactly one default', () => {
@@ -49,6 +59,12 @@ describe('parseGreenhouseConfig', () => {
 
 describe('extension enable helpers', () => {
   it('parses the env override', () => {
+    expect(parsePluginsEnv(undefined)).toBeUndefined();
+    expect(parsePluginsEnv('')).toEqual([]);
+    expect(parsePluginsEnv(' ./plugins/fixture , @private/plugin , ')).toEqual([
+      './plugins/fixture',
+      '@private/plugin',
+    ]);
     expect(parseExtensionsEnv(undefined)).toBeUndefined();
     expect(parseExtensionsEnv('all')).toBe('all');
     expect(parseExtensionsEnv('')).toEqual([]);

@@ -135,6 +135,10 @@
     "./plugins": {
       "import": "./src/plugins.ts",
       "types": "./src/plugins.ts"
+    },
+    "./plugin-host": {
+      "import": "./src/plugin-host.ts",
+      "types": "./src/plugin-host.ts"
     }
   },
   "scripts": {

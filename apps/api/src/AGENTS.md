@@ -633,3 +633,9 @@ v1 只接 DeepSeek 与 OpenAI 兼容服务，它们**自动**缓存 prompt 前�
 - Profile YAML 文件放在 `profiles/` 目录
 - 架构、工具矩阵、设计决策详见 [agent-profiles.md](./profiles/agent-profiles.md)
 - Profile 变更时同步更新该文档
+
+### Plugin host
+- New modules are workspace packages under `plugins/<id>`; API production imports use `@greenhouse/api/extension-kit` (snapshot-locked).
+- `extensions/index.ts` combines generated packages with the SDK 1 in-tree overlay list; every existing active registry still uses `EXTENSIONS`. Never import plugin code from core.
+- `/api/admin/plugins` is super-only and read-only. CLI list/status share its operator model; hook failures still abort startup, and boot facts are process-local.
+- Plugin drop is disabled-only + `--yes`, handled by the DB migration lane under its lock; never CASCADE into another plugin or core.

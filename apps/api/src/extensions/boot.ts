@@ -12,6 +12,7 @@ import type { AppEnv } from '../app-env.js';
 import type { PlatformHandlerContext } from '../platform/runtime.js';
 import { GREENHOUSE_CONFIG } from '../config/greenhouse-config.js';
 import { EXTENSIONS, fromExtensions } from './index.js';
+import { recordExtensionBootReady, recordExtensionBootError } from './health.js';
 import type { ExtensionCommand, ExtensionJob } from './define.js';
 
 /** Platform applications owned by active extensions, for `initializePlatformRuntime`. */
@@ -63,7 +64,14 @@ export function extensionMigrationSources(): ExtensionMigrationSource[] {
 export async function applyExtensionMigrations(db: DatabaseProvider): Promise<void> {
   const sources = extensionMigrationSources();
   if (sources.length === 0) return;
-  const { applied, skipped } = await db.extensionMigrations.apply(sources);
+  let result;
+  try {
+    result = await db.extensionMigrations.apply(sources);
+  } catch (error) {
+    for (const source of sources) recordExtensionBootError(source.extensionId, error);
+    throw error;
+  }
+  const { applied, skipped } = result;
   if (applied.length > 0) logger.info(`[Extensions] Applied ${applied.length} migration(s): ${applied.join(', ')}`);
   if (skipped.length > 0) {
     logger.info(`[Extensions] Skipped ${skipped.length} 1.x-generation migration(s): ${skipped.join(', ')}`);
@@ -83,8 +91,13 @@ export function mountExtensionRoutes(app: Hono<AppEnv>): void {
 
 export async function runExtensionBootHooks(db: DatabaseProvider): Promise<void> {
   for (const ext of EXTENSIONS) {
-    if (!ext.onBoot) continue;
-    await ext.onBoot({ db, config: GREENHOUSE_CONFIG });
+    try {
+      await ext.onBoot?.({ db, config: GREENHOUSE_CONFIG });
+      recordExtensionBootReady(ext.id);
+    } catch (error) {
+      recordExtensionBootError(ext.id, error);
+      throw error;
+    }
   }
   if (EXTENSIONS.length > 0) logger.info(`[Extensions] Active: ${EXTENSIONS.map((e) => e.id).join(', ')}`);
 }

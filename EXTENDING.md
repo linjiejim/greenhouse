@@ -34,6 +34,7 @@ Configuration lives in three layers, each with one job:
 import { defineConfig } from '@greenhouse/types/config';
 
 export default defineConfig({
+  plugins: ['./plugins/example'],     // packages compiled into the build
   extensions: { enabled: ['crm', 'example'] }, // or 'all'; GREENHOUSE_EXTENSIONS=… overrides at boot
   packs: {
     skills: ['packs/skills'],        // extra skill-pack roots, same layout as skillhub/
@@ -47,7 +48,7 @@ export default defineConfig({
 ```
 
 - **`extensions.enabled`** — which *compiled* extensions are active. `'all'` for everything listed
-  in the two index files; an id list to trim per deployment. `GREENHOUSE_EXTENSIONS=crm,example`
+  by `plugins` plus the SDK 1 in-tree list; an id list to trim per deployment. `GREENHOUSE_EXTENSIONS=crm,example`
   (or `all`, or empty for none) overrides the file so one image serves several deployments.
 - **`packs`** — content, not code: skill packs, profile YAMLs and a seed dataset that live outside
   the repository (a fork's `packs/` folder, a mounted volume). Paths are absolute or relative to
@@ -55,6 +56,77 @@ export default defineConfig({
 - **`clients.stations`** — how client builds treat servers. `multi` (default) lets users add and
   switch stations; `single` locks a client build to the one station in `defaults`. The mobile app
   mirrors it at build time; see `apps/mobile/AGENTS.md` for the wiring.
+
+## Plugins (packages)
+
+New plugins live in workspace packages. The reference `plugins/example` is compiled by default
+but remains disabled unless explicitly enabled; moving it has not changed the default product.
+
+```
+plugins/<id>/
+  package.json      # name, version, greenhouse metadata, exports, dependencies
+  manifest.ts       # pure JSON-serialisable data; default export
+  api/index.ts      # default defineExtension({ ...manifest, ... }) export (optional)
+  web/index.ts      # default defineWebExtension({ ...manifest, ... }) export (optional)
+  migrations/       # the existing extension migration lane, unchanged
+  e2e/              # Playwright *.e2e.ts; same authenticated project as in-tree specs
+  skills/ profiles/ seeds/   # optional content; use the existing packs/skillPacks hooks
+```
+
+```json
+{
+  "name": "@greenhouse/plugin-example",
+  "version": "3.0.2",
+  "type": "module",
+  "greenhouse": { "id": "example", "sdk": 1, "api": "./api/index.ts", "web": "./web/index.ts" },
+  "exports": { "./api": "./api/index.ts", "./web": "./web/index.ts", "./manifest": "./manifest.ts" }
+}
+```
+
+`manifest.ts` supplies `id`, `name`, `description`, `version`, `sdk`, `core`, `dependsOn` (ids)
+and `features`. Its id and SDK match package metadata, its version matches package.json, and
+its directory is `<id>` (installed packages may use `plugin-<id>`). Both halves are optional;
+a web-only package still gets an identity in `/api/extensions`. Code halves default-export
+their SDK 1 object; do not import the code halves from the manifest.
+
+Set `plugins: ['./plugins/example']` or `plugins: ['@greenhouse/plugin-example']` in
+`greenhouse.config.ts`. Workspace names resolve without an extra root dependency; installed
+packages must be dependencies of the deployment. `GREENHOUSE_PLUGINS` overrides this list at
+assembly time (comma-separated names/paths, empty means none). Keep every `dependsOn` package
+in the list and enable it alongside its consumer. Cycles, duplicate ids, invalid metadata and
+missing exports fail assembly. Registration order follows configuration order.
+
+`pnpm plugins:sync` generates static imports in
+`apps/{api,web}/src/extensions/compiled.generated.ts`. These files are gitignored. Install,
+dev, build, typecheck, tests and operational CLI commands sync automatically; CI also runs
+`pnpm plugins:sync --check`, which refuses missing/stale output. SDK 1 `index.ts` lists remain
+available to overlays, after generated packages. No runtime code loading or hot replacement.
+
+Package production imports may reach only `@greenhouse/api/extension-kit`,
+`@greenhouse/web/extension-kit`, `@greenhouse/types/*`, `@greenhouse/crud`,
+`@greenhouse/ui/*`, their own directory, plugins declared in `dependsOn` **and** package.json,
+and third-party dependencies declared in their own package.json (plus Node builtins).
+Relative paths cannot escape the package. Tests retain the SDK 1 exemption for host test hooks.
+Core `apps/**` / `packages/**` imports cannot reach plugins, except in the two generated files.
+`pnpm lint` and the overlay guard enforce these edges. Both kit export lists stay snapshot-locked.
+
+Operators use:
+
+```bash
+pnpm cli plugins list --json       # compiled/enabled, SDK, version, dependencies; no DB needed
+pnpm cli plugins status --json     # migration state and process-local boot facts
+pnpm cli plugins drop example     # preview tables; refuses an enabled/unknown plugin
+pnpm cli plugins drop example --yes
+pnpm test:core                     # zero-package typecheck, core unit/DB suites, real API boot
+```
+
+Administration → Plugins (`GET /api/admin/plugins`, super only) is read-only. Enable/disable
+through configuration plus restart; disabled plugins retain all data. `drop` removes the
+net tables from current-generation migrations plus registered `resetTables`, and only that
+lane's rows, in one transaction under the migration lock. It refuses core tables, shared
+ownership and external table dependencies (`RESTRICT`, never `CASCADE`). CLI boot state is
+`not-run`: inspecting status does not execute hooks. Boot or migration failures still stop
+startup; status only shows facts from the current process, not historical error storage.
 
 ## Extensions
 
@@ -70,8 +142,7 @@ apps/web/src/extensions/index.ts ← import + list entry (web half)
 Nothing else in core changes. The registries — tool catalog, route mounting, platform
 applications, feature flags and points, workspace settings, public paths, scheduler, CLI,
 database services, migrations, hash router, sidebar, i18n, tool cards, agent context — all read
-the active extensions and fold their contributions in. Copy `apps/api/src/extensions/example`
-and `apps/web/src/extensions/example` to start: together they exercise every field.
+the active extensions and fold their contributions in. `plugins/example` exercises the same SDK 1 fields as a package; the in-tree layout below remains supported for existing overlays.
 
 ### The API half — `defineExtension`
 
@@ -179,8 +250,8 @@ member, is recorded as an `agent_write` run with a risk tier, and a delete-like 
 (`delete` / `remove` / `purge` / `destroy` / `drop`, e.g. `notes.delete`) first returns a
 `needs_confirmation` preview and runs only when called again with `confirm: true`. A writing tool
 declared `proxy: 'read'` bypasses all of that — never do it. The example's
-`example_notes_mutation` is the reference (`apps/api/src/extensions/example/tool.ts`, tested
-over `/api/mcp` in `__tests__/example-write-tool.db.test.ts`).
+`example_notes_mutation` is the reference (`plugins/example/api/tool.ts`, tested
+over `/api/mcp` in `plugins/example/api/__tests__/example-write-tool.db.test.ts`).
 
 If the tool is backed by a platform application, list it in `applications[].platformTools` —
 `{ query: ['crm_query'], command: ['crm_mutation'] }` — so MCP hides it once every query
@@ -269,9 +340,9 @@ route. Two things cover that, and both are generic:
   aliases) and opens each one, failing on an error boundary, a "not enabled" state, a blank
   shell or an uncaught page error. Nothing to write: compile an extension in, switch it on, and
   the sweep covers it.
-- **Extension-owned specs** — `apps/web/src/extensions/<id>/e2e/*.e2e.ts` run in the
+- **Extension-owned specs** — `plugins/<id>/e2e/*.e2e.ts` and `apps/web/src/extensions/<id>/e2e/*.e2e.ts` run in the
   `extensions` Playwright project with the shared authenticated state (see
-  `apps/web/src/extensions/example/e2e/notes.e2e.ts`). Import only `@playwright/test`; the
+  `plugins/example/e2e/notes.e2e.ts`). Import only `@playwright/test`; the
   folder stays self-contained and inside the seam.
 
 CI runs both in the `e2e-ui` job with `GREENHOUSE_EXTENSIONS=example`. A fork's CI runs the
@@ -285,7 +356,7 @@ one, extend the registry upstream rather than patching around it: that is a cont
 
 ### Keeping a fork thin
 
-A fork keeps its private modules under `apps/*/src/extensions/<id>/`, its content under
+A fork keeps its private packages under `plugins/<id>/` (or existing SDK 1 modules under `apps/*/src/extensions/<id>/`), its content under
 `packs/`, its deployment files under `deploy/`, and its own `greenhouse.config.ts`; it syncs with
 `git merge upstream/main`. `scripts/check-extension-overlay.mjs` fails the fork's CI when a commit
 touches anything else, so a gap in the seam surfaces as an upstream pull request instead of a
@@ -353,8 +424,8 @@ belongs to Greenhouse itself.
 
 ## Recipe: a private module as an extension
 
-1. Copy `apps/api/src/extensions/example` → `apps/api/src/extensions/<id>` and
-   `apps/web/src/extensions/example` → `apps/web/src/extensions/<id>`; rename the id everywhere.
+1. For a new module use the package recipe above. For an existing SDK 1 overlay keep
+   `apps/api/src/extensions/<id>` and `apps/web/src/extensions/<id>`; use the contract examples in this section.
 2. Add the import + list entry in both `extensions/index.ts` files; enable the id in
    `greenhouse.config.ts` (or `GREENHOUSE_EXTENSIONS`).
 3. Tables: write `migrations/0001_*.sql` (or generate it with a per-extension drizzle config),
@@ -366,7 +437,7 @@ belongs to Greenhouse itself.
 5. UI: a page under `#/<id>`, a "More" entry, translations under `ext.<id>.*`, a card for the
    tool's result.
 6. Tests: a `*.db.test.ts` for the service, a route test, and a seam test that imports the
-   extension with `GREENHOUSE_EXTENSIONS=<id>` (see `apps/api/src/extensions/__tests__/seam.test.ts`).
+   extension with `GREENHOUSE_EXTENSIONS=<id>` (see `plugins/example/api/__tests__/seam.test.ts`).
 
 ## Recipe: a list/edit page with `@greenhouse/crud`
 

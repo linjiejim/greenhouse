@@ -69,6 +69,35 @@ jobs:
           DATABASE_URL: postgresql://greenhouse:greenhouse@localhost:5432/greenhouse_test
       - run: pnpm test
 
+  core:
+    if: github.repository == 'linjiejim/greenhouse'
+    runs-on: ubuntu-latest
+    env:
+      GREENHOUSE_PLUGINS: ''
+      GREENHOUSE_EXTENSIONS: ''
+      TEST_DATABASE_URL: postgresql://greenhouse:greenhouse@localhost:5432/greenhouse_core_test
+      DATABASE_URL: postgresql://greenhouse:greenhouse@localhost:5432/greenhouse_core_test
+      NODE_OPTIONS: --max-old-space-size=6144
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: greenhouse_core_test
+          POSTGRES_USER: greenhouse
+          POSTGRES_PASSWORD: greenhouse
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U greenhouse -d greenhouse_core_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - run: pnpm db:migrate
+      - run: pnpm test:core
+
   # Live-server integration/security suite (tests/e2e). Boots the real API and
   # drives it over HTTP — the layer `pnpm test` (in-process units) never reaches:
   # auth/token round-trips, cross-user data isolation, role escalation, injection,

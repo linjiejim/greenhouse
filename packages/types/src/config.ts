@@ -64,6 +64,8 @@ export interface PacksConfig {
 }
 
 export interface GreenhouseConfig {
+  /** Plugin package names or paths relative to the repository root, in registration order. */
+  plugins: string[];
   extensions: ExtensionsConfig;
   packs: PacksConfig;
   clients: { stations: ClientStationsConfig };
@@ -71,12 +73,14 @@ export interface GreenhouseConfig {
 
 /** What a `greenhouse.config.ts` file may export — every section optional. */
 export interface GreenhouseConfigInput {
+  plugins?: string[];
   extensions?: Partial<ExtensionsConfig>;
   packs?: Partial<PacksConfig>;
   clients?: { stations?: Partial<ClientStationsConfig> };
 }
 
 export const DEFAULT_GREENHOUSE_CONFIG: GreenhouseConfig = {
+  plugins: [],
   extensions: { enabled: 'all' },
   packs: { skills: [], profiles: [] },
   clients: { stations: { mode: 'multi', defaults: [] } },
@@ -84,12 +88,19 @@ export const DEFAULT_GREENHOUSE_CONFIG: GreenhouseConfig = {
 
 /** Identity helper that gives `greenhouse.config.ts` its types without a runtime dependency. */
 export function defineConfig(config: GreenhouseConfigInput): GreenhouseConfigInput {
+  if (
+    config.plugins !== undefined &&
+    (!Array.isArray(config.plugins) || config.plugins.some((entry) => typeof entry !== 'string' || !entry.trim()))
+  ) {
+    throw new Error('plugins must be an array of non-empty package names or relative paths');
+  }
   return config;
 }
 
 /** Shallow-merge a config file's input over the defaults (no validation — see `./config-schema`). */
 export function mergeGreenhouseConfig(input: GreenhouseConfigInput | undefined): GreenhouseConfig {
   return {
+    plugins: input?.plugins ?? [],
     extensions: { ...DEFAULT_GREENHOUSE_CONFIG.extensions, ...(input?.extensions ?? {}) },
     packs: { ...DEFAULT_GREENHOUSE_CONFIG.packs, ...(input?.packs ?? {}) },
     clients: {
@@ -116,4 +127,14 @@ export function parseExtensionsEnv(value: string | undefined): ExtensionsConfig[
     .split(',')
     .map((s) => s.trim())
     .filter(Boolean);
+}
+
+/** Assembly-time override; an explicitly empty value compiles a core without packages. */
+export function parsePluginsEnv(value: string | undefined): string[] | undefined {
+  return value === undefined
+    ? undefined
+    : value
+        .split(',')
+        .map((entry) => entry.trim())
+        .filter(Boolean);
 }

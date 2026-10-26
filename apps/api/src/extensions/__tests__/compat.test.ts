@@ -3,7 +3,6 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { checkExtensionCompat, EXTENSION_SDK, runningAppVersion } from '../compat.js';
-import { exampleExtension } from '../example/index.js';
 
 describe('extension compatibility', () => {
   it('accepts a matching sdk and core range, including a release candidate', () => {
@@ -43,9 +42,5 @@ describe('extension compatibility', () => {
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
-  });
-
-  it('the example extension declares both and matches this core', () => {
-    expect(checkExtensionCompat(exampleExtension, runningAppVersion())).toEqual({ errors: [], warnings: [] });
   });
 });

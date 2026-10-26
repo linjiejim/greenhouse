@@ -1,9 +1,8 @@
 /**
  * Compiled-in extensions.
  *
- * Add your extension here — one import, one list entry. Upstream ships only the
- * `example` extension (off by default); a fork keeps its private extensions in
- * this file and in `apps/api/src/extensions/<id>/`, and nowhere else in core.
+ * Packages come from greenhouse.config.ts → plugins, assembled by plugins:sync.
+ * SDK 1 overlays may still add an import and an IN_TREE list entry here.
  *
  * `EXTENSIONS` is the *active* subset: `greenhouse.config.ts` → `extensions.enabled`
  * (or the `GREENHOUSE_EXTENSIONS` env var) decides per deployment. Every core
@@ -23,10 +22,13 @@ import { registerSearchSources } from '../search/sources.js';
 import { registerDriveScopes } from '../drive/access.js';
 import { registerExportSources } from '../tools/export-sources.js';
 import type { GreenhouseExtension } from './define.js';
-import { exampleExtension } from './example/index.js';
+import { COMPILED_PLUGINS } from './compiled.generated.js';
+
+/** SDK 1 overlay registrations: one import and one entry per in-tree extension. */
+const IN_TREE: readonly GreenhouseExtension[] = [];
 
 /** Everything compiled into this build. Order = registration order. */
-export const COMPILED_EXTENSIONS: readonly GreenhouseExtension[] = [exampleExtension];
+export const COMPILED_EXTENSIONS: readonly GreenhouseExtension[] = [...COMPILED_PLUGINS, ...IN_TREE];
 
 function activate(compiled: readonly GreenhouseExtension[]): readonly GreenhouseExtension[] {
   const seen = new Set<string>();

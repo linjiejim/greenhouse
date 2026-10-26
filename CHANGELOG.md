@@ -5,6 +5,19 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## Unreleased
+
+### Added
+
+- Configured workspace plugin packages, deterministic `plugins:sync` assembly, import boundaries and a zero-plugin core CI gate.
+- Read-only Administration → Plugins and `cli plugins list/status/drop` with disabled-only, explicit table removal.
+
+extension-kit: expose the existing snapshot-locked API and web kits as `@greenhouse/api/extension-kit` and `@greenhouse/web/extension-kit`; no symbol removals.
+
+### Changed
+
+- Move the example and its migrations, MCP/seam tests and browser spec into `plugins/example`; SDK 1 in-tree overlays remain supported.
+
 ## [3.0.2](https://github.com/linjiejim/greenhouse/compare/v3.0.1...v3.0.2) (2026-10-26)
 
 

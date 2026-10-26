@@ -11,7 +11,7 @@ import {
   toast,
   useT,
   type ExtensionPageProps,
-} from '../../extension-kit';
+} from '@greenhouse/web/extension-kit';
 
 interface Note {
   id: number;

@@ -14,9 +14,9 @@ import {
   extensionSurfaces,
   findExtensionPage,
   partitionCompatibleWebExtensions,
-} from '../index';
-import { defineWebExtension } from '../define';
-import { translate } from '../../lib/i18n';
+} from '../../../../apps/web/src/extensions/index';
+import { defineWebExtension } from '../../../../apps/web/src/extensions/define';
+import { translate } from '../../../../apps/web/src/lib/i18n';
 import { isEntityUrl, parseEntityUrl } from '@greenhouse/types/entity-links';
 import {
   getNavModule,
@@ -24,15 +24,19 @@ import {
   localizeNavModule,
   resolveSubModule,
   settingsSections,
-} from '../../lib/nav-registry';
-import { registeredEntityKind, registeredKnowledgeDocPanels, registeredToolCard } from '../../lib/extension-registries';
-import { entityPeekMeta } from '../../components/entity-peek/registry';
-import { mcpGroupIds, mcpGroupLabelKey } from '../../lib/mcp-groups';
-import { getToolIcon, StickyNote } from '../../lib/icons';
-import { isArtifactCall } from '../../components/tool-call/body-artifacts';
-import { getContextProvider } from '../../lib/context-registry';
-import { resolveUrlContext } from '../../components/agent-context';
-import { setIncompatibleExtensionIds, useExtensionsStore } from '../../stores/extensions-store';
+} from '../../../../apps/web/src/lib/nav-registry';
+import {
+  registeredEntityKind,
+  registeredKnowledgeDocPanels,
+  registeredToolCard,
+} from '../../../../apps/web/src/lib/extension-registries';
+import { entityPeekMeta } from '../../../../apps/web/src/components/entity-peek/registry';
+import { mcpGroupIds, mcpGroupLabelKey } from '../../../../apps/web/src/lib/mcp-groups';
+import { getToolIcon, StickyNote } from '../../../../apps/web/src/lib/icons';
+import { isArtifactCall } from '../../../../apps/web/src/components/tool-call/body-artifacts';
+import { getContextProvider } from '../../../../apps/web/src/lib/context-registry';
+import { resolveUrlContext } from '../../../../apps/web/src/components/agent-context';
+import { setIncompatibleExtensionIds, useExtensionsStore } from '../../../../apps/web/src/stores/extensions-store';
 
 describe('web extension seam', () => {
   it('compiles the example and exposes its page route', () => {

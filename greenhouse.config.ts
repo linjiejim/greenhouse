@@ -11,9 +11,9 @@
 import { defineConfig } from '@greenhouse/types/config';
 
 export default defineConfig({
+  plugins: ['./plugins/example'],
   extensions: {
-    // Extensions listed in apps/api/src/extensions/index.ts and
-    // apps/web/src/extensions/index.ts are compiled in; this list switches them on.
+    // Packages above and SDK 1 in-tree registrations are compiled in; this switches them on.
     // 'all' enables every compiled extension. GREENHOUSE_EXTENSIONS overrides at boot.
     enabled: [],
   },

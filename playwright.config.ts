@@ -16,7 +16,14 @@
  * real login UI, saving the authenticated storage state for the other specs.
  */
 
+import { fileURLToPath } from 'node:url';
 import { defineConfig, devices } from '@playwright/test';
+
+// Agent worktrees live under <repo>/.claude/worktrees; ignore those copies, but only
+// relative to this checkout — a glob on `**/.claude/**` would also hide every spec when
+// the checkout itself is such a worktree.
+const ROOT = fileURLToPath(new URL('.', import.meta.url));
+const NESTED_WORKTREES = new RegExp(`^${ROOT.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\.claude/`);
 
 const BASE_URL = process.env.E2E_BASE_URL || 'http://localhost:3100';
 
@@ -50,9 +57,9 @@ export default defineConfig({
       // apps/*/src/extensions/<id>/e2e/*.e2e.ts (see the example extension).
       // Same authenticated state as the core suite; nothing else in apps/ matches.
       name: 'extensions',
-      testDir: './apps',
-      testMatch: /src\/extensions\/[^/]+\/e2e\/.*\.e2e\.ts$/,
-      testIgnore: ['**/node_modules/**'],
+      testDir: '.',
+      testMatch: /(?:apps\/[^/]+\/src\/extensions\/[^/]+|plugins\/[^/]+)\/e2e\/.*\.e2e\.ts$/,
+      testIgnore: ['**/node_modules/**', NESTED_WORKTREES],
       use: { ...devices['Desktop Chrome'], storageState: 'tests/e2e-ui/.auth/state.json' },
       dependencies: ['setup'],
     },

@@ -323,3 +323,7 @@
 6. 决定 migrate-from-1x 是否要搬对应 1.x 数据，改 `carry/from-1x.ts`。
 7. 高增长表在 `services/retention.ts` 定保留期。
 8. 更新 db-schema.md，写 `tests/db/*.db.test.ts`。
+
+### Plugin removal
+- `extensionMigrationTables` nets current-generation migration CREATE/DROP statements plus `resetTables`; core/protected names are refused.
+- `extensionMigrations.drop` drops that set with RESTRICT and deletes only the plugin lane rows in one transaction under the migration advisory lock. The host enforces disabled state + explicit `--yes`; no schema change or new migration is needed.

@@ -94,7 +94,7 @@ what exists." These rules are as binding as the "add" rules:
   create/delete, the extension seam, and **`extension-surfaces.spec.ts`**, which reads every hash
   the active extensions registered (`window.__greenhouseExtensionSurfaces`) and opens each one —
   the check for failures only a browser sees (unresolvable module ids, pages that throw on
-  render). Extensions ship their own specs as `apps/web/src/extensions/<id>/e2e/*.e2e.ts`
+  render). Plugins ship specs as `plugins/<id>/e2e/*.e2e.ts` (SDK 1: `apps/web/src/extensions/<id>/e2e/*.e2e.ts`)
   (the `extensions` Playwright project; import only `@playwright/test`). `playwright.config.ts`
   auto-starts `pnpm dev` with `GREENHOUSE_EXTENSIONS=example` (reuses a running one);
   `auth.setup.ts` creates a super test account via `admin:create` and logs in. Locators use
@@ -220,7 +220,7 @@ greenhouse/
 │   │       ├── drive/        # drive access + upload policy
 │   │       ├── auth/         # token, middleware, password, crypto, features, public paths
 │   │       ├── security/     # headers / CORS / rate limit, network egress policy, account lockout, request ip
-│   │       ├── extensions/   # the extension seam: define + index (compiled list) + boot glue + example/
+│   │       ├── extensions/   # extension host: define + generated packages + SDK 1 overlay list + boot glue
 │   │       ├── settings/     # workspace-config: DB→env resolution, env overlay, validation
 │   │       ├── config/       # models.yaml + catalog loader (the model registry)
 │   │       ├── tools/        # agent tools, each declared with defineTool
@@ -258,6 +258,7 @@ greenhouse/
 │   ├── ui/               # shared UI: design tokens (the one source for web + mobile), Nunito, the Haven mark,
 │   │                     #   the plant-avatar renderer (SVG builder + motion + <PlantAvatar>)
 │   └── contract/         # typed API contract — re-exports apps/api's AppType + hc (web client)
+├── plugins/              # workspace plugin packages (manifest + optional API/web + migrations/tests)
 ├── skillhub/             # skill-pack format; packs here sync into SkillHub on boot (none shipped)
 ├── drizzle/              # migration files (single source of truth): 0000_v3_baseline + later;
 │                         #   archive-1x/ = the 1.x chain, read only for version detection
@@ -295,9 +296,21 @@ greenhouse/
 
 - **`greenhouse.config.ts`** (repo root, typed by `@greenhouse/types/config`, validated by
   `config-schema.ts` at boot via `apps/api/src/config/greenhouse-config.ts`) holds *structure*:
-  `extensions.enabled`, `packs.{skills,profiles,seeds}`, `clients.stations`. Secrets stay in
+  `plugins` (compiled packages), `extensions.enabled`, `packs.{skills,profiles,seeds}`, `clients.stations`. Secrets stay in
   `.env`; live product knobs stay in Runtime Config (DB). Do not add a fourth layer, and do not
   move env-only infrastructure into the file. `GREENHOUSE_EXTENSIONS` overrides the enabled list.
+- **Plugin packages**: new modules live under `plugins/<id>/` (workspace `plugins/*`).
+  `greenhouse.config.ts.plugins` lists package names or repo-relative paths; `pnpm plugins:sync`
+  generates the two gitignored `extensions/compiled.generated.ts` files before install/dev/build/tests/CLI.
+  `GREENHOUSE_PLUGINS=` builds a zero-package core; `pnpm test:core` checks its types, unit/DB suites and boot.
+  Never edit generated registrations. The SDK 1 in-tree lists remain available after compiled packages.
+  Package production imports use only the API/web `extension-kit` package exports, `@greenhouse/types/*`,
+  `@greenhouse/crud`, `@greenhouse/ui/*`, own files, declared plugin dependencies and own third-party deps.
+  Relative paths cannot escape; tests retain the host-hook exemption. `pnpm lint` enforces both directions.
+  Registered: package boundaries use a TypeScript AST scanner to catch import types and computed loads;
+  the SDK 1 regex scanner stays separate to preserve in-tree overlays’ existing syntax and exemptions.
+  Admin Plugins is read-only (`/api/admin/plugins`, super); enablement needs configuration + restart.
+  `cli plugins drop <id> --yes` only removes a disabled plugin's owned tables/lane, with RESTRICT.
 - **Extension seam**: `apps/api/src/extensions/<id>/` + `apps/web/src/extensions/<id>/`, each
   exporting `defineExtension` / `defineWebExtension`, listed once in the two `extensions/index.ts`
   files. Every core registry aggregates from the *active* set (`EXTENSIONS` / the
@@ -329,9 +342,9 @@ greenhouse/
     preview + `confirm`); never `proxy: 'read'` on a writing tool.
   - Extension copy lives under `ext.<id>.*` (`registerExtensionMessages`); core `en.ts`/`zh.ts`
     stay untouched. `visible-copy.test.ts` still scans extension TSX.
-  - The `example` extension is the reference and the test fixture: keep it exercising every
-    field; `apps/api/src/extensions/__tests__/seam.test.ts` and
-    `apps/web/src/extensions/__tests__/seam.test.ts` load it with `GREENHOUSE_EXTENSIONS=example`;
+  - The `plugins/example` package is the reference and the test fixture: keep it exercising every
+    field; `plugins/example/api/__tests__/seam.test.ts` and
+    `plugins/example/web/__tests__/seam.test.ts` load it with `GREENHOUSE_EXTENSIONS=example`;
     the Playwright stack runs with the example on, sweeps every surface it registers and runs
     its own `e2e/notes.e2e.ts`.
   - Legacy hashes belong to the extension that replaced them: `pages[].aliases`
