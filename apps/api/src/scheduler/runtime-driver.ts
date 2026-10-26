@@ -708,7 +708,8 @@ export function createAutomationRuntimeDriver(
       // Quiet automation with nothing new: still a succeeded run (history,
       // run_count), but the summary says so and `no_update` tells the outcome
       // projector to skip every notification channel.
-      const noUpdate = isNoUpdateAnswer(snapshot.task.quiet_when_empty, result.text);
+      // Only a run that made at least one tool call can claim "nothing new".
+      const noUpdate = isNoUpdateAnswer(snapshot.task.quiet_when_empty, result.text, result.toolEvidence.length);
       const summary = noUpdate ? NO_UPDATE_SUMMARY : (result.text ?? '');
       await transitionStepTerminal({
         db,

@@ -58,13 +58,12 @@ export interface TaskActor {
   /**
    * May this caller set `unattended_tools`?
    *
-   * True only for the HTTP console, where the request carries the user's own
-   * Bearer and the value came from checkboxes they ticked. The agent tools pin
-   * it to false by construction: `automation_mutation` is a builtin every chat
-   * model can call, so a model able to write this column could mint an
-   * automation holding `crm_mutation` off a single injected instruction, with
-   * nobody ever having seen a checkbox. Model drafts, user grants — the same
-   * shape as task_capture and tables_schema_plan.
+   * True for the HTTP console (the user's own Bearer, checkboxes they ticked)
+   * and for `automation_mutation` called from a person's web or mobile chat turn
+   * (the owner asks for the capability in their own words). Every other surface
+   * — automation runs, MCP, the agent proxy, Feishu/WeCom bots — leaves it off.
+   * The grant can still only name catalogued tools, never widens the owner's
+   * permissions, and never reaches destructive actions.
    */
   canGrantTools?: boolean;
 }
@@ -275,8 +274,8 @@ export function validateUnattendedTools(
   if (!actor.canGrantTools) {
     return err(
       'forbidden',
-      'unattended_tools can only be granted by the automation owner in the console (设置 → Automations → 编辑 → Tools). ' +
-        'Ask the user to tick the tools there; a model cannot grant them.',
+      'unattended_tools can only be granted by the automation owner — in Settings → Automations → edit → Tools, ' +
+        'or by asking for it in the Greenhouse web or mobile chat. This surface cannot grant them.',
     );
   }
   if (!Array.isArray(raw) || raw.some((id) => typeof id !== 'string')) {

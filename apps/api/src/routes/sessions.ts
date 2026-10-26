@@ -2,7 +2,7 @@
  * Session routes — /api/sessions
  *
  * POST   /api/sessions                                — 创建新会话
- * GET    /api/sessions                                — 获取会话列表（支持status/limit/offset/include_eval/page_meta/scope筛选）
+ * GET    /api/sessions                                — 获取会话列表（支持status/limit/offset/include_eval/page_meta/scope/channel/exclude_channel筛选）
  * GET    /api/sessions/:id                             — 获取会话详情（include_messages=0 可只取元数据）
  * GET    /api/sessions/:id/messages                    — 分页获取会话消息
  * POST   /api/sessions/:id/fork                        — 复制完整会话或复制到指定 Agent 回复
@@ -53,6 +53,17 @@ const SHARED_BACKFILL_LIMIT = 200;
  * sidebar asks for `mine` explicitly. The vocabulary lives in
  * `@greenhouse/types/api` so the browser and the server can't drift.
  */
+/** `exclude_channel=task,feishu` → the channel names, or null when one is malformed. */
+function parseExcludedChannels(raw: string | undefined): string[] | null {
+  if (raw === undefined) return [];
+  const names = raw
+    .split(',')
+    .map((name) => name.trim())
+    .filter(Boolean);
+  if (names.length > 10 || names.some((name) => !/^[a-z0-9_-]{1,32}$/.test(name))) return null;
+  return [...new Set(names)];
+}
+
 function parseSessionScope(raw: string | undefined): SessionScope | undefined | null {
   if (raw === undefined) return undefined;
   return (SESSION_SCOPES as readonly string[]).includes(raw) ? (raw as SessionScope) : null;
@@ -131,6 +142,12 @@ const sessions = new Hono<AppEnv>()
     const limit = includePageMeta ? Math.min(requestedLimit, 200) : requestedLimit;
     const includeEval = c.req.query('include_eval') === '1';
     const channel = c.req.query('channel');
+    // `exclude_channel=task` is the sidebar's "Mine" (my conversations without
+    // automation runs); `channel=task` is its "Scheduled" tab.
+    const excludedChannels = parseExcludedChannels(c.req.query('exclude_channel'));
+    if (excludedChannels === null) {
+      return c.json({ error: 'exclude_channel must be a comma-separated list of channel names' }, 400);
+    }
 
     const scope = parseSessionScope(c.req.query('scope'));
     if (scope === null) {
@@ -151,7 +168,11 @@ const sessions = new Hono<AppEnv>()
       offset,
       includeEval,
       channel,
-      excludeChannels: channel ? undefined : ['workflow'],
+      excludeChannels: channel
+        ? excludedChannels.length > 0
+          ? excludedChannels
+          : undefined
+        : ['workflow', ...excludedChannels.filter((name) => name !== 'workflow')],
     };
 
     let baseList;
@@ -181,6 +202,7 @@ const sessions = new Hono<AppEnv>()
         status,
         includeEval,
         limit: SHARED_BACKFILL_LIMIT,
+        ...(excludedChannels.length > 0 ? { excludeChannels: excludedChannels } : {}),
       });
       const existingIds = new Set(list.map((s) => s.id));
       for (const s of sharedRows) {
@@ -209,8 +231,9 @@ const sessions = new Hono<AppEnv>()
           if (!s) continue;
           const accessible = authUser.role === 'super' || s.user_id === authUser.id || sharedIdSet.has(s.id);
           if (!accessible) continue;
-          // Mirror the main query's status / eval-visibility filters.
+          // Mirror the main query's status / eval-visibility / excluded-channel filters.
           if (status ? s.status !== status : !includeEval && s.status === 'eval') continue;
+          if (excludedChannels.includes(s.channel)) continue;
           list.push(s);
         }
         list.sort((a, b) => (b.updated_at > a.updated_at ? 1 : -1));

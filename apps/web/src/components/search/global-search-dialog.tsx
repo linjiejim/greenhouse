@@ -19,10 +19,12 @@ import { entityUrl } from '@greenhouse/types/entity-links';
 import { SEARCHABLE_KINDS, type SearchHit, type SearchKind } from '@greenhouse/types/search';
 import { OverlayFrame } from '../overlay-frame';
 import { FilterPills, Spinner } from '../ui';
-import { MessageSquare, Search as SearchIcon } from '../../lib/icons';
+import { MessageSquare, Search as SearchIcon, Zap } from '../../lib/icons';
 import { useT, type TranslationKey } from '../../lib/i18n';
 import { globalSearch } from '../../lib/api/search';
 import { toSearchSummary } from '../../lib/search-summary';
+import { timeAgo } from '../../lib/utils';
+import { automationOpenHash } from '../../lib/workspace-routes';
 import { useGlobalSearchStore } from '../../stores/global-search-store';
 import { openEntityPeek } from '../../stores/entity-peek-store';
 import { entityPeekMeta } from '../entity-peek/registry';
@@ -31,6 +33,7 @@ const DEBOUNCE_MS = 200;
 
 const KIND_LABEL_KEYS: Record<string, TranslationKey> = {
   session: 'search.session',
+  automation: 'search.automation',
   project: 'search.project',
   kb_doc: 'search.doc',
   tables_record: 'entityPeek.record',
@@ -43,8 +46,26 @@ function kindLabelKey(kind: SearchKind): TranslationKey {
 }
 
 /** Subtitles carry authored prose, so strip any Markdown before showing one inline. */
-function subtitleText(hit: SearchHit): string {
-  return toSearchSummary(hit.subtitle);
+function subtitleText(hit: SearchHit, pausedLabel: string): string {
+  // Conversations carry a timestamp the reader's locale formats, not prose.
+  if ('sessionId' in hit) return hit.updatedAt ? timeAgo(hit.updatedAt) : '';
+  const summary = toSearchSummary(hit.subtitle);
+  if ('automationId' in hit && !hit.enabled) return summary ? `${pausedLabel} · ${summary}` : pausedLabel;
+  return summary;
+}
+
+/** Stable React key for a hit within its section. */
+function hitKey(kind: SearchKind, hit: SearchHit): string {
+  if ('sessionId' in hit) return `${kind}-${hit.sessionId}`;
+  if ('automationId' in hit) return `${kind}-${hit.automationId}`;
+  return `${kind}-${entityUrl(hit.ref)}`;
+}
+
+/** The section icon: conversations and automations are not entities with a peek. */
+function sectionIcon(kind: SearchKind) {
+  if (kind === 'session') return MessageSquare;
+  if (kind === 'automation') return Zap;
+  return entityPeekMeta(kind as EntityKind).icon;
 }
 
 /** One rendered section plus the flat keyboard index its rows occupy. */
@@ -131,6 +152,8 @@ export function GlobalSearchDialog() {
       close();
       if ('sessionId' in hit) {
         window.location.hash = `#/chat?session=${encodeURIComponent(hit.sessionId)}`;
+      } else if ('automationId' in hit) {
+        window.location.hash = automationOpenHash(hit.automationId);
       } else if (fullPage) window.location.hash = entityUrl(hit.ref);
       else openEntityPeek({ ref: hit.ref, label: hit.title });
     },
@@ -201,7 +224,7 @@ export function GlobalSearchDialog() {
             <p className="px-4 py-8 text-center text-sm text-fg-faint">{t('search.noResults', { query: trimmed })}</p>
           )}
           {sections.map((section) => {
-            const Icon = section.kind === 'session' ? MessageSquare : entityPeekMeta(section.kind as EntityKind).icon;
+            const Icon = sectionIcon(section.kind);
             return (
               <section key={section.kind}>
                 <div className="flex items-center gap-2 px-4 pb-1 pt-3 text-caption font-medium uppercase tracking-wide text-fg-faint">
@@ -220,11 +243,7 @@ export function GlobalSearchDialog() {
                   const isActive = flatIndex === active;
                   return (
                     <button
-                      key={
-                        'sessionId' in hit
-                          ? `${section.kind}-${hit.sessionId}`
-                          : `${section.kind}-${entityUrl(hit.ref)}`
-                      }
+                      key={hitKey(section.kind, hit)}
                       data-active={isActive}
                       onMouseEnter={() => setActive(flatIndex)}
                       onClick={(e) => openHit(hit, e.metaKey || e.ctrlKey)}
@@ -235,8 +254,10 @@ export function GlobalSearchDialog() {
                       <Icon size={15} className="flex-shrink-0 text-fg-muted" />
                       <span className="min-w-0 flex-1">
                         <span className="block truncate text-sm text-fg">{hit.title}</span>
-                        {subtitleText(hit) && (
-                          <span className="block truncate text-xs text-fg-faint">{subtitleText(hit)}</span>
+                        {subtitleText(hit, t('search.automationPaused')) && (
+                          <span className="block truncate text-xs text-fg-faint">
+                            {subtitleText(hit, t('search.automationPaused'))}
+                          </span>
                         )}
                       </span>
                     </button>

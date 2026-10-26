@@ -44,6 +44,16 @@ vi.mock('../../profiles/profile.js', async (importOriginal) => {
   };
 });
 
+// The run's effective tool list is resolved by the executor; here it is the
+// automatic reads + web search plus whatever the stored grant names.
+vi.mock('../../scheduler/executor.js', () => ({
+  resolveScheduledRunToolIds: async (task: { unattended_tools?: string[] }) => [
+    'knowledge_query',
+    'external_search',
+    ...(task.unattended_tools ?? []),
+  ],
+}));
+
 const { createAutomationQueryTool } = await import('../automation-query.js');
 const { createAutomationMutationTool } = await import('../automation-mutation.js');
 
@@ -251,6 +261,62 @@ describe('automation_mutation — create', () => {
     });
 
     expect(result.error).toMatch(/10-4000 characters/);
+  });
+});
+
+describe('automation_mutation — unattended_tools from chat', () => {
+  const CREATE = {
+    action: 'create',
+    name: 'Weekly board',
+    task_prompt: 'Update the weekly board table from the CRM follow-ups.',
+    schedule: '0 9 * * 1',
+  };
+
+  it('a person in the web/mobile chat can switch on writes, and sees the run tool list', async () => {
+    const { db, store } = fakeDb([]);
+    const result = await asTool(createAutomationMutationTool(db, { ...OWNER, canGrantTools: true })).execute({
+      ...CREATE,
+      unattended_tools: ['tables_mutation'],
+    });
+
+    expect(result.status).toBe('created');
+    expect(result.unattended_tools).toEqual(['tables_mutation']);
+    expect(result.run_tools).toEqual(['knowledge_query', 'external_search', 'tables_mutation']);
+    expect([...store.values()][0]).toMatchObject({ unattended_tools: ['tables_mutation'] });
+  });
+
+  it('refuses the grant from any other surface and points at where it can be done', async () => {
+    const { db, store } = fakeDb([]);
+    const result = await asTool(createAutomationMutationTool(db, OWNER)).execute({
+      ...CREATE,
+      unattended_tools: ['tables_mutation'],
+    });
+
+    expect(result.error).toMatch(/Settings → Automations/);
+    expect(store.size).toBe(0);
+  });
+
+  it('update replaces the stored grant and reports it back', async () => {
+    const { db } = fakeDb([{ ...row({ id: 3 }), unattended_tools: ['memory'] } as Row]);
+    const result = await asTool(createAutomationMutationTool(db, { ...OWNER, canGrantTools: true })).execute({
+      action: 'update',
+      id: 3,
+      unattended_tools: ['knowledge_mutation'],
+    });
+
+    expect(result.status).toBe('updated');
+    expect(result.unattended_tools).toEqual(['knowledge_mutation']);
+    expect(result.run_tools).toContain('knowledge_mutation');
+    expect(result.run_tools).not.toContain('memory');
+  });
+
+  it('the schema only accepts catalogued tools — never a destructive or self-multiplying one', () => {
+    const tool = createAutomationMutationTool(fakeDb([]).db, { ...OWNER, canGrantTools: true }) as unknown as {
+      inputSchema: { safeParse: (v: unknown) => { success: boolean } };
+    };
+    for (const id of ['email_mutation', 'automation_mutation', 'files_mutation']) {
+      expect(tool.inputSchema.safeParse({ ...CREATE, unattended_tools: [id] }).success, id).toBe(false);
+    }
   });
 });
 

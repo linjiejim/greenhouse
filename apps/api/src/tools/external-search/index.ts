@@ -144,7 +144,9 @@ Information reliability tiers: L1 official primary sources > L2 commercial data 
 Search in both Chinese and English. Key information requires confirmation from at least two independent sources.`,
   category: 'team',
   is_global: true,
-  surface: { proxy: 'read' },
+  // Automatic in unattended runs: a search writes nothing and is safe to repeat;
+  // its cost is bounded by the run's max_steps and the usage-budget refusal.
+  surface: { proxy: 'read', unattendedReplaySafe: true },
   icon: 'Globe',
   sort_order: 10,
 };

@@ -1086,6 +1086,7 @@ const zh: Messages = {
     sharedWithMe: '共享给我的',
     othersConversations: '其他人的',
     scopeMine: '我的',
+    scopeScheduled: '定时任务',
     scopeShared: '共享给我',
     scopeTeam: '团队',
     scopeFilterLabel: '按范围筛选对话',
@@ -2254,7 +2255,7 @@ const zh: Messages = {
     notifyFeishuUnbound: '先在设置里绑定飞书才能开启。',
     tools: '工具',
     toolsHint:
-      '自动化在无人值守时运行，所以默认只有只读工具。勾选这条自动化额外可用的工具。这里只列出你本来就有的工具，勾选不会给你新的权限。',
+      '自动化在无人值守时运行，所以默认只有只读工具和联网搜索，删除类操作永远不会无人值守执行。勾选这条自动化额外可用的工具。这里只列出你本来就有的工具，勾选不会给你新的权限。',
     toolsTierAssist: '辅助能力',
     toolsTierWrite: '写业务数据',
     toolsNoneAvailable: '你当前没有可以授予自动化的工具。',
@@ -2263,7 +2264,6 @@ const zh: Messages = {
     tool_memory: '记忆 — 记录和调取你自己的笔记',
     tool_analyze_image: '图片识别 — 按次计费',
     tool_generate_image: '生成图片 — 按次计费',
-    tool_external_search: '联网搜索 — 计费，且返回不可信内容',
     tool_export_data: '导出数据 — 在运行中产出 CSV/XLSX',
     tool_log_friction: '记录摩擦 — 把工具问题记给团队',
     tool_tables_mutation: '写 Tables 记录（可从回收站恢复）',
@@ -2836,8 +2836,10 @@ const zh: Messages = {
   // 全局搜索弹框（⌘P）
   search: {
     session: '会话',
+    automation: '定时任务',
+    automationPaused: '已暂停',
     title: '搜索',
-    placeholder: '搜索会话、项目、文档…',
+    placeholder: '搜索会话、定时任务、项目、文档…',
     hint: '输入关键词，跨模块搜索你有权限看到的内容。',
     noResults: '没有匹配「{query}」的结果。',
     all: '全部',

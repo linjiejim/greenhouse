@@ -504,6 +504,9 @@ export function createChatRoute(toolRegistry: ToolRegistry) {
                 workspaceId: body.workspace_id,
                 profileId: profile.id,
                 toolRegistry,
+                // A person typing in a web/mobile conversation may grant their
+                // automations extra tools; continued task/bot/browser threads may not.
+                humanChat: sessionChannel === 'web',
                 connectors: { surface: 'chat', client: turnClient, allowed: profile.connectors ?? null },
               }),
             },

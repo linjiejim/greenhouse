@@ -36,8 +36,8 @@ import { FullHistoryModal } from '../../history-modal';
 import { useT, type TranslationKey } from '../../../lib/i18n';
 import { BatchActionBar } from './batch-action-bar';
 import { pruneMissing, rangeSelect, toggleOne, type SelectableRow } from './selection';
-import type { SessionScope } from '@greenhouse/types/api';
 import { DEFAULT_ASSET_SCOPE } from '../../../lib/asset-scopes';
+import { historyListRequest, type HistoryTab } from '../../../lib/history-tabs';
 
 // Long-press duration (touch) to enter multi-select mode.
 const LONG_PRESS_MS = 450;
@@ -279,7 +279,7 @@ export function ChatHistoryPanel({
   const [showFullHistory, setShowFullHistory] = useState(false);
   // Broader scopes are intentionally session-local: every fresh Chat surface
   // starts on the caller's own conversations, including for super users.
-  const [scope, setScope] = useState<SessionScope>(DEFAULT_ASSET_SCOPE);
+  const [scope, setScope] = useState<HistoryTab>(DEFAULT_ASSET_SCOPE);
 
   // Context menu state
   const [contextMenu, setContextMenu] = useState<SessionMenuState | null>(null);
@@ -326,9 +326,11 @@ export function ChatHistoryPanel({
   const isSuper = currentUser?.role === 'super';
 
   // A stored 'team' from a demoted account would 403 on every load.
-  const effectiveScope: SessionScope = scope === 'team' && !isSuper ? 'mine' : scope;
+  const effectiveScope: HistoryTab = scope === 'team' && !isSuper ? 'mine' : scope;
+  // Automation runs: a flat list of title + time, nothing to organise or attribute.
+  const plainRows = effectiveScope === 'scheduled' && !compact;
 
-  const changeScope = useCallback((next: SessionScope) => {
+  const changeScope = useCallback((next: HistoryTab) => {
     setScope(next);
     setDateBucketLimit(DATE_BUCKET_PAGE);
   }, []);
@@ -449,7 +451,9 @@ export function ChatHistoryPanel({
     setLoading(true);
     try {
       // Compact mode only ever shows the newest few of the caller's own.
-      const data = await api.listSessions('active', false, compact ? 20 : 500, compact ? 'mine' : effectiveScope);
+      // Compact mode shows the newest few of "Mine" (automation runs excluded).
+      const request = historyListRequest(compact ? 'mine' : effectiveScope);
+      const data = await api.listSessions('active', false, compact ? 20 : 500, request.scope, request);
       // Keep the full set (server caps at 500): pinned sessions must
       // survive even when older than the 50 most-recent. Date buckets cap
       // their own render below.
@@ -840,7 +844,7 @@ export function ChatHistoryPanel({
           )}
           {/* Session type marker (mission cloud / workflow graph) — lowest
               priority in the shared indicator slot. */}
-          {!isSessionStreaming && !isUnread && <SessionTypeIcon profileId={session.profile_id} />}
+          {!isSessionStreaming && !isUnread && !plainRows && <SessionTypeIcon profileId={session.profile_id} />}
         </span>
         {isRenaming ? (
           <input
@@ -864,16 +868,16 @@ export function ChatHistoryPanel({
             {session.title || t('common.untitled')}
           </span>
         )}
-        {sectionKey !== 'pinned' && session.pinned && (
+        {!plainRows && sectionKey !== 'pinned' && session.pinned && (
           <Pin size={10} className="flex-shrink-0 text-fg-faint" aria-label={t('history.pinned')} />
         )}
         {/* In the shared tab every row is shared, so the marker says nothing. */}
-        {session.shared && effectiveScope !== 'shared' && (
+        {!plainRows && session.shared && effectiveScope !== 'shared' && (
           <Share2 size={11} className="flex-shrink-0 text-fg-faint" aria-label={t('history.sharedWithMe')} />
         )}
         {/* Whose conversation this is — without it the team view is a wall of
             titles with no author. Present on any row the viewer doesn't own. */}
-        {session.owner_nickname && (
+        {!plainRows && session.owner_nickname && (
           <span
             className="max-w-[72px] flex-shrink-0 truncate text-caption text-fg-faint"
             title={t('history.ownedBy', { name: session.owner_nickname })}
@@ -1004,13 +1008,14 @@ export function ChatHistoryPanel({
             />
           </div>
 
-          {/* Scope tabs — mine (default) / shared with me / team (super only).
+          {/* Scope tabs — mine (default) / scheduled (my automation runs) / shared with me / team (super only).
             `segment`, not pills: this is a switch where one option is always on. */}
           <div className="px-3 pb-1.5 flex-shrink-0">
             <FilterPills
               variant="segment"
               items={[
                 { key: 'mine', label: t('history.scopeMine') },
+                { key: 'scheduled', label: t('history.scopeScheduled') },
                 {
                   key: 'shared',
                   label: t('history.scopeShared'),
@@ -1019,7 +1024,7 @@ export function ChatHistoryPanel({
                 ...(isSuper ? [{ key: 'team', label: t('history.scopeTeam') }] : []),
               ]}
               activeKey={effectiveScope}
-              onChange={(k) => changeScope((k as SessionScope) ?? 'mine')}
+              onChange={(k) => changeScope((k as HistoryTab | null) ?? 'mine')}
               selectLabel={t('history.scopeFilterLabel')}
               fill
             />

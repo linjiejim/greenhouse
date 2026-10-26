@@ -286,6 +286,8 @@ export async function runAgentInSession(args: RunAgentInSessionArgs): Promise<Ru
       content: result.text,
       references,
       pipeline,
+      // Same model id chat records, so automation/bot replies show which model wrote them.
+      model: args.modelConfig.id ?? args.modelConfig.model,
       input_tokens: result.usage?.inputTokens,
       output_tokens: result.usage?.outputTokens,
       cached_tokens: result.usage?.cachedInputTokens,

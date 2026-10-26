@@ -32,11 +32,14 @@ export async function listSessions(
   includeEval = true,
   limit = 500,
   scope?: SessionScope,
+  channels: { channel?: string; excludeChannels?: readonly string[] } = {},
 ): Promise<Session[]> {
   const query: Record<string, string> = { limit: String(limit) };
   if (status && status !== 'all') query.status = status;
   if (includeEval) query.include_eval = '1';
   if (scope) query.scope = scope;
+  if (channels.channel) query.channel = channels.channel;
+  if (channels.excludeChannels?.length) query.exclude_channel = channels.excludeChannels.join(',');
   try {
     const res = await rpc.api.sessions.$get({ query });
     if (!res.ok) return [];

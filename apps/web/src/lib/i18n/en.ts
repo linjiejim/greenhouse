@@ -1104,6 +1104,7 @@ export default {
     sharedWithMe: 'Shared with me',
     othersConversations: "Everyone else's",
     scopeMine: 'Mine',
+    scopeScheduled: 'Scheduled',
     scopeShared: 'Shared',
     scopeTeam: 'Team',
     scopeFilterLabel: 'Filter conversations by scope',
@@ -2316,7 +2317,7 @@ export default {
     notifyFeishuUnbound: 'Bind your Feishu account in Settings to enable this.',
     tools: 'Tools',
     toolsHint:
-      'Automations run with nobody watching, so they get read-only tools by default. Tick anything extra this automation may use. Only tools you already have are listed, and a tick never grants you a new permission.',
+      'Automations run with nobody watching, so by default they get read-only tools plus web search, and never anything destructive. Tick anything extra this automation may use. Only tools you already have are listed, and a tick never grants you a new permission.',
     toolsTierAssist: 'Assist',
     toolsTierWrite: 'Write business data',
     toolsNoneAvailable: 'You have no tools that can be granted to an automation.',
@@ -2325,7 +2326,6 @@ export default {
     tool_memory: 'Memory — remember and recall your own notes',
     tool_analyze_image: 'Analyze image — paid per call',
     tool_generate_image: 'Generate image — paid per call',
-    tool_external_search: 'Web search — paid, returns untrusted content',
     tool_export_data: 'Export data — produce CSV/XLSX in the run',
     tool_log_friction: 'Log friction — record tooling problems for the team',
     tool_tables_mutation: 'Write Tables records (recoverable from the recycle bin)',
@@ -2897,8 +2897,10 @@ export default {
   // Global search palette (⌘P)
   search: {
     session: 'Conversations',
+    automation: 'Automations',
+    automationPaused: 'Paused',
     title: 'Search',
-    placeholder: 'Search conversations, projects, documents…',
+    placeholder: 'Search conversations, automations, projects, documents…',
     hint: 'Type to search across everything you have access to.',
     noResults: 'No matches for “{query}”.',
     all: 'All',

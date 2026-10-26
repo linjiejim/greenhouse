@@ -127,6 +127,13 @@ export interface LazyServerToolContext {
    */
   unattended?: boolean;
   /**
+   * A person is typing this turn in the Greenhouse web or mobile chat
+   * (routes/chat.ts, a `channel='web'` conversation). Only then may
+   * `automation_mutation` store an owner's `unattended_tools` grant; MCP, the
+   * agent proxy, bots and automation runs never set it.
+   */
+  humanChat?: boolean;
+  /**
    * Build `mcp_call` for this surface. Only chat and automations pass it: the
    * `/api/agent` proxy never gets connectors, and `/api/mcp` builds its own
    * per request (routes/mcp.ts) because its write rules depend on the grant.
@@ -167,8 +174,10 @@ export const UNATTENDED_TOOL_DENYLIST = new Set(['automation_mutation', 'email_m
 /**
  * The automatic baseline is fail-closed: an unattended execution receives only
  * tools explicitly catalogued as replay-safe reads. `proxy:'read'` alone is not
- * enough: generate_image, analyze_image and external_search cross paid provider
- * boundaries and generation also persists a durable object. Tools with no
+ * enough: generate_image and analyze_image cross paid provider boundaries and
+ * generation also persists a durable object. external_search is paid too but is
+ * declared replay-safe on purpose: it writes nothing, and its cost per run stays
+ * bounded by the task's max_steps and the usage-budget refusal. Tools with no
  * explicit replay-safe declaration are denied.
  */
 function isAutomaticUnattendedTool(toolId: string): boolean {
@@ -326,7 +335,11 @@ export function buildLazyServerTools(
     tools.automation_query = createAutomationQueryTool(db, { userId, userRole });
   }
   if (effectiveTools.includes('automation_mutation')) {
-    tools.automation_mutation = createAutomationMutationTool(db, { userId, userRole });
+    tools.automation_mutation = createAutomationMutationTool(db, {
+      userId,
+      userRole,
+      canGrantTools: ctx.humanChat === true && ctx.unattended !== true,
+    });
   }
 
   // Email — mailbox ownership is checked inside the tools, so like automations

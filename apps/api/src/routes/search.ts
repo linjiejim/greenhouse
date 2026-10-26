@@ -1,7 +1,7 @@
 /**
  * 全局搜索路由 — /api/search
  *
- * GET /api/search  — 跨会话 / 项目 / 知识库的聚合搜索，按种类分组返回
+ * GET /api/search  — 跨会话 / 定时任务 / 项目 / 知识库的聚合搜索，按种类分组返回
  *
  * 设计要点（决策见 docs/specs/20260804-entity-references-and-peek.md D14–D17）：
  *
@@ -9,6 +9,9 @@
  *   不可用（未开通、无权限、报错）只让那一组为空，不影响其余结果。
  * - **不做跨域相关性排序**：项目全是 ILIKE 没有 relevance，知识库是 ts_rank(<1)，
  *   两者不可比。分组返回，组内保持各自的最佳顺序。
+ * - 会话 lane 搜本人**全部**会话（含定时任务产生的 `task` 会话、飞书、手机），只排除已退役的
+ *   `workflow` 转录和 eval；命中带 `updatedAt` 由客户端按本地语言格式化。
+ * - 定时任务 lane 只搜本人的 automations（名称 + prompt）；每人上限 10 条，内存过滤即可。
  * - **权限逐 lane 判定，不能挂在路由上**：某个应用未授权只让那一组为空，不能让整个
  *   搜索 403。
  */
@@ -24,6 +27,11 @@ import { projectResource } from '../platform/projects/application.js';
 import { getPlatformRuntime } from '../platform/runtime.js';
 import { searchKnowledgeScopes } from '../knowledge/search.js';
 import { extensionSearchSources } from '../search/sources.js';
+
+/** Conversation channels global search never shows: retired Workflow node transcripts. */
+const SEARCH_EXCLUDED_CHANNELS = ['workflow'];
+/** Characters of an automation's prompt shown under its name. */
+const AUTOMATION_PROMPT_PREVIEW = 80;
 
 /** Rows per kind when every kind is shown side by side. */
 const GROUP_LIMIT = 5;
@@ -81,14 +89,33 @@ export function createSearchRoute() {
           return { kind: k, items: hits.slice(0, limit), hasMore: hits.length > limit };
         };
 
-        const [sessionHistory, projects, docs] = await Promise.all([
+        const [sessionHistory, automations, projects, docs] = await Promise.all([
           lane('session', async () => {
-            const rows = await db.sessions.searchByTitle(user.id, query, fetchLimit, 'web');
+            const rows = await db.sessions.searchByTitle(user.id, query, fetchLimit, {
+              excludeChannels: SEARCH_EXCLUDED_CHANNELS,
+            });
             return rows.map((row) => ({
               sessionId: row.id,
               title: row.title ?? '',
-              subtitle: subtitle(row.updated_at),
+              updatedAt: row.updated_at,
             }));
+          }),
+          // The caller's own automations only (super included: the console's
+          // cross-user view is a management surface, not search).
+          lane('automation', async () => {
+            const needle = query.toLowerCase();
+            const rows = await db.scheduledTasks.list(user.id);
+            return rows
+              .filter(
+                (row) => row.name.toLowerCase().includes(needle) || row.task_prompt.toLowerCase().includes(needle),
+              )
+              .slice(0, fetchLimit)
+              .map((row) => ({
+                automationId: row.id,
+                title: row.name,
+                enabled: row.enabled,
+                subtitle: subtitle(row.task_prompt.replace(/\s+/g, ' ').trim().slice(0, AUTOMATION_PROMPT_PREVIEW)),
+              }));
           }),
           // Projects owns its whole read path in the registry handler (policy →
           // access → query), so this only has to hand it a payload.
@@ -127,7 +154,7 @@ export function createSearchRoute() {
           }),
         ]);
 
-        // Extension lanes run after the core three, in registration order, and
+        // Extension lanes run after the core four, in registration order, and
         // are just as isolated: a failing one leaves its group empty.
         const extensionGroups = await Promise.all(
           extensionSearchSources().map((source) =>
@@ -137,7 +164,9 @@ export function createSearchRoute() {
           ),
         );
 
-        const groups = [sessionHistory, projects, docs, ...extensionGroups].filter((g): g is SearchGroup => g !== null);
+        const groups = [sessionHistory, automations, projects, docs, ...extensionGroups].filter(
+          (g): g is SearchGroup => g !== null,
+        );
         return c.json({ query, groups });
       })
   );

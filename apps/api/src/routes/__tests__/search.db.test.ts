@@ -99,19 +99,74 @@ describe('global search', () => {
     });
   });
 
-  it("only searches the caller's user-facing conversation history", async () => {
+  it("searches all of the caller's own conversations, automation runs included, but not workflow transcripts", async () => {
     const token = marker();
     const [owner, stranger] = await Promise.all([
       createInternalTestUser(db, { email: `search-session-owner-${token}@test.local`, role: 'team' }),
       createInternalTestUser(db, { email: `search-session-other-${token}@test.local`, role: 'team' }),
     ]);
     const own = await db.sessions.create(`${token} own chat`, 'team', owner.id, undefined, 'web');
+    const run = await db.sessions.create(`${token} daily digest run`, 'team', owner.id, undefined, 'task');
+    const bot = await db.sessions.create(`${token} feishu thread`, 'team', owner.id, undefined, 'feishu');
     await db.sessions.create(`${token} other chat`, 'team', stranger.id, undefined, 'web');
     await db.sessions.create(`${token} workflow`, 'team', owner.id, undefined, 'workflow');
 
     const { body } = await search(createApp([owner]), owner.id, token, 'session');
     const hits = body.groups.find((group) => group.kind === 'session')?.items ?? [];
-    expect(hits).toEqual([expect.objectContaining({ sessionId: own.id, title: `${token} own chat` })]);
+    expect(hits.map((hit) => ('sessionId' in hit ? hit.sessionId : null)).sort()).toEqual(
+      [own.id, run.id, bot.id].sort(),
+    );
+    // A date the client formats, not a raw ISO string in the subtitle.
+    const ownHit = hits.find((hit) => 'sessionId' in hit && hit.sessionId === own.id);
+    expect(ownHit).toMatchObject({ updatedAt: expect.any(String) });
+    expect(ownHit?.subtitle).toBeUndefined();
+  });
+
+  it("finds the caller's own automations by name or prompt, and nobody else's", async () => {
+    const token = marker();
+    const [owner, stranger] = await Promise.all([
+      createInternalTestUser(db, { email: `search-auto-owner-${token}@test.local`, role: 'super' }),
+      createInternalTestUser(db, { email: `search-auto-other-${token}@test.local`, role: 'team' }),
+    ]);
+    const base = { schedule: '0 9 * * *', timezone: 'UTC' };
+    const byName = await db.scheduledTasks.create({
+      ...base,
+      user_id: owner.id,
+      name: `${token} digest`,
+      task_prompt: 'Summarize yesterday in the CRM.',
+    });
+    const byPrompt = await db.scheduledTasks.create({
+      ...base,
+      user_id: owner.id,
+      name: 'Weekly board',
+      task_prompt: `Update the ${token} board table   every Monday.`,
+      enabled: false,
+    });
+    await db.scheduledTasks.create({ ...base, user_id: owner.id, name: 'Unrelated', task_prompt: 'Nothing to see.' });
+    await db.scheduledTasks.create({
+      ...base,
+      user_id: stranger.id,
+      name: `${token} theirs`,
+      task_prompt: 'Not yours to find.',
+    });
+
+    const { body } = await search(createApp([owner, stranger]), owner.id, token);
+    const hits = body.groups.find((group) => group.kind === 'automation')?.items ?? [];
+    expect(hits).toHaveLength(2);
+    expect(hits).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ automationId: byName.id, title: `${token} digest`, enabled: true }),
+        expect.objectContaining({
+          automationId: byPrompt.id,
+          title: 'Weekly board',
+          enabled: false,
+          subtitle: `Update the ${token} board table every Monday.`,
+        }),
+      ]),
+    );
+
+    const narrowed = await search(createApp([owner]), owner.id, token, 'automation');
+    expect(narrowed.body.groups.map((g) => g.kind)).toEqual(['automation']);
   });
 
   it('never surfaces another user private document', async () => {

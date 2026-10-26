@@ -37,8 +37,12 @@ describe('unattended-context tool denylist', () => {
   });
 
   it('requires an explicit replay-safe declaration instead of trusting proxy read', () => {
-    expect(filterUnattendedToolIds(['generate_image', 'analyze_image', 'external_search', 'knowledge_query'])).toEqual([
+    expect(filterUnattendedToolIds(['generate_image', 'analyze_image', 'knowledge_query'])).toEqual([
       'knowledge_query',
     ]);
+  });
+
+  it('grants web search to every unattended run automatically', () => {
+    expect(filterUnattendedToolIds(['external_search', 'generate_image'])).toEqual(['external_search']);
   });
 });

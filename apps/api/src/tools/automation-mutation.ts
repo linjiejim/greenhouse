@@ -9,14 +9,26 @@
  *
  * Denied in unattended contexts (scheduled runs): nobody is
  * there to confirm, and an automation that can create automations multiplies.
+ *
+ * `unattended_tools` (the owner's per-automation grant) is accepted only when
+ * the calling turn is a person typing in the web or mobile chat
+ * (`canGrantTools`, set by routes/chat.ts); every other surface — automation
+ * runs, MCP, the agent proxy, Feishu/WeCom bots — is refused by task-center.
  */
 
 import { tool } from 'ai';
 import { z } from 'zod';
 import { toErrorMessage } from '@greenhouse/utils/error';
-import type { DatabaseProvider } from '@greenhouse/db';
+import type { DatabaseProvider, ScheduledTaskRow } from '@greenhouse/db';
 import { defineTool, type ToolMeta } from './define.js';
-import { createTask, deleteTask, runTaskNow, updateTask, type TaskActor } from '../scheduler/task-center.js';
+import {
+  createTask,
+  deleteTask,
+  runTaskNow,
+  updateTask,
+  type ScheduledTaskView,
+  type TaskActor,
+} from '../scheduler/task-center.js';
 // Limits come from the LEAF module, never from task-center: this file sits on the
 // registry ↔ scheduler import cycle and reads them while its own module body runs.
 // Importing them from task-center puts them in the TDZ and the API dies at boot.
@@ -28,6 +40,9 @@ import {
   MIN_PROMPT_LENGTH,
 } from '../scheduler/task-limits.js';
 import type { AutomationToolContext } from './automation-query.js';
+import { AUTOMATION_OPT_IN_TOOLS } from '@greenhouse/types/automation-tools';
+
+const OPT_IN_IDS = AUTOMATION_OPT_IN_TOOLS.map((t) => t.id) as [string, ...string[]];
 
 const automationMutationSchema = z.object({
   action: z
@@ -75,6 +90,12 @@ const automationMutationSchema = z.object({
     .describe(
       'Stay quiet when a run finds nothing new: the run is told to answer exactly NO_UPDATE in that case, is kept in history as "no update", and sends no notification on any channel. Good for frequent watch-style checks.',
     ),
+  unattended_tools: z
+    .array(z.enum(OPT_IN_IDS))
+    .optional()
+    .describe(
+      "Extra tools this automation's runs may use, beyond the automatic reads and web search. Replaces the stored list on update ([] removes all). Only set it when the user asked for that capability; name each tool back to them first.",
+    ),
 });
 
 type AutomationMutationInput = z.infer<typeof automationMutationSchema>;
@@ -93,7 +114,7 @@ Always set notify.webhook or notify.email — a 03:00 run nobody is told about i
 
 Before create, update or delete, state the configuration back in plain language — name, what it will do, and when it fires spelled out ("every weekday at 09:00 Hong Kong time") — then get explicit agreement. Read the current settings with automation_query first when changing an existing one.
 
-Runs are unattended and get read-only tools. To write (tables, CRM, knowledge, projects) or make images, tell the user to tick it in Settings → Automations → edit → Tools; you cannot grant it.
+What a run can use: every run automatically gets the owner's internal read tools (knowledge, tables, projects, past conversations, automations, report templates…) plus web search (external_search). Everything else is off until switched on per automation with unattended_tools: ${OPT_IN_IDS.join(', ')} — that covers writes (tables, knowledge, projects, reports, connector writes), images, memory and exports. Destructive actions (deleting anything, sending email, creating automations) never run unattended; no setting enables them. Writes are recorded under the owner and listed in each run summary. Every create/update result returns unattended_tools and run_tools — the exact tools the next run will have. Only promise what is in run_tools; if a tool is missing, the owner lacks it or it cannot run unattended.
 
 Limit ${MAX_TASKS_PER_USER} per user; check the count with automation_query when near it. You can only manage your own.`,
   category: 'core',
@@ -104,11 +125,38 @@ Limit ${MAX_TASKS_PER_USER} per user; check the count with automation_query when
   sort_order: 37,
 };
 
-export function createAutomationMutationTool(db: DatabaseProvider, ctx: AutomationToolContext) {
+export interface AutomationMutationContext extends AutomationToolContext {
+  /**
+   * The turn is a person typing in the web or mobile chat, so a grant here is
+   * the owner asking for it in their own words. Every other surface leaves it
+   * off and task-center refuses `unattended_tools`.
+   */
+  canGrantTools?: boolean;
+}
+
+/** The tools the next run of this automation would really get; null when it cannot be resolved. */
+async function runToolsFor(db: DatabaseProvider, task: ScheduledTaskRow): Promise<string[] | null> {
+  try {
+    // Dynamic import: executor → tool-resolution → this file is an import cycle.
+    const { resolveScheduledRunToolIds } = await import('../scheduler/executor.js');
+    return await resolveScheduledRunToolIds(task, db);
+  } catch {
+    return null;
+  }
+}
+
+function automationResult(task: ScheduledTaskView, runTools: string[] | null) {
+  return { automation: task, unattended_tools: task.unattended_tools ?? [], run_tools: runTools };
+}
+
+export function createAutomationMutationTool(db: DatabaseProvider, ctx: AutomationMutationContext) {
   // scope 'own' — the role is carried for audit parity, never to widen access.
-  // canGrantTools off: a model can draft an automation, never
-  // grant it an unattended write tool (task-center.validateUnattendedTools).
-  const actor: TaskActor = { userId: ctx.userId, role: ctx.userRole, scope: 'own', canGrantTools: false };
+  const actor: TaskActor = {
+    userId: ctx.userId,
+    role: ctx.userRole,
+    scope: 'own',
+    canGrantTools: ctx.canGrantTools === true,
+  };
   return tool({
     description: meta.description,
     inputSchema: automationMutationSchema,
@@ -125,9 +173,14 @@ export function createAutomationMutationTool(db: DatabaseProvider, ctx: Automati
             enabled: input.enabled,
             notify: input.notify,
             quiet_when_empty: input.quiet_when_empty,
+            unattended_tools: input.unattended_tools,
           });
           if (!result.ok) return { action: input.action, error: result.error };
-          return { action: input.action, status: 'created', automation: result.task };
+          return {
+            action: input.action,
+            status: 'created',
+            ...automationResult(result.task, await runToolsFor(db, result.task)),
+          };
         }
 
         if (input.id === undefined) return { action: input.action, error: `id is required for ${input.action}` };
@@ -143,9 +196,14 @@ export function createAutomationMutationTool(db: DatabaseProvider, ctx: Automati
             enabled: input.enabled,
             notify: input.notify,
             quiet_when_empty: input.quiet_when_empty,
+            unattended_tools: input.unattended_tools,
           });
           if (!result.ok) return { action: input.action, error: result.error };
-          return { action: input.action, status: 'updated', automation: result.task };
+          return {
+            action: input.action,
+            status: 'updated',
+            ...automationResult(result.task, await runToolsFor(db, result.task)),
+          };
         }
 
         if (input.action === 'delete') {

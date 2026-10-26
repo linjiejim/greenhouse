@@ -8,7 +8,8 @@
  * "the confirm gate needs a human reading a card", "this multiplies itself",
  * and "this merely costs money or writes a reversible internal row". Only the
  * first two survive a one-time consent at configuration time; this catalog is
- * the third group, plus the paid/durable reads.
+ * the third group, plus the paid/durable reads. Web search (external_search) is
+ * not here: it is granted to every unattended run automatically.
  *
  * Ticking a box here NEVER widens permissions. The runtime set is
  * `opt-in ∩ this catalog ∩ the owner's currently effective tools`, recomputed
@@ -56,7 +57,6 @@ export const AUTOMATION_OPT_IN_TOOLS: readonly AutomationOptInTool[] = [
   { id: 'memory', tier: 'assist' },
   { id: 'analyze_image', tier: 'assist' },
   { id: 'generate_image', tier: 'assist' },
-  { id: 'external_search', tier: 'assist' },
   { id: 'export_data', tier: 'assist' },
   { id: 'log_friction', tier: 'assist' },
   { id: 'tables_mutation', tier: 'write' },

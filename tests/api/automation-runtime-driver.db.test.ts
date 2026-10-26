@@ -74,6 +74,7 @@ async function driveOnce(
   task: ScheduledTaskRow,
   scheduledFor: string,
   answer: string,
+  toolEvidence: RunAgentResult['toolEvidence'] = [],
 ): Promise<{ runId: string; sessionId: string }> {
   const queued = await enqueueAutomationRun({ db, task, trigger: 'manual', scheduledFor });
   const workerId = unique('automation-quiet-worker');
@@ -81,11 +82,16 @@ async function driveOnce(
   expect(claimed?.id).toBe(queued.run.id);
   await createAutomationRuntimeDriver(
     {},
-    { executeTask: vi.fn(async () => ({ ...result, text: answer })), heartbeatIntervalMs: 60_000 },
+    { executeTask: vi.fn(async () => ({ ...result, text: answer, toolEvidence })), heartbeatIntervalMs: 60_000 },
   )({ db, run: claimed!, workerId, leaseMs: 60_000 });
   await projectLatestTerminalOutcome(queued.run.id);
   return { runId: queued.run.id, sessionId: queued.session_id };
 }
+
+/** One read the run made before concluding there was nothing new. */
+const LOOKED: RunAgentResult['toolEvidence'] = [
+  { toolCallId: 'call-1', toolName: 'knowledge_query', input: { action: 'search' }, output: [], hasResult: true },
+];
 
 const result: RunAgentResult = {
   text: 'Durable result',
@@ -376,7 +382,7 @@ describe('durable Automation Runtime driver', () => {
   });
   it('records a quiet run that found nothing new as "no update" and sends nothing', async () => {
     const task = await scheduledTask({ quiet_when_empty: true, notify_email: true });
-    const { runId, sessionId } = await driveOnce(task, '2026-08-12T06:00:00.000Z', '  NO_UPDATE\n');
+    const { runId, sessionId } = await driveOnce(task, '2026-08-12T06:00:00.000Z', '  NO_UPDATE\n', LOOKED);
 
     const run = await db.runtime.getRun(runId);
     expect(run).toMatchObject({ status: 'succeeded' });
@@ -392,6 +398,16 @@ describe('durable Automation Runtime driver', () => {
     expect(history.ok && history.entries[0]?.run).toMatchObject({ status: 'succeeded', no_update: true });
   });
 
+  it('does not file a NO_UPDATE as "no update" when the run made no tool call at all', async () => {
+    const task = await scheduledTask({ quiet_when_empty: true });
+    const { runId } = await driveOnce(task, '2026-08-12T06:30:00.000Z', 'NO_UPDATE');
+
+    const run = await db.runtime.getRun(runId);
+    expect(run!.output).toMatchObject({ summary: 'NO_UPDATE' });
+    expect(run!.output).not.toHaveProperty('no_update');
+    expect(await notificationsFor(task.user_id)).toHaveLength(1);
+  });
+
   it('still notifies a quiet run that has something to report, and ignores NO_UPDATE when quiet is off', async () => {
     const quiet = await scheduledTask({ quiet_when_empty: true });
     await driveOnce(quiet, '2026-08-12T07:00:00.000Z', 'Two new tickets need attention.');
@@ -400,7 +416,7 @@ describe('durable Automation Runtime driver', () => {
     ]);
 
     const loud = await scheduledTask();
-    const { runId, sessionId } = await driveOnce(loud, '2026-08-12T08:00:00.000Z', 'NO_UPDATE');
+    const { runId, sessionId } = await driveOnce(loud, '2026-08-12T08:00:00.000Z', 'NO_UPDATE', LOOKED);
     expect((await db.runtime.getRun(runId))!.output).not.toHaveProperty('no_update');
     expect(await notificationsFor(loud.user_id)).toHaveLength(1);
     const messages = await db.sessions.getMessages(sessionId);

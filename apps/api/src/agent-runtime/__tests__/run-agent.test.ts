@@ -216,6 +216,28 @@ describe('runAgentInSession transcript persistence', () => {
     );
   });
 
+  it('records which model wrote the reply, like chat does', async () => {
+    const fixture = createRunnerFixture();
+
+    await runAgentInSession({
+      db: fixture.db as never,
+      sessionId: 'session-1',
+      system: 'System',
+      prompt: 'Current prompt',
+      modelConfig: { id: 'deepseek-flash', provider: 'deepseek', model: 'deepseek-chat' } as never,
+      maxSteps: 2,
+      generate: fixture.generate,
+      toolCallClient: 'automation',
+      usageContext,
+    });
+
+    expect(fixture.appendAssistantIfTail).toHaveBeenCalledWith(
+      'session-1',
+      expect.anything(),
+      expect.objectContaining({ model: 'deepseek-flash' }),
+    );
+  });
+
   it('records an llm_usage row attributed to the owning user (headless-accounting contract)', async () => {
     const fixture = createRunnerFixture();
 

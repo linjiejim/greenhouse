@@ -16,6 +16,11 @@ export const SKILLHUB_REPORTS_HASH = '#/skillhub?tab=reports';
 /** Automations → Run profiles (custom agents). */
 export const AUTOMATIONS_PROFILES_HASH = '#/automations?tab=profiles';
 
+/** Automations with one automation's edit form open (search hits link here). */
+export function automationOpenHash(automationId: string): string {
+  return `#/automations?open=${encodeURIComponent(automationId)}`;
+}
+
 /**
  * Where a retired workspace hash goes now, or null when `topLevel` is not one.
  * `view` is the `?view=` of a legacy `#/chat?view=…` link.

@@ -132,3 +132,41 @@ describe('GET /api/sessions channel-filtered list', () => {
     expect(body.sessions.map((s) => s.id)).toEqual(['pinned-web-session']);
   });
 });
+
+describe('GET /api/sessions exclude_channel (Mine without automation runs / Scheduled)', () => {
+  it('drops the excluded channels on top of the retired workflow transcripts', async () => {
+    const response = await createApp().request('/api/sessions?scope=mine&exclude_channel=task');
+
+    expect(response.status).toBe(200);
+    expect(mocks.sessions.list).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: 'owner', excludeChannels: ['workflow', 'task'] }),
+    );
+  });
+
+  it('keeps a pinned automation run out of the list that excludes them', async () => {
+    mocks.sessionPins.getPinnedSessionIds.mockResolvedValue(['pinned-run']);
+    mocks.sessions.getById.mockResolvedValue(makeSession('pinned-run', 'task'));
+
+    const response = await createApp().request('/api/sessions?scope=mine&exclude_channel=task');
+
+    const body = (await response.json()) as { sessions: Array<{ id: string }> };
+    expect(body.sessions).toEqual([]);
+  });
+
+  it('lists every one of my automation runs on channel=task, without the workflow default or any cap but the page', async () => {
+    mocks.sessions.list.mockResolvedValue([makeSession('run-1', 'task'), makeSession('run-2', 'task')]);
+
+    const response = await createApp().request('/api/sessions?scope=mine&channel=task&page_meta=1&limit=50');
+
+    expect(mocks.sessions.list).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: 'owner', channel: 'task', excludeChannels: undefined, limit: 51 }),
+    );
+    const body = (await response.json()) as { sessions: Array<{ id: string }> };
+    expect(body.sessions.map((s) => s.id)).toEqual(['run-1', 'run-2']);
+  });
+
+  it('rejects a malformed exclude_channel instead of ignoring it', async () => {
+    const response = await createApp().request(`/api/sessions?exclude_channel=${encodeURIComponent('task;drop')}`);
+    expect(response.status).toBe(400);
+  });
+});

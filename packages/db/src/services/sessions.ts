@@ -1378,14 +1378,26 @@ export function createSessionService(db: Db) {
         }));
     },
 
-    async searchByTitle(userId: string, query: string, limit = 10, channel?: string): Promise<SessionRow[]> {
+    /**
+     * Title search over ONE user's own conversations (eval rows never). Pass
+     * `channel` to pin one channel, or `excludeChannels` to drop some — the
+     * global search drops only retired `workflow` transcripts, so automation
+     * runs (`task`), bot and mobile threads are all found.
+     */
+    async searchByTitle(
+      userId: string,
+      query: string,
+      limit = 10,
+      opts: { channel?: string; excludeChannels?: string[] } = {},
+    ): Promise<SessionRow[]> {
       const pattern = `%${query.replace(/%/g, '\\%').replace(/_/g, '\\_')}%`;
       const conditions = [
         eq(sessions.user_id, userId),
         ne(sessions.status, 'eval'),
         sql`${sessions.title} ILIKE ${pattern}`,
       ];
-      if (channel) conditions.push(eq(sessions.channel, channel));
+      if (opts.channel) conditions.push(eq(sessions.channel, opts.channel));
+      if (opts.excludeChannels?.length) conditions.push(notInArray(sessions.channel, opts.excludeChannels));
       return (await db
         .select()
         .from(sessions)

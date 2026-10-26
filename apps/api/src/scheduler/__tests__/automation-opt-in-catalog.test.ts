@@ -47,6 +47,11 @@ describe('automation opt-in catalog', () => {
     expect(automatic).toEqual([]);
   });
 
+  it('web search is automatic, so it is not a checkbox', () => {
+    expect(ids).not.toContain('external_search');
+    expect(filterUnattendedToolIds(['external_search'])).toEqual(['external_search']);
+  });
+
   it('the three refused write tools are absent by name', () => {
     // Named explicitly so removing them from the denylist alone cannot quietly
     // make them grantable.

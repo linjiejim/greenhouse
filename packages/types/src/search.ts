@@ -3,7 +3,8 @@
  *
  * The palette asks one endpoint and gets back one group per searchable kind.
  * Entity hits carry the same {@link EntityRef} the Markdown renderer produces;
- * conversation hits carry their session id and open the matching chat.
+ * conversation hits carry their session id and open the matching chat;
+ * automation hits carry the automation id and open it on the Automations page.
  *
  * See docs/specs/20260804-entity-references-and-peek.md.
  */
@@ -22,10 +23,23 @@ export interface EntitySearchHit extends SearchHitBase {
 
 export interface SessionSearchHit extends SearchHitBase {
   sessionId: string;
+  /**
+   * ISO timestamp of the conversation's last activity. Clients format it in
+   * the reader's locale; `subtitle` is left empty for conversations (it used to
+   * carry this same ISO string raw).
+   */
+  updatedAt?: string;
 }
 
-export type SearchHit = EntitySearchHit | SessionSearchHit;
-export type SearchKind = EntityKind | 'session';
+/** One of the caller's own automations (scheduled tasks), matched by name or prompt. */
+export interface AutomationSearchHit extends SearchHitBase {
+  automationId: string;
+  /** False when the automation is paused. */
+  enabled: boolean;
+}
+
+export type SearchHit = EntitySearchHit | SessionSearchHit | AutomationSearchHit;
+export type SearchKind = EntityKind | 'session' | 'automation';
 
 export interface SearchGroup {
   kind: SearchKind;
@@ -48,4 +62,4 @@ export interface GlobalSearchResponse {
 }
 
 /** Kinds the palette can search, in the order groups are displayed. */
-export const SEARCHABLE_KINDS: readonly SearchKind[] = ['session', 'project', 'kb_doc'];
+export const SEARCHABLE_KINDS: readonly SearchKind[] = ['session', 'automation', 'project', 'kb_doc'];

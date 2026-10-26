@@ -19,12 +19,18 @@ const QUIET_WHEN_EMPTY_INSTRUCTION =
   `\n\n[若本次没有任何新的、值得报告的内容，只回复 ${NO_UPDATE_SENTINEL}（不要加任何其他文字）。` +
   ` If there is nothing new worth reporting this time, reply with exactly ${NO_UPDATE_SENTINEL} and nothing else.]`;
 
-/** True when a quiet automation's final answer is the no-update sentinel. */
+/**
+ * True when a quiet automation's final answer is the no-update sentinel AND the
+ * run actually looked at something (at least one tool call). A bare NO_UPDATE
+ * with zero tool calls means the model checked nothing, so it is stored and
+ * delivered as a normal answer instead of being silently filed as "no update".
+ */
 export function isNoUpdateAnswer(
   quietWhenEmpty: boolean | null | undefined,
   answer: string | null | undefined,
+  toolCallCount: number,
 ): boolean {
-  return quietWhenEmpty === true && (answer ?? '').trim() === NO_UPDATE_SENTINEL;
+  return quietWhenEmpty === true && toolCallCount > 0 && (answer ?? '').trim() === NO_UPDATE_SENTINEL;
 }
 
 /**

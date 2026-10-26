@@ -123,6 +123,27 @@ export function scheduledToolBase(effectiveToolIds: string[], optInToolIds: read
 }
 
 /**
+ * The tool ids the NEXT run of `task` would get, resolved exactly as
+ * `executeTaskInSession` does (current owner → profile → effective tools →
+ * unattended filter + the stored grant). `automation_mutation` returns it so a
+ * chat agent can only describe tools the run will really have.
+ */
+export async function resolveScheduledRunToolIds(
+  task: ScheduledTaskRow,
+  db: DatabaseProvider = getDb(),
+): Promise<string[]> {
+  const owner = await requireActiveTaskOwner(task, db);
+  const profile = await resolveProfileAsync(task.profile_id, db);
+  const { effectiveTools } = await resolveEffectiveTools({
+    userId: owner.id,
+    userRole: owner.role,
+    profile,
+    profileId: task.profile_id,
+  });
+  return scheduledToolBase(effectiveTools, normalizeAutomationOptInTools(optInTools(task)));
+}
+
+/**
  * Prepare a task for execution: create session + user message.
  * Returns the session ID immediately. Call executeTaskInSession() to run the agent.
  */
@@ -285,7 +306,9 @@ export async function executeTaskInSession(
       ...(options.abortSignal ? { abortSignal: options.abortSignal } : {}),
     });
 
-    if (!options.deferLifecycle) await completeTaskExecution(task, sessionId, result.text ?? '', db);
+    if (!options.deferLifecycle) {
+      await completeTaskExecution(task, sessionId, result.text ?? '', db, true, result.toolEvidence.length);
+    }
 
     logger.info(
       `[Scheduler] ✅ Task "${task.name}" completed in ${result.durationMs}ms ` +
@@ -313,10 +336,11 @@ export async function completeTaskExecution(
   summary: string,
   db: DatabaseProvider = getDb(),
   notify = true,
+  toolCallCount = 0,
 ): Promise<void> {
   await db.scheduledTasks.updateRunStatus(task.id, 'completed', calculateNextRun(task.schedule, task.timezone));
   // A quiet automation that found nothing new stays silent on every channel.
-  if (notify && !isNoUpdateAnswer(task.quiet_when_empty, summary)) {
+  if (notify && !isNoUpdateAnswer(task.quiet_when_empty, summary, toolCallCount)) {
     await notifyTaskResult(db, task, { status: 'completed', summary, sessionId });
   }
 }
@@ -326,8 +350,9 @@ export async function notifyCompletedTaskExecution(
   sessionId: string,
   summary: string,
   db: DatabaseProvider = getDb(),
+  toolCallCount = 0,
 ): Promise<void> {
-  if (isNoUpdateAnswer(task.quiet_when_empty, summary)) return;
+  if (isNoUpdateAnswer(task.quiet_when_empty, summary, toolCallCount)) return;
   await notifyTaskResult(db, task, { status: 'completed', summary, sessionId });
 }
 

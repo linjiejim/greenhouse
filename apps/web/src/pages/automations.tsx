@@ -525,7 +525,38 @@ function RunHistoryDialog({ task, onClose }: { task: Task; onClose: () => void }
 
 // ─── Panel ───────────────────────────────────────────────
 
-export function AutomationsPanel({ sectionTabs }: { sectionTabs?: React.ReactNode }) {
+/**
+ * `#/automations?open=<id>` (a search hit): open that automation's edit form
+ * once, then drop the parameter so a reload or Back does not reopen it.
+ */
+function OpenRequestedAutomation({ id, openEdit }: { id: string; openEdit: (row: Record<string, unknown>) => void }) {
+  const handled = useRef<string | null>(null);
+  useEffect(() => {
+    if (handled.current === id) return;
+    handled.current = id;
+    void api
+      .listTasks()
+      .then((tasks) => {
+        const found = tasks.find((task) => task.id === id);
+        if (found) openEdit(toFormTask(found) as unknown as Record<string, unknown>);
+      })
+      .catch(() => {})
+      .finally(() => {
+        // replace(), not a hash assignment: Back must not land on ?open= again.
+        window.location.replace('#/automations');
+      });
+  }, [id, openEdit]);
+  return null;
+}
+
+export function AutomationsPanel({
+  sectionTabs,
+  openId,
+}: {
+  sectionTabs?: React.ReactNode;
+  /** Automation to open on arrival (`?open=`). */
+  openId?: string | null;
+}) {
   const t = useT();
   const currentUser = useAuthStore((state) => state.currentUser);
   const isSuper = currentUser?.role === 'super';
@@ -874,6 +905,7 @@ export function AutomationsPanel({ sectionTabs }: { sectionTabs?: React.ReactNod
         slots: {
           toolbar: (ctx) => (
             <div className="flex flex-wrap items-center gap-2">
+              {openId && <OpenRequestedAutomation id={openId} openEdit={ctx.openEdit} />}
               <FilterPills
                 items={assetScopeItems(isSuper, {
                   mine: t('history.scopeMine'),
@@ -909,7 +941,7 @@ export function AutomationsPanel({ sectionTabs }: { sectionTabs?: React.ReactNod
       }),
     // `wecom` arrives asynchronously; without it the schema never rebuilds
     // and the WeCom toggle stays disabled even after the binding loads.
-    [t, dataSource, profiles, currentUser?.id, profileName, wecom, feishu, scope, isSuper],
+    [t, dataSource, profiles, currentUser?.id, profileName, wecom, feishu, scope, isSuper, openId],
   );
 
   return (
@@ -944,6 +976,6 @@ export function AutomationsPage({ params }: { params?: URLSearchParams }) {
   return tab === 'profiles' ? (
     <RunProfilesPanel sectionTabs={sectionTabs} />
   ) : (
-    <AutomationsPanel sectionTabs={sectionTabs} />
+    <AutomationsPanel sectionTabs={sectionTabs} openId={params?.get('open') ?? null} />
   );
 }
