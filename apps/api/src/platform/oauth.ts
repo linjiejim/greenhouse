@@ -213,6 +213,9 @@ function orderScopes(scopes: ReadonlySet<OAuthScope>): OAuthScope[] {
   return oauthSupportedScopes().filter((scope) => scopes.has(scope));
 }
 
+/** `mcp:<group>` as an extension registers it (the core groups are always supported). */
+const EXTENSION_SCOPE = /^mcp:[a-z0-9][a-z0-9-]*$/;
+
 /**
  * Parse persisted OAuth scopes. What is stored is exactly what was granted.
  *
@@ -223,10 +226,16 @@ function orderScopes(scopes: ReadonlySet<OAuthScope>): OAuthScope[] {
  * existed were backfilled by migration precisely so no such branch is needed.
  */
 export function parseStoredOAuthScopes(value: unknown): OAuthScope[] {
-  const parsed: unknown = value;
-  if (!Array.isArray(parsed) || parsed.length === 0 || parsed.some((item) => typeof item !== 'string')) {
+  const raw: unknown = value;
+  if (!Array.isArray(raw) || raw.length === 0 || raw.some((item) => typeof item !== 'string')) {
     throw new Error('Stored OAuth scopes are invalid');
   }
+  // A group whose extension is not active on this deployment (switched off, or
+  // not ported to this version) grants nothing here: drop it rather than void
+  // the whole grant. This only ever narrows; core scopes are always supported.
+  const supported = oauthSupportedScopes();
+  const parsed = (raw as string[]).filter((scope) => supported.includes(scope) || !EXTENSION_SCOPE.test(scope));
+  if (parsed.length === 0) throw new Error('Stored OAuth scopes are invalid');
   const stored = new Set(parsed);
   let validated: Set<OAuthScope>;
   try {

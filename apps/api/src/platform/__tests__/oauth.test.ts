@@ -21,6 +21,16 @@ describe('parseStoredOAuthScopes', () => {
     },
   );
 
+  it('drops the groups of extensions that are not active, and keeps the rest of the grant', () => {
+    // A 1.6 grant carried into 3.0 names groups of extensions that were not ported.
+    const stored = ['mcp:read', 'mcp:write', 'mcp:knowledge', 'mcp:letpot-admin', 'mcp:letpot-content'];
+    expect(parseStoredOAuthScopes(stored)).toEqual(['mcp:read', 'mcp:write', 'mcp:knowledge']);
+  });
+
+  it('rejects a grant left with nothing once inactive extension groups are dropped', () => {
+    expect(() => parseStoredOAuthScopes(['mcp:letpot-admin'])).toThrow('Stored OAuth scopes are invalid');
+  });
+
   it('returns exactly the stored resource groups', () => {
     const stored = ['mcp:read', 'mcp:knowledge', 'mcp:tables'];
     expect(parseStoredOAuthScopes(stored)).toEqual(['mcp:read', 'mcp:knowledge', 'mcp:tables']);
