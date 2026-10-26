@@ -5,6 +5,13 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.1](https://github.com/linjiejim/greenhouse/compare/v3.0.0...v3.0.1) (2026-10-26)
+
+
+### Fixed
+
+* **auth:** a stored grant drops the groups of inactive extensions instead of failing ([5c7436b](https://github.com/linjiejim/greenhouse/commit/5c7436b35ab2bf4f347efd45eb709d18bfd22a60))
+
 ## [3.0.0](https://github.com/linjiejim/greenhouse/compare/v1.6.0...v3.0.0) (2026-10-26)
 
 3.0 continues the 1.x team hub (the 2.x personal-assistant line is retired). A 1.6 database moves
