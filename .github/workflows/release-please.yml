@@ -1,7 +1,6 @@
 name: Release Please
 
-# Version automation for the v1 line (branch `v1`; main carries v2). On every push
-# to v1, release-please reads the Conventional
+# Version automation for main (3.x). On every push to main, release-please reads the Conventional
 # Commits since the last tag and maintains a "Release PR" (computed SemVer bump +
 # generated CHANGELOG.md). Merging that PR tags `vX.Y.Z` and creates the GitHub
 # Release — which is what triggers release.yml to build & publish the artifacts.
@@ -9,7 +8,7 @@ name: Release Please
 # grows Release PRs or tags it did not ask for.
 on:
   push:
-    branches: [v1]
+    branches: [main]
 
 permissions:
   contents: write
@@ -37,20 +36,7 @@ jobs:
         id: release
         with:
           token: ${{ secrets.RELEASE_PLEASE_TOKEN || secrets.GITHUB_TOKEN }}
-          target-branch: v1
+          target-branch: main
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
 
-      # A new GitHub Release becomes the repository's "Latest" by default, and the
-      # v2 line's README (main) installs its desktop app from releases/latest. Latest
-      # belongs to the newest v2+ release, so hand it back after every v1 release.
-      - name: Keep Latest on the newest v2+ release
-        if: steps.release.outputs.release_created == 'true'
-        env:
-          GH_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN || secrets.GITHUB_TOKEN }}
-        run: |
-          TAG=$(gh release list --repo "$GITHUB_REPOSITORY" --exclude-drafts --exclude-pre-releases --limit 100 --json tagName \
-            --jq '[.[].tagName | select(test("^v[0-9]+\\.[0-9]+\\.[0-9]+$")) | select((ltrimstr("v") | split(".")[0] | tonumber) >= 2)] | sort_by(ltrimstr("v") | split(".") | map(tonumber)) | last')
-          if [ -n "$TAG" ] && [ "$TAG" != "null" ]; then
-            gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --latest
-          fi

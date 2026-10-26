@@ -5,6 +5,29 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.0](https://github.com/linjiejim/greenhouse/compare/v1.6.0...v3.0.0) (2026-10-26)
+
+3.0 continues the 1.x team hub (the 2.x personal-assistant line is retired). A 1.6 database moves
+to 3.0 with `pnpm cli migrate-from-1x`; 2.x databases are not supported.
+
+### Added
+
+* **db:** a rebuilt schema (one 3.0 baseline), `migrate-from-1x` to carry a 1.6 database with its ids, a reconcile report and a refusal of half-carried databases, daily retention cleanup of high-growth tables
+* **home:** Home is the new conversation on web and phone; the team's recent changes live in the bell's Team activity tab
+* **connectors:** MCP client connectors — team connectors (shared or per-member credentials) and personal connections with OAuth, one `mcp_call` tool, per-tool switches, previews for destructive tools, Activity log records, also for members' agents over `/api/mcp` and for automations
+* **automations:** web search on every run, tools granted from a web or phone chat, a "no update" only counts after a tool call; runs sit in their own Scheduled tab of conversation history and in search
+* **extensions:** core-generation markers for extension migrations, `db:migrate` runs the extension lane, complete extension kits locked by snapshots, sdk/core compatibility ranges, an import-edge guard, governed write tools
+* **mobile:** a redesigned native iOS app — sidebar navigation, home with recent conversations, rich replies, knowledge and Drive with Recent tabs, projects and tasks, scheduled tasks, conversations shared with you, search, connectors, team activity, text sizes and the Haven look
+* **web:** Haven tokens shared with mobile, object / file / domain link chips, plant avatars, stats / cards / steps blocks
+
+### Removed
+
+* the workbench, table forms / dashboards / in-table automations, the desktop app and the browser extension
+
+### Notes
+
+* Upgrading from 1.6: run `pnpm cli migrate-from-1x --from <1.6 database> --to <new database>` into a new, empty database, then `pnpm db:migrate`. The 1.6 database is only read.
+
 ## [1.6.0](https://github.com/linjiejim/greenhouse/compare/v1.5.0...v1.6.0) (2026-10-24)
 
 

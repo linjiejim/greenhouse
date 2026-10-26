@@ -22,13 +22,13 @@ the tag, injected as `APP_VERSION` (see below), not read from `package.json`.
 `main`.** Production deploys should pin a `:X.Y.Z` (or track `:X.Y`). `:edge` is
 for people who want to test the tip and understand it can break.
 
-## The v1 line (this branch)
+## Lines
 
-- Branch `v1` carries 1.x; `main` carries v2. release-please runs on pushes to `v1` with `target-branch: v1`.
-- v1 tags publish `:X.Y.Z` and `:X.Y` only; `:latest` stays with the newest v2 release (`latest=false` in release.yml).
-- No `release-as` pin since 1.4.0. A `!` commit on v1 computes 2.0.0 and collides with v2: don't use `!` on this line, or pin `release-as` in `release-please-config.json` before merging the Release PR and drop it after.
-- A new GitHub Release becomes the repository's Latest by default, and the v2 README's desktop install command reads `releases/latest`. After every v1 release, release-please.yml hands Latest back to the newest v2+ release.
-- The desktop shell was removed from this line in 1.5 (`apps/desktop`, `desktop-release.yml`, `desktop-check.yml`); v1 tags publish no desktop artifacts.
+- `main` carries 3.x (since 3.0.0, 2026-10-26). release-please runs on pushes to `main`.
+- 3.0 continues the 1.x line; 2.x (personal assistant) is retired. Its last release is 2.2.0 (tag `v2.2.0`); the v2 history stays reachable from `main` through the 3.0.0 merge.
+- 1.x: tag `v1.6.0` is the last 1.x release; branch `v1` is frozen.
+- Stable tags move `:latest` (`latest=auto` in release.yml). A patch tag cut from an older line would take `:latest` too: set `latest=false` on that branch first.
+- 3.0 has no desktop app or browser extension; tags publish only the GHCR image.
 
 ## Version strategy
 
