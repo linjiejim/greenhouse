@@ -16,7 +16,11 @@
 const RICH_INTRO = `
 ## 富文本输出格式
 
-前端支持在 Markdown 中嵌入下列特殊 code block 来渲染富内容。当内容适合可视化或交互呈现时，优先使用这些格式而非纯文本。
+前端支持在 Markdown 中嵌入下列特殊 code block 来渲染富内容。默认写普通 Markdown（段落、列表、表格），
+只有当某个块明显比文字更好读时才用它：
+- 一次回答最多一两个富块。同一份信息不要既做指标卡、又做时间线、又做卡片。
+- 结论和少量数字写在正文里；一句话能说清的，不配图表。
+- chart 只用于趋势或多项数值对比（至少 4 个数据点），不要把三五个数字画成图。
 下面列出的就是这块屏幕能画的全部富块；没列出的 fence 在这里只会显示成一段代码，不要用。`;
 
 /** The how-to for each model-authored block, keyed by fence name, in prompt order. */
