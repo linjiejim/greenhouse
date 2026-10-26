@@ -25,6 +25,7 @@ import {
 } from '@greenhouse/db';
 import { DRIZZLE_DIR } from '../../paths.js';
 import { extensionMigrationSources } from '../../extensions/boot.js';
+import { fromExtensions } from '../../extensions/index.js';
 import {
   openDb,
   parseFlags,
@@ -41,17 +42,7 @@ import {
 } from './shared.js';
 
 /** Core tables surfaced in the overview (missing tables render as n/a). */
-const STAT_TABLES = [
-  'users',
-  'conversations',
-  'messages',
-  'projects',
-  'tasks',
-  'kb_documents',
-  'run_profiles',
-  'automations',
-  'feedback',
-];
+const STAT_TABLES = ['users', 'conversations', 'messages', 'kb_documents', 'run_profiles', 'automations'];
 
 export async function run(args: string[]): Promise<number> {
   const { sub, rest } = splitSub(args, 'stats');
@@ -297,7 +288,8 @@ async function stats(args: string[]): Promise<number> {
   const health = await db.healthCheck();
 
   const counts: Record<string, number | null> = {};
-  for (const t of STAT_TABLES) {
+  const tables = [...new Set([...STAT_TABLES, ...fromExtensions('resetTables')])];
+  for (const t of tables) {
     try {
       const rows = await db.executeRaw(sql.raw(`SELECT COUNT(*)::int AS c FROM ${t}`));
       counts[t] = Number((rows[0] as { c: number } | undefined)?.c ?? 0);
@@ -322,7 +314,7 @@ async function stats(args: string[]): Promise<number> {
   console.log(
     table(
       ['Table', 'Rows'],
-      STAT_TABLES.map((t) => [t, counts[t] === null ? dim('n/a') : String(counts[t])]),
+      tables.map((t) => [t, counts[t] === null ? dim('n/a') : String(counts[t])]),
     ),
   );
   return 0;

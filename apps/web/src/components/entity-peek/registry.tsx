@@ -13,21 +13,18 @@
 
 import React, { lazy } from 'react';
 import type { CoreEntityKind, EntityKind, EntityRef } from '@greenhouse/types/entity-links';
-import { FileText, FolderKanban, HelpCircle, Table2, type LucideIcon } from '../../lib/icons';
+import { FileText, HelpCircle, Table2, type LucideIcon } from '../../lib/icons';
 import type { TranslationKey } from '../../lib/i18n';
 import { registeredEntityKind } from '../../lib/extension-registries';
 
-const ProjectDetailPage = lazy(() =>
-  import('../../pages/project-detail').then((m) => ({ default: m.ProjectDetailPage })),
-);
 const KnowledgeDocPeek = lazy(() => import('./knowledge-doc-peek').then((m) => ({ default: m.KnowledgeDocPeek })));
 
 /** Header chrome for every core kind, including the ones with no peek body yet. */
-export const ENTITY_PEEK_META: Record<CoreEntityKind, { icon: LucideIcon; fallbackTitleKey: TranslationKey }> = {
-  project: { icon: FolderKanban, fallbackTitleKey: 'entityPeek.project' },
-  kb_doc: { icon: FileText, fallbackTitleKey: 'entityPeek.doc' },
-  tables_record: { icon: Table2, fallbackTitleKey: 'entityPeek.record' },
-};
+export const ENTITY_PEEK_META: Partial<Record<CoreEntityKind, { icon: LucideIcon; fallbackTitleKey: TranslationKey }>> =
+  {
+    kb_doc: { icon: FileText, fallbackTitleKey: 'entityPeek.doc' },
+    tables_record: { icon: Table2, fallbackTitleKey: 'entityPeek.record' },
+  };
 
 /**
  * Chrome for any kind — core from the table above, extension kinds from the
@@ -50,10 +47,8 @@ export function entityPeekMeta(kind: EntityKind): { icon: LucideIcon; fallbackTi
  */
 export function renderEntityPeekBody(ref: EntityRef): React.ReactNode | null {
   switch (ref.kind) {
-    case 'project':
-      return <ProjectDetailPage projectId={ref.id} />;
     case 'kb_doc':
-      return <KnowledgeDocPeek id={ref.id} />;
+      return <KnowledgeDocPeek id={String(ref.id)} />;
     case 'tables_record':
       return null;
     default:

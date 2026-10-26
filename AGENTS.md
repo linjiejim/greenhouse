@@ -234,7 +234,6 @@ greenhouse/
 │   │       ├── runtime/      # unified runtime kernel: runs, steps, interrupts, outbox, read models
 │   │       ├── trusted-execution/ # deployment kill switches for the runtime layers
 │   │       ├── notifications/# notification center + durable delivery
-│   │       ├── skills/       # SkillHub — bundle validation, store, publish/download, scanner
 │   │       ├── storage/      # upload storage (local disk / COS) + s3-lite (SigV4 client)
 │   │       ├── hub-context/  # team context for members' agents: MCP prompts/resources, team_context, data catalog
 │   │       ├── connectors/   # MCP client: remote connectors, credentials, OAuth sign-in, directory behind mcp_call
@@ -571,3 +570,12 @@ access granted by stored shares. Existing share rows are preserved.
 ### Official communication plugins (4.0)
 
 `plugins/email`, `plugins/wecom` and `plugins/feishu` own mailbox/integration code, web controls, tests and data. They are compiled but disabled by default; env configuration alone does nothing. Generic identity tables, OAuth state, in-app notifications and mobile push stay core. New adapters use `notificationTransports`, `notificationKinds`, `identityProviders` and `channels`; no core imports or per-plugin branches. See EXTENDING.md and each package's AGENTS.md.
+
+### SkillHub and Projects plugin ownership (4.0, wave 2c)
+
+SkillHub is default-on; Projects is compiled but default-off. Both own schema/services, routes,
+tools, classic UI, translations and tests under `plugins/<id>`. Saved prompts remain core.
+`agentContext` adds stable, capped prompt fragments and reach-filtered MCP resources/prompts;
+`objectRefs`, `recentChanges`, activity descriptors and `rateLimits` replace module cases.
+Legacy URLs/tool ids/entity kinds/MCP prompt names stay unchanged. The core ownership snapshot
+advances without DROP; plugin adoption preserves all rows. Tests enable `all`; core enables none.

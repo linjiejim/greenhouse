@@ -42,10 +42,6 @@ const LOAD_ORDER = [
   'kb_documents',
   'kb_versions',
   'shares',
-  'projects',
-  'project_members',
-  'tasks',
-  'task_comments',
   'conversations',
   'messages',
   'conversation_shares',
@@ -140,7 +136,10 @@ export async function run(args: string[]): Promise<number> {
     ...fromExtensions('seeds').flatMap((source) =>
       source.tables.map((table) => ({ table, dir: GREENHOUSE_CONFIG.packs.seeds ? EXAMPLES_DIR : source.dir })),
     ),
-  ];
+  ].filter(
+    (source, index, all) =>
+      all.findIndex((candidate) => candidate.table === source.table && candidate.dir === source.dir) === index,
+  );
   for (const { table, dir } of sources) {
     const file = resolve(dir, `${table}.json`);
     if (!existsSync(file)) continue;

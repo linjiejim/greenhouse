@@ -1,3 +1,6 @@
+import { registerEntityKinds, extensionEntityKinds } from '@greenhouse/types/entity-links';
+if (!extensionEntityKinds().some((entry) => entry.kind === 'project'))
+  registerEntityKinds([{ kind: 'project', route: '#/projects/:id' }]);
 /**
  * @vitest-environment happy-dom
  *

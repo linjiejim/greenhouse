@@ -1,3 +1,4 @@
+import { activityField as field, activityIdText as idText, activityText as text } from './values.js';
 /**
  * Activity log (操作记录) — one stream of changes from the records Greenhouse
  * already keeps:
@@ -134,9 +135,7 @@ const TOOL_MODULES: Record<string, string> = {
   // An agent's generated image is a new file on the member's personal shelf.
   generate_image: 'files',
 
-  project_mutation: 'projects',
   tables_mutation: 'tables',
-  skill_mutation: 'skills',
 
   automation_mutation: 'automations',
 };
@@ -220,14 +219,11 @@ const TOOL_VERBS: Record<string, ActivityVerb> = {
 
 /** The object an action prefix (`folders.create`) names. */
 const ACTION_ENTITIES: Record<string, string> = {
+  ...Object.assign({}, ...fromExtensions('activity').map((entry) => entry.actionEntities ?? {})),
   knowledge: 'document',
-  project: 'project',
-  task: 'task',
-  comment: 'task',
   records: 'record',
   folders: 'folder',
   files: 'file',
-  skills: 'skill',
 };
 
 /** The object a tool without an action prefix writes. */
@@ -240,7 +236,6 @@ const TOOL_ENTITIES: Record<string, string> = {
   ),
   knowledge_mutation: 'document',
   tables_mutation: 'record',
-  skill_mutation: 'skill',
   automation_mutation: 'automation',
 
   generate_image: 'file',
@@ -264,7 +259,10 @@ export function describeToolWrite(toolId: string, action: string | null): WriteS
   const dot = action ? action.lastIndexOf('.') : -1;
   const prefix = action && dot > 0 ? action.slice(0, dot) : null;
   const segment = action ? action.slice(dot + 1) : '';
-  if (toolId === 'project_mutation' && action === 'comment.add') return { verb: 'comment', entity: 'task' };
+  const contributedShape = fromExtensions('activity')
+    .map((entry) => entry.toolShapes?.[toolId]?.[action ?? ''])
+    .find(Boolean);
+  if (contributedShape) return contributedShape;
   const verb = TOOL_VERBS[segment.split('_')[0] ?? ''] ?? 'other';
   const entity = (prefix ? ACTION_ENTITIES[prefix] : undefined) ?? TOOL_ENTITIES[toolId] ?? null;
   return { verb, entity };
@@ -383,7 +381,13 @@ async function fetchPending(
     if (wants('mcp')) actions.push({ appId: 'platform', actionIds: PERSONAL_PLATFORM_ACTIONS });
     jobs.push(
       db.activity
-        .listAuditChanges({ ...window, actions, actorType: 'human', userId: q.userId })
+        .listAuditChanges({
+          ...window,
+          actions,
+          excludeCapabilities: fromExtensions('activity').flatMap((entry) => entry.auditCapabilities ?? []),
+          actorType: 'human',
+          userId: q.userId,
+        })
         .then((rows) => rows.map((row) => ({ kind: 'audit', source: 'person', row }) as const)),
     );
   }
@@ -394,7 +398,13 @@ async function fetchPending(
       .map(([, actionIds]) => ({ appId: 'platform', actionIds }));
     jobs.push(
       db.activity
-        .listAuditChanges({ ...window, actions, actorType: 'human', userId: q.userId })
+        .listAuditChanges({
+          ...window,
+          actions,
+          excludeCapabilities: fromExtensions('activity').flatMap((entry) => entry.auditCapabilities ?? []),
+          actorType: 'human',
+          userId: q.userId,
+        })
         .then((rows) => rows.map((row) => ({ kind: 'audit', source: 'admin', row }) as const)),
     );
   }
@@ -463,33 +473,6 @@ async function knowledgeTarget(ctx: HydrateContext, recordId: string) {
   }
 }
 
-async function projectReadable(ctx: HydrateContext, projectId: string) {
-  const project = await ctx.db.projects.getProjectById(projectId);
-  if (!project) return null;
-  if (ctx.viewer.role === 'super' || project.visibility === 'public') return project;
-  const members = await ctx.db.projects.getMembers(project.id);
-  return members.some((member) => member.user_id === ctx.viewer.id) ? project : null;
-}
-
-async function projectTarget(ctx: HydrateContext, entity: string | null, recordId: string) {
-  const id = toRowId(recordId);
-  if (!id) return null;
-  try {
-    if (entity === 'project') {
-      const project = await projectReadable(ctx, id);
-      return project ? { label: project.title, url: entityUrl({ kind: 'project', id: project.id }) } : null;
-    }
-    if (entity === 'task') {
-      const task = await ctx.db.projects.getTaskById(id);
-      const project = task ? await projectReadable(ctx, task.project_id) : null;
-      return task && project ? { label: task.title, url: entityUrl({ kind: 'project', id: project.id }) } : null;
-    }
-  } catch {
-    // A label is a convenience; the id is always shown.
-  }
-  return null;
-}
-
 interface DriveNode {
   scope?: unknown;
   visibility?: unknown;
@@ -534,11 +517,6 @@ async function oauthClientName(ctx: HydrateContext, clientId: string | null): Pr
  * create and delete). Shown to whoever made the change, and to a super, who
  * reads every project; never to anyone else.
  */
-function keptTitle(ctx: HydrateContext, row: ActivityAuditRow, summary: Record<string, unknown>): string | null {
-  if (typeof summary.title !== 'string' || !summary.title) return null;
-  return ctx.viewer.id === row.actor_id || ctx.viewer.role === 'super' ? summary.title : null;
-}
-
 function adminDetail(row: ActivityAuditRow, summary: Record<string, unknown>): string | null {
   const keys = (value: unknown) => (Array.isArray(value) ? value.filter((v) => typeof v === 'string') : []);
   if (row.action_id === 'updateWorkspaceSettings') {
@@ -577,7 +555,10 @@ function auditShape(row: ActivityAuditRow, summary: Record<string, unknown>): Wr
     if (summary.change === 'reorder') return { verb: 'move', entity: 'document' };
   }
   // A comment is filed against its task: "commented on task <title>".
-  if (row.app_id === 'projects' && row.action_id === 'addComment') return { verb: 'comment', entity: 'task' };
+  const contributed = fromExtensions('activity')
+    .map((entry) => entry.auditShapes?.[`${row.app_id}:${row.action_id}`])
+    .find(Boolean);
+  if (contributed) return contributed;
   return { verb, entity: row.entity_id };
 }
 
@@ -614,21 +595,12 @@ async function hydrateAudit(
     const resolved =
       row.app_id === 'knowledge'
         ? await knowledgeTarget(ctx, row.record_id)
-        : row.app_id === 'projects'
-          ? shape.entity === 'comment'
-            ? // A deleted comment is named by the task it was on, which its audit keeps.
-              await projectTarget(ctx, 'task', String(summary.task_id ?? ''))
-            : await projectTarget(ctx, shape.entity, row.record_id)
-          : row.app_id === DRIVE_AUDIT_APP_ID
-            ? driveTarget(ctx, row.entity_id, row.record_id, summary)
-            : row.app_id === 'platform' && row.entity_id === 'user'
-              ? { label: ctx.names.get(row.record_id) ?? null, url: null }
-              : null;
+        : row.app_id === DRIVE_AUDIT_APP_ID
+          ? driveTarget(ctx, row.entity_id, row.record_id, summary)
+          : row.app_id === 'platform' && row.entity_id === 'user'
+            ? { label: ctx.names.get(row.record_id) ?? null, url: null }
+            : null;
     if (resolved) target = { id: row.record_id, ...resolved };
-    else if (row.app_id === 'projects') {
-      const kept = keptTitle(ctx, row, summary);
-      if (kept) target = { id: row.record_id, label: kept, url: null };
-    }
   }
   return {
     id: row.key,
@@ -658,26 +630,6 @@ function runStatus(row: ActivityRunRow): ActivityStatus {
   return 'running';
 }
 
-function field(value: unknown, ...path: string[]): unknown {
-  let current = value;
-  for (const key of path) {
-    if (!current || typeof current !== 'object' || Array.isArray(current)) return undefined;
-    current = (current as Record<string, unknown>)[key];
-  }
-  return current;
-}
-
-function idText(value: unknown): string | null {
-  if (typeof value === 'number' && Number.isSafeInteger(value) && value > 0) return String(value);
-  if (typeof value === 'string' && value.length > 0) return value;
-  return null;
-}
-
-function text(...values: unknown[]): string | null {
-  for (const value of values) if (typeof value === 'string' && value.trim()) return value.trim();
-  return null;
-}
-
 /**
  * The object an agent write touched, named only for a viewer who may read it:
  * looked up as it is now under the module's own read rule (a created record by
@@ -702,21 +654,14 @@ async function agentWriteTarget(
   let kept: string | null = null;
   let keptVisible = own;
 
+  const contributed = fromExtensions('activity')
+    .map((entry) => entry.toolTargets?.[toolId])
+    .find(Boolean);
+  if (contributed) return contributed(ctx, row, action, shape);
   if (toolId === 'knowledge_mutation') {
     id = creates ? idText(field(result, 'document', 'id')) : idText(field(input, 'doc_id'));
     live = id ? await knowledgeTarget(ctx, id) : null;
     kept = text(field(result, 'document', 'title'), creates ? field(input, 'title') : null);
-  } else if (toolId === 'project_mutation') {
-    const entity = shape.entity === 'project' ? 'project' : 'task';
-    id =
-      action === 'project.create'
-        ? idText(field(result, 'project', 'id'))
-        : action === 'task.create'
-          ? idText(field(result, 'task', 'id'))
-          : idText(field(input, entity === 'project' ? 'project_id' : 'task_id'));
-    live = id ? await projectTarget(ctx, entity, id) : null;
-    kept = text(field(result, entity, 'title'), creates ? field(input, 'title') : null);
-    keptVisible = own || superReads;
   } else if (
     (toolId === 'files_mutation' && (shape.entity === 'file' || shape.entity === 'folder')) ||
     fromExtensions('activity').some((entry) => entry.fileTools?.includes(toolId))
@@ -725,9 +670,6 @@ async function agentWriteTarget(
     id = idText(field(result, entity, 'id')) ?? idText(field(input, entity === 'file' ? 'file_id' : 'folder_id'));
     live = id ? await liveDriveTarget(ctx, entity, id) : null;
     kept = text(field(result, entity, 'name'), field(input, 'name'));
-  } else if (toolId === 'skill_mutation') {
-    kept = text(field(result, 'skill', 'display_name'), field(input, 'display_name'), field(input, 'name'));
-    keptVisible = own || superReads;
   } else if (toolId === 'automation_mutation') {
     kept = text(field(result, 'automation', 'name'), field(input, 'name'));
   } else {

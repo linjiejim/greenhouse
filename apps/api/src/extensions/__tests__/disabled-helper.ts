@@ -23,10 +23,17 @@ export async function assertPluginDisabled(id: string, routes: string[], toolIds
     expect(prices.getServiceCatalog()).not.toHaveProperty(id);
     expect(extensions.fromExtensions('jobs')).toEqual([]);
     expect(extensions.fromExtensions('automationTools')).toEqual([]);
+    expect(extensions.fromExtensions('retiredToolAliases')).toEqual([]);
     expect(extensions.fromExtensions('hubContext')).toEqual([]);
     expect(extensions.fromExtensions('seeds')).toEqual([]);
     expect(extensions.fromExtensions('channels')).toEqual([]);
     expect(extensions.fromExtensions('retention')).toEqual([]);
+    expect(extensions.fromExtensions('agentContext')).toEqual([]);
+    expect(extensions.fromExtensions('recentChanges')).toEqual([]);
+    expect(extensions.fromExtensions('objectRefs')).toEqual([]);
+    expect(extensions.fromExtensions('searchSources')).toEqual([]);
+    expect(extensions.fromExtensions('rateLimits')).toEqual([]);
+    expect(extensions.fromExtensions('entityKinds')).toEqual([]);
     const transports = await import('../../notifications/transports.js');
     const providers = await import('../../auth/identity-providers.js');
     expect(transports.notificationTransports()).toEqual([]);

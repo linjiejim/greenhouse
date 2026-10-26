@@ -1,3 +1,6 @@
+import { registerSkillPacks } from './skill-packs.js';
+import { registerExtensionRateLimits } from '../security/extension-rate-limits.js';
+import { registerAgentContexts } from './agent-context.js';
 import { registerUnattendedDeniedTools } from '../agent-runtime/tool-policy.js';
 import { registerNotificationTransports } from '../notifications/transports.js';
 import { registerIdentityProviders } from '../auth/identity-providers.js';
@@ -76,11 +79,12 @@ export const EXTENSIONS: readonly GreenhouseExtension[] = activate(COMPILED_EXTE
 /** Concatenate one optional list field across the active extensions. */
 export function fromExtensions<K extends keyof GreenhouseExtension>(
   field: K,
-): NonNullable<GreenhouseExtension[K]> extends readonly (infer T)[] ? T[] : never {
+): NonNullable<GreenhouseExtension[K]> extends readonly (infer T)[] ? T[] : NonNullable<GreenhouseExtension[K]>[] {
   const out: unknown[] = [];
   for (const ext of EXTENSIONS) {
     const value = ext[field];
     if (Array.isArray(value)) out.push(...value);
+    else if (value && typeof value === 'object') out.push(value);
   }
   return out as never;
 }
@@ -119,3 +123,14 @@ registerUnattendedDeniedTools(
     .filter((t) => t.meta.surface?.unattendedDenied)
     .map((t) => t.meta.id),
 );
+
+registerAgentContexts(
+  fromExtensions('agentContext').map((context) => {
+    const owner = EXTENSIONS.find((ext) => ext.agentContext === context)!;
+    return { id: owner.id, context, toolIds: (owner.tools ?? []).map((tool) => tool.meta.id) };
+  }),
+);
+
+registerExtensionRateLimits(fromExtensions('rateLimits'));
+
+registerSkillPacks(fromExtensions('skillPacks'));

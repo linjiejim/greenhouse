@@ -125,10 +125,8 @@ const SERVER_INSTRUCTIONS =
   'they agree send the same call again with confirm:true. ' +
   'A result too long for one reply comes back as {"truncated":true,"output_id":…} plus a preview; ' +
   `page through the rest with ${TOOL_OUTPUT_READ_TOOL} only as far as you need. ` +
-  'For reusable output skills (decks, reports, reviews…) use skill_query skills.find ' +
-  'to search and skills.download to install them locally. ' +
   `Call ${TEAM_CONTEXT_TOOL} first in a new task: it returns the team's conventions, glossary, ` +
-  `skills and data sources (also readable as greenhouse://context/* resources and MCP prompts); ` +
+  `prompts and data sources (also readable as greenhouse://context/* resources and MCP prompts); ` +
   `${DATA_CATALOG_TOOL} lists every data source you can query and the tool to use.`;
 
 /** Protocol-level tools: listed for every grant, their content cut to it. */
@@ -136,7 +134,7 @@ const TEAM_CONTEXT_TOOL_DEF = {
   name: TEAM_CONTEXT_TOOL,
   description:
     "Call this first in a new task. Returns the team's context in one reply: what this connection can reach, " +
-    "the team's conventions and glossary (documents an administrator picked), the SkillHub skills and saved " +
+    "the team's conventions and glossary (documents an administrator picked), saved and contributed " +
     'prompts you can use, and a summary of the data sources. Read-only; takes no arguments.',
   inputSchema: { type: 'object', properties: {}, additionalProperties: false },
   annotations: { readOnlyHint: true, openWorldHint: false },

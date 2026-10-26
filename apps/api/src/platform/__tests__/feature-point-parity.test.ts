@@ -19,6 +19,7 @@ import { describe, it, expect } from 'vitest';
 import { allFeatureFlags } from '@greenhouse/types/features';
 import { FEATURE_POINTS, FEATURE_OWNED_TOOL_IDS, toolsetToolIds } from '../feature-points.js';
 import { TOOL_DEFINITIONS, getAllToolIds } from '../../tools/registry.js';
+import { EXTENSIONS } from '../../extensions/index.js';
 
 describe('feature flag ↔ feature point parity', () => {
   it('gives every feature flag a feature point, so super has a toggle for it', () => {
@@ -85,6 +86,8 @@ describe('flag-owned tool sets', () => {
     expect(byKey.tables).toEqual(['tables_query', 'tables_mutation', 'tables_schema_plan']);
     expect(byKey.memory).toEqual(allFeatureFlags().some((flag) => flag.key === 'memory') ? ['memory'] : undefined);
     expect(byKey.knowledge).toEqual(['knowledge_query', 'knowledge_mutation']);
-    expect(byKey.projects).toEqual(['project_query', 'project_mutation']);
+    expect(byKey.projects).toEqual(
+      EXTENSIONS.some((extension) => extension.id === 'projects') ? ['project_query', 'project_mutation'] : undefined,
+    );
   });
 });

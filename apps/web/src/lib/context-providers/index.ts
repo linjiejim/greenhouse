@@ -6,7 +6,5 @@
  */
 
 import './chat';
-import './project-list';
-import './project-detail';
 import './tables';
 import './execution-center';

@@ -1,3 +1,4 @@
+import { registeredHostTitle } from './lib/extension-registries';
 /**
  * Greenhouse — Web UI entry point.
  * Hash-based routing for Chat, Knowledge, Projects, Tables, and Settings.
@@ -13,8 +14,6 @@ import { createRoot } from 'react-dom/client';
 import { ChatPage } from './pages/chat';
 
 // Lazy-loaded route pages for code splitting
-const ProjectsPage = lazy(() => import('./pages/projects').then((m) => ({ default: m.ProjectsPage })));
-const ProjectDetailPage = lazy(() => import('./pages/project-detail').then((m) => ({ default: m.ProjectDetailPage })));
 const SettingsPage = lazy(() => import('./pages/settings').then((m) => ({ default: m.SettingsPage })));
 const AdministrationPage = lazy(() =>
   import('./pages/administration').then((m) => ({ default: m.AdministrationPage })),
@@ -89,7 +88,6 @@ type Route =
   | 'automations'
   | 'settings'
   | 'administration'
-  | 'projects'
   | 'design'
   | 'knowledge'
   | 'tables'
@@ -424,12 +422,17 @@ function AppShell({ route, subPath, params, extensionRoute }: AppShellProps) {
     applications: orderedApplications,
     labels: {
       files: t('navigation.files'),
-      skillhub: t('app.skillhub'),
+      skillhub: t((registeredHostTitle('skillhub')?.titleKey as `ext.${string}`) ?? 'savedPrompts.title'),
       automations: t('navigation.automation'),
       applications: {
+        ...Object.fromEntries(
+          orderedApplications.flatMap((application) => {
+            const title = registeredHostTitle(application.id);
+            return title ? [[application.id, t(title.titleKey as `ext.${string}`)]] : [];
+          }),
+        ),
         knowledge: t('app.knowledge'),
         tables: t('navigation.tables'),
-        projects: t('app.projects'),
       },
     },
   });
@@ -598,7 +601,7 @@ function AppShell({ route, subPath, params, extensionRoute }: AppShellProps) {
               }
             >
               <main className="flex-1 overflow-hidden min-h-0">
-                {catalogLoading && (route === 'projects' || route === 'knowledge' || route === 'tables') && (
+                {catalogLoading && (route === 'knowledge' || route === 'tables') && (
                   <div className="flex h-full items-center justify-center">
                     <Spinner className="h-6 w-6 text-fg-faint" />
                   </div>
@@ -614,13 +617,6 @@ function AppShell({ route, subPath, params, extensionRoute }: AppShellProps) {
                 {route === 'skillhub' && <SkillHubPage subPath={subPath} params={params} />}
                 {route === 'settings' && <SettingsPage subPath={subPath} />}
                 {route === 'administration' && <AdministrationPage subPath={subPath} />}
-                {route === 'projects' &&
-                  hasApplication('projects') &&
-                  (subPath ? (
-                    <ProjectDetailPage projectId={subPath} initialTaskId={params.get('task') || undefined} />
-                  ) : (
-                    <ProjectsPage />
-                  ))}
                 {route === 'design' && DesignPage && <DesignPage />}
                 {route === 'knowledge' && hasApplication('knowledge') && (
                   <KnowledgePage subPath={subPath} basePath="#/knowledge" />
@@ -632,8 +628,7 @@ function AppShell({ route, subPath, params, extensionRoute }: AppShellProps) {
                   <ExtensionPageHost route={extensionRoute ?? ''} subPath={subPath} params={params} />
                 )}
                 {!catalogLoading &&
-                  ((route === 'projects' && !hasApplication('projects')) ||
-                    (route === 'knowledge' && !hasApplication('knowledge')) ||
+                  ((route === 'knowledge' && !hasApplication('knowledge')) ||
                     (route === 'tables' && !hasApplication('tables'))) && (
                     <div className="flex h-full items-center justify-center text-sm text-fg-faint">
                       {t('app.noPermission')}

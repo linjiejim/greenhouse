@@ -21,7 +21,7 @@ import { createMcpRoutes } from '../../../../apps/api/src/routes/mcp.js';
 import { extensionMigrationSources } from '../../../../apps/api/src/extensions/boot.js';
 import { EXTENSIONS } from '../../../../apps/api/src/extensions/index.js';
 import { initializePlatformRuntime, resetPlatformRuntimeForTests } from '../../../../apps/api/src/platform/runtime.js';
-import { projectsRegistration } from '../../../../apps/api/src/platform/projects/application.js';
+import { projectsRegistration } from '../../../projects/api/platform/application.js';
 import { knowledgeRegistration } from '../../../../apps/api/src/platform/knowledge/registration.js';
 import { tablesRegistration } from '../../../../apps/api/src/platform/tables/application.js';
 import {

@@ -1,3 +1,4 @@
+import { extensionRateLimit } from './extension-rate-limits.js';
 /**
  * Security middleware — rate limiting, security headers, input validation.
  *
@@ -157,9 +158,6 @@ const RATE_LIMITS: Record<string, RateLimitConfig> = {
   '/oauth/register': { windowMs: 60 * 60_000, max: 10 }, // bound anonymous dynamic client registration
   '/oauth/token': { windowMs: 60_000, max: 60 }, // bound anonymous code/refresh credential attempts
   '/oauth/revoke': { windowMs: 60_000, max: 60 }, // bound anonymous revocation probing
-  // Publishing is now a user-facing action (SkillHub Upload), and every call
-  // writes an object to the skill store — bound it per user/IP.
-  '/api/skills/publish': { windowMs: 60_000, max: 10 },
   // One write per page view; a generous ceiling keeps a looping client from
   // turning the counter table into a write hotspot.
   '/api/usage': { windowMs: 60_000, max: 240 },
@@ -173,7 +171,6 @@ const RATE_LIMITS: Record<string, RateLimitConfig> = {
 const INTERNAL_RATE_LIMITS: Record<string, RateLimitConfig> = {
   '/api/chat/runs': { windowMs: 60_000, max: 120 }, // run control for internal users
   '/api/chat': { windowMs: 60_000, max: 30 }, // 30 messages per min for internal users
-  '/api/skills/publish': { windowMs: 60_000, max: 20 }, // bulk skill sync runs are legitimate
 };
 
 /**
@@ -185,6 +182,8 @@ const INTERNAL_RATE_LIMITS: Record<string, RateLimitConfig> = {
 const UNTHROTTLED_PREFIXES = ['/api/auth/me'] as const;
 
 function matchRateLimit(path: string): RateLimitConfig | null {
+  const contributed = extensionRateLimit(path);
+  if (contributed) return contributed;
   if (UNTHROTTLED_PREFIXES.some((prefix) => path === prefix || path.startsWith(prefix + '/'))) return null;
   for (const [prefix, config] of Object.entries(RATE_LIMITS)) {
     if (path === prefix || path.startsWith(prefix + '/')) {
@@ -195,6 +194,8 @@ function matchRateLimit(path: string): RateLimitConfig | null {
 }
 
 function matchInternalRateLimit(path: string): RateLimitConfig | null {
+  const contributed = extensionRateLimit(path, true);
+  if (contributed) return contributed;
   for (const [prefix, config] of Object.entries(INTERNAL_RATE_LIMITS)) {
     if (path === prefix || path.startsWith(prefix + '/')) {
       return config;

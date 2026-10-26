@@ -1,3 +1,6 @@
+import { registerEntitySync } from '../lib/entity-sync';
+import { registerApplicationPage, registerHostTitle } from '../lib/extension-registries';
+import { registerContextProvider } from '../lib/context-registry';
 import { registerExtensionRedirects } from '../lib/extension-redirects';
 /**
  * Compiled-in web extensions — add yours here (one import, one list entry),
@@ -101,14 +104,24 @@ for (const ext of LOADED_WEB_EXTENSIONS) {
   for (const card of ext.toolCards ?? []) {
     registerToolCard(card.tool, { component: card.component, placement: card.placement ?? 'inline' });
   }
+  if (ext.entitySync) registerEntitySync(ext.entitySync, ext.id);
   if (ext.toolIcons) registerToolIcons(ext.toolIcons);
-  if (ext.entityKinds?.length) registerEntityKindUi(ext.entityKinds);
+  if (ext.entityKinds?.length) registerEntityKindUi(ext.entityKinds, ext.id);
   if (ext.mcpGroups?.length) {
     registerMcpGroupUi(ext.mcpGroups.map((group) => ({ ...group, extensionId: ext.id })));
   }
   if (ext.knowledgeDocPanels?.length) {
     registerKnowledgeDocPanels(ext.knowledgeDocPanels.map((panel) => ({ ...panel, extensionId: ext.id })));
   }
+  for (const page of ext.pages ?? []) {
+    if (page.applicationId) registerApplicationPage(ext.id, page.applicationId, page.route);
+    if (page.titleKey) registerHostTitle(ext.id, page.route, page.titleKey);
+    if (page.titleKey && page.applicationId && page.applicationId !== page.route)
+      registerHostTitle(ext.id, page.applicationId, page.titleKey);
+  }
+  for (const tab of ext.tabs ?? [])
+    if (tab.default && tab.titleKey) registerHostTitle(ext.id, tab.host, tab.titleKey, tab.descriptionKey);
+  for (const provider of ext.contextProviders ?? []) registerContextProvider(provider, ext.id);
   ext.onLoad?.();
 }
 

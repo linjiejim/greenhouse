@@ -1,3 +1,4 @@
+import { registeredHostTitle } from '../../lib/extension-registries';
 import { useExtensionsStore } from '../../stores/extensions-store';
 /**
  * TopBar — contextual page/session title and local actions.
@@ -36,7 +37,6 @@ type Route =
   | 'automations'
   | 'settings'
   | 'administration'
-  | 'projects'
   | 'design'
   | 'knowledge'
   | 'tables'
@@ -207,13 +207,12 @@ export function TopBar({
     home: chatUtilityTitle || sessionTitle || t('chat.newConversation'),
     chat: chatUtilityTitle || sessionTitle || t('chat.newConversation'),
     automations: t('navigation.automation'),
-    projects: t('app.projects'),
     settings: t('app.settings'),
     administration: t('app.administration'),
     knowledge: t('app.knowledge'),
     tables: 'Tables',
     files: t('navigation.files'),
-    skillhub: t('app.skillhub'),
+    skillhub: t((registeredHostTitle('skillhub')?.titleKey as `ext.${string}`) ?? 'savedPrompts.title'),
     activity: t('navigation.activityLog'),
   };
 

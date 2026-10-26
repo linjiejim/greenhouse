@@ -1,3 +1,4 @@
+import { useExtensionsStore } from '../stores/extensions-store';
 /**
  * Browser-local invalidation for records shown outside the page that owns them.
  *
@@ -18,16 +19,18 @@
 export const ENTITY_CHANGED_EVENT = 'greenhouse:entity-changed';
 
 /** Domains a chat turn can write to and a pane can be showing. */
-export type EntityDomain = 'knowledge' | 'project' | 'tables';
+export type EntityDomain = string;
 
 /** Mutation tools whose success means "something on screen may be stale". */
+const owners = new Map<string, string>();
 const TOOL_DOMAINS: Record<string, EntityDomain> = {
   knowledge_mutation: 'knowledge',
-  project_mutation: 'project',
   tables_mutation: 'tables',
 };
 
 export function entityDomainForTool(toolName: string): EntityDomain | null {
+  const owner = owners.get(toolName);
+  if (owner && !useExtensionsStore.getState().extensions.some((ext) => ext.id === owner)) return null;
   return TOOL_DOMAINS[toolName] ?? null;
 }
 
@@ -41,4 +44,9 @@ export function onEntityChanged(listener: (domain: EntityDomain) => void): () =>
   const handler = (event: Event) => listener((event as CustomEvent<EntityDomain>).detail);
   window.addEventListener(ENTITY_CHANGED_EVENT, handler);
   return () => window.removeEventListener(ENTITY_CHANGED_EVENT, handler);
+}
+
+export function registerEntitySync(entries: Record<string, string>, owner?: string): void {
+  Object.assign(TOOL_DOMAINS, entries);
+  if (owner) for (const tool of Object.keys(entries)) owners.set(tool, owner);
 }

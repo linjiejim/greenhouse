@@ -21,12 +21,9 @@ import { createFilesMutationTool } from '../tools/files-mutation.js';
 import { BUILTIN_AGENT_TOOL_IDS, getToolMeta, LAZY_TOOL_IDS, RETIRED_TOOL_ALIASES } from '../tools/registry.js';
 export { LAZY_TOOL_IDS };
 import { createCallLlmTool } from '../tools/call-llm.js';
-import { createProjectQueryTool } from '../tools/project-query.js';
-import { createProjectMutationTool } from '../tools/project-mutation.js';
 import { createSessionQueryTool } from '../tools/session-query.js';
 import { createKnowledgeQueryTool } from '../tools/knowledge-query.js';
 import { createKnowledgeMutationTool } from '../tools/knowledge-mutation.js';
-import { createSkillMutationTool } from '../tools/skills/skill-mutation.js';
 import { createAutomationQueryTool } from '../tools/automation-query.js';
 import { createAutomationMutationTool } from '../tools/automation-mutation.js';
 import { createGenerateImageTool } from '../tools/generate-image.js';
@@ -264,12 +261,6 @@ export function buildLazyServerTools(
     });
   }
 
-  if (effectiveTools.includes('project_query')) {
-    tools.project_query = createProjectQueryTool(db, { userId });
-  }
-  if (effectiveTools.includes('project_mutation')) {
-    tools.project_mutation = createProjectMutationTool({ userId });
-  }
   if (effectiveTools.includes('tables_query')) {
     tools.tables_query = createTablesQueryTool({ userId });
   }
@@ -297,11 +288,7 @@ export function buildLazyServerTools(
   if (effectiveTools.includes('files_mutation')) {
     tools.files_mutation = createFilesMutationTool(db, { userId });
   }
-  // Skill Center writes — owner/super checks live in skills/center.ts; the
-  // read side (skill_query) is static and comes from the base registry.
-  if (effectiveTools.includes('skill_mutation')) {
-    tools.skill_mutation = createSkillMutationTool(db, { userId, userRole });
-  }
+
   // Automations (scheduled tasks) — owner-scoped inside the tools themselves, so
   // deliberately NOT session-scoped: an automation belongs to a user, not to a
   // conversation, and the stateless proxy/MCP surfaces must reach it too.

@@ -213,29 +213,10 @@ The host consumes communication registries; it must not import this plugin.
 - 设备路由只给内部账号、只看自己的设备，token 只进不出。`POST /:id/test` 直发一条测试推送（每台 10 秒一次）。
 - `/api/bootstrap` 的 `mobile_api` 是 App 依赖的接口级别（`MOBILE_API_LEVEL`，现为 3：项目、表格、我的 Agent、助手对话）：App 开始调用一个新接口时同步加一，旧服务器会被 App 提示升级。
 
-### 技能中心 (`skills/` + `/api/skills`)
-- 团队 Agent 技能库（OSS greenhouse 移植，B7）：发布/发现/下载/同步 SKILL.md 技能文件夹，不可变 semver + 强制 changelog + sha256 完整性校验。
-- **单一实现**在 `skills/center.ts`（publish/download/check-updates/manage 编排，返回 `{ok,code,error}` 判别联合而非 throw）；HTTP 路由 `routes/skills.ts`（挂载 `requireInternal()`）与 agent 工具 `tools/skills/{skill-query,skill-mutation}.ts` 都只是薄壳。权限：读=全体内部用户，写=owner 或 super，硬删=仅 super（校验在 center.ts，不在路由层）。
-- bundle 校验/规范形/哈希在 `skills/bundle.ts`（≤64 文件、≤1MiB、路径白名单、SKILL.md 必须在根）；版本 payload 存 `skills/store.ts`——默认本地磁盘 `data/skills/`，配全 `SKILLS_S3_*` 四个 env 则切 S3 兼容后端（`storage/s3-lite.ts`，零依赖 SigV4 客户端；**partial 配置启动即报错**，不静默回退）。与 `storage/uploads.ts`（COS 上传存储）完全独立，互不复用。
-- 工具 surface：`skill_query` = `{ proxy:'read', mcp:'skills' }`（static），`skill_mutation` = `{ proxy:'write', mcp:'skills' }`（lazy，构造在 `agent-runtime/tool-resolution.ts`）——`mcp` 的值是资源组名（见上方 MCP 一节），变更需同步改 `tools/__tests__/surface-derivation.test.ts` 的钉住集合。
-- **第一方技能包（仓库根 `skillhub/`）**：官方包的唯一真源（索引与写作规范见 `skillhub/README.md`）。第一方名称是保留命名空间，`publishSkill` 只接受 super，不能由普通用户抢注后继承信任。发布双通道同语义（content hash 幂等 + 版本必须 bump）：启动时 `skills/boot-seed.ts` 自动同步（owner 取 `SKILLHUB_SEED_OWNER_EMAIL` 指向的 active super，或最早 active super；缺目录/缺 owner 静默跳过，纪律违规记日志不阻断 boot）；手动补发用 `scripts/skillhub-sync.mjs`（MCP JSON-RPC，`GREENHOUSE_CLIENT_ID/SECRET` 走 client_credentials 换 token）。两者的目录读取/解析目前没有测试钉住零漂移（`boot-seed.test.ts` 头注释里提到的 `tests/skillhub/boot-seed-parity.test.ts` 不存在），改一边必须手动对另一边。
-- **Web 也能发布（2026-08-05）**：SkillHub 列表/落地页/侧栏/详情页都有 Upload 入口，zip 在**浏览器**里用 `fflate` 解开（`apps/web/src/components/skillhub/bundle-from-files.ts`），走的仍是同一条 `POST /api/skills/publish`——服务端契约与权限口径一个字没变。前端那份限值预检不是安全边界（服务端逐项复校），只为让用户在点 Publish 前看到问题；两边限值目前没有测试钉住一致（`bundle-from-files.test.ts` 只测前端预检），改服务端限值时同步改前端。这**收窄推翻**了 20260722 D1：仓库 `skillhub/` 仍是**第一方（`official`）技能的唯一真源**，往 official 包上传会被下次部署覆盖（弹框已警告），Web 上传服务的是团队自建技能。
+### SkillHub plugin
 
-#### 发布期安全扫描与隔离（`skills/scanner.ts`）
-
-方案与决策（D1–D8）见 [spec](../../../docs/specs/20260805-skillhub-web-upload-and-scan.md)。技能是「Agent 会读、且常照做」的内容，沙箱同步还会把全部 clean 技能物化进 `~/.agents/skills`，所以上传内容是有直接执行路径的不可信输入。
-
-- **扫描同步跑在 publish 里，没有异步任务**：对象上限 64 文件 / 1 MiB、规则是纯正则 + 魔数比对、无 IO，成本毫秒级。别改成 fire-and-forget——那会凭空造出一个「pending 期该不该放行」的竞态：放行就是隔离机制有个可预期的绕过口，不放行就是正常发布短暂不可用。异步只留两处：启动补扫（`sweepUnscannedSkills`，存量 `scanned_at IS NULL` 的行）与 super 触发的 `rescan`。
-- **隔离判定只写在 `downloadSkill` 一处**（`quarantineError`）。这个函数同时服务 HTTP 路由、`skill_query.skills.download`（聊天 / proxy / MCP）、Web 详情页的 SKILL.md 预览——写在这一处就同时覆盖三个消费面。**别在路由层或工具层补第二份判定**。
-- **不传 `actor` 的调用方按最严处理**（fail-closed）。`pending` 一律不进入团队/无人值守消费；第三方即使规则扫描为 `clean`，也只有 owner/super 能先下载检查，必须经 super `decide clean` 留下 `scan_reviewed_by` 后才向团队与沙箱开放。规则扫描只能发现模式，不能证明自然语言指令无害。HTTP 路由转发真实调用者，好让 owner（改完重发）与 super（审核正文）通得过。
-- **`blocked` 是粘性的**：`publishSkill` 在 blocked 技能上直接 409，否则「封禁 → 改个字重发」就绕过了封禁。解禁只有 super 判 clean 一条路。
-- **只有 `high` 隔离，`medium` 只记录**；命令模式对 `.md` **只在围栏代码块内**匹配（散文里的 `curl` 是文档），链接/标记类规则则扫全文（散文里的恶意链接正是攻击）。**改规则前先看 `scanner.test.ts` 最后那条测试**——它遍历仓库 `skillhub/` 全部包断言 `high` 命中为 0，是防止规则收紧过头当场封禁自己全部第一方技能的长期刹车（实施中它已经把 shebang 与 HTML 模板里的 `<script` 从 high 逼降到 medium）。
-- **第一方身份取自仓库目录，不取 `official` 标签**：`apps/api/src/skills/first-party.ts` 从 `resolveSkillhubDir()` + `collectSkillDirs()` 派生仓库自有包名，且这些名称在发布入口 super-only。仓库内容仍然扫描并记录 findings（保留可观测性），但不因规则误报阻断启动。**别改回读 `tags`**：标签是 owner 可写的；没有 `skillhub/` 目录的部署得到空集合（fail closed）。
-- **扫描先于落库**：`scanForPublish()` 是纯函数，在写 bundle/版本行之前算完；算不出就拒绝发布。扫描发生在提交之后的话，抛异常会把技能留在 `pending`，而 `downloadSkill` 放行 `pending` —— 等于没扫过的包可以下载。`setScanResult` 的 `onlyIfLatestVersion` 防止并发发布把旧包结论盖在新包隔离上。
-- **metadata 也是扫描输入**：`updateSkillMeta` 先读取最新 bundle，用变更后的 display/description/tags 重扫，再由 `updateMetaWithScan` 单条原子写入 metadata + verdict，并清掉旧人工 review；禁止先改 metadata、后异步补 verdict。
-- 沙箱同步只物化 `clean && (first-party || scan_reviewed_by != null)`：不符合者从 wanted 集合剔除，已物化旧副本会在下一轮清理。部署期存量 `pending` 宁可暂时不挂载，也不能进入无人值守执行面。
-- 管理端点 `POST /:name/scan-decision`（clean/blocked）与 `POST /:name/rescan`，super only，校验同样在 `center.ts`。`checkUpdates` 对被隔离技能返回 `quarantined` 而非 `update_available`，否则客户端会反复尝试下载一个必然被拒的技能。
-- **通知刻意只有企微 webhook + 页面内计数**：`SKILLS_WECOM_WEBHOOK_URL`（回退 `SYNC_WECOM_WEBHOOK_URL`），未配置就静默 no-op、不假装发过。站内未读收件箱是平台级基建（另行立项），不为这一个模块造半套。待审核计数是 Web 侧从已加载的全量目录**纯客户端推导**的，没有也不需要新端点。
+Implementation and domain rules live in [plugins/skills/AGENTS.md](../../../plugins/skills/AGENTS.md).
+Saved prompts and task_capture stay core. Skill tools, storage, scanning, pack sync and skill MCP prompts belong to the plugin.
 
 ### 报告模板与渲染（`reports/` + `/api/report-templates` + `report_*` 工具，v1.7）
 
@@ -456,7 +437,7 @@ The host consumes communication registries; it must not import this plugin.
   - **`image` 资源组退役**（`RETIRED_MCP_RESOURCE_GROUP_IDS`）：仍是合法 scope（存量 grant 照常解析），consent 页与机器客户端表单不再提供；存的 `mcp:image` 经 `LEGACY_MCP_GROUP_TOOLS` 只够得着 `generate_image`，不多不少——它现在是写，所以还得有 `mcp:write`。
   - **2026-08-16 摘掉三个**：`email_query` / `email_mutation` / `automation_mutation`（proxy tier 原样保留，CLI 照常用）。理由不是"风险大"这种泛泛判断，而是**它们的安全模型在 MCP 上不成立**：`email_mutation` 的全部安全性来自"用户读了那张草稿卡"——draft 把 token 交给模型、send 发服务端存的草稿，中间那道人读的门是承重的；MCP 上 `user_confirmed` 与合成的 `confirm` 都由调用方模型自填，两段确认坍缩成一段。同一条理由早已把它写进 `UNATTENDED_TOOL_DENYLIST`，而 **client_credentials 机器客户端就是无人值守**。email 又是全部写工具里唯一外发、不可逆、发出去收不回的通道。`email_query` 一并摘掉：私人收件箱全文不该交给第三方客户端。`automation_mutation` 是自我增殖（"能建定时任务的定时任务"），当前有三层兜底所以不算在救火，但重开无人值守写权限前先关掉这条侧门。**别用"加 approval lease"复活它们**——那套形状服务的是长任务里等人拍板，MCP 是同步请求-响应，调用方会阻塞等人点按钮。
   - chat：只读 `session_query`（已在只读白名单；`session_history` 2026-08-07 并入其 search/messages，旧名经 `normalizeLegacyToolCall` 别名兼容）；MCP 不提供直接驱动聊天的端点。
-  - skills：技能中心 `skill_query`(读：find/get/download/check_updates)/`skill_mutation`(写：publish/update_meta/archive/unarchive/delete)——owner/super 校验在 `skills/center.ts`，与 `/api/skills` 路由共用同一实现；外部 agent 可经 MCP 发布/同步团队技能。
+  - skills：技能中心 `skill_query`(读：find/get/download/check_updates)/`skill_mutation`(写：publish/update_meta/archive/unarchive/delete)——owner/super 校验在 `plugins/skills/api/skills/center.ts`，与 `/api/skills` 路由共用同一实现；外部 agent 可经 MCP 发布/同步团队技能。
   - feedback（v1.5，独立资源组 `mcp:feedback`，存量 grant 不自动获得）：问题与需求——`feature_request`（写：submit；super 另有 list/update，MCP 上同样记名）、`log_friction`（写）、`feedback_query`（读：本人提交的需求及管理员回复，super 可 `everyone`）。friction 仍然没有读动作。
   - files（v1.5，独立资源组 `mcp:files`，存量 grant 不自动获得）：云盘 `files_query`（读：files.list/search/get/read/download_url）/`files_mutation`（写：folders.create/update/delete、files.upload/update/delete）。只覆盖知识库档案（drive scope `kb`：团队架 + 本人个人架），实现只有一份 `drive/kb-cabinet.ts`，每个节点都过 `resolveDriveAccess`，移动不跨架；上传 ≤5MB（`drive/cabinet-limits.ts`）、改名同样过上传黑名单；下载链接只在配了对象存储时给（5 分钟预签名），本地存储明确报错并指向 files.read。删除类动作自动走预览 → confirm:true。
   - reports（v1.7，独立资源组 `mcp:reports`，存量 grant 不自动获得）：`report_templates`（读：list/get/validate，`unattendedReplaySafe`）/`report_render`（写，`additiveOnly` → `destructiveHint:false`，无 confirm 往返）。详见「报告模板与渲染」。
@@ -621,3 +602,11 @@ access granted by stored shares. Existing share rows are preserved.
 - `GET /api/auth/providers` is public, read-only discovery (`id/title/icon/login`), without minting OAuth state. Provider callbacks authenticate with single-use state; start/binding routes retain their internal-user guards.
 - Kits expose `channelAgentRuntime()` and `runAgentTurn()`. These load the catalog after extension activation; never eagerly import the tool registry from a plugin or a kit export. Sequential loading avoids circular async evaluation.
 - `surface.unattendedDenied` makes a plugin tool unavailable to every unattended path, before replay-safe/opt-in tool grants. It does not change its interactive proxy/MCP surface.
+
+### Agent context and data-plugin hooks (4.0, wave 2c)
+
+- `agentContext` is appended through the stable prompt-context assembly after profile/user context, before the rolling digest. Only actual reachable plugin tools admit it; each fragment is capped at 2000 chars. Never put time/page/turn-dependent text there.
+- Its resources are listed/read through MCP and included in team_context, with the same per-request reach gate. Prompts use ext-<id>-<name>; explicitly declared legacy prefixes preserve existing protocol names. Dynamic catalogues return the same typed prompt entries and recheck download access on render.
+- Saved prompt persistence, rendering and My prompts remain core. Chat grants reach them independently; SkillHub contributes compatibility access for existing skills grants via the core saved-prompt facade.
+- Projects contributes platform registration, feature point, MCP group, legacy entity kind, search, objectRefs and recentChanges. Its policy and title rules are documented in [plugins/projects/AGENTS.md](../../../plugins/projects/AGENTS.md). No core import of its service/schema is permitted.
+- Plugin-owned route limits register through rateLimits; core keeps admission counting and prefix matching. Their defaults/internal overrides retain the previous security meaning.

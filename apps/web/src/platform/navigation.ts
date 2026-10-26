@@ -44,9 +44,9 @@ interface BuildPrimaryNavigationArgs {
  * Knowledge, Tables and Projects are applications: each appears only when the
  * server-filtered catalog authorizes it and it has a host route.
  */
-export const PRIMARY_NAV_ORDER = ['knowledge', 'files', 'tables', 'projects', 'skillhub', 'automations'] as const;
+export const PRIMARY_NAV_ORDER = ['knowledge', 'files', 'tables', 'skillhub', 'automations'] as const;
 
-const APPLICATION_SLOTS = new Set<string>(['knowledge', 'tables', 'projects']);
+const APPLICATION_SLOTS = new Set<string>(['knowledge', 'tables']);
 
 export function buildPrimaryNavigation({ applications, labels }: BuildPrimaryNavigationArgs): PrimaryNavigation {
   const applicationItems = applications.flatMap((application) => {
@@ -75,8 +75,14 @@ export function buildPrimaryNavigation({ applications, labels }: BuildPrimaryNav
     return item ? [item] : [];
   });
 
-  // Applications with a host route but no slot of their own wait under "More".
-  const overflow = applicationItems.filter((item) => !APPLICATION_SLOTS.has(item.key));
+  // Registered application pages sit before the shared prompt library.
+  const contributed = applicationItems.filter((item) => !APPLICATION_SLOTS.has(item.key));
+  primary.splice(
+    primary.findIndex((item) => item.key === 'skillhub'),
+    0,
+    ...contributed,
+  );
+  const overflow: PrimaryNavigationItem[] = [];
 
   return { primary, overflow };
 }

@@ -55,7 +55,7 @@ import { buildMcpServer, composeMcpContext } from '../../../../apps/api/src/rout
 import { identityFromOAuthScopes } from '../../../../apps/api/src/agent-runtime/mcp-auth.js';
 import { buildExternalServiceTools } from '../../../../apps/api/src/agent-runtime/service-tools.js';
 import { initializePlatformRuntime, resetPlatformRuntimeForTests } from '../../../../apps/api/src/platform/runtime.js';
-import { projectsRegistration } from '../../../../apps/api/src/platform/projects/application.js';
+import { projectsRegistration } from '../../../projects/api/platform/application.js';
 import { knowledgeRegistration } from '../../../../apps/api/src/platform/knowledge/registration.js';
 import { tablesRegistration } from '../../../../apps/api/src/platform/tables/application.js';
 import { runWithMeteringScope, type MeteringScope } from '../../../../apps/api/src/usage/metering.js';

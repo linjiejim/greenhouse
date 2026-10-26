@@ -1,3 +1,4 @@
+import { fromExtensions } from '../extensions/index.js';
 /**
  * Object references — /api/refs
  *
@@ -41,15 +42,14 @@ import { canRead, resolveKbAccess } from '../knowledge/access.js';
 import { canReadDrive, resolveDriveAccess } from '../drive/access.js';
 import { canAccessSession } from '../sessions/access.js';
 import { humanActor } from '../platform/actor.js';
-import { projectResource, taskReadAuthorizer } from '../platform/projects/application.js';
 import { tablesResource } from '../platform/tables/application.js';
-import { getPlatformRuntime, type PlatformHandlerContext } from '../platform/runtime.js';
+import { getPlatformRuntime } from '../platform/runtime.js';
 
 const RESOLVE_CONCURRENCY = 8;
 const TITLE_MAX = 200;
 
 /** `id` replaces the link's own id (a doc linked by slug, once it is known to be readable). */
-type Resolved = Pick<ResolvedObjectRef, 'title' | 'meta'> & { id?: string };
+export type Resolved = Pick<ResolvedObjectRef, 'title' | 'meta'> & { id?: string };
 
 /** The origins whose absolute URLs are this workspace. */
 function workspaceOrigins(c: Context): string[] {
@@ -83,15 +83,17 @@ function displayValue(value: unknown): string | null {
   return null;
 }
 
-interface Resolver {
+export interface ObjectRefResolver {
   db: DatabaseProvider;
   user: AuthUser;
   actor: ActorContext;
   capability: (name: string) => Promise<boolean>;
 }
 
-async function resolveRef(ref: ObjectRef, r: Resolver): Promise<Resolved> {
+async function resolveRef(ref: ObjectRef, r: ObjectRefResolver): Promise<Resolved> {
   const hidden: Resolved = { title: null };
+  const contributed = fromExtensions('objectRefs').find((resolver) => resolver.type === ref.type);
+  if (contributed) return contributed.resolve(ref, r);
   switch (ref.type) {
     case 'doc': {
       if (!(await r.capability('knowledge.library.read'))) return hidden;
@@ -115,27 +117,6 @@ async function resolveRef(ref: ObjectRef, r: Resolver): Promise<Resolved> {
       if (!canReadDrive(resolveDriveAccess(file, r.user.id, {}))) return hidden;
       return { title: clip(file.name), meta: { size: file.size, contentType: file.content_type } };
     }
-    case 'project': {
-      const result = await getPlatformRuntime().dispatch({
-        actor: r.actor,
-        appId: 'projects',
-        actionId: 'getProject',
-        payload: { projectId: ref.id },
-        resource: projectResource('getProject', { projectId: ref.id }),
-      });
-      if (!result.ok) return hidden;
-      const project = (result.data as { project?: { title?: unknown } }).project;
-      return typeof project?.title === 'string' ? { title: clip(project.title) } : hidden;
-    }
-    case 'task': {
-      if (!(await r.capability('projects.execution.read'))) return hidden;
-      const task = await r.db.projects.getTaskById(ref.id);
-      // The link names its project too; a task quoted under the wrong project is not this link.
-      if (!task || task.project_id !== ref.projectId) return hidden;
-      const context: PlatformHandlerContext = { db: r.db };
-      const readable = await taskReadAuthorizer(context, r.actor)(task);
-      return readable ? { title: clip(task.title) } : hidden;
-    }
     case 'record': {
       if (!(await userHasFeature(r.user.id, r.user.role, 'tables', r.db))) return hidden;
       const result = await getPlatformRuntime().dispatch({
@@ -156,6 +137,9 @@ async function resolveRef(ref: ObjectRef, r: Resolver): Promise<Resolved> {
       const value = primary ? displayValue(record?.values?.[String(primary.id)]) : null;
       return { title: clip(value ?? `#${ref.id}`) };
     }
+    case 'project':
+    case 'task':
+      return hidden;
     case 'conversation': {
       const session = await r.db.sessions.getById(ref.id);
       if (!session || !(await canAccessSession(r.user, session))) return hidden;
@@ -184,7 +168,7 @@ export function createRefsRoutes() {
     const db = getDb();
     const actor = humanActor(user, c);
     const capabilities = new Map<string, Promise<boolean>>();
-    const resolver: Resolver = {
+    const resolver: ObjectRefResolver = {
       db,
       user,
       actor,
@@ -225,4 +209,9 @@ export function createRefsRoutes() {
     });
     return c.json({ items } satisfies ResolveRefsResponse);
   });
+}
+
+export interface ObjectRefSource {
+  type: ObjectRef['type'];
+  resolve: (ref: ObjectRef, ctx: ObjectRefResolver) => Promise<Resolved>;
 }

@@ -7,7 +7,7 @@ import React, { Suspense } from 'react';
 import { Spinner } from '../components/ui';
 import { useT } from '../lib/i18n';
 import { useExtensionsStore } from '../stores/extensions-store';
-import { findExtensionPage } from './index';
+import { findExtensionPage, extensionTabs } from './index';
 
 export function ExtensionPageHost({
   route,
@@ -65,4 +65,10 @@ export function ExtensionSidebarPanel({
   if (!match?.page.sidebarPanel || !active) return null;
   const Panel = match.page.sidebarPanel;
   return <Panel subPath={subPath} onNavigate={onNavigate} />;
+}
+
+export function LibrarySidebar({ subPath }: { subPath: string }) {
+  useExtensionsStore((s) => s.extensions);
+  const Panel = extensionTabs('skillhub').find((tab) => tab.default)?.sidebarPanel;
+  return Panel ? <Panel subPath={subPath} /> : null;
 }

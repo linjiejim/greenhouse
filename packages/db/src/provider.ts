@@ -25,7 +25,6 @@ import { createUserService } from './services/users.js';
 import { createUserToolService } from './services/user-tools.js';
 import { createRefreshTokenService } from './services/refresh-tokens.js';
 import { createAccountPasswordLinkService } from './services/account-password-links.js';
-import { createProjectService } from './services/projects.js';
 import { createApiAuditService } from './services/api-audit.js';
 import { createUserPromptService } from './services/user-prompts.js';
 import { createSessionShareService } from './services/session-shares.js';
@@ -38,7 +37,6 @@ import { createKnowledgeShareService } from './services/knowledge-shares.js';
 import { createUserFeatureService } from './services/user-features.js';
 import { createDriveService } from './services/drive.js';
 import { createActivityService } from './services/activity.js';
-import { createSkillService } from './services/skills.js';
 import { createPlatformService } from './services/platform.js';
 import { createPlatformOAuthService } from './services/platform-oauth.js';
 import { createTablesService } from './services/tables.js';
@@ -79,7 +77,6 @@ function createDatabaseProvider(db: Db, client: DbClient['client'] | null) {
     userTools: createUserToolService(db),
     refreshTokens: createRefreshTokenService(db),
     accountPasswordLinks: createAccountPasswordLinkService(db),
-    projects: createProjectService(db),
     apiAudit: createApiAuditService(db),
     userPrompts: createUserPromptService(db),
     sessionShares: createSessionShareService(db),
@@ -92,7 +89,6 @@ function createDatabaseProvider(db: Db, client: DbClient['client'] | null) {
     userFeatures: createUserFeatureService(db),
     drive: createDriveService(db),
     activity: createActivityService(db),
-    skills: createSkillService(db),
     platform: createPlatformService(db),
     platformOAuth: createPlatformOAuthService(db),
     tables: createTablesService(db),

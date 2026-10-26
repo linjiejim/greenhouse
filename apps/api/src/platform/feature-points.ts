@@ -86,17 +86,6 @@ const CORE_FEATURE_POINTS: readonly FeaturePointDef[] = [
     toolIds: ['knowledge_query', 'knowledge_mutation'],
   },
   {
-    key: 'projects',
-    title: 'Projects',
-    description: 'Project and task management.',
-    icon: 'ClipboardList',
-    kind: 'app',
-    group: 'apps',
-    appId: 'projects',
-    capabilityPrefix: 'projects.*',
-    toolIds: ['project_query', 'project_mutation'],
-  },
-  {
     key: 'tools',
     title: 'Advanced tools',
     description: 'Opt-in tools not owned by an application — grant individually.',

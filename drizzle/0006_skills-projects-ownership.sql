@@ -1,0 +1,2 @@
+-- SkillHub and Projects table ownership moves to plugin migration lanes.
+-- The immutable 3.0 baseline still creates these tables; adoption preserves every row.

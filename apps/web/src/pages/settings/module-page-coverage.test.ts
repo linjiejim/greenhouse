@@ -34,9 +34,9 @@ const MODULE_PAGES: ModulePageContract[] = [
   { file: '../run-profiles.tsx', moduleId: 'workspace.automations', layout: 'list' },
   { file: '../tables/index.tsx', moduleId: 'workspace.tables', layout: 'list' },
   { file: '../tables/data-catalog.tsx', moduleId: 'workspace.data-catalog', layout: 'list' },
-  { file: '../projects.tsx', moduleId: 'workspace.projects', layout: 'canvas' },
+  { file: '../../../../../plugins/projects/web/pages/projects.tsx', moduleId: 'projects', layout: 'canvas' },
   { file: '../files.tsx', moduleId: 'workspace.files', layout: 'list' },
-  { file: '../skillhub/index.tsx', moduleId: 'workspace.skillhub', layout: 'canvas' },
+  { file: '../../../../../plugins/skills/web/page.tsx', moduleId: 'workspace.skillhub', layout: 'canvas' },
   // The My prompts tab is a list inside the same module.
   { file: '../skillhub/index.tsx', moduleId: 'workspace.skillhub', layout: 'list' },
 ];

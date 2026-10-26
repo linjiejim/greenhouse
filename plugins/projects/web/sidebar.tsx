@@ -1,0 +1,119 @@
+/**
+ * Projects list panel — sidebar contextual panel for Projects tab.
+ * Shows project list with status indicators.
+ */
+
+import React, { useState, useEffect, useCallback } from 'react';
+import { Spinner, SearchInput } from '@greenhouse/web/extension-kit';
+import { authFetch } from '@greenhouse/web/extension-kit';
+import { Lock } from '@greenhouse/web/extension-kit';
+import { useProjectRefreshStore } from './stores/project-refresh-store.js';
+import { useT } from '@greenhouse/web/extension-kit';
+
+interface ProjectSummary {
+  id: string;
+  title: string;
+  status: string;
+  progress: number;
+  visibility?: 'public' | 'private';
+}
+
+const statusColors: Record<string, string> = {
+  planning: 'bg-surface-muted',
+  active: 'bg-cat-blue',
+  on_hold: 'bg-cat-amber',
+  completed: 'bg-cat-green',
+  archived: 'bg-fg-faint',
+};
+
+interface ProjectsListPanelProps {
+  collapsed?: boolean;
+}
+
+export function ProjectsListPanel({ collapsed }: ProjectsListPanelProps) {
+  const t = useT();
+  const [projects, setProjects] = useState<ProjectSummary[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState('');
+  const projectsRevision = useProjectRefreshStore((state) => state.revision);
+
+  const loadProjects = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await authFetch('/api/projects');
+      if (res.ok) {
+        const data = await res.json();
+        setProjects(data.projects || data || []);
+      }
+    } catch (_err) {
+      /* ignore */
+    }
+    setLoading(false);
+  }, []);
+
+  useEffect(() => {
+    loadProjects();
+  }, [loadProjects, projectsRevision]);
+
+  if (collapsed) return null;
+
+  const filtered = searchQuery
+    ? projects.filter((p) => p.title.toLowerCase().includes(searchQuery.toLowerCase()))
+    : projects;
+
+  return (
+    <div className="flex flex-col flex-1 min-h-0">
+      <div className="px-3 py-2 flex-shrink-0">
+        <span className="text-xs font-medium text-fg-muted uppercase tracking-wide">
+          {t('ext.projects.projects.title')}
+        </span>
+      </div>
+
+      {/* Search */}
+      <div className="px-3 pb-2 flex-shrink-0">
+        <div className="relative">
+          <SearchInput
+            value={searchQuery}
+            onChange={setSearchQuery}
+            placeholder={t('ext.projects.projects.searchProjects')}
+            size="sm"
+          />
+        </div>
+      </div>
+
+      {/* Project list */}
+      <div className="flex-1 overflow-y-auto">
+        {loading && (
+          <div className="flex justify-center py-6">
+            <Spinner className="h-4 w-4 text-fg-faint" />
+          </div>
+        )}
+
+        {!loading && filtered.length === 0 && (
+          <div className="px-3 py-6 text-center text-xs text-fg-faint">
+            {searchQuery ? t('common.noRecordsFound') : t('ext.projects.projects.noProjects')}
+          </div>
+        )}
+
+        {filtered.map((project) => (
+          <a
+            key={project.id}
+            href={`#/projects/${project.id}`}
+            className="w-full text-left px-3 py-2 flex items-center gap-2 transition-colors hover:bg-surface-muted"
+          >
+            <span className={`flex-shrink-0 w-2 h-2 rounded-full ${statusColors[project.status] || 'bg-fg-faint'}`} />
+            <span className="flex-1 min-w-0 text-xs text-fg-secondary truncate" title={project.title}>
+              {project.title}
+            </span>
+            {project.visibility === 'private' && <Lock size={10} className="flex-shrink-0 text-fg-faint" />}
+            {project.progress > 0 && (
+              <span className="sidebar-secondary-meta flex-shrink-0 text-caption text-fg-faint tabular-nums">
+                {project.progress}%
+              </span>
+            )}
+          </a>
+        ))}
+      </div>
+    </div>
+  );
+}

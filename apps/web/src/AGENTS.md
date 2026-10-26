@@ -121,7 +121,6 @@ components/
 ├── settings/           # Settings 页面统一 Panel / Section
 ├── blocks/             # 数据展示：DataTableBlock、ChartBlock、ConfirmBlock
 ├── app/                # 应用外壳与模块页框：LoginScreen、AppSidebar、TopBar、ModulePageShell、ModulePage
-├── project/            # 项目管理：TaskTree、BoardColumn、GanttView、TaskDrawer、CreateTaskDialog
 ├── agent-panel/        # Agent 助手面板
 ├── chat/               # 聊天：消息气泡、输入框、profile 选择器、流式消息、标注
 ├── agent-context.tsx   # 全局上下文 Provider
@@ -593,3 +592,14 @@ access granted by stored shares. Existing share rows are preserved.
 ### Communication plugin UI (4.0)
 
 Email account panels, provider binding/login components, notification preference controls and their translations live in `plugins/{email,wecom,feishu}/web`. Core renders `identityProviders` and `notificationTransports` contributions. Login discovery uses public `/api/auth/providers`, independent of the authenticated extension store. Disabled/unconfigured providers show no login button; disabled plugins show no binding row or automation delivery control. Keep legacy hash routes and preference keys. Plugin routes use `authFetch`; they are outside the core hc contract.
+
+### SkillHub / Projects classic surfaces (4.0)
+
+Project pages, board/Gantt, sidebar, refresh store, context providers and peek live in
+`plugins/projects/web`. Page `applicationId` registers its catalog route; empty module key gives
+its root page identity. Page access still follows the server-filtered platform catalog.
+Skill catalogue/upload/review UI lives in `plugins/skills/web`; the core library shell retains
+My prompts and accepts plugin tabs with optional default/title/description/sidebar metadata.
+Tab panels receive subPath and query params. A disabled catalogue makes My prompts the default.
+Both plugins own their `ext.<id>.*` messages. Context providers, route context resolvers and entity
+sync mappings are contributed by plugins; inactive providers and peeks do not render.

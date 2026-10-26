@@ -1,3 +1,6 @@
+import { AgentContext, type AgentContextValue } from './agent-context-value';
+export { useAgentContext } from './agent-context-value';
+export type { AgentContextValue } from './agent-context-value';
 /**
  * AgentContext — global state for the context-aware Assistant overlay.
  *
@@ -14,7 +17,7 @@
 
 import { getNavModule } from '../lib/nav-registry';
 import { findExtensionPage, isActiveWebExtension } from '../extensions';
-import React, { createContext, useContext, useState, useCallback, useEffect, useMemo } from 'react';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import { isRowId } from '@greenhouse/utils/id';
 import type { AssistantLaunchRequest, PageContext } from '@greenhouse/types/agent-context';
 import { pageContextKey } from '../lib/page-context-key';
@@ -26,23 +29,6 @@ export type { PageContext } from '@greenhouse/types/agent-context';
 
 // Import and init all frontend context-providers (triggers registration)
 import '../lib/context-providers';
-
-export interface AgentContextValue {
-  // Panel state
-  isOpen: boolean;
-  toggle: () => void;
-  open: () => void;
-  close: () => void;
-
-  // Dynamic context — auto from URL + page enrichment
-  pageContext: PageContext | null;
-  /** Pages call this to add data not available from URL (e.g., title, email) */
-  enrichPageContext: (data: Partial<PageContext> | null) => void;
-
-  launchAssistant: (request?: Omit<AssistantLaunchRequest, 'id'>) => void;
-  launchRequest: AssistantLaunchRequest | null;
-  clearLaunchRequest: (id: number) => void;
-}
 
 // ─── URL → Context Resolution ────────────────────────────
 
@@ -65,13 +51,6 @@ export function resolveUrlContext(hash: string): PageContext | null {
         type: 'chat',
         sessionId: params.get('session') || undefined,
       };
-
-    case 'projects':
-      if (subPath) {
-        const projectId = subPath.split('/')[0];
-        return projectId ? { type: 'project-detail', projectId } : { type: 'project-list' };
-      }
-      return { type: 'project-list' };
 
     case 'settings':
     case 'administration': {
@@ -100,21 +79,21 @@ export function resolveUrlContext(hash: string): PageContext | null {
 
     default: {
       const match = findExtensionPage(route);
-      if (match) return { type: 'extension', extension: match.extension.id, route, subPath };
+      if (match && isActiveWebExtension(match.extension.id))
+        return (
+          match.extension.resolveContext?.(route, subPath, params) ?? {
+            type: 'extension',
+            extension: match.extension.id,
+            route,
+            subPath,
+          }
+        );
       return null;
     }
   }
 }
 
 // ─── Context ─────────────────────────────────────────────
-
-const AgentContext = createContext<AgentContextValue | null>(null);
-
-export function useAgentContext(): AgentContextValue {
-  const ctx = useContext(AgentContext);
-  if (!ctx) throw new Error('useAgentContext must be used within AgentProvider');
-  return ctx;
-}
 
 // ─── Provider ────────────────────────────────────────────
 

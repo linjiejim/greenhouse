@@ -16,9 +16,9 @@ import {
 
 describe('resolveProxyToolIds', () => {
   it('keeps only allowlisted tools from the effective set', () => {
-    const effective = ['knowledge_query', 'knowledge_mutation', 'tables_schema_plan', 'analyze_image', 'project_query'];
+    const effective = ['knowledge_query', 'knowledge_mutation', 'tables_schema_plan', 'analyze_image', 'files_query'];
     // knowledge_mutation is mutating but not opted-in → excluded; tables_schema_plan has no surface
-    expect(resolveProxyToolIds(effective).sort()).toEqual(['analyze_image', 'knowledge_query', 'project_query']);
+    expect(resolveProxyToolIds(effective).sort()).toEqual(['analyze_image', 'files_query', 'knowledge_query']);
   });
 
   it('further narrows by the key-scoped read allowlist when present', () => {
@@ -47,17 +47,17 @@ describe('resolveProxyToolIds', () => {
   });
 
   it('writes are default-deny; only included when opted into allowedWriteTools', () => {
-    const effective = ['analyze_image', 'knowledge_mutation', 'project_mutation'];
+    const effective = ['analyze_image', 'knowledge_mutation', 'files_mutation'];
     // no write scope → writes excluded
     expect(resolveProxyToolIds(effective)).toEqual(['analyze_image']);
     // opted in → included
     expect(
-      resolveProxyToolIds(effective, { allowedWriteTools: ['knowledge_mutation', 'project_mutation'] }).sort(),
-    ).toEqual(['analyze_image', 'knowledge_mutation', 'project_mutation']);
+      resolveProxyToolIds(effective, { allowedWriteTools: ['knowledge_mutation', 'files_mutation'] }).sort(),
+    ).toEqual(['analyze_image', 'files_mutation', 'knowledge_mutation']);
   });
 
   it('includes first-class mutation tools only in the mutating allowlist', () => {
-    const mutating = ['tables_mutation', 'project_mutation', 'knowledge_mutation'];
+    const mutating = ['tables_mutation', 'files_mutation', 'knowledge_mutation'];
     for (const id of mutating) {
       expect(MUTATING_PROXY_ALLOWLIST.has(id)).toBe(true);
       expect(READONLY_PROXY_ALLOWLIST.has(id)).toBe(false);
@@ -66,7 +66,7 @@ describe('resolveProxyToolIds', () => {
   });
 
   it('includes new first-class query tools as read-only tools', () => {
-    const effective = ['tables_query', 'project_query', 'session_query', 'knowledge_query'];
+    const effective = ['tables_query', 'files_query', 'session_query', 'knowledge_query'];
     expect(resolveProxyToolIds(effective).sort()).toEqual([...effective].sort());
     for (const id of effective) expect(READONLY_PROXY_ALLOWLIST.has(id)).toBe(true);
   });
@@ -124,9 +124,9 @@ describe('buildProxyManifest', () => {
   });
 
   it('flags mutating tools in the manifest', () => {
-    const manifest = buildProxyManifest(['knowledge_mutation', 'project_mutation']);
+    const manifest = buildProxyManifest(['knowledge_mutation', 'files_mutation']);
     expect(manifest[0]).toMatchObject({ id: 'knowledge_mutation', mutating: true });
-    expect(manifest[1]).toMatchObject({ id: 'project_mutation', mutating: true });
+    expect(manifest[1]).toMatchObject({ id: 'files_mutation', mutating: true });
   });
 });
 

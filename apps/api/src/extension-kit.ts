@@ -192,3 +192,29 @@ export {
   buildTaskNotification,
   buildTaskEmail,
 } from './scheduler/notify.js';
+
+export { day } from '@greenhouse/db/plugin-schema';
+export { DATA_DIR } from './paths.js';
+export { createS3Client, type S3LiteClient } from './storage/s3-lite.js';
+export { extensionSkillPackDirs } from './extensions/skill-packs.js';
+export { notificationWebhookTransport } from './notifications/transports.js';
+export { compareSemver, isValidSemver, bumpPatch } from '@greenhouse/utils/semver';
+export type { DataScope, PlatformAuditHint } from '@greenhouse/platform-kernel';
+
+export { activitySql, type ActivityCursor, type RecentWindow, type ActivityRunRow } from '@greenhouse/db';
+export {
+  scanRecentChanges,
+  recentChangeDraft,
+  type RecentChangeWindow,
+  type RecentChangeLane,
+  type RecentChangeSource,
+  type RecentViewer,
+} from './activity/recent-source.js';
+export type { PlatformRuntime } from './platform/runtime.js';
+export type { ObjectRefSource, ObjectRefResolver, Resolved } from './routes/refs.js';
+export type { TeamPrompt, TeamPromptDescriptor, TeamPromptArgument } from './hub-context/prompts.js';
+
+export { listSavedPrompts, getSavedPrompt } from './hub-context/prompts.js';
+export type { ExtensionAgentContext, AgentContextCaller, AgentContextPrompt } from './extensions/agent-context.js';
+
+export { activityField, activityIdText, activityText } from './activity/values.js';

@@ -1,3 +1,4 @@
+import { LibrarySidebar } from '../../extensions/host';
 /**
  * AppSidebar — full-height brand, global navigation, and contextual rail.
  *
@@ -30,11 +31,9 @@ import {
   ChatHistoryPanel,
   SettingsNavPanel,
   AdministrationNavPanel,
-  ProjectsListPanel,
   PinnedSection,
   PinnedSectionCollapsed,
   KnowledgeNavPanel,
-  SkillHubNavPanel,
   TablesNavPanel,
 } from './sidebar-panels';
 import { ExtensionSidebarPanel } from '../../extensions/host';
@@ -46,7 +45,6 @@ type Route =
   | 'automations'
   | 'settings'
   | 'administration'
-  | 'projects'
   | 'design'
   | 'knowledge'
   | 'tables'
@@ -362,11 +360,11 @@ export function AppSidebar({
                 {isConversationRoute(route) && (
                   <ChatHistoryPanel currentSessionId={currentSessionId} onSelectSession={onSelectSession} />
                 )}
-                {route === 'projects' && <ProjectsListPanel />}
+
                 {/* Knowledge gets the FULL sub-path: its tree highlights the open
                     document, which lives in the later segments. */}
                 {route === 'knowledge' && <KnowledgeNavPanel activeModule={subPath} />}
-                {route === 'skillhub' && <SkillHubNavPanel activeName={activeSubModule} />}
+                {route === 'skillhub' && <LibrarySidebar subPath={subPath} />}
                 {route === 'tables' && hasApplication('tables') && <TablesNavPanel subPath={subPath} />}
                 {route === 'extension' && extensionRoute && (
                   <ExtensionSidebarPanel route={extensionRoute} subPath={subPath} />

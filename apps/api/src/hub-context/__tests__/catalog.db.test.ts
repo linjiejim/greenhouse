@@ -17,7 +17,7 @@ import { moveToRestrictedRole, withoutCapability } from '../../../../../tests/he
 import { tablesManifest } from '../../platform/manifests/tables.js';
 import { memberMcpToolIds } from '../../agent-runtime/mcp-tool-visibility.js';
 import { initializePlatformRuntime, resetPlatformRuntimeForTests } from '../../platform/runtime.js';
-import { projectsRegistration } from '../../platform/projects/application.js';
+import { extensionApplicationRegistrations } from '../../extensions/boot.js';
 import { knowledgeRegistration } from '../../platform/knowledge/registration.js';
 import { tablesRegistration } from '../../platform/tables/application.js';
 import { humanActor } from '../../platform/actor.js';
@@ -53,7 +53,7 @@ const webCatalog = (user: UserRow) => readWebCatalog(db, user);
 
 beforeEach(async () => {
   db = await initDatabase({ type: 'pg', pgConnectionString: TEST_DATABASE_URL });
-  initializePlatformRuntime(db, [projectsRegistration, knowledgeRegistration, tablesRegistration]);
+  initializePlatformRuntime(db, [...extensionApplicationRegistrations(), knowledgeRegistration, tablesRegistration]);
   owner = await createInternalTestUser(db, {
     email: `${unique('catalog-owner')}@test.local`,
     nickname: 'Base Owner',

@@ -19,23 +19,11 @@ const labels = { files: 'Files', skillhub: 'SkillHub', automations: 'Automation'
 describe('Primary navigation', () => {
   it('orders the workspace by goal and puts the assistant last', () => {
     const { primary, overflow } = buildPrimaryNavigation({
-      applications: [
-        application('analytics'),
-        application('tables'),
-        application('knowledge'),
-        application('projects'),
-      ],
+      applications: [application('analytics'), application('tables'), application('knowledge')],
       labels,
     });
 
-    expect(primary.map((item) => item.key)).toEqual([
-      'knowledge',
-      'files',
-      'tables',
-      'projects',
-      'skillhub',
-      'automations',
-    ]);
+    expect(primary.map((item) => item.key)).toEqual(['knowledge', 'files', 'tables', 'skillhub', 'automations']);
     expect(primary.map((item) => item.href)).toContain('#/files');
     // Agent/MCP-only catalog entries have no browser route, so they never
     // surface as a tab — not even in More.

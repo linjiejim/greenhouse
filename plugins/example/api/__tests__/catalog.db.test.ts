@@ -10,7 +10,7 @@ import {
   mcpCatalog,
 } from '../../../../apps/api/src/hub-context/__tests__/catalog-fixture.js';
 import { initializePlatformRuntime, resetPlatformRuntimeForTests } from '../../../../apps/api/src/platform/runtime.js';
-import { projectsRegistration } from '../../../../apps/api/src/platform/projects/application.js';
+import { projectsRegistration } from '../../../projects/api/platform/application.js';
 import { knowledgeRegistration } from '../../../../apps/api/src/platform/knowledge/registration.js';
 import { tablesRegistration } from '../../../../apps/api/src/platform/tables/application.js';
 let db: DatabaseProvider;

@@ -21,9 +21,6 @@ import { sql, type SQL } from 'drizzle-orm';
 import type { Db } from '../client.js';
 import type { RuntimeJson } from '../schema/index.js';
 
-/** Project / task history rows share `audit_events`; they are not platform actions. */
-const PROJECT_ACTIVITY_CAPABILITY = 'projects.activity';
-
 export interface ActivityCursor {
   /** Fixed-width UTC ISO timestamp with microseconds (as returned in `at`). */
   at: string;
@@ -114,16 +111,6 @@ export interface RecentKnowledgeEditRow {
   at: string;
 }
 
-export interface RecentProjectActivityRow {
-  key: string;
-  id: string;
-  project_id: string;
-  task_id: string | null;
-  user_id: string;
-  action: string;
-  at: string;
-}
-
 export interface RecentTableChangeRow {
   key: string;
   table_id: string;
@@ -162,6 +149,7 @@ export function createActivityService(db: Db) {
     async listAuditChanges(
       input: ActivityWindow & {
         actions: ReadonlyArray<{ appId: string; actionIds: readonly string[]; moduleId?: string | null }>;
+        excludeCapabilities?: readonly string[];
         actorType?: 'human' | 'agent';
         userId?: string | null;
       },
@@ -190,7 +178,7 @@ export function createActivityService(db: Db) {
                e.client_id, e.app_id, e.module_id, e.entity_id, e.record_id, e.action_id, e.summary
         FROM audit_events e
         WHERE e.result = 'success'
-          AND e.capability <> ${PROJECT_ACTIVITY_CAPABILITY}
+          AND ${input.excludeCapabilities?.length ? sql`NOT (${inList(sql`e.capability`, input.excludeCapabilities)})` : sql`TRUE`}
           AND ${created} >= ${input.from}::timestamptz
           AND ${created} < ${input.to}::timestamptz
           AND (${actionMatch})
@@ -269,27 +257,6 @@ export function createActivityService(db: Db) {
         LIMIT ${bound(input.limit)}
       `);
       return rows as unknown as RecentKnowledgeEditRow[];
-    },
-
-    /** Project activity rows (audit_events, capability `projects.activity`) of the given (already authorized) projects. */
-    async recentProjectActivities(
-      input: RecentWindow & { projectIds: readonly string[] },
-    ): Promise<RecentProjectActivityRow[]> {
-      if (input.projectIds.length === 0) return [];
-      const key = sql`('pa:' || a.id)`;
-      const rows = await db.execute(sql`
-        SELECT ${key} AS key, a.id, (a.summary ->> 'project_id') AS project_id, (a.summary ->> 'task_id') AS task_id,
-               a.actor_id AS user_id, a.action_id AS action, ${ISO(sql`a.created_at`)} AS at
-        FROM audit_events a
-        WHERE a.app_id = 'projects'
-          AND a.capability = ${PROJECT_ACTIVITY_CAPABILITY}
-          AND ${inList(sql`(a.summary ->> 'project_id')`, input.projectIds.map(String))}
-          AND a.created_at >= ${input.since}::timestamptz
-          AND ${cursorClause(sql`a.created_at`, key, input.cursor)}
-        ORDER BY a.created_at DESC, ${key} COLLATE "C" DESC
-        LIMIT ${bound(input.limit)}
-      `);
-      return rows as unknown as RecentProjectActivityRow[];
     },
 
     /**
@@ -402,3 +369,5 @@ export function createActivityService(db: Db) {
 }
 
 export type ActivityService = ReturnType<typeof createActivityService>;
+
+export const activitySql = { ISO, bound, cursorClause, inList };

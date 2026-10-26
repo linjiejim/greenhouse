@@ -129,7 +129,4 @@ export function extensionCommands(): ExtensionCommand[] {
   return fromExtensions('commands');
 }
 
-/** Skill-pack roots from `greenhouse.config.ts` plus the ones bundled with active extensions. */
-export function extensionSkillPackDirs(): string[] {
-  return [...GREENHOUSE_CONFIG.packs.skills, ...fromExtensions('skillPacks')];
-}
+export { extensionSkillPackDirs } from './skill-packs.js';

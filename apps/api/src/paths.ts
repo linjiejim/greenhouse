@@ -24,6 +24,3 @@ export const DRIZZLE_DIR = resolve(REPO_ROOT, 'drizzle');
 
 /** data/uploads/ directory */
 export const UPLOADS_DIR = resolve(DATA_DIR, 'uploads');
-
-/** data/skills/ directory — local-disk default of the Skill Center bundle store */
-export const SKILLS_DIR = resolve(DATA_DIR, 'skills');

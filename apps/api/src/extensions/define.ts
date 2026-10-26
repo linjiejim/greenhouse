@@ -1,3 +1,4 @@
+import { RESERVED_ENTITY_OWNERS } from '@greenhouse/types/entity-links';
 /**
  * The extension contract — one object per extension, every field optional and
  * mapped 1:1 onto an existing core registry (see EXTENDING.md → "Extensions").
@@ -77,6 +78,19 @@ export interface ExtensionPromptContext {
 }
 
 export interface ExtensionActivity {
+  auditCapabilities?: string[];
+  actionEntities?: Record<string, string>;
+  auditShapes?: Record<string, import('../activity/activity-log.js').WriteShape>;
+  toolShapes?: Record<string, Record<string, import('../activity/activity-log.js').WriteShape>>;
+  toolTargets?: Record<
+    string,
+    (
+      ctx: import('../activity/activity-log.js').HydrateContext,
+      row: import('@greenhouse/db').ActivityRunRow,
+      action: string | null,
+      shape: import('../activity/activity-log.js').WriteShape,
+    ) => Promise<import('@greenhouse/types/activity').ActivityItem['target']>
+  >;
   /** Tool write descriptions and audit actions owned by this plugin. */
   appModules?: Record<string, string>;
   toolModules?: Record<string, string>;
@@ -135,8 +149,11 @@ export interface GreenhouseExtension {
   channels?: import('./channels.js').AgentChannel[];
   /** Infrastructure env names which have no effect unless this plugin is active. */
   configurationEnv?: string[];
+  rateLimits?: import('../security/extension-rate-limits.js').ExtensionRateLimit[];
   /** Tools the owner may explicitly grant to unattended automations. */
   automationTools?: import('@greenhouse/types/automation-tools').AutomationOptInTool[];
+  /** Stored profile tool ids retired into this plugin's current tool ids. */
+  retiredToolAliases?: Record<string, readonly string[]>;
   /** MCP group descriptions and hints, cut to the caller's reachable tools. */
   hubContext?: Array<{
     group: string;
@@ -147,6 +164,8 @@ export interface GreenhouseExtension {
   }>;
   /** Stable system-prompt context, scoped to tools reachable by this member. */
   promptContext?: ExtensionPromptContext[];
+  /** Stable prompt fragments and permission-filtered MCP resources/prompts. */
+  agentContext?: import('./agent-context.js').ExtensionAgentContext;
   /** Paid service definitions, including optional runtime availability checks. */
   billableServices?: import('../config/service-registry.js').BillableService[];
   /** Per-request availability reasons for tool listings and admission. */
@@ -154,6 +173,8 @@ export interface GreenhouseExtension {
   /** Bounded daily retention for plugin-owned tables. */
   retention?: import('@greenhouse/db').ExtensionRetentionRule[];
   activity?: ExtensionActivity[];
+  recentChanges?: import('../activity/recent-source.js').RecentChangeSource[];
+  objectRefs?: import('../routes/refs.js').ObjectRefSource[];
   settingValidators?: Array<(key: string, value: string) => string | null>;
   /** Optional data sources consumed by system summaries. */
   summarySources?: Array<{
@@ -231,6 +252,11 @@ const ID_PATTERN = /^[a-z][a-z0-9-]*$/;
 export function defineExtension(extension: GreenhouseExtension): GreenhouseExtension {
   if (!ID_PATTERN.test(extension.id)) {
     throw new Error(`Extension id "${extension.id}" must match ${ID_PATTERN} (it is also the config switch)`);
+  }
+  for (const kind of extension.entityKinds ?? []) {
+    const owner = RESERVED_ENTITY_OWNERS[kind.kind];
+    if (owner && owner !== extension.id)
+      throw new Error(`Entity kind "${kind.kind}" is reserved for its official plugin`);
   }
   for (const kind of extension.notificationKinds ?? []) {
     if (!kind.startsWith(`ext:${extension.id}:`))

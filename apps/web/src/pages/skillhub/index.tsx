@@ -1,114 +1,55 @@
-/**
- * SkillHub — top-level page for the org-wide agent skill library, plus the
- * user's prompt (Task) library as a second tab.
- *
- * Skills tab, master-detail: the grouped, searchable skill list lives in the
- * global sidebar rail (SkillHubNavPanel); this page renders the right pane.
- * Selection is URL-driven — `#/skillhub/<name>` shows that skill's detail, bare
- * `#/skillhub` shows the onboarding landing.
- *
- * Mobile has no rail, so the page itself carries the list: no selection → the
- * full-width grouped list; a selection → the detail with a back link. Both reuse
- * the same shared components (components/skillhub) — one implementation.
- *
- * My prompts tab: `#/skillhub?tab=prompts` (the retired `#/tasks` page redirects
- * here). Report templates tab: `#/skillhub?tab=reports` (v1.7). Tabs live in
- * the query, not the path, because the path segment is a skill name.
- */
-
+/** Saved prompts plus optional library tabs, keeping existing bookmarked hashes. */
+import React from 'react';
 import { extensionTabs } from '../../extensions';
-import React, { useState } from 'react';
-import { SkillDetail, SkillHubLanding, SkillHubList, SkillUploadDialog } from '../../components/skillhub';
+import { useExtensionsStore } from '../../stores/extensions-store';
 import { ModulePage } from '../../components/app/module-page';
-import { Button, Tabs } from '../../components/ui';
-import { Upload } from '../../lib/icons';
+import { Tabs } from '../../components/ui';
 import { useT } from '../../lib/i18n';
-import { SKILLHUB_PROMPTS_HASH } from '../../lib/workspace-routes';
 import { PromptsPanel } from './prompts';
 
-type SkillHubTab = string;
-
-const TAB_HASH: Record<SkillHubTab, string> = {
-  skills: '#/skillhub',
-  prompts: SKILLHUB_PROMPTS_HASH,
-};
-
-export function SkillHubPage({ subPath, params }: { subPath: string; params?: URLSearchParams }) {
+export function SkillHubPage({
+  subPath,
+  params = new URLSearchParams(),
+}: {
+  subPath: string;
+  params?: URLSearchParams;
+}) {
   const t = useT();
-  const name = subPath.split('/').filter(Boolean)[0] || '';
-  const [uploadOpen, setUploadOpen] = useState(false);
-  const requested = params?.get('tab');
-  const extraTabs = extensionTabs('skillhub');
-  const extraTab = extraTabs.find((item) => item.key === requested);
-  const tab: SkillHubTab = requested === 'prompts' || extraTab ? requested! : 'skills';
-
-  if (name) {
-    return (
-      <div className="h-full overflow-hidden bg-surface-canvas">
-        <SkillDetail name={name} backHref="#/skillhub" />
-      </div>
-    );
-  }
-
+  useExtensionsStore((s) => s.extensions);
+  const extra = extensionTabs('skillhub');
+  const fallback = extra.find((tab) => tab.default)?.key ?? 'prompts';
+  const requested = params.get('tab') ?? fallback;
+  const selected =
+    extra.find((tab) => tab.key === requested) ??
+    (requested === 'prompts' ? undefined : extra.find((tab) => tab.key === fallback));
+  const active = selected?.key ?? 'prompts';
   const tabs = (
     <Tabs
       tabs={[
-        { key: 'skills', label: t('skillHub.tabs.skills') },
-        { key: 'prompts', label: t('skillHub.tabs.prompts') },
-        ...extraTabs.map((item) => ({ key: item.key, label: t(item.labelKey) })),
+        ...extra.filter((tab) => tab.default).map((tab) => ({ key: tab.key, label: t(tab.labelKey) })),
+        { key: 'prompts', label: t('savedPrompts.title') },
+        ...extra.filter((tab) => !tab.default).map((tab) => ({ key: tab.key, label: t(tab.labelKey) })),
       ]}
-      active={tab}
+      active={active}
       onChange={(key) => {
-        window.location.hash = TAB_HASH[key] ?? `#/skillhub?tab=${encodeURIComponent(key)}`;
+        window.location.hash = `#/skillhub?tab=${encodeURIComponent(key)}`;
       }}
-      ariaLabel={t('skillHub.tabs.label')}
+      ariaLabel={t('savedPrompts.title')}
     />
   );
-
-  if (tab === 'prompts') {
-    return (
+  if (selected) {
+    const Panel = selected.component;
+    return selected.page ? (
+      <Panel subPath={subPath} params={params} tabs={tabs} />
+    ) : (
       <ModulePage moduleId="workspace.skillhub" layout="list" tabs={tabs}>
-        <PromptsPanel />
+        <Panel subPath={subPath} params={params} />
       </ModulePage>
     );
   }
-
-  if (extraTab) {
-    const Panel = extraTab.component;
-    return (
-      <ModulePage moduleId="workspace.skillhub" layout="list" tabs={tabs}>
-        <Panel />
-      </ModulePage>
-    );
-  }
-
   return (
-    <ModulePage
-      moduleId="workspace.skillhub"
-      layout="canvas"
-      tabs={tabs}
-      actions={
-        <Button size="sm" onClick={() => setUploadOpen(true)}>
-          <Upload size={14} />
-          {t('skillHub.upload')}
-        </Button>
-      }
-    >
-      {/* Desktop: onboarding landing (the grouped list lives in the rail). */}
-      <div className="hidden h-full overflow-y-auto md:block">
-        <SkillHubLanding showHeader={false} />
-      </div>
-      {/* Mobile: the full-width grouped list stands in for the hidden rail. */}
-      <div className="flex h-full flex-col md:hidden">
-        <SkillHubList />
-      </div>
-      <SkillUploadDialog
-        open={uploadOpen}
-        onClose={() => setUploadOpen(false)}
-        onPublished={(published) => {
-          window.location.hash = `#/skillhub/${published}`;
-        }}
-      />
+    <ModulePage moduleId="workspace.skillhub" layout="list" tabs={extra.length ? tabs : undefined}>
+      <PromptsPanel />
     </ModulePage>
   );
 }

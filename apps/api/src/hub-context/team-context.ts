@@ -1,3 +1,4 @@
+import { listAgentResources, readAgentResource } from '../extensions/agent-context.js';
 /**
  * Team context for a member's agent — the three MCP resources
  * (`greenhouse://context/overview|conventions|glossary`) and the compact
@@ -5,8 +6,9 @@
  *
  * Everything is cut to the caller's reach: `reachable` is the token's MCP tool
  * set (scopes ∩ the member's own permissions), so a grant without
- * `mcp:knowledge` gets no conventions or glossary, one without `mcp:skills` no
- * skills or prompts, one without `mcp:tables` no bases. Conventions and
+ * `mcp:knowledge` gets no conventions or glossary, one without a plugin's
+ * tools gets none of its context, one without `mcp:tables` no bases. Saved
+ * prompts remain reachable independently through core chat access. Conventions and
  * glossary are team-visible documents an admin picked (hub-context/settings.ts);
  * each is still read through `resolveKbAccess` for this member.
  */
@@ -20,7 +22,7 @@ import { canRead, resolveKbAccess } from '../knowledge/access.js';
 import { getWorkspaceValue } from '../settings/workspace-config.js';
 import { EXTENSIONS, fromExtensions } from '../extensions/index.js';
 import { resolveTeamContextDocs } from './settings.js';
-import { listTeamPrompts, promptsReachable } from './prompts.js';
+import { listTeamPrompts } from './prompts.js';
 import { buildDataCatalog } from './catalog.js';
 
 export interface TeamContextCaller {
@@ -55,9 +57,7 @@ const BUNDLE_PROMPTS = 40;
 const GROUP_PURPOSE: Record<string, string> = {
   knowledge: 'Knowledge base: team and personal documents',
   files: 'Files: the team cabinet and your own files',
-  projects: 'Projects and their tasks',
   tables: 'Tables: structured team data (bases, tables, records)',
-  skills: 'SkillHub: team skills and saved prompts (also offered as MCP prompts)',
   chat: 'Your Greenhouse chat history (read-only)',
   automation: 'Your scheduled automations (read-only)',
   services: 'Paid services: web search, page reads, image analysis and generation (metered to you)',
@@ -177,8 +177,7 @@ async function overviewMarkdown(caller: TeamContextCaller): Promise<string> {
     listTeamPrompts(caller.db, { userId: caller.userId, role: caller.role }, caller.reachable),
     dataSummary(caller),
   ]);
-  const skills = prompts.filter((prompt) => prompt.name.startsWith('skill-')).length;
-  const saved = prompts.length - skills;
+
   const lines = [
     `# ${product} — what this team's Greenhouse offers your agent`,
     '',
@@ -208,11 +207,9 @@ async function overviewMarkdown(caller: TeamContextCaller): Promise<string> {
         ]
       : []),
     '',
-    '## Skills and prompts',
+    '## Prompts',
     '',
-    promptsReachable(caller.reachable)
-      ? `- ${skills} SkillHub skill(s) and ${saved} saved prompt(s), offered as MCP prompts (\`skill-<name>\`, \`prompt-<id>\`); skill_query finds and downloads skills.`
-      : '- This connection has no SkillHub access.',
+    `- ${prompts.length} reusable prompt(s) available through MCP prompts.`,
     '',
     '## Data sources',
     '',
@@ -264,11 +261,11 @@ export async function listContextResources(caller: TeamContextCaller): Promise<C
       mimeType: 'text/markdown',
     });
   }
-  return out;
+  return [...out, ...listAgentResources(caller)];
 }
 
 export function isContextResourceUri(uri: string): boolean {
-  return uri.startsWith('greenhouse://context/');
+  return uri.startsWith('greenhouse://context/') || uri.startsWith('greenhouse://ext/');
 }
 
 /** Read one context resource, or undefined when this caller has no such resource. */
@@ -289,7 +286,7 @@ export async function readContextResource(
     const { glossary } = await contextDocs(caller);
     return glossary ? { uri, mimeType: 'text/markdown', text: glossaryMarkdown(glossary) } : undefined;
   }
-  return undefined;
+  return readAgentResource(caller, uri);
 }
 
 function bundleDoc(doc: KnowledgeDoc, fullUri: string) {
@@ -323,18 +320,30 @@ export async function buildTeamContextBundle(caller: TeamContextCaller) {
       ? docs.conventions.map((doc) => bundleDoc(doc, TEAM_CONTEXT_URIS.conventions))
       : null,
     glossary: docs.glossary ? bundleDoc(docs.glossary, TEAM_CONTEXT_URIS.glossary) : null,
-    prompts: promptsReachable(caller.reachable)
-      ? {
-          total: prompts.length,
-          items: prompts.slice(0, BUNDLE_PROMPTS).map((prompt) => ({
-            name: prompt.name,
-            title: prompt.title,
-            description: prompt.description,
-            arguments: prompt.arguments.map((arg) => arg.name),
-          })),
-          how: 'Use them as MCP prompts if your client supports prompts; otherwise skill_query skills.download fetches a skill.',
-        }
-      : null,
+    prompts:
+      prompts.length > 0
+        ? {
+            total: prompts.length,
+            items: prompts.slice(0, BUNDLE_PROMPTS).map((prompt) => ({
+              name: prompt.name,
+              title: prompt.title,
+              description: prompt.description,
+              arguments: prompt.arguments.map((arg) => arg.name),
+            })),
+            how: 'Use them as MCP prompts if your client supports prompts.',
+          }
+        : null,
+    resources: await Promise.all(
+      listAgentResources(caller).map(async (resource) => {
+        const content = await readAgentResource(caller, resource.uri);
+        const text = content?.text ?? '';
+        return {
+          ...resource,
+          content: text.slice(0, BUNDLE_DOC_CHARS),
+          ...(text.length > BUNDLE_DOC_CHARS ? { truncated: true } : {}),
+        };
+      }),
+    ),
     data_sources: {
       tables_bases: data.bases,
       tables: data.tables,

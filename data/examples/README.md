@@ -16,6 +16,9 @@ pnpm db:migrate
 pnpm seed
 ```
 
+Plugin datasets load only for enabled plugins. Add `projects` to `extensions.enabled` to include
+the project/task examples and their activity; the default deployment omits them.
+
 Then log in at the app with any seeded user and the shared demo password:
 
 | Login | Role | Try |
@@ -66,9 +69,9 @@ published / draft / archived status, AI enrichment (`_summary` / `_questions` /
 `_topics`), tags, version history (roadmap + handbook), and private-doc sharing
 with two users (reader and editor).
 
-**Projects** — 3 projects (Website Relaunch, Q3 Product Launch, SOC 2), members,
+**Projects** — enabled-plugin seed rows now live in `plugins/projects/seeds/` (default off): 3 projects (Website Relaunch, Q3 Product Launch, SOC 2), members,
 14 tasks with subtasks / dependencies / mixed status, comments, and an activity
-log (`audit_events` rows with `app_id='projects'`).
+log (`audit_events` rows with `app_id='projects'`, also seeded by the plugin).
 
 **Chat** — 5 conversations (`conversations.json`) on the `web` channel, showing tool
 pipelines (`knowledge_query`, `external_search`, `project_query`, `analyze_image`)

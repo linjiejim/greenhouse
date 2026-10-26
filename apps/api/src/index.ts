@@ -82,11 +82,9 @@ import { applyWorkspaceEnvOverlay } from './settings/workspace-config.js';
 import uploadRoutes from './routes/upload.js';
 import adminRoutes from './routes/admin.js';
 import costValueRoutes from './routes/cost-value.js';
-import projectRoutes from './routes/projects.js';
 import platformRoutes from './routes/platform.js';
 import platformAdminRoutes from './routes/platform-admin.js';
 import { bootstrapPlatform } from './platform/bootstrap.js';
-import { projectsRegistration } from './platform/projects/application.js';
 import { knowledgeRegistration } from './platform/knowledge/registration.js';
 import { tablesRegistration } from './platform/tables/application.js';
 import { initializePlatformRuntime } from './platform/runtime.js';
@@ -104,11 +102,7 @@ import toolsRoutes from './routes/tools.js';
 import driveRoutes from './routes/drive.js';
 import chatFileRoutes from './routes/chat-files.js';
 import artifactActionRoutes from './routes/artifact-actions.js';
-import skillRoutes from './routes/skills.js';
 import tablesRoutes from './routes/tables.js';
-import { getSkillStore } from './skills/store.js';
-import { seedSkillhub } from './skills/boot-seed.js';
-import { sweepUnscannedSkills } from './skills/center.js';
 import { backfillKnowledgeTokens } from './knowledge/backfill.js';
 import { initScheduler } from './scheduler/index.js';
 import { createTasksRoute } from './routes/tasks.js';
@@ -294,11 +288,8 @@ function mountRoutes(toolRegistry: ToolRegistry) {
       .route('/api/admin/settings', adminSettingsRoutes)
       .route('/api/admin/team-context', adminTeamContextRoutes)
       .route('/api/admin/retro', adminRetroRoutes)
-      // Project management — all internal users
       .use('/api/platform/*', requireInternal())
       .route('/api/platform', platformRoutes)
-      .use('/api/projects/*', requireInternal())
-      .route('/api/projects', projectRoutes)
       .use('/api/tables/*', requireInternal())
       .use('/api/tables/*', requireFeature('tables'))
       .route('/api/tables', tablesRoutes)
@@ -333,9 +324,6 @@ function mountRoutes(toolRegistry: ToolRegistry) {
       .use('/api/auth/me/push-devices', requireInternal())
       .use('/api/auth/me/push-devices/*', requireInternal())
       .route('/api/auth/me/push-devices', pushDeviceRoutes)
-      // Skill Center — all internal users (writes owner/super-gated in skills/center.ts)
-      .use('/api/skills/*', requireInternal())
-      .route('/api/skills', skillRoutes)
       // Module usage counts (page opens) — all internal users; counts only
       .use('/api/data-catalog', requireInternal())
       .route('/api/data-catalog', dataCatalogRoutes)
@@ -390,9 +378,6 @@ const HOSTNAME = process.env.API_HOST;
 
 async function main() {
   assertAuthEnv(); // fail fast before binding if the signing key is absent
-  // Resolve the Skill Center bundle store now: a PARTIAL SKILLS_S3_* config must
-  // refuse to start (silently falling back to disk would strand new bundles).
-  const skillStore = getSkillStore();
   dbProvider = await initDatabase({ type: 'pg', pgConnectionString: DATABASE_URL });
   // Announce knowledge writes over WS (`knowledge.changed`) from the service's single write path.
   startKnowledgeLiveUpdates(dbProvider);
@@ -411,7 +396,6 @@ async function main() {
   const usageBudgetSweeper = await startUsageBudgetSweeper(dbProvider);
   const platformBootstrap = await bootstrapPlatform(dbProvider);
   initializePlatformRuntime(dbProvider, [
-    projectsRegistration,
     knowledgeRegistration,
     tablesRegistration,
     ...extensionApplicationRegistrations(),
@@ -423,15 +407,6 @@ async function main() {
   ) {
     logger.info('[Platform] Kernel bootstrap applied', { ...platformBootstrap });
   }
-
-  // First-party skill packs ride the release: sync the repo's skillhub/ into
-  // the Skill Center on boot (no-op without the directory; never blocks boot).
-  await seedSkillhub(dbProvider);
-
-  // Backfill security verdicts for skills published before the scanner existed.
-  // Fire-and-forget like the other boot sweeps — never blocks the health gate,
-  // and failures only warn (publishing itself scans synchronously).
-  void sweepUnscannedSkills(dbProvider);
 
   // Knowledge docs written before segmented FTS tokens existed are invisible to
   // search until tokenized. One-off backfill, fire-and-forget like the sweeps.
@@ -504,7 +479,6 @@ async function main() {
         const profileIds = listProfileIds();
         logger.info(`\n🌱 Greenhouse API running at http://localhost:${info.port}`);
         logger.info(`   Database: PostgreSQL`);
-        logger.info(`   Skill store: ${skillStore.backend === 's3' ? 'S3-compatible' : 'local disk (data/skills)'}`);
         logger.info(`   Profiles: ${profileIds.join(', ')}`);
         logger.info(`   WebSocket: enabled`);
         resolveListening();

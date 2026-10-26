@@ -29,7 +29,7 @@ import { allMcpResourceGroups } from '@greenhouse/types/mcp';
 import { mcpToolIdsForGroups } from '../../apps/api/src/tools/registry.js';
 import { composeMcpContext, MCP_EXPOSED_TOOL_IDS } from '../../apps/api/src/routes/mcp.js';
 import { initializePlatformRuntime, resetPlatformRuntimeForTests } from '../../apps/api/src/platform/runtime.js';
-import { projectsRegistration } from '../../apps/api/src/platform/projects/application.js';
+import { extensionApplicationRegistrations } from '../../apps/api/src/extensions/boot.js';
 import { knowledgeRegistration } from '../../apps/api/src/platform/knowledge/registration.js';
 import { tablesRegistration } from '../../apps/api/src/platform/tables/application.js';
 
@@ -90,7 +90,7 @@ describe('cross-channel tool parity', () => {
   beforeEach(async () => {
     db = await initDatabase({ type: 'pg', pgConnectionString: TEST_DATABASE_URL });
     // MCP's platform-visibility filter needs the runtime — same set as index.ts.
-    initializePlatformRuntime(db, [projectsRegistration, knowledgeRegistration, tablesRegistration]);
+    initializePlatformRuntime(db, [...extensionApplicationRegistrations(), knowledgeRegistration, tablesRegistration]);
   });
 
   afterEach(async () => {

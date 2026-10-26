@@ -61,7 +61,6 @@ const CORE_OPT_IN_TOOLS: AutomationOptInTool[] = [
   { id: 'export_data', tier: 'assist', order: 30 },
   { id: 'tables_mutation', tier: 'write', order: 50 },
   { id: 'knowledge_mutation', tier: 'write', order: 60 },
-  { id: 'project_mutation', tier: 'write', order: 70 },
   { id: 'mcp_call', tier: 'write', order: 90 },
 ];
 export const AUTOMATION_OPT_IN_TOOLS: AutomationOptInTool[] = [...CORE_OPT_IN_TOOLS];

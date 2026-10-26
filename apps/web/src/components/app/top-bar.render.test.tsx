@@ -13,7 +13,7 @@ import { ChatTopBarSessionActions, EditableChatTitle, TopBar } from './top-bar';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-function renderTopBar(route: 'chat' | 'projects' | 'activity' | 'skillhub') {
+function renderTopBar(route: 'chat' | 'extension' | 'activity' | 'skillhub') {
   return renderToStaticMarkup(
     createElement(I18nProvider, {
       initialLocale: 'en',
@@ -41,7 +41,7 @@ describe('TopBar mobile chat actions', () => {
 
   it('keeps the history shortcut scoped to Chat', () => {
     useExtensionsStore.setState({ conversationSharing: true });
-    const html = renderTopBar('projects');
+    const html = renderTopBar('extension');
 
     expect(html).not.toContain('aria-label="Session history"');
   });
@@ -53,8 +53,9 @@ describe('TopBar mobile chat actions', () => {
     expect(html).not.toContain('>Prompts<');
   });
 
-  it('names SkillHub, which now also hosts the prompt library', () => {
-    expect(renderTopBar('skillhub')).toContain('>SkillHub<');
+  it('names the core prompt library while optional catalogues are disabled', () => {
+    useExtensionsStore.setState({ extensions: [] });
+    expect(renderTopBar('skillhub')).toContain('>My prompts<');
   });
 
   it('renders sharing as an icon-only conversation action', () => {

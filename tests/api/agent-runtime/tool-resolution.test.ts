@@ -83,15 +83,9 @@ describe('resolveEffectiveTools', () => {
     });
 
     expect(effectiveTools.sort()).toEqual(
-      [
-        ...new Set([
-          'project_query',
-          'project_mutation',
-          'session_query',
-          'knowledge_query',
-          ...BUILTIN_AGENT_TOOL_IDS,
-        ]),
-      ].sort(),
+      [...new Set(['project_query', 'project_mutation', 'session_query', 'knowledge_query', ...BUILTIN_AGENT_TOOL_IDS])]
+        .filter((id) => getAllToolIds().includes(id))
+        .sort(),
     );
   });
 

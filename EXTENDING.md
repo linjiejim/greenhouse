@@ -502,3 +502,37 @@ Automation opt-in entries (`automationTools: [{id, tier, order?, labelKey?}]`) c
 The classic web half contributes `identityProviders` (`id`, optional login component, optional binding component) and `notificationTransports` (`id`, `preference`, component, optional webhook label/hint). Login components are selected by public discovery; authenticated binding/form components are selected by the enabled extension set. UI copy stays under `ext.<id>.*`. `surface.unattendedDenied` on a tool overrides all unattended grants.
 
 Email, WeCom and Feishu retain their 3.0 routes, recipient envelopes and preference keys. Email's feature flag defaults on for members **only when its package is enabled**. WeCom is binding-only; Feishu also supplies login and its bot channel. The phone callback remains `greenhouse://auth/feishu`. Their generic identity tables stay core; private table/service ownership is documented in the plugin directories. No plugin jobs are invented for email: mailbox reads already fetch live over IMAP.
+
+## Agent context and optional data surfaces
+
+`agentContext` is one object on defineExtension, aggregated by the active registry. It accepts
+`promptFragment(ctx)`, `resources: [{name,title,description,read(ctx)}]` and
+`prompts: [{name,title,description?,arguments?,render(args,ctx)}]`. A dynamic prompt collection
+uses `{list(ctx) => Promise<Prompt[]>, get?(name,args,ctx) => Promise<TeamPrompt|null>}`;
+the optional lookup keeps prompts directly addressable beyond a bounded listing. Context contains db, userId, role, actor and reachable
+(the member/grant's actual tools). The host first intersects reach with the owner's tools;
+optional `toolIds` narrows it further. No tool access means no fragment, resource or prompt.
+Fragments are capped at 2000 characters each and appended to the stable system prefix; authors
+must keep them session-stable. They cannot rewrite the core prompt or model call.
+
+Resources use `greenhouse://ext/<id>/<name>` in MCP and the compact team_context bundle (3000
+characters, with full resource URI). Prompts use `ext-<id>-<name>`. `legacyPromptPrefixes` plus
+an entry's explicit `legacyName` preserve an existing protocol name; duplicates fail. SkillHub
+uses this for skill-* and compatibility prompt-* access. Saved-prompt storage/rendering stay
+core and are also reachable through chat grants. Listing and reading recheck reach each request.
+
+| Contribution | Existing consumer |
+|---|---|
+| `objectRefs: [{type,resolve(ref,ctx)}]` | batched `/api/refs/resolve`; same actor/capability cache as core; return a hidden title for unreadable records |
+| `recentChanges: [{id,load(db,runtime,viewer,window,need)}]` | team activity feed; use kit scanRecentChanges/recentChangeDraft and activitySql cursor helpers to preserve the bounded merge frontier |
+| activity `auditCapabilities`, `auditShapes`, `actionEntities`, `toolShapes`, `toolTargets` | distinguish domain history from platform writes and hydrate targets with plugin access rules |
+| `rateLimits: [{path,windowMs,max,internalMax?}]` | existing IP/member admission counter; only active routes contribute, longest plugin prefix first |
+| `retiredToolAliases: {oldId: [successorId]}` | stored Agent profile expansion; aliases disappear with their owner, and successors must be live tools; collisions fail boot |
+| web page `applicationId` | explicitly register an application's classic URL without host id cases |
+| web tab `default`, `page`, `titleKey`, `descriptionKey`, `sidebarPanel` | optional catalogue beside the core saved-prompt page; panel receives subPath/params and, with `page`, owns its page shell and receives the tab bar |
+| web `contextProviders`, `resolveContext`, `entitySync` | active page context and browser invalidation using existing registries |
+
+An empty page module key registers its root identity as the extension id. Official reserved
+entity kinds retain their wire names; plugins register their route template like any other kind.
+Classic entity UI and context providers are hidden while their owner is disabled. Plugin e2e
+specs import only @playwright/test and use the shared authenticated browser state.

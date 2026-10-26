@@ -2,7 +2,7 @@
 
 > 事实源：`packages/db/src/schema/*.ts`（每个域一个文件，文件头写着本域的表）。迁移链从 `drizzle/0000_v3_baseline.sql` 起步；1.x 的 0000–0013 归档在 `drizzle/archive-1x/`，只用来识别 1.x 库。
 >
-> 当前完整安装共 **73 张表**：核心 schema **66 张**，六个数据插件管理 7 张表（迁移车道记账另计）。字段类型、默认值、索引以 schema 与最新 snapshot 为准；本文只写用途、关键列和关系。
+> 当前完整安装共 **73 张表**：核心 schema **60 张**，八个数据插件管理 13 张表（迁移车道记账另计）。字段类型、默认值、索引以 schema 与最新 snapshot 为准；本文只写用途、关键列和关系。
 
 ## 设计约定
 
@@ -31,6 +31,8 @@
 | memory | [插件 schema](../../../plugins/memory/db-schema.md) |
 | feedback | [插件 schema](../../../plugins/feedback/db-schema.md) |
 | reports | [插件 schema](../../../plugins/reports/db-schema.md) |
+| skills | [插件 schema](../../../plugins/skills/db-schema.md) |
+| projects | [插件 schema](../../../plugins/projects/db-schema.md) |
 | computer | [插件 schema](../../../plugins/computer/db-schema.md) |
 
 ## 表目录
@@ -125,17 +127,6 @@ Chat 与 Automation 共用的执行内核：Run / Step 走 version CAS，worker 
 | `file_links` | PK `(file_id, target_type, target_id, slot)` | 附件关系；`target_type` table_record / message / task / kb_document（逻辑），`slot` = 表格字段 id 或 `''`；FK `file_id` CASCADE |
 | `shares` | PK `id`；UK `(resource_type, resource_id, principal_type, principal_id)` NULLS NOT DISTINCT | 单独分享：`resource_type` kb_document / folder / file / table_base，`principal_type` user / team，`role` reader / editor（kb）或 owner / builder / editor / viewer（表格库） |
 
-### 项目（projects.ts）
-
-| 表 | 主键 / 唯一 | 用途与关键列 |
-|---|---|---|
-| `projects` | PK `id` | 项目；`status`、`priority`、`owner_id`（逻辑）、`start_date` / `end_date`（date）、`visibility` |
-| `project_members` | PK `id`；UK `(project_id, user_id)` | 成员与角色；FK `project_id` CASCADE |
-| `tasks` | PK `id` | 任务；`parent_id` 自引用 SET NULL、`status`、`priority`、`assignee_id`（逻辑）、`start_date` / `due_date`（date）、`tags`、`dependencies`（任务 id 数组） |
-| `task_comments` | PK `id` | 任务评论；FK `task_id` CASCADE |
-
-项目与任务的动态写在 `audit_events`（`app_id='projects'`）。
-
 ### 表格（tables.ts）
 
 | 表 | 主键 / 唯一 | 用途与关键列 |
@@ -182,8 +173,6 @@ Chat 与 Automation 共用的执行内核：Run / Step 走 version CAS，worker 
 
 | 表 | 主键 / 唯一 | 用途与关键列 |
 |---|---|---|
-| `skills` | PK `id`；UK `name` | 技能中心；`latest_version`、`download_count`、安全扫描列（`scan_status`、`scanned_at` null = 从没扫过、人工裁定列） |
-| `skill_versions` | PK `id`；UK `(skill_id, version)` | 不可变、带内容 hash 的技能版本；FK CASCADE |
 | `prompts` | PK `id`；UK `artifact_action_id` | 保存的任务 / Prompt（个人或 super 发布的全局）；`variables`、`expected_tools`（只展示）、`source_session_id`（逻辑）、`created_via` |
 | `workspace_settings` | PK `key` | 管理员可改的部署设置；`value` jsonb 或 `value_enc` 密文 |
 | `extension_migrations` | PK `(extension_id, name)` | 扩展/插件迁移车道的记账（带 checksum）；停用保留，`cli plugins drop <id> --yes` 仅删除该插件的表及此 lane 记录（事务 + RESTRICT） |
@@ -256,10 +245,6 @@ Chat 与 Automation 共用的执行内核：Run / Step 走 version CAS，worker 
 | `files.folder_id` | `folders.id` | CASCADE |
 | `files.session_id` | `conversations.id` | CASCADE |
 | `file_links.file_id` | `files.id` | CASCADE |
-| `project_members.project_id` | `projects.id` | CASCADE |
-| `tasks.project_id` | `projects.id` | CASCADE |
-| `tasks.parent_id` | `tasks.id` | SET NULL |
-| `task_comments.task_id` | `tasks.id` | CASCADE |
 | `table_tables.base_id` | `table_bases.id` | CASCADE |
 | `table_fields.table_id` | `table_tables.id` | CASCADE |
 | `table_field_dependencies.field_id` / `depends_on_field_id` | `table_fields.id` | CASCADE |
@@ -273,7 +258,6 @@ Chat 与 Automation 共用的执行内核：Run / Step 走 version CAS，worker 
 | `table_recompute_jobs.record_id` | `table_records.id` | CASCADE |
 | `notification_deliveries.notification_id` | `notifications.id` | CASCADE |
 | `push_devices.user_id` | `users.id` | CASCADE |
-| `skill_versions.skill_id` | `skills.id` | CASCADE |
 
 ## 逻辑关联总览（无 FK）
 
@@ -295,7 +279,6 @@ Chat 与 Automation 共用的执行内核：Run / Step 走 version CAS，worker 
 | `files.owner_user_id` / `base_id` / `owner_key` / `run_id` | `users.id` / `table_bases.id` / 扩展对象 / `runs.id` | 按 source 与 scope |
 | `file_links.target_id` | `table_records.id` / `messages.id` / `tasks.id` / `kb_documents.id` | 按 `target_type`；硬删目标的 service 负责删链接 |
 | `shares.resource_id` / `principal_id` | 按 `resource_type` / `users.id` | 单独分享 |
-| `projects.owner_id`、`project_members.user_id`、`tasks.assignee_id`、`task_comments.user_id` | `users.id` | 项目参与者 |
 | `table_bases.owner_id`、`table_views.owner_id` | `users.id` | 表格库主人、个人视图主人 |
 | `notifications.user_id` / `run_id` / `interrupt_id` / `event_id` / `agent_id` | `users.id` / runs 域 / Agent 标识 | 通知比来源长寿 |
 | `notification_deliveries.recipient` | 渠道收件人（`push_devices.id`、企微 UserId、邮箱…） | 按 `channel` |
@@ -306,7 +289,6 @@ Chat 与 Automation 共用的执行内核：Run / Step 走 version CAS，worker 
 | `budget_ledger.account_id` / `reservation_id` | `budgets.id` / `budget_reservations.id` | append-only |
 | `audit_events.actor_id` / `on_behalf_of_user_id` / `client_id` / `record_id` | 主体 / `users.id` / `oauth_clients.id` / 业务记录 | 审计比主体长寿 |
 | `request_log.user_id` | `users.id` | 请求日志 |
-| `skills.owner_user_id` | `users.id` | 技能作者 |
 | `prompts.user_id` / `source_session_id` | `users.id` / `conversations.id` | 任务比来源会话长寿 |
 | `provider_connections.provider`（`mcp:<id>`） | `mcp_connectors.id` | 成员的连接器凭证；改地址 / 认证方式与删除连接器时同一事务删除 |
 | `runs.source_id`（`kind='connector_write'`） | `mcp_connectors.id` | 连接器写操作记录 |
@@ -381,14 +363,9 @@ erDiagram
     folders ||--o{ files : "FK CASCADE"
     files ||--o{ file_links : "FK CASCADE"
     table_records ||--o{ file_links : "逻辑 target_id"
-    tasks ||--o{ file_links : "逻辑 target_id"
     kb_documents ||--o{ shares : "逻辑 resource_id"
     table_bases ||--o{ shares : "逻辑 resource_id"
     table_bases ||--o{ folders : "逻辑 base_id"
-    projects ||--o{ project_members : "FK CASCADE"
-    projects ||--o{ tasks : "FK CASCADE"
-    tasks ||--o{ tasks : "FK SET NULL parent_id"
-    tasks ||--o{ task_comments : "FK CASCADE"
     table_bases ||--o{ table_tables : "FK CASCADE"
     table_tables ||--o{ table_fields : "FK CASCADE"
     table_tables ||--o{ table_views : "FK CASCADE"
@@ -398,7 +375,6 @@ erDiagram
     table_fields ||--o{ table_field_dependencies : "FK CASCADE"
     table_fields ||--o{ table_record_links : "FK CASCADE"
     table_records ||--o{ table_record_links : "FK CASCADE source/target"
-    skills ||--o{ skill_versions : "FK CASCADE"
 ```
 
 ### 用量、预算与审计

@@ -46,7 +46,7 @@ import { buildLazyServerTools, resolveEffectiveTools } from '../../../../apps/ap
 import { resolveProfileAsync } from '../../../../apps/api/src/profiles/profile.js';
 import { scheduledToolBase } from '../../../../apps/api/src/scheduler/executor.js';
 import { initializePlatformRuntime, resetPlatformRuntimeForTests } from '../../../../apps/api/src/platform/runtime.js';
-import { projectsRegistration } from '../../../../apps/api/src/platform/projects/application.js';
+import { projectsRegistration } from '../../../projects/api/platform/application.js';
 import { knowledgeRegistration } from '../../../../apps/api/src/platform/knowledge/registration.js';
 import { tablesRegistration } from '../../../../apps/api/src/platform/tables/application.js';
 import { createTemplate } from '../templates.js';

@@ -4,7 +4,7 @@
  * the example extension, and the "active" gate hides what the API did not
  * switch on.
  */
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   COMPILED_WEB_EXTENSIONS,
   activeExtensionNavItems,
@@ -37,6 +37,8 @@ import { isArtifactCall } from '../../../../apps/web/src/components/tool-call/bo
 import { getContextProvider } from '../../../../apps/web/src/lib/context-registry';
 import { resolveUrlContext } from '../../../../apps/web/src/components/agent-context';
 import { setIncompatibleExtensionIds, useExtensionsStore } from '../../../../apps/web/src/stores/extensions-store';
+
+afterEach(() => useExtensionsStore.setState({ extensions: [], loaded: false }));
 
 describe('web extension seam', () => {
   it('compiles the example and exposes its page route', () => {
@@ -88,6 +90,7 @@ describe('web extension seam', () => {
   });
 
   it('routes agent context for extension pages to the extension provider', () => {
+    useExtensionsStore.setState({ extensions: [{ id: 'example', name: 'Example', description: null }] });
     const ctx = resolveUrlContext('#/example/anything?x=1');
     expect(ctx).toEqual({ type: 'extension', extension: 'example', route: 'example', subPath: 'anything' });
     const provider = getContextProvider('extension', ctx);
@@ -98,6 +101,7 @@ describe('web extension seam', () => {
   });
 
   it('registers the record kind, its peek chrome and the MCP group copy', () => {
+    useExtensionsStore.setState({ extensions: [{ id: 'example', name: 'Example', description: null }] });
     expect(registeredEntityKind('ext:example:note')?.icon).toBe(StickyNote);
     const meta = entityPeekMeta('ext:example:note');
     expect(meta.icon).toBe(StickyNote);

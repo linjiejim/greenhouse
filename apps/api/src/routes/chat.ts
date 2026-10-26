@@ -845,11 +845,13 @@ async function buildSystemPromptWithUserNotes(
 ): Promise<string> {
   let userInfo: string | undefined;
   let userLocale: string | undefined;
+  let userRole: string | undefined;
 
   if (userId) {
     try {
       const user = await getDb().users.getById(userId);
       userLocale = user?.locale ?? undefined;
+      userRole = user?.role;
       if (user?.notes) {
         const sanitizedNotes = sanitizeForPrompt(user.notes);
         const notesHint = `User "${user.nickname}" has set the following preferences — adhere to them:\n${sanitizedNotes}`;
@@ -861,7 +863,7 @@ async function buildSystemPromptWithUserNotes(
 
     // Memory index (feature-gated inside resolveExtensionPromptContext, which also
     // sanitises — memory text is model-written and user-editable).
-    const memoryBlock = await resolveExtensionPromptContext(userId, undefined, conversation.toolIds);
+    const memoryBlock = await resolveExtensionPromptContext(userId, userRole, conversation.toolIds);
     if (memoryBlock) userInfo = userInfo ? `${userInfo}\n${memoryBlock}` : memoryBlock;
   }
 

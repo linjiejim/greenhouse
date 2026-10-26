@@ -1,3 +1,4 @@
+import { useExtensionsStore } from '../stores/extensions-store';
 /**
  * Small write-once registries that core render paths read (tool cards, tool
  * icons). They live apart from `extensions/index.ts` so that `lib/icons.ts`
@@ -45,13 +46,20 @@ export interface RegisteredEntityKind {
 }
 
 const entityKinds = new Map<string, RegisteredEntityKind>();
+const entityOwners = new Map<string, string>();
 
-export function registerEntityKindUi(defs: readonly RegisteredEntityKind[]): void {
-  for (const def of defs) entityKinds.set(def.kind, def);
+export function registerEntityKindUi(defs: readonly RegisteredEntityKind[], owner?: string): void {
+  for (const def of defs) {
+    entityKinds.set(def.kind, def);
+    if (owner) entityOwners.set(def.kind, owner);
+  }
 }
 
 export function registeredEntityKind(kind: string): RegisteredEntityKind | undefined {
-  return entityKinds.get(kind);
+  const owner = entityOwners.get(kind);
+  return !owner || useExtensionsStore.getState().extensions.some((ext) => ext.id === owner)
+    ? entityKinds.get(kind)
+    : undefined;
 }
 
 // ─── MCP consent groups owned by extensions ──────────────
@@ -96,6 +104,28 @@ export function _resetExtensionRegistries(): void {
   toolCards.clear();
   toolIcons.clear();
   entityKinds.clear();
+  entityOwners.clear();
   mcpGroups.length = 0;
   knowledgeDocPanels.length = 0;
+  applicationPages.clear();
+  hostTitles.clear();
+}
+
+const applicationPages = new Map<string, { owner: string; route: string }>();
+export function registerApplicationPage(owner: string, application: string, route: string): void {
+  applicationPages.set(application, { owner, route });
+}
+export function registeredApplicationRoute(application: string): string | null {
+  const entry = applicationPages.get(application);
+  return entry && useExtensionsStore.getState().extensions.some((ext) => ext.id === entry.owner)
+    ? `#/${entry.route}`
+    : null;
+}
+const hostTitles = new Map<string, Array<{ owner: string; titleKey: string; descriptionKey?: string }>>();
+export function registerHostTitle(owner: string, host: string, titleKey: string, descriptionKey?: string): void {
+  hostTitles.set(host, [...(hostTitles.get(host) ?? []), { owner, titleKey, descriptionKey }]);
+}
+export function registeredHostTitle(host: string) {
+  const active = useExtensionsStore.getState().extensions;
+  return hostTitles.get(host)?.find((entry) => active.some((ext) => ext.id === entry.owner));
 }

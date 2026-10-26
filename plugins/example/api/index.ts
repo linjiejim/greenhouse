@@ -26,9 +26,31 @@ export const exampleExtension = defineExtension({
 
   // A read tool and a governed write tool (see tool.ts: writes must declare `proxy: 'write'`).
   tools: [exampleNotesQueryTool, exampleNotesMutationTool],
+  retiredToolAliases: { example_notes_legacy: ['example_notes_query'] },
   routes: [{ path: '/api/ext/example', app: exampleRoutes, guards: [requireFeature('example')] }],
 
   // Its own MCP consent group, so a token can be granted `mcp:example` alone.
+  agentContext: {
+    promptFragment: () =>
+      'Example notes are personal. Use the note tools when the member asks to save or retrieve a note.',
+    resources: [
+      {
+        name: 'vocabulary',
+        title: 'Example vocabulary',
+        description: 'Terms used by personal notes.',
+        read: () => '# Notes\nA note is a private reminder owned by one member.',
+      },
+    ],
+    prompts: [
+      {
+        name: 'recall',
+        title: 'Recall notes',
+        description: 'Find a personal note.',
+        arguments: [{ name: 'topic', required: true }],
+        render: (args) => `Find my notes about ${args.topic ?? '{{topic}}'}.`,
+      },
+    ],
+  },
   mcpGroups: ['example'],
   // Its records get deeplinks (`#/example/notes/42`) and peeks in chat.
   entityKinds: [{ kind: 'ext:example:note', route: '#/example/notes/:id' }],

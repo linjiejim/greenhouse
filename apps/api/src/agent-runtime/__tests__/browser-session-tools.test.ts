@@ -25,7 +25,7 @@ describe('browser-channel tool face', () => {
 
   it('keeps the reads and the output-only tools a browsing conversation needs', () => {
     expect(kept).toEqual(
-      expect.arrayContaining(['knowledge_query', 'project_query', 'session_query', 'external_search', ...OUTPUT_ONLY]),
+      expect.arrayContaining(['knowledge_query', 'files_query', 'session_query', 'external_search', ...OUTPUT_ONLY]),
     );
   });
 

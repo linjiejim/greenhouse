@@ -23,7 +23,6 @@ import { getDb } from '@greenhouse/db';
 import { getAuthUser, requireInternal } from '../auth/middleware.js';
 import type { AppEnv } from '../app-env.js';
 import { humanActor } from '../platform/actor.js';
-import { projectResource } from '../platform/projects/application.js';
 import { getPlatformRuntime } from '../platform/runtime.js';
 import { searchKnowledgeScopes } from '../knowledge/search.js';
 import { extensionSearchSources } from '../search/sources.js';
@@ -43,10 +42,6 @@ const MAX_QUERY_LENGTH = 200;
 function subtitle(...parts: Array<unknown>): string | undefined {
   const text = parts.filter((part): part is string => typeof part === 'string' && part.trim() !== '').join(' · ');
   return text || undefined;
-}
-
-function text(value: unknown): string {
-  return typeof value === 'string' ? value : '';
 }
 
 export function createSearchRoute() {
@@ -89,7 +84,7 @@ export function createSearchRoute() {
           return { kind: k, items: hits.slice(0, limit), hasMore: hits.length > limit };
         };
 
-        const [sessionHistory, automations, projects, docs] = await Promise.all([
+        const [sessionHistory, automations, docs] = await Promise.all([
           lane('session', async () => {
             const rows = await db.sessions.searchByTitle(user.id, query, fetchLimit, {
               excludeChannels: SEARCH_EXCLUDED_CHANNELS,
@@ -116,24 +111,6 @@ export function createSearchRoute() {
                 enabled: row.enabled,
                 subtitle: subtitle(row.task_prompt.replace(/\s+/g, ' ').trim().slice(0, AUTOMATION_PROMPT_PREVIEW)),
               }));
-          }),
-          // Projects owns its whole read path in the registry handler (policy →
-          // access → query), so this only has to hand it a payload.
-          lane('project', async () => {
-            const result = await getPlatformRuntime().dispatch({
-              actor,
-              appId: 'projects',
-              actionId: 'listProjects',
-              payload: { search: query, limit: fetchLimit },
-              resource: projectResource('listProjects', {}),
-            });
-            if (!result.ok) return [];
-            const rows = (result.data as { projects?: Record<string, unknown>[] }).projects ?? [];
-            return rows.map((row) => ({
-              ref: { kind: 'project' as const, id: String(row.id) },
-              title: text(row.title),
-              subtitle: subtitle(row.status, row.priority),
-            }));
           }),
           // Knowledge has no dispatch wrapper around search (its capability check
           // lives in the HTTP middleware's path match), so the gate is explicit
@@ -164,7 +141,7 @@ export function createSearchRoute() {
           ),
         );
 
-        const groups = [sessionHistory, automations, projects, docs, ...extensionGroups].filter(
+        const groups = [sessionHistory, automations, docs, ...extensionGroups].filter(
           (g): g is SearchGroup => g !== null,
         );
         return c.json({ query, groups });

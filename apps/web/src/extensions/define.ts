@@ -44,6 +44,7 @@ export interface WebExtensionPageModule {
 }
 
 export interface WebExtensionPage {
+  applicationId?: string;
   /** Top-level hash segment: the page answers `#/<route>` and `#/<route>/...`. */
   route: string;
   component: LazyExoticComponent<ComponentType<ExtensionPageProps>> | ComponentType<ExtensionPageProps>;
@@ -129,10 +130,15 @@ export interface WebExtensionToolCard {
 }
 
 export interface WebExtensionTab {
+  page?: boolean;
+  default?: boolean;
+  titleKey?: ExtensionTranslationKey;
+  descriptionKey?: ExtensionTranslationKey;
+  sidebarPanel?: ComponentType<{ subPath: string }>;
   host: string;
   key: string;
   labelKey: ExtensionTranslationKey;
-  component: ComponentType;
+  component: ComponentType<{ subPath: string; params: URLSearchParams; tabs?: ReactNode }>;
 }
 export interface WebExtensionSlot {
   slot: string;
@@ -173,6 +179,7 @@ export interface WebExtension {
   toolCards?: WebExtensionToolCard[];
   /** Lucide icons for the extension's tools (trace rows, catalogs). */
   toolIcons?: Record<string, LucideIcon>;
+  entitySync?: Record<string, string>;
   /** Icons and peek bodies for the record kinds the API half registered. */
   entityKinds?: WebExtensionEntityKind[];
   /** Consent-screen copy for the MCP groups the API half registered. */
@@ -181,6 +188,12 @@ export interface WebExtension {
   knowledgeDocPanels?: WebExtensionKnowledgeDocPanel[];
   /** Agent-panel context for the extension's pages (label, quick actions, hint). */
   contextProvider?: ContextProviderDescriptor<'extension'>;
+  contextProviders?: ContextProviderDescriptor<any>[];
+  resolveContext?: (
+    route: string,
+    subPath: string,
+    params: URLSearchParams,
+  ) => import('@greenhouse/types/agent-context').PageContext | null;
   /** Imperative hook run once when the extension is loaded (registering client actions, etc.). */
   onLoad?: () => void;
 }

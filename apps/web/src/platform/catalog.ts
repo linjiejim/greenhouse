@@ -1,3 +1,4 @@
+import { registeredApplicationRoute } from '../lib/extension-registries';
 /**
  * Permission-aware Platform catalog contracts and pure presentation helpers.
  *
@@ -63,7 +64,9 @@ export function platformApplicationHref(application: PlatformApplication): strin
   // Complex application UI stays host-owned. Adding a new web application
   // requires a deliberate route registration here; Agent/MCP-only apps remain
   // valid catalog entries without producing a broken browser link.
-  if (!['projects', 'knowledge', 'tables'].includes(application.id)) return null;
+  const contributed = registeredApplicationRoute(application.id);
+  if (contributed) return contributed;
+  if (!['knowledge', 'tables'].includes(application.id)) return null;
   const path = application.navigation[0]?.path;
   if (!path || !path.startsWith('/')) return null;
   return `#${path}`;

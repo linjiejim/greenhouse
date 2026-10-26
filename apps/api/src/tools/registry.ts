@@ -21,8 +21,6 @@ import { analyzeImageTool } from './analyze-image.js';
 import { askUserTool } from './ask-user.js';
 import { externalSearchTool } from './external-search/index.js';
 import { generateImageTool } from './generate-image.js';
-import { projectQueryTool } from './project-query.js';
-import { projectMutationTool } from './project-mutation.js';
 import { computeTool } from './compute/tool.js';
 import { sessionQueryTool } from './session-query.js';
 import { taskCaptureTool } from './task-capture.js';
@@ -30,8 +28,6 @@ import { readAttachmentTool } from './read-attachment.js';
 import { callLlmTool } from './call-llm.js';
 import { knowledgeQueryTool } from './knowledge-query.js';
 import { knowledgeMutationTool } from './knowledge-mutation.js';
-import { skillQueryTool } from './skills/skill-query.js';
-import { skillMutationTool } from './skills/skill-mutation.js';
 import { tablesQueryTool } from './tables-query.js';
 import { tablesMutationTool } from './tables-mutation.js';
 import { tablesSchemaPlanTool } from './tables-schema-plan.js';
@@ -51,8 +47,6 @@ const CORE_TOOL_MODULES: ToolModule[] = [
   askUserTool,
   externalSearchTool,
   generateImageTool,
-  projectQueryTool,
-  projectMutationTool,
   computeTool,
   sessionQueryTool,
   taskCaptureTool,
@@ -60,8 +54,6 @@ const CORE_TOOL_MODULES: ToolModule[] = [
   callLlmTool,
   knowledgeQueryTool,
   knowledgeMutationTool,
-  skillQueryTool,
-  skillMutationTool,
   tablesQueryTool,
   tablesMutationTool,
   tablesSchemaPlanTool,
@@ -105,18 +97,23 @@ export const TOOL_DEFINITIONS: ToolMeta[] = [...TOOL_MODULES.map((m) => m.meta),
  * expands these before intersecting. (Proxy-side call aliases for once-exposed
  * ids live in tool-proxy's normalizeLegacyToolCall — input shapes differ there.)
  *
- * 2026-08-07: project_manager (a chat monolith = exactly its query ∪ mutation
- * pair) and session_history (⊂ session_query) retired.
- *
- * 2026-08-14: team_knowledge / personal_knowledge retired — the same table
- * behind a narrower scope, now `knowledge_query` with scope='team'|'personal'.
+ * Optional modules contribute their aliases only while enabled, like their tools.
  */
-export const RETIRED_TOOL_ALIASES: Readonly<Record<string, readonly string[]>> = {
-  project_manager: ['project_query', 'project_mutation'],
+const retiredAliases: Record<string, readonly string[]> = {
   session_history: ['session_query'],
   team_knowledge: ['knowledge_query'],
   personal_knowledge: ['knowledge_query'],
 };
+for (const aliases of fromExtensions('retiredToolAliases')) {
+  for (const [retired, successors] of Object.entries(aliases)) {
+    if (retired in retiredAliases || TOOL_DEFINITIONS.some((tool) => tool.id === retired))
+      throw new Error(`Retired tool alias "${retired}" collides with an existing tool or alias`);
+    if (!successors.length || successors.some((id) => !TOOL_DEFINITIONS.some((tool) => tool.id === id)))
+      throw new Error(`Retired tool alias "${retired}" must name live successor tools`);
+    retiredAliases[retired] = successors;
+  }
+}
+export const RETIRED_TOOL_ALIASES: Readonly<Record<string, readonly string[]>> = retiredAliases;
 
 // ─── Derived exposure sets (single source: each tool's `meta.surface`) ──────
 //

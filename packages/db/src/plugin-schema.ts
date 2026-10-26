@@ -4,3 +4,5 @@ export { users } from './schema/identity.js';
 
 export { conversations } from './schema/conversations.js';
 export { auditEvents } from './schema/audit.js';
+
+export { day } from './schema/_columns.js';

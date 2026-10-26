@@ -7,7 +7,7 @@ import { setExtensionAutomationTools, type AutomationOptInTool } from '@greenhou
  * deployments with different extension sets.
  */
 import { create } from 'zustand';
-import { registerEntityKinds, extensionEntityKinds } from '@greenhouse/types/entity-links';
+import { setExtensionEntityKinds, RESERVED_ENTITY_OWNERS } from '@greenhouse/types/entity-links';
 import type { ExtensionEntityKindDef } from '@greenhouse/types/entity-links';
 import { authFetch } from '../lib/auth';
 
@@ -26,7 +26,7 @@ export function setIncompatibleExtensionIds(ids: Iterable<string>): void {
   }
 }
 
-const kindOwner = (kind: string) => /^ext:([^:]+):/.exec(kind)?.[1];
+const kindOwner = (kind: string) => /^ext:([^:]+):/.exec(kind)?.[1] ?? RESERVED_ENTITY_OWNERS[kind];
 
 export interface ActiveExtension {
   id: string;
@@ -57,14 +57,7 @@ export const useExtensionsStore = create<ExtensionsStore>((set) => ({
         entityKinds?: ExtensionEntityKindDef[];
       };
       setExtensionAutomationTools(data.automationTools ?? []);
-      // Registration is idempotent on purpose: the store reloads after a
-      // re-login, and the shared registries reject a duplicate outright.
-      const knownKinds = new Set(extensionEntityKinds().map((def) => def.kind));
-      registerEntityKinds(
-        (data.entityKinds ?? []).filter(
-          (def) => !knownKinds.has(def.kind) && !incompatible.has(kindOwner(def.kind) ?? ''),
-        ),
-      );
+      setExtensionEntityKinds((data.entityKinds ?? []).filter((def) => !incompatible.has(kindOwner(def.kind) ?? '')));
       set({
         extensions: data.extensions.filter((e) => !incompatible.has(e.id)),
         loaded: true,
@@ -72,12 +65,14 @@ export const useExtensionsStore = create<ExtensionsStore>((set) => ({
       });
     } catch {
       setExtensionAutomationTools([]);
+      setExtensionEntityKinds([]);
       // Fail closed: an unreachable list means no extension UI, never a broken one.
       set({ extensions: [], loaded: true, conversationSharing: false });
     }
   },
   reset: () => {
     setExtensionAutomationTools([]);
+    setExtensionEntityKinds([]);
     set({ extensions: [], loaded: false, conversationSharing: false });
   },
 }));

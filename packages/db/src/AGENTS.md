@@ -218,10 +218,10 @@
 - 表格库成员在 `shares`（`resource_type='table_base'`），记录附件在 `file_links`（`target_type='table_record'`，`slot` = 字段 id）。
 - 没有表单、仪表盘、表内自动化、表格通知。
 
-### 项目
+### Projects plugin
 
-- `start_date` / `end_date` / `due_date` 是 `date`；`tags`、`dependencies` 是 jsonb 数组。
-- 项目与任务的动态经 `db.projects.logActivity()` 写 `audit_events`（`app_id='projects'`），`db.activity` 读；不另建活动表。
+The four project/task tables and their service are owned by [plugins/projects](../../../plugins/projects/AGENTS.md).
+Access them through its extension service bag; audit_events remains core.
 
 ### 运行（`db.runtime`）
 
@@ -290,11 +290,10 @@
 - `record()` 必须是单条 `onConflictDoUpdate`（两个并发写入者），样本集的去重 + 取最新 5 条在同一条 SQL 里算；`sample_sessions` 是逻辑引用。
 - `kind=request` 与 `kind=friction` 的列形状由 `chk_feedback_shape` 约束。
 
-### 技能中心
+### SkillHub plugin
 
-- 扫描状态挂 `skills`（技能级），`scan_version` 记结论来自哪一版；不加版本级冗余列。
-- `scanned_at IS NULL` 是「从未扫过」的唯一判据；不把未扫的行刷成 `clean`。
-- `setScanResult()` 不动 `updated_at`（目录排序键），并清空人工裁定列；人工裁定走 `setScanDecision()`，只有 super（校验在 `apps/api/src/skills/center.ts`）。
+The catalogue/version schema and scan persistence are owned by [plugins/skills](../../../plugins/skills/AGENTS.md).
+Saved prompts remain core. Skill services are absent from DatabaseProvider.
 
 ### 云电脑
 
@@ -337,3 +336,8 @@
 - Email owns `email_accounts`; Feishu owns `feishu_conversations` / `feishu_receipts`; use their extension service bags. WeCom owns no tables. Generic `provider_connections` and `login_states` remain core.
 - Migration 0004 advances Email/Feishu ownership without DDL. Migration 0005 removes notification kind/channel CHECKs; `notifications.createWithStatus/createDelivery` validate against active registries. Keep the immutable baseline and stored rows unchanged.
 - Feishu receipt retention (7 days) is contributed by that plugin, never hard-coded in core cleanup.
+
+- Migration 0006 advances SkillHub/Projects ownership without DDL. Their six tables are adopted
+  by plugin lanes; current core schema has 60 tables and the complete 3.0 data set still has 73.
+- Activity cursor SQL and bounded feed scans are shared host helpers. Plugin domain-event
+  capabilities are excluded from the platform-action view through activity contributions.

@@ -28,12 +28,12 @@ describe('unattended-context tool denylist', () => {
       filterUnattendedToolIds([
         'knowledge_query',
         'knowledge_mutation',
-        'project_query',
-        'project_mutation',
+        'session_query',
+        'files_mutation',
         'tables_mutation',
         'memory',
       ]),
-    ).toEqual(['knowledge_query', 'project_query']);
+    ).toEqual(['knowledge_query', 'session_query']);
   });
 
   it('requires an explicit replay-safe declaration instead of trusting proxy read', () => {

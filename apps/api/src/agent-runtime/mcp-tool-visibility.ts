@@ -15,7 +15,6 @@ import { MUTATING_PROXY_ALLOWLIST, resolveProxyToolIds } from './tool-proxy.js';
 import { MCP_EXPOSED_TOOL_IDS } from '../tools/registry.js';
 import { delegatedAgentActor } from '../platform/actor.js';
 import { getPlatformRuntime } from '../platform/runtime.js';
-import { projectsManifest } from '../platform/manifests/projects.js';
 import { knowledgeManifest } from '../platform/manifests/knowledge.js';
 import { tablesManifest } from '../platform/manifests/tables.js';
 import { extensionPlatformToolCapabilities } from '../extensions/boot.js';
@@ -28,7 +27,7 @@ import { extensionPlatformToolCapabilities } from '../extensions/boot.js';
 export const MCP_PROFILE_ID = 'desktop';
 
 function capabilitiesByActionKind(
-  manifest: typeof projectsManifest | typeof knowledgeManifest | typeof tablesManifest,
+  manifest: typeof knowledgeManifest | typeof tablesManifest,
   kind: 'query' | 'command',
 ): string[] {
   return [
@@ -41,8 +40,6 @@ function capabilitiesByActionKind(
 }
 
 const PLATFORM_TOOL_CAPABILITIES: Readonly<Record<string, readonly string[]>> = {
-  project_query: capabilitiesByActionKind(projectsManifest, 'query'),
-  project_mutation: capabilitiesByActionKind(projectsManifest, 'command'),
   knowledge_query: capabilitiesByActionKind(knowledgeManifest, 'query'),
   knowledge_mutation: capabilitiesByActionKind(knowledgeManifest, 'command'),
   tables_query: capabilitiesByActionKind(tablesManifest, 'query'),

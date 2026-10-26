@@ -107,3 +107,16 @@ export { type CrudFieldRenderProps } from './pages/settings/crud';
 export { storeAuthenticatedSession, type AuthenticatedUser } from './lib/auth';
 
 export { apiUrl } from './lib/api-base';
+
+export { Avatar, Drawer, FilterPills, ResizeHandle } from './components/ui';
+export { FormActions, FormError, FormField, FormGrid, FormGroup } from './components/form';
+export { useAgentContext } from './components/agent-context-value';
+export { usePlatformCatalog } from './stores/platform-store';
+export { CATEGORICAL_CHOICES, categoricalColor, categoricalHex, categoricalName } from './lib/categorical';
+export { downloadAuthenticatedFile } from './lib/file-download';
+export { getStoredLocale } from './lib/i18n';
+export type { TranslationKey } from './lib/i18n';
+
+export { Tag as TagIcon } from './lib/icons';
+
+export { bumpPatch, isValidSemver } from '@greenhouse/utils/semver';

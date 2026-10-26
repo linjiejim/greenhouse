@@ -464,8 +464,6 @@ export const TOOL_ICONS: Record<string, LucideIcon> = {
   knowledge_query: BookOpen,
 
   compute: Calculator,
-  skill_query: Package,
-  skill_mutation: Upload,
   tables_query: Table2,
   tables_mutation: Table2,
   tables_schema_plan: Columns3,

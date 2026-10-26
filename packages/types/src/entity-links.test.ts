@@ -1,3 +1,6 @@
+import { registerEntityKinds, extensionEntityKinds } from '@greenhouse/types/entity-links';
+if (!extensionEntityKinds().some((entry) => entry.kind === 'project'))
+  registerEntityKinds([{ kind: 'project', route: '#/projects/:id' }]);
 import { describe, expect, it } from 'vitest';
 import { ENTITY_KINDS, type EntityRef, entityUrl, isEntityUrl, parseEntityUrl } from './entity-links.js';
 

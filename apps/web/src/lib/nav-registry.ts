@@ -1,3 +1,4 @@
+import { registeredHostTitle } from './extension-registries';
 /**
  * Unified navigation module registry.
  *
@@ -25,7 +26,6 @@ import {
   Gauge,
   Zap,
   Table2,
-  FolderKanban,
   FolderOpen,
   History,
 } from './icons';
@@ -282,15 +282,6 @@ const STANDALONE_MODULES: NavModule[] = [
     pinnable: false,
   },
   {
-    id: 'workspace.projects',
-    label: 'Projects',
-    icon: FolderKanban,
-    path: '#/projects',
-    parent: 'standalone',
-    description: 'Active, planned, and paused projects in one portfolio view',
-    pinnable: false,
-  },
-  {
     id: 'workspace.activity',
     label: 'Activity log',
     icon: History,
@@ -301,7 +292,7 @@ const STANDALONE_MODULES: NavModule[] = [
   },
   {
     id: 'workspace.skillhub',
-    label: 'SkillHub',
+    label: 'My prompts',
     icon: Package,
     path: '#/skillhub',
     parent: 'standalone',
@@ -348,12 +339,19 @@ const NAV_COPY: Record<
   'workspace.files': { label: 'navigation.files', description: 'navigation.filesDesc' },
   'workspace.automations': { label: 'navigation.automation', description: 'navigation.automationDesc' },
   'workspace.tables': { label: 'navigation.tables', description: 'navigation.tablesDesc' },
-  'workspace.projects': { label: 'projects.title', description: 'navigation.projectsDesc' },
   'workspace.activity': { label: 'navigation.activityLog', description: 'navigation.activityLogDesc' },
-  'workspace.skillhub': { label: 'skillHub.title', description: 'navigation.skillHubDesc' },
+  'workspace.skillhub': { label: 'savedPrompts.title' },
 };
 const englishT: Translate = (key, params) => translate('en', key, params);
 export function localizeNavModule(module: NavModule, t: Translate): NavModule {
+  const host = module.path?.split('/')[1]?.split('?')[0];
+  const contributed = host ? registeredHostTitle(host) : undefined;
+  if (contributed)
+    return {
+      ...module,
+      label: t(contributed.titleKey as TranslationKey),
+      description: contributed.descriptionKey ? t(contributed.descriptionKey as TranslationKey) : module.description,
+    };
   if (module.labelKey) {
     return {
       ...module,
@@ -433,14 +431,14 @@ export function registerExtensionPageModules(
   // would resolve but have nothing to hang off.
   EXTENSION_ROUTE_TITLES.set(route, titleKey ?? `ext.${extensionId}.title`);
   for (const mod of modules) {
-    const id = `${extensionId}.${mod.key}`;
+    const id = mod.key ? `${extensionId}.${mod.key}` : extensionId;
     if (MODULE_MAP.has(id))
       throw new Error(`Extension "${extensionId}" registers page module "${id}" twice or over a core module`);
     const navModule: NavModule = {
       id,
       label: mod.key,
       icon: mod.icon,
-      path: `#/${route}/${mod.key}`,
+      path: mod.key ? `#/${route}/${mod.key}` : `#/${route}`,
       parent: 'standalone',
       requireRole: mod.requireRole,
       requireFeature: mod.requireFeature,
