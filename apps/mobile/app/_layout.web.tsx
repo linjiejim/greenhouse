@@ -33,7 +33,7 @@ import { clearHandoffs } from '../src/lib/handoff';
 
 import 'react-native-gesture-handler';
 import '../src/shell/client.css';
-import { WideShell } from '../src/shell/wide-shell.web';
+import { ClientShell } from '../src/desktop/client-shell';
 import { mapLegacyLink } from '../src/shell/legacy-links';
 
 import React, { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
@@ -185,7 +185,7 @@ export default function RootLayout() {
             ) : mismatch ? (
               <MismatchScreen mismatch={mismatch} />
             ) : (
-              <WideShell>
+              <ClientShell>
                 <Stack
                   screenOptions={{ ...stackDefaults(c, hex, isDark), headerShown: false }}
                   screenLayout={sheetEdgeLayout}
@@ -227,7 +227,7 @@ export default function RootLayout() {
                   {/* ── 「我」: a page sheet with its own stack ── */}
                   <Stack.Screen name="me" options={modalScreen()} />
                 </Stack>
-              </WideShell>
+              </ClientShell>
             )}
           </StartupContext.Provider>
           {/* over the app until its mark is built and the app is ready, then it fades away */}

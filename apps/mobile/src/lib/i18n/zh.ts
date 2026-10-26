@@ -107,6 +107,7 @@ export const zh: Catalog = {
     error: '出错了，请重试',
     save: '保存',
     retry: '重试',
+    refresh: '刷新',
     reload: '重新加载',
     listSep: '、',
     discardTitle: '放弃更改？',
@@ -889,5 +890,12 @@ export const zh: Catalog = {
     yearMonthDay: '{year} 年 {month} 月 {day} 日',
     months: '',
     short: { now: '刚刚', m: '{n}分', h: '{n}小时', d: '{n}天', w: '{n}周', y: '{n}年' },
+  },
+  desktop: {
+    noUpdate: '已是最新版本。',
+    quickAsk: '快问',
+    signIn: '在主窗口登录',
+    send: '发送',
+    openMain: '在主窗口打开',
   },
 };

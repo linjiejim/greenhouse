@@ -18,7 +18,14 @@ export function useShortcut(shortcut: string | undefined, action: () => void, en
       event.preventDefault();
       latest.current();
     };
+    const native = (event: Event) => {
+      if ((event as CustomEvent<string>).detail === shortcut) latest.current();
+    };
+    window.addEventListener('greenhouse:shortcut', native);
     window.addEventListener('keydown', run);
-    return () => window.removeEventListener('keydown', run);
+    return () => {
+      window.removeEventListener('keydown', run);
+      window.removeEventListener('greenhouse:shortcut', native);
+    };
   }, [shortcut, enabled]);
 }

@@ -129,3 +129,11 @@
 - Passive field Chips share their containing row's click target and do not take keyboard focus.
 - The visible main pane remains in the accessibility tree beside a wide inspector; phone sheets keep their modal presentation.
 - Design captures show loaded content after appearance changes; embedded sample pages apply the supplied foreground and background tokens.
+
+## macOS host (C6)
+
+- Only the desktop bridge reserves 52 px above the rail for inset traffic lights; the browser rail uses its normal top spacing.
+- The native host supplies sidebar vibrancy behind the rail and secondary column; main content stays opaque.
+- Desktop settings keep the existing settings layout in a separate native window; station controls use the shared station form behavior.
+- Quick ask is a 560 px borderless composer with a four-line reply preview and an explicit Open in main window action.
+- Inspector dismissal preserves the underlying entity list's loaded pages and scroll position.

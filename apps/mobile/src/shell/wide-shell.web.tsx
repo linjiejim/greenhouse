@@ -1,3 +1,5 @@
+import { SHORTCUTS } from '../desktop/shortcuts';
+import { shellChrome, railChrome, secondaryChrome, syncNativePlaces, openSettings } from '../desktop/chrome';
 import { nativeVisible, pluginHref } from '../plugins/navigation';
 import { PlaceSecondaryContext } from './place-secondary.web';
 import { AccountMenu, NotificationsPopover, SearchPalette } from './desktop-tools.web';
@@ -87,20 +89,21 @@ export function WideShell({ children }: { children: React.ReactNode }) {
     }),
     [],
   );
-  useShortcut('mod+\\', context.toggleSecondary, !!user);
-  useShortcut('mod+n', () => router.navigate('/'), !!user);
+  useShortcut(SHORTCUTS.secondary, context.toggleSecondary, !!user);
+  useShortcut(SHORTCUTS.new, () => router.navigate('/'), !!user);
   useShortcut(
-    'mod+k',
+    SHORTCUTS.search,
     () => {
       if (layout.wide) setSearch((v) => !v);
       else router.push('/search');
     },
     !!user,
   );
-  useShortcut('mod+,', () => router.push('/me'), !!user);
+  useShortcut(SHORTCUTS.settings, () => openSettings(() => router.push('/me')), !!user);
   useShortcut(
-    'mod+r',
+    SHORTCUTS.refresh,
     () => {
+      window.dispatchEvent(new CustomEvent('greenhouse:refresh'));
       void useSessions.getState().refresh();
       void useNotifications.getState().refresh();
     },
@@ -144,6 +147,28 @@ export function WideShell({ children }: { children: React.ReactNode }) {
   const primary = pluginNavigation(manifest, 'primary').filter(
     (n) => !['knowledge', 'tables', 'projects'].includes(n.page.kind === 'native' ? n.page.screen : ''),
   );
+  const nativePlaces = JSON.stringify(
+    user
+      ? [
+          ...places,
+          ...primary.map((n) => ({
+            id: `${n.plugin.id}/${n.page.id}`,
+            label: localize(n.nav.label, lang),
+            href: pluginHref(n.plugin.id, n.page),
+          })),
+        ]
+      : [],
+  );
+  useEffect(() => {
+    const entries: { id: string; label: string; href: string }[] = JSON.parse(nativePlaces);
+    syncNativePlaces(entries);
+    const go = (event: Event) => {
+      const place = entries.find((p) => p.id === (event as CustomEvent<string>).detail);
+      if (place) router.navigate(place.href as never);
+    };
+    window.addEventListener('greenhouse:place', go);
+    return () => window.removeEventListener('greenhouse:place', go);
+  }, [nativePlaces, router]);
   const go = (href: string) => router.navigate(href as never);
   const rail = (id: string, label: string, icon: IconName, onPress: () => void, selected = false) => (
     <Pressable
@@ -173,7 +198,7 @@ export function WideShell({ children }: { children: React.ReactNode }) {
   return (
     <ShellContext.Provider value={context}>
       <PlaceSecondaryContext.Provider value={secondaryHost}>
-        <View style={{ flex: 1, flexDirection: 'row', backgroundColor: c.background }}>
+        <View style={{ flex: 1, flexDirection: 'row', backgroundColor: c.background, ...shellChrome }}>
           {chrome ? (
             <View
               key="rail"
@@ -183,7 +208,7 @@ export function WideShell({ children }: { children: React.ReactNode }) {
                 backgroundColor: c.sidebarBackground,
                 borderRightWidth: 1,
                 borderRightColor: c.separator,
-                paddingTop: 52,
+                ...railChrome,
                 paddingBottom: space.md,
               }}
             >
@@ -257,6 +282,7 @@ export function WideShell({ children }: { children: React.ReactNode }) {
               style={{
                 width: SECONDARY_WIDTH,
                 backgroundColor: c.groupedBackground,
+                ...secondaryChrome,
                 borderRightWidth: 1,
                 borderRightColor: c.separator,
               }}
@@ -558,6 +584,6 @@ function Secondary({
 
 function RailShortcut({ href, index }: { href: string; index: number }) {
   const router = useRouter();
-  useShortcut(`mod+${index + 1}`, () => router.navigate(href as never));
+  useShortcut(SHORTCUTS[`place-${index + 1}`], () => router.navigate(href as never));
   return null;
 }

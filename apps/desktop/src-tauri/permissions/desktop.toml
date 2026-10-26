@@ -1,0 +1,4 @@
+[[permission]]
+identifier = "desktop"
+description = "The bundled client shell bridge"
+commands.allow = ["sync_places", "notify_unread", "take_links", "take_routes", "open_main", "open_settings", "close_window", "open_external", "check_update"]

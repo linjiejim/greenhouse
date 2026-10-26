@@ -1,3 +1,4 @@
+import { closeSettings } from '../../src/desktop/chrome';
 import React from 'react';
 import { Stack, useRouter, usePathname } from 'expo-router';
 import { useWindowDimensions } from 'react-native';
@@ -56,7 +57,11 @@ export default function SettingsLayout() {
         </nav>
       </aside>
       <div className="gh-settings-main">
-        <button className="gh-settings-close" aria-label={t('common.close')} onClick={() => router.dismiss()}>
+        <button
+          className="gh-settings-close"
+          aria-label={t('common.close')}
+          onClick={() => closeSettings(() => router.dismiss())}
+        >
           ×
         </button>
         {body}

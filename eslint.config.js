@@ -10,6 +10,8 @@ export default tseslint.config(
       'node_modules/',
       'dist/',
       '**/dist/',
+      '**/target/',
+      '.cargo-home/',
       'public/',
       'drizzle/',
       'data/',

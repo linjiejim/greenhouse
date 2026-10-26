@@ -184,7 +184,13 @@ test('Plugins entity list filters, sort, infinite pages, inspector edit and conf
   const inspector = page.getByTestId('client-inspector').filter({ visible: true });
   await expect(inspector).toContainText('Shared notes');
   await expect(list.getByRole('row', { name: 'Acme Analytics', exact: true })).toHaveAttribute('aria-selected', 'true');
+  const loadedQueries = f.queries.length;
+  const scrollBeforeClose = await list.evaluate((el) => el.scrollTop);
   await page.keyboard.press('Escape');
+  await expect(inspector).toHaveCount(0);
+  await expect(list.getByRole('row', { name: 'Acme Analytics', exact: true })).toBeVisible();
+  expect(f.queries.length).toBe(loadedQueries);
+  expect(await list.evaluate((el) => el.scrollTop)).toBe(scrollBeforeClose);
   await list.getByRole('row', { name: 'Acme Analytics', exact: true }).getByText('open', { exact: true }).click();
   await expect(inspector).toContainText('Shared notes');
   await screenshot(page, 'entity-detail');

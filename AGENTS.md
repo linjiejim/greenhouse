@@ -245,6 +245,7 @@ greenhouse/
 │   │       └── cli/          # `pnpm cli` console: index.ts dispatcher + commands/*
 │   ├── web/              # React SPA — pages (administration/, settings/, executions/, …), components,
 │   │                     #   lib, stores, platform catalog, extensions/ (web half of the seam)
+│   ├── desktop/          # macOS Tauri 2 shell; bundled Expo client, native bridge only
 │   └── mobile/           # Expo (React Native) app — NOT a workspace member; see its AGENTS.md
 ├── packages/
 │   ├── agent-core/       # Agent kernel — streamText loop, model factory/registry, provider quirks
@@ -355,6 +356,12 @@ greenhouse/
 - **Client stations**: `clients.stations` (`multi` | `single` + `defaults`) describes how client
   builds treat servers. No server code reads it; the mobile app mirrors it through
   `EXPO_PUBLIC_STATIONS_MODE` / `EXPO_PUBLIC_API_BASE_URL` (see `apps/mobile/AGENTS.md`).
+
+## Desktop client
+
+- `apps/desktop` bundles the universal Expo web export; `pnpm desktop:check` and `pnpm desktop:build` verify and create the local unsigned macOS app/DMG. Native integration rules live in `apps/desktop/AGENTS.md`.
+- Desktop exports set `GREENHOUSE_DESKTOP=1`; Metro prioritizes `.desktop.tsx` / `.desktop.ts` for bridge modules. Browser builds retain single-station behavior; desktop uses the phone's multi-station contract.
+- Keep the old desktop bundle id and updater public key. Signing/notarisation and enabling a feed are release-operator steps documented in `apps/desktop/README.md`.
 
 ## Domain rules
 

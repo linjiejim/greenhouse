@@ -84,7 +84,15 @@ export default defineConfig({
     // .claude/** holds agent worktrees (full repo copies) — never collect them.
     // skillhub/** ships in-bundle node:test files (*.test.mjs) that vitest
     // cannot parse; tests/skillhub/bundles.test.ts runs them via `node --test`.
-    exclude: ['tests/e2e/**', 'tests/e2e-ui/**', '**/node_modules/**', '**/.claude/**', 'skillhub/**'],
+    exclude: [
+      'tests/e2e/**',
+      'tests/e2e-ui/**',
+      '**/node_modules/**',
+      '**/.claude/**',
+      'skillhub/**',
+      '.cargo-home/**',
+      '**/target/**',
+    ],
     // Silence app loggers so error-path tests don't spam the run output.
     // Override with LOG_LEVEL=debug when debugging a specific test.
     env: { LOG_LEVEL: process.env.LOG_LEVEL ?? 'silent' },
@@ -102,6 +110,8 @@ export default defineConfig({
             '**/node_modules/**',
             '**/.claude/**',
             'skillhub/**',
+            '.cargo-home/**',
+            '**/target/**',
           ],
           // `forks`, not `vmThreads`, and the difference is memory, not speed.
           // A VM context is cheaper per file, but its ESM module cache is never

@@ -269,7 +269,7 @@ Deliberately **not** on MCP: email (its safety is a person reading the draft), `
   and push is not configured.
 - **CLI** — `pnpm cli` (see [Quick start](#quick-start-local-development)).
 
-There is no desktop app and no browser extension in 3.0.
+The macOS desktop shell is available as a local unsigned build for the universal client: `pnpm desktop:check` and `pnpm desktop:build`. It bundles the Expo client, supports multiple stations, and supplies native menus, notifications, Keychain storage and Quick ask (Ctrl+Alt+Space). See [desktop build and signing instructions](apps/desktop/README.md). There is no browser extension.
 
 ### Off by default
 
@@ -280,7 +280,7 @@ Model gateway (`gateway.enabled` / `GATEWAY_ENABLED`) · cloud computer (`comput
 
 ### Removed
 
-Bots, Missions, rooms, evaluations, Workflows, the team LLM relay of 1.x, the desktop app, the
+Bots, Missions, rooms, evaluations, Workflows, the team LLM relay of 1.x, the old desktop app, the
 browser extension, session tags and groups, sub-sessions, user groups, document comments and
 backlinks, and table forms / dashboards / in-table automations. Old conversations and runs of
 removed kinds stay readable.
@@ -296,9 +296,10 @@ greenhouse/
 │   ├── api/                  # Hono backend — routes, agent runtime, platform kernel, auth,
 │   │                         #   scheduler, runtime kernel, CLI; also serves the web SPA at `/`
 │   ├── web/                  # React + Vite single-page app (hash router)
-│   └── mobile/               # Expo (React Native) iOS app — Sprouty chat, knowledge, files +
+│   ├── mobile/               # Expo (React Native) iOS app — Sprouty chat, knowledge, files +
 │                             #   tables, projects, notifications + push, widgets, stations;
 │                             #   isolated install (pnpm mobile:install, then pnpm mobile)
+│   └── desktop/              # macOS Tauri shell; bundles the universal Expo client
 ├── packages/
 │   ├── agent-core/           # Agent kernel — streamText loop, OpenAI-compatible model factory
 │   │                         #   + registry, provider quirks (no DB dependency)
@@ -506,7 +507,7 @@ These describe upgrades inside the 1.x line. A 3.0 install starts from the new b
 tables they mention are simply absent; they are kept for readers still on 1.x.
 
 > **Upgrading to 1.5** — Greenhouse narrows to a team agent hub: members bring their own
-> agents over MCP, and the in-app agent is an assistant. The desktop app (Tauri shell) is
+> agents over MCP, and the in-app agent is an assistant. The retired desktop app (Tauri shell) was
 > removed — use the web app in a browser; installed shells stop receiving updates. The browser
 > extension (Greenhouse Bridge) is removed and no longer attached to releases; conversations it
 > started stay readable and keep their read-only tool face. Session tags and custom session

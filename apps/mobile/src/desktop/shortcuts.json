@@ -1,0 +1,86 @@
+[
+  {
+    "id": "new",
+    "label": "新对话",
+    "shortcut": "mod+n",
+    "accelerator": "CmdOrCtrl+N",
+    "menu": "file"
+  },
+  {
+    "id": "search",
+    "label": "搜索与命令",
+    "shortcut": "mod+k",
+    "accelerator": "CmdOrCtrl+K",
+    "menu": "view"
+  },
+  {
+    "id": "secondary",
+    "label": "显示或隐藏二级栏",
+    "shortcut": "mod+\\",
+    "accelerator": "CmdOrCtrl+\\",
+    "menu": "view"
+  },
+  {
+    "id": "settings",
+    "label": "设置…",
+    "shortcut": "mod+,",
+    "accelerator": "CmdOrCtrl+,",
+    "menu": "app"
+  },
+  {
+    "id": "refresh",
+    "label": "刷新",
+    "shortcut": "mod+r",
+    "accelerator": "CmdOrCtrl+R",
+    "menu": "view"
+  },
+  {
+    "id": "close",
+    "label": "关闭检视面板或窗口",
+    "shortcut": "mod+w",
+    "accelerator": "CmdOrCtrl+W",
+    "menu": "file"
+  },
+  {
+    "id": "place-1",
+    "label": "前往 1",
+    "shortcut": "mod+1",
+    "accelerator": "CmdOrCtrl+1",
+    "menu": "go"
+  },
+  {
+    "id": "place-2",
+    "label": "前往 2",
+    "shortcut": "mod+2",
+    "accelerator": "CmdOrCtrl+2",
+    "menu": "go"
+  },
+  {
+    "id": "place-3",
+    "label": "前往 3",
+    "shortcut": "mod+3",
+    "accelerator": "CmdOrCtrl+3",
+    "menu": "go"
+  },
+  {
+    "id": "place-4",
+    "label": "前往 4",
+    "shortcut": "mod+4",
+    "accelerator": "CmdOrCtrl+4",
+    "menu": "go"
+  },
+  {
+    "id": "place-5",
+    "label": "前往 5",
+    "shortcut": "mod+5",
+    "accelerator": "CmdOrCtrl+5",
+    "menu": "go"
+  },
+  {
+    "id": "place-6",
+    "label": "前往 6",
+    "shortcut": "mod+6",
+    "accelerator": "CmdOrCtrl+6",
+    "menu": "go"
+  }
+]

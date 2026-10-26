@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 
 import { useEntityList } from './entity-hooks';
 import { NativeMenu } from '../ui/menu.web';
@@ -30,6 +30,13 @@ export function EntityList({
     fields = entityColumns(entity, view);
   const [context, setContext] = useState<PlaceContextPoint | null>(null);
   const list = useEntityList(entity, view, filters, sort);
+  useEffect(() => {
+    const refresh = () => {
+      void list.refresh();
+    };
+    window.addEventListener('greenhouse:refresh', refresh);
+    return () => window.removeEventListener('greenhouse:refresh', refresh);
+  });
   const [selected, setSelected] = useState<string>();
   const inspect = (id: string) => {
     setSelected(id);
@@ -37,7 +44,14 @@ export function EntityList({
   };
   return (
     <>
-      <Place title={`${localize(page.title, lang)} · ${list.total}`}>
+      <Place
+        title={`${localize(page.title, lang)} · ${list.total}`}
+        actions={
+          <button onClick={() => void list.refresh()} disabled={list.loading}>
+            {t('common.refresh')}
+          </button>
+        }
+      >
         <div className="gh-place-tabs">
           {(view?.filters ?? []).map((key) => {
             const f = entity.fields.find((f) => f.key === key && f.filterable);

@@ -1,4 +1,3 @@
-import { useIsFocused } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { get, type ApiResult } from '../api/client';
 import { captureIdentity } from '../data/identity';
@@ -16,7 +15,6 @@ export function useEntityList(
     [total, setTotal] = useState(0),
     [loading, setLoading] = useState(false),
     [error, setError] = useState('');
-  const focused = useIsFocused();
   const station = useStations((s) => s.activeId),
     member = useAuth((s) => s.user?.id);
   const generation = useRef(0),
@@ -52,7 +50,6 @@ export function useEntityList(
     [entity.endpoint, query],
   );
   useEffect(() => {
-    if (!focused) return;
     const gen = ++generation.current;
     setItems([]);
     setTotal(0);
@@ -63,7 +60,9 @@ export function useEntityList(
       // eslint-disable-next-line react-hooks/exhaustive-deps
       generation.current++;
     };
-  }, [request, station, member, focused]);
+    // An inspector covers this route without changing its query. Keep its pages
+    // and DOM scroll container alive when navigation focus returns to the list.
+  }, [request, station, member]);
   const more = () => {
     if (!busy.current && items.length < total) void request(items.length, generation.current);
   };

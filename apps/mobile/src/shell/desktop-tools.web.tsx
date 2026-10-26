@@ -1,4 +1,6 @@
 /** Desktop overlays reuse the phone's search adapters and notification center. */
+import { IS_SINGLE_STATION } from '../config';
+import { openSettings, openStationSettings } from '../desktop/chrome';
 import React, { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'expo-router';
 import { Overlay } from '../ui/overlay.web';
@@ -35,7 +37,7 @@ export function AccountMenu() {
           id: 'station',
           title: `${t('client.station')} · ${new URL(getApiBase()).host}`,
           icon: 'server',
-          disabled: true,
+          disabled: IS_SINGLE_STATION,
         },
         { id: 'text', title: t('client.textSize'), icon: 'textSize' },
         { id: 'agents', title: t('client.agents'), icon: 'sparkle' },
@@ -43,7 +45,9 @@ export function AccountMenu() {
         { id: 'logout', title: t('client.signOut'), icon: 'logout', destructive: true },
       ]}
       onSelect={(id) => {
-        if (id === 'logout') void useAuth.getState().logout();
+        if (id === 'settings') openSettings(() => router.push('/me'));
+        else if (id === 'station') openStationSettings(() => router.push('/me/stations'));
+        else if (id === 'logout') void useAuth.getState().logout();
         else router.push(id === 'agents' ? '/me/agents' : ({ pathname: '/me', params: { section: id } } as never));
       }}
     >

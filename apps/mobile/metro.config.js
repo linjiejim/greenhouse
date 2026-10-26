@@ -12,6 +12,10 @@ const fs = require('fs');
 
 const config = getDefaultConfig(__dirname);
 
+if (process.env.GREENHOUSE_DESKTOP === '1') {
+  config.resolver.sourceExts = ['desktop.tsx', 'desktop.ts', ...config.resolver.sourceExts];
+}
+
 const rootModules = path.resolve(__dirname, '..', '..', 'node_modules');
 const escaped = rootModules.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const blockRoot = new RegExp(`^${escaped}[\\\\/].*`);

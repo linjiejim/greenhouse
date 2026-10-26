@@ -110,6 +110,7 @@ export const en = {
     error: 'Something went wrong, please retry',
     save: 'Save',
     retry: 'Retry',
+    refresh: 'Refresh',
     reload: 'Reload',
     listSep: ', ',
     discardTitle: 'Discard changes?',
@@ -905,6 +906,13 @@ export const en = {
     yearMonthDay: '{monthName} {day}, {year}',
     months: 'Jan,Feb,Mar,Apr,May,Jun,Jul,Aug,Sep,Oct,Nov,Dec',
     short: { now: 'now', m: '{n}m', h: '{n}h', d: '{n}d', w: '{n}w', y: '{n}y' },
+  },
+  desktop: {
+    noUpdate: 'No update available.',
+    quickAsk: 'Quick ask',
+    signIn: 'Sign in in the main window',
+    send: 'Send',
+    openMain: 'Open in main window',
   },
 };
 

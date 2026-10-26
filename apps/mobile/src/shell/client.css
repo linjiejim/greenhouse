@@ -777,3 +777,10 @@ button.gh-object-field:hover {
   font-size: inherit !important;
   line-height: inherit !important;
 }
+
+/* The native sidebar material is visible only behind these two chrome columns. */
+html[data-desktop-window] body,
+html[data-desktop-window] #root { background: transparent; }
+html[data-desktop-window] [data-testid="client-main"] { background: var(--gh-canvas); }
+.gh-desktop-error { position: fixed; bottom: 12px; left: 12px; right: 12px; padding: 12px; background: var(--gh-raised); color: var(--gh-label); border: 1px solid var(--gh-line); z-index: 10000; display: flex; justify-content: space-between; }
+html[data-desktop-window="settings"] .gh-settings { padding-top: 52px; box-sizing: border-box; }

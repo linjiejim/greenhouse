@@ -198,7 +198,7 @@
 - Classic UI components depend on workspace packages, stores, routing and CSS that the isolated Expo app cannot import. Reuse their editor schema and existing mobile domain hooks; keep browser grid/board adapters behind DOM components, without a second API or permissions layer.
 - Native Metro resolution redirects web-only route-context dependencies to shared routes; browser editors/grids/boards must not add DOM bundles to the iOS export.
 - Official native screen descriptors and nav glue live under `src/plugins/<id>/`; `native-registry.ts` only aggregates them. A v2 place requires an actual native nav entry, not just an installed plugin id; legacy stations retain their original navigation.
-- Entity surfaces follow the CRUD `skip/limit/sort/filter` protocol, deduplicate infinite pages and invalidate pending reads on identity/query/focus changes. Detail actions are limited to manifest actions and writable fields; deletion confirms first.
+- Entity surfaces follow the CRUD `skip/limit/sort/filter` protocol, deduplicate infinite pages and invalidate pending reads on identity/query changes. Detail actions are limited to manifest actions and writable fields; deletion confirms first.
 - Plugin record sheets use `sheet/plugin` and the same three-level inspector stack and promotion rules as built-in objects.
 - Plugin settings use `GET/PUT /api/admin/settings`, submit only changed declared keys, preserve masked secrets and display server errors. Unknown keys never create speculative controls.
 - Trusted plugin frames use `WebFrame` with a real origin and the plugin bridge; check both source window and exact origin. They receive only `/api/ext-ui/token` credentials (404 means an empty token). Chat/document previews retain their opaque sandbox and never receive credentials.
@@ -222,3 +222,13 @@
 - Passive Touchables render a View, so enum Chips do not consume their record row's click or add a tab stop.
 - The web route frame adapts NativeStack's `aria-hidden` on the visible main screen while a wide inspector is open; covered routes and phone sheets retain stack semantics.
 - Screenshot tests wait for the startup cover and expected content after reload; dark chat captures reopen the chat before its inspector, and embed fixtures apply received theme tokens.
+
+## macOS shell (C6)
+
+- `src/desktop` contains native shell bridges. Metro's desktop source extensions are enabled only by GREENHOUSE_DESKTOP=1; UI pages never branch on desktop detection.
+- Desktop bundles use the phone's station configuration, Keychain token storage through a scoped Tauri plugin, and X-Greenhouse-Client: desktop. Browser configuration and token storage remain unchanged.
+- `src/desktop/shortcuts.json` is the shared menu/useShortcut table; native Go items follow the authorized rail, including primary plugin places.
+- Quick ask reuses the ordinary session API, send transport and stream reducer. Settings reuses the me routes in a native window.
+- Desktop windows synchronize station/session changes without localStorage tokens and use Web Locks around one-use refresh-token rotation.
+- Entity lists keep pages and scroll when covered by an inspector; only query/identity changes and explicit refresh reload them. Pending replies from previous queries remain invalidated.
+- Browser Playwright specs are collected in restricted runners; desktop native behavior is accepted by the reviewer after a successful local build.
