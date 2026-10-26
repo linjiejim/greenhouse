@@ -5,77 +5,128 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## Unreleased
+## 4.0.0-rc.1 (2026-10-27)
 
-### Fixed
+Release candidate for testing; publication is a maintainer step described in [RELEASING.md](RELEASING.md).
 
-- SDK 2 entity writes reject unknown, immutable and member-forbidden fields across REST, agent/MCP tools and direct runtime calls; ownership is stamped on create and manifest write metadata follows the same policy, including for administrators.
-- Classic and universal entity forms send only changed writable fields. Classic lists retain loaded rows, totals and paging while refreshing after detail saves.
+### Breaking changes
 
-extension-kit: add optional kernel field `writable` metadata for explicit SDK 2 owner/member input; existing kit exports remain unchanged.
-
-### Added
-
-- Classic manifest pages reuse CRUD and Runtime Config; trusted embed hosts support theme/branding, locale, narrow ten-minute credentials, renewal, navigation, titles and editable assistant drafts.
-- `@greenhouse/ui-tokens` ships generated light/dark variables and `connectGreenhouse`; the example frontend exercises the bridge.
-- `clients.web` selects classic (4.0 rc default) or universal hosting at `/`, with classic at `/classic/`. Docker and CI export the isolated Expo workspace to `public/app` using its own lockfile.
-- Desktop CORS and framing permit exactly `tauri://localhost`; counters and paid usage recognize the desktop client header. Retention/lifecycle/counter commit tests own disposable databases.
-
-- **client:** the universal client (apps/mobile) runs in the browser and on wide screens: rail + secondary column + main + inspector, web sign-in, ⌘K, notifications popover, context menus and shortcuts, knowledge / drive / tables / projects / automations places, plugin surfaces from the station manifest (native screens, entity list / detail, settings forms, embedded pages).
-- **desktop:** a local macOS Tauri 2 shell bundling the universal client, multi-station Keychain sessions, shared menu shortcuts, notifications and Dock badge, Quick ask, deep links and opt-in signed updater wiring.
-- SDK 2 data plugins derive kernel applications/policies, guarded CRUD and MCP tools,
-  catalog/search/export/peek and declarative entity surfaces from one definition.
-- Add five isolated asynchronous lifecycle observations, persisted `onInstall`,
-  member-filtered station manifest v2 and client API level 4. Official manifests
-  declare native surfaces; SDK 1 and 3.x response fields remain supported.
-- Rewrite Example as a data plugin with legacy notes compatibility, custom search,
-  settings/embed metadata, static UI, install/event and notification examples.
-
-extension-kit: add data entity/context types, the scoped table CRUD adapter,
-`recordWrite`, `notify` and the kernel readable-field projector for compatibility adapters, plus the five-event hook types; update the locked snapshot.
-
-- Configured workspace plugin packages, deterministic `plugins:sync` assembly, import boundaries and a zero-plugin core CI gate.
-- Read-only Administration → Plugins and `cli plugins list/status/drop` with disabled-only, explicit table removal.
-
-extension-kit: expose the existing snapshot-locked API and web kits as `@greenhouse/api/extension-kit` and `@greenhouse/web/extension-kit`; no symbol removals.
-
-### Changed
-
-- 知识库迁为默认启用的官方插件，接管文档、版本、分享、检索、编辑器、MCP 资源与经典网页；既有 API 和链接不变。
-- 每月复盘迁为依赖 Knowledge、默认关闭的官方插件。核心团队上下文支持 Markdown；Knowledge 启用时继续提供团队文档选择。
-- 24 张已迁移业务表的真实 3.0 升级测试验证行数与完整内容不变，覆盖 Knowledge 停用/重启用。
-
-extension-kit: add shared FTS/schema/file/storage helpers, summary/timezone and replica-safe job facades, context selection types and classic editor/sidebar/settings primitives required by Knowledge and Retro. Remove the plugin-owned RetroButton re-export; use the feedback.actions slot or the Retro package page. Update the locked kit snapshots.
-
-- Tables 成为默认启用的官方插件；表、字段、视图、公式、记录、附件、目录、工具、CLI 与经典网页由插件拥有。既有 API、MCP、功能开关与链接保持兼容，停用不删数据。
-- 分享、文件关联、目录、审计应用、运行种类与卡片回执种类改为按启用插件注册值校验新写入；迁移保留历史记录。
-
-extension-kit: expose existing artifact receipt/claim helpers, shared file/link/share schema targets and audit types, CLI flags, row-id validation, catalog input, and classic drive/catalog/artifact-card helpers required by Tables; no existing exports removed.
-
-- Extract SkillHub (default on) and Projects (default off) into official plugins, with unchanged REST URLs, tool ids and MCP prompt names. Saved prompts remain core; plugin-disabled servers keep data and remove optional surfaces.
-- Add permission-filtered agentContext fragments/resources/prompts, plugin object-reference and recent-activity sources, and contributed route rate limits.
-
-extension-kit: add shared S3/path/semver helpers, saved-prompt facade/types, activity cursor and bounded-feed helpers, and classic forms/context/download components required by SkillHub/Projects; no existing exports removed.
-
-- Extract Email, WeCom and Feishu into default-off official plugins, including personal/shared mailboxes, OAuth binding/login, the Feishu bot and optional notification delivery. Existing paths, ids, preferences and env names are preserved; disabled data stays intact.
-- Add public identity-provider discovery and plugin registries for delivery adapters, notification kinds and agent channels. Notification writes validate active kinds/channels instead of DB CHECKs.
-
-extension-kit: add identity policy/routes, channel runtime/turn execution, notification rendering/envelope helpers, mailbox crypto/egress/file helpers, DB foreign-key targets and authenticated classic client session helpers required by communication plugins; no pre-existing exports removed.
-
-- Extract Memory, Feedback, Reports and Computer into official plugin packages, preserving URLs and tool ids. Adoption migrations preserve existing data.
-- Automation grants and MCP working hints now follow the active plugin set; inactive modules are absent from both.
-- Conversation sharing is controlled by `conversations.sharing` (default true); the design gallery is development-only.
-
-extension-kit: add the DB schema primitives, metering/budget/provider hooks, workspace flags/bootstrap, file-cabinet helpers, redaction, activity types, and shared web form/CRUD/preview/formatting components required by the four plugins; no existing symbols removed.
+- Greenhouse now separates a governance core from twelve official plugins. Knowledge, Tables,
+  Skills, Feedback and Memory are enabled by default. Projects, Reports, Email, WeCom, Feishu,
+  Computer and Retro are compiled but disabled by default. Credentials do not enable a plugin.
+- Disabling a plugin removes its routes, tools, settings, navigation, MCP groups and adapters.
+  Data and applied migrations remain. Retro requires Knowledge; saved prompts remain core.
+- Plugin package production code must use the API/web extension kits and permitted shared
+  exports/dependencies. Core cannot import plugin implementations. SDK 1 remains accepted in
+  4.x, but a declared core range ending at `<4` must be updated to support this release.
+- SDK 2 entity writes reject unknown, immutable or member-forbidden fields atomically, including
+  for super. Ids, storage timestamps and internal/confidential/restricted fields are never caller
+  input. Owner/member input requires explicit writable metadata; creates stamp effective ownership.
+- Server client API level is 4. Station manifest v2 adds member-filtered plugins/surfaces/entities,
+  retaining v1 fields. The current universal client still requires minimum level 3 and falls back
+  to legacy navigation if v2 discovery is unavailable.
 
 ### Upgrading from 3.x
 
-Knowledge 默认保持启用；每月复盘现在默认关闭。若要保留全部 3.x 模块，配置 `extensions.enabled: ['knowledge', 'tables', 'skills', 'feedback', 'memory', 'projects', 'reports', 'email', 'wecom', 'feishu', 'computer', 'retro']`，或 `GREENHOUSE_EXTENSIONS=knowledge,tables,skills,feedback,memory,projects,reports,email,wecom,feishu,computer,retro` 后重启。停用不会删除文档、历史版本或任何插件数据。
+1. Back up the database and retain the previous image/config. Use the existing database;
+   4.0 keeps the immutable 3.0 baseline and adopts the 24 extracted plugin tables in place.
+   There is no table copy, DROP or new baseline for this upgrade. A code-only downgrade does
+   not reverse migrations; use the backup for a full rollback.
+2. Keep all official packages in `greenhouse.config.ts.plugins` (as in the shipped config).
+   To retain every formerly built-in module, set the following enabled list, keeping any
+   deployment-specific plugin ids as well:
 
-Projects, Reports, Computer, Email, WeCom and Feishu are now off by default. To keep all six, set `GREENHOUSE_EXTENSIONS=knowledge,tables,skills,feedback,memory,projects,reports,computer,email,wecom,feishu`, or use `extensions: { enabled: ['knowledge', 'tables', 'skills', 'feedback', 'memory', 'projects', 'reports', 'computer', 'email', 'wecom', 'feishu'] }` in `greenhouse.config.ts`. Keep any deployment-specific plugins in that list. Computer also retains its independent credential and workspace-switch checks. Disabled tables and rows remain available when re-enabled.
+   ```ts
+   extensions: {
+     enabled: [
+       'knowledge', 'tables', 'skills', 'feedback', 'memory',
+       'projects', 'reports', 'email', 'wecom', 'feishu', 'computer', 'retro',
+     ],
+   },
+   ```
 
+   Or set this deployment override (it **replaces**, rather than appends to, the file list):
 
-- Move the example and its migrations, MCP/seam tests and browser spec into `plugins/example`; SDK 1 in-tree overlays remain supported.
+   ```dotenv
+   GREENHOUSE_EXTENSIONS=knowledge,tables,skills,feedback,memory,projects,reports,email,wecom,feishu,computer,retro
+   ```
+
+   Do not use `all` for a production upgrade: the upstream build also contains the Example
+   fixture. Keep existing SHARED_MAILBOX_*, MAIL_EGRESS_PROXY, WECOM_*, FEISHU_* and E2B
+   credentials. Computer still needs `computer.enabled`/COMPUTER_ENABLED; the Feishu bot
+   still needs FEISHU_BOT_ENABLED=1. Email is also required for shared-mailbox password-link
+   delivery. Member-level permissions/flags continue to apply.
+3. Install/build the new code, run `DATABASE_URL=<existing-database-url> pnpm db:migrate`
+   (Compose runs the migration service before API), then restart. Never use push on persistent
+   databases. Review `pnpm cli plugins status` or Administration → Plugins. Turning a plugin
+   off does not delete data; re-enabling restores its contributions. Keep 1.x-generation lane
+   files unchanged; the separate migrate-from-1x route remains available for 1.6 databases.
+4. Choose the browser root explicitly if switching clients:
+
+   ```ts
+   clients: { web: 'universal' }, // merge into existing clients/stations settings
+   ```
+
+   The default remains `classic` for this rc. Both modes keep `/classic/`, including
+   `/classic/#/administration`. Universal requires the hosted Expo export (`pnpm mobile:install`
+   then `pnpm app:build`); Docker builds both clients. `pnpm dev` continues to serve classic.
+5. External plugin maintainers should review import boundaries and core ranges, then run
+   type/lint, full tests, HTTP/browser plugin tests and `test:core`. Existing links, tool ids,
+   knowledge/project/Tables entity kinds and SkillHub prompt names remain supported.
+   Current clients discover optional modules from `/api/extensions`; bootstrap advertises
+   `mobile_api: 4`. Static SDK 1 React injection remains classic-only.
+
+### Added
+
+- Configuration-driven plugin packages under `plugins/<id>`, generated static registrations
+  via `plugins:sync`, package import guards, zero-package `test:core`, plugin CLI list/status/drop
+  and a read-only Administration → Plugins page.
+- SDK 2 `dataSources`: kernel app/actions/policies, governed query/mutation tools, CRUD REST,
+  catalog/search/export/peek and declarative entity pages from one definition. Example exercises
+  generated behavior and legacy notes transports together.
+- Reach-filtered Agent prompt fragments, resources and prompts; five isolated asynchronous
+  observations; migration-locked persistent onInstall. Notification/identity/channel, retention,
+  pricing, catalog/entity/discriminator and other contribution registries serve official and
+  private plugins alike.
+- Universal Expo client on web/iOS/Android, with wide-screen rail/secondary/main/inspectors,
+  web sign-in, command palette, notifications, documents, grids, boards and manifest pages.
+- Local macOS Tauri 2 shell bundling the universal client, Keychain station sessions, menus,
+  notifications, Dock badge, Quick ask, deep links and opt-in signed updater wiring.
+- Classic and universal manifest renderers for entity-list/detail, settings-form and trusted
+  embed pages. Ten-minute member/plugin tokens, renewal, theme/branding, locale, navigation,
+  titles and editable assistant drafts. `@greenhouse/ui-tokens` supplies generated themes and
+  connectGreenhouse; Example includes a buildable static UI using it.
+
+### Changed
+
+- Knowledge, Tables, Projects, Skills, Memory, Feedback, Reports, Computer, Email, WeCom,
+  Feishu and Retro own their implementations under plugins, including relevant schema/services,
+  routes/tools, classic UI, copy, migrations and tests. Core schema owns 49 of the original 73
+  tables; official plugins own 24. The immutable baseline still creates all original tables.
+- Conversation sharing is deployment-controlled by `conversations.sharing` (default true).
+  Core Markdown team context works without Knowledge. Optional integration controls and delivery
+  adapters come from active plugins; WeCom remains binding-only, Feishu supports login/binding.
+- `clients.web` selects classic/universal hosting at `/` while retaining `/classic/`. Docker/CI
+  export Expo in an isolated stage using its own lockfile. Classic builds preserve public/app.
+- Desktop CORS and framing allow exactly tauri://localhost; counters and paid usage attribute
+  desktop requests. Public docs describe actual defaults and label earlier screenshots.
+- One product version is synchronized across all app/package/plugin metadata, Expo config and
+  desktop Cargo/Tauri files. Release automation is configured for rc increments and documented
+  stable promotion; this local cut creates no tag or remote artifact.
+
+extension-kit: expose the DB primitives, shared CRUD/form/editor/preview helpers and governance
+facades needed by official plugins; add data entity/context types, scoped CRUD, recordWrite,
+notify, readable-field projection and observation types. Kit exports remain snapshot-locked.
+Optional kernel `writable` metadata enforces declared SDK 2 writes; no existing kit symbols removed.
+
+### Fixed
+
+- Data entity field checks agree across REST, agent/MCP tools, direct runtime and member manifests;
+  persisted broad grants cannot bypass declaration-level immutability or owner stamping.
+- Classic and universal forms submit changed writable fields only; list refresh retains loaded
+  rows/totals/paging after saves and discards stale query/identity replies.
+- Browser controls expose usable ARIA state and keyboard/click behavior; enum chips do not steal
+  row activation, and wide inspectors keep the visible main route accessible.
 
 ## [3.0.2](https://github.com/linjiejim/greenhouse/compare/v3.0.1...v3.0.2) (2026-10-26)
 

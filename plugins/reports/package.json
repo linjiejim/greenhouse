@@ -1,6 +1,6 @@
 {
   "name": "@greenhouse/plugin-reports",
-  "version": "3.0.2",
+  "version": "4.0.0-rc.1",
   "private": true,
   "type": "module",
   "greenhouse": {

@@ -1,8 +1,6 @@
 # SkillHub plugin
 
-Default on. Owns `skills` / `skill_versions`, the typed service bag, `/api/skills`, skill tools,
-classic catalogue/upload/review UI, bundle storage/scanning, boot pack sync and MCP `skill-*` prompts.
-Saved prompts (`prompts`, `/api/prompts`, `task_capture`, My prompts) remain core.
+- Default on. Owns `skills` / `skill_versions`, the typed service bag, `/api/skills`, skill tools, classic catalogue/upload/review UI, bundle storage/scanning, boot pack sync and MCP `skill-*` prompts. Saved prompts (`prompts`, `/api/prompts`, `task_capture`, My prompts) remain core.
 
 - All publish/download/version/meta/scan authorization lives in `api/skills/center.ts`. HTTP and tools are adapters. Reads are internal; writes owner/super; hard delete and scan decisions super only.
 - Bundle validation, canonical hash, 64-file / 1 MiB limits and semver/changelog discipline stay in `api/skills/bundle.ts` and the centre. Versions are immutable.

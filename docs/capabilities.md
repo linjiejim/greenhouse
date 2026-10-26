@@ -1,206 +1,109 @@
-# Greenhouse 3.0 能力范围
+# Greenhouse 4.0 能力范围
 
-本文按代码核对，写的是 3.0 现在能做什么。英文总览见 [README](../README.md)。
+本文按当前 4.0.0-rc.1 代码描述能力。英文入口见 [README](../README.md)，结构与请求流程见
+[架构说明](architecture.md)，升级配置见 [CHANGELOG](../CHANGELOG.md#upgrading-from-3x)。
 
-## 定位
+## 定位与默认配置
 
-- Greenhouse 是团队自己部署的 Agent 中台。
-- 成员把自己的 Agent（Codex、Claude Code、Cursor 或任何 MCP 客户端）接进来，拿到团队的知识、文件、项目、表格、技能、报告模板和付费服务。
-- Agent 只能做成员本人能做的事，还要再受授权范围限制。
-- Agent 的每次写入都以成员名义留痕；删除先给预览。
-- 每次付费调用都按美元计价、先占预算，记到成员和具体 Agent 名下。
-- 成员也可以用团队的模型额度跑自己的 Agent（模型网关）。
-- 应用内只有一个助手 Sprouty：网页、iOS App、飞书（可选）里对话，也负责定时自动化。
-- 部署形态：一个进程、一个 PostgreSQL 库（72 张表）、一个镜像 `ghcr.io/linjiejim/greenhouse`。
+Greenhouse 是团队自托管的 Agent 中台：核心管身份、权限、运行、审计与预算，官方插件提供
+常用业务模块，自有插件补团队的数据与流程。成员的外部 Agent 与应用内 Sprouty 共用工具层。
 
-## 模块
-
-| 模块 | 能做什么 |
+| 归属 | 能力 |
 |---|---|
-| 对话（Sprouty） | 流式回答，展示工具调用；可后台运行。附件任意类型，可读文本 / CSV / JSON / xlsx / docx / PDF。每轮可切模型。分叉、分享、置顶。富内容：图表、表格、指标、卡片、步骤、Mermaid、HTML 预览。要人确认的操作出确认卡，只执行一次。 |
-| 知识库 | 团队 / 个人 / 共享文档，Markdown 存储，目录与文件柜，模板，版本与回滚，按人分享，AI 改写 / 补全 / 生成，实时更新与「谁在编辑」，中文分词全文检索。 |
-| 文件 | 团队与个人两个书架，目录、上传、预览、改名、移动、删除、按名搜索。存本地盘或腾讯云 COS。 |
-| 项目 | 项目、成员、任务（列表 / 看板 / 甘特）、任务评论、动态。 |
-| 表格 | 多维表：类型化字段、视图、关联（显示目标记录的主字段）、公式、汇总、归档与恢复；助手起草表结构，人确认后生效。受 `tables` 开关控制（默认开）。 |
-| 首页 | 就是新对话：助手、按时段问候、等你处理的事、输入框、最近对话（条数在偏好里设）。团队最近改动（含哪个 Agent 改的）在铃铛的「团队动态」页签，网页和手机都有。 |
-| 操作记录 | 成员、成员的 Agent、自动化、管理员的改动，可筛选、导出 CSV。每次运行保留步骤、工具调用和事件。中断的运行记为「结果未知」，不自动重跑。 |
-| 自动化 | 按 cron 定时运行助手；可选运行配置（指令、模型、工具集）；结果投递到企微、飞书或邮件。无人值守时自动给可重放的只读工具与联网搜索，写入、生图、记忆等需创建者在设置或 Web/手机聊天里开启；删除类操作、建自动化、发邮件永远不会无人值守执行。 |
-| 问题与需求 | 需求和摩擦记录同一个管理队列；成员的 Agent 可通过 MCP 提交。 |
-| 每月复盘 | 每月 1 日 09:00（时区在「团队上下文」里设，默认 Asia/Shanghai）在知识库「复盘」目录生成「YYYY-MM 复盘」：用量、Agent 写入、问题与需求、花费，只有汇总数，外加模型写的建议。管理员可手动生成。 |
-| 数据目录 | 列出成员能读的表格库和扩展数据源，以及 Agent 用哪个工具读。 |
-| SkillHub | 技能包（SKILL.md）的不可变版本、变更说明、安全扫描；部署时从 `skillhub/` 同步（本仓库不带技能包）。另有「我的提示词」和「报告模板」两个分页。 |
-| 报告模板 | 团队规定的报告 / 汇报格式；服务端按工作区品牌渲染 PDF / Word / PPT（支持中文），存进文件。默认带周报和项目汇报两套。 |
-| 邮件（可选） | 个人 IMAP/SMTP 邮箱和团队共享邮箱；搜索、阅读、起草，确认后发送。 |
-| 通知 | 站内通知；可靠投递到邮件、企微、飞书；iOS 推送。 |
-| 记忆 | 每人的长期记忆，有标题、置顶、生命周期。受 `memory` 开关控制（默认开）。 |
-| 服务与计价 | 模型、搜索、读网页、生图、识图、云电脑都按美元计价，管理员可改价。成员、服务、团队三级月预算，先占额度再调用。80% 和 100% 提醒；超额拒绝并告诉 Agent 原因。默认额度：每人 $50，团队 $2,000。 |
-| 模型网关（默认关） | 成员自建 `ghgw_` 密钥，走 OpenAI 兼容（`/api/gateway/openai/v1`）或 Anthropic 兼容（`/api/gateway/anthropic`）接口用团队模型。限流默认每把密钥每分钟 300 次，计入同一套预算。不支持 Responses API、向量、图片。 |
-| 云电脑（默认关） | 每个成员的 Agent 一台托管 Linux 沙箱（E2B）。首次使用时创建，空闲 15 分钟停机，全站同时最多 5 台（`COMPUTER_MAX_RUNNING`），按分钟计费。 |
-| 连接器 | 让 Agent 用外部 MCP 服务（只支持远程 Streamable HTTP / SSE）。管理员在「管理后台 → 连接器」按地址添加（自动探测登录方式）或从官方目录（13 个）挑选；认证三选一：公开 / 团队凭证 / 成员各自账号（Key 或 OAuth 登录）。只读工具默认开，写入工具打开后直接执行，破坏性工具先给预览、确认后才执行。成员在「设置 → 连接」连接团队连接器、添加只有自己用的个人连接器；iOS 在「我 → 连接」连接。自定义 Agent 可限定只用某几个连接器。每次调用记审计（不含参数和内容），写入记进操作记录。 |
-| 管理后台 | 用户与权限（一个弹窗管角色、功能开关和工具）、用量（按人 / 运行配置 / 客户端 / 模块）、服务与计价、操作记录、问题与需求、团队上下文、品牌工作室、运行时配置、MCP 接入、连接器。 |
-| 账号 | 密码登录，邀请与重置走一次性链接。飞书：绑定 + 扫码登录。企微：只能绑定，不能登录。角色只有 super 和 team。 |
-| 飞书机器人（可选） | 在飞书对话里运行 Sprouty。需 `FEISHU_BOT_ENABLED=1`。 |
-| 扩展 | `defineExtension` / `defineWebExtension` 可加工具、页面、路由、数据表与迁移、权限点、MCP 授权分组、命令行。由 `greenhouse.config.ts` 或 `GREENHOUSE_EXTENSIONS` 启用。仓库只带 `example`，默认不启用。扩展只能用两个 extension-kit、`@greenhouse/types` 和 `@greenhouse/crud`（kit 导出有快照锁定）；`sdk` / `core` 声明不兼容时拒绝启用。扩展迁移随 `pnpm db:migrate` 一起跑，标了 1.x 代际的迁移在 3.0 上不执行。扩展写工具声明 `proxy:'write'` 后，经 `/api/mcp` 调用同样记一次 run、删除先预览。 |
-| 从 1.x 搬家 | `pnpm cli migrate-from-1x --from <1.6 库> --to <新库>`：只读旧库，保留原 ID，输出对账报告，可重复执行。只接受 1.6.x，拒绝 2.x。 |
-| 运维 | Docker Compose（Postgres + migrate + api）；`scripts/backup-db.sh` 做带校验的备份；每日清理过期数据（运行事件 30 天、请求日志 30 天、预算流水 13 个月等）；`pnpm cli` 管用户、库、知识库、表格、自检（`doctor`）。 |
+| 核心 | 账号、角色与实体/字段策略，对话与自定义 Agent，模型目录/网关/计价预算，工具与 Runs，MCP 服务端与连接器，自动化，文件，通知/推送，运行时配置/品牌，插件宿主，管理后台与 CLI |
+| 默认开启的插件 | Knowledge、Tables、Skills、Feedback、Memory |
+| 编入但默认关闭的插件 | Projects、Reports、Email、Feishu、WeCom、Computer、Retro；另有关闭的 Example 参考包 |
 
-## 内置工具（40 个）
+Retro 依赖 Knowledge。`greenhouse.config.ts.plugins` 决定编入包，`extensions.enabled` /
+`GREENHOUSE_EXTENSIONS` 决定启用。新增编译包要重建，启停要重启；只配凭证不会自动启用。
+关闭后数据保留，相关工具、接口、页面、设置与投递渠道退出注册。管理后台插件页只读显示状态。
 
-- 「对话」指 Sprouty：网页、iOS、飞书、自动化。
-- 「仅外部」指只在 MCP 和 `/api/agent` 上提供，对话里没有。
-- MCP 列是成员授权时勾选的分组。
-- 凡是 MCP 上有的工具，`/api/agent` 上也有。
+## 核心能力
 
-| 分组 | 工具 | 作用 | 读 / 写 | 对话 | `/api/agent` | MCP |
-|---|---|---|---|---|---|---|
-| 知识库 | `knowledge_query` | 浏览、搜索、阅读文档 | 读 | ✓ | ✓ | knowledge |
-| 知识库 | `knowledge_mutation` | 新建、修改、归档、恢复、分享文档 | 写（无删除） | ✓ | ✓ | knowledge |
-| 文件 | `files_query` | 浏览、搜索、读取文件 | 读 | ✓ | ✓ | files |
-| 文件 | `files_mutation` | 建目录、上传、改名、移动、删除 | 写，可删除 | ✓ | ✓ | files |
-| 项目 | `project_query` | 读项目和任务 | 读 | ✓ | ✓ | projects |
-| 项目 | `project_mutation` | 建 / 改项目和任务、加评论 | 写（无删除） | ✓ | ✓ | projects |
-| 表格 | `tables_query` | 读表格 | 读 | ✓ | ✓ | tables |
-| 表格 | `tables_mutation` | 增、改、合并写入、删记录 | 写，可删除 | ✓ | ✓ | tables |
-| 表格 | `tables_schema_plan` | 起草表结构变更，确认卡 | 草稿 | ✓ | — | — |
-| 技能 | `skill_query` | 查找、查看、下载、比对技能 | 读 | ✓ | ✓ | skills |
-| 技能 | `skill_mutation` | 发布、发版、管理、删除技能 | 写，可删除 | ✓ | ✓ | skills |
-| 对话 | `session_query` | 读对话记录和用量 | 读 | ✓ | ✓ | chat |
-| 自动化 | `automation_query` | 读自己的自动化 | 读 | ✓ | ✓ | automation |
-| 自动化 | `automation_mutation` | 建、改、删自动化 | 写，可删除 | ✓ | ✓ | — |
-| 问题与需求 | `feedback_query` | 看自己提的需求和回复 | 读 | ✓ | ✓ | feedback |
-| 问题与需求 | `feature_request` | 提交、更新需求 | 写 | ✓ | ✓ | feedback |
-| 问题与需求 | `log_friction` | 记录工具或数据造成的摩擦 | 写 | ✓ | ✓ | feedback |
-| 报告 | `report_templates` | 列出、查看、校验报告模板 | 读 | ✓ | ✓ | reports |
-| 报告 | `report_render` | 按模板渲染报告，存进文件 | 写（只新增） | ✓ | ✓ | reports |
-| 付费服务 | `analyze_image` | 识图 | 读，计费 | ✓ | ✓ | services |
-| 付费服务 | `generate_image` | 生图（外部调用时存进个人文件） | 写（只新增），计费 | ✓ | ✓ | services |
-| 付费服务 | `web_search` | 网页搜索 | 读，计费，仅外部 | — | ✓ | services |
-| 付费服务 | `read_url` | 读取公开网页 | 读，计费，仅外部 | — | ✓ | services |
-| 付费服务 | `external_search` | 搜索并抽取网页 | 读 | ✓ | ✓ | — |
-| 云电脑 | `computer_files` | 列出、读取沙箱文件 | 读，仅外部 | — | ✓ | computer |
-| 云电脑 | `computer_exec` | 在沙箱里执行命令 | 写，仅外部 | — | ✓ | computer |
-| 云电脑 | `computer_transfer` | 在文件和沙箱之间搬文件 | 写，仅外部 | — | ✓ | computer |
-| 云电脑 | `computer_stop` | 停掉沙箱 | 写，仅外部 | — | ✓ | computer |
-| 连接器 | `mcp_call` | 列出、查看、调用外部 MCP 服务的工具 | 读；写入看连接器开关，破坏性先预览 | ✓ | — | connectors |
-| 邮件 | `email_query` | 读、搜已绑定邮箱 | 读 | ✓ | ✓ | — |
-| 邮件 | `email_mutation` | 起草邮件，确认后发送 | 写 | ✓ | ✓ | — |
-| 对话辅助 | `ask_user` | 向用户追问（问题卡） | — | ✓ | — | — |
-| 对话辅助 | `read_attachment` | 读本对话的附件 | 读 | ✓ | — | — |
-| 对话辅助 | `compute` | 跑代码做精确计算 | 读 | ✓ | ✓ | — |
-| 对话辅助 | `call_llm` | 隔离的一次性模型子调用 | 读，计费 | ✓ | — | — |
-| 对话辅助 | `export_data` | 导出 XLSX / CSV 下载链接 | 写（只新增） | ✓ | — | — |
-| 对话辅助 | `task_capture` | 把刚做的事存成提示词（确认卡） | 草稿 | ✓ | — | — |
-| 对话辅助 | `memory` | 记住、回忆、修改、忘记用户信息 | 写 | ✓ | — | — |
+| 能力 | 当前行为 |
+|---|---|
+| Sprouty 对话 | 流式文本与工具轨迹、后台运行和续读、任意类型附件、按轮选模型、置顶、分叉、分享；富表格/图表/指标/卡片/步骤/Mermaid/HTML 预览。 |
+| 保存的提示词 | 我的提示词、变量填写、聊天 `/` 调用与 `task_capture` 确认卡；独立于 SkillHub 插件。 |
+| 文件 | 团队/个人书架，目录、上传、预览、改名、移动、删除和按名搜索；本地存储或配置的对象存储。插件可在同一文件系统贡献自己的 scope 与授权。 |
+| 自动化 | cron 定时 Agent，运行配置、历史、手动运行、暂停和删除。默认给可重放读取/搜索；额外工具须由 owner 显式授予且不超本人权限。无人值守不能删除、建自动化或发确认邮件。 |
+| 通知 | 站内通知中心、持久投递队列、WebSocket 更新与可选手机推送。邮件/企微/飞书投递由启用的插件提供。 |
+| 操作记录 | Agent 写入、自动化与平台动作的运行、步骤、工具证据及审计；中断的有副作用运行显示结果未知，不自动整轮重跑。 |
+| 模型和预算 | 模型目录；模型/搜索/读网页/识图/生图按 USD 计量；成员、服务、团队三级月预算，先准入后调用，80%/100% 提醒。模型网关独立默认关。 |
+| 团队上下文 | Markdown 约定/术语、数据目录与 MCP 资源/提示词；按成员及授权工具裁剪。Knowledge 可补团队文档选择。 |
+| 配置与品牌 | Runtime Config/Branding Studio 存数据库，密钥加密、读取只给掩码；DB 配置优先于 env；客户端登录前读取品牌。 |
+| 权限 | 内部 super/team，功能点、能力、行范围与字段策略；没有公开注册、匿名或访客 Agent。 |
 
-- 成员拿到的工具：所有默认开放的工具 + 已开功能开关带的工具 + 单独分配的工具。super 拿全部。
-- `mcp_call`：网页 / iOS 对话可用；自动化里只读和已开启的写入，从不执行破坏性工具；浏览器扩展会话和飞书机器人里没有；`/api/agent` 命令行代理里没有。
-- MCP 额外有三个协议工具，任何授权都有：`team_context`、`data_catalog`、`tool_output_read`。
-- 刻意不放到 MCP 的有三类：
-  - 邮件：安全靠人读草稿。
-  - `automation_mutation`：无人值守的客户端自建自动化会自我繁殖。
-  - 确认卡类工具：需要人在对话里点确认。
+## 官方插件
 
-## MCP 外部接入
+每个插件 README 列出自己的设置、环境变量、表、工具与路由。
 
-- 地址：`/api/mcp`，标准 MCP，无状态 Streamable HTTP。
-- 只认 OAuth 2.1：
-  - 个人用授权码 + PKCE，有同意页，支持动态注册。
-  - 机器客户端用 client credentials，由 super 在「MCP 接入」里创建，绑定一个最小权限账号。
-  - 令牌只存哈希。
-  - 每个令牌限流：每分钟 120 次、每天 10,000 次。
-- 作用域分两维：
-  - 动作：`mcp:read` / `mcp:write`。
-  - 资源分组：knowledge、files、projects、tables、skills、chat、automation、feedback、services、computer、reports、connectors。扩展可加分组。已有授权不会自动获得新分组。
-  - connectors 分组只有 `mcp_call`：外部 Agent 以成员本人身份用连接器；没有 `mcp:write` 时只能读；用团队凭证（公开或团队凭证）的连接器，只有管理员打开「允许外部 Agent 写入」后才能写。
-  - 能调用的工具 = 授权分组里的工具 ∩ 授权动作 ∩ 成员本人权限。每次请求重新计算。
-- 工具带标准注解：只读、可能破坏、会访问外部。
-- 写入：
-  - 立即以成员身份执行，不设审批。
-  - 每次写入记一条写入记录：客户端、工具、动作、风险等级（r1 自己的 / r2 共享的 / r3 删除类），以及完整的输入和输出。
-  - 在「设置 → Agent 连接 → 活动」和「操作记录」里可查。
-- 删除先预览：
-  - 动作含 delete / remove / purge / destroy / drop 的调用，第一次只返回 `needs_confirmation` 和预览，不改任何数据。
-  - 用户同意后，Agent 带 `confirm: true` 再调一次。
-- 有界输出：
-  - 回复超过 12,000 字符时，只返回 8,000 字符预览和 `output_id`。
-  - 余下内容用 `tool_output_read` 分页读取，每次最多 12,000 字符。
-  - 内容保存 24 小时，只有同一成员、同一客户端能读。
-  - 每次读取都按当前权限重新校验。
-- 团队上下文：
-  - 管理员指定的约定和术语表文档，以资源 `greenhouse://context/*` 和 `team_context` 工具下发。
-  - SkillHub 技能和成员的提示词作为 MCP prompts 下发。
-- 接入向导：「设置 → Agent 连接 → 接入」，支持 Codex、Claude Code、Cursor 和其他客户端，并检查连接是否已到达。
-- 计量：每次调用记到成员和 OAuth 客户端名下。
-- `/api/agent` 是同一套工具的 HTTP 代理：
-  - 用成员的登录令牌，没有单独的 API Key。
-  - 每次写入都要带 `confirm: true`。
-  - 调用只进请求日志，不生成写入记录。
+| 插件 | 默认 | 能做什么 |
+|---|---|---|
+| [Knowledge](../plugins/knowledge) | 开 | Markdown 文档、编辑器、团队/个人/共享、目录、版本/回滚、模板、AI 编辑、中文全文检索、MCP 文档资源、引用与分享。 |
+| [Tables](../plugins/tables) | 开 | 类型化字段、视图、记录关联、公式/汇总、归档/恢复、数据目录；表结构由助手起草、人点卡片确认。 |
+| [Skills](../plugins/skills) | 开 | SKILL.md 技能包、不可变版本、变更说明、安全扫描、上传/下载、启动同步内容包、MCP `skill-*` prompts；仓库不附带技能包。 |
+| [Feedback](../plugins/feedback) | 开 | 需求/摩擦队列、成员反馈与 Agent 提交、工具错误/空检索归并。 |
+| [Memory](../plugins/memory) | 开 | 个人长期记忆、标题、置顶、生命周期与巩固。 |
+| [Projects](../plugins/projects) | 关 | 项目/成员/任务、列表/看板/甘特、评论与动态。 |
+| [Reports](../plugins/reports) | 关 | 报告模板与校验，按品牌服务端渲染 PDF/Word/PPT，结果存入文件；默认模板为周报与项目汇报。 |
+| [Email](../plugins/email) | 关 | 个人 IMAP/SMTP 与共享邮箱，搜索/读取/起草/人确认后发送，通知和设密邮件投递。 |
+| [Feishu](../plugins/feishu) | 关 | 账号绑定、登录、个人通知、可选长连接 Sprouty 机器人；绑定现有内部账号，不自动建号。 |
+| [WeCom](../plugins/wecom) | 关 | 账号绑定、个人消息/群 webhook 投递；不提供登录。 |
+| [Computer](../plugins/computer) | 关 | E2B 按需 Linux 沙箱、命令/文件/传输/停止，按分钟计价；还需凭证与工作区开关。 |
+| [Retro](../plugins/retro) | 关 | 每月 1 日 09:00 按工作区时区生成上月汇总文档；可手动生成。依赖 Knowledge；没有自己的业务表或 Agent 工具。 |
+
+Tables/Memory 及启用后的 Email 还有成员级功能开关；启用插件不会绕过这些权限。
+会话分享由核心 `conversations.sharing` 配置控制，默认开。
+
+## 工具与 Agent 接入
+
+工具列表来自核心与启用插件的同一个目录，数量随配置变化。
+
+| 来源 | 主要工具 |
+|---|---|
+| 核心 | `files_query/mutation`、`session_query`、`automation_query/mutation`、`mcp_call`、`compute`、`read_attachment`、`ask_user`、`task_capture`、`export_data`、`call_llm`、联网/读网页/识图/生图工具 |
+| Knowledge / Projects / Tables | `knowledge_query/mutation`、`project_query/mutation`、`tables_query/mutation`；Tables 另有聊天确认卡 `tables_schema_plan` |
+| Skills / Memory / Feedback | `skill_query/mutation`、`memory`、`feedback_query`、`feature_request`、`log_friction` |
+| Reports / Email / Computer | `report_templates`、`report_render`、`email_query/mutation`、`computer_exec/files/transfer/stop` |
+| 数据插件 | 由声明派生 query/mutation、CRUD REST、目录/搜索/导出、实体链接和页面 |
+
+每个工具按 `meta.surface` 决定能在哪用，不是所有工具都对 MCP 开放。邮件依赖真人读草稿，
+`automation_mutation` 及聊天确认卡不放到 MCP；云电脑和独立网页读取工具面向外部 Agent。
+MCP 始终额外提供 `team_context`、`data_catalog`、`tool_output_read`。
+
+- `/api/mcp` 是标准无状态 Streamable HTTP，只认 OAuth 2.1；个人授权码 + PKCE，机器客户端绑定内部账号。
+- 能力取成员权限、授权动作（read/write）与资源分组交集，每次请求复核；新增插件组不会自动进入旧授权。
+- MCP 写入以成员身份执行并留写入记录；删除类第一次只预览，再带 `confirm: true` 执行，没有审批队列。
+- 大回复提供分页 output_id，保存 24 小时，仅同成员/客户端可读，并重查当前权限。
+- `/api/agent` 用成员登录令牌，每次写入要求 `confirm: true`；调用记请求日志，平台动作仍经统一审计。
+- 连接器是向外调用远程 MCP 服务，支持团队/个人凭证和 OAuth；写工具逐个开启，破坏性操作预览，写入进操作记录。
+- 模型网关通过成员密钥提供 OpenAI/Anthropic 兼容端点，预算与其他服务一致。
 
 ## 客户端
 
-- **网页**
-  - 导航：知识库、文件、表格（含数据目录）、项目、SkillHub、自动化；新对话和 Logo 回到首页，侧栏在每个页面都能看到最近对话（我的 / 定时任务 / 共享）。
-  - 另有 ⌘P 搜索、铃铛（通知 / 分享 / 团队动态）、操作记录，以及任意页面都能唤出的助手面板。
-  - 设置：偏好、Agent 连接（已连接、写入记录、模型网关密钥、接入向导）、飞书 / 企微绑定、邮箱、用量、云电脑、记忆。
-  - 界面语言：中文、英文。主题：浅色、深色、跟随系统。
-- **iOS App**（`apps/mobile`，Expo）
-  - Sprouty 对话：附件、离线待发、确认卡。
-  - 对话列表：我的 / 定时任务 / 共享给我。
-  - 搜索：对话、文档、文件、定时任务；点开即聚焦输入框。
-  - 定时任务：暂停 / 恢复、立即运行、运行记录、删除；新建在对话里说。
-  - 知识库：浏览、新建、改名、移动、删除；正文只读，不能编辑。
-  - 文件：第一个标签是「最近」；从相册、相机、文件 App 上传，管理目录。表格挂在文件下：浏览记录、新增简单记录。
-  - 项目：新建项目、改任务状态、评论；不能新建任务。
-  - 通知（含团队动态分段）与推送。
-  - 「我」：主题、语言、字号、推送开关、反馈、服务器管理；只读查看自己 Agent 的花费、写入和网关密钥。
-  - 登录：密码、飞书。
-  - 可同时添加多台服务器。
-  - 小组件：「我的任务」「最近文档」。
-  - iPad 分栏；最近内容可离线读；OTA 更新。
-  - 分享扩展的代码在，但未启用。
-- **Android**：工程里有 Material 3 界面；没有发布构建，推送未配置。
-- **命令行**：`pnpm cli`，管理用户、数据库、搬家、知识库导入与重建索引、表格恢复、自检、终端对话。
-- 3.0 没有桌面端，也没有浏览器扩展。
-
-## 默认关闭的开关
-
-| 能力 | 怎么打开 |
+| 客户端 | 界面与限制 |
 |---|---|
-| 模型网关 | 运行时配置或「服务与计价 → 网关」；环境变量 `GATEWAY_ENABLED=true` |
-| 云电脑 | 「服务与计价」里打开，并配 E2B Key；环境变量 `COMPUTER_ENABLED` |
-| 飞书登录 / 绑定 / 机器人 | 启用 `feishu` 插件并配飞书应用；机器人另需 `FEISHU_BOT_ENABLED=1` |
-| 手机推送 | `MOBILE_PUSH_ENABLED=1`（Expo 项目开了增强推送安全时再配 `EXPO_ACCESS_TOKEN`） |
-| 邮件 | 启用 `email` 插件，再绑定成员邮箱或配 `SHARED_MAILBOX_*`；成员 `email` 权限默认开启 |
-| 企微绑定 / 通知 | 启用 `wecom` 插件并配置 `WECOM_*` |
-| 扩展 | `greenhouse.config.ts` 或 `GREENHOUSE_EXTENSIONS` |
+| Classic Web | 默认根路径 `/`，固定入口 `/classic/`；完整管理后台、SDK 1 React 页面、插件通用渲染器。 |
+| 通用客户端 Web | 宽屏 rail/次级栏/主区/检查器，⌘K、对话、知识编辑、文件、表格 grid、项目 board、自动化及插件「更多」。`clients.web: 'universal'` 才接管生产根路径。 |
+| iOS / Android | 原生 Expo，同一 API；对话、附件/离线待发、最近内容离线读、启用插件入口、通知、站点管理；iOS 小组件/iPad。Android 原生适配存在，商店发布与推送仍需配置。 |
+| macOS | Tauri 2 打包通用客户端；Keychain、多站点、菜单/快捷键、通知与 Quick ask。支持本地未签名构建，正式签名/更新源需运维配置。 |
+| CLI | 用户、数据库、迁移/搬家、工具/Agent/会话、自检、插件状态/数据清理；知识导入/重索引、表格恢复等由对应插件提供。 |
 
-邮件、飞书与企微插件编入镜像但默认关闭；只配置环境变量不会启用。将插件 id 加到 `greenhouse.config.ts` 的 `extensions.enabled`（保留已有条目）或 `GREENHOUSE_EXTENSIONS` 后重启。停用保留数据，并移除对应登录按钮、绑定行、工具、设置与投递渠道。公开 `GET /api/auth/providers` 可发现实际可用的身份源。
+站点 v2 能力清单按成员裁剪，页面有 `native`、`entity-list`、`entity-detail`、`settings-form`、
+`embed` 五种；不认识的页面给浏览器回退。`mobile_api` 为 4；当前通用客户端最低仍为 3，
+v2 缺失时可走旧导航。管理设置写入仍是 super-only，声明页面不扩大权限。
 
-## 已移除
+内嵌 UI 使用主题/品牌 token、语言与成员上下文，以及十分钟窄令牌；只允许所属插件 API 与
+基础 `/api/me`，通过宿主登录态续期。消息校验来源窗口/origin；助手回传只填草稿不自动发送。
 
-- Bots、Mission、房间、评测、工作流、1.x 的团队 LLM 中转。
-- 桌面端、浏览器扩展。
-- 会话标签与分组、子会话。
-- 用户组、知识库评论与互链。
-- 表格的表单、仪表盘、表内自动化。
-- 旧对话和已退役类型的运行记录仍可查看。
+## 部署与验证边界
 
-## 已知限制
-
-- 发版流水线：
-  - CI 只在 `main`、`v1` 的推送和所有 PR 上跑。
-  - release-please 只跟 `v1` 分支。
-  - 发版工作流不会移动 `:latest`。部署 3.x 时请用 `GREENHOUSE_IMAGE` 钉住具体版本。
-- `/health` 不返回版本号。版本只在镜像的 `APP_VERSION` / `APP_REVISION` 环境变量和标签里。
-- MCP 服务端自报版本固定为 `0.1.0`。
-- 知识库「谁在编辑」存在进程内存里，只适合单进程部署。
-- 浏览器端「页面动作」（Agent 操作当前页面）只有扩展可用，核心页面没有注册。
-- 通过 `/api/agent` 的写入不进操作记录。
-- 连接器目录缓存在进程内存里，多进程部署时改动要重启才全部生效。连接器写入不发通知。
-- 截图（`docs/assets/screens/`）来自旧版本，导航、品牌和部分文案与 3.0 不一致。
-
-## 4.0 插件开关
-
-记忆和问题反馈默认启用；报告模板及其渲染工具、E2B 云电脑改由官方插件提供，编入但默认关闭。在 `extensions.enabled` 或 `GREENHOUSE_EXTENSIONS` 中加入 `reports` / `computer` 并重启即可启用；云电脑仍需凭证和工作区开关。停用时不提供相关路由、工具和界面，原有数据保留。会话分享可由 `conversations.sharing: false` 部署配置关闭。
-
-知识库由默认启用的 Knowledge 官方插件提供，包含原有编辑、分享、检索、版本和 MCP 文档资源。核心团队上下文可直接填写 Markdown；启用知识库后也可选团队文档。每月复盘属于默认关闭的 Retro 插件，依赖 Knowledge；开启后保留既有生成接口、文档与通知。所有插件停用均保留数据。
+- 一个 API 进程托管两套静态客户端，一个 PostgreSQL 数据库；Docker Compose 另有迁移服务。
+- 核心 schema 49 张表，官方数据插件 24 张；不可变 3.0 基线仍建出原有 73 张，关闭插件不删表。
+- 3.x 原地迁移；1.6.x 通过 `migrate-from-1x` 搬到新库，2.x 不支持。
+- 没有运行时代码热装载、插件市场或远程实体插件协议；远程服务使用现有 MCP 连接器。
+- 活跃 ChatRun、编辑 presence 与部分凭证缓存是进程内状态，多副本需要额外设计。
+- 历史工作流/评测等只读记录保留；浏览器扩展、表格表单/仪表盘/表内自动化没有恢复。
+- `/health` 不报告版本；镜像用 APP_VERSION/APP_REVISION 与 OCI 标签标记来源。
+- 稳定 tag 发布精确版本/次版本/latest；rc 只发布精确 rc 标签；main 只发 edge/main-sha。
+- 现有 `docs/assets/screens` 是旧 classic 截图，不能作为 4.0 通用客户端验收；按 README 的 screenshot tour 在可运行 Chromium 的环境更新。

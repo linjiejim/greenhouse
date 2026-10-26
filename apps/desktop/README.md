@@ -21,7 +21,7 @@ CARGO_HOME=$PWD/.cargo-home CARGO_TARGET_DIR=$PWD/apps/desktop/src-tauri/target 
 `desktop:check` exports the real client, checks the native dependency graph, checks Rust formatting, runs Rust tests and JS bridge/pagination tests. `desktop:build` bundles the app with Tauri, then uses `hdiutil makehybrid -hfs` and `hdiutil convert -format UDZO` to create the DMG without a disk-device mount or Finder. It verifies the image checksum and includes an Applications link. It produces:
 
 - `apps/desktop/src-tauri/target/release/bundle/macos/Greenhouse.app`
-- `apps/desktop/src-tauri/target/release/bundle/dmg/Greenhouse_3.0.2_aarch64.dmg` (version and architecture follow the build).
+- `apps/desktop/src-tauri/target/release/bundle/dmg/Greenhouse_4.0.0-rc.1_aarch64.dmg` (version and architecture follow the build).
 
 Local builds use ad-hoc signing (`-`) and no notarisation. The desktop script does not publish mobile builds, change native Expo configuration, or run the application during check/build. Dev also loads bundled assets; restart it after changing the client.
 
@@ -62,8 +62,8 @@ Tauri uses the Developer ID and Apple variables to sign/notarize the app and cre
 
 ```sh
 xcrun notarytool store-credentials greenhouse --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_PASSWORD"
-xcrun notarytool submit apps/desktop/src-tauri/target/release/bundle/dmg/Greenhouse_3.0.2_aarch64.dmg --keychain-profile greenhouse --wait
-xcrun stapler staple apps/desktop/src-tauri/target/release/bundle/dmg/Greenhouse_3.0.2_aarch64.dmg
+xcrun notarytool submit apps/desktop/src-tauri/target/release/bundle/dmg/Greenhouse_4.0.0-rc.1_aarch64.dmg --keychain-profile greenhouse --wait
+xcrun stapler staple apps/desktop/src-tauri/target/release/bundle/dmg/Greenhouse_4.0.0-rc.1_aarch64.dmg
 codesign --verify --deep --strict apps/desktop/src-tauri/target/release/bundle/macos/Greenhouse.app
 spctl --assess --type execute --verbose apps/desktop/src-tauri/target/release/bundle/macos/Greenhouse.app
 ```

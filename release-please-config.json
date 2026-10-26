@@ -58,32 +58,67 @@
       "extra-files": [
         {
           "type": "json",
+          "path": "apps/api/package.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
           "path": "apps/mobile/package.json",
           "jsonpath": "$.version"
         },
         {
           "type": "json",
-          "path": "apps/mobile/app.json",
-          "jsonpath": "$.expo.version"
-        },
-        {
-          "type": "json",
-          "path": "plugins/example/package.json",
+          "path": "apps/web/package.json",
           "jsonpath": "$.version"
         },
         {
           "type": "json",
-          "path": "plugins/memory/package.json",
+          "path": "packages/agent-core/package.json",
           "jsonpath": "$.version"
         },
         {
           "type": "json",
-          "path": "plugins/feedback/package.json",
+          "path": "packages/contract/package.json",
           "jsonpath": "$.version"
         },
         {
           "type": "json",
-          "path": "plugins/reports/package.json",
+          "path": "packages/crud/package.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "packages/db/package.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "packages/knowledge-editor/package.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "packages/platform-kernel/package.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "packages/types/package.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "packages/ui/package.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "packages/ui-tokens/package.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "packages/utils/package.json",
           "jsonpath": "$.version"
         },
         {
@@ -98,7 +133,12 @@
         },
         {
           "type": "json",
-          "path": "plugins/wecom/package.json",
+          "path": "plugins/example/package.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "plugins/feedback/package.json",
           "jsonpath": "$.version"
         },
         {
@@ -108,7 +148,12 @@
         },
         {
           "type": "json",
-          "path": "plugins/skills/package.json",
+          "path": "plugins/knowledge/package.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "plugins/memory/package.json",
           "jsonpath": "$.version"
         },
         {
@@ -118,20 +163,53 @@
         },
         {
           "type": "json",
-          "path": "plugins/tables/package.json",
-          "jsonpath": "$.version"
-        },
-        {
-          "type": "json",
-          "path": "plugins/knowledge/package.json",
+          "path": "plugins/reports/package.json",
           "jsonpath": "$.version"
         },
         {
           "type": "json",
           "path": "plugins/retro/package.json",
           "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "plugins/skills/package.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "plugins/tables/package.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "plugins/wecom/package.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "apps/mobile/app.json",
+          "jsonpath": "$.expo.version"
+        },
+        {
+          "type": "json",
+          "path": "apps/desktop/src-tauri/tauri.conf.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "toml",
+          "path": "apps/desktop/src-tauri/Cargo.toml",
+          "jsonpath": "$.package.version"
+        },
+        {
+          "type": "toml",
+          "path": "apps/desktop/src-tauri/Cargo.lock",
+          "jsonpath": "$.package[?(@.name.value == 'greenhouse-desktop')].version"
         }
-      ]
+      ],
+      "prerelease-type": "rc"
     }
-  }
+  },
+  "versioning": "prerelease",
+  "prerelease": true
 }

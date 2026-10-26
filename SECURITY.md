@@ -10,7 +10,7 @@ security reports seriously.
 
 Security fixes land on the **latest stable release line** (3.x) and on `main`. Only tagged releases are considered stable — the
 `edge` / `main` builds are unstable by design (see the README
-["Releases & stability"](./README.md#releases--stability) and
+["Releases"](./README.md#releases) and
 [RELEASING.md](./RELEASING.md)).
 
 | Version | Supported |

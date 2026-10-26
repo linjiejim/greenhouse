@@ -1,8 +1,8 @@
 # Tables official plugin
 
-Default on. Preserve `/api/tables`, `#/tables`, the three tool ids, the `tables` feature flag and MCP group, and `tables_record` links. Disabling preserves data and removes contributions. Use `services(db).tables`; never add the service back to DatabaseProvider.
+- Default on. Preserve `/api/tables`, `#/tables`, the three tool ids, the `tables` feature flag and MCP group, and `tables_record` links. Disabling preserves data and removes contributions. Use `services(db).tables`; never add the service back to DatabaseProvider.
 
-Nine tables are adopted from the immutable 3.0 baseline. Base membership remains in core `shares` (`table_base`); record attachments remain in core `file_links` (`table_record`, slot = field id). Register these discriminators and `tables_schema_plan` receipt kinds. Drive nodes retain `scope=tables, base_id=...`; the active scope owns placement validation and Base ACL. No Tables example seed rows existed; future Tables datasets belong in this package.
+- Nine tables are adopted from the immutable 3.0 baseline. Base membership remains in core `shares` (`table_base`); record attachments remain in core `file_links` (`table_record`, slot = field id). Register these discriminators and `tables_schema_plan` receipt kinds. Drive nodes retain `scope=tables, base_id=...`; the active scope owns placement validation and Base ACL. No Tables example seed rows existed; future Tables datasets belong in this package.
 
 ## Schema plans and authorization
 
@@ -25,6 +25,6 @@ Nine tables are adopted from the immutable 3.0 baseline. Base membership remains
 
 ## Classic web
 
-Grid, sidebar, dialogs, API client, catalog, schema-plan card and translations belong here. Cards receive host-derived action/session handles. Explicit submodule titles take precedence over the page-host title.
+- Grid, sidebar, dialogs, API client, catalog, schema-plan card and translations belong here. Cards receive host-derived action/session handles. Explicit submodule titles take precedence over the page-host title.
 
-InlineEditCell and its multi-select editor remain core shared primitives because other plugin pages already consume the snapshot-locked kit exports. Reuse those primitives; Tables-specific dialogs and grid stay in this package.
+- InlineEditCell and its multi-select editor remain core shared primitives because other plugin pages already consume the snapshot-locked kit exports. Reuse those primitives; Tables-specific dialogs and grid stay in this package.

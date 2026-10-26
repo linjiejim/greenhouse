@@ -64,6 +64,25 @@ describe('plugins:sync', () => {
     expect(() => sync(root, true)).toThrow(/missing or stale/);
   });
 
+  it('assembles matching candidate versions and rejects mismatched or incomplete versions', () => {
+    const root = fixture(['./plugins/alpha']);
+    const pkgPath = join(root, 'plugins/alpha/package.json');
+    const manifestPath = join(root, 'plugins/alpha/manifest.ts');
+    const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'));
+    pkg.version = '4.0.0-rc.1';
+    writeFileSync(pkgPath, JSON.stringify(pkg));
+    const manifest = { id: 'alpha', name: 'Alpha', sdk: 1, version: pkg.version, dependsOn: [] };
+    writeFileSync(manifestPath, `export default ${JSON.stringify(manifest)}`);
+    sync(root);
+    expect(readFileSync(join(root, 'apps/api/src/extensions/compiled.generated.ts'), 'utf8')).toContain(
+      "version: '4.0.0-rc.1'",
+    );
+    for (const version of ['4.0.0-rc.2', '4.0', 'v4.0.0', 'invalid']) {
+      writeFileSync(manifestPath, `export default ${JSON.stringify({ ...manifest, version })}`);
+      expect(() => sync(root)).toThrow(/version matching package.json/);
+    }
+  });
+
   it('supports an empty compiled set and optional halves', () => {
     const root = fixture();
     sync(root, false, '');

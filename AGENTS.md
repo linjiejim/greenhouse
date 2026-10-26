@@ -1,616 +1,129 @@
-# Greenhouse — agent & contributor guide
-
-## Project intro
-
-Greenhouse is a self-hosted Agent hub for one team. Members connect their own agents (Codex,
-Claude Code, Cursor, any MCP client) over `/api/mcp`; those agents reach the team's knowledge,
-files, projects, tables, skills, report templates and paid services within the member's own
-permissions. Agent writes are recorded as runs; deletes preview first; paid calls are metered
-against USD budgets; a model gateway (`/api/gateway/*`) lends members the team's models.
-Sprouty (`apps/api/src/profiles/sprouty.yaml`) is the one built-in assistant (web, iOS,
-Feishu bot, automations). All surfaces share one tool catalog and one permission model.
-Capability reference (Chinese): `docs/capabilities.md`.
-
-The product serves an internal team only: members use the `team` role, admins the `super`
-role. Web, `/api/chat`, the `/api/agent` proxy and MCP all bind to a real internal account — there is
-no anonymous / guest login and no public customer-facing agent. (Historical `external` rows
-only survive for data compatibility: the migration disables them and auth rejects their
-tokens.)
-
-> **MCP server** `/api/mcp` lets any external agent (Claude / Cursor / …) reach internal
-> resources over the standard MCP protocol with OAuth 2.1. Tokens are scoped by action and
-> resource group, and the proxy can only narrow the bound user's permissions — it is a
-> restricted subset, not a separate plane. See `apps/api/src/AGENTS.md`.
->
-> **Connectors** are the other direction: agents call remote MCP servers through one `mcp_call`
-> tool; the vetted catalog is `connectors/*.json`. See `apps/api/src/AGENTS.md` → Connectors.
-
-## Rules
-
-- Run `pnpm test` after functional changes (all three layers — see Testing).
-- Run `pnpm typecheck` and `pnpm lint` after every change — both must pass.
-- Update docs when API or behavior changes (`README.md` for humans; the `AGENTS.md` files for
-  agents/conventions).
-- Feature-level design docs live in `docs/specs/` (`YYYYMMDD-<kebab-name>.md`, indexed in
-  `docs/specs/README.md`; the directory is local-only / gitignored). Write the spec before
-  building non-trivial cross-cutting features; update its status as work lands.
-- Don't reinvent helpers — check `packages/utils/` before writing one.
-- Update `apps/api/src/profiles/agent-profiles.md` when agent profiles change.
-- Update this file when project structure, conventions, or domain rules change.
-- DB schema changes require a migration script and an update to
-  [packages/db/src/AGENTS.md](./packages/db/src/AGENTS.md) and
-  [db-schema.md](./packages/db/src/db-schema.md). The source of truth is the migration chain,
-  which starts at the 3.0 baseline `drizzle/0000_v3_baseline.sql` (the 1.x chain is archived in
-  `drizzle/archive-1x/` for version detection only): edit schema → `pnpm drizzle-kit generate`
-  → review SQL → commit → CI/deploy applies `pnpm db:migrate`.
-  **Persistent / shared DBs: `pnpm db:migrate` only, never `push`** (`push` is for throwaway
-  local DBs). `pnpm db:migrate` and the API boot refuse 1.x and 2.x databases; a 1.x database
-  moves to 3.0 only through `pnpm cli migrate-from-1x` into a new database.
-
-### Delete & reuse discipline (anti-entropy)
-
-The main entropy source in fast generative development is "only add, never delete; reimplement
-what exists." These rules are as binding as the "add" rules:
-
-- **Deletes must sync docs.** When you remove a module / page / endpoint / table, update or
-  delete every doc that references it (README, AGENTS.md, example comments).
-- **Deletes must cascade orphan-check.** After removing X, grep its dependents (components,
-  helpers, types, i18n keys, nav entries) and remove anything that just lost its last consumer.
-- **Check for an existing implementation first.** Before adding a "second" retrieval / chart /
-  editor / etc., register in the relevant AGENTS.md why the existing one can't be reused or
-  extended. Parallel implementations without a recorded reason are not accepted.
-  - Registered: **mermaid in chat uses the third-party `mermaid` library rather than a
-    hand-drawn SVG renderer** — chat mermaid is read-only rendering of arbitrary diagram types,
-    which no in-house drawing code could match (the interactive workflow SVG DAG it was once
-    weighed against was retired with Workflows in v1.4). Lazy-loaded on the first mermaid fence;
-    zero main-bundle cost.
-- **No speculative abstraction.** Don't write interface layers / multi-backend abstractions /
-  "for future use" columns with no second consumer.
-- **Declared capabilities must be real.** LLM tool descriptions, UI options, and docs must not
-  claim unimplemented capabilities. Unconfigured / unimplemented paths must error explicitly,
-  not pretend.
-
-## Code quality
-
-- **Pre-commit hook**: husky + lint-staged runs `eslint --fix` + `prettier --write` on staged
-  files.
-- **CI gate**: `.github/workflows/ci.yml` runs lint → typecheck → test → **e2e** → **e2e-ui** →
-  **secret-scan** on `main` and every PR (shared pnpm/Node setup lives in `.github/actions/setup`).
-  The test/e2e/e2e-ui jobs build the CI database via `pnpm db:migrate` (not push) so the whole
-  migration chain is exercised on every run.
-- **Secret scanning**: the `secret-scan` job runs [gitleaks](https://github.com/gitleaks/gitleaks)
-  over incoming commits. Rules + allowlist live in `.gitleaks.toml`. Never commit real
-  credentials; if the scanner flags a **confirmed** non-secret (a token alphabet, a test JWT
-  fixture, a documented demo password under `data/examples/` or `tests/`), add a narrow,
-  commented entry — keep the allowlist surgical so it can't mask a real leak.
-- **E2E security suite**: `pnpm test:e2e:ci` (`scripts/e2e-ci.sh`) boots the real API against
-  a migrated database and a dead LLM endpoint (`E2E_NO_LLM=1` skips content-dependent
-  assertions) and runs `tests/e2e` over HTTP: auth/token round-trips, cross-user isolation,
-  role escalation, injection, tool surfaces, OAuth machine clients. Deterministic and free.
-  When adding a test that needs a real model reply, gate it with
-  `describe.skipIf(process.env.E2E_NO_LLM === '1')`.
-- **Browser e2e (Playwright)**: `pnpm test:e2e:ui` — deterministic UI regression suite in
-  `tests/e2e-ui/` (Chromium): login, chat (LLM stubbed via `page.route`), project create, user
-  create/delete, the extension seam, and **`extension-surfaces.spec.ts`**, which reads every hash
-  the active extensions registered (`window.__greenhouseExtensionSurfaces`) and opens each one —
-  the check for failures only a browser sees (unresolvable module ids, pages that throw on
-  render). Plugins ship specs as `plugins/<id>/e2e/*.e2e.ts` (SDK 1: `apps/web/src/extensions/<id>/e2e/*.e2e.ts`)
-  (the `extensions` Playwright project; import only `@playwright/test`). `playwright.config.ts`
-  auto-starts `pnpm dev` with `GREENHOUSE_EXTENSIONS=example` (reuses a running one);
-  `auth.setup.ts` creates a super test account via `admin:create` and logs in. Locators use
-  `data-testid` anchors + `role=dialog`. Writes use a per-run prefix and self-clean. CI runs the
-  whole suite in the `e2e-ui` job (Chromium via `playwright install --with-deps`).
-- **Screenshot tour (visual smoke)**: `node scripts/capture-screens.mjs` drives a running,
-  seeded dev stack (`E2E_BASE_URL`, default `:4400`) through every surface with Playwright:
-  it seeds a demo Tables base / skills / run profile / MCP machine client
-  over the API, asks the live model two questions, and writes `docs/assets/screens/*.webp`
-  (+ `chat-knowledge.gif` / `.mp4`) that the README and `docs/index.html` embed. It exits
-  non-zero on any console error or failed `/api` request. Re-run it after visible UI changes
-  so the docs stay truthful — never hand-edit or mock the captures. Needs `ffmpeg` + `cwebp`.
-- **Landing page**: `docs/index.html` is the GitHub Pages site (precompiled Tailwind — run
-  `scripts/build-landing.sh` after changing utility classes and commit `docs/tailwind.css`).
-  Copy is bilingual: every `data-i18n` key needs a matching entry in the inline `ZH`
-  dictionary; the English source of truth is the markup itself.
-- **Dev mode**: `pnpm dev` runs the Vite dev server (web, `:3100`, HMR) + the API (`:3000`)
-  in parallel. Vite proxies `/api` (incl. ws), `/public`, `/health` to the API, so the browser
-  sees same-origin — open `:3100`. Ports are overridable via `WEB_PORT` / `API_PORT` (read from
-  the repo-root `.env`; shell vars take precedence). Production is `pnpm web:build` (Vite →
-  repo-root `public/`, `base:'./'`), served directly by the API.
-- **Acceptance environment**: `pnpm run-dev up` (`scripts/run-dev.mjs`) starts Postgres + API
-  + web together, shifts ports by +10 on conflict, writes every log under `.run-dev/logs/`,
-  and `stop` tears it all down. **A git worktree automatically gets its own database
-  `greenhouse_wt_<dir>`** (cloned from the local `greenhouse` DB as a template, then
-  migrated; when the main DB is still 1.x it starts empty instead — carry data into it with
-  `pnpm migrate-from-1x`) — never run migrations against the main DB from a worktree, and let
-  the engine arbitrate port conflicts instead of hand-killing processes.
-
-## Deploy (one-command Docker)
-
-`docker-compose.yml` is the supported self-host path: Postgres + a one-shot `migrate` job
-(`db migrate`, i.e. `pnpm db:migrate`; it refuses a 1.x / 2.x database) + the
-API (which serves the SPA) as a single self-contained image (`Dockerfile`, Debian base — the
-`compute` tool's isolated-vm native addon needs glibc; `NODE_ENV=production` is baked in so the
-fail-closed auth guard is always active).
-
-```bash
-cp .env.example .env && ./scripts/gen-secrets.sh   # fills required secrets
-#   edit .env: set LLM_BASE_URL / LLM_API_KEY / LLM_MODEL
-docker compose up -d --build
-docker compose exec api pnpm admin:create          # first super-admin
-#   app at http://localhost:3000
-```
-
-For local dev you can start only Postgres from the same file: `docker compose up -d postgres`
-(bound to `127.0.0.1:5432`, not internet-exposed).
-
-`docker-compose.ghcr.yml` is the same stack consuming the **published GHCR image**
-instead of building from source — the pull-based upgrade path for self-hosters. Keep the two
-compose files' service topology in sync.
-
-Upgrading a 1.x install to 3.0 is not an in-place migration: create a new empty database and
-run `migrate-from-1x --from <1.6 url> --to <new url>` (`--dry-run` first) through the image's
-`migrate` service; README.md → "Upgrading from 1.x to 3.0" has the commands. The old
-database is only read and stays the rollback path.
-
-### Example dataset (`pnpm seed`)
-
-`data/examples/` holds a de-identified reference dataset (fictional company "Greenhouse") —
-one JSONL file per table, imported by `apps/api/src/cli/commands/seed.ts` (`pnpm seed`). It
-exists to explore/validate a fresh install. **On a non-empty DB `pnpm seed` refuses** and
-prints the choices: `--reset` (wipes all rows first — gated behind typing the DB name, or
-`--yes`) or `--keep` (load on top). When you add/rename a table or change a column that the
-dataset populates, update the matching `data/examples/<table>.json` and its
-[`README.md`](data/examples/README.md), and add the table to `LOAD_ORDER` (FK-safe order).
-Files use the 3.0 table names (`conversations`, `conversation_shares`,
-`conversation_share_reads`, `kb_documents`, `run_profiles`, `user_grants`, `audit_events`, …);
-ids are text and jsonb columns are authored as native arrays / objects. Auth secrets are never baked in: `users.json` carries a plaintext `password` hashed at load;
-`email_accounts` (instance-secret-encrypted) are not seeded.
-
-## Releasing & versioning
-
-Full runbook: **[RELEASING.md](./RELEASING.md)**. The conventions an agent must not break:
-
-- **One product, one version.** `git tag vX.Y.Z` is the release **source of truth**;
-  the **root `package.json` `version`** mirrors it and is bumped automatically by
-  release-please (`release-type: node`) in the Release PR — **don't hand-edit it**.
-  The per-workspace `package.json` `version` fields are placeholders (not maintained).
-- **Version comes from the tag at build time.** `release.yml` passes `APP_VERSION` (tag) +
-  `APP_REVISION` (commit sha) as build args → image env + OCI labels. No runtime reader exists
-  yet and `GET /health` does not report them. Don't read `package.json.version` for the runtime
-  version.
-- **Conventional Commits drive the bump.** PRs are **squash-merged** → one Conventional Commit
-  per PR. `release-please` reads them, opens a Release PR, and on merge tags + creates the
-  GitHub Release. **`CHANGELOG.md` is release-please-managed — don't hand-edit released
-  sections.**
-- **Parked PRs (`parked` label).** A PR whose direction is accepted but which is not strong
-  enough to merge yet gets the `parked` label instead of being merged half-baked or closed.
-  Keep it rebased (watch **migration numbers** — renumber to the next free slot on revive).
-- **Stable vs. edge is a hard promise.** Tag → `ghcr.io/<owner>/greenhouse:X.Y.Z` `:X.Y`
-  (stable). `main` → `:edge` / `:main-<sha>` only. `release.yml` sets `latest=false`: no
-  workflow moves `:latest` today.
-- **Publishing workflows are repository-gated.** `release.yml` / `release-please.yml` /
-  `mobile.yml` / `deploy.yml` / `uptime.yml` only run in `linjiejim/greenhouse`; a fork's CD goes
-  in `.github/workflows/fork-*.yml`.
-- **Uptime.** `.github/workflows/uptime.yml` probes `/health` on the integration instance every
-  ten minutes plus any URLs in the `UPTIME_EXTRA_URLS` secret (comma-separated; logged by index so
-  a private hostname never prints). A failed run is the alert (GitHub mails the owner; set
-  `FEISHU_WEBHOOK` to post into a group as well).
-- **Backups are verified or they do not exist.** `scripts/backup-db.sh` checks gzip integrity, a
-  size floor and pg_dump's completion marker, deletes a failed dump, and rotates only files it
-  named itself (`<prefix>_YYYYmmdd_HHMMSS.sql.gz`, newest 7 + 8 Sundays). Every deployment's cron
-  runs this script (`PG_CONTAINER` / `PG_DB` / `PG_USER` / `BACKUP_PREFIX`), never an ad-hoc
-  `pg_dump | gzip` line — that is how an instance once shipped 20-byte dumps for two months.
-- **Artifacts.** API+web = the container image (primary). Mobile = fingerprint CD
-  (`.github/workflows/mobile.yml`, `EXPO_TOKEN`-gated): JS-only change → EAS OTA update;
-  native change → EAS build `--auto-submit`. The mobile `version` follows the product version
-  (release-please `extra-files`). **On this line nothing mobile publishes before 3.0** (the store
-  app still ships from v2): no `eas build` / `update` / `submit`, no `mobile.yml` trigger on `v1`.
-
-## Project structure (pnpm monorepo)
-
-```
-greenhouse/
-├── apps/
-│   ├── api/              # Hono backend — routes, agent runtime, auth, security, scheduler, CLI
-│   │   └── src/
-│   │       ├── routes/       # HTTP routes (one file per resource)
-│   │       ├── chat/         # chat turn pipeline: turn, runtime, persist, runs, vision, ambient context
-│   │       ├── sessions/     # session access rules + creation
-│   │       ├── drive/        # drive access + upload policy
-│   │       ├── auth/         # token, middleware, password, crypto, features, public paths
-│   │       ├── security/     # headers / CORS / rate limit, network egress policy, account lockout, request ip
-│   │       ├── extensions/   # extension host: define + generated packages + SDK 1 overlay list + boot glue
-│   │       ├── settings/     # workspace-config: DB→env resolution, env overlay, validation
-│   │       ├── config/       # models.yaml + catalog loader (the model registry)
-│   │       ├── tools/        # agent tools, each declared with defineTool
-│   │       ├── agent-runtime/# tool proxy, MCP auth, lazy tool resolution, run-agent
-│   │       ├── platform/     # platform kernel host: manifests, applications, feature points,
-│   │       │                 #   bootstrap, OAuth server
-│   │       ├── llm/          # completion / title / memory / usage budgets / media provider
-│   │       ├── profiles/     # agent profile loader + access rules, the YAML presets, agent-profiles.md
-│   │       ├── scheduler/    # cron scheduler + executor (automations)
-│   │       ├── upkeep/       # daily retention cleanup (rules in packages/db/src/services/retention.ts)
-│   │       ├── runtime/      # unified runtime kernel: runs, steps, interrupts, outbox, read models
-│   │       ├── trusted-execution/ # deployment kill switches for the runtime layers
-│   │       ├── notifications/# notification center + durable delivery
-│   │       ├── storage/      # upload storage (local disk / COS) + s3-lite (SigV4 client)
-│   │       ├── hub-context/  # team context for members' agents: MCP prompts/resources, team_context, data catalog
-│   │       ├── connectors/   # MCP client: remote connectors, credentials, OAuth sign-in, directory behind mcp_call
-│   │       └── cli/          # `pnpm cli` console: index.ts dispatcher + commands/*
-│   ├── web/              # React SPA — pages (administration/, settings/, executions/, …), components,
-│   │                     #   lib, stores, platform catalog, extensions/ (web half of the seam)
-│   ├── desktop/          # macOS Tauri 2 shell; bundled Expo client, native bridge only
-│   └── mobile/           # Expo (React Native) app — NOT a workspace member; see its AGENTS.md
-├── packages/
-│   ├── agent-core/       # Agent kernel — streamText loop, model factory/registry, provider quirks
-│   ├── platform-kernel/  # Manifest v2, ActorContext, authorization, guarded registry (no DB/Hono/React)
-│   ├── types/            # shared types (FEATURE_FLAGS, WORKSPACE_SETTINGS, entity links, activity…)
-│   ├── utils/            # shared helpers (date, json, concurrency, logger, crypto, semver, webhooks)
-│   ├── db/               # database layer — Drizzle schema + domain services (types inferred),
-│   │                     #   migrate / version detection, carry/ (migrate-from-1x), db-schema.md
-│   ├── knowledge-editor/ # Tiptap schema + server Markdown↔Tiptap JSON
-│   ├── crud/             # low-code CRUD pages (defineCrud + CrudPage); server half unused
-│   ├── ui-tokens/        # generated standalone themes + trusted plugin browser bridge
-│   ├── ui/               # shared UI: design tokens (the one source for web + mobile), Nunito, the Haven mark,
-│   │                     #   the plant-avatar renderer (SVG builder + motion + <PlantAvatar>)
-│   └── contract/         # typed API contract — re-exports apps/api's AppType + hc (web client)
-├── plugins/              # workspace plugin packages (manifest + optional API/web + migrations/tests)
-├── skillhub/             # skill-pack format; packs here sync into SkillHub on boot (none shipped)
-├── drizzle/              # migration files (single source of truth): 0000_v3_baseline + later;
-│                         #   archive-1x/ = the 1.x chain, read only for version detection
-├── scripts/              # gen-secrets, backup-db, run-dev, e2e-ci, capture-screens, …
-├── tests/                # unit / db / e2e (API, HTTP) / e2e-ui (Playwright)
-├── pnpm-workspace.yaml
-└── tsconfig.base.json    # shared TypeScript base config
-```
-
-### Workspace package names
-
-| Package | Path | Purpose |
-|---|---|---|
-| `@greenhouse/agent-core` | `packages/agent-core/` | Agent kernel — chat-engine, model registry/factory, DSML interceptor |
-| `@greenhouse/platform-kernel` | `packages/platform-kernel/` | Manifest v2, actor context, authz, registry (`contract` / `dsl` / `authz` / `registry` subpaths) |
-| `@greenhouse/types` | `packages/types/` | Shared type definitions and registries (feature flags, workspace settings, entity links, object refs, activity) |
-| `@greenhouse/utils` | `packages/utils/` | Shared helpers |
-| `@greenhouse/db` | `packages/db/` | Database layer |
-| `@greenhouse/knowledge-editor` | `packages/knowledge-editor/` | KB editor: Tiptap schema + Markdown↔Tiptap JSON. Markdown is canonical; `content_json='{}'` is legal |
-| `@greenhouse/ui` | `packages/ui/` | Design tokens (`./tokens`; `pnpm tokens:build` renders the web CSS and the mobile copy), bundled Nunito, the Haven mark (`./components/brand`), the plant-avatar renderer (`./components/plant-avatar`, React-free `./components/plant-avatar/svg`); ids + legacy resolver live in `@greenhouse/types` |
-| `@greenhouse/ui-tokens` | `packages/ui-tokens/` | Standalone generated theme values and trusted plugin embed bridge |
-| `@greenhouse/crud` | `packages/crud/` | Low-code CRUD — `defineCrud` + `CrudPage` client (automations, email accounts, SkillHub prompts). `createCrudRoutes` is exported but only its own tests use it |
-| `@greenhouse/contract` | `packages/contract/` | Typed API contract (AppType + hc; **type-only import of `@greenhouse/api`**) |
-| `@greenhouse/api` | `apps/api/` | Backend app |
-| `@greenhouse/web` | `apps/web/` | Frontend app |
-| `@greenhouse/mobile` | `apps/mobile/` | Expo team-hub app (SDK 57) — **not** a workspace member (own lockfile, `pnpm mobile:install`); vendors its types (`src/shared/push.ts` is parity-tested against `@greenhouse/types/push`) |
-
-### Import conventions
-
-- Cross-package imports use the `@greenhouse/xxx` package name, not relative paths.
-- Intra-package imports use relative paths + the `.js` extension (Node ESM).
-- e.g. `import { nowIso } from '@greenhouse/utils/date'`
-- e.g. `import type { DatabaseProvider } from '@greenhouse/db'`
-
-## Extensions & deployment configuration
-
-- **`greenhouse.config.ts`** (repo root, typed by `@greenhouse/types/config`, validated by
-  `config-schema.ts` at boot via `apps/api/src/config/greenhouse-config.ts`) holds *structure*:
-  `plugins` (compiled packages), `extensions.enabled`, `packs.{skills,profiles,seeds}`, `clients.stations`. Secrets stay in
-  `.env`; live product knobs stay in Runtime Config (DB). Do not add a fourth layer, and do not
-  move env-only infrastructure into the file. `GREENHOUSE_EXTENSIONS` overrides the enabled list.
-- **Plugin packages**: new modules live under `plugins/<id>/` (workspace `plugins/*`).
-  `greenhouse.config.ts.plugins` lists package names or repo-relative paths; `pnpm plugins:sync`
-  generates the two gitignored `extensions/compiled.generated.ts` files before install/dev/build/tests/CLI.
-  `GREENHOUSE_PLUGINS=` builds a zero-package core; `pnpm test:core` checks its types, unit/DB suites and boot.
-  Never edit generated registrations. The SDK 1 in-tree lists remain available after compiled packages.
-  Package production imports use only the API/web `extension-kit` package exports, `@greenhouse/types/*`,
-  `@greenhouse/crud`, `@greenhouse/ui/*`, `@greenhouse/ui-tokens`, own files, declared plugin dependencies and own third-party deps.
-  Relative paths cannot escape; tests retain the host-hook exemption. `pnpm lint` enforces both directions.
-  Registered: package boundaries use a TypeScript AST scanner to catch import types and computed loads;
-  the SDK 1 regex scanner stays separate to preserve in-tree overlays’ existing syntax and exemptions.
-  Admin Plugins is read-only (`/api/admin/plugins`, super); enablement needs configuration + restart.
-  `cli plugins drop <id> --yes` only removes a disabled plugin's owned tables/lane, with RESTRICT.
-- **Extension seam**: `apps/api/src/extensions/<id>/` + `apps/web/src/extensions/<id>/`, each
-  exporting `defineExtension` / `defineWebExtension`, listed once in the two `extensions/index.ts`
-  files. Every core registry aggregates from the *active* set (`EXTENSIONS` / the
-  `/api/extensions` store). Rules:
-  - Core never references an extension by id. If a module needs a hook the contract lacks, add
-    the hook to the contract + registry (and the example + seam test), never a `case 'crm'`.
-  - Contract fields map 1:1 onto existing registries — no new abstraction without a registry
-    behind it. The full list is in EXTENDING.md → "Extensions". Registries opened for extensions
-    so far: tools (incl. a generic lazy path), routes, platform apps, feature flags/points,
-    workspace settings, public paths, scheduler jobs, CLI commands, db services + a migration
-    lane, entity kinds (deeplink + peek), search sources, MCP consent groups,
-    web pages/navigation/modules/i18n/tool cards/knowledge-doc panels/agent context.
-  - Communication registries: notification transports/kinds, identity providers, agent channels; implemented by default-off Email, WeCom and Feishu packages.
-  - `workbenchRecipes`, `meta.surface.workbench` and kit `WidgetRecipe` are deprecated no-ops (Home workbench removed in 3.0); drop them in 4.0.
-  - Extension tables use the migration lane (`migrations/*.sql`, `--> statement-breakpoint`);
-    never append extension DDL to `drizzle/`. Applied files are checksummed — add a new file
-    instead of editing one.
-  - `pnpm db:migrate` runs the extension lane right after the core chain; boot runs it again.
-    A file headed `-- greenhouse:core-generation 1x` targets the 1.x core and never runs on 3.0
-    (skipped on fresh databases, refused on a carried one that lacks its row); the marker is
-    outside the checksum. A lane file may not `CREATE TABLE` a core table (derived from `drizzle/`).
-  - Extensions import only their own directory, their app's `extension-kit`, `@greenhouse/types/*`,
-    `@greenhouse/crud` and third-party packages (tests exempt). The kits are the stable API; their
-    export lists are snapshot-locked — a removal or rename updates the snapshot plus an
-    `extension-kit:` CHANGELOG line. Add a kit symbol only when an extension needs it.
-  - `defineExtension` / `defineWebExtension` declare `sdk` (= `EXTENSION_SDK`) and `core` (semver
-    range vs `APP_VERSION`, else root package.json); a mismatch refuses activation, absence warns.
-  - Extension tools that change data declare `surface.proxy: 'write'` (governed writes, delete
-    preview + `confirm`); never `proxy: 'read'` on a writing tool.
-  - Extension copy lives under `ext.<id>.*` (`registerExtensionMessages`); core `en.ts`/`zh.ts`
-    stay untouched. `visible-copy.test.ts` still scans extension TSX.
-  - The `plugins/example` package is the reference and the test fixture: keep it exercising every
-    field; `plugins/example/api/__tests__/seam.test.ts` and
-    `plugins/example/web/__tests__/seam.test.ts` load it with `GREENHOUSE_EXTENSIONS=example`;
-    the Playwright stack runs with the example on, sweeps every surface it registers and runs
-    its own `e2e/notes.e2e.ts`.
-  - Legacy hashes belong to the extension that replaced them: `pages[].aliases`
-    (`{ wiki: 'content/pages' }`) redirects `#/wiki/<tail>` into the page, tail and query intact.
-    `app.tsx` carries no per-module redirects any more; a core route can never be aliased.
-  - Extension tools must be buildable: `defineExtension` rejects a `static` tool without
-    `create()` and a `lazy` tool without `createLazy()` (core has no per-tool case for extension
-    tools, so such a tool reaches the catalog but is never handed to the agent).
-  - Forks: private modules only under the seam, content under `packs/`; `scripts/check-extension-overlay.mjs`
-    must pass against `upstream/main` (`--base` / `OVERLAY_UPSTREAM_REF`; `--strict` also fails on
-    deep imports). Upstream CI runs `--all --strict` on the example. Anything generic goes upstream first.
-  - **Adopting an existing database** (an instance moving onto this codebase): `pnpm cli db baseline`
-    records the core chain (drizzle's own journal, identical hashes) and every enabled extension's
-    migrations as applied without executing them. Always `--dry-run` first and compare against
-    `drizzle-kit generate` output. `--through` stops short of the end of a chain, so a migration
-    written specifically to finish the adoption still runs instead of being recorded away.
-    It is not for 1.x databases: 1.x data moves through `migrate-from-1x` into a new database,
-    which copies extension tables and `extension_migrations` verbatim.
-  - A database no server has booted against (a fresh test database) gets both the core chain and
-    the enabled extensions' lane from `pnpm db:migrate`; `pnpm cli db status` shows where it stands.
-- **Client stations**: `clients.stations` (`multi` | `single` + `defaults`) describes how client
-  builds treat servers. No server code reads it; the mobile app mirrors it through
-  `EXPO_PUBLIC_STATIONS_MODE` / `EXPO_PUBLIC_API_BASE_URL` (see `apps/mobile/AGENTS.md`).
-
-## Desktop client
-
-- `apps/desktop` bundles the universal Expo web export; `pnpm desktop:check` and `pnpm desktop:build` verify and create the local unsigned macOS app/DMG. Native integration rules live in `apps/desktop/AGENTS.md`.
-- Desktop exports set `GREENHOUSE_DESKTOP=1`; Metro prioritizes `.desktop.tsx` / `.desktop.ts` for bridge modules. Browser builds retain single-station behavior; desktop uses the phone's multi-station contract.
-- Keep the old desktop bundle id and updater public key. Signing/notarisation and enabling a feed are release-operator steps documented in `apps/desktop/README.md`.
-
-## Domain rules
-
-Detailed rules live next to the code:
-
-| Domain | File | Scope |
-|---|---|---|
-| Database | [packages/db/src/AGENTS.md](./packages/db/src/AGENTS.md) | Service pattern, PostgreSQL, Drizzle, migrations, test isolation |
-| Backend API | [apps/api/src/AGENTS.md](./apps/api/src/AGENTS.md) | Routes, auth, security, tool system, proxy/MCP, runtime, integrations |
-| Frontend | [apps/web/src/AGENTS.md](./apps/web/src/AGENTS.md) | Design system, components, styling, i18n, platform navigation |
-| Settings pages | [apps/web/src/pages/settings/AGENTS.md](./apps/web/src/pages/settings/AGENTS.md) | Settings / Administration modules, CRUD page conventions |
-| Mobile | [apps/mobile/AGENTS.md](./apps/mobile/AGENTS.md) | Expo team-hub app — workspace isolation, vendored types, API level, push, cache-first data, theme/i18n rules |
-| Agent profiles | [apps/api/src/profiles/agent-profiles.md](./apps/api/src/profiles/agent-profiles.md) | Profiles, model switching, tool scoping |
-| LLM / Agent kernel | `packages/agent-core/` + `apps/api/src/llm/` | Kernel (model factory/registry, chat-engine) in the package; completion/title/memory/budget consumers in api |
-| Skill packs | [skillhub/README.md](./skillhub/README.md) | Pack layout, skills vs. MCP tools, publishing |
-
-## Shared helpers (`packages/utils/`)
-
-Always import these — don't reimplement:
-
-| Function | Module | Purpose |
-|---|---|---|
-| `nowIso()` | `@greenhouse/utils/date` | ISO 8601 timestamp for all DB writes |
-| `safeJsonParse(str, fallback)` | `@greenhouse/utils/json` | Safely parse DB JSON columns |
-| `extractJson(raw)` | `@greenhouse/utils/json` | Extract JSON from LLM output |
-| `runWithConcurrency(tasks, n)` | `@greenhouse/utils/concurrency` | Parallel tasks with a concurrency cap |
-| `logger` | `@greenhouse/utils/logger` | Structured logging (info/warn/error) |
-| `encrypt` / `decrypt` / `parseHexKey` | `@greenhouse/utils/crypto` | AES-256-GCM + 64-char hex key validation |
-| `toErrorMessage(err)` | `@greenhouse/utils/error` | Normalize an unknown error to a readable string |
-| `isUniqueViolation(err)` | `@greenhouse/utils/error` | PG unique-key conflict (23505) — drizzle nests the code in `err.cause`, don't hand-check |
-| `randomDocId(prefix?)` | `@greenhouse/utils/id` | Random opaque doc id; ids are system-assigned, never title-derived |
-| `parseSemver` / `isValidSemver` / `compareSemver` / `bumpPatch` | `@greenhouse/utils/semver` | Strict `X.Y.Z` semver helpers (skill versions) — don't hand-write the regex |
-| `escapeHtml(value)` | `@greenhouse/utils/html` | Escape text into hand-built HTML (emails) |
-| `composeRichOutput({confirm?, blocks?})` | `@greenhouse/utils/prompts` | The single copy of the rich-output prompt guide shared by every profile, narrowed to the blocks a screen draws |
-
-## Auth & permissions
-
-- Roles: `super` > `team` (the retired `external` role is disabled on migration and rejected
-  by auth).
-- Auth module: `apps/api/src/auth/` (token, middleware, password, crypto, features).
-- Route guards: `requireSuper()`, `requireInternal()` (team + super), `requireRole(...)`,
-  `requireFeature(key)` (per-user flag).
-- Middleware injects `AuthUser` via `c.set('user', ...)` / `getAuthUser(c)`.
-- All writes should include `user_id` in audit fields.
-- **Fail-closed startup**: `TOKEN_SIGNING_KEY` (64 hex chars) is mandatory in every
-  environment — the service refuses to start without it, and there is no `NODE_ENV` escape
-  hatch. Stored secrets additionally need `PROVIDER_TOKEN_ENCRYPTION_KEY`.
-- **Public paths** (`PUBLIC_PATHS` in `auth/middleware.ts`): login, `/api/bootstrap`
-  (branding only), OAuth discovery/callbacks, `/api/upload/:id` image reads. Keep the list
-  minimal; a guard test pins it.
-
-### Feature flags (per-user toggles)
-
-Fine-grained gating beyond roles: open a module/feature to specific internal users, toggled
-per-user by a super in Settings → Users → (user) → Permissions.
-
-- **Registry (single source)**: `FEATURE_FLAGS` in `packages/types/src/features.ts`
-  (`{ key, label, description, defaultEnabled? }`). Core flags are empty; active plugins register `memory`, `tables` and other module flags. Stored rows of retired flags (`cloud-agent`) are ignored.
-- **Storage**: `user_grants` rows with `kind='feature'` (`user_id × key`, `enabled` boolean);
-  opt-in tools are `kind='tool'` rows in the same table.
-- **Resolution** (`resolveUserFeatures` in `apps/api/src/auth/features.ts`): `super → all on`;
-  explicit row → `row.enabled`; no row → `flag.defaultEnabled`.
-- **Frontend**: `/api/auth/me` returns resolved `user.features`; UI gates with
-  `canUseFeature(currentUser, key)` (`apps/web/src/lib/features.ts`).
-
-Adding an experimental feature (three steps): declare the owning plugin’s `featureFlags` entry; guard the backend
-(`app.use('/api/<x>/*', requireFeature('<key>'))` — UI hiding ≠ access control); wrap the
-tab/route/nav in `canUseFeature`.
-
-### Feature points and the unified permissions dialog
-
-`FEATURE_POINTS` (`apps/api/src/platform/feature-points.ts`) is the server-side registry that
-maps the three mechanisms onto "what a user can do": `app` points (Knowledge / Projects /
-Tables, tied to a manifest and a capability prefix), `flag` points (Memory) and
-`toolset` points (the remaining `is_global:false` opt-in tools). Each point declares the tool
-ids it owns, so one switch controls app + REST + MCP + chat (`resolveUserTools` merges
-flag-owned tools from this map — flag-owned tools cannot be assigned directly).
-`GET /api/admin/users/:id/access` aggregates flags, capabilities, entity policies and tools
-into one read-only view; writes still go through the existing fine-grained endpoints. The
-dialog (`apps/web/src/pages/administration/user-permissions-modal.tsx`) renders from that view.
-
-### Platform kernel v2
-
-- `@greenhouse/platform-kernel` is the base for applications: Manifest v2, ActorContext,
-  capability / entity / field authorization and a guarded registry. The API host
-  (`apps/api/src/platform/`) persists roles, role members, role capabilities, role entity
-  policies and action audit (`audit_events`) in `db.platform`; OAuth state lives in `db.platformOAuth`. Single organization: there is
-  no organizations table or `org_id`; `ActorContext.orgId` stays and the host passes
-  `'default'`.
-- Precedence is fixed: **role allow > default deny**. 3.0 stores no per-user allow/deny
-  overrides (the kernel still accepts them; the host passes none) and roles never store denies.
-  To narrow one member, move them to a narrower role (tests: `tests/helpers/restricted-role.ts`). Capabilities are `<app>.<module>.<action>` with exact, `*` and trailing
-  wildcard matching.
-- Manifests must be JSON-serializable — no handlers, DB clients, components or closures;
-  handlers are registered separately and must match actions one-to-one.
-- ⚠️ **Any change to a manifest's serialized form must bump its `version`** (even a key
-  reorder): clients, extensions and audit summaries read `<app>@<version>` as a promise about
-  what the app declares. App releases are no longer stored, so nothing fails at boot; the
-  golden-hash test in `apps/api/src/platform/__tests__/manifest-hash.test.ts` is the guard —
-  when it goes red, bump the version and update the hash in the same commit.
-- `runtime.dispatch()` is the only entry for protected actions: capability → record/field
-  policy → handler → audit. HTTP, chat tools, the agent proxy and MCP only adapt protocol.
-- Projects, Knowledge and Tables are registered applications. New applications start from
-  `pnpm cli platform create-app <id> --title "..."`; an app without a web UI may stay
-  Agent/MCP-only. The web catalog and the fixed shell navigation
-  (by goal: `Knowledge → Files → Tables → Projects → SkillHub → Automations`; Home is the new conversation, see
-  apps/web/src/AGENTS.md) derive from the user's authorized catalog;
-  who changed what (people, their agents, automations, admins) lives in the Activity log (`#/activity`,
-  formerly the execution center; `#/executions` redirects).
-
-### Workspace settings (DB-backed, admin-editable deployment config)
-
-Runtime credentials (LLM / media / search) and branding (product name, logo, theme tokens)
-are configurable from the admin UI without code or restart.
-
-- **Registry (single source)**: `WORKSPACE_SETTINGS` in `packages/types/src/workspace-settings.ts`
-  (`key`, `group`, `type`, `secret?`, `env?`). Adding a setting is one registry entry.
-- **Storage**: `workspace_settings` table; secrets AES-256-GCM encrypted via
-  `PROVIDER_TOKEN_ENCRYPTION_KEY` and never returned by the read API.
-- **Resolution** (`apps/api/src/settings/workspace-config.ts`): DB row → env var → unset.
-  Entries with an `env` mapping are overlaid onto `process.env` at startup and after every
-  write, and the model catalog is reloaded — single-process assumption; multi-node needs a
-  restart.
-- **Pre-login branding**: `GET /api/bootstrap` (public) serves product name / logo / theme
-  tokens; the web applies it before first paint (`apps/web/src/lib/workspace-branding.ts`).
-- **Admin API**: `GET/PUT /api/admin/settings` (super), batch all-or-nothing validation in
-  `validateWorkspaceValue` — never bypass it when adding write paths.
-
-### Model catalog
-
-`apps/api/src/config/models.yaml` is the single definition of every model (the chat picker and
-every agent run read it; there is no database copy). A provider entry
-names the env var holding its key (`api_key_env`) and may resolve its model id / endpoint from
-env (`model_env` / `base_url_env`) — the built-in `flash` / `pro` ids follow `LLM_*`, the native
-`deepseek-flash` (DeepSeek V4.1 Flash) entry appears once `DEEPSEEK_API_KEY` is set. The only
-provider adapters are `deepseek`, `openai` and `openai-compatible` (Kimi and MiniMax were removed
-in 2026-09). `options` belong to the model (sampling / reasoning), never to an agent;
-`context_window` drives history compaction. `vision: true` makes Chat inline attached images
-instead of routing them through `analyze_image`; `vision_env` lets a deployment override it
-(`flash` declares `vision: true` + `vision_env: LLM_VISION`, because the default model is
-whatever `LLM_MODEL` names). A requested model the deployment can no longer reach — retired from
-the catalog or its key unset — never fails a turn: Chat and custom Agents fall
-back to the agent / deployment default.
-A model's optional `price` (USD per 1M input / output / cached-input tokens) and the
-non-model price list `apps/api/src/config/services.yaml` (web search, page reads, images,
-vision, reserved cloud computer) feed USD metering: every paid call goes through
-`apps/api/src/usage/metering.ts` (member / service / organization budgets, attribution, 80% /
-100% alerts, one over-budget error) — see apps/api/src/AGENTS.md「服务与计价」.
-`@greenhouse/agent-core` keeps an env-derived fallback registry for tests and for consumers
-that boot without the file. A `flash` / `pro` entry whose `LLM_MODEL` / `LLM_BASE_URL` point at
-DeepSeek is built with the DeepSeek client (`isDeepSeekFamily` in agent-core), so the catalog's
-`thinking` option and per-call `providerOptions.deepseek` reach the wire and `reasoning_content`
-is parsed; the generic OpenAI client drops both (that is how auto-titles went blank).
-
-## Testing
-
-`pnpm test` runs all three layers; never trim real tests from the default command to save time.
-
-| Layer | File name | Runs as | Scope |
-|---|---|---|---|
-| Unit / contract | `*.test.ts(x)` | `forks` pool, parallel; one process per file | Pure logic, mocked boundaries, components, protocols; must not touch PostgreSQL |
-| DB integration | `*.db.test.ts(x)` | Parallel; each test inside a real transaction, rolled back | Services, routes, permissions observable on one connection |
-| Committed-state DB | `*.db-commit.test.ts(x)` | Serial; unique business keys + targeted cleanup | Only when several connections must observe committed state, DDL or lock races; the file header must state `@db-commit-reason` |
-
-- Tests that import `@greenhouse/db/test-config` belong to the last two layers;
-  `tests/test-classification.test.ts` enforces naming and the commit-reason header.
-- Unit tests use `forks` — don't switch back to `vmThreads`: its module cache is never freed
-  between files, so worker heaps grow with the file count and CI runners get OOM-killed while
-  the same tree passes locally.
-- Restore mocks, fake timers, `process.env`, singletons and global registries within the file;
-  never depend on file order or state another file left behind.
-- DB tests never call `resetSchema()` in `beforeEach`: the DB project truncates once at
-  startup (`tests/setup/db-global.ts`) and bootstraps the immutable platform manifests,
-  protected roles and baseline policies; after that every test is isolated by rollback.
-  Create internal test users with `tests/helpers/internal-user.ts`.
-- Every test builds its own fixtures and asserts on ids returned by `create`; never rely on
-  fixed ids (new ids are prefixed ULIDs).
-- Set `TEST_DATABASE_URL` for every local DB test run (parallel worktrees use
-  `.../greenhouse_test_<slug>`); without it the run fails, only CI defaults to
-  `localhost:5432/greenhouse_test`. The safety check only accepts loopback targets whose name
-  contains `test` / `e2e`.
-- Fast feedback: `pnpm test:unit`; database focus: `pnpm test:db`; before landing run the full
-  `pnpm test`. Worker counts are tunable via `VITEST_UNIT_MAX_WORKERS` /
-  `VITEST_DB_MAX_WORKERS`.
-
-### Official plugin ownership (4.0, wave 2a)
-
-Memory and Feedback are default-on packages; Reports and Computer are compiled but default-off.
-Their schemas, DB services, routes, tools, jobs, classic web panels, translations and seeds live
-under `plugins/<id>/`. Core must consume their contributions, never import their source or add
-module-specific cases. The generic seams are `promptContext`, `toolAvailability`, `billableServices`,
-`settingValidators`, `activity`, `summarySources`, `seeds`, and `retention`; web adds `tabs` and `slots`.
-`services` remains the DB factory; `billableServices` is the price catalog contribution.
-Tools may declare `meta.builtin`; this widens only the profile filter, never member permissions.
-External-only plugin tools are constructed only by the external service-tool builder.
-
-`conversations.sharing` defaults to true in greenhouse.config.ts. False disables share mutations and
-session-share routes, returns empty `/api/shares` lists, hides classic sharing controls and removes
-access granted by stored shares. Existing share rows are preserved.
-
-- Optional automation grants are contributed as `automationTools`; MCP group purpose/working hints use `hubContext`, filtered by reachable tools. Never capture a plugin-dependent tool enum at module evaluation.
-
-### Official communication plugins (4.0)
-
-`plugins/email`, `plugins/wecom` and `plugins/feishu` own mailbox/integration code, web controls, tests and data. They are compiled but disabled by default; env configuration alone does nothing. Generic identity tables, OAuth state, in-app notifications and mobile push stay core. New adapters use `notificationTransports`, `notificationKinds`, `identityProviders` and `channels`; no core imports or per-plugin branches. See EXTENDING.md and each package's AGENTS.md.
-
-### SkillHub and Projects plugin ownership (4.0, wave 2c)
-
-SkillHub is default-on; Projects is compiled but default-off. Both own schema/services, routes,
-tools, classic UI, translations and tests under `plugins/<id>`. Saved prompts remain core.
-`agentContext` adds stable, capped prompt fragments and reach-filtered MCP resources/prompts;
-`objectRefs`, `recentChanges`, activity descriptors and `rateLimits` replace module cases.
-Legacy URLs/tool ids/entity kinds/MCP prompt names stay unchanged. The core ownership snapshot
-advances without DROP; plugin adoption preserves all rows. Tests enable `all`; core enables none.
-
-### Tables plugin (4.0)
-
-Tables is a default-on package under `plugins/tables`, owning schema/services, routes/tools/CLI, data catalog lane, classic grid/sidebar/cards/messages and MCP group. Core FEATURE_FLAGS is empty; active plugins register flags, so `/api/auth/me` still reports `features.tables` when enabled. Disabled Tables contributes no route, tool, catalog base, navigation, context provider or flag. Plugin cards use host-provided action/session handles. Shared inline cell editing remains in the web kit.
-
-Knowledge server conversion may import the shared `@greenhouse/knowledge-editor/markdown` package directly; it owns that dependency. The classic editor host exposes its browser primitives through the web kit. This shared leaf package is the sole conversion implementation; API core has no dependency on it.
-
-
-### SDK 2 data plugins and station discovery
-
-- `dataSources` reuses the platform kernel DSL and derives only existing registries.
-  Prefer it for new table-backed entities. `plugins/example` covers actions, scopes,
-  handlers, audit, context, events, install and static/declarative surfaces.
-- Data tools/routes share runtime capability, row-scope and field-policy enforcement.
-  Never bypass these checks in custom handlers; use their scoped service. Register
-  custom writes with `recordWrite()` and notifications with `notify()`.
-- `manifest.ts.surfaces` is pure data. `/api/extensions` v2 is cut to the signed-in
-  member; retain the v1 fields. API level comes from `CLIENT_API_LEVEL` (4).
-- SDK 1 remains accepted in 4.x. Lifecycle observations are asynchronous and
-  non-vetoing, have a five-second deadline and carry ids/metadata only. Install
-  markers live in `extension_migrations`, not a parallel table; hooks must tolerate
-  retry after a crash. Never edit an applied migration checksum.
-
-### Hosted clients and plugin UI (4.0, wave 4)
-
-- `clients.web` selects the production root: `classic` (4.0 rc default) or `universal`. Classic also remains at `/classic/` in both modes. API/plugin paths never fall through to either SPA.
-- `pnpm web:build` preserves `public/app`; `pnpm app:build` exports the isolated Expo workspace into it using the browser's own origin. Docker installs mobile with its own frozen lockfile in a separate stage. Never add mobile to the root workspace.
-- `@greenhouse/ui-tokens` contains generated light/dark values and the trusted embed bridge. Regenerate through `pnpm tokens:build`; mobile builds its own init message and imports none of this package.
-- Classic manifest pages use `#/ext/<plugin>/<page>` and the existing CRUD / Runtime Config components. Embeds receive only ten-minute `/api/ext-ui/token` credentials, never an interactive access token.
+# Greenhouse contributor rules
+
+## Product and ownership
+
+- Greenhouse is an internal Agent hub: governance core, official plugins and deployment-specific plugins.
+- Core owns identity/permissions, conversations/Agents, models/budgets/gateway, tools/runs/audit, MCP/connectors, automations, Files, notifications/push, settings/branding, plugin host, administration and CLI.
+- Knowledge, Tables, Skills, Feedback and Memory are default-on plugins; Projects, Reports, Email, Feishu, WeCom, Computer, Retro and Example are compiled but default-off.
+- Retro depends on Knowledge; saved prompts, `/api/prompts` and `task_capture` remain core independently of SkillHub.
+- Core consumes active registries and never imports plugins or branches on plugin ids.
+- Public docs describe implemented behavior and contain no private company/customer information.
+
+## Work discipline
+
+- Read the nearest applicable AGENTS.md and reuse existing implementations before adding one.
+- Prefer MCP graph tools for code discovery; use rg for literals/config/docs or insufficient/unavailable graph tools.
+- Write a spec before non-trivial cross-cutting work in local-only `docs/specs/YYYYMMDD-<name>.md`, with status, decisions, acceptance criteria and index entry.
+- Update README/AGENTS for behavior/convention changes and `apps/api/src/profiles/agent-profiles.md` for profile changes.
+- Deletions cascade to orphan consumers, types, copy, routes, navigation, tests and docs.
+- Register why an existing implementation cannot be extended before adding a parallel one; no speculative abstractions or unused columns.
+- Declared capabilities must work; unsupported/unconfigured paths error explicitly.
+- Use existing `@greenhouse/utils/*` helpers for date, JSON, concurrency, logger, crypto, ids, semver, HTML, errors and rich-output prompts.
+- Use `nowIso`, `safeJsonParse`, `extractJson`, `runWithConcurrency`, `logger`, `encrypt/decrypt/parseHexKey`, `toErrorMessage`, `isUniqueViolation`, `randomDocId`, semver helpers, `escapeHtml` and `composeRichOutput` instead of copies.
+- Cross-package imports use `@greenhouse/<package>`; intra-package Node ESM imports use relative paths plus `.js`.
+
+## Repository map
+
+- `apps/api/` is Hono governance/runtime/CLI; read [backend rules](apps/api/src/AGENTS.md).
+- `apps/web/` is classic React/Vite; read [frontend rules](apps/web/src/AGENTS.md) and [settings rules](apps/web/src/pages/settings/AGENTS.md).
+- `apps/mobile/` is isolated Expo for web/iOS/Android; read [universal client rules](apps/mobile/AGENTS.md).
+- `apps/desktop/` is the Tauri macOS shell; read [desktop rules](apps/desktop/AGENTS.md).
+- `packages/agent-core/` owns the model loop/factory; `packages/platform-kernel/` owns pure manifests/actors/authz/dispatch.
+- `packages/db/` owns core schema/services/migration/carry; read [DB rules](packages/db/src/AGENTS.md) and [schema](packages/db/src/db-schema.md).
+- `packages/types/`, `packages/utils/`, `packages/contract/` own shared protocols/helpers and typed API exports; contract's API dependency is type-only.
+- `packages/crud/` owns shared list/form/detail and server CRUD; `packages/knowledge-editor/` owns editor schema/Markdown conversion.
+- `packages/ui/` owns shared tokens/brand/plant avatars; `packages/ui-tokens/` owns generated themes/trusted embed bridge.
+- `plugins/<id>/` owns manifest/API/web/schema/services/migrations/seeds/copy/tests; read its AGENTS.md.
+- `skillhub/` holds skill-pack sources; read [pack format](skillhub/README.md).
+- `drizzle/` owns core migration history; `scripts/` owns build/assembly/ops/gates; `tests/` owns shared test layers.
+
+## Configuration and plugins
+
+- `.env` owns infrastructure/secrets; DB Runtime Config owns live settings; `greenhouse.config.ts` owns structure; do not add a fourth layer.
+- `plugins` selects compiled packages; `extensions.enabled` selects active ids; GREENHOUSE_PLUGINS overrides assembly and GREENHOUSE_EXTENSIONS overrides enablement.
+- New plugins use `plugins/<id>/`; pure-data manifest id/SDK/version must agree with package metadata.
+- Run `pnpm plugins:sync` after assembly inputs change; never edit or commit ignored `extensions/compiled.generated.ts` files.
+- Rebuild for compilation changes and restart for enablement changes; Administration → Plugins is read-only.
+- SDK 2 is current; SDK 1 packages/in-tree index lists remain accepted in 4.x; declare matching sdk/core ranges and preserve wire fields.
+- Missing legacy compatibility declarations currently warn; mismatching declared SDK/core refuses activation.
+- Package production imports use only host kits, shared types, CRUD, UI, ui-tokens, the Markdown conversion leaf, own files and declared plugin/third-party dependencies.
+- Relative imports cannot escape a package; plugin dependencies require both dependsOn and package.json; tests may reach host hooks.
+- Kit exports are snapshot-locked; removals/renames require the snapshot and an `extension-kit:` CHANGELOG entry.
+- Add hooks only with a real registry consumer, Example coverage and seam tests; never add per-module core cases.
+- Plugin copy belongs under `ext.<id>.*` in both languages; do not add plugin copy to core locales.
+- Prefer dataSources for table-backed entities; REST/tools/runtime share capability, row-scope, field-policy, export and audit checks.
+- Custom handlers use scoped services or enforce equivalent restrictions before paging/counting and external I/O.
+- Writes reject unknown/immutable/forbidden fields atomically, even for super; ids/storage timestamps/internal/confidential/restricted fields are never caller input.
+- Owner/member input requires explicit writable metadata and grants; creation validates then stamps effective ownership.
+- Forms use member-specific writable metadata and PATCH only changed fields; refresh retains loaded rows/totals/paging.
+- Writing tools declare surface.proxy=write; static/lazy tools implement create/createLazy; builtin metadata never grants permissions.
+- Custom protected commands use runtime/recordWrite and notifications use notify; do not create a parallel permission/audit plane.
+- Agent context is stable, capped and reach-filtered; resources/prompts recheck grants on each request.
+- Observations carry ids/metadata, cannot veto, and have isolated five-second deadlines; use bounded I/O and tolerate retries.
+- onInstall runs migration-locked after migrations; install/outbox consumers must be crash/retry idempotent.
+- Scheduled work uses host job claims; register transport/identity/channel/retention/pricing/search/catalog/entity/discriminator contributions.
+- Deprecated workbenchRecipes, surface.workbench and WidgetRecipe remain no-ops; do not use them for new work.
+- Preserve official URLs/tool ids/MCP groups/legacy kinds; aliases belong to plugins and cannot replace core routes.
+- Downstream changes stay in plugins/seam, packs, deploy, config and fork workflows; generic improvements go upstream.
+
+## Clients, permissions and security
+
+- clients.web selects classic (default) or universal at `/`; `/classic/` always exists and API/plugin paths never fall through to SPA HTML.
+- `pnpm web:build` preserves public/app; `pnpm app:build` exports isolated Expo there without developer/desktop station overrides.
+- Keep mobile outside the root workspace with its own lockfile; Docker installs/exports it in a separate stage.
+- `/api/extensions` v2 is member-filtered and keeps v1 fields; server client API is 4, current universal minimum is 3.
+- Surfaces use native/entity-list/entity-detail/settings-form/embed; SDK 1 React injection remains classic-only.
+- Settings forms do not weaken super-only settings APIs; unknown pages use validated browser fallbacks.
+- Regenerate shared themes with `pnpm tokens:build`; never hand-edit generated tokens.
+- Embeds receive ten-minute member/plugin credentials from `/api/ext-ui/token`, scoped to the plugin API and basic GET /api/me.
+- Validate bridge window/exact origin; never inject full login tokens, persist credentials or submit assistant drafts automatically.
+- Same-origin installed plugin frames share code trust; user HTML previews remain opaque-origin and credential-free.
+- Desktop CORS/framing trusts exactly tauri://localhost; plugin frames have no native capabilities and explicitly allowlist the parent hint.
+- All business surfaces bind real active internal team/super accounts; reject anonymous/disabled/deleted/external/stale-generation identities.
+- TOKEN_SIGNING_KEY is mandatory; stored secrets need PROVIDER_TOKEN_ENCRYPTION_KEY; secret settings are encrypted/write-only.
+- Permissions only narrow from member to profile/grant/transport; runtime.dispatch is the protected-action boundary.
+- MCP writes run as the member with evidence and delete preview/confirm; Agent API requires confirm on each write.
+- Core feature flags are empty; plugins contribute flags through user_grants/feature points; UI hiding never replaces route checks.
+- Settings resolve DB → env → unset; validate batch writes atomically and preserve masked secrets.
+- Core models.yaml defines models; billableServices augments pricing; paid calls always use budget admission/metering.
+- Active chat runs, presence and some provider caches remain process-local; keep multi-replica limitations explicit.
+
+## Database and seeds
+
+- Core history starts at immutable drizzle/0000_v3_baseline.sql; archive-1x is identification-only.
+- Persistent/shared databases use `pnpm db:migrate`, never push; always set the intended DATABASE_URL explicitly.
+- Worktrees use isolated databases, never the owner's main DB; let run-dev arbitrate ports without killing unrelated processes.
+- Schema changes require generated/reviewed SQL and relevant AGENTS/schema docs; never edit applied migration bytes.
+- Plugin DDL uses its own checksummed lane/statement-breakpoints; do not create core tables or append plugin DDL to drizzle.
+- Baseline creates 73 original tables; ownership is 49 core plus 24 official-plugin tables, with no DROP/move during adoption.
+- Disablement retains data; explicit `cli plugins drop` previews/deletes only disabled owned tables/lane with RESTRICT.
+- Core cannot acquire plugin FKs; historical discriminator reads survive disablement and writes validate active registries.
+- 1.x moves through migrate-from-1x into a new DB; 2.x/half-carried DBs refuse normal migration/boot.
+- Baseline adoption needs dry run/matching DDL and is not a 1.x migration.
+- Core seeds live in data/examples, plugin seeds in plugins; update dataset README/load order and load in dependency order.
+- Seed refuses non-empty DBs without keep/reset; destructive reset needs explicit confirmation; fixtures contain no encrypted auth secrets.
+
+## Verification and operations
+
+- Run pnpm typecheck/pnpm lint after every change, pnpm test after functional changes and all task gates before handoff.
+- pnpm test includes unit, transactional DB and committed-state DB; never trim the default suite.
+- Units use forks/no PostgreSQL; DB tests roll back; committed-state tests need @db-commit-reason and isolated cleanup.
+- Restore mocks/timers/env/registries and build fixtures with returned opaque ids, not fixed ids.
+- Local DB tests require loopback TEST_DATABASE_URL with test/e2e in the name; use VITEST_UNIT_MAX_WORKERS/VITEST_DB_MAX_WORKERS.
+- For plugin changes run strict overlay guard, plugins:sync --check and test:core; core assembly runs sequentially with other generators.
+- HTTP security uses test:e2e:ci with migrated test DB/dead LLM; model-dependent cases honor E2E_NO_LLM.
+- Classic/plugin browser tests use test:e2e:ui; universal uses test:e2e:client; package browser specs import only @playwright/test.
+- Root checks skip isolated mobile type/lint; run both inside apps/mobile for mobile changes.
+- Product captures use scripts/capture-screens.mjs against seeded real UI; never mock or hand-edit captures.
+- Tour uses /classic and active plugin discovery; enable intended plugins before migration/seed; label old images until replaced.
+- docs/index.html is bilingual: data-i18n keys need ZH entries; rebuild landing CSS after utility-class changes.
+- Keep gitleaks allowlists narrow/commented and CI gates complete.
+- One product version spans root/apps/packages/plugins/mobile/desktop via release-please extra-files; routine bumps/releases are automated.
+- Candidate config uses prerelease strategy/rc; RELEASING.md documents operator publication and stable promotion.
+- Tags define releases; APP_VERSION/APP_REVISION and OCI labels stamp images; /health does not expose the version.
+- Stable tags publish exact/minor/latest, rc only exact rc, main only edge/main-sha.
+- Use Conventional squash commits; do not hand-edit released CHANGELOG sections or versions outside an authorized cut.
+- Local build authorization never implies push/tag/deploy/EAS publication or desktop signing/feed activation.
+- Keep desktop bundle id/updater public key and mobile native identity unchanged.
+- Keep Compose topologies aligned, migrate before startup, and use scripts/backup-db.sh with integrity/rotation checks.
+- Upstream publishing workflows are repository-gated; forks use fork-*.yml.

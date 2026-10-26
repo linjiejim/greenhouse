@@ -9,7 +9,11 @@
  * and failed /api requests, so the run doubles as an end-to-end smoke check.
  *
  * Prerequisites: a dev stack on E2E_BASE_URL (default http://localhost:4400)
- * with the example dataset loaded (`pnpm seed`); ffmpeg (gif/mp4) and cwebp
+ * with the example dataset loaded (`pnpm seed`). Use GREENHOUSE_EXTENSIONS=all
+ * before migration/seed/API startup for the full plugin tour. It always visits
+ * /classic/, even when the universal client is hosted at /. Disabled plugins
+ * are skipped; plugin-pages sweeps the member-visible v2 manifest.
+ * Requires ffmpeg (gif/mp4) and cwebp
  * (png → webp) on PATH — each is skipped with a warning when missing.
  *
  *   node scripts/capture-screens.mjs            # light theme, all surfaces
@@ -23,7 +27,18 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readdirSync, renameSync, rmSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-const BASE = process.env.E2E_BASE_URL || 'http://localhost:4400';
+const BASE = (process.env.E2E_BASE_URL || 'http://localhost:4400').replace(/\/+$/, '');
+const CLASSIC = `${BASE}/classic/`;
+let activePluginIds = null;
+const STEP_PLUGIN = {
+  chat: 'knowledge',
+  'chat-tables': 'tables',
+  knowledge: 'knowledge',
+  projects: 'projects',
+  tables: 'tables',
+  extension: 'example',
+  video: 'knowledge',
+};
 const OUT = resolve(process.cwd(), 'docs/assets/screens');
 const ACCOUNT = { email: 'maya@greenhouse.example', password: 'greenhouse' };
 const args = process.argv.slice(2);
@@ -102,6 +117,11 @@ async function snap(page, name, opts = {}) {
 async function step(name, fn) {
   // login and the webp pass always run; --only filters the tour steps in between.
   if (ONLY && !ONLY.has(name) && name !== 'login' && name !== 'webp') return;
+  const owner = STEP_PLUGIN[name];
+  if (owner && activePluginIds && !activePluginIds.has(owner)) {
+    log(`  ↷ ${name}: ${owner} plugin disabled — skipped`);
+    return;
+  }
   log(`▶ ${name}`);
   try {
     await fn();
@@ -113,7 +133,7 @@ async function step(name, fn) {
 }
 
 async function login(page) {
-  await page.goto(`${BASE}/`);
+  await page.goto(`${CLASSIC}`);
   await page.getByTestId('login-email').fill(ACCOUNT.email);
   await page.getByTestId('login-password').fill(ACCOUNT.password);
   await page.getByTestId('login-submit').click();
@@ -413,7 +433,7 @@ const page = await context.newPage();
 const diag = attachDiagnostics(page, 'tour');
 
 await step('login', async () => {
-  await page.goto(`${BASE}/`);
+  await page.goto(`${CLASSIC}`);
   await page.waitForSelector('[data-testid="login-submit"]');
   await snap(page, 'login');
   await login(page);
@@ -421,14 +441,19 @@ await step('login', async () => {
 
 const token = await accessToken(page);
 const client = api(context.request, token);
+const manifestResponse = await client.get('/api/extensions');
+if (manifestResponse.status !== 200) throw new Error(`station manifest ${manifestResponse.status}`);
+const station = manifestResponse.body;
+activePluginIds = new Set((station.extensions ?? []).map((plugin) => plugin.id));
+log(`  active plugins: ${[...activePluginIds].join(', ') || '(none)'}`);
 let users = [];
 let tables = { baseId: null, tableId: null };
 
 await step('seed', async () => {
   users = (await client.get('/api/admin/users')).body?.users ?? [];
   if (!ONLY || FORCE_CLEANUP) await cleanupTourSessions(client);
-  tables = await seedTables(client, users);
-  await seedSkills(client);
+  if (activePluginIds.has('tables')) tables = await seedTables(client, users);
+  if (activePluginIds.has('skills')) await seedSkills(client);
   await seedAgent(client);
   await seedMachineClient(client, users);
   // Kick off one automation so the execution center has something to show.
@@ -438,7 +463,7 @@ await step('seed', async () => {
 });
 
 await step('home', async () => {
-  await page.goto(`${BASE}/#/home`);
+  await page.goto(`${CLASSIC}#/home`);
   await page.reload();
   await settle(page, 1500);
   await snap(page, 'home');
@@ -446,7 +471,7 @@ await step('home', async () => {
 
 let answeredSessionUrl = null;
 await step('chat', async () => {
-  await page.goto(`${BASE}/#/chat`);
+  await page.goto(`${CLASSIC}#/chat`);
   await page.getByTestId('chat-input').waitFor();
   await page.getByTestId('chat-input').fill(KNOWLEDGE_QUESTION);
   await page.getByTestId('chat-input').press('Enter');
@@ -466,7 +491,7 @@ await step('chat', async () => {
 });
 
 await step('chat-tables', async () => {
-  await page.goto(`${BASE}/#/chat`);
+  await page.goto(`${CLASSIC}#/chat`);
   await page.getByTestId('chat-input').waitFor();
   // Fresh conversation so the Tables question gets its own session.
   await page
@@ -496,9 +521,9 @@ await step('chat-tables', async () => {
 });
 
 await step('knowledge', async () => {
-  await page.goto(`${BASE}/#/knowledge/doc/2-remote-work-policy`);
+  await page.goto(`${CLASSIC}#/knowledge/doc/2-remote-work-policy`);
   await snap(page, 'knowledge-doc', { wait: 1500 });
-  await page.goto(`${BASE}/#/knowledge`);
+  await page.goto(`${CLASSIC}#/knowledge`);
   await settle(page);
   await page.getByPlaceholder(/Search knowledge/i).fill('stipend');
   await page.keyboard.press('Enter');
@@ -512,7 +537,7 @@ await step('knowledge', async () => {
 });
 
 await step('projects', async () => {
-  await page.goto(`${BASE}/#/projects`);
+  await page.goto(`${CLASSIC}#/projects`);
   await settle(page, 1200);
   await page
     .getByRole('button', { name: 'Cards' })
@@ -528,7 +553,7 @@ await step('projects', async () => {
     .click()
     .catch(() => {});
   await snap(page, 'projects-gantt', { wait: 1200 });
-  await page.goto(`${BASE}/#/projects/2`);
+  await page.goto(`${CLASSIC}#/projects/2`);
   await settle(page, 1200);
   await clickFirst(page, [
     (p) => p.getByRole('tab', { name: 'Board' }),
@@ -540,31 +565,33 @@ await step('projects', async () => {
 
 await step('tables', async () => {
   if (!tables.tableId) throw new Error('no demo table');
-  await page.goto(`${BASE}/#/tables/${tables.baseId}/table/${tables.tableId}`);
+  await page.goto(`${CLASSIC}#/tables/${tables.baseId}/table/${tables.tableId}`);
   await snap(page, 'tables-grid', { wait: 1800 });
 });
 
 await step('executions', async () => {
-  await page.goto(`${BASE}/#/executions`);
+  await page.goto(`${CLASSIC}#/executions`);
   await settle(page, 1200);
   // Tab names carry their count ("All 2"), so match on the prefix only.
   await clickFirst(page, [(p) => p.getByRole('tab', { name: /^All/ }), (p) => p.getByRole('button', { name: /^All/ })]);
   await snap(page, 'execution-center', { wait: 1500 });
-  await page.goto(`${BASE}/#/automations`);
+  await page.goto(`${CLASSIC}#/automations`);
   await snap(page, 'automations', { wait: 1200 });
-  await page.goto(`${BASE}/#/skillhub?tab=prompts`);
+  await page.goto(`${CLASSIC}#/skillhub?tab=prompts`);
   await snap(page, 'prompt-tasks', { wait: 1000 });
 });
 
 await step('agents', async () => {
-  await page.goto(`${BASE}/#/automations?tab=profiles`);
+  await page.goto(`${CLASSIC}#/automations?tab=profiles`);
   await snap(page, 'agents', { wait: 1200 });
-  await page.goto(`${BASE}/#/skillhub`);
-  await snap(page, 'skillhub', { wait: 1500 });
+  if (activePluginIds.has('skills')) {
+    await page.goto(`${CLASSIC}#/skillhub`);
+    await snap(page, 'skillhub', { wait: 1500 });
+  }
 });
 
 await step('search-and-assistant', async () => {
-  await page.goto(`${BASE}/#/chat`);
+  await page.goto(`${CLASSIC}#/chat`);
   await settle(page);
   await page
     .getByRole('button', { name: /Search/ })
@@ -585,11 +612,11 @@ await step('search-and-assistant', async () => {
 await step('settings', async () => {
   for (const [route, name] of [
     ['settings/preferences', 'settings-preferences'],
-    ['settings/memory', 'settings-memory'],
+    ...(activePluginIds.has('memory') ? [['settings/memory', 'settings-memory']] : []),
     ['settings/provider-bindings', 'settings-connections'],
     ['settings/agent-connections', 'settings-agent-connections'],
   ]) {
-    await page.goto(`${BASE}/#/${route}`);
+    await page.goto(`${CLASSIC}#/${route}`);
     await snap(page, name, { wait: 1000 });
   }
 });
@@ -602,10 +629,10 @@ await step('administration', async () => {
     ['administration/usage', 'admin-usage'],
     ['administration/mcp-keys', 'admin-mcp-access'],
   ]) {
-    await page.goto(`${BASE}/#/${route}`);
+    await page.goto(`${CLASSIC}#/${route}`);
     await snap(page, name, { wait: 1200 });
   }
-  await page.goto(`${BASE}/#/administration/users`);
+  await page.goto(`${CLASSIC}#/administration/users`);
   await settle(page, 1000);
   const row = page.locator('tr', { hasText: 'leo@greenhouse.example' }).first();
   await row.getByRole('button', { name: 'Permissions' }).first().click();
@@ -614,7 +641,7 @@ await step('administration', async () => {
 });
 
 await step('inbox', async () => {
-  await page.goto(`${BASE}/#/home`);
+  await page.goto(`${CLASSIC}#/home`);
   await settle(page);
   // The bell sits next to search in the sidebar header.
   await page
@@ -626,13 +653,13 @@ await step('inbox', async () => {
 });
 
 await step('plugins', async () => {
-  await page.goto(`${BASE}/#/administration/plugins`);
+  await page.goto(`${CLASSIC}#/administration/plugins`);
   await page.getByTestId('admin-plugins').waitFor();
   await snap(page, 'administration-plugins', { wait: 1200 });
 });
 
 await step('extension', async () => {
-  // Only meaningful when the stack runs with GREENHOUSE_EXTENSIONS=example.
+  // Example must be enabled alongside the other desired plugins for this step.
   const active = (await client.get('/api/extensions')).body?.extensions ?? [];
   if (!active.some((e) => e.id === 'example')) {
     log('  ↷ example extension not active — skipped');
@@ -648,21 +675,21 @@ await step('extension', async () => {
       await client.post('/api/ext/example/notes', { body });
     }
   }
-  await page.goto(`${BASE}/#/example`);
+  await page.goto(`${CLASSIC}#/example`);
   await snap(page, 'extension-example-page', { wait: 1500 });
   await page.getByRole('button', { name: 'More', exact: true }).first().hover();
   await snap(page, 'extension-more-menu', { wait: 800 });
   await page.mouse.move(700, 450);
-  await page.goto(`${BASE}/#/settings/example`);
+  await page.goto(`${CLASSIC}#/settings/example`);
   await snap(page, 'extension-settings-module', { wait: 1200 });
-  await page.goto(`${BASE}/#/administration/runtime-config`);
+  await page.goto(`${CLASSIC}#/administration/runtime-config`);
   await settle(page, 1200);
   await page
     .getByText('Example notes (extension)')
     .scrollIntoViewIfNeeded()
     .catch(() => {});
   await snap(page, 'extension-runtime-config', { wait: 800 });
-  await page.goto(`${BASE}/#/chat`);
+  await page.goto(`${CLASSIC}#/chat`);
   await page.getByTestId('chat-input').waitFor();
   await page
     .getByRole('button', { name: 'New Chat' })
@@ -676,6 +703,35 @@ await step('extension', async () => {
   await snap(page, 'extension-chat-card', { wait: 1200 });
 });
 
+await step('plugin-pages', async () => {
+  for (const plugin of station.plugins ?? []) {
+    for (const surface of plugin.pages ?? []) {
+      let href = `#/ext/${encodeURIComponent(plugin.id)}/${encodeURIComponent(surface.id)}`;
+      if (surface.kind === 'native') {
+        if (!surface.fallback_url) continue;
+        href = surface.fallback_url;
+      } else if (surface.kind === 'entity-detail') {
+        const entity = plugin.entities?.find((entry) => entry.id === surface.entity);
+        if (!entity) throw new Error(`missing entity for ${plugin.id}/${surface.id}`);
+        const list = await client.get(`${entity.endpoint}?limit=1`);
+        if (list.status !== 200) throw new Error(`${entity.endpoint}: ${list.status}`);
+        const row = list.body?.items?.[0];
+        if (!row) {
+          log(`  ↷ ${plugin.id}/${surface.id}: no seeded record — skipped`);
+          continue;
+        }
+        href += `/${encodeURIComponent(String(row.id))}`;
+      }
+      const url = new URL(href, CLASSIC);
+      if (url.origin !== new URL(BASE).origin || !url.pathname.startsWith('/classic/'))
+        throw new Error(`unsafe classic fallback for ${plugin.id}/${surface.id}`);
+      await page.goto(url.href);
+      if (surface.kind === 'embed') await page.locator('iframe').waitFor();
+      await snap(page, `plugin-${plugin.id}-${surface.id}`.replace(/[^a-zA-Z0-9_-]/g, '-'), { wait: 1200 });
+    }
+  }
+});
+
 await step('dark-theme', async () => {
   await page.mouse.move(700, 450);
   await page.evaluate(() => localStorage.setItem('greenhouse-theme', 'dark'));
@@ -684,10 +740,12 @@ await step('dark-theme', async () => {
     await page.reload();
     await snap(page, 'chat-knowledge-answer-dark', { wait: 1500 });
   }
-  await page.goto(`${BASE}/#/tables/${tables.baseId}/table/${tables.tableId}`);
-  await page.reload();
-  await snap(page, 'tables-grid-dark', { wait: 1800 });
-  await page.goto(`${BASE}/#/home`);
+  if (tables.tableId && activePluginIds.has('tables')) {
+    await page.goto(`${CLASSIC}#/tables/${tables.baseId}/table/${tables.tableId}`);
+    await page.reload();
+    await snap(page, 'tables-grid-dark', { wait: 1800 });
+  }
+  await page.goto(`${CLASSIC}#/home`);
   await page.reload();
   await snap(page, 'home-dark', { wait: 1500 });
   await page.evaluate(() => localStorage.setItem('greenhouse-theme', 'light'));
@@ -724,7 +782,7 @@ await step('video', async () => {
   });
   await rec.addInitScript(themeInit);
   const vp = await rec.newPage();
-  await vp.goto(`${BASE}/#/chat`);
+  await vp.goto(`${CLASSIC}#/chat`);
   await vp.getByTestId('chat-input').waitFor();
   await vp.waitForTimeout(800);
   await vp.getByTestId('chat-input').type(KNOWLEDGE_QUESTION, { delay: 18 });

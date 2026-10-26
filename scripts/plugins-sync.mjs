@@ -7,7 +7,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { parsePluginsEnv } from '../packages/types/src/config.ts';
 import { parseGreenhouseConfig } from '../packages/types/src/config-schema.ts';
 import { EXTENSION_SDK } from '../packages/utils/src/extension-compat.ts';
-import { isValidSemver } from '../packages/utils/src/semver.ts';
+import { isValidSemver, releaseTriple } from '../packages/utils/src/semver.ts';
 import { format } from 'prettier';
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -106,7 +106,10 @@ export async function resolvePlugins(root = REPO_ROOT, env = process.env) {
       !pkg.name ||
       typeof manifest.name !== 'string' ||
       !manifest.name.trim() ||
-      !isValidSemver(manifest.version) ||
+      // Product/plugin releases may carry rc/build suffixes; skill versions remain strict X.Y.Z.
+      typeof manifest.version !== 'string' ||
+      !isValidSemver(manifest.version.split(/[-+]/)[0]) ||
+      !releaseTriple(manifest.version) ||
       manifest.version !== pkg.version
     ) {
       throw new Error(`${entry}: manifest needs a name and a semver version matching package.json`);

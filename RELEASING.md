@@ -1,207 +1,137 @@
 # Releasing Greenhouse
 
-Maintainer runbook. Greenhouse ships as **one product** at **one version** — there
-is no per-package release. `git tag vX.Y.Z` is the single source of truth for
-"what is a release"; the **root `package.json` `version`** is kept in sync with it
-automatically by release-please (`release-type: node`) — it records the current
-release, so **don't hand-edit it**. The per-workspace `package.json` `version` fields
-are placeholders (not maintained) — except `apps/mobile`, whose `package.json` +
-`app.json` versions release-please keeps in sync with the product version via
-`extra-files` (don't hand-edit those either). The runtime version still comes from
-the tag, injected as `APP_VERSION` (see below), not read from `package.json`.
+Greenhouse is one product with one version. Tags identify published releases; version fields
+across root, apps, packages, plugins, Expo and desktop mirror that version. The Release PR
+normally updates them through `release-please-config.json` extra-files. The authorized local
+4.0.0-rc.1 cut is prepared in this checkout; **no tag or artifact is created by changing these files**.
 
-## Stable vs. edge — the promise
+## Channels and artifacts
 
-| Channel | What it is | Where | Stability |
-|---|---|---|---|
-| **Tagged release** `vX.Y.Z` | A cut we stand behind | GitHub Releases; GHCR `:X.Y.Z`, `:X.Y`, `:latest` | **Stable** |
-| **`main` HEAD** | Continuous integration | GHCR `:edge`, `:main-<sha>` | **Unstable** — may break between releases |
-| **Pre-release** `vX.Y.Z-rc.N` | Release candidate | GitHub Release marked "pre-release"; GHCR `:X.Y.Z-rc.N` | Testing only |
+| Ref | Workflow output | Intended use |
+|---|---|---|
+| Stable `vX.Y.Z` | GHCR `:X.Y.Z`, `:X.Y`, `:latest` | Stable, preferably exact-version pinned |
+| Candidate `vX.Y.Z-rc.N` | GHCR exact `:X.Y.Z-rc.N` only | Acceptance testing |
+| `main` | GHCR `:edge`, `:main-<sha>` | Continuous unstable integration |
 
-`:latest` **always points at the newest stable, non-prerelease tag — never at
-`main`.** Production deploys should pin a `:X.Y.Z` (or track `:X.Y`). `:edge` is
-for people who want to test the tip and understand it can break.
+`.github/workflows/release.yml` uses `docker/metadata-action` with `latest=auto`; prereleases
+must not move stable aliases. The image currently builds linux/amd64. It includes both classic
+and universal web exports; the API serves them. Desktop artifacts are not built/published by
+this workflow. Mobile has a separate fingerprint CD workflow, not a product-tag release job.
 
-## Lines
+APP_VERSION/APP_REVISION build arguments become image env and OCI labels. Extension compatibility
+uses a valid APP_VERSION or falls back to root package.json for unstamped development builds.
+`GET /health` reports health/runtime switches; it does **not** return version or revision.
+Verify the image labels/config with `docker inspect`.
 
-- `main` carries 3.x (since 3.0.0, 2026-10-26). release-please runs on pushes to `main`.
-- 3.0 continues the 1.x line; 2.x (personal assistant) is retired. Its last release is 2.2.0 (tag `v2.2.0`); the v2 history stays reachable from `main` through the 3.0.0 merge.
-- 1.x: tag `v1.6.0` is the last 1.x release; branch `v1` is frozen.
-- Stable tags move `:latest` (`latest=auto` in release.yml). A patch tag cut from an older line would take `:latest` too: set `latest=false` on that branch first.
-- 3.0 has no desktop app or browser extension; tags publish only the GHCR image.
+## Candidate version automation
 
-## Version strategy
+The checked-in candidate settings are:
 
-- **SemVer**, from 1.0.0 on: a breaking change (`feat!:` or a `BREAKING CHANGE:`
-  footer) bumps the **major**, `feat:` the **minor**, `fix:` the **patch**. Before
-  1.0 the major was pinned by `bump-minor-pre-major`; that is off now, so a
-  breaking change really does mean a new major.
-- **Conventional Commits drive the bump.** The repo already uses them
-  (`feat(api:export): …`, `fix(web): …`). PRs are **squash-merged** so one PR =
-  one Conventional Commit on `main`.
-- **Mobile shares the product version, but not the cadence.** The Expo app's
-  user-facing `version` (`apps/mobile/app.json` + `package.json`) is bumped by
-  release-please together with the root — one version number across the product
-  (`release-please-config.json` `extra-files`). Store **builds** still happen on
-  their own fingerprint-driven cadence (see "Mobile → fingerprint CD"), so a
-  TestFlight binary simply carries whatever product version was current when its
-  native fingerprint last changed; `buildNumber`/`versionCode` stay
-  remote-auto-incremented (`eas.json`) and are unrelated to the product version.
-
-## How a release happens (the automated flow)
-
-1. **Merge PRs to `main`.** Each squash-merged PR is a Conventional Commit.
-2. **release-please opens/updates a "Release PR"** (`.github/workflows/release-please.yml`).
-   It computes the next SemVer from the commits and regenerates the `CHANGELOG.md`
-   entry. Review it like any PR.
-3. **Merge the Release PR.** release-please tags `vX.Y.Z` and creates the GitHub
-   Release with the generated notes.
-4. **The tag triggers `.github/workflows/release.yml`**, which builds & publishes:
-   - the **container image** to `ghcr.io/<owner>/greenhouse` (`:X.Y.Z`, `:X.Y`,
-     `:latest`), stamped with `APP_VERSION`/`APP_REVISION` + OCI labels.
-     (The browser extension zip was dropped with the extension in 1.5.)
-   The source tarball is attached automatically by GitHub.
-
-Pushes to `main` (no tag) run the same `release.yml` but only publish the `:edge` /
-`:main-<sha>` image — never `:latest`, never a Release asset.
-
-### Publishing stable artifacts — the tag→`release.yml` trigger needs a PAT
-
-Step 4 only fires automatically if release-please tags with a **PAT**. A tag created
-by the default `GITHUB_TOKEN` does **not** cascade to trigger `release.yml` (GitHub's
-recursion guard). Add a fine-grained PAT with **contents: write** + **pull-requests:
-write** as the `RELEASE_PLEASE_TOKEN` secret — release-please uses it
-(`secrets.RELEASE_PLEASE_TOKEN || GITHUB_TOKEN`) and step 4 becomes hands-off.
-
-**Without the PAT**, the Release + tag are still created, but you must publish the
-stable image by re-pushing the tag from a machine with normal push
-rights (a `GITHUB_TOKEN`-free push *does* cascade):
-
-```bash
-git push origin :refs/tags/vX.Y.Z && git push origin vX.Y.Z  # re-push → fires release.yml
-gh release edit vX.Y.Z --draft=false --latest                # deleting a tag drafts its Release; re-publish it
+```json
+{
+  "release-type": "node",
+  "versioning": "prerelease",
+  "prerelease": true,
+  "packages": { ".": { "prerelease-type": "rc" } }
+}
 ```
 
-### Cutting a pre-release
+`versioning` selects the increment strategy; `prerelease` also marks the GitHub release and
+keeps the suffix; `prerelease-type` selects rc in the root package configuration (the schema allows it
+there, not as a top-level property). See the upstream
+[manifest settings](https://github.com/googleapis/release-please/blob/main/docs/manifest-releaser.md)
+and [versioning strategy](https://github.com/googleapis/release-please/blob/main/src/versioning-strategies/prerelease.ts).
+For this 4.0.0-rc.1 baseline, fix/feature/breaking increments all yield 4.0.0-rc.2. With the
+prerelease strategy retained and `prerelease: false`, those increments produce 4.0.0 instead.
+Do not switch to the default strategy during promotion and accidentally advance the base version.
 
-Land the commits, then let release-please propose the version; to force an `-rc`,
-add a `Release-As: X.Y.Z-rc.1` trailer to a commit (release-please convention).
-Mark the GitHub Release as a pre-release. The `:latest` tag is intentionally
-skipped for any tag containing a `-` (prerelease).
+The manifest now records 4.0.0-rc.1. It is a local prepared baseline until that exact candidate
+is published. A new automated Release PR would propose the *next* candidate; it is not the
+way to publish these already-written rc.1 notes.
 
-## Verifying the version stamp
+extra-files updates every app/package/plugin package.json, Expo app.json, Tauri config,
+Cargo.toml and only the greenhouse-desktop package version in Cargo.lock. The Cargo.lock
+JSONPath inspects the TOML updater's `name.value` node; this target was exercised with the
+actual release-please updater and leaves dependency versions/checksums untouched.
 
-Every image knows which code it is:
+## Publishing the prepared rc.1 (operator: Jim)
 
-```bash
-docker run --rm ghcr.io/<owner>/greenhouse:X.Y.Z \
-  node -e "fetch('http://localhost:3000/health')"   # or hit /health once up
-curl -s localhost:3000/health | jq '{version, revision}'
-docker inspect ghcr.io/<owner>/greenhouse:X.Y.Z --format '{{json .Config.Labels}}'
-```
+These are operator instructions, not actions performed by this documentation task.
 
-`/health` returns `version` (the tag) + `revision` (the commit sha), sourced from
-`@greenhouse/utils/version` (`APP_VERSION` / `APP_REVISION`). A downloader filing a
-bug can paste those two fields and we can reproduce against the exact commit.
+1. Review/land the complete candidate, including version targets, migration ownership and the
+   release notes. Confirm all required gates plus actual classic/universal browser acceptance;
+   run the seeded screenshot tour on a host where Chromium launches. Exercise the 3.x upgrade
+   on a backup copy with the intended plugin list.
+2. Review `.github/workflows/mobile.yml` **before landing mobile version changes on main**.
+   It can deploy to the production EAS branch on a main push when EXPO_TOKEN exists. Product
+   rc tagging does not gate that lane; pause/configure it operationally if store/OTA publication
+   is not intended. Do not run EAS publication commands as part of a local rc cut.
+3. Select the exact accepted commit and verify no `v4.0.0-rc.1` tag/release already exists.
+   Create and push that annotated tag from the accepted revision, then create a GitHub release
+   marked prerelease, explicitly not latest. Use only the rc.1 section of CHANGELOG as its notes.
 
-## Artifact pipelines
+   ```bash
+   # Run only after acceptance, with <accepted-sha> replaced by the reviewed commit.
+   git tag -a v4.0.0-rc.1 <accepted-sha> -m 'Greenhouse 4.0.0-rc.1'
+   git push origin refs/tags/v4.0.0-rc.1
+   # Put just the rc.1 release notes in /tmp/greenhouse-rc-notes.md first.
+   gh release create v4.0.0-rc.1 --verify-tag --prerelease --latest=false \
+     --title 'Greenhouse 4.0.0-rc.1' --notes-file /tmp/greenhouse-rc-notes.md
+   ```
 
-### API + web → container image (primary artifact)
+4. Watch the Release workflow; inspect the exact rc image's APP_VERSION/revision/OCI labels
+   and confirm stable aliases did not move. Deploy the pinned rc only to the intended test
+   environment and verify login, plugin status, default/off behavior and both hosting modes.
+5. Publish a signed/notarized desktop build only through the separate
+   [desktop runbook](apps/desktop/README.md). Native iOS/Android distribution is also separate;
+   use a valid store version/profile when required by the store rather than assuming a SemVer
+   prerelease suffix is accepted by a store submission.
 
-The whole app is one deployable unit (the API serves the built SPA), so the
-"standard package" is the **container image**. `release.yml` builds it with
-`docker/build-push-action`, tags via `docker/metadata-action`, and pushes to
-**GHCR** (public, free, GitHub-native auth). `docker compose up` consumes it.
+Do not delete/recreate an existing release tag to force a build. The current Release workflow
+has no workflow_dispatch trigger. If a token-created tag did not trigger it, add/review an explicit
+workflow publication path or create the release tag with normal operator/PAT credentials in the
+first place; never silently rewrite a published tag.
 
-### Mobile → fingerprint CD (OTA update / store build → TestFlight)
+## Next candidate and stable promotion
 
-> **Freeze on this line until the 3.0 release.** apps/mobile on `v1` is the new
-> team-hub app (Expo SDK 57). It shares the EAS project, bundle id and update URL with
-> the store app that currently ships from the v2 line (`main`). Until 3.0 makes this
-> line the product: never run `eas build`, `eas update` or `eas submit` from `v1` (or a
-> branch cut from it), and never point `mobile.yml` at `v1` — an update published to a
-> shared channel could reach v2 binaries, and a build would take over the next
-> TestFlight number. Verify on local dev-client builds on dedicated simulators. The
-> app reads the server's `mobile_api` level from `/api/bootstrap` and refuses servers
-> below what it needs (`MOBILE_API` in apps/mobile/src/api/compat.ts).
+For another rc, keep the candidate settings, land Conventional Commits and review the next
+Release PR. release-please normally runs on main; merge its PR only when that next candidate
+is intended. RELEASE_PLEASE_TOKEN (contents/PR write) lets its tag push trigger release.yml;
+GITHUB_TOKEN-created tags do not cascade to another workflow. Inspect workflow execution.
 
-`.github/workflows/mobile.yml` continuously deploys the Expo app on every `main`
-push that touches `apps/mobile/` — decoupled from the product **tag** (app-store
-cadence), though the app **version** is synced to the product version by
-release-please (see "Version strategy"). It uses
-`expo/expo-github-action/continuous-deploy-fingerprint`, which splits per native
-fingerprint:
+To release **4.0.0 stable**, set `prerelease: false`, keep `versioning: 'prerelease'` for the
+promotion PR, remove `prerelease-type` if desired, and explicitly set package `release-as:
+'4.0.0'` if an exact promotion needs pinning. Review the proposed version and stable release
+flag before merging. After stable is published, remove release-as and prerelease-type, set
+`versioning: 'default'`, and leave `prerelease: false` for normal SemVer (breaking/feat/fix →
+major/minor/patch). A persistent release-as would keep proposing the same version.
 
-- **JS/asset-only change** (fingerprint matches an existing EAS build) →
-  `eas update` on the `production` branch: an OTA update users receive on their
-  next app launch — no store round-trip. `app.json` pins
-  `runtimeVersion.policy: "fingerprint"`, so an update can never reach a binary
-  it isn't compatible with.
-- **Native change** (new fingerprint: native dep / config plugin / SDK bump) →
-  `eas build --profile production --auto-submit`: iOS uploads to **TestFlight**
-  automatically (internal testers install right away; the final "Submit for App
-  Review" click stays manual in App Store Connect), then the update is published
-  for the new fingerprint. `buildNumber`/`versionCode` auto-increment **remotely**
-  (`eas.json` `appVersionSource: "remote"` — required on CI, where a locally
-  bumped number would be thrown away with the checkout).
-- **Manual lane**: `workflow_dispatch` with `profile: preview` (internal
-  distribution, Android APK) and a `platform` picker (`ios` default; switch to
-  `all` once Play credentials exist).
+Do not edit prior released CHANGELOG sections. Squash PRs with Conventional Commit titles;
+release-please maintains the next notes and all version targets. Independent manifest schema
+versions inside platform application definitions are contracts, not product version fields.
 
-`apps/mobile/fingerprint.config.js` skips version fields (`ExpoConfigVersions`)
-when fingerprinting: a release-please version bump alone must ride the OTA lane,
-not burn a store build. Delete that skip if you'd rather every product release
-cut a TestFlight build. Note the version history quirk: TestFlight already has a
-`1.0.0` train from before the version was synced to the (pre-1.0) product
-version; App Store Connect only rejects versions lower than the last **approved**
-App Store release, and the app has never been approved, so uploading e.g.
-`0.5.0` is expected to work — verify on the first post-sync store build.
+## Mobile fingerprint CD
 
-**Fork-safe:** the job only runs in `linjiejim/greenhouse` — as do `release.yml`,
-`release-please.yml` and `deploy.yml`, so a fork's `main` publishes nothing from
-upstream's workflows — and without the `EXPO_TOKEN` secret it no-ops green.
+`mobile.yml` runs on main changes under apps/mobile and manual dispatch, repository-gated and
+EXPO_TOKEN-gated. Its default profile is production and platform is iOS. A matching native
+fingerprint publishes OTA; a new fingerprint builds and explicitly submits iOS to TestFlight.
+Version fields are excluded from the native fingerprint, so version-only edits can still enter
+the OTA lane. Store review is manual. Android needs its first store upload/credentials and
+push configuration before distribution claims are made.
 
-One-time setup (secret-gated, not code — the workflow stays a no-op until done):
+The EAS project, identifiers and update URL are shared with existing installations. Keep those
+identities unchanged and use dedicated development/preview builds for acceptance. Native
+buildNumber/versionCode are remotely incremented and separate from the product version.
+Signing secrets remain outside the repository; do not infer permission to publish from tests.
 
-1. `cd apps/mobile && eas init` (links the Expo project, writes
-   `extra.eas.projectId`), then `eas update:configure` (writes `updates.url`).
-   Commit both `app.json` changes.
-2. Seed iOS credentials + the App Store Connect app record with one interactive
-   run: `eas build --profile production --auto-submit`. This stores the
-   distribution cert, the provisioning profile (incl. the App Group
-   entitlement), and the ASC API key on EAS servers, and initializes the remote
-   `buildNumber`.
-3. In the Expo dashboard set the `production` environment variable
-   `EXPO_PUBLIC_API_BASE_URL` — the app bakes it in at build/export time (until
-   runtime workspace-picker login lands). The workflow passes
-   `environment: production` so both builds and updates pick it up.
-4. Add an Expo access token as the `EXPO_TOKEN` Actions secret.
-5. Android, later: the **first** Play Console upload is manual (store policy);
-   after that, add the Play service-account key to EAS and use
-   `platform: android`/`all`.
+## Release verification
 
-## Branch protection (GitHub setting — record only)
-
-`main` is the integration branch (trunk). Configure in repo **Settings → Branches**:
-
-- Require a pull request before merging, **≥ 1 approving review**.
-- Require status checks to pass: the `CI` jobs (lint, typecheck, test, e2e,
-  secret-scan).
-- **Squash merge only** (keeps one Conventional Commit per PR for release-please).
-- Include administrators.
-
-## Follow-ups (need external accounts / credentials — not code-only)
-
-- **Multi-arch images** (`linux/arm64`): verify the `compute` tool's `isolated-vm`
-  native addon cross-compiles under buildx + QEMU, then add the platform in
-  `release.yml`. Currently **amd64 only**.
-- **Supply-chain hardening**: SBOM (`anchore/sbom-action` / buildx `--sbom`),
-  provenance attestation (`--provenance`), `cosign` keyless signing (OIDC).
-- **Chrome Web Store auto-publish** (`chrome-webstore-upload-action`) — needs store
-  credentials as secrets (`STORE-SUBMISSION.md` has the copy ready).
-- **Mobile Android lane** — the iOS side is fully set up (project linked,
-  credentials seeded, `EXPO_TOKEN` in place). Android still needs the first
-  manual Play Console upload (store policy) + a service-account key on EAS,
-  then flip `platform` in `mobile.yml`.
-- **`release/x.y` maintenance branches** for back-porting security fixes to old
-  lines (only once we support more than the latest).
+- Run typecheck/lint, strict overlay/package guards, sync check, full unit/DB/committed-state
+  tests, HTTP security, zero-package core boot, mobile typecheck/lint and web builds.
+- Run actual classic/plugin and universal Playwright in a Chromium-capable environment;
+  collect-only results are insufficient. Regenerate public captures with real seeded UI.
+- Verify 3.x data preservation and explicit retained plugin enablement; migrations run before
+  API startup. Backups use scripts/backup-db.sh; do not use push on persistent/shared DBs.
+- Keep the prior image/config and DB backup for rollback; code downgrade is not reverse migration.
+- Require repository branch protections and squash merges; upstream workflows remain gated to
+  the upstream repository, forks own fork-*.yml.

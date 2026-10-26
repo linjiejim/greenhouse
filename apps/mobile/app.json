@@ -3,7 +3,7 @@
     "name": "Greenhouse",
     "slug": "greenhouse-mobile",
     "scheme": "greenhouse",
-    "version": "3.0.2",
+    "version": "4.0.0-rc.1",
     "runtimeVersion": {
       "policy": "fingerprint"
     },

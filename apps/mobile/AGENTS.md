@@ -1,9 +1,10 @@
-# apps/mobile: the team-hub app (Expo SDK 57; iOS system UI first, Material 3 on Android)
+# Universal client (Expo SDK 57; web, iOS, Android and macOS shell)
 
 ## Scope
 
-- The app is the team's Agent hub on the phone: 首页 (greeting, recent conversations, a composer; search and the bell in its bar), 知识库, 云盘 (with Tables), 项目, 定时任务 (automations), search, the conversation page, 通知 and 「我」 (account, station, text size, My Agents, settings). It is not a web wrapper and not an agent console.
-- The root is a sidebar drawer (app/(drawer)/\_layout.tsx, expo-router's vendored Drawer on react-native-drawer-layout; panel src/shell/sidebar-content.tsx, rules src/shell/layout-rule.ts): each place swaps in with its own stack, the edge swipe opens it only on a place's first page (deeper it is the back gesture; depth comes from `placeDepth`, which reads partial nested states; home's first page takes a rightward swipe anywhere, src/shell/layout-rule.ts `drawerSwipeWidth`), search is the sidebar header's round button and never a place, an iPad at regular width keeps it permanent; the conversation page `/chat` lives in home's stack; Tables is a segment of 云盘 only with the `tables` feature (src/shell/modules.ts `hasTables`, supers always). There are no placeholder screens.
+- The app is the team Agent hub on web/iOS/Android and inside the macOS shell; core owns chat/Files/automations/account and station manifests gate optional plugin places.
+- The root sidebar drawer gives each place its own stack; chat lives in home. Station v2 navigation selects optional plugin places; legacy stations use src/shell/modules.ts fallback rules.
+- Drawer edge swipes open only at a place root; placeDepth reads partial nested states and home root permits a full-width right swipe. Regular-width iPad keeps the sidebar permanent.
 - Page, sheet, type, color and state rules live in DESIGN.md; read it before adding a screen.
 - Experience bar: content within 1.5 s of a cold start (cache first, refresh in background), 60 fps lists, haptics and optimistic updates, offline reading of recent items, dark mode, Dynamic Type, VoiceOver.
 
@@ -18,11 +19,11 @@
 - The root vitest runs mobile tests without a mobile install: tests must not import react, react-native or `expo-*`, even transitively (mock them, as src/startup/startup.test.ts does); keep logic in React-free modules (src/data, src/push/model.ts, src/api/compat.ts).
 - Tests and the modules they import sit in folders with a stub tsconfig.json (copy src/api/tsconfig.json), or CI fails with TSConfckParseError.
 
-## Server contract (v1 API)
+## HTTP contract
 
 - Sign-in: `POST /api/auth/login` → `{ accessToken, refreshToken, user }`; refresh: `POST /api/auth/refresh` with `{ refreshToken }` (single use, one refresh at a time per station); member: `GET /api/auth/me` → `{ user }`; language: `PUT /api/auth/me/preferences`. There is no logout endpoint: sign-out forgets the pair.
 - Errors are `{ error: '<words>' }`; src/api/client.ts maps the status to a stable `code` and keeps the words as `message`.
-- `/api/bootstrap` (public) gives branding and `mobile_api`. `MOBILE_API` (src/api/compat.ts) is the level this build needs; a server below it shows the mismatch screen ("needs an update"), a v2 server (`api_version`) is unsupported. Raise `MOBILE_API` together with the server's `MOBILE_API_LEVEL` when the app starts calling a new endpoint.
+- `/api/bootstrap` (public) gives branding and `mobile_api`. `MOBILE_API` (src/api/compat.ts) is the minimum this build needs (currently 3); the server advertises CLIENT_API_LEVEL 4 for plugin discovery; a server below it shows the mismatch screen ("needs an update"), a v2 server (`api_version`) is unsupported. Raise `MOBILE_API` together with the server's `MOBILE_API_LEVEL` when the app starts calling a new endpoint.
 - Notifications: `GET /api/notifications` (cursor pages), `/summary`, `POST /:id/read` (answers with the notification; it is also how a notification missing from the list is fetched), `POST /read-all`.
 - Team activity: `GET /api/activity/recent` (14 days, `before` = last item's `at`, answers `next_before`); the bell sheet's second segment, rows open via src/notifications/activity.ts.
 - Push devices: `/api/auth/me/push-devices` (src/api/push.ts).
@@ -39,7 +40,7 @@
 - Text size: `GET`/`PATCH /api/me/preferences` `{ fontScale }` (src/settings/text-size.ts); a 404 keeps it on the phone. Older stations refuse 0.8 and 0.85 (400): the phone keeps them.
 - Shared with me: `GET /api/shares` (the 全部对话 sheet's 共享给我 segment; one row per conversation, src/data/shares.ts), `PATCH /api/shares/:id/read` on open. A conversation whose `/api/sessions/:id` says `is_owner: false` opens read-only (`share_info.shared_by_nickname` names the sharer): no composer, no ⋯ menu, no regenerate.
 - Automations (定时任务): `/api/tasks` (a super's list holds every member's; the phone shows mine, src/automations/model.ts), `/:id`, `PUT /:id` `{ enabled }` (pause / resume), `POST /:id/run` (answers `session_id`, opened as the conversation), `/:id/runs` (a run opens its run sheet), `DELETE /:id`. New ones and changes are asked of the assistant in a conversation with a drafted message (`useStartChat`, src/shell/open-object.ts); there is no cron form. The run profile's name comes from `/api/profiles`.
-- Feedback: `POST /api/me/feedback` `{ message, context }` (src/feedback); a 404 says the station is too old.
+- Feedback: `POST /api/me/feedback` `{ message, context }` (src/feedback); a 404 can mean the Feedback plugin is disabled or the station lacks the endpoint.
 - Search: `GET /api/search?q=&kind=` (conversations, projects, documents) and `/api/drive/search`; my tasks are matched from the saved copy. Runs: `GET /api/runtime/runs/:id`. My agents: `/api/agent-access/connections`.
 - Folders and files: `POST /api/drive/folders`, `PUT /folders/:id` `{ name?, parent_id? }`, `DELETE /folders/:id` (409 when not empty), `PUT /files/:id` `{ name?, folder_id? }`, `DELETE /files/:id`; documents `POST /api/knowledge/docs`, `PUT /docs/:id` `{ title?, folder_id? }`. Moves never cross shelves.
 - Access: a 403 means a role, feature or capability gate (EmptyState without retry); a 404 means gone or not visible to this member (src/data/access.ts).
@@ -96,13 +97,13 @@
 
 ## Native builds and release
 
-- **Do not publish before the 3.0 release**: no `eas build`, `eas update` or `eas submit` from this line, and never point .github/workflows/mobile.yml at `v1`. The EAS project, bundle id and update URL are shared with the store app that ships from v2. See RELEASING.md.
+- EAS publication requires an explicit release task; main changes can trigger production fingerprint CD when EXPO_TOKEN exists. Preserve the shared project, identifiers and update URL; review RELEASING.md before landing candidate versions.
 - ios/ and android/ are generated by `pnpm mobile:prebuild` and git-ignored; rerun it after changing app.json, plugins or entitlements, then restore sdk.dir (or ANDROID_HOME), since --clean deletes android/local.properties.
 - If prebuild cannot find CocoaPods, run pod install in ios/ yourself with Homebrew's pod and GEM_HOME/GEM_PATH unset; confirm "Building from source: false" (a silent fallback to building React Native from source crashes at launch on React.framework).
 - After pod install, stale .last_build_configuration flavor markers cause Debug link errors or a launch SIGSEGV in Props::Props(); write the opposite configuration into the markers so the next build re-extracts.
-- Expo Go cannot run the app; use a dev client (`pnpm mobile:ios`, `pnpm mobile:android`) on a dedicated simulator and judge UI there, never on Expo web.
+- Expo Go cannot run the app; judge native UI in a dev client (`pnpm mobile:ios`, `pnpm mobile:android`) on a dedicated simulator and browser UI through the universal web export.
 - Releases follow the native fingerprint (`runtimeVersion.policy: fingerprint`): JS-only changes ship as OTA; native changes (new native modules, ICONS entries, app icon, fonts, entitlements, app.json) need a build.
-- Never hand-edit the version in app.json or package.json; release-please bumps it and fingerprint.config.js keeps it out of the fingerprint.
+- Product versions in app.json/package.json follow release-please extra-files; change them only for an authorized release cut. Fingerprint excludes version fields; store build numbers remain separately incremented.
 - The mark is Haven (logos/README.md): src/ui/logo.tsx draws src/ui/brand.generated.ts, body in the palette's `mark`, seed in its own colour. The app icon (assets/icon.png, adaptive-icon.png on #235D4D) and brand.generated.ts are exports of main's scripts/build-brand-assets.py; copy them from main together, never redraw them.
 - Mermaid ships as assets/web/mermaid.min.txt (copied from node_modules/mermaid/dist, version in MERMAID_VERSION) and is injected into the diagram WebView; there is no CDN fallback.
 - A dev client on a simulator opens Metro without the "Open in" prompt with `xcrun simctl launch <udid> app.greenhouse.mobile --initialUrl http://localhost:<port>`.
@@ -155,7 +156,7 @@
 - en.ts is the key source and zh must match; delete unused keys after searching dynamic uses (`t(module.title)`, notification kind labels).
 - Words: 首页, 知识库, 云盘 (never 档案库), 项目, 定时任务, 表格, 通知, 工作站, 「我」.
 
-## Universal client (C1)
+## Universal client
 
 - Platform primitives use `.ios.tsx`, `.android.tsx` and `.web.tsx`; base re-exports keep TypeScript and Expo Router route discovery working.
 - SwiftUI, Compose and native view factories never load in browser implementations.
@@ -166,13 +167,13 @@
 - Browser station ids include the API origin; hosted builds share the classic localStorage token keys, while development overrides keep origin-scoped keys.
 - The optional `/api/extensions` v2 manifest gates built-in plugin places and supplies primary and More navigation; v1 or 404 means legacy navigation.
 - `src/shared/plugins.ts` is a verbatim copy of `packages/types/src/plugins.ts`, checked by the React-free manifest tests; optional v2 does not raise `MOBILE_API`.
-- Unrecognized plugin pages use `/p/[plugin]/[page]` and a validated browser fallback; generic page renderers belong to the next client phase.
+- `/p/[plugin]/[page]` renders entity-list/detail, settings-form and trusted embed surfaces; unknown pages use a validated browser fallback.
 - Browser legacy links are mapped before auth routing and retained across sign-in; unmapped hashes open `/classic/` on the station.
 - `pnpm test:e2e:client` owns ports 18920 and 18921 and the isolated `gh4_client` database on port 55450; its screenshots and auth state are ignored.
-- Run Expo dev servers with `CI=1` in restricted environments to disable file watchers; native configuration and fingerprint stay unchanged in C1.
+- Run Expo dev servers with `CI=1` in restricted environments to disable file watchers; keep native configuration and fingerprint changes deliberate.
 - Metro redirects native route-context entries only for web; verify source maps with `node scripts/check-web-bundle.mjs <export-dir>` after an export with `--source-maps`.
 
-## Wide chat and inspector (C2)
+## Wide chat and inspector
 
 - Keep the Drawer and the keyed main navigator mounted across browser breakpoints; reflow chrome without replacing navigators.
 - Match the base file's extension in platform siblings (`nav.ts` → `nav.web.ts`); a `.web.tsx` sibling of a `.ts` file can lose to the base in Metro resolution.
@@ -191,7 +192,7 @@
 
 - Conversation-row previews use `/sheet/conversation` with the shared chat screen forced read-only, including its outbox guards; normal conversation navigation still opens the main stack.
 
-## Places and plugin surfaces (C3)
+## Places and plugin surfaces
 
 - Wide web place routes portal their secondary controls into `PlaceSecondary`; they reuse API helpers, library actions and the root inspector stack. Phone screens remain in `src/<domain>/phone-screen.tsx` and the shared routes re-export them.
 - The desktop knowledge editor vendors `packages/knowledge-editor` schema, Markdown parser and serializer verbatim (parity-tested), behind a `use dom` boundary. Markdown stays canonical, including when `content_json` is empty.
@@ -207,23 +208,23 @@
 - Browser settings use the existing settings routes in a viewport layer with a persistent preferences/account/navigation column. Administration opens `/classic/#/administration` in a separate tab.
 - `tests/client-e2e/p3.e2e.ts` and `plugins.e2e.ts` cover places and declarative surfaces; the latter serves its static embed fixture through Playwright routing. Restricted runners collect these specs; the reviewer runs Chromium and generates the design/plugin screenshots.
 
-## Client polish (C4)
+## Client polish
 
 - Ask-user drafts are scoped to the conversation and user-turn sequence, so live-to-saved row replacement retains answers without sharing them across repeated questions. Submission waits for generation to finish.
 - Table rows use the primary field as their accessible name even when a saved view orders another field first; Enter and Space open the same record inspector as a click.
 - Record and task details reuse their domain loaders and mutations; `ui/detail-fields` adapts only the wide inspector layout, retaining native sections below 760 px.
 - Browser entity filters and sorting use the shared Menu; `ui/field-value.web` supplies field icons and enum Chips for both entity lists and table grids.
 - Browser place CSS uses semantic web tokens for fills, selected rows, urgency, and callouts in both appearances.
-- Client fixtures use valid object ids; never loosen route id validation to accept test placeholders. C4 screenshots start with `c4-`.
+- Client fixtures use valid object ids; never loosen route id validation to accept test placeholders.
 
-## Browser regressions (C5)
+## Browser regressions
 
 - Web Touchable maps accessibility state to explicit ARIA props; RN-web does not translate native `accessibilityState`.
 - Passive Touchables render a View, so enum Chips do not consume their record row's click or add a tab stop.
 - The web route frame adapts NativeStack's `aria-hidden` on the visible main screen while a wide inspector is open; covered routes and phone sheets retain stack semantics.
 - Screenshot tests wait for the startup cover and expected content after reload; dark chat captures reopen the chat before its inspector, and embed fixtures apply received theme tokens.
 
-## macOS shell (C6)
+## macOS shell
 
 - `src/desktop` contains native shell bridges. Metro's desktop source extensions are enabled only by GREENHOUSE_DESKTOP=1; UI pages never branch on desktop detection.
 - Desktop bundles use the phone's station configuration, Keychain token storage through a scoped Tauri plugin, and X-Greenhouse-Client: desktop. Browser configuration and token storage remain unchanged.
@@ -233,7 +234,7 @@
 - Entity lists keep pages and scroll when covered by an inspector; only query/identity changes and explicit refresh reload them. Pending replies from previous queries remain invalidated.
 - Browser Playwright specs are collected in restricted runners; desktop native behavior is accepted by the reviewer after a successful local build.
 
-## Hosted browser export (W4)
+## Hosted browser export
 
 - Declarative entity edits use only manifest fields with `writable === true` and PATCH only values changed from the loaded row; preserve untouched nulls, JSON and timestamp strings. Refreshing a list keeps its rows and total until the next page arrives; identity/query changes still invalidate old data.
 - `pnpm app:build` at the repository root exports this isolated workspace to `dist-hosted`, then copies it to `public/app`. Hosted exports clear desktop and developer station overrides and disable dotenv loading; browser requests use their own origin. Native/store configuration stays unchanged.
