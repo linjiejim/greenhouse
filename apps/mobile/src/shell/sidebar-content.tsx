@@ -1,3 +1,4 @@
+import { nativeVisible } from '../plugins/navigation';
 import { StationLine } from './station-line';
 /**
  * The sidebar: the product's mark and name with search beside them (under the name, quietly, the
@@ -24,7 +25,7 @@ import { useAuth } from '../store/auth';
 
 import { HIT, makeStyles, radius, space, squircle, typo, useTheme, weight } from '../theme';
 import { useStationManifest } from '../plugins/store';
-import { hasPlugin, pluginNavigation } from '../plugins/manifest';
+import { pluginNavigation } from '../plugins/manifest';
 import { localize } from '../shared/plugins';
 import { usePrefs } from '../store/prefs';
 import { Avatar } from '../ui/avatar';
@@ -117,17 +118,17 @@ export function SidebarContent({ state, navigation }: DrawerContentComponentProp
         />
       </View>
       <ScrollView style={styles.list} contentContainerStyle={styles.listContent}>
-        {PLACES.filter((place) => !['knowledge', 'projects'].includes(place.id) || hasPlugin(manifest, place.id)).map(
-          (place) => (
-            <Place
-              key={place.id}
-              icon={place.icon}
-              label={t(place.title)}
-              current={place.route === current}
-              onPress={() => open(place)}
-            />
-          ),
-        )}
+        {PLACES.filter(
+          (place) => !['knowledge', 'projects'].includes(place.id) || nativeVisible(manifest, place.id),
+        ).map((place) => (
+          <Place
+            key={place.id}
+            icon={place.icon}
+            label={t(place.title)}
+            current={place.route === current}
+            onPress={() => open(place)}
+          />
+        ))}
         {pluginNavigation(manifest, 'primary')
           .filter((item) => !['knowledge', 'projects', 'tables'].includes(item.plugin.id))
           .map((item) => (

@@ -102,3 +102,15 @@
 - The browser launch cover leaves on the same readiness signal or grace timeout as native; React development warnings remain developer diagnostics.
 
 - Conversation context menus include an inspector preview; its transcript is read-only and its links may push further object levels.
+
+## Desktop places and plugin pages (C3)
+
+- Knowledge keeps shelves, recents and its expandable folder tree in the secondary column; the document and in-place Tiptap edit mode share the centered reading column.
+- Drive keeps shelf/folder navigation in the secondary column, files in the main list/grid and authenticated previews in the inspector. Drops use the same identity-bound upload protocol as the phone.
+- Tables has its own desktop place, with Base/table navigation and a DOM grid; record details reuse the inspector. Saved views apply their field order and query and reset pagination.
+- Projects offer board, list and date-based Gantt views over one task tree; drag and accessible status controls use the same status mutation, with rollback on failure.
+- Automation details show instructions, schedule, next run and history; history rows and Run now open the run's conversation. Creation and instruction changes remain conversation-first.
+- Browser preferences use grouped rows in a full viewport settings layer, with existing account, Agent and connection pages in its sidebar; phone presentation is unchanged.
+- Plugin lists use declared columns, filters and sort; records use the same inspector as built-in objects, and writes expose only actions/fields supplied by the station.
+- Embedded plugin pages retain their state through theme changes and can only draft a prompt. Unsupported future page kinds keep the explicit browser fallback.
+- While a browser reply is in progress, Stop remains visible even with a draft; Enter preserves the draft until the reply finishes instead of offering a premature send.

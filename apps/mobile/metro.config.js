@@ -21,9 +21,7 @@ config.watchFolders = [__dirname];
 // src/ui/toolbar-icon.android.ts) — @expo/ui's Compose Icon loads them as assets. Mermaid ships
 // as assets/web/mermaid.min.txt, read once and injected into the diagram WebView (no CDN).
 config.resolver.assetExts = [...config.resolver.assetExts, 'xml', 'txt'];
-config.resolver.blockList = config.resolver.blockList
-  ? [].concat(config.resolver.blockList, blockRoot)
-  : [blockRoot];
+config.resolver.blockList = config.resolver.blockList ? [].concat(config.resolver.blockList, blockRoot) : [blockRoot];
 
 // Router's context deliberately enumerates every platform route. On web redirect
 // those context dependencies to the web view (or the shared route), so native
@@ -39,6 +37,14 @@ config.resolver.resolveRequest = (context, moduleName, platform) => {
       const shared = absolute.replace(/\.(?:ios|android|native)(\.[jt]sx?)?$/, (_, ext) => ext || '');
       const candidates = [web, web + '.tsx', web + '.ts', shared, shared + '.tsx', shared + '.ts'];
       moduleName = candidates.find((candidate) => fs.existsSync(candidate)) || shared;
+    }
+  }
+  if (platform !== 'web' && /\.web(?:\.[jt]sx?)?$/.test(moduleName)) {
+    const absolute = path.isAbsolute(moduleName)
+      ? moduleName
+      : path.resolve(path.dirname(context.originModulePath), moduleName);
+    if (absolute.startsWith(path.join(__dirname, 'app') + path.sep)) {
+      moduleName = absolute.replace(/\.web(\.[jt]sx?)?$/, (_, ext) => ext || '');
     }
   }
   return originalResolveRequest

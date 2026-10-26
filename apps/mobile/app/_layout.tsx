@@ -180,6 +180,7 @@ export default function RootLayout() {
                 <Stack.Screen name="login" options={{ animation: 'fade', gestureEnabled: false }} />
 
                 {/* ── object sheets (openObject): documents and files read full height ── */}
+                <Stack.Screen name="sheet/plugin" options={sheetScreen([1], { header: true })} />
                 <Stack.Screen name="sheet/doc" options={sheetScreen([1], { header: true })} />
                 <Stack.Screen name="sheet/file" options={sheetScreen([1], { header: true })} />
                 <Stack.Screen name="sheet/folder" options={sheetScreen([0.75, 1], { header: true })} />

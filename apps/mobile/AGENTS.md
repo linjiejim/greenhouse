@@ -190,3 +190,19 @@
 - `tests/client-e2e/p2.e2e.ts` exercises separated NDJSON chunks with a browser ReadableStream and writes design-number screenshots at 1440/1280/1024/390; restricted runners collect tests only and leave Chromium execution to the reviewer.
 
 - Conversation-row previews use `/sheet/conversation` with the shared chat screen forced read-only, including its outbox guards; normal conversation navigation still opens the main stack.
+
+## Places and plugin surfaces (C3)
+
+- Wide web place routes portal their secondary controls into `PlaceSecondary`; they reuse API helpers, library actions and the root inspector stack. Phone screens remain in `src/<domain>/phone-screen.tsx` and the shared routes re-export them.
+- The desktop knowledge editor vendors `packages/knowledge-editor` schema, Markdown parser and serializer verbatim (parity-tested), behind a `use dom` boundary. Markdown stays canonical, including when `content_json` is empty.
+- Classic UI components depend on workspace packages, stores, routing and CSS that the isolated Expo app cannot import. Reuse their editor schema and existing mobile domain hooks; keep browser grid/board adapters behind DOM components, without a second API or permissions layer.
+- Native Metro resolution redirects web-only route-context dependencies to shared routes; browser editors/grids/boards must not add DOM bundles to the iOS export.
+- Official native screen descriptors and nav glue live under `src/plugins/<id>/`; `native-registry.ts` only aggregates them. A v2 place requires an actual native nav entry, not just an installed plugin id; legacy stations retain their original navigation.
+- Entity surfaces follow the CRUD `skip/limit/sort/filter` protocol, deduplicate infinite pages and invalidate pending reads on identity/query/focus changes. Detail actions are limited to manifest actions and writable fields; deletion confirms first.
+- Plugin record sheets use `sheet/plugin` and the same three-level inspector stack and promotion rules as built-in objects.
+- Plugin settings use `GET/PUT /api/admin/settings`, submit only changed declared keys, preserve masked secrets and display server errors. Unknown keys never create speculative controls.
+- Trusted plugin frames use `WebFrame` with a real origin and the plugin bridge; check both source window and exact origin. They receive only `/api/ext-ui/token` credentials (404 means an empty token). Chat/document previews retain their opaque sandbox and never receive credentials.
+- Real-origin plugin frames permit scripts and same-origin access for the protocol; they have the same code trust as their installed plugin. Do not use that bridge for arbitrary user HTML.
+- Embed navigation accepts client routes; `sendPrompt` opens a chat draft and never submits it. Theme changes preserve the frame, token refresh is identity-bound, and late frame replies are discarded.
+- Browser settings use the existing settings routes in a viewport layer with a persistent preferences/account/navigation column. Administration opens `/classic/#/administration` in a separate tab.
+- `tests/client-e2e/p3.e2e.ts` and `plugins.e2e.ts` cover places and declarative surfaces; the latter serves its static embed fixture through Playwright routing. Restricted runners collect these specs; the reviewer runs Chromium and generates the design/plugin screenshots.

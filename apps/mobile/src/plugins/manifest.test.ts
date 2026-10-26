@@ -44,7 +44,16 @@ describe('optional station manifest', () => {
     expect(pluginNavigation(state, 'more')[0]?.page.kind).toBe('future-kind');
   });
   it('trusts v2 permissions while retaining legacy table feature rules', () => {
-    const state = parseManifest(v2([{ id: 'tables', nav: [], pages: [] }]));
+    const state = parseManifest(
+      v2([
+        {
+          id: 'tables',
+          nav: [{ id: 'tables', page: 'index', placement: 'primary' }],
+          pages: [{ id: 'index', kind: 'native', screen: 'tables' }],
+        },
+      ]),
+    );
+    expect(builtinVisible(parseManifest(v2([{ id: 'tables', nav: [], pages: [] }])), 'tables', true)).toBe(false);
     expect(builtinVisible(state, 'tables', false)).toBe(true);
     expect(builtinVisible(parseManifest(v2()), 'tables', true)).toBe(false);
     expect(builtinVisible({ kind: 'legacy' }, 'tables', false)).toBe(false);

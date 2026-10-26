@@ -126,7 +126,7 @@ export function ConversationRow(props: Props) {
         <span className="gh-row-menu">
           <NativeMenu items={items} onSelect={(id) => void select(id)}>
             <button
-              aria-label={t('conversation.menu')}
+              aria-label={t('client.conversationOptions', { title: session.title || t('assistant.untitled') })}
               style={{ border: 0, background: 'transparent', color: c.secondaryLabel, padding: 4 }}
             >
               <Icon name="more" size={16} />

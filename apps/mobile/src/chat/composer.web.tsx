@@ -58,8 +58,8 @@ export const Composer = memo(
       field.current.style.height = '24px';
       field.current.style.height = `${Math.min(156, Math.max(24, field.current.scrollHeight))}px`;
     }, [value]);
-    const ready = canSendMessage(value, files);
-    const stop = working && !value.trim() && !files.length && !!onStop;
+    const ready = canSendMessage(value, files) && !working;
+    const stop = working && !!onStop;
     const chosen = agents?.find((a) => a.id === agentId) ?? agents?.[0];
     const button: React.CSSProperties = {
       display: 'flex',

@@ -99,7 +99,7 @@ function ScreenFrame({ children, route }: { children: React.ReactNode; route: Ro
         onClose={close}
         panelStyle={{
           position: 'fixed',
-          inset: 16,
+          inset: 0,
           maxWidth: 'none',
           maxHeight: 'none',
           minWidth: 0,

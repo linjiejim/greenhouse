@@ -1,3 +1,5 @@
+import { nativeVisible, pluginHref } from '../plugins/navigation';
+import { PlaceSecondaryContext } from './place-secondary.web';
 import { AccountMenu, NotificationsPopover, SearchPalette } from './desktop-tools.web';
 import { getApiBase } from '../store/stations';
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
@@ -8,7 +10,7 @@ import { useSessions } from '../store/sessions';
 import { useNotifications } from '../store/notifications';
 import { usePrefs } from '../store/prefs';
 import { useStationManifest } from '../plugins/store';
-import { builtinVisible, hasPlugin, pluginNavigation } from '../plugins/manifest';
+import { pluginNavigation } from '../plugins/manifest';
 import { localize } from '../shared/plugins';
 import { hasTables } from './modules';
 import { wideLayout, RAIL_WIDTH, SECONDARY_WIDTH } from './wide-model';
@@ -48,6 +50,7 @@ export function WideShell({ children }: { children: React.ReactNode }) {
   const regime = layout.collapseSecondary ? 'compact' : 'wide';
   const secondary = secondaryPrefs[regime] ?? !layout.collapseSecondary;
   const user = useAuth((s) => s.user);
+  const [secondaryHost, setSecondaryHost] = useState<HTMLDivElement | null>(null);
   const [search, setSearch] = useState(false);
   const [notifications, setNotifications] = useState(false);
   const manifest = useStationManifest((s) => s.data);
@@ -62,6 +65,8 @@ export function WideShell({ children }: { children: React.ReactNode }) {
     root.style.setProperty('--gh-hover', c.tertiaryFill);
     root.style.setProperty('--gh-card', c.secondaryGroupedBackground);
     root.style.setProperty('--gh-line', c.separator);
+    root.style.setProperty('--gh-secondary', c.secondaryLabel);
+    root.style.setProperty('--gh-on-accent', c.onAccent);
     root.style.colorScheme = isDark ? 'dark' : 'light';
     root.dataset.theme = isDark ? 'dark' : 'light';
   }, [c, isDark]);
@@ -99,31 +104,33 @@ export function WideShell({ children }: { children: React.ReactNode }) {
   );
   const places = [
     { id: 'chat', label: t('client.conversations'), icon: 'msg' as IconName, href: '/' },
-    ...(hasPlugin(manifest, 'knowledge')
+    ...(nativeVisible(manifest, 'knowledge')
       ? [{ id: 'knowledge', label: t('nav.knowledge'), icon: 'book' as IconName, href: '/knowledge' }]
       : []),
     { id: 'drive', label: t('nav.files'), icon: 'folder' as IconName, href: '/drive' },
-    ...(builtinVisible(manifest, 'tables', hasTables(user))
+    ...(nativeVisible(manifest, 'tables', hasTables(user))
       ? [{ id: 'tables', label: t('nav.tables'), icon: 'table' as IconName, href: '/drive?view=tables' }]
       : []),
-    ...(hasPlugin(manifest, 'projects')
+    ...(nativeVisible(manifest, 'projects')
       ? [{ id: 'projects', label: t('nav.projects'), icon: 'checklist' as IconName, href: '/projects' }]
       : []),
     { id: 'automations', label: t('nav.automations'), icon: 'clock' as IconName, href: '/automations' },
   ];
-  const directPlace = path.startsWith('/knowledge')
-    ? 'knowledge'
-    : path.startsWith('/drive')
-      ? params.view === 'tables'
-        ? 'tables'
-        : 'drive'
-      : path.startsWith('/projects')
-        ? 'projects'
-        : path.startsWith('/automations')
-          ? 'automations'
-          : path === '/' || path === '/chat' || path === '/search'
-            ? 'chat'
-            : undefined;
+  const directPlace = path.startsWith('/p/')
+    ? 'plugin'
+    : path.startsWith('/knowledge')
+      ? 'knowledge'
+      : path.startsWith('/drive')
+        ? params.view === 'tables'
+          ? 'tables'
+          : 'drive'
+        : path.startsWith('/projects')
+          ? 'projects'
+          : path.startsWith('/automations')
+            ? 'automations'
+            : path === '/' || path === '/chat' || path === '/search'
+              ? 'chat'
+              : undefined;
   const [lastPlace, setLastPlace] = useState(directPlace ?? 'chat');
   useEffect(() => {
     if (directPlace) setLastPlace(directPlace);
@@ -131,7 +138,7 @@ export function WideShell({ children }: { children: React.ReactNode }) {
   const active = directPlace ?? lastPlace;
   const more = pluginNavigation(manifest, 'more');
   const primary = pluginNavigation(manifest, 'primary').filter(
-    (n) => !['knowledge', 'tables', 'projects'].includes(n.plugin.id),
+    (n) => !['knowledge', 'tables', 'projects'].includes(n.page.kind === 'native' ? n.page.screen : ''),
   );
   const go = (href: string) => router.navigate(href as never);
   const rail = (id: string, label: string, icon: IconName, onPress: () => void, selected = false) => (
@@ -161,107 +168,113 @@ export function WideShell({ children }: { children: React.ReactNode }) {
   const chrome = !!user && layout.wide;
   return (
     <ShellContext.Provider value={context}>
-      <View style={{ flex: 1, flexDirection: 'row', backgroundColor: c.background }}>
-        {chrome ? (
-          <View
-            key="rail"
-            testID="client-rail"
-            style={{
-              width: RAIL_WIDTH,
-              backgroundColor: c.sidebarBackground,
-              borderRightWidth: 1,
-              borderRightColor: c.separator,
-              paddingTop: 52,
-              paddingBottom: space.md,
-            }}
-          >
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Greenhouse"
-              onPress={() => go('/')}
-              style={{ alignItems: 'center', marginBottom: space.lg }}
+      <PlaceSecondaryContext.Provider value={secondaryHost}>
+        <View style={{ flex: 1, flexDirection: 'row', backgroundColor: c.background }}>
+          {chrome ? (
+            <View
+              key="rail"
+              testID="client-rail"
+              style={{
+                width: RAIL_WIDTH,
+                backgroundColor: c.sidebarBackground,
+                borderRightWidth: 1,
+                borderRightColor: c.separator,
+                paddingTop: 52,
+                paddingBottom: space.md,
+              }}
             >
-              <GreenhouseMark size={28} />
-            </Pressable>
-            <ScrollView>
-              {places.map((place, index) => (
-                <RailShortcut key={`shortcut:${place.id}`} href={place.href} index={index} />
-              ))}
-              {places.map((p) => rail(p.id, p.label, p.icon, () => go(p.href), p.id === active))}
-              {primary.map((n) =>
-                rail(n.nav.id, localize(n.nav.label, lang), 'open', () => go(`/p/${n.plugin.id}/${n.page.id}`)),
-              )}
-              {more.length ? (
-                <NativeMenu
-                  fill
-                  title={t('client.more')}
-                  items={more.map((n) => ({
-                    id: `${n.plugin.id}/${n.page.id}`,
-                    title: localize(n.nav.label, lang),
-                    icon: 'open',
-                  }))}
-                  onSelect={(id) => go(`/p/${id}`)}
-                >
-                  {rail('more', t('client.more'), 'more', () => {})}
-                </NativeMenu>
-              ) : null}
-            </ScrollView>
-            <View style={{ gap: space.sm }}>
-              {user.role === 'super'
-                ? rail('admin', t('client.admin'), 'shieldCheck', () => {
-                    window.location.assign(`${getApiBase()}/classic/#/administration/users`);
-                  })
-                : null}
-              <View>
-                {rail('notifications', t('notifications.title'), 'bell', () => {
-                  setSearch(false);
-                  setNotifications((v) => !v);
-                })}
-                {unread ? (
-                  <Text
-                    style={{
-                      position: 'absolute',
-                      right: 14,
-                      top: 0,
-                      ...typo.caption1,
-                      color: c.onTint,
-                      backgroundColor: c.red,
-                      borderRadius: 12,
-                      paddingHorizontal: 4,
-                    }}
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Greenhouse"
+                onPress={() => go('/')}
+                style={{ alignItems: 'center', marginBottom: space.lg }}
+              >
+                <GreenhouseMark size={28} />
+              </Pressable>
+              <ScrollView>
+                {places.map((place, index) => (
+                  <RailShortcut key={`shortcut:${place.id}`} href={place.href} index={index} />
+                ))}
+                {places.map((p) => rail(p.id, p.label, p.icon, () => go(p.href), p.id === active))}
+                {primary.map((n) =>
+                  rail(n.nav.id, localize(n.nav.label, lang), 'open', () => go(pluginHref(n.plugin.id, n.page))),
+                )}
+                {more.length ? (
+                  <NativeMenu
+                    fill
+                    title={t('client.more')}
+                    items={more.map((n) => ({
+                      id: `${n.plugin.id}/${n.page.id}`,
+                      title: localize(n.nav.label, lang),
+                      icon: 'open',
+                    }))}
+                    onSelect={(id) => go(`/p/${id}`)}
                   >
-                    {unread > 99 ? '99+' : unread}
-                  </Text>
+                    {rail('more', t('client.more'), 'more', () => {})}
+                  </NativeMenu>
                 ) : null}
+              </ScrollView>
+              <View style={{ gap: space.sm }}>
+                {user.role === 'super'
+                  ? rail('admin', t('client.admin'), 'shieldCheck', () => {
+                      window.open(`${getApiBase()}/classic/#/administration`, '_blank', 'noopener,noreferrer');
+                    })
+                  : null}
+                <View>
+                  {rail('notifications', t('notifications.title'), 'bell', () => {
+                    setSearch(false);
+                    setNotifications((v) => !v);
+                  })}
+                  {unread ? (
+                    <Text
+                      style={{
+                        position: 'absolute',
+                        right: 14,
+                        top: 0,
+                        ...typo.caption1,
+                        color: c.onTint,
+                        backgroundColor: c.red,
+                        borderRadius: 12,
+                        paddingHorizontal: 4,
+                      }}
+                    >
+                      {unread > 99 ? '99+' : unread}
+                    </Text>
+                  ) : null}
+                </View>
+                <AccountMenu />
               </View>
-              <AccountMenu />
             </View>
+          ) : null}
+          {chrome && secondary ? (
+            <View
+              key="secondary"
+              testID="client-secondary"
+              style={{
+                width: SECONDARY_WIDTH,
+                backgroundColor: c.groupedBackground,
+                borderRightWidth: 1,
+                borderRightColor: c.separator,
+              }}
+            >
+              {active === 'chat' ? (
+                <Secondary
+                  selectedSession={selectedSession}
+                  active={active}
+                  title={places.find((p) => p.id === active)?.label ?? ''}
+                />
+              ) : (
+                <div ref={setSecondaryHost} style={{ height: '100%', overflow: 'auto' }} />
+              )}
+            </View>
+          ) : null}
+          <View key="main" testID="client-main" style={{ flex: 1, minWidth: 0 }}>
+            {children}
           </View>
-        ) : null}
-        {chrome && secondary ? (
-          <View
-            key="secondary"
-            testID="client-secondary"
-            style={{
-              width: SECONDARY_WIDTH,
-              backgroundColor: c.groupedBackground,
-              borderRightWidth: 1,
-              borderRightColor: c.separator,
-            }}
-          >
-            <Secondary
-              selectedSession={selectedSession}
-              active={active}
-              title={places.find((p) => p.id === active)?.label ?? ''}
-            />
-          </View>
-        ) : null}
-        <View key="main" testID="client-main" style={{ flex: 1, minWidth: 0 }}>
-          {children}
         </View>
-      </View>
-      {chrome && search ? <SearchPalette close={() => setSearch(false)} /> : null}
-      {chrome && notifications ? <NotificationsPopover close={() => setNotifications(false)} /> : null}
+        {chrome && search ? <SearchPalette close={() => setSearch(false)} /> : null}
+        {chrome && notifications ? <NotificationsPopover close={() => setNotifications(false)} /> : null}
+      </PlaceSecondaryContext.Provider>
     </ShellContext.Provider>
   );
 }

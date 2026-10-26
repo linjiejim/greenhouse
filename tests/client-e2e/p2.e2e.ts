@@ -32,6 +32,8 @@ test('P2 send, incremental stream, stop, regenerate, ask_user and dropped attach
   expect(fixture.calls.some((c) => c.stop)).toBeTruthy();
   await page.getByRole('button', { name: '重新生成', exact: true }).last().click();
   await expect(page.getByText('重新生成完成', { exact: true })).toBeVisible();
+  // Text can arrive before finish and transcript reconciliation.
+  await expect(page.getByTestId('composer-stop').filter({ visible: true })).toHaveCount(0);
   expect(fixture.calls.some((c) => c.regenerate_assistant_message_id)).toBeTruthy();
   await page.getByTestId('composer-input').filter({ visible: true }).fill('问我补贴用途');
   await page.getByTestId('composer-input').filter({ visible: true }).press('Enter');
@@ -78,6 +80,9 @@ test('P2 resizing preserves route, transcript, draft and a live reply in both di
   await page.getByTestId('composer-input').filter({ visible: true }).fill('长回复');
   await page.getByTestId('composer-input').filter({ visible: true }).press('Enter');
   await expect(page.getByText('正在生成', { exact: true })).toBeVisible();
+  await page.getByTestId('composer-input').filter({ visible: true }).fill('流式回复期间的草稿');
+  await page.getByTestId('composer-input').filter({ visible: true }).press('Enter');
+  await expect(page.getByRole('dialog')).toHaveCount(0);
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(page.getByTestId('composer-stop').filter({ visible: true })).toBeVisible();
   await page.setViewportSize({ width: 1440, height: 900 });

@@ -11,6 +11,7 @@
 import type { AppTarget, FilesShelf } from '../lib/deep-links';
 
 export type ObjectRef =
+  | { kind: 'plugin-entity'; plugin: string; page: string; entity: string; id: string }
   | { kind: 'doc'; id: string; slug?: undefined }
   /** A document a link names by slug only; its sheet looks it up first. */
   | { kind: 'doc'; slug: string; id?: undefined }
@@ -31,6 +32,7 @@ export type ObjectRef =
 
 /** The sheet routes (app/sheet/*), each with its own detents in app/_layout.tsx. */
 export const SHEET_ROUTES = {
+  plugin: 'sheet/plugin',
   doc: 'sheet/doc',
   file: 'sheet/file',
   folder: 'sheet/folder',
@@ -84,6 +86,12 @@ export type Opening =
 /** The route an object opens on, with its params (always strings). */
 export function openingOf(ref: ObjectRef): Opening {
   switch (ref.kind) {
+    case 'plugin-entity':
+      return {
+        via: 'sheet',
+        pathname: '/sheet/plugin',
+        params: { plugin: ref.plugin, page: ref.page, entity: ref.entity, id: ref.id },
+      };
     case 'chat-preview':
       return { via: 'sheet', pathname: '/sheet/conversation', params: { session: ref.sessionId } };
     case 'steps':

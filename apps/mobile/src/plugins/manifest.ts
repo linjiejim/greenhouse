@@ -42,7 +42,8 @@ export function hasPlugin(state: ManifestState, id: string): boolean {
 }
 /** v2 is already permission-filtered by the station; only legacy stations use local feature flags. */
 export function builtinVisible(state: ManifestState, id: string, legacyAllowed = true): boolean {
-  return hasPlugin(state, id) && (state.kind === 'v2' || legacyAllowed);
+  if (state.kind === 'legacy') return legacyAllowed;
+  return pluginNavigation(state, 'primary').some((item) => item.page.kind === 'native' && item.page.screen === id);
 }
 export type PluginNavigation = { plugin: PluginManifestEntry; nav: PluginNavItem; page: PluginPage };
 export function pluginNavigation(state: ManifestState, placement: 'primary' | 'more'): PluginNavigation[] {
