@@ -36,7 +36,10 @@ const INTENTIONAL_COPY = [
 function sourceFiles(directory: string): string[] {
   return fs.readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
     const absolute = path.join(directory, entry.name);
-    if (entry.isDirectory()) return sourceFiles(absolute);
+    if (entry.isDirectory())
+      return entry.name === 'node_modules' || entry.name === 'e2e' || entry.name === '__tests__'
+        ? []
+        : sourceFiles(absolute);
     if (!entry.name.endsWith('.tsx') || entry.name.includes('.test.') || entry.name.includes('.stories.')) return [];
     return [absolute];
   });
@@ -103,6 +106,6 @@ function visibleCopy(file: string): string[] {
 
 describe('visible copy i18n guard', () => {
   it('does not add fixed English prose to production TSX', () => {
-    expect(sourceFiles(SOURCE_ROOT).flatMap(visibleCopy)).toEqual([]);
+    expect([SOURCE_ROOT, path.resolve(process.cwd(), 'plugins')].flatMap(sourceFiles).flatMap(visibleCopy)).toEqual([]);
   });
 });

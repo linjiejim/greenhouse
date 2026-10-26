@@ -2,6 +2,44 @@
  * English locale — default language
  */
 export default {
+  plugins: {
+    loadFailed: 'Could not load plugin status',
+    title: 'Plugins',
+    name: 'Name',
+    id: 'ID',
+    compiled: 'Compiled',
+    enabled: 'Enabled',
+    version: 'Version',
+    sdk: 'SDK',
+    migrations: 'Migrations',
+    boot: 'Boot',
+    dependsOn: 'Dependencies',
+    errors: 'Errors',
+    on: 'Enabled',
+    off: 'Disabled',
+    empty: 'No plugins are compiled into this build.',
+    notice:
+      'To enable or disable a plugin, change greenhouse.config.ts or GREENHOUSE_EXTENSIONS and restart the server.',
+    drifted: 'Checksum mismatch',
+    migration: {
+      none: 'No migrations',
+      applied: 'Applied',
+      pending: 'Pending',
+      error: 'Error',
+    },
+    bootState: {
+      disabled: 'Disabled',
+      'not-run': 'Not run in this process',
+      ready: 'Ready',
+      error: 'Error',
+    },
+    fileState: {
+      applied: 'Applied',
+      pending: 'Pending',
+      skipped: 'Skipped',
+      missing: 'Missing',
+    },
+  },
   // Common / shared
   common: {
     save: 'Save',
@@ -698,6 +736,8 @@ export default {
     workspaceCleared: 'Workspace branding reset',
   },
   navigation: {
+    plugins: 'Plugins',
+    pluginsDesc: 'Compiled plugins and deployment status',
     main: 'Main navigation',
     mobile: 'Navigation',
     primary: 'Primary navigation',

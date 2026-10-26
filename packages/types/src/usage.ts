@@ -82,6 +82,7 @@ export const PAGE_MODULE_IDS = [
   'admin.activity',
   'admin.mcp-keys',
   'admin.connectors',
+  'admin.plugins',
   'admin.team-context',
 ] as const;
 export type CorePageModuleId = (typeof PAGE_MODULE_IDS)[number];

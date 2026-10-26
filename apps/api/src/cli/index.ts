@@ -37,6 +37,8 @@ ${chalk.bold('Inspect')}
   profiles [list]           List built-in + custom agent profiles (--json)
   sessions [list]           Recent sessions (--user, --channel, --status, --limit, --json)
   sessions show <id>        Session detail + full transcript (--verbose, --json)
+  plugins list / status     Compiled plugins, enablement, migrations and boot facts (--json)
+  plugins drop <id> --yes   Drop a disabled plugin’s tables and lane rows
   stats                     One-glance row counts + DB health (--json)
 
 ${chalk.bold('Manage')}
@@ -107,6 +109,8 @@ async function dispatch(command: string, rest: string[]): Promise<number> {
     case 'doctor':
     case 'check':
       return (await import('./commands/doctor.js')).run(rest);
+    case 'plugins':
+      return (await import('./commands/plugins.js')).run(rest);
     case 'platform':
       return (await import('./commands/platform.js')).run(rest);
     case 'knowledge':

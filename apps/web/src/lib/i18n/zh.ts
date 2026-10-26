@@ -10,6 +10,43 @@ type DeepRecord<T> = { [K in keyof T]: T[K] extends Record<string, unknown> ? De
 type Messages = DeepRecord<typeof en>;
 
 const zh: Messages = {
+  plugins: {
+    loadFailed: '无法加载插件状态',
+    title: '插件',
+    name: '名称',
+    id: '标识',
+    compiled: '已编入',
+    enabled: '已启用',
+    version: '版本',
+    sdk: 'SDK',
+    migrations: '迁移状态',
+    boot: '启动状态',
+    dependsOn: '依赖',
+    errors: '错误',
+    on: '已启用',
+    off: '已停用',
+    empty: '此构建未编入任何插件。',
+    notice: '启用或停用插件需修改 greenhouse.config.ts 或 GREENHOUSE_EXTENSIONS，然后重启服务。',
+    drifted: '校验和不匹配',
+    migration: {
+      none: '无迁移',
+      applied: '已应用',
+      pending: '待应用',
+      error: '错误',
+    },
+    bootState: {
+      disabled: '已停用',
+      'not-run': '本进程未运行',
+      ready: '就绪',
+      error: '错误',
+    },
+    fileState: {
+      applied: '已应用',
+      pending: '待应用',
+      skipped: '已跳过',
+      missing: '缺失',
+    },
+  },
   // 通用 / 共享
   common: {
     save: '保存',
@@ -695,6 +732,8 @@ const zh: Messages = {
     workspaceCleared: '工作区品牌已重置',
   },
   navigation: {
+    plugins: '插件',
+    pluginsDesc: '编入插件及部署状态',
     main: '主导航',
     mobile: '导航',
     primary: '一级导航',

@@ -26,6 +26,7 @@ import { IssuesPanel } from './issues';
 import { resolveAdministrationRedirect } from '../settings/redirects';
 import { UserManagementPanel } from './users';
 import { McpKeysPanel } from './mcp-keys';
+import { PluginsPanel } from './plugins';
 import { ConnectorsAdminPanel } from './connectors';
 import { RuntimeConfigPanel } from './runtime-config';
 import { BrandingStudioPanel } from './branding-studio';
@@ -73,6 +74,7 @@ export function AdministrationPage({ subPath }: { subPath: string }) {
       {activeModule === 'activity' && <ActivityLogPage moduleId="admin.activity" />}
       {activeModule === 'mcp-keys' && <McpKeysPanel />}
       {activeModule === 'connectors' && <ConnectorsAdminPanel />}
+      {activeModule === 'plugins' && <PluginsPanel />}
       {activeModule === 'runtime-config' && <RuntimeConfigPanel />}
       {activeModule === 'team-context' && <TeamContextPanel />}
       {activeModule === 'branding' && <BrandingStudioPanel />}
