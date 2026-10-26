@@ -152,9 +152,10 @@ Details: [MCP & agent access](#mcp--agent-access).
   cut off mid-way is never re-run on its own: it ends "outcome unknown" and its owner is told
   which writes were in flight.
 - **Automations** — cron-scheduled assistant runs with run profiles (saved instructions, a
-  model and a tool set) and result delivery to WeCom, Feishu or email. Unattended runs only get
-  replay-safe reads plus the tools the owner ticked; they can never create automations or send
-  email.
+  model and a tool set) and result delivery to WeCom, Feishu or email. Unattended runs get
+  replay-safe reads and web search, plus the tools the owner granted (in settings, or by saying so
+  in a web or phone chat); they can never delete, create automations or send email. Runs land in
+  the Scheduled tab of conversation history, apart from your own chats.
 - **Issues & requests** — feature requests and frictions in one admin queue; members' agents
   can file both over MCP.
 - **Monthly retro (复盘)** — at 09:00 on the 1st, in the time zone set under Administration →
@@ -244,7 +245,8 @@ Deliberately **not** on MCP: email (its safety is a person reading the draft), `
 
 ### Clients
 
-- **Web** — Home (a new conversation, with recent conversations in the sidebar on every page),
+- **Web** — Home (a new conversation, with recent conversations in the sidebar on every page,
+  tabbed Mine / Scheduled / Shared),
   Knowledge, Files, Tables (with the Data catalog), Projects, SkillHub (Skills / My prompts /
   Report templates) and Automations (with Run profiles); the ⌘P palette, a bell for notifications,
   shares and team activity, the Activity log, and the assistant as an overlay on any
@@ -254,11 +256,13 @@ Deliberately **not** on MCP: email (its safety is a person reading the draft), `
   gateway, computers), activity, Issues & requests, team context, Branding Studio, Runtime Config,
   MCP Access.
 - **iOS app** ([`apps/mobile`](apps/mobile), Expo) — chat with Sprouty (attachments, offline
-  outbox, card actions), conversations, Knowledge (browse, create, rename / move / delete; reading
-  only, no body editing), Files (upload from Photos, camera or Files; folders) with Tables (browse,
-  add simple records), Projects (create projects, change task status, comment), notifications with
-  push, and Me (theme, language, text size, push switches, feedback, servers, and a read-only view
-  of your agents' spend, writes and gateway keys). Password and Feishu sign-in; several servers
+  outbox, card actions), conversations (Mine / Scheduled / Shared), search across conversations,
+  documents, files and automations, Knowledge (browse, create, rename / move / delete; reading
+  only, no body editing), Files (a Recent tab first; upload from Photos, camera or Files; folders)
+  with Tables (browse, add simple records), Projects (create projects, change task status,
+  comment), Automations (pause / resume, run now, run history, delete; new ones are made in a
+  chat), notifications with push, and Me (theme, language, text size, push switches, feedback,
+  servers, and a read-only view of your agents' spend, writes and gateway keys). Password and Feishu sign-in; several servers
   ("stations") side by side; "My tasks" and "Recent documents" widgets; iPad split view; offline
   copies of recent content; OTA updates.
 - **Android** — Material 3 screens exist in the Expo project, but no Android build is published
