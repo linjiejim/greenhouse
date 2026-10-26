@@ -1,85 +1,21 @@
-/**
- * Composer — the floating Liquid Glass control layer at the bottom of home and a conversation:
- * one rounded field that holds everything,
- *
- *   ( +  picked files · growing text field  ↑ / ■ )
- *
- *  - `+` opens a native menu: Photos, Camera, Files. Files upload as soon as they are picked
- *    (./use-composer-files.ts) and retry in place; send waits until every one is up. A new
- *    conversation on a station with more than one agent (./use-agents.ts) also picks its agent
- *    there.
- *  - ↑ sends, and is dimmed and disabled while there is nothing to send; while the assistant
- *    answers, an empty composer offers ■ (stop) instead.
- *  - The field grows with the text up to six lines and shrinks back as it empties.
- *
- * There is no voice input: members use the keyboard's own dictation. Pure view: the screen owns
- * the draft and the files and places it (a KeyboardStickyView at the bottom edge), and learns its
- * height through `onHeight` to pad its list.
- *
- * The bar is opaque: a solid band of the page's surface behind the field reaches down through the
- * bottom safe area (`bottomInset`), so the list never shows through under the field.
- */
-
-import React, { forwardRef, memo } from 'react';
-import { ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
-import { Image } from 'expo-image';
+/** Browser input primitive; send, upload and agent state still belong to the shared screens. */
+import React, { forwardRef, memo, useEffect, useImperativeHandle, useRef } from 'react';
+import { type TextInput, useWindowDimensions } from 'react-native';
+import type { Composer as NativeComposer } from './composer';
+import { canSendMessage, MAX_FILES } from './composer-files';
+import { NativeMenu } from '../ui/menu.web';
+import { Icon } from '../ui/core.web';
 import { useT } from '../lib/i18n';
-import { HIT, makeStyles, radius, space, squircle, typo, useTheme } from '../theme';
-import { NativeButton } from '../ui/button';
-import { Icon, Spinner, Touchable } from '../ui/core';
-import { FileIcon } from '../ui/file-icon';
-import { Glass } from '../ui/glass';
-import { NativeMenu, menuSections, type MenuItem } from '../ui/menu';
-import type { ChatAgent } from './use-agents';
-import { MAX_FILES, canSendMessage, type ComposerFile } from './composer-files';
-import type { AttachSource } from './use-composer-files';
+import { typo, useTheme } from '../theme';
 
-/** The + menu's agent items: `agent:<profile id>`. */
-const AGENT = 'agent:';
-
-/** A one-line field: roomier than a plain control (HIT). */
-const FIELD = HIT + space.sm;
-/** The round buttons inside the field (+, send, stop). */
-const BUTTON = 36;
-/** The space around them, so a one-line field is exactly FIELD tall. */
-const INSET = (FIELD - BUTTON) / 2;
-
+type Props = React.ComponentProps<typeof NativeComposer>;
 export const Composer = memo(
-  forwardRef<
-    TextInput,
-    {
-      value: string;
-      onChangeText: (v: string) => void;
-      /** Send the draft. */
-      onSend: () => void;
-      /** The assistant is answering: with nothing typed, the button stops it. */
-      working?: boolean;
-      onStop?: () => void;
-      onAttach: (from: AttachSource) => void;
-      files: ComposerFile[];
-      onRemoveFile: (id: string) => void;
-      onRetryFiles: () => void;
-      placeholder: string;
-      autoFocus?: boolean;
-      /** Height of the whole bar, its bottom safe-area band included. */
-      onHeight?: (h: number) => void;
-      /** The bottom safe area the bar's solid band covers (0 while the keyboard is up is fine: it sits under it). */
-      bottomInset: number;
-      /** The page is grouped (home): the band takes the grouped surface. */
-      grouped?: boolean;
-      /** A new conversation's agents (offered only when more than one) and the one chosen (null: the first). */
-      agents?: readonly ChatAgent[];
-      agentId?: string | null;
-      onAgent?: (id: string) => void;
-      /** The field gained or lost focus (home makes room around it). */
-      onFocusChange?: (focused: boolean) => void;
-    }
-  >(function Composer(
+  forwardRef<TextInput, Props>(function Composer(
     {
       value,
       onChangeText,
       onSend,
-      working = false,
+      working,
       onStop,
       onAttach,
       files,
@@ -89,247 +25,175 @@ export const Composer = memo(
       autoFocus,
       onHeight,
       bottomInset,
-      grouped,
       agents,
       agentId,
       onAgent,
       onFocusChange,
+      grouped,
     },
     ref,
   ) {
-    const { colors: c, isDark } = useTheme();
-    const styles = useStyles(c);
+    const { hex: c, isDark } = useTheme();
+    const { width } = useWindowDimensions();
     const t = useT();
-    const { fontScale, height } = useWindowDimensions();
-    const lineHeight = typo.body.lineHeight * fontScale;
-    // the field sizes itself to its text (iOS multiline): one line is FIELD tall, at most six lines
-    const minInputHeight = Math.max(FIELD, Math.ceil(lineHeight) + space.md * 2);
-    const maxInputHeight = Math.max(minInputHeight, Math.min(6 * lineHeight + space.sm * 2, height * 0.4));
-
-    const canSend = canSendMessage(value, files);
-    const failed = files.some((file) => file.status === 'error');
-    const full = files.length >= MAX_FILES;
-    const showStop = working && !!onStop && !value.trim() && !files.length;
-    const attachItems: MenuItem[] = [
-      { id: 'library', title: t('composer.photos'), icon: 'photos', disabled: full },
-      { id: 'camera', title: t('composer.camera'), icon: 'camera', disabled: full },
-      { id: 'files', title: t('composer.files'), icon: 'attach', disabled: full },
-    ];
-    const chosen = agents?.find((agent) => agent.id === agentId) ?? agents?.[0];
-    const menuItems: MenuItem[] =
-      agents && agents.length > 1 && onAgent
-        ? menuSections([
-            attachItems,
-            [
-              {
-                id: 'agent',
-                title: t('composer.agent', { name: chosen?.name ?? '' }),
-                icon: 'sparkle',
-                children: agents.map((agent) => ({
-                  id: `${AGENT}${agent.id}`,
-                  title: agent.name,
-                  checked: agent.id === chosen?.id,
-                })),
-              },
-            ],
-          ])
-        : attachItems;
-
+    const field = useRef<HTMLTextAreaElement>(null);
+    const wrap = useRef<HTMLDivElement>(null);
+    const latestHeight = useRef(onHeight);
+    latestHeight.current = onHeight;
+    useImperativeHandle(
+      ref,
+      () => ({ focus: () => field.current?.focus(), blur: () => field.current?.blur() }) as TextInput,
+      [],
+    );
+    useEffect(() => {
+      if (!wrap.current) return;
+      const observer = new ResizeObserver(() =>
+        latestHeight.current?.(wrap.current?.getBoundingClientRect().height ?? 64),
+      );
+      observer.observe(wrap.current);
+      return () => observer.disconnect();
+    }, []);
+    useEffect(() => {
+      if (!field.current) return;
+      field.current.style.height = '24px';
+      field.current.style.height = `${Math.min(156, Math.max(24, field.current.scrollHeight))}px`;
+    }, [value]);
+    const ready = canSendMessage(value, files);
+    const stop = working && !value.trim() && !files.length && !!onStop;
+    const chosen = agents?.find((a) => a.id === agentId) ?? agents?.[0];
+    const button: React.CSSProperties = {
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      width: width >= 760 ? 36 : 44,
+      height: width >= 760 ? 36 : 44,
+      flexShrink: 0,
+      border: 0,
+      borderRadius: '50%',
+    };
     return (
-      <View
-        style={[styles.wrap, grouped && styles.wrapGrouped, { paddingBottom: Math.max(bottomInset, space.sm) }]}
-        onLayout={(e) => onHeight?.(e.nativeEvent.layout.height)}
+      <div
+        ref={wrap}
+        data-testid="composer"
+        style={{
+          padding: width >= 760 ? (grouped ? '8px 20px 0' : '8px 28px 20px') : `8px 12px ${Math.max(8, bottomInset)}px`,
+          background: c.background,
+        }}
       >
-        <Glass interactive style={styles.field}>
+        <div
+          style={{
+            border: `1px solid ${c.separator}`,
+            borderRadius: 28,
+            padding: 7,
+            background: c.background,
+            boxShadow: isDark ? undefined : '0 2px 8px rgba(0,0,0,.06)',
+          }}
+        >
           {files.length ? (
-            <View style={styles.chips}>
-              <ScrollView
-                horizontal
-                keyboardShouldPersistTaps="always"
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.thumbs}
-              >
-                {files.map((file) => (
-                  <View key={file.id} style={file.kind === 'image' ? styles.thumb : styles.fileTile}>
-                    {file.kind === 'image' ? (
-                      <Image source={{ uri: file.uri }} style={StyleSheet.absoluteFill} contentFit="cover" />
-                    ) : (
-                      <View style={styles.fileInner}>
-                        <FileIcon name={file.name} contentType={file.mimeType} size={15} />
-                        <Text numberOfLines={2} ellipsizeMode="middle" style={styles.fileName}>
-                          {file.name}
-                        </Text>
-                      </View>
-                    )}
-                    {file.status !== 'done' ? (
-                      <View style={styles.thumbOverlay}>
-                        {file.status === 'uploading' ? (
-                          <Spinner />
-                        ) : (
-                          <Icon name="alert" size={18} weight="semibold" color={c.red} />
-                        )}
-                      </View>
-                    ) : null}
-                    <Touchable
-                      onPress={() => onRemoveFile(file.id)}
-                      style={styles.thumbX}
-                      accessibilityRole="button"
-                      accessibilityLabel={t('composer.removeFile', { name: file.name })}
-                    >
-                      <View style={styles.thumbXDot}>
-                        <Icon name="x" size={9} weight="bold" color={c.background} />
-                      </View>
-                    </Touchable>
-                  </View>
-                ))}
-              </ScrollView>
-              {failed ? (
-                <View style={styles.uploadError}>
-                  <Text style={styles.uploadErrorText}>{t('composer.uploadFailed')}</Text>
-                  <NativeButton label={t('common.retry')} size="small" onPress={onRetryFiles} />
-                </View>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, padding: 8 }}>
+              {files.map((f) => (
+                <span
+                  key={f.id}
+                  data-testid="composer-file"
+                  style={{ padding: '4px 8px', borderRadius: 8, background: c.tertiaryFill, color: c.label }}
+                >
+                  {f.name}{' '}
+                  {f.status === 'uploading'
+                    ? t('common.loading')
+                    : f.status === 'error'
+                      ? t('composer.uploadFailed')
+                      : '✓'}
+                  <button
+                    aria-label={t('client.removeFile')}
+                    onClick={() => onRemoveFile(f.id)}
+                    style={{ border: 0, background: 'transparent', color: c.label }}
+                  >
+                    ×
+                  </button>
+                </span>
+              ))}
+              {files.some((f) => f.status === 'error') ? (
+                <button onClick={onRetryFiles}>{t('common.retry')}</button>
               ) : null}
-            </View>
+            </div>
           ) : null}
-          <View style={styles.row}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <NativeMenu
-              title={full ? t('composer.maxFiles', { n: MAX_FILES }) : undefined}
-              items={menuItems}
+              title={t('client.attach')}
+              items={[
+                { id: 'files', title: t('composer.files'), icon: 'attach', disabled: files.length >= MAX_FILES },
+                { id: 'library', title: t('composer.photos'), icon: 'photos', disabled: files.length >= MAX_FILES },
+                ...(agents && agents.length > 1
+                  ? [
+                      {
+                        id: 'agents',
+                        title: t('composer.agent', { name: chosen?.name ?? '' }),
+                        inline: true,
+                        children: agents.map((a) => ({
+                          id: `agent:${a.id}`,
+                          title: a.name,
+                          checked: a.id === chosen?.id,
+                        })),
+                      },
+                    ]
+                  : []),
+              ]}
               onSelect={(id) =>
-                id.startsWith(AGENT) ? onAgent?.(id.slice(AGENT.length)) : onAttach(id as AttachSource)
+                id.startsWith('agent:') ? onAgent?.(id.slice(6)) : onAttach(id as 'files' | 'library')
               }
             >
-              <View style={styles.slot} accessible accessibilityRole="button" accessibilityLabel={t('composer.add')}>
-                <View style={styles.plus}>
-                  <Icon name="plus" size={18} weight="semibold" color={c.label} />
-                </View>
-              </View>
+              <button
+                aria-label={t('client.attach')}
+                style={{ ...button, color: c.secondaryLabel, background: c.tertiaryFill }}
+              >
+                <Icon name="plus" size={20} />
+              </button>
             </NativeMenu>
-            <TextInput
-              // a live light/dark switch restyles the native field and its placeholder stops
-              // drawing until relaunch (iOS); a fresh field per scheme draws it (the draft is
-              // controlled, so nothing typed is lost)
-              key={isDark ? 'dark' : 'light'}
-              ref={ref}
+            <textarea
+              ref={field}
+              data-testid="composer-input"
+              aria-label={placeholder}
               value={value}
-              onChangeText={onChangeText}
-              onKeyPress={(event) => {
-                const key = event.nativeEvent as unknown as KeyboardEvent;
-                if (key.key === 'Enter' && !key.shiftKey && !key.isComposing && canSend) {
-                  event.preventDefault();
-                  onSend();
+              placeholder={placeholder}
+              autoFocus={autoFocus}
+              rows={1}
+              onChange={(e) => onChangeText(e.target.value)}
+              onFocus={() => onFocusChange?.(true)}
+              onBlur={() => onFocusChange?.(false)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+                  e.preventDefault();
+                  if (ready) onSend();
                 }
               }}
-              onFocus={onFocusChange ? () => onFocusChange(true) : undefined}
-              onBlur={onFocusChange ? () => onFocusChange(false) : undefined}
-              autoFocus={autoFocus}
-              placeholder={placeholder}
-              placeholderTextColor={c.placeholder}
-              selectionColor={c.accent}
-              multiline
-              scrollEnabled
-              style={[styles.input, { minHeight: minInputHeight, maxHeight: maxInputHeight }]}
-              accessibilityLabel={placeholder}
-              testID="composer-input"
+              style={{
+                flex: 1,
+                minWidth: 0,
+                height: 24,
+                maxHeight: 156,
+                border: 0,
+                resize: 'none',
+                outline: 'none',
+                padding: 0,
+                fontFamily: typo.body.fontFamily,
+                fontSize: width >= 760 ? typo.callout.fontSize : typo.body.fontSize,
+                lineHeight: '24px',
+                color: c.label,
+                background: 'transparent',
+              }}
             />
-            {showStop ? (
-              <Touchable
-                onPress={onStop}
-                haptic="light"
-                style={styles.slot}
-                accessibilityRole="button"
-                accessibilityLabel={t('composer.stop')}
-              >
-                <View style={[styles.send, styles.sendOn]}>
-                  <Icon name="stop" size={13} weight="bold" color={c.onAccent} />
-                </View>
-              </Touchable>
-            ) : (
-              <Touchable
-                onPress={() => onSend()}
-                disabled={!canSend}
-                haptic="light"
-                style={styles.slot}
-                accessibilityRole="button"
-                accessibilityLabel={t('composer.send')}
-                accessibilityState={{ disabled: !canSend }}
-              >
-                <View style={[styles.send, canSend ? styles.sendOn : styles.sendOff]}>
-                  <Icon name="up" size={16} weight="bold" color={canSend ? c.onAccent : c.tertiaryLabel} />
-                </View>
-              </Touchable>
-            )}
-          </View>
-        </Glass>
-      </View>
+            <button
+              data-testid={stop ? 'composer-stop' : 'composer-send'}
+              aria-label={t(stop ? 'composer.stop' : 'composer.send')}
+              disabled={!stop && !ready}
+              onClick={stop ? onStop : onSend}
+              style={{ ...button, background: c.accent, color: c.onAccent, opacity: stop || ready ? 1 : 0.45 }}
+            >
+              <Icon name={stop ? 'stop' : 'up'} size={20} color={c.onAccent} />
+            </button>
+          </div>
+        </div>
+      </div>
     );
   }),
 );
-
-const useStyles = makeStyles((c) => ({
-  wrap: { paddingHorizontal: space.md, paddingTop: space.sm, backgroundColor: c.background },
-  wrapGrouped: { backgroundColor: c.groupedBackground },
-  field: { minHeight: FIELD, borderRadius: FIELD / 2, overflow: 'hidden', ...squircle },
-  row: { flexDirection: 'row', alignItems: 'flex-end' },
-  slot: { width: BUTTON + INSET * 2, height: FIELD, alignItems: 'center', justifyContent: 'center' },
-  plus: { width: BUTTON, height: BUTTON, borderRadius: BUTTON / 2, alignItems: 'center', justifyContent: 'center' },
-  send: { width: BUTTON, height: BUTTON, borderRadius: BUTTON / 2, alignItems: 'center', justifyContent: 'center' },
-  sendOn: { backgroundColor: c.accent },
-  sendOff: { backgroundColor: c.tertiaryFill },
-  input: {
-    ...typo.body,
-    flex: 1,
-    color: c.label,
-    paddingHorizontal: space.xxs,
-    paddingTop: space.md + space.xxs,
-    paddingBottom: space.md + space.xxs,
-  },
-  chips: { paddingTop: space.sm, paddingHorizontal: space.sm, gap: space.xs },
-  thumbs: { gap: space.sm, paddingRight: space.xs },
-  thumb: {
-    width: 60,
-    height: 60,
-    borderRadius: radius.md,
-    overflow: 'hidden',
-    backgroundColor: c.tertiaryFill,
-    ...squircle,
-  },
-  fileTile: {
-    width: 112,
-    height: 60,
-    borderRadius: radius.md,
-    overflow: 'hidden',
-    backgroundColor: c.tertiaryFill,
-    ...squircle,
-  },
-  fileInner: { flex: 1, padding: space.sm, gap: space.xxs },
-  fileName: { ...typo.caption2, color: c.label },
-  thumbOverlay: {
-    ...StyleSheet.absoluteFill,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: c.background,
-    opacity: 0.7,
-  },
-  thumbX: {
-    position: 'absolute',
-    top: 0,
-    right: 0,
-    width: HIT,
-    height: HIT,
-    alignItems: 'flex-end',
-    padding: space.xs,
-  },
-  // label-on-background inverts per scheme: a dark dot with a light ✕ in light mode, and vice versa
-  thumbXDot: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: c.label,
-    opacity: 0.72,
-  },
-  uploadError: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', paddingLeft: space.xs, gap: space.xs },
-  uploadErrorText: { ...typo.footnote, color: c.red, flexShrink: 1 },
-}));

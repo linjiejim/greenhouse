@@ -29,6 +29,7 @@ export function NativeMenu({
   const { hex: c } = useTheme();
   const open = (e: React.MouseEvent) => {
     e.preventDefault();
+    e.stopPropagation();
     const rect = e.currentTarget.getBoundingClientRect();
     setPoint({
       x: trigger === 'longPress' ? e.clientX : rect.left,
@@ -89,6 +90,7 @@ export function NativeMenu({
       tabIndex={trigger === 'tap' ? 0 : undefined}
       aria-haspopup="menu"
       onKeyDown={(e) => {
+        if (!e.currentTarget.contains(e.target as Node)) return;
         if ((trigger === 'tap' && (e.key === 'Enter' || e.key === ' ')) || (e.shiftKey && e.key === 'F10')) {
           e.preventDefault();
           const rect = e.currentTarget.getBoundingClientRect();
@@ -96,7 +98,15 @@ export function NativeMenu({
         }
       }}
       style={{ display: fill || trigger === 'longPress' ? 'block' : 'inline-flex', width, ...style }}
-      onClick={trigger === 'tap' ? open : undefined}
+      // RN Pressable stops click bubbling. Capture the trigger instead; portal
+      // events must never reopen the menu after an item closes it.
+      onClickCapture={
+        trigger === 'tap'
+          ? (e) => {
+              if (!point) open(e);
+            }
+          : undefined
+      }
       onContextMenu={trigger === 'longPress' ? open : undefined}
     >
       {children}

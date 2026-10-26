@@ -1,3 +1,4 @@
+import { AccountMenu, NotificationsPopover, SearchPalette } from './desktop-tools.web';
 import { getApiBase } from '../store/stations';
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, Text, View, useWindowDimensions } from 'react-native';
@@ -12,12 +13,19 @@ import { localize } from '../shared/plugins';
 import { hasTables } from './modules';
 import { wideLayout, RAIL_WIDTH, SECONDARY_WIDTH } from './wide-model';
 import { useT } from '../lib/i18n';
-import { shortAgeNow } from '../lib/time-words';
+import { ConversationRow } from '../chat/conversation-row.web';
+import { promptText } from '../ui/dialogs';
+import { listShares, markShareRead, type SharedConversation } from '../api/shares';
+import { listAutomationRuns } from '../api/assistant';
+import { listProfiles, profileName, type AgentProfile } from '../api/profiles';
+import { captureIdentity } from '../data/identity';
+import type { ChatSession } from '../shared/greenhouse-types';
+import { conversationAgent } from '../data/home';
 import { parseMs } from '../data/time';
 import { GreenhouseMark } from '../ui/logo';
 import { Icon, type IconName } from '../ui/core';
 import { NativeMenu } from '../ui/menu';
-import { Avatar } from '../ui/avatar';
+
 import { Segmented } from '../ui/segmented';
 import { useShortcut } from '../ui/use-shortcut';
 import { space, typo, useTheme } from '../theme';
@@ -30,27 +38,56 @@ export function WideShell({ children }: { children: React.ReactNode }) {
   const t = useT();
   const router = useRouter();
   const path = usePathname();
-  const params = useGlobalSearchParams<{ view?: string }>();
-  const [secondary, setSecondary] = useState(!layout.collapseSecondary);
+  const params = useGlobalSearchParams<{ view?: string; session?: string }>();
+  const [selectedSession, setSelectedSession] = useState<string | null>(params.session ?? null);
+  useEffect(() => {
+    if (path === '/chat') setSelectedSession(params.session ?? null);
+    else if (path === '/') setSelectedSession(null);
+  }, [path, params.session]);
+  const [secondaryPrefs, setSecondaryPrefs] = useState<Record<string, boolean>>({});
+  const regime = layout.collapseSecondary ? 'compact' : 'wide';
+  const secondary = secondaryPrefs[regime] ?? !layout.collapseSecondary;
   const user = useAuth((s) => s.user);
+  const [search, setSearch] = useState(false);
+  const [notifications, setNotifications] = useState(false);
   const manifest = useStationManifest((s) => s.data);
   const lang = usePrefs((s) => s.lang);
   const unread = Math.max(
     0,
     useNotifications((s) => s.unread),
   );
-  useEffect(() => setSecondary(!layout.collapseSecondary), [layout.collapseSecondary]);
   useEffect(() => {
     const root = document.documentElement;
     root.style.setProperty('--gh-focus', c.accent);
     root.style.setProperty('--gh-hover', c.tertiaryFill);
+    root.style.setProperty('--gh-card', c.secondaryGroupedBackground);
+    root.style.setProperty('--gh-line', c.separator);
     root.style.colorScheme = isDark ? 'dark' : 'light';
     root.dataset.theme = isDark ? 'dark' : 'light';
   }, [c, isDark]);
-  const context = useMemo(() => ({ toggleSecondary: () => setSecondary((v) => !v) }), []);
-  useShortcut('mod+\\', context.toggleSecondary, !!user && layout.wide);
+  const context = useMemo(
+    () => ({
+      toggleSecondary: () => {
+        // Resize and keydown can precede RN's dimensions render. Read the browser
+        // width in the key handler so that first shortcut changes the new regime.
+        if (window.innerWidth < 760) return;
+        const compact = window.innerWidth < 1100;
+        const key = compact ? 'compact' : 'wide';
+        setSecondaryPrefs((v) => ({ ...v, [key]: !(v[key] ?? !compact) }));
+      },
+    }),
+    [],
+  );
+  useShortcut('mod+\\', context.toggleSecondary, !!user);
   useShortcut('mod+n', () => router.navigate('/'), !!user);
-  useShortcut('mod+k', () => router.push('/search'), !!user);
+  useShortcut(
+    'mod+k',
+    () => {
+      if (layout.wide) setSearch((v) => !v);
+      else router.push('/search');
+    },
+    !!user,
+  );
   useShortcut('mod+,', () => router.push('/me'), !!user);
   useShortcut(
     'mod+r',
@@ -74,7 +111,7 @@ export function WideShell({ children }: { children: React.ReactNode }) {
       : []),
     { id: 'automations', label: t('nav.automations'), icon: 'clock' as IconName, href: '/automations' },
   ];
-  const active = path.startsWith('/knowledge')
+  const directPlace = path.startsWith('/knowledge')
     ? 'knowledge'
     : path.startsWith('/drive')
       ? params.view === 'tables'
@@ -84,7 +121,14 @@ export function WideShell({ children }: { children: React.ReactNode }) {
         ? 'projects'
         : path.startsWith('/automations')
           ? 'automations'
-          : 'chat';
+          : path === '/' || path === '/chat' || path === '/search'
+            ? 'chat'
+            : undefined;
+  const [lastPlace, setLastPlace] = useState(directPlace ?? 'chat');
+  useEffect(() => {
+    if (directPlace) setLastPlace(directPlace);
+  }, [directPlace]);
+  const active = directPlace ?? lastPlace;
   const more = pluginNavigation(manifest, 'more');
   const primary = pluginNavigation(manifest, 'primary').filter(
     (n) => !['knowledge', 'tables', 'projects'].includes(n.plugin.id),
@@ -114,96 +158,89 @@ export function WideShell({ children }: { children: React.ReactNode }) {
       </Text>
     </Pressable>
   );
-  if (!user || !layout.wide) return <ShellContext.Provider value={context}>{children}</ShellContext.Provider>;
+  const chrome = !!user && layout.wide;
   return (
     <ShellContext.Provider value={context}>
       <View style={{ flex: 1, flexDirection: 'row', backgroundColor: c.background }}>
-        <View
-          testID="client-rail"
-          style={{
-            width: RAIL_WIDTH,
-            backgroundColor: c.sidebarBackground,
-            borderRightWidth: 1,
-            borderRightColor: c.separator,
-            paddingTop: 52,
-            paddingBottom: space.md,
-          }}
-        >
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Greenhouse"
-            onPress={() => go('/')}
-            style={{ alignItems: 'center', marginBottom: space.lg }}
-          >
-            <GreenhouseMark size={28} />
-          </Pressable>
-          <ScrollView>
-            {places.map((place, index) => (
-              <RailShortcut key={`shortcut:${place.id}`} href={place.href} index={index} />
-            ))}
-            {places.map((p) => rail(p.id, p.label, p.icon, () => go(p.href), p.id === active))}
-            {primary.map((n) =>
-              rail(n.nav.id, localize(n.nav.label, lang), 'open', () => go(`/p/${n.plugin.id}/${n.page.id}`)),
-            )}
-            {more.length ? (
-              <NativeMenu
-                title={t('client.more')}
-                items={more.map((n) => ({
-                  id: `${n.plugin.id}/${n.page.id}`,
-                  title: localize(n.nav.label, lang),
-                  icon: 'open',
-                }))}
-                onSelect={(id) => go(`/p/${id}`)}
-              >
-                {rail('more', t('client.more'), 'more', () => {})}
-              </NativeMenu>
-            ) : null}
-          </ScrollView>
-          <View style={{ gap: space.sm }}>
-            {user.role === 'super'
-              ? rail('admin', t('client.admin'), 'shieldCheck', () => {
-                  window.location.assign(`${getApiBase()}/classic/#/administration/users`);
-                })
-              : null}
-            <View>
-              {rail('notifications', t('notifications.title'), 'bell', () => router.push('/notifications'))}
-              {unread ? (
-                <Text
-                  style={{
-                    position: 'absolute',
-                    right: 14,
-                    top: 0,
-                    ...typo.caption1,
-                    color: c.onTint,
-                    backgroundColor: c.red,
-                    borderRadius: 12,
-                    paddingHorizontal: 4,
-                  }}
-                >
-                  {unread > 99 ? '99+' : unread}
-                </Text>
-              ) : null}
-            </View>
-            <NativeMenu
-              title={`${user.nickname} · ${user.email}`}
-              items={[
-                { id: 'settings', title: t('nav.settings'), icon: 'gear', shortcut: '⌘ ,' },
-                { id: 'logout', title: t('settings.logout'), icon: 'logout', destructive: true },
-              ]}
-              onSelect={(id) => (id === 'logout' ? useAuth.getState().logout() : router.push('/me'))}
-            >
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={user.nickname}
-                style={{ alignItems: 'center', padding: 8 }}
-              >
-                <Avatar name={user.nickname} size={28} />
-              </Pressable>
-            </NativeMenu>
-          </View>
-        </View>
-        {secondary ? (
+        {chrome ? (
           <View
+            key="rail"
+            testID="client-rail"
+            style={{
+              width: RAIL_WIDTH,
+              backgroundColor: c.sidebarBackground,
+              borderRightWidth: 1,
+              borderRightColor: c.separator,
+              paddingTop: 52,
+              paddingBottom: space.md,
+            }}
+          >
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Greenhouse"
+              onPress={() => go('/')}
+              style={{ alignItems: 'center', marginBottom: space.lg }}
+            >
+              <GreenhouseMark size={28} />
+            </Pressable>
+            <ScrollView>
+              {places.map((place, index) => (
+                <RailShortcut key={`shortcut:${place.id}`} href={place.href} index={index} />
+              ))}
+              {places.map((p) => rail(p.id, p.label, p.icon, () => go(p.href), p.id === active))}
+              {primary.map((n) =>
+                rail(n.nav.id, localize(n.nav.label, lang), 'open', () => go(`/p/${n.plugin.id}/${n.page.id}`)),
+              )}
+              {more.length ? (
+                <NativeMenu
+                  fill
+                  title={t('client.more')}
+                  items={more.map((n) => ({
+                    id: `${n.plugin.id}/${n.page.id}`,
+                    title: localize(n.nav.label, lang),
+                    icon: 'open',
+                  }))}
+                  onSelect={(id) => go(`/p/${id}`)}
+                >
+                  {rail('more', t('client.more'), 'more', () => {})}
+                </NativeMenu>
+              ) : null}
+            </ScrollView>
+            <View style={{ gap: space.sm }}>
+              {user.role === 'super'
+                ? rail('admin', t('client.admin'), 'shieldCheck', () => {
+                    window.location.assign(`${getApiBase()}/classic/#/administration/users`);
+                  })
+                : null}
+              <View>
+                {rail('notifications', t('notifications.title'), 'bell', () => {
+                  setSearch(false);
+                  setNotifications((v) => !v);
+                })}
+                {unread ? (
+                  <Text
+                    style={{
+                      position: 'absolute',
+                      right: 14,
+                      top: 0,
+                      ...typo.caption1,
+                      color: c.onTint,
+                      backgroundColor: c.red,
+                      borderRadius: 12,
+                      paddingHorizontal: 4,
+                    }}
+                  >
+                    {unread > 99 ? '99+' : unread}
+                  </Text>
+                ) : null}
+              </View>
+              <AccountMenu />
+            </View>
+          </View>
+        ) : null}
+        {chrome && secondary ? (
+          <View
+            key="secondary"
             testID="client-secondary"
             style={{
               width: SECONDARY_WIDTH,
@@ -212,17 +249,31 @@ export function WideShell({ children }: { children: React.ReactNode }) {
               borderRightColor: c.separator,
             }}
           >
-            <Secondary active={active} title={places.find((p) => p.id === active)?.label ?? ''} />
+            <Secondary
+              selectedSession={selectedSession}
+              active={active}
+              title={places.find((p) => p.id === active)?.label ?? ''}
+            />
           </View>
         ) : null}
-        <View testID="client-main" style={{ flex: 1, minWidth: 0 }}>
+        <View key="main" testID="client-main" style={{ flex: 1, minWidth: 0 }}>
           {children}
         </View>
       </View>
+      {chrome && search ? <SearchPalette close={() => setSearch(false)} /> : null}
+      {chrome && notifications ? <NotificationsPopover close={() => setNotifications(false)} /> : null}
     </ShellContext.Provider>
   );
 }
-function Secondary({ active, title }: { active: string; title: string }) {
+function Secondary({
+  active,
+  title,
+  selectedSession,
+}: {
+  active: string;
+  title: string;
+  selectedSession: string | null;
+}) {
   const t = useT();
   const router = useRouter();
   const { hex: c } = useTheme();
@@ -230,8 +281,48 @@ function Secondary({ active, title }: { active: string; title: string }) {
   const status = useSessions((s) => s.status);
   const [query, setQuery] = useState('');
   const [tab, setTab] = useState('mine');
-  const path = usePathname();
-  const params = useGlobalSearchParams<{ session?: string }>();
+  const member = useAuth((s) => s.user?.id);
+  const lang = usePrefs((s) => s.lang);
+  const [shares, setShares] = useState<SharedConversation[]>([]);
+  const [scheduled, setScheduled] = useState<ChatSession[]>([]);
+  const [profiles, setProfiles] = useState<AgentProfile[]>([]);
+  const [tabStatus, setTabStatus] = useState('ready');
+  useEffect(() => {
+    const current = captureIdentity();
+    let alive = true;
+    void listProfiles().then((r) => {
+      if (alive && current()) setProfiles(r.ok ? r.data : []);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [member]);
+  useEffect(() => {
+    if (tab === 'mine') return;
+    const current = captureIdentity();
+    let alive = true;
+    setTabStatus('loading');
+    if (tab === 'shared')
+      void listShares().then((r) => {
+        if (!alive || !current()) return;
+        setShares(r.ok ? r.data : []);
+        setTabStatus(r.ok ? 'ready' : 'error');
+      });
+    else
+      void listAutomationRuns().then((r) => {
+        if (!alive || !current()) return;
+        setScheduled(r.ok ? r.data.sessions : []);
+        setTabStatus(r.ok ? 'ready' : 'error');
+      });
+    return () => {
+      alive = false;
+    };
+  }, [tab, member]);
+  const rename = async (item: ChatSession) => {
+    const next = await promptText({ title: t('home.rename'), defaultValue: item.title ?? '' });
+    if (next) void useSessions.getState().rename(item.id, next.slice(0, 200));
+  };
+
   useEffect(() => {
     void useSessions.getState().refresh();
   }, []);
@@ -275,22 +366,35 @@ function Secondary({ active, title }: { active: string; title: string }) {
           <Icon name="compose" size={18} color={c.accent} />
         </Pressable>
       </View>
-      <input
-        aria-label={t('common.search')}
-        placeholder={`${t('common.search')}                         ⌘K`}
-        value={query}
-        onChange={(e) => setQuery(e.target.value)}
+      <View
         style={{
-          font: 'inherit',
-          color: c.label,
-          background: c.tertiaryFill,
-          border: 0,
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: 6,
+          backgroundColor: c.tertiaryFill,
           borderRadius: 8,
-          padding: 8,
-          marginBlock: 8,
-          minWidth: 0,
+          paddingHorizontal: 8,
+          marginVertical: 8,
         }}
-      />
+      >
+        <Icon name="search" size={16} color={c.secondaryLabel} />
+        <input
+          aria-label={t('common.search')}
+          placeholder={t('common.search')}
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          style={{
+            flex: 1,
+            minWidth: 0,
+            font: 'inherit',
+            color: c.label,
+            background: 'transparent',
+            border: 0,
+            padding: '8px 0',
+          }}
+        />
+        <span style={{ color: c.tertiaryLabel, fontSize: typo.caption1.fontSize }}>⌘K</span>
+      </View>
       {active === 'chat' ? (
         <>
           <Segmented
@@ -303,82 +407,121 @@ function Secondary({ active, title }: { active: string; title: string }) {
             ]}
           />
           <ScrollView style={{ marginTop: space.md }}>
-            {tab === 'mine' ? (
-              Array.from(groups, ([group, rows]) => (
-                <View key={group} style={{ marginBottom: space.lg }}>
-                  <Text style={{ ...typo.footnote, fontWeight: '600', color: c.tertiaryLabel, padding: space.sm }}>
-                    {t(group as never)}
-                  </Text>
-                  {rows.map((item) => (
-                    <button
-                      key={item.id}
-                      className="gh-secondary-row"
-                      aria-current={path === '/chat' && params.session === item.id ? 'page' : undefined}
-                      onClick={() => router.push({ pathname: '/chat', params: { session: item.id } })}
-                      onKeyDown={(e) => {
-                        if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-                          e.preventDefault();
-                          const buttons = Array.from(
-                            e.currentTarget
-                              .closest('[role="navigation"]')
-                              ?.querySelectorAll<HTMLButtonElement>('.gh-secondary-row') ??
-                              document.querySelectorAll<HTMLButtonElement>('.gh-secondary-row'),
-                          );
-                          buttons[
-                            (buttons.indexOf(e.currentTarget) + (e.key === 'ArrowDown' ? 1 : -1) + buttons.length) %
-                              buttons.length
-                          ]?.focus();
-                        }
-                      }}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        width: '100%',
-                        height: 32,
-                        gap: space.sm,
-                        padding: '0 8px',
-                        border: 0,
-                        borderRadius: 8,
-                        background: params.session === item.id ? c.sidebarSelection : 'transparent',
-                        color: c.secondaryLabel,
-                        font: 'inherit',
-                        cursor: 'pointer',
-                      }}
-                    >
-                      <span
+            <div data-conversation-list>
+              {tab === 'mine' ? (
+                ['home.pinned', 'client.today', 'client.yesterday', 'client.earlier']
+                  .filter((g) => groups.has(g))
+                  .map((group) => {
+                    const rows = groups.get(group)!;
+                    return (
+                      <View key={group} style={{ marginBottom: space.lg }}>
+                        <Text
+                          style={{ ...typo.footnote, fontWeight: '600', color: c.tertiaryLabel, padding: space.sm }}
+                        >
+                          {t(group as never)}
+                        </Text>
+                        {rows.map((item) => (
+                          <ConversationRow
+                            key={item.id}
+                            session={item}
+                            position="only"
+                            secondary
+                            selected={selectedSession === item.id}
+                            onOpen={() => router.push({ pathname: '/chat', params: { session: item.id } })}
+                            onPin={(pinned) => void useSessions.getState().pin(item.id, pinned)}
+                            onRename={() => void rename(item)}
+                          />
+                        ))}
+                      </View>
+                    );
+                  })
+              ) : (
+                <View>
+                  {tabStatus === 'loading' ? (
+                    <Text>{t('common.loading')}</Text>
+                  ) : tabStatus === 'error' ? (
+                    <Text>{t('assistant.loadFailed')}</Text>
+                  ) : null}
+                  {tab === 'shared'
+                    ? shares
+                        .filter((s) => !query || s.session_title.toLowerCase().includes(query.toLowerCase()))
+                        .map((share) => (
+                          <button
+                            className="gh-secondary-row"
+                            key={share.id}
+                            onClick={() => {
+                              void markShareRead(share.id);
+                              router.push({ pathname: '/chat', params: { session: share.session_id } });
+                            }}
+                            style={{
+                              border: 0,
+                              width: '100%',
+                              textAlign: 'left',
+                              padding: 8,
+                              color: c.label,
+                              background: 'transparent',
+                            }}
+                          >
+                            {share.session_title}
+                          </button>
+                        ))
+                    : scheduled.map((item) => (
+                        <ConversationRow
+                          key={item.id}
+                          session={item}
+                          position="only"
+                          secondary
+                          selected={selectedSession === item.id}
+                          onOpen={() => router.push({ pathname: '/chat', params: { session: item.id } })}
+                          onPin={(pinned) => void useSessions.getState().pin(item.id, pinned)}
+                          onRename={() => void rename(item)}
+                        />
+                      ))}
+                  {tabStatus === 'ready' && !(tab === 'shared' ? shares : scheduled).length ? (
+                    <Text style={{ color: c.secondaryLabel, padding: 8 }}>{t('home.noConversations')}</Text>
+                  ) : null}
+                </View>
+              )}
+              {tab === 'mine' && profiles.some((p) => conversationAgent(p.id)) ? (
+                <View style={{ marginTop: space.md }}>
+                  <Text style={{ ...typo.footnote, color: c.tertiaryLabel, padding: 8 }}>{t('client.bots')}</Text>
+                  {profiles
+                    .filter((p) => conversationAgent(p.id))
+                    .map((profile) => (
+                      <button
+                        className="gh-secondary-row"
+                        key={profile.id}
+                        onClick={() => {
+                          const existing = items.find((s) => s.profile_id?.replace(/@\d+$/, '') === profile.id);
+                          router.push({
+                            pathname: '/chat',
+                            params: existing ? { session: existing.id } : { agent: profile.id },
+                          });
+                        }}
                         style={{
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                          whiteSpace: 'nowrap',
-                          flex: 1,
-                          textAlign: 'left',
+                          border: 0,
+                          width: '100%',
+                          display: 'flex',
+                          gap: 8,
+                          alignItems: 'center',
+                          padding: 8,
+                          color: c.label,
+                          background: 'transparent',
                         }}
                       >
-                        {item.title || t('assistant.untitled')}
-                      </span>
-                      <span style={{ fontSize: typo.caption1.fontSize, color: c.tertiaryLabel }}>
-                        {shortAgeNow(item.updated_at)}
-                      </span>
-                    </button>
-                  ))}
+                        <Icon name="sparkle" size={16} color={c.accentText} />
+                        {profileName(profile, lang)}
+                      </button>
+                    ))}
                 </View>
-              ))
-            ) : (
-              <Pressable
-                accessibilityRole="button"
-                onPress={() => router.push(tab === 'shared' ? '/conversations' : '/automations')}
-                style={{ padding: space.md }}
-              >
-                <Text style={{ ...typo.body, color: c.accentText }}>
-                  {t(tab === 'shared' ? 'home.all' : 'nav.automations')} ›
-                </Text>
-              </Pressable>
-            )}
-            {status === 'error' ? (
-              <Pressable accessibilityRole="button" onPress={() => void useSessions.getState().refresh()}>
-                <Text>{t('common.retry')}</Text>
-              </Pressable>
-            ) : null}
+              ) : null}
+
+              {status === 'error' ? (
+                <Pressable accessibilityRole="button" onPress={() => void useSessions.getState().refresh()}>
+                  <Text>{t('common.retry')}</Text>
+                </Pressable>
+              ) : null}
+            </div>
           </ScrollView>
         </>
       ) : (

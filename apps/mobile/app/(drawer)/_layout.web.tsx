@@ -13,7 +13,6 @@
 
 import React from 'react';
 import { Platform, StyleSheet, useWindowDimensions } from 'react-native';
-import { Slot } from 'expo-router';
 import { Drawer } from 'expo-router/drawer';
 import { SidebarContent } from '../../src/shell/sidebar-content';
 import { drawerSwipes, sidebarWidth } from '../../src/shell/layout-rule';
@@ -26,23 +25,26 @@ export default function DrawerLayout() {
   const { colors: c, hex, isDark } = useTheme();
   const persistent = usePersistentSidebar();
   const { width } = useWindowDimensions();
-  if (width >= 760) return <Slot />;
+  // Keep this navigator mounted at every width. Swapping Drawer for Slot discards
+  // the home stack (including its live conversation and unsent draft).
+  const wide = width >= 760;
   return (
     <Drawer
       backBehavior="firstRoute"
       drawerContent={(props) => <SidebarContent {...props} />}
       screenOptions={{
         headerShown: false,
-        drawerType: persistent ? 'permanent' : Platform.OS === 'ios' ? 'back' : 'slide',
+        drawerType: wide ? 'permanent' : Platform.OS === 'ios' ? 'back' : 'slide',
         drawerPosition: 'left',
         // a place's stack turns this off on its deeper pages (src/ui/place-swipe.ts)
-        swipeEnabled: drawerSwipes(persistent, 0),
+        swipeEnabled: !wide && drawerSwipes(persistent, 0),
         swipeEdgeWidth: 32,
         // iOS: the place slides aside over the sidebar and stays lit (a scrim would make it read as the lower layer)
         overlayColor: Platform.OS === 'ios' ? 'transparent' : hex.scrim,
         keyboardDismissMode: 'on-drag',
         drawerStyle: {
-          width: sidebarWidth({ width, persistent }),
+          width: wide ? 0 : sidebarWidth({ width, persistent: false }),
+          display: wide ? 'none' : 'flex',
           backgroundColor: c.sidebarBackground,
           ...(persistent ? { borderRightWidth: 0.5, borderRightColor: hex.separator } : null),
         },

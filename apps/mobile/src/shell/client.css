@@ -1,12 +1,89 @@
-html,body,#root {height:100%;overflow:hidden;}
-body {margin:0;font-family:Nunito,system-ui,sans-serif;}
-* {box-sizing:border-box;}
-:focus-visible {outline:2px solid var(--gh-focus);outline-offset:2px;}
-button,input,select,textarea {font:inherit;}
-button:not(:disabled),[role=button] {cursor:pointer;}
-button:not(:disabled):hover {filter:brightness(.97);}
-.gh-secondary-row:hover,[role=menuitem]:hover,[role=tab]:hover {background-color:var(--gh-hover)!important;}
-button:disabled {cursor:default;opacity:.5;}
-button:active {opacity:.7;}
-textarea {resize:vertical;}
-@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;transition-duration:.01ms!important;scroll-behavior:auto!important;}}
+html,
+body,
+#root {
+  height: 100%;
+  overflow: hidden;
+}
+body {
+  margin: 0;
+  font-family: Nunito, system-ui, sans-serif;
+}
+* {
+  box-sizing: border-box;
+}
+:focus-visible {
+  outline: 2px solid var(--gh-focus);
+  outline-offset: 2px;
+}
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+button:not(:disabled),
+[role='button'] {
+  cursor: pointer;
+}
+button:not(:disabled):hover {
+  filter: brightness(0.97);
+}
+.gh-secondary-row:hover,
+[role='menuitem']:hover,
+[role='tab']:hover {
+  background-color: var(--gh-hover) !important;
+}
+button:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+button:active {
+  opacity: 0.7;
+}
+textarea {
+  resize: vertical;
+}
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+.gh-row-menu {
+  opacity: 0;
+  display: flex;
+}
+.gh-conversation-row:hover .gh-row-menu,
+.gh-conversation-row:focus-within .gh-row-menu {
+  opacity: 1;
+}
+.gh-conversation-row:hover {
+  background: var(--gh-hover);
+}
+[data-testid='home-recent-list'] {
+  margin: 0 20px;
+  border: 1px solid var(--gh-line);
+  border-radius: 16px;
+  overflow: hidden;
+  background: var(--gh-card);
+}
+@media (max-width: 759px) {
+  .gh-row-menu {
+    opacity: 1;
+  }
+  [data-testid='conversation-row'] {
+    min-height: 44px !important;
+  }
+}
+
+@media (max-width: 759px) {
+  [data-testid='home-recent-list'] {
+    margin: 0;
+    border: 0;
+    background: transparent;
+    overflow: visible;
+  }
+}

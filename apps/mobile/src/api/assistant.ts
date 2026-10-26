@@ -42,8 +42,13 @@ export const getSessionInfo = (id: string) =>
 
 /** The latest page of messages, or the page before `beforeSeq`. */
 export const getMessages = async (id: string, beforeSeq?: number) => {
-  const result = await get<MessagePage<ChatMessage>>(`/api/sessions/${seg(id)}/messages`, { limit: 50, before_seq: beforeSeq });
-  return result.ok ? { ...result, data: { ...result.data, messages: result.data.messages.map(withMessageParts) } } : result;
+  const result = await get<MessagePage<ChatMessage>>(`/api/sessions/${seg(id)}/messages`, {
+    limit: 50,
+    before_seq: beforeSeq,
+  });
+  return result.ok
+    ? { ...result, data: { ...result.data, messages: result.data.messages.map(withMessageParts) } }
+    : result;
 };
 
 /** Whether the session has a reply being written (generation outlives the request). */
@@ -65,3 +70,7 @@ export const stopRun = (sessionId: string) => post<unknown>(`/api/chat/runs/${se
 /** Search across what I can read (`/api/search`); `kind` narrows it to one group. */
 export const searchAll = (q: string, kind?: string) =>
   get<{ query: string; groups: SearchGroup[] }>('/api/search', { q: q.slice(0, 200), ...(kind ? { kind } : {}) });
+
+/** Copy through an assistant reply into a new owned conversation. */
+export const forkSession = (id: string, messageId: string) =>
+  post<ChatSession>(`/api/sessions/${seg(id)}/fork`, { message_id: messageId });

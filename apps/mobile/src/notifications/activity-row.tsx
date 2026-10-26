@@ -19,7 +19,17 @@ const SOURCE_ICON: Record<ActivityItem['source'], IconName> = {
   admin: 'shieldCheck',
 };
 
-export function ActivityRow({ item, index, count }: { item: ActivityItem; index: number; count: number }) {
+export function ActivityRow({
+  item,
+  index,
+  count,
+  onOpen,
+}: {
+  item: ActivityItem;
+  index: number;
+  count: number;
+  onOpen?: () => void;
+}) {
   const t = useT();
   const openObject = useOpenObject();
   const openHref = useOpenHref();
@@ -44,6 +54,7 @@ export function ActivityRow({ item, index, count }: { item: ActivityItem; index:
       onPress={
         opening
           ? () => {
+              onOpen?.();
               if ('ref' in opening) openObject(opening.ref);
               else openHref(opening.href);
             }

@@ -10,6 +10,7 @@ import { useCallback, useEffect, useRef, useState, type SetStateAction } from 'r
 import { Linking } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
+import { releaseLocalFile } from './local-file';
 import { prepareImage, uploadChatFile, uploadImage } from '../api/chat-files';
 import { captureIdentity } from '../data/identity';
 import { t } from '../lib/i18n';
@@ -32,6 +33,7 @@ export function useComposerFiles(ensureSession: () => Promise<string | null>) {
     mounted.current = true;
     return () => {
       mounted.current = false;
+      current.current.forEach((file) => releaseLocalFile(file.uri));
     };
   }, []);
 
@@ -53,6 +55,7 @@ export function useComposerFiles(ensureSession: () => Promise<string | null>) {
           const prepared = await prepareImage(file.uri, file.width, file.height);
           if (!still()) continue;
           const result = await uploadImage(prepared.uri);
+          if (prepared.scaled) releaseLocalFile(prepared.uri);
           if (result.ok) remote = { kind: 'image', image: { id: result.data.id, url: result.data.url } };
           else failed = result.message || failed || '';
         } else {
@@ -81,6 +84,23 @@ export function useComposerFiles(ensureSession: () => Promise<string | null>) {
     setFiles((all) => all.map((file) => (file.status === 'error' ? { ...file, status: 'uploading' } : file)));
     void upload(failed);
   }, [setFiles, upload]);
+
+  // Native pickers and browser drops enter the same bounded upload/retry queue.
+  const acceptFiles = useCallback(
+    (picked: Omit<ComposerFile, 'id' | 'status' | 'remote'>[]) => {
+      if (!mounted.current) return;
+      const room = MAX_FILES - current.current.length;
+      picked.slice(Math.max(0, room)).forEach((file) => releaseLocalFile(file.uri));
+      if (picked.length > room) alertError(t('composer.maxFiles', { n: MAX_FILES }));
+      const added: ComposerFile[] = picked
+        .slice(0, room)
+        .map((file) => ({ ...file, id: localId(), status: 'uploading' }));
+      if (!added.length) return;
+      setFiles((all) => [...all, ...added]);
+      void upload(added);
+    },
+    [setFiles, upload],
+  );
 
   const attach = useCallback(
     async (from: AttachSource) => {
@@ -140,21 +160,27 @@ export function useComposerFiles(ensureSession: () => Promise<string | null>) {
             status: 'uploading',
           }));
         }
-        picked = picked.slice(0, MAX_FILES - current.current.length);
-        if (!picked.length) return;
-        // everything picked shows at once, including the files waiting their turn to upload
-        setFiles((all) => [...all, ...picked]);
-        void upload(picked);
+        acceptFiles(picked);
       } catch {
         if (mounted.current) alertError(t('composer.uploadFailed'));
       } finally {
         picking.current = false;
       }
     },
-    [setFiles, upload],
+    [acceptFiles],
   );
 
-  const remove = useCallback((id: string) => setFiles((all) => all.filter((file) => file.id !== id)), [setFiles]);
-  const clear = useCallback(() => setFiles([]), [setFiles]);
-  return { files, attach, remove, retry, clear };
+  const remove = useCallback(
+    (id: string) => {
+      const file = current.current.find((item) => item.id === id);
+      if (file) releaseLocalFile(file.uri);
+      setFiles((all) => all.filter((file) => file.id !== id));
+    },
+    [setFiles],
+  );
+  const clear = useCallback(() => {
+    current.current.forEach((file) => releaseLocalFile(file.uri));
+    setFiles([]);
+  }, [setFiles]);
+  return { files, attach, acceptFiles, remove, retry, clear };
 }

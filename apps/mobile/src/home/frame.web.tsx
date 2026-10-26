@@ -1,11 +1,12 @@
 import React from 'react';
+import { ConversationDrop } from '../chat/file-drop';
 import { ScrollView, View, useWindowDimensions } from 'react-native';
 import { useRouter } from 'expo-router';
 import { NativeButton } from '../ui/button';
 import { useT } from '../lib/i18n';
 import { space, useTheme } from '../theme';
 import type { HomeFrameProps } from './frame';
-export function HomeFrame({ greeting, recent, composer, composerHeight }: HomeFrameProps) {
+export function HomeFrame({ greeting, recent, composer, composerHeight, onFiles }: HomeFrameProps) {
   const { width, height } = useWindowDimensions();
   const wide = width >= 760;
   const { hex: c } = useTheme();
@@ -13,11 +14,11 @@ export function HomeFrame({ greeting, recent, composer, composerHeight }: HomeFr
   const router = useRouter();
   const chips = ['writeWeekly', 'checkData', 'makeReport', 'organizeFiles'] as const;
   return (
-    <>
+    <ConversationDrop onFiles={onFiles}>
       <ScrollView
         style={{ backgroundColor: wide ? c.background : c.tertiaryGroupedBackground }}
         contentContainerStyle={{
-          paddingTop: wide ? Math.max(48, Math.min(96, (height - 620) / 2)) : space.lg,
+          paddingTop: wide ? Math.max(40, Math.min(96, (height - 620) / 2)) : space.lg,
           paddingBottom: wide ? space.xxxl : composerHeight + space.xxl,
         }}
       >
@@ -32,6 +33,7 @@ export function HomeFrame({ greeting, recent, composer, composerHeight }: HomeFr
                 {chips.map((chip, i) => (
                   <NativeButton
                     key={chip}
+                    style={{ borderRadius: 20 }}
                     label={t(`client.${chip}`)}
                     icon={(['pen', 'bar', 'slides', 'folder'] as const)[i]}
                     onPress={() => router.push({ pathname: '/chat', params: { draft: t(`client.${chip}`) } })}
@@ -44,6 +46,6 @@ export function HomeFrame({ greeting, recent, composer, composerHeight }: HomeFr
         </View>
       </ScrollView>
       {!wide ? <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0 }}>{composer}</View> : null}
-    </>
+    </ConversationDrop>
   );
 }

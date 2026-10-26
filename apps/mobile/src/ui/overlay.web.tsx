@@ -4,6 +4,7 @@ import { createPortal } from 'react-dom';
 import { useTheme } from '../theme';
 let nextLayer = 0;
 const layers: number[] = [];
+export const hasInteractiveOverlay = () => layers.length > 0;
 export function Overlay({
   children,
   onClose,
@@ -11,6 +12,9 @@ export function Overlay({
   label,
   point,
   role = 'dialog',
+  panelStyle,
+  testID,
+  trapTab = true,
 }: {
   children: React.ReactNode;
   onClose: () => void;
@@ -18,8 +22,13 @@ export function Overlay({
   label?: string;
   point?: { x: number; y: number };
   role?: 'dialog' | 'menu' | 'status' | 'tooltip';
+  panelStyle?: React.CSSProperties;
+  testID?: string;
+  trapTab?: boolean;
 }) {
   const { hex: c, isDark } = useTheme();
+  const pointX = point?.x,
+    pointY = point?.y;
   const panel = useRef<HTMLDivElement>(null);
   const close = useRef(onClose);
   close.current = onClose;
@@ -42,7 +51,7 @@ export function Overlay({
         e.stopImmediatePropagation();
         close.current();
       }
-      if (e.key === 'Tab') {
+      if (e.key === 'Tab' && trapTab) {
         const nodes = tabbables();
         const first = nodes[0];
         const last = nodes.at(-1);
@@ -72,16 +81,16 @@ export function Overlay({
     };
     document.addEventListener('keydown', key, true);
     const box = root?.getBoundingClientRect();
-    if (root && point && box) {
-      root.style.left = `${Math.max(8, Math.min(point.x, innerWidth - box.width - 8))}px`;
-      root.style.top = `${Math.max(8, Math.min(point.y, innerHeight - box.height - 8))}px`;
+    if (root && pointX !== undefined && pointY !== undefined && box) {
+      root.style.left = `${Math.max(8, Math.min(pointX, innerWidth - box.width - 8))}px`;
+      root.style.top = `${Math.max(8, Math.min(pointY, innerHeight - box.height - 8))}px`;
     }
     return () => {
       layers.splice(layers.indexOf(layer), 1);
       document.removeEventListener('keydown', key, true);
       if (previous?.isConnected) previous.focus();
     };
-  }, [interactive, role, point]);
+  }, [interactive, role, pointX, pointY, trapTab]);
   if (typeof document === 'undefined') return null;
   return createPortal(
     <div
@@ -106,6 +115,7 @@ export function Overlay({
     >
       <div
         ref={panel}
+        data-testid={testID}
         role={role}
         aria-modal={modal && interactive ? true : undefined}
         aria-label={label}
@@ -124,6 +134,7 @@ export function Overlay({
           padding: role === 'menu' ? 4 : 20,
           boxShadow: isDark ? undefined : '0 8px 32px rgba(0,0,0,.14)',
           pointerEvents: interactive ? 'auto' : 'none',
+          ...panelStyle,
         }}
       >
         {children}

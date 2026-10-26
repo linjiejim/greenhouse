@@ -82,3 +82,23 @@
 - Home uses one shared flow and platform frames: composer under the greeting on wide screens, at the bottom on narrow screens.
 - Browser context menus use the same items as tap menus, and the overlay restores focus when dismissed.
 - Browser previews never receive same-origin privileges; unknown plugin pages explicitly offer the station's browser fallback.
+
+## Wide chat main line (C2)
+
+- The web header is an opaque 52 px layout row; wide conversations omit the back arrow and show title/agent, pin, share, inspector and overflow controls.
+- Chat prose and its composer share a centered outer width of 948 px with 28 px gutters (892 px reading width); phone gutters and touch targets retain the single-column layout.
+- Wide replies use bodyLg 16/26, an avatar/name/run-summary row and quiet copy/regenerate/branch/export buttons; native message rows retain their existing presentation.
+- The composer has one growing text field, a soft circular plus and an accent send/stop circle; browser phone targets remain at least 44 px.
+- Home aligns greeting, composer, pill actions and the recent card; the header reserves space above the greeting sprout on the phone.
+- Browser list rows share one context and overflow menu; selected rows are tinted, arrow keys move focus and older dates use weekdays or month/day.
+- Agent private conversations use the station's existing custom profiles; shared conversations expose reading, copying and export while their write controls stay absent or inert.
+- Cmd/Ctrl+K opens only search and commands, at 640 px wide and 120 px from the top; Tab selects a category and Cmd/Ctrl+Enter opens a result in the inspector.
+- The bell opens a 400 px popover with For me/Team activity and mark-all-read; the same notification center supplies the phone sheet.
+- Account menus expose account, current station, text size, My Agents, settings and sign out; browser settings cover the viewport.
+- Inspectors reuse object sheets and the root navigation stack, keep at most three levels, show Back on deeper levels and preserve the current object's scroll state when promoted.
+- Inspector promotion clears the old inspector trail; closing a later inspector returns to the promoted main object.
+- Inspector drag/keyboard resizing stays within 360–520 px; below 1440 the panel floats over the main column with a transparent outside dismissal target.
+- Rich HTML, Mermaid and binary file previews use the opaque-origin WebFrame sandbox; preview credentials never enter the frame.
+- The browser launch cover leaves on the same readiness signal or grace timeout as native; React development warnings remain developer diagnostics.
+
+- Conversation context menus include an inspector preview; its transcript is read-only and its links may push further object levels.

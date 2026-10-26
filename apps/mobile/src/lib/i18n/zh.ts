@@ -3,6 +3,29 @@ import type { Catalog } from './en';
 /** 中文词表：键跟 en.ts 一一对应。用词：首页、知识库、云盘、项目、表格、通知、工作站。 */
 export const zh: Catalog = {
   client: {
+    forMe: '给我的',
+    branch: '分支为新对话',
+    export: '导出 Markdown',
+    inspector: '显示或隐藏检视面板',
+    account: '账号',
+    station: '工作站',
+    textSize: '文字大小',
+    agents: '我的 Agents',
+    commands: '命令',
+    all: '全部',
+    docs: '文档',
+    files: '文件',
+    tasks: '任务',
+    searchPlaceholder: '搜索对话、文档、文件或命令…',
+    openInspector: '在检视面板打开',
+    copyLink: '复制链接',
+    bots: 'Agent 私聊',
+    attach: '添加附件',
+    removeFile: '移除附件',
+    searchFailed: '搜索失败，请重试',
+    upload: '上传到云盘',
+    signOut: '退出登录',
+
     back: '返回',
     more: '更多',
     conversations: '对话',
@@ -22,7 +45,7 @@ export const zh: Catalog = {
     makeReport: '出报告',
     organizeFiles: '整理文件',
     secondary: '显示二级栏',
-    inspector: '检视面板',
+
     promote: '在主区打开',
   },
   common: {

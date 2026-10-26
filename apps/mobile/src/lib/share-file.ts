@@ -8,21 +8,7 @@ import * as Sharing from 'expo-sharing';
 import { api } from '../api/client';
 import { getTokenStationId } from '../api/token-storage';
 
-function fileNameFrom(disposition: string | null, fallback: string): string {
-  if (disposition) {
-    const star = /filename\*=UTF-8''([^;]+)/i.exec(disposition);
-    if (star) {
-      try {
-        return decodeURIComponent(star[1]);
-      } catch {
-        /* use plain name */
-      }
-    }
-    const plain = /filename="?([^";]+)"?/i.exec(disposition);
-    if (plain) return plain[1];
-  }
-  return fallback;
-}
+import { fileNameFrom } from './file-download';
 
 export interface CachedFile {
   uri: string;
@@ -114,3 +100,7 @@ export async function shareTextFile(name: string, content: string, mimeType: str
     return false;
   }
 }
+
+/** Share the authenticated preview owned by this screen. */
+export const shareCachedFile = (file: CachedFile) =>
+  Sharing.shareAsync(file.uri, { mimeType: file.mimeType, dialogTitle: file.name });

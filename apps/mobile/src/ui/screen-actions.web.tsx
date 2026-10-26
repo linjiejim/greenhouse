@@ -31,10 +31,10 @@ function ActionShortcut({ action }: { action: ScreenAction }) {
     </>
   );
 }
-export function Controls({ actions }: { actions: readonly ScreenAction[] }) {
+export function Controls({ actions, maxVisible = 3 }: { actions: readonly ScreenAction[]; maxVisible?: number }) {
   const items = actions.filter((a) => !a.hidden && a.busy === undefined);
-  const visible = items.slice(0, 3),
-    overflow = items.slice(3);
+  const visible = items.slice(0, maxVisible),
+    overflow = items.slice(maxVisible);
   const find = (id: string) => {
     const walk = (list: readonly ScreenAction[]): ScreenAction | undefined => {
       for (const a of list) {

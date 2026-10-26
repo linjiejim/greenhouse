@@ -19,13 +19,21 @@ describe('openObject', () => {
       params: { project: '2', id: '9' },
     });
     expect(openingOf({ kind: 'record', baseId: null, tableId: '3', id: '4' }).params).toEqual({ table: '3', id: '4' });
-    expect(openingOf({ kind: 'automation', id: '5' })).toEqual({ via: 'sheet', pathname: '/sheet/automation', params: { id: '5' } });
+    expect(openingOf({ kind: 'automation', id: '5' })).toEqual({
+      via: 'sheet',
+      pathname: '/sheet/automation',
+      params: { id: '5' },
+    });
     expect(openingOf({ kind: 'folder', scope: 'kb', shelf: 'team', id: '5' }).params).toEqual({
       id: '5',
       scope: 'kb',
       shelf: 'team',
     });
-    expect(openingOf({ kind: 'chat', sessionId: 's1' })).toEqual({ via: 'page', pathname: '/chat', params: { session: 's1' } });
+    expect(openingOf({ kind: 'chat', sessionId: 's1' })).toEqual({
+      via: 'page',
+      pathname: '/chat',
+      params: { session: 's1' },
+    });
   });
 
   it('counts only the object sheets at the top of the stack', () => {
@@ -42,20 +50,42 @@ describe('openObject', () => {
   });
 
   it('turns link targets into objects or places', () => {
-    expect(refOfTarget({ kind: 'files', shelf: 'team', folderId: null, fileId: '4' })).toEqual({ ref: { kind: 'file', id: '4' } });
+    expect(refOfTarget({ kind: 'files', shelf: 'team', folderId: null, fileId: '4' })).toEqual({
+      ref: { kind: 'file', id: '4' },
+    });
     expect(refOfTarget({ kind: 'files', shelf: 'personal', folderId: '2', fileId: null })).toEqual({
       place: { kind: 'drive', shelf: 'personal', folderId: '2' },
     });
-    expect(refOfTarget({ kind: 'project', id: '1', taskId: '8' })).toEqual({ ref: { kind: 'task', projectId: '1', id: '8' } });
+    expect(refOfTarget({ kind: 'project', id: '1', taskId: '8' })).toEqual({
+      ref: { kind: 'task', projectId: '1', id: '8' },
+    });
     expect(refOfTarget({ kind: 'tables', baseId: '1', tableId: '2', recordId: null })).toEqual({
       place: { kind: 'tables', baseId: '1', tableId: '2' },
     });
     expect(refOfTarget({ kind: 'chat', sessionId: 'abc' })).toEqual({ ref: { kind: 'chat', sessionId: 'abc' } });
     expect(refOfTarget({ kind: 'web', hash: '#/x' })).toEqual({ place: { kind: 'web', hash: '#/x' } });
-    expect(refOfTarget({ kind: 'web', hash: '#/activity/automation/run_1' })).toEqual({ ref: { kind: 'run', id: 'run_1' } });
+    expect(refOfTarget({ kind: 'web', hash: '#/activity/automation/run_1' })).toEqual({
+      ref: { kind: 'run', id: 'run_1' },
+    });
     expect(refOfTarget({ kind: 'web', hash: '#/activity/run_2' })).toEqual({ ref: { kind: 'run', id: 'run_2' } });
-    expect(refOfTarget({ kind: 'web', hash: '#/automations' })).toEqual({ place: { kind: 'tab', href: '/automations' } });
-    expect(refOfTarget({ kind: 'web', hash: '#/automations?tab=profiles' })).toEqual({ place: { kind: 'tab', href: '/automations' } });
-    expect(refOfTarget({ kind: 'web', hash: '#/automationsx' })).toEqual({ place: { kind: 'web', hash: '#/automationsx' } });
+    expect(refOfTarget({ kind: 'web', hash: '#/automations' })).toEqual({
+      place: { kind: 'tab', href: '/automations' },
+    });
+    expect(refOfTarget({ kind: 'web', hash: '#/automations?tab=profiles' })).toEqual({
+      place: { kind: 'tab', href: '/automations' },
+    });
+    expect(refOfTarget({ kind: 'web', hash: '#/automationsx' })).toEqual({
+      place: { kind: 'web', hash: '#/automationsx' },
+    });
   });
+});
+
+it('opens explicit conversation previews and tool steps in the bounded object stack', () => {
+  expect(openingOf({ kind: 'chat-preview', sessionId: 'ses_1' })).toEqual({
+    via: 'sheet',
+    pathname: '/sheet/conversation',
+    params: { session: 'ses_1' },
+  });
+  expect(openingOf({ kind: 'steps' })).toEqual({ via: 'sheet', pathname: '/sheet/steps', params: {} });
+  expect(sheetDepth(routes('(drawer)', 'sheet/conversation', 'sheet/doc', 'sheet/steps'))).toBe(3);
 });

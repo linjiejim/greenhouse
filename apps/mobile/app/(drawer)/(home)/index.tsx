@@ -1,6 +1,6 @@
 import { GreetingTitle } from '../../../src/home/greeting';
 import { HomeFrame } from '../../../src/home/frame';
-import { ScreenActions } from '../../../src/ui/screen-actions';
+import { HomeHeader } from '../../../src/home/header';
 /**
  * 首页 — where a conversation starts:
  *
@@ -25,7 +25,7 @@ import { ScreenActions } from '../../../src/ui/screen-actions';
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Text, View, type TextInput } from 'react-native';
-import { Stack, useFocusEffect, useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 
 import Animated, { ReduceMotion, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -54,7 +54,6 @@ import { EmptyState } from '../../../src/ui/empty';
 import { Skeleton } from '../../../src/ui/skeleton';
 import { rowPosition } from '../../../src/ui/list';
 
-import { SidebarToolbar } from '../../../src/ui/sidebar';
 import { useWholePageDrawerSwipe } from '../../../src/ui/place-swipe';
 import type { FirstTurn } from './chat';
 
@@ -174,24 +173,10 @@ function Home() {
 
   return (
     <View style={styles.root}>
-      <Stack.Screen options={{ title: '', headerLargeTitleEnabled: false }} />
-      {/* the sidebar (places, and 「我」 at its foot) */}
-      <SidebarToolbar />
-      <ScreenActions
-        placement={'right'}
-        actions={[
-          { id: 'action-1', icon: 'search' as const, label: t('common.search'), onPress: () => router.push('/search') },
-          {
-            id: 'action-2',
-            icon: 'bell' as const,
-            label: unread > 0 ? t('home.notificationsUnread', { n: unread }) : t('notifications.title'),
-            onPress: () => router.push('/notifications'),
-            badge: unread > 99 ? '99+' : String(unread),
-          },
-        ]}
-      />
+      <HomeHeader unread={unread} />
 
       <HomeFrame
+        onFiles={files.acceptFiles}
         composerHeight={composerHeight}
         bottom={insets.bottom}
         greeting={
@@ -236,7 +221,7 @@ function Home() {
               </View>
               {offline ? <Text style={styles.offline}>{t('common.savedCopy')}</Text> : null}
               {recentCount === 0 ? null : recent.length ? (
-                <View>
+                <View testID="home-recent-list">
                   {recent.map((session, index) => (
                     <ConversationRow
                       key={session.id}

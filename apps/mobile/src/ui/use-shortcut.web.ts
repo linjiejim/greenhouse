@@ -10,6 +10,7 @@ export function useShortcut(shortcut: string | undefined, action: () => void, en
       if (
         !event.metaKey &&
         !event.ctrlKey &&
+        event.key !== 'Escape' &&
         event.target instanceof HTMLElement &&
         event.target.closest('input,textarea,[contenteditable=true]')
       )

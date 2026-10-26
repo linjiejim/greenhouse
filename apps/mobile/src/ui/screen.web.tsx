@@ -1,7 +1,7 @@
-import { useNavigationState } from 'expo-router/react-navigation';
-import { sheetDepth } from '../shell/object-ref';
+import { CommonActions, useNavigation, useNavigationState } from 'expo-router/react-navigation';
+import { inspectorCount, promotedInspectorRoutes } from '../shell/inspector-model';
 import React from 'react';
-import { Text, View } from 'react-native';
+import { Text, View, useWindowDimensions } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import type { IconName } from './core';
 import { Controls, ScreenActions } from './screen-actions.web';
@@ -35,7 +35,10 @@ export function Screen({ title, actions = [], busy }: Props) {
   );
 }
 export function SheetScreen({ title, actions = [], busy }: Props) {
-  const depth = useNavigationState((state) => sheetDepth(state.routes));
+  const { width } = useWindowDimensions();
+  const state = useNavigationState((state) => state);
+  const navigation = useNavigation();
+  const depth = inspectorCount(state.routes);
   const router = useRouter();
   const t = useT();
   const { hex: c } = useTheme();
@@ -53,7 +56,20 @@ export function SheetScreen({ title, actions = [], busy }: Props) {
         }}
       >
         {depth > 1 ? (
-          <Controls actions={[{ id: 'back', icon: 'chevL', label: t('client.back'), onPress: () => router.back() }]} />
+          <button
+            data-testid="inspector-back"
+            onClick={() => router.back()}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              border: 0,
+              background: 'transparent',
+              color: c.accentText,
+              marginRight: 8,
+            }}
+          >
+            ‹ {t('client.back')}
+          </button>
         ) : null}
         <Text numberOfLines={1} accessibilityRole="header" style={{ ...typo.title3, color: c.label, flex: 1 }}>
           {title}
@@ -72,15 +88,20 @@ export function SheetScreen({ title, actions = [], busy }: Props) {
               id: 'promote',
               icon: 'expand',
               label: t('client.promote'),
-              onPress: () => router.setParams({ main: '1' }),
+              onPress: () => {
+                const routes = promotedInspectorRoutes(state.routes.slice(0, state.index + 1));
+                navigation.dispatch(CommonActions.reset({ ...state, index: routes.length - 1, routes }));
+              },
             },
             {
               id: 'close',
               icon: 'x',
               label: t('common.close'),
               onPress: () => {
-                if (router.canDismiss()) router.dismissAll();
-                else router.replace('/');
+                if (router.canDismiss()) {
+                  if (width >= 760 && depth) router.dismiss(depth);
+                  else router.dismiss();
+                } else router.replace('/');
               },
             },
           ]}

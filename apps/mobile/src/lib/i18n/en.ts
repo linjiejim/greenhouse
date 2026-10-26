@@ -5,6 +5,29 @@
 
 export const en = {
   client: {
+    forMe: 'For me',
+    branch: 'Branch into a new conversation',
+    export: 'Export Markdown',
+    inspector: 'Toggle inspector',
+    account: 'Account',
+    station: 'Station',
+    textSize: 'Text size',
+    agents: 'My Agents',
+    commands: 'Commands',
+    all: 'All',
+    docs: 'Documents',
+    files: 'Files',
+    tasks: 'Tasks',
+    searchPlaceholder: 'Search conversations, documents, files or commands…',
+    openInspector: 'Open in inspector',
+    copyLink: 'Copy link',
+    bots: 'Bots',
+    attach: 'Attach files',
+    removeFile: 'Remove attachment',
+    searchFailed: 'Search failed. Try again.',
+    upload: 'Upload to Drive',
+    signOut: 'Sign out',
+
     back: 'Back',
     more: 'More',
     conversations: 'Conversations',
@@ -25,7 +48,7 @@ export const en = {
     makeReport: 'Make a report',
     organizeFiles: 'Organize files',
     secondary: 'Toggle sidebar',
-    inspector: 'Inspector',
+
     promote: 'Open in main area',
   },
   common: {

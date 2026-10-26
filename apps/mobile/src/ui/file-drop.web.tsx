@@ -5,16 +5,18 @@ export function FileDrop({ children, onFiles }: { children: React.ReactNode; onF
   const { hex: c } = useTheme();
   return (
     <div
+      data-testid="file-drop-zone"
       style={{ display: 'flex', flex: 1, minHeight: 0, outline: over ? `2px solid ${c.accent}` : undefined }}
       onDragOver={(e) => {
         e.preventDefault();
-        setOver(true);
+        setOver(!!onFiles);
       }}
       onDragLeave={(e) => {
         if (!e.currentTarget.contains(e.relatedTarget as Node)) setOver(false);
       }}
       onDrop={(e) => {
         e.preventDefault();
+        e.stopPropagation();
         setOver(false);
         onFiles?.(Array.from(e.dataTransfer.files));
       }}

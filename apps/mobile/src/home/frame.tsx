@@ -8,6 +8,7 @@ export interface HomeFrameProps {
   composer: React.ReactNode;
   composerHeight: number;
   bottom: number;
+  onFiles?: (files: Omit<import('../chat/composer-files').ComposerFile, 'id' | 'status' | 'remote'>[]) => void;
 }
 export function HomeFrame({ greeting, recent, composer, composerHeight, bottom }: HomeFrameProps) {
   return (
