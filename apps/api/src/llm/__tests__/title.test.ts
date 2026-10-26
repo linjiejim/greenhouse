@@ -22,10 +22,8 @@ describe('cleanTitle', () => {
     expect(cleanTitle('「洒水器调研」')).toBe('洒水器调研');
   });
 
-  it('truncates a slightly long title rather than rejecting it', () => {
-    const title = cleanTitle('A'.repeat(45));
-    expect(title).toHaveLength(30);
-    expect(title.endsWith('…')).toBe(true);
+  it('keeps a slightly long title whole rather than cutting it mid-word', () => {
+    expect(cleanTitle('Schedule Friday 5pm weekly review')).toBe('Schedule Friday 5pm weekly review');
   });
 
   it.each([
