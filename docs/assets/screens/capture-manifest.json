@@ -1,0 +1,343 @@
+{
+  "revision": "5c7436b35ab2bf4f347efd45eb709d18bfd22a60",
+  "dataset": "data/examples + capture-screens API fixtures (fictional)",
+  "captures": [
+    {
+      "file": "login.webp",
+      "surface": "web",
+      "route": "#/home",
+      "capturedAt": "2026-10-26T06:11:05.295Z",
+      "revision": "5c7436b35ab2bf4f347efd45eb709d18bfd22a60"
+    },
+    {
+      "file": "home.webp",
+      "surface": "web",
+      "route": "#/home",
+      "capturedAt": "2026-10-26T06:11:11.138Z",
+      "revision": "5c7436b35ab2bf4f347efd45eb709d18bfd22a60"
+    },
+    {
+      "file": "chat-knowledge-answer.webp",
+      "surface": "web",
+      "route": "#/chat?session=cnv_01M5VDB5738R7J198HJETKB67E",
+      "capturedAt": "2026-10-26T06:11:36.626Z",
+      "revision": "5c7436b35ab2bf4f347efd45eb709d18bfd22a60"
+    },
+    {
+      "file": "chat-knowledge-trace.webp",
+      "surface": "web",
+      "route": "#/chat?session=cnv_01M5VDB5738R7J198HJETKB67E",
+      "capturedAt": "2026-10-26T06:11:38.026Z",
+      "revision": "5c7436b35ab2bf4f347efd45eb709d18bfd22a60"
+    },
+    {
+      "file": "chat-tables-answer.webp",
+      "surface": "web",
+      "route": "#/chat?session=cnv_01M5VDBZGVWJ3899Q6W5S8A9BK",
+      "capturedAt": "2026-10-26T06:12:05.100Z",
+      "revision": "5c7436b35ab2bf4f347efd45eb709d18bfd22a60"
+    },
+    {
+      "file": "knowledge-doc.webp",
+      "surface": "web",
+      "route": "#/knowledge/internal/general/remote-work-policy",
+      "capturedAt": "2026-10-26T06:12:06.729Z",
+      "revision": "5c7436b35ab2bf4f347efd45eb709d18bfd22a60"
+    },
+    {
+      "file": "knowledge-search.webp",
+      "surface": "web",
+      "route": "#/knowledge/internal/general/remote-work-policy",
+      "capturedAt": "2026-10-26T06:12:10.607Z",
+      "revision": "5c7436b35ab2bf4f347efd45eb709d18bfd22a60"
+    },
+    {
+      "file": "projects-cards.webp",
+      "surface": "web",
+      "route": "#/projects",
+      "capturedAt": "2026-10-26T06:12:12.931Z",
+      "revision": "5c7436b35ab2bf4f347efd45eb709d18bfd22a60"
+    },
+    {
+      "file": "projects-gantt.webp",
+      "surface": "web",
+      "route": "#/projects",
+      "capturedAt": "2026-10-26T06:12:14.280Z",
+      "revision": "5c7436b35ab2bf4f347efd45eb709d18bfd22a60"
+    },
+    {
+      "file": "project-board.webp",
+      "surface": "web",
+      "route": "#/projects/2",
+      "capturedAt": "2026-10-26T06:12:17.249Z",
+      "revision": "5c7436b35ab2bf4f347efd45eb709d18bfd22a60"
+    },
+    {
+      "file": "tables-grid.webp",
+      "surface": "web",
+      "route": "#/tables/bas_01M5VCS9V82Y5JYM6HGHNES704/table/tbl_01M5VCS9VMEFQ29ARMD56E7A3D",
+      "capturedAt": "2026-10-26T06:12:20.001Z",
+      "revision": "5c7436b35ab2bf4f347efd45eb709d18bfd22a60"
+    },
+    {
+      "file": "execution-center.webp",
+      "surface": "web",
+      "route": "#/home?new=1792995141226",
+      "capturedAt": "2026-10-26T06:12:22.881Z",
+      "revision": "5c7436b35ab2bf4f347efd45eb709d18bfd22a60"
+    },
+    {
+      "file": "automations.webp",
+      "surface": "web",
+      "route": "#/automations",
+      "capturedAt": "2026-10-26T06:12:24.171Z",
+      "revision": "5c7436b35ab2bf4f347efd45eb709d18bfd22a60"
+    },
+    {
+      "file": "prompt-tasks.webp",
+      "surface": "web",
+      "route": "#/skillhub?tab=prompts",
+      "capturedAt": "2026-10-26T06:12:25.271Z",
+      "revision": "5c7436b35ab2bf4f347efd45eb709d18bfd22a60"
+    },
+    {
+      "file": "agents.webp",
+      "surface": "web",
+      "route": "#/automations?tab=profiles",
+      "capturedAt": "2026-10-26T06:12:26.574Z",
+      "revision": "5c7436b35ab2bf4f347efd45eb709d18bfd22a60"
+    },
+    {
+      "file": "skillhub.webp",
+      "surface": "web",
+      "route": "#/skillhub",
+      "capturedAt": "2026-10-26T06:12:28.199Z",
+      "revision": "5c7436b35ab2bf4f347efd45eb709d18bfd22a60"
+    },
+    {
+      "file": "global-search.webp",
+      "surface": "web",
+      "route": "#/home",
+      "capturedAt": "2026-10-26T06:12:31.114Z",
+      "revision": "5c7436b35ab2bf4f347efd45eb709d18bfd22a60"
+    },
+    {
+      "file": "agent-connect-wizard.webp",
+      "surface": "web",
+      "route": "#/settings/agent-connections/connect",
+      "capturedAt": "2026-10-26T06:12:33.796Z",
+      "revision": "5c7436b35ab2bf4f347efd45eb709d18bfd22a60"
+    },
+    {
+      "file": "report-templates.webp",
+      "surface": "web",
+      "route": "#/skillhub?tab=reports",
+      "capturedAt": "2026-10-26T06:12:36.260Z",
+      "revision": "5c7436b35ab2bf4f347efd45eb709d18bfd22a60"
+    },
+    {
+      "file": "activity-log.webp",
+      "surface": "web",
+      "route": "#/activity",
+      "capturedAt": "2026-10-26T06:12:38.293Z",
+      "revision": "5c7436b35ab2bf4f347efd45eb709d18bfd22a60"
+    },
+    {
+      "file": "services-pricing.webp",
+      "surface": "web",
+      "route": "#/administration/services",
+      "capturedAt": "2026-10-26T06:12:40.283Z",
+      "revision": "5c7436b35ab2bf4f347efd45eb709d18bfd22a60"
+    },
+    {
+      "file": "files.webp",
+      "surface": "web",
+      "route": "#/drive",
+      "capturedAt": "2026-10-26T06:12:42.280Z",
+      "revision": "5c7436b35ab2bf4f347efd45eb709d18bfd22a60"
+    },
+    {
+      "file": "settings-preferences.webp",
+      "surface": "web",
+      "route": "#/settings/preferences",
+      "capturedAt": "2026-10-26T06:12:43.425Z",
+      "revision": "5c7436b35ab2bf4f347efd45eb709d18bfd22a60"
+    },
+    {
+      "file": "settings-memory.webp",
+      "surface": "web",
+      "route": "#/settings/memory",
+      "capturedAt": "2026-10-26T06:12:44.614Z",
+      "revision": "5c7436b35ab2bf4f347efd45eb709d18bfd22a60"
+    },
+    {
+      "file": "settings-connections.webp",
+      "surface": "web",
+      "route": "#/settings/provider-bindings",
+      "capturedAt": "2026-10-26T06:12:45.743Z",
+      "revision": "5c7436b35ab2bf4f347efd45eb709d18bfd22a60"
+    },
+    {
+      "file": "settings-agent-connections.webp",
+      "surface": "web",
+      "route": "#/settings/agent-connections",
+      "capturedAt": "2026-10-26T06:12:46.845Z",
+      "revision": "5c7436b35ab2bf4f347efd45eb709d18bfd22a60"
+    },
+    {
+      "file": "admin-users.webp",
+      "surface": "web",
+      "route": "#/administration/users",
+      "capturedAt": "2026-10-26T06:12:48.168Z",
+      "revision": "5c7436b35ab2bf4f347efd45eb709d18bfd22a60"
+    },
+    {
+      "file": "admin-runtime-config.webp",
+      "surface": "web",
+      "route": "#/administration/runtime-config",
+      "capturedAt": "2026-10-26T06:12:49.600Z",
+      "revision": "5c7436b35ab2bf4f347efd45eb709d18bfd22a60"
+    },
+    {
+      "file": "admin-branding-studio.webp",
+      "surface": "web",
+      "route": "#/administration/branding",
+      "capturedAt": "2026-10-26T06:12:51.084Z",
+      "revision": "5c7436b35ab2bf4f347efd45eb709d18bfd22a60"
+    },
+    {
+      "file": "admin-usage.webp",
+      "surface": "web",
+      "route": "#/administration/usage",
+      "capturedAt": "2026-10-26T06:12:52.480Z",
+      "revision": "5c7436b35ab2bf4f347efd45eb709d18bfd22a60"
+    },
+    {
+      "file": "admin-mcp-access.webp",
+      "surface": "web",
+      "route": "#/administration/mcp-keys",
+      "capturedAt": "2026-10-26T06:12:53.842Z",
+      "revision": "5c7436b35ab2bf4f347efd45eb709d18bfd22a60"
+    },
+    {
+      "file": "admin-permissions-dialog.webp",
+      "surface": "web",
+      "route": "#/administration/users",
+      "capturedAt": "2026-10-26T06:12:56.966Z",
+      "revision": "5c7436b35ab2bf4f347efd45eb709d18bfd22a60"
+    },
+    {
+      "file": "inbox.webp",
+      "surface": "web",
+      "route": "#/home",
+      "capturedAt": "2026-10-26T06:12:59.596Z",
+      "revision": "5c7436b35ab2bf4f347efd45eb709d18bfd22a60"
+    },
+    {
+      "file": "chat-knowledge-answer-dark.webp",
+      "surface": "web",
+      "route": "#/chat?session=cnv_01M5VDB5738R7J198HJETKB67E",
+      "capturedAt": "2026-10-26T06:13:03.555Z",
+      "revision": "5c7436b35ab2bf4f347efd45eb709d18bfd22a60"
+    },
+    {
+      "file": "tables-grid-dark.webp",
+      "surface": "web",
+      "route": "#/tables/bas_01M5VCS9V82Y5JYM6HGHNES704/table/tbl_01M5VCS9VMEFQ29ARMD56E7A3D",
+      "capturedAt": "2026-10-26T06:13:08.630Z",
+      "revision": "5c7436b35ab2bf4f347efd45eb709d18bfd22a60"
+    },
+    {
+      "file": "home-dark.webp",
+      "surface": "web",
+      "route": "#/home",
+      "capturedAt": "2026-10-26T06:13:11.437Z",
+      "revision": "5c7436b35ab2bf4f347efd45eb709d18bfd22a60"
+    }
+  ],
+  "lastRun": {
+    "steps": [
+      {
+        "name": "login",
+        "ok": true
+      },
+      {
+        "name": "seed",
+        "ok": true
+      },
+      {
+        "name": "home",
+        "ok": true
+      },
+      {
+        "name": "chat",
+        "ok": true
+      },
+      {
+        "name": "chat-tables",
+        "ok": true
+      },
+      {
+        "name": "knowledge",
+        "ok": true
+      },
+      {
+        "name": "projects",
+        "ok": true
+      },
+      {
+        "name": "tables",
+        "ok": true
+      },
+      {
+        "name": "executions",
+        "ok": true
+      },
+      {
+        "name": "agents",
+        "ok": true
+      },
+      {
+        "name": "search-and-assistant",
+        "ok": true
+      },
+      {
+        "name": "product-story",
+        "ok": true
+      },
+      {
+        "name": "settings",
+        "ok": true
+      },
+      {
+        "name": "administration",
+        "ok": true
+      },
+      {
+        "name": "inbox",
+        "ok": true
+      },
+      {
+        "name": "extension",
+        "ok": true
+      },
+      {
+        "name": "dark-theme",
+        "ok": true
+      },
+      {
+        "name": "mobile",
+        "ok": true
+      },
+      {
+        "name": "video",
+        "ok": true
+      },
+      {
+        "name": "webp",
+        "ok": true
+      }
+    ],
+    "issues": []
+  }
+}

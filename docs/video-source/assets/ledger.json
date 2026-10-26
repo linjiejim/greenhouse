@@ -1,0 +1,69 @@
+[
+  {
+    "id": "welcome",
+    "audio": "macOS Tingting, local synthesis",
+    "screens": [
+      "chat-knowledge-answer"
+    ],
+    "narrationSeconds": 4.252521
+  },
+  {
+    "id": "connect",
+    "audio": "macOS Tingting, local synthesis",
+    "screens": [
+      "agent-connect-wizard"
+    ],
+    "narrationSeconds": 4.567125
+  },
+  {
+    "id": "knowledge",
+    "audio": "macOS Tingting, local synthesis",
+    "screens": [
+      "knowledge-doc",
+      "chat-knowledge-answer"
+    ],
+    "narrationSeconds": 4.078333
+  },
+  {
+    "id": "work",
+    "audio": "macOS Tingting, local synthesis",
+    "screens": [
+      "chat-tables-answer",
+      "project-board"
+    ],
+    "narrationSeconds": 5.728938
+  },
+  {
+    "id": "results",
+    "audio": "macOS Tingting, local synthesis",
+    "screens": [
+      "report-templates",
+      "automations"
+    ],
+    "narrationSeconds": 8.266708
+  },
+  {
+    "id": "devices",
+    "audio": "macOS Tingting, local synthesis",
+    "screens": [
+      "ios-ipad",
+      "ios-chat"
+    ],
+    "narrationSeconds": 7.741771
+  },
+  {
+    "id": "control",
+    "audio": "macOS Tingting, local synthesis",
+    "screens": [
+      "activity-log",
+      "services-pricing"
+    ],
+    "narrationSeconds": 6.406938
+  },
+  {
+    "id": "closing",
+    "audio": "macOS Tingting, local synthesis",
+    "screens": [],
+    "narrationSeconds": 3.332979
+  }
+]

@@ -1,0 +1,109 @@
+[
+  {
+    "id": "welcome",
+    "start": 0,
+    "end": 6,
+    "title": "让你的 Agent，\n接上整个团队。",
+    "sub": "Your agents. Your team. One place.",
+    "assets": [
+      "chat-knowledge-answer"
+    ],
+    "voice": "让你的智能助手，接上整个团队。这就是 Greenhouse。",
+    "en": "Let your agent work with your whole team. This is Greenhouse.",
+    "audioDuration": 4.252521
+  },
+  {
+    "id": "connect",
+    "start": 6,
+    "end": 12,
+    "title": "带上你熟悉的 Agent",
+    "sub": "Codex · Claude Code · Cursor · MCP",
+    "assets": [
+      "agent-connect-wizard"
+    ],
+    "voice": "连接你熟悉的 Agent，按成员权限，访问团队资源。",
+    "en": "Connect your own agent to team resources, within your permissions.",
+    "audioDuration": 4.567125
+  },
+  {
+    "id": "knowledge",
+    "start": 12,
+    "end": 18,
+    "title": "答案，有团队的依据",
+    "sub": "Knowledge · Files · Cited answers",
+    "assets": [
+      "knowledge-doc",
+      "chat-knowledge-answer"
+    ],
+    "voice": "查知识，读文件，回答有依据，成果有归处。",
+    "en": "Search knowledge, read files and follow answers back to their sources.",
+    "audioDuration": 4.078333
+  },
+  {
+    "id": "work",
+    "start": 18,
+    "end": 26,
+    "title": "从数据，走到下一步",
+    "sub": "Tables · Analysis · Projects",
+    "assets": [
+      "chat-tables-answer",
+      "project-board"
+    ],
+    "voice": "分析表格，跟进项目。数据、任务和讨论，都围绕工作展开。",
+    "en": "Analyze tables and move projects forward, with tasks and discussion together.",
+    "audioDuration": 5.728938
+  },
+  {
+    "id": "results",
+    "start": 26,
+    "end": 37,
+    "title": "把好方法，变成日常",
+    "sub": "Skills · Reports · Automations",
+    "assets": [
+      "report-templates",
+      "automations"
+    ],
+    "voice": "共享技能，按团队模板生成报告，保存到文件。让重复工作定时完成，随时查看结果。",
+    "en": "Share skills, create reports from team templates and save them to Files. Schedule recurring work and revisit its results.",
+    "audioDuration": 8.266708
+  },
+  {
+    "id": "devices",
+    "start": 37,
+    "end": 48,
+    "title": "在桌前，也在路上",
+    "sub": "Web · iPhone · iPad",
+    "assets": [
+      "ios-ipad",
+      "ios-chat"
+    ],
+    "voice": "网页、苹果手机和平板，随时对话、查阅资料、跟进进展。也可以配置飞书机器人。",
+    "en": "Continue on the web, iPhone and iPad. Chat, find information and follow progress. A Feishu bot is optional.",
+    "audioDuration": 7.741771
+  },
+  {
+    "id": "control",
+    "start": 48,
+    "end": 56,
+    "title": "放手做事，边界清晰",
+    "sub": "Permissions · Activity · Budgets",
+    "assets": [
+      "activity-log",
+      "services-pricing"
+    ],
+    "voice": "权限有边界，写入有记录，删除先预览。每一笔付费调用，都有预算。",
+    "en": "Scoped access, recorded MCP writes and deletion previews. Paid calls count toward clear budgets.",
+    "audioDuration": 6.406938
+  },
+  {
+    "id": "closing",
+    "start": 56,
+    "end": 60,
+    "title": "给团队一片生长的空间",
+    "sub": "Open source. Self-hosted.",
+    "assets": [],
+    "voice": "开源，自主部署。让团队一起生长。",
+    "en": "Open source. Self-hosted. A place for your team to grow.",
+    "audioDuration": 3.332979
+  }
+]

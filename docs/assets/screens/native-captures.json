@@ -1,0 +1,27 @@
+{
+  "revision": "5c7436b35ab2bf4f347efd45eb709d18bfd22a60",
+  "dataset": "Fictional data/examples, same server and live-model conversation as Web captures",
+  "runtime": "Latest checkout JS via localhost Metro; Expo SDK 57 / React Native 0.86 development client",
+  "processing": "Full-resolution simctl capture, WebP quality 88; iPad orientation normalized clockwise 90 degrees. No UI redrawing or retouching. Developer Tools button hidden using Expo preference.",
+  "captures": [
+    {
+      "file": "ios-home.webp",
+      "device": "iPhone 17 Pro, iOS 26.5",
+      "surface": "native iOS",
+      "sha256": "e0494def659689d104410e09933b4dab2032a99a2a4a580341a184ba977235cf"
+    },
+    {
+      "file": "ios-chat.webp",
+      "device": "iPhone 17 Pro, iOS 26.5",
+      "surface": "native iOS",
+      "sha256": "76c0eadea84418aec72ee4290630420252d3532472b2cfb682c64c0f92b3058b"
+    },
+    {
+      "file": "ios-ipad.webp",
+      "device": "iPad simulator, iOS 26.5",
+      "surface": "native iOS",
+      "sha256": "f18c4d4dcda93daa0145c4b913c358e960d58d22f330c40168ae8a8aebc06d91"
+    }
+  ],
+  "captureDate": "2026-10-26"
+}
