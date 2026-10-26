@@ -1,3 +1,4 @@
+import { ScreenActions } from '../../../src/ui/screen-actions';
 /**
  * 定时任务 — my automations (`/api/tasks`; a super's list holds every member's, the phone keeps
  * mine): one row each, its name, then when it runs and when it runs next (or 已暂停), its last
@@ -26,10 +27,9 @@ import { makeStyles, space, typo, useTheme } from '../../../src/theme';
 import { DirectorySearch, useDirectoryFilter } from '../../../src/ui/directory-search';
 import { EmptyState, LoadingState } from '../../../src/ui/empty';
 import { Row, rowPosition } from '../../../src/ui/list';
-import { refreshItem, usePullRefresh } from '../../../src/ui/refresh';
+import { usePullRefresh } from '../../../src/ui/refresh';
 import { SidebarToolbar } from '../../../src/ui/sidebar';
 import { useWholePageDrawerSwipe } from '../../../src/ui/place-swipe';
-import { toolbarIcon } from '../../../src/ui/toolbar-icon';
 
 export default function Automations() {
   const t = useT();
@@ -63,17 +63,22 @@ export default function Automations() {
     resource.loading ? (
       <LoadingState style={styles.state} />
     ) : noAccess(resource.error) ? (
-      <EmptyState icon="hand" title={t('automations.noAccess')} message={t('automations.noAccessHint')} style={styles.state} />
+      <EmptyState
+        icon="hand"
+        title={t('automations.noAccess')}
+        message={t('automations.noAccessHint')}
+        style={styles.state}
+      />
     ) : (
-      <EmptyState icon="alert" title={t('automations.loadFailed')} onRetry={() => void resource.refresh()} style={styles.state} />
+      <EmptyState
+        icon="alert"
+        title={t('automations.loadFailed')}
+        onRetry={() => void resource.refresh()}
+        style={styles.state}
+      />
     )
   ) : (
-    <EmptyState
-      icon="clock"
-      title={t('automations.empty')}
-      message={t('automations.emptyHint')}
-      style={styles.state}
-    />
+    <EmptyState icon="clock" title={t('automations.empty')} message={t('automations.emptyHint')} style={styles.state} />
   );
 
   return (
@@ -81,10 +86,13 @@ export default function Automations() {
       <Stack.Screen options={{ title: t('nav.automations') }} />
       <DirectorySearch filter={filter} />
       <SidebarToolbar />
-      <Stack.Toolbar placement="right">
-        {refreshItem(busy, t('common.loading'))}
-        <Stack.Toolbar.Button icon={toolbarIcon('plus')} accessibilityLabel={t('automations.create')} onPress={create} />
-      </Stack.Toolbar>
+      <ScreenActions
+        placement={'right'}
+        actions={[
+          { id: 'refresh', icon: 'refresh', label: t('common.loading'), onPress: () => {}, busy: busy },
+          { id: 'action-1', icon: 'plus' as const, label: t('automations.create'), onPress: create },
+        ]}
+      />
       <FlatList<Automation>
         style={styles.root}
         contentInsetAdjustmentBehavior="automatic"
@@ -130,5 +138,10 @@ const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.groupedBackground },
   content: { paddingTop: space.md, paddingBottom: space.xxxl },
   state: { paddingTop: space.xxxl },
-  offline: { ...typo.footnote, color: c.secondaryLabel, marginHorizontal: space.margin + space.xs, marginBottom: space.sm },
+  offline: {
+    ...typo.footnote,
+    color: c.secondaryLabel,
+    marginHorizontal: space.margin + space.xs,
+    marginBottom: space.sm,
+  },
 }));

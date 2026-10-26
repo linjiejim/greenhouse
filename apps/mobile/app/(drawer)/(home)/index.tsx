@@ -1,3 +1,6 @@
+import { GreetingTitle } from '../../../src/home/greeting';
+import { HomeFrame } from '../../../src/home/frame';
+import { ScreenActions } from '../../../src/ui/screen-actions';
 /**
  * 首页 — where a conversation starts:
  *
@@ -21,9 +24,9 @@
  */
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ScrollView, Text, View, type TextInput } from 'react-native';
+import { Text, View, type TextInput } from 'react-native';
 import { Stack, useFocusEffect, useRouter } from 'expo-router';
-import { KeyboardStickyView } from 'react-native-keyboard-controller';
+
 import Animated, { ReduceMotion, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { createSession } from '../../../src/api/assistant';
@@ -47,10 +50,10 @@ import { HIT, makeStyles, motion, space, typo, useTheme, weight } from '../../..
 import { Icon, Touchable } from '../../../src/ui/core';
 import { alertError, promptText } from '../../../src/ui/dialogs';
 import { EmptyState } from '../../../src/ui/empty';
-import { GreetingSprout } from '../../../src/ui/greeting-sprout';
+
 import { Skeleton } from '../../../src/ui/skeleton';
 import { rowPosition } from '../../../src/ui/list';
-import { toolbarIcon } from '../../../src/ui/toolbar-icon';
+
 import { SidebarToolbar } from '../../../src/ui/sidebar';
 import { useWholePageDrawerSwipe } from '../../../src/ui/place-swipe';
 import type { FirstTurn } from './chat';
@@ -174,107 +177,114 @@ function Home() {
       <Stack.Screen options={{ title: '', headerLargeTitleEnabled: false }} />
       {/* the sidebar (places, and 「我」 at its foot) */}
       <SidebarToolbar />
-      <Stack.Toolbar placement="right">
-        <Stack.Toolbar.Button
-          icon={toolbarIcon('search')}
-          accessibilityLabel={t('common.search')}
-          onPress={() => router.push('/search')}
-        />
-        <Stack.Toolbar.Button
-          icon={toolbarIcon('bell')}
-          accessibilityLabel={unread > 0 ? t('home.notificationsUnread', { n: unread }) : t('notifications.title')}
-          onPress={() => router.push('/notifications')}
-        >
-          {unread > 0 ? <Stack.Toolbar.Badge>{unread > 99 ? '99+' : String(unread)}</Stack.Toolbar.Badge> : null}
-        </Stack.Toolbar.Button>
-      </Stack.Toolbar>
+      <ScreenActions
+        placement={'right'}
+        actions={[
+          { id: 'action-1', icon: 'search' as const, label: t('common.search'), onPress: () => router.push('/search') },
+          {
+            id: 'action-2',
+            icon: 'bell' as const,
+            label: unread > 0 ? t('home.notificationsUnread', { n: unread }) : t('notifications.title'),
+            onPress: () => router.push('/notifications'),
+            badge: unread > 99 ? '99+' : String(unread),
+          },
+        ]}
+      />
 
-      <ScrollView
-        contentInsetAdjustmentBehavior="automatic"
-        keyboardDismissMode="interactive"
-        contentContainerStyle={[styles.content, { paddingBottom: composerHeight + space.xxl }]}
-      >
-        <GreetingSprout size={88} accessibilityLabel={t('conversation.assistant')} style={styles.hero} />
-        <Text style={styles.greeting} accessibilityRole="header">
-          {t(`home.greeting.${greetingFor(new Date().getHours())}`, { name })}
-        </Text>
-        {needsYou > 0 ? (
-          <Touchable onPress={() => router.push('/notifications')} style={styles.waiting} accessibilityRole="button">
-            <Icon name="hand" size={14} color={c.orange} />
-            <Text style={styles.waitingText}>{t('home.needsYou', { n: needsYou })}</Text>
-          </Touchable>
-        ) : null}
-
-        <Animated.View
-          style={recentFade}
-          pointerEvents={composing ? 'none' : 'auto'}
-          accessibilityElementsHidden={composing}
-          importantForAccessibility={composing ? 'no-hide-descendants' : 'auto'}
-        >
-          <View style={styles.sectionHead}>
-            <Text style={styles.sectionTitle} accessibilityRole="header">
-              {t('home.recent')}
-            </Text>
-            {/* always there: conversations shared with me live behind it too */}
-            <Touchable
-              onPress={() => router.push('/conversations')}
-              accessibilityRole="button"
-              hitSlop={8}
-              style={styles.all}
-            >
-              <Text style={styles.allText}>{t('home.all')}</Text>
-            </Touchable>
-          </View>
-          {offline ? <Text style={styles.offline}>{t('common.savedCopy')}</Text> : null}
-          {recentCount === 0 ? null : recent.length ? (
-            <View>
-              {recent.map((session, index) => (
-                <ConversationRow
-                  key={session.id}
-                  session={session}
-                  position={rowPosition(index, recent.length)}
-                  compact
-                  onOpen={() => router.push({ pathname: '/chat', params: { session: session.id } })}
-                  onPin={(pinned) => void useSessions.getState().pin(session.id, pinned)}
-                  onRename={() => void rename(session.id, session.title)}
-                />
-              ))}
-            </View>
-          ) : status === 'empty' ? (
-            <Skeleton rows={recentCount} />
-          ) : status === 'error' ? (
-            <EmptyState
-              icon="alert"
-              title={t('assistant.loadFailed')}
-              onRetry={() => void useSessions.getState().refresh()}
-              style={styles.state}
+      <HomeFrame
+        composerHeight={composerHeight}
+        bottom={insets.bottom}
+        greeting={
+          <>
+            <GreetingTitle
+              label={t(`home.greeting.${greetingFor(new Date().getHours())}`, { name })}
+              assistantLabel={t('conversation.assistant')}
             />
-          ) : (
-            <Text style={styles.empty}>{t('home.noConversations')}</Text>
-          )}
-        </Animated.View>
-      </ScrollView>
-
-      <KeyboardStickyView offset={{ opened: insets.bottom }} style={styles.composerWrap}>
-        <Composer
-          ref={input}
-          value={draft}
-          onChangeText={setDraft}
-          onSend={() => void send()}
-          onAttach={(from) => void files.attach(from)}
-          files={files.files}
-          onRemoveFile={files.remove}
-          onRetryFiles={files.retry}
-          placeholder={t('composer.placeholder')}
-          onHeight={setComposerHeight}
-          bottomInset={insets.bottom}
-          grouped
-          agents={agentSettled ? undefined : agents}
-          agentId={agentId}
-          onAgent={setAgentId}
-          onFocusChange={setComposing}
-        />
-      </KeyboardStickyView>
+            {needsYou > 0 ? (
+              <Touchable
+                onPress={() => router.push('/notifications')}
+                style={styles.waiting}
+                accessibilityRole="button"
+              >
+                <Icon name="hand" size={14} color={c.orange} />
+                <Text style={styles.waitingText}>{t('home.needsYou', { n: needsYou })}</Text>
+              </Touchable>
+            ) : null}
+          </>
+        }
+        recent={
+          <>
+            <Animated.View
+              style={recentFade}
+              pointerEvents={composing ? 'none' : 'auto'}
+              accessibilityElementsHidden={composing}
+              importantForAccessibility={composing ? 'no-hide-descendants' : 'auto'}
+            >
+              <View style={styles.sectionHead}>
+                <Text style={styles.sectionTitle} accessibilityRole="header">
+                  {t('home.recent')}
+                </Text>
+                {/* always there: conversations shared with me live behind it too */}
+                <Touchable
+                  onPress={() => router.push('/conversations')}
+                  accessibilityRole="button"
+                  hitSlop={8}
+                  style={styles.all}
+                >
+                  <Text style={styles.allText}>{t('home.all')}</Text>
+                </Touchable>
+              </View>
+              {offline ? <Text style={styles.offline}>{t('common.savedCopy')}</Text> : null}
+              {recentCount === 0 ? null : recent.length ? (
+                <View>
+                  {recent.map((session, index) => (
+                    <ConversationRow
+                      key={session.id}
+                      session={session}
+                      position={rowPosition(index, recent.length)}
+                      compact
+                      onOpen={() => router.push({ pathname: '/chat', params: { session: session.id } })}
+                      onPin={(pinned) => void useSessions.getState().pin(session.id, pinned)}
+                      onRename={() => void rename(session.id, session.title)}
+                    />
+                  ))}
+                </View>
+              ) : status === 'empty' ? (
+                <Skeleton rows={recentCount} />
+              ) : status === 'error' ? (
+                <EmptyState
+                  icon="alert"
+                  title={t('assistant.loadFailed')}
+                  onRetry={() => void useSessions.getState().refresh()}
+                  style={styles.state}
+                />
+              ) : (
+                <Text style={styles.empty}>{t('home.noConversations')}</Text>
+              )}
+            </Animated.View>
+          </>
+        }
+        composer={
+          <Composer
+            ref={input}
+            value={draft}
+            onChangeText={setDraft}
+            onSend={() => void send()}
+            onAttach={(from) => void files.attach(from)}
+            files={files.files}
+            onRemoveFile={files.remove}
+            onRetryFiles={files.retry}
+            placeholder={t('composer.placeholder')}
+            onHeight={setComposerHeight}
+            bottomInset={insets.bottom}
+            grouped
+            agents={agentSettled ? undefined : agents}
+            agentId={agentId}
+            onAgent={setAgentId}
+            onFocusChange={setComposing}
+          />
+        }
+      />
     </View>
   );
 }

@@ -21,7 +21,11 @@ import { api, networkMiss, toResult, type ApiResult } from './client';
 const MAX_EDGE = 1600;
 
 /** Downscale (and re-encode as JPEG) a picked picture; the original when it cannot. */
-export async function prepareImage(uri: string, width?: number, height?: number): Promise<{ uri: string; scaled: boolean }> {
+export async function prepareImage(
+  uri: string,
+  width?: number,
+  height?: number,
+): Promise<{ uri: string; scaled: boolean }> {
   const long = Math.max(width ?? 0, height ?? 0);
   if (long && long <= MAX_EDGE && /\.(jpe?g|png|webp|gif)$/i.test(uri)) return { uri, scaled: false };
   try {
@@ -64,7 +68,7 @@ export interface ChatFile {
   size?: number;
 }
 
-export async function uploadChatFile(sessionId: string, uri: string): Promise<ApiResult<ChatFile>> {
+export async function uploadChatFile(sessionId: string, uri: string, _name?: string): Promise<ApiResult<ChatFile>> {
   const form = new FormData();
   form.append('file', new LocalFile(uri) as unknown as Blob);
   form.append('session_id', sessionId);

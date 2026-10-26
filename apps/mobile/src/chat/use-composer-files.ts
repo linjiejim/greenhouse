@@ -58,8 +58,9 @@ export function useComposerFiles(ensureSession: () => Promise<string | null>) {
         } else {
           const sessionId = await session.current();
           if (!still()) continue;
-          const result = sessionId ? await uploadChatFile(sessionId, file.uri) : null;
-          if (result?.ok) remote = { kind: 'file', file: { id: result.data.id, name: result.data.name, size: result.data.size } };
+          const result = sessionId ? await uploadChatFile(sessionId, file.uri, file.name) : null;
+          if (result?.ok)
+            remote = { kind: 'file', file: { id: result.data.id, name: result.data.name, size: result.data.size } };
           else failed = result?.message || failed || '';
         }
         if (!still()) continue;

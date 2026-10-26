@@ -1,0 +1,47 @@
+import { describe, expect, it } from 'vitest';
+import { mapLegacyLink } from './legacy-links';
+/** Inventory: scheduler/notify, feishu/bot/dispatch, entity-links, object-refs,
+ * security/account, skills/notify, OAuth returns, activity and PushData. */
+describe('classic links from station messages', () => {
+  it.each([
+    ['/#/chat/abc', '/chat?session=abc'],
+    ['#/chat?session=abc', '/chat?session=abc'],
+    ['#/chat', '/'],
+    ['#/kb', '/knowledge'],
+    ['#/knowledge/folder/12', '/knowledge?shelf=team&folder=12'],
+    ['#/knowledge/personal', '/knowledge?shelf=personal'],
+    ['#/knowledge/shared', '/knowledge?shelf=shared'],
+    ['#/kb/doc/123-policy', '/sheet/doc?id=123'],
+    ['#/knowledge/doc/123-policy', '/sheet/doc?id=123'],
+    ['#/knowledge/doc/runbook', '/sheet/doc?slug=runbook'],
+    ['#/knowledge/internal/hr/time-off', '/sheet/doc?slug=time-off'],
+    ['#/knowledge/personal/notes/edit', '/sheet/doc?slug=notes'],
+    ['#/knowledge/shared/notes', '/sheet/doc?slug=notes'],
+    ['#/knowledge/folder/12/notes', '/sheet/doc?slug=notes'],
+    ['#/files?file=12', '/sheet/file?id=12'],
+    ['#/files?folder=12&shelf=personal', '/sheet/folder?id=12&shelf=personal&scope=drive'],
+    ['#/projects/3?task=4', '/sheet/task?project=3&id=4'],
+    ['#/projects/3', '/sheet/project?id=3'],
+    ['#/projects', '/projects'],
+    ['#/tables/1/table/2?record=3', '/sheet/record?base=1&table=2&id=3'],
+    ['#/tables/1/table/2', '/drive/table?id=2'],
+    ['#/tables/1', '/drive/base?id=1'],
+    ['#/tables', '/drive?view=tables'],
+    ['#/activity/automation/run_01', '/sheet/run?id=run_01'],
+    ['#/activity/run_01', '/sheet/run?id=run_01'],
+    ['#/tasks', '/automations'],
+    ['#/automations', '/automations'],
+    ['#/notifications?id=n_01', '/sheet/notification?id=n_01'],
+    ['#/settings', '/me'],
+    ['#/settings/notifications', '/me/notifications'],
+    ['#/settings/agent-connections/activity', '/me/agents'],
+    ['#/settings/provider-bindings?code=x', '/classic/#/settings/provider-bindings?code=x'],
+    ['#/connectors/oauth-finish?code=x', '/classic/#/connectors/oauth-finish?code=x'],
+    ['#/activate?token=x', '/classic/#/activate?token=x'],
+    ['#/login?feishu=ok', '/classic/#/login?feishu=ok'],
+    ['#/skillhub/example', '/classic/#/skillhub/example'],
+    ['#/skillhub?tab=reports', '/classic/#/skillhub?tab=reports'],
+    ['#/example/notes/42', '/classic/#/example/notes/42'],
+  ])('%s → %s', (input, output) => expect(mapLegacyLink(input)).toBe(output));
+  it('does not hijack ordinary fragment anchors', () => expect(mapLegacyLink('#section')).toBeNull());
+});

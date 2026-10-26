@@ -187,3 +187,6 @@ function Dialog({ request: r }: { request: Request }) {
     </AlertDialog>
   );
 }
+
+export const confirm = confirmAction;
+export const prompt = promptText;

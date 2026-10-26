@@ -9,3 +9,14 @@ declare module '*.txt' {
   const asset: number;
   export default asset;
 }
+
+declare module '*.css';
+
+// Keep optional @expo/ui peer paths (and the native fingerprint) stable. Only this DOM API is used.
+declare module 'react-dom' {
+  export function createPortal(
+    children: import('react').ReactNode,
+    container: Element | DocumentFragment,
+    key?: string | null,
+  ): import('react').ReactPortal;
+}

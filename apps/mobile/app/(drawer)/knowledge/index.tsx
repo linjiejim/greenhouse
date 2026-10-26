@@ -1,3 +1,4 @@
+import { ScreenActions } from '../../../src/ui/screen-actions';
 /**
  * 知识库 — 最近 (the documents I opened on this phone, the first segment and where the page opens),
  * the team's shelf, mine, and documents shared with me; one folder level per page in this place's
@@ -37,9 +38,9 @@ import { DirectorySearch, useDirectoryFilter } from '../../../src/ui/directory-s
 import { SidebarToolbar } from '../../../src/ui/sidebar';
 import { useWholePageDrawerSwipe } from '../../../src/ui/place-swipe';
 import { EmptyState, LoadingState } from '../../../src/ui/empty';
-import { refreshItem, usePullRefresh } from '../../../src/ui/refresh';
+import { usePullRefresh } from '../../../src/ui/refresh';
 import { Segmented } from '../../../src/ui/segmented';
-import { toolbarIcon } from '../../../src/ui/toolbar-icon';
+
 import { objectId } from '../../../src/lib/object-id';
 
 type ShelfName = KbShelf | 'shared';
@@ -199,20 +200,38 @@ export default function Knowledge() {
       <Stack.Screen options={{ title }} />
       <DirectorySearch filter={filter} />
       <SidebarToolbar />
-      <Stack.Toolbar placement="right">
-        {refreshItem(busy && !showingRecent, t('common.loading'))}
-        <Stack.Toolbar.Menu icon={toolbarIcon('plus')} accessibilityLabel={t('library.new')}>
-          <Stack.Toolbar.MenuAction
-            icon="folder.badge.plus"
-            onPress={() => void actions.newFolder(target.shelf, target.folder)}
-          >
-            {t('library.newFolder')}
-          </Stack.Toolbar.MenuAction>
-          <Stack.Toolbar.MenuAction icon="doc.badge.plus" onPress={() => actions.newDoc(target.shelf, target.folder)}>
-            {t('library.newDoc')}
-          </Stack.Toolbar.MenuAction>
-        </Stack.Toolbar.Menu>
-      </Stack.Toolbar>
+      <ScreenActions
+        placement={'right'}
+        actions={[
+          {
+            id: 'refresh',
+            icon: 'refresh',
+            label: t('common.loading'),
+            onPress: () => {},
+            busy: busy && !showingRecent,
+          },
+          {
+            id: 'action-1',
+            icon: 'plus' as const,
+            label: t('library.new'),
+            menu: [
+              {
+                id: 'action-2',
+                icon: 'folderPlus' as const,
+                label: t('library.newFolder'),
+                onPress: () => void actions.newFolder(target.shelf, target.folder),
+              },
+              {
+                id: 'action-3',
+                icon: 'docPlus' as const,
+                label: t('library.newDoc'),
+                onPress: () => actions.newDoc(target.shelf, target.folder),
+              },
+            ],
+            onPress: () => {},
+          },
+        ]}
+      />
       <FlatList<KbRow>
         style={styles.root}
         contentInsetAdjustmentBehavior="automatic"

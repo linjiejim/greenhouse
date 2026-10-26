@@ -1,3 +1,4 @@
+import '../src/plugins/store';
 import { clearHandoffs } from '../src/lib/handoff';
 /**
  * Root layout — bootstraps auth + prefs, applies the appearance, gates routes, and declares the

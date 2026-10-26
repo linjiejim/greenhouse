@@ -1,3 +1,6 @@
+import { useStationManifest } from '../../../src/plugins/store';
+import { builtinVisible } from '../../../src/plugins/manifest';
+import { ScreenActions } from '../../../src/ui/screen-actions';
 /**
  * 云盘 — 最近 (the files I opened on this phone, the first segment and where the page opens, like
  * 知识库), the team's files, mine, and (with the `tables` feature) the table bases: one segmented
@@ -38,10 +41,10 @@ import { useWholePageDrawerSwipe } from '../../../src/ui/place-swipe';
 import { EmptyState, LoadingState } from '../../../src/ui/empty';
 import { notifySuccess } from '../../../src/ui/haptics';
 import { Row, rowPosition, type RowPosition } from '../../../src/ui/list';
-import { refreshItem, usePullRefresh } from '../../../src/ui/refresh';
+import { usePullRefresh } from '../../../src/ui/refresh';
 import { Segmented } from '../../../src/ui/segmented';
 import { toast } from '../../../src/ui/toast';
-import { toolbarIcon } from '../../../src/ui/toolbar-icon';
+
 import { objectId } from '../../../src/lib/object-id';
 
 type View = FilesShelf | 'tables' | 'recent';
@@ -59,7 +62,8 @@ export default function Drive() {
   const openObject = useOpenObject();
   const actions = useLibraryActions();
   const user = useAuth((s) => s.user);
-  const tablesOn = hasTables(user);
+  const manifest = useStationManifest((s) => s.data);
+  const tablesOn = builtinVisible(manifest, 'tables', hasTables(user));
   const folderId = objectId(params.folder);
   // the page opens on 最近; a folder always belongs to a shelf
   const view: View =
@@ -84,7 +88,10 @@ export default function Drive() {
     if (view === 'tables') {
       const bases = await listBases();
       return bases.ok
-        ? { ok: true as const, data: { bases: bases.data.bases.filter((base) => !base.archived_at), folders: [], files: [] } }
+        ? {
+            ok: true as const,
+            data: { bases: bases.data.bases.filter((base) => !base.archived_at), folders: [], files: [] },
+          }
         : bases;
     }
     const level = await listLevel(shelf, folderId);
@@ -147,7 +154,9 @@ export default function Drive() {
           return;
         }
         const all: LibraryItem[] = [
-          ...result.data.folders.map((f): LibraryItem => ({ kind: 'folder', id: f.id, name: f.name, shelf: f.shelf, scope: 'drive' })),
+          ...result.data.folders.map(
+            (f): LibraryItem => ({ kind: 'folder', id: f.id, name: f.name, shelf: f.shelf, scope: 'drive' }),
+          ),
           ...result.data.files.map(
             (f): LibraryItem => ({
               kind: 'file',
@@ -158,7 +167,14 @@ export default function Drive() {
             }),
           ),
         ];
-        setHits(all.map((entry, i) => ({ key: `h-${entry.kind}-${entry.id}`, type: 'entry', entry, position: rowPosition(i, all.length) })));
+        setHits(
+          all.map((entry, i) => ({
+            key: `h-${entry.kind}-${entry.id}`,
+            type: 'entry',
+            entry,
+            position: rowPosition(i, all.length),
+          })),
+        );
       });
     }, 250);
     return () => {
@@ -171,7 +187,12 @@ export default function Drive() {
     if (hits) return hits;
     if (view === 'tables') {
       const bases = resource.data?.bases ?? [];
-      return bases.map((base, i) => ({ key: `b-${base.id}`, type: 'base', base, position: rowPosition(i, bases.length) }));
+      return bases.map((base, i) => ({
+        key: `b-${base.id}`,
+        type: 'base',
+        base,
+        position: rowPosition(i, bases.length),
+      }));
     }
     if (view === 'recent') {
       return recent.map((f, i) => ({
@@ -192,7 +213,12 @@ export default function Drive() {
     const { folders, files } = resource.data;
     const count = folders.length + files.length;
     folders.forEach((f, i) =>
-      out.push({ key: `f-${f.id}`, type: 'entry', entry: { kind: 'folder', id: f.id, name: f.name, shelf, scope: 'drive' }, position: rowPosition(i, count) }),
+      out.push({
+        key: `f-${f.id}`,
+        type: 'entry',
+        entry: { kind: 'folder', id: f.id, name: f.name, shelf, scope: 'drive' },
+        position: rowPosition(i, count),
+      }),
     );
     files.forEach((f, i) =>
       out.push({
@@ -262,9 +288,14 @@ export default function Drive() {
       <Segmented
         value={view}
         onChange={(value) =>
-          router.setParams(value === 'tables' ? { view: 'tables', shelf: undefined } : { view: undefined, shelf: value })
+          router.setParams(
+            value === 'tables' ? { view: 'tables', shelf: undefined } : { view: undefined, shelf: value },
+          )
         }
-        options={views.map((value) => ({ value, label: value === 'tables' ? t('nav.tables') : t(`files.shelf.${value}`) }))}
+        options={views.map((value) => ({
+          value,
+          label: value === 'tables' ? t('nav.tables') : t(`files.shelf.${value}`),
+        }))}
         style={styles.segmented}
       />
       {uploading ? <LoadingState style={styles.uploading} /> : null}
@@ -285,15 +316,15 @@ export default function Drive() {
       ) : view === 'tables' && noAccess(resource.error) ? (
         <EmptyState icon="hand" title={t('tables.noAccess')} message={t('tables.noAccessHint')} style={styles.state} />
       ) : (
-        <EmptyState icon="alert" title={t('files.loadFailed')} onRetry={() => void resource.refresh()} style={styles.state} />
+        <EmptyState
+          icon="alert"
+          title={t('files.loadFailed')}
+          onRetry={() => void resource.refresh()}
+          style={styles.state}
+        />
       )
     ) : view === 'tables' && !hits ? (
-      <EmptyState
-        icon="table"
-        title={t('tables.empty')}
-        message={t('tables.emptyHint')}
-        style={styles.state}
-      />
+      <EmptyState icon="table" title={t('tables.empty')} message={t('tables.emptyHint')} style={styles.state} />
     ) : (
       <EmptyState
         icon="folder"
@@ -308,28 +339,66 @@ export default function Drive() {
       <Stack.Screen options={{ title: folderId != null ? (path[path.length - 1]?.name ?? '') : t('nav.files') }} />
       <DirectorySearch filter={filter} />
       <SidebarToolbar />
-      <Stack.Toolbar placement="right">
-        {refreshItem(busy && !showingRecent, t('common.loading'))}
-        {view !== 'tables' ? (
-          <Stack.Toolbar.Menu icon={toolbarIcon('plus')} accessibilityLabel={t('library.new')} disabled={uploading}>
-            <Stack.Toolbar.MenuAction icon="photo.on.rectangle" onPress={() => void upload('photos')}>
-              {t('files.fromPhotos')}
-            </Stack.Toolbar.MenuAction>
-            <Stack.Toolbar.MenuAction icon="camera" onPress={() => void upload('camera')}>
-              {t('files.fromCamera')}
-            </Stack.Toolbar.MenuAction>
-            <Stack.Toolbar.MenuAction icon="folder" onPress={() => void upload('files')}>
-              {t('files.fromFiles')}
-            </Stack.Toolbar.MenuAction>
-            <Stack.Toolbar.MenuAction icon="folder.badge.plus" onPress={() => void actions.newFolder(shelf, folderId)}>
-              {t('library.newFolder')}
-            </Stack.Toolbar.MenuAction>
-          </Stack.Toolbar.Menu>
-        ) : !noAccess(resource.error) ? (
-          // 表格: + makes a base (the empty state has no button of its own: + is always here)
-          <Stack.Toolbar.Button icon={toolbarIcon('plus')} accessibilityLabel={t('tables.newBase')} onPress={() => void newBase()} />
-        ) : null}
-      </Stack.Toolbar>
+      <ScreenActions
+        placement={'right'}
+        actions={[
+          {
+            id: 'refresh',
+            icon: 'refresh',
+            label: t('common.loading'),
+            onPress: () => {},
+            busy: busy && !showingRecent,
+          },
+          ...(view !== 'tables'
+            ? [
+                {
+                  id: 'action-1',
+                  icon: 'plus' as const,
+                  label: t('library.new'),
+                  disabled: uploading,
+                  menu: [
+                    {
+                      id: 'action-2',
+                      icon: 'photos' as const,
+                      label: t('files.fromPhotos'),
+                      onPress: () => void upload('photos'),
+                    },
+                    {
+                      id: 'action-3',
+                      icon: 'camera' as const,
+                      label: t('files.fromCamera'),
+                      onPress: () => void upload('camera'),
+                    },
+                    {
+                      id: 'action-4',
+                      icon: 'folder' as const,
+                      label: t('files.fromFiles'),
+                      onPress: () => void upload('files'),
+                    },
+                    {
+                      id: 'action-5',
+                      icon: 'folderPlus' as const,
+                      label: t('library.newFolder'),
+                      onPress: () => void actions.newFolder(shelf, folderId),
+                    },
+                  ],
+                  onPress: () => {},
+                },
+              ]
+            : [
+                ...(!noAccess(resource.error)
+                  ? [
+                      {
+                        id: 'action-6',
+                        icon: 'plus' as const,
+                        label: t('tables.newBase'),
+                        onPress: () => void newBase(),
+                      },
+                    ]
+                  : []),
+              ]),
+        ]}
+      />
       <FlatList<Item>
         style={styles.root}
         contentInsetAdjustmentBehavior="automatic"

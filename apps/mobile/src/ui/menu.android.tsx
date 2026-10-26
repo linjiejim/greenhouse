@@ -252,3 +252,8 @@ function Item({ item, onPick }: { item: MenuItem; onPick: (id: string) => void }
     </DropdownMenuItem>
   );
 }
+
+export const Menu = NativeMenu;
+export function ContextMenu(props: Omit<React.ComponentProps<typeof NativeMenu>, 'trigger'>) {
+  return <NativeMenu {...props} trigger="longPress" />;
+}

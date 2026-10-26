@@ -1,3 +1,4 @@
+import { ScreenActions } from '../../../src/ui/screen-actions';
 /**
  * One conversation with the assistant (`/chat?session=`), the one object that is a full pushed
  * page — the keyboard stays up and the transcript is long. Without `session` it is a new
@@ -79,7 +80,7 @@ import { Icon, Spinner } from '../../../src/ui/core';
 import { GlassIconButton } from '../../../src/ui/glass';
 import { notifySuccess, notifyWarning } from '../../../src/ui/haptics';
 import { toast } from '../../../src/ui/toast';
-import { toolbarIcon } from '../../../src/ui/toolbar-icon';
+
 import { useHeaderInset } from '../../../src/ui/header-inset';
 import { OpenOrigin } from '../../../src/shell/open-object';
 import { useSessions } from '../../../src/store/sessions';
@@ -189,7 +190,9 @@ export default function Chat() {
     const info = async () => {
       const result = await getSessionInfo(sessionId);
       if (result.ok) {
-        knowOwner(result.data.session.is_owner === false ? { by: result.data.share_info?.shared_by_nickname ?? null } : null);
+        knowOwner(
+          result.data.session.is_owner === false ? { by: result.data.share_info?.shared_by_nickname ?? null } : null,
+        );
         setProfileId(result.data.session.profile_id);
         keepCopy();
       }
@@ -556,7 +559,11 @@ export default function Chat() {
   // under the title: who answers here, or what the reply is doing now
   const agentRef = sessionId ? profileId : agentId;
   const listed = findProfile(agents, agentRef);
-  const agentName = listed ? listed.name : conversationAgent(agentRef) ? t('conversation.customAgent') : t('nav.assistant');
+  const agentName = listed
+    ? listed.name
+    : conversationAgent(agentRef)
+      ? t('conversation.customAgent')
+      : t('nav.assistant');
   const subtitle = headerSubtitle(
     agentName,
     live
@@ -572,31 +579,46 @@ export default function Chat() {
           headerTitle: () => <HeaderTitle title={headerTitle} subtitle={subtitle} state={face} />,
         }}
       />
-      <Stack.Toolbar placement="right">
-        <Stack.Toolbar.Button
-          icon={toolbarIcon('compose')}
-          accessibilityLabel={t('conversation.newChat')}
-          onPress={() => router.replace('/chat')}
-        />
-        {sessionId && !shared ? (
-          <Stack.Toolbar.Menu icon={toolbarIcon('more')} accessibilityLabel={t('conversation.menu')}>
-            <Stack.Toolbar.MenuAction
-              icon={session?.pinned ? 'pin.slash' : 'pin'}
-              onPress={() => {
-                if (sessionId) void useSessions.getState().pin(sessionId, !session?.pinned);
-              }}
-            >
-              {t(session?.pinned ? 'home.unpin' : 'home.pin')}
-            </Stack.Toolbar.MenuAction>
-            <Stack.Toolbar.MenuAction icon="pencil" onPress={() => void rename()}>
-              {t('home.rename')}
-            </Stack.Toolbar.MenuAction>
-            <Stack.Toolbar.MenuAction icon="trash" destructive onPress={() => void remove()}>
-              {t('conversation.delete')}
-            </Stack.Toolbar.MenuAction>
-          </Stack.Toolbar.Menu>
-        ) : null}
-      </Stack.Toolbar>
+      <ScreenActions
+        placement={'right'}
+        actions={[
+          {
+            id: 'action-1',
+            icon: 'compose' as const,
+            label: t('conversation.newChat'),
+            onPress: () => router.replace('/chat'),
+          },
+          ...(sessionId && !shared
+            ? [
+                {
+                  id: 'action-2',
+                  icon: 'more' as const,
+                  label: t('conversation.menu'),
+                  menu: [
+                    {
+                      id: 'action-3',
+                      icon: session?.pinned ? ('pinOff' as const) : ('pin' as const),
+                      iosSymbol: session?.pinned ? ('pin.slash' as const) : ('pin' as const),
+                      label: t(session?.pinned ? 'home.unpin' : 'home.pin'),
+                      onPress: () => {
+                        if (sessionId) void useSessions.getState().pin(sessionId, !session?.pinned);
+                      },
+                    },
+                    { id: 'action-4', icon: 'pen' as const, label: t('home.rename'), onPress: () => void rename() },
+                    {
+                      id: 'action-5',
+                      icon: 'trash' as const,
+                      label: t('conversation.delete'),
+                      onPress: () => void remove(),
+                      destructive: true,
+                    },
+                  ],
+                  onPress: () => {},
+                },
+              ]
+            : []),
+        ]}
+      />
     </>
   );
 

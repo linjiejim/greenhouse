@@ -17,8 +17,7 @@
  * and a 401 it gets back can't sign the new station out (see clearTokens).
  */
 
-import { Platform } from 'react-native';
-import * as SecureStore from 'expo-secure-store';
+import { persistGet, persistSet } from './persistence';
 import type { Me } from '../shared/greenhouse-types';
 import { checkAborted } from './connection-deadline';
 
@@ -28,8 +27,6 @@ const REFRESH_KEY = 'greenhouse_refresh_token';
 const USER_KEY = 'greenhouse_member';
 /** Earlier apps cached other member shapes here (the 1.x app, the 2.x app); they never come back. */
 const STALE_USER_KEYS = ['greenhouse_user', 'greenhouse_me'] as const;
-
-const isWeb = Platform.OS === 'web';
 
 let mem: { access: string | null; refresh: string | null; user: Me | null } = {
   access: null,
@@ -54,29 +51,6 @@ function keyFor(base: string, sid: string): string {
 }
 
 // ─── persistence primitives ──────────────────────────────
-
-async function persistGet(key: string): Promise<string | null> {
-  try {
-    if (isWeb) return globalThis.localStorage?.getItem(key) ?? null;
-    return await SecureStore.getItemAsync(key);
-  } catch {
-    return null;
-  }
-}
-
-function persistSet(key: string, value: string | null): void {
-  try {
-    if (isWeb) {
-      if (value == null) globalThis.localStorage?.removeItem(key);
-      else globalThis.localStorage?.setItem(key, value);
-      return;
-    }
-    if (value == null) void SecureStore.deleteItemAsync(key).catch(() => undefined);
-    else void SecureStore.setItemAsync(key, value).catch(() => undefined);
-  } catch {
-    /* ignore — best effort */
-  }
-}
 
 // ─── change listeners ────────────────────────────────────
 

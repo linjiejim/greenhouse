@@ -1,0 +1,12 @@
+html,body,#root {height:100%;overflow:hidden;}
+body {margin:0;font-family:Nunito,system-ui,sans-serif;}
+* {box-sizing:border-box;}
+:focus-visible {outline:2px solid var(--gh-focus);outline-offset:2px;}
+button,input,select,textarea {font:inherit;}
+button:not(:disabled),[role=button] {cursor:pointer;}
+button:not(:disabled):hover {filter:brightness(.97);}
+.gh-secondary-row:hover,[role=menuitem]:hover,[role=tab]:hover {background-color:var(--gh-hover)!important;}
+button:disabled {cursor:default;opacity:.5;}
+button:active {opacity:.7;}
+textarea {resize:vertical;}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;transition-duration:.01ms!important;scroll-behavior:auto!important;}}

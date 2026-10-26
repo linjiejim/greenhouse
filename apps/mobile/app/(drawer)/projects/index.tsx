@@ -1,3 +1,4 @@
+import { ScreenActions } from '../../../src/ui/screen-actions';
 /**
  * 项目 — the project list and my tasks (open tasks assigned to me across projects, grouped by
  * when they are due: src/data/tasks.ts `myTasks`, from the gantt view; kept on the phone and
@@ -29,8 +30,8 @@ import { SidebarToolbar } from '../../../src/ui/sidebar';
 import { useWholePageDrawerSwipe } from '../../../src/ui/place-swipe';
 import { EmptyState, LoadingState } from '../../../src/ui/empty';
 import { notifySuccess } from '../../../src/ui/haptics';
-import { refreshItem, usePullRefresh } from '../../../src/ui/refresh';
-import { toolbarIcon } from '../../../src/ui/toolbar-icon';
+import { usePullRefresh } from '../../../src/ui/refresh';
+
 import { Row, SectionHeader, rowPosition, type RowPosition } from '../../../src/ui/list';
 import { Segmented } from '../../../src/ui/segmented';
 import { useOpenObject } from '../../../src/shell/open-object';
@@ -93,19 +94,33 @@ export default function Projects() {
     if (tab === 'mine') {
       const out: Item[] = [];
       // grouped again for today: a saved copy keeps the groups of the day it was saved
-      const groups = groupMyTasks((mine.data ?? []).flatMap((group) => group.tasks), localDay(new Date()));
+      const groups = groupMyTasks(
+        (mine.data ?? []).flatMap((group) => group.tasks),
+        localDay(new Date()),
+      );
       for (const whole of groups) {
         const group = { ...whole, tasks: whole.tasks.filter((task) => matches(task.title, task.project_title)) };
         if (!group.tasks.length) continue;
         out.push({ key: `h-${group.bucket}`, type: 'header', title: t(`projects.dueGroup.${group.bucket}`) });
         group.tasks.forEach((task, i) =>
-          out.push({ key: `t-${task.id}`, type: 'task', task, bucket: group.bucket, position: rowPosition(i, group.tasks.length) }),
+          out.push({
+            key: `t-${task.id}`,
+            type: 'task',
+            task,
+            bucket: group.bucket,
+            position: rowPosition(i, group.tasks.length),
+          }),
         );
       }
       return out;
     }
     const projects = (all.data ?? []).filter((p) => p.status !== 'archived' && matches(p.title));
-    return projects.map((project, i) => ({ key: `p-${project.id}`, type: 'project', project, position: rowPosition(i, projects.length) }));
+    return projects.map((project, i) => ({
+      key: `p-${project.id}`,
+      type: 'project',
+      project,
+      position: rowPosition(i, projects.length),
+    }));
   }, [tab, mine.data, all.data, matches, t]);
 
   const header = (
@@ -126,19 +141,29 @@ export default function Projects() {
     resource.loading ? (
       <LoadingState style={styles.state} />
     ) : noAccess(resource.error) ? (
-      <EmptyState icon="hand" title={t('projects.noAccess')} message={t('projects.noAccessHint')} style={styles.state} />
+      <EmptyState
+        icon="hand"
+        title={t('projects.noAccess')}
+        message={t('projects.noAccessHint')}
+        style={styles.state}
+      />
     ) : (
-      <EmptyState icon="alert" title={t('projects.loadFailed')} onRetry={() => void resource.refresh()} style={styles.state} />
+      <EmptyState
+        icon="alert"
+        title={t('projects.loadFailed')}
+        onRetry={() => void resource.refresh()}
+        style={styles.state}
+      />
     )
   ) : tab === 'mine' ? (
-    <EmptyState icon="checkCircle" title={t('projects.noTasks')} message={t('projects.noTasksHint')} style={styles.state} />
-  ) : (
     <EmptyState
       icon="checkCircle"
-      title={t('projects.empty')}
-      message={t('projects.emptyHint')}
+      title={t('projects.noTasks')}
+      message={t('projects.noTasksHint')}
       style={styles.state}
     />
+  ) : (
+    <EmptyState icon="checkCircle" title={t('projects.empty')} message={t('projects.emptyHint')} style={styles.state} />
   );
 
   return (
@@ -146,14 +171,13 @@ export default function Projects() {
       <Stack.Screen options={{ title: t('nav.projects') }} />
       <DirectorySearch filter={filter} />
       <SidebarToolbar />
-      <Stack.Toolbar placement="right">
-        {refreshItem(busy, t('common.loading'))}
-        <Stack.Toolbar.Button
-          icon={toolbarIcon('plus')}
-          accessibilityLabel={t('projects.newProject')}
-          onPress={() => void newProject()}
-        />
-      </Stack.Toolbar>
+      <ScreenActions
+        placement={'right'}
+        actions={[
+          { id: 'refresh', icon: 'refresh', label: t('common.loading'), onPress: () => {}, busy: busy },
+          { id: 'action-1', icon: 'plus' as const, label: t('projects.newProject'), onPress: () => void newProject() },
+        ]}
+      />
       <FlatList<Item>
         style={styles.root}
         contentInsetAdjustmentBehavior="automatic"
@@ -174,7 +198,9 @@ export default function Projects() {
                 titleLines={2}
                 icon={statusIcon(task.status)}
                 iconTint={statusTint(task.status, c)}
-                accessibilityLabel={[task.title, t(`projects.status.${task.status}`), due, task.project_title].filter(Boolean).join(', ')}
+                accessibilityLabel={[task.title, t(`projects.status.${task.status}`), due, task.project_title]
+                  .filter(Boolean)
+                  .join(', ')}
                 accessory="chevron"
                 position={item.position}
                 onPress={() => openObject({ kind: 'task', projectId: task.project_id, id: task.id })}
@@ -213,5 +239,10 @@ const useStyles = makeStyles((c) => ({
   content: { paddingBottom: space.xxxl },
   segmented: { marginHorizontal: space.margin, marginVertical: space.md },
   state: { paddingTop: space.xxxl },
-  offline: { ...typo.footnote, color: c.secondaryLabel, marginHorizontal: space.margin + space.xs, marginBottom: space.sm },
+  offline: {
+    ...typo.footnote,
+    color: c.secondaryLabel,
+    marginHorizontal: space.margin + space.xs,
+    marginBottom: space.sm,
+  },
 }));

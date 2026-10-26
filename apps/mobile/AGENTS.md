@@ -116,7 +116,7 @@
 - Sprouty has one presence per screen: the header face in a conversation, the greeting sprout on home; never put an avatar on message rows.
 - A sheet's list or ScrollView is its root element (after SheetScreen); a ScrollView wrapped in a flex View renders nothing in a form sheet.
 - Zustand selectors return stored values; derive filtered arrays with useMemo (a fresh array from a selector loops forever).
-- Use system components: the expo-router native Stack, @expo/ui/swift-ui and NativeMenu (src/ui/menu.tsx); never JS-drawn headers, bottom sheets, action sheets, calendars or switches.
+- Native UI uses system components: the expo-router native Stack, @expo/ui/swift-ui and NativeMenu (src/ui/menu.tsx); never JS-drawn headers, bottom sheets, action sheets, calendars or switches.
 - Brand: Haven forest #235D4D / pale sage #B1D2BF in dark, the seed lime #B6CA68 never as text; Nunito. Colours come from the shared token module (packages/ui/src/tokens/tokens.ts) through the generated src/theme/tokens.generated.ts — run `pnpm tokens:build` at the repo root, never edit a hex in src/theme/palette.ts; dark content surfaces keep UIKit's system base; native controls keep system styling with the accent as tint. Contrast and web parity are tested (src/theme/palette.test.ts, packages/ui/src/tokens/platform-parity.test.ts).
 - A user-chosen colour (project, tag) draws through categoricalFor() (src/theme/palette.ts) as its categorical fg/fill pair, never the raw hex.
 - `colors.*` are opaque ColorValues: never concatenate or compute alpha on them; use `hex.*` for strings and alpha() for transparency.
@@ -124,7 +124,7 @@
 - Take typo, weight, radius (with squircle) and HIT from src/theme.ts; never disable allowFontScaling.
 - Register icons as [SF Symbol, Material] pairs in ICONS (src/ui/core.tsx) and run `python3 scripts/android-icons.py` in apps/mobile; toolbar icons go through toolbarIcon().
 - Give every icon-only button an accessibilityLabel; Icon is hidden from VoiceOver unless it stands alone.
-- Declare presentation only in app/_layout.tsx with the src/ui/nav.ts presets; screens set their own title and toolbar; the back button is always the system's.
+- Declare presentation only in app/_layout platform layouts with the src/ui/nav presets; screens declare their own title and actions; native back buttons stay system-owned.
 - Glass (src/ui/glass.tsx) is for the control layer only; content sits on solid system colors.
 - A failed user action shows alertError; toast is for success only; a failed load shows EmptyState with retry; login errors stay inline.
 - Forms use NativeForm with FormNavRow; content buttons use NativeButton, never Pressable plus Text.
@@ -154,3 +154,20 @@
 
 - en.ts is the key source and zh must match; delete unused keys after searching dynamic uses (`t(module.title)`, notification kind labels).
 - Words: 首页, 知识库, 云盘 (never 档案库), 项目, 定时任务, 表格, 通知, 工作站, 「我」.
+
+## Universal client (C1)
+
+- Platform primitives use `.ios.tsx`, `.android.tsx` and `.web.tsx`; base re-exports keep TypeScript and Expo Router route discovery working.
+- SwiftUI, Compose and native view factories never load in browser implementations.
+- Screens declare actions with `useScreenActions` or `ScreenActions`; only the iOS adapter owns `Stack.Toolbar` items, which remain its direct children.
+- Browser menus, dialogs, popovers, tooltips and success toasts share `src/ui/overlay.web.tsx` for focus, Escape and portals.
+- Web frames use an opaque-origin sandbox and accept messages only from their own iframe window.
+- Browser builds are single-station and use their own origin unless `EXPO_PUBLIC_API_BASE_URL` explicitly overrides it for development.
+- Browser station ids include the API origin; hosted builds share the classic localStorage token keys, while development overrides keep origin-scoped keys.
+- The optional `/api/extensions` v2 manifest gates built-in plugin places and supplies primary and More navigation; v1 or 404 means legacy navigation.
+- `src/shared/plugins.ts` is a verbatim copy of `packages/types/src/plugins.ts`, checked by the React-free manifest tests; optional v2 does not raise `MOBILE_API`.
+- Unrecognized plugin pages use `/p/[plugin]/[page]` and a validated browser fallback; generic page renderers belong to the next client phase.
+- Browser legacy links are mapped before auth routing and retained across sign-in; unmapped hashes open `/classic/` on the station.
+- `pnpm test:e2e:client` owns ports 18920 and 18921 and the isolated `gh4_client` database on port 55450; its screenshots and auth state are ignored.
+- Run Expo dev servers with `CI=1` in restricted environments to disable file watchers; native configuration and fingerprint stay unchanged in C1.
+- Metro redirects native route-context entries only for web; verify source maps with `node scripts/check-web-bundle.mjs <export-dir>` after an export with `--source-maps`.

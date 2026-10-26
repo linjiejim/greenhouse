@@ -8,6 +8,7 @@
 // mirroring the install-time `--ignore-workspace`.
 const { getDefaultConfig } = require('expo/metro-config');
 const path = require('path');
+const fs = require('fs');
 
 const config = getDefaultConfig(__dirname);
 
@@ -23,5 +24,26 @@ config.resolver.assetExts = [...config.resolver.assetExts, 'xml', 'txt'];
 config.resolver.blockList = config.resolver.blockList
   ? [].concat(config.resolver.blockList, blockRoot)
   : [blockRoot];
+
+// Router's context deliberately enumerates every platform route. On web redirect
+// those context dependencies to the web view (or the shared route), so native
+// form implementations are absent from the dependency graph, not merely idle.
+const originalResolveRequest = config.resolver.resolveRequest;
+config.resolver.resolveRequest = (context, moduleName, platform) => {
+  if (platform === 'web' && /\.(?:ios|android|native)(?:\.[jt]sx?)?$/.test(moduleName)) {
+    const absolute = path.isAbsolute(moduleName)
+      ? moduleName
+      : path.resolve(path.dirname(context.originModulePath), moduleName);
+    if (absolute.startsWith(path.join(__dirname, 'app') + path.sep)) {
+      const web = absolute.replace(/\.(?:ios|android|native)(\.[jt]sx?)?$/, (_, ext) => '.web' + (ext || ''));
+      const shared = absolute.replace(/\.(?:ios|android|native)(\.[jt]sx?)?$/, (_, ext) => ext || '');
+      const candidates = [web, web + '.tsx', web + '.ts', shared, shared + '.tsx', shared + '.ts'];
+      moduleName = candidates.find((candidate) => fs.existsSync(candidate)) || shared;
+    }
+  }
+  return originalResolveRequest
+    ? originalResolveRequest(context, moduleName, platform)
+    : context.resolveRequest(context, moduleName, platform);
+};
 
 module.exports = config;

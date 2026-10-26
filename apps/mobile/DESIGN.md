@@ -38,12 +38,12 @@
 
 - Page margin is space.margin (16); text inside cards starts at space.margin + space.xs.
 - Spacing follows the 4-pt scale in src/theme.ts and lands on the 8-pt rhythm between blocks (space.sm, space.lg, space.xxl).
-- Radii come from radius.* (the shared scale, src/theme.ts) with squircle; cards use radius.group (26, matching UIKit's inset-grouped sections), chips radius.md (inline radius.sm), bubbles radius.bubble; a choice that may wrap is a row with radius.md, never a pill.
+- Radii come from radius.\* (the shared scale, src/theme.ts) with squircle; cards use radius.group (26, matching UIKit's inset-grouped sections), chips radius.md (inline radius.sm), bubbles radius.bubble; a choice that may wrap is a row with radius.md, never a pill.
 - Touch targets are at least HIT (44); chips under messages are HIT - space.sm tall with HIT hit slop around them.
 
 ## Type
 
-- Text takes a role from typo.* (largeTitle … caption2) and adjusts weight only with weight.*; never a raw fontSize.
+- Text takes a role from typo._ (largeTitle … caption2) and adjusts weight only with weight._; never a raw fontSize.
 - typo follows the in-app text size (seven steps, 0.8–1.35) times Dynamic Type; read it inside makeStyles or render, never into module constants.
 - Native bars, menus, alerts and the keyboard follow the system size and font only.
 - Nunito is the face everywhere it can apply; Chinese falls back to PingFang.
@@ -52,7 +52,7 @@
 ## Icons and color
 
 - Icons come from ICONS in src/ui/core.tsx at three sizes: 13 in chips and text, 17–20 in rows and controls, 28+ only for empty states.
-- Colors come from useTheme(); hex.* only where a string is required; no raw hex in app/ or feature folders except data colors marked as such; a stored project or tag colour draws through categoricalFor().
+- Colors come from useTheme(); hex.\* only where a string is required; no raw hex in app/ or feature folders except data colors marked as such; a stored project or tag colour draws through categoricalFor().
 - Content sits on solid system surfaces; Liquid Glass is only for the control layer (composer, floating buttons).
 
 ## States and feedback
@@ -65,3 +65,20 @@
 ## Guard
 
 - src/theme/design-guard.test.ts fails on raw hex colors or raw font sizes in app/ and feature folders.
+
+## Browser and wide screens (C1)
+
+- Browser and desktop builds reuse the native pages and domain hooks through react-native-web; never create a parallel DOM application.
+- Web-only rendering lives in platform suffix files; native headers, forms and controls retain their system implementation.
+- WideShell uses a 72 px rail, a 264 px secondary column and a 400 px inspector slot from 760 px upward.
+- The secondary column collapses below 1100 px and toggles with Cmd/Ctrl+Backslash; inspectors float below 1440 px.
+- Below 760 px the same drawer and single-column pages use targets of at least 44 px.
+- Desktop list rows use 32 px density, toolbar buttons use 28 px targets, and focus rings use the shared accent.
+- The rail order is Conversations, Knowledge, Drive, Tables, Projects, Automations; Administration, Notifications and the member avatar stay at its foot.
+- Station manifests gate Knowledge, Tables and Projects; plugin overflow navigation lives in More.
+- Browser colors come from shared semantic tokens copied into `web-colors.generated.ts`; keep native palette generation unchanged.
+- Browser forms use grouped cards and accessible HTML inputs, while sharing validation, write guards and saves with the native forms.
+- A browser edit form has one 52 px title bar, a guarded cancel action and a pinned save action; Cmd/Ctrl+Enter submits it.
+- Home uses one shared flow and platform frames: composer under the greeting on wide screens, at the bottom on narrow screens.
+- Browser context menus use the same items as tap menus, and the overlay restores focus when dismissed.
+- Browser previews never receive same-origin privileges; unknown plugin pages explicitly offer the station's browser fallback.

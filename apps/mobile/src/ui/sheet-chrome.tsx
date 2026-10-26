@@ -1,4 +1,6 @@
-import { usePreventRemove } from 'expo-router/react-navigation';
+import { useFormGuard } from './form-guard';
+import { ScreenActions } from './screen-actions';
+
 /**
  * Shared chrome for sheet / modal routes — the navigation-bar pieces every
  * presented screen repeats. Render them inside the screen (they declare
@@ -12,42 +14,30 @@ import { usePreventRemove } from 'expo-router/react-navigation';
  *    never loses edits.
  */
 
-import React, { useCallback, useRef } from 'react';
-import { BackHandler, Keyboard, Platform } from 'react-native';
-import { Stack, useFocusEffect, useNavigation, useRouter } from 'expo-router';
+import React from 'react';
+
+import { Stack, useRouter } from 'expo-router';
 import { useT } from '../lib/i18n';
-import { useAuth } from '../store/auth';
-import { useStations } from '../store/stations';
+
 import { SheetActions } from './sheet-actions';
 import { NativeButton } from './button';
-import { confirmAction } from './dialogs';
-import { toolbarIcon } from './toolbar-icon';
 
 /** ✕ close on the left of a sheet's navigation bar. Defaults to `router.back()`. */
 export function SheetClose({ onPress }: { onPress?: () => void }) {
   const t = useT();
   const router = useRouter();
   return (
-    <Stack.Toolbar placement="left">
-      <Stack.Toolbar.Button
-        icon={toolbarIcon('x')}
-        accessibilityLabel={t('common.close')}
-        onPress={onPress ?? (() => router.back())}
-      />
-    </Stack.Toolbar>
+    <ScreenActions
+      placement={'left'}
+      actions={[
+        { id: 'action-1', icon: 'x' as const, label: t('common.close'), onPress: onPress ?? (() => router.back()) },
+      ]}
+    />
   );
 }
 
 /** Ask before throwing away unsaved edits (system alert, destructive 放弃). */
-export function confirmDiscard(t: ReturnType<typeof useT>): Promise<boolean> {
-  return confirmAction({
-    title: t('common.discardTitle'),
-    message: t('common.discardHint'),
-    confirmLabel: t('common.discard'),
-    cancelLabel: t('common.keepEditing'),
-    destructive: true,
-  });
-}
+export { confirmDiscard } from './form-guard';
 
 /**
  * Title, close guard and pinned primary action for a form presented as a sheet or modal.
@@ -78,73 +68,47 @@ export function FormChrome({
   onReload?: () => void;
   hideSave?: boolean;
 }) {
-  const t = useT();
-  const router = useRouter();
-  const navigation = useNavigation();
-  const member = useAuth((s) => s.user?.id);
-  const station = useStations((s) => s.activeId);
-  const owner = useRef({ member, station });
-  const sameIdentity = owner.current.member === member && owner.current.station === station;
-  const allowed = useRef(false);
-  const confirming = useRef(false);
-  usePreventRemove(protectNavigation && sameIdentity && (dirty || saving), ({ data }) => {
-    if (saving) return;
-    if (allowed.current) {
-      allowed.current = false;
-      navigation.dispatch(data.action);
-      return;
-    }
-    if (confirming.current) return;
-    confirming.current = true;
-    Keyboard.dismiss();
-    void confirmDiscard(t).then((ok) => {
-      confirming.current = false;
-      if (ok) navigation.dispatch(data.action);
-    });
+  const { t, cancel, sameIdentity } = useFormGuard({
+    title,
+    dirty,
+    canSave,
+    saving,
+    onSave,
+    onCancel,
+    protectNavigation,
   });
-
-  const cancel = useCallback(async () => {
-    if (sameIdentity && dirty && !(await confirmDiscard(t))) return;
-    allowed.current = true;
-    if (onCancel) onCancel();
-    else router.back();
-  }, [dirty, t, router, onCancel, sameIdentity]);
-
-  // Android: the system back button / gesture isn't covered by `gestureEnabled`
-  // — with unsaved edits it goes through the same discard check as ✕. (Only
-  // the system back: the screen's own `router.back()` after saving passes.)
-  useFocusEffect(
-    useCallback(() => {
-      if (Platform.OS !== 'android' || !sameIdentity || !dirty || saving) return;
-      const sub = BackHandler.addEventListener('hardwareBackPress', () => {
-        void cancel();
-        return true;
-      });
-      return () => sub.remove();
-    }, [dirty, saving, cancel, sameIdentity]),
-  );
 
   return (
     <>
       <Stack.Screen options={{ title, gestureEnabled: !dirty && !saving, headerBackButtonMenuEnabled: false }} />
-      <Stack.Toolbar placement="left">
-        <Stack.Toolbar.Button
-          icon={toolbarIcon('x')}
-          disabled={saving}
-          accessibilityLabel={t('common.cancel')}
-          onPress={() => void cancel()}
-        />
-      </Stack.Toolbar>
-      <Stack.Toolbar placement="right">
-        {onReload ? (
-          <Stack.Toolbar.Button
-            icon={toolbarIcon('refresh')}
-            accessibilityLabel={t('common.reload')}
-            disabled={saving || !sameIdentity}
-            onPress={onReload}
-          />
-        ) : null}
-      </Stack.Toolbar>
+      <ScreenActions
+        placement={'left'}
+        actions={[
+          {
+            id: 'action-2',
+            icon: 'x' as const,
+            label: t('common.cancel'),
+            onPress: () => void cancel(),
+            disabled: saving,
+          },
+        ]}
+      />
+      <ScreenActions
+        placement={'right'}
+        actions={[
+          ...(onReload
+            ? [
+                {
+                  id: 'action-3',
+                  icon: 'refresh' as const,
+                  label: t('common.reload'),
+                  onPress: onReload,
+                  disabled: saving || !sameIdentity,
+                },
+              ]
+            : []),
+        ]}
+      />
       {!hideSave && (
         <SheetActions>
           <NativeButton
