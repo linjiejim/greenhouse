@@ -8,6 +8,7 @@ import { DeleteDialog, type DeletionTarget } from '../../tables/delete-dialog';
 import { ContextMenu, useContextMenu, type ContextMenuItem } from '../context-menu';
 import { IconButton, Spinner } from '../../ui';
 import { useT, type TranslationKey } from '../../../lib/i18n';
+import { isRowId } from '@greenhouse/utils/id';
 
 interface TablesNavPanelProps {
   subPath: string;
@@ -15,12 +16,34 @@ interface TablesNavPanelProps {
 
 const ROLE_RANK: Record<TableBaseRole, number> = { viewer: 0, editor: 1, builder: 2, owner: 3 };
 
+/**
+ * The base / table the sidebar should highlight for a `#/tables/<subPath>`.
+ * Non-id pages under Tables (`#/tables/catalog`) select nothing — treating
+ * them as a base id fired `GET /api/tables/bases/catalog` and a 404.
+ */
+/** Pages under `#/tables/` that are not a base (pages/tables/index.tsx routes them first). */
+const TABLES_PAGE_SEGMENTS: ReadonlySet<string> = new Set(['catalog']);
+
+export function selectedTablesRoute(subPath: string): {
+  baseId: string | null;
+  type: 'table' | null;
+  resourceId: string | null;
+} {
+  const segments = subPath.split('/').filter(Boolean);
+  const first = segments[0];
+  const baseId = first && !TABLES_PAGE_SEGMENTS.has(first) && isRowId(first) ? first : null;
+  if (!baseId) return { baseId: null, type: null, resourceId: null };
+  const resourceId = segments[2] && isRowId(segments[2]) ? segments[2] : null;
+  return { baseId, type: segments[1] === 'table' ? 'table' : null, resourceId };
+}
+
 export function TablesNavPanel({ subPath }: TablesNavPanelProps) {
   const t = useT();
-  const segments = useMemo(() => subPath.split('/').filter(Boolean), [subPath]);
-  const selectedBaseId = segments[0] || null;
-  const selectedType = segments[1] === 'table' ? segments[1] : null;
-  const selectedResourceId = segments[2] || null;
+  const {
+    baseId: selectedBaseId,
+    type: selectedType,
+    resourceId: selectedResourceId,
+  } = useMemo(() => selectedTablesRoute(subPath), [subPath]);
   const [bases, setBases] = useState<TableBaseWithRole[]>([]);
   const [workspace, setWorkspace] = useState<TableBaseWorkspace | null>(null);
   const [loadingBases, setLoadingBases] = useState(true);
