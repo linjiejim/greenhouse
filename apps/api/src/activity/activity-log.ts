@@ -54,12 +54,7 @@ function jsonObject(value: unknown): Record<string, unknown> {
 import { toRowId } from '@greenhouse/utils/id';
 import { canRead as canReadKb, resolveKbAccess } from '../knowledge/access.js';
 import { DRIVE_AUDIT_APP_ID, type DriveChangeAction } from '../drive/audit.js';
-import {
-  REPORT_TEMPLATE_ADMIN_ACTIONS,
-  REPORT_TEMPLATE_PERSON_ACTIONS,
-  REPORTS_AUDIT_APP_ID,
-} from '../reports/audit.js';
-import { canViewTemplate } from '../reports/templates.js';
+import { fromExtensions } from '../extensions/index.js';
 import { MUTATING_PROXY_ALLOWLIST } from '../tools/registry.js';
 
 export interface ActivityViewer {
@@ -87,7 +82,7 @@ const PERSONAL_PLATFORM_ACTIONS = [
 ] as const;
 
 /** Administrator changes, by Activity module. */
-const ADMIN_ACTIONS: Record<'settings' | 'users' | 'mcp' | 'skills', readonly string[]> = {
+const ADMIN_ACTIONS: Record<string, readonly string[]> = {
   settings: [
     'updateWorkspaceSettings',
     // Services & pricing (v1.6): budget limits and price overrides.
@@ -95,8 +90,6 @@ const ADMIN_ACTIONS: Record<'settings' | 'users' | 'mcp' | 'skills', readonly st
     'removeBudgetLimit',
     'updateServicePrice',
     'removeServicePrice',
-    // Cloud computer (v1.6): an admin stopping a member's computer.
-    'stopMemberComputer',
   ],
   users: [
     'setUserFeature',
@@ -115,10 +108,12 @@ const ADMIN_ACTIONS: Record<'settings' | 'users' | 'mcp' | 'skills', readonly st
     // A super revoking a member's model gateway key (Services & pricing).
     'revokeMemberGatewayKey',
   ],
-  // Report templates (v1.7): a super changing or deleting a template someone
-  // else owns, or one shipped with Greenhouse (reports/audit.ts).
-  skills: REPORT_TEMPLATE_ADMIN_ACTIONS,
 };
+
+for (const entry of fromExtensions('activity')) {
+  for (const [module, actions] of Object.entries(entry.adminActions ?? {}))
+    ADMIN_ACTIONS[module] = [...(ADMIN_ACTIONS[module] ?? []), ...actions];
+}
 
 const ADMIN_MODULE_BY_ACTION = new Map(
   Object.entries(ADMIN_ACTIONS).flatMap(([module, actions]) => actions.map((action) => [action, module] as const)),
@@ -127,23 +122,22 @@ const ADMIN_MODULE_BY_ACTION = new Map(
 /** Module of a platform application's audit row. */
 function appModule(appId: string): string {
   if (appId === DRIVE_AUDIT_APP_ID) return 'files';
-  // Report templates live in SkillHub.
-  if (appId === REPORTS_AUDIT_APP_ID) return 'skills';
+  const contributed = fromExtensions('activity').find((entry) => entry.appModules?.[appId]);
+  if (contributed) return contributed.appModules![appId]!;
   return appId;
 }
 
 const TOOL_MODULES: Record<string, string> = {
+  ...Object.assign({}, ...fromExtensions('activity').map((entry) => entry.toolModules ?? {})),
   knowledge_mutation: 'knowledge',
   files_mutation: 'files',
   // An agent's generated image is a new file on the member's personal shelf.
   generate_image: 'files',
-  // A rendered report (v1.7) is a new file in Files too.
-  report_render: 'files',
+
   project_mutation: 'projects',
   tables_mutation: 'tables',
   skill_mutation: 'skills',
-  feature_request: 'feedback',
-  log_friction: 'feedback',
+
   automation_mutation: 'automations',
 };
 
@@ -238,15 +232,19 @@ const ACTION_ENTITIES: Record<string, string> = {
 
 /** The object a tool without an action prefix writes. */
 const TOOL_ENTITIES: Record<string, string> = {
+  ...Object.assign(
+    {},
+    ...fromExtensions('activity').map((entry) =>
+      Object.fromEntries(Object.entries(entry.toolWrites ?? {}).map(([key, value]) => [key, value.entity])),
+    ),
+  ),
   knowledge_mutation: 'document',
   tables_mutation: 'record',
   skill_mutation: 'skill',
   automation_mutation: 'automation',
-  feature_request: 'featureRequest',
-  log_friction: 'friction',
+
   email_mutation: 'email',
   generate_image: 'file',
-  report_render: 'file',
 };
 
 export interface WriteShape {
@@ -257,12 +255,13 @@ export interface WriteShape {
 
 /** What one agent write did, in the Activity vocabulary: "updated document", "created folder". */
 export function describeToolWrite(toolId: string, action: string | null): WriteShape {
-  // log_friction's `action` is the kind of friction, not a verb: it always files a report.
-  if (toolId === 'log_friction') return { verb: 'create', entity: 'friction' };
+  const descriptor = fromExtensions('activity')
+    .map((entry) => entry.toolWrites?.[toolId])
+    .find(Boolean);
+  if (descriptor?.verb) return { verb: descriptor.verb as WriteShape['verb'], entity: descriptor.entity };
   // generate_image's `edit` makes a new image too; the original is untouched.
   if (toolId === 'generate_image') return { verb: 'create', entity: 'file' };
-  // report_render has no action: it always saves a new file.
-  if (toolId === 'report_render') return { verb: 'create', entity: 'file' };
+
   const dot = action ? action.lastIndexOf('.') : -1;
   const prefix = action && dot > 0 ? action.slice(0, dot) : null;
   const segment = action ? action.slice(dot + 1) : '';
@@ -380,7 +379,8 @@ async function fetchPending(
       if (wants(appModule(appId))) actions.push({ appId, actionIds });
     }
     if (wants('files')) actions.push({ appId: DRIVE_AUDIT_APP_ID, actionIds: DRIVE_ACTIONS });
-    if (wants('skills')) actions.push({ appId: REPORTS_AUDIT_APP_ID, actionIds: REPORT_TEMPLATE_PERSON_ACTIONS });
+    for (const entry of fromExtensions('activity'))
+      for (const item of entry.personActions ?? []) if (wants(item.module)) actions.push(item);
     if (wants('mcp')) actions.push({ appId: 'platform', actionIds: PERSONAL_PLATFORM_ACTIONS });
     jobs.push(
       db.activity
@@ -440,7 +440,7 @@ function cmp(a: string, b: string): number {
 
 // ─── Hydrate ─────────────────────────────────────────────
 
-interface HydrateContext {
+export interface HydrateContext {
   db: DatabaseProvider;
   viewer: ActivityViewer;
   titles: Map<string, string>;
@@ -531,27 +531,6 @@ async function oauthClientName(ctx: HydrateContext, clientId: string | null): Pr
 }
 
 /**
- * A report template, named only for a viewer who may read it: as it is now
- * (team templates for everyone, a draft for its owner), or — once deleted —
- * from the name its audit kept, for whoever made the change or anyone when
- * it was a team template. A member's draft is never named to anyone else,
- * a super included — the same rule as reading it.
- */
-async function reportTemplateTarget(ctx: HydrateContext, row: ActivityAuditRow, summary: Record<string, unknown>) {
-  const url = '#/skillhub?tab=reports';
-  try {
-    const live = row.record_id ? await ctx.db.reportTemplates.get(row.record_id) : null;
-    if (live)
-      return canViewTemplate(live, { userId: ctx.viewer.id, role: ctx.viewer.role }) ? { label: live.name, url } : null;
-  } catch {
-    // Fall back to the kept name.
-  }
-  if (typeof summary.name !== 'string' || !summary.name) return null;
-  const readable = summary.visibility === 'team' || ctx.viewer.id === row.actor_id;
-  return readable ? { label: summary.name, url: null } : null;
-}
-
-/**
  * The title an audit kept for a record that may be gone (projects record it on
  * create and delete). Shown to whoever made the change, and to a super, who
  * reads every project; never to anyone else.
@@ -579,7 +558,9 @@ function adminDetail(row: ActivityAuditRow, summary: Record<string, unknown>): s
   }
   if (row.action_id === 'revokeMemberGatewayKey' && typeof summary.detail === 'string') return summary.detail;
   if (
-    (REPORT_TEMPLATE_ADMIN_ACTIONS as readonly string[]).includes(row.action_id) &&
+    fromExtensions('activity').some((entry) =>
+      Object.values(entry.adminActions ?? {}).some((actions) => actions.includes(row.action_id)),
+    ) &&
     typeof summary.detail === 'string'
   ) {
     return summary.detail;
@@ -621,8 +602,11 @@ async function hydrateAudit(
     const name =
       (await oauthClientName(ctx, clientId)) ?? (typeof summary.client_name === 'string' ? summary.client_name : null);
     target = name ? { id: null, label: name, url: null } : null;
-  } else if (row.entity_id === 'reportTemplate' && row.record_id) {
-    const named = await reportTemplateTarget(ctx, row, summary);
+  } else if (row.record_id && fromExtensions('activity').some((entry) => entry.targets?.[row.entity_id ?? ''])) {
+    const resolve = fromExtensions('activity').find((entry) => entry.targets?.[row.entity_id ?? ''])!.targets![
+      row.entity_id!
+    ]!;
+    const named = await resolve(ctx, row, summary);
     target = { id: row.record_id, label: named?.label ?? null, url: named?.url ?? null };
   } else if (row.app_id === 'platform' && row.entity_id === 'gatewayKey') {
     // A gateway key is named by the name its owner gave it (never its secret).
@@ -736,7 +720,7 @@ async function agentWriteTarget(
     keptVisible = own || superReads;
   } else if (
     (toolId === 'files_mutation' && (shape.entity === 'file' || shape.entity === 'folder')) ||
-    toolId === 'report_render'
+    fromExtensions('activity').some((entry) => entry.fileTools?.includes(toolId))
   ) {
     const entity = shape.entity === 'folder' ? 'folder' : 'file';
     id = idText(field(result, entity, 'id')) ?? idText(field(input, entity === 'file' ? 'file_id' : 'folder_id'));
@@ -747,9 +731,14 @@ async function agentWriteTarget(
     keptVisible = own || superReads;
   } else if (toolId === 'automation_mutation') {
     kept = text(field(result, 'automation', 'name'), field(input, 'name'));
-  } else if (toolId === 'feature_request') {
-    kept = text(field(result, 'request', 'title'), field(input, 'title'));
-    keptVisible = own || superReads;
+  } else {
+    const title = fromExtensions('activity')
+      .map((entry) => entry.toolWrites?.[toolId]?.title)
+      .find(Boolean);
+    if (title) {
+      kept = text(field(result, title.result, title.field), field(input, title.field));
+      keptVisible = own || superReads;
+    }
   }
 
   if (live) return { id, ...live };

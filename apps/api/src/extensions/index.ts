@@ -1,3 +1,7 @@
+import { setExtensionAutomationTools } from '@greenhouse/types/automation-tools';
+import { SERVICE_PROVIDERS } from '../config/services.js';
+import { registerPromptContexts } from './prompt-context.js';
+import { registerWorkspaceSettingValidators } from '../settings/validation-registry.js';
 /**
  * Compiled-in extensions.
  *
@@ -22,6 +26,8 @@ import { registerSearchSources } from '../search/sources.js';
 import { registerDriveScopes } from '../drive/access.js';
 import { registerExportSources } from '../tools/export-sources.js';
 import type { GreenhouseExtension } from './define.js';
+import { registerBillableServices } from '../config/service-registry.js';
+import { registerExtensionRetention } from '@greenhouse/db';
 import { COMPILED_PLUGINS } from './compiled.generated.js';
 
 /** SDK 1 overlay registrations: one import and one entry per in-tree extension. */
@@ -89,3 +95,12 @@ for (const ext of EXTENSIONS) {
   if (ext.driveScopes?.length) registerDriveScopes(ext.driveScopes);
   if (ext.exportSources?.length) registerExportSources(ext.exportSources);
 }
+
+registerBillableServices(fromExtensions('billableServices'), Object.keys(SERVICE_PROVIDERS));
+registerExtensionRetention(fromExtensions('retention'));
+
+registerWorkspaceSettingValidators(fromExtensions('settingValidators'));
+
+registerPromptContexts(fromExtensions('promptContext'));
+
+setExtensionAutomationTools(fromExtensions('automationTools'));

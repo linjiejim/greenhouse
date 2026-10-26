@@ -25,7 +25,7 @@ import {
   READONLY_PROXY_ALLOWLIST,
 } from '../../apps/api/src/agent-runtime/tool-proxy.js';
 import type { AgentIdentity } from '../../apps/api/src/agent-runtime/api-auth.js';
-import { MCP_RESOURCE_GROUP_IDS } from '@greenhouse/types/mcp';
+import { allMcpResourceGroups } from '@greenhouse/types/mcp';
 import { mcpToolIdsForGroups } from '../../apps/api/src/tools/registry.js';
 import { composeMcpContext, MCP_EXPOSED_TOOL_IDS } from '../../apps/api/src/routes/mcp.js';
 import { initializePlatformRuntime, resetPlatformRuntimeForTests } from '../../apps/api/src/platform/runtime.js';
@@ -56,7 +56,7 @@ function identityFor(user: UserRow): AgentIdentity {
  * narrower grant yields a strict subset of this.
  */
 function mcpIdentityFor(user: UserRow): AgentIdentity {
-  const groupTools = mcpToolIdsForGroups(MCP_RESOURCE_GROUP_IDS);
+  const groupTools = mcpToolIdsForGroups(allMcpResourceGroups());
   return {
     ...identityFor(user),
     allowedTools: [...groupTools].filter((id) => !MUTATING_PROXY_ALLOWLIST.has(id)),
@@ -176,7 +176,7 @@ describe('cross-channel tool parity', () => {
     const user = await createInternalTestUser(db, { email: uniqueEmail('parity-default') });
 
     let sets = await channelSets(user);
-    expect(sets.chat.has('memory')).toBe(true);
+    expect(sets.chat.has('memory')).toBe(Boolean(db.extensions.memory));
 
     await db.userFeatures.upsert({ user_id: user.id, feature: 'memory', enabled: false, granted_by: user.id });
     sets = await channelSets(user);

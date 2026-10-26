@@ -60,8 +60,8 @@ vi.mock('../../chat/digest.js', async (importOriginal) => ({
   scheduleDigestFold: mocks.scheduleDigestFold,
 }));
 
-vi.mock('../../llm/memory.js', () => ({
-  resolveMemoryContext: vi.fn(async () => '### Memory\n- [fact] prefers short answers (id: 1)'),
+vi.mock('../../extensions/prompt-context.js', () => ({
+  resolveExtensionPromptContext: vi.fn(async () => '### Memory\n- [fact] prefers short answers (id: 1)'),
 }));
 
 vi.mock('../../llm/usage-budget.js', () => ({

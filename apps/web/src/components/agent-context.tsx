@@ -12,7 +12,8 @@
  *   Page component → enrichPageContext() → merged context
  */
 
-import { findExtensionPage } from '../extensions';
+import { getNavModule } from '../lib/nav-registry';
+import { findExtensionPage, isActiveWebExtension } from '../extensions';
 import React, { createContext, useContext, useState, useCallback, useEffect, useMemo } from 'react';
 import { isRowId } from '@greenhouse/utils/id';
 import type { AssistantLaunchRequest, PageContext } from '@greenhouse/types/agent-context';
@@ -73,10 +74,12 @@ export function resolveUrlContext(hash: string): PageContext | null {
       return { type: 'project-list' };
 
     case 'settings':
-      if (subPath === 'feature-requests' || params.get('tab') === 'feature-requests') {
-        return { type: 'feature-request-list' };
-      }
-      return null;
+    case 'administration': {
+      const owner = getNavModule(
+        `${route === 'administration' ? 'admin' : 'settings'}.${subPath.split('/')[0]}`,
+      )?.extensionId;
+      return owner && isActiveWebExtension(owner) ? { type: 'extension', extension: owner, route, subPath } : null;
+    }
 
     case 'tables': {
       return {

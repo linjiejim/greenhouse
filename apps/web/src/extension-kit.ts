@@ -88,3 +88,16 @@ export { useEntityNavigate, useInEntityPeek } from './components/entity-peek/con
 export { fetchShareableUsers } from './lib/api/sessions';
 export type { ShareableUser } from '@greenhouse/types/api';
 export type { ContextProviderDescriptor, ExtensionPageContext, QuickAction } from '@greenhouse/types/agent-context';
+
+// Host capabilities used by official plugin packages.
+export { IconButton, Toggle } from './components/ui';
+export { SettingsSection, SettingsPanel } from './components/settings/index';
+export { clientLabelKey, formatUsdPrice } from './lib/metering/format';
+export { relativeTime } from './lib/utils';
+export { flagSourceKey } from './lib/workspace-flags';
+export { defineCrud, CrudPage, type CrudDataSource } from './pages/settings/crud';
+export { KpiCard } from './components/usage/usage-widgets';
+export { MediaPreviewDialog } from './components/media-preview-dialog';
+
+export { saveWorkspaceSettings } from './lib/api/workspace-settings';
+export { RetroButton } from './pages/administration/retro-button';

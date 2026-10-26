@@ -459,7 +459,6 @@ export const TOOL_ICONS: Record<string, LucideIcon> = {
   analyze_image: Image,
   external_search: Globe,
   ask_user: ClipboardList,
-  feature_request: Lightbulb,
   generate_image: Palette,
   project_manager: FolderKanban,
   knowledge_query: BookOpen,
@@ -472,10 +471,6 @@ export const TOOL_ICONS: Record<string, LucideIcon> = {
   tables_schema_plan: Columns3,
   files_query: FolderOpen,
   files_mutation: FolderOpen,
-  feedback_query: Lightbulb,
-  log_friction: MessageSquareWarning,
-  report_templates: FileText,
-  report_render: FileText,
 };
 
 /** Get the Lucide icon for a tool name. */
@@ -491,7 +486,6 @@ export const TOOL_BRIEFS: Record<string, string> = {
   analyze_image: 'Extract important information from images',
   external_search: 'Search the internet for latest information',
   ask_user: 'Ask the user clarifying questions',
-  feature_request: 'Submit and manage feature requests',
   generate_image: 'Generate images from text descriptions',
   project_manager: 'Create and manage projects & tasks',
   knowledge_query: 'Browse, search and read team, personal and shared knowledge',

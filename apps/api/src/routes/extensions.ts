@@ -14,11 +14,14 @@
  */
 import { Hono } from 'hono';
 import type { AppEnv } from '../app-env.js';
+import { GREENHOUSE_CONFIG } from '../config/greenhouse-config.js';
 import { EXTENSIONS, fromExtensions } from '../extensions/index.js';
 
 const extensionsRoutes = new Hono<AppEnv>().get('/', (c) =>
   c.json({
     extensions: EXTENSIONS.map((ext) => ({ id: ext.id, name: ext.name, description: ext.description ?? null })),
+    automationTools: fromExtensions('automationTools'),
+    conversations: GREENHOUSE_CONFIG.conversations,
     entityKinds: fromExtensions('entityKinds'),
   }),
 );

@@ -454,3 +454,34 @@ form + detail + delete.
 - **Escape hatches, narrow → wide:** column/field `type: 'custom'` (render fn) → `slots` +
   `tableActions` / `pageActions` → use `CrudPage` / `CrudForm` / `CrudDetail` standalone in a
   bespoke page (`installCrudUi` wires the host's UI kit once, in `app.tsx`).
+
+## Optional module contributions (4.0)
+
+Official packages use the same boundaries as private plugins. Memory and Feedback are enabled by
+default; Reports and Computer require deployment enablement. Their legacy REST URLs remain stable.
+The existing `services(db)` factory provides only the plugin's typed DB bag. New contribution fields:
+
+| Field | Consumer and contract |
+|---|---|
+| `promptContext: [{toolIds, build(userId, role)}]` | Stable system prompt fragments; Chat supplies the actual turn tool ids. Owner/feature checks remain in the contributor. |
+| `billableServices` | Service catalog definitions plus optional async `isEnabled`; pricing, budget selectors and usage read the active catalog. |
+| `toolAvailability` | Async tool-id checks shared by external listings and admission. |
+| `settingValidators` | Synchronous `(key, value) => error or null`, called by the existing workspace-settings write validator. |
+| `activity` | Audit actions, modules, tool-write descriptions and permission-aware target hydration. |
+| `summarySources` | Optional aggregate sections for monthly summaries; disabling a contributor leaves empty sections. |
+| `retention: [{table, column, days}]` | Existing daily retention, bounded by batch size and maximum batches; identifiers validated and deletion counts audited. |
+| `seeds: [{dir, tables}]` | JSONL example rows after core parents; custom packs.seeds overrides the directory. |
+| web `tabs: [{host, key, labelKey, component}]` | Optional tabs on an existing host page, included in the browser surface sweep. |
+| web `slots: [{slot, component}]` | Optional settings sections; the host queries active contributions only. |
+
+`meta.builtin: true` works for plugin tools through the existing catalog-derived builtin set.
+The generic lazy builder excludes `surface.externalOnly`; external tools use the external builder.
+Plugin cron callbacks have local overlap protection and a shared per-minute claim in rate_limits,
+so replicas do not execute the same scheduled occurrence twice. Claim failures prevent execution.
+
+Adoption SQL uses the exact baseline columns, guarded foreign keys and `IF NOT EXISTS` indexes.
+No DROP is emitted when ownership leaves core. Generate a custom core migration and advance its
+snapshot; the snapshot is the current protection set, while historical DDL remains the fresh-install
+and 1.x carry reference. Keep every applied migration immutable.
+
+Automation opt-in entries (`automationTools: [{id, tier, order?, labelKey?}]`) come from active plugins; the API includes them in `/api/extensions`, and the client replaces its optional catalog when the station changes. `hubContext` contributes MCP group descriptions and overview/bundle hints, each gated by reachable tool ids. Settings/Administration module ownership also selects the extension's existing context provider. Optional Runtime Config group labels use `ext.<group>.settingsGroup` from the existing message registry.

@@ -6,7 +6,6 @@
  * limit rows resolved exactly as metering resolves them, with this month's
  * account balance next to each.
  */
-
 import { getAvailableProviders, type TokenPrice } from '@greenhouse/agent-core';
 import {
   getUtcMonthPeriod,
@@ -15,7 +14,6 @@ import {
   type DatabaseProvider,
 } from '@greenhouse/db';
 import {
-  METERED_SERVICES,
   type BudgetView,
   type MeteredService,
   type MeteringOverview,
@@ -26,7 +24,7 @@ import {
   type TokenPriceView,
 } from '@greenhouse/types/metering';
 import { getModelCatalog } from '../config/models.js';
-import { isComputerEnabled } from '../computer/service.js';
+import { billableServices } from '../config/service-registry.js';
 import {
   getServiceCatalog,
   isServiceProviderConfigured,
@@ -35,52 +33,50 @@ import {
 } from '../config/services.js';
 import { organizationScopeId, resolveLimitsFromRows } from './metering.js';
 import { effectiveModelPrice, effectiveServicePrice, syncPriceOverrides } from './pricing.js';
-
 function tokenPriceView(price: TokenPrice | undefined): TokenPriceView | null {
   return price ? { input: price.input, output: price.output, cached_input: price.cachedInput ?? null } : null;
 }
-
 /** Every priced service, declared or not: a service missing from the file is shown as unpriced. */
 /** `computerEnabled`: the workspace switch, resolved by the (async) caller. */
-export function listServicePrices(computerEnabled = false): ServicePriceView[] {
+export function listServicePrices(enabled: ReadonlyMap<string, boolean> = new Map()): ServicePriceView[] {
   const catalog = getServiceCatalog();
-  const defaults: Record<PricedService, Pick<ServicePriceView, 'name' | 'unit'>> = {
+  const defaults: Partial<Record<PricedService, Pick<ServicePriceView, 'name' | 'unit'>>> = {
     vision: { name: 'Image understanding', unit: 'token' },
     web_search: { name: 'Web search', unit: 'call' },
     page_read: { name: 'Page read', unit: 'call' },
     image_generation: { name: 'Image generation', unit: 'image' },
-    computer: { name: 'Cloud computer', unit: 'minute' },
   };
-  return (Object.keys(SERVICE_PROVIDERS) as PricedService[]).map((service) => {
-    const definition = catalog[service];
-    const providers = SERVICE_PROVIDERS[service].map((provider) => {
-      const entry = definition?.providers[provider];
-      const effective = effectiveServicePrice(service, provider);
-      const tokenPrice = tokenPriceView(effective?.tokenPrice);
-      const price = effective?.price ?? null;
-      const priceBySize = effective?.priceBySize ?? null;
-      const priced = price !== null || priceBySize !== null || tokenPrice !== null;
+  return ([...new Set([...Object.keys(SERVICE_PROVIDERS), ...Object.keys(catalog)])] as PricedService[]).map(
+    (service) => {
+      const definition = catalog[service];
+      const providers = (SERVICE_PROVIDERS[service] ?? Object.keys(definition?.providers ?? {})).map((provider) => {
+        const entry = definition?.providers[provider];
+        const effective = effectiveServicePrice(service, provider);
+        const tokenPrice = tokenPriceView(effective?.tokenPrice);
+        const price = effective?.price ?? null;
+        const priceBySize = effective?.priceBySize ?? null;
+        const priced = price !== null || priceBySize !== null || tokenPrice !== null;
+        return {
+          provider,
+          configured: entry ? isServiceProviderConfigured(entry) : false,
+          price,
+          price_by_size: priceBySize,
+          token_price: tokenPrice,
+          priced,
+          source: priced ? (effective?.source ?? null) : null,
+        };
+      });
       return {
-        provider,
-        configured: entry ? isServiceProviderConfigured(entry) : false,
-        price,
-        price_by_size: priceBySize,
-        token_price: tokenPrice,
-        priced,
-        source: priced ? (effective?.source ?? null) : null,
+        service,
+        name: definition?.name ?? defaults[service]?.name ?? service,
+        unit: definition?.unit ?? defaults[service]?.unit ?? 'call',
+        // The cloud computer runs only while the workspace switch is on (computer/config.ts).
+        enabled: (definition ? definition.enabled : true) && (enabled.get(service) ?? true),
+        providers,
       };
-    });
-    return {
-      service,
-      name: definition?.name ?? defaults[service].name,
-      unit: definition?.unit ?? defaults[service].unit,
-      // The cloud computer runs only while the workspace switch is on (computer/config.ts).
-      enabled: (definition ? definition.enabled : true) && (service !== 'computer' || computerEnabled),
-      providers,
-    };
-  });
+    },
+  );
 }
-
 export function listModelPrices(): ModelPriceView[] {
   const catalog = getModelCatalog();
   return Object.entries(catalog.models).map(([id, entry]) => {
@@ -94,7 +90,6 @@ export function listModelPrices(): ModelPriceView[] {
     };
   });
 }
-
 /** Configured, enabled and unpriced — calls that count as $0 right now. */
 export function unpricedInUse(
   services: ServicePriceView[],
@@ -111,7 +106,6 @@ export function unpricedInUse(
     ),
   };
 }
-
 /** `YYYY-MM` → that UTC month; anything else → null. */
 export function parseMonth(value: string | undefined): Date | null {
   if (!value) return new Date();
@@ -121,11 +115,9 @@ export function parseMonth(value: string | undefined): Date | null {
   if (month < 1 || month > 12) return null;
   return new Date(Date.UTC(Number(match[1]), month - 1, 1));
 }
-
 function spendRows(rows: Awaited<ReturnType<DatabaseProvider['metering']['spendBy']>>): SpendRow[] {
   return rows.map((row) => ({ ...row }));
 }
-
 export async function buildMeteringOverview(db: DatabaseProvider, at: Date = new Date()): Promise<MeteringOverview> {
   const period = getUtcMonthPeriod(at);
   const query = { since: period.start, until: period.end };
@@ -148,7 +140,6 @@ export async function buildMeteringOverview(db: DatabaseProvider, at: Date = new
       db.metering.listUsdAccounts({ period_start: period.start, period_end: period.end }),
       db.users.list(),
     ]);
-
   const account = (scopeType: string, scopeId: string) =>
     accounts.find((row) => row.scope_type === scopeType && row.scope_id === scopeId);
   const balance = (scopeType: string, scopeId: string) => {
@@ -157,8 +148,9 @@ export async function buildMeteringOverview(db: DatabaseProvider, at: Date = new
   };
   const base = resolveLimitsFromRows(limitRows, {});
   const userLabel = new Map(users.map((user) => [user.id, user.nickname || user.email || user.id]));
-
-  const services: BudgetView[] = METERED_SERVICES.map((service) => {
+  const services: BudgetView[] = (
+    ['llm', ...new Set([...Object.keys(SERVICE_PROVIDERS), ...Object.keys(getServiceCatalog())])] as MeteredService[]
+  ).map((service) => {
     const limit = resolveLimitsFromRows(limitRows, { service }).service;
     return {
       scope: 'service',
@@ -169,7 +161,6 @@ export async function buildMeteringOverview(db: DatabaseProvider, at: Date = new
       ...balance('service', service),
     };
   });
-
   const memberIds = new Set<string>();
   for (const row of limitRows) {
     if (row.scope_type === 'user' && row.scope_id !== MEMBER_DEFAULT_SCOPE_ID) memberIds.add(row.scope_id);
@@ -186,8 +177,15 @@ export async function buildMeteringOverview(db: DatabaseProvider, at: Date = new
       ...balance('user', userId),
     };
   });
-
-  const servicePrices = listServicePrices(await isComputerEnabled());
+  const servicePrices = listServicePrices(
+    new Map(
+      await Promise.all(
+        billableServices().map(
+          async (entry) => [entry.service, entry.isEnabled ? await entry.isEnabled() : entry.enabled] as const,
+        ),
+      ),
+    ),
+  );
   const modelPrices = listModelPrices();
   return {
     period,
@@ -225,7 +223,6 @@ export async function buildMeteringOverview(db: DatabaseProvider, at: Date = new
     },
   };
 }
-
 export async function buildMySpend(
   db: DatabaseProvider,
   userId: string,
@@ -270,7 +267,6 @@ export async function buildMySpend(
     },
   };
 }
-
 export function isMeteredService(value: unknown): value is MeteredService {
-  return typeof value === 'string' && (METERED_SERVICES as readonly string[]).includes(value);
+  return typeof value === 'string' && (value === 'llm' || value in SERVICE_PROVIDERS || value in getServiceCatalog());
 }

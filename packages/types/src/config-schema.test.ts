@@ -6,6 +6,7 @@ describe('parseGreenhouseConfig', () => {
   it('fills defaults for an empty file', () => {
     expect(parseGreenhouseConfig({})).toEqual({
       plugins: [],
+      conversations: { sharing: true },
       extensions: { enabled: 'all' },
       packs: { skills: [], profiles: [] },
       clients: { stations: { mode: 'multi', defaults: [] } },

@@ -121,7 +121,7 @@ v1 只接 DeepSeek 与 OpenAI 兼容服务，它们**自动**缓存 prompt 前�
 - **失败提示只指向真实存在的出口**（根 AGENTS.md「能力声明必须真实」在错误文案上的同一条要求：**没有出口比假出口好**）。v1.4 删掉 Mission 沙箱后部署里没有比这里更能读文件的地方，所以 `fallbackHint(reason)` 一律把路指回用户：`no_text_layer`（扫描件）要一份**有文字层的文件**或把页面**当图片发**（`analyze_image` 与 vision 模型读得了图）；`encrypted` 要无密码副本；`unsupported`/`extract_failed` 与超大文件说明失败原因并请用户给能读的格式（如导出成 CSV）。起因是 dev friction 80：一份扫描版 W-9，模型照旧提示准备派 mission，接着又拿同一个 PDF id 去试 `analyze_image`（friction 56）。
 - **服务端现在解析 PDF（`unpdf`），这推翻了 2026-08-02 的 spec D11**（见 [反转决策 D2](../../../docs/specs/20260804-crm-file-attach-and-pdf-reading.md)）。D11 自己写明的重开条件——「PDF 多到每份都进沙箱明显不划算」——在客户资料场景成立，用的也是它预写的首选库。**它当年的顾虑用显式失败分类回应，不是靠假装**：扫描件（无文字层）、加密、超时/损坏各有独立 reason 与错误句，绝不返回空字符串冒充读到了。**只提文字层，不渲染、不执行**：无 XFA、无嵌入 JS、不光栅化；pdf.js 6 已经彻底删掉 CVE-2024-4367 用的 eval 字体路径（构建里 `new Function` 为 0 处），所以恶意 PDF 的最坏结果就是一次失败解析或 10s 超时，两者都是普通返回值。**扫描件的视觉降级是 v2 方向，代码里刻意不留抽象**。
 
-### 用户记忆与踩坑信号 (`llm/memory.ts` + `frictions/` + `memory`/`log_friction` 工具)
+### 用户记忆与踩坑信号 (`plugins/memory/api/llm/memory.ts` + `plugins/feedback/api/frictions/` + `memory`/`log_friction` 工具)
 
 两套刻意分开的东西，方案与决策（D1–D11）见 [spec](../../../docs/specs/20260804-memory-v2.md)：**记忆是 per-user 且会注入 prompt**，**friction 是团队级且永不注入**。
 
@@ -132,7 +132,7 @@ v1 只接 DeepSeek 与 OpenAI 兼容服务，它们**自动**缓存 prompt 前�
 - **注入前必须 `sanitizeForPrompt`，写入前必须过 `validateMemoryText`**：记忆是模型写的、用户可编辑的文本，且每轮对话开头重放——这是一条持久 prompt-injection 通道（v1 漏了 sanitize）。写侧的敏感信息正则是**拒收**（邮箱/手机/key/JWT/hex），不是靠 prompt 自觉。
 - ⚠️ **日期不是电话号码，拒收前必须先把日期挖掉**（2026-08-13 修）。老的手机正则 `(?:\+?\d[\s-]?){7,}\d` 命中 `2026-08-11`——ISO 日期就是 8 位数字用分隔符连起来，与不带国家码的电话同形。而「这件事是哪天定的」是记忆最普通的内容，于是 dev 上一条纯工作决策被连拒 6 次（模型看不出是哪一段犯规，只能原样重试）。现在 `findSensitiveSpans()` 先算出日期跨度，任何与之重叠的匹配一律不算；电话另加 10–15 位数字的下限（`20260811` 这类紧凑日期与年份因此天然出局）。**校验与脱敏共用这一个函数**——`redactEvidence` 也据它按跨度替换，所以「拒收提到的那一段」与「证据里被打码的那一段」永远是同一段，且日期在 friction 证据里保持可读。
 - **拒收要报出具体片段并指路**：错误里带 `"<犯规原文>"`（模型无法从 2000 字里猜是哪一段），联系方式类再追加一句「归业务记录：挂到对应的项目 / 知识文档 / Tables 记录下，记忆只留决策、用姓名指代」——信息本身值得留存，只是不该留在一段会被重放进每轮 prompt、没有归属也没有权限的文本里。密钥类不给这句：它哪儿都不该去。
-- **限额与校验住零 import 叶子模块** `llm/memory-limits.ts` 与 `frictions/friction-limits.ts`：工具描述在模块求值期插值这些常量，而 `tools/registry.ts` 导入全部工具模块——常量若藏在会连到 db/security 的模块后面，一旦成环就是 TDZ，单测全绿但 API 起不来（automation 工具踩过一次）。
+- **限额常量保持静态，敏感信息规则共享安全叶子模块** `plugins/memory/api/llm/memory-limits.ts` 与 `plugins/feedback/api/frictions/friction-limits.ts`：工具描述在模块求值期插值这些常量，而 `tools/registry.ts` 导入全部工具模块——常量若依赖尚未完成初始化的 registry，一旦成环就是 TDZ，单测全绿但 API 起不来（automation 工具踩过一次）。
 - **friction 双写单实现**：`frictions/friction-center.ts` 同时服务每日挖掘（扫 `messages.parts -> 'pipeline'`，纯 SQL + 归一化，**无 LLM 成本**）与 `log_friction` 工具（覆盖没报错但绕远路的软摩擦）。指纹 = `tool + kind + 归一化错误`，同一个坑只有一行、`occurrence_count` 就是复盘优先级。**计数刻意不精确**（D8）：25h 窗口有重叠，重启会重复计数——它是排序信号不是账本。证据是**脱敏不是拒收**（与记忆相反：friction 样本的诊断价值就在原文）。
 - **`memory` 刻意没有 `surface`**：它读写混装、套不进 proxy 的 read/write 二分（标 read 就等于让无状态调用方绕过确认门写记忆），所以 chat / 定时任务拿得到，`/api/agent` 与 `/api/mcp` 拿不到。**`log_friction` 自 v1.5 起是写工具**（`proxy:'write'`、MCP 组 `feedback`）：成员的 Agent 也能报踩坑，MCP 上每次都是一条记名的 agent_write（成员 + 客户端），行本身仍是团队级、仍没有读动作。
 - **friction 复盘的出口在 harness 层**：`Administration → Issues & requests → Frictions`（super only，`/api/admin/frictions`；v1.5 与功能需求合并成一页两个 tab，旧地址重定向）只是队列，修复动作是改工具 description、改实现补报错、改 prompt、沉淀 skill 或改代码。**刻意不做**「把踩坑经验自动注入所有人的 prompt」的共享记忆——那会让一条写坏的经验污染全员，而复盘一次就能修在真正的位置上。重复 ≥3 次的操作型摩擦优先考虑升格成 SkillHub 技能。
@@ -286,7 +286,7 @@ v1 只接 DeepSeek 与 OpenAI 兼容服务，它们**自动**缓存 prompt 前�
 - 内置两套（周报 / 项目汇报）只在**从未有过模板**时由 `seedDefaultReportTemplates` 写入（advisory 锁 + 计数含已删行），删掉的不会在下次启动回来。
 - 内容契约 `reports/content.ts` 的 `checkReportContent`：必填章节必须在且非空、未知章节 key 与未知封面字段拒绝、按内容类型校形状与大小，**一次列出全部问题**（path + problem + 一句改法）。`report_render` 被拒时把问题逐条写进 `error` 文本——MCP 上被拒的写入只把这一句字符串交给 Agent，结构化 `issues` 只在 Chat / Agent API 可见。`report_templates.validate` 是不落盘、不留痕的预检。
 - 渲染纯 JS、不起浏览器：PDF 用 pdfmake（报告 A4、演示 16:9 每页一张）、Word 用 `docx`、PPT 用 `pptxgenjs`；演示的切页（`reports/slides.ts`）PPT 与 PDF 共用，**按渲染高度测量而不是数行数**：用内嵌字体的真实字宽与行高（`font.ts` 读 hhea/hmtx）在 `DECK` 的尺寸下折行，表格按列宽 × 折行行数算行高、表头每页重复，单行高过一页的行再切成几段；PDF 是两者里更紧的版式（PPT 正文框更宽、行距更小），所以计划按 PDF 量，`render.test.ts` 把 PDF 页数钉在计划上。Markdown 经 marked lexer 转成共享块模型，只保留 http(s)/mailto 链接，图片只留 alt 文字。**pdfmake 的网络与本地文件读取都按策略关死**（字体走它的内存文件系统、logo 直接给字节）——内容永远不会被当成资源去取。
-- 中文：PDF 内嵌 Noto Sans SC（OFL）子集 `apps/api/assets/fonts/`（GB2312 + 拉丁 + 常用符号，两档字重各 ~2.4 MB，`scripts/build-report-fonts.sh` 重建），pdfkit 每份文档再子集化，PDF 通常几十 KB；子集外的字（emoji、生僻字）显示为空白，结果里给 `warnings` 点名。Word/PPT 不嵌字体，写 `Microsoft YaHei`，缺字体时由查看器替换。
+- 中文：PDF 内嵌 Noto Sans SC（OFL）子集 `plugins/reports/assets/fonts/`（GB2312 + 拉丁 + 常用符号，两档字重各 ~2.4 MB，`scripts/build-report-fonts.sh` 重建），pdfkit 每份文档再子集化，PDF 通常几十 KB；子集外的字（emoji、生僻字）显示为空白，结果里给 `warnings` 点名。Word/PPT 不嵌字体，写 `Microsoft YaHei`，缺字体时由查看器替换。
 - 品牌取 Branding Studio：产品名、logo、`theme_tokens.brand`（缺省 V1 绿 `#2E8B3D`）。logo 能嵌就嵌：PDF 收 PNG/JPEG/SVG，Word 与 PPT 只收 PNG/JPEG（pptxgenjs 在服务端生成不了 SVG 预览图），嵌不了就换成产品名并给警告。
 - 存档：默认存成员个人架，可指定团队架或有写权限的文件夹，经 `uploadCabinetFile`（drive 审计照记、5 MB 上限）；返回 `file_id`、Files 深链与 5 分钟下载链接。本地渲染，**不计价**。Chat 同一实现（`buildLazyServerTools` 构造，非会话绑定）。
 - 模板的建 / 改 / 删记平台审计（`reports/audit.ts`，成功后记、失败只 warn）：自己的模板记成本人改动（`app_id='reports'`，`createReportTemplate` 等，SkillHub 模块）；super 改删别人的或内置模板记成管理员改动（`app_id='platform'`，`updateMemberReportTemplate` / `deleteMemberReportTemplate`，detail 写「owned by …」或 built-in）。summary 只存名称、可见范围和作者，不存章节。已删模板按审计里的名字命名：团队模板谁都可以，草稿只有作者本人——super 也看不到草稿名，与读权限一致。
@@ -639,3 +639,18 @@ v1 只接 DeepSeek 与 OpenAI 兼容服务，它们**自动**缓存 prompt 前�
 - `extensions/index.ts` combines generated packages with the SDK 1 in-tree overlay list; every existing active registry still uses `EXTENSIONS`. Never import plugin code from core.
 - `/api/admin/plugins` is super-only and read-only. CLI list/status share its operator model; hook failures still abort startup, and boot facts are process-local.
 - Plugin drop is disabled-only + `--yes`, handled by the DB migration lane under its lock; never CASCADE into another plugin or core.
+
+### Official plugin ownership (4.0, wave 2a)
+
+Memory and Feedback are default-on packages; Reports and Computer are compiled but default-off.
+Their schemas, DB services, routes, tools, jobs, classic web panels, translations and seeds live
+under `plugins/<id>/`. Core must consume their contributions, never import their source or add
+module-specific cases. The generic seams are `promptContext`, `toolAvailability`, `billableServices`,
+`settingValidators`, `activity`, `summarySources`, `seeds`, and `retention`; web adds `tabs` and `slots`.
+`services` remains the DB factory; `billableServices` is the price catalog contribution.
+Tools may declare `meta.builtin`; this widens only the profile filter, never member permissions.
+External-only plugin tools are constructed only by the external service-tool builder.
+
+`conversations.sharing` defaults to true in greenhouse.config.ts. False disables share mutations and
+session-share routes, returns empty `/api/shares` lists, hides classic sharing controls and removes
+access granted by stored shares. Existing share rows are preserved.

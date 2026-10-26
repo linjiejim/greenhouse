@@ -49,14 +49,6 @@ export interface FeatureFlag {
 
 export const FEATURE_FLAGS = [
   {
-    key: 'memory',
-    label: 'AI Memory',
-    description: 'Agent learns and remembers user preferences across sessions',
-    // On for everyone unless explicitly disabled — memory is only useful if it
-    // accumulates, and an opt-in allowlist kept it empty for its entire v1 life.
-    defaultEnabled: true,
-  },
-  {
     key: 'tables',
     label: 'Tables',
     description: 'Internal multidimensional tables, shared grid views, REST, and MCP access',

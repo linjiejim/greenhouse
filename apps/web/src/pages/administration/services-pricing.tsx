@@ -1,3 +1,4 @@
+import { extensionSlots } from '../../extensions';
 /**
  * Administration › Services & pricing (super only).
  *
@@ -73,7 +74,6 @@ import { saveWorkspaceSettings } from '../../lib/api/workspace-settings';
 import { formatDate } from '../../lib/utils';
 import { flagSourceKey } from '../../lib/workspace-flags';
 import { useT } from '../../lib/i18n';
-import { ComputerAdminSection } from './computer-admin';
 import {
   clientLabelKey,
   formatUsd,
@@ -426,9 +426,7 @@ function PricesTab({ overview, onChanged }: { overview: MeteringOverview; onChan
                     <td className="py-1.5 pr-3 font-mono">{provider.provider}</td>
                     <td className="py-1.5 pr-3">
                       {!service.enabled ? (
-                        <Tag tone="neutral">
-                          {service.service === 'computer' ? t('computer.switchOff') : t('metering.notEnabled')}
-                        </Tag>
+                        <Tag tone="neutral">{t('metering.notEnabled')}</Tag>
                       ) : provider.configured ? (
                         <Tag tone="success">{t('metering.configured')}</Tag>
                       ) : (
@@ -470,7 +468,9 @@ function PricesTab({ overview, onChanged }: { overview: MeteringOverview; onChan
           </table>
         </div>
       </SettingsSection>
-      <ComputerAdminSection onChanged={onChanged} />
+      {extensionSlots('services-pricing').map(({ component: Panel }, index) => (
+        <Panel key={index} onChanged={onChanged} />
+      ))}
       <SettingsSection title={t('metering.models')} icon={Cpu}>
         <div className="overflow-x-auto">
           <table className="w-full min-w-[640px] text-xs" data-testid="metering-models">

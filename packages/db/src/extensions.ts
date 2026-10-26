@@ -47,4 +47,29 @@ export function getExtensionServices<T>(provider: { extensions: Record<string, u
 export function _resetExtensionRegistrations(): void {
   serviceFactories.clear();
   resetTables.length = 0;
+  retentionRules.length = 0;
+}
+
+export interface ExtensionRetentionRule {
+  table: string;
+  column: string;
+  days: number;
+}
+const retentionRules: ExtensionRetentionRule[] = [];
+export function registerExtensionRetention(rules: readonly ExtensionRetentionRule[]): void {
+  for (const rule of rules) {
+    if (
+      !/^[a-z_][a-z0-9_]*$/.test(rule.table) ||
+      !/^[a-z_][a-z0-9_]*$/.test(rule.column) ||
+      !Number.isFinite(rule.days) ||
+      rule.days <= 0
+    )
+      throw new Error('Invalid extension retention rule');
+    if (retentionRules.some((entry) => entry.table === rule.table))
+      throw new Error(`Duplicate retention table ${rule.table}`);
+    retentionRules.push({ ...rule });
+  }
+}
+export function extensionRetentionRules(): readonly ExtensionRetentionRule[] {
+  return retentionRules;
 }

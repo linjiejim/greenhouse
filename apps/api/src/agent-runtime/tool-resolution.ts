@@ -15,12 +15,8 @@ import { fromExtensions } from '../extensions/index.js';
 import { normalizeAutomationOptInTools } from '@greenhouse/types/automation-tools';
 import { resolveUserTools } from '../agent.js';
 import type { ToolRegistry } from '../agent.js';
-import { createFeatureRequestTool } from '../tools/feature-request.js';
 import { createFilesQueryTool } from '../tools/files-query.js';
 import { createFilesMutationTool } from '../tools/files-mutation.js';
-import { createReportTemplatesTool } from '../tools/report-templates.js';
-import { createReportRenderTool } from '../tools/report-render.js';
-import { createFeedbackQueryTool } from '../tools/feedback-query.js';
 // Derived from the catalog (kind !== 'static' + route-constructed special metas) — see registry.
 import { BUILTIN_AGENT_TOOL_IDS, getToolMeta, LAZY_TOOL_IDS, RETIRED_TOOL_ALIASES } from '../tools/registry.js';
 export { LAZY_TOOL_IDS };
@@ -35,8 +31,6 @@ import { createAutomationQueryTool } from '../tools/automation-query.js';
 import { createAutomationMutationTool } from '../tools/automation-mutation.js';
 import { createEmailQueryTool } from '../tools/email-query.js';
 import { createEmailMutationTool } from '../tools/email-mutation.js';
-import { createMemoryTool } from '../tools/memory.js';
-import { createLogFrictionTool } from '../tools/log-friction.js';
 import { createGenerateImageTool } from '../tools/generate-image.js';
 import { createAnalyzeImageTool } from '../tools/analyze-image.js';
 import { createTablesQueryTool } from '../tools/tables-query.js';
@@ -271,16 +265,6 @@ export function buildLazyServerTools(
     });
   }
 
-  if (effectiveTools.includes('feature_request')) {
-    tools.feature_request = createFeatureRequestTool(db, {
-      userId,
-      userRole,
-      sessionId: sessionId ?? undefined,
-    });
-  }
-  if (effectiveTools.includes('feedback_query')) {
-    tools.feedback_query = createFeedbackQueryTool(db, { userId, userRole });
-  }
   if (effectiveTools.includes('project_query')) {
     tools.project_query = createProjectQueryTool(db, { userId });
   }
@@ -314,15 +298,6 @@ export function buildLazyServerTools(
   if (effectiveTools.includes('files_mutation')) {
     tools.files_mutation = createFilesMutationTool(db, { userId });
   }
-  // Report templates (v1.7) — visibility and edit rights live in
-  // reports/templates.ts; a rendered report is a new file in Files. Not
-  // session-scoped, so Chat, the Agent API and MCP all reach them.
-  if (effectiveTools.includes('report_templates')) {
-    tools.report_templates = createReportTemplatesTool(db, { userId, userRole });
-  }
-  if (effectiveTools.includes('report_render')) {
-    tools.report_render = createReportRenderTool(db, { userId, userRole });
-  }
   // Skill Center writes — owner/super checks live in skills/center.ts; the
   // read side (skill_query) is static and comes from the base registry.
   if (effectiveTools.includes('skill_mutation')) {
@@ -350,16 +325,6 @@ export function buildLazyServerTools(
   }
   if (effectiveTools.includes('email_mutation')) {
     tools.email_mutation = createEmailMutationTool(db, { userId, userRole, sessionId });
-  }
-
-  // Memory + friction logging — owner-scoped inside the tools. sessionId is only
-  // provenance (which conversation produced this), never the access boundary, so
-  // both stay available on headless runs where there is no session.
-  if (effectiveTools.includes('memory')) {
-    tools.memory = createMemoryTool(db, { userId, sessionId });
-  }
-  if (effectiveTools.includes('log_friction')) {
-    tools.log_friction = createLogFrictionTool(db, { sessionId });
   }
 
   // ── Session-scoped tools ──
@@ -408,7 +373,13 @@ export function buildLazyServerTools(
 
   // Extension lazy tools take the generic path: no per-tool case needed in core.
   for (const mod of fromExtensions('tools')) {
-    if (mod.kind !== 'lazy' || !mod.createLazy || !effectiveTools.includes(mod.meta.id)) continue;
+    if (
+      mod.meta.surface?.externalOnly ||
+      mod.kind !== 'lazy' ||
+      !mod.createLazy ||
+      !effectiveTools.includes(mod.meta.id)
+    )
+      continue;
     tools[mod.meta.id] = mod.createLazy({
       db,
       userId,

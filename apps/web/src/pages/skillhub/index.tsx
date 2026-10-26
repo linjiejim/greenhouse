@@ -16,22 +16,21 @@
  * the query, not the path, because the path segment is a skill name.
  */
 
+import { extensionTabs } from '../../extensions';
 import React, { useState } from 'react';
 import { SkillDetail, SkillHubLanding, SkillHubList, SkillUploadDialog } from '../../components/skillhub';
 import { ModulePage } from '../../components/app/module-page';
 import { Button, Tabs } from '../../components/ui';
 import { Upload } from '../../lib/icons';
 import { useT } from '../../lib/i18n';
-import { SKILLHUB_PROMPTS_HASH, SKILLHUB_REPORTS_HASH } from '../../lib/workspace-routes';
+import { SKILLHUB_PROMPTS_HASH } from '../../lib/workspace-routes';
 import { PromptsPanel } from './prompts';
-import { ReportTemplatesPanel } from './report-templates';
 
-type SkillHubTab = 'skills' | 'prompts' | 'reports';
+type SkillHubTab = string;
 
 const TAB_HASH: Record<SkillHubTab, string> = {
   skills: '#/skillhub',
   prompts: SKILLHUB_PROMPTS_HASH,
-  reports: SKILLHUB_REPORTS_HASH,
 };
 
 export function SkillHubPage({ subPath, params }: { subPath: string; params?: URLSearchParams }) {
@@ -39,7 +38,9 @@ export function SkillHubPage({ subPath, params }: { subPath: string; params?: UR
   const name = subPath.split('/').filter(Boolean)[0] || '';
   const [uploadOpen, setUploadOpen] = useState(false);
   const requested = params?.get('tab');
-  const tab: SkillHubTab = requested === 'prompts' || requested === 'reports' ? requested : 'skills';
+  const extraTabs = extensionTabs('skillhub');
+  const extraTab = extraTabs.find((item) => item.key === requested);
+  const tab: SkillHubTab = requested === 'prompts' || extraTab ? requested! : 'skills';
 
   if (name) {
     return (
@@ -54,11 +55,11 @@ export function SkillHubPage({ subPath, params }: { subPath: string; params?: UR
       tabs={[
         { key: 'skills', label: t('skillHub.tabs.skills') },
         { key: 'prompts', label: t('skillHub.tabs.prompts') },
-        { key: 'reports', label: t('skillHub.tabs.reports') },
+        ...extraTabs.map((item) => ({ key: item.key, label: t(item.labelKey) })),
       ]}
       active={tab}
       onChange={(key) => {
-        window.location.hash = TAB_HASH[key as SkillHubTab] ?? '#/skillhub';
+        window.location.hash = TAB_HASH[key] ?? `#/skillhub?tab=${encodeURIComponent(key)}`;
       }}
       ariaLabel={t('skillHub.tabs.label')}
     />
@@ -72,15 +73,11 @@ export function SkillHubPage({ subPath, params }: { subPath: string; params?: UR
     );
   }
 
-  if (tab === 'reports') {
+  if (extraTab) {
+    const Panel = extraTab.component;
     return (
-      <ModulePage
-        moduleId="workspace.skillhub"
-        layout="list"
-        tabs={tabs}
-        notice={<p className="text-xs text-fg-muted">{t('reportTemplates.notice')}</p>}
-      >
-        <ReportTemplatesPanel />
+      <ModulePage moduleId="workspace.skillhub" layout="list" tabs={tabs}>
+        <Panel />
       </ModulePage>
     );
   }

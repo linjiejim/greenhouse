@@ -66,6 +66,7 @@ export interface PacksConfig {
 export interface GreenhouseConfig {
   /** Plugin package names or paths relative to the repository root, in registration order. */
   plugins: string[];
+  conversations: { sharing: boolean };
   extensions: ExtensionsConfig;
   packs: PacksConfig;
   clients: { stations: ClientStationsConfig };
@@ -74,6 +75,7 @@ export interface GreenhouseConfig {
 /** What a `greenhouse.config.ts` file may export — every section optional. */
 export interface GreenhouseConfigInput {
   plugins?: string[];
+  conversations?: { sharing?: boolean };
   extensions?: Partial<ExtensionsConfig>;
   packs?: Partial<PacksConfig>;
   clients?: { stations?: Partial<ClientStationsConfig> };
@@ -81,6 +83,7 @@ export interface GreenhouseConfigInput {
 
 export const DEFAULT_GREENHOUSE_CONFIG: GreenhouseConfig = {
   plugins: [],
+  conversations: { sharing: true },
   extensions: { enabled: 'all' },
   packs: { skills: [], profiles: [] },
   clients: { stations: { mode: 'multi', defaults: [] } },
@@ -101,6 +104,7 @@ export function defineConfig(config: GreenhouseConfigInput): GreenhouseConfigInp
 export function mergeGreenhouseConfig(input: GreenhouseConfigInput | undefined): GreenhouseConfig {
   return {
     plugins: input?.plugins ?? [],
+    conversations: { ...DEFAULT_GREENHOUSE_CONFIG.conversations, ...input?.conversations },
     extensions: { ...DEFAULT_GREENHOUSE_CONFIG.extensions, ...(input?.extensions ?? {}) },
     packs: { ...DEFAULT_GREENHOUSE_CONFIG.packs, ...(input?.packs ?? {}) },
     clients: {

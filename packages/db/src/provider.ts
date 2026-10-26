@@ -25,7 +25,6 @@ import { createUserService } from './services/users.js';
 import { createUserToolService } from './services/user-tools.js';
 import { createRefreshTokenService } from './services/refresh-tokens.js';
 import { createAccountPasswordLinkService } from './services/account-password-links.js';
-import { createFeatureRequestService } from './services/feature-requests.js';
 import { createProjectService } from './services/projects.js';
 import { createApiAuditService } from './services/api-audit.js';
 import { createUserPromptService } from './services/user-prompts.js';
@@ -38,8 +37,6 @@ import { createSessionPinService } from './services/session-pins.js';
 import { createKnowledgeBaseService } from './services/knowledge-base.js';
 import { createKnowledgeShareService } from './services/knowledge-shares.js';
 import { createUserFeatureService } from './services/user-features.js';
-import { createUserMemoryService } from './services/user-memories.js';
-import { createToolFrictionService } from './services/tool-frictions.js';
 import { createDriveService } from './services/drive.js';
 import { createActivityService } from './services/activity.js';
 import { createEmailService } from './services/email.js';
@@ -53,8 +50,6 @@ import { createRuntimeService } from './services/runtime.js';
 import { createNotificationService } from './services/notifications.js';
 import { createPushDeviceService } from './services/push-devices.js';
 import { createGatewayKeyService } from './services/gateway-keys.js';
-import { createReportTemplateService } from './services/report-templates.js';
-import { createMemberComputerService } from './services/member-computers.js';
 import { createWorkspaceSettingService } from './services/workspace-settings.js';
 import { createOAuthLoginStateService, createRateLimitService } from './services/security-state.js';
 import { createRetentionService } from './services/retention.js';
@@ -86,7 +81,6 @@ function createDatabaseProvider(db: Db, client: DbClient['client'] | null) {
     userTools: createUserToolService(db),
     refreshTokens: createRefreshTokenService(db),
     accountPasswordLinks: createAccountPasswordLinkService(db),
-    featureRequests: createFeatureRequestService(db),
     projects: createProjectService(db),
     apiAudit: createApiAuditService(db),
     userPrompts: createUserPromptService(db),
@@ -99,8 +93,6 @@ function createDatabaseProvider(db: Db, client: DbClient['client'] | null) {
     knowledgeBase: createKnowledgeBaseService(db),
     knowledgeShares: createKnowledgeShareService(db),
     userFeatures: createUserFeatureService(db),
-    userMemories: createUserMemoryService(db),
-    toolFrictions: createToolFrictionService(db),
     drive: createDriveService(db),
     activity: createActivityService(db),
     email: createEmailService(db),
@@ -114,8 +106,6 @@ function createDatabaseProvider(db: Db, client: DbClient['client'] | null) {
     notifications: createNotificationService(db),
     pushDevices: createPushDeviceService(db),
     gatewayKeys: createGatewayKeyService(db),
-    reportTemplates: createReportTemplateService(db),
-    memberComputers: createMemberComputerService(db),
     workspaceSettings: createWorkspaceSettingService(db),
     rateLimits: createRateLimitService(db),
     retention: createRetentionService(db),
@@ -131,6 +121,16 @@ function createDatabaseProvider(db: Db, client: DbClient['client'] | null) {
       } catch {
         return { ok: false, latencyMs: Date.now() - start };
       }
+    },
+
+    /** Hold one transaction-scoped advisory lock throughout a system job. */
+    async withAdvisoryLock(key: string, run: () => Promise<void>): Promise<boolean> {
+      return db.transaction(async (tx) => {
+        const [row] = await tx.execute(sql`SELECT pg_try_advisory_xact_lock(hashtext(${key})) AS acquired`);
+        if (!row?.acquired) return false;
+        await run();
+        return true;
+      });
     },
 
     /** Execute a raw SQL query (admin diagnostics only). */

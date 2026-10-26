@@ -1,3 +1,4 @@
+import { LAZY_TOOL_IDS } from '../../tools/registry.js';
 /**
  * Tests for the profile↔user tool intersection boundary.
  *
@@ -134,11 +135,13 @@ describe('stored ids of removed tools', () => {
       userId: 'u1',
       userRole: 'team',
     });
-    expect(Object.keys(tools)).toEqual(['memory']);
+    expect(Object.keys(tools)).toEqual(LAZY_TOOL_IDS.has('memory') ? ['memory'] : []);
   });
 
   it('an automation opt-in list naming them normalizes them away', () => {
-    expect(normalizeAutomationOptInTools([...REMOVED, 'memory'])).toEqual(['memory']);
+    expect(normalizeAutomationOptInTools([...REMOVED, 'memory'])).toEqual(
+      LAZY_TOOL_IDS.has('memory') ? ['memory'] : [],
+    );
   });
 });
 

@@ -51,32 +51,38 @@ export type AutomationOptInTier = 'assist' | 'write';
 export interface AutomationOptInTool {
   id: string;
   tier: AutomationOptInTier;
+  order?: number;
+  labelKey?: `ext.${string}`;
 }
 
-export const AUTOMATION_OPT_IN_TOOLS: readonly AutomationOptInTool[] = [
-  { id: 'memory', tier: 'assist' },
-  { id: 'analyze_image', tier: 'assist' },
-  { id: 'generate_image', tier: 'assist' },
-  { id: 'export_data', tier: 'assist' },
-  { id: 'log_friction', tier: 'assist' },
-  { id: 'tables_mutation', tier: 'write' },
-  { id: 'knowledge_mutation', tier: 'write' },
-  { id: 'project_mutation', tier: 'write' },
-  // v1.7: a scheduled weekly report. Only ever adds a file (deletable) — on the
-  // owner's personal shelf unless the task names a team folder the owner may
-  // write, so it sits with the other reversible business writes. Its read
-  // half, report_templates, is replay-safe and granted automatically.
-  { id: 'report_render', tier: 'write' },
-  // Connectors: reads plus the remote writes an admin switched on, recorded as
-  // connector_write runs under the owner; destructive tools never run unattended
-  // (tools/mcp-call.ts hides them on the automation surface).
-  { id: 'mcp_call', tier: 'write' },
+const CORE_OPT_IN_TOOLS: AutomationOptInTool[] = [
+  { id: 'analyze_image', tier: 'assist', order: 10 },
+  { id: 'generate_image', tier: 'assist', order: 20 },
+  { id: 'export_data', tier: 'assist', order: 30 },
+  { id: 'tables_mutation', tier: 'write', order: 50 },
+  { id: 'knowledge_mutation', tier: 'write', order: 60 },
+  { id: 'project_mutation', tier: 'write', order: 70 },
+  { id: 'mcp_call', tier: 'write', order: 90 },
 ];
-
-export const AUTOMATION_OPT_IN_TOOL_IDS: ReadonlySet<string> = new Set(AUTOMATION_OPT_IN_TOOLS.map((t) => t.id));
-
-/** Cap the stored array so a malformed client cannot grow the row unbounded. */
-export const MAX_AUTOMATION_OPT_IN_TOOLS = AUTOMATION_OPT_IN_TOOLS.length;
+export const AUTOMATION_OPT_IN_TOOLS: AutomationOptInTool[] = [...CORE_OPT_IN_TOOLS];
+export const AUTOMATION_OPT_IN_TOOL_IDS = new Set(AUTOMATION_OPT_IN_TOOLS.map((tool) => tool.id));
+export let MAX_AUTOMATION_OPT_IN_TOOLS = AUTOMATION_OPT_IN_TOOLS.length;
+/** Replace plugin contributions when a deployment is assembled or the client changes station. */
+export function setExtensionAutomationTools(tools: readonly AutomationOptInTool[]): void {
+  const seen = new Set(CORE_OPT_IN_TOOLS.map((tool) => tool.id));
+  for (const tool of tools) {
+    if (seen.has(tool.id)) throw new Error(`Duplicate automation opt-in tool ${tool.id}`);
+    seen.add(tool.id);
+  }
+  AUTOMATION_OPT_IN_TOOLS.splice(
+    0,
+    AUTOMATION_OPT_IN_TOOLS.length,
+    ...[...CORE_OPT_IN_TOOLS, ...tools].sort((a, b) => (a.order ?? 100) - (b.order ?? 100)),
+  );
+  AUTOMATION_OPT_IN_TOOL_IDS.clear();
+  for (const tool of AUTOMATION_OPT_IN_TOOLS) AUTOMATION_OPT_IN_TOOL_IDS.add(tool.id);
+  MAX_AUTOMATION_OPT_IN_TOOLS = AUTOMATION_OPT_IN_TOOLS.length;
+}
 
 export function isAutomationOptInTool(id: string): boolean {
   return AUTOMATION_OPT_IN_TOOL_IDS.has(id);

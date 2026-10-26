@@ -71,6 +71,29 @@ export interface ExtensionBootContext {
   config: GreenhouseConfig;
 }
 
+export interface ExtensionPromptContext {
+  toolIds: readonly string[];
+  build: (userId: string, role?: string) => Promise<string | null>;
+}
+
+export interface ExtensionActivity {
+  /** Tool write descriptions and audit actions owned by this plugin. */
+  appModules?: Record<string, string>;
+  toolModules?: Record<string, string>;
+  fileTools?: string[];
+  personActions?: Array<{ appId: string; module: string; actionIds: readonly string[] }>;
+  toolWrites?: Record<string, { entity: string; verb?: string; title?: { result: string; field: string } }>;
+  adminActions?: Record<string, string[]>;
+  targets?: Record<
+    string,
+    (
+      ctx: import('../activity/activity-log.js').HydrateContext,
+      row: import('@greenhouse/db').ActivityAuditRow,
+      summary: Record<string, unknown>,
+    ) => Promise<{ label: string; url: string | null } | null>
+  >;
+}
+
 export interface GreenhouseExtension {
   /** Stable id: lowercase letters, digits, dashes. Also the config / env switch. */
   id: string;
@@ -106,6 +129,34 @@ export interface GreenhouseExtension {
    */
   dependsOn?: string[];
 
+  /** Tools the owner may explicitly grant to unattended automations. */
+  automationTools?: import('@greenhouse/types/automation-tools').AutomationOptInTool[];
+  /** MCP group descriptions and hints, cut to the caller's reachable tools. */
+  hubContext?: Array<{
+    group: string;
+    description: string;
+    toolIds: string[];
+    overviewHint?: string;
+    bundleHint?: string;
+  }>;
+  /** Stable system-prompt context, scoped to tools reachable by this member. */
+  promptContext?: ExtensionPromptContext[];
+  /** Paid service definitions, including optional runtime availability checks. */
+  billableServices?: import('../config/service-registry.js').BillableService[];
+  /** Per-request availability reasons for tool listings and admission. */
+  toolAvailability?: Array<(toolId: string) => Promise<string | null>>;
+  /** Bounded daily retention for plugin-owned tables. */
+  retention?: import('@greenhouse/db').ExtensionRetentionRule[];
+  activity?: ExtensionActivity[];
+  settingValidators?: Array<(key: string, value: string) => string | null>;
+  /** Optional data sources consumed by system summaries. */
+  summarySources?: Array<{
+    id: string;
+    load: (
+      db: DatabaseProvider,
+      window: { from: string; to: string },
+    ) => Promise<Partial<import('../retro/aggregate.js').RetroAggregates>>;
+  }>;
   /** Agent tools — auto-exposed to chat, `/api/agent` and `/api/mcp` per each tool's `meta.surface`. */
   tools?: ToolModule[];
   /** HTTP routes mounted after the core chain. */
@@ -153,6 +204,8 @@ export interface GreenhouseExtension {
   services?: (db: Db) => Record<string, unknown>;
   /** Tables to truncate with the core tables between integration tests / `pnpm cli db reset`. */
   resetTables?: string[];
+  /** Example datasets, loaded after core seed rows in dependency order. */
+  seeds?: Array<{ dir: string; tables: string[] }>;
   /** Skill-pack roots bundled with the extension (same layout as `skillhub/`). */
   skillPacks?: string[];
   /** Runs after the database, platform runtime and tool registry are ready, before routes are served. */

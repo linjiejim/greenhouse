@@ -5,6 +5,7 @@
  * chat) remains limited to the owner or a super user.
  */
 
+import { GREENHOUSE_CONFIG } from '../config/greenhouse-config.js';
 import { getDb } from '@greenhouse/db';
 import type { AuthUser } from '../auth/token.js';
 import type { SessionRow } from '@greenhouse/types/session';
@@ -14,6 +15,7 @@ export async function canAccessSession(user: AuthUser, session: SessionRow): Pro
   if (user.role === 'super') return true;
   if (session.user_id === user.id) return true;
 
+  if (!GREENHOUSE_CONFIG.conversations.sharing) return false;
   const sharedIds = await getDb().sessionShares.getSharedSessionIds(user.id);
   return sharedIds.includes(session.id);
 }

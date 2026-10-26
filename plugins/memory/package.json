@@ -1,0 +1,37 @@
+{
+  "name": "@greenhouse/plugin-memory",
+  "version": "3.0.2",
+  "private": true,
+  "type": "module",
+  "greenhouse": {
+    "id": "memory",
+    "sdk": 1,
+    "api": "./api/index.ts",
+    "web": "./web/index.ts"
+  },
+  "exports": {
+    "./api": "./api/index.ts",
+    "./web": "./web/index.ts",
+    "./manifest": "./manifest.ts"
+  },
+  "dependencies": {
+    "@greenhouse/api": "workspace:*",
+    "@greenhouse/web": "workspace:*",
+    "@greenhouse/types": "workspace:*",
+    "@greenhouse/crud": "workspace:*",
+    "ai": "^6.0.176",
+    "drizzle-orm": "^0.45.2",
+    "hono": "^4.12.18",
+    "react": "^19.0.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.61.1",
+    "@greenhouse/db": "workspace:*",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "@greenhouse/agent-core": "workspace:*",
+    "drizzle-kit": "^0.31.10",
+    "react-dom": "^19.0.0"
+  }
+}

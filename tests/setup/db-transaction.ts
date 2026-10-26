@@ -9,6 +9,8 @@ import {
 let activeTransaction: TestTransaction | null = null;
 
 beforeEach(async () => {
+  // Register active service factories after each file has installed its provider mocks.
+  await import('../../apps/api/src/extensions/index.js');
   if (activeTransaction) await activeTransaction.rollback();
   const transaction = await startIntegrationTestTransaction(TEST_DATABASE_URL);
   activeTransaction = transaction;

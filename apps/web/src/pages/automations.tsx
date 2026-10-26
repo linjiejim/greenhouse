@@ -1,3 +1,4 @@
+import { useExtensionsStore } from '../stores/extensions-store';
 /**
  * Automations panel — scheduled tasks, driven by one @greenhouse/crud schema.
  *
@@ -318,9 +319,11 @@ function withFormDefaults(data: Record<string, unknown>): Partial<ScheduledTaskI
  * rather than quietly allowed.
  */
 function OptInToolsField({ value, onChange, disabled }: CrudFieldRenderProps) {
+  // Station capabilities replace the shared optional-tool catalog.
+  useExtensionsStore((s) => s.extensions);
   const t = useT();
   const [available, setAvailable] = useState<Set<string> | null>(null);
-  const selected = useMemo(() => new Set(normalizeAutomationOptInTools(value)), [value]);
+  const selected = new Set(normalizeAutomationOptInTools(value));
 
   useEffect(() => {
     let alive = true;
@@ -333,10 +336,7 @@ function OptInToolsField({ value, onChange, disabled }: CrudFieldRenderProps) {
     };
   }, []);
 
-  const offered = useMemo(
-    () => (available ? AUTOMATION_OPT_IN_TOOLS.filter((tool) => available.has(tool.id)) : []),
-    [available],
-  );
+  const offered = available ? AUTOMATION_OPT_IN_TOOLS.filter((tool) => available.has(tool.id)) : [];
 
   if (available === null) return <Spinner />;
   if (offered.length === 0) return <p className="text-xs text-fg-muted">{t('automations.toolsNoneAvailable')}</p>;
@@ -393,7 +393,7 @@ function OptInToolsField({ value, onChange, disabled }: CrudFieldRenderProps) {
 function toolLabel(t: ReturnType<typeof useT>, id: string): string {
   // Underscore, not a dot: the resolver treats '.' as a path separator, so a
   // dotted leaf key would never be found.
-  const key = `automations.tool_${id}`;
+  const key = AUTOMATION_OPT_IN_TOOLS.find((tool) => tool.id === id)?.labelKey ?? `automations.tool_${id}`;
   const label = t(key as Parameters<typeof t>[0]);
   return label === key ? id : label;
 }

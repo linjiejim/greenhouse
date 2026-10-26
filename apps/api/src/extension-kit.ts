@@ -100,3 +100,52 @@ export type {
 export { nowIso } from '@greenhouse/utils/date';
 export { toErrorMessage } from '@greenhouse/utils/error';
 export { safeJsonParse } from '@greenhouse/utils/json';
+
+// Host capabilities used by official plugin packages.
+export { getUtcMonthPeriod, type UserRow } from '@greenhouse/db';
+export { findBudgetRefusal } from './usage/budget-errors.js';
+export {
+  restoreSpendLease,
+  reserveSpend,
+  settleServiceFact,
+  type MeteringScope,
+  type SpendAttribution,
+  type SpendLease,
+  meteringClientForRequest,
+  currentMeteringScope,
+} from './usage/metering.js';
+export {
+  effectiveServicePrice,
+  serviceUnitCostMicros,
+  syncPriceOverrides,
+  unitPriceSnapshot,
+} from './usage/pricing.js';
+export { getWorkspaceFlag, getWorkspaceFlagState, getWorkspaceBootstrap } from './settings/workspace-config.js';
+export { toRowId } from '@greenhouse/utils/id';
+export {
+  createModelFromConfig,
+  resolveModelConfig,
+  buildProviderOptions,
+  type ModelConfig,
+} from '@greenhouse/agent-core';
+export { extractJson } from '@greenhouse/utils/json';
+export { sanitizeForPrompt } from './security/security.js';
+export { type UserRole } from './auth/token.js';
+export { createProviderAttemptBudgetHook } from './llm/usage-budget.js';
+export {
+  cabinetDownloadUrl,
+  MAX_AGENT_UPLOAD_BYTES,
+  uploadCabinetFile,
+  type CabinetFileView,
+  readCabinetFileBytes,
+} from './drive/kb-cabinet.js';
+export { PLATFORM_ORG_ID } from './platform/runtime.js';
+export { at, createdAt, id, json, oneOf, updatedAt } from '@greenhouse/db/plugin-schema';
+export { users } from '@greenhouse/db/plugin-schema';
+export { newId } from '@greenhouse/db';
+export { findSensitiveSpans, redactEvidence } from './security/evidence.js';
+
+export type { HydrateContext } from './activity/activity-log.js';
+export type { ActivityAuditRow } from '@greenhouse/db';
+
+export { groupFrictions, clip } from './retro/insight-utils.js';

@@ -286,7 +286,7 @@
 - `memories.status` 是真相：active → dormant（90 天未用，仍可搜，recall 转回）→ archived / superseded（`superseded_by` 自引用 SET NULL）。service 不物理删，只有成员手动删除用 `delete()`；衰减与合并走 `setStatus`。
 - `last_used_at` 只在真实使用时刷新（`touch()`，recall / update），注入不算；排序用 `coalesce(last_used_at, created_at)`。
 - `memories.title` 是召回索引，只有它进 system prompt。
-- `feedback` 的 `kind=friction` 永不进 prompt；`fingerprint` 的部分唯一索引是聚合契约，改指纹算法（`apps/api/src/frictions/friction-center.ts`）要想清楚存量。
+- `feedback` 的 `kind=friction` 永不进 prompt；`fingerprint` 的部分唯一索引是聚合契约，改指纹算法（`plugins/feedback/api/frictions/friction-center.ts`）要想清楚存量。
 - `record()` 必须是单条 `onConflictDoUpdate`（两个并发写入者），样本集的去重 + 取最新 5 条在同一条 SQL 里算；`sample_sessions` 是逻辑引用。
 - `kind=request` 与 `kind=friction` 的列形状由 `chk_feedback_shape` 约束。
 
@@ -302,7 +302,7 @@
 
 ### 报告模板
 
-- `report_templates` 只存已校验的定义；可见与编辑规则在 `apps/api/src/reports/templates.ts`。`owner_user_id` 逻辑引用，null = 内置；删除只打 `deleted_at`；`seedIfNeverUsed` 在 advisory 锁里按含已删行总数为 0 才写内置模板。
+- `report_templates` 只存已校验的定义；可见与编辑规则在 `plugins/reports/api/templates.ts`。`owner_user_id` 逻辑引用，null = 内置；删除只打 `deleted_at`；`seedIfNeverUsed` 在 advisory 锁里按含已删行总数为 0 才写内置模板。
 
 ### 时间格式
 
@@ -327,3 +327,9 @@
 ### Plugin removal
 - `extensionMigrationTables` nets current-generation migration CREATE/DROP statements plus `resetTables`; core/protected names are refused.
 - `extensionMigrations.drop` drops that set with RESTRICT and deletes only the plugin lane rows in one transaction under the migration advisory lock. The host enforces disabled state + explicit `--yes`; no schema change or new migration is needed.
+
+### Plugin adoption (4.0)
+
+- Memory, Feedback, Reports and Computer tables belong to their plugin schemas and service bags; they are absent from DatabaseProvider.
+- The immutable 3.0 baseline still creates them. Custom migration 0003 advances ownership only, without DDL; the latest core snapshot defines the protected core table set. Carry-from-1x still checks the historical baseline set.
+- Plugin retention contributions use `{ table, column, days }`; cleanup uses the existing bounded daily sweeper and includes per-table counts in its audit. Register owned tables in resetTables.

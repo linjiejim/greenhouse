@@ -1,8 +1,8 @@
-# 数据库结构（PostgreSQL，3.0）
+# 数据库结构（PostgreSQL，4.0 核心）
 
 > 事实源：`packages/db/src/schema/*.ts`（每个域一个文件，文件头写着本域的表）。迁移链从 `drizzle/0000_v3_baseline.sql` 起步；1.x 的 0000–0013 归档在 `drizzle/archive-1x/`，只用来识别 1.x 库。
 >
-> 当前共 **72 张表**。字段类型、默认值、索引以 schema 与最新 snapshot 为准；本文只写用途、关键列和关系。
+> 当前完整安装共 **73 张表**：核心 schema **69 张**，本批四个插件各自管理 1 张表（迁移车道记账另计）。字段类型、默认值、索引以 schema 与最新 snapshot 为准；本文只写用途、关键列和关系。
 
 ## 设计约定
 
@@ -19,6 +19,17 @@
 - 密钥在 `_enc` 列（AES-256-GCM，`PROVIDER_TOKEN_ENCRYPTION_KEY`）；令牌、授权码、网关 Key、设密链接只存 SHA-256。
 - `messages.seq` 在锁定对应 `conversations` 行后分配，UK `(session_id, seq)` 兜底。
 - 高增长表有保留期，由每日清理执行（见「保留期」）。
+
+## 插件表归属
+
+3.0 基线仍创建这些表；4.0 核心 schema 不再管理它们。各插件以 `0001_adopt.sql` 原地认领，停用保留数据。
+
+| 插件 | 表结构与关联 |
+|---|---|
+| memory | [插件 schema](../../../plugins/memory/db-schema.md) |
+| feedback | [插件 schema](../../../plugins/feedback/db-schema.md) |
+| reports | [插件 schema](../../../plugins/reports/db-schema.md) |
+| computer | [插件 schema](../../../plugins/computer/db-schema.md) |
 
 ## 表目录
 
@@ -165,12 +176,6 @@ Chat 与 Automation 共用的执行内核：Run / Step 走 version CAS，worker 
 | `audit_events` | PK `id` | 唯一的「谁改了什么」流，操作记录读它。`app_id` 区分来源：platform 动作与云盘写入、`projects`（项目 / 任务动态）、`email`（`action_id='send'`，日发信限额数它的 success 行）、扩展 app；actor / on_behalf_of / client / request、module / entity / record、`capability`、`result`、`summary`（不存内容与密钥） |
 | `request_log` | PK `id` | MCP（`a2a`）与 Agent 代理（`cli`）请求日志；`api` / `relay` 只是搬来的历史 |
 
-### 复盘（feedback.ts）
-
-| 表 | 主键 / 唯一 | 用途与关键列 |
-|---|---|---|
-| `feedback` | PK `id`；部分 UK `fingerprint` | `kind=request`：成员提的需求（pending / accepted / rejected / done、`priority`、`submitted_by`）；`kind=friction`：Agent 踩坑信号（new / acknowledged / resolved / archived、`fingerprint`、`tool_id`、`friction_kind`、`occurrence_count`、`sample_sessions` 最近 5 个会话 id），永不进 prompt。CHECK `chk_feedback_shape` |
-
 ### 其他
 
 | 表 | 主键 / 唯一 | 用途与关键列 |
@@ -178,12 +183,9 @@ Chat 与 Automation 共用的执行内核：Run / Step 走 version CAS，worker 
 | `email_accounts` | PK `id`；UK `(user_id, email_address)` | 成员自己的 IMAP / SMTP 邮箱；连接配置明文，只有 `password_enc` 加密；`preset` 只是 UI 提示 |
 | `feishu_conversations` | PK `id`；UK `feishu_key` | 飞书对话 ↔ 会话映射；`feishu_key` = thread_id ?? root_id ?? message_id，UK 兼做并发仲裁 |
 | `feishu_receipts` | PK `message_id` | 飞书事件去重回执，先写回执再干活 |
-| `member_computers` | PK `id`；部分 UK `user_id`（starting / running / stopping） | 成员云电脑；状态只经 service 的 CAS 改；`sandbox_id`、`minutes_billed`、`budget_key` |
-| `report_templates` | PK `id` | 报告模板（report / presentation）；`formats` / `sections` / `cover_fields`、`visibility`、`owner_user_id`（逻辑，null = 内置）、`deleted_at` |
 | `skills` | PK `id`；UK `name` | 技能中心；`latest_version`、`download_count`、安全扫描列（`scan_status`、`scanned_at` null = 从没扫过、人工裁定列） |
 | `skill_versions` | PK `id`；UK `(skill_id, version)` | 不可变、带内容 hash 的技能版本；FK CASCADE |
 | `prompts` | PK `id`；UK `artifact_action_id` | 保存的任务 / Prompt（个人或 super 发布的全局）；`variables`、`expected_tools`（只展示）、`source_session_id`（逻辑）、`created_via` |
-| `memories` | PK `id` | 成员的 Agent 记忆；`status` active / dormant / archived / superseded 是真相，`superseded_by` 自引用 SET NULL，`title` 是唯一进 prompt 的部分 |
 | `workspace_settings` | PK `key` | 管理员可改的部署设置；`value` jsonb 或 `value_enc` 密文 |
 | `extension_migrations` | PK `(extension_id, name)` | 扩展/插件迁移车道的记账（带 checksum）；停用保留，`cli plugins drop <id> --yes` 仅删除该插件的表及此 lane 记录（事务 + RESTRICT） |
 
@@ -195,7 +197,6 @@ Chat 与 Automation 共用的执行内核：Run / Step 走 version CAS，worker 
 | `usage_events` | `kind` | model / service / audit |
 | `budgets` | `kind` | account / limit |
 | `audit_events` | `app_id` | platform、projects、email、扩展 app… |
-| `feedback` | `kind` | request / friction |
 | `user_grants` | `kind` | feature / tool |
 | `shares` | `resource_type` | kb_document / folder / file / table_base |
 | `file_links` | `target_type` | table_record / message / task / kb_document |
@@ -277,10 +278,7 @@ Chat 与 Automation 共用的执行内核：Run / Step 走 version CAS，worker 
 | `email_accounts.user_id` | `users.id` | CASCADE |
 | `feishu_conversations.session_id` | `conversations.id` | CASCADE |
 | `feishu_conversations.user_id` | `users.id` | CASCADE |
-| `member_computers.user_id` | `users.id` | CASCADE |
 | `skill_versions.skill_id` | `skills.id` | CASCADE |
-| `memories.user_id` | `users.id` | CASCADE |
-| `memories.superseded_by` | `memories.id` | SET NULL |
 
 ## 逻辑关联总览（无 FK）
 
@@ -313,12 +311,8 @@ Chat 与 Automation 共用的执行内核：Run / Step 走 version CAS，worker 
 | `budget_ledger.account_id` / `reservation_id` | `budgets.id` / `budget_reservations.id` | append-only |
 | `audit_events.actor_id` / `on_behalf_of_user_id` / `client_id` / `record_id` | 主体 / `users.id` / `oauth_clients.id` / 业务记录 | 审计比主体长寿 |
 | `request_log.user_id` | `users.id` | 请求日志 |
-| `feedback.submitted_by` / `session_id` / `sample_sessions[]` | `users.id` / `conversations.id` | 遥测比会话长寿 |
-| `member_computers.oauth_client_id` / `budget_key` | `oauth_clients.id` / 预留键 | 开机来源与计费 |
-| `report_templates.owner_user_id` | `users.id` | 团队模板比作者长寿 |
 | `skills.owner_user_id` | `users.id` | 技能作者 |
 | `prompts.user_id` / `source_session_id` | `users.id` / `conversations.id` | 任务比来源会话长寿 |
-| `memories.source_session_id` | `conversations.id` | 记忆来源 |
 | `provider_connections.provider`（`mcp:<id>`） | `mcp_connectors.id` | 成员的连接器凭证；改地址 / 认证方式与删除连接器时同一事务删除 |
 | `runs.source_id`（`kind='connector_write'`） | `mcp_connectors.id` | 连接器写操作记录 |
 
@@ -349,9 +343,6 @@ erDiagram
     mcp_connectors ||--o{ provider_connections : "逻辑 provider=mcp:id"
     users ||--o{ push_devices : "FK CASCADE"
     users ||--o{ email_accounts : "FK CASCADE"
-    users ||--o{ member_computers : "FK CASCADE"
-    users ||--o{ memories : "FK CASCADE"
-    memories ||--o{ memories : "FK SET NULL superseded_by"
 ```
 
 ### 对话、运行与自动化
@@ -433,7 +424,6 @@ erDiagram
     oauth_clients ||--o{ audit_events : "逻辑 client_id"
     run_tool_calls ||--o| audit_events : "逻辑 platform_audit_event_id"
     users ||--o{ request_log : "逻辑 user_id"
-    conversations ||--o{ feedback : "逻辑 session_id / sample_sessions"
 ```
 
 ## 全文搜索

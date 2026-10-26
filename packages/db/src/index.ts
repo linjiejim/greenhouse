@@ -78,7 +78,6 @@ export * from './services/users.js';
 export * from './services/user-tools.js';
 export * from './services/refresh-tokens.js';
 export * from './services/account-password-links.js';
-export * from './services/feature-requests.js';
 export * from './services/projects.js';
 export * from './services/api-audit.js';
 export * from './services/user-prompts.js';
@@ -94,8 +93,6 @@ export { segmentForFts, buildSegmentedTsQuery } from './services/fts.js';
 export * from './services/knowledge-base.js';
 export * from './services/knowledge-shares.js';
 export * from './services/user-features.js';
-export * from './services/user-memories.js';
-export * from './services/tool-frictions.js';
 export * from './services/drive.js';
 export * from './services/activity.js';
 export * from './services/email.js';
@@ -109,8 +106,6 @@ export * from './services/runtime.js';
 export * from './services/notifications.js';
 export * from './services/push-devices.js';
 export * from './services/gateway-keys.js';
-export * from './services/report-templates.js';
-export * from './services/member-computers.js';
 export * from './services/workspace-settings.js';
 export * from './services/retention.js';
 export * from './services/mcp-connectors.js';
@@ -170,3 +165,6 @@ export function isDbInitialized(): boolean {
 export function _resetProvider(): void {
   _provider = null;
 }
+
+export { registerExtensionRetention } from './extensions.js';
+export type { ExtensionRetentionRule } from './extensions.js';

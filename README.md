@@ -853,3 +853,9 @@ issue — see [SECURITY.md](./SECURITY.md).
 ## License
 
 [MIT](./LICENSE) — © Greenhouse contributors.
+
+### 4.0 可选模块
+
+记忆与问题反馈现在由官方插件提供，默认开启。报告模板 / PDF、Word、PowerPoint 渲染和 E2B 云电脑编入镜像但默认关闭；启用需在 `greenhouse.config.ts` 的 `extensions.enabled` 或 `GREENHOUSE_EXTENSIONS` 中加入 `reports`、`computer` 后重启。云电脑还需配置 E2B 与工作区开关。停用插件保留全部数据。
+
+会话分享由 `conversations: { sharing: false }` 部署配置关闭；默认开启。开发设计页仅在 Vite 开发模式提供。

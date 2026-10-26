@@ -17,6 +17,7 @@
  */
 
 import { sql, type SQL } from 'drizzle-orm';
+import { extensionRetentionRules } from '../extensions.js';
 import type { Db } from '../client.js';
 
 export const RETENTION_POLICY = {
@@ -43,7 +44,7 @@ export type RetentionTarget =
   | 'rate_limits'
   | 'password_links';
 
-export type RetentionReport = Record<RetentionTarget, number>;
+export type RetentionReport = Record<RetentionTarget | (string & {}), number>;
 
 export interface RetentionOptions {
   /** The instant cutoffs are computed from (tests pass a fixed one). */
@@ -137,6 +138,13 @@ export function createRetentionService(db: Db) {
         'id',
         sql`expires_at < ${daysBefore(now, RETENTION_POLICY.expiredPasswordLinkDays)}::timestamptz`,
       );
+      for (const rule of extensionRetentionRules()) {
+        report[rule.table] = await go(
+          rule.table,
+          'ctid',
+          sql`${sql.identifier(rule.column)} < ${daysBefore(now, rule.days)}::timestamptz`,
+        );
+      }
       return report;
     },
   };

@@ -132,7 +132,6 @@ const CALLER_CLIENTS: Record<string, MeteringClient> = {
   digest: 'web',
   'scheduled-task': 'automation',
   'feishu-bot': 'feishu',
-  'memory-consolidation': 'system',
 };
 
 export function resolveMeteringClient(explicit: MeteringClient | undefined, caller: string): MeteringClient {

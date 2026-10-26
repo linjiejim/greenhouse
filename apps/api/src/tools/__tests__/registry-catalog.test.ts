@@ -1,3 +1,4 @@
+import { TOOL_DEFINITIONS } from '../registry.js';
 /**
  * Tests for the catalog-driven registry assembly: the static tool factories and
  * the known-tool name list are derived from a single source (TOOL_MODULES), not
@@ -46,7 +47,7 @@ describe('catalog-driven registry', () => {
     // representative ids from each construction kind
     for (const id of [
       'analyze_image', // lazy, authenticated-owner budget attribution
-      'feature_request', // lazy
+      ...(TOOL_DEFINITIONS.some((meta) => meta.id === 'feature_request') ? ['feature_request'] : []), // lazy
       'knowledge_mutation', // lazy
     ]) {
       expect(ids, `missing ${id}`).toContain(id);

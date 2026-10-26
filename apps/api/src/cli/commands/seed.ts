@@ -1,3 +1,4 @@
+import { fromExtensions } from '../../extensions/index.js';
 /**
  * `admin seed` — load the example dataset in `data/examples/`.
  *
@@ -50,9 +51,7 @@ const LOAD_ORDER = [
   'conversation_shares',
   'conversation_share_reads',
   'prompts',
-  'memories',
   'automations',
-  'feedback',
   'run_profiles',
   'user_grants',
   'audit_events',
@@ -136,8 +135,14 @@ export async function run(args: string[]): Promise<number> {
   }
 
   let totalRows = 0;
-  for (const table of LOAD_ORDER) {
-    const file = resolve(EXAMPLES_DIR, `${table}.json`);
+  const sources = [
+    ...LOAD_ORDER.map((table) => ({ table, dir: EXAMPLES_DIR })),
+    ...fromExtensions('seeds').flatMap((source) =>
+      source.tables.map((table) => ({ table, dir: GREENHOUSE_CONFIG.packs.seeds ? EXAMPLES_DIR : source.dir })),
+    ),
+  ];
+  for (const { table, dir } of sources) {
+    const file = resolve(dir, `${table}.json`);
     if (!existsSync(file)) continue;
 
     const rows = readJsonl(file);
@@ -166,7 +171,7 @@ export async function run(args: string[]): Promise<number> {
     console.log(`• ${table}: ${rows.length} rows`);
   }
 
-  console.log(chalk.green(`\n✓ seeded ${totalRows} rows across ${LOAD_ORDER.length} tables.`));
+  console.log(chalk.green(`\n✓ seeded ${totalRows} rows across ${sources.length} tables.`));
   console.log(dim(`  Demo login password for every seeded user: "${demoPassword}"`));
   console.log(dim('  Try: super admin → maya@greenhouse.example'));
   return 0;

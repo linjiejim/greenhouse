@@ -16,6 +16,17 @@ extension-kit: expose the existing snapshot-locked API and web kits as `@greenho
 
 ### Changed
 
+- Extract Memory, Feedback, Reports and Computer into official plugin packages, preserving URLs and tool ids. Adoption migrations preserve existing data.
+- Automation grants and MCP working hints now follow the active plugin set; inactive modules are absent from both.
+- Conversation sharing is controlled by `conversations.sharing` (default true); the design gallery is development-only.
+
+extension-kit: add the DB schema primitives, metering/budget/provider hooks, workspace flags/bootstrap, file-cabinet helpers, redaction, activity types, and shared web form/CRUD/preview/formatting components required by the four plugins; no existing symbols removed.
+
+### Upgrading from 3.x
+
+Reports and Computer are now off by default. To keep both, set `GREENHOUSE_EXTENSIONS=knowledge,tables,skills,feedback,memory,reports,computer`, or use `extensions: { enabled: ['knowledge', 'tables', 'skills', 'feedback', 'memory', 'reports', 'computer'] }` in `greenhouse.config.ts`. Keep any deployment-specific plugins in that list. Computer also retains its independent credential and workspace-switch checks. Disabled tables and rows remain available when re-enabled.
+
+
 - Move the example and its migrations, MCP/seam tests and browser spec into `plugins/example`; SDK 1 in-tree overlays remain supported.
 
 ## [3.0.2](https://github.com/linjiejim/greenhouse/compare/v3.0.1...v3.0.2) (2026-10-26)

@@ -1,3 +1,4 @@
+import { useExtensionsStore } from '../../stores/extensions-store';
 /**
  * The bell's dialog — platform notifications, sessions shared with me, and team
  * activity (what people and their agents changed lately, only what the viewer
@@ -137,6 +138,7 @@ function TeamActivityTab({ onNavigate }: { onNavigate: () => void }) {
 }
 
 export function InboxModal() {
+  const sharing = useExtensionsStore((s) => s.conversationSharing);
   const t = useT();
   const open = useUIStore((s) => s.inboxOpen);
   const tab = useUIStore((s) => s.inboxTab);
@@ -241,23 +243,25 @@ export function InboxModal() {
               ['shares', t('inbox.sharedWithMe'), unreadShares],
               ['activity', t('inbox.activityTab'), 0],
             ] as Array<[InboxTab, string, number]>
-          ).map(([value, label, unread]) => (
-            <button
-              key={value}
-              type="button"
-              role="tab"
-              aria-selected={tab === value}
-              onClick={() => setTab(value)}
-              className={`flex flex-shrink-0 items-center gap-1.5 whitespace-nowrap rounded-t-md border-b-2 px-3 py-2 text-xs transition-colors ${
-                tab === value
-                  ? 'border-accent text-primary-fg-strong'
-                  : 'border-transparent text-fg-muted hover:text-fg-secondary'
-              }`}
-            >
-              {label}
-              {unread > 0 && <Badge variant="destructive">{unread > 99 ? '99+' : unread}</Badge>}
-            </button>
-          ))}
+          )
+            .filter(([value]) => sharing || value !== 'shares')
+            .map(([value, label, unread]) => (
+              <button
+                key={value}
+                type="button"
+                role="tab"
+                aria-selected={tab === value}
+                onClick={() => setTab(value)}
+                className={`flex flex-shrink-0 items-center gap-1.5 whitespace-nowrap rounded-t-md border-b-2 px-3 py-2 text-xs transition-colors ${
+                  tab === value
+                    ? 'border-accent text-primary-fg-strong'
+                    : 'border-transparent text-fg-muted hover:text-fg-secondary'
+                }`}
+              >
+                {label}
+                {unread > 0 && <Badge variant="destructive">{unread > 99 ? '99+' : unread}</Badge>}
+              </button>
+            ))}
           {tab !== 'activity' && (
             <button
               type="button"

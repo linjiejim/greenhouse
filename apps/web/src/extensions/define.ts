@@ -83,7 +83,7 @@ export interface WebExtensionModule {
   labelKey: ExtensionTranslationKey;
   descriptionKey?: ExtensionTranslationKey;
   icon: LucideIcon;
-  component: ComponentType;
+  component: ComponentType<{ subPath?: string }>;
   requireRole?: 'super'[];
   requireFeature?: string;
 }
@@ -128,6 +128,16 @@ export interface WebExtensionToolCard {
   placement?: 'inline' | 'below';
 }
 
+export interface WebExtensionTab {
+  host: string;
+  key: string;
+  labelKey: ExtensionTranslationKey;
+  component: ComponentType;
+}
+export interface WebExtensionSlot {
+  slot: string;
+  component: ComponentType<{ onChanged?: () => void }>;
+}
 export interface WebExtension {
   id: string;
   /**
@@ -137,6 +147,9 @@ export interface WebExtension {
   sdk?: number;
   /** Greenhouse versions this supports, as a semver range (`'>=3.0 <4'`); a pre-release counts as its release. */
   core?: string;
+  redirects?: import('../lib/extension-redirects').ExtensionRedirects;
+  tabs?: WebExtensionTab[];
+  slots?: WebExtensionSlot[];
   pages?: WebExtensionPage[];
   /** Entries for the sidebar "More" menu. */
   navigation?: WebExtensionNavItem[];

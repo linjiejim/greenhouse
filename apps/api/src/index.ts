@@ -82,8 +82,6 @@ import costValueRoutes from './routes/cost-value.js';
 import { wecomOAuthRoutes } from './routes/wecom-oauth.js';
 import { feishuOAuthRoutes } from './routes/feishu-oauth.js';
 import { initFeishuBot, stopFeishuBot } from './feishu/bot/client.js';
-import featureRequestRoutes from './routes/feature-requests.js';
-import frictionRoutes from './routes/frictions.js';
 import projectRoutes from './routes/projects.js';
 import platformRoutes from './routes/platform.js';
 import platformAdminRoutes from './routes/platform-admin.js';
@@ -101,16 +99,12 @@ import shareRoutes from './routes/shares.js';
 import { createNotificationRoutes } from './routes/notifications.js';
 import pushDeviceRoutes from './routes/push-devices.js';
 import adminMeteringRoutes from './routes/admin-metering.js';
-import { adminComputerRoutes, computerRoutes } from './routes/computer.js';
-import { sweepComputers } from './computer/service.js';
 import usageRoutes from './routes/usage.js';
 import toolsRoutes from './routes/tools.js';
 import driveRoutes from './routes/drive.js';
 import chatFileRoutes from './routes/chat-files.js';
 import artifactActionRoutes from './routes/artifact-actions.js';
 import skillRoutes from './routes/skills.js';
-import reportTemplateRoutes from './routes/report-templates.js';
-import { seedDefaultReportTemplates } from './reports/defaults.js';
 import tablesRoutes from './routes/tables.js';
 import { getSkillStore } from './skills/store.js';
 import { seedSkillhub } from './skills/boot-seed.js';
@@ -305,13 +299,10 @@ function mountRoutes(toolRegistry: ToolRegistry) {
       .route('/api/admin/platform', platformAdminRoutes)
       .route('/api/admin/operations', costValueRoutes)
       .route('/api/admin/metering', adminMeteringRoutes)
-      .route('/api/admin/computers', adminComputerRoutes)
       .route('/api/admin', adminRoutes)
       .route('/api/admin/settings', adminSettingsRoutes)
       .route('/api/admin/team-context', adminTeamContextRoutes)
       .route('/api/admin/retro', adminRetroRoutes)
-      .route('/api/admin/feature-requests', featureRequestRoutes)
-      .route('/api/admin/frictions', frictionRoutes)
       // Project management — all internal users
       .use('/api/platform/*', requireInternal())
       .route('/api/platform', platformRoutes)
@@ -356,17 +347,11 @@ function mountRoutes(toolRegistry: ToolRegistry) {
       // Skill Center — all internal users (writes owner/super-gated in skills/center.ts)
       .use('/api/skills/*', requireInternal())
       .route('/api/skills', skillRoutes)
-      // Report templates (v1.7) — all internal users (edit rights in reports/templates.ts)
-      .use('/api/report-templates', requireInternal())
-      .use('/api/report-templates/*', requireInternal())
-      .route('/api/report-templates', reportTemplateRoutes)
       // Module usage counts (page opens) — all internal users; counts only
       .use('/api/data-catalog', requireInternal())
       .route('/api/data-catalog', dataCatalogRoutes)
       .use('/api/usage/*', requireInternal())
       .route('/api/usage', usageRoutes)
-      .use('/api/computer/*', requireInternal())
-      .route('/api/computer', computerRoutes)
       // Tool metadata — authenticated internal users
       .route('/api/tools', toolsRoutes)
       // WebSocket endpoint — internal users only (auth via query token)
@@ -453,9 +438,6 @@ async function main() {
   // First-party skill packs ride the release: sync the repo's skillhub/ into
   // the Skill Center on boot (no-op without the directory; never blocks boot).
   await seedSkillhub(dbProvider);
-
-  // The shipped report templates, once, while the workspace has never had one.
-  await seedDefaultReportTemplates(dbProvider);
 
   // Backfill security verdicts for skills published before the scanner existed.
   // Fire-and-forget like the other boot sweeps — never blocks the health gate,
@@ -597,17 +579,6 @@ async function main() {
 
   // Daily retention cleanup of high-growth tables (upkeep/retention.ts).
   scheduleRetention(dbProvider);
-
-  // Cloud computers, every minute: stop idle ones (all of them while the
-  // switch is off), roll per-minute billing blocks, close half-done starts and
-  // stops. Never creates a computer.
-  setInterval(
-    () =>
-      void sweepComputers(dbProvider).catch((error) =>
-        logger.warn('[computer] sweep failed', { error: toErrorMessage(error) }),
-      ),
-    60_000,
-  );
 
   // Heartbeat: ping all WS connections every 30s. Never an unhandled rejection:
   // Node would exit the whole API over one failed tick.

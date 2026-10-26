@@ -1,65 +1,14 @@
-/**
- * Upkeep jobs — system-level crons that maintain agent memory and collect
- * tool frictions. Not rows in `automations`; these belong to the platform.
- *
- * Replaces v1's daily memory-extraction cron (deleted): memories are now written
- * explicitly by the `memory` tool, so the background pass only tidies what is
- * already there and never invents anything.
- *
- * - 04:00 CST daily  — mine tool errors out of message pipelines into frictions
- * - 05:00 CST Sunday — memory consolidation: demote stale, merge duplicates
- * - 09:00 on the 1st, workspace time (never before the UTC month has closed) —
- *   the monthly retro of the month that ended (retro/schedule.ts + generate.ts;
- *   the zone is `team_context.timezone`, rescheduled on change)
- */
+/** System upkeep: core monthly summaries and active plugins' periodic jobs. */
 
+import { getDb } from '@greenhouse/db';
 import { Cron } from 'croner';
 import { logger } from '@greenhouse/utils/logger';
 import { extensionJobs } from '../extensions/boot.js';
 import { DEFAULT_TIMEZONE } from './task-limits.js';
 import { planMonthlyRetro } from '../retro/schedule.js';
 
-let frictionJob: Cron | null = null;
 let retroJob: Cron | null = null;
-let consolidationJob: Cron | null = null;
 let extensionJobHandles: Cron[] = [];
-
-export function startFrictionMiningJob(): void {
-  frictionJob = new Cron('0 4 * * *', { timezone: 'Asia/Shanghai' }, async () => {
-    logger.info('[FrictionJob] Mining tool errors from recent pipelines...');
-    try {
-      const { mineToolErrors, mineEmptySearches } = await import('../frictions/friction-center.js');
-      const { getDb } = await import('@greenhouse/db');
-      const db = getDb();
-      const errors = await mineToolErrors(db);
-      // Retrieval that succeeded and found nothing — the same sweep, a
-      // different failure shape (see mineEmptySearches).
-      const empty = await mineEmptySearches(db);
-      logger.info('[FrictionJob] Completed', { errors, empty });
-    } catch (err) {
-      logger.error('[FrictionJob] Failed:', err);
-    }
-  });
-
-  logger.info(`[FrictionJob] Scheduled daily friction mining → next: ${frictionJob.nextRun()?.toISOString()}`);
-}
-
-export function startMemoryConsolidationJob(): void {
-  consolidationJob = new Cron('0 5 * * 0', { timezone: 'Asia/Shanghai' }, async () => {
-    logger.info('[MemoryUpkeep] Starting weekly memory consolidation...');
-    try {
-      const { runMemoryConsolidation } = await import('../llm/memory.js');
-      const result = await runMemoryConsolidation();
-      logger.info('[MemoryUpkeep] Completed', result);
-    } catch (err) {
-      logger.error('[MemoryUpkeep] Failed:', err);
-    }
-  });
-
-  logger.info(
-    `[MemoryUpkeep] Scheduled weekly memory consolidation → next: ${consolidationJob.nextRun()?.toISOString()}`,
-  );
-}
 
 export { MONTHLY_RETRO_CRON } from '../retro/schedule.js';
 
@@ -105,9 +54,17 @@ export function monthlyRetroNextRun(): Date | null {
 /** Periodic jobs declared by active extensions (see extensions/define.ts → `jobs`). */
 export function startExtensionJobs(): void {
   for (const job of extensionJobs()) {
-    const handle = new Cron(job.cron, { timezone: job.timezone ?? DEFAULT_TIMEZONE }, async () => {
+    const handle = new Cron(job.cron, { timezone: job.timezone ?? DEFAULT_TIMEZONE, protect: true }, async () => {
       try {
-        await job.run();
+        const db = getDb();
+        await db.withAdvisoryLock(`extension-job:${job.id}`, async () => {
+          const minute = Math.floor(Date.now() / 60_000);
+          const claimed = await db.rateLimits.hit(
+            `extension-job:${job.id}:${minute}`,
+            new Date((minute + 2) * 60_000).toISOString(),
+          );
+          if (claimed === 1) await job.run();
+        });
       } catch (err) {
         logger.error(`[ExtensionJob:${job.id}] Failed:`, err);
       }
@@ -118,12 +75,8 @@ export function startExtensionJobs(): void {
 }
 
 export function stopUpkeepJobs(): void {
-  frictionJob?.stop();
-  frictionJob = null;
   retroJob?.stop();
   retroJob = null;
-  consolidationJob?.stop();
-  consolidationJob = null;
   for (const handle of extensionJobHandles) handle.stop();
   extensionJobHandles = [];
 }

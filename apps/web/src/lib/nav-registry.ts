@@ -9,10 +9,8 @@
  * desktop/mobile. Standalone entries here provide page identity only; they do
  * not create another primary-navigation source.
  */
-
 import type { WebExtensionModule, WebExtensionPageModule } from '../extensions/define';
 import {
-  MessageSquareWarning,
   BookOpen,
   Database,
   Mail,
@@ -24,10 +22,8 @@ import {
   Palette,
   SlidersHorizontal,
   BarChart3,
-  Brain,
   Coins,
   Gauge,
-  Monitor,
   Zap,
   Table2,
   FolderKanban,
@@ -37,9 +33,7 @@ import {
 import type { LucideIcon } from './icons';
 import type { FeatureKey } from '@greenhouse/types/features';
 import { translate, type TranslationKey } from './i18n';
-
 // ─── Types ───────────────────────────────────────────────
-
 export interface NavModule {
   /** Unique identifier, e.g. 'settings.preferences' */
   id: string;
@@ -70,7 +64,6 @@ export interface NavModule {
    */
   hiddenFromNav?: boolean;
 }
-
 // ─── Settings Modules (user-scoped) ──────────────────────
 //
 // Settings holds *personal* configuration — anything a normal user tunes for
@@ -84,7 +77,6 @@ export interface NavModule {
 //
 // Automation, Tasks, and My Agents live in the Chat workspace and are not
 // Settings modules.
-
 /** A settings nav section — an optional header + items. */
 export interface SettingsNavSection {
   key: string;
@@ -95,7 +87,6 @@ export interface SettingsNavSection {
   requireRole?: 'super'[];
   items: NavModule[];
 }
-
 // Preferences + former "Cloud" items now share one flat, header-less region —
 // all of it is personal configuration.
 const SETTINGS_TOP: NavModule[] = [
@@ -140,45 +131,21 @@ const SETTINGS_TOP: NavModule[] = [
     parent: 'settings',
     description: 'What you and your agents spent this month, and your limit',
   },
-  {
-    id: 'settings.computer',
-    label: 'Cloud computer',
-    icon: Monitor,
-    path: '#/settings/computer',
-    parent: 'settings',
-    description: 'Your agents’ own cloud computer: status, minutes and start / stop',
-  },
 ];
-
-const SETTINGS_LABS: NavModule[] = [
-  {
-    id: 'settings.memory',
-    label: 'Memory',
-    icon: Brain,
-    path: '#/settings/memory',
-    parent: 'settings',
-    description: 'View and manage what the AI remembers about you',
-    requireFeature: 'memory',
-  },
-];
-
+const SETTINGS_LABS: NavModule[] = [];
 const SETTINGS_EXTENSIONS: NavModule[] = [];
-
 export const settingsSections: SettingsNavSection[] = [
   { key: 'top', items: SETTINGS_TOP },
   { key: 'labs', label: 'Labs', labelKey: 'navigation.labs', items: SETTINGS_LABS },
   { key: 'extensions', label: 'Extensions', labelKey: 'navigation.extensions', items: SETTINGS_EXTENSIONS },
 ];
-
 /** Flat list of every settings module across all sections. */
 const SETTINGS_ALL: NavModule[] = settingsSections.flatMap((section) => section.items);
-
 // ─── Administration Modules (super only, global) ─────────
 //
 // Global management surface, separate from personal Settings. Reachable only by
 // super users via the sidebar account flyout → Administration. Every module is
 // role-gated; the parent route (#/administration) is itself super-only.
-
 const ADMINISTRATION_MODULES: NavModule[] = [
   // v1.5 order: people, what they use, what they changed, what they report,
   // then workspace configuration and agent access.
@@ -216,15 +183,6 @@ const ADMINISTRATION_MODULES: NavModule[] = [
     path: '#/administration/activity',
     parent: 'administration',
     description: 'Changes by people, their agents, automations and admins',
-    requireRole: ['super'],
-  },
-  {
-    id: 'admin.issues',
-    label: 'Issues & requests',
-    icon: MessageSquareWarning,
-    path: '#/administration/issues',
-    parent: 'administration',
-    description: 'Feature requests and frictions reported by members and their agents',
     requireRole: ['super'],
   },
   {
@@ -282,9 +240,7 @@ const ADMINISTRATION_MODULES: NavModule[] = [
     requireRole: ['super'],
   },
 ];
-
 export const administrationModules = ADMINISTRATION_MODULES;
-
 // ─── Knowledge list modules ─────────────────────────────
 //
 // The knowledge page owns its own scope views (team / personal / shared) and
@@ -292,7 +248,6 @@ export const administrationModules = ADMINISTRATION_MODULES;
 // register today. Kept as the seam for the next collection view that does need
 // a ModulePage identity.
 const KNOWLEDGE_MODULES: NavModule[] = [];
-
 // ─── Standalone workspace pages ─────────────────────────
 //
 // These routes live in the primary application shell rather than a contextual
@@ -363,19 +318,21 @@ const STANDALONE_MODULES: NavModule[] = [
     pinnable: false,
   },
 ];
-
 // ─── Full Registry ───────────────────────────────────────
-
 const ALL_MODULES: NavModule[] = [
   ...KNOWLEDGE_MODULES,
   ...SETTINGS_ALL,
   ...ADMINISTRATION_MODULES,
   ...STANDALONE_MODULES,
 ];
-
 type Translate = (key: TranslationKey, params?: Record<string, string | number>) => string;
-
-const NAV_COPY: Record<string, { label: TranslationKey; description?: TranslationKey }> = {
+const NAV_COPY: Record<
+  string,
+  {
+    label: TranslationKey;
+    description?: TranslationKey;
+  }
+> = {
   'settings.preferences': { label: 'navigation.preferences', description: 'navigation.preferencesDesc' },
   'settings.agent-connections': {
     label: 'navigation.agentConnections',
@@ -389,15 +346,12 @@ const NAV_COPY: Record<string, { label: TranslationKey; description?: Translatio
     label: 'navigation.emailAccounts',
     description: 'navigation.emailAccountsDesc',
   },
-  'settings.memory': { label: 'navigation.memory', description: 'navigation.memoryDesc' },
   'settings.my-usage': { label: 'navigation.myUsage', description: 'navigation.myUsageDesc' },
-  'settings.computer': { label: 'navigation.computer', description: 'navigation.computerDesc' },
   'admin.users': { label: 'navigation.users', description: 'navigation.usersDesc' },
   'admin.runtime-config': { label: 'navigation.runtimeConfig', description: 'navigation.runtimeConfigDesc' },
   'admin.branding': { label: 'navigation.branding', description: 'navigation.brandingDesc' },
   'admin.usage': { label: 'navigation.agentUsages', description: 'navigation.agentUsagesDesc' },
   'admin.services': { label: 'navigation.servicesPricing', description: 'navigation.servicesPricingDesc' },
-  'admin.issues': { label: 'navigation.issues', description: 'navigation.issuesDesc' },
   'admin.activity': { label: 'navigation.activityLog', description: 'navigation.activityLogAdminDesc' },
   'admin.mcp-keys': { label: 'navigation.mcpAccess', description: 'navigation.mcpAccessDesc' },
   'admin.plugins': { label: 'navigation.plugins', description: 'navigation.pluginsDesc' },
@@ -411,9 +365,7 @@ const NAV_COPY: Record<string, { label: TranslationKey; description?: Translatio
   'workspace.activity': { label: 'navigation.activityLog', description: 'navigation.activityLogDesc' },
   'workspace.skillhub': { label: 'skillHub.title', description: 'navigation.skillHubDesc' },
 };
-
 const englishT: Translate = (key, params) => translate('en', key, params);
-
 export function localizeNavModule(module: NavModule, t: Translate): NavModule {
   if (module.labelKey) {
     return {
@@ -430,19 +382,14 @@ export function localizeNavModule(module: NavModule, t: Translate): NavModule {
     description: copy.description ? t(copy.description) : module.description,
   };
 }
-
 /** Map for O(1) lookup by id */
 const MODULE_MAP = new Map<string, NavModule>(ALL_MODULES.map((m) => [m.id, m]));
-
 // ─── Query Functions ─────────────────────────────────────
-
 /** Look up a module by its unique id */
 export function getNavModule(id: string): NavModule | undefined {
   return MODULE_MAP.get(id);
 }
-
 // ─── Extension modules ───────────────────────────────────
-
 /**
  * Register Settings / Administration modules contributed by a web extension.
  * Called once at load by apps/web/src/extensions/index.ts; the arrays above are
@@ -480,7 +427,6 @@ export function registerExtensionNavModules(extensionId: string, modules: readon
     MODULE_MAP.set(id, navModule);
   }
 }
-
 /**
  * Register the sub-modules of an extension *page* (`#/<route>/<key>`).
  *
@@ -490,7 +436,6 @@ export function registerExtensionNavModules(extensionId: string, modules: readon
  * `<ModulePage moduleId="crm.companies">` expects.
  */
 const EXTENSION_ROUTE_TITLES = new Map<string, string>();
-
 export function registerExtensionPageModules(
   extensionId: string,
   route: string,
@@ -521,17 +466,19 @@ export function registerExtensionPageModules(
     MODULE_MAP.set(id, navModule);
   }
 }
-
 /** The registered page modules of one extension, in declaration order. */
 export function extensionPageModules(extensionId: string): NavModule[] {
   return ALL_MODULES.filter((m) => m.extensionId === extensionId && m.parent === 'standalone');
 }
-
 /** Core modules are always active; extension modules only while their extension is. */
-export function isNavModuleActive(module: NavModule, activeExtensions: ReadonlyArray<{ id: string }>): boolean {
+export function isNavModuleActive(
+  module: NavModule,
+  activeExtensions: ReadonlyArray<{
+    id: string;
+  }>,
+): boolean {
   return !module.extensionId || activeExtensions.some((ext) => ext.id === module.extensionId);
 }
-
 /**
  * Resolve sub-module metadata for TopBar breadcrumb display.
  * Compatible with the existing (route, subPath) calling convention.
@@ -540,23 +487,30 @@ export function resolveSubModule(
   route: string,
   subPath: string,
   t: Translate = englishT,
-): { primary: string; secondary: string; description?: string } | null {
+): {
+  primary: string;
+  secondary: string;
+  description?: string;
+} | null {
   if (!subPath) return null;
-
   const routeLabels: Record<string, string> = {
     settings: t('app.settings'),
     administration: t('app.administration'),
     knowledge: t('app.knowledge'),
   };
-
   const extensionTitle = EXTENSION_ROUTE_TITLES.get(route);
   const primary = routeLabels[route] ?? (extensionTitle ? t(extensionTitle as TranslationKey) : undefined);
   if (!primary) return null;
-
   // Knowledge sub-routes (not in module registry)
   if (route === 'knowledge') {
     const segments = subPath.split('/').filter(Boolean);
-    const KNOWLEDGE_SUBS: Record<string, { label: string; description: string }> = {
+    const KNOWLEDGE_SUBS: Record<
+      string,
+      {
+        label: string;
+        description: string;
+      }
+    > = {
       internal: { label: t('navigation.internalKnowledge'), description: t('navigation.internalKnowledgeDesc') },
       personal: { label: t('navigation.personalKnowledge'), description: t('navigation.personalKnowledgeDesc') },
       new: { label: t('navigation.newDocument'), description: t('navigation.newDocumentDesc') },
@@ -570,20 +524,16 @@ export function resolveSubModule(
     }
     return null;
   }
-
   // Build the hash path from route + subPath and look up
   const hashPath = `#/${route}/${subPath}`;
-
   // Direct match
   const direct = ALL_MODULES.find((m) => m.path === hashPath);
   if (direct) {
     const localized = localizeNavModule(direct, t);
     return { primary, secondary: localized.label, description: localized.description };
   }
-
   // Handle partial paths (e.g. administration/issues/123 → match admin.issues)
   const segments = subPath.split('/').filter(Boolean);
-
   // Try matching parent path (strip trailing segments)
   for (let i = segments.length; i >= 1; i--) {
     const tryPath = `#/${route}/${segments.slice(0, i).join('/')}`;
@@ -598,10 +548,7 @@ export function resolveSubModule(
       return { primary, secondary: localized.label, description: localized.description };
     }
   }
-
   return null;
 }
-
 // ─── Structured exports for sidebar panels ───────────────
-
 export const settingsAllModules = SETTINGS_ALL;

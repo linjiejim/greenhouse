@@ -12,11 +12,19 @@ const MODULE_PAGES: ModulePageContract[] = [
   { file: './agent-access/index.tsx', moduleId: 'settings.agent-connections', layout: 'list' },
   { file: './provider-bindings.tsx', moduleId: 'settings.provider-bindings', layout: 'form' },
   { file: './email-accounts.tsx', moduleId: 'settings.email-accounts', layout: 'list' },
-  { file: './memory.tsx', moduleId: 'settings.memory', layout: 'list' },
+  { file: '../../../../../plugins/memory/web/pages/settings/memory.tsx', moduleId: 'settings.memory', layout: 'list' },
   { file: '../administration/users.tsx', moduleId: 'admin.users', layout: 'list' },
   { file: '../administration/usage.tsx', moduleId: 'admin.usage', layout: 'list' },
-  { file: '../administration/feature-requests.tsx', moduleId: 'admin.issues', layout: 'list' },
-  { file: '../administration/frictions.tsx', moduleId: 'admin.issues', layout: 'list' },
+  {
+    file: '../../../../../plugins/feedback/web/pages/administration/feature-requests.tsx',
+    moduleId: 'admin.issues',
+    layout: 'list',
+  },
+  {
+    file: '../../../../../plugins/feedback/web/pages/administration/frictions.tsx',
+    moduleId: 'admin.issues',
+    layout: 'list',
+  },
   { file: '../administration/mcp-keys.tsx', moduleId: 'admin.mcp-keys', layout: 'list' },
   { file: '../administration/runtime-config.tsx', moduleId: 'admin.runtime-config', layout: 'form' },
   { file: '../administration/team-context.tsx', moduleId: 'admin.team-context', layout: 'form' },
@@ -61,14 +69,22 @@ describe('ModulePage coverage', () => {
     const read = (file: string) => readFileSync(new URL(file, import.meta.url), 'utf8');
     // Sections are <Tabs> in the tabs slot.
     expect(read('../files.tsx')).toMatch(/tabs=\{[\s\S]{0,200}<Tabs/);
-    for (const file of ['../skillhub/index.tsx', '../automations.tsx', '../administration/issues.tsx']) {
+    for (const file of [
+      '../skillhub/index.tsx',
+      '../automations.tsx',
+      '../../../../../plugins/feedback/web/pages/administration/issues.tsx',
+    ]) {
       expect(read(file)).toContain('<Tabs');
     }
     // A tab's own content never stacks another tab row under the page's.
-    for (const file of ['../run-profiles.tsx', '../skillhub/prompts.tsx', '../administration/frictions.tsx']) {
+    for (const file of [
+      '../run-profiles.tsx',
+      '../skillhub/prompts.tsx',
+      '../../../../../plugins/feedback/web/pages/administration/frictions.tsx',
+    ]) {
       expect(read(file)).not.toContain('<Tabs');
     }
-    const requests = read('../administration/feature-requests.tsx');
+    const requests = read('../../../../../plugins/feedback/web/pages/administration/feature-requests.tsx');
     expect(requests.match(/<Tabs/g) ?? []).toHaveLength(0);
   });
 

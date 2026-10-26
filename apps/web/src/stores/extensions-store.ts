@@ -1,3 +1,4 @@
+import { setExtensionAutomationTools, type AutomationOptInTool } from '@greenhouse/types/automation-tools';
 /**
  * Active extensions of the connected deployment (`GET /api/extensions`).
  *
@@ -36,6 +37,7 @@ export interface ActiveExtension {
 interface ExtensionsStore {
   extensions: ActiveExtension[];
   loaded: boolean;
+  conversationSharing: boolean;
   load: () => Promise<void>;
   reset: () => void;
 }
@@ -43,14 +45,18 @@ interface ExtensionsStore {
 export const useExtensionsStore = create<ExtensionsStore>((set) => ({
   extensions: [],
   loaded: false,
+  conversationSharing: true,
   load: async () => {
     try {
       const res = await authFetch('/api/extensions');
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = (await res.json()) as {
         extensions: ActiveExtension[];
+        automationTools?: AutomationOptInTool[];
+        conversations?: { sharing?: boolean };
         entityKinds?: ExtensionEntityKindDef[];
       };
+      setExtensionAutomationTools(data.automationTools ?? []);
       // Registration is idempotent on purpose: the store reloads after a
       // re-login, and the shared registries reject a duplicate outright.
       const knownKinds = new Set(extensionEntityKinds().map((def) => def.kind));
@@ -59,13 +65,21 @@ export const useExtensionsStore = create<ExtensionsStore>((set) => ({
           (def) => !knownKinds.has(def.kind) && !incompatible.has(kindOwner(def.kind) ?? ''),
         ),
       );
-      set({ extensions: data.extensions.filter((e) => !incompatible.has(e.id)), loaded: true });
+      set({
+        extensions: data.extensions.filter((e) => !incompatible.has(e.id)),
+        loaded: true,
+        conversationSharing: data.conversations?.sharing ?? true,
+      });
     } catch {
+      setExtensionAutomationTools([]);
       // Fail closed: an unreachable list means no extension UI, never a broken one.
-      set({ extensions: [], loaded: true });
+      set({ extensions: [], loaded: true, conversationSharing: false });
     }
   },
-  reset: () => set({ extensions: [], loaded: false }),
+  reset: () => {
+    setExtensionAutomationTools([]);
+    set({ extensions: [], loaded: false, conversationSharing: false });
+  },
 }));
 
 /** Whether the deployment runs the extension with this id. */

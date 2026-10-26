@@ -1,3 +1,4 @@
+import { useExtensionsStore } from '../../stores/extensions-store';
 /**
  * TopBar — contextual page/session title and local actions.
  *
@@ -155,10 +156,11 @@ export function EditableChatTitle({ title, controls }: { title: string; controls
 /** Session actions are kept renderable without store setup so their compact
  * TopBar contract has a direct regression test. */
 export function ChatTopBarSessionActions({ share }: { share: ChatShareControls | null }) {
+  const sharing = useExtensionsStore((s) => s.conversationSharing);
   const t = useT();
   return (
     <>
-      {share && (
+      {sharing && share && (
         <IconButton
           onClick={share.onOpen}
           label={t('chat.shareConversation')}

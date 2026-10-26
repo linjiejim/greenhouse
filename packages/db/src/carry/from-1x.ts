@@ -33,7 +33,7 @@ import {
   V1_ARCHIVE_FOLDER,
   V1_LATEST_TAG,
 } from '../migrate.js';
-import { coreTableNames, readCoreMigrations } from '../core-migrations.js';
+import { historicalCoreTableNames, readCoreMigrations } from '../core-migrations.js';
 import {
   readMigrationFiles,
   type ExtensionMigrationGeneration,
@@ -1649,7 +1649,7 @@ export async function carryFrom1x(options: CarryOptions): Promise<CarryReport> {
     const extensionTables = discoverExtensionTables(sourceTables, coreTables);
     // A 1.x extension table named like a 3.0 core table cannot be copied next to it.
     // Checked before anything else so a dry run reports it too.
-    const v3Core = coreTableNames();
+    const v3Core = historicalCoreTableNames();
     const extensionClashes = extensionTables.filter((name) => name !== 'extension_migrations' && v3Core.has(name));
     if (extensionClashes.length > 0 && !dryRun) {
       throw new CarryError(`Extension tables clash with 3.0 core tables: ${extensionClashes.join(', ')}`);

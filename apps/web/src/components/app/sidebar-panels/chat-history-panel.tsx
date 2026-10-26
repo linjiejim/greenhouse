@@ -1,3 +1,4 @@
+import { useExtensionsStore } from '../../../stores/extensions-store';
 /**
  * Chat History Panel — sidebar contextual panel for Home and conversations.
  * Shows recent sessions grouped by date (Today / Yesterday / This Week / Earlier)
@@ -261,6 +262,7 @@ export function ChatHistoryPanel({
   onShowAll,
 }: ChatHistoryPanelProps) {
   const t = useT();
+  const sharing = useExtensionsStore((s) => s.conversationSharing);
   const [compactCollapsed, setCompactCollapsed] = useState(loadCompactCollapsed);
   const toggleCompactCollapsed = useCallback(() => {
     setCompactCollapsed((prev) => {
@@ -326,7 +328,8 @@ export function ChatHistoryPanel({
   const isSuper = currentUser?.role === 'super';
 
   // A stored 'team' from a demoted account would 403 on every load.
-  const effectiveScope: HistoryTab = scope === 'team' && !isSuper ? 'mine' : scope;
+  const effectiveScope: HistoryTab =
+    (scope === 'team' && !isSuper) || (scope === 'shared' && !sharing) ? 'mine' : scope;
   // Automation runs: a flat list of title + time, nothing to organise or attribute.
   const plainRows = effectiveScope === 'scheduled' && !compact;
 
@@ -1016,11 +1019,15 @@ export function ChatHistoryPanel({
               items={[
                 { key: 'mine', label: t('history.scopeMine') },
                 { key: 'scheduled', label: t('history.scopeScheduled') },
-                {
-                  key: 'shared',
-                  label: t('history.scopeShared'),
-                  count: unreadShareCount > 0 ? unreadShareCount : undefined,
-                },
+                ...(sharing
+                  ? [
+                      {
+                        key: 'shared',
+                        label: t('history.scopeShared'),
+                        count: unreadShareCount > 0 ? unreadShareCount : undefined,
+                      },
+                    ]
+                  : []),
                 ...(isSuper ? [{ key: 'team', label: t('history.scopeTeam') }] : []),
               ]}
               activeKey={effectiveScope}

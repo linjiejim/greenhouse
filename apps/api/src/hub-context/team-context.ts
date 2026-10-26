@@ -18,7 +18,7 @@ import { DATA_CATALOG_TOOL, TEAM_CONTEXT_TOOL, TEAM_CONTEXT_URIS } from '@greenh
 import { getToolMeta } from '../tools/registry.js';
 import { canRead, resolveKbAccess } from '../knowledge/access.js';
 import { getWorkspaceValue } from '../settings/workspace-config.js';
-import { EXTENSIONS } from '../extensions/index.js';
+import { EXTENSIONS, fromExtensions } from '../extensions/index.js';
 import { resolveTeamContextDocs } from './settings.js';
 import { listTeamPrompts, promptsReachable } from './prompts.js';
 import { buildDataCatalog } from './catalog.js';
@@ -60,14 +60,12 @@ const GROUP_PURPOSE: Record<string, string> = {
   skills: 'SkillHub: team skills and saved prompts (also offered as MCP prompts)',
   chat: 'Your Greenhouse chat history (read-only)',
   automation: 'Your scheduled automations (read-only)',
-  feedback: 'Issues & requests: report frictions and feature requests to the team',
   services: 'Paid services: web search, page reads, image analysis and generation (metered to you)',
-  computer: 'Your cloud computer (runs commands; billed per minute)',
-  reports:
-    "Report templates: the team's required report / deck formats (report_templates), rendered to PDF / DOCX / PPTX into Files (report_render)",
 };
 
 function groupPurpose(group: string): string {
+  const contributed = fromExtensions('hubContext').find((entry) => entry.group === group);
+  if (contributed) return contributed.description;
   if (GROUP_PURPOSE[group]) return GROUP_PURPOSE[group]!;
   const ext = EXTENSIONS.find((entry) => entry.mcpGroups?.includes(group));
   return ext ? `${ext.name}${ext.description ? `: ${ext.description}` : ''}` : group;
@@ -97,9 +95,10 @@ export function grantedGroups(reachable: ReadonlySet<string>): GrantedGroup[] {
     .sort((a, b) => order.indexOf(a.group) - order.indexOf(b.group));
 }
 
-/** The reports group (v1.7 report templates): templates to follow before writing a report. */
-function reportsReachable(reachable: ReadonlySet<string>): boolean {
-  return reachable.has('report_templates');
+function contributedHints(reachable: ReadonlySet<string>, field: 'overviewHint' | 'bundleHint'): string[] {
+  return fromExtensions('hubContext')
+    .filter((entry) => entry.toolIds.some((id) => reachable.has(id)))
+    .flatMap((entry) => (entry[field] ? [entry[field]!] : []));
 }
 
 function knowledgeReachable(reachable: ReadonlySet<string>): boolean {
@@ -229,12 +228,7 @@ async function overviewMarkdown(caller: TeamContextCaller): Promise<string> {
     `- Call ${TEAM_CONTEXT_TOOL} (or read this resource) at the start of a new task.`,
     '- Before changing data other people rely on, make sure your user wants the change.',
     '- A delete first returns a preview; send it again with confirm:true only after your user agrees.',
-    ...(reportsReachable(caller.reachable)
-      ? [
-          '- Writing a report or deck? Call report_templates list first and follow the team template (report_templates validate checks it; report_render saves it into Files).',
-        ]
-      : []),
-    '- Ran into something confusing or broken? Report it with log_friction; ideas go to feature_request.',
+    ...contributedHints(caller.reachable, 'overviewHint'),
     '',
   ];
   return lines.join('\n');
@@ -360,9 +354,7 @@ export async function buildTeamContextBundle(caller: TeamContextCaller) {
           : 'Follow the conventions unless your user says otherwise.'
         : 'This connection has no knowledge access, so conventions and glossary are not included.',
       'Before changing data other people rely on, make sure your user wants the change; deletes preview first.',
-      ...(reportsReachable(caller.reachable)
-        ? ['For a report or deck, call report_templates list first and follow the team template.']
-        : []),
+      ...contributedHints(caller.reachable, 'bundleHint'),
     ],
   };
 }

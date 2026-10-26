@@ -574,3 +574,18 @@ stores/
 - Package web halves import `@greenhouse/web/extension-kit` (same snapshot-locked barrel as SDK 1 overlays).
 - Generated registrations plus the SDK 1 in-tree list feed the existing web host. Core may not import plugin source.
 - Administration → Plugins is a read-only CrudPage, backed by the super-only `/api/admin/plugins` operator view; enablement remains configuration + restart.
+
+### Official plugin ownership (4.0, wave 2a)
+
+Memory and Feedback are default-on packages; Reports and Computer are compiled but default-off.
+Their schemas, DB services, routes, tools, jobs, classic web panels, translations and seeds live
+under `plugins/<id>/`. Core must consume their contributions, never import their source or add
+module-specific cases. The generic seams are `promptContext`, `toolAvailability`, `billableServices`,
+`settingValidators`, `activity`, `summarySources`, `seeds`, and `retention`; web adds `tabs` and `slots`.
+`services` remains the DB factory; `billableServices` is the price catalog contribution.
+Tools may declare `meta.builtin`; this widens only the profile filter, never member permissions.
+External-only plugin tools are constructed only by the external service-tool builder.
+
+`conversations.sharing` defaults to true in greenhouse.config.ts. False disables share mutations and
+session-share routes, returns empty `/api/shares` lists, hides classic sharing controls and removes
+access granted by stored shares. Existing share rows are preserved.

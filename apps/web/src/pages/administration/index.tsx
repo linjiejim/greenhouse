@@ -22,7 +22,6 @@ import { useT } from '../../lib/i18n';
 // Sub-panels (shared with the former Settings > Administration section)
 import { UsagePanelWithUsers } from './usage';
 import { ServicesPricingPanel } from './services-pricing';
-import { IssuesPanel } from './issues';
 import { resolveAdministrationRedirect } from '../settings/redirects';
 import { UserManagementPanel } from './users';
 import { McpKeysPanel } from './mcp-keys';
@@ -70,7 +69,6 @@ export function AdministrationPage({ subPath }: { subPath: string }) {
       {activeModule === 'users' && <UserManagementPanel />}
       {activeModule === 'usage' && <UsagePanelWithUsers />}
       {activeModule === 'services' && <ServicesPricingPanel />}
-      {activeModule === 'issues' && <IssuesPanel subPath={subPath} />}
       {activeModule === 'activity' && <ActivityLogPage moduleId="admin.activity" />}
       {activeModule === 'mcp-keys' && <McpKeysPanel />}
       {activeModule === 'connectors' && <ConnectorsAdminPanel />}
@@ -78,7 +76,7 @@ export function AdministrationPage({ subPath }: { subPath: string }) {
       {activeModule === 'runtime-config' && <RuntimeConfigPanel />}
       {activeModule === 'team-context' && <TeamContextPanel />}
       {activeModule === 'branding' && <BrandingStudioPanel />}
-      {extensionModule && <extensionModule.component />}
+      {extensionModule && <extensionModule.component subPath={subPath} />}
     </ModulePageShell>
   );
 }

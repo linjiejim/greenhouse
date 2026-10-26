@@ -319,6 +319,10 @@ describe('team_context tool', () => {
     const overview = (
       (await withReports.readResource({ uri: 'greenhouse://context/overview' })).contents[0] as { text: string }
     ).text;
+    if (!db.extensions.reports) {
+      expect(overview).not.toContain('report_templates');
+      return;
+    }
     expect(overview).toContain('**reports**');
     expect(overview).toContain('report_templates list');
     const bundle = await callJson(withReports, 'team_context');

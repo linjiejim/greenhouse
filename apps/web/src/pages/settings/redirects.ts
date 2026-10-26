@@ -1,3 +1,4 @@
+import { resolveExtensionRedirect } from '../../lib/extension-redirects';
 /**
  * Legacy Settings deep-link redirects — pure resolver, unit-tested in
  * redirects.test.ts.
@@ -24,10 +25,6 @@ export const ADMIN_REDIRECTS: Record<string, string> = {
   users: 'users',
   usage: 'usage',
   services: 'services',
-  issues: 'issues',
-  // v1.5: both queues became tabs of Issues & requests (see ADMIN_TAB_REDIRECTS).
-  'feature-requests': 'issues',
-  frictions: 'issues',
   activity: 'activity',
   'mcp-keys': 'mcp-keys',
   connectors: 'connectors',
@@ -43,14 +40,13 @@ export const ADMIN_REDIRECTS: Record<string, string> = {
  * tail (e.g. a friction id) is kept after the tab. Shared by the Settings
  * redirect below and the Administration page itself.
  */
-export const ADMIN_TAB_REDIRECTS: Record<string, string> = {
-  'feature-requests': 'issues/requests',
-  frictions: 'issues/frictions',
-};
+export const ADMIN_TAB_REDIRECTS: Record<string, string> = {};
 
 /** `#/administration/<sub-path>` for a retired admin key, or null. */
 export function resolveAdministrationRedirect(subPath: string): string | null {
   const [key, ...rest] = subPath.split('/').filter(Boolean);
+  const plugin = resolveExtensionRedirect('administration', subPath);
+  if (plugin) return plugin;
   const target = key ? ADMIN_TAB_REDIRECTS[key] : undefined;
   return target ? `#/administration/${[target, ...rest].join('/')}` : null;
 }
@@ -60,6 +56,8 @@ export function resolveAdministrationRedirect(subPath: string): string | null {
  * the path is a real Settings module that stays put.
  */
 export function resolveSettingsRedirect(subPath: string): string | null {
+  const plugin = resolveExtensionRedirect('settings', subPath);
+  if (plugin) return plugin;
   const segments = subPath.split('/').filter(Boolean);
   const moduleKey = segments[0] || DEFAULT_MODULE;
 

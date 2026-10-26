@@ -26,10 +26,8 @@ import type { NavModule } from '../../lib/nav-registry';
 import { PreferencesPanel } from './preferences';
 import { ProviderBindingsPanel } from './provider-bindings';
 import { EmailAccountsPanel } from './email-accounts';
-import { MemoryPanel } from './memory';
 import { AgentAccessPanel } from './agent-access';
 import { MyUsagePanel } from './my-usage';
-import { ComputerPanel } from './computer';
 import { DEFAULT_MODULE, resolveSettingsRedirect } from './redirects';
 
 // ─── Sub-module helpers ─────────────────────────────────
@@ -82,10 +80,8 @@ export function SettingsPage({ subPath }: { subPath: string }) {
       {effectiveModule === 'agent-connections' && <AgentAccessPanel subPath={subPath} />}
       {effectiveModule === 'provider-bindings' && <ProviderBindingsPanel />}
       {effectiveModule === 'email-accounts' && <EmailAccountsPanel />}
-      {effectiveModule === 'memory' && <MemoryPanel />}
       {effectiveModule === 'my-usage' && <MyUsagePanel />}
-      {effectiveModule === 'computer' && <ComputerPanel />}
-      {extensionModule && effectiveModule === moduleKey && <extensionModule.component />}
+      {extensionModule && effectiveModule === moduleKey && <extensionModule.component subPath={subPath} />}
     </ModulePageShell>
   );
 }

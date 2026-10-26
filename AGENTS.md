@@ -237,7 +237,6 @@ greenhouse/
 │   │       ├── email/        # IMAP/SMTP client, shared mailbox, security
 │   │       ├── wecom/ feishu/# optional IM integrations (binding, push, sign-in, bot)
 │   │       ├── skills/       # SkillHub — bundle validation, store, publish/download, scanner
-│   │       ├── reports/      # report templates + server-side PDF/DOCX/PPTX rendering into Files (fonts in apps/api/assets/fonts)
 │   │       ├── storage/      # upload storage (local disk / COS) + s3-lite (SigV4 client)
 │   │       ├── hub-context/  # team context for members' agents: MCP prompts/resources, team_context, data catalog
 │   │       ├── connectors/   # MCP client: remote connectors, credentials, OAuth sign-in, directory behind mcp_call
@@ -554,3 +553,20 @@ is parsed; the generic OpenAI client drops both (that is how auto-titles went bl
 - Fast feedback: `pnpm test:unit`; database focus: `pnpm test:db`; before landing run the full
   `pnpm test`. Worker counts are tunable via `VITEST_UNIT_MAX_WORKERS` /
   `VITEST_DB_MAX_WORKERS`.
+
+### Official plugin ownership (4.0, wave 2a)
+
+Memory and Feedback are default-on packages; Reports and Computer are compiled but default-off.
+Their schemas, DB services, routes, tools, jobs, classic web panels, translations and seeds live
+under `plugins/<id>/`. Core must consume their contributions, never import their source or add
+module-specific cases. The generic seams are `promptContext`, `toolAvailability`, `billableServices`,
+`settingValidators`, `activity`, `summarySources`, `seeds`, and `retention`; web adds `tabs` and `slots`.
+`services` remains the DB factory; `billableServices` is the price catalog contribution.
+Tools may declare `meta.builtin`; this widens only the profile filter, never member permissions.
+External-only plugin tools are constructed only by the external service-tool builder.
+
+`conversations.sharing` defaults to true in greenhouse.config.ts. False disables share mutations and
+session-share routes, returns empty `/api/shares` lists, hides classic sharing controls and removes
+access granted by stored shares. Existing share rows are preserved.
+
+- Optional automation grants are contributed as `automationTools`; MCP group purpose/working hints use `hubContext`, filtered by reachable tools. Never capture a plugin-dependent tool enum at module evaluation.

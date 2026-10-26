@@ -27,6 +27,3 @@ export const UPLOADS_DIR = resolve(DATA_DIR, 'uploads');
 
 /** data/skills/ directory — local-disk default of the Skill Center bundle store */
 export const SKILLS_DIR = resolve(DATA_DIR, 'skills');
-
-/** apps/api/assets/fonts — the CJK font subsets embedded in rendered reports (OFL, see OFL.txt there) */
-export const REPORT_FONTS_DIR = resolve(REPO_ROOT, 'apps', 'api', 'assets', 'fonts');

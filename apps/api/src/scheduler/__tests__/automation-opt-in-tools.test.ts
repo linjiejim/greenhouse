@@ -1,3 +1,4 @@
+import { getAllToolIds } from '../../tools/registry.js';
 /**
  * The opt-in grant's behavioural contract (spec 20260824-automation-optin-tools):
  * it adds only from the catalog, only within the owner's own permissions, only
@@ -25,7 +26,7 @@ const EFFECTIVE = [
   'tables_schema_plan',
   'report_templates',
   'report_render',
-];
+].filter((id) => getAllToolIds().includes(id));
 
 describe('scheduledToolBase', () => {
   it('is read-only when nothing was granted', () => {
@@ -34,14 +35,14 @@ describe('scheduledToolBase', () => {
     expect(base).not.toContain('tables_mutation');
     expect(base).not.toContain('generate_image');
     // Reading the team's report templates is replay-safe; rendering one is not.
-    expect(base).toContain('report_templates');
+    expect(base.includes('report_templates')).toBe(EFFECTIVE.includes('report_templates'));
     expect(base).not.toContain('report_render');
   });
 
   it('lets the owner grant report rendering for a scheduled report', () => {
     const base = scheduledToolBase(EFFECTIVE, ['report_render']);
-    expect(base).toContain('report_render');
-    expect(base).toContain('report_templates');
+    expect(base.includes('report_render')).toBe(EFFECTIVE.includes('report_render'));
+    expect(base.includes('report_templates')).toBe(EFFECTIVE.includes('report_templates'));
     expect(base).not.toContain('tables_mutation');
   });
 
@@ -93,8 +94,8 @@ describe('validateUnattendedTools', () => {
   });
 
   it('accepts a catalogued grant and canonicalises it', () => {
-    const result = validateUnattendedTools(['knowledge_mutation', 'memory', 'memory'], CONSOLE);
-    expect(result).toEqual({ tools: ['memory', 'knowledge_mutation'] });
+    const result = validateUnattendedTools(['knowledge_mutation', 'analyze_image', 'analyze_image'], CONSOLE);
+    expect(result).toEqual({ tools: ['analyze_image', 'knowledge_mutation'] });
   });
 
   it('distinguishes "not supplied" from "supplied empty"', () => {

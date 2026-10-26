@@ -90,9 +90,12 @@ function resolvePriceTarget(kind: unknown, target: unknown, provider: unknown): 
     return { kind, target, provider: '', tokenPriced: true };
   }
   if (kind === 'service') {
-    if (typeof target !== 'string' || !(target in SERVICE_PROVIDERS)) return { error: 'Unknown service' };
+    if (typeof target !== 'string' || !(target in getServiceCatalog())) return { error: 'Unknown service' };
     const service = target as PricedService;
-    if (typeof provider !== 'string' || !SERVICE_PROVIDERS[service].includes(provider)) {
+    if (
+      typeof provider !== 'string' ||
+      !(SERVICE_PROVIDERS[service] ?? Object.keys(getServiceCatalog()[service]?.providers ?? {})).includes(provider)
+    ) {
       return { error: 'Unknown provider for this service' };
     }
     return { kind, target: service, provider, tokenPriced: serviceUnit(service) === 'token' };

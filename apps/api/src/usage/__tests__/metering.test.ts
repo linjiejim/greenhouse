@@ -112,7 +112,7 @@ describe('attribution', () => {
 
   it('explicit client > scope > caller default', () => {
     expect(resolveMeteringClient(undefined, 'scheduled-task')).toBe('automation');
-    expect(resolveMeteringClient(undefined, 'memory-consolidation')).toBe('system');
+    expect(resolveMeteringClient('system', 'plugin-upkeep')).toBe('system');
     runWithMeteringScope({ userId: 'u1', client: 'mcp' }, () => {
       expect(resolveMeteringClient(undefined, 'scheduled-task')).toBe('mcp');
       expect(resolveMeteringClient('mobile', 'chat')).toBe('mobile');

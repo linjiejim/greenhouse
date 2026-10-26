@@ -118,7 +118,7 @@ describe('buildLazyServerTools', () => {
 
   it('injects all lazy server tools for an internal user', () => {
     const internal = buildLazyServerTools(db, allLazy, { userId: 'u1', userRole: 'team' });
-    expect(internal).toHaveProperty('feature_request');
+    expect(Object.keys(internal).includes('feature_request')).toBe(allLazy.includes('feature_request'));
     expect(internal).toHaveProperty('knowledge_query');
     expect(internal).toHaveProperty('session_query');
   });

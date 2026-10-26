@@ -45,10 +45,7 @@ export const MCP_RESOURCE_GROUP_IDS = [
   'chat',
   'automation',
   'image',
-  'feedback',
   'services',
-  'computer',
-  'reports',
   'connectors',
 ] as const;
 

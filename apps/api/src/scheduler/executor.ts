@@ -15,7 +15,7 @@ import { normalizeAutomationOptInTools } from '@greenhouse/types/automation-tool
 import { Cron } from 'croner';
 import { getDb, type DatabaseProvider } from '@greenhouse/db';
 import { selectTools, buildSystemPrompt } from '../agent.js';
-import { resolveMemoryContext } from '../llm/memory.js';
+import { resolveExtensionPromptContext } from '../extensions/prompt-context.js';
 import type { UserRole } from '../auth/token.js';
 import type { ToolRegistry } from '../agent.js';
 import { runAgentInSession, SessionTranscriptChangedError } from '../agent-runtime/run-agent.js';
@@ -276,7 +276,7 @@ export async function executeTaskInSession(
     // Scheduled runs act for their owner, so they get the owner's memory index
     // (same gate as chat). Without this, "remember I want X" silently fails to
     // apply on exactly the unattended runs the user isn't watching.
-    const memoryBlock = await resolveMemoryContext(owner.id, owner.role as UserRole);
+    const memoryBlock = await resolveExtensionPromptContext(owner.id, owner.role as UserRole, Object.keys(tools));
     // Connectors the run may call (reads and switched-on writes; never destructive ones).
     const connectorsBlock =
       'mcp_call' in tools

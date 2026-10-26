@@ -85,6 +85,19 @@ export function readCoreMigrations(migrationsFolder: string): CoreMigrationFile[
  * the chain, but no extension may claim it either.
  */
 export function coreTableNames(migrationsFolder = MIGRATIONS_FOLDER): Set<string> {
+  const journal = JSON.parse(readFileSync(join(migrationsFolder, 'meta', '_journal.json'), 'utf8')) as {
+    entries: Array<{ idx: number }>;
+  };
+  const latest = journal.entries.at(-1);
+  const snapshotPath = latest && join(migrationsFolder, 'meta', `${String(latest.idx).padStart(4, '0')}_snapshot.json`);
+  if (snapshotPath && existsSync(snapshotPath)) {
+    const snapshot = JSON.parse(readFileSync(snapshotPath, 'utf8')) as { tables: Record<string, { name: string }> };
+    return new Set(['extension_migrations', ...Object.values(snapshot.tables).map((table) => table.name)]);
+  }
+  return historicalCoreTableNames(migrationsFolder);
+}
+
+export function historicalCoreTableNames(migrationsFolder = MIGRATIONS_FOLDER): Set<string> {
   const names = new Set<string>(['extension_migrations']);
   for (const file of readCoreMigrations(migrationsFolder)) {
     for (const table of file.createsTables) names.add(table);

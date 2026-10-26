@@ -19,7 +19,9 @@ const SettingsPage = lazy(() => import('./pages/settings').then((m) => ({ defaul
 const AdministrationPage = lazy(() =>
   import('./pages/administration').then((m) => ({ default: m.AdministrationPage })),
 );
-const DesignPage = lazy(() => import('./pages/design').then((m) => ({ default: m.DesignPage })));
+const DesignPage = import.meta.env.DEV
+  ? lazy(() => import('./pages/design').then((m) => ({ default: m.DesignPage })))
+  : null;
 const KnowledgePage = lazy(() => import('./pages/knowledge').then((m) => ({ default: m.KnowledgePage })));
 const AutomationsPage = lazy(() => import('./pages/automations').then((m) => ({ default: m.AutomationsPage })));
 const SkillHubPage = lazy(() => import('./pages/skillhub').then((m) => ({ default: m.SkillHubPage })));
@@ -619,7 +621,7 @@ function AppShell({ route, subPath, params, extensionRoute }: AppShellProps) {
                   ) : (
                     <ProjectsPage />
                   ))}
-                {route === 'design' && <DesignPage />}
+                {route === 'design' && DesignPage && <DesignPage />}
                 {route === 'knowledge' && hasApplication('knowledge') && (
                   <KnowledgePage subPath={subPath} basePath="#/knowledge" />
                 )}

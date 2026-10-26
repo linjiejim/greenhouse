@@ -14,3 +14,6 @@ apps/mobile/android/
 apps/mobile/ios/
 # Expo 生成并自带「should not be edited」注释，跑过 expo start / prebuild 就会出现
 apps/mobile/expo-env.d.ts
+
+# Plugin seed files use JSONL to match the example dataset loader.
+plugins/*/seeds/*.json

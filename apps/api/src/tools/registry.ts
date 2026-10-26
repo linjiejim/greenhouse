@@ -20,7 +20,6 @@ export type { ToolCategory, ToolMeta } from './define.js';
 import { analyzeImageTool } from './analyze-image.js';
 import { askUserTool } from './ask-user.js';
 import { externalSearchTool } from './external-search/index.js';
-import { featureRequestTool } from './feature-request.js';
 import { generateImageTool } from './generate-image.js';
 import { projectQueryTool } from './project-query.js';
 import { projectMutationTool } from './project-mutation.js';
@@ -41,16 +40,10 @@ import { automationQueryTool } from './automation-query.js';
 import { automationMutationTool } from './automation-mutation.js';
 import { emailQueryTool } from './email-query.js';
 import { emailMutationTool } from './email-mutation.js';
-import { memoryTool } from './memory.js';
 import { mcpCallTool } from './mcp-call.js';
-import { logFrictionTool } from './log-friction.js';
 import { filesQueryTool } from './files-query.js';
 import { filesMutationTool } from './files-mutation.js';
-import { feedbackQueryTool } from './feedback-query.js';
 import { readUrlTool, webSearchTool } from './web-search.js';
-import { computerExecTool, computerFilesTool, computerStopTool, computerTransferTool } from './computer.js';
-import { reportTemplatesTool } from './report-templates.js';
-import { reportRenderTool } from './report-render.js';
 
 // ─── Catalog ─────────────────────────────────────────────
 
@@ -59,7 +52,6 @@ const CORE_TOOL_MODULES: ToolModule[] = [
   analyzeImageTool,
   askUserTool,
   externalSearchTool,
-  featureRequestTool,
   generateImageTool,
   projectQueryTool,
   projectMutationTool,
@@ -80,20 +72,11 @@ const CORE_TOOL_MODULES: ToolModule[] = [
   automationMutationTool,
   emailQueryTool,
   emailMutationTool,
-  memoryTool,
   mcpCallTool,
-  logFrictionTool,
   filesQueryTool,
   filesMutationTool,
-  feedbackQueryTool,
   webSearchTool,
   readUrlTool,
-  computerExecTool,
-  computerFilesTool,
-  computerTransferTool,
-  computerStopTool,
-  reportTemplatesTool,
-  reportRenderTool,
 ];
 
 /** Static tools (constructed once from the shared db) — drives createToolRegistry. */

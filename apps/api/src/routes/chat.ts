@@ -40,7 +40,7 @@ import { resolveProfileAsync } from '../profiles/profile.js';
 import { isChatModelAllowed } from '../config/models.js';
 import { sanitizeForPrompt } from '../security/security.js';
 import { sanitizeChatMessagesForPrompt } from '../chat/user-message.js';
-import { resolveMemoryContext } from '../llm/memory.js';
+import { resolveExtensionPromptContext } from '../extensions/prompt-context.js';
 import { pinProfileIdForUser, ProfileAccessError } from '../profiles/access.js';
 import type { AuthUser } from '../auth/token.js';
 import type { AgentProfile } from '../profiles/profile.js';
@@ -564,6 +564,7 @@ export function createChatRoute(toolRegistry: ToolRegistry) {
             userId,
             {
               digest: sessionDigest?.text,
+              toolIds: Object.keys(serverTools),
               canSearchConversation: Boolean(sessionId) && 'session_query' in serverTools,
               // The blocks this screen draws (absent → the default set); the guide teaches only these.
               richBlocks: admitRichBlocks(body.rich_blocks),
@@ -840,7 +841,7 @@ async function buildSystemPromptWithUserNotes(
   profile: AgentProfile,
   hasTools: boolean,
   userId: string | null,
-  conversation: { digest?: string; canSearchConversation: boolean; richBlocks?: readonly string[] },
+  conversation: { digest?: string; canSearchConversation: boolean; toolIds: string[]; richBlocks?: readonly string[] },
 ): Promise<string> {
   let userInfo: string | undefined;
   let userLocale: string | undefined;
@@ -858,9 +859,9 @@ async function buildSystemPromptWithUserNotes(
       /* ignore */
     }
 
-    // Memory index (feature-gated inside resolveMemoryContext, which also
+    // Memory index (feature-gated inside resolveExtensionPromptContext, which also
     // sanitises — memory text is model-written and user-editable).
-    const memoryBlock = await resolveMemoryContext(userId);
+    const memoryBlock = await resolveExtensionPromptContext(userId, undefined, conversation.toolIds);
     if (memoryBlock) userInfo = userInfo ? `${userInfo}\n${memoryBlock}` : memoryBlock;
   }
 

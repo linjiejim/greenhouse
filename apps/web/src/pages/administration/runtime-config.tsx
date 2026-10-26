@@ -25,7 +25,7 @@ import { fetchWorkspaceSettings, saveWorkspaceSettings } from '../../lib/api/wor
 import { flagChecked } from '../../lib/workspace-flags';
 import { useExtensionsStore } from '../../stores/extensions-store';
 
-const RUNTIME_GROUPS: WorkspaceSettingGroup[] = ['llm', 'media', 'search', 'gateway', 'computer'];
+const RUNTIME_GROUPS: WorkspaceSettingGroup[] = ['llm', 'media', 'search', 'gateway'];
 
 /** Registry descriptions mark identifiers with backticks; show them as inline code, not raw ticks. */
 function Description({ text, className }: { text: string; className: string }) {
@@ -94,6 +94,9 @@ export function RuntimeConfigPanel() {
 
   const groupLabel = (group: string): string => {
     if ((RUNTIME_GROUPS as string[]).includes(group)) return t(`runtimeConfig.group_${group}` as TranslationKey);
+    const declared = `ext.${group}.settingsGroup` as const;
+    const label = t(declared);
+    if (label !== declared) return label;
     const name = extensions.find((e) => e.id === group)?.name ?? group;
     return t('runtimeConfig.group_extension', { name });
   };

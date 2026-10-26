@@ -83,7 +83,7 @@ describe('flag-owned tool sets', () => {
     const byKey = Object.fromEntries(FEATURE_POINTS.map((p) => [p.key, [...p.toolIds]]));
 
     expect(byKey.tables).toEqual(['tables_query', 'tables_mutation', 'tables_schema_plan']);
-    expect(byKey.memory).toEqual(['memory']);
+    expect(byKey.memory).toEqual(allFeatureFlags().some((flag) => flag.key === 'memory') ? ['memory'] : undefined);
     expect(byKey.knowledge).toEqual(['knowledge_query', 'knowledge_mutation']);
     expect(byKey.projects).toEqual(['project_query', 'project_mutation']);
   });

@@ -23,7 +23,11 @@
       "extra-files": [
         { "type": "json", "path": "apps/mobile/package.json", "jsonpath": "$.version" },
         { "type": "json", "path": "apps/mobile/app.json", "jsonpath": "$.expo.version" },
-        { "type": "json", "path": "plugins/example/package.json", "jsonpath": "$.version" }
+        { "type": "json", "path": "plugins/example/package.json", "jsonpath": "$.version" },
+        { "type": "json", "path": "plugins/memory/package.json", "jsonpath": "$.version" },
+        { "type": "json", "path": "plugins/feedback/package.json", "jsonpath": "$.version" },
+        { "type": "json", "path": "plugins/reports/package.json", "jsonpath": "$.version" },
+        { "type": "json", "path": "plugins/computer/package.json", "jsonpath": "$.version" }
       ]
     }
   }

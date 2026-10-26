@@ -1,0 +1,43 @@
+{
+  "name": "@greenhouse/plugin-reports",
+  "version": "3.0.2",
+  "private": true,
+  "type": "module",
+  "greenhouse": {
+    "id": "reports",
+    "sdk": 1,
+    "api": "./api/index.ts",
+    "web": "./web/index.ts"
+  },
+  "exports": {
+    "./api": "./api/index.ts",
+    "./web": "./web/index.ts",
+    "./manifest": "./manifest.ts"
+  },
+  "dependencies": {
+    "@greenhouse/api": "workspace:*",
+    "@greenhouse/web": "workspace:*",
+    "@greenhouse/types": "workspace:*",
+    "@greenhouse/crud": "workspace:*",
+    "ai": "^6.0.176",
+    "drizzle-orm": "^0.45.2",
+    "hono": "^4.12.18",
+    "react": "^19.0.0",
+    "zod": "^4.4.3",
+    "docx": "9.12.0",
+    "marked": "^18.0.3",
+    "pdfmake": "0.3.12",
+    "pptxgenjs": "4.0.1"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.61.1",
+    "@greenhouse/db": "workspace:*",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "fflate": "^0.8.3",
+    "unpdf": "^1.8.0",
+    "drizzle-kit": "^0.31.10",
+    "react-dom": "^19.0.0"
+  }
+}

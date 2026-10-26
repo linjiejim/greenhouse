@@ -18,6 +18,7 @@
  * POST   /api/sessions/pins/reorder                    — 调整当前用户置顶会话的顺序
  */
 
+import { GREENHOUSE_CONFIG } from '../config/greenhouse-config.js';
 import { Hono } from 'hono';
 import { getDb, SessionActiveRuntimeError } from '@greenhouse/db';
 import { SESSION_SCOPES, type SessionScope } from '@greenhouse/types/api';
@@ -70,6 +71,14 @@ function parseSessionScope(raw: string | undefined): SessionScope | undefined | 
 }
 
 const sessions = new Hono<AppEnv>()
+  .use('*', async (c, next) => {
+    if (
+      !GREENHOUSE_CONFIG.conversations.sharing &&
+      (/\/shares(?:\/|$)/.test(c.req.path) || c.req.path.endsWith('/shareable-users'))
+    )
+      return c.notFound();
+    return next();
+  })
   /** GET /api/sessions/shareable-users — list active internal users for sharing */
   .get('/shareable-users', async (c) => {
     const authUser = getAuthUser(c);
@@ -176,6 +185,7 @@ const sessions = new Hono<AppEnv>()
     };
 
     let baseList;
+    if (scope === 'shared' && !GREENHOUSE_CONFIG.conversations.sharing) return c.json({ sessions: [] });
     if (scope === 'shared') {
       baseList = await getDb().sessions.listSharedWith(authUser.id, listOpts);
     } else if (scope === 'team') {
@@ -192,7 +202,9 @@ const sessions = new Hono<AppEnv>()
 
     // Sessions shared with the current user (shared_with = me OR __team__).
     // Computed for every role so we can flag "shared with me" rows consistently.
-    const sharedSessionIds = await getDb().sessionShares.getSharedSessionIds(authUser.id);
+    const sharedSessionIds = GREENHOUSE_CONFIG.conversations.sharing
+      ? await getDb().sessionShares.getSharedSessionIds(authUser.id)
+      : [];
     const sharedIdSet = new Set(sharedSessionIds);
 
     // Unscoped + non-super: fold in sessions shared with this user. `scope=mine`

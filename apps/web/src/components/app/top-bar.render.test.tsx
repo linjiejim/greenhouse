@@ -1,3 +1,4 @@
+import { useExtensionsStore } from '../../stores/extensions-store';
 /**
  * @vitest-environment happy-dom
  */
@@ -30,6 +31,7 @@ describe('TopBar mobile chat actions', () => {
   });
 
   it('shows mobile session history without the global Assistant action', () => {
+    useExtensionsStore.setState({ conversationSharing: true });
     const html = renderTopBar('chat');
 
     expect(html).toContain('aria-label="Session history"');
@@ -38,12 +40,14 @@ describe('TopBar mobile chat actions', () => {
   });
 
   it('keeps the history shortcut scoped to Chat', () => {
+    useExtensionsStore.setState({ conversationSharing: true });
     const html = renderTopBar('projects');
 
     expect(html).not.toContain('aria-label="Session history"');
   });
 
   it('names the change record Activity log rather than the prompt library', () => {
+    useExtensionsStore.setState({ conversationSharing: true });
     const html = renderTopBar('activity');
     expect(html).toContain('>Activity log<');
     expect(html).not.toContain('>Prompts<');
@@ -54,6 +58,7 @@ describe('TopBar mobile chat actions', () => {
   });
 
   it('renders sharing as an icon-only conversation action', () => {
+    useExtensionsStore.setState({ conversationSharing: true });
     const html = renderToStaticMarkup(
       createElement(I18nProvider, {
         initialLocale: 'en',

@@ -18,7 +18,7 @@ import { resolveProfileAsync } from '../../profiles/profile.js';
 import { resolveEffectiveTools } from '../../agent-runtime/tool-resolution.js';
 import { buildLazyServerTools, LAZY_TOOL_IDS } from '../../agent-runtime/tool-resolution.js';
 import { runAgentInSession, type AgentGenerate, type HeadlessMessage } from '../../agent-runtime/run-agent.js';
-import { resolveMemoryContext } from '../../llm/memory.js';
+import { resolveExtensionPromptContext } from '../../extensions/prompt-context.js';
 import { sanitizeChatMessagesForPrompt, sanitizeUserMessageForPrompt } from '../../chat/user-message.js';
 import { formatDigestSection, scheduleDigestFold } from '../../chat/digest.js';
 import { flattenRichOutput } from '../../notifications/render.js';
@@ -192,7 +192,7 @@ export async function dispatchFeishuMessage(message: FeishuIncomingMessage, deps
     }),
   );
 
-  const memoryBlock = await resolveMemoryContext(owner.id, owner.role as UserRole);
+  const memoryBlock = await resolveExtensionPromptContext(owner.id, owner.role as UserRole, Object.keys(tools));
   let systemPrompt = buildSystemPrompt(profile, memoryBlock ? { userInfo: memoryBlock } : undefined);
 
   // ── 5. 跑既有 runner（带上这串对话的历史）────────────────

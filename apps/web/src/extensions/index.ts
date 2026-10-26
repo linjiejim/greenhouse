@@ -1,3 +1,4 @@
+import { registerExtensionRedirects } from '../lib/extension-redirects';
 /**
  * Compiled-in web extensions — add yours here (one import, one list entry),
  * next to its API half in apps/api/src/extensions/index.ts.
@@ -90,6 +91,7 @@ const ROUTE_ALIASES = new Map<string, string>();
 // ─── Load-time registrations (compatible set) ───────────
 
 for (const ext of LOADED_WEB_EXTENSIONS) {
+  if (ext.redirects) registerExtensionRedirects(ext.id, ext.redirects);
   if (ext.messages) registerExtensionMessages(ext.id, ext.messages);
   if (ext.modules?.length) registerExtensionNavModules(ext.id, ext.modules);
   for (const page of ext.pages ?? []) {
@@ -136,7 +138,7 @@ export function compiledExtensionRouteAliases(): ReadonlyMap<string, string> {
 /** One hash a browser can open because an extension registered it. */
 export interface ExtensionSurface {
   extensionId: string;
-  kind: 'page' | 'page-module' | 'navigation' | 'settings-module' | 'administration-module' | 'alias';
+  kind: 'page' | 'page-module' | 'navigation' | 'settings-module' | 'administration-module' | 'alias' | 'tab';
   hash: string;
   /** For `alias`: the hash the surface must redirect to. */
   redirectsTo?: string;
@@ -181,6 +183,8 @@ export function extensionSurfaces(active: ReadonlySet<string> = activeIds()): Ex
         requireFeature: item.requireFeature,
       });
     }
+    for (const tab of ext.tabs ?? [])
+      surfaces.push({ extensionId: ext.id, kind: 'tab', hash: `#/${tab.host}?tab=${encodeURIComponent(tab.key)}` });
     for (const mod of ext.modules ?? []) {
       surfaces.push({
         extensionId: ext.id,
@@ -221,8 +225,20 @@ export function extensionModuleComponent(
   key: string,
 ): WebExtensionModule | undefined {
   for (const ext of LOADED_WEB_EXTENSIONS) {
+    if (!isActiveWebExtension(ext.id)) continue;
     const mod = ext.modules?.find((m) => m.parent === parent && m.key === key);
     if (mod) return mod;
   }
   return undefined;
+}
+
+export function extensionTabs(host: string) {
+  return LOADED_WEB_EXTENSIONS.filter((e) => isActiveWebExtension(e.id))
+    .flatMap((e) => e.tabs ?? [])
+    .filter((tab) => tab.host === host);
+}
+export function extensionSlots(slot: string) {
+  return LOADED_WEB_EXTENSIONS.filter((e) => isActiveWebExtension(e.id))
+    .flatMap((e) => e.slots ?? [])
+    .filter((item) => item.slot === slot);
 }

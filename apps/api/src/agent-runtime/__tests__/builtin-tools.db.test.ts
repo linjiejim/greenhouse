@@ -71,7 +71,7 @@ describe('built-in tools against a real team allow-set', () => {
       profileId: 'custom:1',
     });
 
-    expect(BUILTIN_AGENT_TOOL_IDS.has('memory')).toBe(true);
+    expect(BUILTIN_AGENT_TOOL_IDS.has('memory')).toBe(Boolean(db.extensions.memory));
     expect(effectiveTools).not.toContain('memory');
   });
 

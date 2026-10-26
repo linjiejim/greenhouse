@@ -17,17 +17,6 @@ function def(key: string) {
 }
 
 describe('validateWorkspaceValue', () => {
-  it('accepts only well-formed cloud computer settings', () => {
-    expect(validateWorkspaceValue(def('computer.enabled'), true).ok).toBe(true);
-    expect(validateWorkspaceValue(def('computer.enabled'), 'maybe').ok).toBe(false);
-    expect(validateWorkspaceValue(def('computer.max_running'), '5').ok).toBe(true);
-    expect(validateWorkspaceValue(def('computer.max_running'), '0').ok).toBe(false);
-    expect(validateWorkspaceValue(def('computer.max_running'), '2.5').ok).toBe(false);
-    expect(validateWorkspaceValue(def('computer.domain'), 'cn-beijing-1.sandbox.ppio.com').ok).toBe(true);
-    expect(validateWorkspaceValue(def('computer.domain'), 'https://e2b.app').ok).toBe(false);
-    expect(validateWorkspaceValue(def('computer.template'), 'base').ok).toBe(true);
-    expect(validateWorkspaceValue(def('computer.template'), 'a b').ok).toBe(false);
-  });
 
   it('takes team context picks as document ids and the zone as an IANA name', () => {
     const conventions = validateWorkspaceValue(def('team_context.conventions'), [

@@ -65,7 +65,9 @@ describe('web extension seam', () => {
     expect(isNavModuleActive(mod!, [])).toBe(false);
     expect(isNavModuleActive(mod!, [{ id: 'example' }])).toBe(true);
     expect(localizeNavModule(mod!, (key) => translate('zh', key)).label).toBe('示例笔记');
+    useExtensionsStore.setState({ extensions: [{ id: 'example', name: 'Example notes', description: null }] });
     expect(extensionModuleComponent('settings', 'example')?.key).toBe('example');
+    expect(resolveUrlContext('#/settings/example')).toMatchObject({ type: 'extension', extension: 'example' });
 
     // Administration modules take core's `admin.<key>` id — the one
     // `<ModulePage moduleId="admin.<key>">` looks up — not `administration.<key>`.
@@ -74,6 +76,7 @@ describe('web extension seam', () => {
     expect(admin?.path).toBe('#/administration/example');
     expect(getNavModule('administration.example')).toBeUndefined();
     expect(extensionModuleComponent('administration', 'example')?.key).toBe('example');
+    useExtensionsStore.getState().reset();
   });
 
   it('registers the tool card and icon', () => {

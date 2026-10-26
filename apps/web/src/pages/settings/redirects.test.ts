@@ -1,5 +1,6 @@
+import '../../extensions';
 import { describe, expect, it } from 'vitest';
-import { ADMIN_REDIRECTS, resolveAdministrationRedirect, resolveSettingsRedirect } from './redirects';
+import { ADMIN_REDIRECTS, resolveSettingsRedirect } from './redirects';
 import { administrationModules } from '../../lib/nav-registry';
 
 const adminKey = (id: string) => id.split('.').pop()!;
@@ -35,14 +36,6 @@ describe('resolveSettingsRedirect', () => {
     expect(resolveSettingsRedirect('usage/123')).toBe('#/administration/usage/123');
   });
 
-  it('sends the retired request and friction queues to their Issues & requests tabs', () => {
-    expect(resolveSettingsRedirect('feature-requests')).toBe('#/administration/issues/requests');
-    expect(resolveSettingsRedirect('frictions/123')).toBe('#/administration/issues/frictions/123');
-    expect(resolveAdministrationRedirect('frictions')).toBe('#/administration/issues/frictions');
-    expect(resolveAdministrationRedirect('feature-requests')).toBe('#/administration/issues/requests');
-    expect(resolveAdministrationRedirect('issues/frictions')).toBeNull();
-  });
-
   it('drops any tail for folded pages (no sub-route of their own)', () => {
     expect(resolveSettingsRedirect('permissions/anything')).toBe('#/administration/users');
   });
@@ -51,7 +44,7 @@ describe('resolveSettingsRedirect', () => {
   // administration module must be reachable from its legacy Settings path, and
   // every redirect target must resolve to a real administration module.
   it('has a live redirect for every administration module', () => {
-    for (const mod of administrationModules) {
+    for (const mod of administrationModules.filter((m) => !m.extensionId)) {
       const key = adminKey(mod.id);
       expect(resolveSettingsRedirect(key), `missing redirect for #/settings/${key}`).toBe(mod.path);
     }

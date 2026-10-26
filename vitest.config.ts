@@ -17,6 +17,8 @@ const unitWorkers = positiveWorkerCount(
 );
 const dbWorkers = positiveWorkerCount(process.env.VITEST_DB_MAX_WORKERS, 3, 'VITEST_DB_MAX_WORKERS');
 
+process.env.GREENHOUSE_EXTENSIONS ??= 'memory,feedback,reports,computer';
+
 const pluginTestExcludes = process.env.GREENHOUSE_PLUGINS?.trim() === '' ? ['plugins/**'] : [];
 
 export default defineConfig({
@@ -68,6 +70,7 @@ export default defineConfig({
       '@greenhouse/utils/semver': resolve(__dirname, 'packages/utils/src/semver.ts'),
       '@greenhouse/utils/extension-compat': resolve(__dirname, 'packages/utils/src/extension-compat.ts'),
       '@greenhouse/utils/html': resolve(__dirname, 'packages/utils/src/html.ts'),
+      '@greenhouse/db/plugin-schema': resolve(__dirname, 'packages/db/src/plugin-schema.ts'),
       '@greenhouse/db/test-config': resolve(__dirname, 'packages/db/src/test-config.ts'),
       '@greenhouse/db': resolve(__dirname, 'packages/db/src/index.ts'),
       '@greenhouse/platform-kernel/contract': resolve(__dirname, 'packages/platform-kernel/src/contract.ts'),

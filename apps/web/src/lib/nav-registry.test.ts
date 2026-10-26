@@ -1,3 +1,4 @@
+import '../extensions';
 import { describe, expect, it } from 'vitest';
 import { resolveSubModule, settingsAllModules } from './nav-registry';
 
@@ -10,7 +11,7 @@ describe('personal AI tool navigation', () => {
 
 describe('resolveSubModule breadcrumbs for deep links', () => {
   it('shows a numeric detail id but not a tab name or request id', () => {
-    expect(resolveSubModule('administration', 'issues/12')?.secondary).toMatch(/› #12$/);
+    expect(resolveSubModule('administration', 'users/12')?.secondary).toMatch(/› #12$/);
     expect(resolveSubModule('settings', 'agent-connections/activity')?.secondary).not.toContain('#');
   });
 });

@@ -86,3 +86,5 @@ and per-user feature flags (`user_grants` with `kind='feature'`).
 - `email_accounts` — values are encrypted with the instance secret;
   bind mailboxes in Settings → Email.
 - `usage_events`, `request_log`, `runs` — telemetry, produced by real usage.
+
+Memory and Feedback JSONL files now live in `plugins/memory/seeds` and `plugins/feedback/seeds`; seed loads only enabled plugin contributions after core rows.

@@ -73,16 +73,7 @@ const CORE_FEATURE_POINTS: readonly FeaturePointDef[] = [
     // schema editing is chat-only, where a human can press Confirm (spec D3).
     toolIds: ['tables_query', 'tables_mutation', 'tables_schema_plan'],
   },
-  {
-    key: 'memory',
-    title: 'AI Memory',
-    description: 'The agent learns and remembers this user’s preferences across sessions.',
-    icon: 'Brain',
-    kind: 'flag',
-    group: 'basic',
-    flag: 'memory',
-    toolIds: ['memory'],
-  },
+
   {
     key: 'knowledge',
     title: 'Knowledge',
@@ -142,7 +133,6 @@ export function appFeatureFlag(appId: string): string | undefined {
 }
 
 export const TABLES_FEATURE_TOOL_IDS: readonly string[] = pointToolIds('tables');
-export const MEMORY_FEATURE_TOOL_IDS: readonly string[] = pointToolIds('memory');
 
 /**
  * Tool ids that are NOT individually assignable: they ride with a feature
