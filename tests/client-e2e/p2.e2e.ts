@@ -253,7 +253,9 @@ for (const width of [1440, 1280, 1024, 390])
     await shot(page, '01', width);
     await shot(page, '14', width);
     await page.evaluate(() => localStorage.setItem('greenhouse_pref_theme', 'dark'));
-    await page.reload();
+    // Restore the intended chat + inspector composition after the appearance reload.
+    await policy(page);
+    await openPolicy(page);
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
     await expect(page.getByTestId('startup-splash')).toHaveCount(0);
     await expect(page.getByTestId('client-inspector').filter({ visible: true })).toBeVisible();

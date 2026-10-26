@@ -3,6 +3,26 @@
   <head>
     <meta charset="utf-8" />
     <title>Plugin fixture</title>
+    <style>
+      body {
+        background: var(--gh-background);
+        color: var(--gh-label);
+        font:
+          14px system-ui,
+          sans-serif;
+      }
+      pre {
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+      }
+      button {
+        background: var(--gh-secondary-grouped-background);
+        color: var(--gh-label);
+        border: 1px solid var(--gh-separator);
+        border-radius: 6px;
+        padding: 6px 10px;
+      }
+    </style>
   </head>
   <body>
     <h1>Embed fixture</h1>
@@ -21,8 +41,12 @@
         if (!message?.type?.startsWith('greenhouse:')) return;
         window.received.push(message);
         document.querySelector('#state').textContent = JSON.stringify(window.received);
-        if (message.type === 'greenhouse:init') document.documentElement.dataset.theme = message.theme;
-        if (message.type === 'greenhouse:theme') document.documentElement.dataset.theme = message.theme;
+        if (message.type === 'greenhouse:init' || message.type === 'greenhouse:theme') {
+          document.documentElement.dataset.theme = message.theme;
+          document.documentElement.style.colorScheme = message.theme;
+          for (const [key, value] of Object.entries(message.tokens ?? {}))
+            document.documentElement.style.setProperty(key, value);
+        }
       });
       document.querySelector('#navigate').onclick = () =>
         parent.postMessage({ type: 'greenhouse:navigate', href: '/knowledge' }, '*');

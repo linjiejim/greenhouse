@@ -252,6 +252,23 @@ export function Touchable({
         onLongPress();
       }
     : undefined;
+  // A passive Chip must not install PressResponder: it consumes clicks even
+  // without onPress, preventing its containing row from opening the record.
+  const accessibility = {
+    accessibilityRole,
+    accessibilityLabel,
+    'aria-busy': accessibilityState?.busy,
+    'aria-checked': accessibilityState?.checked,
+    'aria-expanded': accessibilityState?.expanded,
+    'aria-selected': accessibilityState?.selected,
+    'aria-disabled': !!disabled,
+  };
+  if (!onPress && !onLongPress)
+    return (
+      <View {...accessibility} style={style}>
+        {children}
+      </View>
+    );
   return (
     <Pressable
       disabled={disabled}
@@ -259,9 +276,7 @@ export function Touchable({
       onPress={onPress || onLongPress ? handlePress : undefined}
       onLongPress={handleLong}
       delayLongPress={delayLongPress}
-      accessibilityRole={accessibilityRole}
-      accessibilityLabel={accessibilityLabel}
-      accessibilityState={{ ...accessibilityState, disabled: !!disabled }}
+      {...accessibility}
       style={({ pressed }) => [style, pressed && !disabled && pressedStyle]}
     >
       {children}

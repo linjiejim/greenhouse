@@ -215,3 +215,10 @@
 - Browser entity filters and sorting use the shared Menu; `ui/field-value.web` supplies field icons and enum Chips for both entity lists and table grids.
 - Browser place CSS uses semantic web tokens for fills, selected rows, urgency, and callouts in both appearances.
 - Client fixtures use valid object ids; never loosen route id validation to accept test placeholders. C4 screenshots start with `c4-`.
+
+## Browser regressions (C5)
+
+- Web Touchable maps accessibility state to explicit ARIA props; RN-web does not translate native `accessibilityState`.
+- Passive Touchables render a View, so enum Chips do not consume their record row's click or add a tab stop.
+- The web route frame adapts NativeStack's `aria-hidden` on the visible main screen while a wide inspector is open; covered routes and phone sheets retain stack semantics.
+- Screenshot tests wait for the startup cover and expected content after reload; dark chat captures reopen the chat before its inspector, and embed fixtures apply received theme tokens.

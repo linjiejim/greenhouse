@@ -82,10 +82,12 @@ test('P3 project board drag, list, gantt and task inspector', async ({ page }) =
   await expect(page).toHaveURL(new RegExp(`project=${PROJECT}`));
   await expect(page.getByTestId('client-inspector').filter({ visible: true })).toContainText('三档价格对比表 + FAQ');
   await page.keyboard.press('Escape');
-  await card.dragTo(page.locator('[data-status="done"]'));
+  const done = page.getByRole('region', { name: '已完成', exact: true });
+  await card.dragTo(done);
   await expect
     .poll(() => f.writes.some((w) => w.path === `/api/projects/tasks/${TASK}` && w.body?.status === 'done'))
     .toBeTruthy();
+  await expect(done.getByRole('button', { name: '定价页文案', exact: true })).toBeVisible();
   await page.getByRole('tab', { name: '列表', exact: true }).click();
   await page
     .getByRole('button', { name: /定价页文案/ })
@@ -140,6 +142,8 @@ for (const width of [1440, 1280, 1024, 390])
     await page.evaluate(() => localStorage.setItem('greenhouse_pref_theme', 'dark'));
     await page.reload();
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+    await expect(page.getByTestId('startup-splash')).toHaveCount(0);
+    if (width >= 760) await expect(page.getByTestId('knowledge-document')).toContainText('远程办公政策');
     await shot(page, 'c4-13', width);
     if (width >= 760) {
       for (const [design, path] of [

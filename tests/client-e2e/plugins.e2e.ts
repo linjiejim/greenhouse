@@ -183,6 +183,10 @@ test('Plugins entity list filters, sort, infinite pages, inspector edit and conf
   await list.getByRole('row', { name: 'Acme Analytics', exact: true }).click();
   const inspector = page.getByTestId('client-inspector').filter({ visible: true });
   await expect(inspector).toContainText('Shared notes');
+  await expect(list.getByRole('row', { name: 'Acme Analytics', exact: true })).toHaveAttribute('aria-selected', 'true');
+  await page.keyboard.press('Escape');
+  await list.getByRole('row', { name: 'Acme Analytics', exact: true }).getByText('open', { exact: true }).click();
+  await expect(inspector).toContainText('Shared notes');
   await screenshot(page, 'entity-detail');
   await inspector.getByRole('button', { name: '编辑记录', exact: true }).click();
   await inspector.getByRole('textbox', { name: '名称', exact: true }).fill('Acme Updated');
@@ -223,6 +227,7 @@ test('Plugins embed init, trusted origin, theme, token refresh, navigate and dra
   await page.getByRole('button', { name: '深色', exact: true }).click();
   await page.keyboard.press('Escape');
   await expect(frame.locator('html')).toHaveAttribute('data-theme', 'dark');
+  await expect(frame.locator('body')).toHaveCSS('color', 'rgb(242, 246, 240)');
   await screenshot(page, 'embed-dark');
   const count = f.tokenCount();
   await frame.locator('#refresh').click();

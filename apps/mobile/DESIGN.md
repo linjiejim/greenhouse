@@ -122,3 +122,10 @@
 - Declarative lists use 32 px headers and rows; tables keep 40 px data rows, narrow row numbers and field-type icons. Enum values use Chip, money has two fraction digits without assuming a currency, and numeric columns align right.
 - Inspector fields are flat label/value rows with wrapped content and subtle section dividers, using the same actions as the phone.
 - Board columns fill the main area, show status dots and counts, and cards show an assignee avatar, priority and a compact due date. Selection, hover and due urgency use semantic colors in both appearances.
+
+## Browser interaction fixes (C5)
+
+- Radio and checkbox choices expose their checked state through ARIA, including during live reply reconciliation.
+- Passive field Chips share their containing row's click target and do not take keyboard focus.
+- The visible main pane remains in the accessibility tree beside a wide inspector; phone sheets keep their modal presentation.
+- Design captures show loaded content after appearance changes; embedded sample pages apply the supplied foreground and background tokens.

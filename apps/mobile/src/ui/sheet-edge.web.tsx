@@ -1,5 +1,5 @@
 /** Root route frames keep objects in the same router, presented as an inspector on wide screens. */
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Pressable, View, useWindowDimensions } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useNavigationState } from 'expo-router/react-navigation';
@@ -48,6 +48,16 @@ function ScreenFrame({ children, route }: { children: React.ReactNode; route: Ro
   const place = drawer?.routes[drawer.index ?? 0]?.name ?? '(home)';
   const widthKey = `greenhouse_inspector_width:${place === '(home)' ? 'chat' : place}`;
   const depth = inspectorCount(state.routes);
+  const mainFrame = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    // NativeStack's web Screen hides every unfocused route from accessibility.
+    // Our visible main pane remains usable alongside a wide inspector, so adapt
+    // only its owning Screen; deeper inspectors and phone sheets stay hidden.
+    const screen = mainFrame.current?.parentElement?.closest('[aria-hidden]');
+    if (!screen) return;
+    const main = activeInspector && layout.wide && state.routes[state.index - depth]?.key === route.key;
+    screen.setAttribute('aria-hidden', String(!(isTop || main)));
+  }, [state, route.key, activeInspector, layout.wide, depth, isTop]);
   const readWidth = useCallback(() => {
     try {
       return boundedInspectorWidth(Number(localStorage.getItem(widthKey)) || 400);
@@ -88,9 +98,19 @@ function ScreenFrame({ children, route }: { children: React.ReactNode; route: Ro
   }, [readWidth]);
   if (!overlay)
     return (
-      <View style={{ flex: 1, marginRight: activeInspector && layout.wide && !layout.floatInspector ? panelWidth : 0 }}>
+      <div
+        ref={mainFrame}
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          flex: 1,
+          minHeight: 0,
+          minWidth: 0,
+          marginRight: activeInspector && layout.wide && !layout.floatInspector ? panelWidth : 0,
+        }}
+      >
         {children}
-      </View>
+      </div>
     );
   if (route.name === 'me' && layout.wide)
     return (
