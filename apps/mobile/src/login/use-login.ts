@@ -15,6 +15,7 @@ import { useRouter } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
 import { getApiBase } from '../store/stations';
 import { FEISHU_APP_REDIRECT, feishuErrorKey, parseFeishuReturn } from './feishu';
+import { feishuLoginAvailable } from './availability';
 import { useAuth } from '../store/auth';
 import { useActiveStation } from '../stations/use-active-station';
 import { useT } from '../lib/i18n';
@@ -32,20 +33,21 @@ export function useLogin(fields: { email: () => string | undefined; password: ()
   const loginWithFeishu = useAuth((s) => s.loginWithFeishu);
   const [feishu, setFeishu] = useState(false);
   const stationKey = station?.id ?? '';
+  const mobileApi = useAuth((s) => s.station?.mobile_api);
+  const loading = useAuth((s) => s.loading);
   useEffect(() => {
     setFeishu(false);
-    if (!stationKey) return;
+    if (!stationKey || loading || mobileApi === undefined) return;
     let alive = true;
-    void fetch(`${getApiBase()}/api/feishu/login-available`)
-      .then((res) => (res.ok ? (res.json() as Promise<{ available?: unknown }>) : null))
-      .then((body) => {
-        if (alive) setFeishu(body?.available === true);
+    void feishuLoginAvailable(mobileApi, (path) => fetch(`${getApiBase()}${path}`))
+      .then((available) => {
+        if (alive) setFeishu(available);
       })
       .catch(() => undefined);
     return () => {
       alive = false;
     };
-  }, [stationKey]);
+  }, [stationKey, mobileApi, loading]);
   const [busy, setBusy] = useState(false);
   const { email: readEmail, password: readPassword } = fields;
 

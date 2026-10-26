@@ -10,9 +10,21 @@
 
 import { docMiss, type RecentDoc } from '../data/recent-docs';
 import type { DueBucket, MyTask } from '../data/tasks';
+import { hasPlugin, type ManifestState } from '../plugins/manifest';
 
 export const WIDGET_TASKS = 3;
 export const WIDGET_DOCS = 3;
+
+/** Wait for discovery before treating a station as legacy; web has no home-screen widget. */
+export function widgetTasksAction(
+  platform: string,
+  manifest: ManifestState,
+  manifestReady: boolean,
+): 'refresh' | 'clear' | 'skip' {
+  if (manifest.kind === 'v2' && !hasPlugin(manifest, 'projects')) return 'clear';
+  if (platform === 'web' || !manifestReady) return 'skip';
+  return 'refresh';
+}
 
 export interface WidgetTask {
   title: string;

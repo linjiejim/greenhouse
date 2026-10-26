@@ -45,7 +45,7 @@
 - Folders and files: `POST /api/drive/folders`, `PUT /folders/:id` `{ name?, parent_id? }`, `DELETE /folders/:id` (409 when not empty), `PUT /files/:id` `{ name?, folder_id? }`, `DELETE /files/:id`; documents `POST /api/knowledge/docs`, `PUT /docs/:id` `{ title?, folder_id? }`. Moves never cross shelves.
 - Access: a 403 means a role, feature or capability gate (EmptyState without retry); a 404 means gone or not visible to this member (src/data/access.ts).
 - Connectors (「我」 → 连接, app/me/connectors.tsx): `GET /api/me/connectors` (`{ team, personal }`; 403 = no `mcp_call`, 404 = older station, both an EmptyState), `PUT /:id/key`, `POST /:id/oauth/start` `{ client: 'mobile' }` → the system auth session returning to `greenhouse://connectors/oauth-finish` (src/connectors/model.ts, equal to the server's `CONNECTOR_APP_REDIRECT`; a test compares) → `POST /oauth/finish`, `POST /:id/test`, `DELETE /:id/connection`. Adding connectors (team or personal) happens on the web. `mcp_call`'s `needs_connection` answer is the chat's ConnectCard (src/chat/parts.ts).
-- Feishu sign-in: `/api/feishu/login-available`, then `start-login?app_redirect=greenhouse://auth/feishu` (the server allow-lists exactly that address) in the system auth session, then `/api/feishu/oauth/exchange`. Keep `FEISHU_APP_REDIRECT` (src/login/feishu.ts) equal to the server's `APP_LOGIN_REDIRECT`; a test compares them.
+- Feishu sign-in: wait for bootstrap; API 4+ discovers `feishu` via public `/api/auth/providers`, API 3 uses `/api/feishu/login-available`. Then `start-login?app_redirect=greenhouse://auth/feishu` (the server allow-lists exactly that address) in the system auth session, then `/api/feishu/oauth/exchange`. Keep `FEISHU_APP_REDIRECT` (src/login/feishu.ts) equal to the server's `APP_LOGIN_REDIRECT`; a test compares them.
 - API reads and writes answer an `ApiResult` and never throw; resolve the base with getApiBase() at call time; api() sends tokens only to the active station's origin; switch stations only with useAuth.switchStation.
 
 ## Data
@@ -71,6 +71,7 @@
 
 - iPad at regular width gets the sidebar as a permanent column (the split view); never embed object views in panes or draw pane headers: objects stay form sheets and every bar is a native stack's.
 - targets/widget holds the 我的任务 and 最近文档 widgets; they read only the App Group snapshot src/widget/publish.ts writes through modules/widget-bridge (shape: src/widget/model.ts, a parity test checks the Swift decoder). Never put a token or private body text in it.
+- Widget task refresh waits for station discovery, skips web, and clears `my-tasks` when v2 lacks Projects. Discovered legacy stations retain the ten-minute native refresh.
 - The widget works due buckets out per timeline entry (targets/widget/DueBuckets.swift, the rule of src/data/tasks.ts `dueBucket`); src/widget/swift.test.ts compiles it with swiftc against the JS rule (on a Mac also under Buddhist and Japanese calendar settings) wherever swiftc exists, and typechecks the widget where the iOS simulator SDK is installed.
 - Widget links carry `station=`; it stays on the route until checked, and the item's screen (src/widget/station-gate.tsx) waits for the stations to load, then opens only on that station.
 - Colorsets do not reach Color.accentColor in an extension: spell the Haven accent out in Swift.

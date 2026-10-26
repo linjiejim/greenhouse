@@ -1,7 +1,8 @@
 /**
  * Feishu sign-in from the app. React-free decisions (./feishu.test.ts) plus the system auth
- * session: the station says whether Feishu sign-in is configured (`/api/feishu/login-available`,
- * public), `start-login?app_redirect=` mints a state that returns to the app's own address only
+ * session: public discovery uses `/api/auth/providers` on mobile_api >= 4 and
+ * `/api/feishu/login-available` on API 3 (./availability.ts). `start-login?app_redirect=` mints
+ * a state that returns to the app's own address only
  * (the server allow-lists exactly `FEISHU_APP_REDIRECT`), and the one-shot code that comes back
  * is exchanged for a session (../api/auth.ts `loginWithFeishuCode`).
  */

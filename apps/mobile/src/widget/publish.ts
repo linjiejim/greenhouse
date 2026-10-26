@@ -4,23 +4,25 @@
  * changes, the snapshot (./model.ts) is rebuilt from the offline copies and published into the
  * App Group. Signed out, it is cleared. When the app comes to the foreground it refreshes my tasks
  * (at most every 10 minutes) so the widget's "next due" stays current; a 403 / 404 / 410 deletes
- * the copy and the widget shows no tasks. Imported once by the root
+ * the copy and the widget shows no tasks. Web never refreshes; native waits for the station
+ * manifest, and a v2 station without Projects clears the copy. Imported once by the root
  * layout.
  */
 
-import { AppState } from 'react-native';
+import { AppState, Platform } from 'react-native';
 import { setWidgetSnapshot } from '../../modules/widget-bridge';
 import { gantt } from '../api/projects';
 import { captureIdentity } from '../data/identity';
 import { parseMyTasks } from '../data/recent-items';
 import { localDay, myTasks } from '../data/tasks';
+import { useStationManifest } from '../plugins/store';
 import { useAuth } from '../store/auth';
 import { recentDocs } from '../store/knowledge';
 import { readOffline, removeOffline, writeOffline } from '../store/offline';
 import { onOfflineChanged } from '../store/offline-events';
 import { usePrefs } from '../store/prefs';
 import { getActiveStation, useStations } from '../store/stations';
-import { buildSnapshot, myTasksRefreshAction } from './model';
+import { buildSnapshot, myTasksRefreshAction, widgetTasksAction } from './model';
 
 const REFRESH_MS = 10 * 60_000;
 let timer: ReturnType<typeof setTimeout> | null = null;
@@ -58,11 +60,17 @@ export function scheduleWidget(): void {
 
 /** Read my tasks for the widget when the copy is older than 10 minutes. */
 async function refreshMyTasks(): Promise<void> {
-  if (!useAuth.getState().user || Date.now() - lastRefresh < REFRESH_MS) return;
+  if (!useAuth.getState().user) return;
+  const { data, status } = useStationManifest.getState();
+  const decision = widgetTasksAction(Platform.OS, data, status === 'ready');
+  if (decision === 'clear') removeOffline('my-tasks');
+  if (decision !== 'refresh' || Date.now() - lastRefresh < REFRESH_MS) return;
   lastRefresh = Date.now();
   const current = captureIdentity();
   const result = await gantt();
   if (!current()) return;
+  const manifest = useStationManifest.getState();
+  if (widgetTasksAction(Platform.OS, manifest.data, manifest.status === 'ready') !== 'refresh') return;
   const action = myTasksRefreshAction(result);
   // deleting notifies onOfflineChanged, which republishes the widget without tasks
   if (action === 'delete') removeOffline('my-tasks');
@@ -85,6 +93,11 @@ function onIdentity(): void {
 
 useAuth.subscribe(onIdentity);
 useStations.subscribe(onIdentity);
+useStationManifest.subscribe((state, previous) => {
+  if (state.data === previous.data && state.status === previous.status) return;
+  lastRefresh = 0;
+  void refreshMyTasks();
+});
 usePrefs.subscribe(scheduleWidget);
 AppState.addEventListener('change', (state) => {
   if (state === 'active') void refreshMyTasks();

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { MyTask } from '../data/tasks';
-import { buildSnapshot, isWidgetItemPath, myTasksRefreshAction, widgetLinkPath, widgetStationGate } from './model';
+import { buildSnapshot, isWidgetItemPath, myTasksRefreshAction, widgetLinkPath, widgetStationGate, widgetTasksAction } from './model';
+import { LEGACY_MANIFEST, parseManifest } from '../plugins/manifest';
 
 const task = (n: number, due: string | null): MyTask =>
   ({
@@ -55,6 +56,31 @@ describe('the widgets’ snapshot', () => {
 });
 
 describe('the foreground refresh of my tasks for the widget', () => {
+  const manifest = (projects: boolean) => parseManifest({
+    manifest_version: 2,
+    core: { version: '4.0.0', client_api: 4 },
+    plugins: projects ? [{ id: 'projects', nav: [], pages: [] }] : [],
+  });
+
+  it('never requests widget tasks on web, including legacy stations', () => {
+    expect(widgetTasksAction('web', LEGACY_MANIFEST, true)).toBe('skip');
+    expect(widgetTasksAction('web', manifest(true), true)).toBe('skip');
+  });
+
+  it('waits for discovery on native instead of probing while the manifest defaults to legacy', () => {
+    expect(widgetTasksAction('ios', LEGACY_MANIFEST, false)).toBe('skip');
+    expect(widgetTasksAction('android', manifest(true), false)).toBe('skip');
+  });
+
+  it.each(['ios', 'android', 'web'])('clears the copy when v2 excludes Projects on %s', (platform) => {
+    expect(widgetTasksAction(platform, manifest(false), true)).toBe('clear');
+  });
+
+  it.each(['ios', 'android'])('refreshes native tasks for legacy and enabled Projects on %s', (platform) => {
+    expect(widgetTasksAction(platform, LEGACY_MANIFEST, true)).toBe('refresh');
+    expect(widgetTasksAction(platform, manifest(true), true)).toBe('refresh');
+  });
+
   it('saves the station’s answer', () => {
     expect(myTasksRefreshAction({ ok: true })).toBe('save');
   });
