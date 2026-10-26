@@ -168,10 +168,13 @@
 |---|---|
 | 模型网关 | 运行时配置或「服务与计价 → 网关」；环境变量 `GATEWAY_ENABLED=true` |
 | 云电脑 | 「服务与计价」里打开，并配 E2B Key；环境变量 `COMPUTER_ENABLED` |
-| 飞书机器人 | `FEISHU_BOT_ENABLED=1`，并配飞书应用 |
+| 飞书登录 / 绑定 / 机器人 | 启用 `feishu` 插件并配飞书应用；机器人另需 `FEISHU_BOT_ENABLED=1` |
 | 手机推送 | `MOBILE_PUSH_ENABLED=1`（Expo 项目开了增强推送安全时再配 `EXPO_ACCESS_TOKEN`） |
-| 邮件 | 成员绑定邮箱，或配 `SHARED_MAILBOX_*` |
+| 邮件 | 启用 `email` 插件，再绑定成员邮箱或配 `SHARED_MAILBOX_*`；成员 `email` 权限默认开启 |
+| 企微绑定 / 通知 | 启用 `wecom` 插件并配置 `WECOM_*` |
 | 扩展 | `greenhouse.config.ts` 或 `GREENHOUSE_EXTENSIONS` |
+
+邮件、飞书与企微插件编入镜像但默认关闭；只配置环境变量不会启用。将插件 id 加到 `greenhouse.config.ts` 的 `extensions.enabled`（保留已有条目）或 `GREENHOUSE_EXTENSIONS` 后重启。停用保留数据，并移除对应登录按钮、绑定行、工具、设置与投递渠道。公开 `GET /api/auth/providers` 可发现实际可用的身份源。
 
 ## 已移除
 

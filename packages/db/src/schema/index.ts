@@ -16,8 +16,6 @@ export * from './tables.js';
 export * from './notifications.js';
 export * from './usage.js';
 export * from './audit.js';
-export * from './email.js';
-export * from './feishu.js';
 export * from './skills.js';
 export * from './prompts.js';
 export * from './workspace.js';

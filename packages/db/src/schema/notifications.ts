@@ -30,7 +30,7 @@ export const notifications = pgTable(
   {
     id: id(),
     user_id: text('user_id').notNull(),
-    kind: text('kind', { enum: NOTIFICATION_KINDS }).notNull(),
+    kind: text('kind').notNull(),
     title: text('title').notNull(),
     body: text('body').notNull(),
     payload: json<Record<string, unknown>>('payload', {}),
@@ -49,11 +49,10 @@ export const notifications = pgTable(
     index('idx_notifications_interrupt').on(table.interrupt_id),
     index('idx_notifications_event').on(table.event_id),
     index('idx_notifications_agent').on(table.agent_id),
-    oneOf('chk_notifications_kind', table.kind, NOTIFICATION_KINDS),
   ],
 );
 
-export const DELIVERY_CHANNELS = ['desktop', 'wecom', 'feishu', 'email', 'mobile_push'] as const;
+export const DELIVERY_CHANNELS = ['desktop', 'mobile_push'] as const;
 export const DELIVERY_STATUSES = ['pending', 'claimed', 'delivered', 'failed', 'dead_letter', 'suppressed'] as const;
 
 export const notificationDeliveries = pgTable(
@@ -63,7 +62,7 @@ export const notificationDeliveries = pgTable(
     notification_id: text('notification_id')
       .notNull()
       .references(() => notifications.id, { onDelete: 'cascade' }),
-    channel: text('channel', { enum: DELIVERY_CHANNELS }).notNull(),
+    channel: text('channel').notNull(),
     recipient: text('recipient').notNull(),
     status: text('status', { enum: DELIVERY_STATUSES }).notNull().default('pending'),
     attempts: integer('attempts').notNull().default(0),
@@ -85,7 +84,6 @@ export const notificationDeliveries = pgTable(
     ),
     index('idx_notification_deliveries_claim').on(table.status, table.available_at, table.lease_expires_at),
     index('idx_notification_deliveries_updated').on(table.status, table.updated_at),
-    oneOf('chk_notification_deliveries_channel', table.channel, DELIVERY_CHANNELS),
     oneOf('chk_notification_deliveries_status', table.status, DELIVERY_STATUSES),
     check(
       'chk_notification_deliveries_attempts',

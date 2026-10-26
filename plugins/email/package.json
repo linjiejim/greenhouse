@@ -1,0 +1,40 @@
+{
+  "name": "@greenhouse/plugin-email",
+  "version": "3.0.2",
+  "private": true,
+  "type": "module",
+  "greenhouse": {
+    "id": "email",
+    "sdk": 1,
+    "api": "./api/index.ts",
+    "web": "./web/index.ts"
+  },
+  "exports": {
+    "./api": "./api/index.ts",
+    "./web": "./web/index.ts",
+    "./manifest": "./manifest.ts"
+  },
+  "dependencies": {
+    "@greenhouse/api": "workspace:*",
+    "@greenhouse/web": "workspace:*",
+    "@greenhouse/types": "workspace:*",
+    "@greenhouse/crud": "workspace:*",
+    "react": "^19.0.0",
+    "ai": "^6.0.176",
+    "drizzle-orm": "^0.45.2",
+    "hono": "^4.12.18",
+    "zod": "^4.4.3",
+    "imapflow": "^1.6.5",
+    "mailparser": "^3.9.14",
+    "nodemailer": "^9.0.3",
+    "socks": "^2.8.9"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.61.1",
+    "@greenhouse/db": "workspace:*",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "@types/mailparser": "^3.4.6",
+    "@types/nodemailer": "^8.0.1"
+  }
+}

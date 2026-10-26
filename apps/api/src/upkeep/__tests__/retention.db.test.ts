@@ -90,15 +90,12 @@ describe('retention cleanup', () => {
     expect(await exists('run_outbox', 'id', `dead_${t}`)).toBe(true);
   });
 
-  it('applies the request-log, Feishu receipt, ledger and delivery windows', async () => {
+  it('applies the request-log, ledger and delivery windows', async () => {
     const t = tag();
     await db.executeRaw(sql`
       INSERT INTO request_log (id, app_id, endpoint, method, created_at) VALUES
         (${`old_${t}`}, 'mcp', '/api/mcp', 'POST', ${daysAgo(31)}::timestamptz),
         (${`new_${t}`}, 'mcp', '/api/mcp', 'POST', ${daysAgo(29)}::timestamptz)`);
-    await db.executeRaw(sql`
-      INSERT INTO feishu_receipts (message_id, received_at) VALUES
-        (${`old_${t}`}, ${daysAgo(8)}::timestamptz), (${`new_${t}`}, ${daysAgo(6)}::timestamptz)`);
     await db.executeRaw(sql`
       INSERT INTO budget_ledger (id, account_id, operation_key, entry_type, reserved_units_after, spent_units_after, created_at) VALUES
         (${`old_${t}`}, ${`acct_${t}`}, ${`op1_${t}`}, 'settle', 0, 0, ${daysAgo(400)}::timestamptz),
@@ -115,8 +112,6 @@ describe('retention cleanup', () => {
 
     expect(await exists('request_log', 'id', `old_${t}`)).toBe(false);
     expect(await exists('request_log', 'id', `new_${t}`)).toBe(true);
-    expect(await exists('feishu_receipts', 'message_id', `old_${t}`)).toBe(false);
-    expect(await exists('feishu_receipts', 'message_id', `new_${t}`)).toBe(true);
     expect(await exists('budget_ledger', 'id', `old_${t}`)).toBe(false);
     expect(await exists('budget_ledger', 'id', `new_${t}`)).toBe(true);
     expect(await exists('notification_deliveries', 'id', `done_${t}`)).toBe(false);

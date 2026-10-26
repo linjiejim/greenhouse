@@ -25,17 +25,3 @@ export const DEFAULT_TIMEZONE = 'UTC';
 /** Cron floor: nothing may fire more often than once every 15 minutes. */
 export const MIN_INTERVAL_MINUTES = 15;
 export const MIN_INTERVAL_MS = MIN_INTERVAL_MINUTES * 60_000;
-
-/**
- * Which group-bot family a (write-time validated) notify_webhook URL belongs
- * to. Lives in this leaf on purpose: notify.ts consumes it, and importing
- * task-center from notify would close the cycle
- * notify → task-center → scheduler/index → notify.
- */
-export function notifyWebhookKind(webhook: string): 'wecom' | 'feishu' {
-  try {
-    return new URL(webhook).hostname === 'open.feishu.cn' ? 'feishu' : 'wecom';
-  } catch {
-    return 'wecom';
-  }
-}

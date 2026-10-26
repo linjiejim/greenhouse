@@ -12,10 +12,42 @@ export type PlatformNotificationKind =
   | 'budget_attention'
   | 'system';
 
+/** Known core vocabulary stays compatible with older clients; records also accept registered kinds. */
+export type CoreNotificationKind = PlatformNotificationKind;
+export type RegisteredNotificationKind = CoreNotificationKind | (string & {});
+export const CORE_NOTIFICATION_KINDS: readonly CoreNotificationKind[] = [
+  'runtime_attention',
+  'runtime_completed',
+  'runtime_failed',
+  'agent_review_due',
+  'agent_suspended',
+  'budget_attention',
+  'system',
+];
+let pluginKinds: readonly string[] = [];
+let pluginChannels: readonly string[] = [];
+export function registerNotificationKinds(kinds: readonly string[]): void {
+  if (
+    new Set(kinds).size !== kinds.length ||
+    kinds.some((k) => CORE_NOTIFICATION_KINDS.includes(k as CoreNotificationKind))
+  )
+    throw new Error('Duplicate notification kind');
+  pluginKinds = [...kinds];
+}
+export function registerNotificationChannels(channels: readonly string[]): void {
+  pluginChannels = [...channels];
+}
+export function isNotificationKind(kind: string): boolean {
+  return [...CORE_NOTIFICATION_KINDS, ...pluginKinds].includes(kind);
+}
+export function isNotificationChannel(channel: string): boolean {
+  return ['desktop', 'mobile_push', ...pluginChannels].includes(channel);
+}
+
 export interface PlatformNotification {
   id: string;
   user_id: string;
-  kind: PlatformNotificationKind;
+  kind: RegisteredNotificationKind;
   title: string;
   body: string;
   payload: RuntimeJsonValue;

@@ -92,9 +92,6 @@ importers:
       '@hono/node-server':
         specifier: ^2.0.1
         version: 2.0.1(hono@4.12.18)
-      '@larksuiteoapi/node-sdk':
-        specifier: ^1.73.0
-        version: 1.73.3
       '@modelcontextprotocol/sdk':
         specifier: ^1.29.0
         version: 1.29.0(zod@4.4.3)
@@ -125,27 +122,15 @@ importers:
       hono:
         specifier: ^4.12.18
         version: 4.12.18
-      imapflow:
-        specifier: ^1.6.5
-        version: 1.7.8
       isolated-vm:
         specifier: ^6.1.2
         version: 6.1.2
-      mailparser:
-        specifier: ^3.9.14
-        version: 3.9.26
       marked:
         specifier: ^18.0.3
         version: 18.0.3
       marked-terminal:
         specifier: ^7.3.0
         version: 7.3.0(marked@18.0.3)
-      nodemailer:
-        specifier: ^9.0.3
-        version: 9.1.1
-      socks:
-        specifier: ^2.8.9
-        version: 2.8.10
       undici:
         specifier: ^8.3.0
         version: 8.3.0
@@ -165,12 +150,6 @@ importers:
         specifier: ^4.4.3
         version: 4.4.3
     devDependencies:
-      '@types/mailparser':
-        specifier: ^3.4.6
-        version: 3.4.6
-      '@types/nodemailer':
-        specifier: ^8.0.1
-        version: 8.0.1
       '@types/ws':
         specifier: ^8.18.1
         version: 8.18.1
@@ -520,6 +499,67 @@ importers:
         specifier: ^19.0.0
         version: 19.2.6(react@19.2.6)
 
+  plugins/email:
+    dependencies:
+      '@greenhouse/api':
+        specifier: workspace:*
+        version: link:../../apps/api
+      '@greenhouse/crud':
+        specifier: workspace:*
+        version: link:../../packages/crud
+      '@greenhouse/types':
+        specifier: workspace:*
+        version: link:../../packages/types
+      '@greenhouse/web':
+        specifier: workspace:*
+        version: link:../../apps/web
+      ai:
+        specifier: ^6.0.176
+        version: 6.0.176(zod@4.4.3)
+      drizzle-orm:
+        specifier: ^0.45.2
+        version: 0.45.2(@opentelemetry/api@1.9.0)(@types/better-sqlite3@7.6.13)(better-sqlite3@12.10.0)(postgres@3.4.9)
+      hono:
+        specifier: ^4.12.18
+        version: 4.12.18
+      imapflow:
+        specifier: ^1.6.5
+        version: 1.7.8
+      mailparser:
+        specifier: ^3.9.14
+        version: 3.9.26
+      nodemailer:
+        specifier: ^9.0.3
+        version: 9.1.1
+      react:
+        specifier: ^19.0.0
+        version: 19.2.6
+      socks:
+        specifier: ^2.8.9
+        version: 2.8.10
+      zod:
+        specifier: ^4.4.3
+        version: 4.4.3
+    devDependencies:
+      '@greenhouse/db':
+        specifier: workspace:*
+        version: link:../../packages/db
+      '@playwright/test':
+        specifier: ^1.61.1
+        version: 1.61.1
+      '@types/mailparser':
+        specifier: ^3.4.6
+        version: 3.4.6
+      '@types/nodemailer':
+        specifier: ^8.0.1
+        version: 8.0.1
+      '@types/react':
+        specifier: ^19.2.0
+        version: 19.3.0
+      '@types/react-dom':
+        specifier: ^19.2.0
+        version: 19.3.0(@types/react@19.3.0)
+
   plugins/example:
     dependencies:
       '@greenhouse/api':
@@ -617,6 +657,46 @@ importers:
       react-dom:
         specifier: ^19.0.0
         version: 19.2.6(react@19.2.6)
+
+  plugins/feishu:
+    dependencies:
+      '@greenhouse/api':
+        specifier: workspace:*
+        version: link:../../apps/api
+      '@greenhouse/crud':
+        specifier: workspace:*
+        version: link:../../packages/crud
+      '@greenhouse/types':
+        specifier: workspace:*
+        version: link:../../packages/types
+      '@greenhouse/web':
+        specifier: workspace:*
+        version: link:../../apps/web
+      '@larksuiteoapi/node-sdk':
+        specifier: ^1.73.0
+        version: 1.73.3
+      drizzle-orm:
+        specifier: ^0.45.2
+        version: 0.45.2(@opentelemetry/api@1.9.0)(@types/better-sqlite3@7.6.13)(better-sqlite3@12.10.0)(postgres@3.4.9)
+      hono:
+        specifier: ^4.12.18
+        version: 4.12.18
+      react:
+        specifier: ^19.0.0
+        version: 19.2.6
+    devDependencies:
+      '@greenhouse/db':
+        specifier: workspace:*
+        version: link:../../packages/db
+      '@playwright/test':
+        specifier: ^1.61.1
+        version: 1.61.1
+      '@types/react':
+        specifier: ^19.2.0
+        version: 19.3.0
+      '@types/react-dom':
+        specifier: ^19.2.0
+        version: 19.3.0(@types/react@19.3.0)
 
   plugins/memory:
     dependencies:
@@ -739,6 +819,40 @@ importers:
       unpdf:
         specifier: ^1.8.0
         version: 1.8.1
+
+  plugins/wecom:
+    dependencies:
+      '@greenhouse/api':
+        specifier: workspace:*
+        version: link:../../apps/api
+      '@greenhouse/crud':
+        specifier: workspace:*
+        version: link:../../packages/crud
+      '@greenhouse/types':
+        specifier: workspace:*
+        version: link:../../packages/types
+      '@greenhouse/web':
+        specifier: workspace:*
+        version: link:../../apps/web
+      hono:
+        specifier: ^4.12.18
+        version: 4.12.18
+      react:
+        specifier: ^19.0.0
+        version: 19.2.6
+    devDependencies:
+      '@greenhouse/db':
+        specifier: workspace:*
+        version: link:../../packages/db
+      '@playwright/test':
+        specifier: ^1.61.1
+        version: 1.61.1
+      '@types/react':
+        specifier: ^19.2.0
+        version: 19.3.0
+      '@types/react-dom':
+        specifier: ^19.2.0
+        version: 19.3.0(@types/react@19.3.0)
 
 packages:
 

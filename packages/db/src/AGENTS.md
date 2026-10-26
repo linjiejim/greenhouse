@@ -275,7 +275,7 @@
 - 只记谁代表谁、对什么、结果如何；不存内容与密钥。
 - 日发信限额只数 `email` / `send` 的 `success` 行；失败不计。
 
-### 邮箱
+### 邮箱（plugin-owned）
 
 - `email_accounts` 只有 `password_enc` 是密文，连接配置是明文列；只有真正的凭证进 `_enc`。
 - 共享的 greenhouse@ 邮箱是部署配置，不进这张表。
@@ -330,6 +330,10 @@
 
 ### Plugin adoption (4.0)
 
-- Memory, Feedback, Reports and Computer tables belong to their plugin schemas and service bags; they are absent from DatabaseProvider.
+- Memory, Feedback, Reports, Computer, Email and Feishu tables belong to their plugin schemas and service bags; they are absent from DatabaseProvider.
 - The immutable 3.0 baseline still creates them. Custom migration 0003 advances ownership only, without DDL; the latest core snapshot defines the protected core table set. Carry-from-1x still checks the historical baseline set.
 - Plugin retention contributions use `{ table, column, days }`; cleanup uses the existing bounded daily sweeper and includes per-table counts in its audit. Register owned tables in resetTables.
+
+- Email owns `email_accounts`; Feishu owns `feishu_conversations` / `feishu_receipts`; use their extension service bags. WeCom owns no tables. Generic `provider_connections` and `login_states` remain core.
+- Migration 0004 advances Email/Feishu ownership without DDL. Migration 0005 removes notification kind/channel CHECKs; `notifications.createWithStatus/createDelivery` validate against active registries. Keep the immutable baseline and stored rows unchanged.
+- Feishu receipt retention (7 days) is contributed by that plugin, never hard-coded in core cleanup.

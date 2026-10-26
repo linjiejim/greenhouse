@@ -234,8 +234,6 @@ greenhouse/
 │   │       ├── runtime/      # unified runtime kernel: runs, steps, interrupts, outbox, read models
 │   │       ├── trusted-execution/ # deployment kill switches for the runtime layers
 │   │       ├── notifications/# notification center + durable delivery
-│   │       ├── email/        # IMAP/SMTP client, shared mailbox, security
-│   │       ├── wecom/ feishu/# optional IM integrations (binding, push, sign-in, bot)
 │   │       ├── skills/       # SkillHub — bundle validation, store, publish/download, scanner
 │   │       ├── storage/      # upload storage (local disk / COS) + s3-lite (SigV4 client)
 │   │       ├── hub-context/  # team context for members' agents: MCP prompts/resources, team_context, data catalog
@@ -322,7 +320,7 @@ greenhouse/
     workspace settings, public paths, scheduler jobs, CLI commands, db services + a migration
     lane, entity kinds (deeplink + peek), search sources, MCP consent groups,
     web pages/navigation/modules/i18n/tool cards/knowledge-doc panels/agent context.
-  - Still closed: notification transports.
+  - Communication registries: notification transports/kinds, identity providers, agent channels; implemented by default-off Email, WeCom and Feishu packages.
   - `workbenchRecipes`, `meta.surface.workbench` and kit `WidgetRecipe` are deprecated no-ops (Home workbench removed in 3.0); drop them in 4.0.
   - Extension tables use the migration lane (`migrations/*.sql`, `--> statement-breakpoint`);
     never append extension DDL to `drizzle/`. Applied files are checksummed — add a new file
@@ -400,7 +398,6 @@ Always import these — don't reimplement:
 | `randomDocId(prefix?)` | `@greenhouse/utils/id` | Random opaque doc id; ids are system-assigned, never title-derived |
 | `parseSemver` / `isValidSemver` / `compareSemver` / `bumpPatch` | `@greenhouse/utils/semver` | Strict `X.Y.Z` semver helpers (skill versions) — don't hand-write the regex |
 | `escapeHtml(value)` | `@greenhouse/utils/html` | Escape text into hand-built HTML (emails) |
-| `sendWeComMarkdown` / `sendFeishuMarkdown` | `@greenhouse/utils/wecom` / `feishu` | Group-bot webhook posts (both check the JSON body, not just the HTTP status) |
 | `composeRichOutput({confirm?, blocks?})` | `@greenhouse/utils/prompts` | The single copy of the rich-output prompt guide shared by every profile, narrowed to the blocks a screen draws |
 
 ## Auth & permissions
@@ -570,3 +567,7 @@ session-share routes, returns empty `/api/shares` lists, hides classic sharing c
 access granted by stored shares. Existing share rows are preserved.
 
 - Optional automation grants are contributed as `automationTools`; MCP group purpose/working hints use `hubContext`, filtered by reachable tools. Never capture a plugin-dependent tool enum at module evaluation.
+
+### Official communication plugins (4.0)
+
+`plugins/email`, `plugins/wecom` and `plugins/feishu` own mailbox/integration code, web controls, tests and data. They are compiled but disabled by default; env configuration alone does nothing. Generic identity tables, OAuth state, in-app notifications and mobile push stay core. New adapters use `notificationTransports`, `notificationKinds`, `identityProviders` and `channels`; no core imports or per-plugin branches. See EXTENDING.md and each package's AGENTS.md.

@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { DatabaseProvider } from '@greenhouse/db';
 const hook = vi.hoisted(() => vi.fn());
 vi.mock('../index.js', () => ({
+  COMPILED_EXTENSIONS: [],
   EXTENSIONS: [{ id: 'health-fixture', name: 'Fixture', onBoot: hook }],
   fromExtensions: () => [],
 }));

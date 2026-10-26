@@ -25,6 +25,16 @@ export async function assertPluginDisabled(id: string, routes: string[], toolIds
     expect(extensions.fromExtensions('automationTools')).toEqual([]);
     expect(extensions.fromExtensions('hubContext')).toEqual([]);
     expect(extensions.fromExtensions('seeds')).toEqual([]);
+    expect(extensions.fromExtensions('channels')).toEqual([]);
+    expect(extensions.fromExtensions('retention')).toEqual([]);
+    const transports = await import('../../notifications/transports.js');
+    const providers = await import('../../auth/identity-providers.js');
+    expect(transports.notificationTransports()).toEqual([]);
+    expect(providers.identityProviders()).toEqual([]);
+    const publicPaths = await import('../../auth/middleware.js');
+    for (const route of routes) expect(publicPaths.isPublicPath(route)).toBe(false);
+    const discovery = new Hono().route('/api/auth', providers.identityDiscoveryRoutes);
+    expect(await (await discovery.request('/api/auth/providers')).json()).toEqual({ providers: [] });
     const app = new Hono();
     boot.mountExtensionRoutes(app as never);
     for (const route of routes) expect((await app.request(route)).status).toBe(404);

@@ -41,8 +41,7 @@ import {
 import { useT } from '../lib/i18n';
 import { formatDate, formatDateInZone } from '../lib/utils';
 import { cronFiresTooOften } from '../lib/cron-interval';
-import { fetchWeComBinding } from '../lib/api/wecom';
-import { fetchFeishuBinding } from '../lib/api/feishu';
+import { extensionNotificationTransports } from '../extensions';
 import { useAuthStore } from '../stores';
 import { assetScopeItems, DEFAULT_ASSET_SCOPE, filterAutomationsByScope, type AssetScope } from '../lib/asset-scopes';
 import { ModulePage } from '../components/app/module-page';
@@ -71,6 +70,11 @@ function toFormTask(task: ScheduledTask & { schedule_desc?: string }): Task {
     notify_email: notify.email,
     notify_wecom: notify.wecom,
     notify_feishu: notify.feishu,
+    ...Object.fromEntries(
+      Object.entries(notify)
+        .filter(([key]) => key !== 'webhook')
+        .map(([key, value]) => [`notify_${key}`, value]),
+    ),
   };
 }
 
@@ -288,13 +292,20 @@ function ScheduleField({ value, onChange }: CrudFieldRenderProps) {
  * to known ids.
  */
 function withFormDefaults(data: Record<string, unknown>): Partial<ScheduledTaskInput> {
-  const { unattended_tools, notify_webhook, notify_email, notify_wecom, notify_feishu, ...rest } = data;
+  const { unattended_tools, ...rest } = data;
   const notify: NonNullable<ScheduledTaskInput['notify']> = {};
-  if (notify_webhook !== undefined)
-    notify.webhook = typeof notify_webhook === 'string' && notify_webhook ? notify_webhook : null;
-  if (notify_email !== undefined) notify.email = notify_email === true;
-  if (notify_wecom !== undefined) notify.wecom = notify_wecom === true;
-  if (notify_feishu !== undefined) notify.feishu = notify_feishu === true;
+  const adapters = extensionNotificationTransports();
+  const visibleFields = new Set(adapters.map((adapter) => adapter.preference));
+  if (adapters.some((adapter) => adapter.webhook)) visibleFields.add('notify_webhook');
+  for (const field of Object.keys(rest)) {
+    if (!field.startsWith('notify_')) continue;
+    const value = rest[field];
+    delete rest[field];
+    // A disabled adapter's stored choices stay dormant; editing another field must preserve them.
+    if (!visibleFields.has(field) || value === undefined) continue;
+    notify[field.slice(7)] =
+      field === 'notify_webhook' ? (typeof value === 'string' && value ? value : null) : value === true;
+  }
   delete rest.notify;
   delete rest.schedule_desc;
   return {
@@ -562,24 +573,15 @@ export function AutomationsPanel({
   const isSuper = currentUser?.role === 'super';
   const [scope, setScope] = useState<AssetScope>(DEFAULT_ASSET_SCOPE);
   const [profiles, setProfiles] = useState<api.Profile[]>([]);
-  // The WeCom channel derives its recipient from the owner's binding. On a
-  // deployment with no WeCom app configured the field is not rendered at all —
-  // the binding card its hint points at is hidden too, so a visible toggle
-  // would advertise a dead end. Configured but unbound, it is disabled rather
-  // than accepted and silently ignored on every run.
-  const [wecom, setWecom] = useState({ available: false, bound: false });
-  // Same contract for the Feishu DM channel — hidden when unconfigured,
-  // disabled until bound.
-  const [feishu, setFeishu] = useState({ available: false, bound: false });
+  const activeExtensions = useExtensionsStore((s) => s.extensions);
+  const notificationAdapters = useMemo(
+    () => extensionNotificationTransports(new Set(activeExtensions.map((e) => e.id))),
+    [activeExtensions],
+  );
   // Guards double-fires of Run-now while a run is in flight (the legacy button
   // showed a spinner and disabled itself; navigation happens on completion).
   const runningIds = useRef<Set<string>>(new Set());
   const [historyTask, setHistoryTask] = useState<Task | null>(null);
-
-  useEffect(() => {
-    void fetchWeComBinding().then((state) => setWecom({ available: state.available, bound: state.binding !== null }));
-    void fetchFeishuBinding().then((state) => setFeishu({ available: state.available, bound: state.binding !== null }));
-  }, []);
 
   useEffect(() => {
     api
@@ -788,66 +790,24 @@ export function AutomationsPanel({
             defaultValue: '0 22 * * *',
             render: (props) => <ScheduleField {...props} />,
           },
-          {
-            key: 'notify_webhook',
-            label: t('automations.notifyWebhook'),
-            type: 'text',
-            help: t('automations.notifyWebhookHint'),
-            placeholder: 'https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=...',
-          },
-          {
-            key: 'notify_email',
-            label: t('automations.notifyEmail'),
-            type: 'custom',
+          ...(notificationAdapters.some((t) => t.webhook)
+            ? ([
+                {
+                  key: 'notify_webhook',
+                  label: t(notificationAdapters.find((t) => t.webhook)!.webhook!.labelKey),
+                  type: 'text',
+                  help: t(notificationAdapters.find((t) => t.webhook)!.webhook!.hintKey),
+                  placeholder: 'https://…',
+                },
+              ] satisfies FieldDef<Task>[])
+            : []),
+          ...notificationAdapters.map(({ preference, component: Preference }) => ({
+            key: preference as keyof Task,
+            label: '',
+            type: 'custom' as const,
             defaultValue: false,
-            help: t('automations.notifyEmailHint'),
-            render: ({ value, onChange, disabled }) => (
-              <Toggle checked={value === true} disabled={disabled} onChange={(next) => onChange(next)} />
-            ),
-          },
-          ...((wecom.available
-            ? [
-                {
-                  key: 'notify_wecom',
-                  label: t('automations.notifyWeCom'),
-                  type: 'custom',
-                  defaultValue: false,
-                  // Greyed out until the account is bound, because there is no
-                  // recipient to derive otherwise — the toggle would silently do
-                  // nothing on every run.
-                  help: wecom.bound ? t('automations.notifyWeComHint') : undefined,
-                  comment: wecom.bound ? undefined : t('automations.notifyWeComUnbound'),
-                  render: ({ value, onChange, disabled }) => (
-                    <Toggle
-                      checked={value === true && wecom.bound}
-                      disabled={disabled || !wecom.bound}
-                      onChange={(next) => onChange(next)}
-                    />
-                  ),
-                },
-              ]
-            : []) satisfies FieldDef<Task>[]),
-          ...((feishu.available
-            ? [
-                {
-                  key: 'notify_feishu',
-                  label: t('automations.notifyFeishu'),
-                  type: 'custom',
-                  defaultValue: false,
-                  // Greyed out until the account is bound — same reasoning as
-                  // the WeCom toggle above.
-                  help: feishu.bound ? t('automations.notifyFeishuHint') : undefined,
-                  comment: feishu.bound ? undefined : t('automations.notifyFeishuUnbound'),
-                  render: ({ value, onChange, disabled }) => (
-                    <Toggle
-                      checked={value === true && feishu.bound}
-                      disabled={disabled || !feishu.bound}
-                      onChange={(next) => onChange(next)}
-                    />
-                  ),
-                },
-              ]
-            : []) satisfies FieldDef<Task>[]),
+            render: (props: CrudFieldRenderProps) => <Preference {...props} />,
+          })),
           {
             key: 'quiet_when_empty',
             label: t('automations.quietWhenEmpty'),
@@ -939,9 +899,7 @@ export function AutomationsPanel({
           ),
         },
       }),
-    // `wecom` arrives asynchronously; without it the schema never rebuilds
-    // and the WeCom toggle stays disabled even after the binding loads.
-    [t, dataSource, profiles, currentUser?.id, profileName, wecom, feishu, scope, isSuper, openId],
+    [t, dataSource, profiles, currentUser?.id, profileName, notificationAdapters, scope, isSuper, openId],
   );
 
   return (

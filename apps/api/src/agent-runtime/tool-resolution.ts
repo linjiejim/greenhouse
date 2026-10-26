@@ -29,8 +29,6 @@ import { createKnowledgeMutationTool } from '../tools/knowledge-mutation.js';
 import { createSkillMutationTool } from '../tools/skills/skill-mutation.js';
 import { createAutomationQueryTool } from '../tools/automation-query.js';
 import { createAutomationMutationTool } from '../tools/automation-mutation.js';
-import { createEmailQueryTool } from '../tools/email-query.js';
-import { createEmailMutationTool } from '../tools/email-mutation.js';
 import { createGenerateImageTool } from '../tools/generate-image.js';
 import { createAnalyzeImageTool } from '../tools/analyze-image.js';
 import { createTablesQueryTool } from '../tools/tables-query.js';
@@ -163,7 +161,8 @@ export interface LazyServerToolContext {
  * one-step send. Automation that needs to deliver by email uses the scheduler's
  * own channel (scheduler/notify.ts), which no model can aim.
  */
-export const UNATTENDED_TOOL_DENYLIST = new Set(['automation_mutation', 'email_mutation']);
+import { UNATTENDED_TOOL_DENYLIST } from './tool-policy.js';
+export { UNATTENDED_TOOL_DENYLIST };
 
 /**
  * The automatic baseline is fail-closed: an unattended execution receives only
@@ -315,16 +314,6 @@ export function buildLazyServerTools(
       userRole,
       canGrantTools: ctx.humanChat === true && ctx.unattended !== true,
     });
-  }
-
-  // Email — mailbox ownership is checked inside the tools, so like automations
-  // these are not session-scoped. sessionId is passed only so attachments can
-  // resolve on the chat surface; without it the attachment path says so plainly.
-  if (effectiveTools.includes('email_query')) {
-    tools.email_query = createEmailQueryTool(db, { userId, userRole, sessionId });
-  }
-  if (effectiveTools.includes('email_mutation')) {
-    tools.email_mutation = createEmailMutationTool(db, { userId, userRole, sessionId });
   }
 
   // ── Session-scoped tools ──

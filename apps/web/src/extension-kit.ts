@@ -101,3 +101,9 @@ export { MediaPreviewDialog } from './components/media-preview-dialog';
 
 export { saveWorkspaceSettings } from './lib/api/workspace-settings';
 export { RetroButton } from './pages/administration/retro-button';
+
+export { type CrudFieldRenderProps } from './pages/settings/crud';
+
+export { storeAuthenticatedSession, type AuthenticatedUser } from './lib/auth';
+
+export { apiUrl } from './lib/api-base';

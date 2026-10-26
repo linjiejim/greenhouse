@@ -49,7 +49,7 @@ function noStore(c: { header(name: string, value: string): void }): void {
 /**
  * Issue a normal access + refresh session for an already-authenticated user.
  *
- * Exported for the Feishu login exchange (routes/feishu-oauth.ts): scan login
+ * Exported through the kit for identity-provider login exchanges: scan login
  * must produce exactly the same session a password login would — same token
  * shapes, same `last_login_at` side effect — so it calls this rather than
  * growing a second issuance path.

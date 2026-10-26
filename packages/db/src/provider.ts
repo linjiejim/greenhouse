@@ -30,7 +30,6 @@ import { createApiAuditService } from './services/api-audit.js';
 import { createUserPromptService } from './services/user-prompts.js';
 import { createSessionShareService } from './services/session-shares.js';
 import { createScheduledTaskService } from './services/scheduled-tasks.js';
-import { createFeishuBotService } from './services/feishu-bot.js';
 import { createProviderTokenService } from './services/provider-tokens.js';
 import { createCustomProfileService } from './services/custom-profiles.js';
 import { createSessionPinService } from './services/session-pins.js';
@@ -39,7 +38,6 @@ import { createKnowledgeShareService } from './services/knowledge-shares.js';
 import { createUserFeatureService } from './services/user-features.js';
 import { createDriveService } from './services/drive.js';
 import { createActivityService } from './services/activity.js';
-import { createEmailService } from './services/email.js';
 import { createSkillService } from './services/skills.js';
 import { createPlatformService } from './services/platform.js';
 import { createPlatformOAuthService } from './services/platform-oauth.js';
@@ -87,7 +85,6 @@ function createDatabaseProvider(db: Db, client: DbClient['client'] | null) {
     sessionShares: createSessionShareService(db),
     scheduledTasks: createScheduledTaskService(db),
     providerTokens: createProviderTokenService(db),
-    feishuBot: createFeishuBotService(db),
     customProfiles: createCustomProfileService(db),
     sessionPins: createSessionPinService(db),
     knowledgeBase: createKnowledgeBaseService(db),
@@ -95,7 +92,6 @@ function createDatabaseProvider(db: Db, client: DbClient['client'] | null) {
     userFeatures: createUserFeatureService(db),
     drive: createDriveService(db),
     activity: createActivityService(db),
-    email: createEmailService(db),
     skills: createSkillService(db),
     platform: createPlatformService(db),
     platformOAuth: createPlatformOAuthService(db),

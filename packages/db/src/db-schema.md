@@ -2,7 +2,7 @@
 
 > 事实源：`packages/db/src/schema/*.ts`（每个域一个文件，文件头写着本域的表）。迁移链从 `drizzle/0000_v3_baseline.sql` 起步；1.x 的 0000–0013 归档在 `drizzle/archive-1x/`，只用来识别 1.x 库。
 >
-> 当前完整安装共 **73 张表**：核心 schema **69 张**，本批四个插件各自管理 1 张表（迁移车道记账另计）。字段类型、默认值、索引以 schema 与最新 snapshot 为准；本文只写用途、关键列和关系。
+> 当前完整安装共 **73 张表**：核心 schema **66 张**，六个数据插件管理 7 张表（迁移车道记账另计）。字段类型、默认值、索引以 schema 与最新 snapshot 为准；本文只写用途、关键列和关系。
 
 ## 设计约定
 
@@ -26,6 +26,8 @@
 
 | 插件 | 表结构与关联 |
 |---|---|
+| email | [插件 schema](../../../plugins/email/db-schema.md) |
+| feishu | [插件 schema](../../../plugins/feishu/db-schema.md) |
 | memory | [插件 schema](../../../plugins/memory/db-schema.md) |
 | feedback | [插件 schema](../../../plugins/feedback/db-schema.md) |
 | reports | [插件 schema](../../../plugins/reports/db-schema.md) |
@@ -180,9 +182,6 @@ Chat 与 Automation 共用的执行内核：Run / Step 走 version CAS，worker 
 
 | 表 | 主键 / 唯一 | 用途与关键列 |
 |---|---|---|
-| `email_accounts` | PK `id`；UK `(user_id, email_address)` | 成员自己的 IMAP / SMTP 邮箱；连接配置明文，只有 `password_enc` 加密；`preset` 只是 UI 提示 |
-| `feishu_conversations` | PK `id`；UK `feishu_key` | 飞书对话 ↔ 会话映射；`feishu_key` = thread_id ?? root_id ?? message_id，UK 兼做并发仲裁 |
-| `feishu_receipts` | PK `message_id` | 飞书事件去重回执，先写回执再干活 |
 | `skills` | PK `id`；UK `name` | 技能中心；`latest_version`、`download_count`、安全扫描列（`scan_status`、`scanned_at` null = 从没扫过、人工裁定列） |
 | `skill_versions` | PK `id`；UK `(skill_id, version)` | 不可变、带内容 hash 的技能版本；FK CASCADE |
 | `prompts` | PK `id`；UK `artifact_action_id` | 保存的任务 / Prompt（个人或 super 发布的全局）；`variables`、`expected_tools`（只展示）、`source_session_id`（逻辑）、`created_via` |
@@ -208,7 +207,6 @@ Chat 与 Automation 共用的执行内核：Run / Step 走 version CAS，worker 
 - `run_events`：已结算 Run 的事件 30 天，仍有未投递 outbox 的事件不删
 - `run_outbox`：投递后 7 天
 - `request_log`：30 天
-- `feishu_receipts`：7 天
 - `budget_ledger`：13 个月
 - `notification_deliveries`：终态后 7 天
 - 过期凭证：`auth_refresh_tokens`、`oauth_codes`、`oauth_tokens`、`login_states`、`rate_limits`；`password_links` 过期 30 天后
@@ -275,9 +273,6 @@ Chat 与 Automation 共用的执行内核：Run / Step 走 version CAS，worker 
 | `table_recompute_jobs.record_id` | `table_records.id` | CASCADE |
 | `notification_deliveries.notification_id` | `notifications.id` | CASCADE |
 | `push_devices.user_id` | `users.id` | CASCADE |
-| `email_accounts.user_id` | `users.id` | CASCADE |
-| `feishu_conversations.session_id` | `conversations.id` | CASCADE |
-| `feishu_conversations.user_id` | `users.id` | CASCADE |
 | `skill_versions.skill_id` | `skills.id` | CASCADE |
 
 ## 逻辑关联总览（无 FK）
@@ -342,7 +337,6 @@ erDiagram
     users ||--o{ mcp_connectors : "FK CASCADE (personal)"
     mcp_connectors ||--o{ provider_connections : "逻辑 provider=mcp:id"
     users ||--o{ push_devices : "FK CASCADE"
-    users ||--o{ email_accounts : "FK CASCADE"
 ```
 
 ### 对话、运行与自动化
@@ -355,8 +349,6 @@ erDiagram
     conversations ||--o{ conversation_share_reads : "FK CASCADE"
     conversations ||--o{ card_action_receipts : "FK CASCADE"
     conversations ||--o{ files : "FK CASCADE session_id"
-    conversations ||--o{ feishu_conversations : "FK CASCADE"
-    users ||--o{ feishu_conversations : "FK CASCADE"
     conversations ||--o{ runs : "逻辑 session_id"
     runs ||--o{ runs : "FK CASCADE parent_run_id"
     runs ||--o{ run_steps : "FK CASCADE"
@@ -440,3 +432,7 @@ erDiagram
 2. `./node_modules/.bin/drizzle-kit check` 校验 journal 与 snapshot。
 3. `pnpm db:migrate` 应用到本地库。
 4. 更新本文的表目录、FK、逻辑关联与关系图；新表在 `ids.ts` 登记前缀。
+
+### 官方通信插件表
+
+邮箱表见 [Email schema](../../../plugins/email/db-schema.md)；飞书会话与回执表见 [Feishu schema](../../../plugins/feishu/db-schema.md)。企微使用核心身份表，没有私有表。通知 kind/channel 是开放文本，写入时由启用的核心/插件注册表校验；历史值读取不丢弃。

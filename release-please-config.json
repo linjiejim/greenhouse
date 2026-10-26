@@ -27,7 +27,10 @@
         { "type": "json", "path": "plugins/memory/package.json", "jsonpath": "$.version" },
         { "type": "json", "path": "plugins/feedback/package.json", "jsonpath": "$.version" },
         { "type": "json", "path": "plugins/reports/package.json", "jsonpath": "$.version" },
-        { "type": "json", "path": "plugins/computer/package.json", "jsonpath": "$.version" }
+        { "type": "json", "path": "plugins/computer/package.json", "jsonpath": "$.version" },
+        { "type": "json", "path": "plugins/email/package.json", "jsonpath": "$.version" },
+        { "type": "json", "path": "plugins/wecom/package.json", "jsonpath": "$.version" },
+        { "type": "json", "path": "plugins/feishu/package.json", "jsonpath": "$.version" }
       ]
     }
   }

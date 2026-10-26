@@ -22,6 +22,7 @@ export type { AuthUser, UserRole };
 
 const PUBLIC_PATHS = new Set([
   '/api/auth/login',
+  '/api/auth/providers',
   '/api/auth/refresh',
   '/api/auth/password-link/inspect',
   '/api/auth/password-link/complete',
@@ -29,27 +30,6 @@ const PUBLIC_PATHS = new Set([
   // Pre-login workspace personalization (name / logo / theme tokens); never
   // exposes secrets, user data or feature configuration.
   '/api/bootstrap',
-  // WeCom redirects the BROWSER here, so the hop carries no Bearer. The
-  // credential is `state`: server-generated, single-use, 10-minute expiry,
-  // bound to a userId; the route re-reads the account (still an active internal
-  // user) before writing and never calls getAuthUser(). `/api/wecom/oauth/start`
-  // and `/api/wecom/binding` still require a Bearer (guarded in the route file).
-  '/api/wecom/oauth/callback',
-  // Feishu redirects the BROWSER here (bind and login share one callback, split
-  // by the state's intent), again without a Bearer; the credential is a
-  // single-use, 10-minute `state`. `/start-login` and `/exchange` serve the
-  // NOT-yet-logged-in QR login (the login page has no token to send): the
-  // former only issues a login state, the latter swaps a 60s single-use code
-  // for a normal session, rate-limited per IP. `/api/feishu/oauth/start` and
-  // `/api/feishu/binding` still require a Bearer (guarded in the route file).
-  '/api/feishu/oauth/callback',
-  '/api/feishu/oauth/start-login',
-  '/api/feishu/oauth/exchange',
-  // Read-only "does this deployment offer Feishu login?" probe the login page
-  // asks on every mount. Deliberately separate from start-login: using that as
-  // the probe would seed a pending state nobody consumes on every password
-  // login — a probe must have no side effects.
-  '/api/feishu/login-available',
   // A connector's OAuth provider redirects the BROWSER here, without a Bearer.
   // It writes nothing: it only sends the person back to the app (web hash route
   // or the mobile scheme), whose logged-in session then calls

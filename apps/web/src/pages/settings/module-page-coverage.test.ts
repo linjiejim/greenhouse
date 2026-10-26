@@ -11,7 +11,7 @@ const MODULE_PAGES: ModulePageContract[] = [
   { file: './preferences.tsx', moduleId: 'settings.preferences', layout: 'form' },
   { file: './agent-access/index.tsx', moduleId: 'settings.agent-connections', layout: 'list' },
   { file: './provider-bindings.tsx', moduleId: 'settings.provider-bindings', layout: 'form' },
-  { file: './email-accounts.tsx', moduleId: 'settings.email-accounts', layout: 'list' },
+  { file: '../../../../../plugins/email/web/accounts.tsx', moduleId: 'settings.email-accounts', layout: 'list' },
   { file: '../../../../../plugins/memory/web/pages/settings/memory.tsx', moduleId: 'settings.memory', layout: 'list' },
   { file: '../administration/users.tsx', moduleId: 'admin.users', layout: 'list' },
   { file: '../administration/usage.tsx', moduleId: 'admin.usage', layout: 'list' },

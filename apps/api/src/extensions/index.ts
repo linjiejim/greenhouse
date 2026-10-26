@@ -1,3 +1,7 @@
+import { registerUnattendedDeniedTools } from '../agent-runtime/tool-policy.js';
+import { registerNotificationTransports } from '../notifications/transports.js';
+import { registerIdentityProviders } from '../auth/identity-providers.js';
+import { registerNotificationKinds, registerNotificationChannels } from '@greenhouse/types/notification';
 import { setExtensionAutomationTools } from '@greenhouse/types/automation-tools';
 import { SERVICE_PROVIDERS } from '../config/services.js';
 import { registerPromptContexts } from './prompt-context.js';
@@ -104,3 +108,14 @@ registerWorkspaceSettingValidators(fromExtensions('settingValidators'));
 registerPromptContexts(fromExtensions('promptContext'));
 
 setExtensionAutomationTools(fromExtensions('automationTools'));
+
+registerNotificationTransports(fromExtensions('notificationTransports'));
+registerNotificationKinds(fromExtensions('notificationKinds'));
+registerNotificationChannels(fromExtensions('notificationTransports').map((t) => t.id));
+registerIdentityProviders(fromExtensions('identityProviders'));
+
+registerUnattendedDeniedTools(
+  fromExtensions('tools')
+    .filter((t) => t.meta.surface?.unattendedDenied)
+    .map((t) => t.meta.id),
+);

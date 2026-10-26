@@ -65,6 +65,8 @@ export interface ToolMeta {
     /** @deprecated Ignored since 3.0 (the Home workbench was removed); kept so 2.x extensions compile. Removed in 4.0. */
     workbench?: boolean;
     unattendedReplaySafe?: boolean;
+    /** This surface needs a person to read its confirmation. Overrides any automation opt-in. */
+    unattendedDenied?: boolean;
     /**
      * MCP `openWorldHint`: the tool reaches outside Greenhouse (the web, a
      * cloud computer). Default false — everything else stays inside.

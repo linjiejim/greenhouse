@@ -16,6 +16,11 @@ extension-kit: expose the existing snapshot-locked API and web kits as `@greenho
 
 ### Changed
 
+- Extract Email, WeCom and Feishu into default-off official plugins, including personal/shared mailboxes, OAuth binding/login, the Feishu bot and optional notification delivery. Existing paths, ids, preferences and env names are preserved; disabled data stays intact.
+- Add public identity-provider discovery and plugin registries for delivery adapters, notification kinds and agent channels. Notification writes validate active kinds/channels instead of DB CHECKs.
+
+extension-kit: add identity policy/routes, channel runtime/turn execution, notification rendering/envelope helpers, mailbox crypto/egress/file helpers, DB foreign-key targets and authenticated classic client session helpers required by communication plugins; no pre-existing exports removed.
+
 - Extract Memory, Feedback, Reports and Computer into official plugin packages, preserving URLs and tool ids. Adoption migrations preserve existing data.
 - Automation grants and MCP working hints now follow the active plugin set; inactive modules are absent from both.
 - Conversation sharing is controlled by `conversations.sharing` (default true); the design gallery is development-only.
@@ -24,7 +29,7 @@ extension-kit: add the DB schema primitives, metering/budget/provider hooks, wor
 
 ### Upgrading from 3.x
 
-Reports and Computer are now off by default. To keep both, set `GREENHOUSE_EXTENSIONS=knowledge,tables,skills,feedback,memory,reports,computer`, or use `extensions: { enabled: ['knowledge', 'tables', 'skills', 'feedback', 'memory', 'reports', 'computer'] }` in `greenhouse.config.ts`. Keep any deployment-specific plugins in that list. Computer also retains its independent credential and workspace-switch checks. Disabled tables and rows remain available when re-enabled.
+Reports, Computer, Email, WeCom and Feishu are now off by default. To keep all five, set `GREENHOUSE_EXTENSIONS=knowledge,tables,skills,feedback,memory,reports,computer,email,wecom,feishu`, or use `extensions: { enabled: ['knowledge', 'tables', 'skills', 'feedback', 'memory', 'reports', 'computer', 'email', 'wecom', 'feishu'] }` in `greenhouse.config.ts`. Keep any deployment-specific plugins in that list. Computer also retains its independent credential and workspace-switch checks. Disabled tables and rows remain available when re-enabled.
 
 
 - Move the example and its migrations, MCP/seam tests and browser spec into `plugins/example`; SDK 1 in-tree overlays remain supported.

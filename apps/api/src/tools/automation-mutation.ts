@@ -1,3 +1,4 @@
+import { notificationTransports } from '../notifications/transports.js';
 /**
  * Automation Mutation tool — write side of Automations (the user's scheduled
  * tasks): create, update (including enable/disable), delete, and run now.
@@ -65,23 +66,11 @@ const automationMutationSchema = z.object({
   max_steps: z.number().int().optional().describe(`Tool-call budget per run, 1-${MAX_STEPS_LIMIT}. Defaults to 15.`),
   enabled: z.boolean().optional().describe('false pauses the automation without deleting it.'),
   notify: z
-    .object({
-      webhook: z
-        .string()
-        .nullable()
-        .optional()
-        .describe(
-          'Group-bot webhook the scheduler posts each run summary to; must be an https://qyapi.weixin.qq.com (WeCom) or https://open.feishu.cn/open-apis/bot/... (Feishu) URL. null clears it. Without one the result only lands silently in the conversation list.',
-        ),
-      email: z
-        .boolean()
-        .optional()
-        .describe(
-          "Email each run summary to the owner's own account address. No address to supply — it is always the owner.",
-        ),
-    })
+    .record(z.string(), z.union([z.boolean(), z.string(), z.null()]))
     .optional()
-    .describe('Where each run summary is delivered. On update only the keys given change.'),
+    .describe(
+      'Optional notification transport preferences. Only enabled transports can deliver. In-app notifications are always recorded.',
+    ),
   quiet_when_empty: z
     .boolean()
     .optional()
@@ -108,7 +97,7 @@ Each run starts a FRESH conversation with no history, so task_prompt must stand 
 
 enabled:false pauses and enabled:true resumes — never delete what the user only wants paused. delete drops the definition but keeps past run conversations. run_now executes once immediately and returns its session_id, so the user can check the output without waiting for the schedule.
 
-Always set notify.webhook or notify.email — a 03:00 run nobody is told about is worth little. For frequent "watch for X" checks, also set quiet_when_empty so runs that find nothing stay silent.
+Every run creates an in-app notification; optional external delivery uses enabled notification transports. For frequent "watch for X" checks, also set quiet_when_empty so runs that find nothing stay silent.
 
 Before create, update or delete, state the configuration back in plain language — name, what it will do, and when it fires spelled out ("every weekday at 09:00 Hong Kong time") — then get explicit agreement. Read the current settings with automation_query first when changing an existing one.
 
@@ -157,7 +146,15 @@ export function createAutomationMutationTool(db: DatabaseProvider, ctx: Automati
   };
   return tool({
     description: meta.description,
-    inputSchema: automationMutationSchema,
+    inputSchema: automationMutationSchema.extend({
+      notify: automationMutationSchema.shape.notify.refine((value) => {
+        if (!value) return true;
+        const transports = notificationTransports();
+        const keys = new Set(transports.flatMap((t) => (t.bindingSettings ? [t.bindingSettings.preference] : [])));
+        if (transports.some((t) => t.acceptsWebhook)) keys.add('webhook');
+        return Object.keys(value).every((key) => keys.has(key));
+      }, 'Notification transport is not enabled'),
+    }),
     execute: async (input: AutomationMutationInput) => {
       try {
         if (input.action === 'create') {

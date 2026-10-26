@@ -74,7 +74,7 @@ export default defineConfig({
     // extension. A deployment that compiles its own extensions in lists them
     // here too (GREENHOUSE_EXTENSIONS=example,crm,…) so the surface sweep and
     // their own e2e specs run against them.
-    env: { ...process.env, GREENHOUSE_EXTENSIONS: process.env.GREENHOUSE_EXTENSIONS || 'example,memory,feedback,reports,computer' },
+    env: { ...process.env, GREENHOUSE_EXTENSIONS: process.env.GREENHOUSE_EXTENSIONS || 'all' },
     url: `${BASE_URL}/health`,
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,

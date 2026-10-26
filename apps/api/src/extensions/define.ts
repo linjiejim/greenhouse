@@ -129,6 +129,12 @@ export interface GreenhouseExtension {
    */
   dependsOn?: string[];
 
+  notificationTransports?: import('../notifications/transports.js').NotificationTransport[];
+  notificationKinds?: string[];
+  identityProviders?: import('../auth/identity-providers.js').IdentityProvider[];
+  channels?: import('./channels.js').AgentChannel[];
+  /** Infrastructure env names which have no effect unless this plugin is active. */
+  configurationEnv?: string[];
   /** Tools the owner may explicitly grant to unattended automations. */
   automationTools?: import('@greenhouse/types/automation-tools').AutomationOptInTool[];
   /** MCP group descriptions and hints, cut to the caller's reachable tools. */
@@ -225,6 +231,10 @@ const ID_PATTERN = /^[a-z][a-z0-9-]*$/;
 export function defineExtension(extension: GreenhouseExtension): GreenhouseExtension {
   if (!ID_PATTERN.test(extension.id)) {
     throw new Error(`Extension id "${extension.id}" must match ${ID_PATTERN} (it is also the config switch)`);
+  }
+  for (const kind of extension.notificationKinds ?? []) {
+    if (!kind.startsWith(`ext:${extension.id}:`))
+      throw new Error(`Notification kind must use ext:${extension.id}: namespace: ${kind}`);
   }
   for (const mod of extension.tools ?? []) {
     if (mod.kind === 'static' && !mod.create)

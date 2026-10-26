@@ -20,6 +20,14 @@ import { EXTENSIONS, fromExtensions } from '../extensions/index.js';
 const extensionsRoutes = new Hono<AppEnv>().get('/', (c) =>
   c.json({
     extensions: EXTENSIONS.map((ext) => ({ id: ext.id, name: ext.name, description: ext.description ?? null })),
+    notificationTransports: fromExtensions('notificationTransports').map(({ id, title, bindingSettings }) => ({
+      id,
+      title,
+      bindingSettings,
+    })),
+    identityProviders: fromExtensions('identityProviders')
+      .filter((p) => p.available())
+      .map(({ id, title, icon, login, bind }) => ({ id, title, icon, login, bind })),
     automationTools: fromExtensions('automationTools'),
     conversations: GREENHOUSE_CONFIG.conversations,
     entityKinds: fromExtensions('entityKinds'),

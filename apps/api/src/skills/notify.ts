@@ -15,7 +15,7 @@
  * must not turn a completed publish into an error.
  */
 
-import { sendWeComMarkdown } from '@greenhouse/utils/wecom';
+import { notificationWebhookTransport } from '../notifications/transports.js';
 import { logger } from '@greenhouse/utils/logger';
 import type { SkillRow } from '@greenhouse/db';
 import type { ScanFinding } from './scanner.js';
@@ -32,7 +32,9 @@ export async function notifySuspiciousSkill(opts: {
   findings: ScanFinding[];
 }): Promise<void> {
   const webhook = process.env.SKILLS_WECOM_WEBHOOK_URL || process.env.SYNC_WECOM_WEBHOOK_URL;
-  if (!webhook) return; // not configured → skip silently
+  if (!webhook) return;
+  const transport = notificationWebhookTransport(webhook);
+  if (!transport?.sendWebhook) return; // disabled/unconfigured adapter never sends
 
   const { skill, version, findings } = opts;
   const rules = findings
@@ -47,6 +49,6 @@ export async function notifySuspiciousSkill(opts: {
     `[打开技能](${skillDeeplink(skill.name)})`,
   ].join('\n');
 
-  const sent = await sendWeComMarkdown(webhook, md);
+  const sent = await transport.sendWebhook(webhook, md);
   if (!sent.ok) logger.warn(`[skills] quarantine WeCom notify failed (${sent.status ?? '-'}): ${sent.error ?? ''}`);
 }

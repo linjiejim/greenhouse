@@ -1,3 +1,4 @@
+import { notificationTransports } from '../notifications/transports.js';
 /**
  * Scheduled Task Center — ONE implementation of Automation CRUD, shared by the
  * HTTP routes (routes/tasks.ts) and the agent tools (tools/automation-*.ts).
@@ -70,6 +71,9 @@ export interface TaskActor {
 
 export type TaskErrorCode = 'invalid' | 'not_found' | 'forbidden' | 'conflict' | 'unavailable' | 'internal';
 export type TaskError = { ok: false; code: TaskErrorCode; error: string };
+function isTaskError(value: Partial<AutomationNotify> | TaskError | undefined): value is TaskError {
+  return value?.ok === false && typeof value.code === 'string' && typeof value.error === 'string';
+}
 const err = (code: TaskErrorCode, error: string): TaskError => ({ ok: false, code, error });
 
 /** A task row plus the derived human-readable schedule description. */
@@ -206,16 +210,8 @@ export function validateNotifyWebhook(raw: string | null | undefined): TaskError
   if (url.protocol !== 'https:') {
     return err('invalid', 'Webhook must be an https:// URL');
   }
-  // Two trusted hosts, nothing else: the whitelist is what keeps this field
-  // from being a "POST anywhere" channel. Feishu bot webhooks additionally live
-  // under a fixed path, so pin that too.
-  const isWeCom = url.hostname === 'qyapi.weixin.qq.com';
-  const isFeishu = url.hostname === 'open.feishu.cn' && url.pathname.startsWith('/open-apis/bot/');
-  if (!isWeCom && !isFeishu) {
-    return err(
-      'invalid',
-      'Webhook must be a WeCom (https://qyapi.weixin.qq.com/...) or Feishu (https://open.feishu.cn/open-apis/bot/...) group-bot URL',
-    );
+  if (!notificationTransports().some((t) => t.acceptsWebhook?.(url))) {
+    return err('invalid', 'Webhook must match an enabled notification transport');
   }
   return null;
 }
@@ -239,6 +235,12 @@ export function notifyFromInput(input: CreateTaskInput): Partial<AutomationNotif
       );
     }
     const notify = input.notify;
+    for (const [key, value] of Object.entries(notify)) {
+      if (key !== 'webhook') {
+        if (typeof value !== 'boolean') return err('invalid', `notify.${key} must be true or false`);
+        out[key] = value;
+      }
+    }
     if (notify.webhook !== undefined) out.webhook = notify.webhook || null;
     if (notify.email !== undefined) out.email = notify.email;
     if (notify.wecom !== undefined) out.wecom = notify.wecom;
@@ -463,7 +465,7 @@ export async function createTask(
   }
 
   const notify = notifyFromInput(input);
-  if (notify && 'ok' in notify) return notify;
+  if (isTaskError(notify)) return notify;
   const webhookCheck = validateNotifyWebhook(notify?.webhook);
   if (webhookCheck) return webhookCheck;
 
@@ -570,7 +572,7 @@ export async function updateTask(
   }
 
   const notify = notifyFromInput(input);
-  if (notify && 'ok' in notify) return notify;
+  if (isTaskError(notify)) return notify;
   if (notify) {
     if (notify.webhook !== undefined) {
       const webhookCheck = validateNotifyWebhook(notify.webhook);

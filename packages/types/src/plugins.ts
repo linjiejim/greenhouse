@@ -34,6 +34,12 @@ export interface StationManifest {
     client_api: number;
   };
   plugins: PluginManifestEntry[];
+  notificationTransports?: Array<{
+    id: string;
+    title: string;
+    bindingSettings?: { preference: string; label: string };
+  }>;
+  identityProviders?: Array<{ id: string; title: string; icon: string; login: boolean; bind: boolean }>;
   /** Kept for 3.x clients: `{ id, name, description }` of every active plugin. */
   extensions: Array<{ id: string; name: string; description: string | null }>;
   /** Kept for 3.x clients: record-kind route templates. */

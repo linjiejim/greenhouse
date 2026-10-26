@@ -402,7 +402,7 @@ belongs to Greenhouse itself.
 | **Automation-eligible write tool** | `packages/types/src/automation-tools.ts` | Opt-in catalog of tools an owner may grant to an unattended run |
 | **Upload storage backend** | `apps/api/src/storage/uploads.ts` | Local disk by default; Tencent COS when `TENCENT_CLOUD_COS_*` are set; Skill Center bundles use `SKILLS_S3_*` |
 | **Notification transport** | `apps/api/src/notifications/` | Durable delivery attempts per transport (email, WeCom, Feishu) |
-| **Integration (OAuth callback, bot)** | `apps/api/src/wecom/`, `apps/api/src/feishu/` as reference implementations | Public callback paths are listed in `auth/middleware.ts` (`PUBLIC_PATHS`) — keep that list minimal |
+| **Integration (OAuth callback, bot)** | `plugins/wecom/api/`, `plugins/feishu/api/` as reference implementations | Plugin callback paths are declared by `publicPaths` on each active plugin — keep that list minimal |
 
 ## Golden rules
 
@@ -485,3 +485,20 @@ snapshot; the snapshot is the current protection set, while historical DDL remai
 and 1.x carry reference. Keep every applied migration immutable.
 
 Automation opt-in entries (`automationTools: [{id, tier, order?, labelKey?}]`) come from active plugins; the API includes them in `/api/extensions`, and the client replaces its optional catalog when the station changes. `hubContext` contributes MCP group descriptions and overview/bundle hints, each gated by reachable tool ids. Settings/Administration module ownership also selects the extension's existing context provider. Optional Runtime Config group labels use `ext.<group>.settingsGroup` from the existing message registry.
+
+## Communication adapters
+
+`defineExtension` accepts four optional registries, aggregated through `fromExtensions`:
+
+| Field | Consumer | Contract |
+|---|---|---|
+| `notificationTransports` | durable delivery worker and automation queue | `{ id, title, deliver({db, notification, attempt}), bindingSettings? }`; `automationRecipients(task)` derives server-owned envelopes from stored preferences. Only active channels are claimed, so disabling retains pending rows for re-enablement. `acceptsWebhook(URL)` owns its exact allowlist; `sendWebhook(url, markdown)` also serves system producers such as skill quarantine notices. `accountLinks` optionally supplies immediate audited password-link mail. |
+| `notificationKinds` | DB notification write validation | Downstream ids use `ext:<id>:<kind>`; core kinds remain accepted. Historical values remain readable. Kind and channel CHECKs are replaced by service registry validation. |
+| `identityProviders` | public `GET /api/auth/providers`, binding/start/callback routes | `{ id, title, icon, login, bind, path, available(), start(ctx), callback(ctx) }`. Discovery exposes only id/title/icon/login of configured providers, no state or secrets. The host mounts the existing prefix, protects binding/start, and leaves callback authentication to single-use state. Core `bindProviderIdentity` enforces active internal users and one identity per account. Extra protocol routes use `routes`; only explicitly declared `publicPaths` bypass central auth. |
+| `channels` | API boot/shutdown | `{ id, start({db, toolRegistry}) }`; start may return a shutdown callback. `channelAgentRuntime()` resolves the member's normal tool pipeline; `runAgentTurn()` uses the existing metered session runner. |
+
+`configurationEnv: string[]` names infrastructure variables that require the package. When any is set while that package is disabled, boot logs one enablement hint; it does not activate or call the integration.
+
+The classic web half contributes `identityProviders` (`id`, optional login component, optional binding component) and `notificationTransports` (`id`, `preference`, component, optional webhook label/hint). Login components are selected by public discovery; authenticated binding/form components are selected by the enabled extension set. UI copy stays under `ext.<id>.*`. `surface.unattendedDenied` on a tool overrides all unattended grants.
+
+Email, WeCom and Feishu retain their 3.0 routes, recipient envelopes and preference keys. Email's feature flag defaults on for members **only when its package is enabled**. WeCom is binding-only; Feishu also supplies login and its bot channel. The phone callback remains `greenhouse://auth/feishu`. Their generic identity tables stay core; private table/service ownership is documented in the plugin directories. No plugin jobs are invented for email: mailbox reads already fetch live over IMAP.

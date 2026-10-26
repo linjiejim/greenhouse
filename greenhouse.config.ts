@@ -11,7 +11,7 @@
 import { defineConfig } from '@greenhouse/types/config';
 
 export default defineConfig({
-  plugins: ['./plugins/example', './plugins/memory', './plugins/feedback', './plugins/reports', './plugins/computer'],
+  plugins: ['./plugins/example', './plugins/memory', './plugins/feedback', './plugins/reports', './plugins/computer', './plugins/email', './plugins/wecom', './plugins/feishu'],
   extensions: {
     // Packages above and SDK 1 in-tree registrations are compiled in; this switches them on.
     // 'all' enables every compiled extension. GREENHOUSE_EXTENSIONS overrides at boot.

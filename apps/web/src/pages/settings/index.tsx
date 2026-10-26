@@ -25,7 +25,6 @@ import type { NavModule } from '../../lib/nav-registry';
 // Sub-panels
 import { PreferencesPanel } from './preferences';
 import { ProviderBindingsPanel } from './provider-bindings';
-import { EmailAccountsPanel } from './email-accounts';
 import { AgentAccessPanel } from './agent-access';
 import { MyUsagePanel } from './my-usage';
 import { DEFAULT_MODULE, resolveSettingsRedirect } from './redirects';
@@ -79,7 +78,6 @@ export function SettingsPage({ subPath }: { subPath: string }) {
       {effectiveModule === 'preferences' && <PreferencesPanel />}
       {effectiveModule === 'agent-connections' && <AgentAccessPanel subPath={subPath} />}
       {effectiveModule === 'provider-bindings' && <ProviderBindingsPanel />}
-      {effectiveModule === 'email-accounts' && <EmailAccountsPanel />}
       {effectiveModule === 'my-usage' && <MyUsagePanel />}
       {extensionModule && effectiveModule === moduleKey && <extensionModule.component subPath={subPath} />}
     </ModulePageShell>

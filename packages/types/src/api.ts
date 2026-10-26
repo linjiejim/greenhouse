@@ -828,6 +828,8 @@ export function handleStreamEvent(event: StreamingEvent, cbs: StreamEventCallbac
 
 /** Where an automation reports a finished run (`automations.notify`). */
 export interface AutomationNotify {
+  /** Plugin preference keys; legacy named fields remain wire-compatible. */
+  [preference: string]: boolean | string | null;
   /** Optional WeCom / Feishu group-bot webhook the scheduler posts run summaries to. */
   webhook: string | null;
   /** Email the run summary to the owner's own account address. */

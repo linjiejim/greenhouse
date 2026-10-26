@@ -38,8 +38,6 @@ import { tablesSchemaPlanTool } from './tables-schema-plan.js';
 import { exportDataTool } from './export-data.js';
 import { automationQueryTool } from './automation-query.js';
 import { automationMutationTool } from './automation-mutation.js';
-import { emailQueryTool } from './email-query.js';
-import { emailMutationTool } from './email-mutation.js';
 import { mcpCallTool } from './mcp-call.js';
 import { filesQueryTool } from './files-query.js';
 import { filesMutationTool } from './files-mutation.js';
@@ -70,8 +68,6 @@ const CORE_TOOL_MODULES: ToolModule[] = [
   exportDataTool,
   automationQueryTool,
   automationMutationTool,
-  emailQueryTool,
-  emailMutationTool,
   mcpCallTool,
   filesQueryTool,
   filesMutationTool,

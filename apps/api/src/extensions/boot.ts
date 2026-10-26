@@ -1,3 +1,4 @@
+import { createIdentityProviderRoutes } from '../auth/identity-providers.js';
 /**
  * Boot-time glue between the active extensions and the core runtime: what
  * `apps/api/src/index.ts`, the scheduler and the CLI call to fold extension
@@ -11,7 +12,7 @@ import { logger } from '@greenhouse/utils/logger';
 import type { AppEnv } from '../app-env.js';
 import type { PlatformHandlerContext } from '../platform/runtime.js';
 import { GREENHOUSE_CONFIG } from '../config/greenhouse-config.js';
-import { EXTENSIONS, fromExtensions } from './index.js';
+import { COMPILED_EXTENSIONS, EXTENSIONS, fromExtensions } from './index.js';
 import { recordExtensionBootReady, recordExtensionBootError } from './health.js';
 import type { ExtensionCommand, ExtensionJob } from './define.js';
 
@@ -80,6 +81,8 @@ export async function applyExtensionMigrations(db: DatabaseProvider): Promise<vo
 
 /** Mount extension routes after the typed core chain; guards run for every request under the prefix. */
 export function mountExtensionRoutes(app: Hono<AppEnv>): void {
+  for (const provider of fromExtensions('identityProviders'))
+    app.route(provider.path, createIdentityProviderRoutes(provider));
   for (const ext of EXTENSIONS) {
     for (const route of ext.routes ?? []) {
       for (const guard of route.guards ?? []) app.use(`${route.path}/*`, guard);
@@ -90,6 +93,10 @@ export function mountExtensionRoutes(app: Hono<AppEnv>): void {
 }
 
 export async function runExtensionBootHooks(db: DatabaseProvider): Promise<void> {
+  for (const ext of COMPILED_EXTENSIONS) {
+    if (!EXTENSIONS.includes(ext) && ext.configurationEnv?.some((key) => !!process.env[key]))
+      logger.info(`[Extensions] ${ext.id}: environment configured; enable plugin ${ext.id} to use it`);
+  }
   for (const ext of EXTENSIONS) {
     try {
       await ext.onBoot?.({ db, config: GREENHOUSE_CONFIG });

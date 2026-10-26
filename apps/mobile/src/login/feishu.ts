@@ -6,7 +6,7 @@
  * is exchanged for a session (../api/auth.ts `loginWithFeishuCode`).
  */
 
-/** The app's return address — apps/api/src/routes/feishu-oauth.ts `APP_LOGIN_REDIRECT`. */
+/** The app's return address — plugins/feishu/api/oauth.ts `APP_LOGIN_REDIRECT`. */
 export const FEISHU_APP_REDIRECT = 'greenhouse://auth/feishu';
 
 export type FeishuReturn = { kind: 'code'; code: string } | { kind: 'error'; reason: string } | { kind: 'cancel' };

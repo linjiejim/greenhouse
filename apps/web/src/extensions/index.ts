@@ -242,3 +242,15 @@ export function extensionSlots(slot: string) {
     .flatMap((e) => e.slots ?? [])
     .filter((item) => item.slot === slot);
 }
+
+export function publicLoginProviders(ids: ReadonlySet<string>) {
+  return LOADED_WEB_EXTENSIONS.flatMap((e) => e.identityProviders ?? []).filter((p) => ids.has(p.id));
+}
+export function extensionIdentityProviders() {
+  return LOADED_WEB_EXTENSIONS.filter((e) => isActiveWebExtension(e.id)).flatMap((e) => e.identityProviders ?? []);
+}
+export function extensionNotificationTransports(active?: ReadonlySet<string>) {
+  return LOADED_WEB_EXTENSIONS.filter((e) => (active ? active.has(e.id) : isActiveWebExtension(e.id))).flatMap(
+    (e) => e.notificationTransports ?? [],
+  );
+}

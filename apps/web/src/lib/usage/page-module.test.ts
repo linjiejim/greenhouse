@@ -37,7 +37,9 @@ describe('pageModuleForRoute', () => {
     ]);
     expect(
       [...PAGE_MODULE_IDS]
-        .filter((id) => !['settings.memory', 'settings.computer', 'admin.issues'].includes(id))
+        .filter(
+          (id) => !['settings.memory', 'settings.computer', 'admin.issues', 'settings.email-accounts'].includes(id),
+        )
         .sort(),
     ).toEqual([...reported].sort());
   });

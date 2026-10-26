@@ -49,7 +49,6 @@ describe('surface-derived exposure sets', () => {
         'automation_query',
         // 2026-08-05: mailbox reading returns after the 0.18.0 removal. Read is
         // safe to expose broadly; the write half is confirm-gated below.
-        'email_query',
         // v1.5: the team's file cabinet (Files), authorized per node by drive access.
         'files_query',
         // v1.5: a member's own feature requests and their answers (Issues & requests).
@@ -74,7 +73,6 @@ describe('surface-derived exposure sets', () => {
         'skill_mutation',
         'tables_mutation',
         'automation_mutation',
-        'email_mutation',
         'files_mutation',
         // v1.5: members' agents file requests and report frictions as recorded writes.
         // v1.6: an external agent's image is a new file in the member's Files —
@@ -195,8 +193,6 @@ describe('surface-derived exposure sets', () => {
         'export_data',
         'automation_query',
         'automation_mutation',
-        'email_query',
-        'email_mutation',
         'files_query',
         'files_mutation',
         'web_search',

@@ -13,7 +13,6 @@ import type { WebExtensionModule, WebExtensionPageModule } from '../extensions/d
 import {
   BookOpen,
   Database,
-  Mail,
   Users,
   Key,
   Plug,
@@ -112,15 +111,7 @@ const SETTINGS_TOP: NavModule[] = [
     icon: Cloud,
     path: '#/settings/provider-bindings',
     parent: 'settings',
-    description: 'Connect Feishu, WeCom and other third-party accounts',
-  },
-  {
-    id: 'settings.email-accounts',
-    label: 'Email Accounts',
-    icon: Mail,
-    path: '#/settings/email-accounts',
-    parent: 'settings',
-    description: 'Bind a mailbox so the agent can read and send your email',
+    description: 'Connect third-party accounts',
   },
   {
     // `my-usage`, not `usage`: `#/settings/usage` is the legacy link to Administration › Usage.
@@ -341,10 +332,6 @@ const NAV_COPY: Record<
   'settings.provider-bindings': {
     label: 'navigation.providerBindings',
     description: 'navigation.providerBindingsDesc',
-  },
-  'settings.email-accounts': {
-    label: 'navigation.emailAccounts',
-    description: 'navigation.emailAccountsDesc',
   },
   'settings.my-usage': { label: 'navigation.myUsage', description: 'navigation.myUsageDesc' },
   'admin.users': { label: 'navigation.users', description: 'navigation.usersDesc' },

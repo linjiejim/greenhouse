@@ -160,45 +160,17 @@ v1 只接 DeepSeek 与 OpenAI 兼容服务，它们**自动**缓存 prompt 前�
 - **无人值守上下文禁用 `automation_mutation` 与 `email_mutation`**：`UNATTENDED_TOOL_DENYLIST`（`agent-runtime/tool-resolution.ts`）被定时执行和 headless 子会话共同消费。理由与草稿类工具（`tables_schema_plan` / `task_capture`）同款——没人能按确认；automation 还会自我增殖，email 的两阶段草稿确认在无人值守时也没有真实读者。custom profile 可以自己写 tools 数组，所以这不是理论风险。只读的 `automation_query`/`email_query` 不禁。**这条 denylist 压在 opt-in 之上**：上面那个逐任务勾选无论存了什么都够不到这两个（`skill_mutation` 与 dispatch 类同理，靠不进目录挡住）。
 - 工具是 **lazy 但不 session-scoped**：任务归属是用户不是会话，stateless 的 proxy/MCP 面也必须够得着（对照 `skill_mutation`）。写工具在 `MUTATING_PROXY_ALLOWLIST`，每次调用需 `confirm:true`。
 - **没有新内容时不通知（`automations.quiet_when_empty`，v1.4）**：开启后 `buildTaskPrompt` 在任务 prompt 末尾追加「没有新内容就只回 `NO_UPDATE`」；driver 用 `isNoUpdateAnswer`（trim 后严格等于 `NO_UPDATE`、任务开启了该项、且本次运行**至少调用过一次工具**——零工具调用的 `NO_UPDATE` 说明它什么都没查，按普通回答存储并送达）判定，Run 照常 `succeeded`、计入 run_count，output 写 `summary=NO_UPDATE_SUMMARY` + `no_update:true`；domain projector 见 `no_update` 就跳过 `notifyTaskResult`——站内、webhook、邮件、企微、飞书一律不发。历史（`listTaskRuns`）投影 `run.no_update`，Web 显示「无更新」。关闭时 `NO_UPDATE` 只是一条普通回答。HTTP、`automation_mutation` 都能写这一项（它不放大权限，只少发通知）。
-- **结果送达 = per-task 企微 webhook（2026-08-04 补齐）**：`automations.notify.webhook` + `scheduler/notify.ts`，跑完（成功或失败）由 **scheduler** 推一条 markdown 摘要。**这是系统行为，刻意不是 Agent 工具**——给模型一把「POST 到这个 URL」的工具等于开一条它可以任意瞄准的外呼通道；模型只产内容，去哪由系统决定。URL 在写入时被钉死为两家群机器人端点——`https://qyapi.weixin.qq.com` 或 `https://open.feishu.cn/open-apis/bot/...`（`task-center.validateNotifyWebhook`），其余 host 一律 400；发送侧按 host 分派 payload 格式（`task-limits.notifyWebhookKind`，住叶子模块是因为 notify → task-center → scheduler/index → notify 成环）。送达失败只 `logger.warn`，绝不把一次成功的 run 变成失败。**仍缺**：WS `task:run` 推送与站内未读（通用收件箱是平台级基建，另行立项）。
+- **结果送达 = per-task 企微 webhook（2026-08-04 补齐）**：`automations.notify.webhook` + `scheduler/notify.ts`，跑完（成功或失败）由 **scheduler** 推一条 markdown 摘要。**这是系统行为，刻意不是 Agent 工具**——给模型一把「POST 到这个 URL」的工具等于开一条它可以任意瞄准的外呼通道；模型只产内容，去哪由系统决定。URL 在写入时被钉死为两家群机器人端点——`https://qyapi.weixin.qq.com` 或 `https://open.feishu.cn/open-apis/bot/...`（`task-center.validateNotifyWebhook`），其余 host 一律 400；发送侧按 host 分派 payload 格式（`notifications/transports.notificationWebhookTransport`，住叶子模块是因为 notify → task-center → scheduler/index → notify 成环）。送达失败只 `logger.warn`，绝不把一次成功的 run 变成失败。**仍缺**：WS `task:run` 推送与站内未读（通用收件箱是平台级基建，另行立项）。
 
-### 企业微信（`wecom/` + `/api/wecom` + `notify_wecom`）
+### Wecom plugin
 
-**群机器人与自建应用是两件事，刻意并存**：`@greenhouse/utils/wecom` 的 `sendWeComMarkdown` 是无状态 POST 到群 webhook，发到**聊天室**、点不了名；`apps/api/src/wecom/client.ts` 是自建应用（corp app），才能按 `touser` 发给**某个人**。方案与决策（D1–D8）见 [spec](../../../docs/specs/20260808-wecom-login-and-push.md)。
+Implementation and domain rules live in [plugins/wecom/AGENTS.md](../../../plugins/wecom/AGENTS.md).
+The host consumes communication registries; it must not import this plugin.
 
-- **corp app 客户端住 `apps/api/src/wecom/`，不进 `@greenhouse/utils`**：它有状态（access token 缓存 + 提前 5 分钟刷新 + 42001/40014 强制重取一次），而 utils 的调性是无状态纯函数。企微对 `gettoken` 有频控，缓存不是优化而是必需。
-- **未配置就什么都不显示**：`GET /api/wecom/binding` 的 `available` 由三个 env 是否齐全决定，前端据此**整块不渲染**绑定卡；`/oauth/start` 未配置返回 503。一个必然失败的按钮就是一次假的能力声明。
-- **两条腿鉴权刻意不同**：`/oauth/start` 必须带 Bearer——「是谁在绑定」只有这一跳知道，所以它返回 `{authorize_url}` 由浏览器自己跳，**不能写成整页 302**（那样发不出 header，必然 401）；`/oauth/callback` 是企微重定向浏览器过来的、没有 header，凭证就是 `state`（服务端生成、单次消费、10 分钟、绑死 userId），因此进 `isPublicPath` 且**永不调 `getAuthUser`**。落库前重读账号仍是 active 内部用户。护栏 `routes/__tests__/wecom-oauth.test.ts` 直接断言 `isPublicPath` 三个路径的取值。
-- **一个企微身份只能绑一个账号**（`findByProviderUserId` 查重）：否则两个人都能绑同一位同事，然后都收到他的通知。
-- **个人推送的收件人只从绑定派生**：`notify.wecom` 是**布尔**，与 `notify.email` 同构——通道里没有任何可供瞄准的收件人字段，这正是它能免确认的原因。知识库 @提及是在群通道之外**叠加**一条个人消息，两条腿各自独立（群未配置不影响 DM，未绑定的收件人只是收不到）。
-- **绑定存 `provider_connections(provider='wecom')`，且 `access_token_enc` 为 NULL**：企微应用 token 是 corp 全局的、由 client 缓存，per-user 行没有凭证可存；该列可空，不塞空串。
-- 已知限制：企微 markdown **应用消息只在企业微信客户端内可见**（微信侧不显示）；应用 token 缓存在进程内存，多实例部署需换共享存储；绑定 `state` 已在 `login_states`（见下方飞书一节）。
+### Feishu plugin
 
-### 飞书（`feishu/` + `/api/feishu` + `notify_feishu` + 扫码登录）
-
-形状与企微一节完全同构（群机器人 `@greenhouse/utils/feishu` 的 `sendFeishuMarkdown` 无状态发群，`feishu/client.ts` 有状态发 DM；未配置整块隐藏；绑定存 `provider_connections(provider='feishu')`、`access_token_enc` NULL；一个飞书身份一个账号；DM 收件人只从绑定派生）。方案与决策（D1–D10）见 [spec](../../../docs/specs/20260824-feishu-oauth-and-push.md)。企微没有而飞书有的三件事：
-
-- **绑定走 OAuth 而非邮箱匹配**（Greenhouse 邮箱与飞书邮箱不一致），存的是 `open_id`；user access token 换完 user_info 即弃，任何飞书凭证都不落库。
-- **绑定与登录共用一个 callback**（`/api/feishu/oauth/callback`），按 state 里的 `intent` 分流——飞书后台每条重定向 URL 都要登记，单 callback 少登记一条。bind state 绑死 userId；login state 不绑，命中绑定后发 **60s 单次消费的兑换码**回 `#/login?feishu_code=...`，前端 `POST /oauth/exchange`（公开 + IP 限流）换正常会话——**复用 `routes/auth.ts` 导出的 `issueUserSession`**，不长第二条签发路径；长期凭证永不进 URL。未绑定 → `not_bound` 引导先密码登录再绑定；**不自动建号**。
-- **手机 App 登录**：`start-login?app_redirect=` 只接受 `APP_LOGIN_REDIRECT`（`greenhouse://auth/feishu`，与 apps/mobile app.json 的 scheme 对应，**逐字精确匹配**，其他一律 400，且在发 state 之前拒绝）；state 里记 `app: true`，callback 的兑换码与失败原因都回到这个地址，网页登录不受影响。OAuth 的 redirect_uri 仍是登记过的网页 callback。改地址要同时改 App（`src/login/feishu.ts`，有测试对照）。
-- **三条公开路径**（`isPublicPath`）：`/oauth/callback`（浏览器重定向，state 是凭证）、`/oauth/start-login` 与 `/oauth/exchange`（登录页没有 Bearer 可带）。`/oauth/start` 与 `/binding` 仍要 Bearer，守卫写在路由文件内。护栏 `routes/__tests__/feishu-oauth.test.ts` 直接断言五个路径的 `isPublicPath` 取值。
-- **state 与兑换码在 `login_states`**：只存 SHA-256，`consume` 是单条条件 UPDATE（并发只有一个赢家），TTL 不变（state 10 分钟、兑换码 60 秒），过期行由五分钟 upkeep 清扫；重启不丢、多实例共享。回调里查 state 失败（库不可用）照样 302 回设置页（`reason=server_error`），不吐 JSON。tenant token 缓存仍在进程内存，多实例部署需换共享存储。DM 需应用开通「机器人」能力且收件人在应用可见范围内（`230002 user not visible to app` 就是范围没放开）。
-
-### 飞书机器人对话（`feishu/bot/` + 长连接）
-
-在飞书里 @机器人或私聊 = 用自己那个 Greenhouse Agent；跟着某条消息「回复」= 延续那次对话。**默认关闭**（`FEISHU_BOT_ENABLED=1` 才连）。方案与决策（D1–D10）见 [spec](../../../docs/specs/20260825-feishu-bot-conversation.md)。
-
-- **走长连接，不走 webhook**：`WSClient` 是我们主动连出去的，不需要给飞书开任何公网入站端点。飞书机房能否 POST 到 `:18888` 始终是未知数（OAuth 回调走通只证明**浏览器**能访问），长连接把它整个绕开，且**事件与卡片回调都收得到**。代价是**进程内单连接**——多实例部署前必须重新设计（同一 app 多条长连接会重复投递事件，与 `chat-runs` 内存注册表同款已知限制）。⚠️ 后台「事件配置」与「回调配置」是**两套独立订阅方式**，都要各自选长连接；只配一半时点卡片按钮报「目标回调服务当前未在线」。
-- **会话键是一条回退链** `thread_id ?? root_id ?? message_id`（`bot/conversation-key.ts`，零 import 叶子模块）。一条链覆盖三种形态：话题群天然每话题一个会话、普通回复链按 root 聚合、首次发言用自己的 id 当未来的根。**别改用 `parent_id`**——实测它指向「被直接回复的那一条」，链上每条各不相同；而 `root_id` 恒定，正因如此用户回复链上**任意一条**旧消息都续得上，不必去找最后一条。
-- **身份只认绑定表，不猜也不建号**：`open_id` → `provider_connections(provider='feishu')` → 用**这个人自己的权限**跑（`resolveEffectiveTools` 原样复用）。每条消息都重读账号，绑定后被禁用/降级立刻失效。未绑定回一张引导卡而不是沉默。
-- **飞书面不是无人值守**（对面有真人在等），所以**不套** `UNATTENDED_TOOL_DENYLIST`；但另有一份 `FEISHU_DENIED_TOOL_IDS` 挡掉编排类工具（schema-plan/task-capture/call_llm）——它们的确认门是 Web 专属富卡片，IM 里没有确认按钮那道天然减速带，一句话就能起一个几十分钟、烧模型额度的任务。**两份 denylist 刻意分开**：那份禁的是「没人能按确认」，这份禁的是「这个交互形态承载不了」。
-- **群里的回答带权限页脚**（「以 X 的权限查询，内容对本群可见」）。群可见性风险是**接受**的（Jim 拍板），但要让它在每次发生时可见，而不是写在某个没人读的文档里。刻意不做「群里换一套更窄的权限」——那是第二套权限口径，且用户无法预知自己在群里能问什么。
-- **`ask_user` 的问题必须从 `toolEvidence` 里捞出来渲染进正文**（`bot/ask-user.ts`）：它的 `presentation: 'artifact'` 让问题不进 assistant 正文，而飞书面只取 `result.text`——不渲染的话用户只看到一句引导语，**被问了什么完全不可见**（比「要回 Web 才能答」更糟）。刻意**不做卡片按钮**：IM 里打字回答本就最自然，正文渲染 + 既有的「回复」延续机制已经让「不离开飞书」成立，零新状态。⚠️ **截断只作用于正文、提问永远保留**——反过来会让长回答把结尾的问题整段吃掉，与附件 fence 被 `sanitizeForPrompt` 吃掉是同一个形状。
-- **消息先认领再处理**（`feishu_receipts` 主键，保留 7 天）：飞书会重投，而处理一条消息 = 跑一轮 agent = 花钱且会回消息。
-- **回答必须走 `replyCardMarkdown`（reply）而不是新发一条**：只有 reply 才让用户后续的「回复」保持在同一条链上、`root_id` 稳定；新发一条会开新链，用户每回复一次就换一个会话。
-- 执行复用 `runAgentInSession`（与定时任务同一个 runner），`usageContext.caller='feishu-bot'` 归属发消息的用户、计入其月度配额。`channel='feishu'` 的会话**照常出现在会话列表里**——它是用户亲自参与的真实对话，与 workflow 那种引擎产物不同。
-- 回复即延续要带上文：`priorMessages` 用 chat 同一套投影与 token 预算，滚动摘要也与 chat 同口径（见「Chat 上下文引擎」）。**只给会话主人回放**——群里别的绑定成员回复同一条链也落进这个会话，而主人可能在 Web 上接着聊过，那些轮次没发到群里，不能经别人的提问带进群；摘要同理只给主人。护栏 `tests/api/feishu-bot-history.db.test.ts`。
-- 长连接连不上只 `logger.warn`，**绝不拖垮主 API**。
+Implementation and domain rules live in [plugins/feishu/AGENTS.md](../../../plugins/feishu/AGENTS.md).
+The host consumes communication registries; it must not import this plugin.
 
 ### Tasks（`prompts` 表 + `/api/prompts` + `task_capture`）
 
@@ -211,24 +183,10 @@ v1 只接 DeepSeek 与 OpenAI 兼容服务，它们**自动**缓存 prompt 前�
 - **未填的占位符原样进消息**，不补空字符串：空白会静默改变任务的语义，而一个可见的 `{{region}}` 是 `RICH_OUTPUT_GUIDE` 明确要求模型先用 `ask_user` 问清楚的东西。
 - 变量填写的主路径是 composer 里的内联表单（确定性、不耗模型轮次），`ask_user` 只兜底旁路进入的情况（spec D3）。
 
-### Email（`email/` + `/api/email` + `email_query`/`email_mutation`）
+### Email plugin
 
-个人邮箱绑定 + 共享 Greenhouse 邮箱 + automation 邮件送达，方案与决策（D1–D8）见 [spec](../../../docs/specs/20260805-email-revival.md)。2026-07-22 在内部单一服务面收敛（`61efc4ab`）中整体删除，2026-08-05 按「底座找回 + 面层重写」找回。
-
-- **只有一个 provider：通用 IMAP/SMTP**（`email/imap-smtp-client.ts`，imapflow 读 + nodemailer 发）。OAuth 一律不复活：服务器在国内，Gmail 的 OAuth 与 IMAP 端点同样要走代理、OAuth 无连通性优势，而它的 restricted scope 在 Testing 模式下 refresh token 7 天过期，app password 一次配置长期有效（D1）。Outlook 历史上从未真正跑通，不找回。
-- ⚠️ **读信是全新实现，不是找回的**：本仓与 OSS fork 的所有历史版本里 `listMessages()` 都是「打个 warn 然后 return []」的 stub，IMAP 账号实际只能发不能读。**这里读失败一律 throw**——静默空数组会让 Agent 把「读不了」如实汇报成「收件箱是空的」，是最坏的失败形态。
-- ⚠️ **文件夹名必须按 SPECIAL-USE 解析，不能字面 open**（2026-08-13 修）：IMAP 的文件夹路径是每台服务器自己的（`Sent` / `Sent Messages` / `&XfJT0ZAB-`），而模型只会说 `Sent`，于是 `getMailboxLock('Sent')` 在多数邮箱上直接失败、且只报一句 `Command failed`。`resolveFolderPath()` 的顺序是 精确路径 → SPECIAL-USE 角色（`FOLDER_ROLE_ALIASES` 含中英别名）→ 同名 → 都不中就报错**并列出该邮箱真实有哪些文件夹**（让服务器回一句 `Command failed` 是最没用的失败）。`listMessages`/`getMessage` 两处都必须走它。
-- ⚠️ **`describeImapError` 要包在 `withImap` 的 catch 上，不是逐调用点**（2026-08-13 修）：imapflow 的所有命令失败都只说 `Command failed`，真实原因在 `err.responseText`。原先只有 connect 那一处包了，于是 list/search/fetch 的失败一路裸奔到 friction 队列。包在共用出口上，才不会有哪条 IMAP 路径因为漏写而丢掉原因。
-- ⚠️ **ImapFlow 实例必须在 connect 前挂 'error' 监听**（2026-08-12 修）：`connect()` reject 不保证 socket 已拆——半开 socket 的 `socketTimeout` 稍后触发 `emitError`，此时没有 pending handler 就走 `emit('error')`，无监听器 = uncaught exception，**整个 API 进程被打死**。dev 上每次绑定失败都在 400 响应发出 ~15s 后崩一次进程（pm2 静默重启，所有用户的在飞 run 一起陪葬）。修法在 `imap-smtp-client.ts`：`guardImapClientErrors()` construct 后立刻挂、connect 失败即 `close()`；回归护栏在 `imap-smtp-egress.test.ts`。另外 imapflow 的命令失败一律只说 `Command failed`，服务器真实拒绝原因在 `err.responseText`——错误信息必须经 `describeImapError()` 透出，否则「密码错」和「协议错」对用户长得一模一样。
-- **两种邮箱是刻意不同的东西**：personal = `email_accounts` 一行、属于某个用户、可发给任何人；shared = `SHARED_MAILBOX_ADDRESS`，**全部从 env 读、不在表里**（运维所有物，不随任何用户删除而消失；塞进 per-user 表要么伪造 owner 要么 user_id 可空，后者正是 `knowledge_base.user_id` 事故的形状）。聊天面 shared 仅 super 可解析，且收件人白名单 = 发起人自己的账号邮箱 + 共享邮箱所在域（`SHARED_MAILBOX_ALLOWED_DOMAIN`，默认取地址的域名）。
-- **`mailbox` 参数收账号 id、`shared`，也收地址**（2026-08-18 补）：`list_accounts` 一行里同时给出 `mailbox` 与 `email_address`，模型两种都会传，而地址此前过不了数字解析、回的还是一句 `mailbox is required` —— 对一次**带着 mailbox** 的调用说「你没传」，模型只能原样重试。`resolveMailbox` 把地址**归一回账号 id** 再走原路径：所有权、禁用、共享邮箱 super-only 三道门一个不少（按地址点名共享邮箱同样受 super 门约束）。归一化不是顺手：draft token 存的 ref 会被 send 路径重新 `parseMailboxRef`，**只有 `shared` 与账号 id 往返得了**，所以 draft 存的是 `resolved.mailbox.ref` 而不是模型写的那一串。文案分两句由 `mailboxRefError()` 统一给：真没传才说 required，传了不认识就引用原值并指回 `list_accounts`。
-- **发信只有一条路**：`email/service.ts` 的 `sendMail()`，顺序固定 归属 → 收件人策略 → 日限 → 附件预算 → 发送 → 审计。**收件人策略抽成 `checkRecipientPolicy()` 被 draft 与 send 共用**——draft 侧跑它是为了不给用户看一张按下去必被拒的卡，send 侧那次才是边界；分成两份就等于卡片能承诺发送路径不允许的事（浏览器验收时抓到的：原本只在 send 校验）。
-- **`send` 发的是服务端存的 draft，不是 send 调用的入参**——这是把外呼通道交给模型的全部安全性来源：注入能让它起草坏东西，但改不了「用户读到的卡片」与「真正发出的信」之间的收件人。**token 无效即拒绝，没有 fallback**：旧模块的 `findLatestDraft` 会在 token 对不上时发出「该用户最近一条草稿」，等于把这个性质原样交还回去。
-- **读回的内容全量过 `sanitizeEmailForLLM`**（剥 HTML / 角色前缀 / 工具标记 / 零宽字符，正文截 4000）。**清洗顺序有意义**：零宽字符必须**先**删再跑角色正则——`sys<ZWSP>tem:` 会绕过正则，事后再删 ZWSP 就等于把一个干净的 `system:` 前缀交给模型（旧模块的顺序是反的，回归测试钉在 `email/__tests__/security.test.ts`）。
-- **出网**：直连时先 DNS 解析 → `isPublicNetworkAddress()` 判定 → **用解析出的那个 IP 连接**、TLS 仍用原主机名做 SNI，解析与连接同一个答案才关得住 rebinding 窗口（旧模块是可绕过的正则黑名单）。`use_proxy` 走 `MAIL_EGRESS_PROXY`（socks5/http），未配置即明确报错，不静默回退直连。**2026-08-12 起绑定表单不再有代理开关**（预设表的 `needs_proxy` 已删，个人邮箱一律直连尝试）；`use_proxy` 列、API 字段与代理通路保留——共享邮箱 `SHARED_MAILBOX_USE_PROXY` 仍消费，也是将来「特定 URL 出口代理」的挂点。
-- **限额常量住零 import 叶子模块** `email/limits.ts`（工具描述在模块求值期插值它们——与 automation 同款 TDZ 陷阱）。共享邮箱 80 封/天是**低于飞书服务端硬限制**（100/天/发件人）留的余量：我方先拒才有可读错误，被服务商拒会连带打掉 automation 送达。
-- **`email_mutation` 在 `UNATTENDED_TOOL_DENYLIST` 里**：它的安全性全部建立在有人读那张卡并同意，无人值守时没有卡也没有读者，两步确认会退化成一步发送。automation 要送邮件走下面的系统通道。
-- **门控**：没有 feature flag——邮箱绑定对全体内部用户开放（`/api/email/*` 只挂 `requireInternal()`，两个工具 `is_global:true`，与 `knowledge_mutation`/`automation_mutation` 同档）。真正的边界在下面三层：账号归属自己、共享邮箱 super-only、外发要用户按确认卡。**发布前曾按 flag 灰度，上线前一刻推翻**（见 [spec D7](../../../docs/specs/20260805-email-revival.md)）：flag 加进了 `FEATURE_FLAGS` 却漏了 `FEATURE_POINTS`，于是权限弹框里没有开关、除 super 外无人可用，而 `email_query`/`email_mutation` 因为不属于任何 feature point 反而掉进了可逐个分配的 "Advanced tools" 桶——一次直接分配就绕开了那道 flag。护栏是 `platform/__tests__/feature-point-parity.test.ts`：**新增 flag 必须同时登记 feature point**，否则没人能授予它。
+Implementation and domain rules live in [plugins/email/AGENTS.md](../../../plugins/email/AGENTS.md).
+The host consumes communication registries; it must not import this plugin.
 
 ### 定时任务的邮件送达（`notify_email`）
 
@@ -654,3 +612,12 @@ External-only plugin tools are constructed only by the external service-tool bui
 `conversations.sharing` defaults to true in greenhouse.config.ts. False disables share mutations and
 session-share routes, returns empty `/api/shares` lists, hides classic sharing controls and removes
 access granted by stored shares. Existing share rows are preserved.
+
+### Communication plugins (4.0, wave 2b)
+
+- Email, WeCom and Feishu are compiled packages, disabled by default. Env variables alone never activate them; boot logs one info hint per disabled configured package.
+- `notificationTransports`, `notificationKinds`, `identityProviders` and `channels` aggregate through `fromExtensions`. Core retains the durable inbox/worker, push, login states, provider connections, account eligibility and binding uniqueness policy.
+- Notification kinds and delivery channels are validated at the DB service boundary against the active registries; reads preserve historical kinds even when their plugin is off. Downstream kinds use `ext:<id>:<kind>`.
+- `GET /api/auth/providers` is public, read-only discovery (`id/title/icon/login`), without minting OAuth state. Provider callbacks authenticate with single-use state; start/binding routes retain their internal-user guards.
+- Kits expose `channelAgentRuntime()` and `runAgentTurn()`. These load the catalog after extension activation; never eagerly import the tool registry from a plugin or a kit export. Sequential loading avoids circular async evaluation.
+- `surface.unattendedDenied` makes a plugin tool unavailable to every unattended path, before replay-safe/opt-in tool grants. It does not change its interactive proxy/MCP surface.

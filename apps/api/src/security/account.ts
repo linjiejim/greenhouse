@@ -13,7 +13,7 @@ import { escapeHtml } from '@greenhouse/utils/html';
 import { getProductName } from '@greenhouse/utils/brand';
 import type { PlatformAuditEvent } from '@greenhouse/platform-kernel';
 
-import { getSharedMailboxCredentials, sendFromSharedMailbox } from '../email/service.js';
+import { accountLinkTransport } from '../notifications/transports.js';
 import { chatRunRegistry } from '../chat/runs.js';
 import { connectionManager } from '../ws/connection-manager.js';
 import { getScheduler } from '../scheduler/index.js';
@@ -46,7 +46,7 @@ function resolvePublicBaseUrl(): { ok: true; baseUrl: string } | { ok: false; re
 export function getPasswordLinkCapability(): PasswordLinkCapability {
   const base = resolvePublicBaseUrl();
   if (!base.ok) return { available: false, reason: base.reason };
-  if (!getSharedMailboxCredentials()) return { available: false, reason: 'shared_mailbox_unconfigured' };
+  if (!accountLinkTransport()) return { available: false, reason: 'shared_mailbox_unconfigured' };
   return { available: true };
 }
 
@@ -112,12 +112,12 @@ export async function deliverAccountPasswordLink(
   ].join('\n');
   const html = `<!doctype html><html><body style="margin:0;background:#f4f7f5;color:#17221c;font-family:Inter,Arial,sans-serif"><table role="presentation" width="100%" cellspacing="0" cellpadding="0"><tr><td align="center" style="padding:32px 16px"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:560px;background:#fff;border:1px solid #dfe8e2;border-radius:16px"><tr><td style="padding:32px"><div style="font-size:14px;font-weight:700;color:#18864b;letter-spacing:.08em">${escapeHtml(getProductName().toUpperCase())}</div><h1 style="margin:16px 0 12px;font-size:26px;line-height:1.25">${escapeHtml(copy.heading)}</h1><p style="line-height:1.6;color:#526159">${escapeHtml(copy.intro)}</p><p style="line-height:1.6;color:#526159"><strong>Account:</strong> ${escapeHtml(issued.user.email)}<br><strong>Requested by:</strong> ${escapeHtml(inviterLabel)}<br><strong>Expires:</strong> ${escapeHtml(expires)}</p><p style="margin:28px 0"><a href="${escapeHtml(url)}" style="display:inline-block;background:#18864b;color:#fff;text-decoration:none;font-weight:700;padding:12px 20px;border-radius:10px">${escapeHtml(copy.action)}</a></p><p style="font-size:13px;line-height:1.6;color:#728078">This one-time link can only set your password. If you did not expect it, contact your administrator.</p></td></tr></table></td></tr></table></body></html>`;
 
-  return sendFromSharedMailbox(
+  return accountLinkTransport()!.send({
     db,
-    { address: issued.user.email, name: issued.user.nickname },
-    { subject: copy.subject, body_text: text, body_html: html },
-    { userId: inviter.id, origin: 'account-security' },
-  );
+    recipient: { address: issued.user.email, name: issued.user.nickname },
+    message: { subject: copy.subject, body_text: text, body_html: html },
+    actorId: inviter.id,
+  });
 }
 
 export async function recordAccountSecurityAudit(

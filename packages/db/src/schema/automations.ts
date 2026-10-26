@@ -9,12 +9,8 @@ import { at, createdAt, id, json, jsonOrNull, oneOf, updatedAt } from './_column
 import { users } from './identity.js';
 
 /** Where an automation reports a finished run. `webhook` null = no webhook. */
-export interface AutomationNotify {
-  webhook: string | null;
-  email: boolean;
-  wecom: boolean;
-  feishu: boolean;
-}
+export type { AutomationNotify } from '@greenhouse/types/api';
+import type { AutomationNotify } from '@greenhouse/types/api';
 
 export const DEFAULT_AUTOMATION_NOTIFY: AutomationNotify = { webhook: null, email: false, wecom: false, feishu: false };
 

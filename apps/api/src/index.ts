@@ -1,3 +1,6 @@
+import { identityDiscoveryRoutes } from './auth/identity-providers.js';
+import { startChannels } from './extensions/channels.js';
+import { fromExtensions } from './extensions/index.js';
 /**
  * Greenhouse API — Hono server entry point.
  *
@@ -79,9 +82,6 @@ import { applyWorkspaceEnvOverlay } from './settings/workspace-config.js';
 import uploadRoutes from './routes/upload.js';
 import adminRoutes from './routes/admin.js';
 import costValueRoutes from './routes/cost-value.js';
-import { wecomOAuthRoutes } from './routes/wecom-oauth.js';
-import { feishuOAuthRoutes } from './routes/feishu-oauth.js';
-import { initFeishuBot, stopFeishuBot } from './feishu/bot/client.js';
 import projectRoutes from './routes/projects.js';
 import platformRoutes from './routes/platform.js';
 import platformAdminRoutes from './routes/platform-admin.js';
@@ -111,7 +111,6 @@ import { seedSkillhub } from './skills/boot-seed.js';
 import { sweepUnscannedSkills } from './skills/center.js';
 import { backfillKnowledgeTokens } from './knowledge/backfill.js';
 import { initScheduler } from './scheduler/index.js';
-import { createEmailRoutes } from './routes/email.js';
 import { createTasksRoute } from './routes/tasks.js';
 import runtimeRoutes from './routes/runtime.js';
 import { settleRetiredRuntimeRuns } from './runtime/retired-kinds.js';
@@ -126,7 +125,7 @@ import { sweepExpiredToolOutputs } from './agent-runtime/tool-output-store.js';
 import { scheduleRetention } from './upkeep/retention.js';
 import { createAutomationRuntimeDriver } from './scheduler/runtime-driver.js';
 import { createRuntimeNotificationProjector } from './notifications/runtime-projector.js';
-import { AUTOMATION_DELIVERY_CHANNELS, startNotificationDeliveryWorker } from './notifications/delivery-worker.js';
+import { automationDeliveryChannels, startNotificationDeliveryWorker } from './notifications/delivery-worker.js';
 import { mobilePushEnabled } from './notifications/push/config.js';
 import { createRuntimeDomainProjector } from './runtime/domain-projector.js';
 import {
@@ -266,6 +265,7 @@ function mountRoutes(toolRegistry: ToolRegistry) {
       // router must be mounted before narrower application routes.
       .route('/', oauthRoutes)
       .route('/api/auth', authRoutes)
+      .route('/api/auth', identityDiscoveryRoutes)
       .route('/api/me', meRoutes)
       // A member's own connectors (connect / disconnect team ones, CRUD personal
       // ones); the router also requires the mcp_call tool.
@@ -280,15 +280,6 @@ function mountRoutes(toolRegistry: ToolRegistry) {
       .route('/api/extensions', extensionsRoutes)
       .route('/api/admin/plugins', adminPluginRoutes)
       .route('/api/upload', uploadRoutes)
-      // `/oauth/callback` is a browser redirect from WeCom and carries no Bearer,
-      // so it is allowed by isPublicPath and this router must not sit behind a
-      // wildcard role guard; `/oauth/start` and `/binding` guard themselves.
-      .route('/api/wecom', wecomOAuthRoutes)
-      // Same reason: `/oauth/callback`, `/oauth/start-login` and `/oauth/exchange`
-      // are public paths (the callback is a Feishu browser redirect; start-login /
-      // exchange serve the not-yet-logged-in QR login), so no wildcard role guard;
-      // `/oauth/start` and `/binding` guard themselves.
-      .route('/api/feishu', feishuOAuthRoutes)
       // A connector's OAuth provider redirects the browser to `/oauth/callback`
       // without a Bearer (a public path, rate-limited); it only redirects back to
       // the app. Must sit before every wildcard role guard.
@@ -313,8 +304,6 @@ function mountRoutes(toolRegistry: ToolRegistry) {
       .route('/api/tables', tablesRoutes)
       // Email accounts — every internal user (mailbox binding is per-user and
       // self-service; the shared mailbox stays super-only inside the service).
-      .use('/api/email/*', requireInternal())
-      .route('/api/email', createEmailRoutes())
       // Prompts, knowledge docs & shares — all internal users
       .use('/api/prompts/*', requireInternal())
       .route('/api/prompts', promptRoutes)
@@ -480,9 +469,8 @@ async function main() {
   // reshapes the public AppType.
   mountExtensionRoutes(app);
 
-  // Feishu bot long connection: off by default (FEISHU_BOT_ENABLED=1 to connect);
-  // a failed connection only warns and never takes the main API down.
-  void initFeishuBot(toolRegistry);
+  // Active channel adapters own their connections and return their shutdown hooks.
+  const stopChannels = await startChannels(fromExtensions('channels'), { db: dbProvider, toolRegistry });
 
   startProfileWatcher();
 
@@ -498,7 +486,7 @@ async function main() {
     usageBudgetSweeper.stop();
     runtimeWorker?.stop();
     notificationDeliveryWorker?.stop();
-    stopFeishuBot();
+    await stopChannels();
     await runExtensionShutdownHooks();
     await chatRunRegistry.shutdown(5000);
     await dbProvider.close();
@@ -531,7 +519,7 @@ async function main() {
   // Mobile pushes ride the same queue under their own switch (MOBILE_PUSH_ENABLED):
   // off, the worker never claims one and nothing is sent to exp.host.
   const deliveryChannels = [
-    ...(trustedExecutionPlan.notificationProjector ? AUTOMATION_DELIVERY_CHANNELS : []),
+    ...(trustedExecutionPlan.notificationProjector ? automationDeliveryChannels() : []),
     ...(mobilePushEnabled() ? (['mobile_push'] as const) : []),
   ];
   notificationDeliveryWorker =

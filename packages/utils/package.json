@@ -40,14 +40,6 @@
       "import": "./src/semver.ts",
       "types": "./src/semver.ts"
     },
-    "./wecom": {
-      "import": "./src/wecom.ts",
-      "types": "./src/wecom.ts"
-    },
-    "./feishu": {
-      "import": "./src/feishu.ts",
-      "types": "./src/feishu.ts"
-    },
     "./html": {
       "import": "./src/html.ts",
       "types": "./src/html.ts"

@@ -156,7 +156,7 @@ stateless Agent/MCP 不开放该文件工具。
 
 ### Email（邮箱）工具
 
-`email_query`（读）与 `email_mutation`（写）对全体内部用户开放（`is_global`，无 feature flag），
+`email_query`（读）与 `email_mutation`（写）由默认关闭的 `email` 官方插件提供；启用插件后，成员的 `email` feature flag 默认开启，
 对应 设置 → Email Accounts 里绑定的 IMAP/SMTP 邮箱。模型能读、搜、开信，并在用户确认后发信。
 
 - **两步发信，且 send 发的是服务端存的草稿**：`draft` 不发信，只把内容存在服务端并返回一个
@@ -168,7 +168,7 @@ stateless Agent/MCP 不开放该文件工具。
 - **owner-scoped**：只解析请求者自己绑的邮箱；「不是你的」与「不存在」返回同一句话，
   避免模型枚举别人的绑定。共享的 greenhouse@ 邮箱仅 super 可用，且只能发给发起人自己的
   账号邮箱或共享邮箱所在域（`SHARED_MAILBOX_ALLOWED_DOMAIN`）。
-- **无人值守禁用写工具**：`email_mutation` 在 `UNATTENDED_TOOL_DENYLIST`——没有人读那张卡，
+- **无人值守禁用写工具**：`email_mutation` 声明 `surface.unattendedDenied`，启用后进入 `UNATTENDED_TOOL_DENYLIST`——没有人读那张卡，
   两步确认就退化成一步发送。定时任务要送邮件走 scheduler 自己的 `notify_email` 通道。
 - 附件从当前会话的文件取（chat 面独有；stateless 的 proxy 无 session，会明确报错而不是静默跳过）。
 - **两个工具都不在 MCP 上**（2026-08-16 摘除）：`email_mutation` 的安全性全靠有人读那张草稿卡，

@@ -17,7 +17,7 @@ const unitWorkers = positiveWorkerCount(
 );
 const dbWorkers = positiveWorkerCount(process.env.VITEST_DB_MAX_WORKERS, 3, 'VITEST_DB_MAX_WORKERS');
 
-process.env.GREENHOUSE_EXTENSIONS ??= 'memory,feedback,reports,computer';
+process.env.GREENHOUSE_EXTENSIONS ??= 'all';
 
 const pluginTestExcludes = process.env.GREENHOUSE_PLUGINS?.trim() === '' ? ['plugins/**'] : [];
 

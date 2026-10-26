@@ -9,16 +9,17 @@
 
 import React from 'react';
 import { ModulePage } from '../../components/app/module-page';
-import { WeComBindingCard } from './wecom-binding';
-import { FeishuBindingCard } from './feishu-binding';
+import { extensionIdentityProviders } from '../../extensions';
+import { useExtensionsStore } from '../../stores/extensions-store';
 import { ConnectorsSection } from './connectors-section';
 
 export function ProviderBindingsPanel() {
+  useExtensionsStore((s) => s.extensions);
+  useExtensionsStore((s) => s.extensions);
   return (
     <ModulePage moduleId="settings.provider-bindings" layout="form">
       <div className="space-y-4">
-        <WeComBindingCard />
-        <FeishuBindingCard />
+        {extensionIdentityProviders().map(({ id, binding: Binding }) => (Binding ? <Binding key={id} /> : null))}
         <ConnectorsSection />
       </div>
     </ModulePage>

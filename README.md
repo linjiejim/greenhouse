@@ -859,3 +859,5 @@ issue — see [SECURITY.md](./SECURITY.md).
 记忆与问题反馈现在由官方插件提供，默认开启。报告模板 / PDF、Word、PowerPoint 渲染和 E2B 云电脑编入镜像但默认关闭；启用需在 `greenhouse.config.ts` 的 `extensions.enabled` 或 `GREENHOUSE_EXTENSIONS` 中加入 `reports`、`computer` 后重启。云电脑还需配置 E2B 与工作区开关。停用插件保留全部数据。
 
 会话分享由 `conversations: { sharing: false }` 部署配置关闭；默认开启。开发设计页仅在 Vite 开发模式提供。
+
+Email, WeCom and Feishu are also official plugins compiled into the image and disabled by default. To keep the 3.x integrations, add `email`, `wecom` and `feishu` to `extensions.enabled` in `greenhouse.config.ts` (keep the existing entries), or set `GREENHOUSE_EXTENSIONS=knowledge,tables,skills,feedback,memory,email,wecom,feishu`, then restart. Existing `SHARED_MAILBOX_*`, `MAIL_EGRESS_PROXY`, `WECOM_*` and `FEISHU_*` variables keep their names but have no effect while their plugin is off. Email's member flag defaults enabled when the plugin is on. Password-link mail needs the Email plugin and a configured shared mailbox. Clients can discover configured sign-in providers through public `GET /api/auth/providers`; legacy Feishu mobile OAuth paths are preserved. Disabling preserves all mailbox/binding/bot data.

@@ -23,7 +23,7 @@ describe('Feishu sign-in return', () => {
   it('matches the address the server allows', async () => {
     const { readFileSync } = await import('node:fs');
     const { resolve } = await import('node:path');
-    const server = readFileSync(resolve(__dirname, '../../../api/src/routes/feishu-oauth.ts'), 'utf8');
+    const server = readFileSync(resolve(__dirname, '../../../../plugins/feishu/api/oauth.ts'), 'utf8');
     expect(server).toContain(`export const APP_LOGIN_REDIRECT = '${FEISHU_APP_REDIRECT}';`);
     const app = JSON.parse(readFileSync(resolve(__dirname, '../../app.json'), 'utf8')) as { expo: { scheme: string } };
     expect(FEISHU_APP_REDIRECT.startsWith(`${app.expo.scheme}://`)).toBe(true);

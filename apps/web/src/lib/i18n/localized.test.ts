@@ -7,7 +7,6 @@ import { describe, expect, it } from 'vitest';
 import en from './en';
 import zh from './zh';
 import { pickLocalized, translate } from './index';
-import { EMAIL_PRESETS } from '@greenhouse/types/email';
 import { MCP_RESOURCE_GROUP_IDS } from '@greenhouse/types/mcp';
 import { AUTOMATION_OPT_IN_TOOLS } from '@greenhouse/types/automation-tools';
 import { mcpGroupDescriptionKey, mcpGroupLabelKey } from '../mcp-groups';
@@ -96,14 +95,6 @@ describe('pickLocalized', () => {
 describe('data-driven translation keys resolve', () => {
   const english = flatten(en);
   const chinese = flatten(zh as unknown as Record<string, unknown>);
-
-  it.each(EMAIL_PRESETS.map((preset) => [preset.id, preset.help_key] as const))(
-    'email preset %s has setup steps in both locales',
-    (_id, key) => {
-      expect(english.get(key), `missing en: ${key}`).toBeTruthy();
-      expect(chinese.get(key), `missing zh: ${key}`).toBeTruthy();
-    },
-  );
 
   // MCP resource groups: the OAuth consent screen renders one checkbox per
   // group, so a missing key here is a user authorizing a capability labelled

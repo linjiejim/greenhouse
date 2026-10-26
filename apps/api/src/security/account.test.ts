@@ -5,9 +5,14 @@ const mocks = vi.hoisted(() => ({
   send: vi.fn(),
 }));
 
-vi.mock('../email/service.js', () => ({
-  getSharedMailboxCredentials: () => (mocks.sharedMailbox ? { email_address: 'greenhouse@example.com' } : null),
-  sendFromSharedMailbox: mocks.send,
+vi.mock('../notifications/transports.js', () => ({
+  accountLinkTransport: () =>
+    mocks.sharedMailbox
+      ? {
+          send: ({ db, recipient, message, actorId }: import('../notifications/transports.js').SystemMailContext) =>
+            mocks.send(db, recipient, message, { userId: actorId, origin: 'account-security' }),
+        }
+      : undefined,
 }));
 vi.mock('../chat/runs.js', () => ({ chatRunRegistry: { stopForUser: vi.fn() } }));
 vi.mock('../ws/connection-manager.js', () => ({ connectionManager: { disconnectUser: vi.fn() } }));

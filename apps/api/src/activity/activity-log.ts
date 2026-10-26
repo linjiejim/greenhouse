@@ -243,7 +243,6 @@ const TOOL_ENTITIES: Record<string, string> = {
   skill_mutation: 'skill',
   automation_mutation: 'automation',
 
-  email_mutation: 'email',
   generate_image: 'file',
 };
 

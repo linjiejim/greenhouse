@@ -1,0 +1,31 @@
+{
+  "name": "@greenhouse/plugin-wecom",
+  "version": "3.0.2",
+  "private": true,
+  "type": "module",
+  "greenhouse": {
+    "id": "wecom",
+    "sdk": 1,
+    "api": "./api/index.ts",
+    "web": "./web/index.ts"
+  },
+  "exports": {
+    "./api": "./api/index.ts",
+    "./web": "./web/index.ts",
+    "./manifest": "./manifest.ts"
+  },
+  "dependencies": {
+    "@greenhouse/api": "workspace:*",
+    "@greenhouse/web": "workspace:*",
+    "@greenhouse/types": "workspace:*",
+    "@greenhouse/crud": "workspace:*",
+    "react": "^19.0.0",
+    "hono": "^4.12.18"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.61.1",
+    "@greenhouse/db": "workspace:*",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0"
+  }
+}

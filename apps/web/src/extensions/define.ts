@@ -147,6 +147,20 @@ export interface WebExtension {
   sdk?: number;
   /** Greenhouse versions this supports, as a semver range (`'>=3.0 <4'`); a pre-release counts as its release. */
   core?: string;
+  identityProviders?: Array<{
+    id: string;
+    login?: ComponentType<{
+      onSuccess: (user: import('../lib/auth').AuthenticatedUser) => void;
+      onError: (message: string) => void;
+    }>;
+    binding?: ComponentType;
+  }>;
+  notificationTransports?: Array<{
+    id: string;
+    preference: string;
+    webhook?: { labelKey: ExtensionTranslationKey; hintKey: ExtensionTranslationKey };
+    component: ComponentType<import('@greenhouse/crud').CrudFieldRenderProps>;
+  }>;
   redirects?: import('../lib/extension-redirects').ExtensionRedirects;
   tabs?: WebExtensionTab[];
   slots?: WebExtensionSlot[];

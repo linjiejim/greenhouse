@@ -19,7 +19,7 @@
 
 ### 页面分组与权限
 **Settings（个人配置，内部全员可见，见 `settingsSections`）**
-- **Preferences + Cloud（一个无标题扁平区）**：Preferences、Agent Connections（已连接 / 改动 / 模型网关 Key / 接入指南四个 tab，`#/settings/agent-connections/<tab>`；接入指南是按客户端的四步向导，带「检查连接」）、Connections（企微 / 飞书绑定 + 连接器区块 `connectors-section.tsx`：连接团队连接器、管理个人连接器，读写 `/api/connectors`）、Email Accounts、Usage（`my-usage`：本人当月花费与额度，读 `/api/usage/spend`；路由键不用 `usage`，因为 `#/settings/usage` 是 Administration › Usage 的旧链接）、Cloud computer（`computer`：本人云电脑的状态 / 本月分钟 / 开停，读写 `/api/computer`；工作区开关关着或没配 E2B key 时只给说明）
+- **Preferences + Cloud（一个无标题扁平区）**：Preferences、Agent Connections（已连接 / 改动 / 模型网关 Key / 接入指南四个 tab，`#/settings/agent-connections/<tab>`；接入指南是按客户端的四步向导，带「检查连接」）、Connections（启用插件提供的身份绑定 + 连接器区块 `connectors-section.tsx`：连接团队连接器、管理个人连接器，读写 `/api/connectors`）、Email Accounts（email 插件启用且成员有 email 权限时）、Usage（`my-usage`：本人当月花费与额度，读 `/api/usage/spend`；路由键不用 `usage`，因为 `#/settings/usage` 是 Administration › Usage 的旧链接）、Cloud computer（`computer`：本人云电脑的状态 / 本月分钟 / 开停，读写 `/api/computer`；工作区开关关着或没配 E2B key 时只给说明）
 - **Labs（feature-gated）**：Memory（`requireFeature: 'memory'`）
 - **个人工具独立页面**：Automation 使用 `#/automations`，在主导航里（v1.5 按目标排序）；My Agents 是它的 tab `#/automations?tab=profiles`，Prompt Tasks（我的提示词）是 SkillHub 的 tab `#/skillhub?tab=prompts`，报告模板（v1.7）是 `#/skillhub?tab=reports`。刷新、后退和深链必须保持当前页面；历史 Settings/`#/tasks`/`#/agents`/`#/chat?view=...` 深链只重定向到这些 canonical 地址。改动记录统一在 `#/activity` 的「操作记录」（v1.5 由执行中心改成，`#/executions` 重定向过来；运行详情 `#/activity/<kind>/<id>`），入口是账户浮层第一项；super 另在 Administration › Activity log 看全员。
 

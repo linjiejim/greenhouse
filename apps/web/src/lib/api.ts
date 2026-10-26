@@ -46,6 +46,5 @@ export * from './api/tasks';
 export * from './api/notifications';
 export * from './api/cost-value';
 export * from './api/prompts';
-export * from './api/email';
 export * from './api/chat'; // streaming + Client Action result surface — raw authFetch
 export * from './api/upload'; // FormData — raw authFetch

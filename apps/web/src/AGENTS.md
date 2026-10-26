@@ -589,3 +589,7 @@ External-only plugin tools are constructed only by the external service-tool bui
 `conversations.sharing` defaults to true in greenhouse.config.ts. False disables share mutations and
 session-share routes, returns empty `/api/shares` lists, hides classic sharing controls and removes
 access granted by stored shares. Existing share rows are preserved.
+
+### Communication plugin UI (4.0)
+
+Email account panels, provider binding/login components, notification preference controls and their translations live in `plugins/{email,wecom,feishu}/web`. Core renders `identityProviders` and `notificationTransports` contributions. Login discovery uses public `/api/auth/providers`, independent of the authenticated extension store. Disabled/unconfigured providers show no login button; disabled plugins show no binding row or automation delivery control. Keep legacy hash routes and preference keys. Plugin routes use `authFetch`; they are outside the core hc contract.

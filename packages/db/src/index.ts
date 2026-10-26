@@ -84,7 +84,6 @@ export * from './services/user-prompts.js';
 export * from './services/session-shares.js';
 export * from './services/scheduled-tasks.js';
 export * from './services/provider-tokens.js';
-export * from './services/feishu-bot.js';
 export * from './services/custom-profiles.js';
 // Shared full-text helpers: an extension that keeps its own searchable table
 // must segment writes and queries with the SAME function core uses, or the two
@@ -95,7 +94,6 @@ export * from './services/knowledge-shares.js';
 export * from './services/user-features.js';
 export * from './services/drive.js';
 export * from './services/activity.js';
-export * from './services/email.js';
 export * from './services/skills.js';
 export * from './services/platform.js';
 export * from './services/platform-oauth.js';

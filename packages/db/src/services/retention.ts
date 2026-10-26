@@ -5,7 +5,6 @@
  *                            the event's outbox rows is still waiting to deliver
  *   run_outbox               7 days after delivery
  *   request_log              30 days
- *   feishu_receipts          7 days
  *   budget_ledger            13 months
  *   notification_deliveries  7 days after reaching a terminal state
  *   expired credentials      refresh tokens, OAuth codes / tokens, login states,
@@ -24,7 +23,6 @@ export const RETENTION_POLICY = {
   runEventsDays: 30,
   deliveredOutboxDays: 7,
   requestLogDays: 30,
-  feishuReceiptDays: 7,
   ledgerMonths: 13,
   deliveriesDays: 7,
   expiredPasswordLinkDays: 30,
@@ -34,7 +32,6 @@ export type RetentionTarget =
   | 'run_events'
   | 'run_outbox'
   | 'request_log'
-  | 'feishu_receipts'
   | 'budget_ledger'
   | 'notification_deliveries'
   | 'auth_refresh_tokens'
@@ -112,11 +109,6 @@ export function createRetentionService(db: Db) {
         'request_log',
         'id',
         sql`created_at < ${daysBefore(now, RETENTION_POLICY.requestLogDays)}::timestamptz`,
-      );
-      report.feishu_receipts = await go(
-        'feishu_receipts',
-        'message_id',
-        sql`received_at < ${daysBefore(now, RETENTION_POLICY.feishuReceiptDays)}::timestamptz`,
       );
       report.budget_ledger = await go(
         'budget_ledger',

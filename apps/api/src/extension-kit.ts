@@ -149,3 +149,46 @@ export type { HydrateContext } from './activity/activity-log.js';
 export type { ActivityAuditRow } from '@greenhouse/db';
 
 export { groupFrictions, clip } from './retro/insight-utils.js';
+
+export { isUniqueViolation } from '@greenhouse/utils/error';
+
+export { isPublicNetworkAddress } from './security/network.js';
+
+export { decryptToken, encryptToken, isEncryptionConfigured } from './auth/crypto.js';
+
+export { resolveHistoryBudget, windowMessagesByBudget } from '@greenhouse/agent-core';
+
+export { resolveProfileAsync } from './profiles/profile.js';
+
+export { resolveExtensionPromptContext } from './extensions/prompt-context.js';
+
+export { sanitizeChatMessagesForPrompt, sanitizeUserMessageForPrompt } from './chat/user-message.js';
+
+export { formatDigestSection, scheduleDigestFold } from './chat/digest.js';
+
+export { flattenRichOutput } from './notifications/render.js';
+
+export { resolveConversationFiles } from './files/conversation-files.js';
+
+export { issueUserSession } from './auth/identity-providers.js';
+
+export { checkRateLimit } from './security/security.js';
+
+export { getRequestSourceIp } from './security/request-ip.js';
+
+export { readSessionDigest } from '@greenhouse/db';
+export type { ToolRegistry } from './agent.js';
+export type { AgentGenerate, HeadlessMessage } from './agent-runtime/run-agent.js';
+export { channelAgentRuntime, runAgentTurn } from './agent-runtime/channel-runtime.js';
+export type { AuthUser } from './auth/token.js';
+export { auditEvents, conversations } from '@greenhouse/db/plugin-schema';
+
+export type { IdentityProvider } from './auth/identity-providers.js';
+export { createIdentityProviderRoutes, bindProviderIdentity, isLoginEligible } from './auth/identity-providers.js';
+export type { NotificationTransport } from './notifications/transports.js';
+export {
+  automationDeliveryRecipient,
+  parseAutomationResultNotificationPayload,
+  buildTaskNotification,
+  buildTaskEmail,
+} from './scheduler/notify.js';
