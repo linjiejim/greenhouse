@@ -108,6 +108,8 @@ export interface ToolMeta {
    * user does not have keeps the tool out. See resolveEffectiveTools.
    */
   builtin?: boolean;
+  /** Produces an interactive card; a headless run cannot confirm it. */
+  interactiveOnly?: boolean;
   /**
    * Runtime ToolCall risk classification. Omit for ordinary reads (`r0`) and
    * proxy-confirmed writes (`surface.proxy='write'`, derived as `r2`). Set it

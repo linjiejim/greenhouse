@@ -22,6 +22,7 @@ export default defineConfig({
     './plugins/feishu',
     './plugins/skills',
     './plugins/projects',
+    './plugins/tables',
   ],
   extensions: {
     // Packages above and SDK 1 in-tree registrations are compiled in; this switches them on.

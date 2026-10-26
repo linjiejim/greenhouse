@@ -63,9 +63,9 @@ describe('automation opt-in catalog', () => {
 
 describe('normalizeAutomationOptInTools', () => {
   it('drops unknown ids, duplicates and non-strings', () => {
-    expect(normalizeAutomationOptInTools(['tables_mutation', 'tables_mutation', 'email_mutation', 7, null])).toEqual([
-      'tables_mutation',
-    ]);
+    expect(
+      normalizeAutomationOptInTools(['knowledge_mutation', 'knowledge_mutation', 'email_mutation', 7, null]),
+    ).toEqual(['knowledge_mutation']);
   });
 
   it('returns [] for anything that is not an array', () => {

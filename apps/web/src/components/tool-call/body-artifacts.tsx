@@ -22,7 +22,6 @@ import { Image } from '../../lib/icons';
 import { Skeleton } from '../ui';
 import { useT } from '../../lib/i18n';
 import { AskUserCard, type AskUserData } from '../chat/ask-user-card';
-import { SchemaPlanCard, type TablesSchemaPlanArtifact } from '../tables/schema-plan-card';
 import { TaskCaptureCard, type TaskCaptureData } from '../chat/task-capture-card';
 import { FileAttachmentCard } from '../files/file-attachment-card';
 import { downloadAuthenticatedFile } from '../../lib/file-download';
@@ -95,7 +94,8 @@ export function isArtifactCall(call: { name: string; output?: unknown }): boolea
   if (out?.type === 'ask_user' && out?.questions) return true;
 
   // Extension cards render once a result without an error exists.
-  if (registeredToolCard(call.name)) return !!out && !out.error;
+  const card = registeredToolCard(call.name);
+  if (card) return card.matches ? card.matches(out) : !!out && !out.error;
 
   switch (call.name) {
     case 'generate_image':
@@ -103,11 +103,6 @@ export function isArtifactCall(call: { name: string; output?: unknown }): boolea
       // stable image-shaped placeholder instead of making the transcript look
       // idle for up to a minute. Errors still fall back to the trace row.
       return !out || (!!out.success && !!out.url);
-    case 'tables_schema_plan':
-      // Only a validated plan becomes the Confirm card. A
-      // rejected draft (bad ref, missing builder role) stays a trace row so the
-      // model's next attempt reads as one conversation, not a broken card.
-      return out?.type === 'tables_schema_plan';
     case 'task_capture':
       // Same rule: a rejected draft (a variable with no placeholder) stays a
       // trace row, so the model's corrected retry reads as one conversation.
@@ -151,7 +146,7 @@ export function partitionCalls<T extends { name: string; output?: unknown }>(
 
 /** Confirm-gate cards the message text introduces — reading order is prose first,
  *  then the card with its action button. */
-const BELOW_PROSE_TOOLS = new Set(['tables_schema_plan', 'task_capture']);
+const BELOW_PROSE_TOOLS = new Set(['task_capture']);
 
 /** Split body artifacts by where they sit relative to the prose. */
 export function splitArtifactsByPlacement<T extends { name: string }>(calls: T[]): { above: T[]; below: T[] } {
@@ -251,15 +246,6 @@ function BodyArtifactItem({ call, ctx }: { call: ArtifactCall; ctx: ArtifactCtx 
       );
     }
 
-    case 'tables_schema_plan':
-      return out?.type === 'tables_schema_plan' ? (
-        <SchemaPlanCard
-          artifact={out as unknown as TablesSchemaPlanArtifact}
-          actionId={actionId}
-          sessionId={writableSessionId}
-        />
-      ) : null;
-
     case 'task_capture':
       return out?.type === 'task_capture' ? (
         <TaskCaptureCard data={out as unknown as TaskCaptureData} actionId={actionId} sessionId={writableSessionId} />
@@ -274,7 +260,7 @@ function BodyArtifactItem({ call, ctx }: { call: ArtifactCall; ctx: ArtifactCtx 
       const card = registeredToolCard(call.name);
       if (!card) return null;
       const Card = card.component;
-      return <Card call={call} />;
+      return <Card call={call} actionId={actionId} sessionId={writableSessionId} />;
     }
   }
 }

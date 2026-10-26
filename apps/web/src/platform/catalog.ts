@@ -66,7 +66,7 @@ export function platformApplicationHref(application: PlatformApplication): strin
   // valid catalog entries without producing a broken browser link.
   const contributed = registeredApplicationRoute(application.id);
   if (contributed) return contributed;
-  if (!['knowledge', 'tables'].includes(application.id)) return null;
+  if (!['knowledge'].includes(application.id)) return null;
   const path = application.navigation[0]?.path;
   if (!path || !path.startsWith('/')) return null;
   return `#${path}`;

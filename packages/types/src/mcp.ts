@@ -39,7 +39,6 @@
 export const MCP_RESOURCE_GROUP_IDS = [
   'knowledge',
   'files',
-  'tables',
   'chat',
   'automation',
   'image',

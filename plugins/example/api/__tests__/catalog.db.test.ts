@@ -12,7 +12,7 @@ import {
 import { initializePlatformRuntime, resetPlatformRuntimeForTests } from '../../../../apps/api/src/platform/runtime.js';
 import { projectsRegistration } from '../../../projects/api/platform/application.js';
 import { knowledgeRegistration } from '../../../../apps/api/src/platform/knowledge/registration.js';
-import { tablesRegistration } from '../../../../apps/api/src/platform/tables/application.js';
+import { tablesRegistration } from '../../../tables/api/platform/application.js';
 let db: DatabaseProvider;
 let member: UserRow;
 const webCatalog = (user: UserRow) => readWebCatalog(db, user);

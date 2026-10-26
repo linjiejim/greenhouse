@@ -1,3 +1,4 @@
+import { setExtensionAutomationTools } from '@greenhouse/types/automation-tools';
 /**
  * Blast-radius tests for the Automation tools (automation_query /
  * automation_mutation) and the task-center rules they share with /api/tasks.
@@ -273,23 +274,24 @@ describe('automation_mutation — unattended_tools from chat', () => {
   };
 
   it('a person in the web/mobile chat can switch on writes, and sees the run tool list', async () => {
+    setExtensionAutomationTools([{ id: 'fixture_mutation', tier: 'write' }]);
     const { db, store } = fakeDb([]);
     const result = await asTool(createAutomationMutationTool(db, { ...OWNER, canGrantTools: true })).execute({
       ...CREATE,
-      unattended_tools: ['tables_mutation'],
+      unattended_tools: ['fixture_mutation'],
     });
 
     expect(result.status).toBe('created');
-    expect(result.unattended_tools).toEqual(['tables_mutation']);
-    expect(result.run_tools).toEqual(['knowledge_query', 'external_search', 'tables_mutation']);
-    expect([...store.values()][0]).toMatchObject({ unattended_tools: ['tables_mutation'] });
+    expect(result.unattended_tools).toEqual(['fixture_mutation']);
+    expect(result.run_tools).toEqual(['knowledge_query', 'external_search', 'fixture_mutation']);
+    expect([...store.values()][0]).toMatchObject({ unattended_tools: ['fixture_mutation'] });
   });
 
   it('refuses the grant from any other surface and points at where it can be done', async () => {
     const { db, store } = fakeDb([]);
     const result = await asTool(createAutomationMutationTool(db, OWNER)).execute({
       ...CREATE,
-      unattended_tools: ['tables_mutation'],
+      unattended_tools: ['fixture_mutation'],
     });
 
     expect(result.error).toMatch(/Settings → Automations/);

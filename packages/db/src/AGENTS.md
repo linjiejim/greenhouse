@@ -210,13 +210,9 @@
 - 排序只经 `reorderFolders(ids)` / `reorderDocs(ids)`：一条 `UPDATE … FROM (VALUES …)` 写成 1..n；service 不鉴权、不校验同级，两者在路由层。
 - 扩展 scope 的目录与文件由扩展鉴权，core 只认 `owner_key`。
 
-### 表格
+### Tables plugin
 
-- `table_bases.archived_at` / `table_tables.archived_at` / `table_records.deleted_at` 三层软删；`listBasesForUser` / `listTables` / `getSchema` / `queryRecords` 都已过滤，新读路径别漏。
-- `restoreRecord` 与 `deleteRecord` 一样 bump `revision` 并 `refreshDependentRollups`。
-- `getRecordById` 不过滤 `deleted_at`（回收站与审计要看），`getRecord` 过滤。
-- 表格库成员在 `shares`（`resource_type='table_base'`），记录附件在 `file_links`（`target_type='table_record'`，`slot` = 字段 id）。
-- 没有表单、仪表盘、表内自动化、表格通知。
+The nine Tables tables and their service belong to `plugins/tables/api`; access them through the extension service bag. See [plugin rules](../../../plugins/tables/AGENTS.md).
 
 ### Projects plugin
 
@@ -338,6 +334,10 @@ Saved prompts remain core. Skill services are absent from DatabaseProvider.
 - Feishu receipt retention (7 days) is contributed by that plugin, never hard-coded in core cleanup.
 
 - Migration 0006 advances SkillHub/Projects ownership without DDL. Their six tables are adopted
-  by plugin lanes; current core schema has 60 tables and the complete 3.0 data set still has 73.
+  by plugin lanes; current core schema has 51 tables and the complete 3.0 data set still has 73.
 - Activity cursor SQL and bounded feed scans are shared host helpers. Plugin domain-event
   capabilities are excluded from the platform-action view through activity contributions.
+
+Migration 0007 removes closed share/link/scope/run checks; new writes validate active discriminators. Reads preserve historical plugin values. Files retain the source/ownership envelope CHECK. Register plugin drive placement validation alongside its scope.
+
+Migration 0008 opens card receipt kinds; active plugins register artifactKinds, and claims reject inactive kinds while historic receipts remain readable.

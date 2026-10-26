@@ -23,6 +23,13 @@ import { z } from 'zod';
 
 export const exampleExtension = defineExtension({
   ...manifest,
+  discriminators: {
+    shareResources: ['ext:example:note'],
+    fileLinkTargets: ['ext:example:note'],
+    auditApps: ['example'],
+    runKinds: ['ext:example:sync'],
+  },
+  catalogSources: [{ id: 'example', load: async () => ({ bases: [], truncated: false }) }],
 
   // A read tool and a governed write tool (see tool.ts: writes must declare `proxy: 'write'`).
   tools: [exampleNotesQueryTool, exampleNotesMutationTool],

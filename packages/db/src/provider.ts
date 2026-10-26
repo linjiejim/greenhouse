@@ -39,7 +39,6 @@ import { createDriveService } from './services/drive.js';
 import { createActivityService } from './services/activity.js';
 import { createPlatformService } from './services/platform.js';
 import { createPlatformOAuthService } from './services/platform-oauth.js';
-import { createTablesService } from './services/tables.js';
 import { createChatFileService } from './services/chat-files.js';
 import { createChatArtifactReceiptService } from './services/chat-artifact-receipts.js';
 import { createRuntimeService } from './services/runtime.js';
@@ -91,7 +90,6 @@ function createDatabaseProvider(db: Db, client: DbClient['client'] | null) {
     activity: createActivityService(db),
     platform: createPlatformService(db),
     platformOAuth: createPlatformOAuthService(db),
-    tables: createTablesService(db),
     chatFiles: createChatFileService(db),
     chatArtifactReceipts: createChatArtifactReceiptService(db),
     runtime: createRuntimeService(db),

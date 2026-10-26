@@ -13,7 +13,7 @@
 
 import React, { lazy } from 'react';
 import type { CoreEntityKind, EntityKind, EntityRef } from '@greenhouse/types/entity-links';
-import { FileText, HelpCircle, Table2, type LucideIcon } from '../../lib/icons';
+import { FileText, HelpCircle, type LucideIcon } from '../../lib/icons';
 import type { TranslationKey } from '../../lib/i18n';
 import { registeredEntityKind } from '../../lib/extension-registries';
 
@@ -23,7 +23,6 @@ const KnowledgeDocPeek = lazy(() => import('./knowledge-doc-peek').then((m) => (
 export const ENTITY_PEEK_META: Partial<Record<CoreEntityKind, { icon: LucideIcon; fallbackTitleKey: TranslationKey }>> =
   {
     kb_doc: { icon: FileText, fallbackTitleKey: 'entityPeek.doc' },
-    tables_record: { icon: Table2, fallbackTitleKey: 'entityPeek.record' },
   };
 
 /**
@@ -49,8 +48,6 @@ export function renderEntityPeekBody(ref: EntityRef): React.ReactNode | null {
   switch (ref.kind) {
     case 'kb_doc':
       return <KnowledgeDocPeek id={String(ref.id)} />;
-    case 'tables_record':
-      return null;
     default:
       return registeredEntityKind(ref.kind)?.render?.(ref) ?? null;
   }

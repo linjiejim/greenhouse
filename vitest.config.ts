@@ -46,6 +46,7 @@ export default defineConfig({
       '@greenhouse/types/push': resolve(__dirname, 'packages/types/src/push.ts'),
       '@greenhouse/types/metering': resolve(__dirname, 'packages/types/src/metering.ts'),
       '@greenhouse/types/email': resolve(__dirname, 'packages/types/src/email.ts'),
+      '@greenhouse/types/discriminators': resolve(__dirname, 'packages/types/src/discriminators.ts'),
       '@greenhouse/types/runtime': resolve(__dirname, 'packages/types/src/runtime.ts'),
       '@greenhouse/types/agent-access': resolve(__dirname, 'packages/types/src/agent-access.ts'),
       '@greenhouse/types/hub-context': resolve(__dirname, 'packages/types/src/hub-context.ts'),

@@ -25,7 +25,6 @@ const KnowledgePage = lazy(() => import('./pages/knowledge').then((m) => ({ defa
 const AutomationsPage = lazy(() => import('./pages/automations').then((m) => ({ default: m.AutomationsPage })));
 const SkillHubPage = lazy(() => import('./pages/skillhub').then((m) => ({ default: m.SkillHubPage })));
 const ActivityPage = lazy(() => import('./pages/activity').then((m) => ({ default: m.ActivityPage })));
-const TablesPage = lazy(() => import('./pages/tables').then((m) => ({ default: m.TablesPage })));
 const FilesPage = lazy(() => import('./pages/files').then((m) => ({ default: m.FilesPage })));
 const OAuthConsentPage = lazy(() => import('./pages/oauth-consent').then((m) => ({ default: m.OAuthConsentPage })));
 const ConnectorOAuthFinishPage = lazy(() =>
@@ -90,7 +89,6 @@ type Route =
   | 'administration'
   | 'design'
   | 'knowledge'
-  | 'tables'
   | 'files'
   | 'skillhub'
   | 'activity';
@@ -432,7 +430,6 @@ function AppShell({ route, subPath, params, extensionRoute }: AppShellProps) {
           }),
         ),
         knowledge: t('app.knowledge'),
-        tables: t('navigation.tables'),
       },
     },
   });
@@ -601,7 +598,7 @@ function AppShell({ route, subPath, params, extensionRoute }: AppShellProps) {
               }
             >
               <main className="flex-1 overflow-hidden min-h-0">
-                {catalogLoading && (route === 'knowledge' || route === 'tables') && (
+                {catalogLoading && route === 'knowledge' && (
                   <div className="flex h-full items-center justify-center">
                     <Spinner className="h-6 w-6 text-fg-faint" />
                   </div>
@@ -621,19 +618,16 @@ function AppShell({ route, subPath, params, extensionRoute }: AppShellProps) {
                 {route === 'knowledge' && hasApplication('knowledge') && (
                   <KnowledgePage subPath={subPath} basePath="#/knowledge" />
                 )}
-                {route === 'tables' && hasApplication('tables') && <TablesPage subPath={subPath} />}
                 {route === 'files' && <FilesPage params={params} />}
                 {route === 'activity' && <ActivityPage subPath={subPath} />}
                 {route === 'extension' && (
                   <ExtensionPageHost route={extensionRoute ?? ''} subPath={subPath} params={params} />
                 )}
-                {!catalogLoading &&
-                  ((route === 'knowledge' && !hasApplication('knowledge')) ||
-                    (route === 'tables' && !hasApplication('tables'))) && (
-                    <div className="flex h-full items-center justify-center text-sm text-fg-faint">
-                      {t('app.noPermission')}
-                    </div>
-                  )}
+                {!catalogLoading && route === 'knowledge' && !hasApplication('knowledge') && (
+                  <div className="flex h-full items-center justify-center text-sm text-fg-faint">
+                    {t('app.noPermission')}
+                  </div>
+                )}
               </main>
             </Suspense>
           </ErrorBoundary>

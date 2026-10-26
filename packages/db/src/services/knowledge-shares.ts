@@ -1,3 +1,4 @@
+import { assertDiscriminator } from '@greenhouse/types/discriminators';
 /**
  * Knowledge share service — granular sharing of PRIVATE knowledge docs with
  * specific users, stored as `shares` rows (resource_type = 'kb_document',
@@ -55,6 +56,7 @@ export function createKnowledgeShareService(db: Db) {
       sharedBy: string,
       message?: string,
     ): Promise<void> {
+      assertDiscriminator('shareResources', KB);
       const now = nowIso();
       await db
         .insert(shares)

@@ -56,7 +56,7 @@ export interface ExtensionEntityKindDef {
 
 const extensionKinds = new Map<string, ExtensionEntityKindDef>();
 
-const ROUTE_SHAPE = /^#(?:\/[^/?#]+)+$/;
+const ROUTE_SHAPE = /^#(?:\/[^/?#]+)+(?:\?[^#]+)?$/;
 
 /** Register the record kinds of one extension. Called at boot from the extension list. */
 export function registerEntityKinds(defs: readonly ExtensionEntityKindDef[]): void {
@@ -64,7 +64,7 @@ export function registerEntityKinds(defs: readonly ExtensionEntityKindDef[]): vo
     if (!def.kind.startsWith('ext:') && !ENTITY_KINDS.includes(def.kind as CoreEntityKind))
       throw new Error(`Entity kind "${def.kind}" must start with "ext:"`);
     if (extensionKinds.has(def.kind)) throw new Error(`Entity kind "${def.kind}" is already registered`);
-    if (!ROUTE_SHAPE.test(def.route) || def.route.split('/').filter((s) => s === ':id').length !== 1) {
+    if (!ROUTE_SHAPE.test(def.route) || (def.route.match(/:id(?=[/?&#]|$)/g) ?? []).length !== 1) {
       throw new Error(
         `Entity kind "${def.kind}" needs a hash route with exactly one ":id" segment (got "${def.route}")`,
       );

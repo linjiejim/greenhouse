@@ -156,7 +156,7 @@ describe('Platform control-plane service', () => {
       actorId: user.id,
       actorType: 'human',
       requestId: 'request-audit',
-      resource: { appId: 'projects', moduleId: 'project', entityId: 'project', recordId: '42' },
+      resource: { appId: 'platform', moduleId: 'project', entityId: 'project', recordId: '42' },
       actionId: 'listProjects',
       capability: 'projects.project.read',
       result: 'success',

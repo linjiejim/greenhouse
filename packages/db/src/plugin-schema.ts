@@ -6,3 +6,5 @@ export { conversations } from './schema/conversations.js';
 export { auditEvents } from './schema/audit.js';
 
 export { day } from './schema/_columns.js';
+
+export { fileLinks, files, shares, type FileLinkRow, type ShareRow } from './schema/files.js';

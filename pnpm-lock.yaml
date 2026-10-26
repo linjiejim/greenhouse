@@ -933,6 +933,64 @@ importers:
         specifier: ^19.0.0
         version: 19.2.6(react@19.2.6)
 
+  plugins/tables:
+    dependencies:
+      '@greenhouse/api':
+        specifier: workspace:*
+        version: link:../../apps/api
+      '@greenhouse/crud':
+        specifier: workspace:*
+        version: link:../../packages/crud
+      '@greenhouse/types':
+        specifier: workspace:*
+        version: link:../../packages/types
+      '@greenhouse/web':
+        specifier: workspace:*
+        version: link:../../apps/web
+      ai:
+        specifier: ^6.0.176
+        version: 6.0.176(zod@4.4.3)
+      chalk:
+        specifier: ^5.6.2
+        version: 5.6.2
+      drizzle-orm:
+        specifier: ^0.45.2
+        version: 0.45.2(@opentelemetry/api@1.9.0)(@types/better-sqlite3@7.6.13)(better-sqlite3@12.10.0)(postgres@3.4.9)
+      hono:
+        specifier: ^4.12.18
+        version: 4.12.18
+      react:
+        specifier: ^19.0.0
+        version: 19.2.6
+      zod:
+        specifier: ^4.4.3
+        version: 4.4.3
+      zustand:
+        specifier: ^5.0.13
+        version: 5.0.13(@types/react@19.3.0)(react@19.2.6)(use-sync-external-store@1.6.0(react@19.2.6))
+    devDependencies:
+      '@greenhouse/db':
+        specifier: workspace:*
+        version: link:../../packages/db
+      '@modelcontextprotocol/sdk':
+        specifier: ^1.29.0
+        version: 1.29.0(zod@4.4.3)
+      '@playwright/test':
+        specifier: ^1.61.1
+        version: 1.61.1
+      '@types/react':
+        specifier: ^19.2.0
+        version: 19.3.0
+      '@types/react-dom':
+        specifier: ^19.2.0
+        version: 19.3.0(@types/react@19.3.0)
+      drizzle-kit:
+        specifier: ^0.31.10
+        version: 0.31.10
+      react-dom:
+        specifier: ^19.0.0
+        version: 19.2.6(react@19.2.6)
+
   plugins/wecom:
     dependencies:
       '@greenhouse/api':

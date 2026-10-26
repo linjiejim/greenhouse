@@ -37,7 +37,7 @@ export const folders = pgTable(
   'folders',
   {
     id: id(),
-    /** `kb` / `tables` are core; extensions register their own. */
+    /** A scope registered by the host or an active plugin. */
     scope: text('scope').notNull(),
     parent_id: text('parent_id').references((): AnyPgColumn => folders.id, { onDelete: 'cascade' }),
     name: text('name').notNull(),
@@ -59,14 +59,6 @@ export const folders = pgTable(
     index('idx_folders_tables').on(table.scope, table.base_id),
     index('idx_folders_ext').on(table.scope, table.owner_key),
     oneOf('chk_folders_visibility', table.visibility, FOLDER_VISIBILITIES),
-    check(
-      'chk_folders_scope_owner',
-      sql`(
-        (${table.scope} = 'kb' AND ${table.base_id} IS NULL AND ${table.owner_key} IS NULL AND ${table.visibility} IS NOT NULL AND (${table.visibility} = 'team' OR ${table.owner_user_id} IS NOT NULL))
-        OR (${table.scope} = 'tables' AND ${table.base_id} IS NOT NULL AND ${table.owner_key} IS NULL AND ${table.visibility} IS NULL AND ${table.owner_user_id} IS NULL)
-        OR (${table.scope} NOT IN ('kb', 'tables') AND ${table.owner_key} IS NOT NULL AND ${table.base_id} IS NULL AND ${table.visibility} IS NULL AND ${table.owner_user_id} IS NULL)
-      )`,
-    ),
   ],
 );
 
@@ -122,11 +114,7 @@ export const files = pgTable(
     check(
       'chk_files_source_owner',
       sql`(
-        (${table.source} = 'drive' AND ${table.scope} IS NOT NULL AND ${table.storage_key} IS NOT NULL AND ${table.session_id} IS NULL AND ${table.run_id} IS NULL AND (
-          (${table.scope} = 'kb' AND ${table.base_id} IS NULL AND ${table.owner_key} IS NULL AND ${table.visibility} IS NOT NULL AND (${table.visibility} = 'team' OR ${table.owner_user_id} IS NOT NULL))
-          OR (${table.scope} = 'tables' AND ${table.base_id} IS NOT NULL AND ${table.owner_key} IS NULL AND ${table.visibility} IS NULL AND ${table.owner_user_id} IS NULL)
-          OR (${table.scope} NOT IN ('kb', 'tables') AND ${table.owner_key} IS NOT NULL AND ${table.base_id} IS NULL AND ${table.visibility} IS NULL AND ${table.owner_user_id} IS NULL)
-        ))
+        (${table.source} = 'drive' AND ${table.scope} IS NOT NULL AND ${table.storage_key} IS NOT NULL AND ${table.session_id} IS NULL AND ${table.run_id} IS NULL)
         OR (${table.source} IN ('chat_upload', 'chat_output') AND ${table.session_id} IS NOT NULL AND ${table.storage_key} IS NOT NULL AND ${table.scope} IS NULL AND ${table.folder_id} IS NULL)
         OR (${table.source} = 'run' AND ${table.run_id} IS NOT NULL AND ${table.scope} IS NULL AND ${table.folder_id} IS NULL AND ${table.session_id} IS NULL)
       )`,
@@ -134,7 +122,7 @@ export const files = pgTable(
   ],
 );
 
-export const FILE_LINK_TARGETS = ['table_record', 'message', 'task', 'kb_document'] as const;
+export const FILE_LINK_TARGETS = ['message'] as const;
 
 /**
  * A file attached to something. `slot` narrows the place on the target (the
@@ -148,7 +136,7 @@ export const fileLinks = pgTable(
     file_id: text('file_id')
       .notNull()
       .references(() => files.id, { onDelete: 'cascade' }),
-    target_type: text('target_type', { enum: FILE_LINK_TARGETS }).notNull(),
+    target_type: text('target_type').notNull(),
     target_id: text('target_id').notNull(),
     slot: text('slot').notNull().default(''),
     position: integer('position').notNull().default(0),
@@ -158,11 +146,10 @@ export const fileLinks = pgTable(
   (table) => [
     primaryKey({ columns: [table.file_id, table.target_type, table.target_id, table.slot] }),
     index('idx_file_links_target').on(table.target_type, table.target_id, table.slot, table.position),
-    oneOf('chk_file_links_target', table.target_type, FILE_LINK_TARGETS),
   ],
 );
 
-export const SHARE_RESOURCES = ['kb_document', 'folder', 'file', 'table_base'] as const;
+export const SHARE_RESOURCES = ['folder', 'file'] as const;
 export const SHARE_PRINCIPALS = ['user', 'team'] as const;
 /** kb: reader / editor; table bases: owner / builder / editor / viewer. */
 export const SHARE_ROLES = ['reader', 'editor', 'viewer', 'builder', 'owner'] as const;
@@ -171,7 +158,7 @@ export const shares = pgTable(
   'shares',
   {
     id: id(),
-    resource_type: text('resource_type', { enum: SHARE_RESOURCES }).notNull(),
+    resource_type: text('resource_type').notNull(),
     resource_id: text('resource_id').notNull(),
     principal_type: text('principal_type', { enum: SHARE_PRINCIPALS }).notNull().default('user'),
     /** Member id; null when principal_type = 'team'. */
@@ -187,7 +174,6 @@ export const shares = pgTable(
       .on(table.resource_type, table.resource_id, table.principal_type, table.principal_id)
       .nullsNotDistinct(),
     index('idx_shares_principal').on(table.principal_type, table.principal_id, table.resource_type),
-    oneOf('chk_shares_resource', table.resource_type, SHARE_RESOURCES),
     oneOf('chk_shares_principal', table.principal_type, SHARE_PRINCIPALS),
     oneOf('chk_shares_role', table.role, SHARE_ROLES),
     check('chk_shares_principal_id', sql`(${table.principal_type} = 'team') = (${table.principal_id} IS NULL)`),
@@ -204,6 +190,6 @@ export type ShareResourceType = ShareRow['resource_type'];
 export type ShareRole = ShareRow['role'];
 /** `'kb' | 'tables' | <extension scope>` — a plain string, validated at the edges. */
 export type DriveScope = DriveFolderRow['scope'];
-/** The two scopes core owns. */
-export const CORE_DRIVE_SCOPES = ['kb', 'tables'] as const;
+/** No business scope is a closed core enum. */
+export const CORE_DRIVE_SCOPES: readonly string[] = [];
 export type CoreDriveScope = (typeof CORE_DRIVE_SCOPES)[number];

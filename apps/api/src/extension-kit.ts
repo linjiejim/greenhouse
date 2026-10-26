@@ -218,3 +218,20 @@ export { listSavedPrompts, getSavedPrompt } from './hub-context/prompts.js';
 export type { ExtensionAgentContext, AgentContextCaller, AgentContextPrompt } from './extensions/agent-context.js';
 
 export { activityField, activityIdText, activityText } from './activity/values.js';
+
+export { artifactReceiptResult } from './chat/artifact-actions.js';
+
+export { claimArtifactAction } from './chat/artifact-actions.js';
+
+export { isRowId } from '@greenhouse/utils/id';
+
+export { flagBool } from './cli/commands/shared.js';
+
+export { splitSub } from './cli/commands/shared.js';
+
+export { fileLinks, files, shares, type FileLinkRow, type ShareRow } from '@greenhouse/db/plugin-schema';
+export type { CatalogInput } from './hub-context/catalog.js';
+
+export type { PlatformAuditEventRow } from '@greenhouse/db';
+
+export type { FieldPolicy } from '@greenhouse/platform-kernel';

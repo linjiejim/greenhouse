@@ -13,7 +13,7 @@ import type { RuntimeJsonValue } from '@greenhouse/types/runtime';
 import { createInternalTestUser } from '../../../../tests/helpers/internal-user.js';
 import { projectsManifest } from '../platform/manifest.js';
 import { knowledgeManifest } from '../../../../apps/api/src/platform/manifests/knowledge.js';
-import { tablesManifest } from '../../../../apps/api/src/platform/manifests/tables.js';
+import { tablesManifest } from '../../../tables/api/platform/manifest.js';
 import {
   initializePlatformRuntime,
   PLATFORM_ORG_ID,

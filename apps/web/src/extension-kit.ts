@@ -120,3 +120,29 @@ export type { TranslationKey } from './lib/i18n';
 export { Tag as TagIcon } from './lib/icons';
 
 export { bumpPatch, isValidSemver } from '@greenhouse/utils/semver';
+
+export type { ContextMenuItem } from './components/app/context-menu';
+
+export { useArtifactReceipt } from './hooks/use-artifact-receipt';
+
+export { ArtifactCard } from './components/chat/artifact-card';
+
+export { ArtifactCardActions } from './components/chat/artifact-card';
+
+export { fetchDataCatalog } from './lib/api/hub-context';
+
+export { driveBreadcrumb } from './lib/api/drive';
+
+export { formatFileSize } from './lib/api/drive';
+
+export { listDriveFiles } from './lib/api/drive';
+
+export { listDriveFolders } from './lib/api/drive';
+
+export { uploadDriveFile } from './lib/api/drive';
+
+export type { DriveFile } from './lib/api/drive';
+
+export type { DriveFolder } from './lib/api/drive';
+
+export { isRowId } from '@greenhouse/utils/id';

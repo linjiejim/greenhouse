@@ -12,7 +12,6 @@
 import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { knowledgeManifest } from '../manifests/knowledge.js';
-import { tablesManifest } from '../manifests/tables.js';
 
 // Same computation as packages/db `manifestPayload()` — the manifests are
 // already compiled at their definition site, so this is the exact byte stream
@@ -23,7 +22,6 @@ function manifestHash(manifest: unknown): string {
 
 const GOLDEN: ReadonlyArray<{ manifest: { id: string; version: string }; hash: string }> = [
   { manifest: knowledgeManifest, hash: '913cee0b0477d9df728edaf231096070eb58d17f113aa043a6a476c08e0c2759' },
-  { manifest: tablesManifest, hash: '3f15cbbfae3ab9302f15dcf2be886afd119eb8285e94dde94dbf004895af1a07' },
 ];
 
 describe('platform manifest hashes', () => {

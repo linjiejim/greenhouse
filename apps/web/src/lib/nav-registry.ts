@@ -13,7 +13,6 @@ import { registeredHostTitle } from './extension-registries';
 import type { WebExtensionModule, WebExtensionPageModule } from '../extensions/define';
 import {
   BookOpen,
-  Database,
   Users,
   Key,
   Plug,
@@ -25,7 +24,6 @@ import {
   Coins,
   Gauge,
   Zap,
-  Table2,
   FolderOpen,
   History,
 } from './icons';
@@ -264,24 +262,6 @@ const STANDALONE_MODULES: NavModule[] = [
     pinnable: false,
   },
   {
-    id: 'workspace.tables',
-    label: 'Tables',
-    icon: Table2,
-    path: '#/tables',
-    parent: 'standalone',
-    description: 'Structured internal data shared with your team and Agents',
-    pinnable: false,
-  },
-  {
-    id: 'workspace.data-catalog',
-    label: 'Data catalog',
-    icon: Database,
-    path: '#/tables/catalog',
-    parent: 'standalone',
-    description: 'The data you can read, and how your agent reaches each source',
-    pinnable: false,
-  },
-  {
     id: 'workspace.activity',
     label: 'Activity log',
     icon: History,
@@ -335,10 +315,8 @@ const NAV_COPY: Record<
   'admin.plugins': { label: 'navigation.plugins', description: 'navigation.pluginsDesc' },
   'admin.connectors': { label: 'navigation.connectors', description: 'navigation.connectorsDesc' },
   'admin.team-context': { label: 'navigation.teamContext', description: 'navigation.teamContextDesc' },
-  'workspace.data-catalog': { label: 'navigation.dataCatalog', description: 'navigation.dataCatalogDesc' },
   'workspace.files': { label: 'navigation.files', description: 'navigation.filesDesc' },
   'workspace.automations': { label: 'navigation.automation', description: 'navigation.automationDesc' },
-  'workspace.tables': { label: 'navigation.tables', description: 'navigation.tablesDesc' },
   'workspace.activity': { label: 'navigation.activityLog', description: 'navigation.activityLogDesc' },
   'workspace.skillhub': { label: 'savedPrompts.title' },
 };
@@ -346,12 +324,6 @@ const englishT: Translate = (key, params) => translate('en', key, params);
 export function localizeNavModule(module: NavModule, t: Translate): NavModule {
   const host = module.path?.split('/')[1]?.split('?')[0];
   const contributed = host ? registeredHostTitle(host) : undefined;
-  if (contributed)
-    return {
-      ...module,
-      label: t(contributed.titleKey as TranslationKey),
-      description: contributed.descriptionKey ? t(contributed.descriptionKey as TranslationKey) : module.description,
-    };
   if (module.labelKey) {
     return {
       ...module,
@@ -359,6 +331,12 @@ export function localizeNavModule(module: NavModule, t: Translate): NavModule {
       description: module.descriptionKey ? t(module.descriptionKey as TranslationKey) : module.description,
     };
   }
+  if (contributed)
+    return {
+      ...module,
+      label: t(contributed.titleKey as TranslationKey),
+      description: contributed.descriptionKey ? t(contributed.descriptionKey as TranslationKey) : module.description,
+    };
   const copy = NAV_COPY[module.id];
   if (!copy) return module;
   return {

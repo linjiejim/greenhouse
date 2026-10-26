@@ -11,7 +11,6 @@ export * from './runs.js';
 export * from './automations.js';
 export * from './knowledge.js';
 export * from './files.js';
-export * from './tables.js';
 export * from './notifications.js';
 export * from './usage.js';
 export * from './audit.js';

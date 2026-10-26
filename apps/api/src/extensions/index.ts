@@ -1,3 +1,4 @@
+import { registerDiscriminators } from '@greenhouse/types/discriminators';
 import { registerSkillPacks } from './skill-packs.js';
 import { registerExtensionRateLimits } from '../security/extension-rate-limits.js';
 import { registerAgentContexts } from './agent-context.js';
@@ -92,6 +93,14 @@ export function fromExtensions<K extends keyof GreenhouseExtension>(
 // Registries that live in shared packages cannot import this module, so the
 // active extensions register into them here, once, at load time.
 for (const ext of EXTENSIONS) {
+  if (ext.discriminators) registerDiscriminators(ext.discriminators);
+  registerDiscriminators({
+    auditApps: [
+      ext.id,
+      ...(ext.applications ?? []).map((a) => a.manifest.id),
+      ...Object.keys(Object.assign({}, ...(ext.activity ?? []).map((a) => a.appModules ?? {}))),
+    ],
+  });
   if (ext.featureFlags?.length) registerFeatureFlags(ext.featureFlags);
   if (ext.workspaceSettings?.length) registerWorkspaceSettings(ext.workspaceSettings);
   if (ext.services) registerExtensionServices(ext.id, ext.services);
@@ -134,3 +143,11 @@ registerAgentContexts(
 registerExtensionRateLimits(fromExtensions('rateLimits'));
 
 registerSkillPacks(fromExtensions('skillPacks'));
+
+// The remaining core application registers through the same path until its package move.
+registerDiscriminators({
+  shareResources: ['kb_document'],
+  fileLinkTargets: ['kb_document'],
+  folderScopes: ['kb'],
+  auditApps: ['knowledge'],
+});

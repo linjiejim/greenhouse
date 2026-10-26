@@ -1,3 +1,4 @@
+import { registerInteractiveTools } from '../agent-runtime/tool-policy.js';
 /**
  * Tool Registry — the catalog that assembles all agent-tool metadata.
  *
@@ -28,9 +29,6 @@ import { readAttachmentTool } from './read-attachment.js';
 import { callLlmTool } from './call-llm.js';
 import { knowledgeQueryTool } from './knowledge-query.js';
 import { knowledgeMutationTool } from './knowledge-mutation.js';
-import { tablesQueryTool } from './tables-query.js';
-import { tablesMutationTool } from './tables-mutation.js';
-import { tablesSchemaPlanTool } from './tables-schema-plan.js';
 import { exportDataTool } from './export-data.js';
 import { automationQueryTool } from './automation-query.js';
 import { automationMutationTool } from './automation-mutation.js';
@@ -54,9 +52,6 @@ const CORE_TOOL_MODULES: ToolModule[] = [
   callLlmTool,
   knowledgeQueryTool,
   knowledgeMutationTool,
-  tablesQueryTool,
-  tablesMutationTool,
-  tablesSchemaPlanTool,
   exportDataTool,
   automationQueryTool,
   automationMutationTool,
@@ -249,3 +244,5 @@ export function getInAppToolMetas(): ToolMeta[] {
 export function getInAppToolIds(): string[] {
   return getAllToolIds().filter(isInAppTool);
 }
+
+registerInteractiveTools(TOOL_DEFINITIONS.filter((meta) => meta.interactiveOnly).map((meta) => meta.id));

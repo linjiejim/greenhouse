@@ -41,7 +41,7 @@ import type { DatabaseProvider } from '@greenhouse/db';
 import { createToolRegistry, type ToolRegistry } from './agent.js';
 import type { AppEnv } from './app-env.js';
 import { listProfileIds, startProfileWatcher } from './profiles/profile.js';
-import { authMiddleware, requireSuper, requireInternal, requireFeature } from './auth/middleware.js';
+import { authMiddleware, requireSuper, requireInternal } from './auth/middleware.js';
 import { assertAuthEnv } from './auth/token.js';
 import {
   corsMiddleware,
@@ -86,7 +86,6 @@ import platformRoutes from './routes/platform.js';
 import platformAdminRoutes from './routes/platform-admin.js';
 import { bootstrapPlatform } from './platform/bootstrap.js';
 import { knowledgeRegistration } from './platform/knowledge/registration.js';
-import { tablesRegistration } from './platform/tables/application.js';
 import { initializePlatformRuntime } from './platform/runtime.js';
 import promptRoutes from './routes/prompts.js';
 import knowledgeRoutes from './routes/knowledge.js';
@@ -102,7 +101,6 @@ import toolsRoutes from './routes/tools.js';
 import driveRoutes from './routes/drive.js';
 import chatFileRoutes from './routes/chat-files.js';
 import artifactActionRoutes from './routes/artifact-actions.js';
-import tablesRoutes from './routes/tables.js';
 import { backfillKnowledgeTokens } from './knowledge/backfill.js';
 import { initScheduler } from './scheduler/index.js';
 import { createTasksRoute } from './routes/tasks.js';
@@ -290,9 +288,6 @@ function mountRoutes(toolRegistry: ToolRegistry) {
       .route('/api/admin/retro', adminRetroRoutes)
       .use('/api/platform/*', requireInternal())
       .route('/api/platform', platformRoutes)
-      .use('/api/tables/*', requireInternal())
-      .use('/api/tables/*', requireFeature('tables'))
-      .route('/api/tables', tablesRoutes)
       // Email accounts — every internal user (mailbox binding is per-user and
       // self-service; the shared mailbox stays super-only inside the service).
       // Prompts, knowledge docs & shares — all internal users
@@ -395,11 +390,7 @@ async function main() {
   initServiceCatalog();
   const usageBudgetSweeper = await startUsageBudgetSweeper(dbProvider);
   const platformBootstrap = await bootstrapPlatform(dbProvider);
-  initializePlatformRuntime(dbProvider, [
-    knowledgeRegistration,
-    tablesRegistration,
-    ...extensionApplicationRegistrations(),
-  ]);
+  initializePlatformRuntime(dbProvider, [knowledgeRegistration, ...extensionApplicationRegistrations()]);
   if (
     platformBootstrap.rolesCreated.length > 0 ||
     platformBootstrap.capabilitiesAdded > 0 ||

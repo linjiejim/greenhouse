@@ -17,6 +17,7 @@ import { projectMutationTool } from './tools/project-mutation.js';
 
 export default defineExtension({
   ...manifest,
+  discriminators: { fileLinkTargets: ['task'] },
   services: createServices,
   activity: [
     {

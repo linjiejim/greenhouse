@@ -29,14 +29,8 @@ model:
   id: flash
 
 # ─── Tools ────────────────────────────────────────────────
-tools:
-  - analyze_image
-  - external_search
-  - feature_request
-  - generate_image
-  - project_query
-  - project_mutation
-  - knowledge_query
+# Built-in profiles use the member's current allowed tools, including active plugins.
+tools: []
 
 # ─── System Prompt ────────────────────────────────────────
 system_prompt: |

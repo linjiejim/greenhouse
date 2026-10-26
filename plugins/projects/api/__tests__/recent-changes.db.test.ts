@@ -1,3 +1,4 @@
+import { services as tableServices } from '../../../tables/api/services.js';
 import { services as projectsServices } from '../services.js';
 /**
  * Home "recent changes" on the real tables: it shows team changes across
@@ -16,7 +17,7 @@ import {
   type PlatformRuntime,
 } from '../../../../apps/api/src/platform/runtime.js';
 import { projectsRegistration } from '../platform/application.js';
-import { tablesRegistration } from '../../../../apps/api/src/platform/tables/application.js';
+import { tablesRegistration } from '../../../tables/api/platform/application.js';
 import { knowledgeRegistration } from '../../../../apps/api/src/platform/knowledge/registration.js';
 import { listRecentChanges } from '../../../../apps/api/src/activity/recent-changes.js';
 import type { ActivityItem } from '@greenhouse/types/activity';
@@ -287,20 +288,21 @@ describe('recent changes', () => {
   });
 
   it('counts a person’s table edits once for the whole window, never split across pages', async () => {
-    const base = await db.tables.createBase({
+    const base = await tableServices(db).tables.createBase({
       name: unique('Base'),
       visibility: 'team',
       owner_id: alice.id,
       created_by: alice.id,
     });
-    const { table, fields } = await db.tables.createTable({
+    const { table, fields } = await tableServices(db).tables.createTable({
       base_id: base.id,
       name: unique('Table'),
       created_by: alice.id,
     });
     const values = Object.fromEntries(fields.filter((field) => field.required).map((field) => [field.id, 'x']));
-    for (let i = 0; i < 3; i++) await db.tables.createRecord({ table_id: table.id, values, user_id: alice.id });
-    await db.tables.createRecord({ table_id: table.id, values, user_id: bob.id });
+    for (let i = 0; i < 3; i++)
+      await tableServices(db).tables.createRecord({ table_id: table.id, values, user_id: alice.id });
+    await tableServices(db).tables.createRecord({ table_id: table.id, values, user_id: bob.id });
 
     const rows = (await pageThrough(alice, 1)).filter((item) => item.target?.id === String(table.id));
     expect(rows.map((item) => [item.actor.id, item.detail])).toEqual([

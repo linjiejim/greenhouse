@@ -10,27 +10,37 @@ import type { EntityRef } from '@greenhouse/types/entity-links';
 import type { LucideIcon } from './icons';
 
 export interface RegisteredToolCard {
-  component: ComponentType<{ call: { name: string; input?: unknown; output?: unknown; status?: 'calling' | 'done' } }>;
+  owner?: string;
+  matches?: (output: unknown) => boolean;
+  component: ComponentType<{
+    actionId?: string;
+    sessionId?: string;
+    call: { name: string; input?: unknown; output?: unknown; status?: 'calling' | 'done' };
+  }>;
   placement: 'inline' | 'below';
 }
 
 const toolCards = new Map<string, RegisteredToolCard>();
-const toolIcons = new Map<string, LucideIcon>();
+const toolIcons = new Map<string, { icon: LucideIcon; owner?: string }>();
 
 export function registerToolCard(tool: string, card: RegisteredToolCard): void {
   toolCards.set(tool, card);
 }
 
 export function registeredToolCard(tool: string): RegisteredToolCard | undefined {
-  return toolCards.get(tool);
+  const card = toolCards.get(tool);
+  return !card?.owner || useExtensionsStore.getState().extensions.some((e) => e.id === card.owner) ? card : undefined;
 }
 
-export function registerToolIcons(icons: Record<string, LucideIcon>): void {
-  for (const [tool, icon] of Object.entries(icons)) toolIcons.set(tool, icon);
+export function registerToolIcons(icons: Record<string, LucideIcon>, owner?: string): void {
+  for (const [tool, icon] of Object.entries(icons)) toolIcons.set(tool, { icon, owner });
 }
 
 export function registeredToolIcon(tool: string): LucideIcon | undefined {
-  return toolIcons.get(tool);
+  const entry = toolIcons.get(tool);
+  return !entry?.owner || useExtensionsStore.getState().extensions.some((e) => e.id === entry.owner)
+    ? entry?.icon
+    : undefined;
 }
 
 // ─── Record kinds owned by extensions ────────────────────

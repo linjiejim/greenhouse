@@ -18,7 +18,6 @@ export type { AgentContextValue } from './agent-context-value';
 import { getNavModule } from '../lib/nav-registry';
 import { findExtensionPage, isActiveWebExtension } from '../extensions';
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
-import { isRowId } from '@greenhouse/utils/id';
 import type { AssistantLaunchRequest, PageContext } from '@greenhouse/types/agent-context';
 import { pageContextKey } from '../lib/page-context-key';
 import { parseExecutionSubPath } from '../lib/execution-route';
@@ -58,14 +57,6 @@ export function resolveUrlContext(hash: string): PageContext | null {
         `${route === 'administration' ? 'admin' : 'settings'}.${subPath.split('/')[0]}`,
       )?.extensionId;
       return owner && isActiveWebExtension(owner) ? { type: 'extension', extension: owner, route, subPath } : null;
-    }
-
-    case 'tables': {
-      return {
-        type: 'tables',
-        baseId: isRowId(segments[1]) ? segments[1] : undefined,
-        tableId: segments[2] === 'table' && isRowId(segments[3]) ? segments[3] : undefined,
-      };
     }
 
     case 'activity': {

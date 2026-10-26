@@ -31,7 +31,6 @@ import { composeMcpContext, MCP_EXPOSED_TOOL_IDS } from '../../apps/api/src/rout
 import { initializePlatformRuntime, resetPlatformRuntimeForTests } from '../../apps/api/src/platform/runtime.js';
 import { extensionApplicationRegistrations } from '../../apps/api/src/extensions/boot.js';
 import { knowledgeRegistration } from '../../apps/api/src/platform/knowledge/registration.js';
-import { tablesRegistration } from '../../apps/api/src/platform/tables/application.js';
 
 let db: DatabaseProvider;
 
@@ -90,7 +89,7 @@ describe('cross-channel tool parity', () => {
   beforeEach(async () => {
     db = await initDatabase({ type: 'pg', pgConnectionString: TEST_DATABASE_URL });
     // MCP's platform-visibility filter needs the runtime — same set as index.ts.
-    initializePlatformRuntime(db, [...extensionApplicationRegistrations(), knowledgeRegistration, tablesRegistration]);
+    initializePlatformRuntime(db, [...extensionApplicationRegistrations(), knowledgeRegistration]);
   });
 
   afterEach(async () => {
@@ -136,9 +135,9 @@ describe('cross-channel tool parity', () => {
     const user = await createInternalTestUser(db, { email: uniqueEmail('parity-flag') });
 
     let sets = await channelSets(user);
-    expect(sets.chat.has('tables_query')).toBe(true);
-    expect(sets.proxy.has('tables_query')).toBe(true);
-    expect(sets.mcp.has('tables_query')).toBe(true);
+    expect(sets.chat.has('tables_query')).toBe(Boolean(db.extensions.tables));
+    expect(sets.proxy.has('tables_query')).toBe(Boolean(db.extensions.tables));
+    expect(sets.mcp.has('tables_query')).toBe(Boolean(db.extensions.tables));
 
     await db.userFeatures.upsert({ user_id: user.id, feature: 'tables', enabled: false, granted_by: user.id });
     sets = await channelSets(user);
@@ -148,9 +147,9 @@ describe('cross-channel tool parity', () => {
 
     await db.userFeatures.upsert({ user_id: user.id, feature: 'tables', enabled: true, granted_by: user.id });
     sets = await channelSets(user);
-    expect(sets.chat.has('tables_query')).toBe(true);
-    expect(sets.proxy.has('tables_query')).toBe(true);
-    expect(sets.mcp.has('tables_query')).toBe(true);
+    expect(sets.chat.has('tables_query')).toBe(Boolean(db.extensions.tables));
+    expect(sets.proxy.has('tables_query')).toBe(Boolean(db.extensions.tables));
+    expect(sets.mcp.has('tables_query')).toBe(Boolean(db.extensions.tables));
   });
 
   it('propagates a user_tools grant and revocation to chat immediately, never to surfaces it lacks', async () => {
@@ -188,9 +187,9 @@ describe('cross-channel tool parity', () => {
     await db.userFeatures.upsert({ user_id: user.id, feature: 'tables', enabled: true, granted_by: user.id });
 
     const { chat, proxy, mcp } = await channelSets(user);
-    expect(chat.has('tables_schema_plan')).toBe(true);
+    expect(chat.has('tables_schema_plan')).toBe(Boolean(db.extensions.tables));
     expect(proxy.has('tables_schema_plan')).toBe(false);
     expect(mcp.has('tables_schema_plan')).toBe(false);
-    expect(mcp.has('tables_query')).toBe(true);
+    expect(mcp.has('tables_query')).toBe(Boolean(db.extensions.tables));
   });
 });

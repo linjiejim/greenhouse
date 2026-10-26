@@ -23,7 +23,7 @@ import { EXTENSIONS } from '../../../../apps/api/src/extensions/index.js';
 import { initializePlatformRuntime, resetPlatformRuntimeForTests } from '../../../../apps/api/src/platform/runtime.js';
 import { projectsRegistration } from '../../../projects/api/platform/application.js';
 import { knowledgeRegistration } from '../../../../apps/api/src/platform/knowledge/registration.js';
-import { tablesRegistration } from '../../../../apps/api/src/platform/tables/application.js';
+import { tablesRegistration } from '../../../tables/api/platform/application.js';
 import {
   generateAccessToken,
   getMcpResourceUrl,

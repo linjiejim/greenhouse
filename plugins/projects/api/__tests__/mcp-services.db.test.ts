@@ -75,7 +75,7 @@ import { identityFromOAuthScopes } from '../../../../apps/api/src/agent-runtime/
 import { initializePlatformRuntime, resetPlatformRuntimeForTests } from '../../../../apps/api/src/platform/runtime.js';
 import { projectsRegistration } from '../platform/application.js';
 import { knowledgeRegistration } from '../../../../apps/api/src/platform/knowledge/registration.js';
-import { tablesRegistration } from '../../../../apps/api/src/platform/tables/application.js';
+import { tablesRegistration } from '../../../tables/api/platform/application.js';
 import { uploadCabinetFile } from '../../../../apps/api/src/drive/kb-cabinet.js';
 import { delegatedAgentActor } from '../../../../apps/api/src/platform/actor.js';
 import { setPriceOverridesForTests } from '../../../../apps/api/src/usage/pricing.js';

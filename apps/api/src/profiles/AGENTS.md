@@ -69,3 +69,5 @@
 - `apps/web/src/lib/agent-constants.ts` — 前端镜像的预设 id、顺序与 `LEGACY_AGENT_IDS`。
 - `tests/api/agent-profiles.test.ts` — 钉住 YAML 数量与文件名集合、旧 id 映射、合法 custom base 集合、
   rich-output 单一副本、「没有 profile 使用 `extends`」、以及没配 key 的模型不进选择器。
+
+Built-in YAML profiles use `tools: []`: the runtime derives their full tool set from the member and active plugins. Only custom profiles use a stored tool filter. Never pin optional plugin tool ids in the built-in YAML.

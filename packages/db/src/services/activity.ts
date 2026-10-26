@@ -111,14 +111,6 @@ export interface RecentKnowledgeEditRow {
   at: string;
 }
 
-export interface RecentTableChangeRow {
-  key: string;
-  table_id: string;
-  updated_by: string;
-  records: number;
-  at: string;
-}
-
 export interface RecentKbFileRow {
   key: string;
   id: string;
@@ -257,33 +249,6 @@ export function createActivityService(db: Db) {
         LIMIT ${bound(input.limit)}
       `);
       return rows as unknown as RecentKnowledgeEditRow[];
-    },
-
-    /**
-     * Record changes in the given (already authorized) tables, one row per
-     * (table, person) with how many records they touched in the whole window —
-     * record values are never read. Groups are formed before paging, so a
-     * group is one row ordered by its latest change and never split across
-     * pages.
-     */
-    async recentTableChanges(input: RecentWindow & { tableIds: readonly string[] }): Promise<RecentTableChangeRow[]> {
-      if (input.tableIds.length === 0) return [];
-      const rows = await db.execute(sql`
-        SELECT key, table_id, updated_by, records, ${ISO(sql`latest`)} AS at
-        FROM (
-          SELECT ('tr:' || r.table_id || ':' || r.updated_by) AS key, r.table_id, r.updated_by,
-                 count(*)::int AS records, max(r.updated_at) AS latest
-          FROM table_records r
-          WHERE ${inList(sql`r.table_id`, input.tableIds)}
-            AND r.updated_at >= ${input.since}::timestamptz
-            AND r.deleted_at IS NULL
-          GROUP BY r.table_id, r.updated_by
-        ) g
-        WHERE ${cursorClause(sql`latest`, sql`key`, input.cursor)}
-        ORDER BY latest DESC, key COLLATE "C" DESC
-        LIMIT ${bound(input.limit)}
-      `);
-      return (rows as unknown as RecentTableChangeRow[]).map((row) => ({ ...row, records: Number(row.records) }));
     },
 
     /** New active knowledge-cabinet files one user may read (team files + their own personal ones). */

@@ -28,9 +28,6 @@ import { createAutomationQueryTool } from '../tools/automation-query.js';
 import { createAutomationMutationTool } from '../tools/automation-mutation.js';
 import { createGenerateImageTool } from '../tools/generate-image.js';
 import { createAnalyzeImageTool } from '../tools/analyze-image.js';
-import { createTablesQueryTool } from '../tools/tables-query.js';
-import { createTablesMutationTool } from '../tools/tables-mutation.js';
-import { createTablesSchemaPlanTool } from '../tools/tables-schema-plan.js';
 import { createExportDataTool } from '../tools/export-data.js';
 import { createTaskCaptureTool } from '../tools/task-capture.js';
 import { createReadAttachmentTool } from '../tools/read-attachment.js';
@@ -44,7 +41,8 @@ import type { AgentProfile } from '../profiles/profile.js';
  * Confirm, so a draft made there would just strand. They are stripped from every
  * unattended tool face (scheduled runs).
  */
-export const DISPATCH_TOOL_IDS: readonly string[] = ['tables_schema_plan', 'task_capture'];
+import { DISPATCH_TOOL_IDS } from './tool-policy.js';
+export { DISPATCH_TOOL_IDS };
 
 export interface ResolveEffectiveToolsArgs {
   userId: string;
@@ -261,15 +259,6 @@ export function buildLazyServerTools(
     });
   }
 
-  if (effectiveTools.includes('tables_query')) {
-    tools.tables_query = createTablesQueryTool({ userId });
-  }
-  if (effectiveTools.includes('tables_mutation')) {
-    tools.tables_mutation = createTablesMutationTool({ userId });
-  }
-  if (effectiveTools.includes('tables_schema_plan')) {
-    tools.tables_schema_plan = createTablesSchemaPlanTool({ userId });
-  }
   if (effectiveTools.includes('session_query')) {
     tools.session_query = createSessionQueryTool(db, { userId, userRole, sessionId });
   }

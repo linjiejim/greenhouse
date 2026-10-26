@@ -139,6 +139,10 @@
     "./plugin-host": {
       "import": "./src/plugin-host.ts",
       "types": "./src/plugin-host.ts"
+    },
+    "./discriminators": {
+      "import": "./src/discriminators.ts",
+      "types": "./src/discriminators.ts"
     }
   },
   "scripts": {

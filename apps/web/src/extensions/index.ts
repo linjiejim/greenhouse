@@ -102,10 +102,15 @@ for (const ext of LOADED_WEB_EXTENSIONS) {
   }
   if (ext.contextProvider) registerExtensionContextProvider(ext.id, ext.contextProvider);
   for (const card of ext.toolCards ?? []) {
-    registerToolCard(card.tool, { component: card.component, placement: card.placement ?? 'inline' });
+    registerToolCard(card.tool, {
+      component: card.component,
+      placement: card.placement ?? 'inline',
+      matches: card.matches,
+      owner: ext.id,
+    });
   }
   if (ext.entitySync) registerEntitySync(ext.entitySync, ext.id);
-  if (ext.toolIcons) registerToolIcons(ext.toolIcons);
+  if (ext.toolIcons) registerToolIcons(ext.toolIcons, ext.id);
   if (ext.entityKinds?.length) registerEntityKindUi(ext.entityKinds, ext.id);
   if (ext.mcpGroups?.length) {
     registerMcpGroupUi(ext.mcpGroups.map((group) => ({ ...group, extensionId: ext.id })));

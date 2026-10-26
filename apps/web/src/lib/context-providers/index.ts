@@ -6,5 +6,4 @@
  */
 
 import './chat';
-import './tables';
 import './execution-center';

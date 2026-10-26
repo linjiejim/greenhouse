@@ -82,6 +82,7 @@ describe('web extension seam', () => {
   });
 
   it('registers the tool card and icon', () => {
+    useExtensionsStore.setState({ extensions: [{ id: 'example', name: 'Example', description: null }] });
     expect(registeredToolCard('example_notes_query')?.placement).toBe('inline');
     expect(getToolIcon('example_notes_query')).toBe(StickyNote);
     expect(isArtifactCall({ name: 'example_notes_query', output: { count: 0, notes: [] } })).toBe(true);

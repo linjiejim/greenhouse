@@ -16,9 +16,6 @@ import { fromExtensions } from '../extensions/index.js';
  *   knowledge  knowledge_base_versions (one row per saved edit), each document
  *              confirmed with resolveKbAccess for the viewer;
  *   plugins    registered recentChanges sources, each applying its own access rules;
- *   tables     table_records changes in tables of the Bases the platform lists
- *              for the viewer, one row per (table, person) with a count —
- *              record values are never read;
  *   files      new files on the team shelf and the viewer's own shelf.
  * A change made through a member's agent is matched to the recorded
  * agent_write run (same member, same module, inside the run's time span) and
@@ -38,7 +35,6 @@ import type { ActivityItem } from '@greenhouse/types/activity';
 import { entityUrl } from '@greenhouse/types/entity-links';
 import { filesPageHref, shelfOfVisibility } from '@greenhouse/types/files';
 import { canRead as canReadKb, resolveKbAccess } from '../knowledge/access.js';
-import { userHasFeature } from '../auth/features.js';
 import { humanActor } from '../platform/actor.js';
 import type { PlatformRuntime } from '../platform/runtime.js';
 import { moduleOfTool } from './activity-log.js';
@@ -46,9 +42,6 @@ import { moduleOfTool } from './activity-log.js';
 type Cursor = ActivityCursor;
 export const RECENT_DAYS = 14;
 export const RECENT_MAX_ITEMS = 50;
-/** Bases / tables a single feed looks into. */
-const MAX_BASES = 50;
-const MAX_TABLES = 200;
 /**
  * A change counts as an agent's when it lands inside the run's span: the write
  * happens after the run is created and before it settles, both stamped by the
@@ -148,57 +141,6 @@ async function knowledgeChanges(db: DatabaseProvider, viewer: RecentViewer, wind
   );
 }
 
-async function tableChanges(
-  db: DatabaseProvider,
-  runtime: PlatformRuntime,
-  viewer: RecentViewer,
-  window: RecentChangeWindow,
-  need: number,
-): Promise<RecentChangeLane> {
-  if (!(await userHasFeature(viewer.id, viewer.role, 'tables', db))) return EMPTY_LANE;
-  const listed = await runtime.dispatch({
-    actor: humanActor(viewer),
-    appId: 'tables',
-    actionId: 'listBases',
-    payload: {},
-  });
-  if (!listed.ok) return EMPTY_LANE;
-  const bases = (listed.data as { bases: Array<{ id: string }> }).bases.slice(0, MAX_BASES);
-  const tables = new Map<string, { baseId: string; name: string }>();
-  for (const base of bases) {
-    for (const table of await db.tables.listTables(base.id)) {
-      if (tables.size >= MAX_TABLES) break;
-      tables.set(table.id, { baseId: base.id, name: table.name });
-    }
-  }
-  return scanRecentChanges(
-    window,
-    need,
-    (cursor, limit) =>
-      db.activity.recentTableChanges({ tableIds: [...tables.keys()], since: window.since, cursor, limit }),
-    async (rows) =>
-      rows.map((row) => {
-        const table = tables.get(row.table_id)!;
-        return recentChangeDraft({
-          id: row.key,
-          source: 'person',
-          at: row.at,
-          actorId: row.updated_by,
-          module: 'tables',
-          verb: 'update',
-          entity: 'tableRecords',
-          action: 'updateRecords',
-          target: {
-            id: String(row.table_id),
-            label: table.name,
-            url: `#/tables/${table.baseId}/table/${row.table_id}`,
-          },
-          detail: String(row.records),
-        });
-      }),
-  );
-}
-
 async function fileChanges(db: DatabaseProvider, viewer: RecentViewer, window: RecentChangeWindow, need: number) {
   return scanRecentChanges(
     window,
@@ -280,7 +222,6 @@ export async function listRecentChanges(
     ...fromExtensions('recentChanges').map((source) =>
       source.load(db, deps.runtime, viewer, window, need).catch(() => EMPTY_LANE),
     ),
-    tableChanges(db, deps.runtime, viewer, window, need).catch(() => EMPTY_LANE),
     fileChanges(db, viewer, window, need).catch(() => EMPTY_LANE),
   ]);
   // A lane that stopped early is complete only down to its frontier; past the

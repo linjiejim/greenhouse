@@ -1,3 +1,5 @@
+import { registerApplicationPage } from '../lib/extension-registries';
+import { useExtensionsStore } from '../stores/extensions-store';
 import { describe, expect, it } from 'vitest';
 import type { PlatformApplication } from './catalog.js';
 import { activeNavigationKey, buildPrimaryNavigation, PRIMARY_NAV_ORDER } from './navigation.js';
@@ -18,12 +20,14 @@ const labels = { files: 'Files', skillhub: 'SkillHub', automations: 'Automation'
 
 describe('Primary navigation', () => {
   it('orders the workspace by goal and puts the assistant last', () => {
+    registerApplicationPage('fixture', 'fixture', 'fixture');
+    useExtensionsStore.setState({ extensions: [{ id: 'fixture', name: 'Fixture', description: null }] });
     const { primary, overflow } = buildPrimaryNavigation({
-      applications: [application('analytics'), application('tables'), application('knowledge')],
+      applications: [application('analytics'), application('fixture'), application('knowledge')],
       labels,
     });
 
-    expect(primary.map((item) => item.key)).toEqual(['knowledge', 'files', 'tables', 'skillhub', 'automations']);
+    expect(primary.map((item) => item.key)).toEqual(['knowledge', 'files', 'fixture', 'skillhub', 'automations']);
     expect(primary.map((item) => item.href)).toContain('#/files');
     // Agent/MCP-only catalog entries have no browser route, so they never
     // surface as a tab — not even in More.

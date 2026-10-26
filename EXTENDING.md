@@ -536,3 +536,13 @@ An empty page module key registers its root identity as the extension id. Offici
 entity kinds retain their wire names; plugins register their route template like any other kind.
 Classic entity UI and context providers are hidden while their owner is disabled. Plugin e2e
 specs import only @playwright/test and use the shared authenticated browser state.
+
+### Tables extraction seams (4.0)
+
+- `catalogSources: [{id, replaceDefaultSource?, load(CatalogInput)}]` contributes the existing data-catalog `bases` and truncation fields through `fromExtensions`; loaders enforce the caller's reachable tools and platform actor. Core does not know the owning application. `replaceDefaultSource` suppresses the automatic tool-source entry when the plugin owns its full catalog presentation.
+- `discriminators` registers `shareResources`, `fileLinkTargets`, `folderScopes`, `auditApps`, `runKinds`, and `artifactKinds`. Core service writes reject unknown values; historical reads survive disabled plugins. Application ids also register from active applications. Knowledge currently registers its values at the host until its package move.
+- `driveScopes` can add `placement(input,userId)`, `validatePlacement(input)` and `authorizeNode(node,ctx)` for a legacy placement contract. Omitted fields preserve the existing owner_key behavior. Tables keeps base_id without changing stored rows.
+- `meta.interactiveOnly` declares a draft that requires a person at its card; the catalog adds it to the shared headless deny list after catalog construction.
+- Web `toolCards` can add `matches(output)` and receive `actionId` / `sessionId` from the host. Read-only conversations receive neither handle. `placement: below` preserves prose-before-confirm order.
+
+Tables' nine tables are owned by its schema and idempotent adoption lane. It is enabled by default and uses the same boundary rules as private packages. Shared InlineEditCell remains core because other plugins already use that kit primitive.

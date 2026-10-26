@@ -1,3 +1,4 @@
+import { humanActor } from '../platform/actor.js';
 /**
  * Drive routes — /api/drive
  *
@@ -47,6 +48,7 @@ import { getAuthUser } from '../auth/middleware.js';
 import { contentDisposition } from '../http/content-disposition.js';
 import {
   resolveDriveAccessAsync,
+  extensionDrivePlacement,
   isKnownDriveScope,
   canReadDrive,
   canWriteDrive,
@@ -66,8 +68,6 @@ import {
   deleteObjectAtKey,
 } from '../storage/uploads.js';
 import type { AppEnv } from '../app-env.js';
-import { humanActor } from '../platform/actor.js';
-import { getPlatformRuntime } from '../platform/runtime.js';
 
 // ─── Helpers ─────────────────────────────────────────────
 
@@ -79,11 +79,6 @@ interface ScopeKeys {
   owner_key: string | null;
 }
 
-/** Core owns exactly these two; everything else must come from an extension. */
-function isCoreScope(scope: string): scope is 'kb' | 'tables' {
-  return scope === 'kb' || scope === 'tables';
-}
-
 /**
  * Resolve the scope's owner keys from caller input, deriving (never trusting) the
  * owner for private KB nodes. Returns an error string for an incomplete scope.
@@ -93,13 +88,9 @@ function buildScopeKeys(
   scope: DriveScope,
   input: { base_id?: string | null; visibility?: 'team' | 'private'; owner_key?: string | null },
 ): ScopeKeys | { error: string } {
-  if (!isCoreScope(scope)) {
-    if (!input.owner_key) return { error: `owner_key is required for the ${scope} scope` };
-    return { scope, base_id: null, visibility: null, owner_user_id: null, owner_key: input.owner_key };
-  }
-  if (scope === 'tables') {
-    if (!input.base_id) return { error: 'base_id is required for tables scope' };
-    return { scope, base_id: input.base_id, visibility: null, owner_user_id: null, owner_key: null };
+  if (scope !== 'kb') {
+    const placement = extensionDrivePlacement(scope, input, getAuthUser(c).id);
+    return 'error' in placement ? placement : { scope, ...placement };
   }
   const visibility = input.visibility ?? 'team';
   const user = getAuthUser(c);
@@ -115,26 +106,7 @@ function buildScopeKeys(
 /** Authorize against a node (folder/file row, or a scope-root descriptor). */
 async function accessFor(c: Context<AppEnv>, node: DriveAccessNode, operation: 'read' | 'write') {
   const user = getAuthUser(c);
-  let tablesRole: 'owner' | 'builder' | 'editor' | 'viewer' | null | undefined;
-  if (node.scope === 'tables' && node.base_id) {
-    const decision = await getPlatformRuntime().authorize(
-      humanActor(user, c),
-      operation === 'read' ? 'tables.data.read' : 'tables.data.update',
-    );
-    if (!decision.allowed) return null;
-    const db = getDb();
-    const [base, member] = await Promise.all([
-      db.tables.getBase(node.base_id),
-      db.tables.getBaseMember(node.base_id, user.id),
-    ]);
-    if (base && !base.archived_at) {
-      if (user.role === 'super' || base.owner_id === user.id) tablesRole = 'owner';
-      else if (member) tablesRole = member.role;
-      else if (base.visibility === 'team') tablesRole = 'viewer';
-      else tablesRole = null;
-    }
-  }
-  return resolveDriveAccessAsync(node, { userId: user.id, userRole: user.role, db: getDb(), operation, tablesRole });
+  return resolveDriveAccessAsync(node, { userId: user.id, userRole: user.role, db: getDb(), operation });
 }
 
 const toNode = (

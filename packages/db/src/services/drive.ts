@@ -1,3 +1,4 @@
+import { assertDrivePlacement } from '@greenhouse/types/discriminators';
 /**
  * Drive service — generic folder/file cabinet over `folders` and the drive rows
  * of `files` (source = 'drive').
@@ -128,6 +129,7 @@ export interface DriveFileListOpts {
 export function createDriveService(db: Db) {
   const service = {
     async createFolder(input: DriveFolderInput): Promise<DriveFolderRow> {
+      assertDrivePlacement(input);
       const now = nowIso();
       const [row] = await db
         .insert(driveFolders)
@@ -207,6 +209,7 @@ export function createDriveService(db: Db) {
      * confirmed via completeFile. Pending rows are never listed or served.
      */
     async initFile(input: DriveFileInput): Promise<DriveFileRow> {
+      assertDrivePlacement(input);
       const now = nowIso();
       const [row] = await db
         .insert(driveFiles)

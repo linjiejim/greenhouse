@@ -41,7 +41,6 @@ describe('surface-derived exposure sets', () => {
         'analyze_image',
         'session_query',
         'knowledge_query',
-        'tables_query',
         // 2026-08-03: Automations (scheduled tasks) — the model can inspect and
         // manage the user's own schedules; owner scoping is inside the tools.
         'automation_query',
@@ -67,7 +66,6 @@ describe('surface-derived exposure sets', () => {
     expect(core(MUTATING_PROXY_ALLOWLIST)).toEqual(
       [
         'knowledge_mutation',
-        'tables_mutation',
         'automation_mutation',
         'files_mutation',
         // v1.5: members' agents file requests and report frictions as recorded writes.
@@ -89,8 +87,6 @@ describe('surface-derived exposure sets', () => {
         // 2026-07-23: image generation opened to MCP so image-producing skills
         // call a tool instead of a REST relay.
         'generate_image',
-        'tables_query',
-        'tables_mutation',
         // 2026-08-16: automation_query stays (reading your own schedule is
         // harmless and useful); automation_mutation left — a machine client IS
         // unattended, and an automation that can create automations multiplies.
@@ -174,9 +170,6 @@ describe('surface-derived exposure sets', () => {
         'knowledge_query',
         'knowledge_mutation',
         'call_llm',
-        'tables_query',
-        'tables_mutation',
-        'tables_schema_plan',
         'task_capture',
         'read_attachment',
         'export_data',

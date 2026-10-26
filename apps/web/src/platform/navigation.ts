@@ -44,9 +44,9 @@ interface BuildPrimaryNavigationArgs {
  * Knowledge, Tables and Projects are applications: each appears only when the
  * server-filtered catalog authorizes it and it has a host route.
  */
-export const PRIMARY_NAV_ORDER = ['knowledge', 'files', 'tables', 'skillhub', 'automations'] as const;
+export const PRIMARY_NAV_ORDER = ['knowledge', 'files', 'skillhub', 'automations'] as const;
 
-const APPLICATION_SLOTS = new Set<string>(['knowledge', 'tables']);
+const APPLICATION_SLOTS = new Set<string>(['knowledge']);
 
 export function buildPrimaryNavigation({ applications, labels }: BuildPrimaryNavigationArgs): PrimaryNavigation {
   const applicationItems = applications.flatMap((application) => {

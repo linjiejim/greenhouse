@@ -1,3 +1,4 @@
+import { assertDiscriminator } from '@greenhouse/types/discriminators';
 /**
  * Platform control-plane service.
  *
@@ -401,6 +402,7 @@ export function createPlatformService(db: Db) {
     },
 
     async recordAudit(event: PlatformAuditEvent): Promise<PlatformAuditEventRow> {
+      assertDiscriminator('auditApps', event.resource.appId);
       const rows = await db
         .insert(platformAuditEvents)
         .values({

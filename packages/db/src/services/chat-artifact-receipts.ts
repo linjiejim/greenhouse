@@ -1,3 +1,4 @@
+import { assertDiscriminator } from '@greenhouse/types/discriminators';
 /**
  * Durable receipts for non-idempotent actions launched from Chat cards
  * (`card_action_receipts`). The id is the card action's client-chosen key.
@@ -27,6 +28,7 @@ export type ChatArtifactClaim =
 export function createChatArtifactReceiptService(db: Db) {
   return {
     async claim(input: ClaimChatArtifactInput): Promise<ChatArtifactClaim> {
+      assertDiscriminator('artifactKinds', input.kind);
       const now = nowIso();
       const [inserted] = await db
         .insert(chatArtifactReceipts)

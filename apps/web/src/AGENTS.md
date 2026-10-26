@@ -199,7 +199,7 @@ stores/
 
 - Administration › Team context（`pages/administration/team-context.tsx`）选团队约定与术语表（只列团队文档，失效的选项打标签说明原因）和工作区时区；读写 `/api/admin/team-context`，Runtime Config 不渲染 `team_context.*`。
 - Issues & requests 页头的「生成本月复盘」（`retro-button.tsx`，两个 tab 共用 `actions`）调 `POST /api/admin/retro`，成功后给出文档链接，跳过建议时用 warning toast 说明原因。
-- 数据目录是 Tables 下的 `#/tables/catalog`（`pages/tables/data-catalog.tsx`，模块 `workspace.data-catalog`，用量仍计 `tables`），入口在 Tables 首页 actions；内容与 MCP `data_catalog` 同源，只读。
+- 数据目录是 Tables 下的 `#/tables/catalog`（`plugins/tables/web/pages/data-catalog.tsx`，模块 `tables.catalog`，用量仍计 `tables`），入口在 Tables 首页 actions；内容与 MCP `data_catalog` 同源，只读。
 - 接入指南（`settings/agent-access/connect.tsx`）是按客户端的四步向导：选客户端 → 该客户端的配置（MCP 地址、OAuth 登录方式、该客户端能用的模型网关部分）→ 检查连接（`/api/agent-access/connections`，10 分钟内有调用算连上）→ 提示（先调 team_context）。新增客户端加进 `CLIENTS` 与 `agentAccess.wizard.client.*`，服务端 `agentClientKind` 同步。
 - 铃铛通知页签：通知 payload 带 `url`（`#/` 开头）时点击直达该页（复盘通知用它链到文档）。
 
@@ -603,3 +603,7 @@ My prompts and accepts plugin tabs with optional default/title/description/sideb
 Tab panels receive subPath and query params. A disabled catalogue makes My prompts the default.
 Both plugins own their `ext.<id>.*` messages. Context providers, route context resolvers and entity
 sync mappings are contributed by plugins; inactive providers and peeks do not render.
+
+### Tables plugin (4.0)
+
+Tables is a default-on package under `plugins/tables`, owning schema/services, routes/tools/CLI, data catalog lane, classic grid/sidebar/cards/messages and MCP group. Core FEATURE_FLAGS is empty; active plugins register flags, so `/api/auth/me` still reports `features.tables` when enabled. Disabled Tables contributes no route, tool, catalog base, navigation, context provider or flag. Plugin cards use host-provided action/session handles. Shared inline cell editing remains in the web kit.

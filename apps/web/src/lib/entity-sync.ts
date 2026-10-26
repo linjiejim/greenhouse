@@ -25,7 +25,6 @@ export type EntityDomain = string;
 const owners = new Map<string, string>();
 const TOOL_DOMAINS: Record<string, EntityDomain> = {
   knowledge_mutation: 'knowledge',
-  tables_mutation: 'tables',
 };
 
 export function entityDomainForTool(toolName: string): EntityDomain | null {

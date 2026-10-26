@@ -137,7 +137,7 @@ export const conversationShareReads = pgTable(
 
 // ─── card_action_receipts ─────────────────────────────────
 
-export const CARD_RECEIPT_KINDS = ['tables_schema_plan', 'task_capture'] as const;
+export const CARD_RECEIPT_KINDS = ['task_capture'] as const;
 export const CARD_RECEIPT_STATUSES = ['processing', 'succeeded', 'failed'] as const;
 
 /**
@@ -153,7 +153,7 @@ export const cardActionReceipts = pgTable(
       .notNull()
       .references(() => conversations.id, { onDelete: 'cascade' }),
     user_id: text('user_id').notNull(),
-    kind: text('kind', { enum: CARD_RECEIPT_KINDS }).notNull(),
+    kind: text('kind').notNull(),
     request_hash: text('request_hash').notNull(),
     status: text('status', { enum: CARD_RECEIPT_STATUSES }).notNull(),
     result: json<Record<string, unknown>>('result', {}),
@@ -164,7 +164,6 @@ export const cardActionReceipts = pgTable(
   (table) => [
     index('idx_card_action_receipts_session').on(table.session_id),
     index('idx_card_action_receipts_user').on(table.user_id),
-    oneOf('chk_card_action_receipts_kind', table.kind, CARD_RECEIPT_KINDS),
     oneOf('chk_card_action_receipts_status', table.status, CARD_RECEIPT_STATUSES),
   ],
 );

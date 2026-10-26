@@ -28,31 +28,6 @@ describe('resolveDriveAccess — kb scope', () => {
   });
 });
 
-describe('resolveDriveAccess — tables scope', () => {
-  it('maps Base roles to Drive access and denies missing membership', () => {
-    expect(
-      resolveDriveAccess({ scope: 'tables', base_id: '1' }, 'owner', {
-        tablesRole: 'owner',
-      }),
-    ).toBe('owner');
-    expect(
-      resolveDriveAccess({ scope: 'tables', base_id: '1' }, 'builder', {
-        tablesRole: 'builder',
-      }),
-    ).toBe('editor');
-    expect(
-      resolveDriveAccess({ scope: 'tables', base_id: '1' }, 'viewer', {
-        tablesRole: 'viewer',
-      }),
-    ).toBe('reader');
-    expect(
-      resolveDriveAccess({ scope: 'tables', base_id: '1' }, 'outsider', {
-        tablesRole: null,
-      }),
-    ).toBeNull();
-  });
-});
-
 describe('canReadDrive / canWriteDrive', () => {
   it('read allows any non-null access; write needs owner or editor', () => {
     expect(canReadDrive('reader')).toBe(true);

@@ -1,3 +1,4 @@
+import { findExtensionPage } from '../../extensions/index';
 import { LibrarySidebar } from '../../extensions/host';
 /**
  * AppSidebar — full-height brand, global navigation, and contextual rail.
@@ -19,7 +20,6 @@ import { AppLogo, ResizeHandle } from '../ui';
 import { AssistantNavButton } from '../agent-panel';
 import { SearchNavButton } from '../search/search-nav-button';
 import { SIDEBAR_DEFAULT_WIDTH, SIDEBAR_MAX_WIDTH, SIDEBAR_MIN_WIDTH, useAuthStore, useUIStore } from '../../stores';
-import { usePlatformCatalog } from '../../stores/platform-store';
 import { useT } from '../../lib/i18n';
 import { SidebarPrimaryAction } from './sidebar-primary-action';
 import { SidebarGlobalNavigation } from './sidebar-global-navigation';
@@ -34,7 +34,6 @@ import {
   PinnedSection,
   PinnedSectionCollapsed,
   KnowledgeNavPanel,
-  TablesNavPanel,
 } from './sidebar-panels';
 import { ExtensionSidebarPanel } from '../../extensions/host';
 
@@ -181,7 +180,7 @@ export function AppSidebar({
   const t = useT();
   const { currentUser } = useAuthStore();
   const { sidebarCollapsed, sidebarWidth, setSidebarCollapsed, setSidebarWidth } = useUIStore();
-  const { hasApplication } = usePlatformCatalog();
+
   const minWidth = SIDEBAR_MIN_WIDTH;
   const maxWidth = SIDEBAR_MAX_WIDTH;
   const [sidebarDragWidth, setSidebarDragWidth] = useState<number | null>(null);
@@ -351,9 +350,8 @@ export function AppSidebar({
 
               {/* Tables own the full contextual rail. Execution Center is a
                   global utility and deliberately omits unrelated pinned links. */}
-              {route !== 'tables' && route !== 'activity' && (
-                <PinnedSection currentHash={`#/${route}${subPath ? '/' + subPath : ''}`} />
-              )}
+              {!(route === 'extension' && extensionRoute && findExtensionPage(extensionRoute)?.page.sidebarPanel) &&
+                route !== 'activity' && <PinnedSection currentHash={`#/${route}${subPath ? '/' + subPath : ''}`} />}
 
               {/* Contextual Panel */}
               <div className="flex-1 min-h-0 overflow-hidden flex flex-col mt-1">
@@ -365,7 +363,6 @@ export function AppSidebar({
                     document, which lives in the later segments. */}
                 {route === 'knowledge' && <KnowledgeNavPanel activeModule={subPath} />}
                 {route === 'skillhub' && <LibrarySidebar subPath={subPath} />}
-                {route === 'tables' && hasApplication('tables') && <TablesNavPanel subPath={subPath} />}
                 {route === 'extension' && extensionRoute && (
                   <ExtensionSidebarPanel route={extensionRoute} subPath={subPath} />
                 )}

@@ -2,7 +2,7 @@ import { rpc } from './client';
 
 export interface ArtifactReceipt {
   id: string;
-  kind: 'tables_schema_plan' | 'task_capture';
+  kind: string;
   status: 'processing' | 'succeeded' | 'failed';
   result: unknown;
   error: string | null;

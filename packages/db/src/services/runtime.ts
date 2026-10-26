@@ -1,3 +1,4 @@
+import { assertDiscriminator } from '@greenhouse/types/discriminators';
 /**
  * Trusted Runtime Kernel service.
  *
@@ -779,6 +780,7 @@ export function createRuntimeService(db: Db) {
     },
 
     async createRun(input: RuntimeRunCreateInput): Promise<RuntimeRunRow> {
+      assertDiscriminator('runKinds', input.kind);
       const id = input.id ? assertIdentifier(input.id, 'id') : prefixedId('run');
       const ownerUserId = assertIdentifier(input.owner_user_id, 'owner_user_id');
       const initiatedBy = assertIdentifier(input.initiated_by_user_id, 'initiated_by_user_id');

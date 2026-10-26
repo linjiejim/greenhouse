@@ -16,6 +16,11 @@ extension-kit: expose the existing snapshot-locked API and web kits as `@greenho
 
 ### Changed
 
+- Tables 成为默认启用的官方插件；表、字段、视图、公式、记录、附件、目录、工具、CLI 与经典网页由插件拥有。既有 API、MCP、功能开关与链接保持兼容，停用不删数据。
+- 分享、文件关联、目录、审计应用、运行种类与卡片回执种类改为按启用插件注册值校验新写入；迁移保留历史记录。
+
+extension-kit: expose existing artifact receipt/claim helpers, shared file/link/share schema targets and audit types, CLI flags, row-id validation, catalog input, and classic drive/catalog/artifact-card helpers required by Tables; no existing exports removed.
+
 - Extract SkillHub (default on) and Projects (default off) into official plugins, with unchanged REST URLs, tool ids and MCP prompt names. Saved prompts remain core; plugin-disabled servers keep data and remove optional surfaces.
 - Add permission-filtered agentContext fragments/resources/prompts, plugin object-reference and recent-activity sources, and contributed route rate limits.
 

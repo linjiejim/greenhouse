@@ -58,11 +58,8 @@ export interface AgentProfile {
 const KNOWN_TOOLS = new Set([
   'analyze_image',
   'external_search',
-  'feature_request',
   'generate_image',
   'ask_user',
-  'project_query',
-  'project_mutation',
   'session_query',
   'compute',
   'knowledge_query',

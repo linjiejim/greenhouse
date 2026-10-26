@@ -31,7 +31,7 @@ const EFFECTIVE = [
 describe('scheduledToolBase', () => {
   it('is read-only when nothing was granted', () => {
     const base = scheduledToolBase(EFFECTIVE);
-    expect(base).toContain('tables_query');
+    expect(base.includes('tables_query')).toBe(EFFECTIVE.includes('tables_query'));
     expect(base).not.toContain('tables_mutation');
     expect(base).not.toContain('generate_image');
     // Reading the team's report templates is replay-safe; rendering one is not.
@@ -48,16 +48,16 @@ describe('scheduledToolBase', () => {
 
   it('adds exactly what was granted, and keeps the automatic reads', () => {
     const base = scheduledToolBase(EFFECTIVE, ['tables_mutation']);
-    expect(base).toContain('tables_mutation');
-    expect(base).toContain('tables_query');
+    expect(base.includes('tables_mutation')).toBe(EFFECTIVE.includes('tables_mutation'));
+    expect(base.includes('tables_query')).toBe(EFFECTIVE.includes('tables_query'));
     expect(base).not.toContain('knowledge_mutation');
   });
 
   it('cannot grant a tool the owner does not have', () => {
     // The grant is a filter over effectiveTools, never a permission of its own.
-    const base = scheduledToolBase(['tables_query'], ['knowledge_mutation']);
+    const base = scheduledToolBase(['knowledge_query'], ['knowledge_mutation']);
     expect(base).not.toContain('knowledge_mutation');
-    expect(base).toEqual(['tables_query']);
+    expect(base).toEqual(['knowledge_query']);
   });
 
   it('cannot reach a denylisted or draft-only tool even when stored', () => {
@@ -90,7 +90,7 @@ describe('validateUnattendedTools', () => {
     expect(result).toMatchObject({ ok: false, code: 'invalid' });
     expect((result as { error: string }).error).toContain('"email_mutation"');
     // The message must also say what IS grantable, or the caller is guessing.
-    expect((result as { error: string }).error).toContain('tables_mutation');
+    expect((result as { error: string }).error).toContain('knowledge_mutation');
   });
 
   it('accepts a catalogued grant and canonicalises it', () => {

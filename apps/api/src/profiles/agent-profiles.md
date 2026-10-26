@@ -264,3 +264,5 @@ stateless Agent/MCP 不开放该文件工具。
 - **自建 Agent 的 `tools` 是交集过滤器**，另有 10 个 `builtin: true` 的工具无条件并入该过滤器（`BUILTIN_AGENT_TOOL_IDS`），使作者不必知道它们存在也能得到一个会追问、会读附件、会定时的 Agent。判据、清单与「必须并进过滤集而非结果集」的理由写在 api AGENTS.md「内置 Agent 工具」一节。
 - 内置只影响自建 Agent；系统 profile 本就拿全量 allow-set，不受影响。无人值守面（定时任务）另有 fail-closed 白名单 `filterUnattendedToolIds` 收窄，内置不给它新增任何工具。
 
+
+内置 Sprouty 与 desktop 的 `tools` 都为空数组：运行时本来就使用成员当前允许的完整工具集（仅 custom profile 的 tools 是交集过滤器）。不在 YAML 留插件工具 id，避免关闭插件后 Profile 校验失败；不改变成员权限。

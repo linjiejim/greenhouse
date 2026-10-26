@@ -57,7 +57,7 @@ import { buildExternalServiceTools } from '../../../../apps/api/src/agent-runtim
 import { initializePlatformRuntime, resetPlatformRuntimeForTests } from '../../../../apps/api/src/platform/runtime.js';
 import { projectsRegistration } from '../../../projects/api/platform/application.js';
 import { knowledgeRegistration } from '../../../../apps/api/src/platform/knowledge/registration.js';
-import { tablesRegistration } from '../../../../apps/api/src/platform/tables/application.js';
+import { tablesRegistration } from '../../../tables/api/platform/application.js';
 import { runWithMeteringScope, type MeteringScope } from '../../../../apps/api/src/usage/metering.js';
 import { setPriceOverridesForTests, syncPriceOverrides } from '../../../../apps/api/src/usage/pricing.js';
 import { uploadCabinetFile } from '../../../../apps/api/src/drive/kb-cabinet.js';

@@ -52,9 +52,6 @@ ${chalk.bold('Manage')}
   knowledge reindex         Recompute segmented FTS tokens (--batch)
   knowledge import <dir>    Seed a folder of Markdown files into the team knowledge base
   seed                      Load the example dataset from data/examples (--reset | --keep)
-  tables list-archived      Deleted (archived) Bases and tables (--base <id>, --json)
-  tables restore-base <id>  Bring an archived Base back into everyone's list
-  tables restore-table <id> Bring an archived table back into its Base
 
 ${chalk.bold('Diagnose')}
   doctor                    Check env + DB readiness for this deployment
@@ -116,8 +113,6 @@ async function dispatch(command: string, rest: string[]): Promise<number> {
     case 'knowledge':
     case 'kb':
       return (await import('./commands/knowledge.js')).run(rest);
-    case 'tables':
-      return (await import('./commands/tables.js')).run(rest);
     case 'seed':
       return (await import('./commands/seed.js')).run(rest);
     case 'migrate-from-1x':

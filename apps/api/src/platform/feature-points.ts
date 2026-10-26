@@ -60,21 +60,6 @@ export interface FeaturePointDef {
  */
 const CORE_FEATURE_POINTS: readonly FeaturePointDef[] = [
   {
-    key: 'tables',
-    title: 'Tables',
-    description:
-      'Internal multidimensional tables. Enabling this turns Tables on everywhere — app, REST, MCP, and chat.',
-    icon: 'Table2',
-    kind: 'app',
-    group: 'basic',
-    appId: 'tables',
-    flag: 'tables',
-    // tables_schema_plan rides the flag but declares no proxy/MCP surface —
-    // schema editing is chat-only, where a human can press Confirm (spec D3).
-    toolIds: ['tables_query', 'tables_mutation', 'tables_schema_plan'],
-  },
-
-  {
     key: 'knowledge',
     title: 'Knowledge',
     description: 'Team and personal knowledge base, retrieval, and editing.',
@@ -100,18 +85,6 @@ const CORE_FEATURE_POINTS: readonly FeaturePointDef[] = [
 export const FEATURE_POINTS: readonly FeaturePointDef[] = [...CORE_FEATURE_POINTS, ...fromExtensions('featurePoints')];
 
 /**
- * Per-feature tool id sets, DERIVED from the FEATURE_POINTS entries above — the
- * registry is the single source for "which tools ride which flag". A second
- * hand-written list here is exactly how tables_schema_plan once fell into the
- * assignable bucket (constant said it rode the flag, registry entry didn't).
- */
-function pointToolIds(key: string): readonly string[] {
-  const point = FEATURE_POINTS.find((p) => p.key === key);
-  if (!point) throw new Error(`FEATURE_POINTS entry "${key}" is missing`);
-  return point.toolIds;
-}
-
-/**
  * The feature flag that gates a platform application, if any.
  *
  * Derived from the registry so the HTTP layer never hard-codes app ids: an app
@@ -120,8 +93,6 @@ function pointToolIds(key: string): readonly string[] {
 export function appFeatureFlag(appId: string): string | undefined {
   return FEATURE_POINTS.find((point) => point.kind === 'app' && point.appId === appId)?.flag;
 }
-
-export const TABLES_FEATURE_TOOL_IDS: readonly string[] = pointToolIds('tables');
 
 /**
  * Tool ids that are NOT individually assignable: they ride with a feature

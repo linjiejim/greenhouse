@@ -348,25 +348,9 @@ Saved prompts and task_capture stay core. Skill tools, storage, scanning, pack s
 - **引用指令写在工具 description，措辞取自零 import 叶子模块 `tools/cite-url.ts` 的 `CITE_URL_INSTRUCTION`**（今天 7 个工具在用）。写在 description 而不是 profile prompt，是因为它随 function definition 下发、自动覆盖 chat / proxy / MCP 三个面；抽成常量是因为六份同义句必然漂移。**「verbatim，不许自己拼」是这句话的重点**——伪造的链接和真链接长得一模一样，直到有人点开。
 - **加这句话要付描述预算**（`__tests__/description-budget.test.ts`）：这次的 ~600 字符是靠删工具里 zod schema 已经 `.describe()` 过的筛选/排序字段清单付的，ceiling 没动。下次同理——先删重复，别先抬预算。
 
-### Tables 的对话式 Schema 编辑（`tables_schema_plan` + `/api/tables/schema-plan/apply`）
-- **三个 Tables 工具的分工**：`tables_query` 读、`tables_mutation` 写记录（两者都上 proxy/MCP）、`tables_schema_plan` 改结构（**只上聊天面**）。前两个调用即生效，第三个只起草。方案与决策见 [spec](../../../docs/specs/20260803-tables-conversational-schema-editing.md)。
-- **确认门是卡片按钮，不是 `confirm:true` 参数**：工具不写任何行，只返回一个 artifact；真正执行的 `POST /api/tables/schema-plan/apply` 只接受用户自己的 Bearer，**模型的工具表里没有它**。所以 `tables_schema_plan` 刻意不声明 `surface`（proxy/MCP 上没有真人可以按确认），并进 `DISPATCH_TOOL_IDS` —— 定时任务同样拿不到它（无头会话里那张卡永远没人按）。
-- **权限只判一次**：apply 逐项 `runtime.dispatch` 到既有 action（`createBase`/`createTable`/`createField`/…），Base 角色门槛因此与 Web 完全同源——schema 要 `builder`、Base 设置要 `owner`。工具侧的草稿期探针（`getSchema`/`getBase` 两个只读 action）只是为了**不给用户一张按下去必失败的卡**，不是第二条授权路径。
-- **不是原子的，也不该是**：跨 action 事务必须绕开 `runtime.dispatch` 自己拼 SQL = 复制第二份权限判定。改为逐项尽力执行 + 逐项如实回报（`applied`/`failed`/`skipped`），依赖失败 ref 的后续项传递性 skip。
-- **刷新按稳定 action id 恢复，绝不重新武装**：schema 操作不幂等（再确认一次会建出第二套同名字段），所以前端以 assistant message id + pipeline 位置派生 action id；apply 在第一项执行前原子 claim `card_action_receipts`，把完整成功/部分失败结果写成持久回执。重复请求只返回原结果，processing/failed 也不猜测重试；必须让用户起一张新草稿，避免在不确定的副作用后重复建表。
-- **两个会咬人的运行时行为**（工具 description 里已写明，改动时别弄丢）：`createBase` **必然**连带建一张表（所以计划用 `defaultTableRef`/`defaultTableName` 命名并复用它，否则留下空的 "Table 1"）；`createTable` **必然**带一个必填主字段 `Name` 和一个 `Grid` 视图（所以模型不该再加自己的"名称"字段）。
-- **唯一键冲突曾整条漏成 500**：`platform/tables/application.ts` 的 `wrap()` 只查了 `err.code`，而 drizzle 把 pg code 包在 `err.cause.code` —— Tables 的 `CONFLICT` 分支因此一直是死代码，重名的 Base/表/字段对用户表现为 "Internal Server Error"。判定统一收敛到 `@greenhouse/utils/error` 的 `isUniqueViolation()`（同时查两层 + 消息兜底）。**再需要判重名时用这个函数，不要抄第五份**。
+### Tables plugin
 
-### Tables 的删除与恢复口径（生命周期）
-
-方案与决策见 [spec](../../../docs/specs/20260803-tables-lifecycle-and-grid-interaction.md)。
-
-- **删除一律软删，恢复分层**：Base / 表 / 记录都只写 `archived_at`（记录是 `deleted_at`），**恢复入口刻意不对称**——记录有表内回收站（`GET /tables/:id/records/deleted` + `POST .../restore`，editor 自助），Base 与表只能由管理员 `pnpm cli tables list-archived | restore-base | restore-table`。误删一行是高频低风险，误删一张表影响所有成员，多一道人工摩擦是特性（D2）。
-- **record 字段策略是真实边界**：所有 record query/aggregate/read/write/batch 都必须在 `requireTableData` 检查 `record.values` 的 read/write policy；masked 单条读取只回空 values，查询与聚合必须 full-read，防止用筛选/聚合反推。个人 view 的 get/update 在 DB service 接收 userId，不能因为调用者是 Base builder 就读改别人的 personal view。attachment 值只接受同 Base 的数字 Drive file id。
-- **删表 / 删 Base 要 `owner`，与「建表/改表只要 builder」刻意不对称**（D3）。归档一张表**不动**任何记录、字段或 relation 链接：指向已归档表的新链接由既有校验拒绝，存量链接保留、rollup 停止刷新。
-- **模型永远不能删表或删 Base**：`tables_schema_plan` 没有、也不要加 `table.archive`/`base.archive` op（D5）。工具描述里写的是"这件事只能用户在侧栏手动做"，改动时别把那句路径提示弄丢——否则模型只会说做不到，不会告诉用户怎么做。
-- **`archived_at` 过滤已经在查询层**（`listTables`/`getSchema`/`listBasesForUser`），新增读路径别忘了它；`getRecordById` 刻意不过滤 `deleted_at`（回收站与审计要看得见已删行）。
-- Tables 的表单、仪表盘、表内自动化与通知已在 3.0 删除（manifest `1.3.0`）——**改 action 表必须 bump**，否则 API 启动即 fatal。
+Tables routes, schema plans, CLI restoration, tools and authorization live in [plugins/tables/AGENTS.md](../../../plugins/tables/AGENTS.md). Core consumes registries only.
 
 ### Platform Kernel v2
 - `platform/` 是内部应用的统一运行时：应用以确定性 Manifest v2 声明 module/entity/field/action/navigation，运行时代码只放在 registration/adapter，不写入 Manifest。`bootstrap.ts` 负责激活已注册 manifest、建立受保护的 `super/team` baseline roles，并只同步 active 内部用户绑定；历史 `external` 用户不再建立 Platform role。成员没有任何角色绑定时，判定按 `users.role` 落到同名系统角色（`db.platform` 的 snapshot），所以手工复制账号行后不必等重启或重跑 bootstrap 也不会 403；护栏 `tests/db/platform-service.db.test.ts`。3.0 不存应用 release，也没有组织表：`orgId` 固定传 `PLATFORM_ORG_ID`（`'default'`）。

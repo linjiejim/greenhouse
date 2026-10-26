@@ -143,6 +143,7 @@ export interface GreenhouseExtension {
    */
   dependsOn?: string[];
 
+  discriminators?: import('@greenhouse/types/discriminators').DiscriminatorValues;
   notificationTransports?: import('../notifications/transports.js').NotificationTransport[];
   notificationKinds?: string[];
   identityProviders?: import('../auth/identity-providers.js').IdentityProvider[];
@@ -173,6 +174,14 @@ export interface GreenhouseExtension {
   /** Bounded daily retention for plugin-owned tables. */
   retention?: import('@greenhouse/db').ExtensionRetentionRule[];
   activity?: ExtensionActivity[];
+  catalogSources?: Array<{
+    id: string;
+    /** Owns the complete catalogue presentation instead of the automatic tool-source entry. */
+    replaceDefaultSource?: boolean;
+    load: (
+      input: import('../hub-context/catalog.js').CatalogInput,
+    ) => Promise<Partial<Pick<import('@greenhouse/types/hub-context').DataCatalog, 'bases' | 'truncated'>>>;
+  }>;
   recentChanges?: import('../activity/recent-source.js').RecentChangeSource[];
   objectRefs?: import('../routes/refs.js').ObjectRefSource[];
   settingValidators?: Array<(key: string, value: string) => string | null>;
@@ -210,7 +219,7 @@ export interface GreenhouseExtension {
    * the resolver declared here. Core validates the shape and delegates the rule.
    */
   driveScopes?: DriveScopeDef[];
-  /** Whole-dataset sources offered by `export_data`, beyond core's inline/tables. */
+  /** Whole-dataset sources offered by `export_data`, beyond core's inline rows. */
   exportSources?: ExtensionExportSource[];
   /**
    * MCP consent groups this extension owns (conventionally its own id). A token

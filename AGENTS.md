@@ -421,8 +421,7 @@ Fine-grained gating beyond roles: open a module/feature to specific internal use
 per-user by a super in Settings → Users → (user) → Permissions.
 
 - **Registry (single source)**: `FEATURE_FLAGS` in `packages/types/src/features.ts`
-  (`{ key, label, description, defaultEnabled? }`). Today: `memory`, `tables` (both
-  `defaultEnabled: true` = opt-out). Stored rows of retired flags (`cloud-agent`) are ignored.
+  (`{ key, label, description, defaultEnabled? }`). Core flags are empty; active plugins register `memory`, `tables` and other module flags. Stored rows of retired flags (`cloud-agent`) are ignored.
 - **Storage**: `user_grants` rows with `kind='feature'` (`user_id × key`, `enabled` boolean);
   opt-in tools are `kind='tool'` rows in the same table.
 - **Resolution** (`resolveUserFeatures` in `apps/api/src/auth/features.ts`): `super → all on`;
@@ -430,7 +429,7 @@ per-user by a super in Settings → Users → (user) → Permissions.
 - **Frontend**: `/api/auth/me` returns resolved `user.features`; UI gates with
   `canUseFeature(currentUser, key)` (`apps/web/src/lib/features.ts`).
 
-Adding an experimental feature (three steps): add the `FEATURE_FLAGS` entry; guard the backend
+Adding an experimental feature (three steps): declare the owning plugin’s `featureFlags` entry; guard the backend
 (`app.use('/api/<x>/*', requireFeature('<key>'))` — UI hiding ≠ access control); wrap the
 tab/route/nav in `canUseFeature`.
 
@@ -579,3 +578,7 @@ tools, classic UI, translations and tests under `plugins/<id>`. Saved prompts re
 `objectRefs`, `recentChanges`, activity descriptors and `rateLimits` replace module cases.
 Legacy URLs/tool ids/entity kinds/MCP prompt names stay unchanged. The core ownership snapshot
 advances without DROP; plugin adoption preserves all rows. Tests enable `all`; core enables none.
+
+### Tables plugin (4.0)
+
+Tables is a default-on package under `plugins/tables`, owning schema/services, routes/tools/CLI, data catalog lane, classic grid/sidebar/cards/messages and MCP group. Core FEATURE_FLAGS is empty; active plugins register flags, so `/api/auth/me` still reports `features.tables` when enabled. Disabled Tables contributes no route, tool, catalog base, navigation, context provider or flag. Plugin cards use host-provided action/session handles. Shared inline cell editing remains in the web kit.

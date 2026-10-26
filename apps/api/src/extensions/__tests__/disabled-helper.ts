@@ -29,6 +29,10 @@ export async function assertPluginDisabled(id: string, routes: string[], toolIds
     expect(extensions.fromExtensions('channels')).toEqual([]);
     expect(extensions.fromExtensions('retention')).toEqual([]);
     expect(extensions.fromExtensions('agentContext')).toEqual([]);
+    expect(extensions.fromExtensions('catalogSources')).toEqual([]);
+    expect(extensions.fromExtensions('discriminators')).toEqual([]);
+    const drive = await import('../../drive/access.js');
+    expect(drive.isKnownDriveScope(id)).toBe(false);
     expect(extensions.fromExtensions('recentChanges')).toEqual([]);
     expect(extensions.fromExtensions('objectRefs')).toEqual([]);
     expect(extensions.fromExtensions('searchSources')).toEqual([]);

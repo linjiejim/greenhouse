@@ -50,6 +50,20 @@
       "when": 1793041810594,
       "tag": "0006_skills-projects-ownership",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1793044499416,
+      "tag": "0007_tables_plugin_discriminators",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1793045097691,
+      "tag": "0008_plugin_artifact_kinds",
+      "breakpoints": true
     }
   ]
 }

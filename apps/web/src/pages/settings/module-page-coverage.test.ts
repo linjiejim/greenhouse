@@ -32,8 +32,8 @@ const MODULE_PAGES: ModulePageContract[] = [
   { file: '../automations.tsx', moduleId: 'workspace.automations', layout: 'list' },
   // Run profiles (custom agents) is the second Automations tab.
   { file: '../run-profiles.tsx', moduleId: 'workspace.automations', layout: 'list' },
-  { file: '../tables/index.tsx', moduleId: 'workspace.tables', layout: 'list' },
-  { file: '../tables/data-catalog.tsx', moduleId: 'workspace.data-catalog', layout: 'list' },
+  { file: '../../../../../plugins/tables/web/pages/index.tsx', moduleId: 'tables', layout: 'list' },
+  { file: '../../../../../plugins/tables/web/pages/data-catalog.tsx', moduleId: 'tables.catalog', layout: 'list' },
   { file: '../../../../../plugins/projects/web/pages/projects.tsx', moduleId: 'projects', layout: 'canvas' },
   { file: '../files.tsx', moduleId: 'workspace.files', layout: 'list' },
   { file: '../../../../../plugins/skills/web/page.tsx', moduleId: 'workspace.skillhub', layout: 'canvas' },

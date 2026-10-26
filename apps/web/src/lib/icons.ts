@@ -464,9 +464,6 @@ export const TOOL_ICONS: Record<string, LucideIcon> = {
   knowledge_query: BookOpen,
 
   compute: Calculator,
-  tables_query: Table2,
-  tables_mutation: Table2,
-  tables_schema_plan: Columns3,
   files_query: FolderOpen,
   files_mutation: FolderOpen,
 };
@@ -488,9 +485,6 @@ export const TOOL_BRIEFS: Record<string, string> = {
   project_manager: 'Create and manage projects & tasks',
   knowledge_query: 'Browse, search and read team, personal and shared knowledge',
   compute: 'Execute code for precise data analysis & calculations',
-  tables_query: 'Inspect schemas, query records, and aggregate internal Tables',
-  tables_mutation: 'Create, update, upsert, and delete Tables records',
-  tables_schema_plan: 'Draft Base, table and field changes for you to confirm',
 };
 
 /** Get brief description for a tool. */

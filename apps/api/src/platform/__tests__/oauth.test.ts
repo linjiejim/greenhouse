@@ -32,8 +32,8 @@ describe('parseStoredOAuthScopes', () => {
   });
 
   it('returns exactly the stored resource groups', () => {
-    const stored = ['mcp:read', 'mcp:knowledge', 'mcp:tables'];
-    expect(parseStoredOAuthScopes(stored)).toEqual(['mcp:read', 'mcp:knowledge', 'mcp:tables']);
+    const stored = ['mcp:read', 'mcp:knowledge', 'mcp:files'];
+    expect(parseStoredOAuthScopes(stored)).toEqual(['mcp:read', 'mcp:knowledge', 'mcp:files']);
   });
 
   /**
@@ -61,11 +61,11 @@ describe('normalizeOAuthScopes', () => {
   it('leaves an explicit resource selection alone', () => {
     const scopes = normalizeOAuthScopes('mcp:read mcp:knowledge');
     expect(resourceGroupsFromScopes(scopes)).toEqual(['knowledge']);
-    expect(scopes).not.toContain('mcp:tables');
+    expect(scopes).not.toContain('mcp:files');
   });
 
   it('implies mcp:read for a write request', () => {
-    expect(normalizeOAuthScopes('mcp:write mcp:tables')).toEqual(['mcp:read', 'mcp:write', 'mcp:tables']);
+    expect(normalizeOAuthScopes('mcp:write mcp:files')).toEqual(['mcp:read', 'mcp:write', 'mcp:files']);
   });
 
   it('rejects unknown scopes', () => {
@@ -87,7 +87,7 @@ describe('normalizeGrantedScopes', () => {
   });
 
   it('keeps exactly what was ticked, and still implies read for write', () => {
-    expect(normalizeGrantedScopes(['mcp:write', 'mcp:tables'])).toEqual(['mcp:read', 'mcp:write', 'mcp:tables']);
+    expect(normalizeGrantedScopes(['mcp:write', 'mcp:files'])).toEqual(['mcp:read', 'mcp:write', 'mcp:files']);
   });
 
   it('rejects unknown scopes', () => {

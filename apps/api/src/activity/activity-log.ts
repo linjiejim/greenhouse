@@ -135,8 +135,6 @@ const TOOL_MODULES: Record<string, string> = {
   // An agent's generated image is a new file on the member's personal shelf.
   generate_image: 'files',
 
-  tables_mutation: 'tables',
-
   automation_mutation: 'automations',
 };
 
@@ -235,7 +233,6 @@ const TOOL_ENTITIES: Record<string, string> = {
     ),
   ),
   knowledge_mutation: 'document',
-  tables_mutation: 'record',
   automation_mutation: 'automation',
 
   generate_image: 'file',

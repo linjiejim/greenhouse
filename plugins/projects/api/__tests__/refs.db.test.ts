@@ -1,3 +1,4 @@
+import { services as tableServices } from '../../../tables/api/services.js';
 import { services as projectsServices } from '../services.js';
 /**
  * POST /api/refs/resolve — titles for object chips, and above all what it must NOT reveal:
@@ -14,7 +15,7 @@ import type { AppEnv } from '../../../../apps/api/src/app-env.js';
 import { createRefsRoutes } from '../../../../apps/api/src/routes/refs.js';
 import { knowledgeRegistration } from '../../../../apps/api/src/platform/knowledge/registration.js';
 import { projectsRegistration } from '../platform/application.js';
-import { tablesRegistration } from '../../../../apps/api/src/platform/tables/application.js';
+import { tablesRegistration } from '../../../tables/api/platform/application.js';
 import { initializePlatformRuntime, resetPlatformRuntimeForTests } from '../../../../apps/api/src/platform/runtime.js';
 import { createInternalTestUser } from '../../../../tests/helpers/internal-user.js';
 
@@ -294,21 +295,25 @@ describe('POST /api/refs/resolve', () => {
   it('titles a table record by its primary field, for members of the base only', async () => {
     const token = marker();
     const { owner, stranger, app } = await people(token);
-    const base = await db.tables.createBase({
+    const base = await tableServices(db).tables.createBase({
       name: `${token} ops`,
       visibility: 'private',
       owner_id: owner.id,
       created_by: owner.id,
     });
-    const schema = await db.tables.createTable({ base_id: base.id, name: 'Items', created_by: owner.id });
-    const record = await db.tables.createRecord({
+    const schema = await tableServices(db).tables.createTable({
+      base_id: base.id,
+      name: 'Items',
+      created_by: owner.id,
+    });
+    const record = await tableServices(db).tables.createRecord({
       table_id: schema.table.id,
       values: { [schema.fields[0]!.id]: `${token} restock` },
       user_id: owner.id,
     });
     const url = `#/tables/${base.id}/table/${schema.table.id}?record=${record.id}`;
     // A real base the table does not belong to: the link names the wrong base.
-    const otherBase = await db.tables.createBase({
+    const otherBase = await tableServices(db).tables.createBase({
       name: `${token} other`,
       visibility: 'private',
       owner_id: owner.id,

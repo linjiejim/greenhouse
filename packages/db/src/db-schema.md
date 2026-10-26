@@ -2,7 +2,7 @@
 
 > 事实源：`packages/db/src/schema/*.ts`（每个域一个文件，文件头写着本域的表）。迁移链从 `drizzle/0000_v3_baseline.sql` 起步；1.x 的 0000–0013 归档在 `drizzle/archive-1x/`，只用来识别 1.x 库。
 >
-> 当前完整安装共 **73 张表**：核心 schema **60 张**，八个数据插件管理 13 张表（迁移车道记账另计）。字段类型、默认值、索引以 schema 与最新 snapshot 为准；本文只写用途、关键列和关系。
+> 当前完整安装共 **73 张表**：核心 schema **51 张**，九个数据插件管理 22 张表（迁移车道记账另计）。字段类型、默认值、索引以 schema 与最新 snapshot 为准；本文只写用途、关键列和关系。
 
 ## 设计约定
 
@@ -26,6 +26,7 @@
 
 | 插件 | 表结构与关联 |
 |---|---|
+| Tables | [九张表与共享记录关联](../../../plugins/tables/db-schema.md) |
 | email | [插件 schema](../../../plugins/email/db-schema.md) |
 | feishu | [插件 schema](../../../plugins/feishu/db-schema.md) |
 | memory | [插件 schema](../../../plugins/memory/db-schema.md) |
@@ -122,26 +123,14 @@ Chat 与 Automation 共用的执行内核：Run / Step 走 version CAS，worker 
 
 | 表 | 主键 / 唯一 | 用途与关键列 |
 |---|---|---|
-| `folders` | PK `id` | 每个 scope 一棵树：`kb`（`visibility` + `owner_user_id`）、`tables`（`base_id`）、扩展 scope（`owner_key`，由扩展鉴权）；`parent_id` 自引用 CASCADE；`sort_order`（0 = 没手排过）。CHECK `chk_folders_scope_owner` 约束三种形状 |
+| `folders` | PK `id` | 每个 scope 一棵树：`kb`（`visibility` + `owner_user_id`）、`tables`（`base_id`）、扩展 scope（`owner_key`，由扩展鉴权）；`parent_id` 自引用 CASCADE；`sort_order`（0 = 没手排过）。形状由已启用 scope 的注册表校验 |
 | `files` | PK `id`；部分 UK `storage_key` | 所有存储对象的唯一登记处。`source`：`drive`（scope / folder / visibility / owner / base / owner_key）、`chat_upload` / `chat_output`（`session_id` FK CASCADE）、`run`（`run_id` 逻辑，`meta` 记方向 / kind / path / step）；`status` pending / active / failed / skipped / deleted；`size`、`sha256`、`storage_key`。CHECK `chk_files_source_owner` |
 | `file_links` | PK `(file_id, target_type, target_id, slot)` | 附件关系；`target_type` table_record / message / task / kb_document（逻辑），`slot` = 表格字段 id 或 `''`；FK `file_id` CASCADE |
 | `shares` | PK `id`；UK `(resource_type, resource_id, principal_type, principal_id)` NULLS NOT DISTINCT | 单独分享：`resource_type` kb_document / folder / file / table_base，`principal_type` user / team，`role` reader / editor（kb）或 owner / builder / editor / viewer（表格库） |
 
-### 表格（tables.ts）
+### 表格（官方插件）
 
-| 表 | 主键 / 唯一 | 用途与关键列 |
-|---|---|---|
-| `table_bases` | PK `id` | 表格库；`visibility` private / team、`owner_id`、`archived_at`；成员在 `shares`（`resource_type='table_base'`） |
-| `table_tables` | PK `id`；UK `(base_id, name)` | 数据表；`position`、`schema_revision`、`archived_at` |
-| `table_fields` | PK `id`；UK `(table_id, name)`；部分 UK 主字段 | 字段；`type`（17 种）、`required`、`is_primary`、`config`、`archived_at` |
-| `table_field_dependencies` | PK `(field_id, depends_on_field_id)` | 公式 / lookup / rollup 依赖 |
-| `table_views` | PK `id` | 视图（grid）；`scope` shared / personal + `owner_id`、`config`、`revision` |
-| `table_records` | PK `id` | 记录；`values` / `computed_values` jsonb、`revision`、`deleted_at`（回收站） |
-| `table_record_links` | PK `id`；UK `(field_id, source_record_id, target_record_id)` | 关联字段的记录连线 |
-| `table_schema_versions` | PK `id`；UK `(table_id, version)` | 表结构快照与变更类型 |
-| `table_recompute_jobs` | PK `id`；UK `idempotency_key` | 公式 / 汇总重算任务 |
-
-记录附件在 `file_links`（`target_type='table_record'`，`slot` = 字段 id）。
+九张表由 [Tables 插件](../../../plugins/tables/db-schema.md) 认领；核心 schema 不再导出它们。停用不删数据。
 
 ### 通知（notifications.ts）
 
@@ -245,17 +234,6 @@ Chat 与 Automation 共用的执行内核：Run / Step 走 version CAS，worker 
 | `files.folder_id` | `folders.id` | CASCADE |
 | `files.session_id` | `conversations.id` | CASCADE |
 | `file_links.file_id` | `files.id` | CASCADE |
-| `table_tables.base_id` | `table_bases.id` | CASCADE |
-| `table_fields.table_id` | `table_tables.id` | CASCADE |
-| `table_field_dependencies.field_id` / `depends_on_field_id` | `table_fields.id` | CASCADE |
-| `table_views.table_id` | `table_tables.id` | CASCADE |
-| `table_records.table_id` | `table_tables.id` | CASCADE |
-| `table_record_links.field_id` | `table_fields.id` | CASCADE |
-| `table_record_links.source_record_id` / `target_record_id` | `table_records.id` | CASCADE |
-| `table_schema_versions.table_id` | `table_tables.id` | CASCADE |
-| `table_recompute_jobs.table_id` | `table_tables.id` | CASCADE |
-| `table_recompute_jobs.field_id` | `table_fields.id` | CASCADE |
-| `table_recompute_jobs.record_id` | `table_records.id` | CASCADE |
 | `notification_deliveries.notification_id` | `notifications.id` | CASCADE |
 | `push_devices.user_id` | `users.id` | CASCADE |
 
@@ -279,7 +257,6 @@ Chat 与 Automation 共用的执行内核：Run / Step 走 version CAS，worker 
 | `files.owner_user_id` / `base_id` / `owner_key` / `run_id` | `users.id` / `table_bases.id` / 扩展对象 / `runs.id` | 按 source 与 scope |
 | `file_links.target_id` | `table_records.id` / `messages.id` / `tasks.id` / `kb_documents.id` | 按 `target_type`；硬删目标的 service 负责删链接 |
 | `shares.resource_id` / `principal_id` | 按 `resource_type` / `users.id` | 单独分享 |
-| `table_bases.owner_id`、`table_views.owner_id` | `users.id` | 表格库主人、个人视图主人 |
 | `notifications.user_id` / `run_id` / `interrupt_id` / `event_id` / `agent_id` | `users.id` / runs 域 / Agent 标识 | 通知比来源长寿 |
 | `notification_deliveries.recipient` | 渠道收件人（`push_devices.id`、企微 UserId、邮箱…） | 按 `channel` |
 | `usage_events.user_id` / `session_id` / `run_id` / `oauth_client_id` / `gateway_key_id` | 对应主体 | 用量事实独立保留 |
@@ -362,19 +339,7 @@ erDiagram
     kb_documents ||--o{ kb_versions : "FK CASCADE"
     folders ||--o{ files : "FK CASCADE"
     files ||--o{ file_links : "FK CASCADE"
-    table_records ||--o{ file_links : "逻辑 target_id"
     kb_documents ||--o{ shares : "逻辑 resource_id"
-    table_bases ||--o{ shares : "逻辑 resource_id"
-    table_bases ||--o{ folders : "逻辑 base_id"
-    table_bases ||--o{ table_tables : "FK CASCADE"
-    table_tables ||--o{ table_fields : "FK CASCADE"
-    table_tables ||--o{ table_views : "FK CASCADE"
-    table_tables ||--o{ table_records : "FK CASCADE"
-    table_tables ||--o{ table_schema_versions : "FK CASCADE"
-    table_tables ||--o{ table_recompute_jobs : "FK CASCADE"
-    table_fields ||--o{ table_field_dependencies : "FK CASCADE"
-    table_fields ||--o{ table_record_links : "FK CASCADE"
-    table_records ||--o{ table_record_links : "FK CASCADE source/target"
 ```
 
 ### 用量、预算与审计
@@ -412,3 +377,7 @@ erDiagram
 ### 官方通信插件表
 
 邮箱表见 [Email schema](../../../plugins/email/db-schema.md)；飞书会话与回执表见 [Feishu schema](../../../plugins/feishu/db-schema.md)。企微使用核心身份表，没有私有表。通知 kind/channel 是开放文本，写入时由启用的核心/插件注册表校验；历史值读取不丢弃。
+
+共享判别列 `shares.resource_type`、`file_links.target_type`、`folders.scope`、`audit_events.app_id`、`runs.kind` 在写入时按核心值 + 启用插件注册值校验；历史读取不裁剪。
+
+卡片回执的 `kind` 同样由 `artifactKinds` 注册表校验新 claim（0008），停用后历史回执仍可读取。

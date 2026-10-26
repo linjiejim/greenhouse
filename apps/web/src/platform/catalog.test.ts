@@ -30,7 +30,7 @@ describe('Platform web catalog', () => {
     expect(platformApplicationHref(application('fixture'))).toBe('#/fixture-records');
     useExtensionsStore.setState({ extensions: [] });
     expect(platformApplicationHref(application('fixture'))).toBeNull();
-    expect(platformApplicationHref(application('tables'))).toBe('#/tables');
+    expect(platformApplicationHref(application('tables'))).toBeNull();
     expect(platformApplicationHref(application('pulse'))).toBeNull();
     expect(platformApplicationHref(application('analytics', 'https://example.test'))).toBeNull();
   });

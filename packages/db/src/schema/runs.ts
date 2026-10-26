@@ -46,7 +46,7 @@ export const runs = pgTable(
   'runs',
   {
     id: id(),
-    kind: text('kind', { enum: RUN_KINDS }).notNull(),
+    kind: text('kind').notNull(),
     owner_user_id: text('owner_user_id').notNull(),
     initiated_by_user_id: text('initiated_by_user_id').notNull(),
     session_id: text('session_id'),
@@ -89,7 +89,6 @@ export const runs = pgTable(
     index('idx_runs_claim').on(table.status, table.desired_state, table.not_before, table.priority),
     index('idx_runs_stale_lease').on(table.status, table.lease_expires_at),
     index('idx_runs_created').on(table.created_at),
-    oneOf('chk_runs_kind', table.kind, RUN_KINDS),
     oneOf('chk_runs_status', table.status, RUN_STATUSES),
     oneOf('chk_runs_desired_state', table.desired_state, RUN_DESIRED_STATES),
     check('chk_runs_attempts', sql`${table.attempt} >= 0 AND ${table.max_attempts} > 0`),

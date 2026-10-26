@@ -57,7 +57,6 @@ const BUNDLE_PROMPTS = 40;
 const GROUP_PURPOSE: Record<string, string> = {
   knowledge: 'Knowledge base: team and personal documents',
   files: 'Files: the team cabinet and your own files',
-  tables: 'Tables: structured team data (bases, tables, records)',
   chat: 'Your Greenhouse chat history (read-only)',
   automation: 'Your scheduled automations (read-only)',
   services: 'Paid services: web search, page reads, image analysis and generation (metered to you)',

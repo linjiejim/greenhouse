@@ -95,7 +95,6 @@ export * from './services/drive.js';
 export * from './services/activity.js';
 export * from './services/platform.js';
 export * from './services/platform-oauth.js';
-export * from './services/tables.js';
 export * from './services/chat-files.js';
 export * from './services/chat-artifact-receipts.js';
 export * from './services/runtime.js';

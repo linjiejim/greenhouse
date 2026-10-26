@@ -1,3 +1,4 @@
+import { registerToolCard } from '../../lib/extension-registries';
 /**
  * Unit tests for the body-artifact matcher — the heart of the trace-vs-artifact
  * split. These pure functions decide which tool calls render as rich cards in the
@@ -66,12 +67,13 @@ describe('partitionCalls', () => {
 
 describe('splitArtifactsByPlacement', () => {
   it('sends the confirm-gate cards below the prose, everything else above', () => {
-    const calls = [{ name: 'ask_user' }, { name: 'generate_image' }, { name: 'tables_schema_plan' }];
+    registerToolCard('fixture_plan', { component: () => null, placement: 'below' });
+    const calls = [{ name: 'ask_user' }, { name: 'generate_image' }, { name: 'fixture_plan' }];
     const { above, below } = splitArtifactsByPlacement(calls);
     expect(above.map((c) => c.name)).toEqual(['ask_user', 'generate_image']);
     // These are cards the prose introduces ("here is what I'd change — confirm?"),
     // so the button follows the explanation instead of preceding it.
-    expect(below.map((c) => c.name)).toEqual(['tables_schema_plan']);
+    expect(below.map((c) => c.name)).toEqual(['fixture_plan']);
   });
 });
 

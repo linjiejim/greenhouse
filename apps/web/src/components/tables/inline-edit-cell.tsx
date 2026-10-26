@@ -115,7 +115,7 @@ export function InlineEditCell<T>({
       await onCommit(nextValue);
       setEditing(false);
     } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : t('tables.saveCellFailed'));
+      setError(saveError instanceof Error ? saveError.message : t('common.saveCellFailed'));
     } finally {
       savingRef.current = false;
       setSaving(false);
@@ -162,8 +162,8 @@ export function InlineEditCell<T>({
     return (
       <div
         tabIndex={0}
-        aria-label={t('tables.editFieldLabel', { label })}
-        title={t('tables.inlineEditHint')}
+        aria-label={t('common.editFieldLabel', { label })}
+        title={t('common.inlineEditHint')}
         className={`group/cell relative flex min-h-6 items-center gap-1 rounded px-1 py-0.5 outline-none focus:ring-2 focus:ring-accent/40 ${className}`}
         onKeyDown={(event) => {
           if (event.key === 'Enter' || event.key === 'F2') {
@@ -181,8 +181,8 @@ export function InlineEditCell<T>({
          */}
         <button
           type="button"
-          aria-label={t('tables.editFieldLabel', { label })}
-          title={t('tables.editFieldLabel', { label })}
+          aria-label={t('common.editFieldLabel', { label })}
+          title={t('common.editFieldLabel', { label })}
           className="flex-shrink-0 rounded p-0.5 text-fg-faint opacity-0 transition-opacity hover:bg-surface-muted hover:text-fg group-hover/cell:opacity-100 focus:opacity-100 focus-visible:opacity-100 touch-visible"
           onClick={(event) => {
             event.preventDefault();
@@ -215,7 +215,7 @@ export function InlineEditCell<T>({
               void onCommit(event.target.checked as T)
                 .then(() => setEditing(false))
                 .catch((saveError: unknown) => {
-                  setError(saveError instanceof Error ? saveError.message : t('tables.saveCellFailed'));
+                  setError(saveError instanceof Error ? saveError.message : t('common.saveCellFailed'));
                 })
                 .finally(() => {
                   savingRef.current = false;

@@ -37,12 +37,10 @@ import type { ActorContext } from '@greenhouse/platform-kernel';
 import type { AppEnv } from '../app-env.js';
 import { getAuthUser, requireInternal } from '../auth/middleware.js';
 import type { AuthUser } from '../auth/token.js';
-import { userHasFeature } from '../auth/features.js';
 import { canRead, resolveKbAccess } from '../knowledge/access.js';
 import { canReadDrive, resolveDriveAccess } from '../drive/access.js';
 import { canAccessSession } from '../sessions/access.js';
 import { humanActor } from '../platform/actor.js';
-import { tablesResource } from '../platform/tables/application.js';
 import { getPlatformRuntime } from '../platform/runtime.js';
 
 const RESOLVE_CONCURRENCY = 8;
@@ -74,13 +72,6 @@ function refKey(ref: ObjectRef): string {
       : ref.type === 'doc' && ref.slug !== undefined
         ? `doc-slug:${ref.slug}`
         : `${ref.type}:${ref.id}`;
-}
-
-/** Scalar → display text; anything else (arrays, objects, empty) → null. */
-function displayValue(value: unknown): string | null {
-  if (typeof value === 'string') return value.trim() || null;
-  if (typeof value === 'number' && Number.isFinite(value)) return String(value);
-  return null;
 }
 
 export interface ObjectRefResolver {
@@ -117,26 +108,7 @@ async function resolveRef(ref: ObjectRef, r: ObjectRefResolver): Promise<Resolve
       if (!canReadDrive(resolveDriveAccess(file, r.user.id, {}))) return hidden;
       return { title: clip(file.name), meta: { size: file.size, contentType: file.content_type } };
     }
-    case 'record': {
-      if (!(await userHasFeature(r.user.id, r.user.role, 'tables', r.db))) return hidden;
-      const result = await getPlatformRuntime().dispatch({
-        actor: r.actor,
-        appId: 'tables',
-        actionId: 'getRecord',
-        payload: { tableId: ref.tableId, recordId: ref.id },
-        resource: tablesResource('getRecord', { tableId: ref.tableId, recordId: ref.id }),
-      });
-      if (!result.ok) return hidden;
-      const [table, fields] = await Promise.all([
-        r.db.tables.getTable(ref.tableId),
-        r.db.tables.listFields(ref.tableId),
-      ]);
-      if (!table || (ref.baseId !== null && table.base_id !== ref.baseId)) return hidden;
-      const record = (result.data as { record?: { values?: Record<string, unknown> } }).record;
-      const primary = fields.find((field) => field.is_primary) ?? fields[0];
-      const value = primary ? displayValue(record?.values?.[String(primary.id)]) : null;
-      return { title: clip(value ?? `#${ref.id}`) };
-    }
+    case 'record':
     case 'project':
     case 'task':
       return hidden;

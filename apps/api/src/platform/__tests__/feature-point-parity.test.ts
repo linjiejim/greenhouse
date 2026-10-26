@@ -83,7 +83,9 @@ describe('flag-owned tool sets', () => {
     // the flag (how tables_schema_plan once shipped assignable).
     const byKey = Object.fromEntries(FEATURE_POINTS.map((p) => [p.key, [...p.toolIds]]));
 
-    expect(byKey.tables).toEqual(['tables_query', 'tables_mutation', 'tables_schema_plan']);
+    expect(byKey.tables).toEqual(
+      EXTENSIONS.some((e) => e.id === 'tables') ? ['tables_query', 'tables_mutation', 'tables_schema_plan'] : undefined,
+    );
     expect(byKey.memory).toEqual(allFeatureFlags().some((flag) => flag.key === 'memory') ? ['memory'] : undefined);
     expect(byKey.knowledge).toEqual(['knowledge_query', 'knowledge_mutation']);
     expect(byKey.projects).toEqual(

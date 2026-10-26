@@ -99,7 +99,8 @@ describe('Profile identities', () => {
     expect(profile.access.level).toBe('internal');
     expect(profile.access.rich_output).toBe(true);
     expect(profile.hidden).toBeFalsy();
-    expect(profile.tools).toContain('knowledge_query');
+    // Built-ins use the member's active tool set; no static plugin ids to go stale.
+    expect(profile.tools).toEqual([]);
     // Sampling/reasoning belongs to the model catalog now, not the agent.
     expect(profile.model.id).toBe('flash');
     expect(profile.model.options).toBeUndefined();

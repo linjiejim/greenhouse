@@ -1,3 +1,4 @@
+import { getAllToolIds } from '../../../apps/api/src/tools/registry.js';
 /**
  * Tests for the cloud tool proxy core — the read-only allowlist intersection
  * and default-deny execution that form the proxy's security boundary.
@@ -57,7 +58,9 @@ describe('resolveProxyToolIds', () => {
   });
 
   it('includes first-class mutation tools only in the mutating allowlist', () => {
-    const mutating = ['tables_mutation', 'files_mutation', 'knowledge_mutation'];
+    const mutating = ['tables_mutation', 'files_mutation', 'knowledge_mutation'].filter((id) =>
+      getAllToolIds().includes(id),
+    );
     for (const id of mutating) {
       expect(MUTATING_PROXY_ALLOWLIST.has(id)).toBe(true);
       expect(READONLY_PROXY_ALLOWLIST.has(id)).toBe(false);
@@ -66,7 +69,9 @@ describe('resolveProxyToolIds', () => {
   });
 
   it('includes new first-class query tools as read-only tools', () => {
-    const effective = ['tables_query', 'files_query', 'session_query', 'knowledge_query'];
+    const effective = ['tables_query', 'files_query', 'session_query', 'knowledge_query'].filter((id) =>
+      getAllToolIds().includes(id),
+    );
     expect(resolveProxyToolIds(effective).sort()).toEqual([...effective].sort());
     for (const id of effective) expect(READONLY_PROXY_ALLOWLIST.has(id)).toBe(true);
   });

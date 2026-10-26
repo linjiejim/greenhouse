@@ -124,7 +124,8 @@ export interface WebExtensionKnowledgeDocPanel {
 export interface WebExtensionToolCard {
   /** Tool id whose result renders as this card instead of a trace row. */
   tool: string;
-  component: ComponentType<{ call: ExtensionToolCallView }>;
+  matches?: (output: unknown) => boolean;
+  component: ComponentType<{ actionId?: string; sessionId?: string; call: ExtensionToolCallView }>;
   /** `inline` (default) renders above the prose like other artifacts; `below` after it. */
   placement?: 'inline' | 'below';
 }

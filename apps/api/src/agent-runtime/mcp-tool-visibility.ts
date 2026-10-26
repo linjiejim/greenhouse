@@ -16,7 +16,6 @@ import { MCP_EXPOSED_TOOL_IDS } from '../tools/registry.js';
 import { delegatedAgentActor } from '../platform/actor.js';
 import { getPlatformRuntime } from '../platform/runtime.js';
 import { knowledgeManifest } from '../platform/manifests/knowledge.js';
-import { tablesManifest } from '../platform/manifests/tables.js';
 import { extensionPlatformToolCapabilities } from '../extensions/boot.js';
 
 /**
@@ -26,10 +25,7 @@ import { extensionPlatformToolCapabilities } from '../extensions/boot.js';
  */
 export const MCP_PROFILE_ID = 'desktop';
 
-function capabilitiesByActionKind(
-  manifest: typeof knowledgeManifest | typeof tablesManifest,
-  kind: 'query' | 'command',
-): string[] {
+function capabilitiesByActionKind(manifest: typeof knowledgeManifest, kind: 'query' | 'command'): string[] {
   return [
     ...new Set(
       Object.values(manifest.actions)
@@ -42,8 +38,6 @@ function capabilitiesByActionKind(
 const PLATFORM_TOOL_CAPABILITIES: Readonly<Record<string, readonly string[]>> = {
   knowledge_query: capabilitiesByActionKind(knowledgeManifest, 'query'),
   knowledge_mutation: capabilitiesByActionKind(knowledgeManifest, 'command'),
-  tables_query: capabilitiesByActionKind(tablesManifest, 'query'),
-  tables_mutation: capabilitiesByActionKind(tablesManifest, 'command'),
   // Application-backed tools an extension owns follow the same rule.
   ...extensionPlatformToolCapabilities(capabilitiesByActionKind),
 };
