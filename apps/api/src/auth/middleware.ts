@@ -8,7 +8,7 @@
  */
 
 import type { Context, Next } from 'hono';
-import { validateAccessToken } from './token.js';
+import { validateAccessToken, validateExtUiToken, extUiPathAllowed } from './token.js';
 import type { AuthUser, UserRole } from './token.js';
 import { userHasFeature } from './features.js';
 import { isExtensionPublicPath } from './public-paths.js';
@@ -86,17 +86,27 @@ export function isPublicPath(path: string): boolean {
 
 // ─── Auth Middleware ─────────────────────────────────────
 
+/** Runs before public SPA hosting as well as authenticated routes. */
+export async function extUiScopeMiddleware(c: Context, next: Next) {
+  const header = c.req.header('Authorization');
+  const embed = header?.startsWith('Bearer ') ? validateExtUiToken(header.slice(7)) : null;
+  if (embed && !extUiPathAllowed(embed.plugin, c.req.method, c.req.path))
+    return c.json({ error: 'Forbidden: embed token scope' }, 403);
+  return next();
+}
+
 /**
  * Main auth middleware. Validates token and sets user context.
  * Must be applied globally before any route handlers.
  */
 export async function authMiddleware(c: Context, next: Next) {
-  // Skip public paths
-  if (isPublicPath(c.req.path)) return next();
-
   // Extract token
   const authHeader = c.req.header('Authorization');
   const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
+  const embed = token ? validateExtUiToken(token) : null;
+  if (embed && !extUiPathAllowed(embed.plugin, c.req.method, c.req.path))
+    return c.json({ error: 'Forbidden: embed token scope' }, 403);
+  if (!embed && isPublicPath(c.req.path)) return next();
 
   if (!token) {
     return c.json({ error: 'Unauthorized', needsAuth: true }, 401);
@@ -105,7 +115,7 @@ export async function authMiddleware(c: Context, next: Next) {
   // Validate the signed token, then resolve the current database user. Tokens
   // from deleted, disabled, or former external accounts must not remain usable
   // until their four-hour signature expiry.
-  const payload = validateAccessToken(token);
+  const payload = embed ?? validateAccessToken(token);
   if (payload) {
     if (payload.role !== 'super' && payload.role !== 'team') {
       return c.json({ error: 'Forbidden: internal account required' }, 403);
@@ -126,6 +136,11 @@ export async function authMiddleware(c: Context, next: Next) {
     }
     if (user.role !== 'super' && user.role !== 'team') {
       return c.json({ error: 'Forbidden: internal account required' }, 403);
+    }
+    if (embed) {
+      const { memberCanUsePlugin } = await import('../extensions/ui-access.js');
+      if (!(await memberCanUsePlugin(getDb(), { id: user.id, role: user.role }, embed.plugin)))
+        return c.json({ error: 'Forbidden: plugin unavailable' }, 403);
     }
     c.set('user', {
       id: user.id,

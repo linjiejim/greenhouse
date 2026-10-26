@@ -43,6 +43,7 @@ export const CORE_ROUTES: ReadonlySet<string> = new Set([
   'files',
   'skillhub',
   'activity',
+  'ext',
 ]);
 
 function redirectOnce(hash: string, aliases: ReadonlyMap<string, string>): string | null {

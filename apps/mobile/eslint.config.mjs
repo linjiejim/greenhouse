@@ -5,7 +5,7 @@ import tseslint from 'typescript-eslint';
 import reactHooks from 'eslint-plugin-react-hooks';
 
 export default tseslint.config(
-  { ignores: ['node_modules/', '.expo/', 'dist/', 'android/', 'ios/', '*.config.js', 'targets/'] },
+  { ignores: ['node_modules/', '.expo/', 'dist/', 'dist-hosted/', 'android/', 'ios/', '*.config.js', 'targets/'] },
   js.configs.recommended,
   { files: ['scripts/**/*.mjs'], languageOptions: { globals: { console: 'readonly' } } },
   ...tseslint.configs.recommended,

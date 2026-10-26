@@ -32,5 +32,6 @@ export default {
     ] satisfies PluginPage[],
   },
   dependsOn: [],
+  ui: './ui',
   features: ['example'],
 };

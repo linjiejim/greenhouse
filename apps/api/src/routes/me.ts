@@ -17,6 +17,12 @@ import type { AppEnv } from '../app-env.js';
 import { getAuthUser } from '../auth/middleware.js';
 
 const meRoutes = new Hono<AppEnv>()
+  .get('/', async (c) => {
+    const user = await getDb().users.getById(getAuthUser(c).id);
+    if (!user) return c.json({ error: 'User not found' }, 404);
+    c.header('Cache-Control', 'no-store');
+    return c.json({ user: { id: user.id, name: user.nickname, role: user.role } });
+  })
   .get('/preferences', async (c) => {
     const user = getAuthUser(c);
     return c.json(memberPreferencesOf(await getDb().users.getPreferences(user.id)));

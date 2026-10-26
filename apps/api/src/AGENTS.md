@@ -418,10 +418,10 @@ Monthly reviews and their schedule belong to [plugins/retro](../../../plugins/re
 - 只计数：每日 `(day, kind, key, client)` 合计，不记用户、参数或内容。v1.4 起计数，用来判断冻结模块的去留（1.5 据此移除了桌面端；历史计数里的 `desktop` 等 client 仍可读）。
 - **计数永不失败、永不拖慢**：一律走 `countUsage()`（不 await，写失败只 `logger.warn`，`getDb()` 同步抛错也吞掉）。新计数点别直接 `await db.usageCounters.increment()`。
 - 工具调用只在真实执行边界计一次：`countToolCalls(tools, client)` 克隆 per-turn 工具表包 `execute`（不改共享 registry）；MCP / Agent API 在 `executeProxyTool({ usageClient })` 里所有检查通过后按规范 id 计（旧别名记成 `knowledge_query` 等，被拒的调用不计）。
-- client：Chat 按会话 channel（`feishu`；`browser` 只出现在 1.5 前的历史会话里），否则看 `X-Greenhouse-Client` 头（`mobile`），否则 `web_chat`；`runAgentInSession` 的 `toolCallClient` **必填**（`automation` / `feishu`；历史计数里还有已退役的 `subagent`），与 `usageContext` 同理，免得新 headless 调用方悄悄漏计；Agent API 默认 `agent_api`，移动端带头时记成 `mobile`。历史计数里的 `browser` / `desktop` 仍可读。
+- client：Chat 按会话 channel（`feishu`；`browser` 只出现在 1.5 前的历史会话里），否则看 `X-Greenhouse-Client` 头（`mobile`），否则 `web_chat`；`runAgentInSession` 的 `toolCallClient` **必填**（`automation` / `feishu`；历史计数里还有已退役的 `subagent`），与 `usageContext` 同理，免得新 headless 调用方悄悄漏计；Agent API 默认 `agent_api`，移动端带头时记成 `mobile`。桌面壳记 `desktop`；历史 `browser` 计数仍可读。
 - Chat 的计数包在 Runtime 证据包装**里面**（只有真正进入工具才计），并且只包目录工具：Client Action 的名字由浏览器声明，**绝不能**成为计数 key。
 - `X-Greenhouse-Client` 只是标签，永远不是鉴权输入（CORS 已放行该头）。
-- `POST /api/usage/page-open {module}`（内部用户，限流 240/分）：module 必须是 `PAGE_MODULE_IDS` 或当前启用扩展的 `ext.<id>`（`isPageModuleId`），否则 400；client 取头（`mobile`），缺省 `web`；写失败仍回 202。
+- `POST /api/usage/page-open {module}`（内部用户，限流 240/分）：module 必须是 `PAGE_MODULE_IDS` 或当前启用扩展的 `ext.<id>`（`isPageModuleId`），否则 400；client 取头（`mobile` / `desktop`），缺省 `web`；写失败仍回 202。
 - 读侧 `GET /api/admin/usage/modules?days=7|30|90`（super）：工具调用与页面打开（按 key × client）+ `usage_events`（`kind='model'`）按模型的缓存命中率 `sum(cached_tokens)/sum(input_tokens)`；其它天数 400。
 
 ### 生图 (`generate_image` 工具)
@@ -553,3 +553,10 @@ access granted by stored shares. Existing share rows are preserved.
 - `station-manifest.ts` cuts pages/nav/entity fields/actions to the member and keeps
   the 3.x response fields. Pure `surfaces` metadata belongs to each plugin manifest;
   core must never add cases for official plugin ids.
+
+### Embed authentication and hosting (4.0, wave 4)
+
+- `POST /api/ext-ui/token` requires a current internal session and a member-visible plugin. A separate signing purpose binds credentials to member, auth_version and plugin for ten minutes. Recheck account and plugin access on every call. Only `/api/ext/<id>/*` and basic `GET /api/me` (id/name/role) are admitted; the host's session renews them. Scope enforcement precedes public bypass and SPA hosting. Plugin route guards still apply.
+- Public plugin UIs mount before ordinary auth and SPA fallback; disabled plugins/missing files return 404. Assembly resolves manifest `ui: './ui'` inside its package, preferring `ui/dist` when built. HTML and mutable files revalidate; fingerprints are immutable. SDK 1 `ui: {dir}` remains compatible.
+- Plugin CSP permits frame ancestors `'self' tauri://localhost`. Omit X-Frame-Options there because SAMEORIGIN blocks the installed shell; other responses retain DENY. CORS includes only the exact desktop origin by default plus existing env additions.
+- `X-Greenhouse-Client: desktop` labels usage counters and USD metering like mobile. It never changes authentication, permissions or the stored conversation channel.

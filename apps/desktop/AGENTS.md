@@ -8,4 +8,4 @@
 - The local `credentials` Tauri plugin stores station credentials in macOS Keychain. Preferences use a desktop-prefixed localStorage namespace. Never fall back to localStorage for tokens.
 - Keep `com.linjiejim.greenhouse` and the existing updater public key. Updates remain disabled without build-time GREENHOUSE_UPDATER_ENDPOINT. Private signing keys are never committed.
 - Native window, menu, notification, storage and channel integration belongs in platform bridge files; do not branch business pages on a desktop flag.
-- Server changes belong to the backend lane: allow tauri://localhost CORS and X-Greenhouse-Client: desktop, plus the plugin embed frame origin; see README.md here.
+- The server accepts exactly tauri://localhost for CORS and plugin framing, and attributes X-Greenhouse-Client: desktop to desktop usage. Plugin frames explicitly trust that parent through host_origin; see README.md here.

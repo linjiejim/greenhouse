@@ -22,6 +22,7 @@ describe('isPageModuleId', () => {
 describe('parseAppClient', () => {
   it('reads the first-party apps, case-insensitively', () => {
     expect(parseAppClient(' Mobile ')).toBe('mobile');
+    expect(parseAppClient(' Desktop ')).toBe('desktop');
   });
 
   it('treats a missing or unknown value as the plain web app', () => {
@@ -29,9 +30,7 @@ describe('parseAppClient', () => {
     expect(parseAppClient('')).toBeNull();
     expect(parseAppClient('web')).toBeNull();
     expect(parseAppClient('mcp')).toBeNull();
-    // The desktop app and the browser extension were removed in 1.5; their old
-    // headers no longer label counts.
-    expect(parseAppClient('desktop')).toBeNull();
+    expect(parseAppClient('desktop')).toBe('desktop');
     expect(parseAppClient('browser')).toBeNull();
   });
 });

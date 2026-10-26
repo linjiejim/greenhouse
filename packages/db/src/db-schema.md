@@ -371,3 +371,7 @@ erDiagram
 卡片回执的 `kind` 同样由 `artifactKinds` 注册表校验新 claim（0008），停用后历史回执仍可读取。
 
 核心文件柜 scope 为 `drive`；Knowledge 启用时通过 driveScopes 选择原有 `kb` 文件柜。0009 仅推进表归属 snapshot，无 DDL。完整升级验证见 `tests/db/plugin-upgrade.db-commit.test.ts`，覆盖全部 24 张已迁移业务表。
+
+### 4.0 客户端用量标签
+
+`usage_events.client` 与 `module_usage_daily.client` 接受 `desktop`，由请求头 `X-Greenhouse-Client: desktop` 归因；网页仍为 web/web_chat，手机为 mobile。这些文本列不新增约束，不需要迁移。会话的持久化 channel 不随请求标签改变。内嵌插件凭证为短时签名，不落新表；沿用 users.auth_version 撤销。

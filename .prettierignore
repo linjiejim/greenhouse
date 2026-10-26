@@ -21,3 +21,6 @@ plugins/*/seeds/*.json
 # Tauri-generated configuration and ACL schemas
 apps/desktop/.tauri-build.json
 apps/desktop/src-tauri/gen/
+
+# Generated standalone embed token data; freshness is checked against the renderer.
+packages/ui-tokens/src/tokens.generated.ts

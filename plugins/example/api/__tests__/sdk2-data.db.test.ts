@@ -2,7 +2,10 @@ import { defineApp } from '@greenhouse/api/extension-kit';
 import { registerDiscriminators } from '@greenhouse/types/discriminators';
 import { sql } from 'drizzle-orm';
 import { defineExtension } from '../../../../apps/api/src/extensions/define.js';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { authMiddleware } from '../../../../apps/api/src/auth/middleware.js';
+import { createAccessToken } from '../../../../apps/api/src/auth/token.js';
+import extUiRoutes from '../../../../apps/api/src/routes/ext-ui.js';
 import { Hono } from 'hono';
 import { initDatabase, _resetProvider, type DatabaseProvider, type UserRow } from '@greenhouse/db';
 import { TEST_DATABASE_URL } from '@greenhouse/db/test-config';
@@ -294,4 +297,35 @@ it('provides working table-backed registry handlers and rejects a mutation disgu
       sql`SELECT * FROM audit_events WHERE app_id = 'example' AND action_id = 'noteCreate' AND actor_id = ${alice.id}`,
     ),
   ).toHaveLength(1);
+});
+
+it('issues embed credentials only for visible plugins and preserves row ownership', async () => {
+  vi.stubEnv('TOKEN_SIGNING_KEY', '99'.repeat(32));
+  try {
+    const shell = new Hono<AppEnv>().use('*', authMiddleware).route('/api/ext-ui', extUiRoutes);
+    for (const route of extension.routes ?? []) shell.route(route.path, route.app);
+    const full = {
+      Authorization: `Bearer ${createAccessToken(alice.id, 'team', alice.auth_version)}`,
+      'Content-Type': 'application/json',
+    };
+    const issued = await shell.request('/api/ext-ui/token', {
+      method: 'POST',
+      headers: full,
+      body: '{"plugin":"example"}',
+    });
+    expect(issued.status).toBe(200);
+    const headers = { Authorization: `Bearer ${(await issued.json()).token}` };
+    const own = await (await app(alice).request(base, json('POST', { body: 'Mine' }))).json();
+    const other = await (await app(bob).request(base, json('POST', { body: 'Other member' }))).json();
+    expect((await shell.request(`${base}/${own.id}`, { headers })).status).toBe(200);
+    expect((await shell.request(`${base}/${other.id}`, { headers })).status).toBe(404);
+    await db.userFeatures.upsert({ user_id: alice.id, feature: 'example', enabled: false });
+    expect((await shell.request(base, { headers })).status).toBe(403);
+    expect(
+      (await shell.request('/api/ext-ui/token', { method: 'POST', headers: full, body: '{"plugin":"example"}' }))
+        .status,
+    ).toBe(403);
+  } finally {
+    vi.unstubAllEnvs();
+  }
 });

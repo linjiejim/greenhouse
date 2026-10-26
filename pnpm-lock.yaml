@@ -204,6 +204,9 @@ importers:
       '@greenhouse/ui':
         specifier: workspace:*
         version: link:../../packages/ui
+      '@greenhouse/ui-tokens':
+        specifier: workspace:*
+        version: link:../../packages/ui-tokens
       '@greenhouse/utils':
         specifier: workspace:*
         version: link:../../packages/utils
@@ -444,6 +447,12 @@ importers:
         specifier: ^5.7.0
         version: 5.9.3
 
+  packages/ui-tokens:
+    dependencies:
+      '@greenhouse/types':
+        specifier: workspace:*
+        version: link:../types
+
   packages/utils:
     devDependencies:
       typescript:
@@ -574,6 +583,9 @@ importers:
       '@greenhouse/types':
         specifier: workspace:*
         version: link:../../packages/types
+      '@greenhouse/ui-tokens':
+        specifier: workspace:*
+        version: link:../../packages/ui-tokens
       '@greenhouse/web':
         specifier: workspace:*
         version: link:../../apps/web

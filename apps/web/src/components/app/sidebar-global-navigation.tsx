@@ -1,12 +1,15 @@
+import * as Icons from '../../lib/icons';
 import { useEffect, useRef } from 'react';
 
-import { ChevronDown, ChevronRight, MoreHorizontal } from '../../lib/icons';
+import { ChevronDown, ChevronRight, MoreHorizontal, Database } from '../../lib/icons';
 import { useT } from '../../lib/i18n';
 import { activeNavigationKey, type PrimaryNavigation, type PrimaryNavigationItem } from '../../platform/navigation';
 import { useHoverFlyout } from '../../hooks/use-hover-flyout';
 import { useAuthStore } from '../../stores';
 import { useExtensionsStore } from '../../stores/extensions-store';
 import { activeExtensionNavItems } from '../../extensions';
+import { localize } from '@greenhouse/types/plugins';
+import { useI18n } from '../../lib/i18n';
 import { canUseFeature } from '../../lib/features';
 
 interface SidebarGlobalNavigationProps {
@@ -92,12 +95,28 @@ export function SidebarGlobalNavigation({
   const activeKey = activeNavigationKey(route);
   const overflowActive = navigation.overflow.some((item) => item.key === activeKey);
   const { currentUser } = useAuthStore();
+  const { locale } = useI18n();
+  const plugins = useExtensionsStore((s) => s.plugins);
+  const manifestItems = plugins.flatMap((p) =>
+    p.nav
+      .filter((nav) => p.pages.some((page) => page.id === nav.page && page.kind !== 'native'))
+      .map((nav) => ({
+        id: `${p.id}/${nav.id}`,
+        href: `#/ext/${p.id}/${nav.page}`,
+        label: localize(nav.label, locale),
+        icon: (Icons as unknown as Record<string, Icons.LucideIcon>)[nav.icon] ?? Database,
+      })),
+  );
   const activeExtensions = useExtensionsStore((s) => s.extensions);
-  const extensionItems = activeExtensionNavItems(new Set(activeExtensions.map((e) => e.id))).filter(
+  const legacyItems = activeExtensionNavItems(new Set(activeExtensions.map((e) => e.id))).filter(
     (item) =>
       (!item.requireRole || (item.requireRole.includes('super') && currentUser?.role === 'super')) &&
       (!item.requireFeature || canUseFeature(currentUser, item.requireFeature)),
   );
+  const extensionItems = [
+    ...legacyItems.map((item) => ({ ...item, label: t(item.labelKey) })),
+    ...manifestItems.map((item) => ({ ...item, route: 'ext' })),
+  ];
   const extensionMoreActive = route === 'extension' && extensionItems.some((item) => item.route === extensionRoute);
   const moreActive = overflowActive || extensionMoreActive;
   // Automations, prompts and run profiles all have homes of their own since
@@ -186,7 +205,12 @@ export function SidebarGlobalNavigation({
               >
                 {extensionItems.map((item) => {
                   const Icon = item.icon;
-                  const active = route === 'extension' && item.route === extensionRoute;
+                  const active =
+                    route === 'extension' &&
+                    (item.route === 'ext'
+                      ? window.location.hash.split('?')[0] === item.href ||
+                        window.location.hash.startsWith(item.href + '/')
+                      : item.route === extensionRoute);
                   return (
                     <a
                       key={`ext-${item.id}`}
@@ -206,7 +230,7 @@ export function SidebarGlobalNavigation({
                         className={`flex-shrink-0 ${active ? 'text-primary-fg' : 'text-fg-faint'}`}
                         aria-hidden="true"
                       />
-                      <span className="truncate">{t(item.labelKey)}</span>
+                      <span className="truncate">{item.label}</span>
                     </a>
                   );
                 })}

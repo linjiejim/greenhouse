@@ -232,3 +232,8 @@
 - Desktop windows synchronize station/session changes without localStorage tokens and use Web Locks around one-use refresh-token rotation.
 - Entity lists keep pages and scroll when covered by an inspector; only query/identity changes and explicit refresh reload them. Pending replies from previous queries remain invalidated.
 - Browser Playwright specs are collected in restricted runners; desktop native behavior is accepted by the reviewer after a successful local build.
+
+## Hosted browser export (W4)
+
+- `pnpm app:build` at the repository root exports this isolated workspace to `dist-hosted`, then copies it to `public/app`. Hosted exports clear desktop and developer station overrides and disable dotenv loading; browser requests use their own origin. Native/store configuration stays unchanged.
+- Trusted desktop plugin frames append `host_origin=tauri://localhost`; plugins explicitly allow that parent origin. Browser frames retain their normal same-origin contract. The host allows scripts/same-origin/forms/popups only for installed plugin bridges.

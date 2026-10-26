@@ -39,7 +39,9 @@ export const GreenhouseConfigInputSchema = z.object({
       seeds: z.string().min(1).optional(),
     })
     .optional(),
-  clients: z.object({ stations: ClientStationsSchema.optional() }).optional(),
+  clients: z
+    .object({ web: z.enum(['classic', 'universal']).optional(), stations: ClientStationsSchema.optional() })
+    .optional(),
 });
 
 /** Validate a config file's export and fill in defaults. Throws a readable error on bad input. */

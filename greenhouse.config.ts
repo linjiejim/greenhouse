@@ -38,6 +38,8 @@ export default defineConfig({
     // seeds: 'data/my-company',   // dataset for `pnpm seed`
   },
   clients: {
+    // 4.0 rc keeps classic at /; universal moves it to /classic/.
+    web: 'classic',
     stations: {
       // 'multi': users add and switch Greenhouse servers in the mobile app.
       // 'single': lock a client build to the one station below. The mobile build

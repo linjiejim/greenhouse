@@ -107,17 +107,20 @@ describe('client attribution', () => {
     expect(chatToolCallClient('browser', null)).toBe('browser');
     expect(chatToolCallClient('feishu', 'mobile')).toBe('feishu');
     expect(chatToolCallClient('web', 'mobile')).toBe('mobile');
+    expect(chatToolCallClient('web', 'desktop')).toBe('desktop');
     expect(chatToolCallClient(undefined, null)).toBe('web_chat');
   });
 
   it('agent API calls from the first-party apps count as those apps', () => {
     expect(agentApiToolCallClient(null)).toBe('agent_api');
     expect(agentApiToolCallClient('mobile')).toBe('mobile');
+    expect(agentApiToolCallClient('desktop')).toBe('desktop');
   });
 
   it('page opens default to the web app', () => {
     expect(pageOpenClient(null)).toBe('web');
     expect(pageOpenClient('mobile')).toBe('mobile');
+    expect(pageOpenClient('desktop')).toBe('desktop');
   });
 });
 

@@ -37,9 +37,9 @@ Native behavior:
 
 ## Backend integration required
 
-No backend code is changed by this lane. The reviewer must allow `tauri://localhost` in `CORS_ALLOWED_ORIGINS`, permit `X-Greenhouse-Client` in preflight headers, and recognize the `desktop` value in usage attribution (the current parser only accepts `mobile`). HTTP and WS calls still use the selected station and its own bearer token.
+The server allows exactly `tauri://localhost` by default and permits `X-Greenhouse-Client` in preflight headers. Its `desktop` value attributes counters and paid calls to the desktop app. `CORS_ALLOWED_ORIGINS` still adds deployment-specific origins. HTTP and WS calls use the selected station and its own bearer token.
 
-Plugin embed responses currently use `frame-ancestors 'self'`; add `tauri://localhost` for installed-client embedding. A desktop client must be allowed to receive its authenticated `/api/ext-ui/token` credentials across that origin. Keep native Tauri capabilities restricted to bundled windows; remote plugin frames need none.
+Plugin embeds use `frame-ancestors 'self' tauri://localhost` without a conflicting X-Frame-Options header. The frame URL carries `host_origin=tauri://localhost`; the plugin helper must explicitly trust this origin. Its host obtains a ten-minute `/api/ext-ui/token` credential across the allowed desktop origin. Keep native Tauri capabilities restricted to bundled windows; remote plugin frames need none.
 
 ## Updater, signing and notarisation (release operator)
 

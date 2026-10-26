@@ -1,28 +1,27 @@
 /** @db-commit-reason Subscribers and another API replica must see only committed lifecycle writes. */
 import { afterAll, beforeAll, expect, it, vi } from 'vitest';
 import { Hono } from 'hono';
-import { sql } from 'drizzle-orm';
 import { initDatabase, createDatabase, _resetProvider, type DatabaseProvider } from '@greenhouse/db';
-import { TEST_DATABASE_URL } from '@greenhouse/db/test-config';
+import { isolatedDatabase } from '../../../../../tests/helpers/isolated-db.js';
+let fixture: Awaited<ReturnType<typeof isolatedDatabase>>;
 import { bootstrapPlatform } from '../../platform/bootstrap.js';
 import adminRoutes from '../../routes/admin.js';
 import type { AppEnv } from '../../app-env.js';
 import { registerExtensionHooks } from '../events.js';
 let db: DatabaseProvider, other: DatabaseProvider;
-const users: string[] = [];
 const installId = `sdk2-install-${crypto.randomUUID()}`;
 beforeAll(async () => {
-  db = await initDatabase({ type: 'pg', pgConnectionString: TEST_DATABASE_URL });
-  other = createDatabase(TEST_DATABASE_URL);
+  fixture = await isolatedDatabase('lifecycle');
+  db = await initDatabase({ type: 'pg', pgConnectionString: fixture.url });
+  other = createDatabase(fixture.url);
   await bootstrapPlatform(db);
-});
+}, 30_000);
 afterAll(async () => {
-  for (const id of users) await db.users.delete(id);
-  await db.executeRaw(sql`DELETE FROM extension_migrations WHERE extension_id = ${installId}`);
   await other.close();
   await db.close();
   _resetProvider();
-});
+  await fixture?.drop();
+}, 30_000);
 it('runs onInstall once under concurrent replica boots and persists the marker for a new runner', async () => {
   const effects: string[] = [];
   const install = async () => {
@@ -46,7 +45,6 @@ it('delivers user lifecycle observations only after writes are visible through a
     nickname: 'Admin',
     role: 'super',
   });
-  users.push(admin.id);
   const observations: Array<{ id: string; status: string | undefined }> = [];
   registerExtensionHooks('commit-observer', (hooks) => {
     hooks.on('user.created', async ({ userId }) => {
@@ -79,7 +77,6 @@ it('delivers user lifecycle observations only after writes are visible through a
   );
   expect(response.status).toBe(201);
   const created = (await response.json()).user;
-  users.push(created.id);
   await vi.waitFor(() => expect(observations).toContainEqual({ id: created.id, status: 'active' }));
   expect((await app.request(`/api/admin/users/${created.id}`, json('PATCH', { status: 'disabled' }))).status).toBe(200);
   await vi.waitFor(() => expect(observations).toContainEqual({ id: created.id, status: 'disabled' }));

@@ -64,7 +64,7 @@ function SourceBadge({ source }: { source: WorkspaceSettingView['source'] }) {
   );
 }
 
-export function RuntimeConfigPanel() {
+export function WorkspaceSettingsForm({ settingKeys }: { settingKeys?: string[] }) {
   const { t } = useI18n();
   const [views, setViews] = useState<WorkspaceSettingView[] | null>(null);
   const [dirty, setDirty] = useState<Record<string, string | boolean | null>>({});
@@ -83,14 +83,14 @@ export function RuntimeConfigPanel() {
   // that is neither core nor branding), in registration order.
   const grouped = useMemo(() => {
     const map = new Map<string, WorkspaceSettingView[]>();
-    for (const g of RUNTIME_GROUPS) map.set(g, []);
+    if (!settingKeys) for (const g of RUNTIME_GROUPS) map.set(g, []);
     for (const v of views ?? []) {
-      if (v.group === 'branding') continue;
+      if (settingKeys ? !settingKeys.includes(v.key) : v.group === 'branding') continue;
       if (!map.has(v.group)) map.set(v.group, []);
       map.get(v.group)!.push(v);
     }
     return map;
-  }, [views]);
+  }, [views, settingKeys]);
 
   const groupLabel = (group: string): string => {
     if ((RUNTIME_GROUPS as string[]).includes(group)) return t(`runtimeConfig.group_${group}` as TranslationKey);
@@ -128,23 +128,23 @@ export function RuntimeConfigPanel() {
 
   if (error) {
     return (
-      <ModulePage moduleId="admin.runtime-config" layout="form">
+      <>
         <div className="text-sm text-danger bg-danger-subtle px-3 py-2 rounded-md">{error}</div>
-      </ModulePage>
+      </>
     );
   }
   if (!views) {
     return (
-      <ModulePage moduleId="admin.runtime-config" layout="form">
+      <>
         <div className="flex items-center justify-center py-16">
           <Spinner />
         </div>
-      </ModulePage>
+      </>
     );
   }
 
   return (
-    <ModulePage moduleId="admin.runtime-config" layout="form">
+    <>
       <div className="space-y-6 max-w-3xl">
         <p className="text-xs text-fg-muted leading-relaxed">{t('runtimeConfig.intro')}</p>
 
@@ -198,6 +198,7 @@ export function RuntimeConfigPanel() {
                           </div>
                         ) : (
                           <Input
+                            aria-label={v.label}
                             type={v.secret ? 'password' : 'text'}
                             value={inputValue}
                             onChange={(e) => stage(v.key, e.target.value)}
@@ -238,6 +239,14 @@ export function RuntimeConfigPanel() {
           )}
         </div>
       </div>
+    </>
+  );
+}
+
+export function RuntimeConfigPanel() {
+  return (
+    <ModulePage moduleId="admin.runtime-config" layout="form">
+      <WorkspaceSettingsForm />
     </ModulePage>
   );
 }

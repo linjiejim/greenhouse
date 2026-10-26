@@ -335,3 +335,7 @@ Knowledge ownership advances in 0009 without DDL. The two tables and version eve
   successful plugin installation. `installOnce` serializes with the migration lock,
   writes only after success and preserves the marker on disable/re-enable. No schema
   change or new table is needed. Installation side effects must be crash-idempotent.
+
+### Committed fixture isolation (W4)
+
+DDL, full retention runs, migration/bootstrap lifecycle fixtures and shared-counter races use an owned disposable database (`tests/helpers/isolated-db.ts`) and drop it after closing all pools. Never run a retention sweep against another test's shared rows. Pure committed business tests may still use unique rows and targeted cleanup.

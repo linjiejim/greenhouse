@@ -8,6 +8,7 @@ import { Spinner } from '../components/ui';
 import { useT } from '../lib/i18n';
 import { useExtensionsStore } from '../stores/extensions-store';
 import { findExtensionPage, extensionTabs } from './index';
+import { ManifestPageHost } from './manifest-host';
 
 export function ExtensionPageHost({
   route,
@@ -22,6 +23,8 @@ export function ExtensionPageHost({
   const loaded = useExtensionsStore((s) => s.loaded);
   const active = useExtensionsStore((s) => s.extensions.some((e) => e.id === findExtensionPage(route)?.extension.id));
   const match = findExtensionPage(route);
+
+  if (route === 'ext') return <ManifestPageHost subPath={subPath} params={params} />;
 
   if (!match || (loaded && !active)) {
     return (

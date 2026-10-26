@@ -263,6 +263,7 @@ const zh: Messages = {
 
   // 应用外壳 / 导航
   app: {
+    openInBrowser: '在浏览器打开',
     chat: '对话',
     settings: '设置',
     administration: '管理后台',
@@ -1531,6 +1532,7 @@ const zh: Messages = {
       noPageOpens: '这段时间没有页面打开',
       noModelCalls: '这段时间没有模型调用',
       clientNames: {
+        desktop: '桌面端',
         mcp: 'MCP',
         agent_api: 'Agent API',
         web_chat: '网页对话',
@@ -1540,7 +1542,6 @@ const zh: Messages = {
         automation: '自动化',
         subagent: '子会话（已下线）',
         web: '网页',
-        desktop: '桌面端（已下线）',
       },
       moduleNames: {
         chat: '对话',
@@ -2216,6 +2217,7 @@ const zh: Messages = {
       computer: '云电脑',
     },
     clientNames: {
+      desktop: '桌面端',
       web: '网页',
       mobile: '手机 App',
       mcp: 'Agent（MCP）',

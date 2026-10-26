@@ -18,6 +18,22 @@ afterEach(() => {
 });
 
 describe('corsMiddleware', () => {
+  it('allows only the exact desktop origin and preserves configured origins', async () => {
+    process.env.CORS_ALLOWED_ORIGINS = 'https://private.example';
+    for (const origin of ['tauri://localhost', 'https://private.example']) {
+      const response = await createCorsApp().request('/api/test', {
+        method: 'OPTIONS',
+        headers: { Origin: origin, 'Access-Control-Request-Headers': 'X-Greenhouse-Client' },
+      });
+      expect(response.status).toBe(204);
+      expect(response.headers.get('Access-Control-Allow-Origin')).toBe(origin);
+      expect(response.headers.get('Access-Control-Allow-Headers')).toContain('X-Greenhouse-Client');
+    }
+    for (const origin of ['tauri://evil', 'tauri://localhost.evil', 'tauri://localhost:80', 'null'])
+      expect(
+        (await createCorsApp().request('/api/test', { method: 'OPTIONS', headers: { Origin: origin } })).status,
+      ).toBe(403);
+  });
   it.each(['http://localhost:8090', 'http://127.0.0.1:8090'])(
     'allows the exact Expo Web development origin %s without credentials',
     async (origin) => {

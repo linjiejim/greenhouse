@@ -1,0 +1,11 @@
+{
+  "name": "@greenhouse/ui-tokens",
+  "version": "0.0.1",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@greenhouse/types": "workspace:*"
+  }
+}

@@ -256,6 +256,7 @@ export default {
 
   // App shell / navigation
   app: {
+    openInBrowser: 'Open in browser',
     chat: 'Chat',
     settings: 'Settings',
     administration: 'Administration',
@@ -1572,7 +1573,7 @@ export default {
         automation: 'Automation',
         subagent: 'Sub-session (retired)',
         web: 'Web',
-        desktop: 'Desktop app (retired)',
+        desktop: 'Desktop app',
       },
       moduleNames: {
         chat: 'Chat',
@@ -2255,6 +2256,7 @@ export default {
       computer: 'Cloud computer',
     },
     clientNames: {
+      desktop: 'Desktop',
       web: 'Web',
       mobile: 'Mobile app',
       mcp: 'Agents (MCP)',

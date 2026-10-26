@@ -78,6 +78,7 @@ export function _resetRateLimitWarnings(): void {
 // ─── CORS ────────────────────────────────────────────────
 
 const DEFAULT_CORS_ORIGINS = [
+  'tauri://localhost',
   // Production web app / backend origin
   'https://greenhouse.example.com',
   // Local dev
@@ -254,13 +255,13 @@ export async function securityHeadersMiddleware(c: Context, next: Next) {
 
   c.header('X-Content-Type-Options', 'nosniff');
   const pluginUi = c.get('extensionUi') === true;
-  c.header('X-Frame-Options', pluginUi ? 'SAMEORIGIN' : 'DENY');
+  if (!pluginUi) c.header('X-Frame-Options', 'DENY');
   c.header('X-XSS-Protection', '1; mode=block');
   c.header('Referrer-Policy', 'strict-origin-when-cross-origin');
   c.header(
     'Content-Security-Policy',
     pluginUi
-      ? "default-src 'self'; script-src 'self'; style-src 'self'; frame-ancestors 'self'"
+      ? "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; frame-ancestors 'self' tauri://localhost"
       : [
           "default-src 'self'",
           "script-src 'self' 'unsafe-inline' 'unsafe-eval'",

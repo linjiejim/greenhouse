@@ -9,6 +9,11 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Added
 
+- Classic manifest pages reuse CRUD and Runtime Config; trusted embed hosts support theme/branding, locale, narrow ten-minute credentials, renewal, navigation, titles and editable assistant drafts.
+- `@greenhouse/ui-tokens` ships generated light/dark variables and `connectGreenhouse`; the example frontend exercises the bridge.
+- `clients.web` selects classic (4.0 rc default) or universal hosting at `/`, with classic at `/classic/`. Docker and CI export the isolated Expo workspace to `public/app` using its own lockfile.
+- Desktop CORS and framing permit exactly `tauri://localhost`; counters and paid usage recognize the desktop client header. Retention/lifecycle/counter commit tests own disposable databases.
+
 - **client:** the universal client (apps/mobile) runs in the browser and on wide screens: rail + secondary column + main + inspector, web sign-in, ⌘K, notifications popover, context menus and shortcuts, knowledge / drive / tables / projects / automations places, plugin surfaces from the station manifest (native screens, entity list / detail, settings forms, embedded pages).
 - **desktop:** a local macOS Tauri 2 shell bundling the universal client, multi-station Keychain sessions, shared menu shortcuts, notifications and Dock badge, Quick ask, deep links and opt-in signed updater wiring.
 - SDK 2 data plugins derive kernel applications/policies, guarded CRUD and MCP tools,

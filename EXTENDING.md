@@ -104,7 +104,7 @@ available to overlays, after generated packages. No runtime code loading or hot 
 
 Package production imports may reach only `@greenhouse/api/extension-kit`,
 `@greenhouse/web/extension-kit`, `@greenhouse/types/*`, `@greenhouse/crud`,
-`@greenhouse/ui/*`, their own directory, plugins declared in `dependsOn` **and** package.json,
+`@greenhouse/ui/*`, `@greenhouse/ui-tokens`, their own directory, plugins declared in `dependsOn` **and** package.json,
 and third-party dependencies declared in their own package.json (plus Node builtins).
 Relative paths cannot escape the package. Tests retain the SDK 1 exemption for host test hooks.
 Core `apps/**` / `packages/**` imports cannot reach plugins, except in the two generated files.
@@ -655,7 +655,39 @@ The hook must be idempotent across a crash after side effects but before the mar
 `GET /api/extensions` returns the member-filtered station manifest v2 with actions,
 fields, kinds, features and MCP groups, retaining the 3.x `extensions`/`entityKinds`
 fields. `/api/bootstrap.mobile_api` is 4 (`CLIENT_API_LEVEL`).
-The example's `ui.dir` serves static files at `/ext/example/ui/` with same-origin
-frame CSP; static assets are public, while data APIs stay authenticated. Full embed
-host rendering, short-lived embed tokens and universal-client work belong to the
-client wave; this SDK wave publishes their page metadata and the example static UI.
+Declare `ui: './ui'` in the pure manifest. Assembly resolves it inside the package,
+serves `ui/dist` when built (otherwise `ui/`) at `/ext/<id>/ui/`, and returns 404
+when the plugin is disabled. SDK 1 API `ui: { dir }` is still supported. HTML and
+mutable files revalidate; fingerprinted assets cache immutably. Dotfiles and
+traversal are refused. Static assets contain no member data or credentials.
+
+Classic renders `#/ext/<id>/<page>` from the station manifest, including plugins
+without a compiled web half. Entity lists/details/forms reuse `@greenhouse/crud`;
+settings reuse the Runtime Config form and save only changed declared keys. The
+settings API remains super-only; a `parent: 'settings'` page does not grant writes.
+Manifest navigation joins the existing More group. Unknown/native surfaces use
+their declared browser fallback.
+
+Embedded frontends use `connectGreenhouse()` from `@greenhouse/ui-tokens`. The
+package exports CSS variable names, light/dark defaults, and a tiny protocol
+helper. Tokens derive from `packages/ui/src/tokens`; regenerate with
+`pnpm tokens:build`. It applies init/theme variables (including brand overrides),
+exposes `token`, `refresh()`, `navigate(href)`, `title(text)` and `sendPrompt(text)`.
+The helper holds credentials in memory; never persist them in a plugin asset.
+Mobile sends its own theme payload and vendors nothing from this package.
+
+The iframe sandbox allows scripts/same-origin/forms/popups. Both ends validate
+source window and exact origin. Init includes tokens, locale, basic member,
+route and a ten-minute token from `POST /api/ext-ui/token { plugin }`. It only
+admits `/api/ext/<id>/*` and `GET /api/me` (id/name/role), keeps route permissions,
+and rechecks account generation/plugin visibility. The full host session renews
+it; a narrow token cannot mint more tokens. `sendPrompt` opens an editable
+assistant draft without sending. Theme changes preserve the frame.
+
+CSP allows frame ancestors `'self' tauri://localhost`; installed desktop frames
+have no native capabilities. A desktop iframe includes the host-origin hint;
+use `connectGreenhouse({ hostOrigin: 'tauri://localhost' })` only after explicitly
+allowlisting that exact hint. Ordinary browser embeds default to same-origin.
+Remote-origin embeds require the future OAuth contract and are unavailable in
+classic's credentialed host. The example UI and its browser specs are the
+runnable reference (`pnpm plugins:ui:build`).

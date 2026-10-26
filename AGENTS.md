@@ -250,6 +250,7 @@ greenhouse/
 │   │                     #   migrate / version detection, carry/ (migrate-from-1x), db-schema.md
 │   ├── knowledge-editor/ # Tiptap schema + server Markdown↔Tiptap JSON
 │   ├── crud/             # low-code CRUD pages (defineCrud + CrudPage); server half unused
+│   ├── ui-tokens/        # generated standalone themes + trusted plugin browser bridge
 │   ├── ui/               # shared UI: design tokens (the one source for web + mobile), Nunito, the Haven mark,
 │   │                     #   the plant-avatar renderer (SVG builder + motion + <PlantAvatar>)
 │   └── contract/         # typed API contract — re-exports apps/api's AppType + hc (web client)
@@ -274,6 +275,7 @@ greenhouse/
 | `@greenhouse/db` | `packages/db/` | Database layer |
 | `@greenhouse/knowledge-editor` | `packages/knowledge-editor/` | KB editor: Tiptap schema + Markdown↔Tiptap JSON. Markdown is canonical; `content_json='{}'` is legal |
 | `@greenhouse/ui` | `packages/ui/` | Design tokens (`./tokens`; `pnpm tokens:build` renders the web CSS and the mobile copy), bundled Nunito, the Haven mark (`./components/brand`), the plant-avatar renderer (`./components/plant-avatar`, React-free `./components/plant-avatar/svg`); ids + legacy resolver live in `@greenhouse/types` |
+| `@greenhouse/ui-tokens` | `packages/ui-tokens/` | Standalone generated theme values and trusted plugin embed bridge |
 | `@greenhouse/crud` | `packages/crud/` | Low-code CRUD — `defineCrud` + `CrudPage` client (automations, email accounts, SkillHub prompts). `createCrudRoutes` is exported but only its own tests use it |
 | `@greenhouse/contract` | `packages/contract/` | Typed API contract (AppType + hc; **type-only import of `@greenhouse/api`**) |
 | `@greenhouse/api` | `apps/api/` | Backend app |
@@ -300,7 +302,7 @@ greenhouse/
   `GREENHOUSE_PLUGINS=` builds a zero-package core; `pnpm test:core` checks its types, unit/DB suites and boot.
   Never edit generated registrations. The SDK 1 in-tree lists remain available after compiled packages.
   Package production imports use only the API/web `extension-kit` package exports, `@greenhouse/types/*`,
-  `@greenhouse/crud`, `@greenhouse/ui/*`, own files, declared plugin dependencies and own third-party deps.
+  `@greenhouse/crud`, `@greenhouse/ui/*`, `@greenhouse/ui-tokens`, own files, declared plugin dependencies and own third-party deps.
   Relative paths cannot escape; tests retain the host-hook exemption. `pnpm lint` enforces both directions.
   Registered: package boundaries use a TypeScript AST scanner to catch import types and computed loads;
   the SDK 1 regex scanner stays separate to preserve in-tree overlays’ existing syntax and exemptions.
@@ -605,3 +607,10 @@ Knowledge server conversion may import the shared `@greenhouse/knowledge-editor/
   non-vetoing, have a five-second deadline and carry ids/metadata only. Install
   markers live in `extension_migrations`, not a parallel table; hooks must tolerate
   retry after a crash. Never edit an applied migration checksum.
+
+### Hosted clients and plugin UI (4.0, wave 4)
+
+- `clients.web` selects the production root: `classic` (4.0 rc default) or `universal`. Classic also remains at `/classic/` in both modes. API/plugin paths never fall through to either SPA.
+- `pnpm web:build` preserves `public/app`; `pnpm app:build` exports the isolated Expo workspace into it using the browser's own origin. Docker installs mobile with its own frozen lockfile in a separate stage. Never add mobile to the root workspace.
+- `@greenhouse/ui-tokens` contains generated light/dark values and the trusted embed bridge. Regenerate through `pnpm tokens:build`; mobile builds its own init message and imports none of this package.
+- Classic manifest pages use `#/ext/<plugin>/<page>` and the existing CRUD / Runtime Config components. Embeds receive only ten-minute `/api/ext-ui/token` credentials, never an interactive access token.

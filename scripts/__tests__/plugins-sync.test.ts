@@ -140,3 +140,29 @@ it('assembles SDK 1 and SDK 2 packages in the same station', () => {
   sync(root);
   expect(readFileSync(join(root, 'apps/api/src/extensions/compiled.generated.ts'), 'utf8')).toContain('alpha/api.js');
 });
+
+it('resolves manifest UI paths independently of cwd and refuses paths outside the package', () => {
+  const root = fixture();
+  const manifest = join(root, 'plugins/beta/manifest.ts');
+  mkdirSync(join(root, 'plugins/beta/ui'));
+  writeFileSync(
+    manifest,
+    "export default { id: 'beta', name: 'Beta', sdk: 1, version: '1.0.0', dependsOn: [], ui: './ui' }",
+  );
+  sync(root);
+  const output = readFileSync(join(root, 'apps/api/src/extensions/compiled.generated.ts'), 'utf8');
+  expect(output).toContain('fileURLToPath(new URL(');
+  expect(output).toContain('plugins/beta/ui');
+  expect(output).toContain('/ext/beta/ui/');
+  // A manifest/static frontend does not need either compiled code half.
+  change(root, 'beta', 'api', undefined);
+  sync(root);
+  const uiOnly = readFileSync(join(root, 'apps/api/src/extensions/compiled.generated.ts'), 'utf8');
+  expect(uiOnly).toContain('plugins/beta/ui');
+  expect(uiOnly).toContain('/ext/beta/ui/');
+  writeFileSync(
+    manifest,
+    "export default { id: 'beta', name: 'Beta', sdk: 1, version: '1.0.0', dependsOn: [], ui: './../alpha' }",
+  );
+  expect(() => sync(root)).toThrow(/inside the plugin/);
+});

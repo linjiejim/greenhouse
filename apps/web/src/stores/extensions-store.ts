@@ -10,6 +10,7 @@ import { create } from 'zustand';
 import { setExtensionEntityKinds, RESERVED_ENTITY_OWNERS } from '@greenhouse/types/entity-links';
 import type { ExtensionEntityKindDef } from '@greenhouse/types/entity-links';
 import { authFetch } from '../lib/auth';
+import type { PluginManifestEntry } from '@greenhouse/types/plugins';
 
 /**
  * Compiled web halves this build refused (sdk / core mismatch), set once by
@@ -35,6 +36,7 @@ export interface ActiveExtension {
 }
 
 interface ExtensionsStore {
+  plugins: PluginManifestEntry[];
   extensions: ActiveExtension[];
   loaded: boolean;
   conversationSharing: boolean;
@@ -43,6 +45,7 @@ interface ExtensionsStore {
 }
 
 export const useExtensionsStore = create<ExtensionsStore>((set) => ({
+  plugins: [],
   extensions: [],
   loaded: false,
   conversationSharing: true,
@@ -52,6 +55,7 @@ export const useExtensionsStore = create<ExtensionsStore>((set) => ({
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = (await res.json()) as {
         extensions: ActiveExtension[];
+        plugins?: PluginManifestEntry[];
         automationTools?: AutomationOptInTool[];
         conversations?: { sharing?: boolean };
         entityKinds?: ExtensionEntityKindDef[];
@@ -59,6 +63,7 @@ export const useExtensionsStore = create<ExtensionsStore>((set) => ({
       setExtensionAutomationTools(data.automationTools ?? []);
       setExtensionEntityKinds((data.entityKinds ?? []).filter((def) => !incompatible.has(kindOwner(def.kind) ?? '')));
       set({
+        plugins: data.plugins ?? [],
         extensions: data.extensions.filter((e) => !incompatible.has(e.id)),
         loaded: true,
         conversationSharing: data.conversations?.sharing ?? true,
@@ -67,13 +72,13 @@ export const useExtensionsStore = create<ExtensionsStore>((set) => ({
       setExtensionAutomationTools([]);
       setExtensionEntityKinds([]);
       // Fail closed: an unreachable list means no extension UI, never a broken one.
-      set({ extensions: [], loaded: true, conversationSharing: false });
+      set({ extensions: [], plugins: [], loaded: true, conversationSharing: false });
     }
   },
   reset: () => {
     setExtensionAutomationTools([]);
     setExtensionEntityKinds([]);
-    set({ extensions: [], loaded: false, conversationSharing: false });
+    set({ extensions: [], plugins: [], loaded: false, conversationSharing: false });
   },
 }));
 

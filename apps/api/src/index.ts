@@ -7,12 +7,10 @@ import { fromExtensions } from './extensions/index.js';
  * Mounts route modules, applies middleware, starts server.
  */
 
-import { resolve } from 'node:path';
 import { logger } from '@greenhouse/utils/logger';
 import { toErrorMessage } from '@greenhouse/utils/error';
-import { readFileSync, existsSync } from 'node:fs';
 import { config } from 'dotenv';
-import { ENV_FILE, PUBLIC_DIR, REPO_ROOT } from './paths.js';
+import { ENV_FILE, PUBLIC_DIR } from './paths.js';
 
 // Load .env before anything else
 config({ path: ENV_FILE });
@@ -34,7 +32,10 @@ if (_httpsProxy) {
 
 import { Hono } from 'hono';
 import { serve } from '@hono/node-server';
-import { serveStatic } from '@hono/node-server/serve-static';
+import { mountClientHosting } from './hosting.js';
+import { extUiScopeMiddleware } from './auth/middleware.js';
+import { GREENHOUSE_CONFIG } from './config/greenhouse-config.js';
+import extUiRoutes from './routes/ext-ui.js';
 const DATABASE_URL = process.env.DATABASE_URL ?? 'postgresql://greenhouse:greenhouse@localhost:5432/greenhouse';
 import { initDatabase } from '@greenhouse/db';
 import type { DatabaseProvider } from '@greenhouse/db';
@@ -72,6 +73,7 @@ import {
   applyExtensionMigrations,
   extensionApplicationRegistrations,
   mountExtensionRoutes,
+  mountExtensionUis,
   runExtensionBootHooks,
   runExtensionShutdownHooks,
 } from './extensions/boot.js';
@@ -146,6 +148,9 @@ if (trustedExecutionSwitches.invalidEnv.length > 0) {
 
 app.use('*', securityHeadersMiddleware);
 app.use('*', corsMiddleware);
+app.use('*', extUiScopeMiddleware);
+mountExtensionUis(app);
+mountClientHosting(app, PUBLIC_DIR, GREENHOUSE_CONFIG.clients.web);
 app.use('*', authMiddleware);
 app.use('*', rateLimitMiddleware);
 
@@ -168,78 +173,7 @@ app.use('*', async (c, next) => {
   logger.info(`[API] ← ${statusIcon} ${method} ${path} ${status} (${duration}ms)`);
 });
 
-// ─── Static File Serving ──────────────────────────────
-
-// Root is the repo root (absolute, computed from this module's location) — NOT
-// `process.cwd()`. serve-static does `join(root, requestPath)`, so a relative
-// `./` root silently breaks when the API is launched from anywhere other than
-// the repo root (e.g. `cd apps/api && pnpm dev`), turning every /public asset
-// (the logo included) into a 404. REPO_ROOT mirrors PUBLIC_DIR used below.
-app.use('/public/*', serveStatic({ root: REPO_ROOT }));
-// Vite emits the hashed bundle under public/assets with `base: './'`, so the
-// SPA (served at `/`) requests them at `/assets/*`. Rewrite to the on-disk
-// public/assets path (mirrors the proven `/public/*` mapping above).
-app.use(
-  '/assets/*',
-  serveStatic({
-    root: REPO_ROOT,
-    rewriteRequestPath: (p) => `/public${p}`,
-    // Vite 产物是内容哈希文件名——内容变则文件名变，所以这些 URL 的内容永不改写，
-    // 可以按 immutable 永久缓存。浏览器与桌面壳都受益，WebView 壳尤其明显：冷启动
-    // 只需回源取 index.html，其余静态资源全部本地命中。
-    onFound: (_localPath, c) => {
-      c.header('Cache-Control', 'public, max-age=31536000, immutable');
-    },
-  }),
-);
-
-// Root-level static files the SPA references by absolute path (the icon set +
-// web manifest shipped in apps/web/public and copied next to index.html by
-// Vite). Explicit allowlist — never a directory listing of public/.
-const ROOT_STATIC_FILES: Record<string, string> = {
-  '/favicon.svg': 'image/svg+xml',
-  '/apple-touch-icon.png': 'image/png',
-  '/icon-192.png': 'image/png',
-  '/icon-512.png': 'image/png',
-  '/site.webmanifest': 'application/manifest+json',
-};
-for (const [path, contentType] of Object.entries(ROOT_STATIC_FILES)) {
-  app.get(path, (c) => {
-    const filePath = resolve(PUBLIC_DIR, path.slice(1));
-    if (!existsSync(filePath)) return c.body(null, 404);
-    c.header('Content-Type', contentType);
-    c.header('Cache-Control', 'public, max-age=86400');
-    return c.body(readFileSync(filePath));
-  });
-}
-
-// Favicon — serve from public or return empty
-app.get('/favicon.ico', (c) => {
-  const faviconPath = resolve(PUBLIC_DIR, 'favicon.ico');
-  if (existsSync(faviconPath)) {
-    const data = readFileSync(faviconPath);
-    c.header('Content-Type', 'image/x-icon');
-    c.header('Cache-Control', 'public, max-age=86400');
-    return c.body(data);
-  }
-  return c.body(null, 204);
-});
-
-app.get('/', (c) => {
-  // Vite build writes the production index.html (with hashed asset refs) into
-  // public/. In dev the SPA is served by the Vite dev server (:3100), not here.
-  const htmlPath = resolve(PUBLIC_DIR, 'index.html');
-  if (!existsSync(htmlPath)) {
-    return c.text('Frontend not built. Run: pnpm web:build', 404);
-  }
-  const html = readFileSync(htmlPath, 'utf-8');
-  // index.html 引用的是哈希文件名，所以它自己必须每次回源确认——否则发布后客户端
-  // 会拿着旧 HTML 去请求已经不存在的 assets。用 no-cache（可缓存但须 revalidate）
-  // 而不是 no-store，前进/后退仍能走缓存。
-  c.header('Cache-Control', 'no-cache');
-  return c.html(html);
-});
-
+// Client hosting excludes API/plugin prefixes before their authenticated routes.
 // ─── Mount Routes ────────────────────────────────────────
 // One chained expression so the full route schema composes into AppType
 // (consumed by hc clients via @greenhouse/contract). Registration order is
@@ -255,6 +189,7 @@ function mountRoutes(toolRegistry: ToolRegistry) {
       .route('/api/auth', authRoutes)
       .route('/api/auth', identityDiscoveryRoutes)
       .route('/api/me', meRoutes)
+      .route('/api/ext-ui', extUiRoutes)
       // A member's own connectors (connect / disconnect team ones, CRUD personal
       // ones); the router also requires the mcp_call tool.
       .use('/api/me/connectors', requireInternal())

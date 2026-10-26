@@ -396,4 +396,11 @@ describe('module usage counting on chat turns', () => {
       'mobile',
     ]);
   });
+  it('counts a desktop turn as desktop', async () => {
+    expect(await countedClientFor('web', { 'X-Greenhouse-Client': 'desktop' })).toEqual([
+      'tool_call',
+      'knowledge_query',
+      'desktop',
+    ]);
+  });
 });

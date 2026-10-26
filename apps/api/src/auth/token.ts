@@ -74,6 +74,52 @@ function hmac(data: string, purpose: string): string {
   return createHmac('sha256', `${getSigningKey()}:${purpose}`).update(data).digest('hex');
 }
 
+export const EXT_UI_TOKEN_TTL = 10 * 60;
+export interface ExtUiTokenPayload extends TokenPayload {
+  plugin: string;
+}
+
+/** Purpose-separated credentials can never be accepted as interactive sessions. */
+export function createExtUiToken(uid: string, role: UserRole, authVersion: number, plugin: string) {
+  if (!/^[a-z][a-z0-9-]*$/.test(plugin) || !Number.isInteger(authVersion) || authVersion < 0)
+    throw new Error('Invalid embed token claims');
+  const exp = Math.floor(Date.now() / 1000) + EXT_UI_TOKEN_TTL;
+  const data = Buffer.from(JSON.stringify({ uid, role, authVersion, plugin, exp })).toString('base64url');
+  return { token: `${data}.${hmac(data, 'ext-ui')}`, expires_at: new Date(exp * 1000).toISOString() };
+}
+
+export function validateExtUiToken(token: string): ExtUiTokenPayload | null {
+  const [data, sig, extra] = token.split('.');
+  if (!data || !sig || extra !== undefined || !/^[a-f0-9]{64}$/i.test(sig)) return null;
+  if (!timingSafeEqual(Buffer.from(sig, 'hex'), Buffer.from(hmac(data, 'ext-ui'), 'hex'))) return null;
+  try {
+    const p = JSON.parse(Buffer.from(data, 'base64url').toString());
+    return typeof p.uid === 'string' &&
+      p.uid.length &&
+      (p.role === 'team' || p.role === 'super') &&
+      Number.isInteger(p.authVersion) &&
+      p.authVersion >= 0 &&
+      Number.isInteger(p.exp) &&
+      p.exp > Math.floor(Date.now() / 1000) &&
+      typeof p.plugin === 'string' &&
+      /^[a-z][a-z0-9-]*$/.test(p.plugin)
+      ? p
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+export function extUiPathAllowed(plugin: string, method: string, path: string): boolean {
+  if (path === '/api/me') return method === 'GET';
+  // Refuse encoded separators/traversal rather than relying on a router's decoding order.
+  return (
+    path.startsWith(`/api/ext/${plugin}/`) &&
+    !/[%\\\\]/.test(path) &&
+    !path.split('/').some((s) => s === '.' || s === '..')
+  );
+}
+
 // ─── Access Token ────────────────────────────────────────
 
 /**

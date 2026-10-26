@@ -377,6 +377,25 @@ frontend changes hot-reload.
 > folder of Markdown), `tables`, `platform` (scaffold an application), and `chat` (needs a
 > running server). Run `pnpm cli --help` for the full guide.
 
+## Web clients and hosting
+
+`greenhouse.config.ts` selects `clients.web: 'classic' | 'universal'` (default
+`classic` for 4.0 rc). Classic serves `/` by default and is always available at
+`/classic/`; selecting `universal` serves the Expo client at `/`. Both have SPA
+fallbacks, and classic hashes remain usable under `/classic/#/...`.
+
+Build both with `pnpm web:build`, `pnpm mobile:install`, then `pnpm app:build`.
+The Expo export lands in `public/app/`; rebuilding classic preserves it. Hosted
+browser builds use their own origin, independent of desktop/developer station
+settings. Docker builds both clients, installing Expo in a separate stage with
+its own frozen lockfile. The CI hosted-client job exercises the same exports.
+`pnpm dev` continues to open the classic Vite UI, including its `/ext` proxy.
+
+Plugins can expose declarative entity/settings pages and trusted embedded UIs;
+see [EXTENDING.md](EXTENDING.md). Embed sessions last ten minutes and are limited
+to their plugin API and a basic member read. The desktop shell is allowed by an
+exact origin, and its usage is labelled `desktop`.
+
 ## One-command Docker deploy
 
 The bundled `docker-compose.yml` runs Postgres, a one-shot migration job, and the API

@@ -40,7 +40,8 @@
     "mermaid": "^11.16.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "zustand": "^5.0.13"
+    "zustand": "^5.0.13",
+    "@greenhouse/ui-tokens": "workspace:*"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.0",

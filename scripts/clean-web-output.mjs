@@ -16,6 +16,7 @@ if (basename(publicDir) !== 'public') {
 // directory has never been created — vite makes it on the way out.
 if (existsSync(publicDir)) {
   for (const entry of readdirSync(publicDir, { withFileTypes: true })) {
+    if (entry.name === 'app') continue;
     rmSync(resolve(publicDir, entry.name), { recursive: true, force: true });
   }
 }

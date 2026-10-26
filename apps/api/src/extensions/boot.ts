@@ -1,4 +1,6 @@
 import { serveStatic } from '@hono/node-server/serve-static';
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
 import { createIdentityProviderRoutes } from '../auth/identity-providers.js';
 /**
  * Boot-time glue between the active extensions and the core runtime: what
@@ -83,20 +85,40 @@ export async function applyExtensionMigrations(db: DatabaseProvider): Promise<vo
 }
 
 /** Mount extension routes after the typed core chain; guards run for every request under the prefix. */
+export function mountExtensionUis(app: Hono<AppEnv>): void {
+  for (const ext of EXTENSIONS) {
+    const uiDir = ext.ui?.dir;
+    if (uiDir) {
+      const root = existsSync(join(uiDir, 'dist', 'index.html')) ? join(uiDir, 'dist') : uiDir;
+      app.use(
+        `/ext/${ext.id}/ui/*`,
+        async (c, next) => {
+          let decoded: string;
+          try {
+            decoded = decodeURIComponent(c.req.path);
+          } catch {
+            return c.body(null, 404);
+          }
+          if (decoded.includes('\\') || decoded.split('/').some((part) => part.startsWith('.')))
+            return c.body(null, 404);
+          c.set('extensionUi', true);
+          c.header(
+            'Cache-Control',
+            /[-.][a-f0-9]{8,}\./i.test(c.req.path) ? 'public, max-age=31536000, immutable' : 'no-cache',
+          );
+          await next();
+        },
+        serveStatic({ root, rewriteRequestPath: (path) => path.slice(`/ext/${ext.id}/ui`.length) }),
+      );
+    }
+  }
+  app.get('/ext/*', (c) => c.body(null, 404));
+}
+
 export function mountExtensionRoutes(app: Hono<AppEnv>): void {
   for (const provider of fromExtensions('identityProviders'))
     app.route(provider.path, createIdentityProviderRoutes(provider));
   for (const ext of EXTENSIONS) {
-    if (ext.ui) {
-      app.use(
-        `/ext/${ext.id}/ui/*`,
-        async (c, next) => {
-          c.set('extensionUi', true);
-          await next();
-        },
-        serveStatic({ root: ext.ui.dir, rewriteRequestPath: (path) => path.slice(`/ext/${ext.id}/ui`.length) }),
-      );
-    }
     for (const route of ext.routes ?? []) {
       for (const guard of route.guards ?? []) {
         app.use(route.path, guard);

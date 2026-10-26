@@ -131,7 +131,7 @@ function parseRoute(hash: string): ParsedRoute {
   const coreOwned = CORE_ROUTES.has(topLevel);
   // Extension pages answer their own top-level segment; the host checks the
   // extension is active before rendering anything.
-  if (!coreOwned && compiledExtensionRoutes().has(topLevel)) {
+  if (topLevel === 'ext' || (!coreOwned && compiledExtensionRoutes().has(topLevel))) {
     return {
       route: 'extension',
       extensionRoute: topLevel,
@@ -315,10 +315,18 @@ function AppShell({ route, subPath, params, extensionRoute }: AppShellProps) {
   }, [route, setChatWorkspaceView]);
   // Module usage: one page_open per module per page view. Moving within a
   // module (doc → doc, settings tab → same tab) is not a new open.
+  const manifestPluginId = useExtensionsStore(
+    (state) => state.plugins.find((plugin) => plugin.id === subPath.split('/')[0])?.id ?? null,
+  );
   const usageModule = pageModuleForRoute({
     route,
     subPath,
-    extensionId: route === 'extension' && extensionRoute ? findExtensionPage(extensionRoute)?.extension.id : null,
+    extensionId:
+      route === 'extension' && extensionRoute
+        ? extensionRoute === 'ext'
+          ? manifestPluginId
+          : findExtensionPage(extensionRoute)?.extension.id
+        : null,
   });
   useEffect(() => {
     if (usageModule) reportPageOpen(usageModule);

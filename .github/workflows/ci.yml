@@ -15,6 +15,17 @@ on:
   pull_request:
 
 jobs:
+  hosted-client:
+    if: github.repository == 'linjiejim/greenhouse'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - run: pnpm --dir apps/mobile install --ignore-workspace --frozen-lockfile
+      - run: pnpm web:build && pnpm app:build
+      - name: Verify both hosted clients
+        run: test -f public/index.html && test -f public/app/index.html
+
   lint:
     if: github.repository == 'linjiejim/greenhouse'
     runs-on: ubuntu-latest

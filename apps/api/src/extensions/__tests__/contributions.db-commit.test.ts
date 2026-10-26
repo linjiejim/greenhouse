@@ -1,8 +1,14 @@
 /** @db-commit-reason Exercises plugin retention DDL and cross-provider job claims. */
-import { afterAll, expect, it, vi } from 'vitest';
+import { beforeAll, afterAll, expect, it, vi } from 'vitest';
 import { sql } from 'drizzle-orm';
-import { createDatabase } from '@greenhouse/db';
-import { TEST_DATABASE_URL } from '@greenhouse/db/test-config';
+import { createDatabase, type DatabaseProvider } from '@greenhouse/db';
+import { isolatedDatabase } from '../../../../../tests/helpers/isolated-db.js';
+let fixture: Awaited<ReturnType<typeof isolatedDatabase>>;
+let db: DatabaseProvider;
+beforeAll(async () => {
+  fixture = await isolatedDatabase('contributions');
+  db = createDatabase(fixture.url);
+}, 30_000);
 
 vi.stubEnv('GREENHOUSE_EXTENSIONS', 'registry-fixture');
 vi.mock('../compiled.generated.js', () => ({
@@ -62,12 +68,11 @@ vi.mock('../compiled.generated.js', () => ({
   ],
 }));
 
-const db = createDatabase(TEST_DATABASE_URL);
 afterAll(async () => {
-  await db.executeRaw(sql`DROP TABLE IF EXISTS ext_retention_fixture`);
   await db.close();
+  await fixture?.drop();
   vi.unstubAllEnvs();
-});
+}, 30_000);
 
 it('aggregates a fixture into prompt, availability, billing, jobs and summaries', async () => {
   const extensions = await import('../index.js');
@@ -101,7 +106,7 @@ it('deletes only expired plugin rows in bounded batches and reports the count', 
 });
 
 it('holds a shared job lock for the full callback and releases it on failure', async () => {
-  const other = createDatabase(TEST_DATABASE_URL);
+  const other = createDatabase(fixture.url);
   let release!: () => void;
   let entered!: () => void;
   const barrier = new Promise<void>((resolve) => {

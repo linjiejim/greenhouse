@@ -7,7 +7,8 @@
     "declarationMap": false,
     "baseUrl": ".",
     "paths": {
-      "@greenhouse/db": ["packages/db/src/index.ts"]
+      "@greenhouse/db": ["packages/db/src/index.ts"],
+      "@greenhouse/db/test-config": ["packages/db/src/test-config.ts"]
     },
     "tsBuildInfoFile": "node_modules/.cache/typescript/root.tsbuildinfo"
   },

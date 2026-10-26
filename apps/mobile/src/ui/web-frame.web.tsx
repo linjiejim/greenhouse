@@ -29,6 +29,13 @@ export function WebFrame({
   useEffect(() => {
     if (bridge?.outgoing) frame.current?.contentWindow?.postMessage(bridge.outgoing, bridge.origin);
   }, [bridge?.outgoing, bridge?.origin]);
+  const frameSrc = useMemo(() => {
+    if (!source || !('uri' in source) || !source.uri) return undefined;
+    if (!bridge || window.location.origin !== 'tauri://localhost') return source.uri;
+    const url = new URL(source.uri);
+    url.searchParams.set('host_origin', 'tauri://localhost');
+    return url.href;
+  }, [source, bridge]);
   const html = source && 'html' in source ? source.html : undefined;
   const srcDoc = useMemo(() => {
     if (html === undefined) return undefined;
@@ -41,11 +48,11 @@ export function WebFrame({
     <iframe
       ref={frame}
       title={bridge?.title ?? 'Greenhouse preview'}
-      sandbox={bridge ? 'allow-scripts allow-same-origin allow-downloads' : 'allow-scripts allow-downloads'}
+      sandbox={bridge ? 'allow-scripts allow-same-origin allow-forms allow-popups allow-downloads' : 'allow-scripts allow-downloads'}
       onLoad={bridge?.onLoad}
       referrerPolicy="no-referrer"
       srcDoc={srcDoc}
-      src={source && 'uri' in source ? source.uri : undefined}
+      src={frameSrc}
       style={{
         border: 0,
         width: '100%',

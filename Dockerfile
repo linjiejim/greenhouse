@@ -1,4 +1,4 @@
-# Greenhouse — single self-contained image: the Hono API serves the built SPA,
+# Greenhouse — single self-contained image: the Hono API serves the built clients,
 # run via tsx (no separate compile step). Debian base (not Alpine): the `compute`
 # tool's isolated-vm native addon builds reliably on glibc.
 
@@ -11,6 +11,13 @@ ENV npm_config_registry=${NPM_REGISTRY}
 # Pin pnpm to match packageManager in package.json.
 RUN npm install -g pnpm@11.9.0
 
+# The isolated Expo workspace keeps its lockfile and dependencies out of runtime.
+FROM base AS universal
+COPY apps/mobile ./apps/mobile
+COPY scripts/build-app.mjs ./scripts/build-app.mjs
+RUN pnpm --dir apps/mobile install --ignore-workspace --frozen-lockfile
+RUN node scripts/build-app.mjs
+
 # ── Build: install the full workspace (compiles native addons) + build the SPA ──
 # NODE_ENV is left unset here so devDependencies (vite, tsx, drizzle-kit) install.
 FROM base AS build
@@ -19,8 +26,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
  && rm -rf /var/lib/apt/lists/*
 COPY . .
 RUN pnpm install --frozen-lockfile
-# Vite builds the web bundle into repo-root public/, which the API serves at `/`.
 RUN pnpm plugins:sync --check && pnpm web:build
+COPY --from=universal /app/public/app ./public/app
 
 # ── Runtime: same filesystem, production env ──
 FROM build AS runtime

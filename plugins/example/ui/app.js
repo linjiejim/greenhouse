@@ -1,12 +1,21 @@
-/* global window, document */
-window.addEventListener('message', (event) => {
-  if (event.origin !== window.location.origin || event.source !== window.parent) return;
-  if (event.data?.type !== 'greenhouse:init') return;
-  const { user, locale, tokens } = event.data;
-  document.documentElement.lang = locale;
-  for (const [key, value] of Object.entries(tokens ?? {})) {
-    if (key.startsWith('--')) document.documentElement.style.setProperty(key, String(value));
-  }
-  document.getElementById('status').textContent = `Hello, ${user.name}. Your notes stay personal.`;
+/* global window, document, URLSearchParams */
+import { connectGreenhouse } from './greenhouse/index.js';
+// Desktop is an installed, trusted host, explicitly allowed by the server CSP.
+const parentOrigin = new URLSearchParams(window.location.search).get('host_origin');
+const bridge = connectGreenhouse({
+  hostOrigin: parentOrigin === 'tauri://localhost' ? parentOrigin : window.location.origin,
+  onInit({ user }) {
+    document.getElementById('status').textContent = `Hello, ${user.name}. Your notes stay personal.`;
+    bridge.title('Example notes');
+  },
 });
-window.parent.postMessage({ type: 'greenhouse:ready' }, window.location.origin);
+document.getElementById('navigate').onclick = () => bridge.navigate('#/ext/example/example-note');
+document.getElementById('prompt').onclick = () => bridge.sendPrompt('Help me organize my notes');
+document.getElementById('refresh').onclick = async () => {
+  try {
+    await bridge.refresh();
+    document.getElementById('status').textContent = 'Token refreshed';
+  } catch (error) {
+    document.getElementById('status').textContent = error.message;
+  }
+};

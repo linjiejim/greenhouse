@@ -120,9 +120,9 @@ export function meteringClientForToolClient(client: ToolCallClient): MeteringCli
   }
 }
 
-/** A plain API request: the mobile app says so in its header, anything else is the web app. */
+/** A plain API request: a recognized app header names mobile or desktop; otherwise use web. */
 export function meteringClientForRequest(c: Context): MeteringClient {
-  return parseAppClient(c.req.header(APP_CLIENT_HEADER)) === 'mobile' ? 'mobile' : 'web';
+  return parseAppClient(c.req.header(APP_CLIENT_HEADER)) ?? 'web';
 }
 
 /** Where a caller's calls come from when nobody set a scope. */

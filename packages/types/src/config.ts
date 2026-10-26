@@ -69,7 +69,7 @@ export interface GreenhouseConfig {
   conversations: { sharing: boolean };
   extensions: ExtensionsConfig;
   packs: PacksConfig;
-  clients: { stations: ClientStationsConfig };
+  clients: { web: 'classic' | 'universal'; stations: ClientStationsConfig };
 }
 
 /** What a `greenhouse.config.ts` file may export — every section optional. */
@@ -78,7 +78,7 @@ export interface GreenhouseConfigInput {
   conversations?: { sharing?: boolean };
   extensions?: Partial<ExtensionsConfig>;
   packs?: Partial<PacksConfig>;
-  clients?: { stations?: Partial<ClientStationsConfig> };
+  clients?: { web?: 'classic' | 'universal'; stations?: Partial<ClientStationsConfig> };
 }
 
 export const DEFAULT_GREENHOUSE_CONFIG: GreenhouseConfig = {
@@ -86,7 +86,7 @@ export const DEFAULT_GREENHOUSE_CONFIG: GreenhouseConfig = {
   conversations: { sharing: true },
   extensions: { enabled: 'all' },
   packs: { skills: [], profiles: [] },
-  clients: { stations: { mode: 'multi', defaults: [] } },
+  clients: { web: 'classic', stations: { mode: 'multi', defaults: [] } },
 };
 
 /** Identity helper that gives `greenhouse.config.ts` its types without a runtime dependency. */
@@ -108,6 +108,7 @@ export function mergeGreenhouseConfig(input: GreenhouseConfigInput | undefined):
     extensions: { ...DEFAULT_GREENHOUSE_CONFIG.extensions, ...(input?.extensions ?? {}) },
     packs: { ...DEFAULT_GREENHOUSE_CONFIG.packs, ...(input?.packs ?? {}) },
     clients: {
+      web: input?.clients?.web ?? DEFAULT_GREENHOUSE_CONFIG.clients.web,
       stations: { ...DEFAULT_GREENHOUSE_CONFIG.clients.stations, ...(input?.clients?.stations ?? {}) },
     },
   };
