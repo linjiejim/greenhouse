@@ -548,7 +548,14 @@ export async function* withFinalAnswerGuarantee(
  * Both routes use these to gather pipeline steps, references, etc.
  */
 export interface StreamCollectors {
+  /**
+   * Every text delta of the turn, across ALL steps — what the user watched
+   * stream. This (not the SDK's `text`, which is the LAST step only) is what is
+   * persisted, so a table written before an ask_user step survives a refresh.
+   */
   fullText: string;
+  /** A step ended after some text; the next text gets a paragraph break so markdown blocks don't fuse. */
+  pendingStepBreak?: boolean;
   reasoningText: string;
   pipelineSteps: PipelineStep[];
   referencesMap: Map<string, Reference>;
@@ -563,6 +570,7 @@ export interface StreamCollectors {
 export function createCollectors(): StreamCollectors {
   return {
     fullText: '',
+    pendingStepBreak: false,
     reasoningText: '',
     pipelineSteps: [],
     referencesMap: new Map(),
@@ -582,6 +590,12 @@ export function createCollectors(): StreamCollectors {
 export function processStreamPart(part: any, collectors: StreamCollectors): void {
   switch (part.type) {
     case 'text-delta':
+      if (collectors.pendingStepBreak && part.text) {
+        collectors.pendingStepBreak = false;
+        if (!collectors.fullText.endsWith('\n\n')) {
+          collectors.fullText += collectors.fullText.endsWith('\n') ? '\n' : '\n\n';
+        }
+      }
       collectors.fullText += part.text;
       break;
 
@@ -658,6 +672,7 @@ export function processStreamPart(part: any, collectors: StreamCollectors): void
 
     case 'start-step':
       collectors.stepStartTime = Date.now();
+      if (collectors.fullText) collectors.pendingStepBreak = true;
       break;
 
     case 'finish':
@@ -695,7 +710,10 @@ export async function buildEngineResult(
   ]);
 
   const durationMs = Date.now() - startTime;
-  const textToUse = finalText || collectors.fullText;
+  // fullText spans every step; the SDK's `text` is only the last step's, which
+  // dropped e.g. a table streamed before an ask_user step. It falls back to the
+  // SDK value only for a caller that never fed the collectors.
+  const textToUse = collectors.fullText || finalText;
   const usage = finalUsage as any;
   const finalAnswerUsage = finalAnswerUsageByPrimary.get(streamResult) ?? emptyUsageTotals();
 

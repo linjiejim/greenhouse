@@ -64,3 +64,36 @@ describe('DeepSeek final-answer usage accounting', () => {
     });
   });
 });
+
+describe('persisted text spans every step', () => {
+  it('keeps text streamed before a tool step (the SDK text is only the last step)', async () => {
+    const table = '| Item | Qty |\n|---|---|\n| Seeds | 4 |';
+    const parts = [
+      { type: 'start-step' },
+      { type: 'text-delta', text: table },
+      { type: 'tool-input-start', id: 'ask-1', toolName: 'ask_user' },
+      { type: 'tool-result', toolCallId: 'ask-1', toolName: 'ask_user', output: { answer: 'yes' } },
+      { type: 'start-step' },
+      { type: 'text-delta', text: 'Which one should I order?' },
+      { type: 'finish', finishReason: 'stop' },
+    ];
+    const stream = fakeStream(
+      parts,
+      { inputTokens: 1, outputTokens: 1 },
+      { text: Promise.resolve('Which one should I order?') },
+    );
+    const collectors = createCollectors();
+    for (const part of parts) processStreamPart(part, collectors);
+
+    const result = await buildEngineResult(stream, collectors, [], Date.now());
+
+    // Both steps, once each, with a paragraph break so the table does not swallow the question.
+    expect(result.text).toBe(`${table}\n\nWhich one should I order?`);
+  });
+
+  it('falls back to the SDK text when nothing was collected', async () => {
+    const stream = fakeStream([], { inputTokens: 1, outputTokens: 1 }, { text: Promise.resolve('Only answer') });
+    const result = await buildEngineResult(stream, createCollectors(), [], Date.now());
+    expect(result.text).toBe('Only answer');
+  });
+});

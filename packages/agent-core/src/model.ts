@@ -216,6 +216,38 @@ async function settleProviderAttempt(
 }
 
 /**
+ * Drop `temperature` from a call to a DeepSeek model that is thinking.
+ *
+ * DeepSeek ignores temperature in thinking mode and @ai-sdk/deepseek warns on
+ * every such call ("temperature has no effect when DeepSeek thinking is
+ * enabled"). Catalog models carry a default temperature, so every chat turn
+ * and headless run on a thinking DeepSeek model tripped it. The rule mirrors
+ * the client's own: thinking is on when `providerOptions.deepseek.thinking` is
+ * anything but `disabled`, or unset on a model that thinks by default
+ * (deepseek-reasoner, V4 / deepseek-flash / deepseek-pro). Applied per concrete
+ * provider, so a non-DeepSeek fallback in the same chain keeps its temperature.
+ */
+export function stripThinkingTemperature(
+  provider: string,
+  modelId: string,
+  options: LanguageModelV3CallOptions,
+): LanguageModelV3CallOptions {
+  if (options.temperature === undefined || !provider.startsWith('deepseek')) return options;
+  const deepseek = options.providerOptions?.deepseek as { thinking?: { type?: unknown } } | undefined;
+  const thinkingType = deepseek?.thinking?.type;
+  const thinksByDefault =
+    modelId === 'deepseek-reasoner' ||
+    modelId.includes('deepseek-v4') ||
+    modelId.startsWith('deepseek-flash') ||
+    modelId.startsWith('deepseek-pro');
+  const thinking = thinkingType !== 'disabled' && (thinkingType != null || thinksByDefault);
+  if (!thinking) return options;
+  const rest = { ...options };
+  delete rest.temperature;
+  return rest;
+}
+
+/**
  * Wrap a concrete provider, below the fallback and SDK retry layers.
  * Every real network attempt therefore gets its own atomic admission check.
  */
@@ -231,7 +263,7 @@ function wrapProviderAttempt(
     supportedUrls: model.supportedUrls,
 
     async doGenerate(options: LanguageModelV3CallOptions) {
-      const bounded = boundedCallOptions(options);
+      const bounded = boundedCallOptions(stripThinkingTemperature(model.provider, model.modelId, options));
       const lease = hook ? await hook({ descriptor, options: bounded }) : null;
       lease?.markProviderIoStarted();
       const result = await model.doGenerate(bounded);
@@ -240,7 +272,7 @@ function wrapProviderAttempt(
     },
 
     async doStream(options: LanguageModelV3CallOptions) {
-      const bounded = boundedCallOptions(options);
+      const bounded = boundedCallOptions(stripThinkingTemperature(model.provider, model.modelId, options));
       const lease = hook ? await hook({ descriptor, options: bounded }) : null;
       lease?.markProviderIoStarted();
       const result = await model.doStream(bounded);
