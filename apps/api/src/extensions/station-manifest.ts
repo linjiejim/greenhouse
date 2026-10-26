@@ -42,6 +42,9 @@ export async function stationManifest(
     if (flags.length && !flagStates.some(Boolean)) continue;
     const entities: PluginEntitySchema[] = [];
     for (const source of ext.dataSources ?? []) {
+      // A source behind its own flag stays out of the manifest for members without it,
+      // even when another flag of the same plugin let the plugin through.
+      if (source.featureFlag && !(await userHasFeature(user.id, user.role, source.featureFlag, db))) continue;
       for (const [id, config] of Object.entries(source.entities)) {
         const definition = source.app.entities[id];
         const allowed: EntityAction[] = [];
