@@ -15,6 +15,8 @@ import type { AppEnv } from '../../../../apps/api/src/app-env.js';
 import { createInternalTestUser } from '../../../../tests/helpers/internal-user.js';
 import { stationManifest } from '../../../../apps/api/src/extensions/station-manifest.js';
 import { createActivityRoutes } from '../../../../apps/api/src/routes/activity.js';
+import { getPlatformRuntime } from '../../../../apps/api/src/platform/runtime.js';
+import { humanActor } from '../../../../apps/api/src/platform/actor.js';
 
 let db: DatabaseProvider, alice: UserRow, bob: UserRow, admin: UserRow;
 let extraRoutes: NonNullable<import('../../../../apps/api/src/extensions/define.js').GreenhouseExtension['routes']> =
@@ -52,6 +54,83 @@ afterEach(async () => {
   _resetProvider();
 });
 describe('data plugin REST and station manifest', () => {
+  it.each(['team', 'super'])('rejects whole-record and forbidden writes atomically for %s', async (role) => {
+    const user = role === 'team' ? alice : admin;
+    const row = await (await app(user).request(base, json('POST', { body: 'Original' }))).json();
+    expect(row.userId).toBe(user.id);
+    for (const data of [
+      { userId: bob.id },
+      { createdAt: row.createdAt },
+      { id: row.id + 1 },
+      { unknown: true },
+      { constructor: 'bad' },
+      { userId: row.userId, createdAt: row.createdAt },
+    ]) {
+      for (const [method, url] of [
+        ['POST', base],
+        ['PATCH', `${base}/${row.id}`],
+        ['PUT', `${base}/${row.id}`],
+      ]) {
+        const response = await app(user).request(url, json(method, { body: 'Edited', ...data }));
+        expect(response.status).toBe(400);
+        const error = (await response.json()).error;
+        for (const key of Object.keys(data)) expect(error).toContain(key);
+        expect(await (await app(user).request(`${base}/${row.id}`)).json()).toEqual(row);
+      }
+    }
+    const response = await app(user).request(`${base}/${row.id}`, json('PATCH', { body: 'Edited' }));
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ ...row, body: 'Edited' });
+    expect(await (await app(user).request(`${base}/${row.id}`)).json()).toEqual({ ...row, body: 'Edited' });
+  });
+  it('enforces the same input contract for mutation tools and direct runtime dispatch', async () => {
+    const tool = extension.tools!.find((t) => t.meta.id === 'example_mutation')!.createLazy!({
+      db,
+      userId: alice.id,
+      userRole: alice.role,
+    }) as any;
+    const row = await tool.execute({ entity: 'note', action: 'create', data: { body: 'Original' } });
+    const runtime = getPlatformRuntime(),
+      actor = humanActor(alice);
+    for (const action of ['create', 'update'] as const) {
+      for (const data of [
+        { id: 77 },
+        { userId: bob.id },
+        { createdAt: '2026-10-26 22:50:11.703622+00' },
+        { unknown: 1 },
+      ]) {
+        const operation = { action, id: String(row.id), data: { body: 'Denied', ...data } };
+        expect(await tool.execute({ entity: 'note', ...operation })).toMatchObject({
+          error: expect.stringContaining(Object.keys(data)[0]),
+        });
+        expect(
+          await runtime.dispatch({
+            actor,
+            appId: 'example',
+            actionId: action === 'create' ? 'noteCreate' : 'noteUpdate',
+            payload: operation,
+          }),
+        ).toMatchObject({ ok: false, code: 'INVALID_INPUT', message: expect.stringContaining(Object.keys(data)[0]) });
+      }
+    }
+    for (const data of [null, [], 'bad']) {
+      expect(
+        await runtime.dispatch({ actor, appId: 'example', actionId: 'noteUpdate', payload: { id: row.id, data } }),
+      ).toMatchObject({ ok: false, code: 'INVALID_INPUT' });
+    }
+    expect(
+      await tool.execute({ entity: 'note', action: 'update', id: row.id, data: { body: 'Tool edit' } }),
+    ).toMatchObject({ id: row.id, body: 'Tool edit', userId: alice.id });
+    expect(
+      await runtime.dispatch({
+        actor,
+        appId: 'example',
+        actionId: 'noteUpdate',
+        payload: { id: row.id, data: { body: 'Runtime edit' } },
+      }),
+    ).toMatchObject({ ok: true, data: { id: row.id, body: 'Runtime edit', userId: alice.id } });
+    expect(await (await app(alice).request(`${base}/${row.id}`)).json()).toEqual({ ...row, body: 'Runtime edit' });
+  });
   it('uses the CRUD protocol with filters, sort, paging and member ownership', async () => {
     for (const body of ['Beta', 'Alpha', 'Gamma'])
       expect((await app(alice).request(base, json('POST', { body }))).status).toBe(201);
@@ -127,6 +206,7 @@ describe('data plugin REST and station manifest', () => {
     expect(member.core.client_api).toBe(4);
     expect(member.manifest_version).toBe(2);
     expect(plugin.entities[0].actions).toEqual(['read', 'create', 'update', 'delete', 'export']);
+    expect(plugin.entities[0].fields.filter((f) => f.writable).map((f) => f.key)).toEqual(['body']);
     expect(plugin.pages.some((p) => p.kind === 'settings-form')).toBe(false);
     expect(member.extensions.some((p) => p.id === 'example')).toBe(true);
     expect(member.entityKinds.some((k) => k.kind === 'ext:example:note')).toBe(true);
@@ -137,6 +217,12 @@ describe('data plugin REST and station manifest', () => {
     expect(superManifest.plugins.find((p) => p.id === 'example')!.pages.some((p) => p.kind === 'settings-form')).toBe(
       true,
     );
+    expect(
+      superManifest.plugins
+        .find((p) => p.id === 'example')!
+        .entities[0].fields.filter((f) => f.writable)
+        .map((f) => f.key),
+    ).toEqual(['body']);
     const team = (await db.platform.getRoleByCode('default', 'team'))!;
     await db.platform.replaceRoleCapabilities(
       team.id,
@@ -251,6 +337,13 @@ it('applies SDK 2 field policies to the legacy notes routes, resources, writes a
     scopes: [{ kind: 'own' }],
     field_policies: { ...snapshot.rolePolicies[0].fields, body: { read: 'masked', write: false, export: false } },
   });
+  const denied = await app(alice).request(`${base}/${note.id}`, json('PATCH', { body: 'Denied' }));
+  expect(denied.status).toBe(400);
+  expect((await denied.json()).error).toContain('body');
+  const manifest = await stationManifest(db, { id: alice.id, role: alice.role });
+  expect(
+    manifest.plugins.find((p) => p.id === 'example')!.entities[0].fields.find((f) => f.key === 'body')!.writable,
+  ).toBe(false);
   const response = await app(alice).request('/api/ext/example/notes');
   expect(response.status).toBe(200);
   expect(await response.json()).toMatchObject({ notes: [{ id: note.id, body: '***' }] });
@@ -269,6 +362,73 @@ it('applies SDK 2 field policies to the legacy notes routes, resources, writes a
     userId: alice.id,
   } as never);
   expect(resource).toMatchObject({ text: '***' });
+});
+
+it('requires explicit scope-field opt-in, a field grant and an action capability; create always stamps the caller', async () => {
+  const source = extension.dataSources![0];
+  const assignable = defineExtension({
+    id: 'example',
+    name: 'Assignable fixture',
+    dataSources: [
+      {
+        ...source,
+        app: {
+          ...source.app,
+          entities: {
+            note: {
+              ...source.app.entities.note,
+              accessScopes: ['all'],
+              fields: { ...source.app.entities.note.fields, userId: { kind: 'user', title: 'Owner', writable: true } },
+            },
+          },
+        },
+      },
+    ],
+  });
+  initializePlatformRuntime(
+    db,
+    EXTENSIONS.flatMap((e) => (e.id === 'example' ? assignable.applications! : (e.applications ?? []))),
+  );
+  extraRoutes = [];
+  const routes = new Hono<AppEnv>().use('*', async (c, next) => {
+    c.set('user', { id: alice.id, role: alice.role });
+    await next();
+  });
+  for (const route of assignable.routes!) routes.route(route.path, route.app);
+  const team = (await db.platform.getRoleByCode('default', 'team'))!;
+  const fields = assignable.applications![0].teamFieldPolicies!.note;
+  await db.platform.upsertRoleEntityPolicy(team.id, {
+    app_id: 'example',
+    module_id: 'note',
+    entity_id: 'note',
+    scopes: [{ kind: 'all' }],
+    field_policies: fields,
+  });
+  const created = await routes.request(base, json('POST', { body: 'Assigned', userId: bob.id }));
+  expect(created.status).toBe(201);
+  const row = await created.json();
+  expect(row.userId).toBe(alice.id);
+  expect((await routes.request(`${base}/${row.id}`, json('PATCH', { userId: bob.id }))).status).toBe(200);
+  expect(await (await routes.request(`${base}/${row.id}`)).json()).toMatchObject({ userId: bob.id });
+  await db.platform.upsertRoleEntityPolicy(team.id, {
+    app_id: 'example',
+    module_id: 'note',
+    entity_id: 'note',
+    scopes: [{ kind: 'all' }],
+    field_policies: { ...fields, userId: { read: 'full', write: false, export: true } },
+  });
+  expect((await routes.request(`${base}/${row.id}`, json('PATCH', { userId: alice.id }))).status).toBe(400);
+  const manifest = await stationManifest(db, { id: alice.id, role: alice.role }, [assignable]);
+  expect(manifest.plugins[0].entities[0].fields.find((f) => f.key === 'userId')!.writable).toBe(false);
+  await db.platform.replaceRoleCapabilities(
+    team.id,
+    (await db.platform.listRoleCapabilities([team.id]))
+      .map((r) => r.capability)
+      .filter((c) => !['example.note.create', 'example.note.update'].includes(c)),
+  );
+  expect((await routes.request(`${base}/${row.id}`, json('PATCH', { body: 'Denied' }))).status).toBe(403);
+  const readonly = await stationManifest(db, { id: alice.id, role: alice.role }, [assignable]);
+  expect(readonly.plugins[0].entities[0].fields.every((f) => !f.writable)).toBe(true);
 });
 
 it('provides working table-backed registry handlers and rejects a mutation disguised as a read', async () => {

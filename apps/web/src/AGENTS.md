@@ -596,6 +596,7 @@ Tables is a default-on package under `plugins/tables`, owning schema/services, r
 
 ### Declarative plugin pages and embeds (4.0, wave 4)
 
+- Entity forms submit only manifest fields with `writable === true`; updates compare against the form's initial row and send only changes. CrudDataSource receives that initial row as an optional third update argument. Use CrudPage's `reloadKey` for detail saves so loaded rows, totals and paging survive the reload.
 - `/api/extensions.plugins` supplies manifest-only pages and More navigation without a compiled React half. `#/ext/<plugin>/<page>` is a reserved host route; legacy SDK 1 pages remain supported.
 - Entity pages reuse CrudPage/CrudDetail/CrudForm via the installed app binding. Adapt GET list and PATCH writes to the existing CRUD protocol, submit writable fields only, and preserve declared actions/views. Settings reuse WorkspaceSettingsForm from Runtime Config, filtered to declared keys; its API remains super-only and secrets stay masked.
 - Trusted plugin iframes use scripts/same-origin/forms/popups sandbox permissions. Validate exact source window and origin. Init carries live computed branding tokens, locale/member/route and a narrow token. Theme updates preserve the frame; late credential replies from another member/unmounted page are discarded. Refresh through the host session; sendPrompt calls launchAssistant with an editable draft and autoSend=false. Arbitrary HTML previews never use this bridge.

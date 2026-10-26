@@ -902,3 +902,6 @@ The [example plugin](plugins/example/api/index.ts) keeps its legacy notes API wh
 exercising the full SDK. See [Data plugins](EXTENDING.md#data-plugins-sdk-2) for the
 walkthrough. Clients discover member-visible pages/actions through `/api/extensions`
 v2 (client API level 4); its 3.x fields and SDK 1 plugins remain compatible.
+Entity forms submit only member-writable fields and PATCH only changes. The server
+rejects unknown or forbidden fields with 400; owners are stamped on create, and
+record IDs, storage timestamps and internal fields cannot be overwritten.

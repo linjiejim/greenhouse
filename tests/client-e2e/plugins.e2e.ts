@@ -12,6 +12,8 @@ async function pluginStation(page: Page, { token404 = false } = {}) {
     status: i % 2 ? 'closed' : 'open',
     amount: i + 100,
     notes: 'Shared notes',
+    userId: 'owner-member',
+    createdAt: '2026-10-26 22:50:11.703622+00',
   }));
   const entities = [
     {
@@ -37,6 +39,8 @@ async function pluginStation(page: Page, { token404 = false } = {}) {
         },
         { key: 'amount', title: { zh: '金额', en: 'Amount' }, kind: 'money', writable: true, sortable: true },
         { key: 'notes', title: { zh: '备注', en: 'Notes' }, kind: 'longText', writable: true },
+        { key: 'userId', title: { zh: '所有者', en: 'Owner' }, kind: 'user', writable: false },
+        { key: 'createdAt', title: { zh: '创建时间', en: 'Created' }, kind: 'dateTime', writable: false },
       ],
       views: [
         {
@@ -195,9 +199,12 @@ test('Plugins entity list filters, sort, infinite pages, inspector edit and conf
   await expect(inspector).toContainText('Shared notes');
   await screenshot(page, 'entity-detail');
   await inspector.getByRole('button', { name: '编辑记录', exact: true }).click();
+  await expect(inspector.getByRole('textbox', { name: '所有者', exact: true })).toHaveCount(0);
+  await expect(inspector.getByRole('textbox', { name: '创建时间', exact: true })).toHaveCount(0);
   await inspector.getByRole('textbox', { name: '名称', exact: true }).fill('Acme Updated');
   await inspector.getByRole('button', { name: '保存', exact: true }).click();
   await expect.poll(() => f.writes.some((w) => w.method === 'PATCH' && w.body.name === 'Acme Updated')).toBeTruthy();
+  expect(f.writes.find((w) => w.method === 'PATCH')?.body).toEqual({ name: 'Acme Updated' });
   await expect(inspector).toContainText('Acme Updated');
   await inspector.getByRole('button', { name: '删除记录', exact: true }).click();
   await page.getByRole('dialog').getByRole('button', { name: '删除', exact: true }).click();

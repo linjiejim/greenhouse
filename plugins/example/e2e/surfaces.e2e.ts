@@ -15,12 +15,22 @@ test('declarative entity list opens a detail and saves an edit', async ({ page, 
     await page.goto(`/#/ext/example/${list.id}`);
     await page.getByRole('link', { name: text, exact: true }).click();
     await expect(page).toHaveURL(/\/ext\/example\/.*\/[^/]+$/);
-    const detail = page.getByRole('dialog');
+    const detail = page.getByRole('dialog', { name: 'Panel', exact: true });
     await expect(detail).toContainText(text);
     await detail.getByRole('button', { name: 'Edit', exact: true }).click();
     await page.getByTestId('ext-example-example.note-field-body').fill(`${text}-edited`);
+    await expect(page.getByTestId('ext-example-example.note-field-userId')).toHaveCount(0);
+    await expect(page.getByTestId('ext-example-example.note-field-createdAt')).toHaveCount(0);
+    const saving = page.waitForRequest(
+      (req) => req.url().endsWith(`/entities/note/${record.id}`) && req.method() === 'PATCH',
+    );
     await page.getByTestId('ext-example-example.note-submit').click();
-    await expect(page.getByRole('dialog')).toContainText(`${text}-edited`);
+    expect((await saving).postDataJSON()).toEqual({ body: `${text}-edited` });
+    await expect(page.getByRole('dialog', { name: 'Edit Note', exact: true })).toHaveCount(0);
+    await expect(detail).toContainText(`${text}-edited`);
+    const fetched = await request.get(`/api/ext/example/entities/note/${record.id}`, { headers });
+    expect(fetched.status()).toBe(200);
+    expect(await fetched.json()).toEqual({ ...record, body: `${text}-edited` });
   } finally {
     await request.delete(`/api/ext/example/entities/note/${record.id}`, { headers });
   }

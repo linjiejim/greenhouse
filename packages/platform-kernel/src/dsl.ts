@@ -41,6 +41,8 @@ export interface FieldDefinition {
   indexed?: boolean;
   unique?: boolean;
   classification?: FieldClassification;
+  /** SDK 2 input contract. Scope fields require explicit true; system fields stay immutable. */
+  writable?: boolean;
   values?: readonly string[];
   target?: string;
 }

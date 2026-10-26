@@ -77,6 +77,38 @@ async function post(path: string, body: unknown) {
 }
 
 describe('createCrudRoutes', () => {
+  it('validates raw write keys per request before parsers and stamping hooks', async () => {
+    const service = memoryService([{ id: 1, name: 'alpha', status: 'active' }]);
+    const guarded = createCrudRoutes(service, {
+      writableFields: async (c) => (c.req.header('can-edit-status') ? ['name', 'status'] : ['name']),
+      parseCreate: (raw) => ({ name: (raw as Item).name }),
+      hooks: { beforeCreate: (data) => ({ ...data, status: 'stamped' }) },
+    });
+    for (const method of ['POST', 'PATCH', 'PUT']) {
+      const res = await guarded.request(method === 'POST' ? '/' : '/1', {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'bad', status: 'bad', id: 2, extra: true }),
+      });
+      expect(res.status).toBe(400);
+      expect((await res.json()).error).toBe('Unknown or non-writable fields: status, id, extra');
+    }
+    expect(await service.get('1')).toEqual({ id: 1, name: 'alpha', status: 'active' });
+    const created = await guarded.request('/', { method: 'POST', body: JSON.stringify({ name: 'new' }) });
+    expect(created.status).toBe(201);
+    expect(await created.json()).toMatchObject({ name: 'new', status: 'stamped' });
+    expect(
+      (
+        await guarded.request('/1', {
+          method: 'PATCH',
+          headers: { 'can-edit-status': 'yes' },
+          body: JSON.stringify({ status: 'allowed' }),
+        })
+      ).status,
+    ).toBe(200);
+    for (const data of [null, [], 'bad'])
+      expect((await guarded.request('/', { method: 'POST', body: JSON.stringify(data) })).status).toBe(400);
+  });
   it('POST /list returns items + total', async () => {
     const res = await post('/list', {});
     expect(res.status).toBe(200);

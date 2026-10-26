@@ -56,6 +56,8 @@ export interface CrudRouteOptions<TRow> extends ListContract {
     delete?: MiddlewareHandler[];
   };
   hooks?: CrudHooks<TRow>;
+  /** Reject unknown/forbidden input keys before parsing or server-side stamping hooks. */
+  writableFields?: readonly string[] | ((c: Context) => readonly string[] | Promise<readonly string[]>);
   /** Validate/whitelist the create body. Return the sanitized object, or throw to 400. */
   parseCreate?: (raw: unknown) => Record<string, unknown>;
   /** Validate/whitelist the update body. Return the sanitized object, or throw to 400. */
@@ -72,6 +74,16 @@ export function createCrudRoutes<TRow>(
   const write = opts.guards?.write ?? [];
   const del = opts.guards?.delete ?? write;
   const hooks = opts.hooks ?? {};
+  const validateBody = async (raw: unknown, c: Context) => {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error('Expected a data object');
+    if (opts.writableFields) {
+      const writable = new Set(
+        typeof opts.writableFields === 'function' ? await opts.writableFields(c) : opts.writableFields,
+      );
+      const forbidden = Object.keys(raw).filter((key) => !writable.has(key));
+      if (forbidden.length) throw new Error(`Unknown or non-writable fields: ${forbidden.join(', ')}`);
+    }
+  };
 
   const listHandler: Handler = async (c) => {
     const service = serviceFor(c);
@@ -113,6 +125,7 @@ export function createCrudRoutes<TRow>(
     let body: Record<string, unknown>;
     try {
       const raw = await c.req.json();
+      await validateBody(raw, c);
       body = opts.parseCreate ? opts.parseCreate(raw) : (raw as Record<string, unknown>);
     } catch (err) {
       return c.json({ error: err instanceof Error ? err.message : 'Invalid body' }, 400);
@@ -134,6 +147,7 @@ export function createCrudRoutes<TRow>(
     let body: Record<string, unknown>;
     try {
       const raw = await c.req.json();
+      await validateBody(raw, c);
       body = opts.parseUpdate ? opts.parseUpdate(raw) : (raw as Record<string, unknown>);
     } catch (err) {
       return c.json({ error: err instanceof Error ? err.message : 'Invalid body' }, 400);

@@ -132,7 +132,7 @@ export function EntityDetail({ entity, id }: { entity: PluginEntitySchema; id: s
     setDraft(
       Object.fromEntries(
         entity.fields
-          .filter((f) => f.writable)
+          .filter((f) => f.writable === true)
           .map((f) => [
             f.key,
             f.kind === 'boolean'
@@ -149,7 +149,7 @@ export function EntityDetail({ entity, id }: { entity: PluginEntitySchema; id: s
     if (busy) return;
     let body: Record<string, unknown>;
     try {
-      body = writableValues(entity, draft);
+      body = writableValues(entity, draft, row ?? undefined);
     } catch (error) {
       alertError(t('library.failed'), String(error));
       return;
@@ -229,7 +229,7 @@ export function EntityDetail({ entity, id }: { entity: PluginEntitySchema; id: s
           entity.fields.map((field) => (
             <View key={field.key} style={{ gap: space.sm }}>
               <Text style={{ ...typo.footnote, color: c.secondaryLabel }}>{localize(field.title, lang)}</Text>
-              {editing && field.writable ? (
+              {editing && field.writable === true ? (
                 <View>
                   {field.kind === 'boolean' ? (
                     <Pressable

@@ -31,6 +31,8 @@ import { tr, usePersistedPageSize } from './util.js';
 
 export interface CrudPageProps<TRow> {
   schema: ResolvedCrudSchema<TRow>;
+  /** Refresh an existing list after a save without discarding its rows or paging state. */
+  reloadKey?: number;
 }
 
 const ACTION_TONE: Record<string, string> = {
@@ -41,7 +43,7 @@ const ACTION_TONE: Record<string, string> = {
   danger: 'text-fg-muted hover:text-danger hover:bg-danger-subtle',
 };
 
-export function CrudPage<TRow>({ schema }: CrudPageProps<TRow>) {
+export function CrudPage<TRow>({ schema, reloadKey }: CrudPageProps<TRow>) {
   const { Button, Pagination, EmptyState, Spinner, ConfirmDialog, toast } = getCrudUi();
   const t = useCrudT();
   const idField = schema.idField;
@@ -119,7 +121,7 @@ export function CrudPage<TRow>({ schema }: CrudPageProps<TRow>) {
     const timer = setTimeout(() => void load(), 200);
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, pageSize, sort?.key, sort?.order, filterKey]);
+  }, [page, pageSize, sort?.key, sort?.order, filterKey, reloadKey]);
 
   const reload = useCallback(() => void load(), [load]);
 

@@ -16,6 +16,7 @@ import {
   type DataOperation,
 } from './data-runtime.js';
 import type { DataRow, ExtensionDataSource } from './data-types.js';
+import { dataFieldAcceptsInput } from './data-fields.js';
 
 /** Expand declarations into the same registries SDK 1 already uses. Never register globally here. */
 export function deriveDataSources(input: GreenhouseExtension): GreenhouseExtension {
@@ -125,6 +126,7 @@ export function deriveDataSources(input: GreenhouseExtension): GreenhouseExtensi
           },
           {
             ...dataListContract(entity),
+            writableFields: Object.keys(entity.fields).filter((key) => dataFieldAcceptsInput(entity, config, key)),
             parseCreate: (raw) => z.record(z.string(), z.unknown()).parse(raw),
             parseUpdate: (raw) => z.record(z.string(), z.unknown()).parse(raw),
           },
@@ -258,8 +260,7 @@ export function deriveDataSources(input: GreenhouseExtension): GreenhouseExtensi
                         ? 'masked'
                         : 'full',
                   write:
-                    key !== 'id' &&
-                    !['restricted', 'confidential'].includes(field.classification ?? '') &&
+                    dataFieldAcceptsInput(entity, source.entities[id], key) &&
                     Boolean(
                       source.entities[id].actions.create === 'team' || source.entities[id].actions.update === 'team',
                     ),

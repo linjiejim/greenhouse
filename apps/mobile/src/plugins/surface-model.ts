@@ -54,10 +54,22 @@ export function fieldText(field: EntityFieldSchema, value: unknown, locale: 'zh'
 export function writableValues(
   entity: PluginEntitySchema,
   draft: Record<string, string | boolean>,
+  initial?: Record<string, unknown>,
 ): Record<string, unknown> {
   return Object.fromEntries(
     entity.fields
-      .filter((f) => f.writable)
+      .filter((f) => f.writable === true && Object.hasOwn(draft, f.key))
+      .filter((f) => {
+        if (!initial) return true;
+        // Compare the displayed draft too, preserving null/empty and timestamp precision on untouched inputs.
+        const displayed =
+          f.kind === 'boolean'
+            ? Boolean(initial[f.key])
+            : f.kind === 'json'
+              ? JSON.stringify(initial[f.key] ?? null)
+              : String(initial[f.key] ?? '');
+        return draft[f.key] !== displayed;
+      })
       .map((f) => {
         const v = draft[f.key];
         if (f.required && (v === undefined || v === '')) throw new Error(String(f.key));
@@ -71,7 +83,8 @@ export function writableValues(
           return [f.key, n];
         }
         return [f.key, v];
-      }),
+      })
+      .filter(([key, value]) => !initial || JSON.stringify(value) !== JSON.stringify(initial[String(key)])),
   );
 }
 export function safeEndpoint(endpoint: string): boolean {

@@ -12,5 +12,6 @@
   a tiny public static frontend with no bundled credentials or private data.
 - Tests cover both generated SDK 2 and legacy transports. Browser specs import only
   @playwright/test; do not change migration checksums to reset the example.
+- Only the note body is client-writable. Owner and creation time are host/database data, even for super; forbidden whole-record edits must fail atomically while the original id remains readable. Keep REST, mutation tool, direct runtime and manifest coverage together.
 
 - `manifest.ui: './ui'` is assembled into a portable static mount. `pnpm plugins:ui:build` builds the example into ui/dist using the actual @greenhouse/ui-tokens helper. Never embed a session credential in assets; the host supplies narrow tokens after load. Browser specs cover entity detail/edit, scoped settings, theme/refresh/navigation/drafts and token escapes.

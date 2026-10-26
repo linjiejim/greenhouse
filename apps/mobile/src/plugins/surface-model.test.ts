@@ -61,6 +61,43 @@ describe('declarative surfaces', () => {
     expect(() => writableValues(entity, { name: '', amount: '2' })).toThrow('name');
     expect(() => writableValues(entity, { name: 'A', amount: 'oops' })).toThrow('amount');
   });
+  it('patches only changed writable values, preserving untouched nulls and structured values', () => {
+    const schema = {
+      ...entity,
+      fields: [
+        ...entity.fields,
+        { key: 'enabled', title: 'Enabled', kind: 'boolean' as const, writable: true },
+        { key: 'json', title: 'JSON', kind: 'json' as const, writable: true },
+        { key: 'createdAt', title: 'Created', kind: 'dateTime' as const, writable: false },
+      ],
+    };
+    const initial = {
+      name: 'Acme',
+      status: null,
+      amount: 12,
+      enabled: false,
+      json: { a: [1] },
+      createdAt: '2026-10-26 22:50:11.703622+00',
+    };
+    const draft = {
+      name: 'Acme',
+      status: '',
+      amount: '12.0',
+      enabled: false,
+      json: '{ "a": [1] }',
+      createdAt: 'bad',
+      secret: 'bad',
+    };
+    expect(writableValues(schema, draft, initial)).toEqual({});
+    expect(writableValues(schema, { ...draft, name: 'Edited', enabled: true, json: '{"a":[2]}' }, initial)).toEqual({
+      name: 'Edited',
+      enabled: true,
+      json: { a: [2] },
+    });
+    expect(writableValues(schema, { name: 'Edited' }, initial)).toEqual({ name: 'Edited' });
+    expect(() => writableValues(schema, { name: '' }, initial)).toThrow('name');
+    expect(writableValues(schema, { status: '' }, { ...initial, status: 'open' })).toEqual({ status: null });
+  });
   it('accepts only the framed origin and protocol, including token refresh', () => {
     for (const type of ['greenhouse:ready', 'greenhouse:token-refresh'])
       expect(embedMessage({ type }, 'https://station.test', 'https://station.test')).toEqual({ type });

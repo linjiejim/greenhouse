@@ -71,16 +71,53 @@ describe('SDK 2 example over HTTP and MCP', () => {
     expect(created.status).toBe(201);
     const note = await created.json();
     recordId = String(note.id);
+    for (const action of ['create', 'update']) {
+      const data = { body: 'Forbidden edit', userId: 'other-member', createdAt: note.createdAt, unknown: true };
+      const rest = await fetch(action === 'create' ? endpoint : `${endpoint}/${recordId}`, {
+        method: action === 'create' ? 'POST' : 'PATCH',
+        headers: authHeaders(token),
+        body: JSON.stringify(data),
+      });
+      expect(rest.status).toBe(400);
+      for (const key of ['userId', 'createdAt', 'unknown']) expect((await rest.clone().json()).error).toContain(key);
+      const attempted = await mcp('tools/call', {
+        name: 'example_mutation',
+        arguments: { entity: 'note', action, id: recordId, data, confirm: true },
+      });
+      expect(JSON.stringify(attempted.result)).toContain('non-writable fields');
+      const agent = await fetch(`${BASE_URL}/api/agent/tools/example_mutation/call`, {
+        method: 'POST',
+        headers: authHeaders(token),
+        body: JSON.stringify({ input: { entity: 'note', action, id: recordId, data }, confirm: true }),
+      });
+      expect(JSON.stringify(await agent.json())).toContain('non-writable fields');
+      expect(await (await fetch(`${endpoint}/${recordId}`, { headers: authHeaders(token) })).json()).toEqual(note);
+    }
+    const edited = await mcp('tools/call', {
+      name: 'example_mutation',
+      arguments: {
+        entity: 'note',
+        action: 'update',
+        id: recordId,
+        data: { body: `SDK2 ${suffix} edited` },
+        confirm: true,
+      },
+    });
+    expect(edited.result.isError).toBeFalsy();
+    expect(await (await fetch(`${endpoint}/${recordId}`, { headers: authHeaders(token) })).json()).toEqual({
+      ...note,
+      body: `SDK2 ${suffix} edited`,
+    });
     const page = await fetch(`${endpoint}/list`, {
       method: 'POST',
       headers: authHeaders(token),
       body: JSON.stringify({
-        filter: [{ key: 'body', method: 'eq', value: [`SDK2 ${suffix}`] }],
+        filter: [{ key: 'body', method: 'eq', value: [`SDK2 ${suffix} edited`] }],
         sort: [{ key: 'id', order: 'desc' }],
         limit: 1,
       }),
     });
-    expect(await page.json()).toMatchObject({ total: 1, items: [{ body: `SDK2 ${suffix}` }] });
+    expect(await page.json()).toMatchObject({ total: 1, items: [{ body: `SDK2 ${suffix} edited` }] });
     const query = await mcp('tools/call', {
       name: 'example_query',
       arguments: { entity: 'note', action: 'get', id: recordId },

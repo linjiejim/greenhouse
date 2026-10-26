@@ -17,6 +17,7 @@ import { dataContext, dataActionId } from './data-runtime.js';
 import { EXTENSIONS } from './index.js';
 import { runningAppVersion } from './compat.js';
 import type { GreenhouseExtension } from './define.js';
+import { dataWritableFields } from './data-fields.js';
 
 export async function stationManifest(
   db: DatabaseProvider,
@@ -55,6 +56,7 @@ export async function stationManifest(
         if (!allowed.includes('read')) continue;
         const ctx = await dataContext(db, actor, source, id);
         if (!ctx.policy.scopes.length) continue;
+        const writable = new Set(dataWritableFields(definition, config, ctx.policy));
         const fields = Object.entries(definition.fields)
           .filter(([key]) => fieldPolicyFor(ctx.policy, key).read !== 'none')
           .map(([key, field]) => ({
@@ -72,10 +74,7 @@ export async function stationManifest(
             searchable: fieldPolicyFor(ctx.policy, key).read === 'full' && field.searchable,
             sortable: fieldPolicyFor(ctx.policy, key).read === 'full' && field.sortable,
             filterable: fieldPolicyFor(ctx.policy, key).read === 'full' && field.filterable,
-            writable:
-              key !== 'id' &&
-              fieldPolicyFor(ctx.policy, key).write &&
-              (allowed.includes('create') || allowed.includes('update')),
+            writable: writable.has(key) && (allowed.includes('create') || allowed.includes('update')),
           }));
         const visible = new Set(fields.map((f) => f.key));
         entities.push({

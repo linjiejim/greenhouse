@@ -48,6 +48,8 @@ describe('SDK 2 data plugins', () => {
     expect(ext.applications?.[0].teamCapabilities).not.toContain('fixture.note.delete');
     expect(ext.tools?.map((t) => t.meta.id)).toEqual(['fixture_query', 'fixture_mutation']);
     expect(ext.tools?.[1].meta.surface?.proxy).toBe('write');
+    expect(ext.applications?.[0].teamFieldPolicies?.note.owner.write).toBe(false);
+    expect(ext.applications?.[0].teamFieldPolicies?.note.title.write).toBe(true);
     expect(ext.tools?.[0].meta.description).toContain('Note');
     expect(ext.featurePoints?.[0]).toMatchObject({ kind: 'app', appId: 'fixture' });
     expect(ext.routes?.[0].path).toBe('/api/ext/fixture/entities/note');

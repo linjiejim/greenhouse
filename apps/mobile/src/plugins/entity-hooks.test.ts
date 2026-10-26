@@ -114,3 +114,43 @@ it('discards a late old-query page after sort changes', async () => {
   await act(async () => release!({ ok: true, data: { items: [{ id: 'stale' }], total: 1 } }));
   expect(host.textContent).toBe('current');
 });
+it('keeps the previous rows and total until a refresh completes, including failed refreshes', async () => {
+  const {
+    React: { createElement: h, act },
+  } = harness;
+  let list: ReturnType<typeof useEntityList>, release: ((value: unknown) => void) | undefined;
+  harness.get.mockResolvedValueOnce({ ok: true, data: { items: [{ id: 'saved' }], total: 9 } }).mockImplementation(
+    () =>
+      new Promise((resolve) => {
+        release = resolve;
+      }),
+  );
+  function Screen() {
+    list = useEntityList(entity, undefined, {});
+    return h('p', null, `${list.items.map((r) => r.id).join(',')}:${list.total}:${list.loading}`);
+  }
+  const host = document.createElement('div');
+  document.body.append(host);
+  const root = harness.createRoot(host);
+  roots.push(root);
+  await act(async () => root.render(h(Screen)));
+  let pending: Promise<void>;
+  await act(async () => {
+    pending = list.refresh();
+  });
+  expect(host.textContent).toBe('saved:9:true');
+  await act(async () => {
+    release!({ ok: false, message: 'Offline' });
+    await pending;
+  });
+  expect(host.textContent).toBe('saved:9:false');
+  await act(async () => {
+    pending = list.refresh();
+  });
+  expect(host.textContent).toBe('saved:9:true');
+  await act(async () => {
+    release!({ ok: true, data: { items: [{ id: 'fresh' }], total: 10 } });
+    await pending;
+  });
+  expect(host.textContent).toBe('fresh:10:false');
+});

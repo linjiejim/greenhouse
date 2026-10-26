@@ -539,6 +539,7 @@ access granted by stored shares. Existing share rows are preserved.
 
 ### SDK 2 data/runtime host
 
+- SDK 2 writes intersect the declaration and the member's kernel field policy. IDs and created/updated/deleted timestamps (including mapped columns), internal/confidential/restricted fields and `writable: false` are never client input, including for super. Owner/member fields require explicit `writable: true`, a field write grant and the action capability. Validate before stamping the effective owner on create; reject all unknown/forbidden keys with 400 and field names. REST, mutation tools, direct runtime dispatch and station `writable` metadata share these rules even when stored policies predate them.
 - `extensions/data-sources.ts` expands `dataSources` into existing registries;
   `data-runtime.ts` is the common generated REST/tool/search/export/peek executor.
   Table scopes apply before paging/counts; field projection and action authorization

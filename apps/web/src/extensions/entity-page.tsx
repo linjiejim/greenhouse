@@ -25,8 +25,13 @@ export function entityDataSource(entity: PluginEntitySchema): CrudDataSource<Row
     if (!response.ok) throw new Error(data.error ?? `HTTP ${response.status}`);
     return data;
   };
-  const writable = new Set(entity.fields.filter((f) => f.writable).map((f) => f.key));
-  const project = (data: Row) => Object.fromEntries(Object.entries(data).filter(([key]) => writable.has(key)));
+  const writable = new Set(entity.fields.filter((f) => f.writable === true).map((f) => f.key));
+  const project = (data: Row, initial?: Row) =>
+    Object.fromEntries(
+      Object.entries(data).filter(
+        ([key, value]) => writable.has(key) && (!initial || JSON.stringify(value) !== JSON.stringify(initial[key])),
+      ),
+    );
   return {
     list: (params) =>
       request(
@@ -39,7 +44,10 @@ export function entityDataSource(entity: PluginEntitySchema): CrudDataSource<Row
     get: (id) => request(`/${encodeURIComponent(id)}`),
     ...(entity.actions.includes('create') ? { create: (data: Row) => request('', 'POST', project(data)) } : {}),
     ...(entity.actions.includes('update')
-      ? { update: (id: string, data: Row) => request(`/${encodeURIComponent(id)}`, 'PATCH', project(data)) }
+      ? {
+          update: (id: string, data: Row, initial?: Row) =>
+            request(`/${encodeURIComponent(id)}`, 'PATCH', project(data, initial)),
+        }
       : {}),
     ...(entity.actions.includes('delete')
       ? { remove: (id: string) => request(`/${encodeURIComponent(id)}`, 'DELETE') }
@@ -67,7 +75,7 @@ export function EntityPage({
     const view = entity.views.find((v) => v.id === viewId) ?? entity.views[0];
     const detail = plugin.pages.find((p) => p.kind === 'entity-detail' && p.entity === entity.id);
     const formFields: FieldDef<Row>[] = entity.fields
-      .filter((f) => f.writable)
+      .filter((f) => f.writable === true)
       .map<FieldDef<Row>>((f) => ({
         key: f.key,
         label: localize(f.title, locale),
@@ -167,7 +175,7 @@ export function EntityPage({
   };
   return (
     <>
-      <CrudPage key={revision} schema={schema} />
+      <CrudPage schema={schema} reloadKey={revision} />
       {error && (
         <p role="alert" className="text-danger">
           {error}

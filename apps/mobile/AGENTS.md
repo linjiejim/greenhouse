@@ -235,5 +235,6 @@
 
 ## Hosted browser export (W4)
 
+- Declarative entity edits use only manifest fields with `writable === true` and PATCH only values changed from the loaded row; preserve untouched nulls, JSON and timestamp strings. Refreshing a list keeps its rows and total until the next page arrives; identity/query changes still invalidate old data.
 - `pnpm app:build` at the repository root exports this isolated workspace to `dist-hosted`, then copies it to `public/app`. Hosted exports clear desktop and developer station overrides and disable dotenv loading; browser requests use their own origin. Native/store configuration stays unchanged.
 - Trusted desktop plugin frames append `host_origin=tauri://localhost`; plugins explicitly allow that parent origin. Browser frames retain their normal same-origin contract. The host allows scripts/same-origin/forms/popups only for installed plugin bridges.

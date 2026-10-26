@@ -91,7 +91,7 @@ export function CrudForm<TRow>({ schema, mode, initial, onClose, onSaved }: Crud
       } else {
         if (!schema.dataSource.update) throw new Error('update not supported');
         const id = String((initial as Record<string, unknown>)[schema.idField]);
-        await schema.dataSource.update(id, payload);
+        await schema.dataSource.update(id, payload, initial ?? undefined);
         toast(t('crud.updated'), 'success');
       }
       onSaved();

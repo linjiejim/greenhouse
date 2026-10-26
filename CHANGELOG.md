@@ -7,6 +7,13 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## Unreleased
 
+### Fixed
+
+- SDK 2 entity writes reject unknown, immutable and member-forbidden fields across REST, agent/MCP tools and direct runtime calls; ownership is stamped on create and manifest write metadata follows the same policy, including for administrators.
+- Classic and universal entity forms send only changed writable fields. Classic lists retain loaded rows, totals and paging while refreshing after detail saves.
+
+extension-kit: add optional kernel field `writable` metadata for explicit SDK 2 owner/member input; existing kit exports remain unchanged.
+
 ### Added
 
 - Classic manifest pages reuse CRUD and Runtime Config; trusted embed hosts support theme/branding, locale, narrow ten-minute credentials, renewal, navigation, titles and editable assistant drafts.

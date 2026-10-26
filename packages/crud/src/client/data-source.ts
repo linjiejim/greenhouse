@@ -19,7 +19,7 @@ export interface CrudDataSource<TRow> {
    *  list-only / no-detail resource can omit this. */
   get?(id: string): Promise<TRow>;
   create?(data: Record<string, unknown>): Promise<unknown>;
-  update?(id: string, data: Record<string, unknown>): Promise<unknown>;
+  update?(id: string, data: Record<string, unknown>, initial?: TRow): Promise<unknown>;
   remove?(id: string): Promise<unknown>;
 }
 

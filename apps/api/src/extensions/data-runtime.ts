@@ -14,6 +14,7 @@ import {
 import { validateListParams, type ListContract, type ListParams, type ListResult } from '@greenhouse/crud/server';
 import { getPlatformRuntime } from '../platform/runtime.js';
 import type { DataEntity, DataHandlerContext, DataRow, ExtensionDataSource } from './data-types.js';
+import { dataWritableFields } from './data-fields.js';
 
 export const dataActionId = (entity: string, action: string) => `${entity}${action[0].toUpperCase()}${action.slice(1)}`;
 export function dataListContract(entity: EntityDefinition): ListContract {
@@ -194,14 +195,18 @@ export async function runDataOperation(
     };
   }
   if (operation.action === 'create' || operation.action === 'update') {
+    if (
+      operation.data === null ||
+      (operation.data !== undefined && (typeof operation.data !== 'object' || Array.isArray(operation.data)))
+    )
+      return { ok: false, code: 'INVALID_INPUT', message: 'Expected a data object' };
     const data = { ...(operation.data ?? {}) };
-    if (operation.action === 'create' && config.ownerField) data[config.ownerField] = effectiveUserId(actor);
+    const writable = new Set(dataWritableFields(entity, config, ctx.policy));
+    const forbidden = Object.keys(data).filter((key) => !writable.has(key));
+    if (forbidden.length)
+      return { ok: false, code: 'INVALID_INPUT', message: `Unknown or non-writable fields: ${forbidden.join(', ')}` };
     for (const [key, value] of Object.entries(data)) {
       const field = entity.fields[key];
-      if (!field || key === 'id')
-        return { ok: false, code: 'INVALID_INPUT', message: `Unknown or immutable field: ${key}` };
-      if (!fieldPolicyFor(ctx.policy, key).write)
-        return { ok: false, code: 'FORBIDDEN', message: `Field ${key} is not writable` };
       const valid =
         value === null
           ? !field.required
@@ -217,10 +222,12 @@ export async function runDataOperation(
       if (!valid) return { ok: false, code: 'INVALID_INPUT', message: `Invalid field: ${key}` };
     }
     if (operation.action === 'create') {
+      // Validate caller input first; ownership is trusted host data, independent of field grants.
+      if (config.ownerField) data[config.ownerField] = effectiveUserId(actor);
       if (!dataCanAccess(data, ctx, config))
         return { ok: false, code: 'FORBIDDEN', message: 'Cannot create outside the member scope' };
       for (const [key, field] of Object.entries(entity.fields))
-        if (field.required && key !== 'id' && data[key] == null)
+        if (field.required && writable.has(key) && data[key] == null)
           return { ok: false, code: 'INVALID_INPUT', message: `Missing field: ${key}` };
       const row = handlers.create ? await handlers.create(data, ctx) : await ctx.service.create(data);
       if (!access(row))

@@ -620,6 +620,18 @@ SDK 1 declarations continue to activate throughout 4.x; new packages declare
    to the caller. Policy scopes are OR-ed. Unsupported scopes fail at definition.
    Team policies expose public/internal fields, mask confidential fields and hide
    restricted fields; those last two are neither writable nor exportable.
+   Writes additionally intersect each member's field policy with the declaration:
+   `id`, creation/update/deletion timestamps (also via physical column mappings),
+   internal/confidential/restricted fields and `writable: false` are never input,
+   including for super. Other business fields are writable by default; `ownerField`
+   and `memberField` require explicit field `writable: true`, a write policy and
+   the action capability. Create always stamps the effective caller as owner after
+   validating input. Unknown/forbidden keys fail atomically with 400 naming every
+   offending field. Generated REST, mutation tools and direct runtime calls share
+   this check; old persisted broad field grants cannot bypass it. Generic
+   `createCrudRoutes` accepts `writableFields` (a list or request callback), checked
+   before parsers and stamping hooks. Clients use member-specific manifest
+   `writable === true` fields and send only changed fields on update.
    Filtering/sorting masked or hidden fields is denied. Super gets the existing
    full-access policy. `export` still needs its own capability and field policy.
 6. Override only needed operations in `handlers.list/get/search/export/create/update/delete`.
