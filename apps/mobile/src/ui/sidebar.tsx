@@ -1,3 +1,4 @@
+import { ScreenActions } from './screen-actions';
 /**
  * The sidebar's controls (rules in src/shell/layout-rule.ts; the panel is src/shell/sidebar-content.tsx,
  * the navigator app/(drawer)/_layout.tsx).
@@ -10,11 +11,10 @@
 
 import React from 'react';
 import { Keyboard, Platform, useWindowDimensions } from 'react-native';
-import { Stack, useNavigation } from 'expo-router';
+import { useNavigation } from 'expo-router';
 import { DrawerActions, useNavigationState } from 'expo-router/react-navigation';
 import { useT } from '../lib/i18n';
 import { persistentSidebar } from '../shell/layout-rule';
-import { toolbarIcon } from './toolbar-icon';
 
 const IS_PAD = Platform.OS === 'ios' && Platform.isPad;
 
@@ -30,16 +30,20 @@ export function SidebarToolbar() {
   const persistent = usePersistentSidebar();
   if (persistent || depth > 0) return null;
   return (
-    <Stack.Toolbar placement="left">
-      <Stack.Toolbar.Button
-        icon={toolbarIcon('menu')}
-        accessibilityLabel={t('nav.sidebar')}
-        onPress={() => {
-          // the drawer covers the composer: its keyboard goes first (a swipe dismisses it on drag)
-          Keyboard.dismiss();
-          navigation.dispatch(DrawerActions.openDrawer());
-        }}
-      />
-    </Stack.Toolbar>
+    <ScreenActions
+      placement={'left'}
+      actions={[
+        {
+          id: 'action-1',
+          icon: 'menu',
+          label: t('nav.sidebar'),
+          onPress: () => {
+            // the drawer covers the composer: its keyboard goes first (a swipe dismisses it on drag)
+            Keyboard.dismiss();
+            navigation.dispatch(DrawerActions.openDrawer());
+          },
+        },
+      ]}
+    />
   );
 }

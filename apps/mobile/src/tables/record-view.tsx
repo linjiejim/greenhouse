@@ -5,12 +5,20 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useRef } from 'react';
-import { ScrollView, Text } from 'react-native';
+import { Text } from 'react-native';
 import type { ApiResult } from '../api/client';
 import { getRecord, getSchema, tableUsers } from '../api/tables';
 import { noAccess, notFound } from '../data/access';
 import { captureIdentity } from '../data/identity';
-import { cellValue, displayValue, keptUserNames, liveFields, recordTitle, recordUserIds, recordUserNames } from '../data/table-fields';
+import {
+  cellValue,
+  displayValue,
+  keptUserNames,
+  liveFields,
+  recordTitle,
+  recordUserIds,
+  recordUserNames,
+} from '../data/table-fields';
 import { parseSavedRecord, recordKind, type SavedRecord } from '../data/recent-items';
 import { useOfflineResource } from '../data/use-offline-resource';
 import { readOffline, rememberRecord } from '../store/offline';
@@ -20,7 +28,7 @@ import { withTimeout } from '../lib/timeout';
 import { useFieldWords } from '../tables/use-field-words';
 import { makeStyles, space, typo, useTheme, weight } from '../theme';
 import { EmptyState, LoadingState } from '../ui/empty';
-import { Row, Section } from '../ui/list';
+import { DetailField, DetailFields, DetailScroll } from '../ui/detail-fields';
 import { SheetScreen } from '../ui/screen';
 
 /** How long the member lookup for people's names may take before the record keeps the names it has. */
@@ -37,7 +45,8 @@ export function RecordView({ tableId, recordId }: { tableId: string | null; reco
     if (!schema.ok) return schema;
     if (!record.ok) return record;
     // names are not waited for (looked up below); the copy's names carry over so a new copy keeps them
-    const saved = kind && tableId != null && recordId != null ? parseSavedRecord(await readOffline(kind), tableId, recordId) : null;
+    const saved =
+      kind && tableId != null && recordId != null ? parseSavedRecord(await readOffline(kind), tableId, recordId) : null;
     const users = keptUserNames(recordUserIds(schema.data.fields, record.data.record), saved?.users ?? {});
     return { ok: true, data: { schema: schema.data, record: record.data.record, users } };
   }, [kind, tableId, recordId]);
@@ -76,13 +85,17 @@ export function RecordView({ tableId, recordId }: { tableId: string | null; reco
   const fields = useMemo(() => (data ? liveFields(data.schema.fields) : []), [data]);
   const words = useFieldWords(fields, data?.users);
 
-  if (tableId == null || recordId == null || (!data && !resource.loading && (notFound(resource.error) || noAccess(resource.error)))) {
+  if (
+    tableId == null ||
+    recordId == null ||
+    (!data && !resource.loading && (notFound(resource.error) || noAccess(resource.error)))
+  ) {
     return (
       <>
         <SheetScreen title={t('tables.record')} />
-        <ScrollView style={styles.root} contentInsetAdjustmentBehavior="automatic">
+        <DetailScroll style={styles.root} contentInsetAdjustmentBehavior="automatic">
           <EmptyState icon="table" title={t('tables.recordNotFound')} style={styles.state} />
-        </ScrollView>
+        </DetailScroll>
       </>
     );
   }
@@ -91,12 +104,21 @@ export function RecordView({ tableId, recordId }: { tableId: string | null; reco
   return (
     <>
       <SheetScreen title={data?.schema.table.name ?? ''} />
-      <ScrollView style={styles.root} contentInsetAdjustmentBehavior="automatic" contentContainerStyle={styles.content}>
+      <DetailScroll
+        style={styles.root}
+        contentInsetAdjustmentBehavior="automatic"
+        contentContainerStyle={styles.content}
+      >
         {!data ? (
           resource.loading ? (
             <LoadingState style={styles.state} />
           ) : (
-            <EmptyState icon="alert" title={t('tables.loadFailed')} onRetry={() => void resource.refresh()} style={styles.state} />
+            <EmptyState
+              icon="alert"
+              title={t('tables.loadFailed')}
+              onRetry={() => void resource.refresh()}
+              style={styles.state}
+            />
           )
         ) : (
           <>
@@ -105,15 +127,15 @@ export function RecordView({ tableId, recordId }: { tableId: string | null; reco
             </Text>
             {resource.offline ? <Text style={styles.meta}>{t('common.savedCopy')}</Text> : null}
             <Text style={styles.meta}>{t('tables.updated', { when: relativeTimeNow(data.record.updated_at) })}</Text>
-            <Section header={t('tables.fields')}>
+            <DetailFields header={t('tables.fields')}>
               {fields.map((field) => {
                 const text = masked ? t('tables.masked') : displayValue(field, cellValue(field, data.record), words);
-                return <Row key={field.id} title={field.name} subtitle={text || '—'} subtitleLines={8} accessory="none" />;
+                return <DetailField key={field.id} label={field.name} value={text || '—'} kind={field.type} />;
               })}
-            </Section>
+            </DetailFields>
           </>
         )}
-      </ScrollView>
+      </DetailScroll>
     </>
   );
 }
@@ -122,6 +144,17 @@ const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.groupedBackground },
   content: { paddingBottom: space.xxxl * 2 },
   state: { paddingTop: space.xxxl },
-  title: { ...typo.title2, fontWeight: weight.bold, color: c.label, marginHorizontal: space.margin + space.xs, marginTop: space.md },
-  meta: { ...typo.footnote, color: c.secondaryLabel, marginHorizontal: space.margin + space.xs, marginBottom: space.sm },
+  title: {
+    ...typo.title2,
+    fontWeight: weight.bold,
+    color: c.label,
+    marginHorizontal: space.margin + space.xs,
+    marginTop: space.md,
+  },
+  meta: {
+    ...typo.footnote,
+    color: c.secondaryLabel,
+    marginHorizontal: space.margin + space.xs,
+    marginBottom: space.sm,
+  },
 }));

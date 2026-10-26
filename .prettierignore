@@ -17,3 +17,7 @@ apps/mobile/expo-env.d.ts
 
 # Plugin seed files use JSONL to match the example dataset loader.
 plugins/*/seeds/*.json
+
+# Tauri-generated configuration and ACL schemas
+apps/desktop/.tauri-build.json
+apps/desktop/src-tauri/gen/

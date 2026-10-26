@@ -11,6 +11,7 @@
 import type { AppTarget, FilesShelf } from '../lib/deep-links';
 
 export type ObjectRef =
+  | { kind: 'plugin-entity'; plugin: string; page: string; entity: string; id: string }
   | { kind: 'doc'; id: string; slug?: undefined }
   /** A document a link names by slug only; its sheet looks it up first. */
   | { kind: 'doc'; slug: string; id?: undefined }
@@ -25,10 +26,13 @@ export type ObjectRef =
   | { kind: 'run'; id: string }
   | { kind: 'write'; id: string }
   | { kind: 'automation'; id: string }
-  | { kind: 'chat'; sessionId: string };
+  | { kind: 'chat'; sessionId: string }
+  | { kind: 'chat-preview'; sessionId: string }
+  | { kind: 'steps' };
 
 /** The sheet routes (app/sheet/*), each with its own detents in app/_layout.tsx. */
 export const SHEET_ROUTES = {
+  plugin: 'sheet/plugin',
   doc: 'sheet/doc',
   file: 'sheet/file',
   folder: 'sheet/folder',
@@ -39,6 +43,8 @@ export const SHEET_ROUTES = {
   run: 'sheet/run',
   write: 'sheet/write',
   automation: 'sheet/automation',
+  conversation: 'sheet/conversation',
+  steps: 'sheet/steps',
 } as const;
 
 export type SheetKind = keyof typeof SHEET_ROUTES;
@@ -49,6 +55,7 @@ export const MAX_SHEETS = 3;
 /** A route of the root stack: its name, as the navigation state has it. */
 export interface StackRoute {
   name: string;
+  params?: object;
 }
 
 const SHEET_NAMES = new Set<string>(Object.values(SHEET_ROUTES));
@@ -60,7 +67,10 @@ export function isObjectSheet(name: string): boolean {
 /** How many object sheets sit at the top of the root stack. */
 export function sheetDepth(routes: readonly StackRoute[]): number {
   let depth = 0;
-  for (let i = routes.length - 1; i >= 0 && isObjectSheet(routes[i]!.name); i -= 1) depth += 1;
+  for (let i = routes.length - 1; i >= 0 && isObjectSheet(routes[i]!.name); i -= 1) {
+    if ((routes[i]!.params as { main?: string } | undefined)?.main === '1') break;
+    depth += 1;
+  }
   return depth;
 }
 
@@ -76,6 +86,16 @@ export type Opening =
 /** The route an object opens on, with its params (always strings). */
 export function openingOf(ref: ObjectRef): Opening {
   switch (ref.kind) {
+    case 'plugin-entity':
+      return {
+        via: 'sheet',
+        pathname: '/sheet/plugin',
+        params: { plugin: ref.plugin, page: ref.page, entity: ref.entity, id: ref.id },
+      };
+    case 'chat-preview':
+      return { via: 'sheet', pathname: '/sheet/conversation', params: { session: ref.sessionId } };
+    case 'steps':
+      return { via: 'sheet', pathname: '/sheet/steps', params: {} };
     case 'chat':
       return { via: 'page', pathname: '/chat', params: { session: ref.sessionId } };
     case 'doc':
@@ -87,7 +107,11 @@ export function openingOf(ref: ObjectRef): Opening {
     case 'project':
       return { via: 'sheet', pathname: `/${SHEET_ROUTES[ref.kind]}`, params: { id: String(ref.id) } };
     case 'file':
-      return { via: 'sheet', pathname: '/sheet/file', params: { id: String(ref.id), ...(ref.name ? { name: ref.name } : {}) } };
+      return {
+        via: 'sheet',
+        pathname: '/sheet/file',
+        params: { id: String(ref.id), ...(ref.name ? { name: ref.name } : {}) },
+      };
     case 'attachment':
       return { via: 'sheet', pathname: '/sheet/file', params: { path: ref.path, name: ref.name } };
     case 'folder':
@@ -139,7 +163,9 @@ export function refOfTarget(target: AppTarget): { ref: ObjectRef } | { place: Pl
       }
       return { place: { kind: 'tables', baseId: target.baseId, tableId: target.tableId } };
     case 'chat':
-      return target.sessionId ? { ref: { kind: 'chat', sessionId: target.sessionId } } : { place: { kind: 'tab', href: '/' } };
+      return target.sessionId
+        ? { ref: { kind: 'chat', sessionId: target.sessionId } }
+        : { place: { kind: 'tab', href: '/' } };
     case 'agent':
       return { place: { kind: 'agents' } };
     case 'web': {

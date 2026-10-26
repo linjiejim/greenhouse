@@ -9,6 +9,8 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Added
 
+- **client:** the universal client (apps/mobile) runs in the browser and on wide screens: rail + secondary column + main + inspector, web sign-in, ⌘K, notifications popover, context menus and shortcuts, knowledge / drive / tables / projects / automations places, plugin surfaces from the station manifest (native screens, entity list / detail, settings forms, embedded pages).
+- **desktop:** a local macOS Tauri 2 shell bundling the universal client, multi-station Keychain sessions, shared menu shortcuts, notifications and Dock badge, Quick ask, deep links and opt-in signed updater wiring.
 - SDK 2 data plugins derive kernel applications/policies, guarded CRUD and MCP tools,
   catalog/search/export/peek and declarative entity surfaces from one definition.
 - Add five isolated asynchronous lifecycle observations, persisted `onInstall`,

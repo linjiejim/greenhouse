@@ -84,3 +84,6 @@ docs/specs/
 design/
 docs/sketches/
 
+
+# Desktop Cargo registry/cache stays inside the sandbox.
+.cargo-home/

@@ -1,3 +1,4 @@
+import { ScreenActions } from '../../../src/ui/screen-actions';
 /**
  * One table of 云盘 › 表格 (`/drive/table?base=&id=`): its records, newest first, a page at a time (cursor), each
  * titled by its primary field with the next two filled fields under it. Editors and up get + to
@@ -20,10 +21,10 @@ import { useFieldWords } from '../../../src/tables/use-field-words';
 import { makeStyles, space, useTheme } from '../../../src/theme';
 import { EmptyState, LoadingState } from '../../../src/ui/empty';
 import { Row, SectionFooter, rowPosition } from '../../../src/ui/list';
-import { refreshItem, usePullRefresh } from '../../../src/ui/refresh';
+import { usePullRefresh } from '../../../src/ui/refresh';
 import { SidewaysTable } from '../../../src/ui/sideways';
 import { useOpenObject } from '../../../src/shell/open-object';
-import { toolbarIcon } from '../../../src/ui/toolbar-icon';
+
 import { objectId } from '../../../src/lib/object-id';
 
 interface Head {
@@ -92,7 +93,9 @@ export default function TableScreen() {
   const words = useFieldWords(fields);
   const records = useMemo(() => {
     const seen = new Set<string>();
-    return [...(head?.records ?? []), ...extra.records].filter((record) => !seen.has(record.id) && !!seen.add(record.id));
+    return [...(head?.records ?? []), ...extra.records].filter(
+      (record) => !seen.has(record.id) && !!seen.add(record.id),
+    );
   }, [head, extra.records]);
 
   // the records read so far as a grid, for reading sideways
@@ -128,7 +131,11 @@ export default function TableScreen() {
       <View style={styles.root}>
         <Stack.Screen options={{ title: t('nav.tables') }} />
         <ScrollView contentInsetAdjustmentBehavior="automatic">
-          <EmptyState icon="table" title={noAccess(resource.error) ? t('tables.noAccess') : t('tables.notFound')} style={styles.state} />
+          <EmptyState
+            icon="table"
+            title={noAccess(resource.error) ? t('tables.noAccess') : t('tables.notFound')}
+            style={styles.state}
+          />
         </ScrollView>
       </View>
     );
@@ -137,23 +144,38 @@ export default function TableScreen() {
   return (
     <>
       <Stack.Screen options={{ title: head?.schema.table.name ?? '' }} />
-      <Stack.Toolbar placement="right">
-        {refreshItem(resource.loading && !!head && !pull.refreshing, t('common.loading'))}
-        {records.length ? (
-          <Stack.Toolbar.Button
-            icon={toolbarIcon('sideways')}
-            accessibilityLabel={t('tables.sideways')}
-            onPress={() => setSideways(true)}
-          />
-        ) : null}
-        {head && canAddRecords(head.role) ? (
-          <Stack.Toolbar.Button
-            icon={toolbarIcon('plus')}
-            accessibilityLabel={t('tables.addRecord')}
-            onPress={() => router.push({ pathname: '/tables/new-record', params: { table: String(tableId) } })}
-          />
-        ) : null}
-      </Stack.Toolbar>
+      <ScreenActions
+        placement={'right'}
+        actions={[
+          {
+            id: 'refresh',
+            icon: 'refresh',
+            label: t('common.loading'),
+            onPress: () => {},
+            busy: resource.loading && !!head && !pull.refreshing,
+          },
+          ...(records.length
+            ? [
+                {
+                  id: 'action-1',
+                  icon: 'sideways' as const,
+                  label: t('tables.sideways'),
+                  onPress: () => setSideways(true),
+                },
+              ]
+            : []),
+          ...(head && canAddRecords(head.role)
+            ? [
+                {
+                  id: 'action-2',
+                  icon: 'plus' as const,
+                  label: t('tables.addRecord'),
+                  onPress: () => router.push({ pathname: '/tables/new-record', params: { table: String(tableId) } }),
+                },
+              ]
+            : []),
+        ]}
+      />
       <FlatList<TableRecord>
         contentInsetAdjustmentBehavior="automatic"
         data={records}
@@ -174,7 +196,10 @@ export default function TableScreen() {
         ListHeaderComponent={
           head ? (
             <SectionFooter
-              text={[t('tables.recordCount', { n: head.total }), canAddRecords(head.role) || !head.role ? '' : t('tables.viewerOnly')]
+              text={[
+                t('tables.recordCount', { n: head.total }),
+                canAddRecords(head.role) || !head.role ? '' : t('tables.viewerOnly'),
+              ]
                 .filter(Boolean)
                 .join(' · ')}
             />
@@ -185,7 +210,12 @@ export default function TableScreen() {
             resource.loading ? (
               <LoadingState style={styles.state} />
             ) : (
-              <EmptyState icon="alert" title={t('tables.loadFailed')} onRetry={() => void resource.refresh()} style={styles.state} />
+              <EmptyState
+                icon="alert"
+                title={t('tables.loadFailed')}
+                onRetry={() => void resource.refresh()}
+                style={styles.state}
+              />
             )
           ) : (
             <EmptyState icon="table" title={t('tables.recordsEmpty')} style={styles.state} />

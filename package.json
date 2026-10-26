@@ -32,6 +32,7 @@
     "test:e2e": "pnpm plugins:sync && vitest run --config vitest.e2e.config.ts",
     "test:e2e:ci": "pnpm plugins:sync && bash scripts/e2e-ci.sh",
     "test:e2e:ui": "pnpm plugins:sync && playwright test",
+    "test:e2e:client": "pnpm plugins:sync && playwright test --config playwright.client.config.ts",
     "test:e2e:ui:report": "pnpm plugins:sync && playwright show-report",
     "typecheck": "pnpm plugins:sync && tsc --noEmit --incremental",
     "lint": "node scripts/check-plugin-boundaries.mjs && eslint --cache --cache-strategy content --cache-location node_modules/.cache/eslint/.eslintcache apps/ packages/ plugins/ && prettier --cache --cache-strategy content --cache-location node_modules/.cache/prettier/.prettier-cache --check apps/ packages/ plugins/",
@@ -39,7 +40,10 @@
     "prepare": "husky",
     "plugins:sync": "tsx scripts/plugins-sync.mjs",
     "postinstall": "pnpm plugins:sync",
-    "test:core": "node scripts/test-core.mjs"
+    "test:core": "node scripts/test-core.mjs",
+    "desktop:dev": "node apps/desktop/scripts/desktop.mjs dev",
+    "desktop:build": "node apps/desktop/scripts/desktop.mjs build",
+    "desktop:check": "node apps/desktop/scripts/desktop.mjs check"
   },
   "lint-staged": {
     "apps/!(mobile)/**/*.{ts,tsx}": [

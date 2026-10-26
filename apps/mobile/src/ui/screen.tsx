@@ -19,27 +19,13 @@ import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useT } from '../lib/i18n';
 import { makeStyles, typo, useTheme, weight } from '../theme';
 import type { IconName } from './core';
-import { refreshItem } from './refresh';
-import { toolbarIcon } from './toolbar-icon';
+import { useScreenActions } from './screen-actions';
 
 export interface ScreenAction {
   icon: IconName;
   label: string;
   onPress: () => void;
   disabled?: boolean;
-}
-
-/** Toolbar buttons must be the toolbar's direct children (expo-router reads them as items). */
-function actionButtons(actions: readonly ScreenAction[]) {
-  return actions.map((action) => (
-    <Stack.Toolbar.Button
-      key={action.label}
-      icon={toolbarIcon(action.icon)}
-      accessibilityLabel={action.label}
-      disabled={action.disabled}
-      onPress={action.onPress}
-    />
-  ));
 }
 
 interface ScreenProps {
@@ -59,12 +45,12 @@ export function Screen({ title, actions = [], busy }: ScreenProps) {
   return (
     <>
       <Stack.Screen options={{ title }} />
-      {actions.length || busy !== undefined ? (
-        <Stack.Toolbar placement="right">
-          {busy !== undefined ? refreshItem(busy, t('common.loading')) : null}
-          {actionButtons(actions)}
-        </Stack.Toolbar>
-      ) : null}
+      {useScreenActions([
+        ...(busy !== undefined
+          ? [{ id: 'refresh', icon: 'refresh' as const, label: t('common.loading'), onPress: () => {}, busy }]
+          : []),
+        ...actions.map((a, i) => ({ ...a, id: String(i) })),
+      ])}
     </>
   );
 }
@@ -93,17 +79,22 @@ export function SheetScreen({ title, actions = [], busy, closeApart }: SheetScre
   const { from } = useLocalSearchParams<{ from?: string }>();
   return (
     <>
-      <Stack.Screen options={{ title, ...(from ? { headerTitle: () => <OriginTitle title={title} from={from} /> } : null) }} />
-      <Stack.Toolbar placement="right">
-        {busy !== undefined ? refreshItem(busy, t('common.loading')) : null}
-        {actionButtons(actions)}
-        <Stack.Toolbar.Button
-          icon={toolbarIcon('x')}
-          accessibilityLabel={t('common.close')}
-          separateBackground={closeApart}
-          onPress={() => router.back()}
-        />
-      </Stack.Toolbar>
+      <Stack.Screen
+        options={{ title, ...(from ? { headerTitle: () => <OriginTitle title={title} from={from} /> } : null) }}
+      />
+      {useScreenActions([
+        ...(busy !== undefined
+          ? [{ id: 'refresh', icon: 'refresh' as const, label: t('common.loading'), onPress: () => {}, busy }]
+          : []),
+        ...actions.map((a, i) => ({ ...a, id: String(i) })),
+        {
+          id: 'close',
+          icon: 'x',
+          label: t('common.close'),
+          separateBackground: closeApart,
+          onPress: () => router.back(),
+        },
+      ])}
     </>
   );
 }

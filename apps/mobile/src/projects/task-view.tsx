@@ -8,7 +8,7 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ScrollView, Text, View } from 'react-native';
+import { Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import {
   addTaskComment,
@@ -34,9 +34,10 @@ import { makeStyles, radius, space, squircle, typo, useTheme, weight } from '../
 import { alertError, promptText } from '../ui/dialogs';
 import { EmptyState, LoadingState } from '../ui/empty';
 import { notifySuccess, selectionTick } from '../ui/haptics';
-import { Badge, Row, Section } from '../ui/list';
+import { Badge, Row } from '../ui/list';
 import { NativeMenu } from '../ui/menu';
 import { toast } from '../ui/toast';
+import { DetailFields, DetailScroll } from '../ui/detail-fields';
 import { SheetScreen } from '../ui/screen';
 import { useOpenObject } from '../shell/open-object';
 
@@ -117,7 +118,9 @@ export function TaskView({
       if (!outcome || !current()) return;
       if (!outcome.ok) {
         setData((detail) =>
-          detail ? { ...detail, tasks: withTaskPatched(detail.tasks, task.id, { status: outcome.rollbackTo }) } : detail,
+          detail
+            ? { ...detail, tasks: withTaskPatched(detail.tasks, task.id, { status: outcome.rollbackTo }) }
+            : detail,
         );
         alertError(t('projects.statusFailed'), outcome.message || undefined);
         return;
@@ -176,7 +179,9 @@ export function TaskView({
       // a later choice took over, or the station / account changed
       if (!outcome || !slot.current()) return;
       if (!outcome.ok) {
-        setData((detail) => (detail ? { ...detail, tasks: withTaskPatched(detail.tasks, id, outcome.rollbackTo) } : detail));
+        setData((detail) =>
+          detail ? { ...detail, tasks: withTaskPatched(detail.tasks, id, outcome.rollbackTo) } : detail,
+        );
         alertError(t('projects.saveTaskFailed'), outcome.message || undefined);
         return;
       }
@@ -204,7 +209,10 @@ export function TaskView({
     }
     notifySuccess();
     // the answer carries no author name: it is mine
-    setComments((list) => [...(list ?? []), { ...result.data.comment, user_nickname: result.data.comment.user_nickname ?? me }]);
+    setComments((list) => [
+      ...(list ?? []),
+      { ...result.data.comment, user_nickname: result.data.comment.user_nickname ?? me },
+    ]);
     toast(t('projects.commentAdded'), 'check');
   }, [taskId, t, me]);
 
@@ -216,9 +224,9 @@ export function TaskView({
     return (
       <>
         <SheetScreen title={t('projects.tasks')} />
-        <ScrollView style={styles.root} contentInsetAdjustmentBehavior="automatic">
+        <DetailScroll style={styles.root} contentInsetAdjustmentBehavior="automatic">
           <EmptyState icon="checkCircle" title={t('projects.taskNotFound')} style={styles.state} />
-        </ScrollView>
+        </DetailScroll>
       </>
     );
   }
@@ -237,19 +245,28 @@ export function TaskView({
             : []
         }
       />
-      <ScrollView style={styles.root} contentInsetAdjustmentBehavior="automatic" contentContainerStyle={styles.content}>
+      <DetailScroll
+        style={styles.root}
+        contentInsetAdjustmentBehavior="automatic"
+        contentContainerStyle={styles.content}
+      >
         {!task ? (
           resource.loading ? (
             <LoadingState style={styles.state} />
           ) : (
-            <EmptyState icon="alert" title={t('projects.loadFailed')} onRetry={() => void resource.refresh()} style={styles.state} />
+            <EmptyState
+              icon="alert"
+              title={t('projects.loadFailed')}
+              onRetry={() => void resource.refresh()}
+              style={styles.state}
+            />
           )
         ) : (
           <>
             <Text style={styles.title} accessibilityRole="header" selectable>
               {task.title}
             </Text>
-            <Section>
+            <DetailFields>
               <NativeMenu
                 items={TASK_STATUSES.map((status) => ({
                   id: status,
@@ -283,7 +300,9 @@ export function TaskView({
                 onSelect={(value) => {
                   const next = value === UNASSIGNED ? null : value;
                   if (next === (task.assignee_id ?? null)) return;
-                  const name = next ? (people(users.data?.users ?? [], task).find((p) => p.id === next)?.name ?? null) : null;
+                  const name = next
+                    ? (people(users.data?.users ?? [], task).find((p) => p.id === next)?.name ?? null)
+                    : null;
                   void changeField(
                     'assignee_id',
                     { assignee_id: next, assignee_nickname: name },
@@ -306,7 +325,11 @@ export function TaskView({
                 icon="clock"
                 onPress={editTask}
                 accessory={
-                  task.due_date && task.status !== 'done' && task.status !== 'cancelled' && bucket !== 'later' && bucket !== 'soon' ? (
+                  task.due_date &&
+                  task.status !== 'done' &&
+                  task.status !== 'cancelled' &&
+                  bucket !== 'later' &&
+                  bucket !== 'soon' ? (
                     <Badge label={t(`projects.dueGroup.${bucket}`)} tone={dueTone(bucket)} />
                   ) : (
                     'chevron'
@@ -342,7 +365,7 @@ export function TaskView({
                 accessory="chevron"
                 onPress={() => openObject({ kind: 'project', id: task.project_id })}
               />
-            </Section>
+            </DetailFields>
             {task.description ? (
               <View style={styles.block}>
                 <Text style={styles.blockTitle} accessibilityRole="header">
@@ -368,7 +391,7 @@ export function TaskView({
             ) : null}
           </>
         )}
-      </ScrollView>
+      </DetailScroll>
     </>
   );
 }
@@ -389,7 +412,13 @@ const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.groupedBackground },
   content: { paddingBottom: space.xxxl * 2 },
   state: { paddingTop: space.xxxl },
-  title: { ...typo.title2, fontWeight: weight.bold, color: c.label, marginHorizontal: space.margin + space.xs, marginVertical: space.md },
+  title: {
+    ...typo.title2,
+    fontWeight: weight.bold,
+    color: c.label,
+    marginHorizontal: space.margin + space.xs,
+    marginVertical: space.md,
+  },
   block: { marginHorizontal: space.margin + space.xs, marginTop: space.xl, gap: space.sm },
   blockTitle: { ...typo.headline, fontWeight: weight.semibold, color: c.label },
   comment: {

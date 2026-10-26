@@ -14,6 +14,8 @@
  * (the v1 envelope is `{ error: '<message>' }`). They never throw.
  */
 
+import { withRefreshLock } from '../desktop/refresh-lock';
+import { CLIENT_CHANNEL } from '../desktop/channel';
 import { getApiBase } from '../store/stations';
 import type { SessionTokens } from '../shared/greenhouse-types';
 import { checkAborted, withConnectionDeadline } from './connection-deadline';
@@ -48,7 +50,10 @@ export function refreshTokens(signal?: AbortSignal): Promise<boolean> {
   const cancel = () => controller.abort(signal?.reason);
   signal?.addEventListener('abort', cancel, { once: true });
   // Background refreshes also expire, so a later bootstrap cannot keep joining a hung rotation.
-  const run: Promise<boolean> = withConnectionDeadline((attempt) => doRefresh(sid, attempt), controller).finally(() => {
+  const run: Promise<boolean> = withConnectionDeadline(
+    (attempt) => withRefreshLock(sid, () => doRefresh(sid, attempt)),
+    controller,
+  ).finally(() => {
     signal?.removeEventListener('abort', cancel);
     if (refreshing.get(sid)?.promise === run) refreshing.delete(sid);
   });
@@ -120,6 +125,7 @@ export async function api(path: string, init: RequestInit = {}, via: typeof fetc
   const token = own ? getAccessToken() : null;
   const headers = new Headers(init.headers);
   if (token) headers.set('Authorization', `Bearer ${token}`);
+  if (own && CLIENT_CHANNEL !== 'web') headers.set('X-Greenhouse-Client', CLIENT_CHANNEL);
 
   let res = await via(url, { ...init, headers });
   checkAborted(init.signal);
@@ -131,7 +137,7 @@ export async function api(path: string, init: RequestInit = {}, via: typeof fetc
     checkAborted(init.signal);
     if (!sameStation()) return res;
     if (ok) {
-      const retryHeaders = new Headers(init.headers);
+      const retryHeaders = new Headers(headers);
       const newToken = getAccessToken();
       if (newToken) retryHeaders.set('Authorization', `Bearer ${newToken}`);
       res = await via(url, { ...init, headers: retryHeaders });
@@ -194,7 +200,12 @@ export async function toResult<T>(res: Response): Promise<ApiResult<T>> {
   return {
     ok: false,
     status: res.status,
-    code: typeof envelope?.code === 'string' ? envelope.code : typeof topCode === 'string' ? topCode : statusCode(res.status),
+    code:
+      typeof envelope?.code === 'string'
+        ? envelope.code
+        : typeof topCode === 'string'
+          ? topCode
+          : statusCode(res.status),
     message: typeof error === 'string' ? error : typeof envelope?.message === 'string' ? envelope.message : '',
     details: (body as { details?: unknown } | undefined)?.details,
   };

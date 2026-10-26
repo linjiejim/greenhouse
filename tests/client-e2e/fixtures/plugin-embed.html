@@ -1,0 +1,60 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Plugin fixture</title>
+    <style>
+      body {
+        background: var(--gh-background);
+        color: var(--gh-label);
+        font:
+          14px system-ui,
+          sans-serif;
+      }
+      pre {
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+      }
+      button {
+        background: var(--gh-secondary-grouped-background);
+        color: var(--gh-label);
+        border: 1px solid var(--gh-separator);
+        border-radius: 6px;
+        padding: 6px 10px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Embed fixture</h1>
+    <pre id="state"></pre>
+    <button id="navigate">Navigate</button><button id="prompt">Draft prompt</button
+    ><button id="refresh">Refresh token</button>
+    <script>
+      window.received = [];
+      addEventListener('message', (event) => {
+        let message = event.data;
+        try {
+          if (typeof message === 'string') message = JSON.parse(message);
+        } catch {
+          return;
+        }
+        if (!message?.type?.startsWith('greenhouse:')) return;
+        window.received.push(message);
+        document.querySelector('#state').textContent = JSON.stringify(window.received);
+        if (message.type === 'greenhouse:init' || message.type === 'greenhouse:theme') {
+          document.documentElement.dataset.theme = message.theme;
+          document.documentElement.style.colorScheme = message.theme;
+          for (const [key, value] of Object.entries(message.tokens ?? {}))
+            document.documentElement.style.setProperty(key, value);
+        }
+      });
+      document.querySelector('#navigate').onclick = () =>
+        parent.postMessage({ type: 'greenhouse:navigate', href: '/knowledge' }, '*');
+      document.querySelector('#prompt').onclick = () =>
+        parent.postMessage({ type: 'greenhouse:sendPrompt', text: '请整理这位客户的资料' }, '*');
+      document.querySelector('#refresh').onclick = () => parent.postMessage({ type: 'greenhouse:token-refresh' }, '*');
+      parent.postMessage({ type: 'greenhouse:ready' }, '*');
+      parent.postMessage({ type: 'greenhouse:title', title: '客户工作台 · 已连接' }, '*');
+    </script>
+  </body>
+</html>

@@ -134,6 +134,7 @@ export interface KbDoc {
   slug: string;
   title: string;
   content_markdown: string;
+  content_json?: string;
   summary: string;
   tags: string;
   folder_id: string | null;
@@ -455,5 +456,10 @@ export interface ChatMessage {
 export interface SearchGroup {
   kind: string;
   hasMore: boolean;
-  items: { title: string; subtitle?: string | null; sessionId?: string; ref?: { kind: string; id: string; slug?: string } }[];
+  items: {
+    title: string;
+    subtitle?: string | null;
+    sessionId?: string;
+    ref?: { kind: string; id: string; slug?: string };
+  }[];
 }

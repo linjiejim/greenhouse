@@ -18,6 +18,7 @@
  */
 
 import React, { memo, useMemo } from 'react';
+import { ReplyAvatar, ReplyActions, replySummary, useMessageLayout } from './reply-controls';
 import { Share, Text, View } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import { useT } from '../lib/i18n';
@@ -44,7 +45,7 @@ import {
 import { formatBytes } from '../lib/format';
 import { useOpenObject } from '../shell/open-object';
 import { citedObjects, replyCards, type AttachedFile, type ToolStep } from './parts';
-import { humanize, toolActivity } from './tool-words';
+import { humanize } from './tool-words';
 
 /** A tool's name for people: `knowledge_query` → "Knowledge query" (run sheets). */
 export const toolLabel = humanize;
@@ -53,6 +54,7 @@ export const toolLabel = humanize;
 export interface MessageActions {
   onQuote?: (text: string) => void;
   onRegenerate?: () => void;
+  onBranch?: (text: string) => void;
 }
 
 function MessageMenu({
@@ -127,6 +129,7 @@ export const UserMessage = memo(function UserMessage({
 }) {
   const { colors: c } = useTheme();
   const styles = useStyles(c);
+  const layout = useMessageLayout();
   const t = useT();
   const mark = failed ? null : queued || sending ? 'clock' : delivered ? 'check' : null;
   return (
@@ -145,7 +148,7 @@ export const UserMessage = memo(function UserMessage({
           <MessageMenu text={text} actions={actions} style={styles.bubbleSlot}>
             <View style={[styles.bubble, queued && styles.queued]}>
               {/* my words are Markdown, as on the web: an ask_user answer's **labels** read bold */}
-              <Text style={styles.userText} selectable>
+              <Text style={[styles.userText, layout.userText]} selectable>
                 <Inline text={text} />
               </Text>
             </View>
@@ -168,7 +171,9 @@ export const UserMessage = memo(function UserMessage({
 
 export const AssistantReply = memo(function AssistantReply({
   messageId,
+  answerScope,
   sessionId,
+  authorName,
   text,
   steps,
   references,
@@ -181,6 +186,8 @@ export const AssistantReply = memo(function AssistantReply({
   onSteps,
 }: {
   messageId: string;
+  answerScope?: string;
+  authorName?: string;
   /** The session its cards save into; null leaves them inert (a read-only conversation). */
   sessionId: string | null;
   text: string;
@@ -201,13 +208,14 @@ export const AssistantReply = memo(function AssistantReply({
 }) {
   const { colors: c } = useTheme();
   const styles = useStyles(c);
+  const layout = useMessageLayout();
   const t = useT();
   const openObject = useOpenObject();
   const cards = useMemo(() => replyCards(steps, messageId, text), [steps, messageId, text]);
   const objects = useMemo(() => citedObjects(references, steps), [references, steps]);
   const busy = live && working;
   const activity =
-    toolActivity(steps, live ? runningTool : null, t) ?? (busy && !text ? t('assistant.thinking') : null);
+    replySummary(steps, live ? runningTool : null, t) ?? (busy && !text ? t('assistant.thinking') : null);
   const running = busy && (!!runningTool || !text || steps.some((step) => step.status === 'running'));
   // web order: most cards sit above the words; things to save or apply come after them
   const below = (card: (typeof cards)[number]) => card.kind === 'task_capture' || card.kind === 'schema_plan';
@@ -216,7 +224,16 @@ export const AssistantReply = memo(function AssistantReply({
       {list.map((card) => {
         switch (card.kind) {
           case 'ask_user':
-            return <AskUserCard key={card.key} ask={card.ask} answered={answered} onAnswer={env.reply} />;
+            return (
+              <AskUserCard
+                key={card.key}
+                ask={card.ask}
+                answerScope={answerScope ?? messageId}
+                answered={answered}
+                working={working}
+                onAnswer={env.reply}
+              />
+            );
           case 'file':
             return (
               <FileCard
@@ -260,8 +277,9 @@ export const AssistantReply = memo(function AssistantReply({
     <View style={styles.reply}>
       {/* one row, one height: the status changes words in place, never the rows below */}
       <View style={styles.author}>
-        <Text style={styles.authorName} numberOfLines={1}>
-          {t('conversation.assistant')}
+        <ReplyAvatar />
+        <Text style={[styles.authorName, layout.authorName]} numberOfLines={1}>
+          {(layout.showAgentName && authorName) || t('conversation.assistant')}
         </Text>
         <View style={styles.status} accessibilityLiveRegion={live ? 'polite' : 'none'}>
           {status && steps.length && onSteps ? (
@@ -290,6 +308,7 @@ export const AssistantReply = memo(function AssistantReply({
       </RichContext.Provider>
       {renderCards(cards.filter(below))}
       <ObjectCards objects={objects} />
+      <ReplyActions text={text} actions={actions} live={live} />
     </View>
   );
 });

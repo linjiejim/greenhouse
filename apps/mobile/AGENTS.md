@@ -3,7 +3,7 @@
 ## Scope
 
 - The app is the team's Agent hub on the phone: 首页 (greeting, recent conversations, a composer; search and the bell in its bar), 知识库, 云盘 (with Tables), 项目, 定时任务 (automations), search, the conversation page, 通知 and 「我」 (account, station, text size, My Agents, settings). It is not a web wrapper and not an agent console.
-- The root is a sidebar drawer (app/(drawer)/_layout.tsx, expo-router's vendored Drawer on react-native-drawer-layout; panel src/shell/sidebar-content.tsx, rules src/shell/layout-rule.ts): each place swaps in with its own stack, the edge swipe opens it only on a place's first page (deeper it is the back gesture; depth comes from `placeDepth`, which reads partial nested states; home's first page takes a rightward swipe anywhere, src/shell/layout-rule.ts `drawerSwipeWidth`), search is the sidebar header's round button and never a place, an iPad at regular width keeps it permanent; the conversation page `/chat` lives in home's stack; Tables is a segment of 云盘 only with the `tables` feature (src/shell/modules.ts `hasTables`, supers always). There are no placeholder screens.
+- The root is a sidebar drawer (app/(drawer)/\_layout.tsx, expo-router's vendored Drawer on react-native-drawer-layout; panel src/shell/sidebar-content.tsx, rules src/shell/layout-rule.ts): each place swaps in with its own stack, the edge swipe opens it only on a place's first page (deeper it is the back gesture; depth comes from `placeDepth`, which reads partial nested states; home's first page takes a rightward swipe anywhere, src/shell/layout-rule.ts `drawerSwipeWidth`), search is the sidebar header's round button and never a place, an iPad at regular width keeps it permanent; the conversation page `/chat` lives in home's stack; Tables is a segment of 云盘 only with the `tables` feature (src/shell/modules.ts `hasTables`, supers always). There are no placeholder screens.
 - Page, sheet, type, color and state rules live in DESIGN.md; read it before adding a screen.
 - Experience bar: content within 1.5 s of a cold start (cache first, refresh in background), 60 fps lists, haptics and optimistic updates, offline reading of recent items, dark mode, Dynamic Type, VoiceOver.
 
@@ -113,10 +113,10 @@
 - Objects open only through useOpenObject / useOpenHref (src/shell/open-object.ts); never push a detail route by hand.
 - The composer's band is opaque through the bottom safe area: place it in a KeyboardStickyView at bottom 0 and pass `bottomInset` (src/chat/composer.tsx); never leave the inset under it see-through.
 - Home's recent list length is the phone's `homeRecent` pref (0/3/5/10, default 3, src/data/home.ts); rows there are `compact` (title and short age, no snippet).
-- Sprouty has one presence per screen: the header face in a conversation, the greeting sprout on home; never put an avatar on message rows.
+- On native, Sprouty has one presence per screen: the header face in a conversation, the greeting sprout on home; never put an avatar on message rows.
 - A sheet's list or ScrollView is its root element (after SheetScreen); a ScrollView wrapped in a flex View renders nothing in a form sheet.
 - Zustand selectors return stored values; derive filtered arrays with useMemo (a fresh array from a selector loops forever).
-- Use system components: the expo-router native Stack, @expo/ui/swift-ui and NativeMenu (src/ui/menu.tsx); never JS-drawn headers, bottom sheets, action sheets, calendars or switches.
+- Native UI uses system components: the expo-router native Stack, @expo/ui/swift-ui and NativeMenu (src/ui/menu.tsx); never JS-drawn headers, bottom sheets, action sheets, calendars or switches.
 - Brand: Haven forest #235D4D / pale sage #B1D2BF in dark, the seed lime #B6CA68 never as text; Nunito. Colours come from the shared token module (packages/ui/src/tokens/tokens.ts) through the generated src/theme/tokens.generated.ts — run `pnpm tokens:build` at the repo root, never edit a hex in src/theme/palette.ts; dark content surfaces keep UIKit's system base; native controls keep system styling with the accent as tint. Contrast and web parity are tested (src/theme/palette.test.ts, packages/ui/src/tokens/platform-parity.test.ts).
 - A user-chosen colour (project, tag) draws through categoricalFor() (src/theme/palette.ts) as its categorical fg/fill pair, never the raw hex.
 - `colors.*` are opaque ColorValues: never concatenate or compute alpha on them; use `hex.*` for strings and alpha() for transparency.
@@ -124,7 +124,7 @@
 - Take typo, weight, radius (with squircle) and HIT from src/theme.ts; never disable allowFontScaling.
 - Register icons as [SF Symbol, Material] pairs in ICONS (src/ui/core.tsx) and run `python3 scripts/android-icons.py` in apps/mobile; toolbar icons go through toolbarIcon().
 - Give every icon-only button an accessibilityLabel; Icon is hidden from VoiceOver unless it stands alone.
-- Declare presentation only in app/_layout.tsx with the src/ui/nav.ts presets; screens set their own title and toolbar; the back button is always the system's.
+- Declare presentation only in app/\_layout platform layouts with the src/ui/nav presets; screens declare their own title and actions; native back buttons stay system-owned.
 - Glass (src/ui/glass.tsx) is for the control layer only; content sits on solid system colors.
 - A failed user action shows alertError; toast is for success only; a failed load shows EmptyState with retry; login errors stay inline.
 - Forms use NativeForm with FormNavRow; content buttons use NativeButton, never Pressable plus Text.
@@ -154,3 +154,81 @@
 
 - en.ts is the key source and zh must match; delete unused keys after searching dynamic uses (`t(module.title)`, notification kind labels).
 - Words: 首页, 知识库, 云盘 (never 档案库), 项目, 定时任务, 表格, 通知, 工作站, 「我」.
+
+## Universal client (C1)
+
+- Platform primitives use `.ios.tsx`, `.android.tsx` and `.web.tsx`; base re-exports keep TypeScript and Expo Router route discovery working.
+- SwiftUI, Compose and native view factories never load in browser implementations.
+- Screens declare actions with `useScreenActions` or `ScreenActions`; only the iOS adapter owns `Stack.Toolbar` items, which remain its direct children.
+- Browser menus, dialogs, popovers, tooltips and success toasts share `src/ui/overlay.web.tsx` for focus, Escape and portals.
+- Web frames use an opaque-origin sandbox and accept messages only from their own iframe window.
+- Browser builds are single-station and use their own origin unless `EXPO_PUBLIC_API_BASE_URL` explicitly overrides it for development.
+- Browser station ids include the API origin; hosted builds share the classic localStorage token keys, while development overrides keep origin-scoped keys.
+- The optional `/api/extensions` v2 manifest gates built-in plugin places and supplies primary and More navigation; v1 or 404 means legacy navigation.
+- `src/shared/plugins.ts` is a verbatim copy of `packages/types/src/plugins.ts`, checked by the React-free manifest tests; optional v2 does not raise `MOBILE_API`.
+- Unrecognized plugin pages use `/p/[plugin]/[page]` and a validated browser fallback; generic page renderers belong to the next client phase.
+- Browser legacy links are mapped before auth routing and retained across sign-in; unmapped hashes open `/classic/` on the station.
+- `pnpm test:e2e:client` owns ports 18920 and 18921 and the isolated `gh4_client` database on port 55450; its screenshots and auth state are ignored.
+- Run Expo dev servers with `CI=1` in restricted environments to disable file watchers; native configuration and fingerprint stay unchanged in C1.
+- Metro redirects native route-context entries only for web; verify source maps with `node scripts/check-web-bundle.mjs <export-dir>` after an export with `--source-maps`.
+
+## Wide chat and inspector (C2)
+
+- Keep the Drawer and the keyed main navigator mounted across browser breakpoints; reflow chrome without replacing navigators.
+- Match the base file's extension in platform siblings (`nav.ts` → `nav.web.ts`); a `.web.tsx` sibling of a `.ts` file can lose to the base in Metro resolution.
+- Shared chat screens retain the conversation engine, upload queue, rich renderers, ask_user and ownership checks; browser adapters own only layout and controls.
+- Wide replies add an avatar and copy/regenerate/fork/export controls; native replies keep their existing compact author row.
+- Forks call `/api/sessions/:id/fork` with `message_id`; a branch is a copied transcript, not a prefilled draft.
+- Browser drops and native pickers enter `useComposerFiles.acceptFiles`; release browser object URLs when their draft or preview ends.
+- Authenticated browser file previews download through `api()`; pass only the resulting Blob URL to the sandboxed frame, and revoke it on close.
+- The root router owns inspector history (three objects maximum); promotion retains the current route key, removes inspector history and replaces an earlier promoted main object.
+- Inspector widths stay within 360–520 px, remembered per place; below 1440 they float without squeezing the main column.
+- Escape dismisses the top interactive overlay, then the inspector, then a live generation; closing an inspector above a promoted object retains that main object.
+- Search and commands, notification popovers and the account menu live in `src/shell/desktop-tools.web.tsx`; notifications reuse `src/notifications/center.tsx` on every platform.
+- Browser settings use the existing `me` stack in a fullscreen overlay; the single browser station is shown as identity information without a station switcher.
+- Web startup uses native readiness and grace deadlines with a bounded CSS fade; fix DOM warnings at their source instead of suppressing console errors or forwarding them to product toasts.
+- `tests/client-e2e/p2.e2e.ts` exercises separated NDJSON chunks with a browser ReadableStream and writes design-number screenshots at 1440/1280/1024/390; restricted runners collect tests only and leave Chromium execution to the reviewer.
+
+- Conversation-row previews use `/sheet/conversation` with the shared chat screen forced read-only, including its outbox guards; normal conversation navigation still opens the main stack.
+
+## Places and plugin surfaces (C3)
+
+- Wide web place routes portal their secondary controls into `PlaceSecondary`; they reuse API helpers, library actions and the root inspector stack. Phone screens remain in `src/<domain>/phone-screen.tsx` and the shared routes re-export them.
+- The desktop knowledge editor vendors `packages/knowledge-editor` schema, Markdown parser and serializer verbatim (parity-tested), behind a `use dom` boundary. Markdown stays canonical, including when `content_json` is empty.
+- Classic UI components depend on workspace packages, stores, routing and CSS that the isolated Expo app cannot import. Reuse their editor schema and existing mobile domain hooks; keep browser grid/board adapters behind DOM components, without a second API or permissions layer.
+- Native Metro resolution redirects web-only route-context dependencies to shared routes; browser editors/grids/boards must not add DOM bundles to the iOS export.
+- Official native screen descriptors and nav glue live under `src/plugins/<id>/`; `native-registry.ts` only aggregates them. A v2 place requires an actual native nav entry, not just an installed plugin id; legacy stations retain their original navigation.
+- Entity surfaces follow the CRUD `skip/limit/sort/filter` protocol, deduplicate infinite pages and invalidate pending reads on identity/query changes. Detail actions are limited to manifest actions and writable fields; deletion confirms first.
+- Plugin record sheets use `sheet/plugin` and the same three-level inspector stack and promotion rules as built-in objects.
+- Plugin settings use `GET/PUT /api/admin/settings`, submit only changed declared keys, preserve masked secrets and display server errors. Unknown keys never create speculative controls.
+- Trusted plugin frames use `WebFrame` with a real origin and the plugin bridge; check both source window and exact origin. They receive only `/api/ext-ui/token` credentials (404 means an empty token). Chat/document previews retain their opaque sandbox and never receive credentials.
+- Real-origin plugin frames permit scripts and same-origin access for the protocol; they have the same code trust as their installed plugin. Do not use that bridge for arbitrary user HTML.
+- Embed navigation accepts client routes; `sendPrompt` opens a chat draft and never submits it. Theme changes preserve the frame, token refresh is identity-bound, and late frame replies are discarded.
+- Browser settings use the existing settings routes in a viewport layer with a persistent preferences/account/navigation column. Administration opens `/classic/#/administration` in a separate tab.
+- `tests/client-e2e/p3.e2e.ts` and `plugins.e2e.ts` cover places and declarative surfaces; the latter serves its static embed fixture through Playwright routing. Restricted runners collect these specs; the reviewer runs Chromium and generates the design/plugin screenshots.
+
+## Client polish (C4)
+
+- Ask-user drafts are scoped to the conversation and user-turn sequence, so live-to-saved row replacement retains answers without sharing them across repeated questions. Submission waits for generation to finish.
+- Table rows use the primary field as their accessible name even when a saved view orders another field first; Enter and Space open the same record inspector as a click.
+- Record and task details reuse their domain loaders and mutations; `ui/detail-fields` adapts only the wide inspector layout, retaining native sections below 760 px.
+- Browser entity filters and sorting use the shared Menu; `ui/field-value.web` supplies field icons and enum Chips for both entity lists and table grids.
+- Browser place CSS uses semantic web tokens for fills, selected rows, urgency, and callouts in both appearances.
+- Client fixtures use valid object ids; never loosen route id validation to accept test placeholders. C4 screenshots start with `c4-`.
+
+## Browser regressions (C5)
+
+- Web Touchable maps accessibility state to explicit ARIA props; RN-web does not translate native `accessibilityState`.
+- Passive Touchables render a View, so enum Chips do not consume their record row's click or add a tab stop.
+- The web route frame adapts NativeStack's `aria-hidden` on the visible main screen while a wide inspector is open; covered routes and phone sheets retain stack semantics.
+- Screenshot tests wait for the startup cover and expected content after reload; dark chat captures reopen the chat before its inspector, and embed fixtures apply received theme tokens.
+
+## macOS shell (C6)
+
+- `src/desktop` contains native shell bridges. Metro's desktop source extensions are enabled only by GREENHOUSE_DESKTOP=1; UI pages never branch on desktop detection.
+- Desktop bundles use the phone's station configuration, Keychain token storage through a scoped Tauri plugin, and X-Greenhouse-Client: desktop. Browser configuration and token storage remain unchanged.
+- `src/desktop/shortcuts.json` is the shared menu/useShortcut table; native Go items follow the authorized rail, including primary plugin places.
+- Quick ask reuses the ordinary session API, send transport and stream reducer. Settings reuses the me routes in a native window.
+- Desktop windows synchronize station/session changes without localStorage tokens and use Web Locks around one-use refresh-token rotation.
+- Entity lists keep pages and scroll when covered by an inspector; only query/identity changes and explicit refresh reload them. Pending replies from previous queries remain invalidated.
+- Browser Playwright specs are collected in restricted runners; desktop native behavior is accepted by the reviewer after a successful local build.

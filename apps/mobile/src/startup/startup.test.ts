@@ -47,6 +47,7 @@ const test = await vi.hoisted(async () => {
   };
 });
 
+vi.mock('../plugins/store', () => ({}));
 vi.mock('react', () => ({ ...test.React, default: test.React }));
 vi.mock('react/jsx-runtime', () => test.jsx);
 vi.mock('react/jsx-dev-runtime', () => test.jsxDev);

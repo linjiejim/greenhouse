@@ -26,8 +26,18 @@ const field = (n: number, type: string, over: Partial<TableField> = {}): TableFi
   archived_at: null,
   ...over,
 });
-const options = JSON.stringify({ options: [{ id: 'o1', label: 'Open' }, { id: 'o2', label: 'Won', color: '#0a0' }] });
-const words = { yes: 'Yes', no: 'No', date: (v: string) => `d:${v}`, user: (id: string) => (id === 'u1' ? 'Maya' : id) };
+const options = JSON.stringify({
+  options: [
+    { id: 'o1', label: 'Open' },
+    { id: 'o2', label: 'Won', color: '#0a0' },
+  ],
+});
+const words = {
+  yes: 'Yes',
+  no: 'No',
+  date: (v: string) => `d:${v}`,
+  user: (id: string) => (id === 'u1' ? 'Maya' : id),
+};
 const record = (values: Record<string, unknown>, computed: Record<string, unknown> = {}): TableRecord => ({
   id: '7',
   table_id: '1',
@@ -41,8 +51,19 @@ const record = (values: Record<string, unknown>, computed: Record<string, unknow
 });
 
 describe('table fields', () => {
+  it('keeps the primary field first when older schema responses omit false flags', () => {
+    const fields = [
+      field(1, 'text', { is_primary: undefined as unknown as boolean }),
+      field(2, 'text', { is_primary: true }),
+    ];
+    expect(liveFields(fields).map((f) => f.id)).toEqual(['2', '1']);
+  });
   it('orders live fields with the primary first', () => {
-    const fields = [field(1, 'text', { position: 2 }), field(2, 'text', { is_primary: true, position: 5 }), field(3, 'text', { archived_at: 'x' })];
+    const fields = [
+      field(1, 'text', { position: 2 }),
+      field(2, 'text', { is_primary: true, position: 5 }),
+      field(3, 'text', { archived_at: 'x' }),
+    ];
     expect(liveFields(fields).map((f) => f.id)).toEqual(['2', '1']);
   });
 
@@ -60,7 +81,9 @@ describe('table fields', () => {
     expect(displayValue(field(1, 'single_select', { config: options }), 'o2', words)).toBe('Won');
     expect(displayValue(field(1, 'multi_select', { config: options }), ['o1', 'o2', 'gone'], words)).toBe('Open, Won');
     expect(displayValue(field(1, 'multi_user'), ['u1', 'u2'], words)).toBe('Maya, u2');
-    expect(displayValue(field(1, 'relation'), ['rec_01JB2Y8Z9QW3E4R5T6Y7V8H9P0', '4'], words)).toBe('#rec_01JB2Y8Z9QW3E4R5T6Y7V8H9P0, #4');
+    expect(displayValue(field(1, 'relation'), ['rec_01JB2Y8Z9QW3E4R5T6Y7V8H9P0', '4'], words)).toBe(
+      '#rec_01JB2Y8Z9QW3E4R5T6Y7V8H9P0, #4',
+    );
     // values saved before 3.0 hold numbers
     expect(displayValue(field(1, 'relation'), [3], words)).toBe('#3');
     expect(displayValue(field(1, 'text'), null, words)).toBe('');
@@ -96,17 +119,32 @@ describe('quick add', () => {
       ok: true,
       values: { '1': 'Acme', '2': 1200, '3': '2026-10-24', '4': 'o2', '5': false },
     });
-    expect(draftValues(fields, { '1': 'A', '4': 'unknown', '5': true })).toEqual({ ok: true, values: { '1': 'A', '5': true } });
+    expect(draftValues(fields, { '1': 'A', '4': 'unknown', '5': true })).toEqual({
+      ok: true,
+      values: { '1': 'A', '5': true },
+    });
   });
 
   it('names the first problem', () => {
     expect(draftValues(fields, {})).toEqual({ ok: false, problem: { kind: 'required', field: 'F1' } });
-    expect(draftValues(fields, { '1': 'A', '2': 'twelve' })).toEqual({ ok: false, problem: { kind: 'number', field: 'F2' } });
-    expect(draftValues(fields, { '1': 'A', '3': '24/10/2026' })).toEqual({ ok: false, problem: { kind: 'date', field: 'F3' } });
+    expect(draftValues(fields, { '1': 'A', '2': 'twelve' })).toEqual({
+      ok: false,
+      problem: { kind: 'number', field: 'F2' },
+    });
+    expect(draftValues(fields, { '1': 'A', '3': '24/10/2026' })).toEqual({
+      ok: false,
+      problem: { kind: 'date', field: 'F3' },
+    });
   });
 
   it('lets editors and up add records', () => {
-    expect(['owner', 'builder', 'editor', 'viewer', undefined].map(canAddRecords)).toEqual([true, true, true, false, false]);
+    expect(['owner', 'builder', 'editor', 'viewer', undefined].map(canAddRecords)).toEqual([
+      true,
+      true,
+      true,
+      false,
+      false,
+    ]);
   });
 });
 
@@ -126,7 +164,9 @@ describe('the names kept with a record’s offline copy', () => {
 
   it('is empty when the record names nobody', () => {
     expect(recordUserNames([field(2, 'user')], { values: {}, computed_values: {} }, users)).toEqual({});
-    expect(recordUserNames([field(1, 'text')], { values: { '1': 'usr_maya' }, computed_values: {} }, users)).toEqual({});
+    expect(recordUserNames([field(1, 'text')], { values: { '1': 'usr_maya' }, computed_values: {} }, users)).toEqual(
+      {},
+    );
   });
 });
 
@@ -138,7 +178,9 @@ describe('the people a record names', () => {
   });
 
   it('keeps an earlier copy’s names only for the people the record still names', () => {
-    expect(keptUserNames(['usr_maya', 'usr_new'], { usr_maya: 'Maya', usr_gone: 'Gone' })).toEqual({ usr_maya: 'Maya' });
+    expect(keptUserNames(['usr_maya', 'usr_new'], { usr_maya: 'Maya', usr_gone: 'Gone' })).toEqual({
+      usr_maya: 'Maya',
+    });
     expect(keptUserNames([], { usr_maya: 'Maya' })).toEqual({});
   });
 });

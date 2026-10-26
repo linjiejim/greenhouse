@@ -27,9 +27,10 @@ export const getBase = (baseId: string) =>
 export const getSchema = (tableId: string) => get<TableSchema>(`/api/tables/tables/${seg(String(tableId))}/schema`);
 
 /** One page of records, newest first; pass the previous page's `nextCursor` for the next. */
-export const queryRecords = (tableId: string, cursor: string | null, limit = 50) =>
+export const queryRecords = (tableId: string, cursor: string | null, limit = 50, query: Record<string, unknown> = {}) =>
   post<TableRecordPage>(`/api/tables/tables/${seg(String(tableId))}/records/query`, {
     sort: [{ systemField: 'created_at', direction: 'desc' }],
+    ...query,
     limit,
     ...(cursor ? { cursor } : {}),
   });

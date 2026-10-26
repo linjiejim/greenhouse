@@ -17,7 +17,7 @@
  * Content layer: solid colors inside ChatCard frames, never glass.
  */
 
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { createContext, useContext, useRef, useCallback, useEffect, useState } from 'react';
 import { ScrollView, Text, TextInput, View } from 'react-native';
 import { Image } from 'expo-image';
 import { applySchemaPlan, getReceipt, saveCapturedTask, type ActionReceipt, type PlanResult } from '../api/artifacts';
@@ -46,22 +46,45 @@ const absolute = (url: string) => (/^https?:\/\//i.test(url) ? url : `${getApiBa
 
 /* ----------------------------- ask_user ----------------------------- */
 
+type Answers = Record<string, string | string[]>;
+const AnswerDrafts = createContext<Map<string, Answers> | null>(null);
+/** A live reply is replaced by its saved row; drafts belong to the conversation, not that row. */
+export function AskUserDrafts({ children }: { children: React.ReactNode }) {
+  const drafts = useRef(new Map<string, Answers>());
+  return <AnswerDrafts.Provider value={drafts.current}>{children}</AnswerDrafts.Provider>;
+}
+
 export function AskUserCard({
   ask,
   answered,
   onAnswer,
+  working = false,
+  answerScope = '',
 }: {
   ask: AskUser;
   /** A later message of mine exists: the questions were answered (here or on the web). */
   answered: boolean;
   /** Send the answer as my next message; false when it was not sent. */
   onAnswer?: (text: string) => Promise<boolean>;
+  working?: boolean;
+  answerScope?: string;
 }) {
   const { colors: c } = useTheme();
   const styles = useStyles(c);
   const t = useT();
-  const [answers, setAnswers] = useState<Record<string, string | string[]>>({});
+  const drafts = useContext(AnswerDrafts);
+  const draftKey = `${answerScope}:${JSON.stringify(ask)}`;
+  const [answers, setAnswers] = useState<Answers>(() => drafts?.get(draftKey) ?? {});
+  const updateAnswers = (update: (all: Answers) => Answers) =>
+    setAnswers((all) => {
+      const next = update(all);
+      drafts?.set(draftKey, next);
+      return next;
+    });
   const [sending, setSending] = useState(false);
+  useEffect(() => {
+    if (answered) drafts?.delete(draftKey);
+  }, [answered, drafts, draftKey]);
   const complete = ask.questions.every((q) => {
     if (!q.required) return true;
     const value = answers[q.id];
@@ -79,7 +102,7 @@ export function AskUserCard({
 
   const choose = (id: string, value: string, multi: boolean) => {
     selectionTick();
-    setAnswers((all) => {
+    updateAnswers((all) => {
       if (!multi) return { ...all, [id]: value };
       const current = Array.isArray(all[id]) ? (all[id] as string[]) : [];
       return { ...all, [id]: current.includes(value) ? current.filter((v) => v !== value) : [...current, value] };
@@ -87,10 +110,11 @@ export function AskUserCard({
   };
 
   const submit = async () => {
-    if (!onAnswer || sending || !complete) return;
+    if (!onAnswer || sending || working || !complete) return;
     setSending(true);
     const sent = await onAnswer(askUserAnswer(ask, answers));
     setSending(false);
+    if (sent) drafts?.delete(draftKey);
     if (!sent) alertError(t('cards.answerFailed'));
   };
 
@@ -123,6 +147,7 @@ export function AskUserCard({
                         onPress={() => choose(q.id, option.value, multi)}
                         style={[styles.option, on && styles.optionOn]}
                         accessibilityRole={multi ? 'checkbox' : 'radio'}
+                        accessibilityLabel={option.label}
                         accessibilityState={{ checked: on }}
                       >
                         {/* round for one answer, square for several; filled with a check when chosen */}
@@ -138,7 +163,7 @@ export function AskUserCard({
             ) : (
               <TextInput
                 value={typeof value === 'string' ? value : ''}
-                onChangeText={(text) => setAnswers((all) => ({ ...all, [q.id]: text }))}
+                onChangeText={(text) => updateAnswers((all) => ({ ...all, [q.id]: text }))}
                 placeholder={q.placeholder}
                 placeholderTextColor={c.placeholder}
                 multiline={q.type === 'textarea'}
@@ -155,7 +180,7 @@ export function AskUserCard({
           label={t('cards.answer')}
           variant={complete && onAnswer ? 'prominent' : 'tinted'}
           loading={sending}
-          disabled={!complete || !onAnswer}
+          disabled={working || !complete || !onAnswer}
           onPress={() => void submit()}
         />
       </View>
@@ -188,11 +213,24 @@ export function FileCard({ name, detail, onPress }: { name: string; detail?: str
 
 /** A file attached to a message of mine: a light capsule, same tap. */
 export function AttachmentChip({ name, size, onPress }: { name: string; size?: number; onPress: () => void }) {
-  return <Chip icon={<FileIcon name={name} size={13} />} label={name} tail={size != null ? formatBytes(size) : undefined} onPress={onPress} />;
+  return (
+    <Chip
+      icon={<FileIcon name={name} size={13} />}
+      label={name}
+      tail={size != null ? formatBytes(size) : undefined}
+      onPress={onPress}
+    />
+  );
 }
 
 /** A row of attached files under a message, scrolling sideways when they do not fit. */
-export function AttachmentRow({ files, align }: { files: { id: string; name: string; size?: number }[]; align: 'start' | 'end' }) {
+export function AttachmentRow({
+  files,
+  align,
+}: {
+  files: { id: string; name: string; size?: number }[];
+  align: 'start' | 'end';
+}) {
   const { colors: c } = useTheme();
   const styles = useStyles(c);
   const openObject = useOpenObject();
@@ -202,14 +240,23 @@ export function AttachmentRow({ files, align }: { files: { id: string; name: str
       horizontal
       showsHorizontalScrollIndicator={false}
       style={styles.attachRow}
-      contentContainerStyle={[styles.attachInner, { justifyContent: align === 'end' ? 'flex-end' : 'flex-start', flexGrow: 1 }]}
+      contentContainerStyle={[
+        styles.attachInner,
+        { justifyContent: align === 'end' ? 'flex-end' : 'flex-start', flexGrow: 1 },
+      ]}
     >
       {files.map((file) => (
         <AttachmentChip
           key={file.id}
           name={file.name}
           size={file.size}
-          onPress={() => openObject({ kind: 'attachment', path: `/api/chat-files/${encodeURIComponent(file.id)}/content`, name: file.name })}
+          onPress={() =>
+            openObject({
+              kind: 'attachment',
+              path: `/api/chat-files/${encodeURIComponent(file.id)}/content`,
+              name: file.name,
+            })
+          }
         />
       ))}
     </ScrollView>
@@ -231,7 +278,12 @@ export function MessageImages({ images, align }: { images: { id: string; url: st
           accessibilityRole="imagebutton"
           accessibilityLabel={t('markdown.image')}
         >
-          <Image source={{ uri: absolute(image.url) }} style={[styles.thumb, images.length === 1 && styles.thumbSingle]} contentFit="cover" transition={150} />
+          <Image
+            source={{ uri: absolute(image.url) }}
+            style={[styles.thumb, images.length === 1 && styles.thumbSingle]}
+            contentFit="cover"
+            transition={150}
+          />
         </Touchable>
       ))}
     </View>
@@ -243,7 +295,11 @@ export function GeneratedImage({ url, prompt }: { url: string; prompt?: string }
   const styles = useStyles(c);
   const t = useT();
   return (
-    <Touchable onPress={() => void openLink(absolute(url), hex.accent)} accessibilityRole="imagebutton" accessibilityLabel={prompt || t('markdown.image')}>
+    <Touchable
+      onPress={() => void openLink(absolute(url), hex.accent)}
+      accessibilityRole="imagebutton"
+      accessibilityLabel={prompt || t('markdown.image')}
+    >
       <Image source={{ uri: absolute(url) }} style={styles.generated} contentFit="cover" transition={200} />
     </Touchable>
   );
@@ -293,7 +349,11 @@ function OnceCard({
   return (
     <ChatCard variant={state === 'done' ? 'outline' : 'fill'} style={styles.card}>
       <View style={styles.head}>
-        <Icon name={state === 'done' ? 'checkCircleFill' : icon} size={15} color={state === 'done' ? c.green : c.accent} />
+        <Icon
+          name={state === 'done' ? 'checkCircleFill' : icon}
+          size={15}
+          color={state === 'done' ? c.green : c.accent}
+        />
         <Text style={styles.title} numberOfLines={2}>
           {title}
         </Text>
@@ -320,7 +380,15 @@ function OnceCard({
   );
 }
 
-export function TaskCaptureCard({ capture, actionKey, sessionId }: { capture: TaskCapture; actionKey: string; sessionId: string | null }) {
+export function TaskCaptureCard({
+  capture,
+  actionKey,
+  sessionId,
+}: {
+  capture: TaskCapture;
+  actionKey: string;
+  sessionId: string | null;
+}) {
   const t = useT();
   const { receipt, loading, refresh } = useReceipt(actionKey);
   const [saving, setSaving] = useState(false);
@@ -339,7 +407,13 @@ export function TaskCaptureCard({ capture, actionKey, sessionId }: { capture: Ta
     toast(t('cards.taskSaved'), 'check');
     void refresh();
   };
-  const state = loading ? 'loading' : saving || receipt?.status === 'processing' ? 'working' : receipt?.status === 'succeeded' ? 'done' : 'ready';
+  const state = loading
+    ? 'loading'
+    : saving || receipt?.status === 'processing'
+      ? 'working'
+      : receipt?.status === 'succeeded'
+        ? 'done'
+        : 'ready';
   return (
     <OnceCard
       icon="pin"
@@ -361,7 +435,13 @@ export function TaskCaptureCard({ capture, actionKey, sessionId }: { capture: Ta
  * once, so an old card in the history says connected; after connecting, Continue asks the agent
  * to try again (the composer's send, when this conversation can send).
  */
-export function ConnectCard({ need, onContinue }: { need: NeedsConnection; onContinue?: (text: string) => Promise<boolean> }) {
+export function ConnectCard({
+  need,
+  onContinue,
+}: {
+  need: NeedsConnection;
+  onContinue?: (text: string) => Promise<boolean>;
+}) {
   const t = useT();
   const [state, setState] = useState<'loading' | 'ready' | 'working' | 'done'>('loading');
   const [continued, setContinued] = useState(false);
@@ -369,7 +449,9 @@ export function ConnectCard({ need, onContinue }: { need: NeedsConnection; onCon
     const current = captureIdentity();
     void listMyConnectors().then((result) => {
       if (!current()) return;
-      const mine = result.ok ? [...result.data.team, ...result.data.personal].find((c) => c.id === need.connectorId) : undefined;
+      const mine = result.ok
+        ? [...result.data.team, ...result.data.personal].find((c) => c.id === need.connectorId)
+        : undefined;
       setState(mine?.status === 'connected' ? 'done' : 'ready');
     });
   }, [need.connectorId]);
@@ -381,7 +463,9 @@ export function ConnectCard({ need, onContinue }: { need: NeedsConnection; onCon
       return;
     }
     const result = await listMyConnectors();
-    const mine = result.ok ? [...result.data.team, ...result.data.personal].find((c) => c.id === need.connectorId) : undefined;
+    const mine = result.ok
+      ? [...result.data.team, ...result.data.personal].find((c) => c.id === need.connectorId)
+      : undefined;
     setState(mine?.status === 'connected' ? 'done' : 'ready');
   };
   if (state === 'done' && onContinue && !continued) {
@@ -413,7 +497,13 @@ export function ConnectCard({ need, onContinue }: { need: NeedsConnection; onCon
       }
       state={state}
       doneLabel={t('connectors.cardConnectedShort', { name: need.name })}
-      actionLabel={need.authKind === 'oauth' ? (need.reason === 'needs_reauth' ? t('connectors.reconnect') : t('connectors.connect')) : t('connectors.addKey')}
+      actionLabel={
+        need.authKind === 'oauth'
+          ? need.reason === 'needs_reauth'
+            ? t('connectors.reconnect')
+            : t('connectors.connect')
+          : t('connectors.addKey')
+      }
       onAction={() => void connect()}
     />
   );
@@ -425,7 +515,15 @@ const opName = (op: Record<string, unknown>): string => {
   return name || (typeof field === 'string' ? field : '');
 };
 
-export function SchemaPlanCard({ plan, actionKey, sessionId }: { plan: SchemaPlan; actionKey: string; sessionId: string | null }) {
+export function SchemaPlanCard({
+  plan,
+  actionKey,
+  sessionId,
+}: {
+  plan: SchemaPlan;
+  actionKey: string;
+  sessionId: string | null;
+}) {
   const { colors: c } = useTheme();
   const styles = useStyles(c);
   const t = useT();
@@ -447,7 +545,13 @@ export function SchemaPlanCard({ plan, actionKey, sessionId }: { plan: SchemaPla
     void refresh();
   };
   const failed = outcome?.results?.filter((entry) => entry.status !== 'applied').length ?? 0;
-  const state = loading ? 'loading' : applying || receipt?.status === 'processing' ? 'working' : outcome ? 'done' : 'ready';
+  const state = loading
+    ? 'loading'
+    : applying || receipt?.status === 'processing'
+      ? 'working'
+      : outcome
+        ? 'done'
+        : 'ready';
   return (
     <OnceCard
       icon="table"
@@ -468,7 +572,9 @@ export function SchemaPlanCard({ plan, actionKey, sessionId }: { plan: SchemaPla
             </Text>
           );
         })}
-        {plan.operations.length > 8 ? <Text style={styles.op}>{t('cards.planMore', { n: plan.operations.length - 8 })}</Text> : null}
+        {plan.operations.length > 8 ? (
+          <Text style={styles.op}>{t('cards.planMore', { n: plan.operations.length - 8 })}</Text>
+        ) : null}
       </View>
     </OnceCard>
   );
@@ -499,7 +605,12 @@ export function ExtensionCard({ title, summary, url }: { title: string; summary?
   );
 }
 
-const OBJECT_ICON: Record<CitedObject['type'], IconName> = { doc: 'file', task: 'checkCircle', project: 'checklist', file: 'fileOther' };
+const OBJECT_ICON: Record<CitedObject['type'], IconName> = {
+  doc: 'file',
+  task: 'checkCircle',
+  project: 'checklist',
+  file: 'fileOther',
+};
 
 export function ObjectCards({ objects }: { objects: CitedObject[] }) {
   const { colors: c } = useTheme();
@@ -507,12 +618,23 @@ export function ObjectCards({ objects }: { objects: CitedObject[] }) {
   const openObject = useOpenObject();
   if (!objects.length) return null;
   return (
-    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.objects} style={styles.objectsRow}>
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      contentContainerStyle={styles.objects}
+      style={styles.objectsRow}
+    >
       {objects.map((object) => (
         <Chip
           key={`${object.type}-${object.id}`}
           tone="accent"
-          icon={object.type === 'file' ? <FileIcon name={object.title} size={14} /> : <Icon name={OBJECT_ICON[object.type]} size={14} color={c.accentText} />}
+          icon={
+            object.type === 'file' ? (
+              <FileIcon name={object.title} size={14} />
+            ) : (
+              <Icon name={OBJECT_ICON[object.type]} size={14} color={c.accentText} />
+            )
+          }
           label={object.title}
           onPress={() =>
             object.type === 'task' && object.projectId
@@ -594,7 +716,14 @@ const useStyles = makeStyles((c) => ({
   images: { flexDirection: 'row', flexWrap: 'wrap', gap: space.xs, marginTop: space.xs },
   thumb: { width: 96, height: 96, borderRadius: radius.md, backgroundColor: c.tertiaryFill, ...squircle },
   thumbSingle: { width: 200, height: 150 },
-  generated: { width: '100%', aspectRatio: 1, borderRadius: radius.lg, marginVertical: space.sm, backgroundColor: c.tertiaryFill, ...squircle },
+  generated: {
+    width: '100%',
+    aspectRatio: 1,
+    borderRadius: radius.lg,
+    marginVertical: space.sm,
+    backgroundColor: c.tertiaryFill,
+    ...squircle,
+  },
   ops: { gap: space.xxs },
   op: { ...typo.footnote, color: c.label },
   objectsRow: { flexGrow: 0, marginTop: space.sm },

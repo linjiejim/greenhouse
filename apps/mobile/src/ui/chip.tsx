@@ -35,7 +35,7 @@ export function Chip({
     <Touchable
       onPress={onPress}
       style={[styles.chip, inline ? styles.inline : styles.block, tone === 'accent' ? styles.accent : styles.neutral]}
-      accessibilityRole={inline ? 'link' : 'button'}
+      accessibilityRole={onPress ? (inline ? 'link' : 'button') : undefined}
       accessibilityLabel={accessibilityLabel ?? (tail ? `${label}, ${tail}` : label)}
     >
       {icon}

@@ -1,3 +1,4 @@
+import { ScreenActions } from '../../src/ui/screen-actions';
 /**
  * HTML preview — a modal page running an agent-built page (an ```html-preview
  * fence, src/markdown/blocks/html-preview.tsx) in a WebView: native
@@ -27,7 +28,7 @@ import React, { useMemo, useRef } from 'react';
 import { View } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import * as Clipboard from 'expo-clipboard';
-import { WebView, type WebViewMessageEvent, type WebViewNavigation } from 'react-native-webview';
+import { WebFrame as WebView, type WebViewMessageEvent, type WebViewNavigation } from '../../src/ui/web-frame';
 import { fillComposer } from '../../src/chat/composer-bridge';
 import { htmlBridgeSource, readHtmlBridgeMessage } from '../../src/shared/rich-output';
 import { getHandoff } from '../../src/lib/handoff';
@@ -39,7 +40,6 @@ import { fileStem, shareTextFile } from '../../src/lib/share-file';
 import { alertError } from '../../src/ui/dialogs';
 import { SheetClose } from '../../src/ui/sheet-chrome';
 import { toast } from '../../src/ui/toast';
-import { toolbarIcon } from '../../src/ui/toolbar-icon';
 
 /** The document itself (and in-page anchors / frames) may load; nothing else navigates the page. */
 const INITIAL = /^(about:blank|about:srcdoc|data:)/;
@@ -86,29 +86,37 @@ export default function HtmlViewer() {
       <Stack.Screen options={{ title: page?.title || t('chat.htmlPreview') }} />
       <SheetClose />
       {page ? (
-        <Stack.Toolbar placement="right">
-          <Stack.Toolbar.Menu icon={toolbarIcon('share')} accessibilityLabel={t('chat.actionShare')}>
-            <Stack.Toolbar.MenuAction
-              icon={toolbarIcon('copy')}
-              onPress={() => {
-                void Clipboard.setStringAsync(page.code).catch(() => {});
-                toast(t('common.copied'), 'copy');
-              }}
-            >
-              {t('chat.copySource')}
-            </Stack.Toolbar.MenuAction>
-            <Stack.Toolbar.MenuAction
-              icon={toolbarIcon('download')}
-              onPress={() =>
-                void shareTextFile(`${fileStem(page.title, 'page')}.html`, page.code, 'text/html').then((ok) => {
-                  if (!ok) alertError(t('chat.saveFileFailed'));
-                })
-              }
-            >
-              {t('chat.saveAsFile')}
-            </Stack.Toolbar.MenuAction>
-          </Stack.Toolbar.Menu>
-        </Stack.Toolbar>
+        <ScreenActions
+          placement={'right'}
+          actions={[
+            {
+              id: 'action-1',
+              icon: 'share' as const,
+              label: t('chat.actionShare'),
+              menu: [
+                {
+                  id: 'action-2',
+                  icon: 'copy' as const,
+                  label: t('chat.copySource'),
+                  onPress: () => {
+                    void Clipboard.setStringAsync(page.code).catch(() => {});
+                    toast(t('common.copied'), 'copy');
+                  },
+                },
+                {
+                  id: 'action-3',
+                  icon: 'download' as const,
+                  label: t('chat.saveAsFile'),
+                  onPress: () =>
+                    void shareTextFile(`${fileStem(page.title, 'page')}.html`, page.code, 'text/html').then((ok) => {
+                      if (!ok) alertError(t('chat.saveFileFailed'));
+                    }),
+                },
+              ],
+              onPress: () => {},
+            },
+          ]}
+        />
       ) : null}
       {source ? (
         <WebView

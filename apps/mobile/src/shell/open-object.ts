@@ -18,7 +18,15 @@ import { linkTarget, webUrl, type AppTarget } from '../lib/deep-links';
 import { openLink } from '../lib/links';
 import { getApiBase } from '../store/stations';
 import { useTheme } from '../theme';
-import { openingOf, refOfTarget, sheetDepth, sheetMove, type ObjectRef, type Place, type StackRoute } from './object-ref';
+import {
+  openingOf,
+  refOfTarget,
+  sheetDepth,
+  sheetMove,
+  type ObjectRef,
+  type Place,
+  type StackRoute,
+} from './object-ref';
 
 type Router = ReturnType<typeof useRouter>;
 type ContainerRef = ReturnType<typeof useNavigationContainerRef>;
@@ -48,20 +56,36 @@ function leavePresented(router: Router, routes: readonly StackRoute[], then: () 
 /** The title of the screen things open from (a conversation); sheets show it as their origin. */
 export const OpenOrigin = createContext<string | null>(null);
 
-export function openObject(router: Router, container: ContainerRef, ref: ObjectRef, from?: string | null): void {
+export function openObject(
+  router: Router,
+  container: ContainerRef,
+  ref: ObjectRef,
+  from?: string | null,
+  presentation?: 'main',
+): void {
   const opening = openingOf(ref);
   const routes = rootRoutes(container);
   if (opening.via === 'page') {
     leavePresented(router, routes, () => router.push({ pathname: opening.pathname, params: opening.params }));
     return;
   }
-  const params = from ? { ...opening.params, from: from.slice(0, 120) } : opening.params;
+  const params = {
+    ...opening.params,
+    ...(from ? { from: from.slice(0, 120) } : {}),
+    ...(presentation === 'main' ? { main: '1' } : {}),
+  };
   const href = { pathname: opening.pathname, params };
   if (sheetMove(sheetDepth(routes)) === 'replace') router.replace(href);
   else router.push(href);
 }
 
-export function openPlace(router: Router, container: ContainerRef, place: Place, accent?: string, from?: string | null): void {
+export function openPlace(
+  router: Router,
+  container: ContainerRef,
+  place: Place,
+  accent?: string,
+  from?: string | null,
+): void {
   const routes = rootRoutes(container);
   switch (place.kind) {
     case 'tab':
@@ -93,11 +117,14 @@ export function openPlace(router: Router, container: ContainerRef, place: Place,
 }
 
 /** Open an object (see ./object-ref.ts). */
-export function useOpenObject(): (ref: ObjectRef) => void {
+export function useOpenObject(): (ref: ObjectRef, presentation?: 'main') => void {
   const router = useRouter();
   const container = useNavigationContainerRef();
   const from = useContext(OpenOrigin);
-  return useCallback((ref: ObjectRef) => openObject(router, container, ref, from), [router, container, from]);
+  return useCallback(
+    (ref: ObjectRef, presentation?: 'main') => openObject(router, container, ref, from, presentation),
+    [router, container, from],
+  );
 }
 
 /**
@@ -116,7 +143,13 @@ export function useStartChat(): (draft: string) => void {
 }
 
 /** Open a link target (src/lib/deep-links.ts): one object, or a place. */
-export function openTarget(router: Router, container: ContainerRef, target: AppTarget, accent?: string, from?: string | null): void {
+export function openTarget(
+  router: Router,
+  container: ContainerRef,
+  target: AppTarget,
+  accent?: string,
+  from?: string | null,
+): void {
   const next = refOfTarget(target);
   if ('ref' in next) openObject(router, container, next.ref, from);
   else openPlace(router, container, next.place, accent, from);
@@ -127,7 +160,10 @@ export function useOpenTarget(): (target: AppTarget) => void {
   const container = useNavigationContainerRef();
   const { hex } = useTheme();
   const from = useContext(OpenOrigin);
-  return useCallback((target: AppTarget) => openTarget(router, container, target, hex.accent, from), [router, container, hex.accent, from]);
+  return useCallback(
+    (target: AppTarget) => openTarget(router, container, target, hex.accent, from),
+    [router, container, hex.accent, from],
+  );
 }
 
 /** A link as written in content; false when it goes nowhere the app can open. */

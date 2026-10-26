@@ -8,12 +8,11 @@
 
 import { useEffect, useState } from 'react';
 import { ScrollView, Text, View } from 'react-native';
-import * as Sharing from 'expo-sharing';
 import { FilePreviewView } from '../../modules/file-preview';
 import { docMiss } from '../data/recent-docs';
 import type { RecentFile } from '../data/recent-items';
 import { formatBytes } from '../lib/format';
-import { downloadFile, type CachedFile } from '../lib/share-file';
+import { downloadFile, shareCachedFile, type CachedFile } from '../lib/share-file';
 import { relativeTimeNow } from '../lib/time-words';
 import { forgetFile, recentFiles } from '../store/offline';
 import { Row, Section } from '../ui/list';
@@ -69,7 +68,8 @@ export function FilePreviewPane({ id, path: given = '', name }: { id: string; pa
       })
       .catch((error: unknown) => {
         if (abort.signal.aborted) return;
-        const status = typeof (error as { status?: unknown })?.status === 'number' ? (error as { status: number }).status : 0;
+        const status =
+          typeof (error as { status?: unknown })?.status === 'number' ? (error as { status: number }).status : 0;
         setFailStatus(status);
         setFailed(true);
         const fileId = id;
@@ -92,7 +92,7 @@ export function FilePreviewPane({ id, path: given = '', name }: { id: string; pa
     if (!file || sharing || station !== owner) return;
     setSharing(true);
     try {
-      await Sharing.shareAsync(file.uri, { mimeType: file.mimeType, dialogTitle: file.name });
+      await shareCachedFile(file);
     } catch {
       alertError(t('files.shareFailed'));
     } finally {
@@ -113,8 +113,19 @@ export function FilePreviewPane({ id, path: given = '', name }: { id: string; pa
         }
       />
       {failed && saved && docMiss(failStatus) === 'unreachable' ? (
-        <ScrollView style={surface} contentInsetAdjustmentBehavior="automatic" contentContainerStyle={{ paddingVertical: space.md }}>
-          <Text style={{ ...typo.footnote, color: colors.secondaryLabel, marginHorizontal: space.margin + space.xs, marginBottom: space.sm }}>
+        <ScrollView
+          style={surface}
+          contentInsetAdjustmentBehavior="automatic"
+          contentContainerStyle={{ paddingVertical: space.md }}
+        >
+          <Text
+            style={{
+              ...typo.footnote,
+              color: colors.secondaryLabel,
+              marginHorizontal: space.margin + space.xs,
+              marginBottom: space.sm,
+            }}
+          >
             {t('files.offlineDetails')}
           </Text>
           <Section>
@@ -137,7 +148,11 @@ export function FilePreviewPane({ id, path: given = '', name }: { id: string; pa
       ) : !file ? (
         <LoadingState style={surface} />
       ) : file.previewText !== undefined ? (
-        <ScrollView style={surface} contentInsetAdjustmentBehavior="automatic" contentContainerStyle={{ padding: space.margin }}>
+        <ScrollView
+          style={surface}
+          contentInsetAdjustmentBehavior="automatic"
+          contentContainerStyle={{ padding: space.margin }}
+        >
           <Text selectable style={{ ...typo.body, color: colors.label }}>
             {file.previewText}
           </Text>
@@ -153,7 +168,9 @@ export function FilePreviewPane({ id, path: given = '', name }: { id: string; pa
           title={t('files.unsupported')}
           message={file.name}
           style={surface}
-          action={<NativeButton label={t('files.share')} icon="share" onPress={() => void share()} disabled={sharing} />}
+          action={
+            <NativeButton label={t('files.share')} icon="share" onPress={() => void share()} disabled={sharing} />
+          }
         />
       ) : (
         <View style={surface}>

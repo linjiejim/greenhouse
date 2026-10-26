@@ -11,6 +11,7 @@ export interface MenuItem {
   icon?: IconName;
   destructive?: boolean;
   disabled?: boolean;
+  shortcut?: string;
   /** Renders a checkmark (single/multi-select menus). */
   checked?: boolean;
   /** Nested items: a submenu, or an inline section when `inline` is set. */

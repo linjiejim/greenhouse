@@ -1,3 +1,4 @@
+import { ScreenActions } from '../src/ui/screen-actions';
 /**
  * Full-screen table viewer — a modal page opened from an inline table's
  * pinned expand glyph. Native header (the table's title — a ```datatable's
@@ -23,7 +24,6 @@ import { TableRecords } from '../src/markdown/blocks/table';
 import { Segmented } from '../src/ui/segmented';
 import { SheetClose } from '../src/ui/sheet-chrome';
 import { SidewaysTable } from '../src/ui/sideways';
-import { toolbarIcon } from '../src/ui/toolbar-icon';
 
 export default function FullTable() {
   const { colors: c } = useTheme();
@@ -40,13 +40,17 @@ export default function FullTable() {
       <Stack.Screen options={{ title: title ? String(title) : t('chat.table') }} />
       <SheetClose />
       {data ? (
-        <Stack.Toolbar placement="right">
-          <Stack.Toolbar.Button
-            icon={toolbarIcon('sideways')}
-            accessibilityLabel={t('tables.sideways')}
-            onPress={() => setSideways(true)}
-          />
-        </Stack.Toolbar>
+        <ScreenActions
+          placement={'right'}
+          actions={[
+            {
+              id: 'action-1',
+              icon: 'sideways' as const,
+              label: t('tables.sideways'),
+              onPress: () => setSideways(true),
+            },
+          ]}
+        />
       ) : null}
       {data ? (
         <ScrollView contentInsetAdjustmentBehavior="automatic" contentContainerStyle={styles.content}>
@@ -72,7 +76,12 @@ export default function FullTable() {
           <EmptyState icon="table" title={t('chat.expired')} message={t('chat.expiredHint')} />
         </View>
       )}
-      <SidewaysTable data={data ?? null} title={title ? String(title) : t('chat.table')} visible={sideways} onClose={() => setSideways(false)} />
+      <SidewaysTable
+        data={data ?? null}
+        title={title ? String(title) : t('chat.table')}
+        visible={sideways}
+        onClose={() => setSideways(false)}
+      />
     </View>
   );
 }

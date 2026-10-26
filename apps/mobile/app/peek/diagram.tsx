@@ -8,7 +8,7 @@
 import React, { useMemo, useState } from 'react';
 import { View } from 'react-native';
 import { Stack, useLocalSearchParams } from 'expo-router';
-import { WebView } from 'react-native-webview';
+import { WebFrame as WebView } from '../../src/ui/web-frame';
 import { CodeBlock } from '../../src/markdown/blocks/code';
 import { mermaidHtml, useMermaid } from '../../src/markdown/blocks/mermaid';
 import { getHandoff } from '../../src/lib/handoff';

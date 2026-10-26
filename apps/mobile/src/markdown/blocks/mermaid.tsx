@@ -14,11 +14,11 @@
  */
 import { useEffect, useMemo, useState } from 'react';
 import { Asset } from 'expo-asset';
-import { File } from 'expo-file-system';
+import { readAssetText } from '../../lib/asset-text';
 import mermaidAsset from '../../../assets/web/mermaid.min.txt';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { useRouter } from 'expo-router';
-import { WebView, type WebViewMessageEvent } from 'react-native-webview';
+import { WebFrame as WebView, type WebViewMessageEvent } from '../../ui/web-frame';
 import { putHandoff } from '../../lib/handoff';
 import { useT } from '../../lib/i18n';
 import { type HexPalette, makeStyles, radius, space, squircle, useTheme } from '../../theme';
@@ -35,7 +35,7 @@ let mermaidSource: Promise<string> | null = null;
 export function loadMermaid(): Promise<string> {
   mermaidSource ??= (async () => {
     const [asset] = await Asset.loadAsync(mermaidAsset);
-    return new File(asset!.localUri ?? asset!.uri).text();
+    return readAssetText(asset!.localUri ?? asset!.uri);
   })().catch((error: unknown) => {
     mermaidSource = null;
     throw error;
@@ -161,20 +161,20 @@ function Mermaid({ code }: { code: string }) {
     >
       <View style={{ height: state === 'ready' ? height : 120 }} pointerEvents="none">
         {lib.source ? (
-        <WebView
-          source={source}
-          injectedJavaScriptBeforeContentLoaded={lib.source}
-          originWhitelist={['*']}
-          onMessage={onMessage}
-          scrollEnabled={false}
-          bounces={false}
-          showsVerticalScrollIndicator={false}
-          showsHorizontalScrollIndicator={false}
-          javaScriptCanOpenWindowsAutomatically={false}
-          setSupportMultipleWindows={false}
-          style={[styles.web, state !== 'ready' && styles.hidden]}
-          containerStyle={styles.web}
-        />
+          <WebView
+            source={source}
+            injectedJavaScriptBeforeContentLoaded={lib.source}
+            originWhitelist={['*']}
+            onMessage={onMessage}
+            scrollEnabled={false}
+            bounces={false}
+            showsVerticalScrollIndicator={false}
+            showsHorizontalScrollIndicator={false}
+            javaScriptCanOpenWindowsAutomatically={false}
+            setSupportMultipleWindows={false}
+            style={[styles.web, state !== 'ready' && styles.hidden]}
+            containerStyle={styles.web}
+          />
         ) : null}
         {state === 'loading' ? (
           <View style={styles.loading}>

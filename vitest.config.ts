@@ -98,6 +98,8 @@ export default defineConfig({
       '**/.claude/**',
       'skillhub/**',
       ...pluginTestExcludes,
+      '.cargo-home/**',
+      '**/target/**',
     ],
     // Silence app loggers so error-path tests don't spam the run output.
     // Override with LOG_LEVEL=debug when debugging a specific test.
@@ -117,6 +119,8 @@ export default defineConfig({
             '**/node_modules/**',
             '**/.claude/**',
             'skillhub/**',
+            '.cargo-home/**',
+            '**/target/**',
           ],
           // `forks`, not `vmThreads`, and the difference is memory, not speed.
           // A VM context is cheaper per file, but its ESM module cache is never
