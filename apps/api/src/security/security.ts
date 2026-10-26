@@ -253,24 +253,27 @@ export async function securityHeadersMiddleware(c: Context, next: Next) {
   await next();
 
   c.header('X-Content-Type-Options', 'nosniff');
-  c.header('X-Frame-Options', 'DENY');
+  const pluginUi = c.get('extensionUi') === true;
+  c.header('X-Frame-Options', pluginUi ? 'SAMEORIGIN' : 'DENY');
   c.header('X-XSS-Protection', '1; mode=block');
   c.header('Referrer-Policy', 'strict-origin-when-cross-origin');
   c.header(
     'Content-Security-Policy',
-    [
-      "default-src 'self'",
-      "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
-      "worker-src 'self' blob:",
-      "style-src 'self' 'unsafe-inline'",
-      "font-src 'self' data:",
-      "img-src 'self' data: blob: https://unpkg.com https://*.myqcloud.com https://ui-avatars.com",
-      "media-src 'self' https://*.myqcloud.com",
-      "frame-src 'self' https://*.myqcloud.com",
-      // COS: authed file endpoints (chat files, Drive) 302 to a presigned object
-      // URL, and fetch()-based downloads follow that redirect from the page.
-      "connect-src 'self' https://unpkg.com https://*.myqcloud.com",
-    ].join('; '),
+    pluginUi
+      ? "default-src 'self'; script-src 'self'; style-src 'self'; frame-ancestors 'self'"
+      : [
+          "default-src 'self'",
+          "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+          "worker-src 'self' blob:",
+          "style-src 'self' 'unsafe-inline'",
+          "font-src 'self' data:",
+          "img-src 'self' data: blob: https://unpkg.com https://*.myqcloud.com https://ui-avatars.com",
+          "media-src 'self' https://*.myqcloud.com",
+          "frame-src 'self' https://*.myqcloud.com",
+          // COS: authed file endpoints (chat files, Drive) 302 to a presigned object
+          // URL, and fetch()-based downloads follow that redirect from the page.
+          "connect-src 'self' https://unpkg.com https://*.myqcloud.com",
+        ].join('; '),
   );
 
   // Only add HSTS if we detect we're behind HTTPS

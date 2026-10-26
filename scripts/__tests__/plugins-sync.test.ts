@@ -102,7 +102,7 @@ describe('plugins:sync', () => {
     const duplicate = fixture(['./plugins/alpha', './plugins/alpha']);
     expect(() => sync(duplicate)).toThrow(/listed twice/);
     const unsupported = fixture();
-    change(unsupported, 'beta', 'sdk', 2);
+    change(unsupported, 'beta', 'sdk', 3);
     expect(() => sync(unsupported)).toThrow(/unsupported sdk/);
     const mismatch = fixture();
     change(mismatch, 'beta', 'id', 'other');
@@ -128,4 +128,15 @@ describe('plugins:sync', () => {
     );
     expect(() => sync(root)).toThrow(/dependency cycle/);
   });
+});
+
+it('assembles SDK 1 and SDK 2 packages in the same station', () => {
+  const root = fixture();
+  change(root, 'alpha', 'sdk', 2);
+  writeFileSync(
+    join(root, 'plugins/alpha/manifest.ts'),
+    "export default { id: 'alpha', name: 'Alpha', sdk: 2, version: '1.0.0', dependsOn: [], surfaces: { nav: [], pages: [] } }",
+  );
+  sync(root);
+  expect(readFileSync(join(root, 'apps/api/src/extensions/compiled.generated.ts'), 'utf8')).toContain('alpha/api.js');
 });

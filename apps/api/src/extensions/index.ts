@@ -1,3 +1,4 @@
+import { registerExtensionHooks } from './events.js';
 import { registerToolResultAdapters } from '@greenhouse/agent-core';
 import { registerWriteRisks } from '../agent-access/risk.js';
 import { registerSummarySources } from '../usage/summary.js';
@@ -98,6 +99,7 @@ export function fromExtensions<K extends keyof GreenhouseExtension>(
 // Registries that live in shared packages cannot import this module, so the
 // active extensions register into them here, once, at load time.
 for (const ext of EXTENSIONS) {
+  if (ext.hooks) registerExtensionHooks(ext.id, ext.hooks);
   if (ext.discriminators) registerDiscriminators(ext.discriminators);
   registerDiscriminators({
     auditApps: [

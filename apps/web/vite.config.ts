@@ -2,7 +2,7 @@
  * Vite config for the Greenhouse web UI.
  *
  * Dev: Vite dev server on :3100 (override with WEB_PORT) with HMR, proxying
- * /api (+ websocket), /public and /health to the API server on :3000 (override
+ * /api (+ websocket), /public, /ext and /health to the API server on :3000 (override
  * with API_PORT — the proxy target follows it; see root `pnpm dev`). Same-origin
  * from the browser's POV, so authFetch/ws keep working without CORS.
  *
@@ -62,6 +62,8 @@ export default defineConfig(({ mode }) => {
         '/api': { target: apiTarget, changeOrigin: true, ws: true },
         '/public': { target: apiTarget, changeOrigin: true },
         '/health': { target: apiTarget, changeOrigin: true },
+        // Plugin embed pages (`/ext/<id>/ui/*`) are served by the API.
+        '/ext': { target: apiTarget, changeOrigin: true },
         '/favicon.ico': { target: apiTarget, changeOrigin: true },
       },
     },

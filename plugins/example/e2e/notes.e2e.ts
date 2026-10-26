@@ -26,3 +26,20 @@ test('example: a note created through the extension API shows on its page', asyn
     await request.delete(`/api/ext/example/notes/${note.id}`, { headers });
   }
 });
+
+test('example: station advertises SDK 2 surfaces and serves its embedded static UI', async ({ page, request }) => {
+  await page.goto('/#/example');
+  const token = await page.evaluate(() => localStorage.getItem('greenhouse_access_token'));
+  const manifest = await (
+    await request.get('/api/extensions', { headers: { Authorization: `Bearer ${token}` } })
+  ).json();
+  const plugin = manifest.plugins.find((entry: { id: string }) => entry.id === 'example');
+  expect(plugin.pages).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ kind: 'embed' }),
+      expect.objectContaining({ kind: 'settings-form' }),
+    ]),
+  );
+  await page.goto('/ext/example/ui/');
+  await expect(page.getByRole('heading', { name: 'Example notes' })).toBeVisible();
+});

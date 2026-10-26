@@ -159,7 +159,7 @@ Chat 与 Automation 共用的执行内核：Run / Step 走 version CAS，worker 
 |---|---|---|
 | `prompts` | PK `id`；UK `artifact_action_id` | 保存的任务 / Prompt（个人或 super 发布的全局）；`variables`、`expected_tools`（只展示）、`source_session_id`（逻辑）、`created_via` |
 | `workspace_settings` | PK `key` | 管理员可改的部署设置；`value` jsonb 或 `value_enc` 密文 |
-| `extension_migrations` | PK `(extension_id, name)` | 扩展/插件迁移车道的记账（带 checksum）；停用保留，`cli plugins drop <id> --yes` 仅删除该插件的表及此 lane 记录（事务 + RESTRICT） |
+| `extension_migrations` | PK `(extension_id, name)` | 扩展/插件迁移车道的记账（带 checksum）；SDK 2 保留 `name=@onInstall`、`checksum=sdk2-install-v1` 记录成功安装，失败重试、停用保留；停用保留，`cli plugins drop <id> --yes` 仅删除该插件的表及此 lane 记录（事务 + RESTRICT） |
 
 ## 合并表与判别列
 

@@ -1,3 +1,4 @@
+import { emitExtensionEvent } from '../extensions/events.js';
 /** Durable Runtime terminal/recovery event → source-domain repair. */
 
 import type { DatabaseProvider } from '@greenhouse/db';
@@ -118,11 +119,27 @@ export function createRuntimeDomainProjector(db: DatabaseProvider) {
     const run = await db.runtime.getRun(event.run_id);
     // A delayed recovery event must never overwrite a newer successful retry.
     if (!run || run.version !== result.version || run.status !== result.status) return;
+    if (run.status !== 'queued')
+      emitExtensionEvent('run.completed', {
+        runId: run.id,
+        userId: run.owner_user_id,
+        kind: run.kind,
+        status: run.status,
+      });
+    if (run.kind === 'chat' && run.status === 'succeeded' && run.session_id)
+      emitExtensionEvent('conversation.turn.completed', { conversationId: run.session_id, userId: run.owner_user_id });
     if (run.kind === 'automation') {
       if (run.status === 'failed' || run.status === 'canceled' || run.status === 'interrupted') {
         await reconcileReclaimedAutomationRun(db, run);
       }
       await projectAutomationOutcome(db, run, event.event_id);
+      if (run.status !== 'queued')
+        emitExtensionEvent('automation.ran', {
+          automationId: run.source_kind.slice(run.source_kind.indexOf(':') + 1),
+          runId: run.id,
+          userId: run.owner_user_id,
+          status: run.status,
+        });
     }
   };
 }

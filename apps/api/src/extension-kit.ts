@@ -274,3 +274,10 @@ export {
 export type { ToolResultAdapter } from '@greenhouse/agent-core';
 
 export { runExtensionJob } from './scheduler/extension-job.js';
+
+export { recordWrite, notify } from './extensions/governance.js';
+export type { ExtensionDataSource, DataEntity, DataHandlerContext, DataRow } from './extensions/data-types.js';
+export type { ExtensionEvents, ExtensionHooks } from './extensions/events.js';
+export { createTableCrudService } from '@greenhouse/db';
+
+export { projectReadableFields } from '@greenhouse/platform-kernel';

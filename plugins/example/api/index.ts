@@ -10,19 +10,80 @@ import manifest from '../manifest.js';
  */
 import {
   defineExtension,
+  defineApp,
   extensionPath,
   getDb,
   getExtensionServices,
   logger,
+  notify,
   requireFeature,
 } from '@greenhouse/api/extension-kit';
 import { exampleRoutes } from './routes.js';
-import { createExampleServices, type ExampleServices } from './service.js';
+import { createExampleServices, noteAction, type ExampleServices } from './service.js';
 import { exampleNotesMutationTool, exampleNotesQueryTool } from './tool.js';
 import { z } from 'zod';
 
-export const exampleExtension = defineExtension({
+const definition = defineExtension({
   ...manifest,
+  notificationKinds: ['ext:example:welcome'],
+  dataSources: [
+    {
+      app: defineApp({
+        id: 'example',
+        title: 'Example notes',
+        version: '1.0.0',
+        modules: { note: { title: 'Notes' } },
+        actions: {},
+        entities: {
+          note: {
+            title: 'Note',
+            module: 'note',
+            table: 'ext_example_notes',
+            accessScopes: ['own'],
+            fields: {
+              id: { kind: 'integer', title: 'ID', sortable: true },
+              body: { kind: 'text', title: 'Note', required: true, searchable: true, filterable: true, sortable: true },
+              userId: { kind: 'user', title: 'Owner', classification: 'internal' },
+              createdAt: { kind: 'dateTime', title: 'Created', sortable: true },
+            },
+          },
+        },
+      }),
+      entities: {
+        note: {
+          actions: { read: 'team', create: 'team', update: 'team', delete: 'team', export: 'team' },
+          audit: 'all',
+          ownerField: 'userId',
+          columns: { userId: 'user_id', createdAt: 'created_at' },
+          peek: { title: 'body', subtitle: 'createdAt' },
+          views: [
+            {
+              id: 'default',
+              title: 'My notes',
+              columns: ['body', 'createdAt'],
+              filters: ['body'],
+              sort: { field: 'createdAt', dir: 'desc' },
+            },
+          ],
+          handlers: { search: (query, params, ctx) => ctx.service.search(query.trim(), params) },
+        },
+      },
+    },
+  ],
+  ui: { dir: extensionPath(import.meta.url, '../ui') },
+  hooks: (hooks) => {
+    hooks.on('user.created', async ({ userId }) => {
+      await notify({
+        user_id: userId,
+        kind: 'ext:example:welcome',
+        title: 'Welcome to Example notes',
+        body: 'Your notes stay personal.',
+        payload: {},
+        dedupe_key: 'example-welcome',
+      });
+    });
+  },
+  onInstall: () => logger.info('[example] installed'),
   discriminators: {
     shareResources: ['ext:example:note'],
     fileLinkTargets: ['ext:example:note'],
@@ -62,10 +123,14 @@ export const exampleExtension = defineExtension({
     {
       toolIds: ['example_notes_query'],
       list: async (ctx) =>
-        (await getExtensionServices<ExampleServices>(ctx.db, 'example').notes.list(ctx.userId)).map((note) => ({
+        (
+          await noteAction(ctx.userId, 'read', () =>
+            getExtensionServices<ExampleServices>(ctx.db, 'example').notes.list(ctx.userId),
+          )
+        ).map((note) => ({
           uri: `greenhouse://ext/example/note/${note.id}`,
           name: `note-${note.id}`,
-          title: note.body.slice(0, 80),
+          title: note.body?.slice(0, 80) ?? String(note.id),
           mimeType: 'text/markdown',
         })),
       templates: async () => [
@@ -74,11 +139,10 @@ export const exampleExtension = defineExtension({
       read: async (uri, ctx) => {
         const match = /^greenhouse:\/\/ext\/example\/note\/(\d+)$/.exec(uri);
         if (!match) return undefined;
-        const note = await getExtensionServices<ExampleServices>(ctx.db, 'example').notes.get(
-          ctx.userId,
-          Number(match[1]),
+        const note = await noteAction(ctx.userId, 'read', () =>
+          getExtensionServices<ExampleServices>(ctx.db, 'example').notes.get(ctx.userId, Number(match[1])),
         );
-        return note ? { uri, mimeType: 'text/markdown', text: note.body } : undefined;
+        return note ? { uri, mimeType: 'text/markdown', text: note.body ?? '' } : undefined;
       },
     },
   ],
@@ -99,19 +163,6 @@ export const exampleExtension = defineExtension({
   // Its records get deeplinks (`#/example/notes/42`) and peeks in chat.
   entityKinds: [{ kind: 'ext:example:note', route: '#/example/notes/:id' }],
   // …and a lane in the global search palette.
-  searchSources: [
-    {
-      kind: 'ext:example:note',
-      search: async ({ query, limit, userId, db }) => {
-        const { notes } = getExtensionServices<ExampleServices>(db, 'example');
-        const rows = await notes.search(userId, query, limit);
-        return rows.map((row) => ({
-          ref: { kind: 'ext:example:note' as const, id: row.id },
-          title: row.body.slice(0, 80),
-        }));
-      },
-    },
-  ],
   // …and its own drive scope: a file cabinet per note, inside the shared
   // `drive_*` tables, keyed by `owner_key` and guarded by this resolver.
   driveScopes: [
@@ -136,7 +187,7 @@ export const exampleExtension = defineExtension({
       describe: 'export every note the signed-in user has saved in the Example extension.',
       load: async (_source, { userId }, db) => {
         const { notes } = getExtensionServices<ExampleServices>(db, 'example');
-        const rows = await notes.list(userId, 1000);
+        const rows = await noteAction(userId, 'export', () => notes.list(userId, 1000));
         return {
           columns: [
             { key: 'id', label: 'ID' },
@@ -156,18 +207,6 @@ export const exampleExtension = defineExtension({
       label: 'Example notes',
       description: 'The reference extension: personal notes, its tool and its page',
       defaultEnabled: false,
-    },
-  ],
-  featurePoints: [
-    {
-      key: 'example',
-      title: 'Example notes',
-      description: 'Personal notes from the reference extension (page, REST and chat tool).',
-      icon: 'StickyNote',
-      kind: 'flag',
-      group: 'advanced',
-      flag: 'example',
-      toolIds: ['example_notes_query', 'example_notes_mutation'],
     },
   ],
   workspaceSettings: [
@@ -213,4 +252,12 @@ export const exampleExtension = defineExtension({
   },
 });
 
+// Compatibility tools are alternate transports for the same generated application actions.
+for (const app of definition.applications ?? []) {
+  app.platformTools = {
+    query: [...(app.platformTools?.query ?? []), 'example_notes_query'],
+    command: [...(app.platformTools?.command ?? []), 'example_notes_mutation'],
+  };
+}
+export const exampleExtension = definition;
 export default exampleExtension;

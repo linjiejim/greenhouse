@@ -144,7 +144,9 @@ export class ApplicationRegistry<TContext = unknown> {
     }
     if (result.ok) {
       const { audit: hint, ...plain } = result;
-      await this.#recordAudit(request, action, 'success', { ...hint?.summary }, hint?.recordId);
+      if (action.kind !== 'query' || action.audit !== 'writes') {
+        await this.#recordAudit(request, action, 'success', { ...hint?.summary }, hint?.recordId);
+      }
       return plain;
     }
     await this.#recordAudit(request, action, result.code === 'FORBIDDEN' ? 'denied' : 'error', {

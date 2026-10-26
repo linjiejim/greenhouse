@@ -1,3 +1,4 @@
+import exampleExtension from '../index.js';
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 vi.hoisted(() => {
   process.env.GREENHOUSE_EXTENSIONS = 'example';
@@ -18,7 +19,12 @@ let member: UserRow;
 const webCatalog = (user: UserRow) => readWebCatalog(db, user);
 beforeEach(async () => {
   db = await initDatabase({ type: 'pg', pgConnectionString: TEST_DATABASE_URL });
-  initializePlatformRuntime(db, [projectsRegistration, knowledgeRegistration, tablesRegistration]);
+  initializePlatformRuntime(db, [
+    projectsRegistration,
+    knowledgeRegistration,
+    tablesRegistration,
+    ...(exampleExtension.applications ?? []),
+  ]);
   member = await createInternalTestUser(db, { email: `plugin-catalog-${Date.now()}@test.local` });
 });
 afterEach(async () => {
@@ -41,13 +47,15 @@ describe('data catalog: extension sources', () => {
       kind: 'extension',
       name: expect.any(String),
       record_kinds: ['ext:example:note'],
-      exports: [expect.objectContaining({ type: 'example_notes' })],
+      entities: [{ id: 'example.note', row_count: 0 }],
+      exports: expect.arrayContaining([expect.objectContaining({ type: 'example_note' })]),
     });
-    expect(example!.reach).toEqual([
-      expect.objectContaining({ tool: 'example_notes_query', access: 'read', group: 'example' }),
-      expect.objectContaining({ tool: 'example_notes_mutation', access: 'write', group: 'example' }),
-      expect.objectContaining({ tool: 'export_data', group: null }),
-    ]);
+    expect(example!.reach).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ tool: 'example_query', access: 'read', group: 'example' }),
+        expect.objectContaining({ tool: 'example_mutation', access: 'write', group: 'example' }),
+      ]),
+    );
   });
 
   it('on MCP, needs the extension’s own group as well', async () => {

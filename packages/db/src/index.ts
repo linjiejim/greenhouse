@@ -165,3 +165,5 @@ export type { ExtensionRetentionRule } from './extensions.js';
 export { buildSnippet, jsonArrayToText } from './services/fts.js';
 
 export { registerDriveFolderContents } from './drive-content.js';
+
+export { createTableCrudService, type TableCrudOptions } from './table-crud.js';

@@ -74,6 +74,9 @@ importers:
       '@greenhouse/agent-core':
         specifier: workspace:*
         version: link:../../packages/agent-core
+      '@greenhouse/crud':
+        specifier: workspace:*
+        version: link:../../packages/crud
       '@greenhouse/db':
         specifier: workspace:*
         version: link:../../packages/db
@@ -334,6 +337,9 @@ importers:
 
   packages/db:
     dependencies:
+      '@greenhouse/crud':
+        specifier: workspace:*
+        version: link:../crud
       '@greenhouse/platform-kernel':
         specifier: workspace:*
         version: link:../platform-kernel

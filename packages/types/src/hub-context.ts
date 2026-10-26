@@ -109,6 +109,7 @@ export interface DataCatalogBase {
 }
 
 export interface DataCatalogExtensionSource {
+  entities?: Array<{ id: string; name: string; row_count: number | null }>;
   kind: 'extension';
   /** Extension id. */
   id: string;

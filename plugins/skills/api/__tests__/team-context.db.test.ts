@@ -1,3 +1,4 @@
+import exampleExtension from '../../../example/api/index.js';
 import { services as knowledgeServices } from '../../../knowledge/api/services.js';
 import { services as skillsServices } from '../services.js';
 /**
@@ -124,7 +125,12 @@ let laterPrivate: Awaited<ReturnType<typeof teamDoc>>;
 
 beforeEach(async () => {
   db = await initDatabase({ type: 'pg', pgConnectionString: TEST_DATABASE_URL });
-  initializePlatformRuntime(db, [projectsRegistration, knowledgeRegistration, tablesRegistration]);
+  initializePlatformRuntime(db, [
+    projectsRegistration,
+    knowledgeRegistration,
+    tablesRegistration,
+    ...(exampleExtension.applications ?? []),
+  ]);
   _setSkillStoreForTests(memoryStore());
   invalidateWorkspaceConfigCache();
   admin = await createInternalTestUser(db, { email: `${unique('ctx-admin')}@test.local`, role: 'super' });

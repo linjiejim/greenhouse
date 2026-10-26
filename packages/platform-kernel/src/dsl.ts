@@ -72,6 +72,8 @@ export interface ActionDefinition {
   capability: string;
   risk: ActionRisk;
   idempotent?: boolean;
+  /** Query audit policy; commands and denied/error attempts are always recorded. */
+  audit?: 'writes' | 'all';
   mcp?: boolean;
 }
 

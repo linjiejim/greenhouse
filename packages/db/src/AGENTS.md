@@ -324,3 +324,14 @@ Migration 0007 removes closed share/link/scope/run checks; new writes validate a
 Migration 0008 opens card receipt kinds; active plugins register artifactKinds, and claims reject inactive kinds while historic receipts remain readable.
 
 Knowledge ownership advances in 0009 without DDL. The two tables and version events are absent from DatabaseProvider; shared folders/files/shares remain core. The upgrade db-commit test covers all 24 moved tables across disabled/re-enabled Knowledge.
+
+
+### SDK 2 table adapter and installation
+
+- `createTableCrudService` accepts an explicit field-to-column map and a parameterized
+  scope. Counts, lists, get/update/delete all share that scope; JSON fields are encoded
+  as JSONB. Runtime permission checks remain in the API host.
+- `extension_migrations` reserves name `@onInstall` (checksum `sdk2-install-v1`) for
+  successful plugin installation. `installOnce` serializes with the migration lock,
+  writes only after success and preserves the marker on disable/re-enable. No schema
+  change or new table is needed. Installation side effects must be crash-idempotent.

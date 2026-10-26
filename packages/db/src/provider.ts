@@ -119,7 +119,7 @@ function createDatabaseProvider(db: Db, client: DbClient['client'] | null) {
       });
     },
 
-    /** Execute a raw SQL query (admin diagnostics only). */
+    /** Execute parameterized SQL for host diagnostics and permission-scoped SDK adapters. */
     async executeRaw(query: ReturnType<typeof sql>): Promise<any[]> {
       const result = await db.execute(query);
       return result as any[];

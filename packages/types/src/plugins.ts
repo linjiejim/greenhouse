@@ -88,6 +88,7 @@ export type PluginPage =
   | PluginEmbedPage;
 
 interface PluginPageBase {
+  requireRole?: 'super' | 'team';
   id: string;
   title: LocalizedText;
   /** Classic-web hash route that renders the same page (`#/knowledge`), for "open in browser". */

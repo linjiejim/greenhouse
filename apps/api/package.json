@@ -44,7 +44,8 @@
     "ws": "^8.18.0",
     "xlsx": "^0.18.5",
     "yaml": "^2.7.0",
-    "zod": "^4.4.3"
+    "zod": "^4.4.3",
+    "@greenhouse/crud": "workspace:*"
   },
   "devDependencies": {
     "@types/ws": "^8.18.1",

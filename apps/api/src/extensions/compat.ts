@@ -2,8 +2,8 @@
  * Extension compatibility declarations: `sdk` (the extension contract revision
  * it was written for) and `core` (a semver range of Greenhouse versions).
  *
- * `EXTENSION_SDK` changes only when the contract itself breaks (a define field
- * or a kit symbol removed or changed in meaning). A mismatching `sdk` or a
+ * `EXTENSION_SDK` names the newest host contract; compatible older revisions
+ * are accepted explicitly. An unsupported `sdk` (SDK 2 also accepts SDK 1) or a
  * `core` range the running version does not satisfy refuses activation; leaving
  * either out only warns in 3.x (both become required in 4.0).
  */

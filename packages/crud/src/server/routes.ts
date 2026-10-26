@@ -2,9 +2,11 @@
  * createCrudRoutes — a Hono sub-app that exposes a CrudService over the standard
  * CRUD protocol:
  *
+ *   GET    /          → URL-encoded ListParams → { items, total }
  *   POST   /list      → ListParams  → { items, total }
  *   GET    /:id       → row | 404
  *   POST   /          → create      → row (201)
+ *   PATCH  /:id       → update (PUT is also supported)
  *   PUT    /:id       → update      → row | 404
  *   DELETE /:id       → { ok: true } | 404
  *
@@ -48,6 +50,8 @@ export interface CrudRouteOptions<TRow> extends ListContract {
   guards?: {
     read?: MiddlewareHandler[];
     write?: MiddlewareHandler[];
+    create?: MiddlewareHandler[];
+    update?: MiddlewareHandler[];
     /** Defaults to `write` guards when omitted. */
     delete?: MiddlewareHandler[];
   };
@@ -58,15 +62,34 @@ export interface CrudRouteOptions<TRow> extends ListContract {
   parseUpdate?: (raw: unknown) => Record<string, unknown>;
 }
 
-export function createCrudRoutes<TRow>(service: CrudService<TRow>, opts: CrudRouteOptions<TRow> = {}): Hono<any> {
+export function createCrudRoutes<TRow>(
+  source: CrudService<TRow> | ((c: Context) => CrudService<TRow>),
+  opts: CrudRouteOptions<TRow> = {},
+): Hono<any> {
   const app = new Hono<any>();
+  const serviceFor = (c: Context) => (typeof source === 'function' ? source(c) : source);
   const read = opts.guards?.read ?? [];
   const write = opts.guards?.write ?? [];
   const del = opts.guards?.delete ?? write;
   const hooks = opts.hooks ?? {};
 
   const listHandler: Handler = async (c) => {
-    const raw = await c.req.json().catch(() => ({}));
+    const service = serviceFor(c);
+    let raw: unknown;
+    try {
+      raw =
+        c.req.method === 'GET'
+          ? {
+              ...c.req.query(),
+              skip: c.req.query('skip') ? Number(c.req.query('skip')) : undefined,
+              limit: c.req.query('limit') ? Number(c.req.query('limit')) : undefined,
+              filter: JSON.parse(c.req.query('filter') ?? '[]'),
+              sort: JSON.parse(c.req.query('sort') ?? '[]'),
+            }
+          : await c.req.json();
+    } catch {
+      return c.json({ error: 'Invalid list JSON' }, 400);
+    }
     const result = validateListParams(raw, opts);
     if (!result.ok) return c.json({ error: result.error }, 400);
 
@@ -77,6 +100,7 @@ export function createCrudRoutes<TRow>(service: CrudService<TRow>, opts: CrudRou
   };
 
   const getHandler: Handler = async (c) => {
+    const service = serviceFor(c);
     const id = c.req.param('id') ?? '';
     const row = await service.get(id);
     if (!row) return c.json({ error: 'Not found' }, 404);
@@ -85,9 +109,10 @@ export function createCrudRoutes<TRow>(service: CrudService<TRow>, opts: CrudRou
   };
 
   const createHandler: Handler = async (c) => {
+    const service = serviceFor(c);
     let body: Record<string, unknown>;
     try {
-      const raw = await c.req.json().catch(() => ({}));
+      const raw = await c.req.json();
       body = opts.parseCreate ? opts.parseCreate(raw) : (raw as Record<string, unknown>);
     } catch (err) {
       return c.json({ error: err instanceof Error ? err.message : 'Invalid body' }, 400);
@@ -99,6 +124,7 @@ export function createCrudRoutes<TRow>(service: CrudService<TRow>, opts: CrudRou
   };
 
   const updateHandler: Handler = async (c) => {
+    const service = serviceFor(c);
     const id = c.req.param('id') ?? '';
     if (hooks.canAccess) {
       const existing = await service.get(id);
@@ -107,7 +133,7 @@ export function createCrudRoutes<TRow>(service: CrudService<TRow>, opts: CrudRou
     }
     let body: Record<string, unknown>;
     try {
-      const raw = await c.req.json().catch(() => ({}));
+      const raw = await c.req.json();
       body = opts.parseUpdate ? opts.parseUpdate(raw) : (raw as Record<string, unknown>);
     } catch (err) {
       return c.json({ error: err instanceof Error ? err.message : 'Invalid body' }, 400);
@@ -120,6 +146,7 @@ export function createCrudRoutes<TRow>(service: CrudService<TRow>, opts: CrudRou
   };
 
   const deleteHandler: Handler = async (c) => {
+    const service = serviceFor(c);
     const id = c.req.param('id') ?? '';
     if (hooks.canAccess) {
       const existing = await service.get(id);
@@ -137,7 +164,7 @@ export function createCrudRoutes<TRow>(service: CrudService<TRow>, opts: CrudRou
   // inference (it treats the path string as a handler), but the runtime chain
   // is exactly [path, ...guards, handler].
   const on = (
-    method: 'post' | 'get' | 'put' | 'delete',
+    method: 'post' | 'get' | 'put' | 'patch' | 'delete',
     path: string,
     guards: MiddlewareHandler[],
     handler: Handler,
@@ -146,9 +173,11 @@ export function createCrudRoutes<TRow>(service: CrudService<TRow>, opts: CrudRou
   };
 
   on('post', '/list', read, listHandler);
+  on('get', '/', read, listHandler);
   on('get', '/:id', read, getHandler);
-  on('post', '/', write, createHandler);
-  on('put', '/:id', write, updateHandler);
+  on('post', '/', opts.guards?.create ?? write, createHandler);
+  on('put', '/:id', opts.guards?.update ?? write, updateHandler);
+  on('patch', '/:id', opts.guards?.update ?? write, updateHandler);
   on('delete', '/:id', del, deleteHandler);
 
   return app;

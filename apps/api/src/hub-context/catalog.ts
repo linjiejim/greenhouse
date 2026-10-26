@@ -84,7 +84,7 @@ export async function buildDataCatalog(input: CatalogInput): Promise<DataCatalog
   return {
     generated_at: new Date().toISOString(),
     bases,
-    extensions: extensionSources(input.reachable),
+    extensions: [...extensionSources(input.reachable), ...contributions.flatMap((entry) => entry.extensions ?? [])],
     truncated,
   };
 }

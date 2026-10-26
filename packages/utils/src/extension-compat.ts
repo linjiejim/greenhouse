@@ -3,15 +3,15 @@
  * `sdk` (the extension contract revision an extension was written for) and
  * `core` (a semver range of Greenhouse versions).
  *
- * `EXTENSION_SDK` changes only when the contract itself breaks (a define field
- * or a kit symbol removed or changed in meaning). A mismatching `sdk` or a
+ * `EXTENSION_SDK` names the newest host contract; compatible older revisions
+ * are accepted explicitly. An unsupported `sdk` (SDK 2 also accepts SDK 1) or a
  * `core` range the running version does not satisfy refuses activation; leaving
  * either out only warns in 3.x (both become required in 4.0).
  */
 import { satisfiesRange } from './semver.js';
 
 /** The extension contract revision this core implements. */
-export const EXTENSION_SDK = 1;
+export const EXTENSION_SDK = 2;
 
 export interface ExtensionCompatDeclaration {
   id: string;
@@ -29,7 +29,7 @@ export function checkExtensionCompat(
   const warnings: string[] = [];
   if (ext.sdk === undefined) {
     warnings.push(`Extension "${ext.id}" does not declare \`sdk\` (this core is sdk ${sdk}); required from 4.0.`);
-  } else if (ext.sdk !== sdk) {
+  } else if (ext.sdk !== sdk && !(sdk === 2 && ext.sdk === 1)) {
     errors.push(
       `Extension "${ext.id}" was written for extension sdk ${ext.sdk}, but this core implements sdk ${sdk}. ` +
         'Update the extension to the current contract (see EXTENDING.md) before enabling it.',

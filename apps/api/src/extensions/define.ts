@@ -1,3 +1,4 @@
+import { deriveDataSources } from './data-sources.js';
 import { RESERVED_ENTITY_OWNERS } from '@greenhouse/types/entity-links';
 /**
  * The extension contract — one object per extension, every field optional and
@@ -43,6 +44,7 @@ export interface ExtensionApplication extends ApplicationRegistration<PlatformHa
   teamCapabilities?: readonly string[];
   /** Entities the `team` role may export in full (default: none). */
   teamExportableEntities?: readonly string[];
+  teamFieldPolicies?: Record<string, Record<string, import('@greenhouse/platform-kernel').FieldPolicy>>;
   /**
    * Tools backed by this application's actions, so MCP hides a tool whose every
    * action is denied — the same rule core applies to its own registry tools.
@@ -122,9 +124,21 @@ export interface GreenhouseExtension {
   description?: string;
   version?: string;
 
+  dataSources?: import('./data-types.js').ExtensionDataSource[];
+  surfaces?: {
+    nav: import('@greenhouse/types/plugins').PluginNavItem[];
+    pages: import('@greenhouse/types/plugins').PluginPage[];
+  };
+  official?: boolean;
+  client_min?: number;
+  ui?: { dir: string };
+  hooks?: (hooks: import('./events.js').ExtensionHooks) => void;
+  onInstall?: (ctx: ExtensionBootContext) => Promise<void> | void;
+
   /**
    * The extension contract revision this was written for (`EXTENSION_SDK` from
-   * the kit). A mismatch refuses activation. Optional in 3.x (warns), required from 4.0.
+   * the kit). Unsupported revisions refuse activation; SDK 1 remains accepted in 4.x.
+   * Optional in 3.x (warns), required from 4.0.
    */
   sdk?: number;
   /**
@@ -190,7 +204,9 @@ export interface GreenhouseExtension {
     replaceDefaultSource?: boolean;
     load: (
       input: import('../hub-context/catalog.js').CatalogInput,
-    ) => Promise<Partial<Pick<import('@greenhouse/types/hub-context').DataCatalog, 'bases' | 'truncated'>>>;
+    ) => Promise<
+      Partial<Pick<import('@greenhouse/types/hub-context').DataCatalog, 'bases' | 'truncated' | 'extensions'>>
+    >;
   }>;
   recentChanges?: import('../activity/recent-source.js').RecentChangeSource[];
   objectRefs?: import('../routes/refs.js').ObjectRefSource[];
@@ -276,6 +292,12 @@ export function defineExtension(extension: GreenhouseExtension): GreenhouseExten
   if (!ID_PATTERN.test(extension.id)) {
     throw new Error(`Extension id "${extension.id}" must match ${ID_PATTERN} (it is also the config switch)`);
   }
+  extension = deriveDataSources(extension);
+  if (extension.ui)
+    extension.publicPaths = {
+      ...extension.publicPaths,
+      prefixes: [...(extension.publicPaths?.prefixes ?? []), `/ext/${extension.id}/ui/`],
+    };
   for (const kind of extension.entityKinds ?? []) {
     const owner = RESERVED_ENTITY_OWNERS[kind.kind];
     if (owner && owner !== extension.id)

@@ -45,6 +45,7 @@ interface ApplicationBootstrapPlan {
    * gets for free.
    */
   teamExportableEntities?: readonly string[];
+  teamFieldPolicies?: Record<string, Record<string, FieldPolicy>>;
 }
 
 const SYSTEM_ROLES: ReadonlyArray<{
@@ -182,12 +183,14 @@ async function addBaselineEntityPolicies(
         module_id: entity.module,
         entity_id: entity.id,
         scopes: declaredScopes(application.manifest, entity.id),
-        field_policies: fullFieldPolicy(
-          application.manifest,
-          entity.id,
-          entity.id !== 'activity',
-          application.teamExportableEntities?.includes(entity.id) ?? false,
-        ),
+        field_policies:
+          application.teamFieldPolicies?.[entity.id] ??
+          fullFieldPolicy(
+            application.manifest,
+            entity.id,
+            entity.id !== 'activity',
+            application.teamExportableEntities?.includes(entity.id) ?? false,
+          ),
       });
       const teamKey = `${roles.team.id}:${application.manifest.id}:${entity.id}`;
       if (!keys.has(teamKey)) result.entityPoliciesAdded += 1;

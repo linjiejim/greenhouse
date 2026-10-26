@@ -27,3 +27,18 @@ describe('Content-Security-Policy', () => {
     expect(policy).not.toMatch(/script-src[^;]*myqcloud/);
   });
 });
+
+it('allows same-origin frames only for host-mounted plugin UI with a strict CSP', async () => {
+  const app = new Hono<{ Variables: { extensionUi: boolean } }>()
+    .use('*', securityHeadersMiddleware)
+    .get('/plugin', (c) => {
+      c.set('extensionUi', true);
+      return c.text('plugin');
+    })
+    .get('/other', (c) => c.text('other'));
+  const plugin = await app.request('/plugin');
+  expect(plugin.headers.get('X-Frame-Options')).toBe('SAMEORIGIN');
+  expect(plugin.headers.get('Content-Security-Policy')).toContain("frame-ancestors 'self'");
+  expect(plugin.headers.get('Content-Security-Policy')).not.toContain('unsafe-eval');
+  expect((await app.request('/other')).headers.get('X-Frame-Options')).toBe('DENY');
+});

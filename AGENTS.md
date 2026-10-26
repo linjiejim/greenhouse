@@ -582,3 +582,19 @@ advances without DROP; plugin adoption preserves all rows. Tests enable `all`; c
 Tables is a default-on package under `plugins/tables`, owning schema/services, routes/tools/CLI, data catalog lane, classic grid/sidebar/cards/messages and MCP group. Core FEATURE_FLAGS is empty; active plugins register flags, so `/api/auth/me` still reports `features.tables` when enabled. Disabled Tables contributes no route, tool, catalog base, navigation, context provider or flag. Plugin cards use host-provided action/session handles. Shared inline cell editing remains in the web kit.
 
 Knowledge server conversion may import the shared `@greenhouse/knowledge-editor/markdown` package directly; it owns that dependency. The classic editor host exposes its browser primitives through the web kit. This shared leaf package is the sole conversion implementation; API core has no dependency on it.
+
+
+### SDK 2 data plugins and station discovery
+
+- `dataSources` reuses the platform kernel DSL and derives only existing registries.
+  Prefer it for new table-backed entities. `plugins/example` covers actions, scopes,
+  handlers, audit, context, events, install and static/declarative surfaces.
+- Data tools/routes share runtime capability, row-scope and field-policy enforcement.
+  Never bypass these checks in custom handlers; use their scoped service. Register
+  custom writes with `recordWrite()` and notifications with `notify()`.
+- `manifest.ts.surfaces` is pure data. `/api/extensions` v2 is cut to the signed-in
+  member; retain the v1 fields. API level comes from `CLIENT_API_LEVEL` (4).
+- SDK 1 remains accepted in 4.x. Lifecycle observations are asynchronous and
+  non-vetoing, have a five-second deadline and carry ids/metadata only. Install
+  markers live in `extension_migrations`, not a parallel table; hooks must tolerate
+  retry after a crash. Never edit an applied migration checksum.

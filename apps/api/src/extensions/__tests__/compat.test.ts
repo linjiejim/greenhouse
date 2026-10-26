@@ -14,7 +14,7 @@ describe('extension compatibility', () => {
 
   it('refuses a different sdk, a core range that does not match, and a malformed range', () => {
     expect(checkExtensionCompat({ id: 'x', sdk: EXTENSION_SDK + 1, core: '>=3' }, '3.1.0').errors[0]).toMatch(
-      /written for extension sdk 2/,
+      /written for extension sdk 3/,
     );
     expect(checkExtensionCompat({ id: 'x', sdk: EXTENSION_SDK, core: '>=4.0 <5' }, '3.1.0').errors[0]).toMatch(
       /supports Greenhouse >=4\.0 <5, but this is 3\.1\.0/,
@@ -22,6 +22,10 @@ describe('extension compatibility', () => {
     expect(checkExtensionCompat({ id: 'x', sdk: EXTENSION_SDK, core: 'soon' }, '3.1.0').errors[0]).toMatch(
       /Invalid version range/,
     );
+  });
+
+  it('keeps SDK 1 plugins compatible throughout 4.x', () => {
+    expect(checkExtensionCompat({ id: 'legacy', sdk: 1, core: '>=3 <5' }, '4.0.0').errors).toEqual([]);
   });
 
   it('only warns when the declarations are missing', () => {

@@ -6,6 +6,7 @@ import { tool } from 'ai';
 import { z } from 'zod';
 import { entityUrl } from '@greenhouse/types/entity-links';
 import { defineTool, getExtensionServices } from '@greenhouse/api/extension-kit';
+import { noteAction } from './service.js';
 import type { ExampleServices } from './service.js';
 
 export const exampleNotesQueryTool = defineTool({
@@ -31,7 +32,7 @@ export const exampleNotesQueryTool = defineTool({
       }),
       execute: async ({ limit }) => {
         const { notes } = getExtensionServices<ExampleServices>(db, 'example');
-        const rows = await notes.list(userId, limit);
+        const rows = await noteAction(userId, 'read', () => notes.list(userId, limit));
         return {
           count: rows.length,
           // `url` is the in-app deeplink for the record kind this extension
@@ -82,11 +83,11 @@ export const exampleNotesMutationTool = defineTool({
         const { notes } = getExtensionServices<ExampleServices>(db, 'example');
         if (action === 'notes.add') {
           if (!body) return { ok: false, error: 'body is required for notes.add' };
-          const note = await notes.add(userId, body);
+          const note = await noteAction(userId, 'create', () => notes.add(userId, body));
           return { ok: true, note: { id: note.id, body: note.body } };
         }
         if (id === undefined) return { ok: false, error: 'id is required for notes.delete' };
-        return { ok: await notes.remove(userId, id), id };
+        return { ok: await noteAction(userId, 'delete', () => notes.remove(userId, id)), id };
       },
     }),
 });

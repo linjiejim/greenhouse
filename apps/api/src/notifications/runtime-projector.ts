@@ -4,8 +4,7 @@ import type { DatabaseProvider, RuntimeInterruptRow, RuntimeRunRow } from '@gree
 import type { RuntimeJsonValue } from '@greenhouse/types/runtime';
 
 import type { RuntimeEventEnvelope } from '../runtime/worker.js';
-import { connectionManager } from '../ws/connection-manager.js';
-import { queueMobilePush } from './push/queue.js';
+import { notify } from './publish.js';
 
 function record(value: RuntimeJsonValue | undefined): Record<string, RuntimeJsonValue> | null {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
@@ -60,20 +59,7 @@ async function publishNew(
   db: DatabaseProvider,
   input: Parameters<DatabaseProvider['notifications']['createWithStatus']>[0],
 ): Promise<void> {
-  const result = await db.notifications.createWithStatus(input);
-  // On replays too: each delivery row is unique per fact × phone.
-  await queueMobilePush(db, result.notification);
-  if (!result.created) return;
-  const unread = await db.notifications.countUnread(result.notification.user_id);
-  connectionManager.sendToUser(result.notification.user_id, {
-    type: 'notification:new',
-    notificationId: result.notification.id,
-    kind: result.notification.kind,
-    title: result.notification.title,
-    unread,
-    runId: result.notification.run_id,
-    interruptId: result.notification.interrupt_id,
-  });
+  await notify(input, db);
 }
 
 /**

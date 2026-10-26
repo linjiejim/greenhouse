@@ -1,3 +1,4 @@
+import { emitExtensionEvent } from '../../extensions/events.js';
 /**
  * `admin users` — list, inspect, and create users.
  *
@@ -182,6 +183,7 @@ async function create(args: string[]): Promise<number> {
 
   const password_hash = await hashPassword(password);
   const user = await db.users.create({ email, password_hash, nickname, role: roleFlag });
+  emitExtensionEvent('user.created', { userId: user.id });
   await db.platform.syncLegacyRoleBinding(user.id, user.role);
 
   console.log(chalk.green(`\n✓ Created ${user.role} user`));

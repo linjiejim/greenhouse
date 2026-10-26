@@ -12,6 +12,8 @@ import type { OAuthScope } from './platform/oauth.js';
 
 export type AppEnv = {
   Variables: {
+    /** Set only by the host static-plugin mount; permits same-origin embedding. */
+    extensionUi?: boolean;
     /** Set by authMiddleware for authenticated requests. */
     user: AuthUser;
     /** Set by Agent/MCP credential middleware. */

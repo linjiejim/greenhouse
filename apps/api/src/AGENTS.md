@@ -535,3 +535,21 @@ access granted by stored shares. Existing share rows are preserved.
 - Saved prompt persistence, rendering and My prompts remain core. Chat grants reach them independently; SkillHub contributes compatibility access for existing skills grants via the core saved-prompt facade.
 - Projects contributes platform registration, feature point, MCP group, legacy entity kind, search, objectRefs and recentChanges. Its policy and title rules are documented in [plugins/projects/AGENTS.md](../../../plugins/projects/AGENTS.md). No core import of its service/schema is permitted.
 - Plugin-owned route limits register through rateLimits; core keeps admission counting and prefix matching. Their defaults/internal overrides retain the previous security meaning.
+
+
+### SDK 2 data/runtime host
+
+- `extensions/data-sources.ts` expands `dataSources` into existing registries;
+  `data-runtime.ts` is the common generated REST/tool/search/export/peek executor.
+  Table scopes apply before paging/counts; field projection and action authorization
+  apply on every transport. `audit: writes` skips successful reads only.
+- Custom commands use kit `recordWrite`; notification facts use kit `notify`.
+  Producers emit lifecycle observations only after committed writes. The five-event
+  bus runs handlers asynchronously with isolated 5s deadlines; no request awaits them.
+  Runtime terminal observations come from the committed outbox and are at-least-once.
+- Run `onInstall` through `extensionMigrations.installOnce` after the migration lane
+  and before boot hooks. Marker writes are locked; failed/crashed hooks must be safe
+  to retry. Static plugin UI has its own same-origin frame CSP; its API stays guarded.
+- `station-manifest.ts` cuts pages/nav/entity fields/actions to the member and keeps
+  the 3.x response fields. Pure `surfaces` metadata belongs to each plugin manifest;
+  core must never add cases for official plugin ids.

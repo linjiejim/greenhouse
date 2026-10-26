@@ -10,7 +10,7 @@ test('Administration plugin inventory is read-only and matches the API', async (
         id: 'example',
         compiled: true,
         enabled: true,
-        sdk: 1,
+        sdk: 2,
         migrationState: 'applied',
         bootState: 'ready',
       }),

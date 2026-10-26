@@ -5,7 +5,7 @@
   "type": "module",
   "greenhouse": {
     "id": "retro",
-    "sdk": 1,
+    "sdk": 2,
     "api": "./api/index.ts",
     "web": "./web/index.tsx"
   },

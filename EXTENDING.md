@@ -78,7 +78,7 @@ plugins/<id>/
   "name": "@greenhouse/plugin-example",
   "version": "3.0.2",
   "type": "module",
-  "greenhouse": { "id": "example", "sdk": 1, "api": "./api/index.ts", "web": "./web/index.ts" },
+  "greenhouse": { "id": "example", "sdk": 2, "api": "./api/index.ts", "web": "./web/index.ts" },
   "exports": { "./api": "./api/index.ts", "./web": "./web/index.ts", "./manifest": "./manifest.ts" }
 }
 ```
@@ -87,7 +87,7 @@ plugins/<id>/
 and `features`. Its id and SDK match package metadata, its version matches package.json, and
 its directory is `<id>` (installed packages may use `plugin-<id>`). Both halves are optional;
 a web-only package still gets an identity in `/api/extensions`. Code halves default-export
-their SDK 1 object; do not import the code halves from the manifest.
+their extension object; do not import the code halves from the manifest.
 
 Set `plugins: ['./plugins/example']` or `plugins: ['@greenhouse/plugin-example']` in
 `greenhouse.config.ts`. Workspace names resolve without an extra root dependency; installed
@@ -142,7 +142,7 @@ apps/web/src/extensions/index.ts ← import + list entry (web half)
 Nothing else in core changes. The registries — tool catalog, route mounting, platform
 applications, feature flags and points, workspace settings, public paths, scheduler, CLI,
 database services, migrations, hash router, sidebar, i18n, tool cards, agent context — all read
-the active extensions and fold their contributions in. `plugins/example` exercises the same SDK 1 fields as a package; the in-tree layout below remains supported for existing overlays.
+the active extensions and fold their contributions in. `plugins/example` exercises SDK 2 together with SDK 1 compatibility fields; the in-tree layout below remains supported for existing overlays.
 
 ### The API half — `defineExtension`
 
@@ -444,7 +444,7 @@ belongs to Greenhouse itself.
 The low-code CRUD framework turns one declarative schema into a list + filters + add/edit
 form + detail + delete.
 
-- **Server:** `createTableCrudService(getDb(), myTable, opts)` (from `@greenhouse/db`) →
+- **Server:** `createTableCrudService(getDb(), tableName, { columns, scope, searchFields })` (from `@greenhouse/db`) →
   `createCrudRoutes(service, { filterable, sortable, guards, hooks, parseCreate, parseUpdate })`
   (from `@greenhouse/crud/server`) → mount in `index.ts` (or in an extension's `routes`).
   Filter/sort keys are whitelisted fail-loud (unknown key → 400).
@@ -577,3 +577,85 @@ The shared leaf `@greenhouse/knowledge-editor/markdown` is an allowed plugin imp
 Classic `defaultQuickActions()` contributes optional Assistant launcher actions. The host filters by active owner, so disabling a module removes its launcher entry.
 
 A toolResults adapter may also contribute legacyCalls handlers for proxy and DSML recovery. Only active owners normalize old names; the Knowledge adapter preserves its exact historical action/scope merges.
+
+
+## Data plugins (SDK 2)
+
+`plugins/example` is the executable walkthrough. Enable it with
+`GREENHOUSE_EXTENSIONS=example`. Its old notes table, migration files, tools and
+classic routes remain usable; the new API is `/api/ext/example/entities/note`.
+SDK 1 declarations continue to activate throughout 4.x; new packages declare
+`sdk: 2` in both `package.json.greenhouse` and the pure-data `manifest.ts`.
+
+1. Describe the application with the kit's `defineApp`: modules, entities, fields,
+   `accessScopes` and `classification` are the platform kernel DSL. Each data
+   entity uses its own module id so capabilities are `<app>.<entity>.<action>`.
+   Pass `actions: {}` in the app; `dataSources[].entities[].actions` derives the
+   actions. An action maps to `team` or `super`; omitted actions are disabled.
+2. Add `dataSources: [{ app, entities: { note: { actions: { read: 'team',
+   create: 'team', update: 'team', delete: 'team', export: 'team' },
+   ownerField: 'userId', columns: { userId: 'user_id' },
+   audit: 'all', peek: { title: 'body', subtitle: 'createdAt' }, views: [...] } } }]`.
+   Field ids stay lowerCamelCase; `columns` maps adopted physical column names.
+   Tables still belong to the plugin migration lane. Table-backed entities need
+   an `id` field and a database-generated primary key/default for create.
+3. This derives the application, role capabilities and field policies, an app
+   feature point, MCP group, query/mutation tools, guarded CRUD routes, catalog,
+   search/export lanes, entity kinds, peek and entity list/detail page metadata.
+   The defaults are `<plugin>_query` and `<plugin>_mutation`; a read-only data
+   source has no mutation tool. Multiple sources must choose distinct tool ids
+   with `tools.query.id` / `tools.mutation.id`. An existing entity-kind route
+   explicitly declared by the plugin wins, preserving historical deep links.
+4. REST uses the existing CRUD protocol: `POST /list` with
+   `{ filter: [{key, method, value: [...]}], sort: [{key, order}], skip, limit }`
+   returns `{items, total}`. `GET /` accepts the same fields (`filter` and `sort`
+   JSON-encoded); `GET /:id`, `POST /`, `PATCH /:id` (`PUT` remains accepted),
+   `DELETE /:id`, and `GET /:id/peek` share the same runtime checks. Unknown
+   filters/sorts return 400; denied actions return 403; inaccessible records
+   return 404. The query tool uses `entity`, `action` (`list/get/search/aggregate`),
+   `filters`, `sort`, `skip`, `limit`, `query` and `id`. Aggregate returns a scoped
+   count. MCP deletes use the host's preview + `confirm: true` flow.
+5. Scope checks run before table paging/counting: `own` requires `ownerField`;
+   `collaborating` requires a JSON-array `memberField`. Creation binds the owner
+   to the caller. Policy scopes are OR-ed. Unsupported scopes fail at definition.
+   Team policies expose public/internal fields, mask confidential fields and hide
+   restricted fields; those last two are neither writable nor exportable.
+   Filtering/sorting masked or hidden fields is denied. Super gets the existing
+   full-access policy. `export` still needs its own capability and field policy.
+6. Override only needed operations in `handlers.list/get/search/export/create/update/delete`.
+   The example customizes search. Each handler receives `{db, actor, policy,
+   service}`; `service` is the already-scoped `createTableCrudService` adapter.
+   Delegate to it to preserve totals, pagination and atomic row restrictions.
+   Custom handlers own equivalent scope/transaction correctness for their own
+   external I/O; the host rejects returned rows outside the member scope and
+   projects readable/exportable fields. Never return secrets in audit metadata.
+
+All generated operations enter `runtime.dispatch`. `audit: 'writes'` omits
+successful query audits; `audit: 'all'` records them. Denied/failed dispatched actions are always
+recorded. Commands appear in the existing activity log under the plugin id.
+Custom routes can bind a registered command with `recordWrite(request, operation)`;
+`notify(input)` uses the durable notification center plus push/WS delivery.
+Register custom notification kinds as `ext:<id>:<kind>`.
+
+Subscribe with `hooks: hooks => { hooks.on('user.created', async ({userId}) => ...) }`.
+The exact event set is `user.created`, `user.disabled`, `run.completed`,
+`conversation.turn.completed`, `automation.ran`. Producers publish ids and metadata
+only after authoritative writes resolve; subscribers run asynchronously, cannot veto
+writes and have independent 5-second deadlines. Runtime observations use the committed
+outbox and may repeat on delivery retries: subscribers must be idempotent. A timeout
+stops waiting for a handler, not its external I/O; use bounded/cancellable I/O.
+`onInstall(ctx)` runs after migrations and before `onBoot`, once per plugin/database.
+The lane records `@onInstall` under its advisory lock after success; failures retry.
+The hook must be idempotent across a crash after side effects but before the marker.
+
+`manifest.ts.surfaces` declares pure-data `nav` and `pages`. Official pages use
+`kind: 'native'`, `screen` and `fallback_url`; declarative data pages use
+`entity-list`/`entity-detail`, with `settings-form` and `embed` as escape hatches.
+`requireRole: 'super'` and administration settings pages are omitted for members.
+`GET /api/extensions` returns the member-filtered station manifest v2 with actions,
+fields, kinds, features and MCP groups, retaining the 3.x `extensions`/`entityKinds`
+fields. `/api/bootstrap.mobile_api` is 4 (`CLIENT_API_LEVEL`).
+The example's `ui.dir` serves static files at `/ext/example/ui/` with same-origin
+frame CSP; static assets are public, while data APIs stay authenticated. Full embed
+host rendering, short-lived embed tokens and universal-client work belong to the
+client wave; this SDK wave publishes their page metadata and the example static UI.

@@ -23,7 +23,8 @@
     "@greenhouse/utils": "workspace:*",
     "@node-rs/jieba": "2.0.1",
     "drizzle-orm": "^0.45.2",
-    "postgres": "^3.4.9"
+    "postgres": "^3.4.9",
+    "@greenhouse/crud": "workspace:*"
   },
   "devDependencies": {
     "typescript": "^5.7.0"

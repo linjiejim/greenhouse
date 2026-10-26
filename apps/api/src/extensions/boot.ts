@@ -1,3 +1,4 @@
+import { serveStatic } from '@hono/node-server/serve-static';
 import { createIdentityProviderRoutes } from '../auth/identity-providers.js';
 /**
  * Boot-time glue between the active extensions and the core runtime: what
@@ -45,11 +46,13 @@ export function extensionApplicationPlans(): {
   manifest: ApplicationRegistration['manifest'];
   teamCapabilities: readonly string[];
   teamExportableEntities?: readonly string[];
+  teamFieldPolicies?: import('./define.js').ExtensionApplication['teamFieldPolicies'];
 }[] {
   return fromExtensions('applications').map((app) => ({
     manifest: app.manifest,
     teamCapabilities: app.teamCapabilities ?? [`${app.manifest.id}.*`],
     teamExportableEntities: app.teamExportableEntities,
+    teamFieldPolicies: app.teamFieldPolicies,
   }));
 }
 
@@ -84,6 +87,16 @@ export function mountExtensionRoutes(app: Hono<AppEnv>): void {
   for (const provider of fromExtensions('identityProviders'))
     app.route(provider.path, createIdentityProviderRoutes(provider));
   for (const ext of EXTENSIONS) {
+    if (ext.ui) {
+      app.use(
+        `/ext/${ext.id}/ui/*`,
+        async (c, next) => {
+          c.set('extensionUi', true);
+          await next();
+        },
+        serveStatic({ root: ext.ui.dir, rewriteRequestPath: (path) => path.slice(`/ext/${ext.id}/ui`.length) }),
+      );
+    }
     for (const route of ext.routes ?? []) {
       for (const guard of route.guards ?? []) {
         app.use(route.path, guard);
@@ -102,6 +115,10 @@ export async function runExtensionBootHooks(db: DatabaseProvider): Promise<void>
   }
   for (const ext of EXTENSIONS) {
     try {
+      if (ext.onInstall)
+        await db.extensionMigrations.installOnce(ext.id, async () => {
+          await ext.onInstall!({ db, config: GREENHOUSE_CONFIG });
+        });
       await ext.onBoot?.({ db, config: GREENHOUSE_CONFIG });
       recordExtensionBootReady(ext.id);
     } catch (error) {

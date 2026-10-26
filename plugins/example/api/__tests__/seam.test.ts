@@ -63,6 +63,8 @@ describe('extension seam', { timeout: 60_000 }, () => {
     expect(m.points.FEATURE_POINTS.find((p) => p.key === 'example')?.toolIds).toEqual([
       'example_notes_query',
       'example_notes_mutation',
+      'example_query',
+      'example_mutation',
     ]);
     expect(m.points.FEATURE_OWNED_TOOL_IDS.has('example_notes_query')).toBe(true);
     expect(m.points.toolsetToolIds()).not.toContain('example_notes_query');
@@ -79,7 +81,7 @@ describe('extension seam', { timeout: 60_000 }, () => {
     const sources = m.boot.extensionMigrationSources();
     expect(sources).toHaveLength(1);
     expect(existsSync(sources[0].dir)).toBe(true);
-    expect(m.boot.extensionApplicationRegistrations()).toEqual([]);
+    expect(m.boot.extensionApplicationRegistrations().map((a) => a.manifest.id)).toEqual(['example']);
 
     // no public paths were declared, so auth still guards the extension routes
     expect(m.middleware.isPublicPath('/api/ext/example/notes')).toBe(false);
@@ -110,7 +112,7 @@ describe('extension seam', { timeout: 60_000 }, () => {
     expect(m.drive.isKnownDriveScope('nope')).toBe(false);
 
     // an export_data lane of its own
-    expect(m.exportSources.extensionExportSources().map((s) => s.type)).toEqual(['example_notes']);
+    expect(m.exportSources.extensionExportSources().map((s) => s.type)).toEqual(['example_notes', 'example_note']);
 
     // search lane
     expect(m.searchSources.extensionSearchSources().map((s) => s.kind)).toEqual(['ext:example:note']);

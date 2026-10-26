@@ -1,3 +1,5 @@
+import { getDb } from '@greenhouse/db';
+import { stationManifest } from '../extensions/station-manifest.js';
 /**
  * GET /api/extensions — what this deployment's active extensions contribute.
  *
@@ -15,11 +17,12 @@
 import { Hono } from 'hono';
 import type { AppEnv } from '../app-env.js';
 import { GREENHOUSE_CONFIG } from '../config/greenhouse-config.js';
-import { EXTENSIONS, fromExtensions } from '../extensions/index.js';
+import { fromExtensions } from '../extensions/index.js';
 
-const extensionsRoutes = new Hono<AppEnv>().get('/', (c) =>
-  c.json({
-    extensions: EXTENSIONS.map((ext) => ({ id: ext.id, name: ext.name, description: ext.description ?? null })),
+const extensionsRoutes = new Hono<AppEnv>().get('/', async (c) => {
+  c.header('Cache-Control', 'private, no-store');
+  return c.json({
+    ...(await stationManifest(getDb(), c.get('user'))),
     notificationTransports: fromExtensions('notificationTransports').map(({ id, title, bindingSettings }) => ({
       id,
       title,
@@ -30,8 +33,7 @@ const extensionsRoutes = new Hono<AppEnv>().get('/', (c) =>
       .map(({ id, title, icon, login, bind }) => ({ id, title, icon, login, bind })),
     automationTools: fromExtensions('automationTools'),
     conversations: GREENHOUSE_CONFIG.conversations,
-    entityKinds: fromExtensions('entityKinds'),
-  }),
-);
+  });
+});
 
 export default extensionsRoutes;

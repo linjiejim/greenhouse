@@ -872,3 +872,13 @@ Knowledge 已迁入 `plugins/knowledge`，默认开启，原有 `/api/knowledge/
 每月复盘位于 `plugins/retro`，默认关闭并依赖 Knowledge。保留 3.x 复盘时，在启用列表中加入 `retro`（同时保留 `knowledge`）并重启；例如 `GREENHOUSE_EXTENSIONS=knowledge,tables,skills,feedback,memory,retro`。复盘保留原来的月度文档、通知与时区规则；其管理页独立于 Issues & requests，启用 Feedback 时也在该页提供生成按钮。核心 Files 在没有任何插件时使用独立的 drive 文件柜；Knowledge 启用时继续使用现有 kb 文件柜。
 
 真实升级回归 `tests/db/plugin-upgrade.db-commit.test.ts` 从含数据的 3.0 库验证 24 张迁移表，检查行数和内容摘要在升级、停用及重新启用后完全相同。运行方法见 [插件扩展指南](EXTENDING.md#knowledge-team-context-and-monthly-summaries-40)。
+
+
+### Data plugin SDK 2
+
+New data plugins can declare kernel entities once and derive guarded REST/MCP tools,
+member-scoped search/export, the data catalog, record peeks and station page metadata.
+The [example plugin](plugins/example/api/index.ts) keeps its legacy notes API while
+exercising the full SDK. See [Data plugins](EXTENDING.md#data-plugins-sdk-2) for the
+walkthrough. Clients discover member-visible pages/actions through `/api/extensions`
+v2 (client API level 4); its 3.x fields and SDK 1 plugins remain compatible.

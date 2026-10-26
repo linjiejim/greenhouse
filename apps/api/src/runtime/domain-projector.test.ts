@@ -141,3 +141,29 @@ describe('Runtime durable domain projector', () => {
     );
   });
 });
+
+it('publishes metadata-only run and conversation observations from a matching terminal outbox event', async () => {
+  const { registerExtensionHooks } = await import('../extensions/events.js');
+  const observed: unknown[] = [];
+  registerExtensionHooks('metadata-observer', (hooks) => {
+    hooks.on('run.completed', (payload) => {
+      observed.push(payload);
+    });
+    hooks.on('conversation.turn.completed', (payload) => {
+      observed.push(payload);
+    });
+  });
+  const current = run({
+    kind: 'chat',
+    status: 'succeeded',
+    session_id: 'conversation-1',
+    output: { text: 'PRIVATE CONTENT' },
+  });
+  const db = { runtime: { getRun: vi.fn().mockResolvedValue(current) } };
+  await createRuntimeDomainProjector(db as never)(event(current));
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  expect(observed).toEqual([
+    { runId: current.id, userId: 'owner', kind: 'chat', status: 'succeeded' },
+    { conversationId: 'conversation-1', userId: 'owner' },
+  ]);
+});

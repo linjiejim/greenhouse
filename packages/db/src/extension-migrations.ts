@@ -205,6 +205,22 @@ export function createExtensionMigrationRunner(db: Db) {
   }
 
   return {
+    /** Serialize first installation across API replicas. Retry a failed hook without marking it installed. */
+    async installOnce(extensionId: string, install: () => Promise<void>): Promise<boolean> {
+      await ensureTable();
+      return db.transaction(async (tx) => {
+        await tx.execute(sql`SELECT pg_advisory_xact_lock(${ADVISORY_LOCK_KEY})`);
+        const rows = await tx.execute(
+          sql`SELECT 1 FROM extension_migrations WHERE extension_id = ${extensionId} AND name = '@onInstall'`,
+        );
+        if (rows.length) return false;
+        await install();
+        await tx.execute(
+          sql`INSERT INTO extension_migrations (extension_id, name, checksum) VALUES (${extensionId}, '@onInstall', 'sdk2-install-v1')`,
+        );
+        return true;
+      });
+    },
     /** Operator-only uninstall. The host checks disabled state and confirmation before calling. */
     async drop(source: ExtensionMigrationSource, resetTables: readonly string[] = []): Promise<string[]> {
       const tables = extensionMigrationTables(source, resetTables);

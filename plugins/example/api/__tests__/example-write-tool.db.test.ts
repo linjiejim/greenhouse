@@ -1,3 +1,4 @@
+import exampleExtension from '../index.js';
 /**
  * An extension's write tool is governed exactly like a core one when a member's
  * own agent calls it over `/api/mcp`: it runs as the member, is recorded as an
@@ -78,7 +79,12 @@ async function writeRuns() {
 describe('extension write tools over /api/mcp', () => {
   beforeEach(async () => {
     db = await initDatabase({ type: 'pg', pgConnectionString: TEST_DATABASE_URL });
-    initializePlatformRuntime(db, [projectsRegistration, knowledgeRegistration, tablesRegistration]);
+    initializePlatformRuntime(db, [
+      projectsRegistration,
+      knowledgeRegistration,
+      tablesRegistration,
+      ...(exampleExtension.applications ?? []),
+    ]);
     // The example's own tables, inside this test's transaction.
     await db.extensionMigrations.apply(extensionMigrationSources());
 

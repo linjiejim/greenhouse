@@ -91,7 +91,8 @@ export async function resolvePlugins(root = REPO_ROOT, env = process.env) {
       throw new Error(`${entry}: missing or invalid greenhouse.id`);
     const { id, sdk } = declaration;
     if (ids.has(id)) throw new Error(`Plugin id "${id}" is listed twice`);
-    if (sdk !== EXTENSION_SDK) throw new Error(`${entry}: unsupported sdk ${sdk}; host supports ${EXTENSION_SDK}`);
+    if (sdk !== EXTENSION_SDK && !(EXTENSION_SDK === 2 && sdk === 1))
+      throw new Error(`${entry}: unsupported sdk ${sdk}; host supports ${EXTENSION_SDK}`);
     if (basename(dir) !== id && basename(dir) !== `plugin-${id}`)
       throw new Error(`${entry}: id "${id}" must match its folder`);
     const manifestPath = ['manifest.ts', 'manifest.js'].map((file) => join(dir, file)).find(existsSync);

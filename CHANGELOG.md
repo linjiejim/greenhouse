@@ -9,6 +9,17 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Added
 
+- SDK 2 data plugins derive kernel applications/policies, guarded CRUD and MCP tools,
+  catalog/search/export/peek and declarative entity surfaces from one definition.
+- Add five isolated asynchronous lifecycle observations, persisted `onInstall`,
+  member-filtered station manifest v2 and client API level 4. Official manifests
+  declare native surfaces; SDK 1 and 3.x response fields remain supported.
+- Rewrite Example as a data plugin with legacy notes compatibility, custom search,
+  settings/embed metadata, static UI, install/event and notification examples.
+
+extension-kit: add data entity/context types, the scoped table CRUD adapter,
+`recordWrite`, `notify` and the kernel readable-field projector for compatibility adapters, plus the five-event hook types; update the locked snapshot.
+
 - Configured workspace plugin packages, deterministic `plugins:sync` assembly, import boundaries and a zero-plugin core CI gate.
 - Read-only Administration → Plugins and `cli plugins list/status/drop` with disabled-only, explicit table removal.
 
