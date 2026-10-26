@@ -5,6 +5,13 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.2](https://github.com/linjiejim/greenhouse/compare/v3.0.1...v3.0.2) (2026-10-26)
+
+
+### Fixed
+
+* **agent:** stop steering replies toward rich blocks ([f178079](https://github.com/linjiejim/greenhouse/commit/f178079751b07cbe22bba8c43e9b764f62b10459))
+
 ## [3.0.1](https://github.com/linjiejim/greenhouse/compare/v3.0.0...v3.0.1) (2026-10-26)
 
 
