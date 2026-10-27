@@ -543,7 +543,8 @@ textarea.gh-input,
   gap: 8px;
   padding: 0 20px 8px;
 }
-.gh-toolbar .gh-input {
+/* compact fields in a toolbar or a place's filter row (.gh-filter) */
+:is(.gh-toolbar, .gh-filter) .gh-input {
   height: 28px;
   padding: 0 8px;
 }
@@ -1156,15 +1157,6 @@ textarea.gh-input,
   align-items: center;
   gap: 6px;
   color: var(--gh-secondary);
-}
-.gh-filter button,
-.gh-filter input {
-  min-height: 28px;
-  border: 1px solid var(--gh-line);
-  background: var(--gh-raised);
-  color: var(--gh-text);
-  border-radius: 6px;
-  padding: 4px 8px;
 }
 .gh-data-grid thead {
   position: sticky;

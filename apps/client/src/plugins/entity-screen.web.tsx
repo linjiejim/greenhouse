@@ -97,7 +97,7 @@ export function EntityList({
                     ]}
                     onSelect={(value) => setFilters((v) => ({ ...v, [key]: value }))}
                   >
-                    <button aria-label={localize(f.title, lang)}>
+                    <button className="gh-input" aria-label={localize(f.title, lang)}>
                       {!filters[key]
                         ? t('places.all')
                         : f.kind === 'user' && filters[key] === me?.id
@@ -108,6 +108,7 @@ export function EntityList({
                   </NativeMenu>
                 ) : (
                   <input
+                    className="gh-input"
                     aria-label={localize(f.title, lang)}
                     value={filters[key] ?? ''}
                     onChange={(e) => setFilters((v) => ({ ...v, [key]: e.target.value }))}
@@ -137,7 +138,7 @@ export function EntityList({
                 setSort(field ? { field, dir: dir as 'asc' | 'desc' } : undefined);
               }}
             >
-              <button aria-label={t('places.sort')}>
+              <button className="gh-input" aria-label={t('places.sort')}>
                 {sort
                   ? `${localize(fields.find((f) => f.key === sort.field)?.title ?? sort.field, lang)} ${sort.dir === 'asc' ? '↑' : '↓'}`
                   : '—'}{' '}
