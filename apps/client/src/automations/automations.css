@@ -322,7 +322,7 @@
   margin-top: 8px;
 }
 
-/* phone widths (below WIDE_MIN): the editor is a full-screen sheet */
+/* phone widths (below WIDE_MIN, src/shell/wide-model.ts): the editor is a full-screen sheet */
 @media (max-width: 759px) {
   .gh-auto-identity {
     grid-template-columns: minmax(0, 1fr);

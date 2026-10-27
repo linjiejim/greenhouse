@@ -5,8 +5,9 @@ import { useWindowDimensions } from 'react-native';
 import { useWideShell } from '../shell/wide-shell.web';
 import { useT } from '../lib/i18n';
 import { ScreenActions } from './screen-actions.web';
+import { SECONDARY_MIN, WIDE_MIN } from '../shell/wide-model';
 export function usePersistentSidebar() {
-  return useWindowDimensions().width >= 760;
+  return useWindowDimensions().width >= WIDE_MIN;
 }
 export function SidebarToolbar() {
   const { width } = useWindowDimensions();
@@ -17,7 +18,7 @@ export function SidebarToolbar() {
     <ScreenActions
       placement="left"
       actions={
-        width >= 1100
+        width >= SECONDARY_MIN
           ? []
           : [
               {
@@ -25,7 +26,7 @@ export function SidebarToolbar() {
                 icon: 'menu',
                 label: t('nav.sidebar'),
                 onPress: () =>
-                  width >= 760 ? shell.toggleSecondary() : navigation.dispatch(DrawerActions.openDrawer()),
+                  width >= WIDE_MIN ? shell.toggleSecondary() : navigation.dispatch(DrawerActions.openDrawer()),
               },
             ]
       }

@@ -7,6 +7,7 @@ import type { IconName } from './core';
 import { Controls, ScreenActions } from './screen-actions.web';
 import { useT } from '../lib/i18n';
 import { typo, useTheme } from '../theme';
+import { WIDE_MIN } from '../shell/wide-model';
 export interface ScreenAction {
   icon: IconName;
   label: string;
@@ -99,7 +100,7 @@ export function SheetScreen({ title, actions = [], busy }: Props) {
               label: t('common.close'),
               onPress: () => {
                 if (router.canDismiss()) {
-                  if (width >= 760 && depth) router.dismiss(depth);
+                  if (width >= WIDE_MIN && depth) router.dismiss(depth);
                   else router.dismiss();
                 } else router.replace('/');
               },

@@ -20,10 +20,11 @@ import { libraryChanged, useLibraryChanges } from '../library/changes';
 import { formatBytes } from '../lib/format';
 import { useT } from '../lib/i18n';
 import { alertError } from '../ui/dialogs';
+import { WIDE_MIN } from '../shell/wide-model';
 export default function DrivePlace() {
   const { width } = useWindowDimensions();
   const { view } = useLocalSearchParams<{ view?: string }>();
-  return width < 760 ? <Phone /> : view === 'tables' ? <TablesPlace /> : <DriveDesktop />;
+  return width < WIDE_MIN ? <Phone /> : view === 'tables' ? <TablesPlace /> : <DriveDesktop />;
 }
 function DriveDesktop() {
   const t = useT(),

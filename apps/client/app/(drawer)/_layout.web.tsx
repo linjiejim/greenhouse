@@ -18,6 +18,7 @@ import { SidebarContent } from '../../src/shell/sidebar-content';
 import { drawerSwipes, sidebarWidth } from '../../src/shell/layout-rule';
 import { useTheme } from '../../src/theme';
 import { usePersistentSidebar } from '../../src/ui/sidebar';
+import { WIDE_MIN } from '../../src/shell/wide-model';
 
 export const unstable_settings = { initialRouteName: '(home)' };
 
@@ -27,7 +28,7 @@ export default function DrawerLayout() {
   const { width } = useWindowDimensions();
   // Keep this navigator mounted at every width. Swapping Drawer for Slot discards
   // the home stack (including its live conversation and unsent draft).
-  const wide = width >= 760;
+  const wide = width >= WIDE_MIN;
   return (
     <Drawer
       backBehavior="firstRoute"

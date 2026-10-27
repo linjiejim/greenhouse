@@ -6,9 +6,10 @@ import { NativeButton } from '../ui/button';
 import { useT } from '../lib/i18n';
 import { space, useTheme } from '../theme';
 import type { HomeFrameProps } from './frame';
+import { WIDE_MIN } from '../shell/wide-model';
 export function HomeFrame({ greeting, recent, composer, composerHeight, onFiles }: HomeFrameProps) {
   const { width, height } = useWindowDimensions();
-  const wide = width >= 760;
+  const wide = width >= WIDE_MIN;
   const { hex: c } = useTheme();
   const t = useT();
   const router = useRouter();

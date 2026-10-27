@@ -11,9 +11,10 @@ import { useT } from '../lib/i18n';
 import { toast } from '../ui/toast';
 import { SheetScreen } from '../ui/screen.web';
 import { useShortcut } from '../ui/use-shortcut';
+import { SECONDARY_MIN, WIDE_MIN } from '../shell/wide-model';
 export function ChatHeader({ title, subtitle, state, actions, sessionId, shared }: ChatHeaderProps) {
   const { width } = useWindowDimensions();
-  const wide = width >= 760;
+  const wide = width >= WIDE_MIN;
   const shell = useWideShell();
   const router = useRouter();
   const path = usePathname();
@@ -38,7 +39,7 @@ export function ChatHeader({ title, subtitle, state, actions, sessionId, shared 
         ...(wide
           ? {
               headerLeft: () =>
-                width < 1100 ? (
+                width < SECONDARY_MIN ? (
                   <Controls
                     actions={[
                       { id: 'secondary', icon: 'menu', label: t('nav.sidebar'), onPress: shell.toggleSecondary },

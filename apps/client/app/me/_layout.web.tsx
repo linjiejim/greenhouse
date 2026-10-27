@@ -9,6 +9,7 @@ import { useT } from '../../src/lib/i18n';
 import { Icon, type IconName } from '../../src/ui/core';
 import { SheetFrame } from '../../src/ui/sheet-actions';
 import { SettingsWindowContext } from '../../src/ui/settings-frame';
+import { WIDE_MIN } from '../../src/shell/wide-model';
 export const unstable_settings = { initialRouteName: 'index' };
 export default function SettingsLayout() {
   const { colors: c, hex, isDark } = useTheme(),
@@ -26,7 +27,7 @@ export default function SettingsLayout() {
     { label: t('client.station'), href: '/me/stations', icon: 'server' },
   ];
   const body = <Stack screenOptions={{ ...stackDefaults(c, hex, isDark), ...pageScreen(c, { grouped: true }) }} />;
-  return width < 760 ? (
+  return width < WIDE_MIN ? (
     body
   ) : (
     <div className="gh-settings" style={{ color: hex.label, background: hex.groupedBackground }}>

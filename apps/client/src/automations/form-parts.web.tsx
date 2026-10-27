@@ -1,7 +1,7 @@
 /**
  * The pieces both Automations editors share (./editor.web.tsx, ./agent-editor.web.tsx): a labelled
  * field with its count, hint and inline error; a checkbox or switch row; the dialog frame (a
- * fixed-size `lg` dialog, a full-screen sheet below 760 px) with the unsaved-changes guard on ✕,
+ * fixed-size `lg` dialog, a full-screen sheet below WIDE_MIN) with the unsaved-changes guard on ✕,
  * Escape and the scrim, and ⌘/Ctrl+Enter to save.
  */
 import './automations.css';
@@ -11,6 +11,7 @@ import { useT } from '../lib/i18n';
 import { Icon } from '../ui/core';
 import { confirmDiscard } from '../ui/form-guard';
 import { DialogBody, Overlay } from '../ui/overlay.web';
+import { WIDE_MIN } from '../shell/wide-model';
 
 /**
  * Fields whose errors may show before a save: the ones edited and then left. A field left by a
@@ -125,7 +126,7 @@ export function Check({
 
 /**
  * An editor's dialog. `dirty` arms the discard question on every way out; `onSave` also runs on
- * ⌘/Ctrl+Enter. Below 760 px it covers the window, as a phone sheet. `focus` is the field that
+ * ⌘/Ctrl+Enter. Below WIDE_MIN it covers the window, as a phone sheet. `focus` is the field that
  * takes focus once the dialog opens.
  */
 export function EditorDialog({
@@ -177,7 +178,7 @@ export function EditorDialog({
       testID={testID}
       onClose={() => void requestClose()}
       panelStyle={
-        width < 760
+        width < WIDE_MIN
           ? {
               position: 'fixed',
               inset: 0,

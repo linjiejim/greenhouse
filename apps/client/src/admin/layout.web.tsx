@@ -17,6 +17,7 @@ import { useT, type TranslationKey } from '../lib/i18n';
 import { adminScreenIcons } from '../plugins/admin-screens.web';
 import { CORE_SECTIONS, SECTION_GROUPS, activeSection, pluginSections } from './sections';
 import './admin.css';
+import { WIDE_MIN } from '../shell/wide-model';
 
 export function useAdminSections() {
   const manifest = useStationManifest((s) => s.data);
@@ -33,7 +34,7 @@ export default function AdminLayout() {
         <PlaceEmpty icon="shieldCheck" title={t('admin.superOnly')} message={t('admin.superOnlyHint')} />
       </Place>
     );
-  if (width < 760)
+  if (width < WIDE_MIN)
     return (
       <Place title={t('admin.title')}>
         <PlaceEmpty icon="shieldCheck" title={t('admin.wideOnly')} message={t('admin.wideOnlyHint')} />

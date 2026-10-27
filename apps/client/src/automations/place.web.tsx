@@ -4,7 +4,7 @@
  * an automation (`/automations?id=`) with its instructions, schedule and run history, or an agent
  * (`/automations?view=agents&id=<row id>`). Automations and agents are created, edited and
  * duplicated in fixed-size dialogs (./editor.web.tsx, ./agent-editor.web.tsx); asking Sprouty
- * stays the second way to make or change one. Below 760 px the phone screen shows; an editor
+ * stays the second way to make or change one. Below WIDE_MIN the phone screen shows; an editor
  * already open there continues as a full-screen sheet.
  */
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
@@ -41,6 +41,7 @@ import { useStartChat } from '../shell/open-object';
 import { alertError, confirmAction } from '../ui/dialogs';
 import { toast } from '../ui/toast';
 import './automations.css';
+import { WIDE_MIN } from '../shell/wide-model';
 
 type Editor =
   | { kind: 'automation'; mode: AutomationEditorMode }
@@ -56,7 +57,7 @@ export default function AutomationsPlace() {
   const close = useCallback(() => setEditor(null), []);
   return (
     <>
-      {width < 760 ? <Phone /> : <AutomationsDesktop openEditor={setEditor} saved={saved} />}
+      {width < WIDE_MIN ? <Phone /> : <AutomationsDesktop openEditor={setEditor} saved={saved} />}
       {editor?.kind === 'automation' ? (
         <AutomationEditor
           mode={editor.mode}

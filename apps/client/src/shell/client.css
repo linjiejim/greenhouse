@@ -603,7 +603,7 @@ textarea.gh-input,
   color: var(--gh-secondary);
 }
 
-/* Phone widths (below WIDE_MIN): 44 pt targets, and 16 px text so Safari never zooms a field. */
+/* Phone widths (below WIDE_MIN, src/shell/wide-model.ts): 44 pt targets, and 16 px text so Safari never zooms a field. */
 @media (max-width: 759px) {
   .gh-input,
   :is(.gh-form, .gh-field) :where(input:not([type='checkbox'], [type='radio'], [type='range'], [type='color'], [type='file']), select),
@@ -639,6 +639,7 @@ textarea.gh-input,
   overflow: hidden;
   background: var(--gh-card);
 }
+/* below WIDE_MIN (src/shell/wide-model.ts) */
 @media (max-width: 759px) {
   .gh-row-menu {
     opacity: 1;

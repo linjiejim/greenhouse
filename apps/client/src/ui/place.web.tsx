@@ -8,6 +8,7 @@ import { Icon, type IconName } from './core';
 import { MenuPanel, NativeMenu } from './menu.web';
 import type { MenuItem } from './menu-items';
 import { useT } from '../lib/i18n';
+import { SECONDARY_MIN, WIDE_MIN } from '../shell/wide-model';
 export function Place({
   title,
   actions,
@@ -27,7 +28,7 @@ export function Place({
       <div className="gh-place" style={{ color: c.label, background: c.background, fontSize: typo.body.fontSize }}>
         <header className="gh-place-bar">
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            {width >= 760 && width < 1100 ? (
+            {width >= WIDE_MIN && width < SECONDARY_MIN ? (
               <button aria-label={t('client.secondary')} onClick={shell.toggleSecondary}>
                 <Icon name="menu" size={18} />
               </button>
