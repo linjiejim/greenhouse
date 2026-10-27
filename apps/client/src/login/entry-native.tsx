@@ -4,7 +4,7 @@
  * parameters; the phone's own sign-in and connector returns go through the system auth session.
  */
 
-import React from 'react';
+import React, { useEffect } from 'react';
 import { View } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { useT } from '../lib/i18n';
@@ -12,6 +12,20 @@ import { goHome } from '../shell/nav';
 import { useTheme } from '../theme';
 import { NativeButton } from '../ui/button';
 import { EmptyState } from '../ui/empty';
+
+/**
+ * `greenhouse://connectors/oauth-finish?…` reaching the router (Android hands the auth session's
+ * return to the app as a link too): the session's caller already has it (src/connectors/sign-in.ts),
+ * so this screen only steps back to where the member was.
+ */
+export function AuthSessionReturn() {
+  const router = useRouter();
+  useEffect(() => {
+    if (router.canGoBack()) router.back();
+    else goHome(router);
+  }, [router]);
+  return <Stack.Screen options={{ headerShown: false }} />;
+}
 
 export function WebOnlyEntry() {
   const t = useT();

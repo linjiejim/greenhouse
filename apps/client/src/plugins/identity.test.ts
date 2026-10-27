@@ -3,6 +3,23 @@ import { bindingProviders, bindingReturn, signInProviders } from './identity';
 import { identityGlue } from './identity-registry';
 import { identity as feishu } from './feishu';
 import { discoverProviders } from '../login/availability';
+import { en } from '../lib/i18n/en';
+import { zh } from '../lib/i18n/zh';
+
+/** A dotted key's words in a catalog (the glue and the binding page build some keys). */
+const words = (catalog: unknown, key: string) =>
+  key.split('.').reduce<unknown>((node, part) => (node as Record<string, unknown> | undefined)?.[part], catalog);
+
+describe('provider words', () => {
+  it('every provider and every binding reason the result page names has words in both languages', () => {
+    const keys = [
+      ...identityGlue.map((glue) => glue.title),
+      ...['already_bound', 'state_expired', 'account_inactive', 'not_configured'].map((r) => `entry.bindings.${r}`),
+    ];
+    for (const key of keys)
+      for (const catalog of [en, zh]) expect(typeof words(catalog, key), key).toBe('string');
+  });
+});
 
 const CODE = 'A'.repeat(43);
 
