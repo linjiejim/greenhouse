@@ -2,20 +2,20 @@
 
 Personal/shared IMAP/SMTP mail, confirmed drafts and the email notification/password-link transport.
 
-**Default: off.** Compiled by the upstream configuration. Enable/disable `email` through
-`extensions.enabled` or `GREENHOUSE_EXTENSIONS`, retaining other enabled ids, then restart.
-Credentials alone do not enable it. Disabling preserves data.
+**Default: off.** Enable `email` through `extensions.enabled` or `GREENHOUSE_EXTENSIONS` (keep the
+other ids), then restart. Credentials alone do not enable it; disabling preserves data.
 
 | Surface | Details |
 |---|---|
-| Settings | Member feature `email` defaults on only while enabled. Members bind their own accounts in settings; shared mailbox access is super-only on the tool surface. |
+| Settings | Member feature `email` defaults on only while enabled. Shared mailbox access is super-only on the tool surface. |
 | Environment | `SHARED_MAILBOX_ADDRESS`, `SHARED_MAILBOX_PASSWORD`, `SHARED_MAILBOX_IMAP_HOST/PORT`, `SHARED_MAILBOX_SMTP_HOST/PORT`, `SHARED_MAILBOX_USERNAME`, `SHARED_MAILBOX_DISPLAY_NAME`, `SHARED_MAILBOX_USE_TLS`, `SHARED_MAILBOX_USE_PROXY`, `SHARED_MAILBOX_ALLOWED_DOMAIN`; optional `MAIL_EGRESS_PROXY`. See root .env.example. |
 | Owned tables | `email_accounts`; shared mailbox config is deployment env, not a row |
 | Tools | `email_query`, `email_mutation` (human draft confirmation, not MCP/unattended) |
 | Routes | `/api/email` |
+| Client | A read-only list of the member's accounts; accounts are added through `/api/email/accounts`. |
 
-Classic `#/settings/email`; universal Email page. Mailbox reads are live IMAP; no background sync job. Sending uses the server-stored draft and rechecks recipient/ownership limits.
+Mailbox reads are live IMAP; there is no background sync job. Sending uses the server-stored
+draft and rechecks recipient/ownership limits. Automations can deliver results by email
+(`notify.email`) while the plugin is enabled.
 
-See [plugin development](../../EXTENDING.md), [package rules](AGENTS.md) and
-`api/index.ts` for registered contributions. Add new SQL after applied migrations; never edit
-existing checksums. Test permission denials and disabled contributions as well as enabled behavior.
+Rules: [AGENTS.md](AGENTS.md). Plugin contract: [EXTENDING.md](../../EXTENDING.md).

@@ -1,8 +1,8 @@
 # Email plugin
 
+- Shared plugin rules: [root AGENTS.md](../../AGENTS.md) (Plugins) and [EXTENDING.md](../../EXTENDING.md); this file lists only Email-specific rules.
 - Default off; activation requires configured enablement and restart, independently of credentials.
-- Own email_accounts/schema/services/routes/tools/classic controls and the email transport; use services(db), never DatabaseProvider fields.
-- API/web production imports use host kits/shared contracts/declared dependencies; copy lives under ext.email.*.
+- Own email_accounts, schema, services, routes, tools and the email transport; use services(db), never DatabaseProvider fields.
 - Preserve env names, URLs, tool ids, preference keys and applied migration bytes; disablement retains all data.
 - The member email flag defaults on while active; routes require internal identity plus feature and tools belong to the same point.
 - Use explicit IMAP/SMTP app-password accounts; reads fail explicitly rather than returning an empty inbox on errors.
@@ -16,4 +16,5 @@
 - Direct egress resolves public DNS and connects to that checked IP with original TLS SNI; configured proxy failures never fall back silently.
 - Keep import-time limits in the leaf limits module and forbid email_mutation in unattended contexts/MCP.
 - System notification mail uses the registered transport and bound recipient, never an unrestricted Agent send tool.
-- Register reset tables/migrations and keep schema docs current; browser specs import only @playwright/test.
+- The client lists accounts read-only (native page `email`); account create/edit stays on `/api/email/accounts`.
+- Register reset tables/migrations and keep [schema](db-schema.md) current.
