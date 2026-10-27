@@ -1466,7 +1466,8 @@ html[data-desktop-window="settings"] .gh-settings { padding-top: 52px; box-sizin
   color: var(--gh-accent-text);
 }
 
-/* Create form for plugin data entities (src/plugins/entity-create.web.tsx). */
+/* The column around DialogBody when a form (or a frame) wraps it: the plugin entity create form,
+   Admin dialogs. */
 .gh-dialog-form {
   display: flex;
   flex-direction: column;
