@@ -21,7 +21,7 @@ import { clearTokens, getAccessToken, getCachedUser, getTokenStationId, setCache
 export type LoginOutcome = { ok: true; user: Me } | { ok: false; error: string };
 
 /**
- * A token pair the station just issued (password or Feishu) → this station's session and its
+ * A token pair the station just issued (see signInWith) → this station's session and its
  * member. Nothing is written when another station became active meanwhile.
  */
 async function adoptSession(tokens: Partial<SessionTokens>, sid: string | null): Promise<LoginOutcome> {
@@ -45,14 +45,17 @@ async function adoptSession(tokens: Partial<SessionTokens>, sid: string | null):
   return { ok: true, user };
 }
 
-/** Email + password → this station's session and its member. */
-export async function login(email: string, password: string): Promise<LoginOutcome> {
+/**
+ * A public sign-in endpoint that answers a token pair (password login, a password link, an
+ * identity provider's one-shot code) → this station's session and its member.
+ */
+export async function signInWith(path: string, body: Record<string, string>): Promise<LoginOutcome> {
   const sid = getTokenStationId();
   try {
-    const res = await fetch(`${getApiBase()}/api/auth/login`, {
+    const res = await fetch(`${getApiBase()}${path}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password }),
+      body: JSON.stringify(body),
     });
     const result = await toResult<SessionTokens>(res);
     if (!result.ok) return { ok: false, error: result.message || t('login.failed') };
@@ -62,21 +65,14 @@ export async function login(email: string, password: string): Promise<LoginOutco
   }
 }
 
+/** Email + password → this station's session and its member. */
+export function login(email: string, password: string): Promise<LoginOutcome> {
+  return signInWith('/api/auth/login', { email, password });
+}
+
 /** The one-shot code Feishu sign-in handed back to the app → this station's session. */
-export async function loginWithFeishuCode(code: string): Promise<LoginOutcome> {
-  const sid = getTokenStationId();
-  try {
-    const res = await fetch(`${getApiBase()}/api/feishu/oauth/exchange`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ code }),
-    });
-    const result = await toResult<SessionTokens>(res);
-    if (!result.ok) return { ok: false, error: result.message || t('login.failed') };
-    return await adoptSession(result.data, sid);
-  } catch {
-    return { ok: false, error: t('login.networkError') };
-  }
+export function loginWithFeishuCode(code: string): Promise<LoginOutcome> {
+  return signInWith('/api/feishu/oauth/exchange', { code });
 }
 
 /**

@@ -15,15 +15,16 @@
  * must not turn a completed publish into an error.
  */
 
+import { pluginPagePath } from '@greenhouse/types/client-routes';
 import { notificationWebhookTransport } from '@greenhouse/api/extension-kit';
 import { logger } from '@greenhouse/api/extension-kit';
 import type { SkillRow } from '../schema.js';
 import type { ScanFinding } from './scanner.js';
 
-/** Canonical deeplink to a skill's detail view. */
-export function skillDeeplink(name: string): string {
+/** The Skills page of the universal client (it has no per-skill address; the message names the skill). */
+export function skillsPageUrl(): string {
   const base = (process.env.APP_BASE_URL ?? '').replace(/\/$/, '');
-  return `${base}/#/skillhub/${name}`;
+  return `${base}${pluginPagePath('skills', 'skills')}`;
 }
 
 export async function notifySuspiciousSkill(opts: {
@@ -46,7 +47,7 @@ export async function notifySuspiciousSkill(opts: {
     `**⚠️ 技能待审核** \`${skill.name}\` v${version} 被安全扫描判定为可疑，已暂停下载。`,
     `> 发布者:${skill.owner_user_id}`,
     rules + more,
-    `[打开技能](${skillDeeplink(skill.name)})`,
+    `[打开技能](${skillsPageUrl()})`,
   ].join('\n');
 
   const sent = await transport.sendWebhook(webhook, md);

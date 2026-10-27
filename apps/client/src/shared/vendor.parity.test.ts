@@ -59,6 +59,12 @@ describe('vendored workspace code', () => {
     );
   });
 
+  it('src/shared/client-routes.ts is a verbatim copy of packages/types/src/client-routes.ts', () => {
+    expect(statementTexts(parse(`${MOBILE}/shared/client-routes.ts`))).toEqual(
+      statementTexts(parse('packages/types/src/client-routes.ts')),
+    );
+  });
+
   it('the connected-agent plant rule matches packages/types/src/plant-avatar.ts', () => {
     const canonical = parse('packages/types/src/plant-avatar.ts');
     const copy = parse(`${MOBILE}/ui/plant-avatar/plant-ids.ts`);
@@ -79,6 +85,22 @@ describe('vendored workspace code', () => {
     const canonical = parse('packages/types/src/automation-tools.ts');
     const copy = parse(`${MOBILE}/shared/greenhouse-types.ts`);
     for (const name of ['AutomationOptInTier', 'AutomationOptInTool', 'CORE_OPT_IN_TOOLS']) {
+      expect(declaration(copy, name), name).toBe(declaration(canonical, name));
+    }
+  });
+
+  it('the connector sign-in message matches packages/types/src/connectors.ts', () => {
+    const canonical = parse('packages/types/src/connectors.ts');
+    const copy = parse(`${MOBILE}/shared/greenhouse-types.ts`);
+    for (const name of ['CONNECTOR_CONNECT_MESSAGE_TYPE', 'ConnectorConnectMessage']) {
+      expect(declaration(copy, name), name).toBe(declaration(canonical, name));
+    }
+  });
+
+  it('the MCP consent groups match packages/types/src/mcp.ts', () => {
+    const canonical = parse('packages/types/src/mcp.ts');
+    const copy = parse(`${MOBILE}/shared/greenhouse-types.ts`);
+    for (const name of ['MCP_RESOURCE_GROUP_IDS', 'RETIRED_MCP_RESOURCE_GROUP_IDS']) {
       expect(declaration(copy, name), name).toBe(declaration(canonical, name));
     }
   });

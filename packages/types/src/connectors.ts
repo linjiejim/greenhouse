@@ -393,7 +393,10 @@ export interface ConnectorConnectMessage {
   ok: boolean;
 }
 
-/** The SPA route the public OAuth callback redirects to; it finishes the sign-in as the logged-in member. */
+/**
+ * The classic web app's finish route. The public OAuth callback now returns browsers to the universal
+ * client (`CLIENT_ROUTES.connectorFinish`, ./client-routes.ts); this stays until the classic app goes.
+ */
 export const CONNECTOR_OAUTH_FINISH_HASH = '#/connectors/oauth-finish';
 
 // ─── The official connector catalog (`connectors/*.json`) ───

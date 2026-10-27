@@ -34,7 +34,13 @@ export default defineConfig({
     {
       command: 'pnpm api',
       url: `${API_BASE}/health`,
-      env: { ...shared, API_PORT, CORS_ALLOWED_ORIGINS: `http://localhost:${WEB_PORT}` },
+      // WEB_BASE_URL: /oauth/authorize sends browsers to this client's consent page
+      env: {
+        ...shared,
+        API_PORT,
+        CORS_ALLOWED_ORIGINS: `http://localhost:${WEB_PORT}`,
+        WEB_BASE_URL: `http://localhost:${WEB_PORT}`,
+      },
       reuseExistingServer: false,
       timeout: 120_000,
     },

@@ -4,9 +4,10 @@
  *
  *  - `connectConnector` — key: a secure prompt, kept only if the server's
  *    trial call works (a refusal is worded here, the service's answer behind
- *    详情); OAuth: the provider's sign-in in the system auth session, which
- *    returns to `greenhouse://connectors/oauth-finish`, then the finish call
- *    as this member (the server refuses a sign-in someone else started);
+ *    详情); OAuth: the provider's sign-in (./sign-in.ts: the system auth
+ *    session on the phone, a popup returning to /connectors/oauth-finish in the
+ *    browser), finished as this member (the server refuses a sign-in someone
+ *    else started);
  *  - `testConnection` — "N tools", or why not;
  *  - `disconnect` — confirmed; the key or sign-in is forgotten (an OAuth
  *    grant is revoked too).
@@ -14,21 +15,13 @@
  * Each resolves true when something changed and the caller should re-read.
  */
 
-import * as WebBrowser from 'expo-web-browser';
-import {
-  disconnectConnector,
-  finishConnectorSignIn,
-  saveConnectorKey,
-  startConnectorSignIn,
-  testConnector,
-  type ConnectorAuthKind,
-} from '../api/connectors';
+import { disconnectConnector, saveConnectorKey, testConnector, type ConnectorAuthKind } from '../api/connectors';
 import { captureIdentity } from '../data/identity';
 import { t } from '../lib/i18n';
 import { alertError, confirmAction, promptText } from '../ui/dialogs';
 import { notifySuccess } from '../ui/haptics';
 import { toast } from '../ui/toast';
-import { CONNECTOR_APP_REDIRECT, parseConnectorReturn } from './model';
+import { signInToConnector } from './sign-in';
 
 export interface ConnectTarget {
   id: string;
@@ -60,23 +53,10 @@ export async function connectConnector(connector: ConnectTarget): Promise<boolea
     }
     return true;
   }
-  const started = await startConnectorSignIn(connector.id);
-  if (!current()) return false;
-  if (!started.ok) {
-    alertError(t('connectors.signInFailed'), started.message || undefined);
-    return false;
-  }
-  const session = await WebBrowser.openAuthSessionAsync(started.data.authorize_url, CONNECTOR_APP_REDIRECT);
-  const back = parseConnectorReturn(session.type === 'success' ? session.url : null);
-  if (back.kind === 'cancel' || !current()) return false;
-  if (back.kind === 'error') {
-    alertError(t('connectors.signInFailed'), undefined, back.reason);
-    return false;
-  }
-  const finished = await finishConnectorSignIn(back.code, back.state);
-  if (!current()) return false;
-  if (!finished.ok) {
-    alertError(t('connectors.signInFailed'), finished.message || undefined);
+  const outcome = await signInToConnector(connector.id, current);
+  if (outcome.kind === 'quiet') return false;
+  if (outcome.kind === 'failed') {
+    alertError(t('connectors.signInFailed'), outcome.message, outcome.detail);
     return false;
   }
   notifySuccess();

@@ -47,7 +47,7 @@
 - Search: `GET /api/search?q=&kind=` (conversations, projects, documents) and `/api/drive/search`; my tasks are matched from the saved copy. Runs: `GET /api/runtime/runs/:id`. My agents: `/api/agent-access/connections`.
 - Folders and files: `POST /api/drive/folders`, `PUT /folders/:id` `{ name?, parent_id? }`, `DELETE /folders/:id` (409 when not empty), `PUT /files/:id` `{ name?, folder_id? }`, `DELETE /files/:id`; documents `POST /api/knowledge/docs`, `PUT /docs/:id` `{ title?, folder_id? }`. Moves never cross shelves.
 - Access: a 403 means a role, feature or capability gate (EmptyState without retry); a 404 means gone or not visible to this member (src/data/access.ts).
-- Connectors (「我」 → 连接, app/me/connectors.tsx): `GET /api/me/connectors` (`{ team, personal }`; 403 = no `mcp_call`, 404 = older station, both an EmptyState), `PUT /:id/key`, `POST /:id/oauth/start` `{ client: 'mobile' }` → the system auth session returning to `greenhouse://connectors/oauth-finish` (src/connectors/model.ts, equal to the server's `CONNECTOR_APP_REDIRECT`; a test compares) → `POST /oauth/finish`, `POST /:id/test`, `DELETE /:id/connection`. Adding connectors (team or personal) happens on the web. `mcp_call`'s `needs_connection` answer is the chat's ConnectCard (src/chat/parts.ts).
+- Connectors (「我」 → 连接, app/me/connectors.tsx): `GET /api/me/connectors` (`{ team, personal }`; 403 = no `mcp_call`, 404 = older station, both an EmptyState), `PUT /:id/key`, `POST /:id/oauth/start` `{ client: 'mobile' }` → the system auth session returning to `greenhouse://connectors/oauth-finish` (src/connectors/model.ts, equal to the server's `CONNECTOR_APP_REDIRECT`; a test compares) → `POST /oauth/finish`, `POST /:id/test`, `DELETE /:id/connection`. The browser sends `{ client: 'web' }` and opens a popup that returns to `/connectors/oauth-finish`, which finishes and posts `greenhouse:connector` to its opener (src/connectors/sign-in.web.ts). Adding connectors (team or personal) happens on the web. `mcp_call`'s `needs_connection` answer is the chat's ConnectCard (src/chat/parts.ts).
 - Feishu sign-in: wait for bootstrap; API 4+ discovers `feishu` via public `/api/auth/providers`, API 3 uses `/api/feishu/login-available`. Then `start-login?app_redirect=greenhouse://auth/feishu` (the server allow-lists exactly that address) in the system auth session, then `/api/feishu/oauth/exchange`. Keep `FEISHU_APP_REDIRECT` (src/login/feishu.ts) equal to the server's `APP_LOGIN_REDIRECT`; a test compares them.
 - API reads and writes answer an `ApiResult` and never throw; resolve the base with getApiBase() at call time; api() sends tokens only to the active station's origin; switch stations only with useAuth.switchStation.
 
@@ -172,10 +172,19 @@
 - The optional `/api/extensions` v2 manifest gates built-in plugin places and supplies app navigation (primary and `more` entries); v1 or 404 means legacy navigation.
 - `src/shared/plugins.ts` is a verbatim copy of `packages/types/src/plugins.ts`, checked by the React-free manifest tests; optional v2 does not raise `MOBILE_API`.
 - `/p/[plugin]/[page]` renders entity-list/detail, settings-form and trusted embed surfaces; unknown pages use a validated browser fallback.
-- Browser legacy links are mapped before auth routing and retained across sign-in; unmapped hashes open `/classic/` on the station.
+- Browser legacy links are mapped before auth routing and retained across sign-in; unmapped hashes open home. Nothing falls back to `/classic/`.
 - `pnpm test:e2e:client` owns ports 18920 and 18921 and the isolated `gh4_client` database on port 55450; its screenshots and auth state are ignored.
 - Run Expo dev servers with `CI=1` in restricted environments to disable file watchers; keep native configuration and fingerprint changes deliberate.
 - Metro redirects native route-context entries only for web; verify source maps with `node scripts/check-web-bundle.mjs <export-dir>` after an export with `--source-maps`.
+
+## Entry pages
+
+- Server-made browser links target src/shared/client-routes.ts (verbatim copy of packages/types/src/client-routes.ts): `/activate`, `/oauth-consent`, `/connectors/oauth-finish`, `/login`, `/bindings`, `/me/connectors`.
+- Secrets (activation token, one-shot sign-in code, provider code) ride in the fragment. app/_layout.web.tsx holds them (src/login/entry-links.ts) before routing and clears the address and the router's `#` param; only their page reads them, once. Never log them or put them in a URL.
+- The consent request is held as the browser parsed it and passed through unchanged; the page follows the station's answer only back to the request's own redirect URI with its state (src/login/consent.ts).
+- Entry pages are `.web.tsx` with a WebOnlyEntry native base (src/login/entry-native.tsx); they draw alone without the rail (`isStandaloneEntry`) in src/login/entry-frame.web.tsx with src/login/entry.css.
+- `/activate` is reachable signed out; the others resume after sign-in. The root gate alone navigates; a pending route already on screen is never reopened (an entry page would lose what it held).
+- Identity providers are plugin glue under src/plugins/<id>/, listed in src/plugins/identity-registry.ts. Sign-in buttons need `/api/auth/providers`; Me → Connections bindings need the manifest's `identityProviders` with `bind`. Core never names a provider.
 
 ## Wide chat and inspector
 

@@ -1,19 +1,37 @@
 /** Public sign-in discovery; API 3 stations predate the provider registry. */
-export async function feishuLoginAvailable(
-  mobileApi: number,
-  fetcher: (path: string) => Promise<{ ok: boolean; json: () => Promise<unknown> }>,
-): Promise<boolean> {
-  const providers = mobileApi >= 4;
-  const response = await fetcher(providers ? '/api/auth/providers' : '/api/feishu/login-available');
+
+type Fetcher = (path: string) => Promise<{ ok: boolean; json: () => Promise<unknown> }>;
+
+/** One identity provider the station has configured (`GET /api/auth/providers`, public). */
+export interface PublicProvider {
+  id: string;
+  title: string;
+  /** It signs people in (some providers only bind an account). */
+  login: boolean;
+}
+
+/** The station's configured identity providers; none when the answer is missing or malformed. */
+export async function discoverProviders(fetcher: Fetcher): Promise<PublicProvider[]> {
+  const response = await fetcher('/api/auth/providers');
+  if (!response.ok) return [];
+  const body = await response.json();
+  if (!body || typeof body !== 'object' || Array.isArray(body) || !('providers' in body)) return [];
+  const list = (body as { providers: unknown }).providers;
+  if (!Array.isArray(list)) return [];
+  return list.flatMap((provider: unknown) => {
+    if (!provider || typeof provider !== 'object') return [];
+    const { id, title, login } = provider as Record<string, unknown>;
+    return typeof id === 'string' && id
+      ? [{ id, title: typeof title === 'string' ? title : id, login: login === true }]
+      : [];
+  });
+}
+
+export async function feishuLoginAvailable(mobileApi: number, fetcher: Fetcher): Promise<boolean> {
+  if (mobileApi >= 4) return (await discoverProviders(fetcher)).some((provider) => provider.id === 'feishu');
+  const response = await fetcher('/api/feishu/login-available');
   if (!response.ok) return false;
   const body = await response.json();
   if (!body || typeof body !== 'object' || Array.isArray(body)) return false;
-  if (!providers) return 'available' in body && body.available === true;
-  return (
-    'providers' in body &&
-    Array.isArray(body.providers) &&
-    body.providers.some(
-      (provider: unknown) => !!provider && typeof provider === 'object' && 'id' in provider && provider.id === 'feishu',
-    )
-  );
+  return 'available' in body && body.available === true;
 }

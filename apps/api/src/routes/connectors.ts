@@ -14,7 +14,7 @@
  *
  * 公开回调（不带 Bearer，见 auth/middleware.ts PUBLIC_PATHS，限流 30/分钟）：
  * GET    /api/connectors/oauth/callback?code&state[&error]
- *   只把浏览器送回应用（web：`#/connectors/oauth-finish?…`，mobile：`greenhouse://connectors/oauth-finish?…`），
+ *   只把浏览器送回应用（web：客户端 `/connectors/oauth-finish#…`，mobile：`greenhouse://connectors/oauth-finish?…`），
  *   不写任何东西；登录态的应用再调 finish，finish 拒绝不是本人发起的 state。
  *
  * 不放在 `/api/mcp…` 下：那是 Greenhouse 自己的 MCP 服务器的前缀。
@@ -22,12 +22,8 @@
 
 import { Hono, type Context, type Next } from 'hono';
 import { getDb, type McpConnectorRow } from '@greenhouse/db';
-import {
-  CONNECTOR_OAUTH_FINISH_HASH,
-  CONNECTOR_SECRET_MAX,
-  type ConnectorInput,
-  type ConnectorUpdate,
-} from '@greenhouse/types/connectors';
+import { CLIENT_ROUTES, clientRouteUrl } from '@greenhouse/types/client-routes';
+import { CONNECTOR_SECRET_MAX, type ConnectorInput, type ConnectorUpdate } from '@greenhouse/types/connectors';
 import type { AppEnv } from '../app-env.js';
 import { getAuthUser } from '../auth/middleware.js';
 import { resolveUserTools } from '../agent.js';
@@ -273,7 +269,8 @@ export const memberConnectorRoutes = new Hono<AppEnv>()
 function finishTarget(requestUrl: string, client: 'web' | 'mobile', params: Record<string, string>): string {
   const query = new URLSearchParams(params).toString();
   if (client === 'mobile') return `${CONNECTOR_APP_REDIRECT}?${query}`;
-  return `${connectorBaseUrl(requestUrl)}/${CONNECTOR_OAUTH_FINISH_HASH}?${query}`;
+  // The provider's code rides in the fragment, out of the client host's logs.
+  return clientRouteUrl(connectorBaseUrl(requestUrl) ?? '', CLIENT_ROUTES.connectorFinish, { fragment: params });
 }
 
 export const connectorOAuthCallbackRoutes = new Hono<AppEnv>().get('/oauth/callback', (c) => {

@@ -253,15 +253,18 @@ describe('OAuth through the routes', () => {
     // The public callback only redirects back to the app.
     const callback = await app(actor).request(`${back.pathname}${back.search}`);
     expect(callback.status).toBe(302);
-    return new URL(callback.headers.get('location')!.replace('#/', ''));
+    // The code rides in the fragment, never in a query the client's host would log.
+    const location = new URL(callback.headers.get('location')!);
+    expect(location.search).toBe('');
+    return Object.assign(location, { params: new URLSearchParams(location.hash.slice(1)) });
   }
 
   it('callback → web finish page; finish by someone else is refused; finish by the starter connects', async () => {
     const { id } = await oauthConnector();
     const finish = await startAndAuthorize(alice, id);
     expect(finish.pathname).toBe('/connectors/oauth-finish');
-    const code = finish.searchParams.get('code');
-    const state = finish.searchParams.get('state');
+    const code = finish.params.get('code');
+    const state = finish.params.get('state');
 
     const stolen = await app(bob).request('/api/me/connectors/oauth/finish', send('POST', { code, state }));
     expect(stolen.status).toBe(403);
@@ -288,6 +291,6 @@ describe('OAuth through the routes', () => {
   it('a callback with a forged state goes back to the web app with an error and writes nothing', async () => {
     const callback = await app(alice).request('/api/connectors/oauth/callback?code=x&state=forged');
     expect(callback.status).toBe(302);
-    expect(callback.headers.get('location')).toContain('#/connectors/oauth-finish?error=invalid_state');
+    expect(callback.headers.get('location')).toMatch(/\/connectors\/oauth-finish#error=invalid_state$/);
   });
 });

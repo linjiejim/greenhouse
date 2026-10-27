@@ -452,6 +452,26 @@ export interface ChatMessage {
   references_?: string | null;
 }
 
+// ─── connector sign-in in the browser (packages/types/src/connectors.ts) ─
+
+/** verbatim */
+export const CONNECTOR_CONNECT_MESSAGE_TYPE = 'greenhouse:connector';
+
+/** verbatim */
+export interface ConnectorConnectMessage {
+  type: typeof CONNECTOR_CONNECT_MESSAGE_TYPE;
+  connector_id: string;
+  ok: boolean;
+}
+
+// ─── MCP consent groups (packages/types/src/mcp.ts) ─────────────────
+
+/** verbatim */
+export const MCP_RESOURCE_GROUP_IDS = ['files', 'chat', 'automation', 'image', 'services', 'connectors'] as const;
+
+/** verbatim */
+export const RETIRED_MCP_RESOURCE_GROUP_IDS: readonly string[] = ['image'];
+
 /** `GET /api/search` (packages/types/src/search.ts): matches grouped by kind, five each. */
 export interface SearchGroup {
   kind: string;

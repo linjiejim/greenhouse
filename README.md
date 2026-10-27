@@ -71,14 +71,16 @@ supply selected team documents.
 
 | Client | What ships in this repository |
 |---|---|
-| Classic web (`apps/web`) | React/Vite web app with the administration console and SDK 1 React plugin pages. Default at `/`; always available at `/classic/`. |
-| Universal browser client (`apps/client`) | Expo web export with wide-screen rail, secondary navigation, chat, inspectors, ⌘K, document editing, Tables grids and project boards. Plugins appear from the member-filtered station manifest. |
+| Classic web (`apps/web`) | React/Vite web app with the administration console and SDK 1 React plugin pages. Always available at `/classic/`; at `/` only with `clients.web: 'classic'`. |
+| Universal browser client (`apps/client`) | Default at `/`. Expo web export with wide-screen rail, secondary navigation, chat, inspectors, ⌘K, document editing, Tables grids and project boards. Plugins appear from the member-filtered station manifest. |
 | iOS / Android (`apps/client`) | Native Expo client with chat, Files, enabled plugin places, notifications, stations and offline copies. iOS includes widgets; Android has Material 3 adapters, with store distribution/push setup still operator-dependent. |
 | macOS (`apps/desktop`) | Tauri 2 shell bundling the universal client, multiple stations, Keychain sessions, native menus/notifications and Quick ask. Local unsigned builds are supported; signing and an updater feed require operator setup. |
 | CLI | `pnpm cli`: users, database, diagnostics, profiles, sessions, plugins, chat and enabled plugin commands. |
 
-In `greenhouse.config.ts`, set `clients: { web: 'universal' }` to serve the universal client at
-`/`. Classic stays at `/classic/`, including administration. The default is `web: 'classic'`.
+`greenhouse.config.ts` `clients.web` defaults to `'universal'`: the universal client serves `/`, including
+the account activation, MCP OAuth consent, connector sign-in return and Feishu/WeCom sign-in pages that
+server links point at. Classic stays at `/classic/`, including administration; `web: 'classic'` puts it
+back at `/`.
 `pnpm dev` serves classic through Vite; it does not switch the development UI to Expo.
 There is no browser extension.
 

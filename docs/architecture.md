@@ -67,8 +67,10 @@ flowchart TB
 
 ## 客户端与托管
 
-Classic Web 在本候选版默认占据 `/`，两种托管模式都保留 `/classic/`。配置
-`clients.web: 'universal'` 后，根路径服务 Expo 导出的通用客户端，管理后台仍可从 classic 打开。
+默认 `clients.web: 'universal'`：根路径服务 Expo 导出的通用客户端，两种托管模式都保留
+`/classic/`，管理后台仍可从 classic 打开；配置 `'classic'` 可让 Classic Web 继续占据 `/`。
+服务端发出的入口链接（邀请/重置密码邮件、MCP OAuth 授权页、连接器与飞书/企微回跳）一律指向
+通用客户端路由（`packages/types/src/client-routes.ts`），一次性凭证放在 URL 片段里。
 `pnpm dev` 使用 Vite 开发 classic；`pnpm web:build` 与 `pnpm app:build` 分别构建两套静态产物。
 Docker 使用独立构建阶段安装 Expo 自己的锁文件，运行镜像由 API 统一托管两套客户端。
 

@@ -8,7 +8,7 @@ import type { Handler } from 'hono';
  * WeCom identity binding — /api/wecom/oauth
  *
  * GET /api/wecom/oauth/start     — 起授权，返回扫码页 URL（需 Bearer）
- * GET /api/wecom/oauth/callback  — 企微把浏览器重定向回来，落库后 302 回设置页（公开）
+ * GET /api/wecom/oauth/callback  — 企微把浏览器重定向回来，落库后 302 回客户端绑定结果页 /bindings（公开）
  * GET /api/wecom/binding         — 当前用户的绑定状态（需 Bearer）
  * DELETE /api/wecom/binding      — 解绑（需 Bearer）
  *
@@ -27,6 +27,7 @@ import type { Handler } from 'hono';
  */
 
 import crypto from 'node:crypto';
+import { CLIENT_ROUTES, clientRouteUrl } from '@greenhouse/types/client-routes';
 import { getDb } from '@greenhouse/api/extension-kit';
 import { logger } from '@greenhouse/api/extension-kit';
 import { toErrorMessage } from '@greenhouse/api/extension-kit';
@@ -44,9 +45,10 @@ export const WECOM_PROVIDER = 'wecom';
 
 const STATE_TTL_MS = 10 * 60 * 1000;
 
+/** The client's binding landing (`?wecom=ok|error&reason=`); it shows the result and where the binding lives. */
 function settingsRedirect(reqUrl: string, params: Record<string, string>): string {
   const base = (process.env.PUBLIC_BASE_URL || new URL(reqUrl).origin).replace(/\/$/, '');
-  return `${base}/#/settings/provider-bindings?${new URLSearchParams(params).toString()}`;
+  return clientRouteUrl(base, CLIENT_ROUTES.bindings, { query: params });
 }
 
 /**

@@ -3,7 +3,8 @@
  * as me (my key or my sign-in) are listed with my standing; tap one for connect / test /
  * disconnect. The ones that need nothing from me are listed as ready. Adding connectors (the
  * team's, or my own) happens on the web (D13). Hidden behind an EmptyState when my account has
- * no connectors (403) or the station predates them (404).
+ * no connectors (403) or the station predates them (404). In the browser, linked accounts (Feishu,
+ * WeCom) come first (src/connectors/provider-bindings.web.tsx).
  */
 
 import React, { useCallback, useMemo } from 'react';
@@ -11,6 +12,7 @@ import { RefreshControl, ScrollView, View } from 'react-native';
 import { listMyConnectors, type MyConnector } from '../../src/api/connectors';
 import { connectConnector, disconnect, testConnection } from '../../src/connectors/actions';
 import { connectorSections, STATUS_LABEL } from '../../src/connectors/model';
+import { ProviderBindings } from '../../src/connectors/provider-bindings';
 import { noAccess } from '../../src/data/access';
 import { useResource } from '../../src/data/use-resource';
 import { useT } from '../../src/lib/i18n';
@@ -56,6 +58,7 @@ export default function MyConnectorsPage() {
           <LoadingState />
         ) : (
           <ScrollView contentInsetAdjustmentBehavior="automatic">
+            <ProviderBindings />
             <EmptyState
               icon="link"
               title={noAccess(list.error) ? t('connectors.unavailable') : t('connectors.loadFailed')}
@@ -79,6 +82,7 @@ export default function MyConnectorsPage() {
         contentContainerStyle={styles.content}
         refreshControl={<RefreshControl refreshing={pull.refreshing} onRefresh={pull.onRefresh} />}
       >
+        <ProviderBindings />
         {mine.length === 0 && ready.length === 0 ? (
           <EmptyState icon="link" title={t('connectors.empty')} message={t('connectors.emptyHint')} style={styles.state} />
         ) : null}

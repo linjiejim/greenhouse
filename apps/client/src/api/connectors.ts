@@ -44,9 +44,12 @@ export const listMyConnectors = () => get<MyConnectors>('/api/me/connectors');
 export const saveConnectorKey = (id: string, key: string) =>
   put<{ ok: boolean; error: string | null; connector: MyConnector }>(`/api/me/connectors/${seg(id)}/key`, { key });
 
-/** Start my sign-in: the provider page to open in the auth session (it returns to the app). */
-export const startConnectorSignIn = (id: string) =>
-  post<{ authorize_url: string }>(`/api/me/connectors/${seg(id)}/oauth/start`, { client: 'mobile' });
+/**
+ * Start my sign-in: the provider page to open. `mobile` returns to the app's scheme (the system
+ * auth session), `web` to the browser client's `/connectors/oauth-finish`.
+ */
+export const startConnectorSignIn = (id: string, client: 'mobile' | 'web') =>
+  post<{ authorize_url: string }>(`/api/me/connectors/${seg(id)}/oauth/start`, { client });
 
 /** Finish a sign-in I started (the code + state the auth session came back with). */
 export const finishConnectorSignIn = (code: string, state: string) =>

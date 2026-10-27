@@ -208,7 +208,8 @@ describe('Feishu binding with a configured app', () => {
 
     const res = await app.request(`/oauth/callback?code=abc&state=${state}`);
     expect(res.status).toBe(302);
-    expect(res.headers.get('location')).toContain('feishu=ok');
+    // the client's binding landing, which shows the result and links to Me → Connections
+    expect(res.headers.get('location')).toBe('https://greenhouse.example.test/bindings?feishu=ok');
     expect(upsertBinding).toHaveBeenCalledTimes(1);
     expect(upsertBinding.mock.calls[0][0]).toMatchObject({
       user_id: 'user-1',
@@ -287,10 +288,13 @@ describe('Feishu scan login', () => {
     const state = await issueLoginState();
 
     const location = await callbackLocation(state);
-    expect(location.href).toContain('#/login?feishu_code=');
+    // the client's sign-in page, with the code in the fragment (never a logged query)
+    expect(location.pathname).toBe('/login');
+    expect(location.search).toBe('');
+    expect(location.hash).toMatch(/^#feishu_code=/);
     expect(location.href).not.toContain('access');
 
-    const code = new URLSearchParams(location.hash.split('?')[1]).get('feishu_code')!;
+    const code = new URLSearchParams(location.hash.slice(1)).get('feishu_code')!;
     const res = await feishuOAuthRoutes.request('/oauth/exchange', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -306,7 +310,7 @@ describe('Feishu scan login', () => {
   it('consumes the exchange code exactly once', async () => {
     identityBinding = { user_id: 'user-1' };
     const location = await callbackLocation(await issueLoginState());
-    const code = new URLSearchParams(location.hash.split('?')[1]).get('feishu_code')!;
+    const code = new URLSearchParams(location.hash.slice(1)).get('feishu_code')!;
 
     const first = await feishuOAuthRoutes.request('/oauth/exchange', {
       method: 'POST',
@@ -342,7 +346,7 @@ describe('Feishu scan login', () => {
   it('re-checks the account at exchange time — disabled between scan and exchange is refused', async () => {
     identityBinding = { user_id: 'user-1' };
     const location = await callbackLocation(await issueLoginState());
-    const code = new URLSearchParams(location.hash.split('?')[1]).get('feishu_code')!;
+    const code = new URLSearchParams(location.hash.slice(1)).get('feishu_code')!;
 
     userRows['user-1'] = { id: 'user-1', role: 'team', status: 'disabled' };
     const res = await feishuOAuthRoutes.request('/oauth/exchange', {
@@ -427,6 +431,6 @@ describe('Feishu login from the phone app', () => {
 
     const webState = await issueLoginState();
     const webFail = await feishuOAuthRoutes.request(`/oauth/callback?code=abc&state=${webState}`);
-    expect(webFail.headers.get('location')).toContain('https://greenhouse.example.test/#/login?feishu=error');
+    expect(webFail.headers.get('location')).toBe('https://greenhouse.example.test/login#feishu=error&reason=not_bound');
   });
 });

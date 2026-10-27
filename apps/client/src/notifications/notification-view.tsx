@@ -37,6 +37,7 @@ const OPEN_LABEL: Record<AppTarget['kind'], TranslationKey> = {
   chat: 'notifications.openChat',
   agent: 'notifications.openAgent',
   web: 'notifications.openWeb',
+  page: 'entry.openPage',
   external: 'notifications.openWeb',
 };
 

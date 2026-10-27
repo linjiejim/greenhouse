@@ -111,6 +111,14 @@ describe('links in content', () => {
     expect(linkTarget('relative/path', BASE)).toBeNull();
   });
 
+  it('reads the station’s plugin page links as client pages', () => {
+    expect(linkTarget('/p/reports/reports', BASE)).toEqual({ kind: 'page', href: '/p/reports/reports' });
+    expect(linkTarget(`${BASE}/p/skills/skills?x=1`, BASE)).toEqual({ kind: 'page', href: '/p/skills/skills?x=1' });
+    expect(linkTarget('https://other.example/p/skills/skills', BASE)).toMatchObject({ kind: 'external' });
+    expect(linkTarget('/p/../../api/x', BASE)).toBeNull();
+    expect(linkTarget('/activate', BASE)).toBeNull();
+  });
+
   it('builds web addresses on the station', () => {
     expect(webUrl(`${BASE}/`, '#/activity/x')).toBe(`${BASE}/#/activity/x`);
   });

@@ -1,6 +1,7 @@
 import { SHORTCUTS } from '../desktop/shortcuts';
 import { shellChrome, railChrome, secondaryChrome, syncNativePlaces, openSettings } from '../desktop/chrome';
 import { usePlaces } from './use-places';
+import { isStandaloneEntry } from '../login/entry-links';
 import { PlaceSecondaryContext } from './place-secondary.web';
 import { AccountMenu, NotificationsPopover, SearchPalette } from './desktop-tools.web';
 import { getApiBase } from '../store/stations';
@@ -147,7 +148,8 @@ export function WideShell({ children }: { children: React.ReactNode }) {
   const rail = (id: string, label: string, icon: IconName, onPress: () => void, selected = false) => (
     <RailItem key={id} id={id} label={label} icon={icon} selected={selected} width={RAIL_WIDTH} onPress={onPress} />
   );
-  const chrome = !!user && layout.wide;
+  // entry pages (activation, OAuth consent and returns) stand alone, without the rail
+  const chrome = !!user && layout.wide && !isStandaloneEntry(path);
   return (
     <ShellContext.Provider value={context}>
       <PlaceSecondaryContext.Provider value={secondaryHost}>

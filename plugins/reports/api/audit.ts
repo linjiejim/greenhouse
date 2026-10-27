@@ -1,6 +1,7 @@
 import { reportsServices } from './services.js';
 import { canViewTemplate } from './templates.js';
 import type { HydrateContext, ActivityAuditRow } from '@greenhouse/api/extension-kit';
+import { pluginPagePath } from '@greenhouse/types/client-routes';
 import type { ReportTemplateRow } from './schema.js';
 /**
  * Report template changes in the platform audit — so the Activity log says
@@ -99,7 +100,7 @@ export async function reportTemplateTarget(
   row: ActivityAuditRow,
   summary: Record<string, unknown>,
 ) {
-  const url = '#/skillhub?tab=reports';
+  const url = pluginPagePath('reports', 'reports');
   try {
     const live = row.record_id ? await reportsServices(ctx.db).reportTemplates.get(row.record_id) : null;
     if (live)

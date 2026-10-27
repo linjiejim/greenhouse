@@ -12,6 +12,7 @@ import { toErrorMessage } from '@greenhouse/utils/error';
 import { escapeHtml } from '@greenhouse/utils/html';
 import { getProductName } from '@greenhouse/utils/brand';
 import type { PlatformAuditEvent } from '@greenhouse/platform-kernel';
+import { CLIENT_ROUTES, clientRouteUrl } from '@greenhouse/types/client-routes';
 
 import { accountLinkTransport } from '../notifications/transports.js';
 import { chatRunRegistry } from '../chat/runs.js';
@@ -53,7 +54,8 @@ export function getPasswordLinkCapability(): PasswordLinkCapability {
 function passwordLinkUrl(token: string): string {
   const base = resolvePublicBaseUrl();
   if (!base.ok) throw new Error(`Password links unavailable: ${base.reason}`);
-  return `${base.baseUrl}/#/activate?token=${encodeURIComponent(token)}`;
+  // The token rides in the fragment: it never reaches a server log or a Referer header.
+  return clientRouteUrl(base.baseUrl, CLIENT_ROUTES.activate, { fragment: { token } });
 }
 
 export function maskEmail(email: string): string {

@@ -65,10 +65,10 @@ describe('account password-link delivery', () => {
     );
 
     const message = mocks.send.mock.calls[0]?.[2] as { body_text: string; body_html: string };
-    expect(message.body_text).toContain(`https://greenhouse.example.com/#/activate?token=${token}`);
-    expect(message.body_text).not.toContain(`greenhouse.example.com/?token=${token}`);
+    expect(message.body_text).toContain(`https://greenhouse.example.com/activate#token=${token}`);
+    expect(message.body_text).not.toContain(`?token=${token}`);
     expect(message.body_text).toContain('can only set your password');
-    expect(message.body_html).toContain('#/activate?token=');
+    expect(message.body_html).toContain('/activate#token=');
   });
 
   it('reveals only a small part of the mailbox local name', () => {

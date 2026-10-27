@@ -28,6 +28,8 @@ export type AppTarget =
   | { kind: 'agent' }
   /** A page of this station's web app (no screen here yet): `hash` starts with `#/`. */
   | { kind: 'web'; hash: string }
+  /** A plugin page of this client (`/p/<plugin>/<page>`), as station links name them now. */
+  | { kind: 'page'; href: string }
   | { kind: 'external'; url: string };
 
 /** A slug from route segments (a slug may hold `/`; a trailing `edit` is the web's editor), or null. */
@@ -111,6 +113,7 @@ export function parseHashRoute(hash: string): AppTarget | null {
 export function linkTarget(href: string, stationBase: string): AppTarget | null {
   const value = href.trim();
   if (value.startsWith('#/')) return parseHashRoute(value);
+  if (PLUGIN_PAGE.test(value)) return { kind: 'page', href: value };
   let url: URL;
   try {
     url = new URL(value);
@@ -125,8 +128,13 @@ export function linkTarget(href: string, stationBase: string): AppTarget | null 
     station = null;
   }
   if (station && url.origin === station.origin && url.hash.startsWith('#/')) return parseHashRoute(url.hash);
+  if (station && url.origin === station.origin && PLUGIN_PAGE.test(url.pathname + url.search))
+    return { kind: 'page', href: url.pathname + url.search };
   return { kind: 'external', url: url.toString() };
 }
+
+/** `/p/<plugin>/<page>` with an optional query: the only station paths read as client pages. */
+const PLUGIN_PAGE = /^\/p\/[A-Za-z0-9_-]+\/[A-Za-z0-9_-]+(?:\?[^#]*)?$/;
 
 /** The web address of a station page (`#/…`), for the in-app Safari view. */
 export function webUrl(stationBase: string, hash: string): string {

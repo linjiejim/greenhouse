@@ -166,7 +166,8 @@ describe('WeCom OAuth with a configured app', () => {
 
     const res = await app.request(`/oauth/callback?code=abc&state=${state}`);
     expect(res.status).toBe(302);
-    expect(res.headers.get('location')).toContain('wecom=ok');
+    // the client's binding landing, which shows the result and links to Me → Connections
+    expect(res.headers.get('location')).toBe('https://greenhouse.example.test/bindings?wecom=ok');
     expect(upsertBinding).toHaveBeenCalledTimes(1);
     expect(upsertBinding.mock.calls[0][0]).toMatchObject({
       user_id: 'user-1',

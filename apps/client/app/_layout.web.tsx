@@ -1,4 +1,3 @@
-import { DEFAULT_API_BASE } from '../src/config';
 import '../src/plugins/store';
 import { clearHandoffs } from '../src/lib/handoff';
 /**
@@ -15,6 +14,8 @@ import { clearHandoffs } from '../src/lib/handoff';
  *  - `notifications`, `conversations`, `move`, `task-form`, `tables/new-record`, `sheets/stations`, `sheets/station-add`  sheets
  *  - `peek/*`, `table`   full-screen viewers for rich blocks (html preview, diagram, table)
  *  - `login`             full screen, shown when signed out
+ *  - `activate`, `oauth-consent`, `connectors/oauth-finish`, `bindings`  entry pages server links
+ *                        open (src/shared/client-routes.ts); they stand alone, without the rail
  *
  * Presentation (push / sheet / modal) is decided here, because it must be known before a screen
  * mounts; titles and toolbar buttons are declared by each screen with `Stack.Screen` /
@@ -23,8 +24,9 @@ import { clearHandoffs } from '../src/lib/handoff';
  * Deep links and push taps may land on any route at cold start: `initialRouteName` anchors the
  * root stack on the tabs, so a page / sheet / modal always has home underneath.
  *
- * Auth gate: signed out on any route but /login and the stations sheet it opens → everything
- * above the root is dismissed, then /login replaces it; signed in on /login → home. A station
+ * Auth gate: signed out on any route but /login, /activate and the stations sheet → everything
+ * above the root is dismissed, then /login replaces it (the route is kept and opened after
+ * sign-in); signed in on /login, or just activated on /activate → home. A station
  * that speaks another API (src/api/compat.ts) shows why — the server needs updating, or it is
  * not a server this app supports — with the way to another station, never a white screen.
  *
@@ -35,11 +37,12 @@ import 'react-native-gesture-handler';
 import '../src/shell/client.css';
 import { ClientShell } from '../src/desktop/client-shell';
 import { mapLegacyLink } from '../src/shell/legacy-links';
+import { captureEntry, legacyConsent, takeActivated } from '../src/login/entry-links';
 
 import React, { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { Keyboard, Platform, View } from 'react-native';
 import { useFonts } from 'expo-font';
-import { Stack, useRouter, useSegments } from 'expo-router';
+import { Stack, usePathname, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
@@ -70,15 +73,29 @@ import nunitoMedium from '../assets/fonts/Nunito-Medium.ttf';
 import nunitoSemiBold from '../assets/fonts/Nunito-SemiBold.ttf';
 import nunitoBold from '../assets/fonts/Nunito-Bold.ttf';
 
+/** Routes a signed-out member may be on: the login page, the stations sheet it opens, account activation. */
+const SIGNED_OUT_ROUTES = new Set(['login', 'sheets/stations', 'sheets/station-add', 'activate']);
+
+const pathOf = (route: string) => route.split(/[?#]/, 1)[0]!;
+
+// Before routing: an old classic link (`#/…`, `/?oauth_authorize=1`) becomes its client route, an
+// entry route's secret fragment is held back (src/login/entry-links.ts), and the route is kept to
+// open after sign-in (or right away, when it is open to everyone and the router started elsewhere).
 let pendingRoute: string | null = null;
+// The router parsed the address before this module ran; it keeps the fragment as the `#` param.
+let fragmentToForget = false;
+/** A route open to everyone that the gate sent the router to and that has not arrived yet. */
+let opening: string | null = null;
 if (typeof window !== 'undefined') {
-  const mapped = mapLegacyLink(window.location.hash);
-  if (mapped?.startsWith('/classic/')) window.location.replace(new URL(mapped, DEFAULT_API_BASE).href);
-  else if (mapped) {
-    pendingRoute = mapped;
-    window.history.replaceState(null, '', mapped);
-  } else if (window.location.pathname !== '/login' && window.location.pathname !== '/')
-    pendingRoute = window.location.pathname + window.location.search;
+  const { pathname, search, hash } = window.location;
+  const current = pathname + search + hash;
+  const visible = captureEntry(mapLegacyLink(hash) ?? legacyConsent(pathname, search) ?? current);
+  if (visible !== current) {
+    window.history.replaceState(null, '', visible);
+    fragmentToForget = hash !== '';
+  }
+  const target = visible.split('#', 1)[0]!;
+  if (pathOf(target) !== '/') pendingRoute = target;
 }
 let handoffIdentity = '';
 const followHandoffs = () => {
@@ -93,9 +110,6 @@ useAuth.subscribe(followHandoffs);
 useStations.subscribe(followHandoffs);
 
 export const unstable_settings = { initialRouteName: '(drawer)' };
-
-/** Routes a signed-out member may be on: the login page and the stations sheet it opens. */
-const SIGNED_OUT_ROUTES = new Set(['login', 'sheets/stations', 'sheets/station-add']);
 
 export default function RootLayout() {
   const [fontsLoaded, fontError] = useFonts({
@@ -115,6 +129,7 @@ export default function RootLayout() {
   const logout = useAuth((s) => s.logout);
   const router = useRouter();
   const segments = useSegments();
+  const pathname = usePathname();
 
   const hydratePrefs = usePrefs((s) => s.hydrate);
 
@@ -149,18 +164,38 @@ export default function RootLayout() {
   // Redirect based on auth state once bootstrap resolves.
   useEffect(() => {
     if (!routesReady || mismatch) return;
+    if (fragmentToForget) {
+      // a held secret (or an old classic route) must not come back into the address bar
+      fragmentToForget = false;
+      router.setParams({ '#': '' } as never);
+    }
+    // the router is on its way to a route open to everyone: let it arrive first
+    if (opening && pathOf(opening) !== pathname) return;
+    opening = null;
     const inAuthGroup = segments[0] === 'login';
-    if (!user && !SIGNED_OUT_ROUTES.has(segments.join('/'))) {
+    // a finished activation signs the new member in on its own page; then they go home
+    const activated = segments[0] === 'activate' && !!user && takeActivated();
+    // A pending route already on screen is not opened again: that would remount it, and an entry
+    // page would lose the parameters it took on its first mount.
+    const onScreen = !!pendingRoute && pathOf(pendingRoute) === pathname;
+    if (!user && pendingRoute && SIGNED_OUT_ROUTES.has(pathOf(pendingRoute).slice(1))) {
+      const target = pendingRoute;
+      pendingRoute = null;
+      if (!onScreen) {
+        opening = target;
+        router.replace(target as never);
+      }
+    } else if (!user && !SIGNED_OUT_ROUTES.has(segments.join('/'))) {
       // drop pages / sheets stacked over home first, or they'd stay mounted
       // under the login page (and come back after the next sign-in)
       if (router.canDismiss()) router.dismissAll();
       router.replace('/login');
-    } else if (user && (inAuthGroup || pendingRoute)) {
+    } else if (user && (inAuthGroup || pendingRoute || activated)) {
       const target = pendingRoute;
       pendingRoute = null;
-      router.replace((target || '/') as never);
+      if (!onScreen || inAuthGroup || activated) router.replace((target || '/') as never);
     }
-  }, [routesReady, mismatch, user, segments, router]);
+  }, [routesReady, mismatch, user, segments, pathname, router]);
 
   // The app speaks the account's language (src/settings/account-language.ts) and reads at its
   // text size (src/settings/text-size.ts); messages written offline go once the station answers.
@@ -193,6 +228,12 @@ export default function RootLayout() {
                   {/* the tabs are the stack's root: never popped by the back gesture */}
                   <Stack.Screen name="(drawer)" options={{ title: t('nav.home'), gestureEnabled: false }} />
                   <Stack.Screen name="login" options={{ animation: 'fade', gestureEnabled: false }} />
+
+                  {/* ── entry pages a browser lands on from mail, OAuth and IM (src/login/entry-links.ts) ── */}
+                  <Stack.Screen name="activate" options={{ animation: 'fade', gestureEnabled: false }} />
+                  <Stack.Screen name="oauth-consent" options={{ animation: 'fade', gestureEnabled: false }} />
+                  <Stack.Screen name="connectors/oauth-finish" options={{ animation: 'fade', gestureEnabled: false }} />
+                  <Stack.Screen name="bindings" options={{ animation: 'fade', gestureEnabled: false }} />
 
                   {/* ── object sheets (openObject): documents and files read full height ── */}
                   <Stack.Screen name="sheet/conversation" options={sheetScreen([1], { header: true })} />

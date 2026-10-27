@@ -229,7 +229,7 @@ describe('report templates: activity log', () => {
       source: 'person',
       module: 'skills',
       actor: { id: alice.id },
-      target: { id: template.id, label: `${name} v2`, url: '#/skillhub?tab=reports' },
+      target: { id: template.id, label: `${name} v2`, url: '/p/reports/reports' },
     });
     // A member sees only their own changes.
     expect(await activity(bob, 'person')).toEqual([]);
