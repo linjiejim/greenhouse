@@ -207,12 +207,19 @@
 - Trusted plugin frames use `WebFrame` with a real origin and the plugin bridge; check both source window and exact origin. They receive only `/api/ext-ui/token` credentials (404 means an empty token). Chat/document previews retain their opaque sandbox and never receive credentials.
 - Real-origin plugin frames permit scripts and same-origin access for the protocol; they have the same code trust as their installed plugin. Do not use that bridge for arbitrary user HTML.
 - Embed navigation accepts client routes; `sendPrompt` opens a chat draft and never submits it. Theme changes preserve the frame, token refresh is identity-bound, and late frame replies are discarded.
-- Browser settings use the existing settings routes in a viewport layer with a persistent column of personal settings only (preferences, account, agents, connections, station); apps live in the rail. The column owns its footer actions and the window owns close (`SettingsWindowContext`). Administration opens `/classic/#/administration` in a separate tab.
+- Browser settings use the existing settings routes in a viewport layer with a persistent column of personal settings only (preferences, account, agents, connections, station); apps live in the rail. The column owns its footer actions and the window owns close (`SettingsWindowContext`). Administration is the Admin place below, never a classic tab.
 - The wide rail lists core places, a divider, then every app entry (no More menu); `usePlaces()` is the one source for the rail, ⌘K go-to commands and the native Go menu. Rail entries are `ui/rail-item.web.tsx` with short `client.rail*` labels.
 - App icons come from `pluginIcon()` (src/plugins/icons.ts): the manifest's lucide name mapped to an `IconName`, then the official screen icon, then `apps`. Add a lucide mapping (and an `IconName` with `scripts/android-icons.py`) rather than drawing `open` for apps.
 - Places use `PlaceEmpty` with `title` (icon, line, create action) for "nothing yet" and without it only for empty search/filter results. Toolbar buttons are icons or words, never text glyphs.
 - One-page apps render no secondary column (an empty `PlaceSecondary` host is hidden); plugin read surfaces without a screen use `resource-screen.web.tsx` (rows or facts from `resource-model.ts`).
 - `tests/client-e2e/p3.e2e.ts` and `plugins.e2e.ts` cover places and declarative surfaces; the latter serves its static embed fixture through Playwright routing. Restricted runners collect these specs; the reviewer runs Chromium and generates the design/plugin screenshots.
+
+## Admin place
+
+- `/admin` (src/admin) is super only and wide only: the rail foot, ⌘K and the desktop Go menu open it through `usePlaces().admin`; phones and other roles get a notice, native routes a phone screen.
+- The secondary column lists core sections (src/admin/sections.ts) and the station manifest's pages with `parent: 'administration'`: settings forms and native screens a plugin owns in `src/plugins/<id>/admin.web.tsx`, indexed by `src/plugins/admin-screens.web.ts`. Core admin code never names a plugin.
+- Sections are routes (`/admin/<section>`, `/admin/p/<plugin>/<page>`); classic `#/administration/<key>` links map to `/admin/<key>`, and an unknown key opens the plugin section whose `fallback_url` names it.
+- Sections use src/admin/kit.web.tsx (AdminPage on Place, Tabs, Card, Badge, Switch, FlagSwitch, Field, Callout, fixed-size AdminDialog), `useWrite` for identity-bound writes, styles only in src/admin/admin.css, and copy only in the `admin` catalog block. Rules that can be pure live in `*-model.ts` with tests.
 
 ## Client polish
 

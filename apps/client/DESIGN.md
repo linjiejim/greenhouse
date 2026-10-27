@@ -130,6 +130,12 @@
 - The visible main pane remains in the accessibility tree beside a wide inspector; phone sheets keep their modal presentation.
 - Design captures show loaded content after appearance changes; embedded sample pages apply the supplied foreground and background tokens.
 
+## Admin place
+
+- Administration is a place, not a settings page: grouped sections in the secondary column (members, usage & spend, workspace, integrations, then plugins), the chosen section in the main column with a 52 px bar, optional tabs or a filter toolbar, and 32 px data-grid rows.
+- Lists are tables; a row opens its edit dialog; per-row actions are words or icons at the row end. Settings read as label/control rows in cards with a sticky save bar.
+- Every popup is a centered fixed-size dialog (sm for one value or a confirm, md for a form, lg for lists); destructive actions confirm first; secrets show once in a callout with Copy.
+
 ## macOS host (C6)
 
 - Only the desktop bridge reserves 52 px above the rail for inset traffic lights; the browser rail uses its normal top spacing.
