@@ -70,7 +70,7 @@ const CORE_FEATURE_POINTS: readonly FeaturePointDef[] = [
   },
 ];
 
-/** Core points followed by the points of every active extension (see extensions/index.ts). */
+/** Core points followed by the points of every active extension (see plugin-host/index.ts). */
 export const FEATURE_POINTS: readonly FeaturePointDef[] = [...CORE_FEATURE_POINTS, ...fromExtensions('featurePoints')];
 
 /**

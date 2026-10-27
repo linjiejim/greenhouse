@@ -50,7 +50,8 @@ afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
-describe('plugins:sync', () => {
+// Each case spawns node + tsx for every sync call; under a loaded machine 5s is not enough.
+describe('plugins:sync', { timeout: 20_000 }, () => {
   it('assembles paths and workspace names in config order, without executing the api half', () => {
     const root = fixture();
     expect(() => sync(root, true)).toThrow(/missing or stale/);

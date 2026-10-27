@@ -1,6 +1,6 @@
 # Email 数据表
 
-源代码：`api/schema.ts`；服务：`api/db-service.ts`（`db.extensions.email`）。迁移：`migrations/0001_adopt.sql`，对已有 3.0 表原地认领，停用不删表。
+源代码：`api/schema.ts`；服务：`api/db-service.ts`（`db.extensions.email`）。迁移：`migrations/0001_adopt.sql` 是本插件基线：新装在插件启用时建表，从 3.x 升级的库原地认领已有表；停用不删表。
 
 | 表 | 主键 / 唯一 | 用途与关键列 |
 |---|---|---|

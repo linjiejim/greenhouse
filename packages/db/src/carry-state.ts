@@ -1,13 +1,14 @@
 /**
- * The carry marker: one row `migrate-from-1x` writes into the target before it
- * empties anything (`completed_at` null) and completes as its very last step.
- * It lives in the `drizzle` schema next to the migration journal, so it is not
- * a public table: never emptied, carried or listed as part of the data model.
+ * The carry marker: one row the 3.x `migrate-from-1x` wrote into its target
+ * before emptying anything (`completed_at` null) and completed as its very last
+ * step. 4.0 no longer carries 1.x databases; it only reads the marker of a
+ * database that was carried, and never writes or removes it. It lives in the
+ * `drizzle` schema next to the migration journal, so it is not a public table.
  * A database never carried has no marker.
  *
- * Two readers: one over a raw postgres.js connection (migrate, carry) and one
- * over a drizzle `Db` (the extension migration lane, which runs inside the
- * provider and must see the same transaction).
+ * Two readers: one over a raw postgres.js connection (migrate) and one over a
+ * drizzle `Db` (the extension migration lane, which runs inside the provider and
+ * must see the same transaction).
  */
 import type postgres from 'postgres';
 import { sql as dsql } from 'drizzle-orm';

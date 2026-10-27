@@ -60,8 +60,9 @@ These are operator instructions, not actions performed by this documentation tas
 
 1. Review/land the complete candidate, including version targets, migration ownership and the
    release notes. Confirm all required gates plus actual classic/universal browser acceptance;
-   run the seeded screenshot tour on a host where Chromium launches. Exercise the 3.x upgrade
-   on a backup copy with the intended plugin list.
+   run the seeded screenshot tour on a host where Chromium launches. Exercise the in-place 3.x
+   upgrade (3.0.2 recommended) on a backup copy with the intended plugin list; 1.x/2.x databases
+   must reach 3.0.2 first.
 2. Review `.github/workflows/mobile.yml` **before landing mobile version changes on main**.
    It can deploy to the production EAS branch on a main push when EXPO_TOKEN exists. Product
    rc tagging does not gate that lane; pause/configure it operationally if store/OTA publication
@@ -130,8 +131,8 @@ Signing secrets remain outside the repository; do not infer permission to publis
   tests, HTTP security, zero-package core boot, mobile typecheck/lint and web builds.
 - Run actual classic/plugin and universal Playwright in a Chromium-capable environment;
   collect-only results are insufficient. Regenerate public captures with real seeded UI.
-- Verify 3.x data preservation and explicit retained plugin enablement; migrations run before
-  API startup. Backups use scripts/backup-db.sh; do not use push on persistent/shared DBs.
+- Verify in-place 3.x data preservation (3.0.2 → 4.0 bridge), the schema-equivalence test and
+  explicit retained plugin enablement; migrations run before API startup. Backups use scripts/backup-db.sh; do not use push on persistent/shared DBs.
 - Keep the prior image/config and DB backup for rollback; code downgrade is not reverse migration.
 - Require repository branch protections and squash merges; upstream workflows remain gated to
   the upstream repository, forks own fork-*.yml.

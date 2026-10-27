@@ -173,16 +173,15 @@ CSP 允许同源和精确的 `tauri://localhost` 父级；桌面内嵌页没有�
 | `apps/client/` | 独立 Expo 工作区；原生/网页适配、`src/plugins/<id>/` 与 vendored 协议 |
 | `apps/desktop/` | Tauri macOS 壳与构建脚本 |
 | `packages/agent-core/`、`packages/platform-kernel/` | 模型循环与平台权限原语 |
-| `packages/db/` | 核心 schema、服务、迁移与 1.x carry |
+| `packages/db/` | 核心 schema、服务与迁移链（`migrations/`，3.x 链归档在 `migrations/archive-3x/`） |
 | `packages/types/`、`packages/utils/` | 共享协议与基础函数 |
 | `packages/crud/`、`packages/ui/`、`packages/ui-tokens/` | CRUD、主题/共享 UI 与内嵌桥 |
 | `packages/knowledge-editor/` | 共享编辑器 schema 与 Markdown 转换 |
 | `plugins/<id>/` | 纯清单、API/web、业务 schema/service、迁移、测试及可选静态 UI |
-| `drizzle/` | 核心不可变基线与后续迁移；插件 DDL 不加入这里 |
 
 同一个库内，核心 schema 管 49 张表，十个官方数据插件管 24 张表；Example 表与插件迁移账本
-另计。不可变的 3.0 基线仍会在全新库建出原有 73 张表，即使禁用业务插件也可能留下空表。
-4.0 的归属迁移只推进快照，插件通过幂等 adoption 认领原表，不搬家、不删行。
+另计。全新库只建 49 张核心表，插件启用时由自己的迁移车道建表；3.x 库由 `pnpm db:migrate`
+原地升级（跑完归档链、记下 4.0 基线），插件通过幂等 adoption 认领原表，不搬家、不删行。
 
 插件可以引用核心表，核心不得新增指向插件表的外键。通知类型、文件关联类型、目录 scope、
 运行类型等开放判别值由启用注册表校验；历史读取不因停用而丢失。

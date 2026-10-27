@@ -10,12 +10,12 @@
 
 ### 版本识别与拒绝
 
-- `migrate.ts` 的 `detectDatabaseGeneration()` 把库分成 empty / v3 / carry_incomplete / v1 / v2 / unknown：有 `users` + `sessions` 无 `conversations` 或命中 `drizzle/archive-1x` 的迁移 hash = 1.x；有 `members` 无 `users` = 2.x。
-- `migrate-from-1x` 清空目标前写 `drizzle.greenhouse_carry` 标记（`completed_at` 为空），最后一步才置完成；标记未完成的库 = carry_incomplete，`db:migrate` 和 API 启动都拒绝。从没搬过的新库没有标记，正常启动。开始写之后的失败抛 `CarryFailedError`（CLI「Carry failed:」退出 3），写之前的拒绝是 `CarryError`（「Refusing:」退出 2）。
-- `pnpm db:migrate` 只接受空库和 3.0 库；1.x、2.x、有表但不是 Greenhouse 的库一律拒绝（退出码 2），提示语来自 `refusalFor()`。
-- API 启动时 `initSchema()` 同样拒绝 1.x / 2.x 库，未迁移的空库报「先跑 `pnpm db:migrate`」；它只检查，不建任何东西。
-- 1.x 库永不原地升级：建新空库后跑 `migrate-from-1x`。2.x 库 3.0 既不能跑也不能搬。
-- run-dev 的沙箱库在主库仍是 1.x 时建空库而不克隆；要数据就对沙箱库跑 `pnpm migrate-from-1x`。
+- `migrate.ts` 的 `detectDatabaseGeneration()` 把库分成 empty / v4 / v3 / unrecorded / carry_incomplete / v1 / v2 / unknown：命中 4.0 链的 hash = v4；只命中 `migrations/archive-3x/` 的 hash = v3；有 `users` + `sessions` 无 `conversations` = 1.x；有 `members` 无 `users` = 2.x。
+- `pnpm db:migrate` 接受空库、3.x 库（原地桥接，见「Schema 迁移」）和 4.0 库；1.x、2.x、半途搬家、有 Greenhouse 表却没有可识别迁移记录、有表但不是 Greenhouse 的库一律拒绝（退出码 2），提示语来自 `refusalFor()`。
+- 1.x / 2.x 库的出路只有一条：先升到 3.0.2，再升 4.0。4.0 没有 1.x 搬家命令。
+- `drizzle.greenhouse_carry` 是 3.x `migrate-from-1x` 留下的标记：4.0 只读不写不删；`completed_at` 为空 = carry_incomplete，`db:migrate` 和启动都拒绝。
+- API 启动时 `initSchema()` 拒绝 1.x / 2.x / 半途搬家的库和还没桥接的 3.x 库，未迁移的空库报「先跑 `pnpm db:migrate`」；它只检查，不建任何东西。
+- run-dev 的沙箱库在主库仍是 1.x 时建空库而不克隆；3.x 主库克隆后由 `db:migrate` 原地升级。
 
 ### 数据库测试隔离
 
@@ -27,7 +27,7 @@
 - 只有多连接可见性、DDL、连接级锁 / 竞态才用 `*.db-commit.test.ts(x)`，文件头写 `@db-commit-reason`；该层串行，用每次唯一的业务键、最小定向清理、不依赖全局计数，禁止 `resetSchema()`。
 - project 启动时的全库清理是唯一共享 reset；platform manifests、protected roles、baseline policies 在 global setup 提交一次作为不可变基线。
 - 测试用户在自己的事务里建，经 `tests/helpers/internal-user.ts` 绑 baseline role；要收窄某个成员的权限用 `tests/helpers/restricted-role.ts` 的 `moveToRestrictedRole()`（复制 team 角色再删能力或换实体策略），没有个人级覆盖可用。
-- `syncLegacyRoleBinding()` 只给验证角色切换的测试用，不作为新用户 fixture。
+- `syncLegacyRoleBinding()` 是 admin / CLI 建号与改角色时把 `users.role` 同步成受保护角色绑定的入口；DB 测试的新用户用 `tests/helpers/internal-user.ts` 直接绑 baseline role，不调它。
 - `TEST_DATABASE_URL` 必须是本机、库名含 `test` / `e2e` 的一次性库；多 worktree 各用 `greenhouse_test_<slug>`；本地不设直接报错（只有 CI 回退 `localhost:5432/greenhouse_test`）。
 
 ### Service 模式
@@ -45,7 +45,7 @@
 
 - schema 在 `schema/`（每个域一个文件，文件头列出本域的表），经 `schema/index.ts` 导出；service 在 `services/`。
 - 驱动 postgres.js（`drizzle-orm/postgres-js`）；复杂查询（FTS、聚合 + JOIN）用 `sql` 模板。
-- 配置在仓库根 `drizzle.config.ts`。
+- 配置在仓库根 `drizzle.config.ts`，产物在 `packages/db/migrations/`。
 
 ### Schema 定义
 
@@ -89,45 +89,33 @@
 
 ### Schema 迁移
 
-- 配置与产物在仓库根：`drizzle.config.ts` + `drizzle/`，命令必须在仓库根运行（`pnpm --filter @greenhouse/db exec drizzle-kit ...` 会解析错路径）。
-- 迁移链从 `drizzle/0000_v3_baseline.sql` 起；`drizzle/archive-1x/` 是 1.x 的 0000–0013，只读，只用于识别 1.x 库，不改不删。
+- 配置在仓库根 `drizzle.config.ts`，产物在 `packages/db/migrations/`；drizzle-kit 命令在仓库根运行（`pnpm --filter @greenhouse/db exec drizzle-kit ...` 会解析错路径）。
+- 4.0 链从 `migrations/0000_v4_baseline.sql`（49 张核心表）起，不可改；`migrations/archive-3x/` 是 3.x 的 0000–0009，只读，字节不变（`core-migrations.test.ts` 钉住 hash）。
+- 3.x → 4.0 原地桥接在 `applyAllMigrations` 里、同一把 advisory 锁下、drizzle 之前：一个事务里跑完归档链剩下的条目，执行 `V3_TO_V4_DELTA`（现为空，只能幂等、不删表不删数据），再把 4.0 baseline 记为已应用。
+- 桥接不碰插件表、`extension_migrations`（含私有 overlay 的车道行）和 `drizzle.greenhouse_carry`；3.x 基线建的插件表由各插件车道原地认领。
+- `tests/db/schema-equivalence.db-commit.test.ts` 要求「新装 4.0 + 全部官方插件」与「3.x 任一前缀桥接后」的 catalog 一致；改 4.0 schema 或插件车道时它必须继续通过，有意的差异写进 `INTENTIONAL_DIFFERENCES`。
 - 改 schema：改 `schema/*.ts` → 仓库根 `pnpm drizzle-kit generate`（相对 baseline snapshot 生成 `0001_*`…）→ review SQL → 连代码一起提交 → `pnpm db:migrate`。
-- 应用迁移只用 `pnpm db:migrate`：它加 advisory 锁、先做版本识别再跑 drizzle 迁移器。不直接跑 `drizzle-kit migrate`。
+- 应用迁移只用 `pnpm db:migrate`：它加 advisory 锁、先做版本识别、必要时桥接，再跑 drizzle 迁移器。不直接跑 `drizzle-kit migrate`。
 - 迁移文件是 schema 的唯一事实源；有数据或共享的库只 migrate 不 push，`push` 只用于用完即弃的 scratch 库。
 - CI 测试库用 `pnpm db:migrate` 建，每个 PR 都跑一遍迁移链。
 - review 生成的 SQL 时盯：类型转换缺 `USING`；给有数据的表加 `NOT NULL` 没 `DEFAULT`；改列名被生成成 drop + add（手改为 `RENAME`）；需要回填的自己补 SQL。
 - 不写假设表已存在的迁移；建表让 `generate` 生成。
-- `drizzle/meta/_journal.json` 每个条目都要有对应 `NNNN_snapshot.json`；手写 SQL 迁移也要补快照。`./node_modules/.bin/drizzle-kit check` 校验链。
-- 新增 baseline 之后的迁移不得改 `0000_v3_baseline.sql`。
-- `pnpm cli db baseline` 只用于收编已有表但没有迁移记录的库（先 `--dry-run`）。
-- 扩展的表走扩展迁移车道（`extension-migrations.ts`、`extension_migrations` 表），不进 core `drizzle/`。
+- `migrations/meta/_journal.json` 每个条目都要有对应 `NNNN_snapshot.json`；手写 SQL 迁移也要补快照。`./node_modules/.bin/drizzle-kit check` 校验链。
+- 新增 baseline 之后的迁移不得改 `0000_v4_baseline.sql`，`when` 必须晚于它。
+- `pnpm cli db baseline` 只用于收编已在 4.0 schema、但没有迁移记录的库（先 `--dry-run`）；3.x 库它拒绝，走 `db:migrate`。
+- 扩展的表走扩展迁移车道（`extension-migrations.ts`、`extension_migrations` 表），不进 core `migrations/`。
 - `pnpm db:migrate`（`applyAllMigrations`）在同一把 advisory 锁下先跑核心链、再跑已启用扩展的车道；API 启动再跑一次车道（幂等）。
-- 扩展迁移文件头 `-- greenhouse:core-generation 1x` 表示写给 1.x 核心表：3.0 永不执行。未搬家的库记为已满足并报 skipped；搬家库有记录就不动；搬家库里该扩展有记录却缺这一行就拒绝启动（去 1.x 补跑再搬）。
+- 扩展迁移文件头 `-- greenhouse:core-generation 1x` 表示写给 1.x 核心表：永不执行。未搬家的库记为已满足并报 skipped；搬家库（`greenhouse_carry` 已完成）有记录就不动；搬家库里该扩展有记录却缺这一行就拒绝启动。
 - 标记行不计入 checksum（未标记文件的 checksum 与原来逐字节相同）；已应用的文件可以补标记。
-- 核心表名由 `coreTableNames()` 从 `drizzle/` 迁移链推出；非 1x 的扩展迁移 `CREATE TABLE` 核心表名时车道拒绝。
+- 核心表名由 `coreTableNames()` 从 4.0 链最新 snapshot 读出；非 1x 的扩展迁移 `CREATE TABLE` 核心表名时车道拒绝。
 - `pnpm cli db status` 列出核心链与每个扩展迁移的代际和状态（applied / pending / skipped / missing）。
-
-### migrate-from-1x
-
-- 命令：`pnpm cli migrate-from-1x --from <1.6 库> --to <新库> [--dry-run] [--json]`（也可 `pnpm migrate-from-1x`）；实现在 `carry/from-1x.ts` 与 `carry/extensions.ts`。
-- 只接受 1.6.x 源库（迁移到 `0013_report_templates`）；拒绝 2.x、更早的 1.x、1.x 或非 Greenhouse 的目标库、同一个库两次。
-- 源库只读，永不写入。
-- 目标库为空时先套 3.0 baseline；已有数据时先清空，所以可重复跑直到对账报告干净。`--dry-run` 不需要 `--to`，只出报告。
-- 按域逐表搬：保留原 id（serial 转十进制字符串），JSON 文本转 jsonb，日期转 date，表格配置 / 单元格 / 快照里的表 id 改成字符串，非法 JSON 换默认值并记 note。
-- 折叠：会话置顶 → `conversations.pinned_at` / `conversation_share_reads.pinned_at`；自定义 Agent 的当前版本 → `run_profiles`。
-- 合表记来源（判别列 + 报告）；serial id 可能撞车的来源加前缀：`pac_`（project_activities）、`esl_`（email_send_log）、`frc_`（tool_frictions）、`kbs_`（knowledge_base_shares）、`tbm_`（table_base_members）、`pin_`（置顶折成的 share read）。
-- 扩展表（1.x core 链没建过的 public 表，如 `crm_*` / `sellfox_*`）和 `extension_migrations` 原样复制：按源库 catalog 重建 DDL，COPY 流式搬数据，序列位置同步。
-- 扩展表与 3.0 核心表重名：`--dry-run` 写进报告（`extensionClashes`），真跑在写入前拒绝。报告的 `extensionMigrations` 按已启用扩展的车道逐文件列出代际与 3.0 的处理（carried / pending / skipped / missing）。
-- 不搬：退役表（eval、Missions、Workflows、api_clients）、已删功能（Home 工作台偏好、会话标签、用户组、文档评论 / 互链、表格表单 / 仪表盘 / 表内自动化 / 表格通知、组织、个人权限覆盖、app releases）、已结算 Run 30 天前的事件、已投递 outbox、过期凭证、限流桶、30 天前的请求日志、评测数据。每一行跳过都带原因计入报告。
-- 1.6 没有 MCP 客户端表：`mcp_connectors` 与 `mcp:<id>` 连接不搬，搬完的库从空连接器开始。
-- 加新表或改表时同步更新 carry 的映射，并用 `carry/v1-fixture.ts`（归档链 + `tests/fixtures/v1-6-seed.sql`）的测试覆盖。
 
 ### 保留期
 
 - 每日清理只在 `services/retention.ts`（`db.retention.run()`）：run_events 30 天（只删已结算 Run、且没有待投递 outbox 的事件）、run_outbox 投递后 7 天、request_log 30 天、feishu_receipts 7 天、budget_ledger 13 个月、notification_deliveries 终态后 7 天，以及过期的 refresh token、OAuth code / token、login_states、rate_limits、过期 30 天的 password_links。
 - 删除分批（每条语句 `batchSize` 行，`maxBatches` 封顶），不持长锁。
 - 调度在 `apps/api/src/upkeep/retention.ts`：启动 10 分钟后首跑、之后每天一次；20 小时内审计里已有一次就跳过；每次结果写一条 `audit_events`（`platform` / `retentionCleanup`，summary 是各表删除行数）。
-- 改窗口改 `RETENTION_POLICY`，同步 db-schema.md「保留期」与 migrate-from-1x 的跳过规则。
+- 改窗口改 `RETENTION_POLICY`，同步 db-schema.md「保留期」。
 - 其余永久事实（runs、notifications、audit_events、usage_events、budgets）没有删除 service，不加 TTL。
 
 ### users.preferences
@@ -184,7 +172,7 @@ Knowledge tables and services belong to [plugins/knowledge](../../../plugins/kno
 ### 目录、文件与共享
 
 - `files` 是存储对象的唯一登记处：drive、聊天上传 / 产出、Run 产物都在这里，用 `source` 区分；不另建文件表。
-- `chk_files_source_owner` 与 `chk_folders_scope_owner` 约束各 source / scope 的列形状；新增 source 或 scope 要同时改 CHECK。
+- `chk_files_source_owner` 约束各 source 的列形状，新增 source 要同时改它；目录 scope 不设 CHECK，由已启用的 driveScopes 注册表在写入时校验。
 - 附件关系只在 `file_links`；硬删目标对象的 service 负责删它的链接。
 - 单人分享只在 `shares`（文档、目录、文件、表格库）；不为新资源另建成员表。
 - `kb_documents.sort_order` 与 `folders.sort_order` 都是 `integer NOT NULL DEFAULT 0`：0 = 没手排过，读侧 0 排最后、其余升序、同值按名称。
@@ -203,7 +191,7 @@ Access them through its extension service bag; audit_events remains core.
 ### 运行（`db.runtime`）
 
 - 表：`runs`、`run_steps`、`run_tool_calls`、`run_interrupts`、`run_events`、`run_outbox`（`schema/runs.ts`）；service `services/runtime.ts`。只统一执行 envelope、lease / CAS、Interrupt、Event / Outbox，不取代会话转录等领域事实。
-- `kind` 里 workflow / mission / subagent / eval 只剩历史行，API 启动时 `settleRetiredRuntimeRuns` 收口遗留的活动 Run。
+- `kind` 里 workflow / mission / subagent / eval 只剩搬来的历史行（只读，遗留的活动 Run 已由 3.x 启动收为 `canceled`）。
 - Run / Step / ToolCall / Interrupt 的完整 input / output / payload / decision 永久保留，无删除 service；只有 `run_events` 与 `run_outbox` 按保留期清理。
 - `run_events` append-only；投递状态只写 `run_outbox`。
 - 每个状态 / heartbeat / claim / stale-recovery 变更在同一事务追加 Event + Outbox；Event `seq` 锁 Run 后分配。重复命令先查 `(run_id, idempotency_key)` 并校验 fingerprint。
@@ -295,36 +283,24 @@ Saved prompts remain core. Skill services are absent from DatabaseProvider.
 2. 在对应 `schema/*.ts` 用 `_columns.ts` helper 定义表、索引、CHECK，更新文件头的表清单，底部导出 Row 类型。
 3. 在 `ids.ts` 的 `ID_PREFIX` 登记前缀，service 写入时用 `newId(kind)`。
 4. 在 `services/` 写 `createXxxService(db: Db)`，在 `provider.ts` 注册，包根 `index.ts` 导出。
-5. 仓库根 `pnpm drizzle-kit generate`，review SQL；`pnpm db:migrate` 应用到本地库。
-6. 决定 migrate-from-1x 是否要搬对应 1.x 数据，改 `carry/from-1x.ts`。
-7. 高增长表在 `services/retention.ts` 定保留期。
-8. 更新 db-schema.md，写 `tests/db/*.db.test.ts`。
+5. 仓库根 `pnpm drizzle-kit generate`，review SQL；`DATABASE_URL=<本地库> pnpm db:migrate` 应用。
+6. 高增长表在 `services/retention.ts` 定保留期。
+7. 更新 db-schema.md，写 `tests/db/*.db.test.ts`；跑 `schema-equivalence.db-commit.test.ts`。
 
 ### Plugin removal
 - `extensionMigrationTables` nets current-generation migration CREATE/DROP statements plus `resetTables`; core/protected names are refused.
 - `extensionMigrations.drop` drops that set with RESTRICT and deletes only the plugin lane rows in one transaction under the migration advisory lock. The host enforces disabled state + explicit `--yes`; no schema change or new migration is needed.
 
-### Plugin adoption (4.0)
+### Plugin tables (4.0)
 
-- Memory, Feedback, Reports, Computer, Email and Feishu tables belong to their plugin schemas and service bags; they are absent from DatabaseProvider.
-- The immutable 3.0 baseline still creates them. Custom migration 0003 advances ownership only, without DDL; the latest core snapshot defines the protected core table set. Carry-from-1x still checks the historical baseline set.
-- Plugin retention contributions use `{ table, column, days }`; cleanup uses the existing bounded daily sweeper and includes per-table counts in its audit. Register owned tables in resetTables.
-
-- Email owns `email_accounts`; Feishu owns `feishu_conversations` / `feishu_receipts`; use their extension service bags. WeCom owns no tables. Generic `provider_connections` and `login_states` remain core.
-- Migration 0004 advances Email/Feishu ownership without DDL. Migration 0005 removes notification kind/channel CHECKs; `notifications.createWithStatus/createDelivery` validate against active registries. Keep the immutable baseline and stored rows unchanged.
-- Feishu receipt retention (7 days) is contributed by that plugin, never hard-coded in core cleanup.
-
-- Migration 0006 advances SkillHub/Projects ownership without DDL. Their six tables are adopted
-  by plugin lanes; current core schema has 49 tables and the complete 3.0 data set still has 73.
-- Activity cursor SQL and bounded feed scans are shared host helpers. Plugin domain-event
-  capabilities are excluded from the platform-action view through activity contributions.
-
-Migration 0007 removes closed share/link/scope/run checks; new writes validate active discriminators. Reads preserve historical plugin values. Files retain the source/ownership envelope CHECK. Register plugin drive placement validation alongside its scope.
-
-Migration 0008 opens card receipt kinds; active plugins register artifactKinds, and claims reject inactive kinds while historic receipts remain readable.
-
-Knowledge ownership advances in 0009 without DDL. The two tables and version events are absent from DatabaseProvider; shared folders/files/shares remain core. The upgrade db-commit test covers all 24 moved tables across disabled/re-enabled Knowledge.
-
+- Memory, Feedback, Reports, Computer, Email, Feishu, SkillHub, Projects, Tables and Knowledge own their tables in their plugin schemas and service bags; they are absent from DatabaseProvider.
+- The 4.0 baseline creates only the 49 core tables; each plugin's `migrations/0001_adopt.sql` is its baseline and creates its tables (`IF NOT EXISTS`) only when the plugin is enabled.
+- On a bridged 3.x database the same file adopts the tables the 3.x baseline created, without DROP, copy or data change; keep plugin lane files byte-identical once applied.
+- Email owns `email_accounts`; Feishu owns `feishu_conversations` / `feishu_receipts`; WeCom owns no tables. Generic `provider_connections`, `login_states`, `folders`, `files`, `file_links` and `shares` remain core.
+- Notification kind/channel, share/link/scope/run discriminators and card receipt kinds have no closed CHECK; writes validate against active registries and historical plugin values stay readable.
+- Plugin retention contributions use `{ table, column, days }`; cleanup uses the bounded daily sweeper and audits per-table counts. Register owned tables in resetTables. Feishu receipt retention (7 days) comes from that plugin.
+- Activity cursor SQL and bounded feed scans are shared host helpers; plugin domain-event capabilities are excluded from the platform-action view through activity contributions.
+- `tests/db/plugin-upgrade.db-commit.test.ts` covers all 24 plugin tables of a populated 3.0.2 database across the bridge and Knowledge disable/re-enable.
 
 ### SDK 2 table adapter and installation
 

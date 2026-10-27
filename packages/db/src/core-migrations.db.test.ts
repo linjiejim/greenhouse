@@ -6,13 +6,11 @@
  * existing tables — which is the failure this command exists to prevent.
  */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { resolve } from 'node:path';
 import { sql } from 'drizzle-orm';
 import { readMigrationFiles } from 'drizzle-orm/migrator';
-import { initDatabase, readCoreMigrations, _resetProvider, type DatabaseProvider } from './index.js';
+import { initDatabase, readCoreMigrations, _resetProvider, MIGRATIONS_FOLDER, type DatabaseProvider } from './index.js';
 import { TEST_DATABASE_URL } from './test-config.js';
 
-const DRIZZLE_DIR = resolve(import.meta.dirname, '..', '..', '..', 'drizzle');
 let db: DatabaseProvider;
 
 beforeEach(async () => {
@@ -26,15 +24,15 @@ afterEach(async () => {
 
 describe('core migration baseline', () => {
   it('reads the chain exactly as drizzle does', () => {
-    const ours = readCoreMigrations(DRIZZLE_DIR);
-    const theirs = readMigrationFiles({ migrationsFolder: DRIZZLE_DIR });
+    const ours = readCoreMigrations(MIGRATIONS_FOLDER);
+    const theirs = readMigrationFiles({ migrationsFolder: MIGRATIONS_FOLDER });
     expect(ours.length).toBeGreaterThan(0);
     expect(ours.map((m) => m.hash)).toEqual(theirs.map((m) => m.hash));
     expect(ours.map((m) => m.folderMillis)).toEqual(theirs.map((m) => m.folderMillis));
   });
 
   it('records the whole chain as applied, once', async () => {
-    const chain = readCoreMigrations(DRIZZLE_DIR);
+    const chain = readCoreMigrations(MIGRATIONS_FOLDER);
     // The test database is already migrated; start from an unrecorded one.
     await db.executeRaw(sql`DELETE FROM drizzle.__drizzle_migrations`);
 

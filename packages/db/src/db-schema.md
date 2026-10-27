@@ -1,12 +1,12 @@
 # 数据库结构（PostgreSQL，4.0 核心）
 
-> 事实源：`packages/db/src/schema/*.ts`（每个域一个文件，文件头写着本域的表）。迁移链从 `drizzle/0000_v3_baseline.sql` 起步；1.x 的 0000–0013 归档在 `drizzle/archive-1x/`，只用来识别 1.x 库。
+> 事实源：`packages/db/src/schema/*.ts`（每个域一个文件，文件头写着本域的表）。迁移链从 `packages/db/migrations/0000_v4_baseline.sql` 起步；3.x 的 0000–0009 归档在 `migrations/archive-3x/`，只供 3.x 库原地桥接。
 >
-> 当前完整安装共 **73 张表**：核心 schema **49 张**，十个数据插件管理 24 张表（迁移车道记账另计）。字段类型、默认值、索引以 schema 与最新 snapshot 为准；本文只写用途、关键列和关系。
+> 核心 schema **49 张表**（含 `extension_migrations`），新装只建这些；十个数据插件启用时各自建 24 张表（Example 另有 1 张）。字段类型、默认值、索引以 schema 与最新 snapshot 为准；本文只写用途、关键列和关系。
 
 ## 设计约定
 
-- 主键一律 `text`。新行用 `newId(kind)`（`ids.ts`，类型前缀 + ULID，如 `doc_01J…`）；从 1.x 搬来的行保留原 id，整数变成十进制字符串。id 是不透明键，不按形状判断任何事。
+- 主键一律 `text`。新行用 `newId(kind)`（`ids.ts`，类型前缀 + ULID，如 `doc_01J…`）；3.x 从 1.x 搬来的行保留原 id，整数是十进制字符串。id 是不透明键，不按形状判断任何事。
 - 1.x 里是 serial 的表（会话、消息、项目、任务、文档……）新旧 id 混排，`ORDER BY id` 没有时间含义；按 `created_at`（或 `seq` / `position` / `sort_order`）排序。
 - 边界（路由、工具、MCP）接受旧的数字 id：`toRowId()`（`@greenhouse/utils/id`）或 zod `z.coerce.string()` 规范成字符串。
 - JSON 一律 `jsonb NOT NULL`，默认 `{}` / `[]`（`_columns.ts` 的 `json()`）；只有「null 本身有含义」才用可空的 `jsonOrNull()`。
@@ -22,7 +22,7 @@
 
 ## 插件表归属
 
-3.0 基线仍创建这些表；4.0 核心 schema 不再管理它们。各插件以 `0001_adopt.sql` 原地认领，停用保留数据。
+4.0 核心 schema 不管理这些表：各插件的 `0001_adopt.sql` 是它的基线，插件启用时才建表（`IF NOT EXISTS`）；从 3.x 桥接来的库里这些表已由 3.x 基线建好，同一文件原地认领。停用保留数据。
 
 | 插件 | 表结构与关联 |
 |---|---|
@@ -357,9 +357,9 @@ erDiagram
 
 每次 schema 变化：
 
-1. 改 `schema/*.ts`，在仓库根目录 `pnpm drizzle-kit generate`，审查生成的 SQL。
+1. 改 `schema/*.ts`，在仓库根目录 `pnpm drizzle-kit generate`，审查 `packages/db/migrations/` 下生成的 SQL。
 2. `./node_modules/.bin/drizzle-kit check` 校验 journal 与 snapshot。
-3. `pnpm db:migrate` 应用到本地库。
+3. `DATABASE_URL=<本地库> pnpm db:migrate` 应用，跑 `schema-equivalence.db-commit.test.ts`。
 4. 更新本文的表目录、FK、逻辑关联与关系图；新表在 `ids.ts` 登记前缀。
 
 ### 官方通信插件表
@@ -368,9 +368,9 @@ erDiagram
 
 共享判别列 `shares.resource_type`、`file_links.target_type`、`folders.scope`、`audit_events.app_id`、`runs.kind` 在写入时按核心值 + 启用插件注册值校验；历史读取不裁剪。
 
-卡片回执的 `kind` 同样由 `artifactKinds` 注册表校验新 claim（0008），停用后历史回执仍可读取。
+卡片回执的 `kind` 同样由 `artifactKinds` 注册表校验新 claim，停用后历史回执仍可读取。
 
-核心文件柜 scope 为 `drive`；Knowledge 启用时通过 driveScopes 选择原有 `kb` 文件柜。0009 仅推进表归属 snapshot，无 DDL。完整升级验证见 `tests/db/plugin-upgrade.db-commit.test.ts`，覆盖全部 24 张已迁移业务表。
+核心文件柜 scope 为 `drive`；Knowledge 启用时通过 driveScopes 选择原有 `kb` 文件柜。3.0.2 库桥接验证见 `tests/db/plugin-upgrade.db-commit.test.ts`（24 张插件表数据不变）与 `tests/db/schema-equivalence.db-commit.test.ts`（新装与桥接后 catalog 一致）。
 
 ### 4.0 客户端用量标签
 

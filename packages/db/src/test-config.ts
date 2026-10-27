@@ -1,5 +1,12 @@
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import postgres from 'postgres';
 import { sql } from 'drizzle-orm';
+import { drizzle } from 'drizzle-orm/postgres-js';
+import { migrate } from 'drizzle-orm/postgres-js/migrator';
 
+import { V3_ARCHIVE_FOLDER } from './migrate.js';
 import { createDatabase, createTestTransactionDatabase, type DatabaseProvider } from './provider.js';
 import { createDbClient, type Db, type DbClient } from './client.js';
 import { clearActiveTestTransactionProvider, setActiveTestTransactionProvider } from './test-runtime.js';
@@ -177,7 +184,76 @@ export async function startIntegrationTestTransaction(connectionString = TEST_DA
   };
 }
 
-export { buildV1Database, dropDatabase, queryRows, recreateDatabase, siblingUrl } from './carry/v1-fixture.js';
+/** The URL of database `name` on the same server as `base`. */
+export function siblingUrl(base: string, name: string): string {
+  const url = new URL(base);
+  url.pathname = `/${name}`;
+  return url.toString();
+}
+
+/** Drop (if present) and create a throwaway database next to `base`; its name must contain "test". */
+export async function recreateDatabase(base: string, name: string): Promise<string> {
+  const target = siblingUrl(base, name);
+  assertSafeTestDatabase(target);
+  const admin = postgres(siblingUrl(base, 'postgres'), { max: 1, onnotice: () => {} });
+  try {
+    await admin.unsafe(`DROP DATABASE IF EXISTS "${name}" WITH (FORCE)`);
+    await admin.unsafe(`CREATE DATABASE "${name}"`);
+  } finally {
+    await admin.end();
+  }
+  return target;
+}
+
+export async function dropDatabase(base: string, name: string): Promise<void> {
+  assertSafeTestDatabase(siblingUrl(base, name));
+  const admin = postgres(siblingUrl(base, 'postgres'), { max: 1, onnotice: () => {} });
+  try {
+    await admin.unsafe(`DROP DATABASE IF EXISTS "${name}" WITH (FORCE)`);
+  } finally {
+    await admin.end();
+  }
+}
+
+/** Run one SQL text against `url` and return its rows (assertions in tests). */
+export async function queryRows(url: string, text: string): Promise<Array<Record<string, unknown>>> {
+  const sql = postgres(url, { max: 1, onnotice: () => {} });
+  try {
+    return [...(await sql.unsafe(text))] as Array<Record<string, unknown>>;
+  } finally {
+    await sql.end();
+  }
+}
+
+/** The tag a 3.0.2 install ends at: the archived chain 0000–0002. */
+export const V3_0_2_LATEST_TAG = '0002_mcp_connectors';
+
+/**
+ * Build a 3.x database the way a 3.x release did: drizzle's own migrator over
+ * the archived 3.x chain, cut after `through` (default: what 3.0.2 ships).
+ */
+export async function buildV3Database(url: string, through = V3_0_2_LATEST_TAG): Promise<void> {
+  assertSafeTestDatabase(url);
+  const journal = JSON.parse(readFileSync(join(V3_ARCHIVE_FOLDER, 'meta', '_journal.json'), 'utf8')) as {
+    entries: Array<{ tag: string }>;
+  };
+  const end = journal.entries.findIndex((entry) => entry.tag === through);
+  if (end === -1) throw new Error(`No archived 3.x migration tagged ${through}`);
+  const folder = mkdtempSync(join(tmpdir(), 'gh-v3-chain-'));
+  const sql = postgres(url, { max: 1, onnotice: () => {} });
+  try {
+    mkdirSync(join(folder, 'meta'));
+    journal.entries = journal.entries.slice(0, end + 1);
+    writeFileSync(join(folder, 'meta', '_journal.json'), JSON.stringify(journal));
+    for (const entry of journal.entries) {
+      copyFileSync(join(V3_ARCHIVE_FOLDER, `${entry.tag}.sql`), join(folder, `${entry.tag}.sql`));
+    }
+    await migrate(drizzle(sql), { migrationsFolder: folder });
+  } finally {
+    await sql.end();
+    rmSync(folder, { recursive: true, force: true });
+  }
+}
 
 /** A raw single-connection client on the test database (lock-holding race tests). */
 export function openTestConnection(connectionString = TEST_DATABASE_URL): DbClient['client'] {

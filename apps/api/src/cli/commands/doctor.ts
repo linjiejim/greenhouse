@@ -31,7 +31,8 @@ export async function run(_args: string[]): Promise<number> {
   });
 
   // Reachability + migration state are learned from one initDatabase attempt:
-  // it connects and then fail-fasts with "tables not found" on an unmigrated DB.
+  // it connects and then fail-fasts with "tables not found" on an unmigrated DB
+  // (or "still on the … 3.x schema" on a 3.x DB the migration has not upgraded).
   let reachable = false;
   let migrated = false;
   try {
@@ -40,7 +41,7 @@ export async function run(_args: string[]): Promise<number> {
     migrated = true;
   } catch (err) {
     const msg = String((err as Error)?.message ?? err);
-    if (/tables not found/i.test(msg)) {
+    if (/tables not found|still on the Greenhouse 3\.x schema/i.test(msg)) {
       reachable = true; // connected, just not migrated
     }
   }
@@ -53,8 +54,8 @@ export async function run(_args: string[]): Promise<number> {
   checks.push({
     label: 'Schema migrated',
     ok: migrated,
-    detail: migrated ? undefined : 'tables missing',
-    fix: 'Run: npx drizzle-kit migrate',
+    detail: migrated ? undefined : 'tables missing or still on the 3.x schema',
+    fix: 'Run: pnpm db:migrate (it upgrades a 3.x database in place)',
   });
 
   let superAdmins = 0;

@@ -25,13 +25,18 @@ Release candidate for testing; publication is a maintainer step described in [RE
 - Server client API level is 4. Station manifest v2 adds member-filtered plugins/surfaces/entities,
   retaining v1 fields. The current universal client still requires minimum level 3 and falls back
   to legacy navigation if v2 discovery is unavailable.
+- 4.0 starts a new core migration chain (`packages/db/migrations/0000_v4_baseline.sql`, 49 core
+  tables). Fresh installs no longer create plugin tables; each plugin creates its own when
+  enabled. 3.x databases upgrade in place. 1.x and 2.x databases are refused: upgrade to 3.0.2
+  first, then to 4.0. `migrate-from-1x` is removed.
 
 ### Upgrading from 3.x
 
-1. Back up the database and retain the previous image/config. Use the existing database;
-   4.0 keeps the immutable 3.0 baseline and adopts the 24 extracted plugin tables in place.
-   There is no table copy, DROP or new baseline for this upgrade. A code-only downgrade does
-   not reverse migrations; use the backup for a full rollback.
+1. Back up the database and retain the previous image/config. Use the existing database
+   (3.0.2 recommended). `pnpm db:migrate` finishes the archived 3.x chain, records the 4.0
+   baseline as applied and lets the plugins adopt their 24 tables in place. There is no table
+   copy or DROP; private plugin tables and their migration rows are left as they are. A
+   code-only downgrade does not reverse migrations; use the backup for a full rollback.
 2. Keep all official packages in `greenhouse.config.ts.plugins` (as in the shipped config).
    To retain every formerly built-in module, set the following enabled list, keeping any
    deployment-specific plugin ids as well:
@@ -60,7 +65,8 @@ Release candidate for testing; publication is a maintainer step described in [RE
    (Compose runs the migration service before API), then restart. Never use push on persistent
    databases. Review `pnpm cli plugins status` or Administration → Plugins. Turning a plugin
    off does not delete data; re-enabling restores its contributions. Keep 1.x-generation lane
-   files unchanged; the separate migrate-from-1x route remains available for 1.6 databases.
+   files unchanged. A 1.x or 2.x database must reach 3.0.2 first (3.0.2's `migrate-from-1x`
+   carries 1.6), then upgrade to 4.0.
 4. Choose the browser root explicitly if switching clients:
 
    ```ts
@@ -101,8 +107,8 @@ Release candidate for testing; publication is a maintainer step described in [RE
 
 - Knowledge, Tables, Projects, Skills, Memory, Feedback, Reports, Computer, Email, WeCom,
   Feishu and Retro own their implementations under plugins, including relevant schema/services,
-  routes/tools, classic UI, copy, migrations and tests. Core schema owns 49 of the original 73
-  tables; official plugins own 24. The immutable baseline still creates all original tables.
+  routes/tools, classic UI, copy, migrations and tests. Core schema owns 49 tables; official
+  plugins own 24, created by each plugin's own migration lane when it is enabled.
 - Conversation sharing is deployment-controlled by `conversations.sharing` (default true).
   Core Markdown team context works without Knowledge. Optional integration controls and delivery
   adapters come from active plugins; WeCom remains binding-only, Feishu supports login/binding.

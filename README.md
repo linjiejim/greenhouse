@@ -154,8 +154,10 @@ need their own configuration after plugin enablement.
 
 ## Upgrading from 3.x
 
-4.0 upgrades the existing database in place with `pnpm db:migrate`; it retains the 3.0 baseline
-and adopts plugin tables without moving or deleting rows. **Select plugins explicitly before
+4.0 upgrades a 3.x database in place with `pnpm db:migrate` (3.0.2 recommended): it finishes the
+archived 3.x chain, records the 4.0 baseline, and plugins adopt their tables without moving or
+deleting rows. Fresh 4.0 installs create only core tables; each plugin creates its own when
+enabled. **Select plugins explicitly before
 restarting**: several formerly built-in modules are now off by default. The exact complete list,
 client switch, SDK compatibility and rollback considerations are in
 [CHANGELOG → Upgrading from 3.x](CHANGELOG.md#upgrading-from-3x).
@@ -165,20 +167,10 @@ For source installs, install dependencies and run `DATABASE_URL=<your-database> 
 Do not use `db push` on persistent/shared data. A binary downgrade alone does not reverse
 migrations; retain the database backup and previous image for rollback.
 
-### Upgrading from 1.x
+### Upgrading from 1.x or 2.x
 
-A 1.6.x database needs a **new empty target database**. 2.x databases are unsupported.
-`migrate-from-1x` remains available in 4.0, retaining ids and copying extension tables and their
-migration ledger. Start with a dry run; the old database is read only:
-
-```bash
-pnpm cli migrate-from-1x --dry-run --from <1.6-database-url> --to <new-database-url>
-pnpm cli migrate-from-1x --from <1.6-database-url> --to <new-database-url>
-DATABASE_URL=<new-database-url> pnpm db:migrate
-```
-
-A repeat carry replaces the target data; never aim it at a live target. Half-carried targets
-refuse boot until the carry completes. Configure the plugins to retain before carrying.
+4.0 refuses 1.x and 2.x databases. Upgrade to 3.0.2 first (its README covers the 1.x carry into
+a new database), run it once, then upgrade that database to 4.0 as above.
 
 ## Plugins and architecture
 
@@ -191,10 +183,9 @@ apps/api/                governance API, plugin host, scheduler, runtime and CLI
 apps/web/                classic web and React plugin host
 apps/client/             isolated Expo universal client (web / iOS / Android)
 apps/desktop/            macOS native shell around the universal client
-packages/                agent/platform kernels, DB, types, utils, CRUD, UI and ui-tokens
+packages/                agent/platform kernels, DB (+ core migrations), types, utils, CRUD, UI and ui-tokens
 plugins/<id>/            manifest, API/web, tables/services, migrations, tests and optional UI
 skillhub/                skill-pack source (no bundled packs)
-drizzle/                 immutable 3.0 baseline and subsequent core migration chain
 scripts/                 assembly, builds, test gates, backup and screenshot tooling
 tests/                   unit, DB, committed-state DB, HTTP and browser suites
 ```

@@ -1,36 +1,26 @@
 /**
- * @db-commit-reason A real 3.0 database is upgraded and reopened across process/configuration changes.
+ * @db-commit-reason A real 3.0.2 database is upgraded in place and reopened across process/configuration changes.
  * Every official plugin table contains data; counts and full row fingerprints must survive.
  */
 import { it, expect } from 'vitest';
 import { randomBytes, createHash } from 'node:crypto';
-import {
-  mkdtempSync,
-  mkdirSync,
-  readFileSync,
-  readdirSync,
-  copyFileSync,
-  writeFileSync,
-  rmSync,
-  existsSync,
-} from 'node:fs';
-import { tmpdir } from 'node:os';
+import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { applyMigrations, applyAllMigrations } from '@greenhouse/db';
-import { TEST_DATABASE_URL, recreateDatabase, dropDatabase, queryRows } from '@greenhouse/db/test-config';
+import { applyAllMigrations } from '@greenhouse/db';
+import {
+  TEST_DATABASE_URL,
+  buildV3Database,
+  recreateDatabase,
+  dropDatabase,
+  queryRows,
+} from '@greenhouse/db/test-config';
 const root = resolve(import.meta.dirname, '../..');
 it('upgrades populated 3.0 tables without data loss, including disable/re-enable of the document plugin', async () => {
-  const name = `plugin_upgrade_${randomBytes(4).toString('hex')}_test`;
-  const folder = mkdtempSync(join(tmpdir(), 'gh-v3-upgrade-'));
+  const name = `gh4_schema_plugin_upgrade_${randomBytes(4).toString('hex')}_test`;
   const url = await recreateDatabase(TEST_DATABASE_URL, name);
   try {
-    mkdirSync(join(folder, 'meta'));
-    const journal = JSON.parse(readFileSync(join(root, 'drizzle/meta/_journal.json'), 'utf8'));
-    journal.entries = journal.entries.filter((entry: { idx: number }) => entry.idx <= 2);
-    writeFileSync(join(folder, 'meta/_journal.json'), JSON.stringify(journal));
-    for (const entry of journal.entries)
-      copyFileSync(join(root, 'drizzle', `${entry.tag}.sql`), join(folder, `${entry.tag}.sql`));
-    await applyMigrations(url, folder);
+    // What a 3.0.2 install has: the archived 3.x chain through 0002.
+    await buildV3Database(url);
     await queryRows(url, readFileSync(join(root, 'tests/fixtures/plugin-upgrade-v3.sql'), 'utf8'));
     const sources = readdirSync(join(root, 'plugins')).flatMap((id) => {
       const dir = join(root, 'plugins', id, 'migrations');
@@ -66,6 +56,8 @@ it('upgrades populated 3.0 tables without data loss, including disable/re-enable
     const before = await inventory();
     for (const [table, entry] of Object.entries(before)) expect(entry.count, table).toBeGreaterThan(0);
     const migrated = await applyAllMigrations(url, { extensionSources: sources });
+    expect(migrated.generation.kind).toBe('v3');
+    expect(migrated.bridged?.archived[0]).toBe('0003_w2a_plugin_ownership');
     expect(migrated.extensions?.applied).toContain('knowledge/0001_adopt.sql');
     expect(await inventory()).toEqual(before);
     // The same migration entrypoint used by CLI/boot receives only active lanes.
@@ -78,6 +70,5 @@ it('upgrades populated 3.0 tables without data loss, including disable/re-enable
     ]);
   } finally {
     await dropDatabase(TEST_DATABASE_URL, name);
-    rmSync(folder, { recursive: true, force: true });
   }
 }, 60_000);

@@ -346,8 +346,8 @@ function prepareSandboxDb(container, cfg, sandboxDb, fresh) {
     if (r.code !== 0) throw new Error(`建库失败：${r.err}`);
     return;
   }
-  // 3.0 跑不了 1.x 库：主库还是 1.x（有 sessions、没有 conversations）就建空库，
-  // 需要数据时用 `pnpm migrate-from-1x --from <主库> --to <沙箱库>` 搬。
+  // 4.0 跑不了 1.x 库：主库还是 1.x（有 sessions、没有 conversations）就建空库；
+  // 要数据得先用 3.0.2 把主库升到 3.x（3.x 库克隆后由 db:migrate 原地升级）。
   const shape = psql(
     container,
     cfg.user,
@@ -355,7 +355,7 @@ function prepareSandboxDb(container, cfg, sandboxDb, fresh) {
     "select coalesce(to_regclass('public.sessions')::text, '') || '|' || coalesce(to_regclass('public.conversations')::text, '')",
   );
   if (shape.code === 0 && shape.out.startsWith('sessions|') && shape.out.endsWith('|')) {
-    warn(`主库 ${cfg.db} 是 1.x 结构，3.0 不能克隆它：建空沙箱库（要数据就跑 pnpm migrate-from-1x）`);
+    warn(`主库 ${cfg.db} 是 1.x 结构，4.0 不能克隆它：建空沙箱库（要数据先用 3.0.2 升到 3.x）`);
     const r = psql(container, cfg.user, 'postgres', `create database "${sandboxDb}"`);
     if (r.code !== 0) throw new Error(`建库失败：${r.err}`);
     return;
@@ -400,18 +400,26 @@ function runMigrate(dbUrl) {
   info(`迁移完成 ✓（${path.relative(ROOT, file)}）`);
 }
 
-/** 主树模式不自动 migrate（那是用户自己的库），但要提醒有多少条没应用 */
+/**
+ * 主树模式不自动 migrate（那是用户自己的库），但要提醒有多少条没应用。
+ * 和 drizzle 同一条规则：journal 里 `when` 晚于库里最后一条记录的就是待应用；
+ * 3.x 库（只有归档链的记录）的整条 4.0 链都算待应用，db:migrate 会原地升级它。
+ */
 function warnPendingMigrations(container, cfg, dbUrl) {
-  const files = fs.readdirSync(path.join(ROOT, 'drizzle')).filter((f) => f.endsWith('.sql')).length;
-  let applied = null;
+  const journal = JSON.parse(fs.readFileSync(path.join(ROOT, 'packages/db/migrations/meta/_journal.json'), 'utf8'));
+  let last = null;
   if (container) {
-    const r = psql(container, cfg.user, cfg.db, 'select count(*) from drizzle.__drizzle_migrations');
-    if (r.code === 0) applied = Number(r.out);
-  }
-  if (applied !== null && applied < files) {
-    warn(
-      `${cfg.db} 有 ${files - applied} 条迁移未应用 —— 需要时手动跑：DATABASE_URL=${dbUrl} pnpm db:migrate`,
+    const r = psql(
+      container,
+      cfg.user,
+      cfg.db,
+      'select coalesce(max(created_at), 0) from drizzle.__drizzle_migrations',
     );
+    if (r.code === 0) last = Number(r.out);
+  }
+  const pending = last === null ? 0 : journal.entries.filter((entry) => entry.when > last).length;
+  if (pending > 0) {
+    warn(`${cfg.db} 有 ${pending} 条迁移未应用 —— 需要时手动跑：DATABASE_URL=${dbUrl} pnpm db:migrate`);
   }
 }
 

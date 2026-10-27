@@ -29,13 +29,13 @@
 - `apps/client/` is isolated Expo for web/iOS/Android; read [universal client rules](apps/client/AGENTS.md).
 - `apps/desktop/` is the Tauri macOS shell; read [desktop rules](apps/desktop/AGENTS.md).
 - `packages/agent-core/` owns the model loop/factory; `packages/platform-kernel/` owns pure manifests/actors/authz/dispatch.
-- `packages/db/` owns core schema/services/migration/carry; read [DB rules](packages/db/src/AGENTS.md) and [schema](packages/db/src/db-schema.md).
+- `packages/db/` owns core schema/services/migrations (`packages/db/migrations/`); read [DB rules](packages/db/src/AGENTS.md) and [schema](packages/db/src/db-schema.md).
 - `packages/types/`, `packages/utils/`, `packages/contract/` own shared protocols/helpers and typed API exports; contract's API dependency is type-only.
 - `packages/crud/` owns shared list/form/detail and server CRUD; `packages/knowledge-editor/` owns editor schema/Markdown conversion.
 - `packages/ui/` owns shared tokens/brand/plant avatars; `packages/ui-tokens/` owns generated themes/trusted embed bridge.
 - `plugins/<id>/` owns manifest/API/web/schema/services/migrations/seeds/copy/tests; read its AGENTS.md.
 - `skillhub/` holds skill-pack sources; read [pack format](skillhub/README.md).
-- `drizzle/` owns core migration history; `scripts/` owns build/assembly/ops/gates; `tests/` owns shared test layers.
+- `scripts/` owns build/assembly/ops/gates; `tests/` owns shared test layers.
 
 ## Configuration and plugins
 
@@ -90,16 +90,18 @@
 
 ## Database and seeds
 
-- Core history starts at immutable drizzle/0000_v3_baseline.sql; archive-1x is identification-only.
+- Core history starts at immutable packages/db/migrations/0000_v4_baseline.sql (49 core tables); archive-3x is byte-frozen and only bridges 3.x databases.
 - Persistent/shared databases use `pnpm db:migrate`, never push; always set the intended DATABASE_URL explicitly.
 - Worktrees use isolated databases, never the owner's main DB; let run-dev arbitrate ports without killing unrelated processes.
 - Schema changes require generated/reviewed SQL and relevant AGENTS/schema docs; never edit applied migration bytes.
-- Plugin DDL uses its own checksummed lane/statement-breakpoints; do not create core tables or append plugin DDL to drizzle.
-- Baseline creates 73 original tables; ownership is 49 core plus 24 official-plugin tables, with no DROP/move during adoption.
+- Plugin DDL uses its own checksummed lane/statement-breakpoints; do not create core tables or append plugin DDL to the core chain.
+- Fresh installs create only core tables; each plugin's 0001 lane file creates its tables when enabled and adopts 3.x tables in place without DROP/move.
 - Disablement retains data; explicit `cli plugins drop` previews/deletes only disabled owned tables/lane with RESTRICT.
 - Core cannot acquire plugin FKs; historical discriminator reads survive disablement and writes validate active registries.
-- 1.x moves through migrate-from-1x into a new DB; 2.x/half-carried DBs refuse normal migration/boot.
-- Baseline adoption needs dry run/matching DDL and is not a 1.x migration.
+- `pnpm db:migrate` upgrades 3.x in place under its advisory lock (finish archive-3x, stamp the 4.0 baseline); it never drops data, plugin/overlay lane rows or drizzle.greenhouse_carry.
+- A fresh 4.0 install with all official plugins must match a bridged 3.x database (schema-equivalence test); record intended differences there.
+- 1.x/2.x/half-carried DBs refuse migration/boot: upgrade to 3.0.2 first, then to 4.0; boot also refuses an unbridged 3.x DB.
+- `db baseline` adopts only DBs already on the 4.0 schema (dry run first); 3.x DBs go through `db:migrate`.
 - Core seeds live in data/examples, plugin seeds in plugins; update dataset README/load order and load in dependency order.
 - Seed refuses non-empty DBs without keep/reset; destructive reset needs explicit confirmation; fixtures contain no encrypted auth secrets.
 

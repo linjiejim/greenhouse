@@ -1,8 +1,8 @@
 /**
  * Migration lane for extensions.
  *
- * Core DDL stays in `drizzle/*.sql` (applied by `drizzle-kit migrate` before the
- * API starts). An extension ships its own ordered `*.sql` files instead of
+ * Core DDL stays in `packages/db/migrations` (applied by `pnpm db:migrate` before
+ * the API starts). An extension ships its own ordered `*.sql` files instead of
  * editing the core chain; this runner applies the pending ones at boot, tracked
  * in `extension_migrations` (one row per extension + file, with a checksum so a
  * file edited after it was applied fails fast instead of silently diverging).
@@ -14,13 +14,13 @@
  *
  * Core generation marker. A file whose header carries
  * `-- greenhouse:core-generation 1x` was written against the 1.x core tables
- * (it alters or reads a 1.x table). 3.0 never executes such a file:
+ * (it alters or reads a 1.x table). 3.0 and later never execute such a file:
  *  - on a database that was never carried from 1.x it is recorded as satisfied
  *    and reported as skipped;
  *  - on a carried database whose copied bookkeeping has the row, nothing happens;
  *  - on a carried database where the extension ran on 1.x but this row is
- *    missing, 1.x never applied the file, so the lane refuses: run it on 1.x and
- *    carry again.
+ *    missing, 1.x never applied the file, so the lane refuses (the only fix is
+ *    running it on 1.x and carrying again with 3.0.2).
  * The marker line is not part of the checksum, so marking a file that is
  * already applied does not count as editing it.
  *
@@ -175,7 +175,7 @@ function missing1xError(extensionId: string, names: string[]): Error {
   return new Error(
     `Extension migration(s) ${names.map((n) => `${extensionId}/${n}`).join(', ')} target the 1.x core ` +
       '(-- greenhouse:core-generation 1x) and were never applied on the 1.x database this one was carried from. ' +
-      '3.0 does not run 1.x migrations: apply them on the 1.x database, then run migrate-from-1x again.',
+      'Greenhouse never runs 1.x migrations: apply them on the 1.x database, then run 3.0.2’s migrate-from-1x again.',
   );
 }
 

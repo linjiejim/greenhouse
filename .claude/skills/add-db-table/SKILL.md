@@ -17,9 +17,15 @@ description: >-
 
 1. **这张表属于 core 还是 extension？**
    私有 / 可选 / 实验性模块的表不要进 core schema——走扩展缝
+<<<<<<< HEAD
    （`apps/api/src/plugin-host/<id>/` 的 `schema.ts` + `migrations/` + `services`，
    见 [EXTENDING.md](../../../EXTENDING.md)）。core DDL 只住仓库根 `drizzle/`。
    参考实现 `apps/api/src/plugin-host/example/`。
+=======
+   （`apps/api/src/extensions/<id>/` 的 `schema.ts` + `migrations/` + `services`，
+   见 [EXTENDING.md](../../../EXTENDING.md)）。core DDL 只住 `packages/db/migrations/`。
+   参考实现 `apps/api/src/extensions/example/`。
+>>>>>>> worktree-agent-a63b76eaf5cc18e37
 2. **能不能不加表？** 根 AGENTS.md 的「Delete & reuse discipline」要求先确认现有表无法复用或扩展；
    加"第二张做同一件事的表"必须在 AGENTS.md 里登记理由。
 3. 读 `db-schema.md` 确认与既有表的关系（FK 还是逻辑关联）。
@@ -61,15 +67,15 @@ description: >-
 
 ```bash
 # 必须在仓库根目录运行——drizzle.config.ts 用相对路径
-pnpm drizzle-kit generate   # 相对 0000_v3_baseline 的快照生成 0001_* …
-pnpm db:migrate             # 应用到本地库（拒绝 1.x / 2.x 库）
+pnpm drizzle-kit generate   # 写进 packages/db/migrations/，相对 0000_v4_baseline 的快照生成 0001_* …
+DATABASE_URL=<本地库> pnpm db:migrate   # 应用（3.x 库原地桥接；拒绝 1.x / 2.x 库）
 ```
 
 - **review 生成的 SQL 再提交**，重点盯：类型转换缺 `USING`、给有数据的表加 `NOT NULL` 却没 `DEFAULT`、
   改列名被生成成 drop + add（会丢数据，需手改 `RENAME`）、需要数据回填的自己补 SQL
-- 迁移文件连代码一起提交；CI / 部署跑 `pnpm db:migrate` 自动应用；不改 `0000_v3_baseline.sql`，不动 `drizzle/archive-1x/`
+- 迁移文件连代码一起提交；CI / 部署跑 `pnpm db:migrate` 自动应用；不改 `0000_v4_baseline.sql`，不动 `migrations/archive-3x/`
 - `push` **只**用于本地一次性 scratch 库；任何持久或共享库（含 CI 测试库）一律 `pnpm db:migrate`
-- 1.x 有对应数据要搬的，同步改 `packages/db/src/carry/from-1x.ts`；高增长表在 `services/retention.ts` 定保留期
+- 高增长表在 `services/retention.ts` 定保留期；跑 `tests/db/schema-equivalence.db-commit.test.ts`（新装与 3.x 桥接后 schema 必须一致）
 
 ## 步骤 5：文档
 
@@ -103,7 +109,7 @@ pnpm test:db      # 聚焦；落地前仍要跑完整 pnpm test
 - [ ] service 在 `services/`，工厂函数形态，类型全推导无手写镜像
 - [ ] `provider.ts` 已注册
 - [ ] `pnpm drizzle-kit generate` 在仓库根跑过，生成的 SQL 已 review 并提交；`pnpm db:migrate` 通过
-- [ ] 想过 migrate-from-1x 映射与保留期
+- [ ] 想过保留期；schema-equivalence 测试通过
 - [ ] `db-schema.md` 已更新
 - [ ] `tests/db/*.db.test.ts` 覆盖，用 internal-user helper，无 `resetSchema()`
 - [ ] typecheck + lint + test 通过

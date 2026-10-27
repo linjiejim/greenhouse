@@ -44,8 +44,7 @@ ${chalk.bold('Inspect')}
 ${chalk.bold('Manage')}
   users create              Create a user (--email --password --nickname --role)
   db reset                  Wipe ALL data — truncate every table (--yes; local dev only)
-  db migrate                Apply the 3.0 migration chain (refuses a 1.x / 2.x database)
-  migrate-from-1x           Carry a 1.6 database into a new 3.0 one (--from <url> --to <url> [--dry-run] [--json])
+  db migrate                Apply the 4.0 migration chain; upgrades a 3.x database in place (refuses 1.x / 2.x)
   db baseline               Adopt an existing database: record the migration chain as applied (--dry-run, --yes)
   platform bootstrap        Synchronize system roles / baseline policies with the manifests
   seed                      Load the example dataset from data/examples (--reset | --keep)
@@ -109,8 +108,6 @@ async function dispatch(command: string, rest: string[]): Promise<number> {
       return (await import('./commands/platform.js')).run(rest);
     case 'seed':
       return (await import('./commands/seed.js')).run(rest);
-    case 'migrate-from-1x':
-      return (await import('./commands/migrate-from-1x.js')).run(rest);
     // ── HTTP-driven scripts (child-process delegation) ──
     case 'chat':
       return delegate('chat.ts', rest);

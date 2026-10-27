@@ -2,7 +2,7 @@
 
 - Default on. Preserve `/api/tables`, `#/tables`, the three tool ids, the `tables` feature flag and MCP group, and `tables_record` links. Disabling preserves data and removes contributions. Use `services(db).tables`; never add the service back to DatabaseProvider.
 
-- Nine tables are adopted from the immutable 3.0 baseline. Base membership remains in core `shares` (`table_base`); record attachments remain in core `file_links` (`table_record`, slot = field id). Register these discriminators and `tables_schema_plan` receipt kinds. Drive nodes retain `scope=tables, base_id=...`; the active scope owns placement validation and Base ACL. No Tables example seed rows existed; future Tables datasets belong in this package.
+- Nine tables: `0001_adopt.sql` is the plugin baseline (creates them on enable; adopts 3.x tables in place). Base membership remains in core `shares` (`table_base`); record attachments remain in core `file_links` (`table_record`, slot = field id). Register these discriminators and `tables_schema_plan` receipt kinds. Drive nodes retain `scope=tables, base_id=...`; the active scope owns placement validation and Base ACL. No Tables example seed rows existed; future Tables datasets belong in this package.
 
 ## Schema plans and authorization
 
