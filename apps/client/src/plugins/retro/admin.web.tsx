@@ -58,13 +58,13 @@ function RetroScreen({ title }: AdminScreenProps) {
         </button>
       }
     >
-      <p className="gh-admin-hint">{t('admin.ext.retro.intro')}</p>
+      <p className="gh-hint">{t('admin.ext.retro.intro')}</p>
       {result ? (
         <Callout
           tone={result.skipped_reason ? 'warning' : 'info'}
           icon={result.skipped_reason ? 'alert' : 'checkCircle'}
           action={
-            <button className="gh-admin-button" onClick={() => openObject({ kind: 'doc', id: result.doc_id })}>
+            <button className="gh-secondary-button" onClick={() => openObject({ kind: 'doc', id: result.doc_id })}>
               <Icon name="open" size={14} />
               {t('admin.ext.retro.open', { month: result.month })}
             </button>

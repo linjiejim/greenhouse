@@ -77,7 +77,7 @@ export default function ServicesSection() {
         <>
           {tab !== 'gateway' ? (
             <select
-              className="gh-admin-input"
+              className="gh-input"
               aria-label={t('admin.metering.month')}
               value={month}
               onChange={(e) => setMonth(e.target.value)}
@@ -146,7 +146,7 @@ function UnpricedBanner({ overview, openPrices }: { overview: MeteringOverview; 
     <Callout
       testID="admin-unpriced"
       action={
-        <button className="gh-admin-button" onClick={openPrices}>
+        <button className="gh-secondary-button" onClick={openPrices}>
           {t('admin.metering.setPrices')}
         </button>
       }
@@ -181,7 +181,7 @@ function SpendTab({ overview }: { overview: MeteringOverview }) {
           },
         ]}
       />
-      {spend.totals.unpriced_calls > 0 ? <p className="gh-admin-hint">{t('admin.metering.unpricedHint')}</p> : null}
+      {spend.totals.unpriced_calls > 0 ? <p className="gh-hint">{t('admin.metering.unpricedHint')}</p> : null}
       <div className="gh-admin-grid-2">
         <SpendCard
           title={t('admin.metering.byMember')}
@@ -282,11 +282,11 @@ function PriceActions({ overridden, edit, reset }: { overridden: boolean; edit: 
   return (
     <>
       {overridden ? <Badge tone="accent">{t('admin.metering.source.override')}</Badge> : null}
-      <button className="gh-admin-link" onClick={edit}>
+      <button className="gh-link-button" onClick={edit}>
         {t('admin.metering.setPrice')}
       </button>
       {overridden ? (
-        <button className="gh-admin-link" onClick={reset}>
+        <button className="gh-link-button" onClick={reset}>
           {t('admin.metering.useConfig')}
         </button>
       ) : null}
@@ -314,7 +314,7 @@ function PricesTab({ overview, changed }: { overview: MeteringOverview; changed:
     );
   return (
     <>
-      <p className="gh-admin-hint">{t('admin.metering.pricesHint')}</p>
+      <p className="gh-hint">{t('admin.metering.pricesHint')}</p>
       <Card title={t('admin.metering.services')} icon="pricing" flush testID="admin-prices-services">
         <table className="gh-data-grid gh-admin-grid">
           <thead>
@@ -331,7 +331,7 @@ function PricesTab({ overview, changed }: { overview: MeteringOverview; changed:
               service.providers.map((provider, index) => (
                 <tr key={`${service.service}:${provider.provider}`}>
                   <td>{index === 0 ? serviceName(service.service, t) : ''}</td>
-                  <td className="gh-admin-mono">{provider.provider}</td>
+                  <td className="gh-mono">{provider.provider}</td>
                   <td>{statusBadge(service.enabled, provider.configured)}</td>
                   <td>
                     <ServicePriceText service={service} provider={provider} />
@@ -364,7 +364,7 @@ function PricesTab({ overview, changed }: { overview: MeteringOverview; changed:
               <tr key={model.id}>
                 <td>
                   {model.name}
-                  <span className="gh-admin-sub gh-admin-mono">{model.id}</span>
+                  <span className="gh-admin-sub gh-mono">{model.id}</span>
                 </td>
                 <td>{statusBadge(true, model.configured)}</td>
                 <td>
@@ -441,13 +441,13 @@ function PriceDialog({ target, close, saved }: { target: PriceTarget; close: () 
     >
       <form
         id="admin-price"
-        className="gh-admin-form"
+        className="gh-form"
         onSubmit={(e) => {
           e.preventDefault();
           void save();
         }}
       >
-        <p className="gh-admin-hint">{t('admin.metering.priceHelp')}</p>
+        <p className="gh-hint">{t('admin.metering.priceHelp')}</p>
         {tokens ? (
           <>
             {field('input', t('admin.metering.inputPrice'))}
@@ -522,11 +522,11 @@ function BudgetsTab({ overview, changed }: { overview: MeteringOverview; changed
           </Badge>
         </td>
         <td className="gh-admin-actions">
-          <button className="gh-admin-link" onClick={() => setEditing(target)}>
+          <button className="gh-link-button" onClick={() => setEditing(target)}>
             {t('admin.metering.edit')}
           </button>
           {budget.source === 'override' ? (
-            <button className="gh-admin-link" onClick={() => void reset(target)}>
+            <button className="gh-link-button" onClick={() => void reset(target)}>
               {t('admin.metering.reset')}
             </button>
           ) : null}
@@ -549,7 +549,7 @@ function BudgetsTab({ overview, changed }: { overview: MeteringOverview; changed
   );
   return (
     <>
-      <p className="gh-admin-hint">{t('admin.metering.limitHelp')}</p>
+      <p className="gh-hint">{t('admin.metering.limitHelp')}</p>
       <Card title={t('admin.metering.limits')} icon="pricing" flush testID="admin-budgets">
         <table className="gh-data-grid gh-admin-grid">
           {head(t('admin.metering.scope'))}
@@ -571,7 +571,7 @@ function BudgetsTab({ overview, changed }: { overview: MeteringOverview; changed
         flush
         testID="admin-member-limits"
         actions={
-          <button className="gh-admin-button" onClick={() => setEditing({ scope: 'member', name: '', limit: null })}>
+          <button className="gh-secondary-button" onClick={() => setEditing({ scope: 'member', name: '', limit: null })}>
             <Icon name="plus" size={14} />
             {t('admin.metering.addMemberLimit')}
           </button>
@@ -627,7 +627,7 @@ function BudgetDialog({ target, close, saved }: { target: BudgetTarget; close: (
     >
       <form
         id="admin-budget"
-        className="gh-admin-form"
+        className="gh-form"
         onSubmit={(e) => {
           e.preventDefault();
           void save();
@@ -730,11 +730,11 @@ function GatewayTab() {
                     <td>{owner}</td>
                     <td>
                       {key.name}
-                      <span className="gh-admin-sub gh-admin-mono">{key.prefix}…</span>
+                      <span className="gh-admin-sub gh-mono">{key.prefix}…</span>
                     </td>
                     <td>
                       {key.allowed_models ? (
-                        <span className="gh-admin-badges">
+                        <span className="gh-chip-row">
                           {key.allowed_models.slice(0, 3).map((m) => (
                             <Badge key={m}>{m}</Badge>
                           ))}
@@ -761,7 +761,7 @@ function GatewayTab() {
                     <td className="gh-admin-actions">
                       {key.status === 'active' ? (
                         <button
-                          className="gh-admin-link"
+                          className="gh-link-button"
                           disabled={busy}
                           onClick={() => void revoke(key.id, key.name, owner)}
                         >

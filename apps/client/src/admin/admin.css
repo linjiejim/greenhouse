@@ -1,85 +1,21 @@
-/* The Admin place (src/admin): dense desktop sections — 52px bars, 32px rows, 8-pt spacing. */
+/* The Admin place (src/admin): its own layout only — dense sections with 52px bars, 32px rows and
+   8-pt spacing. Buttons, fields, switches, tabs, badges, cards, callouts and settings rows are the
+   shared Controls in src/shell/client.css. */
 
-.gh-admin-toolbar {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px;
-  padding: 0 20px 8px;
-  flex-shrink: 0;
-}
-.gh-admin-input,
-.gh-admin-toolbar input,
-.gh-admin-toolbar select,
-.gh-admin-field input:not([type='checkbox']):not([type='color']),
-.gh-admin-field select,
-.gh-admin-field textarea {
-  height: 32px;
-  border: 1px solid var(--gh-line-strong);
-  background: var(--gh-raised);
-  color: var(--gh-text);
-  border-radius: 8px;
-  padding: 0 10px;
-  font-size: 13px;
-  min-width: 0;
-}
-.gh-admin-toolbar input,
-.gh-admin-toolbar select {
-  height: 28px;
-  border-radius: 6px;
-  padding: 0 8px;
-}
-.gh-admin-field textarea {
-  height: auto;
-  min-height: 96px;
-  padding: 8px 10px;
-  line-height: 1.5;
-}
-.gh-admin-mono {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 12px;
-}
-.gh-admin-count {
-  margin-left: auto;
-  color: var(--gh-secondary);
-  font-size: 12px;
-  white-space: nowrap;
-}
 .gh-admin-body {
   padding: 0 20px 32px;
 }
-.gh-admin-body > .gh-data-grid {
+.gh-admin-body > .gh-data-grid,
+.gh-admin-body .gh-card,
+.gh-admin-body > .gh-callout {
   margin-bottom: 16px;
 }
-
-/* tabs under the place bar */
-.gh-admin-tabs {
-  display: flex;
-  gap: 4px;
-  padding: 0 20px;
+.gh-admin-body > .gh-hint,
+.gh-admin-settings > .gh-hint {
   margin-bottom: 12px;
-  border-bottom: 1px solid var(--gh-line);
-  flex-shrink: 0;
 }
-.gh-admin-tabs [role='tab'],
-.gh-place .gh-admin-tabs [role='tab'] {
-  height: 36px;
-  border: 0;
-  border-bottom: 2px solid transparent;
-  border-radius: 0;
-  background: transparent;
-  color: var(--gh-secondary);
-  padding: 0 12px;
-  margin-bottom: -1px;
-}
-.gh-admin-tabs [role='tab'][aria-selected='true'] {
-  color: var(--gh-text);
-  border-bottom-color: var(--gh-accent);
-  font-weight: 700;
-}
-.gh-admin-tabs [role='tab']:hover {
-  background: transparent !important;
-  color: var(--gh-text);
+.gh-place > .gh-tabs {
+  margin-bottom: 12px;
 }
 
 /* tables */
@@ -113,6 +49,9 @@
   width: 28px;
   height: 28px;
 }
+.gh-admin-grid .gh-secondary-button {
+  min-height: 28px;
+}
 .gh-admin-sub {
   color: var(--gh-secondary);
   margin-left: 8px;
@@ -126,128 +65,6 @@
 }
 .gh-admin-wrap {
   white-space: normal !important;
-}
-
-/* badges */
-.gh-admin-badge {
-  display: inline-flex;
-  align-items: center;
-  height: 20px;
-  padding: 0 8px;
-  border-radius: 6px;
-  font-size: 12px;
-  font-weight: 600;
-  white-space: nowrap;
-  background: var(--gh-fill);
-  color: var(--gh-secondary);
-}
-.gh-admin-badge[data-tone='success'] {
-  background: var(--gh-success-fill);
-  color: var(--gh-success);
-}
-.gh-admin-badge[data-tone='warning'] {
-  background: var(--gh-warning-fill);
-  color: var(--gh-warning);
-}
-.gh-admin-badge[data-tone='danger'] {
-  background: var(--gh-danger-fill);
-  color: var(--gh-danger);
-}
-.gh-admin-badge[data-tone='info'] {
-  background: var(--gh-info-fill);
-  color: var(--gh-info);
-}
-.gh-admin-badge[data-tone='accent'] {
-  background: var(--gh-accent-fill);
-  color: var(--gh-accent-text);
-}
-.gh-admin-badges {
-  display: inline-flex;
-  flex-wrap: wrap;
-  gap: 4px;
-}
-
-/* switch */
-.gh-admin-switch,
-.gh-place .gh-admin-switch {
-  position: relative;
-  flex-shrink: 0;
-  width: 34px;
-  height: 20px;
-  padding: 0;
-  border: 0;
-  border-radius: 10px;
-  background: var(--gh-line-strong);
-  transition: background 0.15s;
-}
-.gh-admin-switch::after {
-  content: '';
-  position: absolute;
-  top: 2px;
-  left: 2px;
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  background: var(--gh-raised);
-  transition: transform 0.15s;
-}
-.gh-admin-switch[aria-checked='true'],
-.gh-place .gh-admin-switch[aria-checked='true'] {
-  background: var(--gh-accent);
-}
-.gh-admin-switch[aria-checked='true']::after {
-  transform: translateX(14px);
-}
-
-/* cards */
-.gh-admin-card {
-  border: 1px solid var(--gh-line);
-  border-radius: 12px;
-  background: var(--gh-card);
-  margin-bottom: 16px;
-  overflow: hidden;
-}
-.gh-admin-card > header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-height: 44px;
-  padding: 0 16px;
-  border-bottom: 1px solid var(--gh-line);
-  color: var(--gh-secondary);
-}
-.gh-admin-card > header strong {
-  color: var(--gh-text);
-  font-size: 14px;
-}
-.gh-admin-card-actions {
-  margin-left: auto;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-}
-.gh-admin-card-body {
-  padding: 12px 16px;
-}
-.gh-admin-card-flush .gh-data-grid td,
-.gh-admin-card-flush .gh-data-grid th {
-  border-left: 0;
-  border-right: 0;
-}
-.gh-admin-card-flush .gh-data-grid tr:last-child td {
-  border-bottom: 0;
-}
-.gh-admin-card-flush .gh-data-grid thead th {
-  border-top: 0;
-}
-.gh-admin-hint {
-  margin: 0 0 12px;
-  color: var(--gh-secondary);
-  font-size: 12px;
-  line-height: 1.6;
-}
-.gh-admin-card-hint {
-  margin: 12px 16px 0;
 }
 .gh-admin-empty-line {
   color: var(--gh-secondary);
@@ -281,8 +98,8 @@
   font-weight: 400;
   color: var(--gh-secondary);
 }
-.gh-admin-flag .gh-admin-hint {
-  margin: 2px 0 0;
+.gh-admin-flag .gh-hint {
+  margin-top: 2px;
 }
 
 /* KPI row */
@@ -294,7 +111,7 @@
 }
 .gh-admin-kpi {
   border: 1px solid var(--gh-line);
-  border-radius: 12px;
+  border-radius: 16px;
   background: var(--gh-card);
   padding: 12px 16px;
   display: flex;
@@ -306,7 +123,7 @@
   font-size: 12px;
 }
 .gh-admin-kpi strong {
-  font-size: 20px;
+  font-size: 22px;
   font-variant-numeric: tabular-nums;
 }
 .gh-admin-kpi strong[data-tone='warning'] {
@@ -343,145 +160,6 @@
   background: var(--gh-danger);
 }
 
-/* callouts */
-.gh-admin-callout {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  padding: 10px 12px;
-  border-radius: 8px;
-  background: var(--gh-warning-fill);
-  color: var(--gh-text);
-  font-size: 13px;
-  line-height: 1.5;
-  margin-bottom: 16px;
-}
-.gh-admin-callout[data-tone='info'] {
-  background: var(--gh-info-fill);
-}
-.gh-admin-callout[data-tone='danger'] {
-  background: var(--gh-danger-fill);
-}
-.gh-admin-callout-text {
-  flex: 1;
-  min-width: 0;
-}
-
-/* buttons that read the same in places and dialogs */
-.gh-admin-modal button,
-.gh-place .gh-admin-button {
-  font: inherit;
-}
-.gh-admin-button,
-.gh-place .gh-admin-button,
-.gh-admin-modal .gh-admin-button {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  height: 30px;
-  padding: 0 12px;
-  border: 1px solid var(--gh-line);
-  border-radius: 8px;
-  background: var(--gh-raised);
-  color: var(--gh-text);
-  font-size: 13px;
-  white-space: nowrap;
-}
-.gh-admin-button[data-tone='danger'],
-.gh-place .gh-admin-button[data-tone='danger'] {
-  color: var(--gh-danger);
-}
-.gh-admin-link,
-.gh-place .gh-admin-link {
-  border: 0;
-  background: transparent;
-  color: var(--gh-accent-text);
-  padding: 0 4px;
-  height: 28px;
-  font-size: 13px;
-}
-.gh-admin-modal .gh-primary {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  height: 30px;
-  padding: 0 14px;
-  border: 0;
-  border-radius: 8px;
-  background: var(--gh-focus);
-  color: var(--gh-on-accent);
-  font-weight: 700;
-}
-.gh-admin-modal .gh-primary[data-tone='danger'] {
-  background: var(--gh-danger-solid);
-  color: var(--gh-on-danger);
-}
-.gh-admin-modal .gh-secondary-button {
-  height: 30px;
-  padding: 0 12px;
-  border: 0;
-  border-radius: 8px;
-  background: var(--gh-fill);
-  color: var(--gh-text);
-}
-
-/* dialogs */
-.gh-admin-modal {
-  display: flex;
-  flex-direction: column;
-  flex: 1;
-  min-height: 0;
-  color: var(--gh-text);
-}
-.gh-admin-form {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  padding: 16px 20px 20px;
-}
-.gh-admin-form-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 14px 16px;
-}
-.gh-admin-field {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  min-width: 0;
-}
-.gh-admin-field > label {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--gh-secondary);
-}
-.gh-admin-field small {
-  font-size: 12px;
-  line-height: 1.5;
-  color: var(--gh-tertiary);
-}
-.gh-admin-field small[data-error] {
-  color: var(--gh-danger);
-}
-.gh-admin-subhead {
-  margin: 8px 0 0;
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--gh-secondary);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-.gh-admin-row-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-.gh-admin-error {
-  margin: 0;
-  color: var(--gh-danger);
-  font-size: 13px;
-}
-
 /* tabs at the top of a dialog body stay put while it scrolls */
 .gh-admin-dialog-tabs {
   position: sticky;
@@ -489,9 +167,6 @@
   z-index: 1;
   padding-top: 4px;
   background: var(--gh-card);
-}
-.gh-admin-dialog-tabs .gh-admin-tabs {
-  margin-bottom: 0;
 }
 
 /* permission cards (the user permissions dialog) */
@@ -503,7 +178,7 @@
 }
 .gh-admin-point {
   border: 1px solid var(--gh-line);
-  border-radius: 10px;
+  border-radius: 12px;
   background: var(--gh-raised);
 }
 .gh-admin-point > header {
@@ -562,114 +237,10 @@
   color: var(--gh-tertiary);
   margin-left: 8px;
 }
-/* a checkbox with its label and an optional line under it */
-.gh-admin-check {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  font-size: 13px;
-  line-height: 1.5;
-  cursor: pointer;
-}
-.gh-admin-check input {
-  margin-top: 3px;
-  flex-shrink: 0;
-}
-.gh-admin-check small {
-  display: block;
-  color: var(--gh-tertiary);
-  font-size: 12px;
-}
-.gh-admin-chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-.gh-admin-chips span {
-  font-size: 12px;
-  padding: 2px 8px;
-  border-radius: 999px;
-  background: var(--gh-fill);
-  color: var(--gh-secondary);
-}
 
-/* settings forms (Runtime config, plugin settings) */
+/* settings forms (Runtime config, team context, plugin settings) */
 .gh-admin-settings {
   max-width: 880px;
-}
-.gh-admin-setting {
-  display: grid;
-  grid-template-columns: 240px minmax(0, 1fr);
-  gap: 4px 16px;
-  padding: 12px 16px;
-  border-bottom: 1px solid var(--gh-line);
-}
-.gh-admin-setting:last-child {
-  border-bottom: 0;
-}
-.gh-admin-setting-label {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding-top: 6px;
-  font-size: 13px;
-  font-weight: 600;
-}
-.gh-admin-setting-label small {
-  font-weight: 400;
-  color: var(--gh-tertiary);
-}
-.gh-admin-setting-control {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-height: 32px;
-}
-.gh-admin-setting-control input,
-.gh-admin-setting-control textarea {
-  flex: 1;
-}
-.gh-admin-setting-control textarea {
-  height: auto;
-  min-height: 64px;
-  padding: 6px 10px;
-  line-height: 1.5;
-}
-.gh-admin-input:focus,
-.gh-admin-field input:focus,
-.gh-admin-field select:focus,
-.gh-admin-field textarea:focus,
-.gh-admin-toolbar input:focus,
-.gh-admin-toolbar select:focus {
-  outline: 2px solid var(--gh-focus);
-  outline-offset: -1px;
-}
-.gh-admin-setting p {
-  grid-column: 2;
-  margin: 0;
-  font-size: 12px;
-  line-height: 1.5;
-  color: var(--gh-tertiary);
-}
-.gh-admin-setting code,
-.gh-admin-hint code {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 12px;
-  padding: 0 4px;
-  border-radius: 4px;
-  background: var(--gh-fill);
-}
-.gh-admin-savebar {
-  position: sticky;
-  bottom: 0;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 12px 0;
-  background: var(--gh-canvas);
-}
-.gh-admin-savebar small {
-  color: var(--gh-secondary);
 }
 
 /* Branding: controls left, a sticky preview right */
@@ -684,8 +255,7 @@
   flex-wrap: wrap;
   gap: 6px;
 }
-.gh-admin-presets [role='radio'],
-.gh-place .gh-admin-presets [role='radio'] {
+.gh-admin-presets [role='radio'] {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -697,8 +267,7 @@
   color: var(--gh-secondary);
   font-size: 12px;
 }
-.gh-admin-presets [role='radio'][aria-checked='true'],
-.gh-place .gh-admin-presets [role='radio'][aria-checked='true'] {
+.gh-admin-presets [role='radio'][aria-checked='true'] {
   border-color: var(--gh-accent-edge);
   background: var(--gh-accent-fill);
   color: var(--gh-accent-text);
@@ -714,7 +283,7 @@
   width: 44px;
   height: 32px;
   padding: 2px;
-  border: 1px solid var(--gh-line);
+  border: 1px solid var(--gh-line-strong);
   border-radius: 8px;
   background: var(--gh-raised);
   cursor: pointer;
@@ -757,28 +326,6 @@
   align-items: center;
   justify-content: space-between;
   height: 44px;
-}
-.gh-admin-segment {
-  display: inline-flex;
-  padding: 2px;
-  border-radius: 8px;
-  background: var(--gh-fill);
-}
-.gh-admin-segment [role='radio'],
-.gh-place .gh-admin-segment [role='radio'] {
-  height: 26px;
-  padding: 0 12px;
-  border: 0;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--gh-secondary);
-  font-size: 12px;
-}
-.gh-admin-segment [role='radio'][aria-checked='true'],
-.gh-place .gh-admin-segment [role='radio'][aria-checked='true'] {
-  background: var(--gh-raised);
-  color: var(--gh-text);
-  font-weight: 700;
 }
 /* the specimen: every color comes from --pv-* set on it, sizes scale with the chosen text size */
 .gh-admin-preview {
@@ -908,7 +455,7 @@
   overflow-wrap: anywhere;
 }
 
-/* code blocks (copyable configuration) */
+/* code blocks (copyable configuration) and a secret shown once */
 .gh-admin-code {
   position: relative;
   margin: 0;
@@ -926,7 +473,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 10px 12px;
+  padding: 8px 12px;
   border-radius: 8px;
   background: var(--gh-accent-wash);
   border: 1px solid var(--gh-accent-edge);

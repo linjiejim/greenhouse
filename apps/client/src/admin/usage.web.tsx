@@ -59,7 +59,7 @@ export default function UsageSection() {
         <>
           {tab === 'modules' ? (
             <select
-              className="gh-admin-input"
+              className="gh-input"
               aria-label={t('admin.usage.range')}
               value={days}
               onChange={(e) => setDays(Number(e.target.value) as UsageDays)}
@@ -72,7 +72,7 @@ export default function UsageSection() {
             </select>
           ) : (
             <select
-              className="gh-admin-input"
+              className="gh-input"
               aria-label={t('admin.usage.range')}
               value={period}
               onChange={(e) => setPeriod(e.target.value as UsagePeriod)}
@@ -247,7 +247,7 @@ function BySummary({ period, by }: { period: UsagePeriod; by: 'profiles' | 'call
           <tbody>
             {rows.map((r) => (
               <tr key={r.key}>
-                <td className={by === 'profiles' ? 'gh-admin-mono' : undefined}>{r.key}</td>
+                <td className={by === 'profiles' ? 'gh-mono' : undefined}>{r.key}</td>
                 <td className="gh-number">{r.calls.toLocaleString()}</td>
                 <td className="gh-number">{formatTokens(Number(r.input))}</td>
                 <td className="gh-number">{formatTokens(Number(r.output))}</td>
@@ -272,7 +272,7 @@ function ModuleUsage({ days }: { days: UsageDays }) {
   const manifest = useStationManifest((s) => s.data);
   const data = useResource(useCallback(() => get<ModuleUsageReport>('/api/admin/usage/modules', { days }), [days]));
   const report = data.data;
-  const note = <p className="gh-admin-hint">{t('admin.usage.sinceNote')}</p>;
+  const note = <p className="gh-hint">{t('admin.usage.sinceNote')}</p>;
   if (!report)
     return (
       <>
@@ -370,7 +370,7 @@ function ModuleUsage({ days }: { days: UsageDays }) {
             <tbody>
               {report.cache_by_model.map((m) => (
                 <tr key={m.model}>
-                  <td className="gh-admin-mono">{m.model}</td>
+                  <td className="gh-mono">{m.model}</td>
                   <td className="gh-number">{m.calls.toLocaleString()}</td>
                   <td className="gh-number">{formatTokens(m.input_tokens)}</td>
                   <td className="gh-number">{formatTokens(m.cached_tokens)}</td>
@@ -414,11 +414,11 @@ function KeyTotals({
       <tbody>
         {rows.map((row) => (
           <tr key={row.key}>
-            <td className={mono ? 'gh-admin-mono' : undefined} title={row.key}>
+            <td className={mono ? 'gh-mono' : undefined} title={row.key}>
               {label(row.key)}
             </td>
             <td>
-              <span className="gh-admin-badges">
+              <span className="gh-chip-row">
                 {row.clients.map((c) => (
                   <Badge key={c.client}>
                     {clientLabel(c.client, t)} {c.count.toLocaleString()}

@@ -113,11 +113,11 @@ export default function BrandingSection() {
       testID="admin-branding"
       actions={
         <>
-          <button className="gh-admin-button" disabled={busy} onClick={restore}>
+          <button className="gh-secondary-button" disabled={busy} onClick={restore}>
             <Icon name="rotate" size={14} />
             {t('admin.branding.revert')}
           </button>
-          <button className="gh-admin-button" data-tone="danger" disabled={busy} onClick={() => void clear()}>
+          <button className="gh-secondary-button gh-danger" disabled={busy} onClick={() => void clear()}>
             {t('admin.branding.clear')}
           </button>
           <button className="gh-primary" disabled={busy} onClick={() => void save()}>
@@ -126,11 +126,11 @@ export default function BrandingSection() {
         </>
       }
     >
-      <p className="gh-admin-hint">{t('admin.branding.intro')}</p>
+      <p className="gh-hint">{t('admin.branding.intro')}</p>
       <div className="gh-admin-branding">
         <div>
           <Card title={t('admin.branding.identity')} icon="building">
-            <div className="gh-admin-form" style={{ padding: 0 }}>
+            <div className="gh-form" style={{ padding: 0 }}>
               <Field label={t('admin.branding.productName')}>
                 {(id) => (
                   <input
@@ -144,11 +144,11 @@ export default function BrandingSection() {
               </Field>
               <Field label={t('admin.branding.logo')} help={t('admin.branding.logoHint')}>
                 {(id) => (
-                  <div className="gh-admin-row-actions" style={{ alignItems: 'center' }}>
+                  <div className="gh-button-row" style={{ alignItems: 'center' }}>
                     <span className="gh-admin-logo">
                       {logo ? <img src={logo} alt={t('admin.branding.logo')} /> : '—'}
                     </span>
-                    <label className="gh-admin-button" htmlFor={id} style={{ cursor: 'pointer' }}>
+                    <label className="gh-secondary-button" htmlFor={id} style={{ cursor: 'pointer' }}>
                       <Icon name="upload" size={14} />
                       {t('admin.branding.upload')}
                     </label>
@@ -164,7 +164,7 @@ export default function BrandingSection() {
                       }}
                     />
                     {logo ? (
-                      <button type="button" className="gh-admin-link" onClick={() => setLogo(null)}>
+                      <button type="button" className="gh-link-button" onClick={() => setLogo(null)}>
                         {t('admin.branding.removeLogo')}
                       </button>
                     ) : null}
@@ -194,7 +194,7 @@ export default function BrandingSection() {
             </div>
           </Card>
           <Card title={t('admin.branding.brandColor')} icon="sparkle" hint={t('admin.branding.brandHint')}>
-            <div className="gh-admin-row-actions" style={{ alignItems: 'center' }}>
+            <div className="gh-button-row" style={{ alignItems: 'center' }}>
               <input
                 type="color"
                 className="gh-admin-color"
@@ -209,7 +209,7 @@ export default function BrandingSection() {
                 }}
               />
               <input
-                className="gh-admin-input gh-admin-mono"
+                className="gh-input gh-mono"
                 aria-label={t('admin.branding.brandHex')}
                 value={hexText}
                 spellCheck={false}
@@ -223,7 +223,7 @@ export default function BrandingSection() {
             </div>
           </Card>
           <Card title={t('admin.branding.typography')} icon="textSize" hint={t('admin.branding.typographyHint')}>
-            <div className="gh-admin-form" style={{ padding: 0 }}>
+            <div className="gh-form" style={{ padding: 0 }}>
               <div className="gh-admin-presets" role="radiogroup" aria-label={t('admin.branding.fontSans')}>
                 {FONT_PRESETS.map((f) => (
                   <button
@@ -242,7 +242,7 @@ export default function BrandingSection() {
                 {(id) => (
                   <input
                     id={id}
-                    className="gh-admin-mono"
+                    className="gh-mono"
                     value={draft.fontSans}
                     placeholder="'Brand Sans', system-ui, sans-serif"
                     spellCheck={false}
@@ -254,7 +254,7 @@ export default function BrandingSection() {
                 {(id) => (
                   <input
                     id={id}
-                    className="gh-admin-mono"
+                    className="gh-mono"
                     value={draft.fontMono}
                     placeholder="'JetBrains Mono', ui-monospace, monospace"
                     spellCheck={false}
@@ -314,7 +314,7 @@ function Scale({
         aria-label={label}
         onChange={(e) => onChange(Number(e.target.value))}
       />
-      <span className="gh-admin-mono">{Math.round(value * 100)}%</span>
+      <span className="gh-mono">{Math.round(value * 100)}%</span>
     </label>
   );
 }
@@ -353,7 +353,7 @@ function BrandPreview({
     <section className="gh-admin-preview-wrap" aria-label={t('admin.branding.preview')}>
       <header>
         <strong>{t('admin.branding.preview')}</strong>
-        <div className="gh-admin-segment" role="radiogroup" aria-label={t('admin.branding.preview')}>
+        <div className="gh-segmented" role="radiogroup" aria-label={t('admin.branding.preview')}>
           {(['light', 'dark'] as const).map((m) => (
             <button key={m} type="button" role="radio" aria-checked={mode === m} onClick={() => setMode(m)}>
               {t(m === 'light' ? 'admin.branding.light' : 'admin.branding.dark')}

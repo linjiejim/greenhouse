@@ -138,7 +138,7 @@ export default function ConnectorsSection() {
           <button className="gh-icon-button" aria-label={t('common.refresh')} disabled={list.loading} onClick={reload}>
             <Icon name="refresh" size={16} />
           </button>
-          <button className="gh-admin-button" onClick={() => setEditing({ kind: 'catalog' })}>
+          <button className="gh-secondary-button" onClick={() => setEditing({ kind: 'catalog' })}>
             <Icon name="book" size={14} />
             {t('admin.connectors.fromCatalog')}
           </button>
@@ -148,7 +148,7 @@ export default function ConnectorsSection() {
         </>
       }
     >
-      <p className="gh-admin-hint">{t('admin.connectors.intro')}</p>
+      <p className="gh-hint">{t('admin.connectors.intro')}</p>
       {connectors?.length ? (
         <table className="gh-data-grid gh-admin-grid">
           <thead>
@@ -170,10 +170,10 @@ export default function ConnectorsSection() {
                 <tr key={c.id} data-muted={c.enabled ? undefined : ''} data-testid={`connector-${c.slug}`}>
                   <td title={c.url}>
                     <strong>{c.name}</strong>
-                    <span className="gh-admin-sub gh-admin-mono">{c.handle}</span>
+                    <span className="gh-admin-sub gh-mono">{c.handle}</span>
                   </td>
                   <td>
-                    <span className="gh-admin-badges">
+                    <span className="gh-chip-row">
                       <Badge tone="info">{authLabel(c, t)}</Badge>
                       {c.private_network ? <Badge tone="warning">{t('admin.connectors.internal')}</Badge> : null}
                       {c.allow_external_writes ? (
@@ -183,7 +183,7 @@ export default function ConnectorsSection() {
                   </td>
                   <td>{t('admin.connectors.toolSummary', { on: on.length, total: c.tools.length, writes })}</td>
                   <td>
-                    <span className="gh-admin-badges">
+                    <span className="gh-chip-row">
                       {!c.enabled ? <Badge>{t('admin.connectors.off')}</Badge> : null}
                       {c.auth_mode === 'shared' && !c.has_shared_secret ? (
                         <Badge tone="danger">{t('admin.connectors.noTeamCredential')}</Badge>
@@ -206,16 +206,16 @@ export default function ConnectorsSection() {
                   <td className="gh-admin-actions">
                     {teamOAuth ? (
                       c.has_shared_secret ? (
-                        <button className="gh-admin-link" disabled={busy} onClick={() => void teamSignOut(c)}>
+                        <button className="gh-link-button" disabled={busy} onClick={() => void teamSignOut(c)}>
                           {t('admin.connectors.teamSignOut')}
                         </button>
                       ) : (
-                        <button className="gh-admin-link" disabled={busy} onClick={() => void teamSignIn(c)}>
+                        <button className="gh-link-button" disabled={busy} onClick={() => void teamSignIn(c)}>
                           {t('admin.connectors.teamSignIn')}
                         </button>
                       )
                     ) : null}
-                    <button className="gh-admin-link" onClick={() => setEditing({ kind: 'tools', connector: c })}>
+                    <button className="gh-link-button" onClick={() => setEditing({ kind: 'tools', connector: c })}>
                       {t('admin.connectors.tools')}
                     </button>
                     <button
@@ -284,8 +284,8 @@ function CatalogDialog({ close, pick }: { close: () => void; pick: (entry: Catal
   const catalog = useResource(useCallback(() => get<{ entries: CatalogEntry[] }>(`${BASE}/catalog`), []));
   return (
     <AdminDialog size="lg" title={t('admin.connectors.catalogTitle')} onClose={close} testID="admin-connector-catalog">
-      <div className="gh-admin-form">
-        <p className="gh-admin-hint">{t('admin.connectors.catalogHint')}</p>
+      <div className="gh-form">
+        <p className="gh-hint">{t('admin.connectors.catalogHint')}</p>
         {!catalog.data ? (
           <SectionState loading={catalog.loading} error={catalog.error} retry={() => void catalog.refresh()} />
         ) : (
@@ -298,7 +298,7 @@ function CatalogDialog({ close, pick }: { close: () => void; pick: (entry: Catal
                     <span className="gh-admin-sub">{zh ? entry.description_zh : entry.description}</span>
                   </td>
                   <td>
-                    <span className="gh-admin-badges">
+                    <span className="gh-chip-row">
                       <Badge tone="info">
                         {authLabel({ auth_mode: entry.auth.mode, auth_kind: entry.auth.kind }, t)}
                       </Badge>
@@ -307,7 +307,7 @@ function CatalogDialog({ close, pick }: { close: () => void; pick: (entry: Catal
                   </td>
                   <td className="gh-admin-actions">
                     <button
-                      className="gh-admin-link"
+                      className="gh-link-button"
                       disabled={!!entry.installed_slug}
                       onClick={() => pick(entry)}
                       data-testid={`catalog-add-${entry.slug}`}
@@ -423,13 +423,13 @@ function ConnectorForm({
     >
       <form
         id="admin-connector"
-        className="gh-admin-form"
+        className="gh-form"
         onSubmit={(e) => {
           e.preventDefault();
           void save();
         }}
       >
-        <div className="gh-admin-form-grid">
+        <div className="gh-form-grid">
           <Field label={t('admin.connectors.name')} required>
             {input('name')}
           </Field>
@@ -458,7 +458,7 @@ function ConnectorForm({
             <textarea id={id} rows={2} value={draft.description} onChange={(e) => set('description', e.target.value)} />
           )}
         </Field>
-        <div className="gh-admin-form-grid">
+        <div className="gh-form-grid">
           <Field label={t('admin.connectors.url')} required>
             {input('url', { placeholder: 'https://example.com/mcp' })}
           </Field>
@@ -475,24 +475,24 @@ function ConnectorForm({
             )}
           </Field>
         </div>
-        <div className="gh-admin-row-actions">
+        <div className="gh-button-row">
           <button
             type="button"
-            className="gh-admin-button"
+            className="gh-secondary-button"
             disabled={busy || !draft.url.trim()}
             onClick={() => void probe()}
           >
             {t('admin.connectors.probe')}
           </button>
           {probeNote ? (
-            <span className="gh-admin-hint" style={{ margin: 0, alignSelf: 'center' }}>
+            <span className="gh-hint" style={{ margin: 0, alignSelf: 'center' }}>
               {probeNote}
             </span>
           ) : null}
         </div>
-        <h4 className="gh-admin-subhead">{t('admin.connectors.signIn')}</h4>
-        {help ? <p className="gh-admin-hint">{help}</p> : null}
-        <div className="gh-admin-form-grid">
+        <h4 className="gh-form-heading">{t('admin.connectors.signIn')}</h4>
+        {help ? <p className="gh-hint">{help}</p> : null}
+        <div className="gh-form-grid">
           <Field label={t('admin.connectors.authModeLabel')}>
             {(id) => (
               <select
@@ -524,7 +524,7 @@ function ConnectorForm({
           ) : null}
         </div>
         {keyAuth ? (
-          <div className="gh-admin-form-grid">
+          <div className="gh-form-grid">
             <Field label={t('admin.connectors.keyPlace')}>
               {(id) => (
                 <select
@@ -556,7 +556,7 @@ function ConnectorForm({
           </div>
         ) : null}
         {oauthAuth ? (
-          <div className="gh-admin-form-grid">
+          <div className="gh-form-grid">
             <Field label={t('admin.connectors.oauthScope')}>{input('oauth_scope')}</Field>
             <Field label={t('admin.connectors.clientId')} help={t('admin.connectors.clientIdHint')}>
               {input('oauth_client_id')}
@@ -569,14 +569,14 @@ function ConnectorForm({
             </Field>
           </div>
         ) : null}
-        <h4 className="gh-admin-subhead">{t('admin.connectors.access')}</h4>
+        <h4 className="gh-form-heading">{t('admin.connectors.access')}</h4>
         {existing ? (
-          <label className="gh-admin-check">
+          <label className="gh-check">
             <input type="checkbox" checked={draft.enabled} onChange={(e) => set('enabled', e.target.checked)} />
             <span>{t('admin.connectors.enabled')}</span>
           </label>
         ) : null}
-        <label className="gh-admin-check">
+        <label className="gh-check">
           <input
             type="checkbox"
             checked={draft.private_network}
@@ -587,7 +587,7 @@ function ConnectorForm({
             <small>{t('admin.connectors.privateNetworkHint')}</small>
           </span>
         </label>
-        <label className="gh-admin-check">
+        <label className="gh-check">
           <input
             type="checkbox"
             checked={draft.allow_external_writes}
@@ -636,15 +636,15 @@ function ToolsDialog({ connector, close, saved }: { connector: TeamConnector; cl
         </>
       }
     >
-      <div className="gh-admin-form">
-        <p className="gh-admin-hint">{t('admin.connectors.toolsHint')}</p>
+      <div className="gh-form">
+        <p className="gh-hint">{t('admin.connectors.toolsHint')}</p>
         {tools.length ? (
           tools.map((tool) => {
             const kind = toolKind(tool);
             return (
               <div key={tool.name} className="gh-admin-tool">
                 <span className="gh-admin-wrap">
-                  <span className="gh-admin-mono">{tool.name}</span>{' '}
+                  <span className="gh-mono">{tool.name}</span>{' '}
                   <Badge tone={KIND_TONE[kind]}>{t(`admin.connectors.kind.${kind}`)}</Badge>
                   {tool.description ? <small title={tool.description}>{tool.description}</small> : null}
                   {!tool.read_only ? (

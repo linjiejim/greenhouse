@@ -107,8 +107,13 @@ function Requests() {
   const rows = list.data?.requests;
   return (
     <>
-      <div className="gh-admin-toolbar" style={{ padding: 0, marginBottom: 12 }}>
-        <select aria-label={t('admin.metering.status')} value={status} onChange={(e) => setStatus(e.target.value)}>
+      <div className="gh-toolbar" style={{ padding: 0, marginBottom: 12 }}>
+        <select
+          className="gh-input"
+          aria-label={t('admin.metering.status')}
+          value={status}
+          onChange={(e) => setStatus(e.target.value)}
+        >
           <option value="">{t('admin.ext.feedback.allStatuses')}</option>
           {(['pending', 'accepted', 'rejected', 'done'] as const).map((s) => (
             <option key={s} value={s}>
@@ -125,7 +130,7 @@ function Requests() {
           <Icon name="refresh" size={16} />
         </button>
         {list.data ? (
-          <span className="gh-admin-count">{t('admin.ext.feedback.total', { n: list.data.total })}</span>
+          <span className="gh-count">{t('admin.ext.feedback.total', { n: list.data.total })}</span>
         ) : null}
       </div>
       {rows?.length ? (
@@ -151,7 +156,7 @@ function Requests() {
                 </td>
                 <td onClick={(e) => e.stopPropagation()}>
                   <select
-                    className="gh-admin-input"
+                    className="gh-input"
                     style={{ height: 26 }}
                     aria-label={t('admin.ext.feedback.priority')}
                     value={r.priority}
@@ -182,14 +187,14 @@ function Requests() {
                   {r.status === 'pending' ? (
                     <>
                       <button
-                        className="gh-admin-link"
+                        className="gh-link-button"
                         disabled={busy}
                         onClick={() => void update(r.id, { status: 'accepted' })}
                       >
                         {t('admin.ext.feedback.accept')}
                       </button>
                       <button
-                        className="gh-admin-link"
+                        className="gh-link-button"
                         disabled={busy}
                         onClick={() => void update(r.id, { status: 'rejected' })}
                       >
@@ -198,7 +203,7 @@ function Requests() {
                     </>
                   ) : r.status === 'accepted' ? (
                     <button
-                      className="gh-admin-link"
+                      className="gh-link-button"
                       disabled={busy}
                       onClick={() => void update(r.id, { status: 'done' })}
                     >
@@ -206,7 +211,7 @@ function Requests() {
                     </button>
                   ) : (
                     <button
-                      className="gh-admin-link"
+                      className="gh-link-button"
                       disabled={busy}
                       onClick={() => void update(r.id, { status: 'pending' })}
                     >
@@ -268,12 +273,12 @@ function RequestDialog({
         </>
       }
     >
-      <div className="gh-admin-form">
+      <div className="gh-form">
         <p style={{ margin: 0, whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>{request.description}</p>
         {request.session_id ? (
           <button
             type="button"
-            className="gh-admin-link"
+            className="gh-link-button"
             style={{ alignSelf: 'flex-start', padding: 0 }}
             onClick={() => {
               close();
@@ -330,9 +335,10 @@ function Frictions() {
   const statusLabel = (s: FrictionStatus) => t(`admin.ext.feedback.frictionStatus.${s}`);
   return (
     <>
-      <p className="gh-admin-hint">{t('admin.ext.feedback.frictionsHint')}</p>
-      <div className="gh-admin-toolbar" style={{ padding: 0, marginBottom: 12 }}>
+      <p className="gh-hint">{t('admin.ext.feedback.frictionsHint')}</p>
+      <div className="gh-toolbar" style={{ padding: 0, marginBottom: 12 }}>
         <select
+          className="gh-input"
           aria-label={t('admin.metering.status')}
           value={status}
           onChange={(e) => setStatus(e.target.value as typeof status)}
@@ -344,11 +350,11 @@ function Frictions() {
             </option>
           ))}
         </select>
-        <button className="gh-admin-button" disabled={busy} onClick={() => void scan()}>
+        <button className="gh-secondary-button" disabled={busy} onClick={() => void scan()}>
           <Icon name="refresh" size={14} />
           {t('admin.ext.feedback.scan')}
         </button>
-        {list.data ? <span className="gh-admin-count">{t('admin.ext.feedback.total', { n: rows.length })}</span> : null}
+        {list.data ? <span className="gh-count">{t('admin.ext.feedback.total', { n: rows.length })}</span> : null}
       </div>
       {rows.length ? (
         <table className="gh-data-grid gh-admin-grid" data-testid="admin-frictions">
@@ -371,7 +377,7 @@ function Frictions() {
                 >
                   {f.summary}
                 </td>
-                <td className="gh-admin-mono">{f.tool_id ?? '—'}</td>
+                <td className="gh-mono">{f.tool_id ?? '—'}</td>
                 <td>
                   <Badge>{t(`admin.ext.feedback.frictionKind.${f.kind}`)}</Badge>
                 </td>
@@ -438,8 +444,7 @@ function FrictionDialog({ friction, close, changed }: { friction: Friction; clos
         <>
           <button
             type="button"
-            className="gh-admin-button"
-            data-tone="danger"
+            className="gh-secondary-button gh-danger"
             disabled={busy}
             onClick={() => void remove()}
           >
@@ -455,7 +460,7 @@ function FrictionDialog({ friction, close, changed }: { friction: Friction; clos
         </>
       }
     >
-      <div className="gh-admin-form">
+      <div className="gh-form">
         {friction.detail ? <p className="gh-admin-code">{friction.detail}</p> : null}
         <Field label={t('admin.metering.status')}>
           {(id) => (

@@ -61,7 +61,7 @@ export function PermissionsDialog({ user, close }: { user: Pick<ManagedUser, 'id
         <SectionState loading={view.loading} error={view.error} retry={() => void view.refresh()} />
       ) : (
         <div className="gh-admin-points" role="tabpanel">
-          <p className="gh-admin-hint">{t(`admin.permissions.${tab}Hint`)}</p>
+          <p className="gh-hint">{t(`admin.permissions.${tab}Hint`)}</p>
           {points
             .filter((point) => point.group === tab)
             .map((point) => (
@@ -69,11 +69,11 @@ export function PermissionsDialog({ user, close }: { user: Pick<ManagedUser, 'id
             ))}
           {tab === 'basic' && view.data.baseline.globalTools.length ? (
             <>
-              <h4 className="gh-admin-subhead">{t('admin.permissions.globalTools')}</h4>
-              <p className="gh-admin-hint">{t('admin.permissions.globalToolsHint')}</p>
-              <div className="gh-admin-chips">
+              <h4 className="gh-form-heading">{t('admin.permissions.globalTools')}</h4>
+              <p className="gh-hint">{t('admin.permissions.globalToolsHint')}</p>
+              <div className="gh-chip-row">
                 {view.data.baseline.globalTools.map((tool) => (
-                  <span key={tool.id} title={tool.brief}>
+                  <span key={tool.id} className="gh-badge" title={tool.brief}>
                     {tool.name}
                   </span>
                 ))}
@@ -117,12 +117,12 @@ function PointCard({
           <span>{point.description}</span>
         </span>
         {toolset ? (
-          <small className="gh-admin-count">
+          <small className="gh-count">
             {t('admin.permissions.toolsOn', { on: tools.filter((tool) => tool.assigned).length, total: tools.length })}
           </small>
         ) : null}
         {finer || toolset ? (
-          <button type="button" className="gh-admin-link" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
+          <button type="button" className="gh-link-button" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
             {open
               ? t('admin.permissions.hide')
               : toolset
@@ -144,10 +144,10 @@ function PointCard({
           {point.kind === 'app' && !point.enabled ? <span>{t('admin.permissions.enableFirst')}</span> : null}
           {point.capabilities?.length ? (
             <>
-              <h4 className="gh-admin-subhead">{t('admin.permissions.actions')}</h4>
+              <h4 className="gh-form-heading">{t('admin.permissions.actions')}</h4>
               {point.capabilities.map((cap) => (
                 <div key={cap.capability} className="gh-admin-tool">
-                  <span className="gh-admin-mono" title={cap.capability}>
+                  <span className="gh-mono" title={cap.capability}>
                     {cap.capability}
                     <small>{cap.reason}</small>
                   </span>
@@ -160,7 +160,7 @@ function PointCard({
           ) : null}
           {point.entities?.length ? (
             <>
-              <h4 className="gh-admin-subhead">{t('admin.permissions.records')}</h4>
+              <h4 className="gh-form-heading">{t('admin.permissions.records')}</h4>
               {point.entities.map((entity) => (
                 <EntityPolicy key={`${entity.appId}:${entity.entityId}`} entity={entity} />
               ))}
@@ -200,7 +200,7 @@ function EntityPolicy({ entity }: { entity: AccessEntity }) {
     <details>
       <summary className="gh-admin-tool">
         <span>{entity.title}</span>
-        <span className="gh-admin-badges">
+        <span className="gh-chip-row">
           {scopes.length ? (
             scopes.map((scope) => (
               <Badge key={scope}>
