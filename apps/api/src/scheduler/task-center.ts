@@ -108,14 +108,6 @@ export interface CreateTaskInput {
    * On update only the keys given change.
    */
   notify?: Partial<AutomationNotify> | null;
-  /** Legacy flat form of `notify.webhook` (1.x clients); `notify` wins when both are sent. */
-  notify_webhook?: string | null;
-  /** Legacy flat form of `notify.email`. */
-  notify_email?: boolean;
-  /** Legacy flat form of `notify.wecom`. */
-  notify_wecom?: boolean;
-  /** Legacy flat form of `notify.feishu`. */
-  notify_feishu?: boolean;
   /**
    * Stay quiet when a run has nothing new: the run prompt asks for exactly
    * `NO_UPDATE` in that case, and such a run is recorded as "no update" with no
@@ -217,16 +209,11 @@ export function validateNotifyWebhook(raw: string | null | undefined): TaskError
 }
 
 /**
- * The notify keys a request supplied, from `notify` and/or the legacy flat
- * fields (`notify` wins), or `undefined` when it supplied none. Values are type
- * checked; the webhook URL is validated by `validateNotifyWebhook`.
+ * The notify keys a request supplied in `notify`, or `undefined` when it supplied
+ * none. Values are type checked; the webhook URL is validated by `validateNotifyWebhook`.
  */
 export function notifyFromInput(input: CreateTaskInput): Partial<AutomationNotify> | TaskError | undefined {
   const out: Partial<AutomationNotify> = {};
-  if (input.notify_webhook !== undefined) out.webhook = input.notify_webhook || null;
-  if (input.notify_email !== undefined) out.email = input.notify_email;
-  if (input.notify_wecom !== undefined) out.wecom = input.notify_wecom;
-  if (input.notify_feishu !== undefined) out.feishu = input.notify_feishu;
   if (input.notify !== undefined && input.notify !== null) {
     if (typeof input.notify !== 'object' || Array.isArray(input.notify)) {
       return err(
