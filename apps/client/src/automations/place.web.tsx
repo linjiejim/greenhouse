@@ -390,7 +390,7 @@ function AutomationsDesktop({ openEditor, saved }: { openEditor: (editor: Editor
                             <button className="gh-primary" onClick={() => editAutomation({ kind: 'new' })}>
                               {t('places.newAutomation')}
                             </button>
-                            <button onClick={() => start(t('places.createAutomation'))}>
+                            <button className="gh-secondary-button" onClick={() => start(t('places.createAutomation'))}>
                               {t('automations.askSprouty')}
                             </button>
                           </div>

@@ -172,7 +172,7 @@ textarea {
   gap: 6px;
   font-size: 13px;
   font-weight: 600;
-  color: var(--gh-secondary);
+  color: var(--gh-text);
 }
 .gh-form-grid {
   display: grid;
@@ -193,6 +193,9 @@ textarea {
 }
 .gh-form-heading,
 .gh-form-section > legend {
+  display: flex;
+  align-items: baseline;
+  width: 100%;
   margin: 0;
   padding: 0;
   font-size: 13px;
@@ -205,18 +208,20 @@ textarea {
   gap: 6px;
   min-width: 0;
 }
-.gh-field > label {
+.gh-field > label,
+.gh-field-label {
   display: flex;
   align-items: baseline;
   font-size: 13px;
   font-weight: 600;
-  color: var(--gh-secondary);
+  color: var(--gh-text);
 }
 /* a count beside the label ("12 / 4000") */
-.gh-field > label small {
+:is(.gh-field > label, .gh-field-label, .gh-form-section > legend) small {
   margin-left: auto;
   padding-left: 8px;
   font-weight: 400;
+  color: var(--gh-secondary);
   font-variant-numeric: tabular-nums;
 }
 .gh-field > label small[data-over] {

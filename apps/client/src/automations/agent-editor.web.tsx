@@ -161,11 +161,11 @@ export function AgentEditor({
         : 'agents.editor.newTitle',
   );
   const lead = saveError ? (
-    <span role="alert" className="gh-auto-error" title={saveError}>
+    <span role="alert" className="gh-error" title={saveError}>
       {saveError}
     </span>
   ) : submitted && Object.keys(errors).length ? (
-    <span role="alert" className="gh-auto-error">
+    <span role="alert" className="gh-error">
       {t('automations.editor.fixErrors')}
     </span>
   ) : (
@@ -185,7 +185,7 @@ export function AgentEditor({
       focus={nameRef}
     >
       {!draft ? (
-        <p className="gh-auto-hint" role="status">
+        <p className="gh-hint" role="status">
           {t('common.loading')}
         </p>
       ) : (
@@ -207,7 +207,7 @@ export function AgentEditor({
             {({ id, describedBy, invalid }) => (
               <textarea
                 id={id}
-                className="gh-auto-textarea"
+                className="gh-input"
                 rows={9}
                 value={draft.prompt}
                 placeholder={t('agents.editor.promptPlaceholder')}
@@ -218,12 +218,12 @@ export function AgentEditor({
               />
             )}
           </Field>
-          <div className="gh-auto-row">
+          <div className="gh-form-grid">
             <Field label={t('agents.editor.model')} hint={t('agents.editor.modelHint')}>
               {({ id, describedBy }) => (
                 <select
                   id={id}
-                  className="gh-auto-select"
+                  className="gh-input"
                   value={draft.modelId}
                   aria-describedby={describedBy}
                   onChange={(e) => set({ modelId: e.target.value })}
@@ -244,7 +244,7 @@ export function AgentEditor({
               {({ id, describedBy, invalid }) => (
                 <input
                   id={id}
-                  className="gh-auto-input"
+                  className="gh-input"
                   type="number"
                   min={1}
                   max={50}
@@ -266,14 +266,14 @@ export function AgentEditor({
             onChange={(next) => set({ tools: next })}
           />
           <Connectors options={connectors} value={draft.connectors} onChange={(next) => set({ connectors: next })} />
-          <fieldset className="gh-auto-section">
+          <fieldset className="gh-form-section">
             <legend>{t('agents.editor.governance')}</legend>
-            <div className="gh-auto-row">
+            <div className="gh-form-grid">
               <Field label={t('agents.editor.purpose')}>
                 {({ id }) => (
                   <input
                     id={id}
-                    className="gh-auto-input"
+                    className="gh-input"
                     value={draft.purpose}
                     placeholder={t('agents.editor.purposePlaceholder')}
                     onChange={(e) => set({ purpose: e.target.value })}
@@ -284,7 +284,7 @@ export function AgentEditor({
                 {({ id }) => (
                   <input
                     id={id}
-                    className="gh-auto-input"
+                    className="gh-input"
                     value={draft.audience}
                     placeholder={t('agents.editor.audiencePlaceholder')}
                     onChange={(e) => set({ audience: e.target.value })}
@@ -292,12 +292,12 @@ export function AgentEditor({
                 )}
               </Field>
             </div>
-            <div className="gh-auto-row">
+            <div className="gh-form-grid">
               <Field label={t('agents.editor.risk')}>
                 {({ id }) => (
                   <select
                     id={id}
-                    className="gh-auto-select"
+                    className="gh-input"
                     value={draft.riskLevel}
                     onChange={(e) => set({ riskLevel: e.target.value as RiskLevel })}
                   >
@@ -312,7 +312,7 @@ export function AgentEditor({
             </div>
           </fieldset>
           {original ? (
-            <p className="gh-auto-note">
+            <p className="gh-callout" data-tone="neutral">
               {t('agents.editor.versionNote', { n: (original.current_version ?? 1) + 1 })}
               {original.is_shared ? ` ${t('agents.editor.sharedNote')}` : ''}
             </p>
@@ -345,13 +345,13 @@ function Identity({
     <>
       <div className="gh-auto-identity">
         <PlantAvatar plant={plant} tint={tint} size={64} animate={false} seed={stableId} />
-        <div className="gh-auto-section">
+        <div className="gh-form-section">
           <Field label={t('agents.editor.name')} error={nameError}>
             {({ id, describedBy, invalid }) => (
               <input
                 ref={nameRef}
                 id={id}
-                className="gh-auto-input"
+                className="gh-input"
                 value={draft.name}
                 maxLength={80}
                 placeholder={t('agents.editor.namePlaceholder')}
@@ -366,7 +366,7 @@ function Identity({
             {({ id }) => (
               <input
                 id={id}
-                className="gh-auto-input"
+                className="gh-input"
                 value={draft.description}
                 placeholder={t('agents.editor.descriptionPlaceholder')}
                 onChange={(e) => onChange({ description: e.target.value })}
@@ -375,7 +375,7 @@ function Identity({
           </Field>
         </div>
       </div>
-      <div className="gh-auto-section" role="group" aria-label={t('agents.editor.look')}>
+      <div className="gh-form-section" role="group" aria-label={t('agents.editor.look')}>
         <Swatches
           label={t('agents.editor.plant')}
           // the sprout is Sprouty's face; offered only to an agent that already wears it
@@ -418,8 +418,8 @@ function Swatches({
   onChange: (id: string) => void;
 }) {
   return (
-    <div className="gh-auto-field">
-      <span className="gh-auto-label">{label}</span>
+    <div className="gh-field">
+      <span className="gh-field-label">{label}</span>
       <div
         className="gh-auto-swatches"
         role="radiogroup"
@@ -478,16 +478,16 @@ function ToolPicker({
     return known === key ? id : known;
   };
   return (
-    <fieldset className="gh-auto-section">
-      <legend className="gh-auto-label gh-auto-legend">
+    <fieldset className="gh-form-section">
+      <legend>
         {t('agents.editor.tools')}
         <small>{t('agents.editor.toolsSelected', { n: selected.length })}</small>
       </legend>
-      <p className="gh-auto-hint">{t('agents.editor.toolsHint')}</p>
+      <p className="gh-hint">{t('agents.editor.toolsHint')}</p>
       <div className="gh-auto-tools" data-testid="agent-tools">
         <div className="gh-auto-tools-bar">
           <input
-            className="gh-auto-input"
+            className="gh-input"
             type="search"
             aria-label={t('agents.editor.filterTools')}
             placeholder={t('agents.editor.filterTools')}
@@ -496,18 +496,18 @@ function ToolPicker({
           />
           <button
             type="button"
-            className="gh-auto-btn-quiet"
+            className="gh-link-button"
             onClick={() => onChange([...new Set([...selected, ...picker.pickable])])}
           >
             {t('agents.editor.selectAll')}
           </button>
-          <button type="button" className="gh-auto-btn-quiet" onClick={() => onChange([])}>
+          <button type="button" className="gh-link-button" onClick={() => onChange([])}>
             {t('agents.editor.clear')}
           </button>
         </div>
         <div className="gh-auto-tools-list">
           {tools === null ? (
-            <p className="gh-auto-hint gh-auto-tools-empty">{t('common.loading')}</p>
+            <p className="gh-hint gh-auto-tools-empty">{t('common.loading')}</p>
           ) : (
             <>
               {picker.groups.map((group) => (
@@ -525,9 +525,13 @@ function ToolPicker({
                         <span>
                           <b>
                             {tool.name}
-                            {access === 'read' ? <span className="gh-auto-tag">{t('agents.editor.read')}</span> : null}
+                            {access === 'read' ? (
+                              <span className="gh-badge" data-tone="info">
+                                {t('agents.editor.read')}
+                              </span>
+                            ) : null}
                             {access === 'write' ? (
-                              <span className="gh-auto-tag" data-tone="write">
+                              <span className="gh-badge" data-tone="warning">
                                 {t('agents.editor.write')}
                               </span>
                             ) : null}
@@ -545,7 +549,7 @@ function ToolPicker({
                   <span>
                     <b>
                       {id}
-                      <span className="gh-auto-tag" data-tone="gone">
+                      <span className="gh-badge" data-tone="danger">
                         {t('agents.editor.gone')}
                       </span>
                     </b>
@@ -553,7 +557,7 @@ function ToolPicker({
                 </label>
               ))}
               {!picker.groups.length && !picker.missing.length ? (
-                <p className="gh-auto-hint gh-auto-tools-empty">{t('agents.editor.noTools')}</p>
+                <p className="gh-hint gh-auto-tools-empty">{t('agents.editor.noTools')}</p>
               ) : null}
             </>
           )}
@@ -579,9 +583,9 @@ function Connectors({
   const known = new Set(options.map((option) => option.id));
   const chosen = value ?? [];
   return (
-    <fieldset className="gh-auto-section">
+    <fieldset className="gh-form-section">
       <legend>{t('agents.editor.connectors')}</legend>
-      <p className="gh-auto-hint">{t('agents.editor.connectorsHint')}</p>
+      <p className="gh-hint">{t('agents.editor.connectorsHint')}</p>
       <Check
         label={t('agents.editor.connectorsAll')}
         checked={value === null}
@@ -600,7 +604,7 @@ function Connectors({
           ))}
         </div>
       ) : null}
-      {chosen.some((id) => !known.has(id)) ? <p className="gh-auto-hint">{t('agents.editor.connectorsGone')}</p> : null}
+      {chosen.some((id) => !known.has(id)) ? <p className="gh-hint">{t('agents.editor.connectorsGone')}</p> : null}
     </fieldset>
   );
 }

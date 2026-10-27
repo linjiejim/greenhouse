@@ -140,7 +140,7 @@ export function AgentDetail({
               <input
                 type="checkbox"
                 role="switch"
-                className="gh-auto-switch"
+                className="gh-switch"
                 checked={agent.is_shared === true}
                 aria-checked={agent.is_shared === true}
                 disabled={sharing}
@@ -172,7 +172,7 @@ export function AgentDetail({
               ))}
             </div>
           ) : (
-            <p className="gh-auto-hint">{t('agents.usedByNone')}</p>
+            <p className="gh-hint">{t('agents.usedByNone')}</p>
           )}
         </div>
       </div>
