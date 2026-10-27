@@ -262,7 +262,6 @@ exports[`apps/api extension-kit > exports exactly the documented names 1`] = `
   "type UserRow",
   "users",
   "validateDriveUpload",
-  "type WidgetRecipe",
   "windowMessagesByBudget",
   "type WorkspaceSettingDef",
   "workspaceTimeZone",

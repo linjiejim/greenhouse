@@ -2,8 +2,6 @@ import { services } from '../services.js';
 /**
  * skillhub boot-seed tests — idempotent publish semantics over fixture packs
  * on disk plus the same in-memory skills/store fakes as center.test.ts.
- * Filesystem parity with scripts/skillhub-sync.mjs is pinned separately in
- * tests/skillhub/boot-seed-parity.test.ts.
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';

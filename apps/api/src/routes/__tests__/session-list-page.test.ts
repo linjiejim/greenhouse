@@ -118,13 +118,13 @@ describe('GET /api/sessions list pagination metadata', () => {
     );
   });
 
-  it('does not silently clamp the legacy Web history limit', async () => {
+  it('bounds every page at 200, with or without page_meta', async () => {
     const response = await createApp().request('/api/sessions?limit=500');
 
     expect(response.status).toBe(200);
     expect(mocks.sessions.list).toHaveBeenCalledWith(
       expect.objectContaining({
-        limit: 500,
+        limit: 200,
       }),
     );
   });

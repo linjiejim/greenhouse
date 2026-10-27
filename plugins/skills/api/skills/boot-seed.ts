@@ -7,11 +7,8 @@
  * center (same canonical algorithm as bundle.ts); unchanged packs are skipped,
  * bumped packs are published, changed-but-not-bumped packs are logged as
  * errors WITHOUT blocking boot. With no repository directory, configured pack
- * roots are still synced; no available roots means no seeding.
- *
- * The filesystem/parsing layer mirrors scripts/skillhub-sync.mjs (the manual
- * CLI path); tests/skillhub/boot-seed-parity.test.ts pins the two against
- * each other so they cannot drift.
+ * roots are still synced; no available roots means no seeding. This is the only
+ * sync path: there is no separate CLI copy to keep in step.
  */
 
 import { extensionSkillPackDirs } from '@greenhouse/api/extension-kit';

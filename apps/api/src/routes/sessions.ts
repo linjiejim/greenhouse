@@ -2,7 +2,7 @@
  * Session routes — /api/sessions
  *
  * POST   /api/sessions                                — 创建新会话
- * GET    /api/sessions                                — 获取会话列表（支持status/limit/offset/include_eval/page_meta/scope/channel/exclude_channel筛选）
+ * GET    /api/sessions                                — 获取会话列表（支持status/limit/offset/page_meta/scope/channel/exclude_channel筛选；每页最多 200）
  * GET    /api/sessions/:id                             — 获取会话详情（include_messages=0 可只取元数据）
  * GET    /api/sessions/:id/messages                    — 分页获取会话消息
  * POST   /api/sessions/:id/fork                        — 复制完整会话或复制到指定 Agent 回复
@@ -146,10 +146,9 @@ const sessions = new Hono<AppEnv>()
       return c.json({ error: 'offset must be a non-negative integer' }, 400);
     }
     const includePageMeta = c.req.query('page_meta') === '1';
-    // New cursor consumers use bounded pages. Preserve the legacy endpoint's
-    // exact requested limit until Web has migrated to the page_meta contract.
-    const limit = includePageMeta ? Math.min(requestedLimit, 200) : requestedLimit;
-    const includeEval = c.req.query('include_eval') === '1';
+    const limit = Math.min(requestedLimit, 200);
+    // Sessions of the retired eval feature never list.
+    const includeEval = false;
     const channel = c.req.query('channel');
     // `exclude_channel=task` is the sidebar's "Mine" (my conversations without
     // automation runs); `channel=task` is its "Scheduled" tab.

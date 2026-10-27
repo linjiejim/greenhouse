@@ -256,8 +256,6 @@ export interface GreenhouseExtension {
    * can then be granted `mcp:<group>` alone; tools join it via `surface.mcp`.
    */
   mcpGroups?: string[];
-  /** @deprecated Ignored since 3.0 (the Home workbench was removed); kept so 2.x extensions compile. Removed in 4.0. */
-  workbenchRecipes?: unknown[];
   /** Paths that skip authentication (OAuth callbacks, webhooks). Keep this list minimal. */
   publicPaths?: { exact?: string[]; prefixes?: string[] };
   /** Periodic jobs started with the scheduler. */

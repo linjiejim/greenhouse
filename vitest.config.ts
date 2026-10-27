@@ -89,8 +89,7 @@ export default defineConfig({
   test: {
     globals: true,
     // .claude/** holds agent worktrees (full repo copies) — never collect them.
-    // skillhub/** ships in-bundle node:test files (*.test.mjs) that vitest
-    // cannot parse; tests/skillhub/bundles.test.ts runs them via `node --test`.
+    // skillhub/** may ship in-bundle node:test files (*.test.mjs) that vitest cannot parse.
     exclude: [
       'tests/e2e/**',
       'tests/e2e-ui/**',
