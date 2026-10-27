@@ -13,9 +13,9 @@ RUN npm install -g pnpm@11.9.0
 
 # The isolated Expo workspace keeps its lockfile and dependencies out of runtime.
 FROM base AS universal
-COPY apps/mobile ./apps/mobile
+COPY apps/client ./apps/client
 COPY scripts/build-app.mjs ./scripts/build-app.mjs
-RUN pnpm --dir apps/mobile install --ignore-workspace --frozen-lockfile
+RUN pnpm --dir apps/client install --ignore-workspace --frozen-lockfile
 RUN node scripts/build-app.mjs
 
 # ── Build: install the full workspace (compiles native addons) + build the SPA ──

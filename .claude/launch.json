@@ -32,7 +32,7 @@
       "runtimeExecutable": "sh",
       "runtimeArgs": [
         "-c",
-        "cd apps/mobile && npx expo start --web --port 8095"
+        "cd apps/client && npx expo start --web --port 8095"
       ],
       "port": 8095
     },
@@ -41,7 +41,7 @@
       "runtimeExecutable": "sh",
       "runtimeArgs": [
         "-c",
-        "cd apps/mobile && npx expo start --web --port 8096"
+        "cd apps/client && npx expo start --web --port 8096"
       ],
       "port": 8096
     },

@@ -18,7 +18,10 @@ import type { AppEnv } from '../../../../apps/api/src/app-env.js';
 import { createSearchRoute } from '../../../../apps/api/src/routes/search.js';
 import { knowledgeRegistration } from '../../../knowledge/api/platform/registration.js';
 import { projectsRegistration } from '../platform/application.js';
-import { initializePlatformRuntime, resetPlatformRuntimeForTests } from '../../../../apps/api/src/platform/runtime.js';
+import {
+  initializePlatformRuntime,
+  resetPlatformRuntimeForTests,
+} from '../../../../apps/api/src/plugin-host/runtime.js';
 import { createInternalTestUser } from '../../../../tests/helpers/internal-user.js';
 
 let db: DatabaseProvider;

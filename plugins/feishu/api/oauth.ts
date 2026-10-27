@@ -66,7 +66,7 @@ interface PendingAuth {
 }
 
 /**
- * The phone app's return address (apps/mobile app.json `scheme` + the sign-in path) — the ONLY
+ * The phone app's return address (apps/client app.json `scheme` + the sign-in path) — the ONLY
  * redirect a login may ask for. Exact match: no other scheme, host, path or query is accepted, so
  * the one-shot exchange code can never be sent anywhere but the app.
  */

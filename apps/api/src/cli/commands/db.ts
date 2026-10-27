@@ -24,8 +24,8 @@ import {
   type ExtensionMigrationStatus,
 } from '@greenhouse/db';
 import { DRIZZLE_DIR } from '../../paths.js';
-import { extensionMigrationSources } from '../../extensions/boot.js';
-import { fromExtensions } from '../../extensions/index.js';
+import { extensionMigrationSources } from '../../plugin-host/boot.js';
+import { fromExtensions } from '../../plugin-host/index.js';
 import {
   openDb,
   parseFlags,

@@ -11,7 +11,10 @@ import tablesRoutes from '../routes.js';
 import { tablesRegistration } from '../platform/application.js';
 import { tablesManifest } from '../platform/manifest.js';
 import type { FieldPolicy } from '@greenhouse/api/extension-kit';
-import { initializePlatformRuntime, resetPlatformRuntimeForTests } from '../../../../apps/api/src/platform/runtime.js';
+import {
+  initializePlatformRuntime,
+  resetPlatformRuntimeForTests,
+} from '../../../../apps/api/src/plugin-host/runtime.js';
 import { createTablesMutationTool } from '../tools/tables-mutation.js';
 import { createTablesQueryTool } from '../tools/tables-query.js';
 import { createExportDataTool } from '../../../../apps/api/src/tools/export-data.js';

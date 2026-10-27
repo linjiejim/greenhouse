@@ -31,7 +31,7 @@ import {
   resourceGroupsFromScopes,
   scopesAreSubset,
   type OAuthScope,
-} from '../platform/oauth.js';
+} from '../agent-access/oauth.js';
 
 /** Channel recorded for MCP traffic. Reuses the existing `a2a` enum value. */
 export const MCP_AUDIT_CHANNEL = 'a2a' as const;

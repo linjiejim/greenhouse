@@ -19,9 +19,9 @@ import {
   initializePlatformRuntime,
   PLATFORM_ORG_ID,
   resetPlatformRuntimeForTests,
-} from '../../../../apps/api/src/platform/runtime.js';
+} from '../../../../apps/api/src/plugin-host/runtime.js';
 import { projectsRegistration } from '../platform/application.js';
-import { humanActor } from '../../../../apps/api/src/platform/actor.js';
+import { humanActor } from '../../../../apps/api/src/plugin-host/actor.js';
 import {
   ActivityQueryError,
   activityCsvRows,

@@ -1,5 +1,5 @@
 import { cabinetDriveScope } from '../drive/access.js';
-import { fromExtensions } from '../extensions/index.js';
+import { fromExtensions } from '../plugin-host/index.js';
 /**
  * Object references — /api/refs
  *
@@ -40,8 +40,8 @@ import { getAuthUser, requireInternal } from '../auth/middleware.js';
 import type { AuthUser } from '../auth/token.js';
 import { canReadDrive, resolveDriveAccess } from '../drive/access.js';
 import { canAccessSession } from '../sessions/access.js';
-import { humanActor } from '../platform/actor.js';
-import { getPlatformRuntime } from '../platform/runtime.js';
+import { humanActor } from '../plugin-host/actor.js';
+import { getPlatformRuntime } from '../plugin-host/runtime.js';
 
 const RESOLVE_CONCURRENCY = 8;
 const TITLE_MAX = 200;

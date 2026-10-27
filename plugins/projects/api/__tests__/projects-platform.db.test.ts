@@ -13,10 +13,13 @@ import type { AppEnv } from '../../../../apps/api/src/app-env.js';
 import projectsRoutes from '../routes.js';
 import platformRoutes from '../../../../apps/api/src/routes/platform.js';
 import platformAdminRoutes from '../../../../apps/api/src/routes/platform-admin.js';
-import { bootstrapPlatform } from '../../../../apps/api/src/platform/bootstrap.js';
+import { bootstrapPlatform } from '../../../../apps/api/src/plugin-host/bootstrap.js';
 import { projectsRegistration } from '../platform/application.js';
-import { initializePlatformRuntime, resetPlatformRuntimeForTests } from '../../../../apps/api/src/platform/runtime.js';
-import { humanActor } from '../../../../apps/api/src/platform/actor.js';
+import {
+  initializePlatformRuntime,
+  resetPlatformRuntimeForTests,
+} from '../../../../apps/api/src/plugin-host/runtime.js';
+import { humanActor } from '../../../../apps/api/src/plugin-host/actor.js';
 import { createProjectQueryTool } from '../tools/project-query.js';
 import { createProjectMutationTool } from '../tools/project-mutation.js';
 import { TEST_DATABASE_URL } from '@greenhouse/db/test-config';

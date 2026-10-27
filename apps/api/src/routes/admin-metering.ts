@@ -19,8 +19,8 @@ import { getDb, MEMBER_DEFAULT_SCOPE_ID, type UsageBudgetLimitScopeType } from '
 import type { BudgetLimitInput, PriceOverrideInput } from '@greenhouse/types/metering';
 import { getAuthUser } from '../auth/middleware.js';
 import type { AppEnv } from '../app-env.js';
-import { humanActor } from '../platform/actor.js';
-import { PLATFORM_ORG_ID } from '../platform/runtime.js';
+import { humanActor } from '../plugin-host/actor.js';
+import { PLATFORM_ORG_ID } from '../plugin-host/runtime.js';
 import { getModelCatalog } from '../config/models.js';
 import { getServiceCatalog, SERVICE_PROVIDERS, type PricedService } from '../config/services.js';
 import { organizationScopeId } from '../usage/metering.js';

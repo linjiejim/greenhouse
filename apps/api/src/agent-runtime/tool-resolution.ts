@@ -11,7 +11,7 @@
  */
 
 import type { DatabaseProvider } from '@greenhouse/db';
-import { fromExtensions } from '../extensions/index.js';
+import { fromExtensions } from '../plugin-host/index.js';
 import { normalizeAutomationOptInTools } from '@greenhouse/types/automation-tools';
 import { resolveUserTools } from '../agent.js';
 import type { ToolRegistry } from '../agent.js';

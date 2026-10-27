@@ -1,7 +1,7 @@
 /**
  * Writes the generated token files from packages/ui/src/tokens/tokens.ts:
  *   packages/ui/src/tokens/tokens.css            (web CSS variables, prettier-formatted)
- *   apps/mobile/src/theme/tokens.generated.ts    (mobile copy)
+ *   apps/client/src/theme/tokens.generated.ts    (mobile copy)
  *   packages/ui-tokens/src/tokens.generated.ts   (standalone plugin themes)
  * Run with `pnpm tokens:build` after editing the token module; packages/ui/src/tokens/tokens.test.ts
  * fails while either file is stale.

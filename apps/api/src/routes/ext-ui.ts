@@ -8,7 +8,7 @@ import { getDb } from '@greenhouse/db';
 import type { AppEnv } from '../app-env.js';
 import { getAuthUser, requireInternal } from '../auth/middleware.js';
 import { createExtUiToken } from '../auth/token.js';
-import { memberCanUsePlugin } from '../extensions/ui-access.js';
+import { memberCanUsePlugin } from '../plugin-host/ui-access.js';
 
 export default new Hono<AppEnv>()
   .use('*', requireInternal())

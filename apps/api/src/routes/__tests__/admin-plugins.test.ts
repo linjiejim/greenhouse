@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { describe, expect, it, vi } from 'vitest';
 import type { AppEnv } from '../../app-env.js';
 const status = vi.hoisted(() => vi.fn(async () => []));
-vi.mock('../../extensions/status.js', () => ({ pluginStatus: status }));
+vi.mock('../../plugin-host/status.js', () => ({ pluginStatus: status }));
 vi.mock('@greenhouse/db', () => ({ getDb: () => ({}) }));
 import route from '../admin-plugins.js';
 function app(role: 'super' | 'team') {

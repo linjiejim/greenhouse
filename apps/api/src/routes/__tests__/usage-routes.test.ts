@@ -20,8 +20,8 @@ vi.mock('@greenhouse/db', async (importOriginal) => ({
   getDb: () => mocks,
 }));
 
-vi.mock('../../extensions/index.js', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('../../extensions/index.js')>()),
+vi.mock('../../plugin-host/index.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../plugin-host/index.js')>()),
   EXTENSIONS: [{ id: 'example' }],
 }));
 

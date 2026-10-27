@@ -72,12 +72,15 @@ vi.mock('ai', async (importOriginal) => {
 
 import { buildMcpServer, composeMcpContext } from '../../../../apps/api/src/routes/mcp.js';
 import { identityFromOAuthScopes } from '../../../../apps/api/src/agent-runtime/mcp-auth.js';
-import { initializePlatformRuntime, resetPlatformRuntimeForTests } from '../../../../apps/api/src/platform/runtime.js';
+import {
+  initializePlatformRuntime,
+  resetPlatformRuntimeForTests,
+} from '../../../../apps/api/src/plugin-host/runtime.js';
 import { projectsRegistration } from '../platform/application.js';
 import { knowledgeRegistration } from '../../../knowledge/api/platform/registration.js';
 import { tablesRegistration } from '../../../tables/api/platform/application.js';
 import { uploadCabinetFile } from '../../../../apps/api/src/drive/kb-cabinet.js';
-import { delegatedAgentActor } from '../../../../apps/api/src/platform/actor.js';
+import { delegatedAgentActor } from '../../../../apps/api/src/plugin-host/actor.js';
 import { setPriceOverridesForTests } from '../../../../apps/api/src/usage/pricing.js';
 
 // A 1x1 PNG: real magic bytes, so the image paths accept it.

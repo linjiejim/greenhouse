@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import manifest from './manifest.js';
 import { exampleExtension } from './api/index.js';
-import { checkExtensionCompat, runningAppVersion } from '../../apps/api/src/extensions/compat.js';
+import { checkExtensionCompat, runningAppVersion } from '../../apps/api/src/plugin-host/compat.js';
 
 describe('example package manifest', () => {
   it('is pure data shared by its code half and compatible with this core', () => {

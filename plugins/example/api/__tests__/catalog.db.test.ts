@@ -10,7 +10,10 @@ import {
   webCatalog as readWebCatalog,
   mcpCatalog,
 } from '../../../../apps/api/src/hub-context/__tests__/catalog-fixture.js';
-import { initializePlatformRuntime, resetPlatformRuntimeForTests } from '../../../../apps/api/src/platform/runtime.js';
+import {
+  initializePlatformRuntime,
+  resetPlatformRuntimeForTests,
+} from '../../../../apps/api/src/plugin-host/runtime.js';
 import { projectsRegistration } from '../../../projects/api/platform/application.js';
 import { knowledgeRegistration } from '../../../knowledge/api/platform/registration.js';
 import { tablesRegistration } from '../../../tables/api/platform/application.js';

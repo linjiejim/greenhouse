@@ -42,7 +42,7 @@ export interface ClientStationsConfig {
 /** Which compiled extensions are active in this deployment. */
 export interface ExtensionsConfig {
   /**
-   * `'all'` enables every extension listed in `apps/api/src/extensions/index.ts` and
+   * `'all'` enables every extension listed in `apps/api/src/plugin-host/index.ts` and
    * `apps/web/src/extensions/index.ts`; an id list enables only those. The
    * `GREENHOUSE_EXTENSIONS` env var (comma list or `all`) overrides this at boot so
    * one image can be trimmed per deployment.

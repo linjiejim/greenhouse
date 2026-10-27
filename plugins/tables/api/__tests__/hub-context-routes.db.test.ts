@@ -26,7 +26,10 @@ import adminRetroRoutes from '../../../retro/api/routes.js';
 import dataCatalogRoutes from '../../../../apps/api/src/routes/data-catalog.js';
 import { createAgentAccessRoutes } from '../../../../apps/api/src/routes/agent-access.js';
 import { invalidateWorkspaceConfigCache } from '../../../../apps/api/src/settings/workspace-config.js';
-import { initializePlatformRuntime, resetPlatformRuntimeForTests } from '../../../../apps/api/src/platform/runtime.js';
+import {
+  initializePlatformRuntime,
+  resetPlatformRuntimeForTests,
+} from '../../../../apps/api/src/plugin-host/runtime.js';
 import { tablesRegistration } from '../platform/application.js';
 import { knowledgeRegistration } from '../../../knowledge/api/platform/registration.js';
 import { stopUpkeepJobs } from '../../../../apps/api/src/scheduler/upkeep-jobs.js';

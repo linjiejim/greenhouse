@@ -17,7 +17,7 @@ import type { DatabaseProvider } from '@greenhouse/db';
 import type { ToolRegistry } from '../agent.js';
 import { createGenerateImageTool } from '../tools/generate-image.js';
 import { createReadUrlTool, createWebSearchTool } from '../tools/web-search.js';
-import { fromExtensions } from '../extensions/index.js';
+import { fromExtensions } from '../plugin-host/index.js';
 
 export function buildExternalServiceTools(
   db: DatabaseProvider,

@@ -16,7 +16,10 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { initDatabase, _resetProvider } from '@greenhouse/db';
 import type { DatabaseProvider } from '@greenhouse/db';
 import { knowledgeRegistration } from '../platform/registration.js';
-import { initializePlatformRuntime, resetPlatformRuntimeForTests } from '../../../../apps/api/src/platform/runtime.js';
+import {
+  initializePlatformRuntime,
+  resetPlatformRuntimeForTests,
+} from '../../../../apps/api/src/plugin-host/runtime.js';
 import { createKnowledgeMutationTool } from '../tools/knowledge-mutation.js';
 import { createKnowledgeQueryTool } from '../tools/knowledge-query.js';
 import { TEST_DATABASE_URL } from '@greenhouse/db/test-config';

@@ -33,9 +33,9 @@ import {
 import { getDb } from '@greenhouse/db';
 import type { AppEnv } from '../app-env.js';
 import { getAuthUser, requireSuper } from '../auth/middleware.js';
-import { humanActor } from '../platform/actor.js';
-import { getPlatformRuntime, PLATFORM_ORG_ID } from '../platform/runtime.js';
-import { PLATFORM_CONTROL_CAPABILITIES } from '../platform/bootstrap.js';
+import { humanActor } from '../plugin-host/actor.js';
+import { getPlatformRuntime, PLATFORM_ORG_ID } from '../plugin-host/runtime.js';
+import { PLATFORM_CONTROL_CAPABILITIES } from '../plugin-host/bootstrap.js';
 import {
   generateClientSecret,
   generateOAuthClientId,
@@ -43,7 +43,7 @@ import {
   hashOAuthCredential,
   normalizeOAuthScopes,
   parseStoredStringArray,
-} from '../platform/oauth.js';
+} from '../agent-access/oauth.js';
 import type { PlatformOAuthClientRow } from '@greenhouse/db';
 
 /** Secret hashes never leave the API, even to super admins. */

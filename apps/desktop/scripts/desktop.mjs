@@ -6,7 +6,7 @@ import { resolve, join } from 'node:path';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 const root = resolve(fileURLToPath(import.meta.url), '../../../..');
 const desktop = join(root, 'apps/desktop'),
-  mobile = join(root, 'apps/mobile');
+  mobile = join(root, 'apps/client');
 const env = {
   ...process.env,
   CARGO_HOME: join(root, '.cargo-home'),
@@ -56,8 +56,8 @@ if (mode === 'check') {
     'run',
     '--project',
     'unit',
-    'apps/mobile/src/desktop',
-    'apps/mobile/src/plugins/entity-hooks.test.ts',
+    'apps/client/src/desktop',
+    'apps/client/src/plugins/entity-hooks.test.ts',
   ]);
 } else {
   run(

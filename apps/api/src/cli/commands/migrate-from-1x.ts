@@ -13,7 +13,7 @@
 
 import chalk from 'chalk';
 import { carryFrom1x, CarryError, CarryFailedError, type CarryReport } from '@greenhouse/db';
-import { extensionMigrationSources } from '../../extensions/boot.js';
+import { extensionMigrationSources } from '../../plugin-host/boot.js';
 import { flagBool, flagStr, heading, parseFlags, redactDbUrl, table } from './shared.js';
 
 const USAGE = 'Usage: pnpm cli migrate-from-1x --from <1.6 database url> --to <new database url> [--dry-run] [--json]';

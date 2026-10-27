@@ -17,7 +17,7 @@ space suggests an agent growing inside a shared workspace.
 - `greenhouse-mobile-icon.svg`: the opaque square iOS icon; `greenhouse-adaptive-icon.svg`: the
   inset Android foreground; `greenhouse-template.svg`: the monochrome template.
 
-These files, `apps/mobile/assets/icon.png` / `adaptive-icon.png`, `apps/mobile/src/ui/brand.generated.ts`
+These files, `apps/client/assets/icon.png` / `adaptive-icon.png`, `apps/client/src/ui/brand.generated.ts`
 and the web icons are exports of `scripts/build-brand-assets.py` on `main` (geometry source:
 `packages/ui/src/assets/greenhouse-mark.svg` there). Copy them over from `main`; never redraw an
 exported logo by hand. Changing the app icon needs a new native build, not only an OTA update.

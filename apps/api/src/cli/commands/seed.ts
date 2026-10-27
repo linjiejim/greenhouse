@@ -1,4 +1,4 @@
-import { fromExtensions } from '../../extensions/index.js';
+import { fromExtensions } from '../../plugin-host/index.js';
 /**
  * `admin seed` — load the example dataset in `data/examples/`.
  *

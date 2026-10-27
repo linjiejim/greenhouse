@@ -1,4 +1,4 @@
-import { fromExtensions } from '../extensions/index.js';
+import { fromExtensions } from '../plugin-host/index.js';
 /**
  * Recorded writes by external agents (MCP).
  *

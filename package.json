@@ -10,12 +10,12 @@
     "api": "pnpm plugins:sync && pnpm plugins:ui:build && tsx apps/api/src/index.ts",
     "web:build": "pnpm plugins:sync && pnpm plugins:ui:build && pnpm --filter @greenhouse/web build",
     "web:dev": "pnpm plugins:sync && pnpm --filter @greenhouse/web dev",
-    "mobile:install": "cd apps/mobile && pnpm install --ignore-workspace",
-    "mobile": "cd apps/mobile && npx expo start --dev-client",
-    "mobile:web": "cd apps/mobile && npx expo start --web --port 8081",
-    "mobile:prebuild": "cd apps/mobile && npx expo prebuild --clean",
-    "mobile:ios": "cd apps/mobile && npx expo run:ios",
-    "mobile:android": "cd apps/mobile && npx expo run:android",
+    "client:install": "cd apps/client && pnpm install --ignore-workspace",
+    "client": "cd apps/client && npx expo start --dev-client",
+    "client:web": "cd apps/client && npx expo start --web --port 8081",
+    "client:prebuild": "cd apps/client && npx expo prebuild --clean",
+    "client:ios": "cd apps/client && npx expo run:ios",
+    "client:android": "cd apps/client && npx expo run:android",
     "cli": "pnpm plugins:sync && tsx apps/api/src/cli/index.ts",
     "help": "pnpm plugins:sync && tsx apps/api/src/cli/index.ts --help",
     "chat": "pnpm plugins:sync && tsx apps/api/src/cli/index.ts chat",
@@ -48,7 +48,7 @@
     "plugins:ui:build": "node scripts/build-plugin-ui.mjs"
   },
   "lint-staged": {
-    "apps/!(mobile)/**/*.{ts,tsx}": [
+    "apps/!(client)/**/*.{ts,tsx}": [
       "eslint --fix",
       "prettier --write"
     ],

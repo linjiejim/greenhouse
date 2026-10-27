@@ -18,9 +18,12 @@ import { createInternalTestUser } from '../../../../tests/helpers/internal-user.
 import { moveToRestrictedRole, withoutCapability } from '../../../../tests/helpers/restricted-role.js';
 import { tablesManifest } from '../platform/manifest.js';
 import { memberMcpToolIds } from '../../../../apps/api/src/agent-runtime/mcp-tool-visibility.js';
-import { initializePlatformRuntime, resetPlatformRuntimeForTests } from '../../../../apps/api/src/platform/runtime.js';
-import { extensionApplicationRegistrations } from '../../../../apps/api/src/extensions/boot.js';
-import { humanActor } from '../../../../apps/api/src/platform/actor.js';
+import {
+  initializePlatformRuntime,
+  resetPlatformRuntimeForTests,
+} from '../../../../apps/api/src/plugin-host/runtime.js';
+import { extensionApplicationRegistrations } from '../../../../apps/api/src/plugin-host/boot.js';
+import { humanActor } from '../../../../apps/api/src/plugin-host/actor.js';
 import { buildTeamContextBundle } from '../../../../apps/api/src/hub-context/team-context.js';
 vi.setConfig({ testTimeout: 20000 });
 let db: DatabaseProvider;

@@ -1,4 +1,4 @@
-import { emitExtensionEvent } from '../extensions/events.js';
+import { emitExtensionEvent } from '../plugin-host/events.js';
 /** Durable Runtime terminal/recovery event → source-domain repair. */
 
 import type { DatabaseProvider } from '@greenhouse/db';

@@ -45,7 +45,10 @@ import { identityFromOAuthScopes } from '../../../../apps/api/src/agent-runtime/
 import { buildLazyServerTools, resolveEffectiveTools } from '../../../../apps/api/src/agent-runtime/tool-resolution.js';
 import { resolveProfileAsync } from '../../../../apps/api/src/profiles/profile.js';
 import { scheduledToolBase } from '../../../../apps/api/src/scheduler/executor.js';
-import { initializePlatformRuntime, resetPlatformRuntimeForTests } from '../../../../apps/api/src/platform/runtime.js';
+import {
+  initializePlatformRuntime,
+  resetPlatformRuntimeForTests,
+} from '../../../../apps/api/src/plugin-host/runtime.js';
 import { projectsRegistration } from '../../../projects/api/platform/application.js';
 import { knowledgeRegistration } from '../../../knowledge/api/platform/registration.js';
 import { tablesRegistration } from '../../../tables/api/platform/application.js';

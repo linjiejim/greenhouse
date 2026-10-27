@@ -11,7 +11,7 @@ import type { DatabaseProvider } from '@greenhouse/db';
 import type { ActorContext } from '@greenhouse/platform-kernel';
 import type { DataCatalog, DataCatalogExtensionSource, DataCatalogReach } from '@greenhouse/types/hub-context';
 import { getToolMeta } from '../tools/registry.js';
-import { fromExtensions, EXTENSIONS } from '../extensions/index.js';
+import { fromExtensions, EXTENSIONS } from '../plugin-host/index.js';
 
 export interface CatalogInput {
   db: DatabaseProvider;

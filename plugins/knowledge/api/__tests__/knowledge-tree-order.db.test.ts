@@ -15,7 +15,10 @@ import { _resetProvider, initDatabase, type DatabaseProvider, type UserRow } fro
 import type { AppEnv } from '../../../../apps/api/src/app-env.js';
 import knowledgeRoutes from '../routes.js';
 import { knowledgeRegistration } from '../platform/registration.js';
-import { initializePlatformRuntime, resetPlatformRuntimeForTests } from '../../../../apps/api/src/platform/runtime.js';
+import {
+  initializePlatformRuntime,
+  resetPlatformRuntimeForTests,
+} from '../../../../apps/api/src/plugin-host/runtime.js';
 import { TEST_DATABASE_URL } from '@greenhouse/db/test-config';
 import { createInternalTestUser } from '../../../../tests/helpers/internal-user.js';
 

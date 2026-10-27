@@ -16,7 +16,10 @@ import { type KnowledgeDocChange } from '../knowledge-base.js';
 import type { ServerWsEvent } from '@greenhouse/types/ws';
 import { TEST_DATABASE_URL } from '@greenhouse/db/test-config';
 import { knowledgeRegistration } from '../platform/registration.js';
-import { initializePlatformRuntime, resetPlatformRuntimeForTests } from '../../../../apps/api/src/platform/runtime.js';
+import {
+  initializePlatformRuntime,
+  resetPlatformRuntimeForTests,
+} from '../../../../apps/api/src/plugin-host/runtime.js';
 import { createKnowledgeMutationTool } from '../tools/knowledge-mutation.js';
 import { publishKnowledgeChange } from '../knowledge/live.js';
 import { createInternalTestUser } from '../../../../tests/helpers/internal-user.js';

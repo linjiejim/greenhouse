@@ -1,4 +1,4 @@
-import { emitExtensionEvent } from '../../extensions/events.js';
+import { emitExtensionEvent } from '../../plugin-host/events.js';
 /**
  * `admin users` — list, inspect, and create users.
  *

@@ -3,7 +3,7 @@
 import { runExtensionJob } from './extension-job.js';
 import { Cron } from 'croner';
 import { logger } from '@greenhouse/utils/logger';
-import { extensionJobs } from '../extensions/boot.js';
+import { extensionJobs } from '../plugin-host/boot.js';
 import { DEFAULT_TIMEZONE } from './task-limits.js';
 
 let extensionJobHandles: Cron[] = [];

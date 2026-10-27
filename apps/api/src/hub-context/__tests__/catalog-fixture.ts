@@ -8,7 +8,7 @@ import type { DataCatalog } from '@greenhouse/types/hub-context';
 import { buildMcpServer, composeMcpContext } from '../../routes/mcp.js';
 import { identityFromOAuthScopes } from '../../agent-runtime/mcp-auth.js';
 import { memberMcpToolIds } from '../../agent-runtime/mcp-tool-visibility.js';
-import { humanActor } from '../../platform/actor.js';
+import { humanActor } from '../../plugin-host/actor.js';
 import { buildDataCatalog } from '../catalog.js';
 
 export async function webCatalog(db: DatabaseProvider, user: UserRow): Promise<DataCatalog> {

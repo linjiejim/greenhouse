@@ -1,7 +1,7 @@
 name: Mobile
 
 # Continuous deployment for the Expo app. Decoupled from the product `vX.Y.Z` tag
-# (app-store cadence) — it runs on `main` pushes that touch `apps/mobile/`.
+# (app-store cadence) — it runs on `main` pushes that touch `apps/client/`.
 #
 # Fingerprint-based lane split (expo/expo-github-action continuous-deploy-fingerprint):
 #   • native fingerprint matches an existing EAS build → `eas update` only: JS/asset
@@ -18,7 +18,7 @@ on:
   push:
     branches: [main]
     paths:
-      - 'apps/mobile/**'
+      - 'apps/client/**'
       - '.github/workflows/mobile.yml'
   workflow_dispatch:
     inputs:
@@ -70,12 +70,12 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
-          cache-dependency-path: apps/mobile/pnpm-lock.yaml
+          cache-dependency-path: apps/client/pnpm-lock.yaml
 
-      # apps/mobile is NOT a workspace member — isolated install, own lockfile.
+      # apps/client is NOT a workspace member — isolated install, own lockfile.
       - name: Install mobile deps
         if: steps.gate.outputs.run == 'true'
-        working-directory: apps/mobile
+        working-directory: apps/client
         run: pnpm install --frozen-lockfile --ignore-workspace
 
       - name: Set up EAS CLI
@@ -93,7 +93,7 @@ jobs:
         if: steps.gate.outputs.run == 'true'
         uses: expo/expo-github-action/continuous-deploy-fingerprint@eab7a230208c952974db8c3245cfd78402c7b385
         with:
-          working-directory: apps/mobile
+          working-directory: apps/client
           platform: ${{ env.PLATFORM }}
           profile: ${{ env.PROFILE }}
           branch: ${{ env.PROFILE }}
@@ -111,5 +111,5 @@ jobs:
           steps.gate.outputs.run == 'true' &&
           env.PROFILE == 'production' &&
           steps.cd.outputs.ios-did-start-new-build == 'true'
-        working-directory: apps/mobile
+        working-directory: apps/client
         run: eas submit --platform ios --id "${{ steps.cd.outputs.ios-build-id }}" --non-interactive --no-wait

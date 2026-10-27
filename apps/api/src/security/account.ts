@@ -17,7 +17,7 @@ import { accountLinkTransport } from '../notifications/transports.js';
 import { chatRunRegistry } from '../chat/runs.js';
 import { connectionManager } from '../ws/connection-manager.js';
 import { getScheduler } from '../scheduler/index.js';
-import { PLATFORM_ORG_ID } from '../platform/runtime.js';
+import { PLATFORM_ORG_ID } from '../plugin-host/runtime.js';
 
 export type PasswordLinkAvailabilityReason =
   | 'missing_public_base_url'

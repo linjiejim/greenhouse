@@ -31,7 +31,7 @@ export type ObjectRef =
   | { type: 'record'; id: string; baseId: string | null; tableId: string }
   | { type: 'conversation'; id: string };
 
-/** The app's URL scheme (apps/mobile/app.json `scheme`). */
+/** The app's URL scheme (apps/client/app.json `scheme`). */
 export const APP_LINK_SCHEME = 'greenhouse';
 
 /** Most URLs one `POST /api/refs/resolve` accepts. */
@@ -174,7 +174,7 @@ function parseHashRoute(route: string): ObjectRef | null {
   return null;
 }
 
-/** App deep links: `greenhouse://<route>?<params>` (expo-router paths of apps/mobile/app). */
+/** App deep links: `greenhouse://<route>?<params>` (expo-router paths of apps/client/app). */
 function parseAppLink(rest: string): ObjectRef | null {
   const { segments, params } = splitQuery(rest);
   const route = segments.join('/');

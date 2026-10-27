@@ -15,7 +15,7 @@ import { normalizeAutomationOptInTools } from '@greenhouse/types/automation-tool
 import { Cron } from 'croner';
 import { getDb, type DatabaseProvider } from '@greenhouse/db';
 import { selectTools, buildSystemPrompt } from '../agent.js';
-import { resolveExtensionPromptContext } from '../extensions/prompt-context.js';
+import { resolveExtensionPromptContext } from '../plugin-host/prompt-context.js';
 import type { UserRole } from '../auth/token.js';
 import type { ToolRegistry } from '../agent.js';
 import { runAgentInSession, SessionTranscriptChangedError } from '../agent-runtime/run-agent.js';

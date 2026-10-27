@@ -18,7 +18,10 @@ import type { SchemaPlanApplyResult } from '@greenhouse/types/tables';
 import type { AppEnv } from '../../../../apps/api/src/app-env.js';
 import tablesRoutes from '../routes.js';
 import { tablesRegistration } from '../platform/application.js';
-import { initializePlatformRuntime, resetPlatformRuntimeForTests } from '../../../../apps/api/src/platform/runtime.js';
+import {
+  initializePlatformRuntime,
+  resetPlatformRuntimeForTests,
+} from '../../../../apps/api/src/plugin-host/runtime.js';
 import { createTablesSchemaPlanTool } from '../tools/tables-schema-plan.js';
 import { createInternalTestUser } from '../../../../tests/helpers/internal-user.js';
 

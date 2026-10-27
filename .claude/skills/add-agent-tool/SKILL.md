@@ -18,7 +18,7 @@ description: >-
 
 1. **core 还是 extension？** 私有 / 可选模块的工具走扩展缝：
    `defineExtension({ tools: [...] })`，见 [EXTENDING.md](../../../EXTENDING.md) 与
-   `apps/api/src/extensions/example/tool.ts`。扩展工具的 `meta.surface` 与 core 工具语义完全一致。
+   `apps/api/src/plugin-host/example/tool.ts`。扩展工具的 `meta.surface` 与 core 工具语义完全一致。
 2. **能不能不加工具？** 先看现有工具能否扩一个 action（多数工具是 `action` 枚举式的
    query / mutation 对）。根 AGENTS.md 的 anti-entropy 要求登记"为什么不能复用"。
 3. 工具数量会稀释注意力——一个 profile 装配 4–9 个是舒适区。
@@ -100,7 +100,7 @@ MCP 的 group 就是用户实际同意的东西（OAuth 授权带 `mcp:<group>` 
 
 - `is_global: true` 的工具对内部用户默认可用，不需要分配
 - **非全局工具必须恰好属于一个 feature point**（注册表在
-  [apps/api/src/platform/feature-points.ts](../../../apps/api/src/platform/feature-points.ts)，
+  [apps/api/src/plugin-host/feature-points.ts](../../../apps/api/src/plugin-host/feature-points.ts)，
   用户面是 Administration → Users → 权限弹框）。不属于任何点的工具没人分配得到
 - 无人值守上下文（定时任务 / headless 子会话）另有 fail-closed 白名单与
   denylist，见 `agent-runtime/tool-resolution.ts`；需要真人按确认的工具不要指望在那里可用

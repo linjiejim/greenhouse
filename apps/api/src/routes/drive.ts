@@ -1,4 +1,4 @@
-import { humanActor } from '../platform/actor.js';
+import { humanActor } from '../plugin-host/actor.js';
 /**
  * Drive routes — /api/drive
  *

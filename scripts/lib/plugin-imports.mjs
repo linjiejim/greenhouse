@@ -101,7 +101,10 @@ export function checkPluginImports(file, text, root = process.cwd()) {
 }
 
 export function checkCorePluginImports(file, text) {
-  if (!/^(apps|packages)\//.test(file) || /^apps\/(api|web)\/src\/extensions\/compiled\.generated\.ts$/.test(file))
+  if (
+    !/^(apps|packages)\//.test(file) ||
+    /^apps\/(api\/src\/plugin-host|web\/src\/extensions)\/compiled\.generated\.ts$/.test(file)
+  )
     return [];
   return moduleImports(file, text)
     .filter(({ specifier }) => {

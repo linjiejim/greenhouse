@@ -1,5 +1,5 @@
 /** Plugin inventory and explicit data removal; enablement stays in deployment configuration. */
-import { listPlugins, pluginDropPlan, pluginStatus } from '../../extensions/status.js';
+import { listPlugins, pluginDropPlan, pluginStatus } from '../../plugin-host/status.js';
 import { openDb, parseFlags, table } from './shared.js';
 
 export async function run(args: string[]): Promise<number> {

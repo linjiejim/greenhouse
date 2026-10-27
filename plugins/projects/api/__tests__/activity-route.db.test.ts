@@ -12,7 +12,7 @@ import {
   initializePlatformRuntime,
   PLATFORM_ORG_ID,
   resetPlatformRuntimeForTests,
-} from '../../../../apps/api/src/platform/runtime.js';
+} from '../../../../apps/api/src/plugin-host/runtime.js';
 import { projectsRegistration } from '../platform/application.js';
 import { createInternalTestUser } from '../../../../tests/helpers/internal-user.js';
 

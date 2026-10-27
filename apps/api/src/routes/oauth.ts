@@ -22,8 +22,8 @@ import type { PlatformOAuthClientRow } from '@greenhouse/db';
 import type { AuthUser } from '../auth/token.js';
 import { getAuthUser, requireInternal } from '../auth/middleware.js';
 import type { AppEnv } from '../app-env.js';
-import { humanActor } from '../platform/actor.js';
-import { getPlatformRuntime, PLATFORM_ORG_ID } from '../platform/runtime.js';
+import { humanActor } from '../plugin-host/actor.js';
+import { getPlatformRuntime, PLATFORM_ORG_ID } from '../plugin-host/runtime.js';
 import {
   clientSecretMatches,
   expiresAt,
@@ -51,7 +51,7 @@ import {
   scopesAreSubset,
   scopesToString,
   type OAuthScope,
-} from '../platform/oauth.js';
+} from '../agent-access/oauth.js';
 
 const MANAGE_OWN_CAPABILITY = 'platform.oauth.manageOwn';
 const OAUTH_BODY_LIMIT_BYTES = 64 * 1024;

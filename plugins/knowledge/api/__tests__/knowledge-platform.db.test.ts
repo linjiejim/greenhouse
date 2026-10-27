@@ -16,7 +16,10 @@ import { type KnowledgeDoc } from '../knowledge-base.js';
 import type { AppEnv } from '../../../../apps/api/src/app-env.js';
 import knowledgeRoutes from '../routes.js';
 import { knowledgeRegistration } from '../platform/registration.js';
-import { initializePlatformRuntime, resetPlatformRuntimeForTests } from '../../../../apps/api/src/platform/runtime.js';
+import {
+  initializePlatformRuntime,
+  resetPlatformRuntimeForTests,
+} from '../../../../apps/api/src/plugin-host/runtime.js';
 import { createKnowledgeQueryTool } from '../tools/knowledge-query.js';
 import { createKnowledgeMutationTool } from '../tools/knowledge-mutation.js';
 import { buildMcpServer, filterMcpToolIdsByPlatform } from '../../../../apps/api/src/routes/mcp.js';

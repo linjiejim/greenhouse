@@ -1,4 +1,4 @@
-type RiskRules = NonNullable<import('../extensions/define.js').ExtensionActivity['writeRisks']>;
+type RiskRules = NonNullable<import('../plugin-host/define.js').ExtensionActivity['writeRisks']>;
 let writeRisks: RiskRules[] = [];
 export function registerWriteRisks(rules: RiskRules[]) {
   writeRisks = rules;

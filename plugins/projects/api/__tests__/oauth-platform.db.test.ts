@@ -13,7 +13,10 @@ import type { AppEnv } from '../../../../apps/api/src/app-env.js';
 import oauthRoutes from '../../../../apps/api/src/routes/oauth.js';
 import { knowledgeRegistration } from '../../../knowledge/api/platform/registration.js';
 import { projectsRegistration } from '../platform/application.js';
-import { initializePlatformRuntime, resetPlatformRuntimeForTests } from '../../../../apps/api/src/platform/runtime.js';
+import {
+  initializePlatformRuntime,
+  resetPlatformRuntimeForTests,
+} from '../../../../apps/api/src/plugin-host/runtime.js';
 import { mcpCredentialMiddleware } from '../../../../apps/api/src/agent-runtime/mcp-auth.js';
 import {
   generateAuthorizationCode,
@@ -23,7 +26,7 @@ import {
   normalizeOAuthScopes,
   oauthSupportedScopes,
   pkceChallenge,
-} from '../../../../apps/api/src/platform/oauth.js';
+} from '../../../../apps/api/src/agent-access/oauth.js';
 
 /**
  * Compare scope strings as sets: assertions should express which authority was

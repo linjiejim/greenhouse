@@ -17,7 +17,7 @@ import type { SkillCreateInput, SkillVersionInput, SkillMetaUpdateInput, SkillSc
 import { _resetSkillStoreForTests, _setSkillStoreForTests, type SkillStore } from './store.js';
 import { resolveSkillhubDir, resolveSeedOwner, seedSkillhub } from './boot-seed.js';
 import { GREENHOUSE_CONFIG } from '../../../../apps/api/src/config/greenhouse-config.js';
-import { registerSkillPacks } from '../../../../apps/api/src/extensions/skill-packs.js';
+import { registerSkillPacks } from '../../../../apps/api/src/plugin-host/skill-packs.js';
 
 // ─── In-memory fakes (same shape as center.test.ts) ──────
 

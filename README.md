@@ -72,8 +72,8 @@ supply selected team documents.
 | Client | What ships in this repository |
 |---|---|
 | Classic web (`apps/web`) | React/Vite web app with the administration console and SDK 1 React plugin pages. Default at `/`; always available at `/classic/`. |
-| Universal browser client (`apps/mobile`) | Expo web export with wide-screen rail, secondary navigation, chat, inspectors, ⌘K, document editing, Tables grids and project boards. Plugins appear from the member-filtered station manifest. |
-| iOS / Android (`apps/mobile`) | Native Expo client with chat, Files, enabled plugin places, notifications, stations and offline copies. iOS includes widgets; Android has Material 3 adapters, with store distribution/push setup still operator-dependent. |
+| Universal browser client (`apps/client`) | Expo web export with wide-screen rail, secondary navigation, chat, inspectors, ⌘K, document editing, Tables grids and project boards. Plugins appear from the member-filtered station manifest. |
+| iOS / Android (`apps/client`) | Native Expo client with chat, Files, enabled plugin places, notifications, stations and offline copies. iOS includes widgets; Android has Material 3 adapters, with store distribution/push setup still operator-dependent. |
 | macOS (`apps/desktop`) | Tauri 2 shell bundling the universal client, multiple stations, Keychain sessions, native menus/notifications and Quick ask. Local unsigned builds are supported; signing and an updater feed require operator setup. |
 | CLI | `pnpm cli`: users, database, diagnostics, profiles, sessions, plugins, chat and enabled plugin commands. |
 
@@ -132,9 +132,9 @@ Optional `pnpm seed` loads the fictional reference dataset, including only enabl
 It refuses a non-empty database without `--keep` or `--reset`; reset is destructive and asks for
 confirmation. Demo credentials and load order are in [data/examples/README.md](data/examples/README.md).
 
-Build classic with `pnpm web:build`. Build the hosted universal client with `pnpm mobile:install`
+Build classic with `pnpm web:build`. Build the hosted universal client with `pnpm client:install`
 then `pnpm app:build` (export to `public/app/`; rebuilding classic preserves it). For interactive
-Expo development use `pnpm mobile:web` or a native dev client. Mobile has its own lockfile and
+Expo development use `pnpm client:web` or a native dev client. Mobile has its own lockfile and
 is outside the root workspace. See [desktop instructions](apps/desktop/README.md) for
 `pnpm desktop:check` / `pnpm desktop:build`.
 
@@ -189,7 +189,7 @@ three rings, clients, request flows, database ownership and security boundaries.
 ```
 apps/api/                governance API, plugin host, scheduler, runtime and CLI
 apps/web/                classic web and React plugin host
-apps/mobile/             isolated Expo universal client (web / iOS / Android)
+apps/client/             isolated Expo universal client (web / iOS / Android)
 apps/desktop/            macOS native shell around the universal client
 packages/                agent/platform kernels, DB, types, utils, CRUD, UI and ui-tokens
 plugins/<id>/            manifest, API/web, tables/services, migrations, tests and optional UI
@@ -209,7 +209,7 @@ TEST_DATABASE_URL=<loopback-test-database-url> VITEST_UNIT_MAX_WORKERS=4 VITEST_
 DATABASE_URL=<loopback-test-database-url> E2E_NO_LLM=1 pnpm test:e2e:ci
 pnpm test:core
 # Mobile is isolated; run its own checks as well.
-(cd apps/mobile && pnpm typecheck && pnpm lint)
+(cd apps/client && pnpm typecheck && pnpm lint)
 pnpm web:build
 ```
 

@@ -112,7 +112,7 @@ versions inside platform application definitions are contracts, not product vers
 
 ## Mobile fingerprint CD
 
-`mobile.yml` runs on main changes under apps/mobile and manual dispatch, repository-gated and
+`mobile.yml` runs on main changes under apps/client and manual dispatch, repository-gated and
 EXPO_TOKEN-gated. Its default profile is production and platform is iOS. A matching native
 fingerprint publishes OTA; a new fingerprint builds and explicitly submits iOS to TestFlight.
 Version fields are excluded from the native fingerprint, so version-only edits can still enter

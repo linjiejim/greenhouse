@@ -1,4 +1,4 @@
-import { emitExtensionEvent } from '../extensions/events.js';
+import { emitExtensionEvent } from '../plugin-host/events.js';
 /**
  * Admin routes — /api/admin
  *
@@ -34,7 +34,7 @@ import {
 import { hashPassword } from '../auth/password.js';
 import { getAuthUser } from '../auth/middleware.js';
 import { getInAppToolIds } from '../tools/registry.js';
-import { FEATURE_OWNED_TOOL_IDS, buildUserAccessView } from '../platform/feature-points.js';
+import { FEATURE_OWNED_TOOL_IDS, buildUserAccessView } from '../plugin-host/feature-points.js';
 import type { AppEnv } from '../app-env.js';
 import { USAGE_RANGE_DAYS, type ModuleUsageReport, type UsageRangeDays } from '@greenhouse/types/usage';
 import { usageDayRange } from '../usage/counters.js';

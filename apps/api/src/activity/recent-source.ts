@@ -1,7 +1,7 @@
 import type { ActivityCursor, DatabaseProvider } from '@greenhouse/db';
 import type { ActivityItem } from '@greenhouse/types/activity';
 import type { UserRole } from '@greenhouse/types/api';
-import type { PlatformRuntime } from '../platform/runtime.js';
+import type { PlatformRuntime } from '../plugin-host/runtime.js';
 /** Rows one source reads per query, and how many queries it may spend on one page. */
 const SCAN_BATCH = 100;
 const SCAN_ROUNDS = 5;

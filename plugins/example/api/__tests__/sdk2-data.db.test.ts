@@ -1,7 +1,7 @@
 import { defineApp } from '@greenhouse/api/extension-kit';
 import { registerDiscriminators } from '@greenhouse/types/discriminators';
 import { sql } from 'drizzle-orm';
-import { defineExtension } from '../../../../apps/api/src/extensions/define.js';
+import { defineExtension } from '../../../../apps/api/src/plugin-host/define.js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { authMiddleware } from '../../../../apps/api/src/auth/middleware.js';
 import { createAccessToken } from '../../../../apps/api/src/auth/token.js';
@@ -9,17 +9,20 @@ import extUiRoutes from '../../../../apps/api/src/routes/ext-ui.js';
 import { Hono } from 'hono';
 import { initDatabase, _resetProvider, type DatabaseProvider, type UserRow } from '@greenhouse/db';
 import { TEST_DATABASE_URL } from '@greenhouse/db/test-config';
-import { EXTENSIONS } from '../../../../apps/api/src/extensions/index.js';
-import { initializePlatformRuntime, resetPlatformRuntimeForTests } from '../../../../apps/api/src/platform/runtime.js';
+import { EXTENSIONS } from '../../../../apps/api/src/plugin-host/index.js';
+import {
+  initializePlatformRuntime,
+  resetPlatformRuntimeForTests,
+} from '../../../../apps/api/src/plugin-host/runtime.js';
 import type { AppEnv } from '../../../../apps/api/src/app-env.js';
 import { createInternalTestUser } from '../../../../tests/helpers/internal-user.js';
-import { stationManifest } from '../../../../apps/api/src/extensions/station-manifest.js';
+import { stationManifest } from '../../../../apps/api/src/plugin-host/station-manifest.js';
 import { createActivityRoutes } from '../../../../apps/api/src/routes/activity.js';
-import { getPlatformRuntime } from '../../../../apps/api/src/platform/runtime.js';
-import { humanActor } from '../../../../apps/api/src/platform/actor.js';
+import { getPlatformRuntime } from '../../../../apps/api/src/plugin-host/runtime.js';
+import { humanActor } from '../../../../apps/api/src/plugin-host/actor.js';
 
 let db: DatabaseProvider, alice: UserRow, bob: UserRow, admin: UserRow;
-let extraRoutes: NonNullable<import('../../../../apps/api/src/extensions/define.js').GreenhouseExtension['routes']> =
+let extraRoutes: NonNullable<import('../../../../apps/api/src/plugin-host/define.js').GreenhouseExtension['routes']> =
   [];
 const extension = EXTENSIONS.find((ext) => ext.id === 'example')!;
 function app(user: UserRow) {
@@ -432,8 +435,8 @@ it('requires explicit scope-field opt-in, a field grant and an action capability
 });
 
 it('provides working table-backed registry handlers and rejects a mutation disguised as a read', async () => {
-  const { getPlatformRuntime } = await import('../../../../apps/api/src/platform/runtime.js');
-  const { humanActor } = await import('../../../../apps/api/src/platform/actor.js');
+  const { getPlatformRuntime } = await import('../../../../apps/api/src/plugin-host/runtime.js');
+  const { humanActor } = await import('../../../../apps/api/src/plugin-host/actor.js');
   const runtime = getPlatformRuntime(),
     actor = humanActor(alice);
   const created = await runtime.dispatch({

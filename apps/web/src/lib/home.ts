@@ -2,7 +2,7 @@
  * Home's rules (React-free, see ./home.test.ts): the greeting for the hour and
  * how many recent conversations the new-conversation screen lists.
  *
- * `greetingFor` is a copy of the iOS app's (apps/mobile/src/data/home.ts): the
+ * `greetingFor` is a copy of the iOS app's (apps/client/src/data/home.ts): the
  * mobile app is not in the workspace, so the two are kept equal by their tests.
  * The recent count is a per-device choice kept in localStorage, never an account
  * preference (spec D3).

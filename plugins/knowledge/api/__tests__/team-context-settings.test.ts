@@ -1,5 +1,5 @@
 import { it, expect } from 'vitest';
-import '../../../../apps/api/src/extensions/index.js';
+import '../../../../apps/api/src/plugin-host/index.js';
 import { getWorkspaceSettingDef } from '@greenhouse/types/workspace-settings';
 import { validateWorkspaceValue } from '../../../../apps/api/src/settings/workspace-config.js';
 const def = (key: string) => getWorkspaceSettingDef(key)!;

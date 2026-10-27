@@ -71,7 +71,7 @@ const value = (v: ModeValue): MobileSource => ({ value: v });
 const both = (v: string): ModeValue => ({ light: v, dark: v });
 
 /**
- * Mobile palette keys (apps/mobile/src/theme/palette.ts) → a shared role, or a native-only value
+ * Mobile palette keys (apps/client/src/theme/palette.ts) → a shared role, or a native-only value
  * from `native`. Keys keep iOS's semantic names so screens never change when a value does.
  */
 export const MOBILE_ROLES = {

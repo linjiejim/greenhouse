@@ -6,7 +6,7 @@
  * started against yet.
  */
 import { initDatabase } from '@greenhouse/db';
-import { applyExtensionMigrations } from '../apps/api/src/extensions/boot.ts';
+import { applyExtensionMigrations } from '../apps/api/src/plugin-host/boot.ts';
 
 const url = process.env.DATABASE_URL;
 if (!url) {

@@ -17,7 +17,7 @@ vi.mock('../notifications/transports.js', () => ({
 vi.mock('../chat/runs.js', () => ({ chatRunRegistry: { stopForUser: vi.fn() } }));
 vi.mock('../ws/connection-manager.js', () => ({ connectionManager: { disconnectUser: vi.fn() } }));
 vi.mock('../scheduler/index.js', () => ({ getScheduler: () => null }));
-vi.mock('../platform/runtime.js', () => ({ PLATFORM_ORG_ID: 'default' }));
+vi.mock('../plugin-host/runtime.js', () => ({ PLATFORM_ORG_ID: 'default' }));
 
 const { deliverAccountPasswordLink, getPasswordLinkCapability, maskEmail } = await import('./account.js');
 

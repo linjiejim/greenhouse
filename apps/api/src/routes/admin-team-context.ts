@@ -26,7 +26,7 @@ import {
   resolveTeamContextDocs,
   validateTeamContextSelection,
 } from '../hub-context/settings.js';
-import { fromExtensions } from '../extensions/index.js';
+import { fromExtensions } from '../plugin-host/index.js';
 import { teamContextDocumentSources } from '../hub-context/settings.js';
 
 async function settingsView(): Promise<TeamContextSettingsView> {

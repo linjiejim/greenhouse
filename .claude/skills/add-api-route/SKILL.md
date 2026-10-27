@@ -16,7 +16,7 @@ description: >-
 
 1. **core 还是 extension？** 私有 / 可选模块的路由走扩展缝：
    `defineExtension({ routes: [{ path: '/api/ext/<id>', app, guards }] })`，
-   见 [EXTENDING.md](../../../EXTENDING.md) 与 `apps/api/src/extensions/example/routes.ts`。
+   见 [EXTENDING.md](../../../EXTENDING.md) 与 `apps/api/src/plugin-host/example/routes.ts`。
    扩展路由**不进** `AppType` 公共契约。
 2. 需要的 db service 是否已存在？没有先走 `add-db-table`。
 3. 定好访问级别：内部全员（team + super）还是仅 super。

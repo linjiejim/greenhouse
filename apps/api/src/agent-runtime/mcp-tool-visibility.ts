@@ -13,9 +13,9 @@ import type { AgentIdentity } from './api-auth.js';
 import { resolveEffectiveTools } from './tool-resolution.js';
 import { MUTATING_PROXY_ALLOWLIST, resolveProxyToolIds } from './tool-proxy.js';
 import { MCP_EXPOSED_TOOL_IDS } from '../tools/registry.js';
-import { delegatedAgentActor } from '../platform/actor.js';
-import { getPlatformRuntime } from '../platform/runtime.js';
-import { extensionPlatformToolCapabilities } from '../extensions/boot.js';
+import { delegatedAgentActor } from '../plugin-host/actor.js';
+import { getPlatformRuntime } from '../plugin-host/runtime.js';
+import { extensionPlatformToolCapabilities } from '../plugin-host/boot.js';
 
 /**
  * Profile used to resolve the bound user's tool set. Internal-only surface, so

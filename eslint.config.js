@@ -16,11 +16,11 @@ export default tseslint.config(
       'drizzle/',
       'data/',
       // The Expo app is not a workspace member: it installs its own node_modules
-      // and lints itself (`cd apps/mobile && pnpm lint`, apps/mobile/eslint.config.mjs).
+      // and lints itself (`cd apps/client && pnpm lint`, apps/client/eslint.config.mjs).
       // Linting it from here resolves a second TypeScript project root and fails
       // or passes depending on whether the mobile app happens to be installed —
       // the same reason .prettierignore and tsconfig exclude it.
-      'apps/mobile/',
+      'apps/client/',
       '*.config.ts',
       '*.config.js',
       '**/*.mjs',
@@ -33,7 +33,7 @@ export default tseslint.config(
   // TypeScript recommended
   ...tseslint.configs.recommended,
 
-  // Pin the project root: a nested app with its own tsconfig (apps/mobile) would
+  // Pin the project root: a nested app with its own tsconfig (apps/client) would
   // otherwise leave typescript-eslint with two candidate roots, and which one it
   // picks depends on what is installed locally.
   {

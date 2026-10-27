@@ -12,7 +12,7 @@ import { TEST_DATABASE_URL } from '@greenhouse/db/test-config';
 import type { AppEnv } from '../../app-env.js';
 import adminSettingsRoutes from '../admin-settings.js';
 import adminRoutes from '../admin.js';
-import { PLATFORM_ORG_ID } from '../../platform/runtime.js';
+import { PLATFORM_ORG_ID } from '../../plugin-host/runtime.js';
 import { createInternalTestUser } from '../../../../../tests/helpers/internal-user.js';
 
 let db: DatabaseProvider;

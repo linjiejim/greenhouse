@@ -36,9 +36,9 @@ description: >-
 **私有、可选、实验性、或只服务某个部署的模块，应该走扩展缝，而不是改 core。**
 
 ```
-apps/api/src/extensions/<id>/    ← tools, routes, tables + migrations, services, jobs, commands, flags
+apps/api/src/plugin-host/<id>/    ← tools, routes, tables + migrations, services, jobs, commands, flags
 apps/web/src/extensions/<id>/    ← pages, navigation, settings modules, translations, chat cards
-apps/api/src/extensions/index.ts ← import + 一行列表项
+apps/api/src/plugin-host/index.ts ← import + 一行列表项
 apps/web/src/extensions/index.ts ← import + 一行列表项
 ```
 
@@ -46,12 +46,12 @@ apps/web/src/extensions/index.ts ← import + 一行列表项
 公共路径、调度器、CLI、数据库 service 与迁移、hash 路由、侧边栏、i18n、工具卡片、
 Agent 上下文，全部从**激活的扩展集**里聚合。
 
-- 参考实现 `apps/api/src/extensions/example/` + `apps/web/src/extensions/example/`（两边合起来覆盖了每个字段）
+- 参考实现 `apps/api/src/plugin-host/example/` + `apps/web/src/extensions/example/`（两边合起来覆盖了每个字段）
 - 契约与字段表见 [EXTENDING.md](../../../EXTENDING.md)
 - 开关在 `greenhouse.config.ts` 的 `extensions.enabled`（`GREENHOUSE_EXTENSIONS` 可在 boot 覆盖）
 - **core 永远不能按 id 引用某个扩展**。缺 hook 就给契约和注册表加 hook（同时补 example 与 seam 测试），
   绝不在 core 里写 `case '<extension-id>'` 这种特判
-- 缝本身的护栏是 `apps/api/src/extensions/__tests__/seam.test.ts` 与
+- 缝本身的护栏是 `apps/api/src/plugin-host/__tests__/seam.test.ts` 与
   `apps/web/src/extensions/__tests__/seam.test.ts`
 - （仅 fork 场景）`node scripts/check-extension-overlay.mjs` 是**下游 fork 的 CI 护栏**——
   它断言 fork 在 upstream 之上的改动都待在扩展缝内。上游仓库自身没有东西要查，不必跑

@@ -8,7 +8,7 @@
 
 import type { AuthUser } from './auth/token.js';
 import type { AgentIdentity } from './agent-runtime/api-auth.js';
-import type { OAuthScope } from './platform/oauth.js';
+import type { OAuthScope } from './agent-access/oauth.js';
 
 export type AppEnv = {
   Variables: {

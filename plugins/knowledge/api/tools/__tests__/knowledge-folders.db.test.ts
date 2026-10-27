@@ -14,7 +14,7 @@ import { knowledgeRegistration } from '../../platform/registration.js';
 import {
   initializePlatformRuntime,
   resetPlatformRuntimeForTests,
-} from '../../../../../apps/api/src/platform/runtime.js';
+} from '../../../../../apps/api/src/plugin-host/runtime.js';
 import { createKnowledgeMutationTool } from '../knowledge-mutation.js';
 import { createKnowledgeQueryTool } from '../knowledge-query.js';
 import { kbFolderTree } from '../../knowledge/folders.js';

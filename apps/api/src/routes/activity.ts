@@ -17,7 +17,7 @@ import { ACTIVITY_EXPORT_MAX_ROWS, type ActivityItem } from '@greenhouse/types/a
 import type { AppEnv } from '../app-env.js';
 import { getAuthUser, requireInternal } from '../auth/middleware.js';
 import { contentDisposition } from '../http/content-disposition.js';
-import { getPlatformRuntime } from '../platform/runtime.js';
+import { getPlatformRuntime } from '../plugin-host/runtime.js';
 import {
   ACTIVITY_CSV_HEADER,
   ActivityQueryError,

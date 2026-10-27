@@ -3,7 +3,7 @@ import type { CatalogInput } from './catalog.js';
 const fixture = vi.hoisted(() => ({
   sources: [] as Array<{ id: string; load: (input: unknown) => Promise<unknown> }>,
 }));
-vi.mock('../extensions/index.js', () => ({
+vi.mock('../plugin-host/index.js', () => ({
   EXTENSIONS: [],
   fromExtensions: (field: string) => (field === 'catalogSources' ? fixture.sources : []),
 }));

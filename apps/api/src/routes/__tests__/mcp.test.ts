@@ -12,7 +12,7 @@ import type { Context } from 'hono';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 
-vi.mock('../../extensions/mcp-resources.js', () => ({
+vi.mock('../../plugin-host/mcp-resources.js', () => ({
   listPluginResources: async () => [],
   listPluginResourceTemplates: async () => [],
   readPluginResource: async (uri: string) =>

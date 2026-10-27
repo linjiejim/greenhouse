@@ -5,7 +5,7 @@
  * consent. Consumed by:
  *   • apps/api — each tool declares its group in `meta.surface.mcp`
  *                (apps/api/src/tools/define.ts); the OAuth layer derives one
- *                `mcp:<group>` scope per entry (apps/api/src/platform/oauth.ts)
+ *                `mcp:<group>` scope per entry (apps/api/src/agent-access/oauth.ts)
  *   • apps/web — the consent screen's checklist (pages/oauth-consent.tsx) and
  *                the machine-client form (pages/settings/mcp-keys.tsx)
  *

@@ -1,5 +1,5 @@
 import { getDb } from '@greenhouse/db';
-import { stationManifest } from '../extensions/station-manifest.js';
+import { stationManifest } from '../plugin-host/station-manifest.js';
 /**
  * GET /api/extensions — what this deployment's active extensions contribute.
  *
@@ -17,7 +17,7 @@ import { stationManifest } from '../extensions/station-manifest.js';
 import { Hono } from 'hono';
 import type { AppEnv } from '../app-env.js';
 import { GREENHOUSE_CONFIG } from '../config/greenhouse-config.js';
-import { fromExtensions } from '../extensions/index.js';
+import { fromExtensions } from '../plugin-host/index.js';
 
 const extensionsRoutes = new Hono<AppEnv>().get('/', async (c) => {
   c.header('Cache-Control', 'private, no-store');

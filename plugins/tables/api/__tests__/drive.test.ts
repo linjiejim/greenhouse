@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { tablesDriveScope } from '../drive.js';
 import type { DatabaseProvider } from '@greenhouse/db';
-vi.mock('../../../../apps/api/src/platform/runtime.js', () => ({
+vi.mock('../../../../apps/api/src/plugin-host/runtime.js', () => ({
   PLATFORM_ORG_ID: 'default',
   getPlatformRuntime: () => ({ authorize: async () => ({ allowed: true }) }),
 }));

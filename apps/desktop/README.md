@@ -1,11 +1,11 @@
 # Greenhouse macOS shell
 
-The shell bundles `apps/mobile`'s universal web export. It supports the phone's multi-station contract. The browser export remains single-station. No server address is baked into a generic desktop build.
+The shell bundles `apps/client`'s universal web export. It supports the phone's multi-station contract. The browser export remains single-station. No server address is baked into a generic desktop build.
 
 From the repository root, with Node/pnpm, Rust and Xcode command-line tools installed:
 
 ```sh
-pnpm mobile:install
+pnpm client:install
 pnpm desktop:check
 pnpm desktop:build
 # For a human with a GUI; this rebuilds local assets then starts Tauri:

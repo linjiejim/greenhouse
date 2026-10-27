@@ -108,7 +108,7 @@ Both kit export lists are snapshot-locked; removals/renames update the snapshot 
 ### SDK 1 and SDK 2
 
 SDK 2 is the current declaration revision. SDK 1 remains accepted throughout 4.x, including
-`apps/api/src/extensions/<id>/` and `apps/web/src/extensions/<id>/` with their existing index
+`apps/api/src/plugin-host/<id>/` and `apps/web/src/extensions/<id>/` with their existing index
 lists. New work uses packages. Declare a `core` semver range that actually includes 4.0
 (e.g. `>=4.0.0 <5.0.0`); `>=3.0 <4` excludes this release. Activation checks `APP_VERSION`,
 falling back to root package.json; prereleases count as their base release for compatibility.
@@ -301,7 +301,7 @@ v1 fields. `client_min` is the wire spelling; server `CLIENT_API_LEVEL` and boot
 
 | Page kind | Renderer |
 |---|---|
-| `native` | A compiled universal screen (`screen`) with a declared classic `fallback_url`. Official adapters live under `apps/mobile/src/plugins/<id>/` because Expo is outside the workspace. |
+| `native` | A compiled universal screen (`screen`) with a declared classic `fallback_url`. Official adapters live under `apps/client/src/plugins/<id>/` because Expo is outside the workspace. |
 | `entity-list` | Derived entity metadata, scoped paging/filter/sort and permitted create actions. |
 | `entity-detail` | Member-readable fields and permitted edit/delete actions. |
 | `settings-form` | Declared Runtime Config keys; only changed keys submitted. The API remains super-only regardless of `parent`. |

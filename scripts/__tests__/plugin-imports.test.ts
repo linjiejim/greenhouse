@@ -65,13 +65,13 @@ describe('package import boundaries', () => {
     ).toEqual([]);
   });
   it('forbids core-to-plugin imports with exactly two generated-file exceptions', () => {
-    for (const path of ['apps/api/src/x.ts', 'apps/mobile/src/x.ts', 'packages/utils/src/x.ts']) {
+    for (const path of ['apps/api/src/x.ts', 'apps/client/src/x.ts', 'packages/utils/src/x.ts']) {
       for (const spec of ['@greenhouse/plugin-fixture/api', '../../../plugins/fixture/api/index.js'])
         expect(checkCorePluginImports(path, `import x from '${spec}';`)).toHaveLength(1);
     }
     expect(
       checkCorePluginImports(
-        'apps/api/src/extensions/compiled.generated.ts',
+        'apps/api/src/plugin-host/compiled.generated.ts',
         "import x from '../../../../plugins/fixture/api/index.js';",
       ),
     ).toEqual([]);

@@ -54,14 +54,17 @@ import { ProviderRequestError } from '../e2b/http.js';
 import { buildMcpServer, composeMcpContext } from '../../../../apps/api/src/routes/mcp.js';
 import { identityFromOAuthScopes } from '../../../../apps/api/src/agent-runtime/mcp-auth.js';
 import { buildExternalServiceTools } from '../../../../apps/api/src/agent-runtime/service-tools.js';
-import { initializePlatformRuntime, resetPlatformRuntimeForTests } from '../../../../apps/api/src/platform/runtime.js';
+import {
+  initializePlatformRuntime,
+  resetPlatformRuntimeForTests,
+} from '../../../../apps/api/src/plugin-host/runtime.js';
 import { projectsRegistration } from '../../../projects/api/platform/application.js';
 import { knowledgeRegistration } from '../../../knowledge/api/platform/registration.js';
 import { tablesRegistration } from '../../../tables/api/platform/application.js';
 import { runWithMeteringScope, type MeteringScope } from '../../../../apps/api/src/usage/metering.js';
 import { setPriceOverridesForTests, syncPriceOverrides } from '../../../../apps/api/src/usage/pricing.js';
 import { uploadCabinetFile } from '../../../../apps/api/src/drive/kb-cabinet.js';
-import { delegatedAgentActor } from '../../../../apps/api/src/platform/actor.js';
+import { delegatedAgentActor } from '../../../../apps/api/src/plugin-host/actor.js';
 import { computerRoutes } from '../routes/computer.js';
 import { invalidateWorkspaceConfigCache } from '../../../../apps/api/src/settings/workspace-config.js';
 import type { AppEnv } from '../../../../apps/api/src/app-env.js';

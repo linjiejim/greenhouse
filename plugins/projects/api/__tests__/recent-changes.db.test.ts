@@ -16,7 +16,7 @@ import {
   initializePlatformRuntime,
   resetPlatformRuntimeForTests,
   type PlatformRuntime,
-} from '../../../../apps/api/src/platform/runtime.js';
+} from '../../../../apps/api/src/plugin-host/runtime.js';
 import { projectsRegistration } from '../platform/application.js';
 import { tablesRegistration } from '../../../tables/api/platform/application.js';
 import { knowledgeRegistration } from '../../../knowledge/api/platform/registration.js';

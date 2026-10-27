@@ -7,7 +7,7 @@ import {
   type RecentChangeWindow,
   type RecentChangeLane,
 } from './recent-source.js';
-import { fromExtensions } from '../extensions/index.js';
+import { fromExtensions } from '../plugin-host/index.js';
 /**
  * Home "recent changes" (团队动态) — what changed across the team lately,
  * limited to what the viewer may read.
@@ -33,7 +33,7 @@ import { fromExtensions } from '../extensions/index.js';
 import type { ActivityCursor, DatabaseProvider } from '@greenhouse/db';
 import type { ActivityItem } from '@greenhouse/types/activity';
 import { filesPageHref, shelfOfVisibility } from '@greenhouse/types/files';
-import type { PlatformRuntime } from '../platform/runtime.js';
+import type { PlatformRuntime } from '../plugin-host/runtime.js';
 import { moduleOfTool } from './activity-log.js';
 type Cursor = ActivityCursor;
 export const RECENT_DAYS = 14;

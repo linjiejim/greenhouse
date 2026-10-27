@@ -31,9 +31,9 @@ import {
   type GatewayModelView,
 } from '@greenhouse/types/agent-access';
 import type { AuthUser } from '../auth/token.js';
-import { getOAuthIssuerUrl } from '../platform/oauth.js';
-import { humanActor } from '../platform/actor.js';
-import { PLATFORM_ORG_ID } from '../platform/runtime.js';
+import { getOAuthIssuerUrl } from '../agent-access/oauth.js';
+import { humanActor } from '../plugin-host/actor.js';
+import { PLATFORM_ORG_ID } from '../plugin-host/runtime.js';
 import { getWorkspaceFlag, getWorkspaceFlagState } from '../settings/workspace-config.js';
 import type { WorkspaceFlagState } from '@greenhouse/types/workspace-settings';
 import { resolveGatewayModel } from './upstream.js';

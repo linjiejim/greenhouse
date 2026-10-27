@@ -63,7 +63,7 @@
         },
         {
           "type": "json",
-          "path": "apps/mobile/package.json",
+          "path": "apps/client/package.json",
           "jsonpath": "$.version"
         },
         {
@@ -188,7 +188,7 @@
         },
         {
           "type": "json",
-          "path": "apps/mobile/app.json",
+          "path": "apps/client/app.json",
           "jsonpath": "$.expo.version"
         },
         {

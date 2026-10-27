@@ -14,7 +14,7 @@
 import { randomUUID } from 'node:crypto';
 import type { DatabaseProvider, RetentionReport } from '@greenhouse/db';
 import { logger } from '@greenhouse/utils/logger';
-import { PLATFORM_ORG_ID } from '../platform/runtime.js';
+import { PLATFORM_ORG_ID } from '../plugin-host/runtime.js';
 
 export const RETENTION_ACTION = 'retentionCleanup';
 const MIN_INTERVAL_MS = 20 * 3_600_000;

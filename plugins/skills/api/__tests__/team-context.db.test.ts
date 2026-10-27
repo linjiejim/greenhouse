@@ -23,7 +23,10 @@ import { TEST_DATABASE_URL } from '@greenhouse/db/test-config';
 import { createInternalTestUser } from '../../../../tests/helpers/internal-user.js';
 import { buildMcpServer, composeMcpContext } from '../../../../apps/api/src/routes/mcp.js';
 import { identityFromOAuthScopes } from '../../../../apps/api/src/agent-runtime/mcp-auth.js';
-import { initializePlatformRuntime, resetPlatformRuntimeForTests } from '../../../../apps/api/src/platform/runtime.js';
+import {
+  initializePlatformRuntime,
+  resetPlatformRuntimeForTests,
+} from '../../../../apps/api/src/plugin-host/runtime.js';
 import { projectsRegistration } from '../../../projects/api/platform/application.js';
 import { knowledgeRegistration } from '../../../knowledge/api/platform/registration.js';
 import { tablesRegistration } from '../../../tables/api/platform/application.js';

@@ -34,7 +34,7 @@ export default defineConfig({
       timeout: 120_000,
     },
     {
-      command: 'cd apps/mobile && npx expo start --web --port 18921',
+      command: 'cd apps/client && npx expo start --web --port 18921',
       url: 'http://localhost:18921',
       env: { EXPO_PUBLIC_API_BASE_URL: 'http://localhost:18920', CI: '1' },
       reuseExistingServer: false,

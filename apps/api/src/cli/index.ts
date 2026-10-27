@@ -17,7 +17,7 @@
  * Commands are imported lazily so a cheap command never pays to load the DB.
  */
 
-import { extensionCommands } from '../extensions/boot.js';
+import { extensionCommands } from '../plugin-host/boot.js';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
@@ -48,7 +48,6 @@ ${chalk.bold('Manage')}
   migrate-from-1x           Carry a 1.6 database into a new 3.0 one (--from <url> --to <url> [--dry-run] [--json])
   db baseline               Adopt an existing database: record the migration chain as applied (--dry-run, --yes)
   platform bootstrap        Synchronize system roles / baseline policies with the manifests
-  platform create-app <id>  Scaffold a fail-closed Platform app (--title, --output, --dry-run)
   seed                      Load the example dataset from data/examples (--reset | --keep)
 
 ${chalk.bold('Diagnose')}

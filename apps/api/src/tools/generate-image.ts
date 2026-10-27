@@ -43,7 +43,7 @@ import {
 } from '../usage/pricing.js';
 import { findBudgetRefusal } from '../usage/budget-errors.js';
 import { cabinetDownloadUrl, readCabinetFileBytes, uploadCabinetFile } from '../drive/kb-cabinet.js';
-import { delegatedAgentActor } from '../platform/actor.js';
+import { delegatedAgentActor } from '../plugin-host/actor.js';
 
 /** An image call that never reported back is charged at its estimate after this long. */
 const IMAGE_BUDGET_TTL_MS = 5 * 60_000;

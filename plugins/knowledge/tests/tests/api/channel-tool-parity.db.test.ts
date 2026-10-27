@@ -28,8 +28,8 @@ import { composeMcpContext, MCP_EXPOSED_TOOL_IDS } from '../../../../../apps/api
 import {
   initializePlatformRuntime,
   resetPlatformRuntimeForTests,
-} from '../../../../../apps/api/src/platform/runtime.js';
-import { extensionApplicationRegistrations } from '../../../../../apps/api/src/extensions/boot.js';
+} from '../../../../../apps/api/src/plugin-host/runtime.js';
+import { extensionApplicationRegistrations } from '../../../../../apps/api/src/plugin-host/boot.js';
 let db: DatabaseProvider;
 /** Full-scope identity, as /api/agent's agentBearerAuthMiddleware builds it. */
 function identityFor(user: UserRow): AgentIdentity {

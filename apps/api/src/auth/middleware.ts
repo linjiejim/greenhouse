@@ -138,7 +138,7 @@ export async function authMiddleware(c: Context, next: Next) {
       return c.json({ error: 'Forbidden: internal account required' }, 403);
     }
     if (embed) {
-      const { memberCanUsePlugin } = await import('../extensions/ui-access.js');
+      const { memberCanUsePlugin } = await import('../plugin-host/ui-access.js');
       if (!(await memberCanUsePlugin(getDb(), { id: user.id, role: user.role }, embed.plugin)))
         return c.json({ error: 'Forbidden: plugin unavailable' }, 403);
     }

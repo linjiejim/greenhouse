@@ -52,7 +52,7 @@ function jsonObject(value: unknown): Record<string, unknown> {
 }
 import { toRowId } from '@greenhouse/utils/id';
 import { DRIVE_AUDIT_APP_ID, type DriveChangeAction } from '../drive/audit.js';
-import { fromExtensions } from '../extensions/index.js';
+import { fromExtensions } from '../plugin-host/index.js';
 import { MUTATING_PROXY_ALLOWLIST } from '../tools/registry.js';
 export interface ActivityViewer {
   id: string;

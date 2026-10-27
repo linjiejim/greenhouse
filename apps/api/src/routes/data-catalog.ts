@@ -14,7 +14,7 @@ import { getDb } from '@greenhouse/db';
 import type { DataCatalog } from '@greenhouse/types/hub-context';
 import type { AppEnv } from '../app-env.js';
 import { getAuthUser } from '../auth/middleware.js';
-import { humanActor } from '../platform/actor.js';
+import { humanActor } from '../plugin-host/actor.js';
 import { memberMcpToolIds } from '../agent-runtime/mcp-tool-visibility.js';
 import { buildDataCatalog } from '../hub-context/catalog.js';
 

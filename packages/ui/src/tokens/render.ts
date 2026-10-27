@@ -19,7 +19,7 @@ import {
 } from './tokens';
 
 export const WEB_CSS_PATH = 'packages/ui/src/tokens/tokens.css';
-export const MOBILE_TS_PATH = 'apps/mobile/src/theme/tokens.generated.ts';
+export const MOBILE_TS_PATH = 'apps/client/src/theme/tokens.generated.ts';
 export const EMBED_TS_PATH = 'packages/ui-tokens/src/tokens.generated.ts';
 
 /** Standalone values; embedded frontends need neither React nor the UI package. */
@@ -148,7 +148,7 @@ export function renderWebCss(): string {
   ].join('\n');
 }
 
-/** The mobile copy (apps/mobile sits outside the workspace, so it cannot import this package). */
+/** The mobile copy (apps/client sits outside the workspace, so it cannot import this package). */
 export function renderMobileTs(): string {
   const json = (value: unknown) => JSON.stringify(value, null, 2);
   const categoricalHex = Object.fromEntries(
@@ -162,7 +162,7 @@ export function renderMobileTs(): string {
   return [
     `/** ${HEADER} */`,
     '',
-    '/** The native palette per appearance (keys: apps/mobile/src/theme/palette.ts). */',
+    '/** The native palette per appearance (keys: apps/client/src/theme/palette.ts). */',
     `export const nativePalette = ${json({ light: mobilePalette('light'), dark: mobilePalette('dark') })} as const;`,
     '',
     '/** User-chosen colours (projects, tags, options): text or icon `fg` on `fill`. */',

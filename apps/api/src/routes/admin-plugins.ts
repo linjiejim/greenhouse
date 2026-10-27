@@ -6,7 +6,7 @@ import { Hono } from 'hono';
 import { getDb } from '@greenhouse/db';
 import type { AppEnv } from '../app-env.js';
 import { requireSuper } from '../auth/middleware.js';
-import { pluginStatus } from '../extensions/status.js';
+import { pluginStatus } from '../plugin-host/status.js';
 
 export default new Hono<AppEnv>()
   .use('*', requireSuper())

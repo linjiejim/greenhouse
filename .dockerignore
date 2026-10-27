@@ -24,10 +24,10 @@ docs
 tests
 **/__tests__
 # Native build products never enter the hosted Expo export.
-apps/mobile/ios
-apps/mobile/android
-apps/mobile/.expo
-apps/mobile/dist*
+apps/client/ios
+apps/client/android
+apps/client/.expo
+apps/client/dist*
 apps/desktop/src-tauri/target
 .cargo-home
 .work

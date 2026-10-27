@@ -13,7 +13,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock('@greenhouse/db', () => ({
   getDb: () => ({ users: { getById: async (id: string) => (id === mocks.user.id ? mocks.user : null) } }),
 }));
-vi.mock('../../extensions/ui-access.js', () => ({
+vi.mock('../../plugin-host/ui-access.js', () => ({
   memberCanUsePlugin: async (_db: unknown, _user: unknown, plugin: string) => mocks.allowed && plugin === 'example',
 }));
 const app = new Hono<AppEnv>()

@@ -176,7 +176,13 @@ export async function syncPlugins({ root = REPO_ROOT, env = process.env, check =
   const plugins = await resolvePlugins(root, env);
   const outputs = [];
   for (const half of ['api', 'web']) {
-    const file = join(root, `apps/${half}/src/extensions/compiled.generated.ts`);
+    // the api half lives in the plugin host; the web half goes away with the classic client
+    const file = join(
+      root,
+      half === 'api'
+        ? 'apps/api/src/plugin-host/compiled.generated.ts'
+        : 'apps/web/src/extensions/compiled.generated.ts',
+    );
     const type = half === 'api' ? 'GreenhouseExtension' : 'WebExtension';
     const imports = [];
     const values = [];

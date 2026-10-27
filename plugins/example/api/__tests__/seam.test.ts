@@ -12,10 +12,10 @@ async function loadWith(enabled: string) {
   vi.stubEnv('GREENHOUSE_EXTENSIONS', enabled);
   // Sequential on purpose: the registry graph has import cycles, and loading
   // it concurrently after resetModules() can deadlock the module runner.
-  const extensions = await import('../../../../apps/api/src/extensions/index.js');
-  const boot = await import('../../../../apps/api/src/extensions/boot.js');
+  const extensions = await import('../../../../apps/api/src/plugin-host/index.js');
+  const boot = await import('../../../../apps/api/src/plugin-host/boot.js');
   const registry = await import('../../../../apps/api/src/tools/registry.js');
-  const points = await import('../../../../apps/api/src/platform/feature-points.js');
+  const points = await import('../../../../apps/api/src/plugin-host/feature-points.js');
   const features = await import('@greenhouse/types/features');
   const settings = await import('@greenhouse/types/workspace-settings');
   const middleware = await import('../../../../apps/api/src/auth/middleware.js');
@@ -24,7 +24,7 @@ async function loadWith(enabled: string) {
   const searchSources = await import('../../../../apps/api/src/search/sources.js');
   const drive = await import('../../../../apps/api/src/drive/access.js');
   const exportSources = await import('../../../../apps/api/src/tools/export-sources.js');
-  const oauth = await import('../../../../apps/api/src/platform/oauth.js');
+  const oauth = await import('../../../../apps/api/src/agent-access/oauth.js');
   return {
     extensions,
     boot,
@@ -150,13 +150,13 @@ describe('extension seam', { timeout: 60_000 }, () => {
   });
 
   it('rejects duplicate ids and malformed ids early', async () => {
-    const { defineExtension } = await import('../../../../apps/api/src/extensions/define.js');
+    const { defineExtension } = await import('../../../../apps/api/src/plugin-host/define.js');
     expect(() => defineExtension({ id: 'Bad Id', name: 'x' })).toThrow(/must match/);
     expect(defineExtension({ id: 'fine-1', name: 'x' }).id).toBe('fine-1');
   });
 
   it('refuses a tool that core could never build', async () => {
-    const { defineExtension } = await import('../../../../apps/api/src/extensions/define.js');
+    const { defineExtension } = await import('../../../../apps/api/src/plugin-host/define.js');
     const { defineTool } = await import('../../../../apps/api/src/tools/define.js');
     const meta = {
       id: 'ghost_tool',

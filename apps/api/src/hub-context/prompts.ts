@@ -2,8 +2,8 @@
 import type { DatabaseProvider, UserPromptRow } from '@greenhouse/db';
 import type { TaskVariable } from '@greenhouse/types/tasks';
 import { toRowId } from '@greenhouse/utils/id';
-import { delegatedAgentActor } from '../platform/actor.js';
-import { listAgentPrompts, getAgentPrompt } from '../extensions/agent-context.js';
+import { delegatedAgentActor } from '../plugin-host/actor.js';
+import { listAgentPrompts, getAgentPrompt } from '../plugin-host/agent-context.js';
 export interface TeamPromptArgument {
   name: string;
   description?: string;

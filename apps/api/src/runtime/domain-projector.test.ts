@@ -143,7 +143,7 @@ describe('Runtime durable domain projector', () => {
 });
 
 it('publishes metadata-only run and conversation observations from a matching terminal outbox event', async () => {
-  const { registerExtensionHooks } = await import('../extensions/events.js');
+  const { registerExtensionHooks } = await import('../plugin-host/events.js');
   const observed: unknown[] = [];
   registerExtensionHooks('metadata-observer', (hooks) => {
     hooks.on('run.completed', (payload) => {

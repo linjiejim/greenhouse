@@ -40,7 +40,7 @@ import { resolveProfileAsync } from '../profiles/profile.js';
 import { isChatModelAllowed } from '../config/models.js';
 import { sanitizeForPrompt } from '../security/security.js';
 import { sanitizeChatMessagesForPrompt } from '../chat/user-message.js';
-import { resolveExtensionPromptContext } from '../extensions/prompt-context.js';
+import { resolveExtensionPromptContext } from '../plugin-host/prompt-context.js';
 import { pinProfileIdForUser, ProfileAccessError } from '../profiles/access.js';
 import type { AuthUser } from '../auth/token.js';
 import type { AgentProfile } from '../profiles/profile.js';

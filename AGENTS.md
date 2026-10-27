@@ -26,7 +26,7 @@
 
 - `apps/api/` is Hono governance/runtime/CLI; read [backend rules](apps/api/src/AGENTS.md).
 - `apps/web/` is classic React/Vite; read [frontend rules](apps/web/src/AGENTS.md) and [settings rules](apps/web/src/pages/settings/AGENTS.md).
-- `apps/mobile/` is isolated Expo for web/iOS/Android; read [universal client rules](apps/mobile/AGENTS.md).
+- `apps/client/` is isolated Expo for web/iOS/Android; read [universal client rules](apps/client/AGENTS.md).
 - `apps/desktop/` is the Tauri macOS shell; read [desktop rules](apps/desktop/AGENTS.md).
 - `packages/agent-core/` owns the model loop/factory; `packages/platform-kernel/` owns pure manifests/actors/authz/dispatch.
 - `packages/db/` owns core schema/services/migration/carry; read [DB rules](packages/db/src/AGENTS.md) and [schema](packages/db/src/db-schema.md).
@@ -113,7 +113,7 @@
 - For plugin changes run strict overlay guard, plugins:sync --check and test:core; core assembly runs sequentially with other generators.
 - HTTP security uses test:e2e:ci with migrated test DB/dead LLM; model-dependent cases honor E2E_NO_LLM.
 - Classic/plugin browser tests use test:e2e:ui; universal uses test:e2e:client; package browser specs import only @playwright/test.
-- Root checks skip isolated mobile type/lint; run both inside apps/mobile for mobile changes.
+- Root checks skip isolated mobile type/lint; run both inside apps/client for mobile changes.
 - Product captures use scripts/capture-screens.mjs against seeded real UI; never mock or hand-edit captures.
 - Tour uses /classic and active plugin discovery; enable intended plugins before migration/seed; label old images until replaced.
 - docs/index.html is bilingual: data-i18n keys need ZH entries; rebuild landing CSS after utility-class changes.

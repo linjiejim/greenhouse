@@ -4,7 +4,7 @@ import { initDatabase } from '@greenhouse/db';
 import { TEST_DATABASE_URL } from '@greenhouse/db/test-config';
 import { createInternalTestUser } from '../../../../tests/helpers/internal-user.js';
 import type { AppEnv } from '@greenhouse/api/extension-kit';
-import { mountExtensionRoutes } from '../../../../apps/api/src/extensions/boot.js';
+import { mountExtensionRoutes } from '../../../../apps/api/src/plugin-host/boot.js';
 import { resolveUserTools } from '../../../../apps/api/src/agent.js';
 it('keeps mail available by default and applies the member flag to REST and tools together', async () => {
   const db = await initDatabase({ type: 'pg', pgConnectionString: TEST_DATABASE_URL });

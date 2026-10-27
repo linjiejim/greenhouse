@@ -170,7 +170,7 @@ CSP 允许同源和精确的 `tauri://localhost` 父级；桌面内嵌页没有�
 |---|---|
 | `apps/api/src/` | 核心鉴权、Chat、工具运行时、插件宿主、调度、接入与 CLI |
 | `apps/web/src/` | Classic shell、管理后台、共享组件与插件页面宿主 |
-| `apps/mobile/` | 独立 Expo 工作区；原生/网页适配、`src/plugins/<id>/` 与 vendored 协议 |
+| `apps/client/` | 独立 Expo 工作区；原生/网页适配、`src/plugins/<id>/` 与 vendored 协议 |
 | `apps/desktop/` | Tauri macOS 壳与构建脚本 |
 | `packages/agent-core/`、`packages/platform-kernel/` | 模型循环与平台权限原语 |
 | `packages/db/` | 核心 schema、服务、迁移与 1.x carry |

@@ -3,7 +3,7 @@ import { spawnSync } from 'node:child_process';
 import { cpSync, rmSync, existsSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 const root = resolve(import.meta.dirname, '..');
-const mobile = join(root, 'apps/mobile');
+const mobile = join(root, 'apps/client');
 const output = join(mobile, 'dist-hosted');
 const env = { ...process.env, CI: 'true', EXPO_NO_DOTENV: '1', EXPO_PUBLIC_STATIONS_MODE: 'single' };
 // A hosted browser build always connects to its own origin, never a developer's station.

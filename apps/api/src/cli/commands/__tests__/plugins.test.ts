@@ -4,7 +4,7 @@ vi.mock('../shared.js', async (original) => ({
   ...(await original<typeof import('../shared.js')>()),
   openDb: mocks.openDb,
 }));
-vi.mock('../../../extensions/status.js', () => ({
+vi.mock('../../../plugin-host/status.js', () => ({
   listPlugins: mocks.list,
   pluginStatus: mocks.status,
   pluginDropPlan: mocks.plan,

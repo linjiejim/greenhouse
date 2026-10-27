@@ -2,7 +2,7 @@
  * Plant-avatar path + colour math (internal to the plant-avatar module).
  *
  * Flat geometric plants: every silhouette is built from circles, circular arcs and straight
- * lines on the 100×100 viewBox (the helpers below), once at module load. The apps/mobile copy
+ * lines on the 100×100 viewBox (the helpers below), once at module load. The apps/client copy
  * is compared byte for byte, so keep the arithmetic identical there.
  */
 

@@ -10,7 +10,7 @@ import { logger } from '@greenhouse/utils/logger';
 import type { AgentProfile } from './profiles/profile.js';
 import { enrichSystemPrompt, registerKnownTools } from './profiles/profile.js';
 import { getGlobalToolIds, getAllToolIds, STATIC_TOOL_MODULES } from './tools/registry.js';
-import { FEATURE_POINTS } from './platform/feature-points.js';
+import { FEATURE_POINTS } from './plugin-host/feature-points.js';
 import { resolveUserFeatures } from './auth/features.js';
 import { getDb } from '@greenhouse/db';
 

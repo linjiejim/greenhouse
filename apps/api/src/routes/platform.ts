@@ -8,10 +8,10 @@
 import { Hono } from 'hono';
 import type { AppEnv } from '../app-env.js';
 import { getAuthUser } from '../auth/middleware.js';
-import { humanActor } from '../platform/actor.js';
-import { getPlatformRuntime } from '../platform/runtime.js';
+import { humanActor } from '../plugin-host/actor.js';
+import { getPlatformRuntime } from '../plugin-host/runtime.js';
 import { userHasFeature } from '../auth/features.js';
-import { appFeatureFlag } from '../platform/feature-points.js';
+import { appFeatureFlag } from '../plugin-host/feature-points.js';
 
 /**
  * Applications this user may see: visible to the actor AND, when the app is

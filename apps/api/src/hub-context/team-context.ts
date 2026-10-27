@@ -1,4 +1,4 @@
-import { listAgentResources, readAgentResource } from '../extensions/agent-context.js';
+import { listAgentResources, readAgentResource } from '../plugin-host/agent-context.js';
 /**
  * Team context for a member's agent — the three MCP resources
  * (`greenhouse://context/overview|conventions|glossary`) and the compact
@@ -17,7 +17,7 @@ import { allMcpResourceGroups, isRetiredMcpResourceGroup } from '@greenhouse/typ
 import { DATA_CATALOG_TOOL, TEAM_CONTEXT_TOOL, TEAM_CONTEXT_URIS } from '@greenhouse/types/hub-context';
 import { getToolMeta } from '../tools/registry.js';
 import { getWorkspaceValue } from '../settings/workspace-config.js';
-import { EXTENSIONS, fromExtensions } from '../extensions/index.js';
+import { EXTENSIONS, fromExtensions } from '../plugin-host/index.js';
 import {
   resolveTeamContextDocs,
   readTeamContextConfig,

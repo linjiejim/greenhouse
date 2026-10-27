@@ -1,6 +1,6 @@
 import { createDatabase } from '@greenhouse/db';
 import { resetIntegrationTestDatabase, TEST_DATABASE_URL } from '@greenhouse/db/test-config';
-import { bootstrapPlatform } from '../../apps/api/src/platform/bootstrap.js';
+import { bootstrapPlatform } from '../../apps/api/src/plugin-host/bootstrap.js';
 
 export async function setup(): Promise<void> {
   await resetIntegrationTestDatabase(TEST_DATABASE_URL);

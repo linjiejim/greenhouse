@@ -1,6 +1,6 @@
 import { identityDiscoveryRoutes } from './auth/identity-providers.js';
-import { startChannels } from './extensions/channels.js';
-import { fromExtensions } from './extensions/index.js';
+import { startChannels } from './plugin-host/channels.js';
+import { fromExtensions } from './plugin-host/index.js';
 /**
  * Greenhouse API — Hono server entry point.
  *
@@ -77,7 +77,7 @@ import {
   mountExtensionUis,
   runExtensionBootHooks,
   runExtensionShutdownHooks,
-} from './extensions/boot.js';
+} from './plugin-host/boot.js';
 import adminSettingsRoutes from './routes/admin-settings.js';
 import { adminTeamContextRoutes } from './routes/admin-team-context.js';
 import dataCatalogRoutes from './routes/data-catalog.js';
@@ -87,8 +87,8 @@ import adminRoutes from './routes/admin.js';
 import costValueRoutes from './routes/cost-value.js';
 import platformRoutes from './routes/platform.js';
 import platformAdminRoutes from './routes/platform-admin.js';
-import { bootstrapPlatform } from './platform/bootstrap.js';
-import { initializePlatformRuntime } from './platform/runtime.js';
+import { bootstrapPlatform } from './plugin-host/bootstrap.js';
+import { initializePlatformRuntime } from './plugin-host/runtime.js';
 import promptRoutes from './routes/prompts.js';
 import { createSearchRoute } from './routes/search.js';
 import { createRefsRoutes } from './routes/refs.js';

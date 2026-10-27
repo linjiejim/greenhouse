@@ -7,7 +7,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { darkHex, lightHex, type HexPalette } from '../../../../apps/mobile/src/theme/palette';
+import { darkHex, lightHex, type HexPalette } from '../../../../apps/client/src/theme/palette';
 import { flatten } from './contrast';
 import { WEB_CSS_PATH } from './render';
 import type { ThemeMode } from './tokens';

@@ -17,9 +17,9 @@ description: >-
 
 1. **这张表属于 core 还是 extension？**
    私有 / 可选 / 实验性模块的表不要进 core schema——走扩展缝
-   （`apps/api/src/extensions/<id>/` 的 `schema.ts` + `migrations/` + `services`，
+   （`apps/api/src/plugin-host/<id>/` 的 `schema.ts` + `migrations/` + `services`，
    见 [EXTENDING.md](../../../EXTENDING.md)）。core DDL 只住仓库根 `drizzle/`。
-   参考实现 `apps/api/src/extensions/example/`。
+   参考实现 `apps/api/src/plugin-host/example/`。
 2. **能不能不加表？** 根 AGENTS.md 的「Delete & reuse discipline」要求先确认现有表无法复用或扩展；
    加"第二张做同一件事的表"必须在 AGENTS.md 里登记理由。
 3. 读 `db-schema.md` 确认与既有表的关系（FK 还是逻辑关联）。

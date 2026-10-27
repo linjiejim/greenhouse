@@ -82,9 +82,9 @@ import {
   type ToolOutputCaller,
 } from '../agent-runtime/tool-output-store.js';
 import type { AppEnv } from '../app-env.js';
-import { delegatedAgentActor } from '../platform/actor.js';
+import { delegatedAgentActor } from '../plugin-host/actor.js';
 import { filterMcpToolIdsByPlatform, MCP_PROFILE_ID } from '../agent-runtime/mcp-tool-visibility.js';
-import { listPluginResources, listPluginResourceTemplates, readPluginResource } from '../extensions/mcp-resources.js';
+import { listPluginResources, listPluginResourceTemplates, readPluginResource } from '../plugin-host/mcp-resources.js';
 import { DATA_CATALOG_TOOL, TEAM_CONTEXT_TOOL } from '@greenhouse/types/hub-context';
 import { countUsage } from '../usage/counters.js';
 import {

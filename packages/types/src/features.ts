@@ -6,7 +6,7 @@
  *   • apps/api — `requireFeature()` middleware + `/api/auth/me` resolution
  *                (apps/api/src/auth/features.ts); flags additionally gate the
  *                chat/proxy tools that ride them via resolveUserTools + the
- *                feature-point registry (apps/api/src/platform/feature-points.ts)
+ *                feature-point registry (apps/api/src/plugin-host/feature-points.ts)
  *   • apps/web — per-user admin toggle in the unified permission modal
  *                (settings/user-permissions-modal.tsx) + nav / route gating
  *                (apps/web/src/lib/features.ts)
@@ -53,7 +53,7 @@ export const FEATURE_FLAGS = [] as const satisfies readonly FeatureFlag[];
 export type FeatureKey = (typeof FEATURE_FLAGS)[number]['key'];
 
 // ─── Extension flags ─────────────────────────────────────
-// Extensions (apps/api/src/extensions) register their flags at boot. They live in
+// Extensions (apps/api/src/plugin-host) register their flags at boot. They live in
 // the same `user_features` table and admin UI as the core flags; only the
 // compile-time `FeatureKey` union stays core-only.
 

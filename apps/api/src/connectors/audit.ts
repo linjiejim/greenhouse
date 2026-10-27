@@ -11,7 +11,7 @@ import { randomUUID } from 'node:crypto';
 import type { DatabaseProvider } from '@greenhouse/db';
 import { logger } from '@greenhouse/utils/logger';
 import { toErrorMessage } from '@greenhouse/utils/error';
-import { PLATFORM_ORG_ID } from '../platform/runtime.js';
+import { PLATFORM_ORG_ID } from '../plugin-host/runtime.js';
 
 export const CONNECTORS_AUDIT_APP_ID = 'connectors';
 

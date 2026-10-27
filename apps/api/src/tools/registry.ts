@@ -14,7 +14,7 @@ import { registerInteractiveTools } from '../agent-runtime/tool-policy.js';
  * Frontend fetches metadata via GET /api/tools.
  */
 
-import { fromExtensions } from '../extensions/index.js';
+import { fromExtensions } from '../plugin-host/index.js';
 import type { ToolMeta, ToolModule } from './define.js';
 export type { ToolCategory, ToolMeta } from './define.js';
 
