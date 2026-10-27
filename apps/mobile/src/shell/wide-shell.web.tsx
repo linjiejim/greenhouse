@@ -1,6 +1,6 @@
 import { SHORTCUTS } from '../desktop/shortcuts';
 import { shellChrome, railChrome, secondaryChrome, syncNativePlaces, openSettings } from '../desktop/chrome';
-import { nativeVisible, pluginHref } from '../plugins/navigation';
+import { usePlaces } from './use-places';
 import { PlaceSecondaryContext } from './place-secondary.web';
 import { AccountMenu, NotificationsPopover, SearchPalette } from './desktop-tools.web';
 import { getApiBase } from '../store/stations';
@@ -11,10 +11,6 @@ import { useAuth } from '../store/auth';
 import { useSessions } from '../store/sessions';
 import { useNotifications } from '../store/notifications';
 import { usePrefs } from '../store/prefs';
-import { useStationManifest } from '../plugins/store';
-import { pluginNavigation } from '../plugins/manifest';
-import { localize } from '../shared/plugins';
-import { hasTables } from './modules';
 import { wideLayout, RAIL_WIDTH, SECONDARY_WIDTH } from './wide-model';
 import { useT } from '../lib/i18n';
 import { ConversationRow } from '../chat/conversation-row.web';
@@ -28,8 +24,8 @@ import type { ChatSession } from '../shared/greenhouse-types';
 import { conversationAgent } from '../data/home';
 import { parseMs } from '../data/time';
 import { GreenhouseMark } from '../ui/logo';
+import { RailItem } from '../ui/rail-item.web';
 import { Icon, type IconName } from '../ui/core';
-import { NativeMenu } from '../ui/menu';
 
 import { Segmented } from '../ui/segmented';
 import { useShortcut } from '../ui/use-shortcut';
@@ -56,8 +52,6 @@ export function WideShell({ children }: { children: React.ReactNode }) {
   const [secondaryHost, setSecondaryHost] = useState<HTMLDivElement | null>(null);
   const [search, setSearch] = useState(false);
   const [notifications, setNotifications] = useState(false);
-  const manifest = useStationManifest((s) => s.data);
-  const lang = usePrefs((s) => s.lang);
   const unread = Math.max(
     0,
     useNotifications((s) => s.unread),
@@ -73,6 +67,7 @@ export function WideShell({ children }: { children: React.ReactNode }) {
     root.style.setProperty('--gh-line', c.separator);
     root.style.setProperty('--gh-secondary', c.secondaryLabel);
     root.style.setProperty('--gh-on-accent', c.onAccent);
+    root.style.setProperty('--gh-sidebar-selection', c.sidebarSelection);
     root.style.colorScheme = isDark ? 'dark' : 'light';
     root.dataset.theme = isDark ? 'dark' : 'light';
   }, [c, isDark]);
@@ -109,20 +104,7 @@ export function WideShell({ children }: { children: React.ReactNode }) {
     },
     !!user,
   );
-  const places = [
-    { id: 'chat', label: t('client.conversations'), icon: 'msg' as IconName, href: '/' },
-    ...(nativeVisible(manifest, 'knowledge')
-      ? [{ id: 'knowledge', label: t('nav.knowledge'), icon: 'book' as IconName, href: '/knowledge' }]
-      : []),
-    { id: 'drive', label: t('nav.files'), icon: 'folder' as IconName, href: '/drive' },
-    ...(nativeVisible(manifest, 'tables', hasTables(user))
-      ? [{ id: 'tables', label: t('nav.tables'), icon: 'table' as IconName, href: '/drive?view=tables' }]
-      : []),
-    ...(nativeVisible(manifest, 'projects')
-      ? [{ id: 'projects', label: t('nav.projects'), icon: 'checklist' as IconName, href: '/projects' }]
-      : []),
-    { id: 'automations', label: t('nav.automations'), icon: 'clock' as IconName, href: '/automations' },
-  ];
+  const { places, apps } = usePlaces();
   const directPlace = path.startsWith('/p/')
     ? 'plugin'
     : path.startsWith('/knowledge')
@@ -143,21 +125,12 @@ export function WideShell({ children }: { children: React.ReactNode }) {
     if (directPlace) setLastPlace(directPlace);
   }, [directPlace]);
   const active = directPlace ?? lastPlace;
-  const more = pluginNavigation(manifest, 'more');
-  const primary = pluginNavigation(manifest, 'primary').filter(
-    (n) => !['knowledge', 'tables', 'projects'].includes(n.page.kind === 'native' ? n.page.screen : ''),
-  );
+  const appSelected = (href: string) => {
+    const target = href.split('?')[0];
+    return path === target || path.startsWith(`${target}/`);
+  };
   const nativePlaces = JSON.stringify(
-    user
-      ? [
-          ...places,
-          ...primary.map((n) => ({
-            id: `${n.plugin.id}/${n.page.id}`,
-            label: localize(n.nav.label, lang),
-            href: pluginHref(n.plugin.id, n.page),
-          })),
-        ]
-      : [],
+    user ? [...places, ...apps.map(({ id, label, href }) => ({ id, label, href }))] : [],
   );
   useEffect(() => {
     const entries: { id: string; label: string; href: string }[] = JSON.parse(nativePlaces);
@@ -171,28 +144,7 @@ export function WideShell({ children }: { children: React.ReactNode }) {
   }, [nativePlaces, router]);
   const go = (href: string) => router.navigate(href as never);
   const rail = (id: string, label: string, icon: IconName, onPress: () => void, selected = false) => (
-    <Pressable
-      key={id}
-      testID={`rail-${id}`}
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      accessibilityState={{ selected }}
-      onPress={onPress}
-      style={({ pressed }) => ({
-        alignItems: 'center',
-        justifyContent: 'center',
-        gap: 4,
-        minHeight: 52,
-        marginHorizontal: 8,
-        borderRadius: 12,
-        backgroundColor: selected ? c.sidebarSelection : pressed ? c.fill : 'transparent',
-      })}
-    >
-      <Icon name={icon} size={22} color={selected ? c.accentText : c.secondaryLabel} />
-      <Text style={{ ...typo.caption1, color: selected ? c.accentText : c.secondaryLabel, fontWeight: '600' }}>
-        {label}
-      </Text>
-    </Pressable>
+    <RailItem key={id} id={id} label={label} icon={icon} selected={selected} width={RAIL_WIDTH} onPress={onPress} />
   );
   const chrome = !!user && layout.wide;
   return (
@@ -220,37 +172,30 @@ export function WideShell({ children }: { children: React.ReactNode }) {
               >
                 <GreenhouseMark size={28} />
               </Pressable>
-              <ScrollView>
+              <ScrollView showsVerticalScrollIndicator={false}>
                 {places.map((place, index) => (
                   <RailShortcut key={`shortcut:${place.id}`} href={place.href} index={index} />
                 ))}
-                {places.map((p) => rail(p.id, p.label, p.icon, () => go(p.href), p.id === active))}
-                {primary.map((n) =>
-                  rail(n.nav.id, localize(n.nav.label, lang), 'open', () => go(pluginHref(n.plugin.id, n.page))),
+                {places.map((p) =>
+                  rail(p.id, p.rail ?? p.label, p.icon, () => go(p.href), p.id === active && !apps.some((a) => appSelected(a.href))),
                 )}
-                {more.length ? (
-                  <NativeMenu
-                    fill
-                    title={t('client.more')}
-                    items={more.map((n) => ({
-                      id: `${n.plugin.id}/${n.page.id}`,
-                      title: localize(n.nav.label, lang),
-                      icon: 'open',
-                    }))}
-                    onSelect={(id) => go(`/p/${id}`)}
-                  >
-                    {rail('more', t('client.more'), 'more', () => {})}
-                  </NativeMenu>
+                {apps.length ? (
+                  <View
+                    testID="rail-apps-divider"
+                    accessibilityRole="none"
+                    style={{ height: 1, marginHorizontal: 18, marginVertical: space.sm, backgroundColor: c.separator }}
+                  />
                 ) : null}
+                {apps.map((a) => rail(a.navId, a.label, a.icon, () => go(a.href), appSelected(a.href)))}
               </ScrollView>
-              <View style={{ gap: space.sm }}>
+              <View style={{ gap: 2, paddingTop: space.sm, borderTopWidth: 1, borderTopColor: c.separator, marginHorizontal: 0 }}>
                 {user.role === 'super'
-                  ? rail('admin', t('client.admin'), 'shieldCheck', () => {
+                  ? rail('admin', t('client.railAdmin'), 'shieldCheck', () => {
                       window.open(`${getApiBase()}/classic/#/administration`, '_blank', 'noopener,noreferrer');
                     })
                   : null}
                 <View>
-                  {rail('notifications', t('notifications.title'), 'bell', () => {
+                  {rail('notifications', t('client.railActivity'), 'bell', () => {
                     setSearch(false);
                     setNotifications((v) => !v);
                   })}
@@ -294,7 +239,8 @@ export function WideShell({ children }: { children: React.ReactNode }) {
                   title={places.find((p) => p.id === active)?.label ?? ''}
                 />
               ) : (
-                <div ref={setSecondaryHost} style={{ height: '100%', overflow: 'auto' }} />
+                // a place that portals nothing here (a one-page app) gets no secondary column (client.css)
+                <div ref={setSecondaryHost} className="gh-secondary-host" style={{ height: '100%', overflow: 'auto' }} />
               )}
             </View>
           ) : null}
@@ -451,6 +397,11 @@ function Secondary({
           />
           <ScrollView style={{ marginTop: space.md }}>
             <div data-conversation-list>
+              {tab === 'mine' && status !== 'error' && status !== 'empty' && !groups.size ? (
+                <Text style={{ color: c.secondaryLabel, padding: 8 }}>
+                  {t(query ? 'common.noMatches' : 'home.noConversations')}
+                </Text>
+              ) : null}
               {tab === 'mine' ? (
                 ['home.pinned', 'client.today', 'client.yesterday', 'client.earlier']
                   .filter((g) => groups.has(g))

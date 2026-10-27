@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useState, useRef } from 'react';
+import { Icon } from '../../ui/core';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { listBases, getBase, getSchema, queryRecords, createBase } from '../../api/tables';
 import { get } from '../../api/client';
@@ -122,7 +123,7 @@ export default function TablesPlace() {
           onQuery={setQuery}
           action={
             <button aria-label={t('tables.newBase')} onClick={() => void addBase()}>
-              +
+              <Icon name="plus" size={18} />
             </button>
           }
         >

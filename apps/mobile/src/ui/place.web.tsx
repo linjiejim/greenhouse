@@ -138,20 +138,44 @@ export function PlaceRow({
     row
   );
 }
+/**
+ * Loading, failure and empty states of a place. With a `title` it is the "nothing here yet" state
+ * (icon, title, one supporting line, the place's create action); without one it reads as an empty
+ * search or filter result.
+ */
 export function PlaceEmpty({
   loading,
   error,
   retry,
+  icon,
+  title,
+  message,
+  action,
 }: {
   loading?: boolean;
   error?: string | null;
   retry?: () => void;
+  icon?: IconName;
+  title?: string;
+  message?: string;
+  action?: React.ReactNode;
 }) {
   const t = useT();
+  if (loading || error || !title)
+    return (
+      <div className="gh-place-empty" role="status">
+        {loading ? t('common.loading') : error || t('common.noMatches')}
+        {error && retry ? <button onClick={retry}>{t('common.retry')}</button> : null}
+      </div>
+    );
   return (
-    <div className="gh-place-empty" role="status">
-      {loading ? t('common.loading') : error || t('common.noMatches')}
-      {error && retry ? <button onClick={retry}>{t('common.retry')}</button> : null}
+    <div className="gh-place-empty gh-place-empty-rich" role="status">
+      <span className="gh-place-empty-icon">
+        <Icon name={icon ?? 'apps'} size={24} color="var(--gh-accent-text)" />
+      </span>
+      <strong>{title}</strong>
+      {message ? <span>{message}</span> : null}
+      {action}
     </div>
   );
 }

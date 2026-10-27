@@ -113,6 +113,18 @@ const SOURCES: Record<IconName, ImageSourcePropType> = {
   textSize: require('../../assets/icons/android/format_size.xml'),
   chevL: require('../../assets/icons/android/chevron_left.xml'),
   chevU: require('../../assets/icons/android/expand_less.xml'),
+  apps: require('../../assets/icons/android/apps.xml'),
+  brain: require('../../assets/icons/android/psychology.xml'),
+  mail: require('../../assets/icons/android/mail.xml'),
+  calendar: require('../../assets/icons/android/calendar_month.xml'),
+  note: require('../../assets/icons/android/sticky_note_2.xml'),
+  chart: require('../../assets/icons/android/pie_chart.xml'),
+  cart: require('../../assets/icons/android/shopping_cart.xml'),
+  box: require('../../assets/icons/android/inventory_2.xml'),
+  building: require('../../assets/icons/android/apartment.xml'),
+  upload: require('../../assets/icons/android/upload.xml'),
+  grid: require('../../assets/icons/android/grid_view.xml'),
+  list: require('../../assets/icons/android/view_list.xml'),
 };
 /* eslint-enable @typescript-eslint/no-require-imports */
 

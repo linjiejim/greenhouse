@@ -9,6 +9,8 @@ import { usePrefs } from '../store/prefs';
 import { useT } from '../lib/i18n';
 import { useOpenObject } from '../shell/open-object';
 import { Place, PlaceEmpty, PlaceContext, type PlaceContextPoint } from '../ui/place.web';
+import { Icon } from '../ui/core';
+import { EntityCreate } from './entity-create.web';
 export { EntityDetail } from './entity-components';
 export function EntityList({
   entity,
@@ -38,6 +40,9 @@ export function EntityList({
     return () => window.removeEventListener('greenhouse:refresh', refresh);
   });
   const [selected, setSelected] = useState<string>();
+  const [creating, setCreating] = useState(false);
+  const canCreate = entity.actions.includes('create') && entity.fields.some((f) => f.writable === true);
+  const filtered = Object.values(filters).some(Boolean);
   const inspect = (id: string) => {
     setSelected(id);
     open({ kind: 'plugin-entity', plugin, page: detailPage, id, entity: entity.id });
@@ -47,9 +52,16 @@ export function EntityList({
       <Place
         title={`${localize(page.title, lang)} · ${list.total}`}
         actions={
-          <button onClick={() => void list.refresh()} disabled={list.loading}>
-            {t('common.refresh')}
-          </button>
+          <>
+            <button onClick={() => void list.refresh()} disabled={list.loading} aria-label={t('common.refresh')}>
+              <Icon name="refresh" size={16} />
+            </button>
+            {canCreate ? (
+              <button className="gh-primary" onClick={() => setCreating(true)} data-testid="entity-new">
+                {t('places.newRecord')}
+              </button>
+            ) : null}
+          </>
         }
       >
         <div className="gh-place-tabs">
@@ -185,10 +197,35 @@ export function EntityList({
             </button>
           ) : null}
           {!list.items.length ? (
-            <PlaceEmpty loading={list.loading} error={list.error} retry={() => void list.refresh()} />
+            <PlaceEmpty
+              loading={list.loading}
+              error={list.error}
+              retry={() => void list.refresh()}
+              {...(!filtered
+                ? {
+                    icon: 'apps' as const,
+                    title: t('client.noItems'),
+                    action: canCreate ? (
+                      <button className="gh-primary" onClick={() => setCreating(true)}>
+                        {t('places.newRecord')}
+                      </button>
+                    ) : undefined,
+                  }
+                : {})}
+            />
           ) : null}
         </div>
       </Place>
+      {creating ? (
+        <EntityCreate
+          entity={entity}
+          close={() => setCreating(false)}
+          created={(id) => {
+            void list.refresh();
+            if (id) inspect(id);
+          }}
+        />
+      ) : null}
       <PlaceContext
         point={context}
         close={() => setContext(null)}

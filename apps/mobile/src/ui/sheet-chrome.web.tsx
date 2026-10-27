@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useContext } from 'react';
+import { SettingsWindowContext } from './settings-frame';
 import { Text, View } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { Controls, ScreenActions } from './screen-actions.web';
@@ -24,6 +25,7 @@ export function SheetClose({ onPress }: { onPress?: () => void }) {
 export function FormChrome(props: FormChromeProps) {
   const { t, cancel, sameIdentity } = useFormGuard(props);
   const { hex: c } = useTheme();
+  const inSettingsWindow = useContext(SettingsWindowContext);
   return (
     <>
       <Stack.Screen options={{ headerShown: false, title: props.title }} />
@@ -53,29 +55,36 @@ export function FormChrome(props: FormChromeProps) {
                   },
                 ]
               : []),
-            {
-              id: 'cancel',
-              icon: 'x',
-              label: t('common.cancel'),
-              onPress: () => void cancel(),
-              disabled: props.saving,
-            },
+            ...(inSettingsWindow
+              ? []
+              : [
+                  {
+                    id: 'cancel',
+                    icon: 'x' as const,
+                    label: t('common.cancel'),
+                    onPress: () => void cancel(),
+                    disabled: props.saving,
+                  },
+                ]),
           ]}
         />
       </View>
       {!props.hideSave ? (
         <SheetActions>
-          <NativeButton
-            label={props.saveLabel ?? t('common.save')}
-            variant="prominent"
-            size="large"
-            fullWidth
-            disabled={!sameIdentity || !props.canSave}
-            loading={props.saving}
-            onPress={() => {
-              if (sameIdentity && props.canSave && !props.saving) props.onSave();
-            }}
-          />
+          {/* full width in an inspector; the form's own width on a wide settings page */}
+          <View style={{ width: '100%', maxWidth: 632, alignSelf: 'center' }}>
+            <NativeButton
+              label={props.saveLabel ?? t('common.save')}
+              variant="prominent"
+              size="large"
+              fullWidth
+              disabled={!sameIdentity || !props.canSave}
+              loading={props.saving}
+              onPress={() => {
+                if (sameIdentity && props.canSave && !props.saving) props.onSave();
+              }}
+            />
+          </View>
         </SheetActions>
       ) : null}
     </>

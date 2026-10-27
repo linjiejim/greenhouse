@@ -4,7 +4,8 @@ import { openSettings, openStationSettings } from '../desktop/chrome';
 import React, { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'expo-router';
 import { Overlay } from '../ui/overlay.web';
-import { Icon } from '../ui/core.web';
+import { Icon, type IconName } from '../ui/core.web';
+import { usePlaces } from './use-places';
 import { NativeMenu } from '../ui/menu.web';
 import { Avatar } from '../ui/avatar';
 import { useT } from '../lib/i18n';
@@ -108,6 +109,7 @@ export function SearchPalette({ close }: { close: () => void }) {
   const { hex: c } = useTheme();
   const router = useRouter();
   const openObject = useOpenObject();
+  const { places, apps } = usePlaces();
   const [query, setQuery] = useState('');
   const [tab, setTab] = useState(0);
   const [selected, setSelected] = useState(0);
@@ -163,24 +165,59 @@ export function SearchPalette({ close }: { close: () => void }) {
   }, [query]);
   const commands = useMemo(
     () => [
-      { key: 'new', title: t('conversation.newChat'), shortcut: '⌘ N', run: () => router.navigate('/') },
-      { key: 'upload', title: t('client.upload'), run: () => router.navigate('/drive') },
-      { key: 'settings', title: t('nav.settings'), shortcut: '⌘ ,', run: () => router.push('/me') },
+      {
+        key: 'new',
+        title: t('conversation.newChat'),
+        icon: 'compose' as IconName,
+        subtitle: undefined as string | undefined,
+        shortcut: '⌘ N' as string | undefined,
+        run: () => router.navigate('/'),
+      },
+      {
+        key: 'upload',
+        title: t('client.upload'),
+        icon: 'upload' as IconName,
+        subtitle: undefined,
+        shortcut: undefined,
+        run: () => router.navigate('/drive'),
+      },
+      {
+        key: 'settings',
+        title: t('nav.settings'),
+        icon: 'gear' as IconName,
+        subtitle: undefined,
+        shortcut: '⌘ ,',
+        run: () => router.push('/me'),
+      },
+      // every place and app: ⌘1… for the first places, the rest by name
+      ...[...places, ...apps].map((place, index) => ({
+        key: `go:${place.id}`,
+        title: place.label,
+        icon: place.icon,
+        subtitle: t('client.goTo'),
+        shortcut: index < 6 ? `⌘ ${index + 1}` : undefined,
+        run: () => router.navigate(place.href as never),
+      })),
     ],
-    [router, t],
+    [router, t, places, apps],
   );
+  const hitIcon: Record<number, IconName> = { 1: 'msg', 2: 'book', 3: 'fileOther', 4: 'checklist' };
   const rows = [
     ...hits
       .filter((h) => !tab || tab === h.category)
       .map((h) => ({
         ...h,
+        icon: (h.ref.kind === 'project' ? 'checklist' : h.ref.kind === 'record' ? 'table' : hitIcon[h.category]) ?? ('file' as IconName),
         shortcut: undefined as string | undefined,
         run: (inspector: boolean) => openObject(h.ref, inspector ? undefined : 'main'),
       })),
     ...(!tab || tab === 5
-      ? commands
-          .filter((h) => !query || h.title.toLowerCase().includes(query.toLowerCase()))
-          .map((h) => ({ ...h, subtitle: undefined as string | undefined }))
+      ? commands.filter(
+          (h) =>
+            (!query && !h.key.startsWith('go:')) ||
+            (query && `${h.title} ${h.subtitle ?? ''}`.toLowerCase().includes(query.toLowerCase())) ||
+            (tab === 5 && !query),
+        )
       : []),
   ];
   const choose = (index: number, inspector: boolean) => {
@@ -275,19 +312,31 @@ export function SearchPalette({ close }: { close: () => void }) {
               style={{
                 width: '100%',
                 display: 'flex',
+                alignItems: 'center',
                 textAlign: 'left',
                 border: 0,
                 borderRadius: 8,
-                padding: 12,
+                padding: '10px 12px',
                 gap: 12,
                 background: selected === i ? c.sidebarSelection : 'transparent',
                 color: c.label,
               }}
             >
-              <span style={{ flex: 1 }}>
+              <Icon name={row.icon} size={18} color={c.secondaryLabel} />
+              <span style={{ flex: 1, minWidth: 0 }}>
                 <strong>{row.title}</strong>
                 {row.subtitle ? (
-                  <small style={{ display: 'block', color: c.secondaryLabel }}>{row.subtitle}</small>
+                  <small
+                    style={{
+                      display: 'block',
+                      color: c.secondaryLabel,
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {row.subtitle}
+                  </small>
                 ) : null}
               </span>
               <small>{row.shortcut ?? (i === selected ? 'Enter' : '')}</small>

@@ -1,4 +1,6 @@
 import React, { useCallback, useState } from 'react';
+import { dateTimeLabel } from '../lib/time-words';
+import { Icon } from '../ui/core';
 import { useWindowDimensions } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import Phone from './phone-screen';
@@ -86,14 +88,16 @@ function AutomationsDesktop() {
           onQuery={setQuery}
           action={
             <button aria-label={t('places.newAutomation')} onClick={() => start(t('places.createAutomation'))}>
-              +
+              <Icon name="plus" size={18} />
             </button>
           }
         >
           <div data-place-list>
             {[true, false].map((enabled) => (
               <React.Fragment key={String(enabled)}>
-                <h3>{t(enabled ? 'places.active' : 'places.paused')}</h3>
+                {tasks.some((task) => task.enabled === enabled) ? (
+                  <h3>{t(enabled ? 'places.active' : 'places.paused')}</h3>
+                ) : null}
                 {tasks
                   .filter((task) => task.enabled === enabled)
                   .map((task) => (
@@ -102,7 +106,7 @@ function AutomationsDesktop() {
                       title={task.name}
                       detail={
                         task.next_run_at
-                          ? new Date(task.next_run_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                          ? dateTimeLabel(task.next_run_at)
                           : undefined
                       }
                       icon="clock"
@@ -129,7 +133,7 @@ function AutomationsDesktop() {
                 {t('places.runNow')}
               </button>
               <button aria-label={t('library.delete')} disabled={busy} onClick={() => void write('delete')}>
-                ⋯
+                <Icon name="more" size={18} />
               </button>
             </>
           ) : null
@@ -140,8 +144,20 @@ function AutomationsDesktop() {
             {!task ? (
               <PlaceEmpty
                 loading={detail.loading || list.loading}
-                error={detail.error?.message}
-                retry={() => void detail.refresh()}
+                error={detail.error?.message ?? list.error?.message}
+                retry={() => void (list.error ? list.refresh() : detail.refresh())}
+                {...(!query && !tasks.length
+                  ? {
+                      icon: 'clock' as const,
+                      title: t('automations.empty'),
+                      message: t('automations.emptyHint'),
+                      action: (
+                        <button className="gh-primary" onClick={() => start(t('places.createAutomation'))}>
+                          {t('places.newAutomation')}
+                        </button>
+                      ),
+                    }
+                  : {})}
               />
             ) : (
               <>
@@ -158,14 +174,14 @@ function AutomationsDesktop() {
                 <header className="gh-place-bar">
                   <strong>{t('places.runs')}</strong>
                   <small>
-                    {t('places.nextRun')} {task.next_run_at ? new Date(task.next_run_at).toLocaleString() : '—'}
+                    {t('places.nextRun')} {task.next_run_at ? dateTimeLabel(task.next_run_at) : '—'}
                   </small>
                 </header>
                 <section className="gh-automation-card" data-place-list>
                   {runs.data?.map((run) => (
                     <PlaceRow
                       key={run.session_id}
-                      title={`${runResult(run) === 'failed' ? '●' : '●'} ${new Date(run.created_at).toLocaleString()}`}
+                      title={`${runResult(run) === 'failed' ? '●' : '●'} ${dateTimeLabel(run.created_at)}`}
                       detail={run.title ?? run.run?.status}
                       icon="msg"
                       onOpen={() => router.push({ pathname: '/chat', params: { session: run.session_id } })}

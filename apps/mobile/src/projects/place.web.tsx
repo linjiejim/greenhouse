@@ -1,4 +1,5 @@
 import ProjectBoard from './board';
+import { Icon } from '../ui/core';
 import React, { useCallback, useState } from 'react';
 import { useWindowDimensions } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -107,7 +108,7 @@ function ProjectsDesktop() {
           onQuery={setQuery}
           action={
             <button aria-label={t('places.newProject')} onClick={() => void newProject()}>
-              +
+              <Icon name="plus" size={18} />
             </button>
           }
         >

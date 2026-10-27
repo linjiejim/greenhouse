@@ -1,4 +1,5 @@
-import { nativeVisible } from '../plugins/navigation';
+import { nativeVisible, pluginHref } from '../plugins/navigation';
+import { pluginIcon } from '../plugins/icons';
 import { StationLine } from './station-line';
 /**
  * The sidebar: the product's mark and name with search beside them (under the name, quietly, the
@@ -134,25 +135,25 @@ export function SidebarContent({ state, navigation }: DrawerContentComponentProp
           .map((item) => (
             <Place
               key={`${item.plugin.id}:${item.nav.id}`}
-              icon="open"
+              icon={pluginIcon(item.nav, item.page)}
               label={localize(item.nav.label, lang)}
               current={false}
               onPress={() => {
                 close();
-                router.push(`/p/${item.plugin.id}/${item.page.id}` as never);
+                router.push(pluginHref(item.plugin.id, item.page) as never);
               }}
             />
           ))}
-        {pluginNavigation(manifest, 'more').length ? <Text style={styles.note}>{t('client.more')}</Text> : null}
+        {pluginNavigation(manifest, 'more').length ? <Text style={styles.note}>{t('client.apps')}</Text> : null}
         {pluginNavigation(manifest, 'more').map((item) => (
           <Place
             key={`${item.plugin.id}:${item.nav.id}`}
-            icon="open"
+            icon={pluginIcon(item.nav, item.page)}
             label={localize(item.nav.label, lang)}
             current={false}
             onPress={() => {
               close();
-              router.push(`/p/${item.plugin.id}/${item.page.id}` as never);
+              router.push(pluginHref(item.plugin.id, item.page) as never);
             }}
           />
         ))}

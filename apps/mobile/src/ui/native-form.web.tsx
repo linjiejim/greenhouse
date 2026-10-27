@@ -1,7 +1,6 @@
 import React from 'react';
 import { ScrollView, Text, View, Pressable, type StyleProp, type ViewStyle } from 'react-native';
-import { space, useTheme } from '../theme';
-import { Row } from './list';
+import { space, typo, useTheme } from '../theme';
 import { Icon, type IconName } from './core';
 export function useLocaleEnv() {
   return undefined;
@@ -41,7 +40,26 @@ export function FormNavRow({
   icon?: IconName;
   onPress: () => void;
 }) {
-  return <Row title={label} value={value} onPress={onPress} accessory="chevron" />;
+  const { hex: c } = useTheme();
+  // Inside a Section card: same inset and type as LabeledContent / Picker rows, not a list row.
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      onPress={onPress}
+      style={({ pressed }) => ({
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: space.sm,
+        minHeight: 28,
+        opacity: pressed ? 0.6 : 1,
+      })}
+    >
+      <Text style={{ ...typo.body, color: c.label, flex: 1 }}>{label}</Text>
+      {value ? <Text style={{ ...typo.body, color: c.secondaryLabel }}>{value}</Text> : null}
+      <Icon name="chevR" size={16} color={c.tertiaryLabel} />
+    </Pressable>
+  );
 }
 export function FormCheckRow({
   label,

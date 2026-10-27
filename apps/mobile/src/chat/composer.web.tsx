@@ -108,7 +108,7 @@ export const Composer = memo(
                     onClick={() => onRemoveFile(f.id)}
                     style={{ border: 0, background: 'transparent', color: c.label }}
                   >
-                    ×
+                    <Icon name="x" size={14} />
                   </button>
                 </span>
               ))}

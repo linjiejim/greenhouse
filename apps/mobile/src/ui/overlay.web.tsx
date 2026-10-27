@@ -15,6 +15,7 @@ export function Overlay({
   panelStyle,
   testID,
   trapTab = true,
+  initialFocus = 'first',
 }: {
   children: React.ReactNode;
   onClose: () => void;
@@ -25,6 +26,8 @@ export function Overlay({
   panelStyle?: React.CSSProperties;
   testID?: string;
   trapTab?: boolean;
+  /** 'panel' focuses the dialog itself, for large surfaces (settings) where the first control is not a choice. */
+  initialFocus?: 'first' | 'panel';
 }) {
   const { hex: c, isDark } = useTheme();
   const pointX = point?.x,
@@ -43,7 +46,7 @@ export function Overlay({
       Array.from(
         root?.querySelectorAll<HTMLElement>('button:not(:disabled),input,textarea,select,a[href],[tabindex="0"]') ?? [],
       );
-    (tabbables()[0] ?? root)?.focus();
+    (initialFocus === 'panel' ? root : (tabbables()[0] ?? root))?.focus();
     const key = (e: KeyboardEvent) => {
       if (layers.at(-1) !== layer) return;
       if (e.key === 'Escape') {
@@ -90,7 +93,7 @@ export function Overlay({
       document.removeEventListener('keydown', key, true);
       if (previous?.isConnected) previous.focus();
     };
-  }, [interactive, role, pointX, pointY, trapTab]);
+  }, [interactive, role, pointX, pointY, trapTab, initialFocus]);
   if (typeof document === 'undefined') return null;
   return createPortal(
     <div
@@ -134,6 +137,8 @@ export function Overlay({
           padding: role === 'menu' ? 4 : 20,
           boxShadow: isDark ? undefined : '0 8px 32px rgba(0,0,0,.14)',
           pointerEvents: interactive ? 'auto' : 'none',
+          // the panel only holds focus for the dialog; its controls draw the visible ring
+          outline: 'none',
           ...panelStyle,
         }}
       >

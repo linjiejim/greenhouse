@@ -325,8 +325,8 @@ export interface TableField {
   type: TableFieldType | string;
   required: boolean;
   is_primary: boolean;
-  /** JSON text (`{ options: [{ id, label, color? }] }` for selects). */
-  config: string | null;
+  /** `{ options: [{ id, label, color? }] }` for selects: an object from tables v2 stations, JSON text from older ones. */
+  config: Record<string, unknown> | string | null;
   position: number;
   archived_at: string | null;
 }

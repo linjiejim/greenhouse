@@ -166,7 +166,7 @@
 - Web frames use an opaque-origin sandbox and accept messages only from their own iframe window.
 - Browser builds are single-station and use their own origin unless `EXPO_PUBLIC_API_BASE_URL` explicitly overrides it for development.
 - Browser station ids include the API origin; hosted builds share the classic localStorage token keys, while development overrides keep origin-scoped keys.
-- The optional `/api/extensions` v2 manifest gates built-in plugin places and supplies primary and More navigation; v1 or 404 means legacy navigation.
+- The optional `/api/extensions` v2 manifest gates built-in plugin places and supplies app navigation (primary and `more` entries); v1 or 404 means legacy navigation.
 - `src/shared/plugins.ts` is a verbatim copy of `packages/types/src/plugins.ts`, checked by the React-free manifest tests; optional v2 does not raise `MOBILE_API`.
 - `/p/[plugin]/[page]` renders entity-list/detail, settings-form and trusted embed surfaces; unknown pages use a validated browser fallback.
 - Browser legacy links are mapped before auth routing and retained across sign-in; unmapped hashes open `/classic/` on the station.
@@ -206,7 +206,11 @@
 - Trusted plugin frames use `WebFrame` with a real origin and the plugin bridge; check both source window and exact origin. They receive only `/api/ext-ui/token` credentials (404 means an empty token). Chat/document previews retain their opaque sandbox and never receive credentials.
 - Real-origin plugin frames permit scripts and same-origin access for the protocol; they have the same code trust as their installed plugin. Do not use that bridge for arbitrary user HTML.
 - Embed navigation accepts client routes; `sendPrompt` opens a chat draft and never submits it. Theme changes preserve the frame, token refresh is identity-bound, and late frame replies are discarded.
-- Browser settings use the existing settings routes in a viewport layer with a persistent preferences/account/navigation column. Administration opens `/classic/#/administration` in a separate tab.
+- Browser settings use the existing settings routes in a viewport layer with a persistent column of personal settings only (preferences, account, agents, connections, station); apps live in the rail. The column owns its footer actions and the window owns close (`SettingsWindowContext`). Administration opens `/classic/#/administration` in a separate tab.
+- The wide rail lists core places, a divider, then every app entry (no More menu); `usePlaces()` is the one source for the rail, ⌘K go-to commands and the native Go menu. Rail entries are `ui/rail-item.web.tsx` with short `client.rail*` labels.
+- App icons come from `pluginIcon()` (src/plugins/icons.ts): the manifest's lucide name mapped to an `IconName`, then the official screen icon, then `apps`. Add a lucide mapping (and an `IconName` with `scripts/android-icons.py`) rather than drawing `open` for apps.
+- Places use `PlaceEmpty` with `title` (icon, line, create action) for "nothing yet" and without it only for empty search/filter results. Toolbar buttons are icons or words, never text glyphs.
+- One-page apps render no secondary column (an empty `PlaceSecondary` host is hidden); plugin read surfaces without a screen use `resource-screen.web.tsx` (rows or facts from `resource-model.ts`).
 - `tests/client-e2e/p3.e2e.ts` and `plugins.e2e.ts` cover places and declarative surfaces; the latter serves its static embed fixture through Playwright routing. Restricted runners collect these specs; the reviewer runs Chromium and generates the design/plugin screenshots.
 
 ## Client polish

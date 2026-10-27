@@ -1,6 +1,6 @@
 /** Relative times (../data/time.ts) in the app's language and the phone's time zone. */
 
-import { calendarDate, relativeTime, shortAge, type TimeWords } from '../data/time';
+import { calendarDate, parseMs, relativeTime, shortAge, zonedParts, type TimeWords } from '../data/time';
 import { t } from './i18n';
 
 /** The calendar words in the app's language (../data/time.ts). */
@@ -30,4 +30,12 @@ export function shortAgeNow(iso: string | null | undefined): string {
 
 export function calendarDateLabel(iso: string): string {
   return calendarDate(iso, timeWords(), undefined);
+}
+
+/** A calendar date and clock time in the app's language — for future times (next run) and exact stamps. */
+export function dateTimeLabel(iso: string | null | undefined): string {
+  const ms = parseMs(iso);
+  if (!iso || Number.isNaN(ms)) return '';
+  const { hour, minute } = zonedParts(ms);
+  return `${calendarDate(iso, timeWords(), undefined)} ${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
 }

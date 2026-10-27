@@ -143,6 +143,19 @@ const ICONS = {
   textSize: ['textformat.size', 'format_size'],
   chevL: ['chevron.left', 'chevron_left'],
   chevU: ['chevron.up', 'expand_less'],
+  // ── 4.0: app (plugin) icons ──
+  apps: ['square.grid.2x2', 'apps'],
+  brain: ['brain', 'psychology'],
+  mail: ['envelope', 'mail'],
+  calendar: ['calendar', 'calendar_month'],
+  note: ['note.text', 'sticky_note_2'],
+  chart: ['chart.pie', 'pie_chart'],
+  cart: ['cart', 'shopping_cart'],
+  box: ['shippingbox', 'inventory_2'],
+  building: ['building.2', 'apartment'],
+  upload: ['square.and.arrow.up.on.square', 'upload'],
+  grid: ['square.grid.2x2', 'grid_view'],
+  list: ['list.bullet', 'view_list'],
 } as const satisfies Record<string, readonly [SFSymbol, AndroidSymbolName]>;
 
 export type IconName = keyof typeof ICONS;

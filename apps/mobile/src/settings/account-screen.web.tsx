@@ -1,3 +1,4 @@
+import { useWindowDimensions } from 'react-native';
 import { ScreenActions } from '../ui/screen-actions';
 import { font } from '../ui/form-controls.web';
 /**
@@ -60,14 +61,20 @@ export default function Me() {
   const connections = useResource(useCallback(() => listConnections(), []));
   const name = s.user?.nickname || t('settings.fallbackName');
   const role = s.user?.role ? t(s.user.role === 'super' ? 'settings.roleAdmin' : 'settings.roleMember') : '';
+  // In the wide settings window Preferences owns theme / language / text size and the window owns close.
+  const wide = useWindowDimensions().width >= 760;
 
   return (
     <>
-      <Stack.Screen options={{ title: t('me.title') }} />
-      <ScreenActions
-        placement={'right'}
-        actions={[{ id: 'action-1', icon: 'x' as const, label: t('common.close'), onPress: () => router.back() }]}
+      <Stack.Screen
+        options={wide ? { title: t('client.account'), headerLeft: () => null } : { title: t('me.title') }}
       />
+      {wide ? null : (
+        <ScreenActions
+          placement={'right'}
+          actions={[{ id: 'action-1', icon: 'x' as const, label: t('common.close'), onPress: () => router.back() }]}
+        />
+      )}
       <NativeForm>
         {/* ── account ── */}
         <Section>
@@ -86,21 +93,23 @@ export default function Me() {
         </Section>
 
         {/* ── reading: the in-app text size ── */}
-        <Section title={t('me.reading')} footer={<Text>{t('me.textSizeHint')}</Text>}>
-          <LabeledContent label={t('me.textSize')}>
-            <Text>{t(`me.textStep.${TEXT_STEP_NAMES[step]}`)}</Text>
-          </LabeledContent>
-          <Slider
-            value={step}
-            min={0}
-            max={TEXT_STEPS.length - 1}
-            step={1}
-            minimumValueLabel={<Text modifiers={[font({ textStyle: 'footnote' })]}>A</Text>}
-            maximumValueLabel={<Text modifiers={[font({ textStyle: 'title2' })]}>A</Text>}
-            onValueChange={(value) => chooseTextSize(Math.round(value) as TextStep)}
-            modifiers={[accessibilityLabel(t('me.textSize'))]}
-          />
-        </Section>
+        {wide ? null : (
+          <Section title={t('me.reading')} footer={<Text>{t('me.textSizeHint')}</Text>}>
+            <LabeledContent label={t('me.textSize')}>
+              <Text>{t(`me.textStep.${TEXT_STEP_NAMES[step]}`)}</Text>
+            </LabeledContent>
+            <Slider
+              value={step}
+              min={0}
+              max={TEXT_STEPS.length - 1}
+              step={1}
+              minimumValueLabel={<Text modifiers={[font({ textStyle: 'footnote' })]}>A</Text>}
+              maximumValueLabel={<Text modifiers={[font({ textStyle: 'title2' })]}>A</Text>}
+              onValueChange={(value) => chooseTextSize(Math.round(value) as TextStep)}
+              modifiers={[accessibilityLabel(t('me.textSize'))]}
+            />
+          </Section>
+        )}
 
         {/* ── my agents ── */}
         <Section title={t('nav.agent')}>
@@ -136,41 +145,45 @@ export default function Me() {
             value={push}
             onPress={() => router.push('/me/notifications')}
           />
-          <Picker
-            label={t('settings.theme')}
-            selection={s.theme}
-            onSelectionChange={(v) => s.setTheme(v as ThemePref)}
-            modifiers={[pickerStyle('menu')]}
-          >
-            <Text modifiers={[tag('system')]}>{t('settings.themeSystem')}</Text>
-            <Text modifiers={[tag('light')]}>{t('settings.themeLight')}</Text>
-            <Text modifiers={[tag('dark')]}>{t('settings.themeDark')}</Text>
-          </Picker>
-          <Picker
-            label={t('settings.language')}
-            selection={s.lang}
-            onSelectionChange={(v) => void s.setLanguage(v as LangPref)}
-            modifiers={[pickerStyle('menu')]}
-          >
-            <Text modifiers={[tag('zh')]}>{t('settings.langZh')}</Text>
-            <Text modifiers={[tag('en')]}>{t('settings.langEn')}</Text>
-          </Picker>
-          <Picker
-            label={t('settings.homeRecent')}
-            selection={String(homeRecent)}
-            onSelectionChange={(v) => setHomeRecent(Number(v) as HomeRecent)}
-            modifiers={[pickerStyle('menu')]}
-          >
-            {HOME_RECENT_CHOICES.map((n) => (
-              <Text key={n} modifiers={[tag(String(n))]}>
-                {n === 0 ? t('settings.homeRecentNone') : String(n)}
-              </Text>
-            ))}
-          </Picker>
+          {wide ? null : (
+            <>
+              <Picker
+                label={t('settings.theme')}
+                selection={s.theme}
+                onSelectionChange={(v) => s.setTheme(v as ThemePref)}
+                modifiers={[pickerStyle('menu')]}
+              >
+                <Text modifiers={[tag('system')]}>{t('settings.themeSystem')}</Text>
+                <Text modifiers={[tag('light')]}>{t('settings.themeLight')}</Text>
+                <Text modifiers={[tag('dark')]}>{t('settings.themeDark')}</Text>
+              </Picker>
+              <Picker
+                label={t('settings.language')}
+                selection={s.lang}
+                onSelectionChange={(v) => void s.setLanguage(v as LangPref)}
+                modifiers={[pickerStyle('menu')]}
+              >
+                <Text modifiers={[tag('zh')]}>{t('settings.langZh')}</Text>
+                <Text modifiers={[tag('en')]}>{t('settings.langEn')}</Text>
+              </Picker>
+              <Picker
+                label={t('settings.homeRecent')}
+                selection={String(homeRecent)}
+                onSelectionChange={(v) => setHomeRecent(Number(v) as HomeRecent)}
+                modifiers={[pickerStyle('menu')]}
+              >
+                {HOME_RECENT_CHOICES.map((n) => (
+                  <Text key={n} modifiers={[tag(String(n))]}>
+                    {n === 0 ? t('settings.homeRecentNone') : String(n)}
+                  </Text>
+                ))}
+              </Picker>
+            </>
+          )}
         </Section>
 
         {/* ── about ── */}
-        <Section title={t('settings.about')} footer={<Text>{t('settings.footer')}</Text>}>
+        <Section title={t('settings.about')} footer={wide ? undefined : <Text>{t('settings.footer')}</Text>}>
           <LabeledContent label={t('settings.version')}>
             <Text>{s.version || '—'}</Text>
           </LabeledContent>
@@ -182,7 +195,7 @@ export default function Me() {
 
         <Section>
           <Button role="destructive" onPress={() => void s.signOut()}>
-            <Text modifiers={[frame({ maxWidth: 9999 })]}>{t('settings.logout')}</Text>
+            <Text modifiers={[frame({ maxWidth: 9999 }), foregroundStyle(hex.red)]}>{t('settings.logout')}</Text>
           </Button>
         </Section>
       </NativeForm>

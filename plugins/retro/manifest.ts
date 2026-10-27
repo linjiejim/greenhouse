@@ -12,7 +12,8 @@ export default {
     nav: [
       {
         id: 'retro',
-        label: { en: 'Monthly retro', zh: '每月复盘' },
+        // a rail / drawer label: short; the page keeps its full title
+        label: { en: 'Retro', zh: '每月复盘' },
         icon: 'Calendar',
         page: 'retro',
         placement: 'more',

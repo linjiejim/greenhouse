@@ -307,8 +307,11 @@ v1 fields. `client_min` is the wire spelling; server `CLIENT_API_LEVEL` and boot
 | `settings-form` | Declared Runtime Config keys; only changed keys submitted. The API remains super-only regardless of `parent`. |
 | `embed` | Trusted plugin static UI in an iframe or native WebView. |
 
-Nav declares `primary`/`more`, ordering, labels/icons and a page. Role/feature requirements
-hide inaccessible surfaces. Unknown native/page types use a validated browser fallback.
+Nav declares `primary`/`more`, ordering, labels/icons and a page. The universal client shows
+every entry in its rail under the core places (primary first), so keep `label` short (about
+ten Latin characters; the page `title` can be longer) and name a lucide icon (`BookOpen`,
+`Mail`); clients map it to their own icon set and draw a generic app tile for unknown names.
+Role/feature requirements hide inaccessible surfaces. Unknown native/page types use a validated browser fallback.
 Classic generic routes are `#/ext/<plugin>/<page>`; entity links remain resolvable. Existing
 SDK 1 React injection is confined to classic.
 

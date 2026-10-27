@@ -1,5 +1,7 @@
 import React from 'react';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
+import { useWindowDimensions } from 'react-native';
+import { useTheme } from '../theme';
 import Host from './page-host';
 import { useStationManifest } from './store';
 import { localize } from '../shared/plugins';
@@ -7,16 +9,29 @@ import { usePrefs } from '../store/prefs';
 import { PlaceSecondary } from '../shell/place-secondary.web';
 import { PlaceSidebar, PlaceRow } from '../ui/place.web';
 import { pluginHref } from './navigation';
+import { pluginIcon } from './icons';
 export default function PluginPageScreen(props: { detail?: boolean }) {
   const { plugin, page } = useLocalSearchParams<{ plugin: string; page: string }>(),
     state = useStationManifest((s) => s.data),
     lang = usePrefs((s) => s.lang),
     router = useRouter(),
+    { width } = useWindowDimensions(),
+    { hex } = useTheme(),
     [query, setQuery] = React.useState('');
   const entry = state.kind === 'v2' ? state.manifest.plugins.find((p) => p.id === plugin) : undefined;
   return (
     <>
-      {!props.detail && entry ? (
+      {width >= 760 ? (
+        // A plugin page is a place in the wide shell: no back button, the main area's own surface.
+        <Stack.Screen
+          options={{
+            headerLeft: () => null,
+            headerStyle: { backgroundColor: hex.background },
+            headerShadowVisible: true,
+          }}
+        />
+      ) : null}
+      {!props.detail && entry && entry.nav.length > 1 ? (
         <PlaceSecondary>
           <PlaceSidebar title={localize(entry.name, lang)} query={query} onQuery={setQuery}>
             <div data-place-list>
@@ -26,6 +41,7 @@ export default function PluginPageScreen(props: { detail?: boolean }) {
                   <PlaceRow
                     key={nav.id}
                     title={localize(nav.label, lang)}
+                    icon={pluginIcon(nav, entry.pages.find((p) => p.id === nav.page))}
                     selected={page === nav.page}
                     onOpen={() => {
                       const target = entry.pages.find((p) => p.id === nav.page);

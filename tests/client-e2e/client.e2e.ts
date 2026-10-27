@@ -154,8 +154,8 @@ test('v2 manifest hides inactive places and keeps future pages reachable', async
   await auth(page);
   await expect(page.getByTestId('rail-knowledge')).toHaveCount(0);
   await expect(page.getByTestId('rail-projects')).toHaveCount(0);
-  await page.getByTestId('rail-more').click();
-  await page.getByRole('menuitem', { name: '客户' }).click();
+  await expect(page.getByTestId('rail-apps-divider')).toBeVisible();
+  await page.getByTestId('rail-crm').click();
   await expect(page.getByText('此客户端不支持，在浏览器打开', { exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: '在浏览器打开', exact: true })).toBeVisible();
 });

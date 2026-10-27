@@ -40,8 +40,12 @@ export function fieldText(field: EntityFieldSchema, value: unknown, locale: 'zh'
     const time = day
       ? new Date(Number(day[1]), Number(day[2]) - 1, Number(day[3])).getTime()
       : Date.parse(String(value));
+    // medium date, minutes not seconds: "Oct 27, 2026, 9:54 AM" / "2026年10月27日 09:54"
     if (Number.isFinite(time))
-      return field.kind === 'date' ? new Date(time).toLocaleDateString(locale) : new Date(time).toLocaleString(locale);
+      return new Intl.DateTimeFormat(
+        locale,
+        field.kind === 'date' ? { dateStyle: 'medium' } : { dateStyle: 'medium', timeStyle: 'short' },
+      ).format(new Date(time));
   }
   if (['integer', 'number', 'money'].includes(field.kind) && Number.isFinite(Number(value)))
     return new Intl.NumberFormat(locale, {

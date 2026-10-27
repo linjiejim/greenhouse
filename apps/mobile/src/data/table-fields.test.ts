@@ -72,6 +72,13 @@ describe('table fields', () => {
     expect(selectOptions({ config: '{nope' })).toEqual([]);
   });
 
+  it('reads select options sent as an object (tables v2)', () => {
+    const config = { options: [{ id: 'support', label: 'Support' }], version: 1 };
+    expect(selectOptions({ config }).map((o) => o.label)).toEqual(['Support']);
+    const words = { yes: 'Yes', no: 'No', date: (v: string) => v, user: (v: string) => v };
+    expect(displayValue({ type: 'single_select', config }, 'support', words)).toBe('Support');
+  });
+
   it('reads each type as text', () => {
     expect(displayValue(field(1, 'boolean'), true, words)).toBe('Yes');
     expect(displayValue(field(1, 'boolean'), false, words)).toBe('No');

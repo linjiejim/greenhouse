@@ -48,9 +48,10 @@ describe('declarative surfaces', () => {
     expect(fieldText(entity.fields[0], null, 'en')).toBe('—');
     expect(fieldText(entity.fields[2], 1000.236, 'zh')).toBe('1,000.24');
     expect(fieldText({ key: 'x', title: 'X', kind: 'date' }, '2026-10-22', 'en')).toBe(
-      new Date(2026, 9, 22).toLocaleDateString('en'),
+      new Intl.DateTimeFormat('en', { dateStyle: 'medium' }).format(new Date(2026, 9, 22)),
     );
     expect(fieldText({ key: 'x', title: 'X', kind: 'dateTime' }, 'invalid', 'en')).toBe('invalid');
+    expect(fieldText({ key: 'x', title: 'X', kind: 'dateTime' }, '2026-10-27T09:54:24Z', 'en')).not.toMatch(/:24/);
   });
   it('writes only writable keys, parses numbers and rejects invalid input', () => {
     expect(writableValues(entity, { name: 'Acme', status: 'open', amount: '12', secret: 'no' })).toEqual({

@@ -116,6 +116,7 @@ function ScreenFrame({ children, route }: { children: React.ReactNode; route: Ro
     return (
       <Overlay
         testID="settings-overlay"
+        initialFocus="panel"
         onClose={close}
         panelStyle={{
           position: 'fixed',

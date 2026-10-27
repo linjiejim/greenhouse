@@ -5,6 +5,7 @@
  * copy at once — only an unreachable station falls back to it (src/data/recent-docs.ts `docMiss`).
  */
 
+import { bodyUnderTitle } from '../data/doc-body';
 import React, { useEffect, useState } from 'react';
 import { ScrollView, Text } from 'react-native';
 import { getDoc, getDocBySlug } from '../api/knowledge';
@@ -136,7 +137,7 @@ export function DocView({ id: given, slug }: { id: string | null; slug?: string 
               {doc.title}
             </Text>
             <Text style={styles.meta}>{t('knowledge.updated', { when: relativeTimeNow(doc.updated_at) })}</Text>
-            <Markdown source={doc.content_markdown} />
+            <Markdown source={bodyUnderTitle(doc.content_markdown, doc.title)} />
           </>
         )}
       </ScrollView>

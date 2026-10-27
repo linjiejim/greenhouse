@@ -1,4 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
+import { calendarDateLabel } from '../lib/time-words';
+import { Icon } from '../ui/core';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useWindowDimensions } from 'react-native';
 import Phone from './phone-screen';
@@ -155,7 +157,7 @@ function DriveDesktop() {
           onQuery={setQuery}
           action={
             <button aria-label={t('places.upload')} onClick={() => void pickFile().then(upload)}>
-              ↥
+              <Icon name="upload" size={18} />
             </button>
           }
         >
@@ -203,10 +205,10 @@ function DriveDesktop() {
         actions={
           <>
             <button aria-label={t('places.grid')} aria-pressed={grid} onClick={() => setGrid(!grid)}>
-              ▦
+              <Icon name={grid ? 'list' : 'grid'} size={18} />
             </button>
             <button aria-label={t('library.newFolder')} onClick={() => void actions.newFolder(shelf, folder)}>
-              ⊞
+              <Icon name="folderPlus" size={18} />
             </button>
             <button className="gh-primary" disabled={uploading} onClick={() => void pickFile().then(upload)}>
               {t('places.upload')}
@@ -262,7 +264,7 @@ function DriveDesktop() {
                   {!grid ? (
                     <>
                       <small>{entry.created_by}</small>
-                      <small>{entry.updated_at ? new Date(entry.updated_at).toLocaleDateString() : ''}</small>
+                      <small>{entry.updated_at ? calendarDateLabel(entry.updated_at) : ''}</small>
                       <small>{entry.size === null ? '—' : formatBytes(entry.size)}</small>
                     </>
                   ) : null}

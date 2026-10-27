@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
+import { bodyUnderTitle } from '../data/doc-body';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useWindowDimensions } from 'react-native';
 import Phone from './phone-screen';
@@ -158,7 +159,7 @@ function KnowledgeDesktop() {
               aria-label={t('library.new')}
               onClick={() => actions.newDoc(shelf === 'personal' ? 'personal' : 'team', null)}
             >
-              +
+              <Icon name="plus" size={18} />
             </button>
           }
         >
@@ -171,7 +172,7 @@ function KnowledgeDesktop() {
             }))}
           />
           <div data-place-list>
-            <h3>{t('knowledge.shelf.recent')}</h3>
+            {recent.length ? <h3>{t('knowledge.shelf.recent')}</h3> : null}
             {recent.slice(0, 3).map((d) => (
               <PlaceRow key={d.id} title={d.title} onOpen={() => open(d.id)} />
             ))}
@@ -216,7 +217,6 @@ function KnowledgeDesktop() {
               <>
                 <div className="gh-doc-meta">
                   <Chip label={t(`knowledge.shelf.${shelf}`)} inline />
-                  <span>{t('nav.knowledge')}</span>
                   {parseTags(selected.tags).map((tag) => (
                     <Chip key={tag} label={tag} inline tone="accent" />
                   ))}
@@ -290,7 +290,7 @@ function KnowledgeDesktop() {
                       </div>
                     ) : null}
                     <div className="gh-doc-reader">
-                      <Markdown source={selected.content_markdown} />
+                      <Markdown source={bodyUnderTitle(selected.content_markdown, selected.title)} />
                     </div>
                   </>
                 )}

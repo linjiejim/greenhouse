@@ -6,11 +6,9 @@ import { useTheme } from '../../src/theme';
 import { pageScreen, stackDefaults } from '../../src/ui/nav';
 import { useAuth } from '../../src/store/auth';
 import { useT } from '../../src/lib/i18n';
-import { usePrefs } from '../../src/store/prefs';
-import { useStationManifest } from '../../src/plugins/store';
-import { pluginNavigation } from '../../src/plugins/manifest';
-import { localize } from '../../src/shared/plugins';
-import { pluginHref } from '../../src/plugins/navigation';
+import { Icon, type IconName } from '../../src/ui/core';
+import { SheetFrame } from '../../src/ui/sheet-actions';
+import { SettingsWindowContext } from '../../src/ui/settings-frame';
 export const unstable_settings = { initialRouteName: 'index' };
 export default function SettingsLayout() {
   const { colors: c, hex, isDark } = useTheme(),
@@ -18,12 +16,15 @@ export default function SettingsLayout() {
     router = useRouter(),
     path = usePathname(),
     user = useAuth((s) => s.user),
-    lang = usePrefs((s) => s.lang),
-    state = useStationManifest((s) => s.data),
     { width } = useWindowDimensions();
-  const pluginItems = [...pluginNavigation(state, 'primary'), ...pluginNavigation(state, 'more')].filter(
-    (n) => n.page.kind === 'native' && !['knowledge', 'projects', 'tables'].includes(n.page.screen),
-  );
+  // Personal settings only: every app (plugin page) has its own place in the rail.
+  const items: { label: string; href: string; icon: IconName }[] = [
+    { label: t('places.settings'), href: '/me', icon: 'gear' },
+    { label: t('client.account'), href: '/me/account', icon: 'person' },
+    { label: t('client.agents'), href: '/me/agents', icon: 'sparkle' },
+    { label: t('connectors.title'), href: '/me/connectors', icon: 'link' },
+    { label: t('client.station'), href: '/me/stations', icon: 'server' },
+  ];
   const body = <Stack screenOptions={{ ...stackDefaults(c, hex, isDark), ...pageScreen(c, { grouped: true }) }} />;
   return width < 760 ? (
     body
@@ -38,19 +39,13 @@ export default function SettingsLayout() {
           </div>
         </div>
         <nav>
-          {[
-            { label: t('places.settings'), href: '/me' },
-            { label: t('client.account'), href: '/me/account' },
-            { label: t('client.agents'), href: '/me/agents' },
-            { label: t('connectors.title'), href: '/me/connectors' },
-            ...pluginItems.map((n) => ({ label: localize(n.nav.label, lang), href: pluginHref(n.plugin.id, n.page) })),
-            { label: t('client.station'), href: '/me/stations' },
-          ].map((item) => (
+          {items.map((item) => (
             <button
               key={item.href}
               aria-current={path === item.href ? 'page' : undefined}
               onClick={() => router.navigate(item.href as never)}
             >
+              <Icon name={item.icon} size={18} color={path === item.href ? hex.accentText : hex.secondaryLabel} />
               {item.label}
             </button>
           ))}
@@ -62,9 +57,12 @@ export default function SettingsLayout() {
           aria-label={t('common.close')}
           onClick={() => closeSettings(() => router.dismiss())}
         >
-          ×
+          <Icon name="x" size={20} />
         </button>
-        {body}
+        {/* the page's footer actions belong to this column, not the whole settings window */}
+        <SettingsWindowContext.Provider value={true}>
+          <SheetFrame>{body}</SheetFrame>
+        </SettingsWindowContext.Provider>
       </div>
     </div>
   );
