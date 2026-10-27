@@ -25,6 +25,7 @@ import { conversationAgent } from '../data/home';
 import { parseMs } from '../data/time';
 import { GreenhouseMark } from '../ui/logo';
 import { RailItem } from '../ui/rail-item.web';
+import { RailMore } from '../ui/rail-more.web';
 import { Icon, type IconName } from '../ui/core';
 
 import { Segmented } from '../ui/segmented';
@@ -186,7 +187,18 @@ export function WideShell({ children }: { children: React.ReactNode }) {
                     style={{ height: 1, marginHorizontal: 18, marginVertical: space.sm, backgroundColor: c.separator }}
                   />
                 ) : null}
-                {apps.map((a) => rail(a.navId, a.label, a.icon, () => go(a.href), appSelected(a.href)))}
+                <RailMore
+                  label={t('client.more')}
+                  title={t('client.apps')}
+                  width={RAIL_WIDTH}
+                  apps={apps.map((a) => ({
+                    id: a.navId,
+                    label: a.label,
+                    icon: a.icon,
+                    selected: appSelected(a.href),
+                    open: () => go(a.href),
+                  }))}
+                />
               </ScrollView>
               <View style={{ gap: 2, paddingTop: space.sm, borderTopWidth: 1, borderTopColor: c.separator, marginHorizontal: 0 }}>
                 {user.role === 'super'

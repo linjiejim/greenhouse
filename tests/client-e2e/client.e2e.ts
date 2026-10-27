@@ -155,7 +155,12 @@ test('v2 manifest hides inactive places and keeps future pages reachable', async
   await expect(page.getByTestId('rail-knowledge')).toHaveCount(0);
   await expect(page.getByTestId('rail-projects')).toHaveCount(0);
   await expect(page.getByTestId('rail-apps-divider')).toBeVisible();
+  // apps live under the rail's More: hovering opens the flyout, leaving closes it
+  await expect(page.getByTestId('rail-crm')).toHaveCount(0);
+  await page.getByTestId('rail-more').hover();
+  await expect(page.getByTestId('rail-more-menu')).toBeVisible();
   await page.getByTestId('rail-crm').click();
+  await expect(page.getByTestId('rail-more-menu')).toHaveCount(0);
   await expect(page.getByText('此客户端不支持，在浏览器打开', { exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: '在浏览器打开', exact: true })).toBeVisible();
 });

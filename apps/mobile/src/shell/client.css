@@ -999,3 +999,91 @@ html[data-desktop-window="settings"] .gh-settings { padding-top: 52px; box-sizin
 [data-testid='client-secondary']:has(> .gh-secondary-host:empty) {
   display: none !important;
 }
+
+/* Rail "More": the apps that are not built-in places (src/ui/rail-more.web.tsx). */
+.gh-rail-more-title {
+  padding: 6px 10px 4px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--gh-secondary);
+}
+.gh-rail-more-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 36px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--gh-text);
+  font: inherit;
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+}
+.gh-rail-more-item span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.gh-rail-more-item:hover,
+.gh-rail-more-item:focus-visible {
+  background: var(--gh-hover);
+  outline: none;
+}
+.gh-rail-more-item[aria-current='page'] {
+  background: var(--gh-sidebar-selection, var(--gh-hover));
+  color: var(--gh-accent-text);
+  font-weight: 700;
+}
+
+/* Fixed-size dialogs (src/ui/overlay.web.tsx DialogBody). */
+.gh-dialog-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 52px;
+  padding: 0 16px 0 20px;
+  border-bottom: 1px solid var(--gh-line);
+  flex: none;
+}
+.gh-dialog-header > strong {
+  flex: 1;
+  min-width: 0;
+  font-size: 16px;
+}
+.gh-dialog-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+}
+.gh-dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--gh-line);
+  flex: none;
+}
+.gh-icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--gh-secondary);
+  cursor: pointer;
+}
+.gh-icon-button:hover {
+  background: var(--gh-hover);
+  color: var(--gh-text);
+}

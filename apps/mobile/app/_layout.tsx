@@ -201,6 +201,7 @@ export default function RootLayout() {
                 <Stack.Screen name="task-form" options={sheetScreen([1], { header: true })} />
                 <Stack.Screen name="sheets/stations" options={sheetScreen([0.6, 1], { header: true })} />
                 <Stack.Screen name="sheets/station-add" options={sheetScreen([0.5, 1], { header: true })} />
+                <Stack.Screen name="sheets/feedback" options={sheetScreen([0.7, 1], { header: true })} />
                 <Stack.Screen name="tables/new-record" options={sheetScreen([1], { header: true })} />
 
                 {/* ── full-screen viewers of rich blocks ── */}

@@ -3,7 +3,7 @@ import { IS_SINGLE_STATION } from '../config';
 import { openSettings, openStationSettings } from '../desktop/chrome';
 import React, { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'expo-router';
-import { Overlay } from '../ui/overlay.web';
+import { DialogBody, Overlay } from '../ui/overlay.web';
 import { Icon, type IconName } from '../ui/core.web';
 import { usePlaces } from './use-places';
 import { NativeMenu } from '../ui/menu.web';
@@ -74,32 +74,29 @@ export function NotificationsPopover({ close }: { close: () => void }) {
   const t = useT();
   const { hex: c } = useTheme();
   const unread = useNotifications((s) => s.unread);
-  const count = useNotifications((s) => s.items.length);
-  const bodyHeight = Math.min(376, Math.max(144, 40 + count * 56));
   return (
-    <Overlay
-      testID="notifications-popover"
-      label={t('notifications.title')}
-      modal={false}
-      point={{ x: 80, y: Math.max(8, window.innerHeight - bodyHeight - 76) }}
-      onClose={close}
-      panelStyle={{ width: 400, padding: 0 }}
-    >
-      <div style={{ display: 'flex', alignItems: 'center', padding: 16, gap: 12 }}>
-        <strong style={{ flex: 1 }}>{t('notifications.title')}</strong>
-        <button
-          disabled={unread === 0}
-          style={{ border: 0, background: 'transparent', color: c.accentText }}
-          onClick={async () => {
-            if (!(await useNotifications.getState().markAllRead())) alertError(t('notifications.markFailed'));
-          }}
-        >
-          {t('notifications.markAllRead')}
-        </button>
-      </div>
-      <div style={{ height: bodyHeight, display: 'flex', flexDirection: 'column' }}>
+    <Overlay testID="notifications-popover" label={t('notifications.title')} size="md" onClose={close}>
+      <DialogBody
+        title={t('notifications.title')}
+        actions={
+          <>
+            <button
+              disabled={unread === 0}
+              style={{ border: 0, background: 'transparent', color: c.accentText }}
+              onClick={async () => {
+                if (!(await useNotifications.getState().markAllRead())) alertError(t('notifications.markFailed'));
+              }}
+            >
+              {t('notifications.markAllRead')}
+            </button>
+            <button className="gh-icon-button" aria-label={t('common.close')} onClick={close}>
+              <Icon name="x" size={18} />
+            </button>
+          </>
+        }
+      >
         <NotificationsCenter chrome={false} onOpen={close} />
-      </div>
+      </DialogBody>
     </Overlay>
   );
 }

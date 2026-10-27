@@ -1,16 +1,18 @@
 /** Root route frames keep objects in the same router, presented as an inspector on wide screens. */
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Pressable, View, useWindowDimensions } from 'react-native';
+import { Pressable, View, useWindowDimensions, type DimensionValue } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useNavigationState } from 'expo-router/react-navigation';
 import { SheetFrame } from './sheet-actions';
 import { useTheme } from '../theme';
-import { Overlay, hasInteractiveOverlay } from './overlay.web';
+import { DIALOG_SIZES, Overlay, hasInteractiveOverlay } from './overlay.web';
 import { wideLayout } from '../shell/wide-model';
 import { boundedInspectorWidth, inspectorRoute, inspectorCount } from '../shell/inspector-model';
 import { useInspector } from '../shell/inspector.web';
 
 type Route = { name: string; key: string; params?: object };
+/** Centered sheets that hold a document or a preview get the large dialog size. */
+const LARGE_SHEETS = ['doc-new', 'peek/html', 'peek/diagram', 'table'];
 export function sheetEdgeLayout(props: { children: React.ReactElement; route: Route }) {
   return <ScreenFrame route={props.route}>{props.children}</ScreenFrame>;
 }
@@ -40,6 +42,7 @@ function ScreenFrame({ children, route }: { children: React.ReactNode; route: Ro
       'move',
       'sheets/stations',
       'sheets/station-add',
+      'sheets/feedback',
       'peek/html',
       'peek/diagram',
       'table',
@@ -169,15 +172,31 @@ function ScreenFrame({ children, route }: { children: React.ReactNode; route: Ro
       ) : null}
       <View
         testID={inspector ? 'client-inspector' : 'client-sheet'}
-        style={{
-          width: layout.wide ? (inspector ? panelWidth : 560) : '100%',
-          height: inspector || !layout.wide ? '100%' : '90%',
-          maxWidth: '100%',
-          borderLeftWidth: 1,
-          borderColor: c.separator,
-          backgroundColor: c.secondaryGroupedBackground,
-          boxShadow: isDark || !layout.wide || !layout.floatInspector ? undefined : '-8px 0 32px rgba(0,0,0,.10)',
-        }}
+        style={
+          inspector || !layout.wide
+            ? {
+                width: layout.wide ? panelWidth : '100%',
+                height: '100%',
+                maxWidth: '100%',
+                borderLeftWidth: 1,
+                borderColor: c.separator,
+                backgroundColor: c.secondaryGroupedBackground,
+                boxShadow: isDark || !layout.wide || !layout.floatInspector ? undefined : '-8px 0 32px rgba(0,0,0,.10)',
+              }
+            : {
+                // a centered sheet is a fixed-size dialog (src/ui/overlay.web.tsx DIALOG_SIZES)
+                ...DIALOG_SIZES[LARGE_SHEETS.includes(route.name) ? 'lg' : 'md'],
+                // RN-web passes calc() through; its types only know numbers and percentages
+                maxWidth: 'calc(100% - 32px)' as DimensionValue,
+                maxHeight: 'calc(100% - 32px)' as DimensionValue,
+                borderWidth: 1,
+                borderColor: c.separator,
+                borderRadius: 12,
+                overflow: 'hidden',
+                backgroundColor: c.secondaryGroupedBackground,
+                boxShadow: isDark ? undefined : '0 8px 32px rgba(0,0,0,.14)',
+              }
+        }
       >
         {inspector && layout.wide ? (
           <div

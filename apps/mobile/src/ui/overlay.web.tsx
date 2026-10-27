@@ -5,6 +5,17 @@ import { useTheme } from '../theme';
 let nextLayer = 0;
 const layers: number[] = [];
 export const hasInteractiveOverlay = () => layers.length > 0;
+/**
+ * Centered dialogs come in fixed sizes so they never jump with their content: `sm` is for
+ * confirm / prompt (fixed width, height follows the text); `md` and `lg` hold lists and forms
+ * (fixed width and height, the body scrolls inside, see DialogBody). The viewport clamps both.
+ */
+export const DIALOG_SIZES = {
+  sm: { width: 420 },
+  md: { width: 560, height: 600 },
+  lg: { width: 760, height: 640 },
+} as const;
+export type DialogSize = keyof typeof DIALOG_SIZES;
 export function Overlay({
   children,
   onClose,
@@ -16,6 +27,7 @@ export function Overlay({
   testID,
   trapTab = true,
   initialFocus = 'first',
+  size,
 }: {
   children: React.ReactNode;
   onClose: () => void;
@@ -28,6 +40,8 @@ export function Overlay({
   trapTab?: boolean;
   /** 'panel' focuses the dialog itself, for large surfaces (settings) where the first control is not a choice. */
   initialFocus?: 'first' | 'panel';
+  /** A centered dialog's fixed size (ignored for anchored popovers, which size to content). */
+  size?: DialogSize;
 }) {
   const { hex: c, isDark } = useTheme();
   const pointX = point?.x,
@@ -139,6 +153,7 @@ export function Overlay({
           pointerEvents: interactive ? 'auto' : 'none',
           // the panel only holds focus for the dialog; its controls draw the visible ring
           outline: 'none',
+          ...(size && !point ? sizeStyle(size) : null),
           ...panelStyle,
         }}
       >
@@ -146,5 +161,36 @@ export function Overlay({
       </div>
     </div>,
     document.body,
+  );
+}
+
+function sizeStyle(size: DialogSize): React.CSSProperties {
+  const box: { width: number; height?: number } = DIALOG_SIZES[size];
+  return box.height
+    ? { width: box.width, height: box.height, display: 'flex', flexDirection: 'column', overflow: 'hidden', padding: 0 }
+    : { width: box.width };
+}
+
+/** The fixed-size dialog's layout: a header row, a scrolling body, an optional footer. */
+export function DialogBody({
+  title,
+  actions,
+  footer,
+  children,
+}: {
+  title: string;
+  actions?: React.ReactNode;
+  footer?: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <>
+      <div className="gh-dialog-header">
+        <strong>{title}</strong>
+        {actions}
+      </div>
+      <div className="gh-dialog-body">{children}</div>
+      {footer ? <div className="gh-dialog-footer">{footer}</div> : null}
+    </>
   );
 }
