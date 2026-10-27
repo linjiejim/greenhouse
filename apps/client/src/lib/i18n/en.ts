@@ -1303,6 +1303,27 @@ export const en = {
         files: 'Drive',
       },
     },
+    plugins: {
+      notice:
+        'To turn a plugin on or off, change greenhouse.config.ts or GREENHOUSE_EXTENSIONS and restart the server.',
+      name: 'Name',
+      id: 'ID',
+      state: 'State',
+      version: 'Version',
+      sdk: 'SDK',
+      migrations: 'Migrations',
+      boot: 'Boot',
+      dependsOn: 'Depends on',
+      errors: 'Errors',
+      on: 'On',
+      off: 'Off',
+      notCompiled: 'Not compiled',
+      empty: 'No plugins are compiled into this build.',
+      drifted: 'Checksum mismatch',
+      migration: { none: 'No migrations', applied: 'Applied', pending: 'Pending', error: 'Error' },
+      bootState: { disabled: 'Off', 'not-run': 'Not run in this process', ready: 'Ready', error: 'Error' },
+      fileState: { applied: 'Applied', pending: 'Pending', skipped: 'Skipped', missing: 'Missing' },
+    },
   },
 };
 
