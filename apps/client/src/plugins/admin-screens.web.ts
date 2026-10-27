@@ -5,8 +5,11 @@
  */
 import type { IconName } from '../ui/core';
 import type { AdminScreenEntry } from './admin-types';
+import { adminScreen as feedback } from './feedback/admin.web';
+import { adminScreen as retro } from './retro/admin.web';
+import { adminScreen as computer } from './computer/admin.web';
 
-const entries: AdminScreenEntry[] = [];
+const entries: AdminScreenEntry[] = [feedback, retro, computer];
 
 export const adminScreens: Readonly<Record<string, AdminScreenEntry>> = Object.fromEntries(
   entries.map((entry) => [entry.screen, entry]),

@@ -1,5 +1,6 @@
 import React from 'react';
-import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
+import { Redirect, Stack, useLocalSearchParams, useRouter } from 'expo-router';
+import { pluginSectionHref } from '../admin/sections';
 import { useWindowDimensions } from 'react-native';
 import { useTheme } from '../theme';
 import Host from './page-host';
@@ -19,6 +20,10 @@ export default function PluginPageScreen(props: { detail?: boolean }) {
     { hex } = useTheme(),
     [query, setQuery] = React.useState('');
   const entry = state.kind === 'v2' ? state.manifest.plugins.find((p) => p.id === plugin) : undefined;
+  const target = entry?.pages.find((p) => p.id === page);
+  // An Admin section opens in the Admin place, not as an app page.
+  if (!props.detail && target && 'parent' in target && target.parent === 'administration')
+    return <Redirect href={pluginSectionHref(entry!.id, target.id) as never} />;
   return (
     <>
       {width >= 760 ? (

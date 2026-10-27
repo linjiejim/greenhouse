@@ -15,7 +15,7 @@
 .gh-admin-field select,
 .gh-admin-field textarea {
   height: 32px;
-  border: 1px solid var(--gh-line);
+  border: 1px solid var(--gh-line-strong);
   background: var(--gh-raised);
   color: var(--gh-text);
   border-radius: 8px;
@@ -628,6 +628,21 @@
 .gh-admin-setting-control input,
 .gh-admin-setting-control textarea {
   flex: 1;
+}
+.gh-admin-setting-control textarea {
+  height: auto;
+  min-height: 64px;
+  padding: 6px 10px;
+  line-height: 1.5;
+}
+.gh-admin-input:focus,
+.gh-admin-field input:focus,
+.gh-admin-field select:focus,
+.gh-admin-field textarea:focus,
+.gh-admin-toolbar input:focus,
+.gh-admin-toolbar select:focus {
+  outline: 2px solid var(--gh-focus);
+  outline-offset: -1px;
 }
 .gh-admin-setting p {
   grid-column: 2;

@@ -41,7 +41,7 @@ export const STYLE_PRESETS = [
 export type PresetId = (typeof STYLE_PRESETS)[number]['id'];
 
 const HEX = /^#?([0-9a-fA-F]{6})$/;
-/** `235d4d` / `#235D4D` → `#235D4D`, or null. */
+/** A typed brand color (with or without the leading #, any case) → upper-case `#RRGGBB`, or null. */
 export function normalizeHex(value: string): string | null {
   const match = HEX.exec(value.trim());
   return match ? `#${match[1]!.toUpperCase()}` : null;
