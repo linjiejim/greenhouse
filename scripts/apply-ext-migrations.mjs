@@ -1,7 +1,7 @@
 /**
  * Apply the extension migration lane to the database in DATABASE_URL.
  *
- * Core migrations are drizzle-kit's job; this covers the extensions' own lane,
+ * Core migrations are `pnpm db:migrate`'s job; this covers the extensions' own lane,
  * which normally runs at boot. Handy for a test database that no server has
  * started against yet.
  */

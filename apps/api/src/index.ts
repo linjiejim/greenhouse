@@ -305,7 +305,7 @@ async function main() {
   assertAuthEnv(); // fail fast before binding if the signing key is absent
   dbProvider = await initDatabase({ type: 'pg', pgConnectionString: DATABASE_URL });
   // Extension-owned tables live in their own migration lane (core DDL stays in
-  // drizzle/*.sql, applied before boot). Pending files are applied here, under
+  // packages/db/migrations, applied before boot). Pending files are applied here, under
   // an advisory lock, before anything can want the tables.
   await applyExtensionMigrations(dbProvider);
   // Admin-edited runtime config (LLM / media / search credentials) wins over the

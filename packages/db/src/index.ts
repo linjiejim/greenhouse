@@ -46,18 +46,16 @@ export {
   applyAllMigrations,
   assertMigratableDatabase,
   detectDatabaseGeneration,
+  detectDatabaseGenerationAt,
   readCarryState,
   readCarryStateFromDb,
   refusalFor,
   DatabaseGenerationError,
   MIGRATIONS_FOLDER,
-  V1_ARCHIVE_FOLDER,
-  V1_LATEST_TAG,
+  V3_ARCHIVE_FOLDER,
 } from './migrate.js';
 export type { CarryState, AppliedMigrations } from './migrate.js';
 export type { DatabaseGeneration } from './migrate.js';
-export { carryFrom1x, CarryError, CarryFailedError, v1CoreTables } from './carry/from-1x.js';
-export type { CarryOptions, CarryReport, CarryLine } from './carry/from-1x.js';
 export type { IdKind } from './ids.js';
 export type { CoreMigrationFile } from './core-migrations.js';
 

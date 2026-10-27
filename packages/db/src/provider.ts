@@ -14,7 +14,7 @@ import { createExtensionMigrationRunner } from './extension-migrations.js';
 import { createCoreMigrationBaseline } from './core-migrations.js';
 
 import { createDbClient, type Db, type DbClient } from './client.js';
-import { refusalFor } from './migrate.js';
+import { awaitingV4Bridge, refusalFor, V3_AWAITING_BRIDGE } from './migrate.js';
 import { createSessionService } from './services/sessions.js';
 import { createLlmCallService } from './services/llm-calls.js';
 import { createUsageService } from './services/usage.js';
@@ -126,43 +126,42 @@ function createDatabaseProvider(db: Db, client: DbClient['client'] | null) {
     },
 
     async initSchema(): Promise<void> {
-      // Schema DDL is owned EXCLUSIVELY by the migration chain (drizzle/*.sql,
-      // applied by `pnpm db:migrate`). This method only fail-fasts — on an
-      // unmigrated database, and on a 1.x / 2.x database that 3.0 must never
-      // run against — and never creates or alters anything.
+      // Schema DDL is owned EXCLUSIVELY by the migration chain
+      // (packages/db/migrations, applied by `pnpm db:migrate`). This method only
+      // fail-fasts — on an unmigrated database, a 3.x database the bridge has
+      // not upgraded yet, and a 1.x / 2.x database 4.0 must never run against —
+      // and never creates or alters anything.
       const [shape] = (await db.execute(sql`
         SELECT to_regclass('public.users')::text AS users,
                to_regclass('public.members')::text AS members,
                to_regclass('public.sessions')::text AS sessions,
-               to_regclass('public.conversations')::text AS conversations`)) as unknown as Array<
-        Record<'users' | 'members' | 'sessions' | 'conversations', string | null>
+               to_regclass('public.conversations')::text AS conversations,
+               to_regclass('drizzle.__drizzle_migrations')::text AS journal,
+               to_regclass('drizzle.greenhouse_carry')::text AS carry`)) as unknown as Array<
+        Record<'users' | 'members' | 'sessions' | 'conversations' | 'journal' | 'carry', string | null>
       >;
-      if (shape?.users && shape.sessions && !shape.conversations) {
-        throw new Error(refusalFor({ kind: 'v1', applied: [], latest: null, current: false })!);
-      }
+      if (shape?.users && shape.sessions && !shape.conversations) throw new Error(refusalFor({ kind: 'v1' })!);
       if (shape?.members && !shape.users) throw new Error(refusalFor({ kind: 'v2' })!);
       if (!shape?.users || !shape.conversations) {
         throw new Error('Database tables not found. Run `pnpm db:migrate` to apply the schema.');
       }
-      // A migrate-from-1x carry that started here and never finished: part of the data only.
-      const [carry] = (await db.execute(sql`
-        SELECT to_regclass('drizzle.greenhouse_carry')::text AS marker`)) as unknown as Array<{
-        marker: string | null;
-      }>;
-      if (carry?.marker) {
+      // A 3.x migrate-from-1x carry that started here and never finished: part of the data only.
+      if (shape.carry) {
         const [state] = (await db.execute(sql`
           SELECT started_at FROM drizzle.greenhouse_carry WHERE id = 1 AND completed_at IS NULL`)) as unknown as Array<{
           started_at: string | Date;
         }>;
         if (state) {
           throw new Error(
-            refusalFor({
-              kind: 'carry_incomplete',
-              applied: [],
-              startedAt: new Date(state.started_at).toISOString(),
-            })!,
+            refusalFor({ kind: 'carry_incomplete', startedAt: new Date(state.started_at).toISOString() })!,
           );
         }
+      }
+      if (shape.journal) {
+        const rows = (await db.execute(sql`SELECT hash FROM drizzle.__drizzle_migrations`)) as unknown as Array<{
+          hash: string;
+        }>;
+        if (awaitingV4Bridge(new Set(rows.map((row) => row.hash)))) throw new Error(V3_AWAITING_BRIDGE);
       }
     },
 

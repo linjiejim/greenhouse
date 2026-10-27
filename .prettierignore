@@ -3,7 +3,7 @@ node_modules/
 apps/mobile/
 dist/
 public/
-drizzle/
+packages/db/migrations/
 data/
 pnpm-lock.yaml
 *.md

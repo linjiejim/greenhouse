@@ -13,7 +13,7 @@ export default tseslint.config(
       '**/target/',
       '.cargo-home/',
       'public/',
-      'drizzle/',
+      'packages/db/migrations/',
       'data/',
       // The Expo app is not a workspace member: it installs its own node_modules
       // and lints itself (`cd apps/mobile && pnpm lint`, apps/mobile/eslint.config.mjs).
