@@ -1,6 +1,6 @@
 # 项目插件表结构
 
-事实源：`api/schema.ts`；迁移：`migrations/0001_adopt.sql`（3.0 原地认领）。
+事实源：`api/schema.ts`；迁移：`migrations/0001_adopt.sql`（本插件基线：新装启用时建表，3.x 升级库原地认领）。
 
 ### 项目（projects.ts）
 

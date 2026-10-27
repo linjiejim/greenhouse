@@ -1,6 +1,6 @@
 # Knowledge 数据库归属
 
-事实源为 `api/schema.ts` 与 `migrations/0001_adopt.sql`。认领既有表，不复制记录；关闭插件保留表、版本和分享。
+事实源为 `api/schema.ts` 与 `migrations/0001_adopt.sql`（本插件基线：新装启用时建表，3.x 升级库原地认领既有表，不复制记录）；关闭插件保留表、版本和分享。
 
 ### 知识库（knowledge.ts）
 

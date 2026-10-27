@@ -363,10 +363,11 @@ Keep schema/services in the package; core has no plugin service accessor. New ta
 parse them as numbers. Plugin tables may reference core; core must not acquire plugin FKs.
 Use `db.users`, `db.drive`, `db.platform` and kit facades for core data (organization `'default'`).
 
-Core schema owns 49 tables; ten official data plugins own 24. The immutable 3.0 baseline still
-creates the original 73 tables even with no plugins enabled. Ownership migrations do not drop
-or move them; `0001_adopt.sql` guards table/index/constraint creation. Example's extra table
-and the migration ledger are separate. See [DB ownership](packages/db/src/db-schema.md).
+Core schema owns 49 tables and a fresh install creates only those. Ten official data plugins
+own 24 more: each plugin's `0001_adopt.sql` is its baseline, creates its tables only when the
+plugin is enabled, and guards every table/index/constraint so a database upgraded from 3.x
+adopts the tables its 3.x baseline created in place. Example's extra table and the migration
+ledger are separate. See [DB ownership](packages/db/src/db-schema.md).
 
 Plugin lane files use `NNNN_name.sql` and `--> statement-breakpoint`. They run after the core
 chain in `pnpm db:migrate` and idempotently at boot, with checksums/advisory locking in
@@ -377,9 +378,10 @@ and shared databases use migrations, never `push`.
 
 Files headed `-- greenhouse:core-generation 1x` never execute on 4.x: fresh databases record
 them as skipped; carried databases require the copied applied row or refuse startup. The marker
-is outside the checksum. `migrate-from-1x` copies plugin tables/ledger verbatim into a new DB.
-`pnpm cli db baseline --dry-run` is only for adopting an existing matching 3.x-generation
-schema, not migrating 1.x; compare DDL first. `--through` leaves later files to actually run.
+is outside the checksum. `pnpm db:migrate` upgrades a 3.x database in place and leaves every
+plugin table and lane row (including private overlay lanes) untouched. `pnpm cli db baseline
+--dry-run` is only for adopting a database already on the 4.0 schema; compare DDL first.
+`--through` leaves later files to actually run.
 
 Disabling retains data and applied ledger. `pnpm seed` loads core plus enabled-plugin seeds
 in dependency order; it does not populate disabled plugin modules.
@@ -427,9 +429,10 @@ pnpm web:build
 
 `test:core` temporarily assembles zero packages, checks core types/tests and boots a real API,
 then restores normal registrations. Run it sequentially with other assembly/build commands.
-DB targets must be explicit loopback test/e2e databases. A populated 3.0 upgrade rehearsal
-in `tests/db/plugin-upgrade.db-commit.test.ts` verifies all 24 extracted tables by row count
-and full-row hashes, including Knowledge off/on. Browser tests and the screenshot tour require
+DB targets must be explicit loopback test/e2e databases. A populated 3.0.2 upgrade rehearsal
+in `tests/db/plugin-upgrade.db-commit.test.ts` verifies all 24 plugin tables by row count
+and full-row hashes, including Knowledge off/on; `tests/db/schema-equivalence.db-commit.test.ts`
+requires a fresh install with every official plugin to match an upgraded 3.x database. Browser tests and the screenshot tour require
 an environment that can launch Chromium; collection alone is not browser acceptance.
 
 ## Downstream overlay workflow

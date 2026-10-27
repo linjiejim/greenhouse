@@ -8,4 +8,4 @@
 - DB access uses `services(db).projects`, never DatabaseProvider. Business dates are date columns; tags/dependencies are JSON arrays. Parent task delete sets child parent_id null; project/task/comment ownership cascades.
 - Domain history uses core audit_events (`projects.activity`), not a second activity table. `activity.auditCapabilities` separates these rows from platform action changes. Feed scans share the host's cursor/bounded scan helpers and continue past unreadable rows.
 - The plugin has no notification or digest producer. New producers must use the notification registry and core push queue.
-- Register every owned table in resetTables and use guarded adoption SQL. Disabled data remains; no core DROP. Classic copy lives under `ext.projects.*`.
+- Register every owned table in resetTables and keep `0001_adopt.sql` (the plugin baseline) guarded so it also adopts 3.x tables in place. Disabled data remains; no core DROP. Classic copy lives under `ext.projects.*`.
