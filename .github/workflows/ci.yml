@@ -110,7 +110,7 @@ jobs:
   # drives it over HTTP — the layer `pnpm test` (in-process units) never reaches:
   # auth/token round-trips, cross-user data isolation, role escalation, injection,
   # tool-access & v1 API boundaries. Runs against a dead LLM endpoint so it stays
-  # deterministic and free (E2E_NO_LLM skips the few content-dependent assertions).
+  # deterministic and free.
   e2e:
     if: github.repository == 'linjiejim/greenhouse'
     runs-on: ubuntu-latest

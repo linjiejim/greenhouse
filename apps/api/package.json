@@ -15,8 +15,7 @@
     "build": "echo 'tsx runtime — no build step'",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src/",
-    "test": "vitest run",
-    "cos:smoke": "node scripts/cos-smoke.mjs"
+    "test": "vitest run"
   },
   "dependencies": {
     "@ai-sdk/openai": "^3.0.63",
