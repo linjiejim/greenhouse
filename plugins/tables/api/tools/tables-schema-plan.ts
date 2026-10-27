@@ -137,7 +137,7 @@ ALWAYS describe a new Base/table (what it holds, who owns it, field conventions)
 
 formula config takes an AST, not a string: {type:"literal",value} | {type:"field",fieldId} | {type:"binary",operator,left,right} with operator add/subtract/multiply/divide/concat/eq/neq/gt/gte/lt/lte/and/or | {type:"function",name,args} with name if/coalesce/concat/round/upper/lower.
 
-CANNOT do — never promise it: change a field's TYPE (add a new field instead), delete a table or Base (the user does that in the sidebar: right-click → Delete, creator only, archived so an admin can restore it), or share one. Records are tables_mutation's job. Structure needs the builder role and Base settings the creator's; you are told when the user lacks it.`,
+CANNOT do — never promise it: change a field's TYPE (add a new field instead), delete a table or Base (its owner does that from the row's menu in the Tables sidebar (right-click or ⋯); it is archived so an admin can restore it), or share one. Records are tables_mutation's job. Structure needs the builder role and Base settings the creator's; you are told when the user lacks it.`,
   category: 'team',
   is_global: false,
   icon: 'Columns3',

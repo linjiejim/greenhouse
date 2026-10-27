@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState, useRef } from 'react';
 import { Icon } from '../../ui/core';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { listBases, getBase, getSchema, queryRecords, createBase } from '../../api/tables';
+import { listBases, getBase, getSchema, queryRecords, createBase, archiveBase, archiveTable } from '../../api/tables';
 import { get } from '../../api/client';
 import { useResource } from '../../data/use-resource';
 import { displayValue, liveFields, recordTitle, cellValue } from '../../data/table-fields';
@@ -11,7 +11,7 @@ import { useOpenObject } from '../../shell/open-object';
 import { Place, PlaceRow, PlaceSidebar, PlaceEmpty, PlaceContext, type PlaceContextPoint } from '../../ui/place.web';
 import { useT } from '../../lib/i18n';
 import { captureIdentity } from '../../data/identity';
-import { promptText, alertError } from '../../ui/dialogs';
+import { promptText, alertError, confirmAction } from '../../ui/dialogs';
 import TableGrid from './grid';
 import type { TableRecord, TableDef } from '../../shared/greenhouse-types';
 export default function TablesPlace() {
@@ -114,6 +114,31 @@ export default function TablesPlace() {
     void bases.refresh();
     router.setParams({ base: r.data.base.id, table: undefined });
   };
+  const remove = async (target: { kind: 'base' | 'table'; id: string; name: string; baseId: string }) => {
+    const ok = await confirmAction({
+      title: t('tables.deleteConfirm', { name: target.name }),
+      message: t('tables.deleteHint'),
+      confirmLabel: t('library.delete'),
+      destructive: true,
+    });
+    if (!ok) return;
+    const current = captureIdentity();
+    const r = target.kind === 'base' ? await archiveBase(target.id) : await archiveTable(target.id);
+    if (!current()) return;
+    if (!r.ok) {
+      alertError(t('tables.deleteFailed'), r.message);
+      return;
+    }
+    if (target.kind === 'base') {
+      void bases.refresh();
+      if (target.id === baseId) router.setParams({ base: undefined, table: undefined });
+    } else {
+      setTables((v) => ({ ...v, [target.baseId]: (v[target.baseId] ?? []).filter((x) => x.id !== target.id) }));
+      if (target.id === tableId) router.setParams({ base: target.baseId, table: undefined });
+      if (target.baseId === baseId) void base.refresh();
+    }
+  };
+  const deleteItem = (title: string) => [{ id: 'delete', title, icon: 'trash' as const, destructive: true }];
   return (
     <>
       <PlaceSecondary>
@@ -137,6 +162,8 @@ export default function TablesPlace() {
                     icon="table"
                     selected={b.id === baseId}
                     onOpen={() => router.setParams({ base: b.id, table: undefined })}
+                    items={b.role === 'owner' ? deleteItem(t('tables.deleteBase')) : []}
+                    onSelect={() => void remove({ kind: 'base', id: b.id, name: b.name, baseId: b.id })}
                   />
                   <div style={{ paddingLeft: 20 }}>
                     {(tables[b.id] ?? []).map((table) => (
@@ -146,6 +173,8 @@ export default function TablesPlace() {
                         icon="table"
                         selected={table.id === tableId}
                         onOpen={() => router.setParams({ base: b.id, table: table.id })}
+                        items={b.role === 'owner' ? deleteItem(t('tables.deleteTable')) : []}
+                        onSelect={() => void remove({ kind: 'table', id: table.id, name: table.name, baseId: b.id })}
                       />
                     ))}
                   </div>

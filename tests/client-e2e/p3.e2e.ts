@@ -74,6 +74,19 @@ test('P3 tables grid opens a record in inspector', async ({ page }) => {
   await expect(row).toHaveAttribute('aria-selected', 'true');
   await expect(page.getByTestId('client-inspector').filter({ visible: true })).toContainText('Wayne Enterprises');
 });
+test('P3 tables owner deletes a table from the sidebar menu after confirming', async ({ page }) => {
+  const f = await installPlaces(page);
+  await ready(page, '/drive?view=tables');
+  const sidebar = page.getByTestId('client-secondary');
+  await sidebar.getByRole('button', { name: '反馈', exact: true }).click({ button: 'right' });
+  await page.getByRole('menuitem', { name: '删除表', exact: true }).click();
+  await expect(page.getByRole('dialog')).toContainText('删除「反馈」？');
+  await page.getByRole('dialog').getByRole('button', { name: '删除', exact: true }).click();
+  await expect
+    .poll(() => f.writes.some((w) => w.path === '/api/tables/tables/12/archive' && w.method === 'POST'))
+    .toBeTruthy();
+  await expect(sidebar.getByRole('button', { name: '反馈', exact: true })).toHaveCount(0);
+});
 test('P3 project board drag, list, gantt and task inspector', async ({ page }) => {
   const f = await installPlaces(page);
   await ready(page, '/projects');

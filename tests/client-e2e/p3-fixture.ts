@@ -41,6 +41,7 @@ export function officialManifest() {
 export async function installPlaces(page: Page) {
   const station = await installStation(page);
   const writes: { path: string; body: any; method: string }[] = [];
+  const baseTables = [{ id: TABLE, name: '反馈', base_id: BASE }];
   const folders = [
     { id: 'folder-hr', name: '人事制度', parent_id: null, visibility: 'team', created_at: at, updated_at: at },
   ];
@@ -217,8 +218,12 @@ export async function installPlaces(page: Page) {
       return json({
         base: { id: BASE, name: '客户反馈' },
         role: 'owner',
-        tables: [{ id: TABLE, name: '反馈', base_id: BASE }],
+        tables: baseTables,
       });
+    if (path === `/api/tables/tables/${TABLE}/archive` && method === 'POST') {
+      baseTables.splice(0, baseTables.length);
+      return json({ table: { id: TABLE, name: '反馈', base_id: BASE } });
+    }
     if (path === `/api/tables/tables/${TABLE}/schema`)
       return json({ table: { id: TABLE, name: '反馈', base_id: BASE }, fields });
     if (path === `/api/tables/tables/${TABLE}/views`)
