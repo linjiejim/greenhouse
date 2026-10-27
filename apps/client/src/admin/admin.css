@@ -562,6 +562,24 @@
   color: var(--gh-tertiary);
   margin-left: 8px;
 }
+/* a checkbox with its label and an optional line under it */
+.gh-admin-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 13px;
+  line-height: 1.5;
+  cursor: pointer;
+}
+.gh-admin-check input {
+  margin-top: 3px;
+  flex-shrink: 0;
+}
+.gh-admin-check small {
+  display: block;
+  color: var(--gh-tertiary);
+  font-size: 12px;
+}
 .gh-admin-chips {
   display: flex;
   flex-wrap: wrap;
