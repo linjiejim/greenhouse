@@ -4,7 +4,7 @@
  *
  * A 3.0.2 install that was carried from 1.x and runs a private overlay must come
  * through with every row intact: legacy CHECK values, the carry marker, overlay
- * tables and their lane rows. 1.x / 2.x databases are refused with the way out.
+ * tables and their lane rows. 1.x / 2.x databases are refused with what to do instead.
  */
 import { describe, expect, it } from 'vitest';
 import { createHash, randomBytes } from 'node:crypto';
@@ -111,7 +111,7 @@ describe('3.x → 4.0 in-place bridge', () => {
     });
   }, 60_000);
 
-  it('refuses 1.x, 2.x and half-carried databases with the 3.0.2 way out', async () => {
+  it('refuses 1.x (via 3.0.2), 2.x (fresh install) and half-carried databases', async () => {
     await withDatabase('v1', async (url) => {
       await queryRows(url, 'CREATE TABLE users (id serial PRIMARY KEY); CREATE TABLE sessions (id serial PRIMARY KEY)');
       const error = await applyAllMigrations(url).catch((err: unknown) => err);
@@ -126,7 +126,7 @@ describe('3.x → 4.0 in-place bridge', () => {
       await queryRows(url, 'CREATE TABLE members (id serial PRIMARY KEY)');
       const error = await applyAllMigrations(url).catch((err: unknown) => err);
       expect((error as DatabaseGenerationError).generation.kind).toBe('v2');
-      expect((error as Error).message).toMatch(/Greenhouse 2\.x[\s\S]*3\.0\.2 first, then to 4\.0/);
+      expect((error as Error).message).toMatch(/Greenhouse 2\.x[\s\S]*no release upgrades 2\.x: start a fresh install/);
     });
     await withDatabase('half', async (url) => {
       await buildV3Database(url);

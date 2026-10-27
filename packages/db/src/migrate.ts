@@ -8,8 +8,8 @@
  * in place — the archived chain is finished, then the 4.0 baseline is recorded
  * as applied without running it (the schema is already there). The bridge never
  * drops tables or data; plugin tables the 3.x baseline created stay where they
- * are for their plugin lanes to adopt. 1.x and 2.x databases are refused: they
- * upgrade to 3.0.2 first, then to 4.0.
+ * are for their plugin lanes to adopt. 1.x databases are refused (they go through
+ * 3.0.2 first); 2.x databases are refused for good, as 3.x refused them.
  */
 
 import { existsSync } from 'node:fs';
@@ -132,7 +132,8 @@ export function refusalFor(generation: DatabaseGeneration): string | null {
     case 'v2':
       return (
         'This database belongs to Greenhouse 2.x (it has `members`, not `users`). ' +
-        `4.0 upgrades only 3.x databases in place. ${UPGRADE_VIA_3}`
+        '4.0 upgrades only 3.x databases in place, and no release upgrades 2.x: start a fresh install ' +
+        'with a new DATABASE_URL. The 2.x database is left untouched.'
       );
     case 'carry_incomplete':
       return (
