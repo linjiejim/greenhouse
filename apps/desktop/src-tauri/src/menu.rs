@@ -13,7 +13,7 @@ pub struct Shortcut {
     pub menu: String,
 }
 pub fn shortcuts() -> Vec<Shortcut> {
-    serde_json::from_str(include_str!("../../../mobile/src/desktop/shortcuts.json"))
+    serde_json::from_str(include_str!("../../../client/src/desktop/shortcuts.json"))
         .expect("Shared shortcut table")
 }
 #[derive(Deserialize, Serialize)]
