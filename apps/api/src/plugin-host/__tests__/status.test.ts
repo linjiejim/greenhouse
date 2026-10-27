@@ -6,7 +6,7 @@ vi.mock('../index.js', () => ({
     {
       id: 'fixture',
       name: 'Fixture',
-      sdk: 1,
+      sdk: 2,
       version: '1.2.3',
       migrations: { dir: '/missing/fixture' },
       resetTables: ['ext_fixture'],
@@ -34,7 +34,7 @@ describe('plugin operator model', () => {
       packageName: '@greenhouse/plugin-fixture',
       compiled: true,
       enabled: false,
-      sdk: 1,
+      sdk: 2,
       version: '1.2.3',
       dependsOn: [],
       bootState: 'disabled',

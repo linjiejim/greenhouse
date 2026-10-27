@@ -16,7 +16,7 @@ vi.mock('../compiled.generated.js', () => ({
     {
       id: 'registry-fixture',
       name: 'Fixture',
-      sdk: 1,
+      sdk: 2,
       core: '>=3 <5',
       resetTables: ['ext_retention_fixture'],
       retention: [{ table: 'ext_retention_fixture', column: 'recorded_at', days: 7 }],
