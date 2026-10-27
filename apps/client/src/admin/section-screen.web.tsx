@@ -13,8 +13,8 @@ import PluginsSection from './plugins.web';
 import RuntimeConfigSection from './runtime-config.web';
 import McpKeysSection from './mcp-keys.web';
 import ConnectorsSection from './connectors.web';
-import ActivitySection from './stub.web';
-import TeamContextSection from './stub.web';
+import ActivitySection from './activity.web';
+import TeamContextSection from './team-context.web';
 import BrandingSection from './stub.web';
 
 const SECTIONS: Record<CoreSectionId, React.ComponentType> = {
