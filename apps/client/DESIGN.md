@@ -14,7 +14,7 @@
 
 ## Home
 
-- Things are made by asking Sprouty first: 定时任务's + and its empty state open a new conversation with a drafted request (never a cron form); a form, where one exists, is the secondary path.
+- Things are made by asking Sprouty first: on the phone 定时任务's + and its empty state open a new conversation with a drafted request (never a cron form); a form, where one exists, is the secondary path. The wide browser's 定时任务 opens its editor instead, with asking Sprouty beside it.
 - Home is where a conversation starts: the greeting, then my recent conversations as quiet one-line titles with a short age (3m, 8h, 1d, 2w), no snippet; 3 by default, 0/3/5/10 in 「我」 (src/store/prefs.ts `homeRecent`), and All for the rest.
 
 ## Conversation
@@ -109,7 +109,9 @@
 - Drive keeps shelf/folder navigation in the secondary column, files in the main list/grid and authenticated previews in the inspector. Drops use the same identity-bound upload protocol as the phone.
 - Tables has its own desktop place, with Base/table navigation and a DOM grid; record details reuse the inspector. Saved views apply their field order and query and reset pagination.
 - Projects offer board, list and date-based Gantt views over one task tree; drag and accessible status controls use the same status mutation, with rollback on failure.
-- Automation details show instructions, schedule, next run and history; history rows and Run now open the run's conversation. Creation and instruction changes remain conversation-first.
+- Automation details show instructions, schedule, next run and history; history rows and Run now open the run's conversation.
+- The Automations secondary column has two sections, my automations (active, then paused) and custom agents (mine, then the team's); `?view=agents&id=` links an agent. New, Edit and Duplicate open a fixed-size `lg` dialog (a full-screen sheet below 760 px) with inline errors, a guarded Cancel/✕/Escape and ⌘/Ctrl+Enter; asking Sprouty stays the second way in.
+- The schedule builder offers hourly, daily, weekdays, weekly, monthly and a custom cron, and always shows the schedule in words with its next three runs on the automation's own clock.
 - Browser preferences use grouped rows in a full viewport settings layer, with existing account, Agent and connection pages in its sidebar; phone presentation is unchanged.
 - Plugin lists use declared columns, filters and sort; records use the same inspector as built-in objects, and writes expose only actions/fields supplied by the station.
 - Embedded plugin pages retain their state through theme changes and can only draft a prompt. Unsupported future page kinds keep the explicit browser fallback.
