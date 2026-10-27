@@ -45,7 +45,8 @@ One client for web, desktop (Tauri), iOS and Android. Native pages render on the
 
 ## Content
 
-- Things start by asking Sprouty: empty states and + on Schedule open a drafted request; forms are the secondary path.
+- Things start by asking Sprouty: on the phone, empty states and + on Schedule open a drafted request; the wide Schedule place opens its editor, with asking Sprouty beside it.
+- Schedule's secondary column has two sections, my automations (active, then paused) and custom agents (mine, then the team's; `?view=agents&id=` links one). New, Edit and Duplicate open an `lg` dialog; the schedule builder offers hourly, daily, weekdays, weekly, monthly and custom cron, always shown in words with the next three runs on the automation's own clock.
 - Home: greeting, composer, suggestion pills, then recent conversations as one-line titles with a short age; count from preferences (0/3/5/10).
 - Sprouty's face sits once in the conversation header with a status caption; message rows carry no avatar.
 - A reply's tool steps never change its height: one status line opens the steps sheet; each step starts collapsed.

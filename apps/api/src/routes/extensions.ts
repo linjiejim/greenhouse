@@ -23,11 +23,15 @@ const extensionsRoutes = new Hono<AppEnv>().get('/', async (c) => {
   c.header('Cache-Control', 'private, no-store');
   return c.json({
     ...(await stationManifest(getDb(), c.get('user'))),
-    notificationTransports: fromExtensions('notificationTransports').map(({ id, title, bindingSettings }) => ({
-      id,
-      title,
-      bindingSettings,
-    })),
+    notificationTransports: fromExtensions('notificationTransports').map(
+      ({ id, title, bindingSettings, acceptsWebhook }) => ({
+        id,
+        title,
+        bindingSettings,
+        // An automation's group-bot webhook is offered only when some transport takes one.
+        webhook: typeof acceptsWebhook === 'function',
+      }),
+    ),
     identityProviders: fromExtensions('identityProviders')
       .filter((p) => p.available())
       .map(({ id, title, icon, login, bind }) => ({ id, title, icon, login, bind })),

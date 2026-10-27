@@ -463,3 +463,27 @@ export interface SearchGroup {
     ref?: { kind: string; id: string; slug?: string };
   }[];
 }
+
+// ─── automations (/api/tasks) ───────────────────────────────────────
+
+/** verbatim (packages/types/src/automation-tools.ts): what granting a tool to unattended runs risks. */
+export type AutomationOptInTier = 'assist' | 'write';
+
+/** verbatim (packages/types/src/automation-tools.ts): one tool an automation's owner may grant. */
+export interface AutomationOptInTool {
+  id: string;
+  tier: AutomationOptInTier;
+  order?: number;
+  labelKey?: `ext.${string}`;
+}
+
+/**
+ * verbatim (packages/types/src/automation-tools.ts): the core grantable tools; plugins add theirs
+ * through the station manifest's `automationTools`.
+ */
+export const CORE_OPT_IN_TOOLS: AutomationOptInTool[] = [
+  { id: 'analyze_image', tier: 'assist', order: 10 },
+  { id: 'generate_image', tier: 'assist', order: 20 },
+  { id: 'export_data', tier: 'assist', order: 30 },
+  { id: 'mcp_call', tier: 'write', order: 90 },
+];

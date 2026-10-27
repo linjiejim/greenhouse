@@ -38,6 +38,8 @@ export interface StationManifest {
     id: string;
     title: string;
     bindingSettings?: { preference: string; label: string };
+    /** Accepts a group-bot webhook URL for automation results (`notify.webhook`). */
+    webhook?: boolean;
   }>;
   identityProviders?: Array<{ id: string; title: string; icon: string; login: boolean; bind: boolean }>;
   /** Kept for 3.x clients: `{ id, name, description }` of every active plugin. */

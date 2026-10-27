@@ -75,6 +75,14 @@ describe('vendored workspace code', () => {
     }
   });
 
+  it('the automation tool catalog matches packages/types/src/automation-tools.ts', () => {
+    const canonical = parse('packages/types/src/automation-tools.ts');
+    const copy = parse(`${MOBILE}/shared/greenhouse-types.ts`);
+    for (const name of ['AutomationOptInTier', 'AutomationOptInTool', 'CORE_OPT_IN_TOOLS']) {
+      expect(declaration(copy, name), name).toBe(declaration(canonical, name));
+    }
+  });
+
   it('the stations config shapes match packages/types/src/config.ts', () => {
     const canonical = parse('packages/types/src/config.ts');
     const copy = parse(`${MOBILE}/shared/greenhouse-config.ts`);

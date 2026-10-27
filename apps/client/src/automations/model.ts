@@ -18,8 +18,13 @@ export interface Automation {
   schedule: string;
   timezone: string;
   enabled: boolean;
-  notify?: { email?: boolean; wecom?: boolean; feishu?: boolean; webhook?: string | null } | null;
+  /** Plugin preference keys (`email`, `wecom`, `feishu` …) and the optional group-bot `webhook`. */
+  notify?: { [preference: string]: boolean | string | null | undefined; webhook?: string | null } | null;
   quiet_when_empty?: boolean;
+  /** The per-run tool-step budget (1–20). */
+  max_steps?: number;
+  /** Extra tools the owner granted to unattended runs (`@greenhouse/types/automation-tools`). */
+  unattended_tools?: string[];
   last_run_at: string | null;
   last_status: string | null;
   next_run_at: string | null;
