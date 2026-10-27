@@ -46,6 +46,9 @@ describe('declarative surfaces', () => {
     expect(fieldText({ key: 'x', title: 'X', kind: 'json' }, { a: 1 }, 'en')).toBe('{"a":1}');
     expect(fieldText(entity.fields[2], 1000, 'en')).toBe('1,000.00');
     expect(fieldText(entity.fields[0], null, 'en')).toBe('—');
+    const owner = { key: 'owner', title: 'Owner', kind: 'user' as const };
+    expect(fieldText(owner, 'usr_1', 'en', { usr_1: 'Ada' })).toBe('Ada');
+    expect(fieldText(owner, 'usr_2', 'en', { usr_1: 'Ada' })).toBe('usr_2');
     expect(fieldText(entity.fields[2], 1000.236, 'zh')).toBe('1,000.24');
     expect(fieldText({ key: 'x', title: 'X', kind: 'date' }, '2026-10-22', 'en')).toBe(
       new Intl.DateTimeFormat('en', { dateStyle: 'medium' }).format(new Date(2026, 9, 22)),

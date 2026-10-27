@@ -32,8 +32,15 @@ export function entityColumns(entity: PluginEntitySchema, view?: EntityViewSchem
     return field ? [field] : [];
   });
 }
-export function fieldText(field: EntityFieldSchema, value: unknown, locale: 'zh' | 'en'): string {
+/** `names`: member id → name (src/store/people.ts); an unknown member stays its id. */
+export function fieldText(
+  field: EntityFieldSchema,
+  value: unknown,
+  locale: 'zh' | 'en',
+  names: Readonly<Record<string, string>> = {},
+): string {
   if (value == null) return '—';
+  if (field.kind === 'user' && typeof value === 'string') return names[value] ?? value;
   if (field.kind === 'boolean') return value ? (locale === 'zh' ? '是' : 'Yes') : locale === 'zh' ? '否' : 'No';
   if (field.kind === 'date' || field.kind === 'dateTime') {
     const day = field.kind === 'date' && /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(value));

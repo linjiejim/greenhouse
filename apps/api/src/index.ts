@@ -54,6 +54,7 @@ import {
 // Route modules
 import authRoutes from './routes/auth.js';
 import meRoutes from './routes/me.js';
+import peopleRoutes from './routes/people.js';
 import profileRoutes from './routes/profiles.js';
 import sessionRoutes from './routes/sessions.js';
 import { createChatRoute } from './routes/chat.js';
@@ -228,6 +229,8 @@ function mountRoutes(toolRegistry: ToolRegistry) {
       .route('/api/search', createSearchRoute())
       // Object links → titles for chips (guard inside; each item authorized on its own).
       .route('/api/refs', createRefsRoutes())
+      // Member ids → display names for plugin record fields (internal members only).
+      .route('/api/people', peopleRoutes)
       // Activity log — guard inside the route (a bare `/api/activity` is not matched by `/*`).
       .route('/api/activity', createActivityRoutes())
       // Drive — internal users; per-node checks live in resolveDriveAccess

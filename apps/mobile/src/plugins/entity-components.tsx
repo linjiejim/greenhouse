@@ -8,6 +8,8 @@ import { useEntityList } from './entity-hooks';
 import { entityColumns, fieldText, writableValues, safeEndpoint, type EntityRow } from './surface-model';
 import { localize, type PluginEntitySchema, type PluginEntityListPage } from '../shared/plugins';
 import { usePrefs } from '../store/prefs';
+import { usePeopleNames } from '../store/people';
+import { peopleIds } from '../data/people';
 import { useT } from '../lib/i18n';
 import { Screen, SheetScreen } from '../ui/screen';
 import { Row } from '../ui/list';
@@ -37,6 +39,7 @@ export function EntityList({
   const view = entity.views.find((v) => v.id === (page.view ?? 'default')) ?? entity.views[0];
   const fields = entityColumns(entity, view);
   const list = useEntityList(entity, view, filters, sort);
+  const names = usePeopleNames(peopleIds(entity.fields, list.items));
   return (
     <>
       <Screen title={localize(page.title, lang)} />
@@ -81,7 +84,7 @@ export function EntityList({
             title={String(item[entity.title_field] ?? item.id)}
             subtitle={fields
               .filter((f) => f.key !== entity.title_field)
-              .map((f) => `${localize(f.title, lang)}: ${fieldText(f, item[f.key], lang)}`)
+              .map((f) => `${localize(f.title, lang)}: ${fieldText(f, item[f.key], lang, names)}`)
               .join(' · ')}
             onPress={() =>
               open({ kind: 'plugin-entity', plugin, page: detailPage, id: String(item.id), entity: entity.id })
@@ -128,6 +131,7 @@ export function EntityDetail({ entity, id }: { entity: PluginEntitySchema; id: s
     [busy, setBusy] = useState(false),
     [draft, setDraft] = useState<Record<string, string | boolean>>({});
   const row = resource.data;
+  const names = usePeopleNames(peopleIds(entity.fields, row ? [row] : []));
   const edit = () => {
     setDraft(
       Object.fromEntries(
@@ -271,7 +275,7 @@ export function EntityDetail({ entity, id }: { entity: PluginEntitySchema; id: s
                 </View>
               ) : (
                 <Text selectable style={{ ...typo.body, color: c.label }}>
-                  {fieldText(field, row[field.key], lang)}
+                  {fieldText(field, row[field.key], lang, names)}
                 </Text>
               )}
             </View>

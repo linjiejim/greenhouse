@@ -58,6 +58,22 @@ function ScreenFrame({ children, route }: { children: React.ReactNode; route: Ro
     const main = activeInspector && layout.wide && state.routes[state.index - depth]?.key === route.key;
     screen.setAttribute('aria-hidden', String(!(isTop || main)));
   }, [state, route.key, activeInspector, layout.wide, depth, isTop]);
+  const docked = inspector && layout.wide && !layout.floatInspector;
+  const frame = useRef<View>(null);
+  useLayoutEffect(() => {
+    // The stack wraps every screen in full-size layers; beside a docked inspector they would
+    // swallow clicks meant for the main pane, so they pass them through (the panel stays live).
+    if (!docked || !isTop) return;
+    const layers: HTMLElement[] = [];
+    let node = (frame.current as unknown as HTMLElement | null)?.parentElement ?? null;
+    while (node && layers.length < 6 && node.dataset.testid !== 'client-main') {
+      layers.push(node);
+      if (getComputedStyle(node).position === 'absolute') break;
+      node = node.parentElement;
+    }
+    layers.forEach((layer) => (layer.style.pointerEvents = 'none'));
+    return () => layers.forEach((layer) => (layer.style.pointerEvents = ''));
+  }, [docked, isTop]);
   const readWidth = useCallback(() => {
     try {
       return boundedInspectorWidth(Number(localStorage.getItem(widthKey)) || 400);
@@ -135,6 +151,7 @@ function ScreenFrame({ children, route }: { children: React.ReactNode; route: Ro
 
   return (
     <View
+      ref={frame}
       pointerEvents="box-none"
       style={{
         flex: 1,

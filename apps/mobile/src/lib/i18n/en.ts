@@ -15,6 +15,7 @@ export const en = {
     size: 'Size',
     newRecord: 'New record',
     all: 'All',
+    me: 'Me',
     openRecord: 'Open record',
     loadMore: 'Load more',
     newProject: 'New project',

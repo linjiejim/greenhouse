@@ -5,7 +5,8 @@ const endpoint = '/api/ext/crm/entities/company';
 async function pluginStation(page: Page, { token404 = false } = {}) {
   const base = await installPlaces(page),
     writes: { method: string; path: string; body: any }[] = [],
-    queries: URLSearchParams[] = [];
+    queries: URLSearchParams[] = [],
+    people: string[][] = [];
   let rows = Array.from({ length: 61 }, (_, i) => ({
     id: String(i + 1),
     name: i === 0 ? 'Acme Analytics' : `Customer ${i + 1}`,
@@ -128,6 +129,10 @@ async function pluginStation(page: Page, { token404 = false } = {}) {
       }
       return json(row);
     }
+    if (path === '/api/people/resolve') {
+      people.push(body.ids);
+      return json({ people: [{ id: 'owner-member', name: 'Lin Mei' }] });
+    }
     if (path === '/api/admin/settings') {
       if (method === 'PUT')
         settings = settings.map((s) => (s.key in body.values ? { ...s, value: body.values[s.key] } : s));
@@ -147,7 +152,7 @@ async function pluginStation(page: Page, { token404 = false } = {}) {
       contentType: 'text/html',
     }),
   );
-  return { ...base, writes, queries, tokenCount: () => tokenCount };
+  return { ...base, writes, queries, people, tokenCount: () => tokenCount };
 }
 async function ready(page: Page, path: string) {
   await page.goto(path);
@@ -184,10 +189,24 @@ test('Plugins entity list filters, sort, infinite pages, inspector edit and conf
   await page.getByRole('menuitem', { name: '金额 ↓', exact: true }).click();
   await page.getByRole('button', { name: '加载更多', exact: true }).click();
   await expect.poll(() => f.queries.some((q) => q.get('skip') === '50')).toBeTruthy();
+  // the list resolves its rows' members once per load; the inspector reuses the names
+  await expect.poll(() => f.people.length).toBeGreaterThan(0);
+  const resolved = f.people.length;
   await list.getByRole('row', { name: 'Acme Analytics', exact: true }).click();
   const inspector = page.getByTestId('client-inspector').filter({ visible: true });
   await expect(inspector).toContainText('Shared notes');
   await expect(list.getByRole('row', { name: 'Acme Analytics', exact: true })).toHaveAttribute('aria-selected', 'true');
+  // member fields read as names
+  await expect(inspector).toContainText('Lin Mei');
+  expect(f.people.length).toBe(resolved);
+  expect(new Set(f.people.flat())).toEqual(new Set(['owner-member']));
+  // the list beside a docked inspector (1440 and up) stays clickable
+  const viewport = page.viewportSize()!;
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await list.getByRole('row', { name: 'Customer 2', exact: true }).click();
+  await expect(inspector).toContainText('Customer 2');
+  await expect(list.getByRole('row', { name: 'Customer 2', exact: true })).toHaveAttribute('aria-selected', 'true');
+  await page.setViewportSize(viewport);
   const loadedQueries = f.queries.length;
   const scrollBeforeClose = await list.evaluate((el) => el.scrollTop);
   await page.keyboard.press('Escape');

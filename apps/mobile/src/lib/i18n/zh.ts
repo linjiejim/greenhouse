@@ -13,6 +13,7 @@ export const zh: Catalog = {
     size: '大小',
     newRecord: '新记录',
     all: '全部',
+    me: '我',
     openRecord: '打开记录',
     loadMore: '加载更多',
     newProject: '新项目',

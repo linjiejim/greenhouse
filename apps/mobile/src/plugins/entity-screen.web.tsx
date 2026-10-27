@@ -6,6 +6,9 @@ import { FieldValue, FieldTypeIcon } from '../ui/field-value.web';
 import { entityColumns, fieldText } from './surface-model';
 import { localize, type PluginEntitySchema, type PluginEntityListPage } from '../shared/plugins';
 import { usePrefs } from '../store/prefs';
+import { useAuth } from '../store/auth';
+import { usePeopleNames } from '../store/people';
+import { peopleIds } from '../data/people';
 import { useT } from '../lib/i18n';
 import { useOpenObject } from '../shell/open-object';
 import { Place, PlaceEmpty, PlaceContext, type PlaceContextPoint } from '../ui/place.web';
@@ -32,6 +35,8 @@ export function EntityList({
     fields = entityColumns(entity, view);
   const [context, setContext] = useState<PlaceContextPoint | null>(null);
   const list = useEntityList(entity, view, filters, sort);
+  const me = useAuth((s) => s.user);
+  const names = usePeopleNames(peopleIds(entity.fields, list.items));
   useEffect(() => {
     const refresh = () => {
       void list.refresh();
@@ -71,23 +76,33 @@ export function EntityList({
             return (
               <div className="gh-filter" key={key}>
                 {localize(f.title, lang)}{' '}
-                {f.kind === 'enum' || f.kind === 'boolean' ? (
+                {f.kind === 'enum' || f.kind === 'boolean' || f.kind === 'user' ? (
                   <NativeMenu
                     title={localize(f.title, lang)}
                     items={[
                       { id: '', title: t('places.all'), checked: !filters[key] },
-                      ...(f.kind === 'boolean' ? ['true', 'false'] : (f.values ?? [])).map((value) => ({
+                      ...(f.kind === 'boolean'
+                        ? ['true', 'false']
+                        : f.kind === 'user'
+                          ? memberChoices(me?.id, peopleIds([f], list.items), filters[key])
+                          : (f.values ?? [])
+                      ).map((value) => ({
                         id: value,
-                        title: fieldText(f, f.kind === 'boolean' ? value === 'true' : value, lang),
+                        title:
+                          f.kind === 'user' && value === me?.id
+                            ? t('places.me')
+                            : fieldText(f, f.kind === 'boolean' ? value === 'true' : value, lang, names),
                         checked: filters[key] === value,
                       })),
                     ]}
                     onSelect={(value) => setFilters((v) => ({ ...v, [key]: value }))}
                   >
                     <button aria-label={localize(f.title, lang)}>
-                      {filters[key]
-                        ? fieldText(f, f.kind === 'boolean' ? filters[key] === 'true' : filters[key], lang)
-                        : t('places.all')}{' '}
+                      {!filters[key]
+                        ? t('places.all')
+                        : f.kind === 'user' && filters[key] === me?.id
+                          ? t('places.me')
+                          : fieldText(f, f.kind === 'boolean' ? filters[key] === 'true' : filters[key], lang, names)}{' '}
                       ▾
                     </button>
                   </NativeMenu>
@@ -184,7 +199,7 @@ export function EntityList({
                       key={f.key}
                       className={['integer', 'number', 'money'].includes(f.kind) ? 'gh-number' : undefined}
                     >
-                      <FieldValue kind={f.kind} text={fieldText(f, row[f.key], lang)} />
+                      <FieldValue kind={f.kind} text={fieldText(f, row[f.key], lang, names)} />
                     </td>
                   ))}
                 </tr>
@@ -233,4 +248,9 @@ export function EntityList({
       />
     </>
   );
+}
+
+/** A member filter offers the signed-in member first, then the people on screen (and the one picked). */
+function memberChoices(me: string | undefined, onScreen: string[], picked: string | undefined): string[] {
+  return [...new Set([...(me ? [me] : []), ...onScreen, ...(picked ? [picked] : [])])];
 }

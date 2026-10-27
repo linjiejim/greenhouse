@@ -289,6 +289,13 @@ Knowledge routes, ACL, FTS, exports, presence and live updates belong to [plugin
 - **读不到和不存在必须长得一样**：都返回 `title: null`，不报错、不区分，免得成为存在性探针。任务链接里的 project 与任务实际所属不符也按读不到处理。
 - 每次最多 50 条（`MAX_RESOLVE_URLS`），同一对象只查一次。项目、记录走 dispatch，和搜索一样会留读审计。
 
+### 成员名字（`POST /api/people/resolve`）
+
+插件记录的 `user` 字段存成员 id，客户端画成名字，从这里批量取回（`routes/people.ts`）。
+- 只给内部成员（super / team），和成员选择器里看得到同事的人是同一批。
+- 只回 `{ id, name }`（昵称）；不回邮箱、角色、状态。查不到的 id 直接不返回。
+- 每次最多 200 个（`MAX_RESOLVE_PEOPLE`）。
+
 ### 工具返回值里的站内深链（`url`）
 
 返回可点开的记录时，结果行带一个 `url` 字段，模型在正文里把它写成 Markdown 链接，用户点击就地浮出详情。方案见 [spec](../../../docs/specs/20260804-entity-references-and-peek.md)。
