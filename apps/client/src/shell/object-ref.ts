@@ -143,6 +143,8 @@ export type Place =
   | { kind: 'tables'; baseId: string | null; tableId: string | null }
   | { kind: 'agents' }
   | { kind: 'web'; hash: string }
+  /** A plugin page of this client (`/p/<plugin>/<page>`). */
+  | { kind: 'page'; href: string }
   | { kind: 'external'; url: string };
 
 /** A link's target as one object to open, or a place to go. */
@@ -176,6 +178,8 @@ export function refOfTarget(target: AppTarget): { ref: ObjectRef } | { place: Pl
       if (/^#\/automations(?:\?|$)/.test(target.hash)) return { place: { kind: 'tab', href: '/automations' } };
       return { place: { kind: 'web', hash: target.hash } };
     }
+    case 'page':
+      return { place: { kind: 'page', href: target.href } };
     case 'external':
       return { place: { kind: 'external', url: target.url } };
   }

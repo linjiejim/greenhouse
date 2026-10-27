@@ -562,6 +562,10 @@ access granted by stored shares. Existing share rows are preserved.
   the 3.x response fields. Pure `surfaces` metadata belongs to each plugin manifest;
   core must never add cases for official plugin ids.
 
+### Client links (4.0)
+
+- Browser links the server makes (activation mail, `/oauth/authorize`, connector and identity-provider returns, plugin page fallbacks) use `@greenhouse/types/client-routes`, never classic hash routes; secrets go in the fragment (`clientRouteUrl(..., { fragment })`).
+
 ### Embed authentication and hosting (4.0, wave 4)
 
 - `POST /api/ext-ui/token` requires a current internal session and a member-visible plugin. A separate signing purpose binds credentials to member, auth_version and plugin for ten minutes. Recheck account and plugin access on every call. Only `/api/ext/<id>/*` and basic `GET /api/me` (id/name/role) are admitted; the host's session renews them. Scope enforcement precedes public bypass and SPA hosting. Plugin route guards still apply.

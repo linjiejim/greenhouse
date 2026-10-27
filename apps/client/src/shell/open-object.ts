@@ -111,6 +111,9 @@ export function openPlace(
     case 'web':
       void openLink(webUrl(getApiBase(), place.hash), accent);
       return;
+    case 'page':
+      leavePresented(router, routes, () => router.navigate(place.href as never));
+      return;
     case 'external':
       void openLink(place.url, accent);
   }

@@ -82,6 +82,7 @@
 - Home uses one shared flow and platform frames: composer under the greeting on wide screens, at the bottom on narrow screens.
 - Browser context menus use the same items as tap menus, and the overlay restores focus when dismissed.
 - Browser previews never receive same-origin privileges; unknown plugin pages explicitly offer the station's browser fallback.
+- Entry pages (activation, OAuth consent, a connector's sign-in return, a binding result) are one card on the brand canvas like sign-in, without the rail; their primary action is the accent button, the way back secondary.
 
 ## Wide chat main line (C2)
 

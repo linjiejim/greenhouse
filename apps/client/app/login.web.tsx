@@ -1,7 +1,9 @@
+import '../src/login/entry.css';
 import React, { useState } from 'react';
 import { Text, View } from 'react-native';
 import { Stack } from 'expo-router';
 import { useLogin } from '../src/login/use-login';
+import { useProviderSignIn } from '../src/login/provider-sign-in.web';
 import { useT } from '../src/lib/i18n';
 import { GreenhouseMark } from '../src/ui/logo';
 import { NativeButton } from '../src/ui/button';
@@ -12,6 +14,10 @@ export default function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const flow = useLogin({ email: () => email, password: () => password });
+  // Feishu and other identity providers, when their plugin is on (src/plugins/identity.ts)
+  const providers = useProviderSignIn();
+  const error = providers.error ?? flow.error ?? flow.connectionError;
+  const busy = flow.busy || providers.busy !== null;
   const inputStyle = {
     font: 'inherit',
     padding: space.md,
@@ -57,6 +63,7 @@ export default function Login() {
             onChange={(e) => {
               setEmail(e.target.value);
               flow.clearError();
+              providers.clearError();
             }}
             style={inputStyle}
           />
@@ -70,18 +77,19 @@ export default function Login() {
             onChange={(e) => {
               setPassword(e.target.value);
               flow.clearError();
+              providers.clearError();
             }}
             style={inputStyle}
           />
-          {flow.error || flow.connectionError ? (
+          {error ? (
             <Text accessibilityRole="alert" style={{ ...typo.footnote, color: c.red }}>
-              {flow.error ?? flow.connectionError}
+              {error}
             </Text>
           ) : null}
           <button
             type="submit"
             data-testid="login-submit"
-            disabled={flow.busy}
+            disabled={busy}
             style={{
               ...inputStyle,
               background: c.accent,
@@ -95,6 +103,27 @@ export default function Login() {
           </button>
           {flow.connectionError ? <NativeButton label={t('common.retry')} onPress={() => void flow.retry()} /> : null}
         </form>
+        {providers.providers.length ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: space.md }}>
+            <div className="gh-entry-divider" aria-hidden="true">
+              {t('entry.or')}
+            </div>
+            {providers.providers.map((provider) => (
+              <button
+                key={provider.id}
+                type="button"
+                className="gh-entry-secondary"
+                data-testid={`login-provider-${provider.id}`}
+                disabled={busy}
+                onClick={() => void providers.start(provider)}
+              >
+                {providers.busy === provider.id
+                  ? t('entry.signingIn')
+                  : t('entry.signInWith', { name: t(provider.title) })}
+              </button>
+            ))}
+          </div>
+        ) : null}
       </View>
     </View>
   );

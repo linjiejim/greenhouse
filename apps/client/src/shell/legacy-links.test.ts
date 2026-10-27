@@ -35,13 +35,27 @@ describe('classic links from station messages', () => {
     ['#/settings', '/me'],
     ['#/settings/notifications', '/me/notifications'],
     ['#/settings/agent-connections/activity', '/me/agents'],
-    ['#/settings/provider-bindings?code=x', '/classic/#/settings/provider-bindings?code=x'],
-    ['#/connectors/oauth-finish?code=x', '/classic/#/connectors/oauth-finish?code=x'],
-    ['#/activate?token=x', '/classic/#/activate?token=x'],
-    ['#/login?feishu=ok', '/classic/#/login?feishu=ok'],
-    ['#/skillhub/example', '/classic/#/skillhub/example'],
-    ['#/skillhub?tab=reports', '/classic/#/skillhub?tab=reports'],
-    ['#/example/notes/42', '/classic/#/example/notes/42'],
+    ['#/settings/provider-bindings?feishu=ok', '/bindings?feishu=ok'],
+    ['#/settings/provider-bindings?wecom=error&reason=already_bound', '/bindings?wecom=error&reason=already_bound'],
+    ['#/settings/provider-bindings', '/me/connectors'],
+    ['#/connectors/oauth-finish?code=x&state=s', '/connectors/oauth-finish#code=x&state=s'],
+    ['#/activate?token=x', '/activate#token=x'],
+    ['#/activate', '/activate'],
+    ['#/login', '/login'],
+    ['#/login?feishu_code=c', '/login#feishu_code=c'],
+    ['#/login?feishu=error&reason=not_bound', '/login#feishu=error&reason=not_bound'],
+    ['#/skillhub', '/p/skills/skills'],
+    ['#/skillhub/example', '/p/skills/skills'],
+    ['#/skillhub?tab=reports', '/p/reports/reports'],
+    ['#/ext/crm/company', '/p/crm/crm-company'],
+    ['#/ext/crm/company/42', '/p/crm/crm-company'],
+    // no client page and no classic fallback: home
+    ['#/example/notes/42', '/'],
+    ['#/administration', '/'],
   ])('%s → %s', (input, output) => expect(mapLegacyLink(input)).toBe(output));
+  it('never sends a link to the classic app', () => {
+    for (const hash of ['#/whatever', '#/settings/unknown', '#/chat/%E0%A4%A'])
+      expect(mapLegacyLink(hash)?.startsWith('/classic')).toBe(false);
+  });
   it('does not hijack ordinary fragment anchors', () => expect(mapLegacyLink('#section')).toBeNull());
 });

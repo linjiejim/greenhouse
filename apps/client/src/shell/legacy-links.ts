@@ -1,9 +1,16 @@
 import { objectId } from '../lib/object-id';
-/** Classic routes emitted by notifications, entity links, email and IM. No React imports. */
+/**
+ * Classic routes emitted by notifications, entity links, email and IM, mapped to client routes.
+ * No React imports. Entry links keep their parameters in the fragment form of the client route
+ * (`/activate#token=`), which the root layout holds back before routing (src/login/entry-links.ts).
+ * A route the client has no page for opens home: the classic app is never a fallback.
+ */
 import { parseHashRoute } from '../lib/deep-links';
+import { CLIENT_ROUTES, pluginPagePath } from '../shared/client-routes';
 import { openingOf, refOfTarget } from './object-ref';
 const route = (path: string, params: Record<string, string> = {}) =>
   path + (Object.keys(params).length ? `?${new URLSearchParams(params)}` : '');
+const withFragment = (path: string, query: string) => (query ? `${path}#${query}` : path);
 export function mapLegacyLink(input: string): string | null {
   const hash = input.startsWith('/#/') ? input.slice(1) : input;
   if (!hash.startsWith('#/')) return null;
@@ -31,7 +38,15 @@ export function mapLegacyLink(input: string): string | null {
     if (path === 'settings' || path === 'settings/preferences' || path === 'me') return '/me';
     if (path === 'settings/notifications') return '/me/notifications';
     if (path === 'settings/connectors') return '/me/connectors';
-    if (path === 'login' && !query) return '/login';
+    if (path === 'login') return withFragment(CLIENT_ROUTES.login, query);
+    if (path === 'activate') return withFragment(CLIENT_ROUTES.activate, query);
+    if (path === 'connectors/oauth-finish') return withFragment(CLIENT_ROUTES.connectorFinish, query);
+    if (path === 'settings/provider-bindings')
+      return query ? `${CLIENT_ROUTES.bindings}?${query}` : CLIENT_ROUTES.connections;
+    if (parts[0] === 'skillhub')
+      return params.get('tab') === 'reports' ? pluginPagePath('reports', 'reports') : pluginPagePath('skills', 'skills');
+    if (parts[0] === 'ext' && parts.length >= 3)
+      return pluginPagePath(decodeURIComponent(parts[1]!), `${decodeURIComponent(parts[1]!)}-${decodeURIComponent(parts[2]!)}`);
     if (parts[0] === 'activity' && parts.length >= 2 && parts.length <= 3)
       return route('/sheet/run', { id: decodeURIComponent(parts.at(-1)!) });
     const target = parseHashRoute(hash);
@@ -60,7 +75,7 @@ export function mapLegacyLink(input: string): string | null {
       }
     }
   } catch {
-    /* malformed percent escapes stay on the classic client */
+    /* malformed percent escapes open home */
   }
-  return '/classic/' + hash;
+  return '/';
 }
