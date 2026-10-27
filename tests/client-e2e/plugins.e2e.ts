@@ -1,6 +1,7 @@
 import { test, expect, type Page } from '@playwright/test';
 import { readFileSync, mkdirSync } from 'node:fs';
 import { installPlaces, officialManifest } from './p3-fixture';
+import { API_BASE } from '../../playwright.client.config';
 const endpoint = '/api/ext/crm/entities/company';
 async function pluginStation(page: Page, { token404 = false } = {}) {
   const base = await installPlaces(page),
@@ -82,7 +83,7 @@ async function pluginStation(page: Page, { token404 = false } = {}) {
         parent: 'settings',
         title: { zh: '客户设置' },
       },
-      { id: 'embed', kind: 'embed', url: 'http://localhost:18920/ext/crm/ui/', title: { zh: '客户工作台' } },
+      { id: 'embed', kind: 'embed', url: `${API_BASE}/ext/crm/ui/`, title: { zh: '客户工作台' } },
       { id: 'future', kind: 'future-kind', title: 'Future', fallback_url: '/classic/#/crm' },
     ],
   });

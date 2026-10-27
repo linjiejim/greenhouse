@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { mkdirSync } from 'node:fs';
-const API = 'http://localhost:18920';
+import { API_BASE as API } from '../../playwright.client.config';
 const REPLY = '两条都写在远程办公政策里：居家补贴一次性 1,000 美元，每月 75 美元。核心工时为工作日 10:00–14:00。';
 async function auth(page: import('@playwright/test').Page) {
   await page.goto('/');

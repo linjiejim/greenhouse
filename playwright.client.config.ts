@@ -1,5 +1,10 @@
 import { defineConfig, devices } from '@playwright/test';
-export const CLIENT_DATABASE = 'postgresql://greenhouse:greenhouse@127.0.0.1:55450/gh4_client';
+// Parallel worktrees override these so their suites never share ports or a database.
+export const CLIENT_DATABASE =
+  process.env.CLIENT_E2E_DATABASE ?? 'postgresql://greenhouse:greenhouse@127.0.0.1:55450/gh4_client';
+export const API_PORT = process.env.CLIENT_E2E_API_PORT ?? '18920';
+export const WEB_PORT = process.env.CLIENT_E2E_WEB_PORT ?? '18921';
+export const API_BASE = `http://localhost:${API_PORT}`;
 const shared = {
   DATABASE_URL: CLIENT_DATABASE,
   TOKEN_SIGNING_KEY: '6666666666666666666666666666666666666666666666666666666666666666',
@@ -15,7 +20,7 @@ export default defineConfig({
   timeout: 60_000,
   expect: { timeout: 20_000 },
   reporter: 'list',
-  use: { baseURL: 'http://localhost:18921', trace: 'retain-on-failure', screenshot: 'only-on-failure' },
+  use: { baseURL: `http://localhost:${WEB_PORT}`, trace: 'retain-on-failure', screenshot: 'only-on-failure' },
   projects: [
     { name: 'setup', testMatch: /auth\.setup\.ts/ },
     {
@@ -28,15 +33,15 @@ export default defineConfig({
   webServer: [
     {
       command: 'pnpm api',
-      url: 'http://localhost:18920/health',
-      env: { ...shared, API_PORT: '18920', CORS_ALLOWED_ORIGINS: 'http://localhost:18921' },
+      url: `${API_BASE}/health`,
+      env: { ...shared, API_PORT, CORS_ALLOWED_ORIGINS: `http://localhost:${WEB_PORT}` },
       reuseExistingServer: false,
       timeout: 120_000,
     },
     {
-      command: 'cd apps/client && npx expo start --web --port 18921',
-      url: 'http://localhost:18921',
-      env: { EXPO_PUBLIC_API_BASE_URL: 'http://localhost:18920', CI: '1' },
+      command: `cd apps/client && npx expo start --web --port ${WEB_PORT}`,
+      url: `http://localhost:${WEB_PORT}`,
+      env: { EXPO_PUBLIC_API_BASE_URL: API_BASE, CI: '1' },
       reuseExistingServer: false,
       timeout: 180_000,
     },
