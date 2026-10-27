@@ -64,16 +64,16 @@ describe('validateMemoryText', () => {
     expect(result.error).toContain('"zoe.chen@example.com"');
   });
 
-  it('routes contact details to the CRM rather than only refusing', () => {
+  it('routes contact details to a record system rather than only refusing', () => {
     // The information is worth keeping — just not in a fragment replayed into
     // every future prompt, with no owner and no access control.
     for (const content of ['call +86 138 0013 8000 first', 'reach them at zoe@example.com']) {
-      expect(validateMemoryText({ content }).error).toMatch(/crm_mutation/);
+      expect(validateMemoryText({ content }).error).toMatch(/record system/);
     }
   });
 
-  it('offers no CRM routing for secrets, which belong nowhere', () => {
-    expect(validateMemoryText({ content: 'password: hunter2' }).error).not.toMatch(/crm_mutation/);
+  it('offers no record-system routing for secrets, which belong nowhere', () => {
+    expect(validateMemoryText({ content: 'password: hunter2' }).error).not.toMatch(/record system/);
   });
 
   it('rejects empty and over-long fields', () => {

@@ -17,12 +17,13 @@ import { findSensitiveSpans } from '@greenhouse/api/extension-kit';
 export { findSensitiveSpans, redactEvidence } from '@greenhouse/api/extension-kit';
 
 /**
- * Where the CRM refusal points people. A memory records a DECISION; a person's
+ * Where the contact refusal points people. A memory records a DECISION; a person's
  * contact details are a record, and records have a home with access control,
  * an owner and an audit trail — none of which a replayed prompt fragment has.
+ * Core names no tool here: which record system a station has depends on its plugins.
  */
 const CONTACT_ROUTING =
-  ' Contact details belong in the CRM, not here: file the person under their company with `crm_mutation` (or as a lead if they are not a customer yet), then keep the memory to the decision itself and refer to people by name.';
+  ' Contact details belong in a record system with an owner and access control (a CRM or a contacts table, if the station has one), not here: keep the memory to the decision itself and refer to people by name.';
 
 export interface MemoryTextValidation {
   ok: boolean;
