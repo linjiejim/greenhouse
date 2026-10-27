@@ -1,7 +1,8 @@
 /**
- * The import surface for extensions — everything an extension under
- * `apps/api/src/plugin-host/<id>/` may use from core, re-exported from one place
- * so extension code does not depend on the core folder layout.
+ * The import surface for extensions — everything a plugin's api half
+ * (`plugins/<id>/api/`) may use from core, re-exported from one place as
+ * `@greenhouse/api/extension-kit` so extension code does not depend on the core
+ * folder layout.
  *
  * This barrel IS the stable API (with the define types, `@greenhouse/types` and
  * `@greenhouse/crud`); everything else in core is internal and may change in

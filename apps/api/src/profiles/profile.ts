@@ -508,7 +508,7 @@ function watchProfileDir(dir: string): void {
 // consumer — logs, admin views, the external API — behaves exactly as before, and
 // `i18n` for clients that want to render in the user's locale.
 
-/** Locales a profile may declare copy for. Mirrors the web app's `Locale` union. */
+/** Locales a profile may declare copy for. Mirrors the client's `LangPref` union. */
 const SUPPORTED_LOCALES = ['en', 'zh'] as const;
 
 /** Locale the YAML profiles are authored in — the fallback when a translation is missing. */

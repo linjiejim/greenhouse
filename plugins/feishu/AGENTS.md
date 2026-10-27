@@ -1,9 +1,9 @@
 # Feishu plugin
 
+- Shared plugin rules: [root AGENTS.md](../../AGENTS.md) (Plugins) and [EXTENDING.md](../../EXTENDING.md); this file lists only Feishu-specific rules.
 - Default off; enablement plus restart is required independently of FEISHU credentials and the separate bot switch.
-- Own feishu_conversations/feishu_receipts and services, routes, classic controls, identity/transport/channel contributions.
-- Production imports use kits/shared contracts/declared dependencies; copy lives under ext.feishu.* and applied SQL is immutable.
-- Preserve env names, URLs, ids/preferences and greenhouse://auth/feishu; disablement retains data.
+- Own feishu_conversations/feishu_receipts and services, routes, identity/transport/channel contributions.
+- Preserve env names, URLs, ids/preferences and greenhouse://auth/feishu; disablement retains data; applied SQL is immutable.
 - Identity bindings and hashed single-use login state/codes remain core; Feishu user tokens are discarded after identity lookup.
 - Bind by open_id to an existing active internal account, never email inference or automatic account creation.
 - Binding/login share the callback and distinguish intent in state; bind/start require Bearer, callback/login exchange use their declared public paths.
@@ -20,4 +20,4 @@
 - Group replies show the acting member/visibility footer; replay prior history/digest only for the session owner.
 - Extract ask_user questions from toolEvidence and preserve them even when truncating the normal reply text.
 - Bot connections and provider token caches are process-local; do not claim replica-safe operation without a shared design.
-- Register reset tables/migrations/schema docs; browser specs import only @playwright/test.
+- Register reset tables/migrations and keep [schema](db-schema.md) current.

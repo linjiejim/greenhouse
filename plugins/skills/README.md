@@ -2,9 +2,8 @@
 
 Versioned SKILL.md bundles, security scans, publish/download and MCP skill prompts. Saved prompts remain core.
 
-**Default: on.** Compiled by the upstream configuration. Enable/disable `skills` through
-`extensions.enabled` or `GREENHOUSE_EXTENSIONS`, retaining other enabled ids, then restart.
-Credentials alone do not enable it. Disabling preserves data.
+**Default: on.** Enable/disable `skills` through `extensions.enabled` or `GREENHOUSE_EXTENSIONS`
+(keep the other ids), then restart. Disabling preserves data.
 
 | Surface | Details |
 |---|---|
@@ -13,9 +12,9 @@ Credentials alone do not enable it. Disabling preserves data.
 | Owned tables | `skills`, `skill_versions` |
 | Tools | `skill_query`, `skill_mutation` |
 | Routes | `/api/skills` |
+| Client | A read-only skills list; publishing goes through `skill_mutation` or the API. |
 
-Classic `#/skillhub`; universal Skills page. Skill versions are immutable; download paths enforce quarantine. The repository ships no skill packs.
+Skill versions are immutable; download paths enforce quarantine. The repository ships no skill
+packs.
 
-See [plugin development](../../EXTENDING.md), [package rules](AGENTS.md) and
-`api/index.ts` for registered contributions. Add new SQL after applied migrations; never edit
-existing checksums. Test permission denials and disabled contributions as well as enabled behavior.
+Rules: [AGENTS.md](AGENTS.md). Plugin contract: [EXTENDING.md](../../EXTENDING.md).

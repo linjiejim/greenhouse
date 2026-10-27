@@ -1,6 +1,6 @@
 /**
  * Report templates rendered into Files as PDF / DOCX / PPTX. Visibility and
- * editing rules live in `apps/api/src/reports/templates.ts`. `owner_user_id` is
+ * editing rules live in `./templates.ts`. `owner_user_id` is
  * a loose reference (team templates outlive their author); null = built-in.
  * Deleting stamps `deleted_at`.
  *

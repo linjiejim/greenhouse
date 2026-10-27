@@ -2,7 +2,7 @@ import { services } from '../services.js';
 /**
  * Skill Center orchestration tests — publish/download/sync/manage semantics
  * over an in-memory skill store and an in-memory services(db).skills fake (the real
- * service is covered by tests/db/skills-service.test.ts against PostgreSQL).
+ * service is covered by ../__tests__/skills-service.db.test.ts against PostgreSQL).
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';

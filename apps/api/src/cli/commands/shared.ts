@@ -1,5 +1,5 @@
 /**
- * Shared helpers for the `admin` dev/ops console (apps/api/src/cli/admin.ts).
+ * Shared helpers for the `cli` dev/ops console (apps/api/src/cli/index.ts).
  *
  * Everything here is deliberately dependency-light: a tiny flag parser, an
  * ANSI-aware table/kv formatter (chalk is already an api dep), readline prompts,

@@ -3,12 +3,11 @@ import { stationManifest } from '../plugin-host/station-manifest.js';
 /**
  * GET /api/extensions — what this deployment's active extensions contribute.
  *
- * The web client compiles every extension in but renders only the active ones,
- * so it needs the list. One registry additionally has to reach the browser
- * as DATA rather than as code: record-kind routes (so `entityUrl` /
- * `parseEntityUrl` resolve an extension's deeplinks, which is what turns a link
- * in chat into a peek). They are declared once, on the API half, and shipped
- * here — a second hand-written copy in the web half is exactly the drift this
+ * The station manifest (packages/types/src/plugins.ts): clients render plugins
+ * from it as DATA rather than as code — nav, pages, entities and record-kind
+ * routes (so an extension's deeplinks resolve, which is what turns a link in
+ * chat into a peek). They are declared once, on the api half, and shipped
+ * here — a second hand-written copy in a client is exactly the drift this
  * avoids.
  *
  * Authenticated: which extensions a deployment runs is configuration, not

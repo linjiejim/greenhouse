@@ -1,6 +1,6 @@
 import type { PluginNavItem, PluginPage } from '@greenhouse/types/plugins';
 import pkg from './package.json';
-/** Pure station metadata; code belongs in the API and web halves. */
+/** Pure station metadata; code belongs in the api half, client UI in pages, nav and ui. */
 export default {
   id: 'example',
   name: 'Example notes',

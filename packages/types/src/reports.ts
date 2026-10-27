@@ -6,10 +6,10 @@
  * cover fields it carries and which file formats it may be rendered to. Any
  * agent — a member's Codex over MCP, or the in-app assistant — reads the
  * template, writes structured content, and the server renders it in the
- * workspace brand. Shared by apps/api (storage, validation, rendering) and
- * apps/web (the SkillHub editor), so the two can never disagree on a limit.
+ * workspace brand. Shared by the reports plugin's storage, validation and
+ * rendering, so they can never disagree on a limit.
  *
- * Identity and rules only: display copy lives in the web locales.
+ * Identity and rules only: no display copy.
  */
 
 export const REPORT_KINDS = ['report', 'presentation'] as const;

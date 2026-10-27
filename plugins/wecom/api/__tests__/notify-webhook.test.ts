@@ -4,7 +4,7 @@ import { transport as feishuTransport } from '../../../feishu/api/transport.js';
 import { registerNotificationTransports } from '../../../../apps/api/src/notifications/transports.js';
 registerNotificationTransports([wecomTransport, feishuTransport, emailTransport]);
 /**
- * The notify_webhook whitelist is what keeps that field from being a "POST the
+ * The `notify.webhook` whitelist is what keeps that field from being a "POST the
  * run summary anywhere" channel, so its exact shape is pinned: two hosts, and
  * for Feishu additionally the fixed bot path. `notifyWebhookKind` then decides
  * which payload format the delivery worker speaks — a WeCom body POSTed to a

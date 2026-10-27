@@ -7,9 +7,8 @@
  *   page_open  key = a page module id, client = the app that showed it
  *
  * Page module ids are a closed list so a client cannot write arbitrary keys:
- * `PAGE_MODULE_IDS` (core, pinned to the web navigation registry by
- * apps/web/src/lib/usage/page-module.test.ts) plus `ext.<id>` for every
- * extension active on this deployment.
+ * `PAGE_MODULE_IDS` (core) plus `ext.<id>` for every extension active on this
+ * deployment.
  */
 
 /**

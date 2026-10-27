@@ -1,8 +1,10 @@
 # Tables official plugin
 
-- Default on. Preserve `/api/tables`, `#/tables`, the three tool ids, the `tables` feature flag and MCP group, and `tables_record` links. Disabling preserves data and removes contributions. Use `services(db).tables`; never add the service back to DatabaseProvider.
-
-- Nine tables: `0001_adopt.sql` is the plugin baseline (creates them on enable; adopts 3.x tables in place). Base membership remains in core `shares` (`table_base`); record attachments remain in core `file_links` (`table_record`, slot = field id). Register these discriminators and `tables_schema_plan` receipt kinds. Drive nodes retain `scope=tables, base_id=...`; the active scope owns placement validation and Base ACL. No Tables example seed rows existed; future Tables datasets belong in this package.
+- Shared plugin rules: [root AGENTS.md](../../AGENTS.md) (Plugins) and [EXTENDING.md](../../EXTENDING.md); this file lists only Tables-specific rules.
+- Default on. Preserve `/api/tables`, legacy `#/tables` links, the three tool ids, the `tables` feature flag and MCP group, and `tables_record` links. Disabling preserves data and removes contributions. Use `services(db).tables`; never add the service back to DatabaseProvider.
+- Nine tables: `0001_adopt.sql` is the plugin baseline (creates them on enable; adopts 3.x tables in place). Base membership remains in core `shares` (`table_base`); record attachments remain in core `file_links` (`table_record`, slot = field id). Register these discriminators and `tables_schema_plan` receipt kinds.
+- Drive nodes retain `scope=tables, base_id=...`; the active scope owns placement validation and Base ACL. Future Tables datasets belong in this package.
+- The client's grid opens under Files (`/drive?view=tables`; apps/client/src/plugins/tables, src/tables) and reads and writes records only. Field editing, the recycle bin, the data catalog page and the audit dialog have no client screen.
 
 ## Schema plans and authorization
 
@@ -17,14 +19,8 @@
 
 - Base/table deletion sets archived_at; record deletion sets deleted_at. Existing read paths filter these states. getRecordById deliberately includes deleted records for recycle-bin/audit use; getRecord does not.
 - Base/table archive requires owner access; create/update structure requires builder. Preserve records, fields and relation links on archive. Reject new links to archived tables and stop refreshing their rollups.
-- Models cannot archive Bases/tables: schema plans have no archive operation. Keep the tool guidance pointing the member to the sidebar.
-- Records have an editor-accessible recycle bin. Base/table recovery stays administrator-only through `pnpm cli tables list-archived | restore-base | restore-table`. Restoring/deleting a record increments revision and refreshes dependent rollups.
+- Models cannot archive Bases/tables: schema plans have no archive operation.
+- Base/table recovery stays administrator-only through `pnpm cli tables list-archived | restore-base | restore-table`. Restoring/deleting a record increments revision and refreshes dependent rollups.
 - All record reads, queries, aggregates, writes and batches check record.values field policy in requireTableData. Masked single reads return empty values; queries/aggregates require full read to prevent inference.
 - Personal views require the current user id at the DB boundary; builder status does not grant another member's personal view. Attachments accept only Drive file ids from the same Base.
-- Forms, dashboards, in-table automations and Tables notifications were retired in 3.0. Do not restore them.
-
-## Classic web
-
-- Grid, sidebar, dialogs, API client, catalog, schema-plan card and translations belong here. Cards receive host-derived action/session handles. Explicit submodule titles take precedence over the page-host title.
-
-- InlineEditCell and its multi-select editor remain core shared primitives because other plugin pages already consume the snapshot-locked kit exports. Reuse those primitives; Tables-specific dialogs and grid stay in this package.
+- Forms, dashboards, in-table automations and Tables notifications do not exist; do not restore them.

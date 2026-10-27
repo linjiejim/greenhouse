@@ -2,7 +2,7 @@
  * Task Capture — the model drafts a reusable Task from THIS conversation.
  *
  * Session-scoped and DRAFT-ONLY, the same shape as `tables_schema_plan`: it writes
- * no row. It returns a `task_capture` artifact the web renders as an editable card, and the Task exists only once the user
+ * no row. It returns a `task_capture` artifact the client renders as an editable card, and the Task exists only once the user
  * presses Create (POST /api/prompts) — spec D2.
  *
  * The confirm gate is the point of the feature, not ceremony around it. The
@@ -63,7 +63,7 @@ const captureSchema = z.object({
 
 type CaptureInput = z.infer<typeof captureSchema>;
 
-/** Artifact payload consumed by the web TaskCaptureCard. */
+/** Artifact payload consumed by the client's TaskCaptureCard. */
 export interface TaskCaptureArtifact {
   type: 'task_capture';
   title: string;

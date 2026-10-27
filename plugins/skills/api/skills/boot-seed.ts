@@ -40,7 +40,7 @@ const TEXT_EXTENSIONS = new Set([
   'csv',
 ]);
 
-// ─── Filesystem + parsing layer (mirror of skillhub-sync.mjs) ─────
+// ─── Filesystem + parsing layer ─────
 
 export interface SkillPackRef {
   group: string;

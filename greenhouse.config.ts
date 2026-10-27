@@ -27,7 +27,7 @@ export default defineConfig({
     './plugins/retro',
   ],
   extensions: {
-    // Packages above and SDK 1 in-tree registrations are compiled in; this switches them on.
+    // The packages above are compiled in; this switches them on.
     // 'all' enables every compiled extension. GREENHOUSE_EXTENSIONS overrides at boot.
     enabled: ['knowledge', 'tables', 'skills', 'feedback', 'memory'],
   },
@@ -39,8 +39,8 @@ export default defineConfig({
   },
   clients: {
     stations: {
-      // 'multi': users add and switch Greenhouse servers in the mobile app.
-      // 'single': lock a client build to the one station below. The mobile build
+      // 'multi': users add and switch Greenhouse servers in the client.
+      // 'single': lock a client build to the one station below. The client build
       // mirrors this through EXPO_PUBLIC_STATIONS_MODE / EXPO_PUBLIC_API_BASE_URL.
       mode: 'multi',
       defaults: [],

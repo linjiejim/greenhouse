@@ -3,7 +3,7 @@
  *
  * Route files instantiate `new Hono<AppEnv>()` so `c.get('user')` is typed
  * and the chained route definitions compose into the exported `AppType`
- * consumed by hc clients (packages/contract).
+ * (the typed route schema).
  */
 
 import type { AuthUser } from './auth/token.js';

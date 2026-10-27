@@ -204,7 +204,7 @@ export function buildMarkdownCard(content: string): Record<string, unknown> {
  *
  * `openId` is supplied by the CALLER, and every caller in this codebase derives
  * it from a stored binding rather than from configuration or model output —
- * that is what keeps the channel un-aimable, exactly as `notify_email` does by
+ * that is what keeps the channel un-aimable, exactly as `notify.email` does by
  * being a boolean (spec 20260824 D4).
  */
 export async function sendCardMarkdown(openId: string, content: string): Promise<FeishuSendResult> {

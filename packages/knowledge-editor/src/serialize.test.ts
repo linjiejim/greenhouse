@@ -144,7 +144,7 @@ describe('editor fallback for docs with no content_json', () => {
   });
 
   it('does not turn soft line wraps into hard breaks', () => {
-    // apps/web sets marked's global `breaks: true` for chat; inheriting it here
+    // A chat renderer may set marked's global `breaks: true`; inheriting it here
     // would insert a <br> per wrapped line every time a doc round-tripped.
     expect(markdownToEditorHtml('one\ntwo')).not.toContain('<br');
   });

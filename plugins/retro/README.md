@@ -2,9 +2,8 @@
 
 Monthly aggregate report written to Knowledge, with optional model suggestions and manual administrative generation.
 
-**Default: off.** Compiled by the upstream configuration. Enable/disable `retro` through
-`extensions.enabled` or `GREENHOUSE_EXTENSIONS`, retaining other enabled ids, then restart.
-Credentials alone do not enable it. Disabling preserves data.
+**Default: off.** Enable `retro` (and `knowledge`) through `extensions.enabled` or
+`GREENHOUSE_EXTENSIONS` (keep the other ids), then restart. Disabling keeps generated documents.
 
 | Surface | Details |
 |---|---|
@@ -13,9 +12,9 @@ Credentials alone do not enable it. Disabling preserves data.
 | Owned tables | None; generated documents/versions belong to Knowledge |
 | Tools | None |
 | Routes | `/api/admin/retro` (super-only) |
+| Client | The Admin › Retro section (generate a month on demand). |
 
-Classic `#/administration/retro`; universal Retro page/fallback. Schedules at 09:00 on the first after prior-month UTC close protection; reuses one document per month. No model/budget skips suggestions without losing the aggregate report.
+Schedules at 09:00 on the first after prior-month UTC close protection; reuses one document per
+month. No model or budget skips suggestions without losing the aggregate report.
 
-See [plugin development](../../EXTENDING.md), [package rules](AGENTS.md) and
-`api/index.ts` for registered contributions. Add new SQL after applied migrations; never edit
-existing checksums. Test permission denials and disabled contributions as well as enabled behavior.
+Rules: [AGENTS.md](AGENTS.md). Plugin contract: [EXTENDING.md](../../EXTENDING.md).

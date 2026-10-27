@@ -38,9 +38,8 @@ confirm / mermaid / html-preview，旧客户端的既有行为），新块（sta
 
 其中「富块写作纪律」是硬约束，来自一次真实事故（2026-07-30，dev 会话 c0b6bf83
 「Neil 的客户前十」）：模型开了一个 `datatable` fence、写完 title 和 7 个
-columns 就改主意，转头用 Markdown 表格重答，留下一个没有 rows 的块。渲染端已经不会再因此
-崩溃（缺失的 `rows` 归一成空表，见 `apps/web/src/AGENTS.md` 的富块校验一节），但用户仍会在
-真正的答案上方看到一张空表——所以规则必须写在源头：**行数据没齐不开 fence、开了必须一次
+columns 就改主意，转头用 Markdown 表格重答，留下一个没有 rows 的块。渲染端必须容忍缺失的
+`rows`，但用户仍会在真正的答案上方看到一张空表——所以规则必须写在源头：**行数据没齐不开 fence、开了必须一次
 写完并闭合、数据与预想不符就整块重写而不是打补丁。** 由 `tests/api/agent-profiles.test.ts`
 钉住（含「每个 rich-output profile 共用同一份、YAML 里不得自带副本」）。
 
@@ -58,8 +57,8 @@ description:
   或给空串会**直接抛错**导致 profile 加载失败 —— 宁可启动时炸，也不要静默把未翻译的中文发给英文用户。
 - 解析后**同时保留两份**：扁平字段 `name` / `description` 恒等于源语言值（日志、admin 视图、
   外部 API 行为完全不变），另加 `name_i18n` / `description_i18n` 语言映射。
-- `GET /api/profiles` 把两者一起下发；前端用 `pickLocalized()`（`apps/web/src/lib/i18n`）按当前
-  locale 取值，回退链是 **当前 locale → `zh` → 扁平字段**。选择「前端挑」而不是「后端按
+- `GET /api/profiles` 把两者一起下发；客户端用 `profileName()`（`apps/client/src/api/profiles.ts`）
+  按当前语言取 `name_i18n`，取不到就回退扁平字段。选择「前端挑」而不是「后端按
   Accept-Language 渲染」，是因为切换语言是纯客户端行为，后端渲染会要求切语言时重新拉一次 profile 列表。
 - **自定义 profile（DB，用户自己填的文案）不带语言映射**，永远落到扁平字段——这是刻意的，
   不强迫用户为每个 profile 写两套文案。
@@ -82,13 +81,10 @@ v3 曾把模型收进 Agent 身份：想更强的推理就选 deep、想百万�
 - **`POST /api/chat` 接受 `model`**（复活了 v3 删掉的 `model_override`，但形态不同：值域是模型目录的
   `chat.selectable`，由 `isChatModelAllowed()` 校验后作 `modelOverride` 传给引擎；校验不过就回落 Agent
   默认模型而不是 400——浏览器记着的上次选择可能是已下线的模型，而选择器已不再列它）。
-- **落库进 `messages.model`**，前端在助手消息的元信息行原样显示，与选择器同一套词汇（`flash` / `pro` /
-  `deepseek-flash`）。存的是 **registry id 而不是上游模型名**——`modelConfig.model` 是 provider 链里第一个的
+- **落库进 `messages.model`**，与模型目录同一套词汇（`flash` / `pro` / `deepseek-flash`）。存的是 **registry id 而不是上游模型名**——`modelConfig.model` 是 provider 链里第一个的
   名字，fallback 时并不改变，记它等于指认一个没跑过的 provider。
-- **选中的模型记在用户维度**（`greenhouse_last_model:<userId>`），不是会话维度：一次会话里前几轮用 flash
-  摸情况、发现要动脑再切 pro 是正常用法，把选择钉死在会话上反而拦住它。
-- **自定义 Agent 也能切**，但选中一个自定义 Agent 时选择器默认跳到它自己的 `run_profiles.model_id`
-  ——那是作者对"这个 Agent 该怎么跑"的决定，不该被用户上一次的随手选择静默盖掉。仍是默认，可覆盖。
+- **4.0 通用客户端没有逐轮模型选择器**：对话用 Agent 的默认模型，自定义 Agent 用自己的
+  `run_profiles.model_id`；`model` 字段留给其它 API 调用方。
 - **采样参数归模型目录**：`temperature` / `thinking` / `max_tokens` 等写进 `models.yaml` 的 `options`，由
   `resolveModelConfig()` 合并（profile 显式给的优先）。
 - **`extends` 已删除**：它只为「同一个 Agent、换个模型」而生，模型下放之后零消费者。

@@ -25,7 +25,7 @@ vi.mock('@greenhouse/db', async (importOriginal) => {
 });
 
 // Writes are recorded in agent-access (covered end to end by
-// tests/api/agent-write-governance.db.test.ts); here the route's own job is
+// plugins/knowledge/tests/tests/api/agent-write-governance.db.test.ts); here the route's own job is
 // asserted: strip confirm and pass it on, and shape each outcome for the agent.
 const governance = vi.hoisted(() => ({ govern: vi.fn() }));
 vi.mock('../../agent-access/context.js', () => ({

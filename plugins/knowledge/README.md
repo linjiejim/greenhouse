@@ -2,9 +2,8 @@
 
 Markdown knowledge documents, editor, search, versions, sharing and MCP document resources.
 
-**Default: on.** Compiled by the upstream configuration. Enable/disable `knowledge` through
-`extensions.enabled` or `GREENHOUSE_EXTENSIONS`, retaining other enabled ids, then restart.
-Credentials alone do not enable it. Disabling preserves data.
+**Default: on.** Enable/disable `knowledge` through `extensions.enabled` or `GREENHOUSE_EXTENSIONS`
+(keep the other ids), then restart. Disabling preserves data.
 
 | Surface | Details |
 |---|---|
@@ -13,9 +12,8 @@ Credentials alone do not enable it. Disabling preserves data.
 | Owned tables | `kb_documents`, `kb_versions` |
 | Tools | `knowledge_query`, `knowledge_mutation` |
 | Routes | `/api/knowledge` |
+| Client | The Knowledge place (team, personal and shared shelves, the document editor). |
 
-Classic `#/knowledge`; universal native Knowledge place. CLI `knowledge`/`kb` imports and reindexes.
+CLI `knowledge`/`kb` imports and reindexes. When enabled, Files uses its `kb` cabinet.
 
-See [plugin development](../../EXTENDING.md), [package rules](AGENTS.md) and
-`api/index.ts` for registered contributions. Add new SQL after applied migrations; never edit
-existing checksums. Test permission denials and disabled contributions as well as enabled behavior.
+Rules: [AGENTS.md](AGENTS.md). Plugin contract: [EXTENDING.md](../../EXTENDING.md).

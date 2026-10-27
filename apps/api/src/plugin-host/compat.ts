@@ -2,10 +2,9 @@
  * Extension compatibility declarations: `sdk` (the extension contract revision
  * it was written for) and `core` (a semver range of Greenhouse versions).
  *
- * `EXTENSION_SDK` names the newest host contract; compatible older revisions
- * are accepted explicitly. An unsupported `sdk` (SDK 2 also accepts SDK 1) or a
- * `core` range the running version does not satisfy refuses activation; leaving
- * either out only warns in 3.x (both become required in 4.0).
+ * `EXTENSION_SDK` names the one host contract. Both are required: a missing or
+ * unsupported `sdk`, a missing `core`, or a `core` range the running version
+ * does not satisfy refuses activation.
  */
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';

@@ -4,7 +4,7 @@ import { securityHeadersMiddleware } from './security.js';
 
 /**
  * The CSP only applies in deployed environments (the API serves the built SPA);
- * under `pnpm dev` the document comes from Vite with no CSP, so a directive that
+ * under `pnpm dev` the document comes from the Expo dev server with no CSP, so a directive that
  * blocks a real download is invisible locally. These assertions are the guard.
  */
 async function csp(): Promise<string> {

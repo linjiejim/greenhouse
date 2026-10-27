@@ -4,7 +4,7 @@
  * monthly retro, the data catalog and the connect wizard's "seen" check.
  *
  * Wire shapes only — the server side lives in apps/api/src/hub-context and
- * apps/api/src/retro.
+ * plugins/retro/api.
  */
 
 import type { AgentAvatar } from './agent-avatar.js';

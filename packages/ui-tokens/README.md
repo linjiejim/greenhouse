@@ -2,15 +2,15 @@
 
 Standalone theme values and the bridge for trusted Greenhouse plugin frontends.
 `themeTokens.light/dark` and `tokenNames` come from `packages/ui/src/tokens`;
-regenerate with `pnpm tokens:build`. `resolveThemeTokens()` preserves branding
-across classic CSS names and universal-client aliases.
+regenerate with `pnpm tokens:build`. `resolveThemeTokens()` fills both token naming
+sets (the CSS names and the client aliases) from whichever one the host sends.
 
 ```ts
 import { connectGreenhouse } from '@greenhouse/ui-tokens';
 const host = connectGreenhouse({ onInit: ({ user }) => showMember(user) });
 // After init, API requests use host.token as their bearer.
 await host.refresh();
-host.navigate('#/ext/example/note');
+host.navigate('/p/example/example-embed'); // a client route
 host.sendPrompt('Help me organize my notes'); // editable draft, never sent
 // Dispose event handlers when unmounting:
 host.disconnect();

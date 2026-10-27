@@ -19,8 +19,8 @@ import { registerWorkspaceSettingValidators } from '../settings/validation-regis
 /**
  * Compiled-in extensions.
  *
- * Packages come from greenhouse.config.ts → plugins, assembled by plugins:sync.
- * SDK 1 overlays may still add an import and an IN_TREE list entry here.
+ * Packages come from greenhouse.config.ts → plugins, assembled by plugins:sync
+ * into compiled.generated.ts.
  *
  * `EXTENSIONS` is the *active* subset: `greenhouse.config.ts` → `extensions.enabled`
  * (or the `GREENHOUSE_EXTENSIONS` env var) decides per deployment. Every core
@@ -44,7 +44,7 @@ import { registerBillableServices } from '../config/service-registry.js';
 import { registerExtensionRetention } from '@greenhouse/db';
 import { COMPILED_PLUGINS } from './compiled.generated.js';
 
-/** SDK 1 overlay registrations: one import and one entry per in-tree extension. */
+/** Extensions compiled in without a package. Empty: every extension is a configured package in 4.0. */
 const IN_TREE: readonly GreenhouseExtension[] = [];
 
 /** Everything compiled into this build. Order = registration order. */

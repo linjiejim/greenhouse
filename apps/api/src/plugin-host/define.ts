@@ -4,10 +4,9 @@ import { RESERVED_ENTITY_OWNERS } from '@greenhouse/types/entity-links';
  * The extension contract — one object per extension, every field optional and
  * mapped 1:1 onto an existing core registry (see EXTENDING.md → "Extensions").
  *
- * An extension is a configured package under `plugins/<id>/`, or an SDK 1 folder under
- * `apps/api/src/plugin-host/<id>/` (plus, for UI,
- * `apps/web/src/extensions/<id>/`) that exports `defineExtension({...})` and is
- * listed once in `apps/api/src/plugin-host/index.ts`. Nothing else in core needs
+ * An extension is a configured package under `plugins/<id>/` whose api half
+ * exports `defineExtension({...})`; plugins:sync lists it once in
+ * `apps/api/src/plugin-host/compiled.generated.ts`. Nothing else in core needs
  * to change — the registries aggregate from that list. Which listed extensions
  * are *active* is decided per deployment by `greenhouse.config.ts` /
  * `GREENHOUSE_EXTENSIONS`.
@@ -137,8 +136,7 @@ export interface GreenhouseExtension {
 
   /**
    * The extension contract revision this was written for (`EXTENSION_SDK` from
-   * the kit). Unsupported revisions refuse activation; SDK 1 remains accepted in 4.x.
-   * Optional in 3.x (warns), required from 4.0.
+   * the kit). Required: a missing or unsupported revision refuses activation.
    */
   sdk?: number;
   /**
@@ -238,7 +236,7 @@ export interface GreenhouseExtension {
   /**
    * Record kinds this extension owns (`ext:<id>:<name>` + a hash route with one
    * `:id`), so its records get deeplinks in tool output and peeks in chat.
-   * The web half registers the icon and the peek body for the same kind.
+   * The station manifest hands the same kinds to clients.
    */
   entityKinds?: ExtensionEntityKindDef[];
   /** Lanes added to the global search palette, one per record kind. */

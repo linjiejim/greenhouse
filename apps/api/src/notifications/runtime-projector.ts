@@ -28,8 +28,8 @@ function runLabel(run: RuntimeRunRow): string {
 }
 
 /**
- * Server-side English; the web inbox shows its own translation of these
- * generic lines (`lib/notification-copy.ts`) and keeps an error message as is.
+ * Server-side English; the client's notification center shows these lines,
+ * and an error message, as stored.
  */
 function reviewBody(label: string): string {
   return `Open it in the Activity log to review this ${label.toLowerCase()}.`;

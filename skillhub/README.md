@@ -49,8 +49,8 @@ skillhub/
 
 ## Publishing
 
-- **Boot sync** — automatic on every API start (`SKILLHUB_DIR` overrides the location,
-  `SKILLHUB_SEED_OWNER_EMAIL` picks the publishing super admin; default is the earliest one).
-- **Manual sync** — `node scripts/skillhub-sync.mjs [--dry-run] [--only <name>]` publishes
-  through the MCP server using a machine client (`GREENHOUSE_MCP_URL`, `GREENHOUSE_CLIENT_ID`,
-  `GREENHOUSE_CLIENT_SECRET`), comparing content hashes so unchanged packs are skipped.
+- **Boot sync** — automatic on every API start while the Skills plugin is enabled
+  (`SKILLHUB_DIR` overrides the location, `SKILLHUB_SEED_OWNER_EMAIL` picks the publishing super
+  admin; default is the earliest one). It compares content hashes, so unchanged packs are skipped.
+- **Manual publish** — a member's agent or Sprouty publishes a bundle with `skill_mutation`, or
+  call `/api/skills` directly; there is no separate sync script.

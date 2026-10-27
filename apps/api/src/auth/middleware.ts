@@ -42,11 +42,11 @@ const PUBLIC_PATHS = new Set([
 export function isPublicPath(path: string): boolean {
   if (PUBLIC_PATHS.has(path)) return true;
   if (isExtensionPublicPath(path)) return true;
-  // Frontend static assets — Vite emits the hashed bundle under /assets/* (base './').
+  // Frontend static assets (hosting.ts serves the exported client before this middleware runs).
   if (path === '/' || path === '/favicon.ico' || path.startsWith('/public/') || path.startsWith('/assets/'))
     return true;
   // The icon set + web manifest referenced from index.html by absolute path
-  // (served by the explicit ROOT_STATIC_FILES allowlist in index.ts).
+  // (served from the exported client by hosting.ts).
   if (
     path === '/favicon.svg' ||
     path === '/apple-touch-icon.png' ||

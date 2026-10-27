@@ -14,9 +14,9 @@ normally updates them through `release-please-config.json` extra-files. The auth
 | `main` | GHCR `:edge`, `:main-<sha>` | Continuous unstable integration |
 
 `.github/workflows/release.yml` uses `docker/metadata-action` with `latest=auto`; prereleases
-must not move stable aliases. The image currently builds linux/amd64. It includes both classic
-and universal web exports; the API serves them. Desktop artifacts are not built/published by
-this workflow. Mobile has a separate fingerprint CD workflow, not a product-tag release job.
+must not move stable aliases. The image currently builds linux/amd64. It includes the hosted
+universal client export (`public/app`, built in its own stage); the API serves it at `/`.
+Desktop artifacts are not built/published by this workflow. Mobile has a separate fingerprint CD workflow, not a product-tag release job.
 
 APP_VERSION/APP_REVISION build arguments become image env and OCI labels. Extension compatibility
 uses a valid APP_VERSION or falls back to root package.json for unstamped development builds.
@@ -58,18 +58,20 @@ actual release-please updater and leaves dependency versions/checksums untouched
 
 These are operator instructions, not actions performed by this documentation task.
 
-1. Review/land the complete candidate, including version targets, migration ownership and the
-   release notes. Confirm all required gates plus actual classic/universal browser acceptance;
-   run the seeded screenshot tour on a host where Chromium launches. Exercise the in-place 3.x
-   upgrade (3.0.2 recommended) on a backup copy with the intended plugin list; 1.x/2.x databases
-   must reach 3.0.2 first.
+1. Review/land the complete candidate, including version targets, migration ownership, the
+   release notes and the [4.0 upgrade guide](docs/upgrading-to-4.0.md). Confirm all required gates
+   plus actual browser acceptance: `pnpm test:e2e:client` in Chromium and a manual pass on a
+   seeded stack (sign-in, chat, Files, each enabled plugin place, Admin, the entry pages).
+   Exercise the in-place 3.x upgrade (3.0.2 recommended) on a backup copy with the intended plugin
+   list; 1.6 databases must reach 3.0.2 first, and 2.x databases have no path.
 2. Review `.github/workflows/mobile.yml` **before landing mobile version changes on main**.
    It can deploy to the production EAS branch on a main push when EXPO_TOKEN exists. Product
    rc tagging does not gate that lane; pause/configure it operationally if store/OTA publication
    is not intended. Do not run EAS publication commands as part of a local rc cut.
 3. Select the exact accepted commit and verify no `v4.0.0-rc.1` tag/release already exists.
    Create and push that annotated tag from the accepted revision, then create a GitHub release
-   marked prerelease, explicitly not latest. Use only the rc.1 section of CHANGELOG as its notes.
+   marked prerelease, explicitly not latest. Use only the rc.1 section of CHANGELOG as its notes
+   and link the upgrade guide.
 
    ```bash
    # Run only after acceptance, with <accepted-sha> replaced by the reviewed commit.
@@ -82,7 +84,8 @@ These are operator instructions, not actions performed by this documentation tas
 
 4. Watch the Release workflow; inspect the exact rc image's APP_VERSION/revision/OCI labels
    and confirm stable aliases did not move. Deploy the pinned rc only to the intended test
-   environment and verify login, plugin status, default/off behavior and both hosting modes.
+   environment and verify `/health`, sign-in at `/`, the `/classic` redirect, plugin status
+   (`pnpm cli plugins status` or Admin › Plugins), default/off behavior and the Admin place.
 5. Publish a signed/notarized desktop build only through the separate
    [desktop runbook](apps/desktop/README.md). Native iOS/Android distribution is also separate;
    use a valid store version/profile when required by the store rather than assuming a SemVer
@@ -127,10 +130,11 @@ Signing secrets remain outside the repository; do not infer permission to publis
 
 ## Release verification
 
-- Run typecheck/lint, strict overlay/package guards, sync check, full unit/DB/committed-state
-  tests, HTTP security, zero-package core boot, mobile typecheck/lint and web builds.
-- Run actual classic/plugin and universal Playwright in a Chromium-capable environment;
-  collect-only results are insufficient. Regenerate public captures with real seeded UI.
+- Run typecheck/lint (including the plugin boundary scan), `plugins:sync --check`, full
+  unit/DB/committed-state tests, HTTP security (`test:e2e:ci`), zero-package core boot
+  (`test:core`), client typecheck/lint inside `apps/client` and `pnpm app:build`.
+- Run `pnpm test:e2e:client` in a Chromium-capable environment; collect-only results are
+  insufficient. Product captures come from real seeded UI, never mocks.
 - Verify in-place 3.x data preservation (3.0.2 → 4.0 bridge), the schema-equivalence test and
   explicit retained plugin enablement; migrations run before API startup. Backups use scripts/backup-db.sh; do not use push on persistent/shared DBs.
 - Keep the prior image/config and DB backup for rollback; code downgrade is not reverse migration.

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-/** Assemble configured packages using static imports; never load either code half here. */
+/** Assemble configured packages using static imports; never load the api half here. */
 import { existsSync, readFileSync, readdirSync, writeFileSync, statSync } from 'node:fs';
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { createRequire } from 'node:module';
