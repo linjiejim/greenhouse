@@ -105,7 +105,6 @@ import artifactActionRoutes from './routes/artifact-actions.js';
 import { initScheduler } from './scheduler/index.js';
 import { createTasksRoute } from './routes/tasks.js';
 import runtimeRoutes from './routes/runtime.js';
-import { settleRetiredRuntimeRuns } from './runtime/retired-kinds.js';
 import { startRuntimeWorker } from './runtime/worker.js';
 import { reconcileInterruptedChatRuntimeRuns } from './chat/runtime.js';
 import { reconcileInterruptedAgentWrites } from './agent-access/governed-write.js';
@@ -334,11 +333,6 @@ async function main() {
   const toolRegistry = createToolRegistry(dbProvider);
   await runExtensionBootHooks(dbProvider);
 
-  // Runs of retired kinds (Eval, Mission, Workflow in v1.4; Subagent in 1.5) can never progress again;
-  // close any that were still active at upgrade so they render as finished.
-  await settleRetiredRuntimeRuns(dbProvider).catch((error) => {
-    logger.error('[runtime] retired-kind settlement unavailable', { error: String(error) });
-  });
   // Chat is trace-only and cannot safely replay after process death. Always
   // close historical active traces, even when new Chat tracing is killed for
   // rollout; a Runtime outage must not prevent the rest of Chat from booting.
