@@ -120,10 +120,10 @@ export interface ToolMeta {
    * How this tool's result is surfaced in the chat UI:
    * - 'trace' (default) — a row inside the collapsible "N tool calls" block.
    * - 'artifact' — a rich card rendered inline in the message body.
-   * The frontend artifact registry (apps/web/src/components/tool-call/body-artifacts.tsx)
-   * is the authoritative render source; this flag declares the same intent at the
-   * tool source (note: client-only tools like `update_page` have no ToolMeta, so the
-   * FE registry — not this flag — is the complete list).
+   * The client's card rules (apps/client/src/chat/parts.ts) are the authoritative
+   * render source; this flag declares the same intent at the tool source (note:
+   * client actions have no ToolMeta, so the client — not this flag — is the
+   * complete list).
    */
   presentation?: 'trace' | 'artifact';
 }

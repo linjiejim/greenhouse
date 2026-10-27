@@ -18,7 +18,7 @@
  *
  * The env is intentionally `any`: the factory is generic over the host app's
  * Hono environment, and mounting it must not widen a typed AppType — so mount
- * these routes OUTSIDE the contract chain (like /api/client-tools).
+ * these routes OUTSIDE the contract chain.
  */
 
 import { Hono, type Context, type Handler, type MiddlewareHandler } from 'hono';

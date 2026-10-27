@@ -4,15 +4,14 @@
  * One flat, geometric plant + an ink face on a tinted disc. Identity = species
  * (`plant`), live state = pose + face (+ a state mark at portrait size). The renderer (geometry, baked palettes,
  * SVG builder, React wrapper) lives in `@greenhouse/ui/components/plant-avatar`;
- * this module only holds the ids and the legacy-mapping tables, so the API, the
- * web pickers and the mobile app can import them at runtime without zod.
+ * this module only holds the ids and the legacy-mapping tables, so the API and the
+ * renderer can import them at runtime without zod (the client vendors what it needs).
  *
  * Stored avatar JSON is never rewritten: legacy Sprouty configs (`color`,
  * `accessories`, `leafStyle`, `faceStyle`, `eyeStyle`, `palette`) render through
  * `legacyToPlant` / `legacyToMood` below. The resolver and the writer rule
  * (`withPlant` / `withTint` / `withMood` / `plantAvatarConfig`) live here, not in the ui
- * package, so the API (template seeds, fork pinning), the web editors and the
- * renderer all share one copy.
+ * package, so the API (template seeds, fork pinning) and the renderer share one copy.
  */
 
 import type {

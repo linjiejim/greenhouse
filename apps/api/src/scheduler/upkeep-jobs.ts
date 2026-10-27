@@ -8,7 +8,7 @@ import { DEFAULT_TIMEZONE } from './task-limits.js';
 
 let extensionJobHandles: Cron[] = [];
 
-/** Periodic jobs declared by active extensions (see extensions/define.ts → `jobs`). */
+/** Periodic jobs declared by active extensions (see plugin-host/define.ts → `jobs`). */
 export function startExtensionJobs(): void {
   for (const job of extensionJobs()) {
     const handle = new Cron(job.cron, { timezone: job.timezone ?? DEFAULT_TIMEZONE, protect: true }, async () => {

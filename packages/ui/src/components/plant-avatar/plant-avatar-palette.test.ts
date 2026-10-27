@@ -9,8 +9,8 @@
  *     off their own disc (≥ 1.8:1 — colour on a tint, the name sits beside every avatar); dark: the
  *     lifted body vs #1A231B / #0F1510 and its disc ≥ 3:1. The opt-in keyline (`rim: true`, exports
  *     on busy backgrounds) keeps its 3:1 floor.
- * The surface hexes are the app's canvas / chrome tokens (apps/web/src/app.css), copied here
- * as fixtures only — the builder never emits them.
+ * The surface hexes are canvas / chrome backgrounds an avatar sits on, fixed here as fixtures
+ * only — the builder never emits them.
  */
 
 import { describe, expect, it } from 'vitest';

@@ -15,7 +15,7 @@
  * config file at boot lives in `./config-schema` (server side only).
  */
 
-/** One Greenhouse server as seen by a client (the mobile app). */
+/** One Greenhouse server as seen by a client (the universal client). */
 export interface StationConfig {
   /** Stable id, lowercase letters / digits / dashes. */
   id: string;

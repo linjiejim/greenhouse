@@ -5,8 +5,8 @@
  * registry pattern as FEATURE_FLAGS). Consumed by:
  *   • apps/api — resolution (DB row → env fallback), env overlay, admin
  *                routes, /api/bootstrap (apps/api/src/settings/)
- *   • apps/web — Branding Studio persistence + the Runtime Config admin page
- *                render straight from this registry
+ *   • apps/client — Branding + the Runtime config admin page render this
+ *                registry as served by /api/admin/settings
  *
  * Adding a setting = one entry here (+ wiring its runtime effect if it is not
  * env-overlaid). No page changes, no migration — values live as one row per

@@ -174,9 +174,8 @@ app.use('*', async (c, next) => {
 
 // Client hosting excludes API/plugin prefixes before their authenticated routes.
 // ─── Mount Routes ────────────────────────────────────────
-// One chained expression so the full route schema composes into AppType
-// (consumed by hc clients via @greenhouse/contract). Registration order is
-// load-bearing (e.g. OAuth protocol routes precede application routes) — do not reorder.
+// One chained expression so the full route schema composes into AppType.
+// Registration order is load-bearing (e.g. OAuth protocol routes precede application routes) — do not reorder.
 // Called from main() once the toolRegistry exists (needs the DB).
 
 function mountRoutes(toolRegistry: ToolRegistry) {
@@ -288,8 +287,8 @@ function mountRoutes(toolRegistry: ToolRegistry) {
 }
 
 /**
- * The full typed route schema — the API contract consumed by hc clients
- * (via @greenhouse/contract). Type-only: importing this never runs the server.
+ * The full typed route schema — the API contract for Hono `hc` clients.
+ * Type-only: importing this never runs the server.
  */
 export type AppType = ReturnType<typeof mountRoutes>;
 

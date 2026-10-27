@@ -7,9 +7,9 @@
  *                (apps/api/src/auth/features.ts); flags additionally gate the
  *                chat/proxy tools that ride them via resolveUserTools + the
  *                feature-point registry (apps/api/src/plugin-host/feature-points.ts)
- *   • apps/web — per-user admin toggle in the unified permission modal
- *                (settings/user-permissions-modal.tsx) + nav / route gating
- *                (apps/web/src/lib/features.ts)
+ *   • apps/client — per-user admin toggle in the member access dialog
+ *                (src/admin/permissions.web.tsx) + nav / route gating on the
+ *                `features` of `/api/auth/me` (e.g. src/shell/modules.ts)
  *
  * ─── How gating resolves ─────────────────────────────────
  * Per-user state lives in the `user_grants` DB table (kind=feature) (one row per
@@ -29,8 +29,9 @@
  *      The per-user admin toggle then appears automatically.
  *   2. Gate the backend (UI hiding is NOT access control):
  *        app.use('/api/<x>/*', requireFeature('<key>'))   // apps/api/src/index.ts
- *   3. Gate the UI around the tab / route / nav entry:
- *        canUseFeature(currentUser, '<key>')               // apps/web/src/lib/features.ts
+ *   3. Gate the UI around the tab / route / nav entry: the station manifest
+ *      already leaves out a plugin none of whose flags the member has; core
+ *      client places read `features` from `/api/auth/me`.
  */
 
 export interface FeatureFlag {

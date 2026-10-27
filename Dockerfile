@@ -32,7 +32,8 @@ COPY --from=universal /app/public/app ./public/app
 # ── Runtime: same filesystem, production env ──
 FROM build AS runtime
 # Build stamp: CI passes the git tag + commit sha so the running image knows
-# exactly which code it is (surfaced at /health, see apps/api/src/routes/health.ts).
+# exactly which code it is (APP_VERSION/APP_REVISION env and OCI labels; /health
+# does not report them).
 # Defaults are dev sentinels for a plain `docker build` with no --build-arg.
 ARG APP_VERSION=0.0.0-dev
 ARG APP_REVISION=unknown

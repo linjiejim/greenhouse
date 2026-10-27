@@ -19,7 +19,7 @@ import {
 import type { DataRow, ExtensionDataSource } from './data-types.js';
 import { dataFieldAcceptsInput } from './data-fields.js';
 
-/** Expand declarations into the same registries SDK 1 already uses. Never register globally here. */
+/** Expand declarations into the same registries hand-written fields use. Never register globally here. */
 export function deriveDataSources(input: GreenhouseExtension): GreenhouseExtension {
   if (!input.dataSources?.length) return input;
   const sources = input.dataSources.map((source) => ({

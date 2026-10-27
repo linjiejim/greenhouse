@@ -148,7 +148,7 @@ export interface WeComSendResult {
  *
  * `touser` is supplied by the CALLER, and every caller in this codebase derives
  * it from a stored binding rather than from configuration or model output —
- * that is what keeps the channel un-aimable, exactly as `notify_email` does by
+ * that is what keeps the channel un-aimable, exactly as `notify.email` does by
  * being a boolean (spec D3).
  *
  * Note: WeCom markdown app messages render only inside the WeCom client, not in

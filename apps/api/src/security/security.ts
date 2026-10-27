@@ -84,9 +84,8 @@ const DEFAULT_CORS_ORIGINS = [
   // Local dev
   'http://localhost:3000',
   'http://127.0.0.1:3000',
-  // Vite dev server. A browser at :3100 normally reaches the API through Vite's
-  // proxy (same-origin); a build with GREENHOUSE_API_BASE_URL pointed elsewhere
-  // makes those calls genuinely cross-origin.
+  // `pnpm dev`: the client's Expo web dev server (WEB_PORT, default 3100) calls
+  // the API cross-origin (EXPO_PUBLIC_API_BASE_URL).
   'http://localhost:3100',
   'http://127.0.0.1:3100',
   // Expo Web mobile client uses a fixed dev port. Keep both loopback spellings

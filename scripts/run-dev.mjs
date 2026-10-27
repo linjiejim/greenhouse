@@ -51,7 +51,7 @@ const SERVICES = {
   web: { base: 3100, health: '/', timeout: 120 },
 };
 
-// target → 服务组合。web 目标自带 api（Vite 只是代理，没有 api 就是空壳）。
+// target → 服务组合。web 目标自带 api（Expo web 客户端直连 api，没有 api 就是空壳）。
 const TARGETS = {
   all: ['api', 'web'],
   web: ['api', 'web'],
@@ -233,7 +233,7 @@ function launch(state, name, cmd, args, env, port, cwd = '.') {
 
 async function waitHealthy(name, port) {
   const svc = SERVICES[name];
-  // 两个 host 都探：api 监听 IPv4，Vite 8 只监听 `localhost` 解析出的 **IPv6 [::1]**，
+  // 两个 host 都探：api 监听 IPv4，web 开发服务器可能只监听 `localhost` 解析出的 **IPv6 [::1]**，
   // 单探 127.0.0.1 会把已就绪的 web 判成超时。
   const urls = [`http://127.0.0.1:${port}${svc.health}`, `http://localhost:${port}${svc.health}`];
   const deadline = Date.now() + svc.timeout * 1000;
@@ -613,7 +613,7 @@ async function cmdStop(argv) {
         /* 组已消亡 */
       }
     }
-    await sleep(3000); // 给 pnpm/vite 子进程退出的时间
+    await sleep(3000); // 给 pnpm/expo 子进程退出的时间
     for (const [name, svc] of Object.entries(state.services || {})) {
       if (sh('ps', ['-p', String(svc.pid), '-o', 'command=']).out) {
         warn(`${name} 未退，SIGKILL`);

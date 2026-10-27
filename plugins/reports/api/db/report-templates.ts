@@ -3,7 +3,7 @@ import { reportTemplates } from '../schema.js';
  * Report templates service — persistence only (migration 0013, v1.7).
  *
  * Who may see or change a template, and whether a definition is well formed,
- * is decided in the API layer (apps/api/src/reports/templates.ts); this
+ * is decided in the API layer (../templates.ts); this
  * service stores already-checked definitions (jsonb) and reads them back
  * with the owner's nickname. Deletes are soft (`deleted_at`), so a seed that
  * runs "only while there has never been a template" stays a one-time event.

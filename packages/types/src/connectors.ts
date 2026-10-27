@@ -11,9 +11,8 @@
  * - Personal connectors belong to one member and only they use them; their
  *   handle is `me/<slug>`, so they never collide with a team slug.
  *
- * Shared by the API (validation, views), the web pages (forms) and the mobile
- * app (vendored copy of the view types), so they cannot disagree about what a
- * valid entry is.
+ * Shared by the API (validation, views) and the client (vendored copy of the
+ * view types), so they cannot disagree about what a valid entry is.
  */
 
 export const CONNECTOR_SCOPES = ['team', 'personal'] as const;
@@ -394,8 +393,8 @@ export interface ConnectorConnectMessage {
 }
 
 /**
- * The classic web app's finish route. The public OAuth callback now returns browsers to the universal
- * client (`CLIENT_ROUTES.connectorFinish`, ./client-routes.ts); this stays until the classic app goes.
+ * The finish route of the classic web app, which 4.0 removed; nothing reads it any more. The public
+ * OAuth callback returns browsers to the universal client (`CLIENT_ROUTES.connectorFinish`, ./client-routes.ts).
  */
 export const CONNECTOR_OAUTH_FINISH_HASH = '#/connectors/oauth-finish';
 
