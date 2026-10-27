@@ -1,7 +1,7 @@
 /**
  * The pieces both Automations editors share (./editor.web.tsx, ./agent-editor.web.tsx): a labelled
  * field with its count, hint and inline error; a checkbox or switch row; the dialog frame (a
- * fixed-size `lg` dialog, a full-screen sheet below 760 px) with the unsaved-changes guard on ✕,
+ * fixed-size `lg` dialog, a full-screen sheet below WIDE_MIN) with the unsaved-changes guard on ✕,
  * Escape and the scrim, and ⌘/Ctrl+Enter to save.
  */
 import './automations.css';
@@ -11,6 +11,7 @@ import { useT } from '../lib/i18n';
 import { Icon } from '../ui/core';
 import { confirmDiscard } from '../ui/form-guard';
 import { DialogBody, Overlay } from '../ui/overlay.web';
+import { WIDE_MIN } from '../shell/wide-model';
 
 /**
  * Fields whose errors may show before a save: the ones edited and then left. A field left by a
@@ -69,19 +70,19 @@ export function Field({
   const errorId = error ? `${id}-error` : undefined;
   const describedBy = [errorId, hintId].filter(Boolean).join(' ') || undefined;
   return (
-    <div className="gh-auto-field">
-      <label className="gh-auto-label" htmlFor={id}>
+    <div className="gh-field">
+      <label htmlFor={id}>
         {label}
         {count ? <small data-over={over ? '' : undefined}>{count}</small> : null}
       </label>
       {children({ id, describedBy, invalid: !!error })}
       {error ? (
-        <p id={errorId} className="gh-auto-error" role="alert">
+        <p id={errorId} className="gh-error" role="alert">
           {error}
         </p>
       ) : null}
       {hint ? (
-        <p id={hintId} className="gh-auto-hint">
+        <p id={hintId} className="gh-hint">
           {hint}
         </p>
       ) : null}
@@ -105,11 +106,11 @@ export function Check({
   disabled?: boolean;
 }) {
   return (
-    <label className="gh-auto-check">
+    <label className="gh-check">
       <input
         type="checkbox"
         role={asSwitch ? 'switch' : undefined}
-        className={asSwitch ? 'gh-auto-switch' : undefined}
+        className={asSwitch ? 'gh-switch' : undefined}
         checked={checked}
         disabled={disabled}
         aria-checked={checked}
@@ -125,7 +126,7 @@ export function Check({
 
 /**
  * An editor's dialog. `dirty` arms the discard question on every way out; `onSave` also runs on
- * ⌘/Ctrl+Enter. Below 760 px it covers the window, as a phone sheet. `focus` is the field that
+ * ⌘/Ctrl+Enter. Below WIDE_MIN it covers the window, as a phone sheet. `focus` is the field that
  * takes focus once the dialog opens.
  */
 export function EditorDialog({
@@ -177,7 +178,7 @@ export function EditorDialog({
       testID={testID}
       onClose={() => void requestClose()}
       panelStyle={
-        width < 760
+        width < WIDE_MIN
           ? {
               position: 'fixed',
               inset: 0,
@@ -204,19 +205,19 @@ export function EditorDialog({
           </button>
         }
         footer={
-          <div className="gh-auto-footer">
-            <div className="gh-auto-footer-lead">{lead}</div>
-            <button type="button" className="gh-auto-btn" disabled={busy} onClick={() => void requestClose()}>
+          <>
+            <div className="gh-dialog-footer-lead">{lead}</div>
+            <button type="button" className="gh-secondary-button" disabled={busy} onClick={() => void requestClose()}>
               {t('common.cancel')}
             </button>
-            <button type="button" className="gh-auto-btn gh-primary" disabled={busy} onClick={onSave}>
+            <button type="button" className="gh-primary" disabled={busy} onClick={onSave}>
               {saveLabel}
             </button>
-          </div>
+          </>
         }
       >
         <div
-          className="gh-auto-form"
+          className="gh-form"
           onKeyDown={(e) => {
             if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
               e.preventDefault();

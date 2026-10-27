@@ -145,15 +145,15 @@ export default function McpKeysSection() {
   );
   const actions = (c: OAuthClient) => (
     <>
-      <button className="gh-admin-link" onClick={() => setActivity(c)}>
+      <button className="gh-link-button" onClick={() => setActivity(c)}>
         {t('admin.mcp.calls')}
       </button>
       {c.machine ? (
-        <button className="gh-admin-link" disabled={busy} onClick={() => void rotate(c)}>
+        <button className="gh-link-button" disabled={busy} onClick={() => void rotate(c)}>
           {t('admin.mcp.rotate')}
         </button>
       ) : null}
-      <button className="gh-admin-link" disabled={busy} onClick={() => void toggle(c)}>
+      <button className="gh-link-button" disabled={busy} onClick={() => void toggle(c)}>
         {c.status === 'active' ? t('admin.mcp.disable') : t('admin.mcp.enable')}
       </button>
       <button
@@ -191,17 +191,17 @@ export default function McpKeysSection() {
           icon="key"
           testID="admin-mcp-secret"
           action={
-            <button className="gh-admin-button" onClick={() => setRevealed(null)}>
+            <button className="gh-secondary-button" onClick={() => setRevealed(null)}>
               {t('admin.mcp.dismiss')}
             </button>
           }
         >
           <strong>{t('admin.mcp.secretOnce')}</strong>
-          <div className="gh-admin-mono">client_id {revealed.clientId}</div>
+          <div className="gh-mono">client_id {revealed.clientId}</div>
           <div className="gh-admin-secret" style={{ marginTop: 8 }}>
             <code>{revealed.secret}</code>
             <button
-              className="gh-admin-button"
+              className="gh-secondary-button"
               onClick={() => {
                 void navigator.clipboard?.writeText(revealed.secret).then(() => toast(t('common.copied')));
               }}
@@ -216,19 +216,19 @@ export default function McpKeysSection() {
         title={t('admin.mcp.howToConnect')}
         icon="globe"
         actions={
-          <button className="gh-admin-link" aria-expanded={connect} onClick={() => setConnect((v) => !v)}>
+          <button className="gh-link-button" aria-expanded={connect} onClick={() => setConnect((v) => !v)}>
             {connect ? t('admin.permissions.hide') : t('admin.mcp.show')}
           </button>
         }
       >
         {connect ? (
           <>
-            <p className="gh-admin-hint">{t('admin.mcp.interactiveHelp', { endpoint })}</p>
-            <p className="gh-admin-hint">{t('admin.mcp.machineHelp', { endpoint })}</p>
+            <p className="gh-hint">{t('admin.mcp.interactiveHelp', { endpoint })}</p>
+            <p className="gh-hint">{t('admin.mcp.machineHelp', { endpoint })}</p>
             <pre className="gh-admin-code">{tokenExample}</pre>
           </>
         ) : (
-          <p className="gh-admin-hint gh-admin-mono" style={{ margin: 0 }}>
+          <p className="gh-hint gh-mono" style={{ margin: 0 }}>
             {endpoint}
           </p>
         )}
@@ -255,11 +255,11 @@ export default function McpKeysSection() {
                     <tr key={c.id} data-muted={c.status === 'active' ? undefined : ''}>
                       <td title={c.id}>
                         <strong>{c.client_name}</strong>
-                        <span className="gh-admin-sub gh-admin-mono">{c.id}</span>
+                        <span className="gh-admin-sub gh-mono">{c.id}</span>
                       </td>
                       <td>{c.bound_user_id ? nameOf(c.bound_user_id) : '—'}</td>
                       <td className="gh-admin-wrap">
-                        <span className="gh-admin-badges">
+                        <span className="gh-chip-row">
                           {c.allowed_scopes.map((s) => (
                             <Badge key={s} tone={s === 'mcp:write' ? 'warning' : 'neutral'}>
                               {s}
@@ -392,7 +392,7 @@ function CreateMachineClient({
     >
       <form
         id="admin-mcp-create"
-        className="gh-admin-form"
+        className="gh-form"
         onSubmit={(e) => {
           e.preventDefault();
           void submit();
@@ -412,14 +412,14 @@ function CreateMachineClient({
             </select>
           )}
         </Field>
-        <label className="gh-admin-check">
+        <label className="gh-check">
           <input type="checkbox" checked={write} onChange={(e) => setWrite(e.target.checked)} />
           <span className="gh-admin-wrap">{t('admin.mcp.allowWrites')}</span>
         </label>
-        <h4 className="gh-admin-subhead">{t('admin.mcp.capabilities')}</h4>
-        <p className="gh-admin-hint">{t('admin.mcp.capabilitiesHint')}</p>
+        <h4 className="gh-form-heading">{t('admin.mcp.capabilities')}</h4>
+        <p className="gh-hint">{t('admin.mcp.capabilitiesHint')}</p>
         {groups.map((g) => (
-          <label key={g.id} className="gh-admin-check">
+          <label key={g.id} className="gh-check">
             <input
               type="checkbox"
               checked={picked.has(g.id)}
@@ -463,8 +463,8 @@ function ClientCalls({ client, close }: { client: OAuthClient; close: () => void
       {!rows ? (
         <SectionState loading={data.loading} error={data.error} retry={() => void data.refresh()} />
       ) : rows.length ? (
-        <div className="gh-admin-form">
-          <p className="gh-admin-hint">{t('admin.mcp.callsTotal', { n: data.data?.total ?? rows.length })}</p>
+        <div className="gh-form">
+          <p className="gh-hint">{t('admin.mcp.callsTotal', { n: data.data?.total ?? rows.length })}</p>
           <table className="gh-data-grid gh-admin-grid">
             <thead>
               <tr>
@@ -479,8 +479,8 @@ function ClientCalls({ client, close }: { client: OAuthClient; close: () => void
               {rows.map((r, i) => (
                 <tr key={i}>
                   <td>{dateTimeLabel(r.created_at, localeOf(lang))}</td>
-                  <td className="gh-admin-mono">{r.endpoint}</td>
-                  <td className="gh-admin-mono">{r.meta?.tool ?? '—'}</td>
+                  <td className="gh-mono">{r.endpoint}</td>
+                  <td className="gh-mono">{r.meta?.tool ?? '—'}</td>
                   <td className="gh-number">
                     {r.error || (r.status_code ?? 0) >= 400 ? (
                       <Badge tone="danger">{r.status_code ?? '—'}</Badge>

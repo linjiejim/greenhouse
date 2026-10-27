@@ -23,9 +23,10 @@ import type { RecentDoc } from '../data/recent-docs';
 import type { DriveFolder, KbDoc } from '../shared/greenhouse-types';
 import { alertError, promptText } from '../ui/dialogs';
 import DocumentEditor from './editor/document-editor';
+import { WIDE_MIN } from '../shell/wide-model';
 export default function KnowledgePlace() {
   const { width } = useWindowDimensions();
-  return width < 760 ? <Phone /> : <KnowledgeDesktop />;
+  return width < WIDE_MIN ? <Phone /> : <KnowledgeDesktop />;
 }
 function KnowledgeDesktop() {
   const t = useT(),

@@ -182,19 +182,19 @@ export function AutomationEditor({
         : 'automations.editor.newTitle',
   );
   const lead = saveError ? (
-    <span role="alert" className="gh-auto-error" title={saveError}>
+    <span role="alert" className="gh-error" title={saveError}>
       {saveError}
     </span>
   ) : submitted && Object.keys(errors).length ? (
-    <span role="alert" className="gh-auto-error">
+    <span role="alert" className="gh-error">
       {t('automations.editor.fixErrors')}
     </span>
   ) : (
-    <label>
+    <label className="gh-check">
       <input
         type="checkbox"
         role="switch"
-        className="gh-auto-switch"
+        className="gh-switch"
         checked={draft.enabled}
         aria-checked={draft.enabled}
         onChange={(e) => set({ enabled: e.target.checked })}
@@ -220,7 +220,7 @@ export function AutomationEditor({
           <input
             ref={nameRef}
             id={id}
-            className="gh-auto-input"
+            className="gh-input"
             value={draft.name}
             maxLength={NAME_MAX + 10}
             placeholder={t('automations.editor.namePlaceholder')}
@@ -240,7 +240,7 @@ export function AutomationEditor({
         {({ id, describedBy, invalid }) => (
           <textarea
             id={id}
-            className="gh-auto-textarea"
+            className="gh-input"
             rows={6}
             value={draft.prompt}
             placeholder={t('automations.editor.promptPlaceholder')}
@@ -262,7 +262,7 @@ export function AutomationEditor({
         onChange={setSchedule}
       />
 
-      <div className="gh-auto-row">
+      <div className="gh-form-grid">
         <Field label={t('automations.editor.timezone')} error={shown('timezone')}>
           {({ id, describedBy, invalid }) => (
             <TimeZoneSelect
@@ -293,7 +293,7 @@ export function AutomationEditor({
               {onManageAgents ? (
                 <button
                   type="button"
-                  className="gh-auto-btn-quiet"
+                  className="gh-link-button"
                   onClick={async () => {
                     if (dirty && !(await confirmDiscard(t))) return;
                     onManageAgents();
@@ -316,7 +316,7 @@ export function AutomationEditor({
         onBlurWebhook={() => leave('webhook')}
       />
 
-      <fieldset className="gh-auto-section">
+      <fieldset className="gh-form-section">
         <legend>{t('automations.editor.advanced')}</legend>
         <Field
           label={t('automations.editor.maxSteps')}
@@ -326,7 +326,7 @@ export function AutomationEditor({
           {({ id, describedBy, invalid }) => (
             <input
               id={id}
-              className="gh-auto-input"
+              className="gh-input"
               data-narrow=""
               type="number"
               min={1}
@@ -395,7 +395,7 @@ function ScheduleSection({
       {({ id }) => (
         <input
           id={id}
-          className="gh-auto-input"
+          className="gh-input"
           type="time"
           data-narrow=""
           value={builder.time}
@@ -405,10 +405,10 @@ function ScheduleSection({
     </Field>
   );
   return (
-    <fieldset className="gh-auto-section" data-testid="automation-schedule">
+    <fieldset className="gh-form-section" data-testid="automation-schedule">
       <legend>{t('automations.editor.schedule')}</legend>
       <div
-        className="gh-auto-segments"
+        className="gh-segmented"
         role="radiogroup"
         aria-label={t('automations.editor.frequency')}
         onKeyDown={(e) => {
@@ -440,7 +440,7 @@ function ScheduleSection({
           {({ id, describedBy }) => (
             <input
               id={id}
-              className="gh-auto-input gh-auto-mono"
+              className="gh-input gh-mono"
               value={builder.raw}
               placeholder="0 9 * * 1-5"
               spellCheck={false}
@@ -457,7 +457,7 @@ function ScheduleSection({
               {({ id }) => (
                 <input
                   id={id}
-                  className="gh-auto-input"
+                  className="gh-input"
                   type="number"
                   min={0}
                   max={59}
@@ -469,8 +469,8 @@ function ScheduleSection({
             </Field>
           ) : null}
           {builder.freq === 'weekly' ? (
-            <div className="gh-auto-field">
-              <span className="gh-auto-label">{t('automations.editor.days')}</span>
+            <div className="gh-field">
+              <span className="gh-field-label">{t('automations.editor.days')}</span>
               <div className="gh-auto-days" role="group" aria-label={t('automations.editor.days')}>
                 {WEEK.map((day) => {
                   const on = builder.weekdays.includes(day);
@@ -495,7 +495,7 @@ function ScheduleSection({
               {({ id }) => (
                 <select
                   id={id}
-                  className="gh-auto-select"
+                  className="gh-input"
                   data-narrow=""
                   value={builder.monthDay}
                   onChange={(e) => patch({ monthDay: Number(e.target.value) })}
@@ -514,7 +514,7 @@ function ScheduleSection({
       )}
       <div className="gh-auto-preview" data-error={error ? '' : undefined} aria-live="polite">
         {error ? (
-          <p className="gh-auto-error" role="alert">
+          <p className="gh-error" role="alert">
             {error}
           </p>
         ) : (
@@ -531,12 +531,12 @@ function ScheduleSection({
                 ))}
               </ol>
             ) : (
-              <p className="gh-auto-hint">{t('automations.editor.noPreview')}</p>
+              <p className="gh-hint">{t('automations.editor.noPreview')}</p>
             )}
           </>
         )}
         {builder.freq === 'monthly' && builder.monthDay > 28 && !error ? (
-          <p className="gh-auto-hint">{t('automations.editor.monthDaySkips', { day: builder.monthDay })}</p>
+          <p className="gh-hint">{t('automations.editor.monthDaySkips', { day: builder.monthDay })}</p>
         ) : null}
       </div>
     </fieldset>
@@ -563,7 +563,7 @@ function TimeZoneSelect({
   return (
     <select
       id={id}
-      className="gh-auto-select"
+      className="gh-input"
       value={value}
       aria-invalid={invalid}
       aria-describedby={describedBy}
@@ -604,7 +604,7 @@ function AgentSelect({
   return (
     <select
       id={id}
-      className="gh-auto-select"
+      className="gh-input"
       value={value}
       aria-describedby={describedBy}
       onChange={(e) => onChange(e.target.value)}
@@ -665,9 +665,9 @@ function DeliverySection({
 }) {
   const t = useT();
   return (
-    <fieldset className="gh-auto-section">
+    <fieldset className="gh-form-section">
       <legend>{t('automations.editor.delivery')}</legend>
-      <p className="gh-auto-hint">
+      <p className="gh-hint">
         {channels.length || webhook ? t('automations.editor.deliveryHint') : t('automations.editor.deliveryNone')}
       </p>
       {channels.length ? (
@@ -687,7 +687,7 @@ function DeliverySection({
           {({ id, describedBy, invalid }) => (
             <input
               id={id}
-              className="gh-auto-input gh-auto-mono"
+              className="gh-input gh-mono"
               type="url"
               value={draft.webhook}
               placeholder="https://…"
@@ -732,13 +732,13 @@ function ToolGrant({
   const picked = new Set(selected);
   const writes = offered.some((tool) => tool.tier === 'write' && picked.has(tool.id));
   return (
-    <div className="gh-auto-field">
-      <span className="gh-auto-label">{t('automations.editor.tools')}</span>
-      <p className="gh-auto-hint">{t('automations.editor.toolsHint')}</p>
+    <div className="gh-field">
+      <span className="gh-field-label">{t('automations.editor.tools')}</span>
+      <p className="gh-hint">{t('automations.editor.toolsHint')}</p>
       {loading ? (
-        <p className="gh-auto-hint">{t('common.loading')}</p>
+        <p className="gh-hint">{t('common.loading')}</p>
       ) : !offered.length ? (
-        <p className="gh-auto-note">{t('automations.editor.toolsNone')}</p>
+        <p className="gh-callout" data-tone="neutral">{t('automations.editor.toolsNone')}</p>
       ) : (
         (['assist', 'write'] as const).map((tier) => {
           const group = offered.filter((tool) => tool.tier === tier);
@@ -748,7 +748,7 @@ function ToolGrant({
               role="group"
               aria-label={t(tier === 'write' ? 'automations.editor.tierWrite' : 'automations.editor.tierAssist')}
             >
-              <span className="gh-auto-hint">
+              <span className="gh-hint">
                 {t(tier === 'write' ? 'automations.editor.tierWrite' : 'automations.editor.tierAssist')}
               </span>
               <div className="gh-auto-checks" data-wide="">
@@ -766,8 +766,8 @@ function ToolGrant({
         })
       )}
       {writes ? (
-        <p className="gh-auto-callout" role="note">
-          <Icon name="alert" size={14} />
+        <p className="gh-callout" role="note">
+          <Icon name="alert" size={14} color="var(--gh-warning)" />
           <span>{t('automations.editor.toolsWriteWarning')}</span>
         </p>
       ) : null}

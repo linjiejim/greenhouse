@@ -45,6 +45,7 @@ export function separatorInset(leadingWidth?: number): number {
 
 export { rowPosition, type RowPosition } from '../data/row-position';
 import type { RowPosition } from '../data/row-position';
+import { WIDE_MIN } from '../shell/wide-model';
 
 export function SectionHeader({
   title,
@@ -194,7 +195,7 @@ export function Row({
   const large = Number(fontKey) >= 1.5;
   const detail = useContext(DetailFieldsContext);
   const isLast = last || position === 'last' || position === 'only';
-  if (detail && width >= 760) {
+  if (detail && width >= WIDE_MIN) {
     const content = (
       <>
         <span className="gh-object-label">{title}</span>
@@ -232,7 +233,7 @@ export function Row({
         accessibilityActions={accessibilityActions}
         onAccessibilityAction={onAccessibilityAction}
         pressedColor={c.fill}
-        style={[styles.row, { minHeight: width < 760 ? HIT : 32 }, disabled && { opacity: 0.4 }]}
+        style={[styles.row, { minHeight: width < WIDE_MIN ? HIT : 32 }, disabled && { opacity: 0.4 }]}
       >
         {icon ? <IconTile icon={icon} tint={iconTint} /> : leading}
         <View style={[styles.body, large && { flexWrap: 'wrap' }]}>

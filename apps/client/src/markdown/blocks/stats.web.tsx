@@ -14,11 +14,12 @@ import { Icon } from '../../ui/core';
 import { richSegment } from '../rich';
 import { BlockActions } from './block-actions';
 import { CodeBlock } from './code';
+import { WIDE_MIN } from '../../shell/wide-model';
 
 export function StatsBlock({ raw }: { raw: string }) {
   const { width } = useWindowDimensions();
   const seg = useMemo(() => richSegment('stats', raw), [raw]);
-  if (width < 760) return <PhoneStats raw={raw} />;
+  if (width < WIDE_MIN) return <PhoneStats raw={raw} />;
   if (seg?.type !== 'stats') return <CodeBlock lang="stats" code={raw} />;
   return <Stats data={seg.data} />;
 }

@@ -74,12 +74,12 @@ export default function ConnectorOAuthFinish() {
       </div>
       {phase.kind !== 'working' && !popup ? (
         <div className="gh-entry-row">
-          <button type="button" className="gh-entry-secondary" onClick={() => goHome(router)}>
+          <button type="button" className="gh-secondary-button" onClick={() => goHome(router)}>
             {t('entry.back')}
           </button>
           <button
             type="button"
-            className="gh-entry-primary"
+            className="gh-primary"
             onClick={() => router.replace(CLIENT_ROUTES.connections as never)}
           >
             {t('entry.connector.toConnections')}

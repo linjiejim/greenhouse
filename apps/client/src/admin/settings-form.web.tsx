@@ -78,7 +78,7 @@ export function SettingsForm({ keys, intro }: { keys?: string[]; intro?: string 
   const pending = Object.keys(staged).length;
   return (
     <div className="gh-admin-settings">
-      {intro ? <p className="gh-admin-hint">{intro}</p> : null}
+      {intro ? <p className="gh-hint">{intro}</p> : null}
       {groups.map(({ group, settings }) => (
         <Card key={group} title={keys ? undefined : groupLabel(group)} flush>
           {settings.map((view) => (
@@ -93,13 +93,13 @@ export function SettingsForm({ keys, intro }: { keys?: string[]; intro?: string 
         </Card>
       ))}
       {!groups.length ? <p className="gh-admin-empty-line">{t('admin.runtime.none')}</p> : null}
-      <div className="gh-admin-savebar">
+      <div className="gh-savebar">
         <button className="gh-primary" disabled={busy || !pending} onClick={() => void save()}>
           {t('common.save')}
         </button>
         {pending ? <small>{t('admin.runtime.pending', { n: pending })}</small> : null}
         {pending ? (
-          <button className="gh-admin-link" disabled={busy} onClick={() => setStaged({})}>
+          <button className="gh-link-button" disabled={busy} onClick={() => setStaged({})}>
             {t('admin.runtime.discard')}
           </button>
         ) : null}
@@ -131,14 +131,14 @@ function SettingRow({
       : t('admin.runtime.secretPlaceholder')
     : undefined;
   return (
-    <div className="gh-admin-setting" data-testid={`setting-${view.key}`}>
-      <div className="gh-admin-setting-label">
+    <div className="gh-setting-row" data-testid={`setting-${view.key}`}>
+      <div className="gh-setting-label">
         <span>
           {label} <Badge tone={source === 'db' ? 'accent' : 'neutral'}>{t(`admin.runtime.source.${source}`)}</Badge>
         </span>
-        {view.env ? <small className="gh-admin-mono">{t('admin.runtime.envFallback', { env: view.env })}</small> : null}
+        {view.env ? <small className="gh-mono">{t('admin.runtime.envFallback', { env: view.env })}</small> : null}
       </div>
-      <div className="gh-admin-setting-control">
+      <div className="gh-setting-control">
         {view.type === 'boolean' ? (
           <>
             <Switch checked={checked} label={label} onChange={(next) => stage(next)} />
@@ -147,7 +147,7 @@ function SettingRow({
           </>
         ) : multiline ? (
           <textarea
-            className="gh-admin-input gh-admin-mono"
+            className="gh-input gh-mono"
             aria-label={label}
             rows={view.type === 'json' ? 4 : 3}
             spellCheck={false}
@@ -157,7 +157,7 @@ function SettingRow({
           />
         ) : (
           <input
-            className="gh-admin-input gh-admin-mono"
+            className="gh-input gh-mono"
             aria-label={label}
             type={view.secret ? 'password' : 'text'}
             autoComplete="off"
@@ -168,17 +168,17 @@ function SettingRow({
           />
         )}
         {clear === 'clear' ? (
-          <button type="button" className="gh-admin-button" onClick={() => stage(null)}>
+          <button type="button" className="gh-secondary-button" onClick={() => stage(null)}>
             {t('admin.runtime.clear')}
           </button>
         ) : clear === 'undo' ? (
-          <button type="button" className="gh-admin-button" onClick={unstage}>
+          <button type="button" className="gh-secondary-button" onClick={unstage}>
             {t('admin.runtime.undo')}
           </button>
         ) : null}
       </div>
       {view.description ? (
-        <p>
+        <p className="gh-hint">
           <Description text={view.description} />
         </p>
       ) : null}

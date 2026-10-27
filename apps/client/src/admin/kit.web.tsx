@@ -1,7 +1,8 @@
 /**
  * The Admin place's small browser pieces, on top of the shared place and overlay kit: a section
  * page (place bar, optional toolbar or tabs, scrolling body), fixed-size dialogs, badges, a
- * switch, labelled fields, cards and meters. Styles live in ./admin.css.
+ * switch, labelled fields, cards and meters. They draw the shared controls (the Controls section
+ * of src/shell/client.css); ./admin.css holds only the Admin place's own layout.
  */
 import './admin.css';
 import React, { useId } from 'react';
@@ -30,7 +31,7 @@ export function AdminPage({
   return (
     <Place title={title} actions={actions}>
       {tabs}
-      {toolbar ? <div className="gh-admin-toolbar">{toolbar}</div> : null}
+      {toolbar ? <div className="gh-toolbar">{toolbar}</div> : null}
       <div className="gh-place-scroll" data-testid={testID}>
         <div className="gh-admin-body">{children}</div>
       </div>
@@ -50,7 +51,7 @@ export function Tabs<T extends string>({
   label: string;
 }) {
   return (
-    <div className="gh-admin-tabs" role="tablist" aria-label={label}>
+    <div className="gh-tabs" role="tablist" aria-label={label}>
       {items.map((item) => (
         <button
           key={item.value}
@@ -85,7 +86,7 @@ export function Badge({
   children: React.ReactNode;
 }) {
   return (
-    <span className="gh-admin-badge" data-tone={tone} title={title}>
+    <span className="gh-badge" data-tone={tone} title={title}>
       {children}
     </span>
   );
@@ -106,7 +107,7 @@ export function Switch({
     <button
       type="button"
       role="switch"
-      className="gh-admin-switch"
+      className="gh-switch"
       aria-checked={checked}
       aria-label={label}
       disabled={disabled}
@@ -131,18 +132,18 @@ export function Field({
 }) {
   const id = useId();
   return (
-    <div className="gh-admin-field">
+    <div className="gh-field">
       <label htmlFor={id}>
         {label}
         {required ? <span aria-hidden> *</span> : null}
       </label>
       {children(id)}
       {error ? (
-        <small role="alert" data-error>
+        <small role="alert" className="gh-error">
           {error}
         </small>
       ) : help ? (
-        <small>{help}</small>
+        <small className="gh-hint">{help}</small>
       ) : null}
     </div>
   );
@@ -168,16 +169,16 @@ export function Card({
   children: React.ReactNode;
 }) {
   return (
-    <section className="gh-admin-card" data-testid={testID}>
+    <section className="gh-card" data-testid={testID}>
       {title ? (
         <header>
           {icon ? <Icon name={icon} size={16} /> : null}
           <strong>{title}</strong>
-          <span className="gh-admin-card-actions">{actions}</span>
+          <span className="gh-card-actions">{actions}</span>
         </header>
       ) : null}
-      {hint ? <p className="gh-admin-hint gh-admin-card-hint">{hint}</p> : null}
-      <div className={flush ? 'gh-admin-card-flush' : 'gh-admin-card-body'}>{children}</div>
+      {hint ? <p className="gh-hint">{hint}</p> : null}
+      <div className={flush ? 'gh-card-flush' : 'gh-card-body'}>{children}</div>
     </section>
   );
 }
@@ -264,7 +265,7 @@ export function AdminDialog({
       testID={testID}
       panelStyle={size === 'sm' ? { padding: 0 } : undefined}
     >
-      <div className="gh-admin-modal">
+      <div className="gh-dialog-form">
         <DialogBody
           title={title}
           footer={footer}
@@ -299,9 +300,9 @@ export function Callout({
   children: React.ReactNode;
 }) {
   return (
-    <div className="gh-admin-callout" data-tone={tone} role="status" data-testid={testID}>
+    <div className="gh-callout" data-tone={tone} role="status" data-testid={testID}>
       <Icon name={icon} size={16} color={`var(--gh-${tone})`} />
-      <div className="gh-admin-callout-text">{children}</div>
+      <div className="gh-callout-text">{children}</div>
       {action}
     </div>
   );
@@ -344,10 +345,10 @@ export function FlagSwitch({
           {state?.effective ? t('admin.on') : t('admin.off')}
           {state ? <small>{t(`admin.flag.${state.source}`, { env })}</small> : null}
         </strong>
-        {help ? <p className="gh-admin-hint">{help}</p> : null}
+        {help ? <p className="gh-hint">{help}</p> : null}
       </div>
       {state && state.override !== null ? (
-        <button type="button" className="gh-admin-button" disabled={busy} onClick={() => onChange(null)}>
+        <button type="button" className="gh-secondary-button" disabled={busy} onClick={() => onChange(null)}>
           <Icon name="rotate" size={14} />
           {t('admin.flag.reset', { value: state.fallback ? t('admin.on') : t('admin.off') })}
         </button>

@@ -11,6 +11,7 @@ import { StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { makeStyles, space, typo, useTheme, weight, type ThemeColors } from '../../theme';
 import { Icon } from '../../ui/core';
 import { Inline } from '../inline';
+import { WIDE_MIN } from '../../shell/wide-model';
 
 /** Reading line height for long-form replies (body is 17 pt). */
 export const PROSE_LINE = 26;
@@ -162,5 +163,5 @@ const desktopStyles = readingStyles(true),
   phoneStyles = readingStyles(false);
 function useStyles(c: ThemeColors) {
   const { width } = useWindowDimensions();
-  return (width >= 760 ? desktopStyles : phoneStyles)(c);
+  return (width >= WIDE_MIN ? desktopStyles : phoneStyles)(c);
 }

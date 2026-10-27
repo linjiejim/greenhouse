@@ -3,7 +3,7 @@ import React from 'react';
 import { ConversationRow as PhoneRow } from './conversation-row.native';
 import { useWindowDimensions } from 'react-native';
 import { usePrefs } from '../store/prefs';
-import { conversationAge } from '../shell/wide-model';
+import { WIDE_MIN, conversationAge } from '../shell/wide-model';
 import type { ConversationRow as NativeRow } from './conversation-row';
 import { useOpenObject } from '../shell/open-object';
 import { useRouter } from 'expo-router';
@@ -26,7 +26,7 @@ export function ConversationRow(props: Props) {
   const { hex: c } = useTheme();
   const router = useRouter();
   const openObject = useOpenObject();
-  const age = width >= 760 ? conversationAge(session.updated_at, Date.now(), lang) : shortAgeNow(session.updated_at);
+  const age = width >= WIDE_MIN ? conversationAge(session.updated_at, Date.now(), lang) : shortAgeNow(session.updated_at);
   const items = [
     { id: 'pin', title: t(session.pinned ? 'home.unpin' : 'home.pin'), icon: 'pin' as const },
     { id: 'rename', title: t('home.rename'), icon: 'pen' as const },
@@ -59,7 +59,7 @@ export function ConversationRow(props: Props) {
       if ((await useSessions.getState().remove(session.id)) && selected) router.navigate('/');
     }
   };
-  if (width < 760) return <PhoneRow {...props} />;
+  if (width < WIDE_MIN) return <PhoneRow {...props} />;
   return (
     <NativeMenu trigger="longPress" fill items={items} onSelect={(id) => void select(id)}>
       <div

@@ -72,7 +72,6 @@ export function AccountMenu() {
 
 export function NotificationsPopover({ close }: { close: () => void }) {
   const t = useT();
-  const { hex: c } = useTheme();
   const unread = useNotifications((s) => s.unread);
   return (
     <Overlay testID="notifications-popover" label={t('notifications.title')} size="md" onClose={close}>
@@ -81,8 +80,8 @@ export function NotificationsPopover({ close }: { close: () => void }) {
         actions={
           <>
             <button
+              className="gh-link-button"
               disabled={unread === 0}
-              style={{ border: 0, background: 'transparent', color: c.accentText }}
               onClick={async () => {
                 if (!(await useNotifications.getState().markAllRead())) alertError(t('notifications.markFailed'));
               }}

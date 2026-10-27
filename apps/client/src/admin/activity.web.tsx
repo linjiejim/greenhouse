@@ -151,7 +151,7 @@ export default function ActivitySection() {
           >
             <Icon name="refresh" size={16} />
           </button>
-          <button className="gh-admin-button" onClick={() => void exportCsv()}>
+          <button className="gh-secondary-button" onClick={() => void exportCsv()}>
             <Icon name="download" size={14} />
             {t('admin.activity.export')}
           </button>
@@ -159,7 +159,12 @@ export default function ActivitySection() {
       }
       toolbar={
         <>
-          <select aria-label={t('admin.activity.source')} value={source} onChange={(e) => setSource(e.target.value)}>
+          <select
+            className="gh-input"
+            aria-label={t('admin.activity.source')}
+            value={source}
+            onChange={(e) => setSource(e.target.value)}
+          >
             <option value="">{t('admin.activity.allSources')}</option>
             {SOURCES.map((s) => (
               <option key={s} value={s}>
@@ -168,6 +173,7 @@ export default function ActivitySection() {
             ))}
           </select>
           <select
+            className="gh-input"
             aria-label={t('admin.activity.moduleLabel')}
             value={module}
             onChange={(e) => setModule(e.target.value)}
@@ -179,7 +185,12 @@ export default function ActivitySection() {
               </option>
             ))}
           </select>
-          <select aria-label={t('admin.activity.person')} value={person} onChange={(e) => setPerson(e.target.value)}>
+          <select
+            className="gh-input"
+            aria-label={t('admin.activity.person')}
+            value={person}
+            onChange={(e) => setPerson(e.target.value)}
+          >
             <option value="">{t('admin.activity.everyone')}</option>
             {(people.data?.users ?? []).map((u) => (
               <option key={u.id} value={u.id}>
@@ -189,15 +200,17 @@ export default function ActivitySection() {
           </select>
           <input
             type="date"
+            className="gh-input"
             aria-label={t('admin.activity.from')}
             value={range.from}
             onChange={(e) => setRange((r) => ({ ...r, from: e.target.value }))}
           />
-          <span className="gh-admin-count" style={{ marginLeft: 0 }}>
+          <span className="gh-count" style={{ marginLeft: 0 }}>
             –
           </span>
           <input
             type="date"
+            className="gh-input"
             aria-label={t('admin.activity.to')}
             value={range.to}
             onChange={(e) => setRange((r) => ({ ...r, to: e.target.value }))}
@@ -263,7 +276,7 @@ export default function ActivitySection() {
         </table>
       ) : null}
       {items.length && cursor ? (
-        <button className="gh-admin-button" disabled={state === 'more'} onClick={() => void load(cursor)}>
+        <button className="gh-secondary-button" disabled={state === 'more'} onClick={() => void load(cursor)}>
           {state === 'more' ? t('common.loading') : t('admin.activity.loadMore')}
         </button>
       ) : null}

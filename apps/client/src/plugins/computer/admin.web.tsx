@@ -87,7 +87,7 @@ function ComputersScreen({ title }: AdminScreenProps) {
         <SectionState loading={report.loading} error={report.error} retry={() => void report.refresh()} />
       ) : (
         <>
-          <p className="gh-admin-hint">
+          <p className="gh-hint">
             {t('admin.ext.computer.intro', { max: data.max_running, minutes: data.idle_minutes })}{' '}
             {data.price_per_minute_usd !== null
               ? t('admin.ext.computer.price', { price: formatUsdPrice(data.price_per_minute_usd) })
@@ -133,7 +133,7 @@ function ComputersScreen({ title }: AdminScreenProps) {
                       <td className="gh-number">{c.minutes_billed}</td>
                       <td className="gh-admin-actions">
                         {c.status === 'running' ? (
-                          <button className="gh-admin-link" disabled={busy} onClick={() => void stop(c)}>
+                          <button className="gh-link-button" disabled={busy} onClick={() => void stop(c)}>
                             {t('admin.ext.computer.stop')}
                           </button>
                         ) : null}

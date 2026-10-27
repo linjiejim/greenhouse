@@ -53,44 +53,6 @@
   flex-direction: column;
   gap: 12px;
 }
-.gh-entry-input {
-  width: 100%;
-  padding: 12px;
-  border: 1px solid var(--gh-line);
-  border-radius: 8px;
-  background: var(--gh-card);
-  color: var(--gh-text);
-}
-.gh-entry-primary,
-.gh-entry-secondary {
-  width: 100%;
-  min-height: 44px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  padding: 10px 16px;
-  border-radius: 8px;
-  font-weight: 600;
-}
-.gh-entry-primary {
-  border: 0;
-  background: var(--gh-accent);
-  color: var(--gh-on-accent);
-}
-.gh-entry-primary:hover:not(:disabled) {
-  background: var(--gh-accent-hover);
-  filter: none;
-}
-.gh-entry-secondary {
-  border: 1px solid var(--gh-line);
-  background: var(--gh-card);
-  color: var(--gh-text);
-}
-.gh-entry-secondary:hover:not(:disabled) {
-  background: var(--gh-hover);
-  filter: none;
-}
 .gh-entry-row {
   display: flex;
   gap: 8px;
@@ -98,28 +60,18 @@
 .gh-entry-row > * {
   flex: 1;
 }
-.gh-entry-note {
-  padding: 12px 14px;
-  border: 1px solid var(--gh-line);
-  border-radius: 10px;
-  background: var(--gh-sunken);
-  font-size: 14px;
-  line-height: 20px;
-  color: var(--gh-text);
+/* Entry pages open from mail and other apps on phones too: full-width 44 px controls with 16 px
+   text (Safari never zooms a field). The controls themselves are the shared ones. */
+:is(.gh-entry-card, .gh-entry-form) :is(.gh-input, .gh-primary, .gh-secondary-button) {
+  width: 100%;
+  min-height: 44px;
+  font-size: 16px;
 }
-.gh-entry-note small {
-  display: block;
-  margin-top: 2px;
-  font-size: 12px;
-  line-height: 17px;
-  color: var(--gh-secondary);
+:is(.gh-entry-card, .gh-entry-form) .gh-input {
+  padding: 0 12px;
 }
-.gh-entry-error {
-  margin: 0;
-  font-size: 13px;
-  line-height: 18px;
+.gh-entry-card .gh-error {
   text-align: center;
-  color: var(--gh-danger);
 }
 .gh-entry-state {
   display: flex;
@@ -181,17 +133,6 @@
   padding-bottom: 16px;
   border-bottom: 1px solid var(--gh-line);
 }
-.gh-consent-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 10px;
-  border-radius: 999px;
-  background: var(--gh-accent-fill);
-  color: var(--gh-accent-text);
-  font-size: 12px;
-  font-weight: 600;
-}
 .gh-consent-client {
   display: flex;
   align-items: flex-start;
@@ -217,7 +158,7 @@
 .gh-consent-scope {
   padding: 12px;
   border: 1px solid var(--gh-line);
-  border-radius: 10px;
+  border-radius: 12px;
   background: var(--gh-card);
 }
 .gh-consent-scope header {
@@ -233,15 +174,6 @@
   font-size: 13px;
   line-height: 18px;
   color: var(--gh-secondary);
-}
-.gh-consent-code {
-  padding: 1px 6px;
-  border-radius: 6px;
-  background: var(--gh-fill);
-  color: var(--gh-secondary);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 12px;
-  font-weight: 500;
 }
 .gh-consent-section {
   display: flex;
@@ -268,7 +200,7 @@
 }
 .gh-consent-groups {
   border: 1px solid var(--gh-line);
-  border-radius: 10px;
+  border-radius: 12px;
   overflow: hidden;
 }
 .gh-consent-group {
@@ -330,7 +262,7 @@
   padding-top: 16px;
   border-top: 1px solid var(--gh-line);
 }
-.gh-consent-actions > button {
+.gh-consent-actions > :is(.gh-primary, .gh-secondary-button) {
   width: auto;
   min-width: 112px;
 }

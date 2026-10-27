@@ -95,7 +95,7 @@ export default function PluginsSection() {
                 <td>
                   <strong>{p.name}</strong>
                 </td>
-                <td className="gh-admin-mono">{p.id}</td>
+                <td className="gh-mono">{p.id}</td>
                 <td>
                   <Badge tone={p.enabled ? 'success' : 'neutral'}>
                     {p.enabled
@@ -134,10 +134,10 @@ export default function PluginsSection() {
       )}
       {open ? (
         <AdminDialog title={open.name} onClose={() => setOpen(null)} testID="admin-plugin-detail">
-          <div className="gh-admin-form">
+          <div className="gh-form">
             <dl className="gh-admin-facts">
               <dt>{t('admin.plugins.id')}</dt>
-              <dd className="gh-admin-mono">{open.id}</dd>
+              <dd className="gh-mono">{open.id}</dd>
               <dt>{t('admin.plugins.version')}</dt>
               <dd>{open.version ?? '—'}</dd>
               <dt>{t('admin.plugins.boot')}</dt>
@@ -151,13 +151,13 @@ export default function PluginsSection() {
                 </>
               ) : null}
             </dl>
-            <h4 className="gh-admin-subhead">{t('admin.plugins.migrations')}</h4>
+            <h4 className="gh-form-heading">{t('admin.plugins.migrations')}</h4>
             {open.migrations.length ? (
               <table className="gh-data-grid gh-admin-grid">
                 <tbody>
                   {open.migrations.map((file) => (
                     <tr key={file.name}>
-                      <td className="gh-admin-mono">{file.name}</td>
+                      <td className="gh-mono">{file.name}</td>
                       <td>
                         <Badge tone={file.state === 'pending' || file.state === 'missing' ? 'warning' : 'neutral'}>
                           {t(`admin.plugins.fileState.${file.state}`)}
@@ -169,7 +169,7 @@ export default function PluginsSection() {
                 </tbody>
               </table>
             ) : (
-              <p className="gh-admin-hint">{t('admin.plugins.migration.none')}</p>
+              <p className="gh-hint">{t('admin.plugins.migration.none')}</p>
             )}
           </div>
         </AdminDialog>

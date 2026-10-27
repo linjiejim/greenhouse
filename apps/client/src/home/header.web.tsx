@@ -4,6 +4,7 @@ import { useWindowDimensions } from 'react-native';
 import { SidebarToolbar } from '../ui/sidebar';
 import { Controls } from '../ui/screen-actions.web';
 import { useT } from '../lib/i18n';
+import { WIDE_MIN } from '../shell/wide-model';
 export function HomeHeader({ unread }: { unread: number }) {
   const t = useT();
   const router = useRouter();
@@ -19,7 +20,7 @@ export function HomeHeader({ unread }: { unread: number }) {
           headerRight: () => (
             <Controls
               actions={
-                width >= 760
+                width >= WIDE_MIN
                   ? [
                       {
                         id: 'agents',

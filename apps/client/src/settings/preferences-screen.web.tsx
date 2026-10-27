@@ -20,7 +20,7 @@ export default function PreferencesScreen() {
         <section>
           <div className="gh-settings-row">
             <strong>{t('settings.theme')}</strong>
-            <div className="gh-settings-segment">
+            <div className="gh-segmented">
               {(['system', 'light', 'dark'] as ThemePref[]).map((theme) => (
                 <button key={theme} aria-pressed={s.theme === theme} onClick={() => s.setTheme(theme)}>
                   {t(

@@ -1,6 +1,7 @@
 import React from 'react';
 import { Pressable, Text, View, useWindowDimensions, type StyleProp, type ViewStyle } from 'react-native';
 import { radius, space, typo, useTheme } from '../theme';
+import { WIDE_MIN } from '../shell/wide-model';
 export function Segmented<T extends string>({
   value,
   options,
@@ -30,7 +31,7 @@ export function Segmented<T extends string>({
           onPress={() => onChange(o.value)}
           style={({ pressed }) => ({
             flex: 1,
-            minHeight: width < 760 ? 44 : 28,
+            minHeight: width < WIDE_MIN ? 44 : 28,
             alignItems: 'center',
             justifyContent: 'center',
             backgroundColor: value === o.value ? c.secondaryGroupedBackground : pressed ? c.fill : 'transparent',

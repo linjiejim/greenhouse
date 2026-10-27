@@ -3,6 +3,7 @@ import { ActivityIndicator, Pressable, Text, useWindowDimensions, type StyleProp
 import { radius, space, typo, useTheme } from '../theme';
 import { Icon, type IconName } from './core';
 import { webColors } from '../theme/web-colors.generated';
+import { WIDE_MIN } from '../shell/wide-model';
 export type NativeButtonVariant = 'tinted' | 'prominent' | 'glass';
 export function NativeButton({
   label,
@@ -48,7 +49,7 @@ export function NativeButton({
       onHoverOut={() => setHover(false)}
       style={({ pressed }) => [
         {
-          minHeight: width < 760 ? 44 : size === 'small' ? 28 : 32,
+          minHeight: width < WIDE_MIN ? 44 : size === 'small' ? 28 : 32,
           flexDirection: 'row',
           gap: space.sm,
           alignItems: 'center',

@@ -7,6 +7,7 @@ import { NativeMenu } from '../ui/menu.web';
 import { Icon } from '../ui/core.web';
 import { useT } from '../lib/i18n';
 import { typo, useTheme } from '../theme';
+import { WIDE_MIN } from '../shell/wide-model';
 
 type Props = React.ComponentProps<typeof NativeComposer>;
 export const Composer = memo(
@@ -65,8 +66,8 @@ export const Composer = memo(
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      width: width >= 760 ? 36 : 44,
-      height: width >= 760 ? 36 : 44,
+      width: width >= WIDE_MIN ? 36 : 44,
+      height: width >= WIDE_MIN ? 36 : 44,
       flexShrink: 0,
       border: 0,
       borderRadius: '50%',
@@ -76,7 +77,7 @@ export const Composer = memo(
         ref={wrap}
         data-testid="composer"
         style={{
-          padding: width >= 760 ? (grouped ? '8px 20px 0' : '8px 28px 20px') : `8px 12px ${Math.max(8, bottomInset)}px`,
+          padding: width >= WIDE_MIN ? (grouped ? '8px 20px 0' : '8px 28px 20px') : `8px 12px ${Math.max(8, bottomInset)}px`,
           background: c.background,
         }}
       >
@@ -176,7 +177,7 @@ export const Composer = memo(
                 outline: 'none',
                 padding: 0,
                 fontFamily: typo.body.fontFamily,
-                fontSize: width >= 760 ? typo.callout.fontSize : typo.body.fontSize,
+                fontSize: width >= WIDE_MIN ? typo.callout.fontSize : typo.body.fontSize,
                 lineHeight: '24px',
                 color: c.label,
                 background: 'transparent',

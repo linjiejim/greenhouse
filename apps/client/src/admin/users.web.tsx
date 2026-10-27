@@ -92,6 +92,7 @@ export default function UsersSection() {
         <>
           <input
             type="search"
+            className="gh-input"
             aria-label={t('admin.users.search')}
             placeholder={t('admin.users.search')}
             value={query.search}
@@ -99,6 +100,7 @@ export default function UsersSection() {
             style={{ width: 220 }}
           />
           <select
+            className="gh-input"
             aria-label={t('admin.users.role')}
             value={query.role}
             onChange={(e) => set('role', e.target.value as UserQuery['role'])}
@@ -108,6 +110,7 @@ export default function UsersSection() {
             <option value="team">{t('admin.users.roleTeam')}</option>
           </select>
           <select
+            className="gh-input"
             aria-label={t('admin.users.status')}
             value={query.status}
             onChange={(e) => set('status', e.target.value as UserQuery['status'])}
@@ -120,6 +123,7 @@ export default function UsersSection() {
             ))}
           </select>
           <select
+            className="gh-input"
             aria-label={t('admin.users.sort')}
             value={query.sort}
             onChange={(e) => set('sort', e.target.value as UserSort)}
@@ -131,7 +135,7 @@ export default function UsersSection() {
             ))}
           </select>
           {users ? (
-            <span className="gh-admin-count">
+            <span className="gh-count">
               {t('admin.users.count', { n: rows.length })}
               {rows.length !== users.length ? ` / ${users.length}` : ''}
             </span>
@@ -177,7 +181,7 @@ export default function UsersSection() {
                     </Badge>
                   </td>
                   <td>
-                    <span className="gh-admin-badges">
+                    <span className="gh-chip-row">
                       <Badge tone={STATUS_TONE[u.status] ?? 'neutral'}>{statusLabel(u.status)}</Badge>
                       {link ? (
                         <Badge
@@ -323,13 +327,13 @@ function CreateUserDialog({
     >
       <form
         id="admin-user-create"
-        className="gh-admin-form"
+        className="gh-form"
         onSubmit={(e) => {
           e.preventDefault();
           void submit();
         }}
       >
-        <div className="gh-admin-form-grid">
+        <div className="gh-form-grid">
           <Field label={t('admin.users.email')} required>
             {(id) => (
               <input
@@ -382,7 +386,7 @@ function CreateUserDialog({
           )}
         </Field>
         {problem ? (
-          <p className="gh-admin-error" role="alert">
+          <p className="gh-error" role="alert">
             {problem}
           </p>
         ) : null}
@@ -498,13 +502,13 @@ function EditUserDialog({
     >
       <form
         id="admin-user-edit"
-        className="gh-admin-form"
+        className="gh-form"
         onSubmit={(e) => {
           e.preventDefault();
           void save();
         }}
       >
-        <div className="gh-admin-form-grid">
+        <div className="gh-form-grid">
           <Field label={t('admin.users.name')} required>
             {(id) => <input id={id} value={nickname} onChange={(e) => setNickname(e.target.value)} />}
           </Field>
@@ -518,24 +522,24 @@ function EditUserDialog({
             </select>
           )}
         </Field>
-        <h4 className="gh-admin-subhead">{t('admin.users.access')}</h4>
-        <div className="gh-admin-row-actions">
-          <button type="button" className="gh-admin-button" onClick={permissions}>
+        <h4 className="gh-form-heading">{t('admin.users.access')}</h4>
+        <div className="gh-button-row">
+          <button type="button" className="gh-secondary-button" onClick={permissions}>
             <Icon name="shieldCheck" size={14} />
             {t('admin.users.permissions')}
           </button>
         </div>
-        <h4 className="gh-admin-subhead">{t('admin.users.account')}</h4>
-        <p className="gh-admin-hint">{t('admin.users.accountHint')}</p>
-        <div className="gh-admin-row-actions">
-          <button type="button" className="gh-admin-button" disabled={busy} onClick={resetPassword}>
+        <h4 className="gh-form-heading">{t('admin.users.account')}</h4>
+        <p className="gh-hint">{t('admin.users.accountHint')}</p>
+        <div className="gh-button-row">
+          <button type="button" className="gh-secondary-button" disabled={busy} onClick={resetPassword}>
             <Icon name="key" size={14} />
             {t('admin.users.resetPassword')}
           </button>
           {pending ? (
             <button
               type="button"
-              className="gh-admin-button"
+              className="gh-secondary-button"
               disabled={busy || !!linkUnavailable(capability)}
               title={linkUnavailable(capability) ? t(`admin.users.linkOff.${linkUnavailable(capability)!}`) : undefined}
               onClick={() => void account('resend')}
@@ -545,19 +549,18 @@ function EditUserDialog({
             </button>
           ) : null}
           {user.password_link ? (
-            <button type="button" className="gh-admin-button" disabled={busy} onClick={() => void account('revoke')}>
+            <button type="button" className="gh-secondary-button" disabled={busy} onClick={() => void account('revoke')}>
               <Icon name="statusCancelled" size={14} />
               {t('admin.users.revokeLink')}
             </button>
           ) : null}
-          <button type="button" className="gh-admin-button" disabled={busy} onClick={() => void account('status')}>
+          <button type="button" className="gh-secondary-button" disabled={busy} onClick={() => void account('status')}>
             <Icon name={user.status === 'disabled' ? 'checkCircle' : 'statusCancelled'} size={14} />
             {t(user.status === 'disabled' ? 'admin.users.enable' : 'admin.users.disable')}
           </button>
           <button
             type="button"
-            className="gh-admin-button"
-            data-tone="danger"
+            className="gh-secondary-button gh-danger"
             disabled={busy}
             onClick={() => void account('delete')}
           >
@@ -623,7 +626,7 @@ function ResetPasswordDialog({
     >
       <form
         id="admin-user-reset"
-        className="gh-admin-form"
+        className="gh-form"
         onSubmit={(e) => {
           e.preventDefault();
           void submit();

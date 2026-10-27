@@ -46,6 +46,7 @@ import { useTheme } from '../theme';
 import { TEXT_STEP_NAMES, TEXT_STEPS, type TextStep } from '../theme/type-scale';
 import { AgentAvatar, Avatar } from '../ui/avatar';
 import { FormNavRow, NativeForm } from '../ui/native-form';
+import { WIDE_MIN } from '../shell/wide-model';
 
 const SECONDARY = foregroundStyle({ type: 'hierarchical', style: 'secondary' });
 
@@ -62,7 +63,7 @@ export default function Me() {
   const name = s.user?.nickname || t('settings.fallbackName');
   const role = s.user?.role ? t(s.user.role === 'super' ? 'settings.roleAdmin' : 'settings.roleMember') : '';
   // In the wide settings window Preferences owns theme / language / text size and the window owns close.
-  const wide = useWindowDimensions().width >= 760;
+  const wide = useWindowDimensions().width >= WIDE_MIN;
 
   return (
     <>

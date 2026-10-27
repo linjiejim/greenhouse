@@ -91,9 +91,9 @@ export default function TeamContextSection() {
   return (
     <AdminPage title={t('admin.sections.team-context')} testID="admin-team-context">
       <div className="gh-admin-settings">
-        <p className="gh-admin-hint">{t('admin.teamContext.intro')}</p>
+        <p className="gh-hint">{t('admin.teamContext.intro')}</p>
         <Card title={t('admin.teamContext.text')} icon="file">
-          <div className="gh-admin-form" style={{ padding: 0 }}>
+          <div className="gh-form" style={{ padding: 0 }}>
             {TEXTS.map((key) => (
               <Field key={key} label={t(`admin.teamContext.markdown.${key}`)}>
                 {(id) => (
@@ -115,7 +115,7 @@ export default function TeamContextSection() {
               icon="book"
               hint={t('admin.teamContext.conventionsHint', { n: MAX_CONVENTION_DOCS })}
             >
-              <div className="gh-admin-form" style={{ padding: 0 }} data-testid="team-context-conventions">
+              <div className="gh-form" style={{ padding: 0 }} data-testid="team-context-conventions">
                 {conventions.length ? (
                   conventions.map((doc) => (
                     <div key={doc.doc_id} className="gh-admin-tool">
@@ -132,14 +132,14 @@ export default function TeamContextSection() {
                     </div>
                   ))
                 ) : (
-                  <p className="gh-admin-hint" style={{ margin: 0 }}>
+                  <p className="gh-hint" style={{ margin: 0 }}>
                     {t('admin.teamContext.noConventions')}
                   </p>
                 )}
                 {conventions.length < MAX_CONVENTION_DOCS ? (
-                  <div className="gh-admin-row-actions">
+                  <div className="gh-button-row">
                     <select
-                      className="gh-admin-input"
+                      className="gh-input"
                       aria-label={t('admin.teamContext.pickDocument')}
                       value={adding}
                       onChange={(e) => setAdding(e.target.value)}
@@ -154,7 +154,7 @@ export default function TeamContextSection() {
                     </select>
                     <button
                       type="button"
-                      className="gh-admin-button"
+                      className="gh-secondary-button"
                       disabled={!adding}
                       onClick={() => {
                         const doc = view.candidates.find((c) => c.doc_id === adding);
@@ -170,9 +170,9 @@ export default function TeamContextSection() {
               </div>
             </Card>
             <Card title={t('admin.teamContext.glossaryTitle')} icon="note" hint={t('admin.teamContext.glossaryHint')}>
-              <div className="gh-admin-row-actions">
+              <div className="gh-button-row">
                 <select
-                  className="gh-admin-input"
+                  className="gh-input"
                   aria-label={t('admin.teamContext.glossaryTitle')}
                   value={glossary}
                   onChange={(e) => setGlossary(e.target.value)}
@@ -208,7 +208,7 @@ export default function TeamContextSection() {
             {(id) => (
               <input
                 id={id}
-                className="gh-admin-mono"
+                className="gh-mono"
                 value={timezone}
                 placeholder={view.effective_timezone}
                 onChange={(e) => setTimezone(e.target.value)}
@@ -217,7 +217,7 @@ export default function TeamContextSection() {
             )}
           </Field>
         </Card>
-        <div className="gh-admin-savebar">
+        <div className="gh-savebar">
           <button className="gh-primary" disabled={busy} onClick={() => void save()} data-testid="team-context-save">
             {t('common.save')}
           </button>

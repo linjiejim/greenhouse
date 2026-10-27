@@ -15,9 +15,10 @@ import { useAuth } from '../store/auth';
 import { alertError, promptText } from '../ui/dialogs';
 import { flattenTasks, withTaskPatched } from '../data/tasks';
 import type { TaskStatus, ProjectTask } from '../shared/greenhouse-types';
+import { WIDE_MIN } from '../shell/wide-model';
 export default function ProjectsPlace() {
   const { width } = useWindowDimensions();
-  return width < 760 ? <Phone /> : <ProjectsDesktop />;
+  return width < WIDE_MIN ? <Phone /> : <ProjectsDesktop />;
 }
 function ProjectsDesktop() {
   const t = useT(),

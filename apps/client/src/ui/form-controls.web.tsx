@@ -129,7 +129,6 @@ export const TextField = forwardRef<
     modifiers?: Modifier[];
   }
 >(function TextField({ text, placeholder, onTextChange, axis, autoFocus, modifiers = [] }, ref) {
-  const { hex: c } = useTheme();
   const [value, setValue] = useState(text.get());
   const input = useRef<HTMLInputElement | HTMLTextAreaElement>(null);
   useImperativeHandle(ref, () => input.current!);
@@ -143,16 +142,8 @@ export const TextField = forwardRef<
       setValue(e.target.value);
       onTextChange?.(e.target.value);
     },
-    style: {
-      background: c.secondaryGroupedBackground,
-      color: c.label,
-      border: `1px solid ${c.separator}`,
-      borderRadius: radius.sm,
-      padding: space.sm,
-      width: '100%',
-      boxSizing: 'border-box' as const,
-      font: 'inherit',
-    },
+    className: 'gh-input',
+    style: { width: '100%' },
   };
   if (axis === 'vertical')
     return (
@@ -187,14 +178,7 @@ export function Picker({
         aria-label={label}
         value={selection}
         onChange={(e) => onSelectionChange(e.target.value)}
-        style={{
-          font: 'inherit',
-          background: c.secondaryGroupedBackground,
-          color: c.label,
-          border: `1px solid ${c.separator}`,
-          borderRadius: radius.xs,
-          padding: space.xs,
-        }}
+        className="gh-input"
       >
         {options.map((o, i) => (
           <option key={i} value={o.props.modifiers?.find((m) => m.type === 'tag')?.value}>
@@ -232,6 +216,7 @@ export function DatePicker({
       {title}
       <input
         type="date"
+        className="gh-input"
         aria-label={title}
         value={localDay(selection)}
         onChange={(e) => {

@@ -12,14 +12,15 @@ import { toast } from '../ui/toast';
 import { shareTextFile } from '../lib/share-file';
 import { alertError } from '../ui/dialogs';
 import type { MessageActions } from './messages';
+import { WIDE_MIN } from '../shell/wide-model';
 export function ReplyAvatar() {
   const { width } = useWindowDimensions();
-  return width >= 760 ? <AssistantAvatar size={24} /> : null;
+  return width >= WIDE_MIN ? <AssistantAvatar size={24} /> : null;
 }
 export function ReplyActions({ text, actions, live }: { text: string; actions?: MessageActions; live: boolean }) {
   const t = useT();
   const { width } = useWindowDimensions();
-  if (live || !text || width < 760) return null;
+  if (live || !text || width < WIDE_MIN) return null;
   return (
     <Controls
       maxVisible={4}
@@ -76,7 +77,7 @@ export function replySummary(steps: readonly ToolStep[], running: string | null,
 }
 export function useMessageLayout() {
   const { width } = useWindowDimensions();
-  return width >= 760
+  return width >= WIDE_MIN
     ? { userText: typo.callout, authorName: typo.headline, showAgentName: true }
     : { userText: {}, authorName: {}, showAgentName: false };
 }

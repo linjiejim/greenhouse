@@ -1,85 +1,9 @@
-/* Automations place: the automation and agent editors (fixed-size dialogs, src/ui/overlay.web.tsx)
-   and the agent pages. Colours are the shell's semantic tokens only. */
+/* Automations place: layout of the automation and agent editors (fixed-size dialogs,
+   src/ui/overlay.web.tsx) and the agent pages. Fields, buttons, switches, segments, callouts and
+   badges are the shared Controls in src/shell/client.css. */
 
-/* ── dialog form ─────────────────────────────────────── */
-.gh-auto-form {
-  display: flex;
-  flex-direction: column;
-  gap: 24px;
-  padding: 20px 24px 24px;
-  font-size: 14px;
-  line-height: 1.45;
-}
-.gh-auto-section {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  margin: 0;
-  padding: 0;
-  border: 0;
-  min-width: 0;
-}
-.gh-auto-section > h3,
-.gh-auto-section > legend {
-  margin: 0;
-  padding: 0;
-  font-size: 13px;
-  font-weight: 700;
-  color: var(--gh-secondary);
-}
-.gh-auto-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 16px;
-}
-.gh-auto-field {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  min-width: 0;
-}
-.gh-auto-label {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 8px;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--gh-text);
-}
-.gh-auto-label small {
-  font-weight: 400;
-  color: var(--gh-secondary);
-  font-variant-numeric: tabular-nums;
-}
-.gh-auto-label small[data-over] {
-  color: var(--gh-danger);
-  font-weight: 700;
-}
-.gh-auto-input,
-.gh-auto-select,
-.gh-auto-textarea {
-  width: 100%;
-  min-width: 0;
-  height: 32px;
-  padding: 0 10px;
-  border: 1px solid var(--gh-line);
-  border-radius: 8px;
-  background: var(--gh-raised);
-  color: var(--gh-text);
-  font-size: 14px;
-}
-.gh-auto-select {
-  padding-right: 4px;
-}
-.gh-auto-textarea {
-  height: auto;
-  padding: 8px 10px;
-  line-height: 1.55;
-  resize: vertical;
-}
-.gh-auto-input[data-narrow],
-.gh-auto-select[data-narrow] {
+/* ── editor layout ─────────────────────────────────────── */
+.gh-form .gh-input[data-narrow] {
   width: 128px;
 }
 .gh-auto-agent {
@@ -87,66 +11,8 @@
   align-items: center;
   gap: 8px;
 }
-.gh-auto-agent .gh-auto-btn-quiet {
+.gh-auto-agent .gh-link-button {
   flex: none;
-}
-.gh-auto-mono {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 13px;
-}
-.gh-auto-input:hover,
-.gh-auto-select:hover,
-.gh-auto-textarea:hover {
-  border-color: var(--gh-line-strong);
-}
-.gh-auto-input:focus-visible,
-.gh-auto-select:focus-visible,
-.gh-auto-textarea:focus-visible {
-  outline: 2px solid var(--gh-focus);
-  outline-offset: -1px;
-  border-color: transparent;
-}
-.gh-auto-input[aria-invalid='true'],
-.gh-auto-select[aria-invalid='true'],
-.gh-auto-textarea[aria-invalid='true'] {
-  border-color: var(--gh-danger);
-}
-.gh-auto-hint {
-  margin: 0;
-  font-size: 12px;
-  color: var(--gh-secondary);
-}
-.gh-auto-error {
-  margin: 0;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--gh-danger);
-}
-
-/* frequency choice: one row of segments */
-.gh-auto-segments {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 2px;
-  padding: 2px;
-  border-radius: 8px;
-  background: var(--gh-fill);
-  align-self: flex-start;
-}
-.gh-auto-segments button {
-  height: 28px;
-  padding: 0 12px;
-  border: 1px solid transparent;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--gh-secondary);
-  font-size: 13px;
-}
-.gh-auto-segments button[aria-checked='true'] {
-  border-color: var(--gh-line);
-  background: var(--gh-raised);
-  color: var(--gh-text);
-  font-weight: 700;
 }
 .gh-auto-inline {
   display: flex;
@@ -154,9 +20,19 @@
   align-items: flex-end;
   gap: 16px;
 }
-.gh-auto-inline .gh-auto-field {
+.gh-auto-inline .gh-field {
   flex: none;
 }
+.gh-auto-checks {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 12px 16px;
+}
+.gh-auto-checks[data-wide] {
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+}
+
+/* weekday picker */
 .gh-auto-days {
   display: flex;
   gap: 4px;
@@ -212,155 +88,6 @@
   border-color: transparent;
 }
 
-/* checkboxes and switches */
-.gh-auto-check {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  min-height: 32px;
-  padding: 6px 0;
-  cursor: pointer;
-}
-.gh-auto-check input {
-  flex: none;
-  width: 16px;
-  height: 16px;
-  margin: 2px 0 0;
-  accent-color: var(--gh-accent);
-}
-.gh-auto-check > span {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-}
-.gh-auto-check small {
-  font-size: 12px;
-  color: var(--gh-secondary);
-}
-.gh-auto-checks {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 0 16px;
-}
-.gh-auto-checks[data-wide] {
-  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-}
-.gh-auto-switch {
-  appearance: none;
-  position: relative;
-  flex: none;
-  width: 32px !important;
-  height: 20px !important;
-  margin: 0 !important;
-  border-radius: 10px;
-  background: var(--gh-line-strong);
-  cursor: pointer;
-  transition: background-color 0.15s;
-}
-.gh-auto-switch::after {
-  content: '';
-  position: absolute;
-  top: 2px;
-  left: 2px;
-  width: 16px;
-  height: 16px;
-  border-radius: 8px;
-  background: var(--gh-raised);
-  transition: transform 0.15s;
-}
-[data-theme='dark'] .gh-auto-switch::after {
-  background: var(--gh-text);
-}
-.gh-auto-switch:checked {
-  background: var(--gh-accent);
-}
-.gh-auto-switch:checked::after {
-  transform: translateX(12px);
-  background: var(--gh-on-accent);
-}
-.gh-auto-callout {
-  display: flex;
-  gap: 8px;
-  margin: 0;
-  padding: 8px 12px;
-  border-radius: 8px;
-  background: var(--gh-warning-fill);
-  color: var(--gh-text);
-  font-size: 12px;
-}
-.gh-auto-callout svg {
-  flex: none;
-  margin-top: 1px;
-  color: var(--gh-warning);
-}
-.gh-auto-note {
-  margin: 0;
-  padding: 8px 12px;
-  border-radius: 8px;
-  background: var(--gh-sunken);
-  color: var(--gh-secondary);
-  font-size: 12px;
-}
-
-/* dialog footer */
-.gh-auto-footer {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-}
-.gh-auto-footer-lead {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  font-size: 13px;
-  color: var(--gh-secondary);
-}
-.gh-auto-footer-lead label {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--gh-text);
-  cursor: pointer;
-}
-.gh-auto-footer-lead [role='alert'] {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.gh-auto-btn {
-  height: 32px;
-  padding: 0 14px;
-  border: 1px solid var(--gh-line);
-  border-radius: 8px;
-  background: var(--gh-raised);
-  color: var(--gh-text);
-  font-size: 14px;
-  font-weight: 600;
-}
-.gh-auto-btn.gh-primary {
-  border-color: transparent;
-  background: var(--gh-focus);
-  color: var(--gh-on-accent);
-  font-weight: 700;
-}
-.gh-auto-btn-quiet {
-  height: 28px;
-  padding: 0 8px;
-  border: 0;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--gh-accent-text);
-  font-size: 13px;
-  font-weight: 600;
-}
-.gh-auto-btn-quiet:hover {
-  background: var(--gh-hover);
-}
-
 /* tool picker in the agent editor */
 .gh-auto-tools {
   border: 1px solid var(--gh-line);
@@ -375,15 +102,12 @@
   border-bottom: 1px solid var(--gh-line);
   background: var(--gh-sunken);
 }
-.gh-auto-tools-bar .gh-auto-input {
+.gh-auto-tools-bar .gh-input {
   flex: 1;
 }
 .gh-auto-tools-list {
   max-height: 280px;
   overflow: auto;
-}
-.gh-auto-legend {
-  width: 100%;
 }
 .gh-auto-tools-empty {
   padding: 12px;
@@ -437,25 +161,6 @@
 .gh-auto-tool small {
   font-size: 12px;
   color: var(--gh-secondary);
-}
-.gh-auto-tag {
-  display: inline-flex;
-  align-items: center;
-  height: 18px;
-  padding: 0 6px;
-  border-radius: 9px;
-  font-size: 11px;
-  font-weight: 700;
-  background: var(--gh-info-fill);
-  color: var(--gh-info);
-}
-.gh-auto-tag[data-tone='write'] {
-  background: var(--gh-warning-fill);
-  color: var(--gh-warning);
-}
-.gh-auto-tag[data-tone='gone'] {
-  background: var(--gh-danger-fill);
-  color: var(--gh-danger);
 }
 
 /* plant and tint pickers */
@@ -512,7 +217,7 @@
   grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
   margin: 0 0 24px;
   border: 1px solid var(--gh-line);
-  border-radius: 14px;
+  border-radius: 16px;
   background: var(--gh-card);
   overflow: hidden;
 }
@@ -541,7 +246,7 @@
   margin: 8px 0 24px;
   padding: 16px 18px;
   border: 1px solid var(--gh-line);
-  border-radius: 14px;
+  border-radius: 16px;
   background: var(--gh-hover);
   white-space: pre-wrap;
   line-height: 1.7;
@@ -559,7 +264,7 @@
 }
 .gh-agent-uses {
   border: 1px solid var(--gh-line);
-  border-radius: 14px;
+  border-radius: 16px;
   padding: 4px;
   margin: 8px 0 24px;
 }
@@ -571,7 +276,7 @@
   margin: 0 0 24px;
   padding: 12px 16px;
   border: 1px solid var(--gh-line);
-  border-radius: 14px;
+  border-radius: 16px;
 }
 .gh-agent-share p {
   margin: 2px 0 0;
@@ -604,7 +309,7 @@
 }
 .gh-place-sidebar .gh-auto-subheading {
   margin: 8px 10px 2px;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   color: var(--gh-tertiary);
 }
@@ -616,23 +321,11 @@
   gap: 8px;
   margin-top: 8px;
 }
-.gh-auto-empty-actions button:not(.gh-primary) {
-  border: 1px solid var(--gh-line) !important;
-}
 
-/* phone widths: the editor is a full-screen sheet */
+/* phone widths (below WIDE_MIN, src/shell/wide-model.ts): the editor is a full-screen sheet */
 @media (max-width: 759px) {
-  .gh-auto-form {
-    padding: 16px;
-  }
-  .gh-auto-row,
   .gh-auto-identity {
     grid-template-columns: minmax(0, 1fr);
-  }
-  .gh-auto-input,
-  .gh-auto-select,
-  .gh-auto-btn {
-    min-height: 44px;
   }
   .gh-auto-days button {
     width: 40px;

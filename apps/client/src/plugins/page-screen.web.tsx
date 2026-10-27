@@ -11,6 +11,7 @@ import { PlaceSecondary } from '../shell/place-secondary.web';
 import { PlaceSidebar, PlaceRow } from '../ui/place.web';
 import { pluginHref } from './navigation';
 import { pluginIcon } from './icons';
+import { WIDE_MIN } from '../shell/wide-model';
 export default function PluginPageScreen(props: { detail?: boolean }) {
   const { plugin, page } = useLocalSearchParams<{ plugin: string; page: string }>(),
     state = useStationManifest((s) => s.data),
@@ -26,7 +27,7 @@ export default function PluginPageScreen(props: { detail?: boolean }) {
     return <Redirect href={pluginSectionHref(entry!.id, target.id) as never} />;
   return (
     <>
-      {width >= 760 ? (
+      {width >= WIDE_MIN ? (
         // A plugin page is a place in the wide shell: no back button, the main area's own surface.
         <Stack.Screen
           options={{

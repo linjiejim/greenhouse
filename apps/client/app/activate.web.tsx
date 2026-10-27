@@ -97,7 +97,7 @@ export default function Activate() {
         >
           <button
             type="button"
-            className="gh-entry-secondary"
+            className="gh-secondary-button"
             onClick={() => (problem.retry ? setAttempt((n) => n + 1) : router.replace('/login'))}
           >
             {problem.retry ? t('common.retry') : t('entry.activate.toLogin')}
@@ -113,12 +113,14 @@ export default function Activate() {
             void submit();
           }}
         >
-          <div className="gh-entry-note" data-testid="activate-account">
-            {link.masked_email}
-            <small>{expiry}</small>
+          <div className="gh-callout" data-tone="neutral" data-testid="activate-account">
+            <div className="gh-callout-text">
+              {link.masked_email}
+              <small>{expiry}</small>
+            </div>
           </div>
           <input
-            className="gh-entry-input"
+            className="gh-input"
             data-testid="activate-password"
             type="password"
             autoComplete="new-password"
@@ -132,7 +134,7 @@ export default function Activate() {
             }}
           />
           <input
-            className="gh-entry-input"
+            className="gh-input"
             data-testid="activate-confirm"
             type="password"
             autoComplete="new-password"
@@ -145,13 +147,13 @@ export default function Activate() {
             }}
           />
           {error ? (
-            <p className="gh-entry-error" role="alert">
+            <p className="gh-error" role="alert">
               {error}
             </p>
           ) : null}
           <button
             type="submit"
-            className="gh-entry-primary"
+            className="gh-primary"
             data-testid="activate-submit"
             disabled={busy || password.length < MIN_PASSWORD || confirm.length < MIN_PASSWORD}
           >
