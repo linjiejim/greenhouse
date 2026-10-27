@@ -167,7 +167,15 @@ function Requests() {
                 </td>
                 <td>
                   {r.submitted_by_nickname ?? '—'}
-                  {r.submitted_by_role ? <span className="gh-admin-sub">{r.submitted_by_role}</span> : null}
+                  {r.submitted_by_role ? (
+                    <span className="gh-admin-sub">
+                      {r.submitted_by_role === 'super'
+                        ? t('admin.users.roleSuper')
+                        : r.submitted_by_role === 'team'
+                          ? t('admin.users.roleTeam')
+                          : r.submitted_by_role}
+                    </span>
+                  ) : null}
                 </td>
                 <td>{dateTimeLabel(r.created_at, localeOf(lang))}</td>
                 <td className="gh-admin-actions" onClick={(e) => e.stopPropagation()}>
