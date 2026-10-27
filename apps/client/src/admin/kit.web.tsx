@@ -10,6 +10,7 @@ import { DialogBody, Overlay, type DialogSize } from '../ui/overlay.web';
 import { Icon, type IconName } from '../ui/core';
 import { useT } from '../lib/i18n';
 import { usedFraction } from './format';
+import type { WorkspaceFlagState } from './types';
 
 export function AdminPage({
   title,
@@ -280,6 +281,78 @@ export function AdminDialog({
         </DialogBody>
       </div>
     </Overlay>
+  );
+}
+
+/** A tinted note (warning by default) with an optional action at its end. */
+export function Callout({
+  tone = 'warning',
+  icon = 'alert',
+  action,
+  testID,
+  children,
+}: {
+  tone?: 'warning' | 'info' | 'danger';
+  icon?: IconName;
+  action?: React.ReactNode;
+  testID?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="gh-admin-callout" data-tone={tone} role="status" data-testid={testID}>
+      <Icon name={icon} size={16} color={`var(--gh-${tone})`} />
+      <div className="gh-admin-callout-text">{children}</div>
+      {action}
+    </div>
+  );
+}
+
+/**
+ * A boolean workspace switch (`gateway.enabled`, a plugin's on/off setting): the value in effect
+ * and where it comes from; true/false stores an override, "drop the override" sends null.
+ */
+export function FlagSwitch({
+  state,
+  env,
+  label,
+  help,
+  busy,
+  disabled,
+  onChange,
+  testID,
+}: {
+  state: WorkspaceFlagState | null;
+  env: string;
+  label: string;
+  help?: string;
+  busy?: boolean;
+  disabled?: boolean;
+  onChange: (next: boolean | null) => void;
+  testID?: string;
+}) {
+  const t = useT();
+  return (
+    <div className="gh-admin-flag" data-testid={testID}>
+      <Switch
+        checked={state?.effective === true}
+        disabled={!state || busy || disabled}
+        label={label}
+        onChange={(next) => onChange(next)}
+      />
+      <div>
+        <strong>
+          {state?.effective ? t('admin.on') : t('admin.off')}
+          {state ? <small>{t(`admin.flag.${state.source}`, { env })}</small> : null}
+        </strong>
+        {help ? <p className="gh-admin-hint">{help}</p> : null}
+      </div>
+      {state && state.override !== null ? (
+        <button type="button" className="gh-admin-button" disabled={busy} onClick={() => onChange(null)}>
+          <Icon name="rotate" size={14} />
+          {t('admin.flag.reset', { value: state.fallback ? t('admin.on') : t('admin.off') })}
+        </button>
+      ) : null}
+    </div>
   );
 }
 

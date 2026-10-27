@@ -13,7 +13,7 @@ import { confirmAction } from '../ui/dialogs';
 import { toast } from '../ui/toast';
 import * as admin from './api';
 import { useWrite } from './use-write';
-import { AdminDialog, AdminPage, Badge, Field, SectionState, type Tone } from './kit.web';
+import { AdminDialog, AdminPage, Badge, Callout, Field, SectionState, type Tone } from './kit.web';
 import { dayLabel, dateTimeLabel, formatTokens } from './format';
 import {
   EMPTY_QUERY,
@@ -640,17 +640,14 @@ function ResetPasswordDialog({
           )}
         </Field>
         {mode === 'email_link' ? (
-          <div className="gh-admin-callout">
-            <Icon name="mail" size={16} />
-            <div>
-              {t('admin.users.resetWarning')}
-              {linksOn ? null : (
-                <div>
-                  <LinkOffNote capability={capability} />
-                </div>
-              )}
-            </div>
-          </div>
+          <Callout icon="mail">
+            {t('admin.users.resetWarning')}
+            {linksOn ? null : (
+              <div>
+                <LinkOffNote capability={capability} />
+              </div>
+            )}
+          </Callout>
         ) : (
           <Field label={t('admin.users.newPassword')} help={t('admin.users.passwordRule')}>
             {(id) => (

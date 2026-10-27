@@ -260,6 +260,31 @@
   gap: 0 16px;
 }
 
+/* workspace switches */
+.gh-admin-flag {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+.gh-admin-flag > div {
+  flex: 1;
+  min-width: 0;
+}
+.gh-admin-flag strong {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 13px;
+  line-height: 20px;
+}
+.gh-admin-flag strong small {
+  font-weight: 400;
+  color: var(--gh-secondary);
+}
+.gh-admin-flag .gh-admin-hint {
+  margin: 2px 0 0;
+}
+
 /* KPI row */
 .gh-admin-kpis {
   display: grid;
@@ -331,24 +356,13 @@
   line-height: 1.5;
   margin-bottom: 16px;
 }
-.gh-admin-callout > svg {
-  flex-shrink: 0;
-  margin-top: 2px;
-  color: var(--gh-warning);
-}
 .gh-admin-callout[data-tone='info'] {
   background: var(--gh-info-fill);
-}
-.gh-admin-callout[data-tone='info'] > svg {
-  color: var(--gh-info);
 }
 .gh-admin-callout[data-tone='danger'] {
   background: var(--gh-danger-fill);
 }
-.gh-admin-callout[data-tone='danger'] > svg {
-  color: var(--gh-danger);
-}
-.gh-admin-callout > div {
+.gh-admin-callout-text {
   flex: 1;
   min-width: 0;
 }
