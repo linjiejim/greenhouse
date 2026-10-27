@@ -106,7 +106,7 @@ export default function OAuthConsent() {
     <EntryFrame label={title} testID="consent-page" wide>
       <div className="gh-consent-top">
         <GreenhouseMark size={28} />
-        <span className="gh-consent-pill">
+        <span className="gh-badge" data-tone="accent">
           <Icon name="shieldCheck" size={13} color={hex.accentText} />
           {t('entry.consent.secure')}
         </span>
@@ -131,7 +131,7 @@ export default function OAuthConsent() {
               <div key={scope} className="gh-consent-scope" data-testid={`consent-scope-${scope}`}>
                 <header>
                   {t(ACTION_COPY[scope].title)}
-                  <span className="gh-consent-code">{scope}</span>
+                  <span className="gh-badge gh-mono">{scope}</span>
                 </header>
                 <p>{t(ACTION_COPY[scope].detail)}</p>
               </div>
@@ -186,14 +186,14 @@ export default function OAuthConsent() {
             <small>{consent.redirect_uri}</small>
           </p>
           {error ? (
-            <p className="gh-entry-error" role="alert">
+            <p className="gh-error" role="alert">
               {error}
             </p>
           ) : null}
           <div className="gh-consent-actions">
             <button
               type="button"
-              className="gh-entry-secondary"
+              className="gh-secondary-button"
               data-testid="consent-deny"
               disabled={deciding !== null}
               onClick={() => void decide('deny')}
@@ -202,7 +202,7 @@ export default function OAuthConsent() {
             </button>
             <button
               type="button"
-              className="gh-entry-primary"
+              className="gh-primary"
               data-testid="consent-allow"
               disabled={deciding !== null || !groupsKnown || selected === 0}
               onClick={() => void decide('approve')}

@@ -18,16 +18,6 @@ export default function Login() {
   const providers = useProviderSignIn();
   const error = providers.error ?? flow.error ?? flow.connectionError;
   const busy = flow.busy || providers.busy !== null;
-  const inputStyle = {
-    font: 'inherit',
-    padding: space.md,
-    border: `1px solid ${c.separator}`,
-    borderRadius: 8,
-    color: c.label,
-    background: c.secondaryGroupedBackground,
-    width: '100%',
-    boxSizing: 'border-box' as const,
-  };
   return (
     <View
       style={{
@@ -47,13 +37,15 @@ export default function Login() {
           </Text>
         </View>
         <form
+          className="gh-entry-form"
           onSubmit={(e) => {
             e.preventDefault();
             void flow.submit();
           }}
-          style={{ display: 'flex', flexDirection: 'column', gap: space.lg }}
+          style={{ gap: space.lg }}
         >
           <input
+            className="gh-input"
             data-testid="login-email"
             aria-label={t('login.emailPlaceholder')}
             placeholder={t('login.emailPlaceholder')}
@@ -65,9 +57,9 @@ export default function Login() {
               flow.clearError();
               providers.clearError();
             }}
-            style={inputStyle}
           />
           <input
+            className="gh-input"
             data-testid="login-password"
             aria-label={t('login.passwordPlaceholder')}
             placeholder={t('login.passwordPlaceholder')}
@@ -79,32 +71,19 @@ export default function Login() {
               flow.clearError();
               providers.clearError();
             }}
-            style={inputStyle}
           />
           {error ? (
-            <Text accessibilityRole="alert" style={{ ...typo.footnote, color: c.red }}>
+            <p role="alert" className="gh-error">
               {error}
-            </Text>
+            </p>
           ) : null}
-          <button
-            type="submit"
-            data-testid="login-submit"
-            disabled={busy}
-            style={{
-              ...inputStyle,
-              background: c.accent,
-              color: c.onAccent,
-              border: 0,
-              cursor: 'pointer',
-              fontWeight: 600,
-            }}
-          >
+          <button type="submit" className="gh-primary" data-testid="login-submit" disabled={busy}>
             {flow.busy ? t('common.loading') : t('login.submit')}
           </button>
           {flow.connectionError ? <NativeButton label={t('common.retry')} onPress={() => void flow.retry()} /> : null}
         </form>
         {providers.providers.length ? (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: space.md }}>
+          <div className="gh-entry-form">
             <div className="gh-entry-divider" aria-hidden="true">
               {t('entry.or')}
             </div>
@@ -112,7 +91,7 @@ export default function Login() {
               <button
                 key={provider.id}
                 type="button"
-                className="gh-entry-secondary"
+                className="gh-secondary-button"
                 data-testid={`login-provider-${provider.id}`}
                 disabled={busy}
                 onClick={() => void providers.start(provider)}

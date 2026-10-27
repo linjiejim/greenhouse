@@ -48,12 +48,12 @@ export default function BindingResult() {
         testID={`binding-result-${!result ? 'none' : result.ok ? 'ok' : 'error'}`}
       />
       <div className="gh-entry-row">
-        <button type="button" className="gh-entry-secondary" onClick={() => goHome(router)}>
+        <button type="button" className="gh-secondary-button" onClick={() => goHome(router)}>
           {t('entry.back')}
         </button>
         <button
           type="button"
-          className="gh-entry-primary"
+          className="gh-primary"
           data-testid="binding-open-connections"
           onClick={() => router.replace(CLIENT_ROUTES.connections as never)}
         >

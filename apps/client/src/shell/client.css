@@ -438,7 +438,6 @@ textarea.gh-input,
 }
 .gh-callout[data-tone='neutral'] {
   background: var(--gh-sunken);
-  color: var(--gh-secondary);
 }
 .gh-callout-text {
   flex: 1;
@@ -498,6 +497,7 @@ textarea.gh-input,
 .gh-badge {
   display: inline-flex;
   align-items: center;
+  gap: 4px;
   height: 20px;
   padding: 0 8px;
   border-radius: 6px;
