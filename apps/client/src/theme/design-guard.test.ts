@@ -8,6 +8,7 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { webColors } from './web-colors.generated';
 
 const APP = resolve(__dirname, '../..');
 const EXEMPT = [/^src\/theme/, /^src\/ui\//, /^src\/shared\//, /\.generated\.ts$/, /\.test\.ts$/, /^src\/theme\.ts$/, /^src\/theme-m3/];
@@ -44,4 +45,35 @@ describe('design guard', () => {
     }
     expect(offenders).toEqual([]);
   });
+
+  it('uses only --gh-* variables that the shell defines', () => {
+    // defined: every generated web color (kebab-cased), the extras the wide shell sets, and any declared in CSS
+    const defined = new Set(
+      Object.keys(webColors.light).map((name) => `--gh-${name.replace(/[A-Z]/g, (l) => `-${l.toLowerCase()}`)}`),
+    );
+    const sources = [...files(join(APP, 'app')), ...files(join(APP, 'src')), ...cssFiles(join(APP, 'src'))];
+    for (const path of sources) {
+      const text = readFileSync(path, 'utf8');
+      for (const m of text.matchAll(/setProperty\(\s*'(--gh-[a-z-]+)'/g)) defined.add(m[1]);
+      for (const m of text.matchAll(/^\s*(--gh-[a-z-]+)\s*:/gm)) defined.add(m[1]);
+    }
+    const missing: string[] = [];
+    for (const path of sources) {
+      readFileSync(path, 'utf8')
+        .split('\n')
+        .forEach((line, index) => {
+          for (const m of line.matchAll(/var\((--gh-[a-z-]+)/g))
+            if (!defined.has(m[1])) missing.push(`${relative(APP, path)}:${index + 1}: ${m[1]}`);
+        });
+    }
+    expect(missing).toEqual([]);
+  });
 });
+
+function cssFiles(dir: string): string[] {
+  return readdirSync(dir).flatMap((name) => {
+    const path = join(dir, name);
+    if (statSync(path).isDirectory()) return cssFiles(path);
+    return name.endsWith('.css') ? [path] : [];
+  });
+}

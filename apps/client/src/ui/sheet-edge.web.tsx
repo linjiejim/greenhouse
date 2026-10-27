@@ -6,7 +6,7 @@ import { useNavigationState } from 'expo-router/react-navigation';
 import { SheetFrame } from './sheet-actions';
 import { useTheme } from '../theme';
 import { DIALOG_SIZES, Overlay, hasInteractiveOverlay } from './overlay.web';
-import { wideLayout } from '../shell/wide-model';
+import { INSPECTOR_MAX, INSPECTOR_MIN, INSPECTOR_WIDTH, wideLayout } from '../shell/wide-model';
 import { boundedInspectorWidth, inspectorRoute, inspectorCount } from '../shell/inspector-model';
 import { useInspector } from '../shell/inspector.web';
 
@@ -79,9 +79,9 @@ function ScreenFrame({ children, route }: { children: React.ReactNode; route: Ro
   }, [docked, isTop]);
   const readWidth = useCallback(() => {
     try {
-      return boundedInspectorWidth(Number(localStorage.getItem(widthKey)) || 400);
+      return boundedInspectorWidth(Number(localStorage.getItem(widthKey)) || INSPECTOR_WIDTH);
     } catch {
-      return 400;
+      return INSPECTOR_WIDTH;
     }
   }, [widthKey]);
   const [panelWidth, setPanelWidth] = useState(readWidth);
@@ -133,21 +133,7 @@ function ScreenFrame({ children, route }: { children: React.ReactNode; route: Ro
     );
   if (route.name === 'me' && layout.wide)
     return (
-      <Overlay
-        testID="settings-overlay"
-        initialFocus="panel"
-        onClose={close}
-        panelStyle={{
-          position: 'fixed',
-          inset: 0,
-          maxWidth: 'none',
-          maxHeight: 'none',
-          minWidth: 0,
-          display: 'flex',
-          padding: 0,
-          overflow: 'hidden',
-        }}
-      >
+      <Overlay testID="settings-overlay" initialFocus="panel" size="xl" onClose={close} panelStyle={{ flexDirection: 'row' }}>
         <SheetFrame>{children}</SheetFrame>
       </Overlay>
     );
@@ -204,8 +190,8 @@ function ScreenFrame({ children, route }: { children: React.ReactNode; route: Ro
             aria-label="Inspector width"
             aria-orientation="vertical"
             tabIndex={0}
-            aria-valuemin={360}
-            aria-valuemax={520}
+            aria-valuemin={INSPECTOR_MIN}
+            aria-valuemax={INSPECTOR_MAX}
             aria-valuenow={panelWidth}
             style={{ position: 'absolute', left: -3, top: 0, bottom: 0, width: 6, zIndex: 2, cursor: 'col-resize' }}
             onKeyDown={(e) => {

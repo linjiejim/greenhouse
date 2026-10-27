@@ -78,36 +78,3 @@ export function NativeButton({
     </Pressable>
   );
 }
-export function IconButton({
-  icon,
-  label,
-  onPress,
-  disabled,
-}: {
-  icon: IconName;
-  label: string;
-  onPress: () => void;
-  disabled?: boolean;
-}) {
-  const { hex: c } = useTheme();
-  const { width } = useWindowDimensions();
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      disabled={disabled}
-      onPress={onPress}
-      style={({ pressed }) => ({
-        width: width < 760 ? 44 : 28,
-        height: width < 760 ? 44 : 28,
-        alignItems: 'center',
-        justifyContent: 'center',
-        borderRadius: radius.sm,
-        backgroundColor: pressed ? c.fill : 'transparent',
-        opacity: disabled ? 0.5 : 1,
-      })}
-    >
-      <Icon name={icon} size={18} />
-    </Pressable>
-  );
-}

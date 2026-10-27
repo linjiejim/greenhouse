@@ -5,8 +5,9 @@ import { captureIdentity } from '../data/identity';
 import { useT } from '../lib/i18n';
 import { localize, type PluginEntitySchema } from '../shared/plugins';
 import { usePrefs } from '../store/prefs';
-import { Overlay } from '../ui/overlay.web';
+import { DialogBody, Overlay } from '../ui/overlay.web';
 import { writableValues } from './surface-model';
+import { Icon } from '../ui/core';
 
 export function EntityCreate({
   entity,
@@ -54,16 +55,32 @@ export function EntityCreate({
     created(String(r.data.id ?? ''));
   };
   return (
-    <Overlay label={localize(entity.title, lang)} onClose={close} testID="entity-create">
-      <form className="gh-entity-form" onSubmit={(e) => void submit(e)}>
-        <h2>
-          {t('places.newRecord')} · {localize(entity.title, lang)}
-        </h2>
+    <Overlay label={localize(entity.title, lang)} onClose={close} testID="entity-create" size="md">
+      <form className="gh-dialog-form" onSubmit={(e) => void submit(e)}>
+        <DialogBody
+          title={`${t('places.newRecord')} · ${localize(entity.title, lang)}`}
+          actions={
+            <button type="button" className="gh-icon-button" aria-label={t('common.close')} onClick={close}>
+              <Icon name="x" size={18} />
+            </button>
+          }
+          footer={
+            <>
+              <button type="button" className="gh-secondary-button" onClick={close}>
+                {t('common.cancel')}
+              </button>
+              <button type="submit" className="gh-primary" disabled={busy}>
+                {t('common.save')}
+              </button>
+            </>
+          }
+        >
+          <div className="gh-form">
         {fields.map((f) => {
           const label = `${localize(f.title, lang)}${f.required ? ' *' : ''}`;
           const value = draft[f.key];
           return (
-            <label key={f.key} className={f.kind === 'boolean' ? 'gh-entity-check' : undefined}>
+            <label key={f.key} className={f.kind === 'boolean' ? 'gh-form-check' : undefined}>
               {f.kind === 'boolean' ? (
                 <input type="checkbox" checked={!!value} onChange={(e) => set(f.key, e.target.checked)} />
               ) : null}
@@ -99,18 +116,12 @@ export function EntityCreate({
           );
         })}
         {error ? (
-          <p role="alert" className="gh-entity-error">
+          <p role="alert" className="gh-form-error">
             {error}
           </p>
         ) : null}
-        <footer>
-          <button type="button" onClick={close}>
-            {t('common.cancel')}
-          </button>
-          <button type="submit" className="gh-primary" disabled={busy}>
-            {t('common.save')}
-          </button>
-        </footer>
+          </div>
+        </DialogBody>
       </form>
     </Overlay>
   );

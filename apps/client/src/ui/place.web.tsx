@@ -1,4 +1,3 @@
-import { Overlay } from './overlay.web';
 /** Browser place chrome; domain reads and writes stay in existing APIs. */
 import React from 'react';
 import { Stack } from 'expo-router';
@@ -6,7 +5,7 @@ import { useWindowDimensions } from 'react-native';
 import { useWideShell } from '../shell/wide-shell.web';
 import { useTheme, typo } from '../theme';
 import { Icon, type IconName } from './core';
-import { NativeMenu } from './menu.web';
+import { MenuPanel, NativeMenu } from './menu.web';
 import type { MenuItem } from './menu-items';
 import { useT } from '../lib/i18n';
 export function Place({
@@ -181,6 +180,7 @@ export function PlaceEmpty({
 }
 
 export type PlaceContextPoint = { id: string; x: number; y: number };
+/** A row's context menu at the pointer: the same menu surface as every NativeMenu. */
 export function PlaceContext({
   point,
   close,
@@ -188,24 +188,20 @@ export function PlaceContext({
 }: {
   point: PlaceContextPoint | null;
   close: () => void;
-  items: { label: string; run: () => void }[];
+  items: { label: string; run: () => void; icon?: MenuItem['icon']; destructive?: boolean }[];
 }) {
   if (!point) return null;
   return (
-    <Overlay role="menu" modal={false} point={point} onClose={close}>
-      {items.map((item, index) => (
-        <button
-          key={index}
-          role="menuitem"
-          className="gh-place-row"
-          onClick={() => {
-            close();
-            item.run();
-          }}
-        >
-          {item.label}
-        </button>
-      ))}
-    </Overlay>
+    <MenuPanel
+      point={point}
+      close={close}
+      items={items.map((item, index) => ({
+        id: String(index),
+        title: item.label,
+        icon: item.icon,
+        destructive: item.destructive,
+      }))}
+      onSelect={(id) => items[Number(id)]?.run()}
+    />
   );
 }

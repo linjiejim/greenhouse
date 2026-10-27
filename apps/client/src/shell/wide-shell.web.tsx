@@ -11,7 +11,7 @@ import { useAuth } from '../store/auth';
 import { useSessions } from '../store/sessions';
 import { useNotifications } from '../store/notifications';
 import { usePrefs } from '../store/prefs';
-import { wideLayout, RAIL_WIDTH, SECONDARY_WIDTH } from './wide-model';
+import { wideLayout, RAIL_WIDTH, SECONDARY_WIDTH, SECONDARY_MIN, WIDE_MIN } from './wide-model';
 import { useT } from '../lib/i18n';
 import { ConversationRow } from '../chat/conversation-row.web';
 import { webColors } from '../theme/web-colors.generated';
@@ -77,8 +77,8 @@ export function WideShell({ children }: { children: React.ReactNode }) {
       toggleSecondary: () => {
         // Resize and keydown can precede RN's dimensions render. Read the browser
         // width in the key handler so that first shortcut changes the new regime.
-        if (window.innerWidth < 760) return;
-        const compact = window.innerWidth < 1100;
+        if (window.innerWidth < WIDE_MIN) return;
+        const compact = window.innerWidth < SECONDARY_MIN;
         const key = compact ? 'compact' : 'wide';
         setSecondaryPrefs((v) => ({ ...v, [key]: !(v[key] ?? !compact) }));
       },

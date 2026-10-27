@@ -163,7 +163,7 @@
 - Platform primitives use `.ios.tsx`, `.android.tsx` and `.web.tsx`; base re-exports keep TypeScript and Expo Router route discovery working.
 - SwiftUI, Compose and native view factories never load in browser implementations.
 - Screens declare actions with `useScreenActions` or `ScreenActions`; only the iOS adapter owns `Stack.Toolbar` items, which remain its direct children.
-- Browser menus, dialogs, popovers, tooltips and success toasts share `src/ui/overlay.web.tsx` for focus, Escape and portals.
+- Browser menus, dialogs, tooltips and success toasts share `src/ui/overlay.web.tsx` for focus, Escape and portals; centered dialogs take a fixed `size` (DESIGN.md Surfaces), menus go through `MenuPanel`.
 - Web frames use an opaque-origin sandbox and accept messages only from their own iframe window.
 - Browser builds are single-station and use their own origin unless `EXPO_PUBLIC_API_BASE_URL` explicitly overrides it for development.
 - Browser station ids include the API origin; hosted builds share the classic localStorage token keys, while development overrides keep origin-scoped keys.
@@ -187,7 +187,7 @@
 - The root router owns inspector history (three objects maximum); promotion retains the current route key, removes inspector history and replaces an earlier promoted main object.
 - Inspector widths stay within 360–520 px, remembered per place; below 1440 they float without squeezing the main column.
 - Escape dismisses the top interactive overlay, then the inspector, then a live generation; closing an inspector above a promoted object retains that main object.
-- Search and commands, notification popovers and the account menu live in `src/shell/desktop-tools.web.tsx`; notifications reuse `src/notifications/center.tsx` on every platform.
+- Search and commands, the Activity dialog and the account menu live in `src/shell/desktop-tools.web.tsx`; notifications reuse `src/notifications/center.tsx` on every platform.
 - Browser settings use the existing `me` stack in a fullscreen overlay; the single browser station is shown as identity information without a station switcher.
 - Web startup uses native readiness and grace deadlines with a bounded CSS fade; fix DOM warnings at their source instead of suppressing console errors or forwarding them to product toasts.
 - `tests/client-e2e/p2.e2e.ts` exercises separated NDJSON chunks with a browser ReadableStream and writes design-number screenshots at 1440/1280/1024/390; restricted runners collect tests only and leave Chromium execution to the reviewer.
@@ -207,8 +207,8 @@
 - Trusted plugin frames use `WebFrame` with a real origin and the plugin bridge; check both source window and exact origin. They receive only `/api/ext-ui/token` credentials (404 means an empty token). Chat/document previews retain their opaque sandbox and never receive credentials.
 - Real-origin plugin frames permit scripts and same-origin access for the protocol; they have the same code trust as their installed plugin. Do not use that bridge for arbitrary user HTML.
 - Embed navigation accepts client routes; `sendPrompt` opens a chat draft and never submits it. Theme changes preserve the frame, token refresh is identity-bound, and late frame replies are discarded.
-- Browser settings use the existing settings routes in a viewport layer with a persistent column of personal settings only (preferences, account, agents, connections, station); apps live in the rail. The column owns its footer actions and the window owns close (`SettingsWindowContext`). Administration opens `/classic/#/administration` in a separate tab.
-- The wide rail lists core places, a divider, then every app entry (no More menu); `usePlaces()` is the one source for the rail, ⌘K go-to commands and the native Go menu. Rail entries are `ui/rail-item.web.tsx` with short `client.rail*` labels.
+- Browser settings use the existing settings routes in the centered `xl` settings window with a column of personal settings only (preferences, account, agents, connections, station); apps live in the rail. The column owns its footer actions and the window owns close (`SettingsWindowContext`).
+- The wide rail lists core places, a divider, then More (`ui/rail-more.web.tsx`), whose flyout holds every app entry; `usePlaces()` is the one source for the rail, ⌘K go-to commands and the native Go menu. Rail entries are `ui/rail-item.web.tsx` with short `client.rail*` labels.
 - App icons come from `pluginIcon()` (src/plugins/icons.ts): the manifest's lucide name mapped to an `IconName`, then the official screen icon, then `apps`. Add a lucide mapping (and an `IconName` with `scripts/android-icons.py`) rather than drawing `open` for apps.
 - Places use `PlaceEmpty` with `title` (icon, line, create action) for "nothing yet" and without it only for empty search/filter results. Toolbar buttons are icons or words, never text glyphs.
 - One-page apps render no secondary column (an empty `PlaceSecondary` host is hidden); plugin read surfaces without a screen use `resource-screen.web.tsx` (rows or facts from `resource-model.ts`).

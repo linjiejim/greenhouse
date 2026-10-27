@@ -77,9 +77,6 @@ textarea {
   [data-testid='conversation-row'] {
     min-height: 44px !important;
   }
-}
-
-@media (max-width: 759px) {
   [data-testid='home-recent-list'] {
     margin: 0;
     border: 0;
@@ -108,20 +105,37 @@ textarea {
   gap: 8px;
   align-items: center;
 }
-.gh-place button {
+:where(.gh-place) button {
   color: inherit;
 }
-.gh-place button,
-.gh-place-sidebar button {
+/* :where keeps these resets at element weight, so any button class below wins */
+:where(.gh-place, .gh-place-sidebar) button {
   border: 0;
   background: transparent;
   border-radius: 8px;
   padding: 6px 10px;
 }
-.gh-place .gh-primary {
+.gh-primary {
+  border: 0;
+  border-radius: 8px;
+  padding: 6px 14px;
   background: var(--gh-focus);
   color: var(--gh-on-accent);
   font-weight: 700;
+  cursor: pointer;
+}
+.gh-primary:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.gh-secondary-button {
+  border: 1px solid var(--gh-line);
+  border-radius: 8px;
+  padding: 6px 14px;
+  background: var(--gh-surface);
+  color: var(--gh-text);
+  font-weight: 600;
+  cursor: pointer;
 }
 .gh-place-sidebar {
   padding: 12px 8px;
@@ -244,6 +258,8 @@ textarea {
 }
 .gh-place-tabs {
   display: flex;
+  align-items: center;
+  flex-wrap: wrap;
   gap: 6px;
   margin: 0 16px 8px;
 }
@@ -256,19 +272,20 @@ textarea {
   width: 100%;
   font-size: 14px;
 }
-.gh-data-grid th {
-  color: var(--gh-secondary);
-  background: var(--gh-hover);
-  text-align: left;
-  font-size: 12px;
-  font-weight: 600;
-}
 .gh-data-grid td,
 .gh-data-grid th {
   border: 1px solid var(--gh-line);
-  padding: 8px 12px;
+  padding: 4px 12px;
   height: 40px;
   white-space: nowrap;
+}
+.gh-data-grid th {
+  color: var(--gh-secondary);
+  background: var(--gh-surface);
+  text-align: left;
+  font-size: 12px;
+  font-weight: 600;
+  padding-block: 8px;
 }
 .gh-data-grid tbody tr:hover {
   background: var(--gh-hover);
@@ -343,6 +360,7 @@ textarea {
   display: flex;
   gap: 12px;
   padding: 8px 16px 16px;
+  width: 100%;
   height: 100%;
   min-width: 680px;
 }
@@ -415,7 +433,7 @@ textarea {
   display: flex;
 }
 .gh-settings aside {
-  width: 300px;
+  width: 240px;
   flex-shrink: 0;
   border-right: 1px solid var(--gh-line);
   padding: 40px 14px;
@@ -470,6 +488,9 @@ textarea {
   flex: 1;
   min-width: 0;
   position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
 }
 .gh-settings-close {
   position: absolute;
@@ -538,11 +559,6 @@ textarea {
   color: inherit;
   font-weight: 700;
 }
-.gh-settings-main {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-}
 .gh-editor-suggestions {
   position: fixed;
   z-index: 1000;
@@ -601,15 +617,6 @@ textarea {
   flex-shrink: 0;
   margin-top: 5px;
 }
-.gh-place .gh-secondary {
-  background: var(--gh-surface);
-  border: 1px solid var(--gh-line);
-  font-weight: 600;
-}
-.gh-place-tabs {
-  align-items: center;
-  flex-wrap: wrap;
-}
 .gh-place-actions .gh-place-tabs {
   margin: 0;
 }
@@ -635,12 +642,6 @@ textarea {
   position: sticky;
   top: 0;
   z-index: 1;
-}
-.gh-data-grid th {
-  background: var(--gh-surface);
-}
-.gh-data-grid td {
-  padding-block: 4px;
 }
 .gh-entity-grid td,
 .gh-entity-grid th {
@@ -674,9 +675,6 @@ textarea {
 }
 .gh-field-chip > div {
   transform: none !important;
-}
-.gh-kanban {
-  width: 100%;
 }
 .gh-column-count {
   margin-left: auto;
@@ -815,7 +813,7 @@ button.gh-object-field:hover {
 html[data-desktop-window] body,
 html[data-desktop-window] #root { background: transparent; }
 html[data-desktop-window] [data-testid="client-main"] { background: var(--gh-canvas); }
-.gh-desktop-error { position: fixed; bottom: 12px; left: 12px; right: 12px; padding: 12px; background: var(--gh-raised); color: var(--gh-label); border: 1px solid var(--gh-line); z-index: 10000; display: flex; justify-content: space-between; }
+.gh-desktop-error { position: fixed; bottom: 12px; left: 12px; right: 12px; padding: 12px; background: var(--gh-raised); color: var(--gh-text); border: 1px solid var(--gh-line); z-index: 10000; display: flex; justify-content: space-between; }
 html[data-desktop-window="settings"] .gh-settings { padding-top: 52px; box-sizing: border-box; }
 
 /* Plugin read surfaces without their own screen (src/plugins/resource-screen.web.tsx). */
@@ -939,57 +937,43 @@ html[data-desktop-window="settings"] .gh-settings { padding-top: 52px; box-sizin
 }
 
 /* Create form for plugin data entities (src/plugins/entity-create.web.tsx). */
-.gh-entity-form {
-  width: min(520px, calc(100vw - 64px));
+.gh-dialog-form {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  height: 100%;
+  min-height: 0;
 }
-.gh-entity-form h2 {
-  font-size: 18px;
-  margin: 0 0 4px;
+/* Shared form fields for dialogs and pages: label above control, 8-pt rhythm. */
+.gh-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 20px;
 }
-.gh-entity-form label {
+.gh-form label {
   display: flex;
   flex-direction: column;
   gap: 6px;
   font-size: 13px;
   color: var(--gh-secondary);
 }
-.gh-entity-form label.gh-entity-check {
+.gh-form label.gh-form-check {
   flex-direction: row;
   align-items: center;
   gap: 8px;
 }
-.gh-entity-form input:not([type='checkbox']),
-.gh-entity-form select,
-.gh-entity-form textarea {
+.gh-form input:not([type='checkbox']):not([type='radio']),
+.gh-form select,
+.gh-form textarea {
   border: 1px solid var(--gh-line);
   background: var(--gh-raised);
   color: var(--gh-text);
   border-radius: 8px;
   padding: 8px 10px;
+  font: inherit;
   font-size: 14px;
 }
-.gh-entity-form footer {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  margin-top: 4px;
-}
-.gh-entity-form footer button {
-  border: 0;
-  border-radius: 8px;
-  padding: 8px 14px;
-  background: var(--gh-fill);
-  color: var(--gh-text);
-}
-.gh-entity-form footer .gh-primary {
-  background: var(--gh-focus);
-  color: var(--gh-on-accent);
-  font-weight: 700;
-}
-.gh-entity-error {
+.gh-form-error {
   color: var(--gh-danger);
   margin: 0;
   font-size: 13px;
@@ -1086,4 +1070,98 @@ html[data-desktop-window="settings"] .gh-settings { padding-top: 52px; box-sizin
 .gh-icon-button:hover {
   background: var(--gh-hover);
   color: var(--gh-text);
+}
+
+/* Confirm / prompt / alert (src/ui/dialogs.web.tsx): the sm dialog. */
+.gh-alert h2 {
+  margin: 0 0 8px;
+  font-size: 17px;
+}
+.gh-alert p {
+  margin: 0 0 12px;
+  color: var(--gh-secondary);
+}
+.gh-alert input {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid var(--gh-line);
+  background: var(--gh-raised);
+  color: var(--gh-text);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font: inherit;
+}
+.gh-alert pre {
+  white-space: pre-wrap;
+  max-height: 200px;
+  overflow: auto;
+  font-size: 12px;
+}
+.gh-alert-details {
+  border: 0;
+  background: transparent;
+  color: var(--gh-accent-text);
+  padding: 4px 0;
+  cursor: pointer;
+}
+.gh-alert footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 20px;
+}
+.gh-primary.gh-danger {
+  background: var(--gh-danger);
+}
+
+/* Menus (src/ui/menu.web.tsx MenuPanel): dropdowns and context menus share one row. */
+.gh-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 32px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--gh-text);
+  padding: 4px 8px;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+.gh-menu-item > span {
+  flex: 1;
+  min-width: 0;
+}
+.gh-menu-item:hover:not(:disabled),
+.gh-menu-item:focus-visible {
+  background: var(--gh-hover);
+  outline: none;
+}
+.gh-menu-item:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.gh-menu-item[data-destructive] {
+  color: var(--gh-danger);
+}
+.gh-menu-item kbd {
+  font: inherit;
+  font-size: 12px;
+  color: var(--gh-secondary);
+}
+.gh-menu-title {
+  padding: 6px 8px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--gh-secondary);
+}
+.gh-menu-section {
+  border-top: 1px solid var(--gh-line);
+  padding-block: 4px;
+}
+.gh-menu-sub > summary {
+  padding: 8px;
+  cursor: pointer;
 }

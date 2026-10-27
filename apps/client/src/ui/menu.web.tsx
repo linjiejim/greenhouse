@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { Overlay } from './overlay.web';
 import { Icon } from './core.web';
-import { useTheme } from '../theme';
 import type { MenuItem } from './menu-items';
 export { menuSections, type MenuItem } from './menu-items';
 export function NativeMenu({
@@ -26,7 +25,6 @@ export function NativeMenu({
   testID?: string;
 }) {
   const [point, setPoint] = useState<{ x: number; y: number } | null>(null);
-  const { hex: c } = useTheme();
   const open = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -36,54 +34,6 @@ export function NativeMenu({
       y: trigger === 'longPress' ? e.clientY : rect.bottom + 4,
     });
   };
-  const rows = (entries: MenuItem[]): React.ReactNode =>
-    entries.map((item) =>
-      item.children ? (
-        item.inline ? (
-          <div key={item.id} style={{ borderTop: `1px solid ${c.separator}`, paddingBlock: 4 }}>
-            {item.title ? <div style={{ padding: 8 }}>{item.title}</div> : null}
-            {rows(item.children)}
-          </div>
-        ) : (
-          <details key={item.id}>
-            <summary tabIndex={0} style={{ padding: 8, cursor: 'pointer' }}>
-              {item.title}
-            </summary>
-            {rows(item.children)}
-          </details>
-        )
-      ) : (
-        <button
-          key={item.id}
-          role="menuitem"
-          disabled={item.disabled}
-          onClick={() => {
-            setPoint(null);
-            onSelect(item.id);
-          }}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 8,
-            width: '100%',
-            minHeight: 32,
-            border: 0,
-            borderRadius: 6,
-            background: 'transparent',
-            color: item.destructive ? c.red : c.label,
-            padding: '4px 8px',
-            textAlign: 'left',
-            font: 'inherit',
-            cursor: 'pointer',
-          }}
-        >
-          {item.icon ? <Icon name={item.icon} size={16} /> : null}
-          <span style={{ flex: 1 }}>{item.title}</span>
-          {item.checked ? '✓' : null}
-          {item.shortcut ? <span style={{ color: c.secondaryLabel }}>{item.shortcut}</span> : null}
-        </button>
-      ),
-    );
   return (
     <div
       data-testid={testID}
@@ -110,13 +60,62 @@ export function NativeMenu({
       onContextMenu={trigger === 'longPress' ? open : undefined}
     >
       {children}
-      {point ? (
-        <Overlay role="menu" label={title} point={point} modal={false} onClose={() => setPoint(null)}>
-          {title ? <div style={{ padding: 8, color: c.secondaryLabel }}>{title}</div> : null}
-          {rows(items)}
-        </Overlay>
-      ) : null}
+      {point ? <MenuPanel items={items} title={title} point={point} onSelect={onSelect} close={() => setPoint(null)} /> : null}
     </div>
+  );
+}
+/** The one menu surface (dropdowns and context menus alike): rows with icon, title, check and shortcut. */
+export function MenuPanel({
+  items,
+  title,
+  point,
+  onSelect,
+  close,
+}: {
+  items: MenuItem[];
+  title?: string;
+  point: { x: number; y: number };
+  onSelect: (id: string) => void;
+  close: () => void;
+}) {
+  const rows = (entries: MenuItem[]): React.ReactNode =>
+    entries.map((item) =>
+      item.children ? (
+        item.inline ? (
+          <div key={item.id} className="gh-menu-section">
+            {item.title ? <div className="gh-menu-title">{item.title}</div> : null}
+            {rows(item.children)}
+          </div>
+        ) : (
+          <details key={item.id} className="gh-menu-sub">
+            <summary tabIndex={0}>{item.title}</summary>
+            {rows(item.children)}
+          </details>
+        )
+      ) : (
+        <button
+          key={item.id}
+          role="menuitem"
+          className="gh-menu-item"
+          data-destructive={item.destructive || undefined}
+          disabled={item.disabled}
+          onClick={() => {
+            close();
+            onSelect(item.id);
+          }}
+        >
+          {item.icon ? <Icon name={item.icon} size={16} /> : null}
+          <span>{item.title}</span>
+          {item.checked ? <Icon name="check" size={14} /> : null}
+          {item.shortcut ? <kbd>{item.shortcut}</kbd> : null}
+        </button>
+      ),
+    );
+  return (
+    <Overlay role="menu" label={title} point={point} modal={false} onClose={close}>
+      {title ? <div className="gh-menu-title">{title}</div> : null}
+      {rows(items)}
+    </Overlay>
   );
 }
 export const Menu = NativeMenu;

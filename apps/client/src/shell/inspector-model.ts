@@ -1,8 +1,9 @@
 /** A bounded inspector stack follows the root router; it never owns a second transcript. */
+import { INSPECTOR_MAX, INSPECTOR_MIN } from './wide-model';
 import { sheetDepth } from './object-ref';
 export const inspectorRoute = (name: string) => name.startsWith('sheet/');
 export const inspectorCount = sheetDepth;
-export const boundedInspectorWidth = (width: number) => Math.max(360, Math.min(520, width));
+export const boundedInspectorWidth = (width: number) => Math.max(INSPECTOR_MIN, Math.min(INSPECTOR_MAX, width));
 /** Keep the current route key/scroll state and discard the inspector history on promotion. */
 export function promotedInspectorRoutes<T extends { name: string; params?: object }>(routes: readonly T[]): T[] {
   const current = routes.at(-1);

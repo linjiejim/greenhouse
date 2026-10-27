@@ -2,8 +2,14 @@
 export const RAIL_WIDTH = 72;
 export const SECONDARY_WIDTH = 264;
 export const INSPECTOR_WIDTH = 400;
+export const INSPECTOR_MIN = 360;
+export const INSPECTOR_MAX = 520;
+/** Breakpoints: wide shell from WIDE_MIN, secondary column from SECONDARY_MIN, docked inspector from DOCK_MIN. */
+export const WIDE_MIN = 760;
+export const SECONDARY_MIN = 1100;
+export const DOCK_MIN = 1440;
 export function wideLayout(width: number) {
-  return { wide: width >= 760, collapseSecondary: width < 1100, floatInspector: width < 1440 };
+  return { wide: width >= WIDE_MIN, collapseSecondary: width < SECONDARY_MIN, floatInspector: width < DOCK_MIN };
 }
 /** Sidebar dates: compact recent ages, weekday within a week, then month/day. */
 export function conversationAge(iso: string, now: number, lang: 'zh' | 'en'): string {

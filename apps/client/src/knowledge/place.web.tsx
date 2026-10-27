@@ -198,7 +198,7 @@ function KnowledgeDesktop() {
                 </button>
               </>
             ) : (
-              <button className="gh-secondary" onClick={() => setEditing(true)}>
+              <button className="gh-secondary-button" onClick={() => setEditing(true)}>
                 {t('places.edit')}
               </button>
             )

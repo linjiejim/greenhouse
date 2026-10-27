@@ -230,9 +230,23 @@ export function SearchPalette({ close }: { close: () => void }) {
       label={t('common.search')}
       trapTab={false}
       onClose={close}
-      panelStyle={{ position: 'fixed', top: 120, width: 640, padding: 0 }}
+      // a fixed size so the box never jumps while results load; top-anchored like every command palette
+      panelStyle={{
+        position: 'fixed',
+        top: 120,
+        left: '50%',
+        transform: 'translateX(-50%)',
+        width: 640,
+        height: 480,
+        maxHeight: 'calc(100vh - 152px)',
+        padding: 0,
+        display: 'flex',
+        flexDirection: 'column',
+        overflow: 'hidden',
+      }}
     >
       <div
+        style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}
         onKeyDown={(e) => {
           if (e.key === 'Tab') {
             e.preventDefault();
@@ -298,7 +312,7 @@ export function SearchPalette({ close }: { close: () => void }) {
             </button>
           ))}
         </div>
-        <div id="command-results" role="listbox" style={{ maxHeight: 430, overflow: 'auto', padding: 4 }}>
+        <div id="command-results" role="listbox" style={{ flex: 1, minHeight: 0, overflow: 'auto', padding: 4 }}>
           {rows.map((row, i) => (
             <button
               id={`command-${i}`}

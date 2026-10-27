@@ -4,7 +4,6 @@ import { Overlay } from './overlay.web';
 import { recordError } from '../feedback/last-error';
 import { translate } from '../lib/i18n';
 import { usePrefs } from '../store/prefs';
-import { useTheme } from '../theme';
 type Options = {
   title: string;
   message?: string;
@@ -50,7 +49,6 @@ export function DialogHost() {
 }
 function Dialog({ request: r }: { request: Request }) {
   const [value, setValue] = useState(r.defaultValue ?? '');
-  const { hex: c } = useTheme();
   const lang = usePrefs((s) => s.lang);
   const [details, setDetails] = useState(false);
   const finish = (v: string | boolean | null) => {
@@ -58,15 +56,15 @@ function Dialog({ request: r }: { request: Request }) {
     r.resolve(v);
   };
   return (
-    <Overlay label={r.title} onClose={() => finish(r.kind === 'confirm' ? false : null)}>
+    <Overlay label={r.title} size="sm" onClose={() => finish(r.kind === 'confirm' ? false : null)}>
       <form
-        style={{ width: 360, maxWidth: '100%' }}
+        className="gh-alert"
         onSubmit={(e) => {
           e.preventDefault();
           finish(r.kind === 'prompt' ? value.trim() || null : true);
         }}
       >
-        <h2 style={{ marginTop: 0 }}>{r.title}</h2>
+        <h2>{r.title}</h2>
         {r.message ? <p>{r.message}</p> : null}
         {r.kind === 'prompt' ? (
           <input
@@ -75,37 +73,30 @@ function Dialog({ request: r }: { request: Request }) {
             type={r.secure ? 'password' : 'text'}
             value={value}
             onChange={(e) => setValue(e.target.value)}
-            style={{ width: '100%', boxSizing: 'border-box', padding: 8, font: 'inherit' }}
           />
         ) : null}
         {r.detail ? (
           <>
-            <button type="button" onClick={() => setDetails(!details)}>
+            <button type="button" className="gh-alert-details" onClick={() => setDetails(!details)}>
               {translate(lang, 'common.details')}
             </button>
-            {details ? <pre style={{ whiteSpace: 'pre-wrap' }}>{r.detail}</pre> : null}
+            {details ? <pre>{r.detail}</pre> : null}
           </>
         ) : null}
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 20 }}>
+        <footer>
           {r.kind !== 'alert' ? (
-            <button type="button" onClick={() => finish(r.kind === 'confirm' ? false : null)}>
+            <button
+              type="button"
+              className="gh-secondary-button"
+              onClick={() => finish(r.kind === 'confirm' ? false : null)}
+            >
               {r.cancelLabel ?? translate(lang, 'common.cancel')}
             </button>
           ) : null}
-          <button
-            type="submit"
-            style={{
-              background: r.destructive ? c.red : c.accent,
-              color: c.onAccent,
-              border: 0,
-              borderRadius: 6,
-              padding: '8px 16px',
-              font: 'inherit',
-            }}
-          >
+          <button type="submit" className={r.destructive ? 'gh-primary gh-danger' : 'gh-primary'}>
             {r.confirmLabel ?? translate(lang, 'common.ok')}
           </button>
-        </div>
+        </footer>
       </form>
     </Overlay>
   );

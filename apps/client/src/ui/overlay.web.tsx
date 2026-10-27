@@ -8,12 +8,15 @@ export const hasInteractiveOverlay = () => layers.length > 0;
 /**
  * Centered dialogs come in fixed sizes so they never jump with their content: `sm` is for
  * confirm / prompt (fixed width, height follows the text); `md` and `lg` hold lists and forms
- * (fixed width and height, the body scrolls inside, see DialogBody). The viewport clamps both.
+ * (fixed width and height, the body scrolls inside, see DialogBody); `xl` is the settings window.
+ * The viewport clamps both.
  */
 export const DIALOG_SIZES = {
   sm: { width: 420 },
   md: { width: 560, height: 600 },
   lg: { width: 760, height: 640 },
+  /** The settings window: its own nav column plus a page. */
+  xl: { width: 960, height: 680 },
 } as const;
 export type DialogSize = keyof typeof DIALOG_SIZES;
 export function Overlay({
