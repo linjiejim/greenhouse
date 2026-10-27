@@ -38,6 +38,12 @@ export function mapLegacyLink(input: string): string | null {
     if (path === 'settings' || path === 'settings/preferences' || path === 'me') return '/me';
     if (path === 'settings/notifications') return '/me/notifications';
     if (path === 'settings/connectors') return '/me/connectors';
+    // Administration lives in the client: an unknown key is resolved against plugin sections there.
+    if (parts[0] === 'administration') {
+      const key = parts[1] === 'profiles' ? 'usage' : parts[1];
+      if (!key) return '/admin';
+      return route(`/admin/${encodeURIComponent(decodeURIComponent(key))}`, parts.length > 2 ? { view: parts.slice(2).join('/') } : {});
+    }
     if (path === 'login') return withFragment(CLIENT_ROUTES.login, query);
     if (path === 'activate') return withFragment(CLIENT_ROUTES.activate, query);
     if (path === 'connectors/oauth-finish') return withFragment(CLIENT_ROUTES.connectorFinish, query);

@@ -25,7 +25,12 @@ export interface PlaceEntry {
 
 const OFFICIAL_PLACES = ['knowledge', 'tables', 'projects'];
 
-export function usePlaces(): { places: PlaceEntry[]; apps: (PlaceEntry & { navId: string })[] } {
+export function usePlaces(): {
+  places: PlaceEntry[];
+  apps: (PlaceEntry & { navId: string })[];
+  /** Administration, for supers: the rail's foot, ⌘K and the desktop Go menu (wide windows only). */
+  admin: PlaceEntry | null;
+} {
   const t = useT();
   const user = useAuth((s) => s.user);
   const lang = usePrefs((s) => s.lang);
@@ -62,5 +67,9 @@ export function usePlaces(): { places: PlaceEntry[]; apps: (PlaceEntry & { navId
     icon: pluginIcon(n.nav, n.page),
     href: pluginHref(n.plugin.id, n.page),
   }));
-  return { places, apps };
+  const admin: PlaceEntry | null =
+    user?.role === 'super'
+      ? { id: 'admin', label: t('admin.title'), rail: t('client.railAdmin'), icon: 'shieldCheck', href: '/admin' }
+      : null;
+  return { places, apps, admin };
 }

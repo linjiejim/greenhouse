@@ -35,6 +35,10 @@ describe('classic links from station messages', () => {
     ['#/settings', '/me'],
     ['#/settings/notifications', '/me/notifications'],
     ['#/settings/agent-connections/activity', '/me/agents'],
+    ['#/administration', '/admin'],
+    ['#/administration/users', '/admin/users'],
+    ['#/administration/profiles', '/admin/usage'],
+    ['#/administration/issues/frictions', '/admin/issues?view=frictions'],
     ['#/settings/provider-bindings?feishu=ok', '/bindings?feishu=ok'],
     ['#/settings/provider-bindings?wecom=error&reason=already_bound', '/bindings?wecom=error&reason=already_bound'],
     ['#/settings/provider-bindings', '/me/connectors'],
@@ -51,7 +55,6 @@ describe('classic links from station messages', () => {
     ['#/ext/crm/company/42', '/p/crm/crm-company'],
     // no client page and no classic fallback: home
     ['#/example/notes/42', '/'],
-    ['#/administration', '/'],
   ])('%s → %s', (input, output) => expect(mapLegacyLink(input)).toBe(output));
   it('never sends a link to the classic app', () => {
     for (const hash of ['#/whatever', '#/settings/unknown', '#/chat/%E0%A4%A'])

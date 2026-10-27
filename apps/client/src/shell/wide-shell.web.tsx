@@ -4,7 +4,6 @@ import { usePlaces } from './use-places';
 import { isStandaloneEntry } from '../login/entry-links';
 import { PlaceSecondaryContext } from './place-secondary.web';
 import { AccountMenu, NotificationsPopover, SearchPalette } from './desktop-tools.web';
-import { getApiBase } from '../store/stations';
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, Text, View, useWindowDimensions } from 'react-native';
 import { useGlobalSearchParams, usePathname, useRouter } from 'expo-router';
@@ -106,10 +105,12 @@ export function WideShell({ children }: { children: React.ReactNode }) {
     },
     !!user,
   );
-  const { places, apps } = usePlaces();
+  const { places, apps, admin } = usePlaces();
   const directPlace = path.startsWith('/p/')
     ? 'plugin'
-    : path.startsWith('/knowledge')
+    : path === '/admin' || path.startsWith('/admin/')
+      ? 'admin'
+      : path.startsWith('/knowledge')
       ? 'knowledge'
       : path.startsWith('/drive')
         ? params.view === 'tables'
@@ -132,7 +133,13 @@ export function WideShell({ children }: { children: React.ReactNode }) {
     return path === target || path.startsWith(`${target}/`);
   };
   const nativePlaces = JSON.stringify(
-    user ? [...places, ...apps.map(({ id, label, href }) => ({ id, label, href }))] : [],
+    user
+      ? [
+          ...places,
+          ...apps.map(({ id, label, href }) => ({ id, label, href })),
+          ...(admin ? [{ id: admin.id, label: admin.label, href: admin.href }] : []),
+        ]
+      : [],
   );
   useEffect(() => {
     const entries: { id: string; label: string; href: string }[] = JSON.parse(nativePlaces);
@@ -203,10 +210,8 @@ export function WideShell({ children }: { children: React.ReactNode }) {
                 />
               </ScrollView>
               <View style={{ gap: 2, paddingTop: space.sm, borderTopWidth: 1, borderTopColor: c.separator, marginHorizontal: 0 }}>
-                {user.role === 'super'
-                  ? rail('admin', t('client.railAdmin'), 'shieldCheck', () => {
-                      window.open(`${getApiBase()}/classic/#/administration`, '_blank', 'noopener,noreferrer');
-                    })
+                {admin
+                  ? rail(admin.id, admin.rail ?? admin.label, admin.icon, () => go(admin.href), active === 'admin')
                   : null}
                 <View>
                   {rail('notifications', t('client.railActivity'), 'bell', () => {

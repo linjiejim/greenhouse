@@ -303,10 +303,10 @@ v1 fields. `client_min` is the wire spelling; server `CLIENT_API_LEVEL` and boot
 
 | Page kind | Renderer |
 |---|---|
-| `native` | A compiled universal screen (`screen`) with a declared classic `fallback_url`. Official adapters live under `apps/client/src/plugins/<id>/` because Expo is outside the workspace. |
+| `native` | A compiled universal screen (`screen`) with a declared classic `fallback_url`. Official adapters live under `apps/client/src/plugins/<id>/` because Expo is outside the workspace. With `parent: 'administration'` it is a section of the client's Admin place (served to supers only, kept out of `nav`). |
 | `entity-list` | Derived entity metadata, scoped paging/filter/sort and permitted create actions. |
 | `entity-detail` | Member-readable fields and permitted edit/delete actions. |
-| `settings-form` | Declared Runtime Config keys; only changed keys submitted. The API remains super-only regardless of `parent`. |
+| `settings-form` | Declared Runtime Config keys; only changed keys submitted. The API remains super-only regardless of `parent`; `parent: 'administration'` lists it in the Admin place. |
 | `embed` | Trusted plugin static UI in an iframe or native WebView. |
 
 Nav declares `primary`/`more`, ordering, labels/icons and a page. The universal client shows

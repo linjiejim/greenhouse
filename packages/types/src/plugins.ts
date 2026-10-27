@@ -101,6 +101,11 @@ interface PluginPageBase {
 export interface PluginNativePage extends PluginPageBase {
   kind: 'native';
   screen: string;
+  /**
+   * `administration`: a section of the Admin place (super only, served to supers alone) rather
+   * than an app; keep such pages out of `nav`.
+   */
+  parent?: 'administration';
 }
 
 export interface PluginEntityListPage extends PluginPageBase {

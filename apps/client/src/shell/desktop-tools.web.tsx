@@ -106,7 +106,7 @@ export function SearchPalette({ close }: { close: () => void }) {
   const { hex: c } = useTheme();
   const router = useRouter();
   const openObject = useOpenObject();
-  const { places, apps } = usePlaces();
+  const { places, apps, admin } = usePlaces();
   const [query, setQuery] = useState('');
   const [tab, setTab] = useState(0);
   const [selected, setSelected] = useState(0);
@@ -187,7 +187,7 @@ export function SearchPalette({ close }: { close: () => void }) {
         run: () => router.push('/me'),
       },
       // every place and app: ⌘1… for the first places, the rest by name
-      ...[...places, ...apps].map((place, index) => ({
+      ...[...places, ...apps, ...(admin ? [admin] : [])].map((place, index) => ({
         key: `go:${place.id}`,
         title: place.label,
         icon: place.icon,
@@ -196,7 +196,7 @@ export function SearchPalette({ close }: { close: () => void }) {
         run: () => router.navigate(place.href as never),
       })),
     ],
-    [router, t, places, apps],
+    [router, t, places, apps, admin],
   );
   const hitIcon: Record<number, IconName> = { 1: 'msg', 2: 'book', 3: 'fileOther', 4: 'checklist' };
   const rows = [

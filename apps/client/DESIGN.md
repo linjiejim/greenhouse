@@ -33,6 +33,12 @@ One client for web, desktop (Tauri), iOS and Android. Native pages render on the
 - Web forms: `.gh-form` (label above control) inside `DialogBody`; native forms use `src/ui/native-form` / `form-controls`.
 - Dialog helpers: `confirmAction`, `promptText`, `alertError` (`src/ui/dialogs`); success goes through `toast`.
 
+## Admin
+
+- Administration is a place (super only, wide only), not a settings page: grouped sections in the secondary column (members, usage and spend, workspace, integrations, then plugin sections from the manifest), the chosen section in the main column with a 52 bar, optional tabs or a filter toolbar, and 32-row data grids.
+- Lists are tables; a row opens its edit dialog; per-row actions sit at the row end. Settings read as label/control rows in cards with a sticky save bar.
+- Destructive actions confirm first; a secret shows once in a callout with Copy.
+
 ## Tokens
 
 - Spacing: 4-pt scale (`space.*`: 2 4 8 12 16 20 24 32), 8-pt rhythm between blocks; page margin 16, desktop place padding 20.

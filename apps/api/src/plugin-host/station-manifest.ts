@@ -99,7 +99,8 @@ export async function stationManifest(
     }
     const pages = (ext.surfaces?.pages ?? []).filter((page) => {
       if (page.requireRole === 'super' && user.role !== 'super') return false;
-      if (page.kind === 'settings-form' && page.parent === 'administration' && user.role !== 'super') return false;
+      // Admin sections (settings forms and native screens) reach supers alone.
+      if ('parent' in page && page.parent === 'administration' && user.role !== 'super') return false;
       return !('entity' in page) || entities.some((entity) => entity.id === page.entity);
     });
     if (ext.dataSources?.length && !entities.length) continue;

@@ -104,6 +104,10 @@ import {
   StickyNote,
   Upload,
   List,
+  CircleDollarSign,
+  SlidersHorizontal,
+  Plug,
+  Palette,
 } from 'lucide-react';
 import type { IconName } from './core';
 /** The one browser icon mapping: semantic SF / Material names resolve to lucide. */
@@ -222,4 +226,8 @@ export const webIcons = {
   upload: Upload,
   grid: LayoutGrid,
   list: List,
+  pricing: CircleDollarSign,
+  sliders: SlidersHorizontal,
+  plug: Plug,
+  palette: Palette,
 } as const satisfies Record<IconName, unknown>;
