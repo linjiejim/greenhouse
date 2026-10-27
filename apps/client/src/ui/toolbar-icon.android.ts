@@ -125,6 +125,10 @@ const SOURCES: Record<IconName, ImageSourcePropType> = {
   upload: require('../../assets/icons/android/upload.xml'),
   grid: require('../../assets/icons/android/grid_view.xml'),
   list: require('../../assets/icons/android/view_list.xml'),
+  pricing: require('../../assets/icons/android/paid.xml'),
+  sliders: require('../../assets/icons/android/tune.xml'),
+  plug: require('../../assets/icons/android/power.xml'),
+  palette: require('../../assets/icons/android/palette.xml'),
 };
 /* eslint-enable @typescript-eslint/no-require-imports */
 

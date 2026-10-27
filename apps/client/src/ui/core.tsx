@@ -155,6 +155,11 @@ const ICONS = {
   upload: ['square.and.arrow.up.on.square', 'upload'],
   grid: ['square.grid.2x2', 'grid_view'],
   list: ['list.bullet', 'view_list'],
+  // ── 4.0: the Admin place ──
+  pricing: ['dollarsign.circle', 'paid'],
+  sliders: ['slider.horizontal.3', 'tune'],
+  plug: ['powerplug', 'power'],
+  palette: ['paintpalette', 'palette'],
 } as const satisfies Record<string, readonly [SFSymbol, AndroidSymbolName]>;
 
 export type IconName = keyof typeof ICONS;
