@@ -230,7 +230,7 @@
 - `/admin` (src/admin) is super only and wide only: the rail foot, ⌘K and the desktop Go menu open it through `usePlaces().admin`; phones and other roles get a notice, native routes a phone screen.
 - The secondary column lists core sections (src/admin/sections.ts) and the station manifest's pages with `parent: 'administration'`: settings forms and native screens a plugin owns in `src/plugins/<id>/admin.web.tsx`, indexed by `src/plugins/admin-screens.web.ts`. Core admin code never names a plugin.
 - Sections are routes (`/admin/<section>`, `/admin/p/<plugin>/<page>`); classic `#/administration/<key>` links map to `/admin/<key>`, and an unknown key opens the plugin section whose `fallback_url` names it.
-- Sections use src/admin/kit.web.tsx (AdminPage on Place, Tabs, Card, Badge, Switch, FlagSwitch, Field, Callout, fixed-size AdminDialog), `useWrite` for identity-bound writes, styles only in src/admin/admin.css, and copy only in the `admin` catalog block. Rules that can be pure live in `*-model.ts` with tests.
+- Sections use src/admin/kit.web.tsx (AdminPage on Place, Tabs, Card, Badge, Switch, FlagSwitch, Field, Callout, fixed-size AdminDialog), `useWrite` for identity-bound writes, the shared Controls classes in src/shell/client.css (src/admin/admin.css holds admin layout only), and copy only in the `admin` catalog block. Rules that can be pure live in `*-model.ts` with tests.
 
 ## Client polish
 
