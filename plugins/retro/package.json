@@ -6,32 +6,24 @@
   "greenhouse": {
     "id": "retro",
     "sdk": 2,
-    "api": "./api/index.ts",
-    "web": "./web/index.tsx"
+    "api": "./api/index.ts"
   },
   "exports": {
     "./api": "./api/index.ts",
-    "./web": "./web/index.tsx",
     "./manifest": "./manifest.ts"
   },
   "dependencies": {
     "@greenhouse/api": "workspace:*",
     "@greenhouse/types": "workspace:*",
-    "@greenhouse/web": "workspace:*",
     "ai": "^6.0.176",
     "croner": "^10.0.1",
-    "react": "^19.0.0",
     "@greenhouse/plugin-knowledge": "workspace:*",
     "hono": "^4.12.18"
   },
   "devDependencies": {
     "@greenhouse/db": "workspace:*",
-    "@playwright/test": "^1.61.1",
-    "@types/react": "^19.2.0",
     "drizzle-kit": "^0.31.10",
-    "@types/react-dom": "^19.2.0",
     "drizzle-orm": "^0.45.2",
-    "@greenhouse/agent-core": "workspace:*",
-    "react-dom": "^19.0.0"
+    "@greenhouse/agent-core": "workspace:*"
   }
 }

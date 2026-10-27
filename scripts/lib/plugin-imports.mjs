@@ -7,7 +7,7 @@ import ts from 'typescript';
 const TEST = /(?:\.(?:test|spec|e2e)\.[cm]?[jt]sx?$|(?:^|\/)(?:__tests__|e2e)\/)/;
 const BUILTINS = new Set(builtinModules.flatMap((id) => [id, `node:${id}`]));
 const publicHost =
-  /^(?:@greenhouse\/(?:api|web)\/extension-kit|@greenhouse\/types\/.+|@greenhouse\/crud|@greenhouse\/ui-tokens|@greenhouse\/knowledge-editor\/markdown|@greenhouse\/ui\/.+)$/;
+  /^(?:@greenhouse\/api\/extension-kit|@greenhouse\/types\/.+|@greenhouse\/crud|@greenhouse\/ui-tokens|@greenhouse\/knowledge-editor\/markdown)$/;
 const packageName = (id) => (id.startsWith('@') ? id.split('/').slice(0, 2).join('/') : id.split('/')[0]);
 
 /** AST parsing covers imports, re-exports, import types, require and dynamic imports. */
@@ -101,10 +101,7 @@ export function checkPluginImports(file, text, root = process.cwd()) {
 }
 
 export function checkCorePluginImports(file, text) {
-  if (
-    !/^(apps|packages)\//.test(file) ||
-    /^apps\/(api\/src\/plugin-host|web\/src\/extensions)\/compiled\.generated\.ts$/.test(file)
-  )
+  if (!/^(apps|packages)\//.test(file) || /^apps\/api\/src\/plugin-host\/compiled\.generated\.ts$/.test(file))
     return [];
   return moduleImports(file, text)
     .filter(({ specifier }) => {

@@ -10,7 +10,7 @@ import { askUserAnswer } from '../chat/parts';
 const test = await vi.hoisted(async () => {
   const { createRequire } = await import('node:module');
   const { resolve } = await import('node:path');
-  const require = createRequire(resolve('apps/web/package.json'));
+  const require = createRequire(resolve('package.json'));
   const React = require('react') as typeof import('react');
   return {
     React,

@@ -1,4 +1,4 @@
-# Greenhouse — single self-contained image: the Hono API serves the built clients,
+# Greenhouse — single self-contained image: the Hono API serves the built client,
 # run via tsx (no separate compile step). Debian base (not Alpine): the `compute`
 # tool's isolated-vm native addon builds reliably on glibc.
 
@@ -18,15 +18,15 @@ COPY scripts/build-app.mjs ./scripts/build-app.mjs
 RUN pnpm --dir apps/client install --ignore-workspace --frozen-lockfile
 RUN node scripts/build-app.mjs
 
-# ── Build: install the full workspace (compiles native addons) + build the SPA ──
-# NODE_ENV is left unset here so devDependencies (vite, tsx, drizzle-kit) install.
+# ── Build: install the full workspace (compiles native addons) ──
+# NODE_ENV is left unset here so devDependencies (tsx, drizzle-kit) install.
 FROM base AS build
 RUN apt-get update && apt-get install -y --no-install-recommends \
       python3 make g++ ca-certificates \
  && rm -rf /var/lib/apt/lists/*
 COPY . .
 RUN pnpm install --frozen-lockfile
-RUN pnpm plugins:sync --check && pnpm web:build
+RUN pnpm plugins:sync --check && pnpm plugins:ui:build
 COPY --from=universal /app/public/app ./public/app
 
 # ── Runtime: same filesystem, production env ──

@@ -1,6 +1,6 @@
 /** Export the isolated Expo workspace for same-origin API hosting. */
 import { spawnSync } from 'node:child_process';
-import { cpSync, rmSync, existsSync } from 'node:fs';
+import { cpSync, rmSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 const root = resolve(import.meta.dirname, '..');
 const mobile = join(root, 'apps/client');
@@ -15,3 +15,14 @@ if (!existsSync(join(output, 'index.html'))) throw new Error('Expo export is mis
 const target = join(root, 'public/app');
 rmSync(target, { recursive: true, force: true });
 cpSync(output, target, { recursive: true });
+// The single-page export has no head template: add the site icons (copied from apps/client/public).
+const index = join(target, 'index.html');
+const html = readFileSync(index, 'utf8');
+if (!html.includes('rel="manifest"'))
+  writeFileSync(
+    index,
+    html.replace(
+      '</head>',
+      '<link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="apple-touch-icon" href="/apple-touch-icon.png"><link rel="manifest" href="/site.webmanifest"></head>',
+    ),
+  );

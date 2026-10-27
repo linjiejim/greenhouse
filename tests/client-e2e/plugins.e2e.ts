@@ -84,7 +84,7 @@ async function pluginStation(page: Page, { token404 = false } = {}) {
         title: { zh: '客户设置' },
       },
       { id: 'embed', kind: 'embed', url: `${API_BASE}/ext/crm/ui/`, title: { zh: '客户工作台' } },
-      { id: 'future', kind: 'future-kind', title: 'Future', fallback_url: '/classic/#/crm' },
+      { id: 'future', kind: 'future-kind', title: 'Future', fallback_url: 'https://crm.example.com/app' },
     ],
   });
   let tokenCount = 0;

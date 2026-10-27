@@ -1,7 +1,7 @@
 /**
  * Web and mobile resolve the same value for every shared role. Reads what each platform actually
  * loads — the generated CSS the web imports and the palette the app builds from its generated copy —
- * so a hand edit on either side, or app.css redefining a token, fails here.
+ * so a hand edit on either side fails here.
  */
 
 import { readFileSync } from 'node:fs';
@@ -14,7 +14,6 @@ import type { ThemeMode } from './tokens';
 
 const ROOT = resolve(__dirname, '../../../..');
 const CSS = readFileSync(resolve(ROOT, WEB_CSS_PATH), 'utf8');
-const APP_CSS = readFileSync(resolve(ROOT, 'apps/web/src/app.css'), 'utf8');
 
 function declarations(selector: string, nth = 0): Map<string, string> {
   let start = -1;
@@ -90,10 +89,5 @@ describe('web ↔ mobile token parity', () => {
 
   it('dark grouped cells on mobile are the web chrome layer', () => {
     expect(normalize(darkHex.secondaryGroupedBackground)).toBe(web('dark', '--t-surface-chrome'));
-  });
-
-  it('app.css defines no token values of its own (they come from tokens.css)', () => {
-    const own = [...APP_CSS.matchAll(/^\s*(--t-[\w-]+|--primary-\d+):/gm)].map((m) => m[1]);
-    expect(own).toEqual([]);
   });
 });

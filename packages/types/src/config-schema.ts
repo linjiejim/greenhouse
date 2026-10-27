@@ -40,7 +40,11 @@ export const GreenhouseConfigInputSchema = z.object({
     })
     .optional(),
   clients: z
-    .object({ web: z.enum(['classic', 'universal']).optional(), stations: ClientStationsSchema.optional() })
+    .object({
+      // 4.0 serves one web client; say so instead of silently ignoring an old setting
+      web: z.never({ error: 'clients.web was removed in 4.0: the universal client is the only web client' }).optional(),
+      stations: ClientStationsSchema.optional(),
+    })
     .optional(),
 });
 

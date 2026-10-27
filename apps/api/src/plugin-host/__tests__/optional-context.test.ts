@@ -7,7 +7,7 @@ vi.mock('../compiled.generated.js', () => ({
     {
       id: 'context-fixture',
       name: 'Context fixture',
-      sdk: 1,
+      sdk: 2,
       core: '>=3 <5',
       tools: [
         {

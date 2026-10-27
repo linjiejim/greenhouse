@@ -16,7 +16,6 @@ tests/e2e-ui/.auth/
 # Build output
 dist/
 apps/api/src/plugin-host/compiled.generated.ts
-apps/web/src/extensions/compiled.generated.ts
 
 # CLI build artifacts (CLI runs via tsx on .ts sources directly)
 apps/cli/src/*.js
@@ -33,7 +32,6 @@ apps/cli/src/*.js
 # Built frontend (Vite emits the hashed bundle here; nothing is committed)
 public/*
 
-dist-web/
 
 # Database files (runtime, not source)
 data/db/

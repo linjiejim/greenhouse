@@ -15,7 +15,7 @@ const harness = await vi.hoisted(async () => {
     vi.stubGlobal(name, value);
   const { createRequire } = await import('node:module');
   const { resolve } = await import('node:path');
-  const req = createRequire(resolve('apps/web/package.json'));
+  const req = createRequire(resolve('package.json'));
   const React = req('react') as typeof import('react');
   return {
     React,

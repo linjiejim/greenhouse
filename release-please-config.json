@@ -68,17 +68,7 @@
         },
         {
           "type": "json",
-          "path": "apps/web/package.json",
-          "jsonpath": "$.version"
-        },
-        {
-          "type": "json",
           "path": "packages/agent-core/package.json",
-          "jsonpath": "$.version"
-        },
-        {
-          "type": "json",
-          "path": "packages/contract/package.json",
           "jsonpath": "$.version"
         },
         {

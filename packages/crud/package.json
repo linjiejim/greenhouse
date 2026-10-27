@@ -5,8 +5,8 @@
   "type": "module",
   "exports": {
     ".": {
-      "import": "./src/client/index.ts",
-      "types": "./src/client/index.ts"
+      "import": "./src/protocol/index.ts",
+      "types": "./src/protocol/index.ts"
     },
     "./server": {
       "import": "./src/server/index.ts",
@@ -18,17 +18,13 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "lucide-react": "^1.16.0",
     "zod": "^4.4.3"
   },
   "peerDependencies": {
-    "hono": "^4.12.18",
-    "react": "^19.0.0"
+    "hono": "^4.12.18"
   },
   "devDependencies": {
-    "@types/react": "^19.2.0",
     "hono": "^4.12.18",
-    "react": "^19.0.0",
     "typescript": "^5.7.0"
   }
 }

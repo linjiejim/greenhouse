@@ -24,14 +24,16 @@ describe('extension compatibility', () => {
     );
   });
 
-  it('keeps SDK 1 plugins compatible throughout 4.x', () => {
-    expect(checkExtensionCompat({ id: 'legacy', sdk: 1, core: '>=3 <5' }, '4.0.0').errors).toEqual([]);
+  it('refuses SDK 1 plugins (they left with the classic web in 4.0)', () => {
+    expect(checkExtensionCompat({ id: 'legacy', sdk: 1, core: '>=3 <5' }, '4.0.0').errors[0]).toMatch(
+      /written for extension sdk 1/,
+    );
   });
 
-  it('only warns when the declarations are missing', () => {
-    const result = checkExtensionCompat({ id: 'x' }, '3.0.0');
-    expect(result.errors).toEqual([]);
-    expect(result.warnings).toHaveLength(2);
+  it('refuses a plugin that does not declare sdk and core', () => {
+    const result = checkExtensionCompat({ id: 'x' }, '4.0.0');
+    expect(result.errors).toHaveLength(2);
+    expect(result.warnings).toEqual([]);
   });
 
   it('reads APP_VERSION, falling back to the root package.json for dev sentinels', () => {

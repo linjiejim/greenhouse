@@ -207,10 +207,10 @@ function openLog(name) {
   return { file, fd: fs.openSync(file, 'a') };
 }
 
-function launch(state, name, cmd, args, env, port) {
+function launch(state, name, cmd, args, env, port, cwd = '.') {
   const { file, fd } = openLog(name);
   const child = spawn(cmd, args, {
-    cwd: ROOT,
+    cwd: path.resolve(ROOT, cwd),
     env: { ...process.env, ...env },
     detached: true, // 独立进程组，stop 时整组回收
     stdio: ['ignore', fd, fd],
@@ -535,13 +535,15 @@ async function cmdUp(argv) {
   state.ports = ports;
   writeState(state);
 
-  // 3. api 先行（web 的 Vite 代理指向它）
+  // 3. api 先行（web 客户端直连它，跨端口要放行 CORS）
   const apiEnv = {
     API_PORT: String(ports.api),
     DATABASE_URL: dbUrl,
     // Account setup/reset links must return to the actual dynamically allocated
     // local web origin, not a stale port copied from .env.
-    ...(ports.web ? { PUBLIC_BASE_URL: `http://localhost:${ports.web}` } : {}),
+    ...(ports.web
+      ? { PUBLIC_BASE_URL: `http://localhost:${ports.web}`, CORS_ALLOWED_ORIGINS: `http://localhost:${ports.web}` }
+      : {}),
     // run-dev is always a local development process.
     NODE_ENV: 'development',
   };
@@ -556,15 +558,16 @@ async function cmdUp(argv) {
   state.account = account;
   writeState(state);
 
-  // 5. web（Vite 的 port 写死在 vite.config.ts，只能命令行覆盖；API_PORT 决定代理目标）
+  // 5. web = 通用客户端的 Expo web（apps/client），直连上面的 api
   if (selected.includes('web')) {
     launch(
       state,
       'web',
-      'pnpm',
-      ['--filter', '@greenhouse/web', 'exec', 'vite', '--port', String(ports.web), '--strictPort'],
-      { API_PORT: String(ports.api) },
+      'npx',
+      ['expo', 'start', '--web', '--port', String(ports.web)],
+      { EXPO_PUBLIC_API_BASE_URL: `http://localhost:${ports.api}`, CI: '1' },
       ports.web,
+      'apps/client',
     );
     if (!(await waitHealthy('web', ports.web))) {
       printSummary(state);

@@ -5,16 +5,10 @@ import { serveStatic } from '@hono/node-server/serve-static';
 import type { Hono } from 'hono';
 import type { AppEnv } from './app-env.js';
 
-export function mountClientHosting(app: Hono<AppEnv>, publicDir: string, mode: 'classic' | 'universal') {
-  const sharedIcons = new Set([
-    '/favicon.ico',
-    '/favicon.svg',
-    '/apple-touch-icon.png',
-    '/icon-192.png',
-    '/icon-512.png',
-    '/site.webmanifest',
-  ]);
-  app.get('/classic', (c) => c.redirect('/classic/', 308));
+export function mountClientHosting(app: Hono<AppEnv>, publicDir: string) {
+  // 4.0 removed the classic client; its old address lands on the universal client.
+  app.get('/classic', (c) => c.redirect('/', 308));
+  app.get('/classic/*', (c) => c.redirect('/', 308));
   app.get('*', async (c, next) => {
     const path = c.req.path;
     if (/^\/(api|ext|oauth|\.well-known)(\/|$)/.test(path) || path === '/health') return next();
@@ -25,13 +19,9 @@ export function mountClientHosting(app: Hono<AppEnv>, publicDir: string, mode: '
       return c.body(null, 404);
     }
     if (decoded.includes('\\') || decoded.split('/').some((part) => part.startsWith('.'))) return c.body(null, 404);
-    const classic = path.startsWith('/classic/');
     const shared = path.startsWith('/public/');
-    const root = resolve(
-      publicDir,
-      !classic && !shared && !sharedIcons.has(path) && mode === 'universal' ? 'app' : '.',
-    );
-    const requestPath = classic ? decoded.slice('/classic'.length) : shared ? decoded.slice('/public'.length) : decoded;
+    const root = resolve(publicDir, shared ? '.' : 'app');
+    const requestPath = shared ? decoded.slice('/public'.length) : decoded;
     // public/app is an output directory, never a second route to the universal application.
     if (shared && requestPath.startsWith('/app/')) return c.body(null, 404);
     const local = resolve(root, '.' + requestPath);
@@ -53,14 +43,8 @@ export function mountClientHosting(app: Hono<AppEnv>, publicDir: string, mode: '
     if (path === '/favicon.ico') return c.body(null, 204);
     if (shared || extname(requestPath)) return c.body(null, 404);
     const index = resolve(root, 'index.html');
-    if (!existsSync(index))
-      return c.text(`Frontend not built. Run: pnpm ${classic || mode === 'classic' ? 'web:build' : 'app:build'}`, 404);
-    let html = readFileSync(index, 'utf8');
-    // The hash client has relative Vite assets. A fixed base keeps SPA fallback
-    // at /classic/deep/path and its historical hashes working after relocation.
-    if (classic || mode === 'classic')
-      html = html.replace('<head>', `<head><base href="${classic ? '/classic/' : '/'}">`);
+    if (!existsSync(index)) return c.text('Frontend not built. Run: pnpm app:build', 404);
     c.header('Cache-Control', 'no-cache');
-    return c.html(html);
+    return c.html(readFileSync(index, 'utf8'));
   });
 }

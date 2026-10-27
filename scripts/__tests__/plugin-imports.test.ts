@@ -29,9 +29,7 @@ describe('package import boundaries', () => {
   it('permits kits, shared types/UI, own files and declared dependencies', () => {
     for (const spec of [
       '@greenhouse/api/extension-kit',
-      '@greenhouse/web/extension-kit',
       '@greenhouse/types/api',
-      '@greenhouse/ui/tokens',
       '@greenhouse/crud',
       './own.js',
       '../manifest.js',
@@ -64,7 +62,7 @@ describe('package import boundaries', () => {
       checkPluginImports(file, "// import x from '@greenhouse/db';\nconst text = `import('@greenhouse/db')`;", root),
     ).toEqual([]);
   });
-  it('forbids core-to-plugin imports with exactly two generated-file exceptions', () => {
+  it('forbids core-to-plugin imports except in the generated registration', () => {
     for (const path of ['apps/api/src/x.ts', 'apps/client/src/x.ts', 'packages/utils/src/x.ts']) {
       for (const spec of ['@greenhouse/plugin-fixture/api', '../../../plugins/fixture/api/index.js'])
         expect(checkCorePluginImports(path, `import x from '${spec}';`)).toHaveLength(1);
@@ -73,12 +71,6 @@ describe('package import boundaries', () => {
       checkCorePluginImports(
         'apps/api/src/plugin-host/compiled.generated.ts',
         "import x from '../../../../plugins/fixture/api/index.js';",
-      ),
-    ).toEqual([]);
-    expect(
-      checkCorePluginImports(
-        'apps/web/src/extensions/compiled.generated.ts',
-        "import x from '@greenhouse/plugin-fixture/web';",
       ),
     ).toEqual([]);
   });

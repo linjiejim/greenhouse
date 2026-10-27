@@ -9,7 +9,7 @@ const harness = await vi.hoisted(async () => {
   vi.stubGlobal('localStorage', window.localStorage);
   const { createRequire } = await import('node:module');
   const { resolve } = await import('node:path');
-  const req = createRequire(resolve('apps/web/package.json'));
+  const req = createRequire(resolve('package.json'));
   return {
     React: req('react') as typeof import('react'),
     jsx: req('react/jsx-runtime'),

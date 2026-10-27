@@ -8,7 +8,7 @@ vi.mock('../compiled.generated.js', () => ({
     {
       id: 'communication-fixture',
       name: 'Fixture',
-      sdk: 1,
+      sdk: 2,
       core: '>=3 <5',
       notificationKinds: ['ext:communication-fixture:ready'],
       notificationTransports: [

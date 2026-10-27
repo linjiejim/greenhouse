@@ -6,34 +6,25 @@
   "greenhouse": {
     "id": "tables",
     "sdk": 2,
-    "api": "./api/index.ts",
-    "web": "./web/index.tsx"
+    "api": "./api/index.ts"
   },
   "exports": {
     "./api": "./api/index.ts",
-    "./web": "./web/index.tsx",
     "./manifest": "./manifest.ts"
   },
   "dependencies": {
     "@greenhouse/api": "workspace:*",
-    "@greenhouse/web": "workspace:*",
     "@greenhouse/types": "workspace:*",
-    "@greenhouse/crud": "workspace:*",
     "ai": "^6.0.176",
     "drizzle-orm": "^0.45.2",
     "hono": "^4.12.18",
-    "react": "^19.0.0",
     "zod": "^4.4.3",
     "zustand": "^5.0.13",
     "chalk": "^5.6.2"
   },
   "devDependencies": {
-    "@playwright/test": "^1.61.1",
     "@greenhouse/db": "workspace:*",
-    "@types/react": "^19.2.0",
-    "@types/react-dom": "^19.2.0",
     "drizzle-kit": "^0.31.10",
-    "@modelcontextprotocol/sdk": "^1.29.0",
-    "react-dom": "^19.0.0"
+    "@modelcontextprotocol/sdk": "^1.29.0"
   }
 }

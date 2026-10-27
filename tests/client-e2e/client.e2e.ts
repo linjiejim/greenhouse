@@ -145,7 +145,7 @@ test('v2 manifest hides inactive places and keeps future pages reachable', async
             entities: [],
             entity_kinds: [],
             nav: [{ id: 'crm', label: '客户', icon: 'Building2', page: 'future', placement: 'more' }],
-            pages: [{ id: 'future', title: '客户', kind: 'future', fallback_url: '/classic/#/crm' }],
+            pages: [{ id: 'future', title: '客户', kind: 'future', fallback_url: 'https://crm.example.com/app' }],
           },
         ],
       },

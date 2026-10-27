@@ -19,7 +19,6 @@ node_modules
 # Build outputs and documentation are regenerated or omitted from runtime
 public
 dist
-dist-web
 docs
 tests
 **/__tests__

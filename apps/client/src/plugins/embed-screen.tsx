@@ -12,7 +12,6 @@ import { Screen } from '../ui/screen';
 import { WebFrame } from '../ui/web-frame';
 import { EmptyState } from '../ui/empty';
 import { useStartChat } from '../shell/open-object';
-import { openLink } from '../lib/links';
 import { mapLegacyLink } from '../shell/legacy-links';
 import { embedMessage, embedUrl, normalizeNavigate } from './surface-model';
 import { EMBED_PROTOCOL, type PluginEmbedPage } from '../shared/plugins';
@@ -116,8 +115,7 @@ export function EmbedScreen({ plugin, page, title }: { plugin: string; page: Plu
                 if (m.type === EMBED_PROTOCOL.navigate) {
                   const normalized = normalizeNavigate(m.href, getApiBase());
                   const href = normalized?.startsWith('#/') ? mapLegacyLink(normalized) : normalized;
-                  if (href?.startsWith('/classic/')) void openLink(new URL(href, getApiBase()).href);
-                  else if (href) router.navigate(href as never);
+                  if (href && !href.startsWith('/classic/')) router.navigate(href as never);
                 }
               },
             }}

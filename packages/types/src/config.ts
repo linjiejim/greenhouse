@@ -42,8 +42,8 @@ export interface ClientStationsConfig {
 /** Which compiled extensions are active in this deployment. */
 export interface ExtensionsConfig {
   /**
-   * `'all'` enables every extension listed in `apps/api/src/plugin-host/index.ts` and
-   * `apps/web/src/extensions/index.ts`; an id list enables only those. The
+   * `'all'` enables every plugin compiled into this build (`plugins` above); an id list
+   * enables only those. The
    * `GREENHOUSE_EXTENSIONS` env var (comma list or `all`) overrides this at boot so
    * one image can be trimmed per deployment.
    */
@@ -69,7 +69,7 @@ export interface GreenhouseConfig {
   conversations: { sharing: boolean };
   extensions: ExtensionsConfig;
   packs: PacksConfig;
-  clients: { web: 'classic' | 'universal'; stations: ClientStationsConfig };
+  clients: { stations: ClientStationsConfig };
 }
 
 /** What a `greenhouse.config.ts` file may export — every section optional. */
@@ -78,7 +78,7 @@ export interface GreenhouseConfigInput {
   conversations?: { sharing?: boolean };
   extensions?: Partial<ExtensionsConfig>;
   packs?: Partial<PacksConfig>;
-  clients?: { web?: 'classic' | 'universal'; stations?: Partial<ClientStationsConfig> };
+  clients?: { stations?: Partial<ClientStationsConfig> };
 }
 
 export const DEFAULT_GREENHOUSE_CONFIG: GreenhouseConfig = {
@@ -86,7 +86,7 @@ export const DEFAULT_GREENHOUSE_CONFIG: GreenhouseConfig = {
   conversations: { sharing: true },
   extensions: { enabled: 'all' },
   packs: { skills: [], profiles: [] },
-  clients: { web: 'classic', stations: { mode: 'multi', defaults: [] } },
+  clients: { stations: { mode: 'multi', defaults: [] } },
 };
 
 /** Identity helper that gives `greenhouse.config.ts` its types without a runtime dependency. */
@@ -108,7 +108,6 @@ export function mergeGreenhouseConfig(input: GreenhouseConfigInput | undefined):
     extensions: { ...DEFAULT_GREENHOUSE_CONFIG.extensions, ...(input?.extensions ?? {}) },
     packs: { ...DEFAULT_GREENHOUSE_CONFIG.packs, ...(input?.packs ?? {}) },
     clients: {
-      web: input?.clients?.web ?? DEFAULT_GREENHOUSE_CONFIG.clients.web,
       stations: { ...DEFAULT_GREENHOUSE_CONFIG.clients.stations, ...(input?.clients?.stations ?? {}) },
     },
   };

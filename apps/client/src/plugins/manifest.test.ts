@@ -60,6 +60,9 @@ describe('optional station manifest', () => {
   });
   it('refuses active content URLs and sends classic hash fallbacks to classic', () => {
     expect(fallbackUrl({ fallback_url: 'javascript:alert(1)' }, 'https://station.test')).toBeNull();
-    expect(fallbackUrl({ fallback_url: '#/crm' }, 'https://station.test')).toBe('https://station.test/classic/#/crm');
+    // the classic client's hash routes have no target after 4.0
+    expect(fallbackUrl({ fallback_url: '#/crm' }, 'https://station.test')).toBeNull();
+    expect(fallbackUrl({ fallback_url: '/classic/#/crm' }, 'https://station.test')).toBeNull();
+    expect(fallbackUrl({ fallback_url: 'https://crm.example.com/x' }, 'https://station.test')).toBe('https://crm.example.com/x');
   });
 });

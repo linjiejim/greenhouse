@@ -34,7 +34,6 @@ import { Hono } from 'hono';
 import { serve } from '@hono/node-server';
 import { mountClientHosting } from './hosting.js';
 import { extUiScopeMiddleware } from './auth/middleware.js';
-import { GREENHOUSE_CONFIG } from './config/greenhouse-config.js';
 import extUiRoutes from './routes/ext-ui.js';
 const DATABASE_URL = process.env.DATABASE_URL ?? 'postgresql://greenhouse:greenhouse@localhost:5432/greenhouse';
 import { initDatabase } from '@greenhouse/db';
@@ -151,7 +150,7 @@ app.use('*', securityHeadersMiddleware);
 app.use('*', corsMiddleware);
 app.use('*', extUiScopeMiddleware);
 mountExtensionUis(app);
-mountClientHosting(app, PUBLIC_DIR, GREENHOUSE_CONFIG.clients.web);
+mountClientHosting(app, PUBLIC_DIR);
 app.use('*', authMiddleware);
 app.use('*', rateLimitMiddleware);
 

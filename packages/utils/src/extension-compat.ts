@@ -1,12 +1,7 @@
 /**
- * Extension compatibility declarations, shared by the API and web halves:
- * `sdk` (the extension contract revision an extension was written for) and
- * `core` (a semver range of Greenhouse versions).
- *
- * `EXTENSION_SDK` names the newest host contract; compatible older revisions
- * are accepted explicitly. An unsupported `sdk` (SDK 2 also accepts SDK 1) or a
- * `core` range the running version does not satisfy refuses activation; leaving
- * either out only warns in 3.x (both become required in 4.0).
+ * Plugin compatibility declarations: `sdk` (the plugin contract revision it was written for)
+ * and `core` (a semver range of Greenhouse versions). Both are required; a missing or
+ * unsupported `sdk` or a `core` range the running version does not satisfy refuses activation.
  */
 import { satisfiesRange } from './semver.js';
 
@@ -28,15 +23,15 @@ export function checkExtensionCompat(
   const errors: string[] = [];
   const warnings: string[] = [];
   if (ext.sdk === undefined) {
-    warnings.push(`Extension "${ext.id}" does not declare \`sdk\` (this core is sdk ${sdk}); required from 4.0.`);
-  } else if (ext.sdk !== sdk && !(sdk === 2 && ext.sdk === 1)) {
+    errors.push(`Extension "${ext.id}" does not declare \`sdk\` (this core is sdk ${sdk}).`);
+  } else if (ext.sdk !== sdk) {
     errors.push(
       `Extension "${ext.id}" was written for extension sdk ${ext.sdk}, but this core implements sdk ${sdk}. ` +
         'Update the extension to the current contract (see EXTENDING.md) before enabling it.',
     );
   }
   if (ext.core === undefined) {
-    warnings.push(`Extension "${ext.id}" does not declare a \`core\` version range; required from 4.0.`);
+    errors.push(`Extension "${ext.id}" does not declare a \`core\` version range.`);
   } else if (version === null) {
     warnings.push(`Extension "${ext.id}": the running Greenhouse version is unknown, \`core\` not checked.`);
   } else {
