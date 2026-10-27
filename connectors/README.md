@@ -1,9 +1,9 @@
 # Connector catalog
 
 The official, vetted list of remote MCP servers a Greenhouse administrator can install with one click
-(Administration → Connectors → **Add from catalog**). Members' agents then use them through the
+(Admin › Team connectors → **From catalog** in the client). Members' agents then use them through the
 `mcp_call` tool — public ones right away, the ones that work with each member's own account after the
-member connects (Settings → Connections on the web, Me → Connections on iOS).
+member connects (Me › Connections in the client, on the web and on phones).
 
 Each file here is one connector. Adding a file is how you contribute one.
 

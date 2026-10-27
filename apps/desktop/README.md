@@ -23,7 +23,7 @@ CARGO_HOME=$PWD/.cargo-home CARGO_TARGET_DIR=$PWD/apps/desktop/src-tauri/target 
 - `apps/desktop/src-tauri/target/release/bundle/macos/Greenhouse.app`
 - `apps/desktop/src-tauri/target/release/bundle/dmg/Greenhouse_4.0.0-rc.1_aarch64.dmg` (version and architecture follow the build).
 
-Local builds use ad-hoc signing (`-`) and no notarisation. The desktop script does not publish mobile builds, change native Expo configuration, or run the application during check/build. Dev also loads bundled assets; restart it after changing the client.
+Local builds use ad-hoc signing (`-`) and no notarisation. The desktop script does not publish iOS/Android builds, change native Expo configuration, or run the application during check/build. Dev also loads bundled assets; restart it after changing the client.
 
 Native behavior:
 
@@ -72,4 +72,4 @@ Upload the updater `.app.tar.gz`, its `.sig`, and a `latest.json` containing thi
 
 ## Human acceptance
 
-The restricted runner builds without launching. On a Mac, verify: titlebar drag/traffic lights; light/dark vibrancy; resize/move/relaunch; every menu shortcut and role-gated Go place; multi-station sign-in/switch/sign-out in all windows; inactive-window notification and Dock unread count; global hotkey/Quick ask streaming/main-window handoff; cold/warm deep links; Keychain denial/retry; a signed test feed upgrading the previous installed version. Browser Playwright tests also remain a reviewer gate.
+The restricted runner builds without launching. On a Mac, verify: titlebar drag/traffic lights; light/dark vibrancy; resize/move/relaunch; every menu shortcut and role-gated Go place; multi-station sign-in/switch/sign-out in all windows; inactive-window notification and Dock unread count; global hotkey/Quick ask streaming/main-window handoff; cold/warm deep links; Keychain denial/retry; a signed test feed upgrading the previous installed version. The shared browser client is covered separately by `pnpm test:e2e:client`.
