@@ -1082,6 +1082,12 @@ textarea.gh-input,
 .gh-settings-row:last-child {
   border: 0;
 }
+/* the settings window's rows are 60 tall: its segmented choice takes the full control height */
+.gh-settings-row .gh-segmented > button {
+  height: 32px;
+  padding: 0 16px;
+  font-size: 14px;
+}
 .gh-settings-row select {
   border: 0;
   background: transparent;
