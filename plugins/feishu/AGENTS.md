@@ -9,6 +9,7 @@
 - Binding/login share the callback and distinguish intent in state; bind/start require Bearer, callback/login exchange use their declared public paths.
 - State lasts ten minutes and exchange codes sixty seconds; consume atomically, recheck account state and issue sessions through the core facade.
 - App redirects exactly match APP_LOGIN_REDIRECT and are rejected before creating state; never put long-lived credentials in URLs.
+- Web returns use universal client routes (@greenhouse/types/client-routes): bindings `/bindings?feishu=`, sign-in `/login#feishu_code=` (code in the fragment); the client glue is apps/client/src/plugins/feishu.
 - Provider discovery/UI appears only when configured; unconfigured operations fail explicitly.
 - Direct-message recipients derive from binding; group webhooks and corporate-app direct messages remain separate.
 - Bot uses outbound WSClient with both events/card callbacks configured as long connections; connection errors warn without stopping API startup.

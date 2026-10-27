@@ -5,6 +5,7 @@ import {
   type IdentityProvider,
 } from '@greenhouse/api/extension-kit';
 import type { Handler } from 'hono';
+import { CLIENT_ROUTES, clientRouteUrl } from '@greenhouse/types/client-routes';
 /**
  * 飞书身份绑定与扫码登录 — /api/feishu
  *
@@ -94,12 +95,14 @@ function baseUrl(reqUrl: string): string {
   return (process.env.PUBLIC_BASE_URL || new URL(reqUrl).origin).replace(/\/$/, '');
 }
 
+/** The client's binding landing (`?feishu=ok|error&reason=`); it shows the result and where the binding lives. */
 function settingsRedirect(reqUrl: string, params: Record<string, string>): string {
-  return `${baseUrl(reqUrl)}/#/settings/provider-bindings?${new URLSearchParams(params).toString()}`;
+  return clientRouteUrl(baseUrl(reqUrl), CLIENT_ROUTES.bindings, { query: params });
 }
 
+/** The client's sign-in page; the one-shot exchange code rides in the fragment, out of server logs. */
 function loginRedirect(reqUrl: string, params: Record<string, string>): string {
-  return `${baseUrl(reqUrl)}/#/login?${new URLSearchParams(params).toString()}`;
+  return clientRouteUrl(baseUrl(reqUrl), CLIENT_ROUTES.login, { fragment: params });
 }
 
 /**

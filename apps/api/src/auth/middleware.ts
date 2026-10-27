@@ -31,7 +31,7 @@ const PUBLIC_PATHS = new Set([
   // exposes secrets, user data or feature configuration.
   '/api/bootstrap',
   // A connector's OAuth provider redirects the BROWSER here, without a Bearer.
-  // It writes nothing: it only sends the person back to the app (web hash route
+  // It writes nothing: it only sends the person back to the app (the client route
   // or the mobile scheme), whose logged-in session then calls
   // POST /api/me/connectors/oauth/finish — which refuses a state started by
   // someone else. Rate-limited in security.ts.

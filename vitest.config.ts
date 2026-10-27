@@ -33,6 +33,7 @@ export default defineConfig({
       '@greenhouse/types/config-schema': resolve(__dirname, 'packages/types/src/config-schema.ts'),
       '@greenhouse/types/mcp': resolve(__dirname, 'packages/types/src/mcp.ts'),
       '@greenhouse/types/connectors': resolve(__dirname, 'packages/types/src/connectors.ts'),
+      '@greenhouse/types/client-routes': resolve(__dirname, 'packages/types/src/client-routes.ts'),
       '@greenhouse/types/automation-tools': resolve(__dirname, 'packages/types/src/automation-tools.ts'),
       '@greenhouse/types/tables': resolve(__dirname, 'packages/types/src/tables.ts'),
       '@greenhouse/types/object-refs': resolve(__dirname, 'packages/types/src/object-refs.ts'),

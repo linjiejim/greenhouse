@@ -52,6 +52,10 @@
       "import": "./src/connectors.ts",
       "types": "./src/connectors.ts"
     },
+    "./client-routes": {
+      "import": "./src/client-routes.ts",
+      "types": "./src/client-routes.ts"
+    },
     "./automation-tools": {
       "import": "./src/automation-tools.ts",
       "types": "./src/automation-tools.ts"

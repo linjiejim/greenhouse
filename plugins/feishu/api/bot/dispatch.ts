@@ -12,6 +12,7 @@ import { services } from '../services.js';
 import { getDb, readSessionDigest, type DatabaseProvider } from '@greenhouse/api/extension-kit';
 import { resolveHistoryBudget, windowMessagesByBudget } from '@greenhouse/api/extension-kit';
 import type { UserRole } from '@greenhouse/types/api';
+import { CLIENT_ROUTES, clientRouteUrl } from '@greenhouse/types/client-routes';
 import { logger } from '@greenhouse/api/extension-kit';
 import { toErrorMessage } from '@greenhouse/api/extension-kit';
 import { channelAgentRuntime, type ToolRegistry } from '@greenhouse/api/extension-kit';
@@ -52,7 +53,7 @@ export interface DispatchDeps {
 
 function settingsUrl(): string {
   const base = (process.env.PUBLIC_BASE_URL || '').replace(/\/$/, '');
-  return base ? `${base}/#/settings/provider-bindings` : '设置 → Connections';
+  return base ? clientRouteUrl(base, CLIENT_ROUTES.connections) : '「我」→ 连接';
 }
 
 function sessionUrl(sessionId: string): string | null {
@@ -126,7 +127,7 @@ export async function dispatchFeishuMessage(message: FeishuIncomingMessage, deps
       kind: 'guidance',
       content:
         '**你的飞书还没有绑定 Greenhouse 账号**\n\n' +
-        `请先用邮箱登录 [Greenhouse](${settingsUrl()})，在 **设置 → Connections** 里绑定飞书，之后就能直接在这里对话。`,
+        `请先用邮箱登录 [Greenhouse](${settingsUrl()})，在 **「我」→ 连接** 里绑定飞书，之后就能直接在这里对话。`,
     };
   }
 

@@ -21,7 +21,7 @@ export default defineConfig({
   plugins: ['./plugins/example'],
   extensions: { enabled: ['example'] },
   packs: { skills: ['packs/skills'], profiles: ['packs/profiles'] },
-  clients: { web: 'classic', stations: { mode: 'multi', defaults: [] } },
+  clients: { web: 'universal', stations: { mode: 'multi', defaults: [] } },
 });
 ```
 
@@ -39,7 +39,9 @@ append your package and id to the existing lists. All dependencies must be compi
   `pnpm plugins:sync --check` checks generated output without replacing it.
 - A changed compiled list requires rebuilding; enablement changes require restarting.
   There is no hot loading, directory loader or database-managed enablement switch.
-- `clients.web` selects classic or universal at `/`; `/classic/` remains available in both modes.
+- `clients.web` selects universal (default) or classic at `/`; `/classic/` remains available in both modes.
+  Server-made links (activation mail, OAuth consent and returns, account bindings) always target
+  universal client routes (`packages/types/src/client-routes.ts`).
   `clients.stations` describes client builds; mobile/desktop mirror station settings at build time.
 
 The upstream enabled set is Knowledge, Tables, SkillHub, Feedback and Memory. The other seven

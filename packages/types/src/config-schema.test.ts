@@ -9,7 +9,7 @@ describe('parseGreenhouseConfig', () => {
       conversations: { sharing: true },
       extensions: { enabled: 'all' },
       packs: { skills: [], profiles: [] },
-      clients: { web: 'classic', stations: { mode: 'multi', defaults: [] } },
+      clients: { web: 'universal', stations: { mode: 'multi', defaults: [] } },
     });
     expect(parseGreenhouseConfig(undefined).extensions.enabled).toBe('all');
   });
@@ -81,6 +81,8 @@ describe('extension enable helpers', () => {
 });
 
 it('validates the production web host selection', () => {
+  expect(parseGreenhouseConfig({}).clients.web).toBe('universal');
+  expect(parseGreenhouseConfig({ clients: { web: 'classic' } }).clients.web).toBe('classic');
   expect(parseGreenhouseConfig({ clients: { web: 'universal' } }).clients.web).toBe('universal');
   expect(() => parseGreenhouseConfig({ clients: { web: 'unknown' } })).toThrow();
 });

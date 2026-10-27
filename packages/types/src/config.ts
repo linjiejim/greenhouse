@@ -69,7 +69,16 @@ export interface GreenhouseConfig {
   conversations: { sharing: boolean };
   extensions: ExtensionsConfig;
   packs: PacksConfig;
-  clients: { web: 'classic' | 'universal'; stations: ClientStationsConfig };
+  clients: {
+    /**
+     * Which browser client the API serves at `/`. `universal` (default) is the Expo client
+     * (`public/app`) and moves the classic hash app to `/classic/`; `classic` keeps the classic
+     * app at `/` until it is deleted. Server links (activation mail, OAuth consent and returns,
+     * identity bindings) always point at universal client routes (./client-routes.ts).
+     */
+    web: 'classic' | 'universal';
+    stations: ClientStationsConfig;
+  };
 }
 
 /** What a `greenhouse.config.ts` file may export — every section optional. */
@@ -86,7 +95,7 @@ export const DEFAULT_GREENHOUSE_CONFIG: GreenhouseConfig = {
   conversations: { sharing: true },
   extensions: { enabled: 'all' },
   packs: { skills: [], profiles: [] },
-  clients: { web: 'classic', stations: { mode: 'multi', defaults: [] } },
+  clients: { web: 'universal', stations: { mode: 'multi', defaults: [] } },
 };
 
 /** Identity helper that gives `greenhouse.config.ts` its types without a runtime dependency. */
