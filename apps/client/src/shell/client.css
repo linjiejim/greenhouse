@@ -52,6 +52,569 @@ textarea {
     scroll-behavior: auto !important;
   }
 }
+
+/* ══ Controls ════════════════════════════════════════════════════════════════════════════════
+   The one browser control vocabulary (apps/client/DESIGN.md Components). Admin, automations,
+   entry pages, plugin forms and dialogs draw buttons, fields, switches and notes from here;
+   feature CSS keeps only its own layout. Controls: radius 8, height 32 (28 in a toolbar, 44
+   below WIDE_MIN), type 14; labels 13, hints 12. */
+
+/* Buttons: one .gh-primary per surface, .gh-secondary-button for the rest, .gh-icon-button for
+   icon-only squares, .gh-link-button for quiet inline actions; .gh-danger marks destructive. */
+.gh-primary,
+.gh-secondary-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 0 14px;
+  border-radius: 8px;
+  font-size: 14px;
+  line-height: 20px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.gh-primary {
+  border: 1px solid transparent;
+  background: var(--gh-focus);
+  color: var(--gh-on-accent);
+  font-weight: 700;
+}
+.gh-primary:hover:not(:disabled) {
+  background: var(--gh-accent-hover);
+  filter: none;
+}
+.gh-primary.gh-danger {
+  background: var(--gh-danger-solid);
+  color: var(--gh-on-danger);
+}
+.gh-primary.gh-danger:hover:not(:disabled) {
+  background: var(--gh-danger-solid-hover);
+}
+.gh-secondary-button {
+  border: 1px solid var(--gh-line);
+  background: var(--gh-raised);
+  color: var(--gh-text);
+  font-weight: 600;
+}
+.gh-secondary-button:hover:not(:disabled) {
+  background: var(--gh-hover);
+  filter: none;
+}
+.gh-link-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--gh-accent-text);
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.gh-link-button:hover:not(:disabled) {
+  background: var(--gh-hover);
+  filter: none;
+}
+.gh-secondary-button.gh-danger,
+.gh-link-button.gh-danger {
+  color: var(--gh-danger);
+}
+.gh-primary:disabled,
+.gh-secondary-button:disabled,
+.gh-link-button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.gh-icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--gh-secondary);
+  cursor: pointer;
+}
+.gh-icon-button:hover:not(:disabled) {
+  background: var(--gh-hover);
+  color: var(--gh-text);
+  filter: none;
+}
+/* a row of buttons in a form or a card */
+.gh-button-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Forms: .gh-form stacks fields (label above control) inside a dialog body or a page; a direct
+   <label> child wraps its text and control, a .gh-field pairs a label with a control by id. */
+.gh-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 20px;
+}
+.gh-form > label:not(.gh-check) {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--gh-secondary);
+}
+.gh-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+.gh-form-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.gh-form-section + .gh-form-section {
+  margin-top: 8px;
+}
+.gh-form-heading,
+.gh-form-section > legend {
+  margin: 0;
+  padding: 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--gh-secondary);
+}
+.gh-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.gh-field > label {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--gh-secondary);
+}
+/* a count beside the label ("12 / 4000") */
+.gh-field > label small {
+  margin-left: auto;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+}
+.gh-field > label small[data-over] {
+  color: var(--gh-danger);
+  font-weight: 700;
+}
+.gh-hint {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--gh-secondary);
+}
+.gh-error {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--gh-danger);
+}
+.gh-hint code,
+.gh-setting-row code {
+  padding: 0 4px;
+  border-radius: 4px;
+  background: var(--gh-fill);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+}
+
+/* Inputs: input, select and textarea share one box; controls in a .gh-form or directly in a
+   .gh-field get it without the class. */
+.gh-input,
+.gh-form :where(input:not([type='checkbox'], [type='radio'], [type='range'], [type='color'], [type='file']), select, textarea),
+.gh-field > :where(input:not([type='checkbox'], [type='radio'], [type='range'], [type='color'], [type='file']), select, textarea) {
+  height: 32px;
+  min-width: 0;
+  padding: 0 10px;
+  border: 1px solid var(--gh-line-strong);
+  border-radius: 8px;
+  background: var(--gh-raised);
+  color: var(--gh-text);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 400;
+}
+textarea.gh-input,
+.gh-form textarea,
+.gh-field > textarea {
+  height: auto;
+  min-height: 64px;
+  padding: 8px 10px;
+  line-height: 1.5;
+  resize: vertical;
+}
+.gh-input:focus-visible,
+:is(.gh-form, .gh-field) :where(input, select, textarea):focus-visible {
+  outline: 2px solid var(--gh-focus);
+  outline-offset: -1px;
+}
+.gh-input[aria-invalid='true'],
+:is(.gh-form, .gh-field) :where(input, select, textarea)[aria-invalid='true'] {
+  border-color: var(--gh-danger);
+}
+.gh-mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+}
+
+/* Checkbox (or radio) with its label and an optional line under it. */
+.gh-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--gh-text);
+  cursor: pointer;
+}
+.gh-check > input:not(.gh-switch) {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin: 2px 0 0;
+  accent-color: var(--gh-accent);
+}
+.gh-check > span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.gh-check small {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--gh-secondary);
+}
+
+/* Switch: a <button role="switch" aria-checked> or an <input type="checkbox" role="switch">. */
+.gh-switch {
+  appearance: none;
+  position: relative;
+  flex: none;
+  width: 32px;
+  height: 20px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 10px;
+  background: var(--gh-line-strong);
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+.gh-switch::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 8px;
+  background: var(--gh-raised);
+  transition: transform 0.15s;
+}
+[data-theme='dark'] .gh-switch::after {
+  background: var(--gh-text);
+}
+.gh-switch:checked,
+.gh-switch[aria-checked='true'] {
+  background: var(--gh-accent);
+}
+.gh-switch:checked::after,
+.gh-switch[aria-checked='true']::after {
+  transform: translateX(12px);
+  background: var(--gh-on-accent);
+}
+.gh-switch:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* Segmented choice: buttons marked aria-checked, aria-pressed or aria-selected. */
+.gh-segmented {
+  display: inline-flex;
+  flex-wrap: wrap;
+  /* its own width, also in a column of fields */
+  width: max-content;
+  max-width: 100%;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 8px;
+  background: var(--gh-fill);
+}
+.gh-segmented > button {
+  height: 28px;
+  padding: 0 12px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--gh-secondary);
+  font-size: 13px;
+}
+.gh-segmented > button:is([aria-checked='true'], [aria-pressed='true'], [aria-selected='true']) {
+  border-color: var(--gh-line);
+  background: var(--gh-raised);
+  color: var(--gh-text);
+  font-weight: 700;
+}
+
+/* Tabs under a place bar or at the top of a dialog body. */
+.gh-tabs {
+  display: flex;
+  flex-shrink: 0;
+  gap: 4px;
+  padding: 0 20px;
+  border-bottom: 1px solid var(--gh-line);
+}
+.gh-tabs [role='tab'] {
+  height: 36px;
+  margin-bottom: -1px;
+  padding: 0 12px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  color: var(--gh-secondary);
+}
+.gh-tabs [role='tab'][aria-selected='true'] {
+  border-bottom-color: var(--gh-accent);
+  color: var(--gh-text);
+  font-weight: 700;
+}
+.gh-tabs [role='tab']:hover {
+  background: transparent !important;
+  color: var(--gh-text);
+}
+
+/* Callout: a tinted note (an icon tinted like its tone, the text, an optional action); warning
+   unless data-tone says info, danger or neutral. */
+.gh-callout {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: var(--gh-warning-fill);
+  color: var(--gh-text);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.gh-callout[data-tone='info'] {
+  background: var(--gh-info-fill);
+}
+.gh-callout[data-tone='danger'] {
+  background: var(--gh-danger-fill);
+}
+.gh-callout[data-tone='neutral'] {
+  background: var(--gh-sunken);
+  color: var(--gh-secondary);
+}
+.gh-callout-text {
+  flex: 1;
+  min-width: 0;
+}
+.gh-callout small {
+  display: block;
+  font-size: 12px;
+  color: var(--gh-secondary);
+}
+
+/* Card: a titled block in a page body; .gh-card-body pads, .gh-card-flush lets a table fill it. */
+.gh-card {
+  border: 1px solid var(--gh-line);
+  border-radius: 16px;
+  background: var(--gh-card);
+  overflow: hidden;
+}
+.gh-card > header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--gh-line);
+  color: var(--gh-secondary);
+}
+.gh-card > header strong {
+  color: var(--gh-text);
+  font-size: 14px;
+}
+.gh-card-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+.gh-card > .gh-hint {
+  margin: 12px 16px 0;
+}
+.gh-card-body {
+  padding: 12px 16px;
+}
+.gh-card-flush .gh-data-grid td,
+.gh-card-flush .gh-data-grid th {
+  border-left: 0;
+  border-right: 0;
+}
+.gh-card-flush .gh-data-grid tr:last-child td {
+  border-bottom: 0;
+}
+.gh-card-flush .gh-data-grid thead th {
+  border-top: 0;
+}
+
+/* Badge: a status capsule (tones success, warning, danger, info, accent); .gh-chip-row lays several out. */
+.gh-badge {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 8px;
+  border-radius: 6px;
+  background: var(--gh-fill);
+  color: var(--gh-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.gh-badge[data-tone='success'] {
+  background: var(--gh-success-fill);
+  color: var(--gh-success);
+}
+.gh-badge[data-tone='warning'] {
+  background: var(--gh-warning-fill);
+  color: var(--gh-warning);
+}
+.gh-badge[data-tone='danger'] {
+  background: var(--gh-danger-fill);
+  color: var(--gh-danger);
+}
+.gh-badge[data-tone='info'] {
+  background: var(--gh-info-fill);
+  color: var(--gh-info);
+}
+.gh-badge[data-tone='accent'] {
+  background: var(--gh-accent-fill);
+  color: var(--gh-accent-text);
+}
+.gh-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+
+/* Toolbar under a place bar: compact filters, then a count at the end. */
+.gh-toolbar {
+  display: flex;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 0 20px 8px;
+}
+.gh-toolbar .gh-input {
+  height: 28px;
+  padding: 0 8px;
+}
+.gh-count {
+  margin-left: auto;
+  color: var(--gh-secondary);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+/* Settings forms: label column, control column, help under the control; a sticky save bar. */
+.gh-setting-row {
+  display: grid;
+  grid-template-columns: 240px minmax(0, 1fr);
+  gap: 4px 16px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--gh-line);
+}
+.gh-setting-row:last-child {
+  border-bottom: 0;
+}
+.gh-setting-label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-top: 6px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.gh-setting-label small {
+  font-weight: 400;
+  color: var(--gh-secondary);
+}
+.gh-setting-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+}
+.gh-setting-control > .gh-input {
+  flex: 1;
+}
+.gh-setting-row > .gh-hint {
+  grid-column: 2;
+}
+.gh-savebar {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 0;
+  background: var(--gh-canvas);
+}
+.gh-savebar small {
+  color: var(--gh-secondary);
+}
+
+/* Phone widths (below WIDE_MIN): 44 pt targets, and 16 px text so Safari never zooms a field. */
+@media (max-width: 759px) {
+  .gh-input,
+  :is(.gh-form, .gh-field) :where(input:not([type='checkbox'], [type='radio'], [type='range'], [type='color'], [type='file']), select),
+  .gh-primary,
+  .gh-secondary-button {
+    min-height: 44px;
+  }
+  .gh-input,
+  :is(.gh-form, .gh-field) :where(input, select, textarea) {
+    font-size: 16px;
+  }
+  .gh-form-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+/* ══ end of Controls ═════════════════════════════════════════════════════════════════════════ */
+
 .gh-row-menu {
   opacity: 0;
   display: flex;
@@ -114,28 +677,6 @@ textarea {
   background: transparent;
   border-radius: 8px;
   padding: 6px 10px;
-}
-.gh-primary {
-  border: 0;
-  border-radius: 8px;
-  padding: 6px 14px;
-  background: var(--gh-focus);
-  color: var(--gh-on-accent);
-  font-weight: 700;
-  cursor: pointer;
-}
-.gh-primary:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
-.gh-secondary-button {
-  border: 1px solid var(--gh-line);
-  border-radius: 8px;
-  padding: 6px 14px;
-  background: var(--gh-surface);
-  color: var(--gh-text);
-  font-weight: 600;
-  cursor: pointer;
 }
 .gh-place-sidebar {
   padding: 12px 8px;
@@ -541,24 +1082,6 @@ textarea {
   padding: 6px;
   max-width: 240px;
 }
-.gh-settings-segment {
-  background: var(--gh-hover);
-  border-radius: 10px;
-  padding: 3px;
-  display: flex;
-}
-.gh-settings-segment button {
-  border: 0;
-  border-radius: 8px;
-  background: transparent;
-  color: var(--gh-secondary);
-  padding: 7px 16px;
-}
-.gh-settings-segment button[aria-pressed='true'] {
-  background: var(--gh-card);
-  color: inherit;
-  font-weight: 700;
-}
 .gh-editor-suggestions {
   position: fixed;
   z-index: 1000;
@@ -931,6 +1454,9 @@ html[data-desktop-window="settings"] .gh-settings { padding-top: 52px; box-sizin
   gap: 6px;
   min-height: 30px;
 }
+.gh-place-actions button {
+  min-height: 32px;
+}
 .gh-place-sidebar header button {
   padding: 4px !important;
   color: var(--gh-accent-text);
@@ -943,42 +1469,6 @@ html[data-desktop-window="settings"] .gh-settings { padding-top: 52px; box-sizin
   height: 100%;
   min-height: 0;
 }
-/* Shared form fields for dialogs and pages: label above control, 8-pt rhythm. */
-.gh-form {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  padding: 20px;
-}
-.gh-form label {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  font-size: 13px;
-  color: var(--gh-secondary);
-}
-.gh-form label.gh-form-check {
-  flex-direction: row;
-  align-items: center;
-  gap: 8px;
-}
-.gh-form input:not([type='checkbox']):not([type='radio']),
-.gh-form select,
-.gh-form textarea {
-  border: 1px solid var(--gh-line);
-  background: var(--gh-raised);
-  color: var(--gh-text);
-  border-radius: 8px;
-  padding: 8px 10px;
-  font: inherit;
-  font-size: 14px;
-}
-.gh-form-error {
-  color: var(--gh-danger);
-  margin: 0;
-  font-size: 13px;
-}
-
 /* No secondary column for a place with nothing to list (a one-page app). */
 [data-testid='client-secondary']:has(> .gh-secondary-host:empty) {
   display: none !important;
@@ -1049,27 +1539,27 @@ html[data-desktop-window="settings"] .gh-settings { padding-top: 52px; box-sizin
 }
 .gh-dialog-footer {
   display: flex;
+  align-items: center;
   justify-content: flex-end;
   gap: 8px;
   padding: 12px 16px;
   border-top: 1px solid var(--gh-line);
   flex: none;
 }
-.gh-icon-button {
-  display: inline-flex;
+/* the footer's leading side (a switch, a save error) before Cancel and the primary action */
+.gh-dialog-footer-lead {
+  display: flex;
+  flex: 1;
   align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  border: 0;
-  border-radius: 8px;
-  background: transparent;
+  gap: 12px;
+  min-width: 0;
   color: var(--gh-secondary);
-  cursor: pointer;
+  font-size: 13px;
 }
-.gh-icon-button:hover {
-  background: var(--gh-hover);
-  color: var(--gh-text);
+.gh-dialog-footer-lead [role='alert'] {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* Confirm / prompt / alert (src/ui/dialogs.web.tsx): the sm dialog. */
@@ -1081,15 +1571,8 @@ html[data-desktop-window="settings"] .gh-settings { padding-top: 52px; box-sizin
   margin: 0 0 12px;
   color: var(--gh-secondary);
 }
-.gh-alert input {
+.gh-alert .gh-input {
   width: 100%;
-  box-sizing: border-box;
-  border: 1px solid var(--gh-line);
-  background: var(--gh-raised);
-  color: var(--gh-text);
-  border-radius: 8px;
-  padding: 8px 10px;
-  font: inherit;
 }
 .gh-alert pre {
   white-space: pre-wrap;
@@ -1109,9 +1592,6 @@ html[data-desktop-window="settings"] .gh-settings { padding-top: 52px; box-sizin
   justify-content: flex-end;
   gap: 8px;
   margin-top: 20px;
-}
-.gh-primary.gh-danger {
-  background: var(--gh-danger);
 }
 
 /* Menus (src/ui/menu.web.tsx MenuPanel): dropdowns and context menus share one row. */

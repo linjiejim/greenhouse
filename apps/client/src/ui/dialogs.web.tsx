@@ -68,6 +68,7 @@ function Dialog({ request: r }: { request: Request }) {
         {r.message ? <p>{r.message}</p> : null}
         {r.kind === 'prompt' ? (
           <input
+            className="gh-input"
             aria-label={r.placeholder ?? r.title}
             placeholder={r.placeholder}
             type={r.secure ? 'password' : 'text'}

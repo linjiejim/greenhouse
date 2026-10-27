@@ -76,50 +76,50 @@ export function EntityCreate({
           }
         >
           <div className="gh-form">
-        {fields.map((f) => {
-          const label = `${localize(f.title, lang)}${f.required ? ' *' : ''}`;
-          const value = draft[f.key];
-          return (
-            <label key={f.key} className={f.kind === 'boolean' ? 'gh-form-check' : undefined}>
-              {f.kind === 'boolean' ? (
-                <input type="checkbox" checked={!!value} onChange={(e) => set(f.key, e.target.checked)} />
-              ) : null}
-              <span>{label}</span>
-              {f.kind === 'boolean' ? null : f.kind === 'enum' ? (
-                <select value={String(value)} onChange={(e) => set(f.key, e.target.value)} aria-label={label}>
-                  <option value="">—</option>
-                  {(f.values ?? []).map((v) => (
-                    <option key={v} value={v}>
-                      {v}
-                    </option>
-                  ))}
-                </select>
-              ) : f.kind === 'longText' || f.kind === 'json' ? (
-                <textarea rows={4} value={String(value)} onChange={(e) => set(f.key, e.target.value)} aria-label={label} />
-              ) : (
-                <input
-                  aria-label={label}
-                  value={String(value)}
-                  onChange={(e) => set(f.key, e.target.value)}
-                  type={
-                    ['integer', 'number', 'money'].includes(f.kind)
-                      ? 'number'
-                      : f.kind === 'date'
-                        ? 'date'
-                        : f.kind === 'dateTime'
-                          ? 'datetime-local'
-                          : 'text'
-                  }
-                />
-              )}
-            </label>
-          );
-        })}
-        {error ? (
-          <p role="alert" className="gh-form-error">
-            {error}
-          </p>
-        ) : null}
+            {fields.map((f) => {
+              const label = `${localize(f.title, lang)}${f.required ? ' *' : ''}`;
+              const value = draft[f.key];
+              return (
+                <label key={f.key} className={f.kind === 'boolean' ? 'gh-check' : undefined}>
+                  {f.kind === 'boolean' ? (
+                    <input type="checkbox" checked={!!value} onChange={(e) => set(f.key, e.target.checked)} />
+                  ) : null}
+                  <span>{label}</span>
+                  {f.kind === 'boolean' ? null : f.kind === 'enum' ? (
+                    <select value={String(value)} onChange={(e) => set(f.key, e.target.value)} aria-label={label}>
+                      <option value="">—</option>
+                      {(f.values ?? []).map((v) => (
+                        <option key={v} value={v}>
+                          {v}
+                        </option>
+                      ))}
+                    </select>
+                  ) : f.kind === 'longText' || f.kind === 'json' ? (
+                    <textarea rows={4} value={String(value)} onChange={(e) => set(f.key, e.target.value)} aria-label={label} />
+                  ) : (
+                    <input
+                      aria-label={label}
+                      value={String(value)}
+                      onChange={(e) => set(f.key, e.target.value)}
+                      type={
+                        ['integer', 'number', 'money'].includes(f.kind)
+                          ? 'number'
+                          : f.kind === 'date'
+                            ? 'date'
+                            : f.kind === 'dateTime'
+                              ? 'datetime-local'
+                              : 'text'
+                      }
+                    />
+                  )}
+                </label>
+              );
+            })}
+            {error ? (
+              <p role="alert" className="gh-error">
+                {error}
+              </p>
+            ) : null}
           </div>
         </DialogBody>
       </form>
