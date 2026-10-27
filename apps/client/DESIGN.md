@@ -29,9 +29,17 @@ One client for web, desktop (Tauri), iOS and Android. Native pages render on the
 - Lists: `Section`, `Row`, `Card`, `SectionHeader`, `SectionFooter` (`src/ui/list.tsx`); virtualized rows pass `rowPosition(index, count)`. Desktop data grids use `.gh-data-grid`.
 - Empty, loading, failed: `EmptyState` (native and phone), `PlaceEmpty` with `icon` + `title` (+ `action`) in wide places, `Skeleton` for a list's first load, `LoadingState` for small waits.
 - Capsules: `Chip` for links, files and objects; `Badge` for status. Avatars: `Avatar` for people (initial), `AssistantAvatar` / `AgentAvatar` for agents (plants); never a plant for a person. File kinds: `FileIcon`.
-- Web buttons: `.gh-primary` (one per surface), `.gh-secondary-button`, `.gh-icon-button` (32 square, icon only, needs `aria-label`), `.gh-primary.gh-danger` for destructive confirms.
-- Web forms: `.gh-form` (label above control) inside `DialogBody`; native forms use `src/ui/native-form` / `form-controls`.
 - Dialog helpers: `confirmAction`, `promptText`, `alertError` (`src/ui/dialogs`); success goes through `toast`.
+- Web controls are defined once, in the Controls section of `src/shell/client.css`; feature CSS (admin, automations, entry) holds layout only, never another button, field or switch.
+- Buttons: `.gh-primary` (one per surface), `.gh-secondary-button`, `.gh-icon-button` (32 square, icon only, needs `aria-label`), `.gh-link-button` (quiet inline action); add `.gh-danger` when destructive.
+- Forms: `.gh-form` stacks fields inside `DialogBody`; `.gh-form-grid` for two columns, `.gh-form-section` with a `legend` (or `.gh-form-heading`) for groups, `.gh-button-row` for a row of actions.
+- Fields: `.gh-field` puts the label above the control, then `.gh-hint` or `.gh-error`; `.gh-field-label` when the caption is not a `<label>`.
+- Inputs: `.gh-input` for input, select and textarea (controls in a `.gh-form` or directly in a `.gh-field` get it without the class); `.gh-mono` for code-like values.
+- Choices: `.gh-check` (checkbox with an optional `small` line), `.gh-switch` (`button role="switch"` or a checkbox), `.gh-segmented` (buttons marked checked, pressed or selected), `.gh-tabs` under a bar or atop a dialog body.
+- Notes: `.gh-callout` (warning; `data-tone` info, danger or neutral) with `.gh-callout-text`; status is a `.gh-badge` (`data-tone` success, warning, danger, info, accent), several in a `.gh-chip-row`.
+- Blocks: `.gh-card` (header, `.gh-card-body` or `.gh-card-flush` around a grid), `.gh-toolbar` with compact fields and a `.gh-count`, `.gh-setting-row` (label column, control, hint under it) above a sticky `.gh-savebar`, `.gh-dialog-footer-lead` before a dialog's Cancel and primary action.
+- Control sizes: 32 tall (28 in a toolbar or filter row, 44 below `WIDE_MIN` and on entry pages), radius 8, text 14; labels 13, hints 12.
+- Native forms use `src/ui/native-form` / `form-controls`; their browser fields are `.gh-input`.
 
 ## Admin
 
