@@ -101,7 +101,7 @@ Every run creates an in-app notification; optional external delivery uses enable
 
 Before create, update or delete, state the configuration back in plain language — name, what it will do, and when it fires spelled out ("every weekday at 09:00 Hong Kong time") — then get explicit agreement. Read the current settings with automation_query first when changing an existing one.
 
-What a run can use: every run automatically gets the owner's available replay-safe reads and web search. Other tools need a per-automation unattended_tools grant from the active catalog. Destructive actions (deleting anything, sending email, creating automations) never run unattended; no setting enables them. Writes are recorded under the owner and listed in each run summary. Every create/update result returns unattended_tools and run_tools — the exact tools the next run will have. Only promise what is in run_tools; if a tool is missing, the owner lacks it or it cannot run unattended.
+What a run can use: every run automatically gets the owner's available replay-safe reads and web search. Other tools need a per-automation unattended_tools grant from the active catalog. Destructive actions (deleting anything, sending email, creating automations) never run unattended; no setting enables them. Writes are recorded under the owner and listed in each run summary. Every create/update result returns unattended_tools and run_tools — the exact tools the next run will have — and url, the automation's link: name it as a Markdown link to that url. Only promise what is in run_tools; if a tool is missing, the owner lacks it or it cannot run unattended.
 
 Limit ${MAX_TASKS_PER_USER} per user; check the count with automation_query when near it. You can only manage your own.`,
   category: 'core',
@@ -133,7 +133,13 @@ async function runToolsFor(db: DatabaseProvider, task: ScheduledTaskRow): Promis
 }
 
 function automationResult(task: ScheduledTaskView, runTools: string[] | null) {
-  return { automation: task, unattended_tools: task.unattended_tools ?? [], run_tools: runTools };
+  return {
+    automation: task,
+    // The client opens this address as the automation's sheet over the conversation.
+    url: `#/automations?id=${encodeURIComponent(task.id)}`,
+    unattended_tools: task.unattended_tools ?? [],
+    run_tools: runTools,
+  };
 }
 
 export function createAutomationMutationTool(db: DatabaseProvider, ctx: AutomationMutationContext) {

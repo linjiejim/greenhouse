@@ -65,7 +65,8 @@ describe('openObject', () => {
     expect(refOfTarget({ kind: 'chat', sessionId: 'abc' })).toEqual({ ref: { kind: 'chat', sessionId: 'abc' } });
     expect(refOfTarget({ kind: 'route', hash: '#/x' })).toEqual({ place: { kind: 'route', hash: '#/x' } });
     expect(refOfTarget({ kind: 'run', id: 'run_1' })).toEqual({ ref: { kind: 'run', id: 'run_1' } });
-    expect(refOfTarget({ kind: 'automations' })).toEqual({ place: { kind: 'tab', href: '/automations' } });
+    expect(refOfTarget({ kind: 'automations', id: null })).toEqual({ place: { kind: 'tab', href: '/automations' } });
+    expect(refOfTarget({ kind: 'automations', id: '7' })).toEqual({ ref: { kind: 'automation', id: '7' } });
   });
 });
 

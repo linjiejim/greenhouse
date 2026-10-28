@@ -174,7 +174,8 @@ export function refOfTarget(target: AppTarget): { ref: ObjectRef } | { place: Pl
     case 'run':
       return { ref: { kind: 'run', id: target.id } };
     case 'automations':
-      return { place: { kind: 'tab', href: '/automations' } };
+      // one automation opens as a sheet over the screen its link is on, so closing it goes back there
+      return target.id ? { ref: { kind: 'automation', id: target.id } } : { place: { kind: 'tab', href: '/automations' } };
     case 'route':
       return { place: { kind: 'route', hash: target.hash } };
     case 'page':

@@ -3,7 +3,7 @@
  *
  * Object links are the station's `#/…` addresses (`#/knowledge/doc/<id>-<slug>` or a doc's slug,
  * `#/files?…`, `#/projects/<id>`, `#/tables/<base>/table/<table>?record=`, `#/chat?session=`,
- * `#/automations`, and plugin record kinds); they appear in replies, documents, comments and
+ * `#/automations?id=`, and plugin record kinds); they appear in replies, documents, comments and
  * notifications (a notification's `payload.url`, like the monthly retro document's). Plugin
  * record links (`route`) are resolved against the station manifest when opened
  * (src/plugins/entity-links.ts); other http(s) links open in Safari as they are.
@@ -28,8 +28,8 @@ export type AppTarget =
   | { kind: 'agent' }
   /** One run (its sheet). */
   | { kind: 'run'; id: string }
-  /** The Automations place. */
-  | { kind: 'automations' }
+  /** The Automations place (`id` null), or one automation (`#/automations?id=`, its sheet). */
+  | { kind: 'automations'; id: ObjectId | null }
   /** Any other station address (`#/…`): a plugin record kind the station manifest names, or nothing. */
   | { kind: 'route'; hash: string }
   /** A plugin page of this client (`/p/<plugin>/<page>`), as station links name them now. */
@@ -97,7 +97,11 @@ export function parseHashRoute(hash: string): AppTarget | null {
       fileId: objectId(params.get('file')),
     };
   }
-  if (segments[0] === 'automations' && segments.length === 1) return { kind: 'automations' };
+  if (segments[0] === 'automations' && segments.length <= 2) {
+    // the web place's own address (`?id=`), or the id as a path segment, as models write it
+    const id = segments.length === 2 ? objectId(segments[1]) : objectId(params.get('id'));
+    if (segments.length === 1 || id) return { kind: 'automations', id };
+  }
   return { kind: 'route', hash };
 }
 

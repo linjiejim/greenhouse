@@ -224,6 +224,9 @@ describe('automation_mutation — create', () => {
 
     expect(result).toMatchObject({ status: 'created' });
     expect(store.size).toBe(1);
+    // the link the client opens as this automation's sheet
+    const id = (result as { automation: { id: string } }).automation.id;
+    expect((result as { url: string }).url).toBe(`#/automations?id=${id}`);
   });
 
   it('enforces the per-user quota', async () => {

@@ -14,8 +14,15 @@ describe('hash routes', () => {
       fileId: '9',
     });
     expect(parseHashRoute('#/files')).toEqual({ kind: 'files', shelf: 'team', folderId: null, fileId: null });
-    expect(parseHashRoute('#/automations')).toEqual({ kind: 'automations' });
-    expect(parseHashRoute('#/automations?tab=profiles')).toEqual({ kind: 'automations' });
+    expect(parseHashRoute('#/automations')).toEqual({ kind: 'automations', id: null });
+    expect(parseHashRoute('#/automations?tab=profiles')).toEqual({ kind: 'automations', id: null });
+    expect(parseHashRoute('#/automations?id=tsk_01JABCDEFGHJKMNPQRSTVWXYZ0')).toEqual({
+      kind: 'automations',
+      id: 'tsk_01JABCDEFGHJKMNPQRSTVWXYZ0',
+    });
+    expect(parseHashRoute('#/automations/42')).toEqual({ kind: 'automations', id: '42' });
+    expect(parseHashRoute('#/automations?id=nope')).toEqual({ kind: 'automations', id: null });
+    expect(parseHashRoute('#/automations/nope')).toEqual({ kind: 'route', hash: '#/automations/nope' });
     expect(parseHashRoute('#/automationsx')).toEqual({ kind: 'route', hash: '#/automationsx' });
     expect(parseHashRoute('#/crm/companies/42')).toEqual({ kind: 'route', hash: '#/crm/companies/42' });
     // classic page routes name nothing
