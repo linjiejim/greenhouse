@@ -30,7 +30,7 @@ export function homeRecentOf(raw: string | null | undefined): HomeRecent | null 
 }
 
 /** The profiles that are Sprouty (the built-in assistant); anything else is an agent of its own. */
-const SPROUTY_PROFILES = new Set(['sprouty', 'team', 'desktop']);
+const SPROUTY_PROFILES = new Set(['sprouty', 'desktop']);
 
 /** The agent a conversation was held with when it is not Sprouty (`custom:<id>[@v]`), else null. */
 export function conversationAgent(profileId: string | null | undefined): string | null {

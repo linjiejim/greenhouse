@@ -33,7 +33,7 @@ import {
 import { admitRichBlocks } from '@greenhouse/types/rich-output';
 import { readSessionDigest } from '@greenhouse/db';
 import { BROWSER_SESSION_CHANNEL, type SessionChannel } from '@greenhouse/types/session';
-import { resolveProfileAsync } from '../profiles/profile.js';
+import { DEFAULT_PROFILE_ID, resolveProfileAsync } from '../profiles/profile.js';
 import { isChatModelAllowed } from '../config/models.js';
 import { sanitizeForPrompt } from '../security/security.js';
 import { sanitizeChatMessagesForPrompt } from '../chat/user-message.js';
@@ -126,7 +126,7 @@ export function createChatRoute(toolRegistry: ToolRegistry) {
             409,
           );
         let chatMessages: ChatRequestMessage[];
-        let profileId = body.profile_id || 'team';
+        let profileId = body.profile_id || DEFAULT_PROFILE_ID;
 
         // Get authenticated user
         const authUser = (c.get as (key: string) => AuthUser | undefined)('user');

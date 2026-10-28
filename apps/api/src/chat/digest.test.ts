@@ -152,7 +152,7 @@ describe('foldSessionDigest', () => {
     expect(result.status).toBe('folded');
     expect(sessions.listChatMessagesAfter).toHaveBeenCalledWith('s1', 9);
     expect(completion).toHaveBeenCalledWith(
-      'team',
+      'sprouty',
       expect.objectContaining({ caller: 'digest', userId: 'u1', sessionId: 's1', maxTokens: expect.any(Number) }),
     );
     const request = completion.mock.calls[0]![1].messages[0]!.content;

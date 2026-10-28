@@ -427,7 +427,7 @@ export function createSessionService(db: Db) {
           id: options?.id ?? newId('conversation'),
           title: title ?? null,
           status: 'active',
-          profile_id: profileId ?? 'team',
+          profile_id: profileId ?? 'sprouty',
           user_id: userId ?? null,
           app_id: appId ?? null,
           channel: channel ?? 'web',

@@ -25,7 +25,7 @@ function makeSession(): SessionRow {
     id: 'session-a',
     title: 'Session',
     status: 'active',
-    profile_id: 'team',
+    profile_id: 'sprouty',
     user_id: 'owner',
     app_id: null,
     channel: 'web',

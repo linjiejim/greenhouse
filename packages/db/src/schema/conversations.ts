@@ -18,7 +18,7 @@ export const conversations = pgTable(
     id: id(),
     title: text('title'),
     status: text('status').notNull().default('active'),
-    profile_id: text('profile_id').notNull().default('team'),
+    profile_id: text('profile_id').notNull().default('sprouty'),
     /** Owner (logical: a deleted member's transcripts stay for audit). */
     user_id: text('user_id'),
     app_id: text('app_id'),

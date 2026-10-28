@@ -99,7 +99,7 @@ describe('Runtime Kernel concurrency', () => {
     const task = await db.scheduledTasks.create({
       user_id: owner.id,
       name: 'Admission/delete race',
-      profile_id: 'team',
+      profile_id: 'sprouty',
       task_prompt: 'Prove that deletion and durable admission share one lock.',
       schedule: '0 * * * *',
     });

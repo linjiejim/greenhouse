@@ -38,7 +38,7 @@ describe('resolveEffectiveTools', () => {
       userId: 'super-1',
       userRole: 'super',
       profile,
-      profileId: 'team',
+      profileId: 'sprouty',
     });
 
     // Internal non-custom profile → all the user's allowed tools.

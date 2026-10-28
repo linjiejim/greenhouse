@@ -97,8 +97,9 @@ vi.mock('../../agent-runtime/tool-resolution.js', () => ({
 }));
 
 vi.mock('../../profiles/profile.js', () => ({
+  DEFAULT_PROFILE_ID: 'sprouty',
   resolveProfileAsync: vi.fn(async () => ({
-    id: 'team',
+    id: 'sprouty',
     name: 'Team',
     access: { level: 'internal', rich_output: true },
     model: { id: 'test-model' },
@@ -137,7 +138,7 @@ function session(extra: Record<string, unknown> = {}) {
     id: 'session-1',
     title: 'Pricing review',
     status: 'active',
-    profile_id: 'team',
+    profile_id: 'sprouty',
     user_id: 'owner',
     app_id: null,
     channel: 'web',

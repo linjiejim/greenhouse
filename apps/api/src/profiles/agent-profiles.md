@@ -2,7 +2,7 @@
 
 系统 Profiles 共 2 个：**一个可选预设** Sprouty + 一个 `hidden` 的系统 profile。
 
-> **四预设已于 2026-08-01 收敛为一个**（见 [附件与预设收敛 spec](../../../../docs/specs/20260731-attachment-and-preset-convergence.md) M3）。quick / deep / K3 三份提示词逐字相同，区别只有模型；`sprouty-workflows` 与 `sprouty-mission` 是把「模式」伪装成「助手」。所有退役 id 由 `normalizeProfileId()` 归一到 `sprouty`，**不做数据迁移**。Missions 与 Workflows 在 v1.4 整体删除，存量 `channel='mission'` / `'workflow'` 会话只读。
+> **四预设已于 2026-08-01 收敛为一个**（见 [附件与预设收敛 spec](../../../../docs/specs/20260731-attachment-and-preset-convergence.md) M3）。quick / deep / K3 三份提示词逐字相同，区别只有模型；`sprouty-workflows` 与 `sprouty-mission` 是把「模式」伪装成「助手」。退役 id 已由核心迁移 0003 改写为 `sprouty`。Missions 与 Workflows 在 v1.4 整体删除，存量 `channel='mission'` / `'workflow'` 会话只读。
 
 **模型改由每轮选择**，所以「这个预设跑不跑得起来」的判断也从 profile 挪到了模型：`GET /api/profiles` 除 profiles 外返回 `models: listChatModels()`，该函数过掉在目录里没有任何可达 provider（`api_key_env` 未配）的模型——没配 `DEEPSEEK_API_KEY` 的部署就看不到 `deepseek-flash`，不会出现"选得到、一发消息就吃 No available providers"的虚假能力。**自定义 Agent 不参与任何过滤**：那是用户自己的数据，从他自己的列表里悄悄消失更像丢数据；它钉的模型不可达时改跑 base preset 的模型。
 
@@ -11,7 +11,7 @@
 | `sprouty` | Sprouty | Cloud `/api/chat` | internal | 唯一预设，也是默认 Agent。`model.id: flash` 只是起点——**每轮可切**（见下方「模型是每轮的选择」）。工具由用户权限/分配控制。 |
 | `desktop` | Agent Runtime | `/api/agent` + `/api/mcp` | hidden | 权威运行时 profile（全内部工具面）；不能通过普通 `/api/chat` 使用。 |
 
-**旧 id 不迁移、只映射**：`normalizeProfileId()` 把存量的 `team`/`default`/`researcher`/…、`workflow-planner`/`sprouty-agents` 以及四个退役预设（`sprouty-quick`/`-deep`/`-k3`/`-workflows`/`-mission`）和 v1.4 随评测系统退役的 `eval-judge` 全部映射到 `sprouty`。会话、定时任务、custom profile 的 base 里存的仍是旧值，读取时解析即可。
+**旧 id 已迁移，只在请求入口映射**：核心迁移 0003 把会话、定时任务、用量记录、运行快照和 custom profile base 里存的 `team`/`default`/`researcher`/…、`workflow-planner`/`sprouty-agents`、四个退役预设（`sprouty-quick`/`-deep`/`-k3`/`-workflows`/`-mission`）和 `eval-judge` 改写为 `sprouty`，`local-dev`/`local-pi` 改写为 `desktop`。读取方按存储值原样解析；外部调用方（`/api/chat`、`/api/sessions`、`/api/agent`、定时任务接口、自建 Agent 的 base）仍可传旧 id，由 `normalizeProfileId()` 在入口映射。
 
 > 约定：按用户权限动态装配的工具（`knowledge_mutation`、`tables_mutation` 等）的使用/确认/展示规则写在工具自身的 `description`（随 function definition 下发），profile prompt 不复述，避免工具未装配时留下死指令。
 
@@ -248,11 +248,11 @@ stateless Agent/MCP 不开放该文件工具。
 - `local-dev`
 - `local-pi`
 
-兼容规则（`normalizeProfileId()`）：
+入口映射（`normalizeProfileId()`，只用于请求输入）：
 
-- `team` / `default` / `workflow-planner` / `sprouty-agents` 与四个退役预设等旧 preset ID 一律映射为 `sprouty`，用于历史 session / 定时任务 / custom profile base 的解析。
+- `team` / `default` / `workflow-planner` / `sprouty-agents` 与四个退役预设等旧 preset ID 一律映射为 `sprouty`。
 - `local-dev` / `local-pi` 映射为 `desktop`（agent-runtime profile）。
-- custom profile 的 `base_profile_id` 只能是预设之一（`CUSTOM_BASE_PROFILE_IDS = PRESET_PROFILE_IDS`）；存量旧值先归一再校验，归一后仍不合法的回落 `sprouty`。
+- custom profile 的 `base_profile_id` 只能是预设之一（`CUSTOM_BASE_PROFILE_IDS = PRESET_PROFILE_IDS`）；请求里的旧值先映射再校验。存储值已由迁移 0003 统一为 `sprouty`。
 
 ### 自建 Agent 的工具集 = 声明 ∪ 内置，再 ∩ 用户权限
 

@@ -64,8 +64,8 @@ describe('resolveEffectiveTools — profile narrowing', () => {
     const result = await resolveEffectiveTools({
       userId: 'u-super',
       userRole: 'super',
-      profile: makeProfile({ id: 'team', access: { level: 'internal', rich_output: true } }),
-      profileId: 'team',
+      profile: makeProfile({ id: 'sprouty', access: { level: 'internal', rich_output: true } }),
+      profileId: 'sprouty',
     });
     expect([...result.effectiveTools].sort()).toEqual([...getAllToolIds()].sort());
   });
@@ -74,8 +74,8 @@ describe('resolveEffectiveTools — profile narrowing', () => {
     const result = await resolveEffectiveTools({
       userId: 'u-super',
       userRole: 'super',
-      profile: makeProfile({ id: 'team' }),
-      profileId: 'team',
+      profile: makeProfile({ id: 'sprouty' }),
+      profileId: 'sprouty',
     });
     expect(Object.keys(result)).toEqual(['effectiveTools']);
   });
@@ -90,7 +90,7 @@ describe('buildLazyServerTools — session-scoped orchestration tools', () => {
       userId: 'u1',
       userRole: 'team',
       sessionId: 's1',
-      profileId: 'sprouty-quick',
+      profileId: 'sprouty',
     });
     expect(Object.keys(tools)).toContain('task_capture');
   });
@@ -105,7 +105,7 @@ describe('buildLazyServerTools — session-scoped orchestration tools', () => {
       userId: 'u1',
       userRole: 'team',
       sessionId: 's1',
-      profileId: 'sprouty-quick',
+      profileId: 'sprouty',
     });
     expect(Object.keys(tools)).not.toContain('task_capture');
   });

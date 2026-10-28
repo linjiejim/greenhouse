@@ -27,7 +27,7 @@ const s = (id: string, updated: string, pinned = false, pin_sort?: number): Chat
 
 describe('home', () => {
   it('names an agent only when the conversation was not with Sprouty', () => {
-    expect([null, '', 'sprouty', 'team', 'desktop'].map(conversationAgent)).toEqual([null, null, null, null, null]);
+    expect([null, '', 'sprouty', 'desktop'].map(conversationAgent)).toEqual([null, null, null, null]);
     expect(conversationAgent('custom:01ABC@3')).toBe('custom:01ABC');
     expect(conversationAgent('custom:01ABC')).toBe('custom:01ABC');
   });

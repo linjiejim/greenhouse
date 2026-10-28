@@ -26,10 +26,10 @@ describe('Session Repository', () => {
   // ─── Session CRUD ──────────────────────────────────────
 
   it('creates a session and retrieves by id', async () => {
-    const session = await db.sessions.create('Test Session', 'team', 'user-1');
+    const session = await db.sessions.create('Test Session', 'sprouty', 'user-1');
     expect(session.id).toBeTruthy();
     expect(session.title).toBe('Test Session');
-    expect(session.profile_id).toBe('team');
+    expect(session.profile_id).toBe('sprouty');
 
     const found = await db.sessions.getById(session.id);
     expect(found).toBeDefined();
@@ -440,7 +440,7 @@ describe('Session Repository', () => {
   });
 
   it('forks a session through an Agent reply without sharing mutable message ids', async () => {
-    const source = await db.sessions.create('Source', 'team', 'source-owner');
+    const source = await db.sessions.create('Source', 'sprouty', 'source-owner');
     await db.sessions.addMessage({ session_id: source.id, role: 'user', content: 'Question 1' });
     const firstReply = await db.sessions.addMessage({
       session_id: source.id,
@@ -462,7 +462,7 @@ describe('Session Repository', () => {
     expect(fork).toMatchObject({
       title: 'Source (Fork)',
       user_id: 'fork-owner',
-      profile_id: 'team',
+      profile_id: 'sprouty',
       channel: 'web',
     });
     expect(fork!.metadata).toEqual({

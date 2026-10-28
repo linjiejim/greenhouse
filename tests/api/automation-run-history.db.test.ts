@@ -37,7 +37,7 @@ describe('automation run history', () => {
     task = await db.scheduledTasks.create({
       user_id: owner.id,
       name: 'History fixture',
-      profile_id: 'team',
+      profile_id: 'sprouty',
       task_prompt: 'Summarise the day for the history fixture.',
       schedule: '0 9 * * *',
       timezone: 'UTC',
@@ -90,7 +90,7 @@ describe('automation run history', () => {
     const other = await db.scheduledTasks.create({
       user_id: owner.id,
       name: 'Other fixture',
-      profile_id: 'team',
+      profile_id: 'sprouty',
       task_prompt: 'A different automation entirely.',
       schedule: '0 10 * * *',
       timezone: 'UTC',

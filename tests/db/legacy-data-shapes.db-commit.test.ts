@@ -54,7 +54,7 @@ const CURRENT_TASK = {
   id: '43',
   user_id: 'upgrade-user',
   name: 'Weekly report',
-  profile_id: 'team',
+  profile_id: 'sprouty',
   task_prompt: 'Summarize the week',
   schedule: '0 18 * * 5',
   timezone: 'UTC',
@@ -174,7 +174,8 @@ describe('legacy data shapes on a bridged 3.x install', () => {
         id: '42',
         user_id: 'upgrade-user',
         name: 'Daily report',
-        profile_id: 'team',
+        // 0003 makes the retired profile id canonical.
+        profile_id: 'sprouty',
         task_prompt: 'Summarize today',
         schedule: '0 18 * * *',
         timezone: 'UTC',

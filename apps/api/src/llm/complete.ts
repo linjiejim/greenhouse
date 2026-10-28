@@ -82,7 +82,7 @@ async function rateLimit(): Promise<void> {
  *
  * @example
  * ```ts
- * const result = await complete('team', {
+ * const result = await complete('sprouty', {
  *   messages: [{ role: 'user', content: 'Compile a wiki page for...' }],
  *   userId: authenticatedUser.id,
  *   maxTokens: 12000,
@@ -153,7 +153,7 @@ export async function complete(
  *
  * @example
  * ```ts
- * const plan = await completeJson<{ topics: TopicPlan[] }>('team', {
+ * const plan = await completeJson<{ topics: TopicPlan[] }>('sprouty', {
  *   messages: [{ role: 'user', content: 'Plan topic pages...' }],
  * });
  * ```

@@ -22,7 +22,7 @@ export const automations = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
     name: text('name').notNull(),
-    profile_id: text('profile_id').notNull().default('team'),
+    profile_id: text('profile_id').notNull().default('sprouty'),
     task_prompt: text('task_prompt').notNull(),
     /** Cron expression, e.g. `0 22 * * *`. */
     schedule: text('schedule').notNull(),
@@ -91,7 +91,7 @@ export const runProfiles = pgTable(
       .references(() => users.id, { onDelete: 'cascade' }),
     name: text('name').notNull(),
     description: text('description'),
-    base_profile_id: text('base_profile_id').notNull().default('team'),
+    base_profile_id: text('base_profile_id').notNull().default('sprouty'),
     model_id: text('model_id'),
     tools: json<string[]>('tools', []),
     /** MCP connector ids this Agent may reach; null = every connector its user may use (only narrows). */

@@ -91,7 +91,7 @@ describe('Runtime durable domain projector', () => {
       id: '42',
       user_id: 'owner',
       name: 'Daily report',
-      profile_id: 'team',
+      profile_id: 'sprouty',
       task_prompt: 'Summarize today',
       schedule: '0 18 * * *',
       timezone: 'Asia/Hong_Kong',

@@ -32,8 +32,8 @@ describe('chat file attachments', () => {
   });
 
   it('scopes id resolution to one session — a copied id from elsewhere resolves to nothing', async () => {
-    const mine = await db.sessions.create('Mine', 'sprouty-quick', owner.id);
-    const other = await db.sessions.create('Other', 'sprouty-quick', owner.id);
+    const mine = await db.sessions.create('Mine', 'sprouty', owner.id);
+    const other = await db.sessions.create('Other', 'sprouty', owner.id);
     const file = await db.chatFiles.create({
       session_id: other.id,
       name: 'secret.csv',
@@ -50,7 +50,7 @@ describe('chat file attachments', () => {
   });
 
   it('counts only user uploads toward the quota, not tool output', async () => {
-    const session = await db.sessions.create('S', 'sprouty-quick', owner.id);
+    const session = await db.sessions.create('S', 'sprouty', owner.id);
     await db.chatFiles.create({
       session_id: session.id,
       name: 'export.xlsx',
@@ -76,7 +76,7 @@ describe('chat file attachments', () => {
 
   it('keeps quotas per user', async () => {
     const stranger = await createInternalTestUser(db, { email: `cf-other-${unique()}@test.local` });
-    const session = await db.sessions.create('S', 'sprouty-quick', owner.id);
+    const session = await db.sessions.create('S', 'sprouty', owner.id);
     await db.chatFiles.create({
       session_id: session.id,
       name: 'a.csv',
@@ -90,7 +90,7 @@ describe('chat file attachments', () => {
   });
 
   it('drops a session’s files with the session', async () => {
-    const session = await db.sessions.create('S', 'sprouty-quick', owner.id);
+    const session = await db.sessions.create('S', 'sprouty', owner.id);
     const file = await db.chatFiles.create({
       session_id: session.id,
       name: 'gone.csv',

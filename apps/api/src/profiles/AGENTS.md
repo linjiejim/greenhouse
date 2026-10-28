@@ -14,7 +14,7 @@
 - The inventory has two sources that move together: the YAML files (`loadAllProfiles()`) and the constants in `profile.ts` (`PRESET_PROFILE_IDS`, `DEFAULT_PROFILE_ID`, `CUSTOM_BASE_PROFILE_IDS`).
 - A YAML without its constant is an Agent nobody can pick; a constant without its YAML fails at boot with `Profile not found`.
 - Built-in YAML profiles use `tools: []`: the runtime derives their tools from the member and active plugins; never pin optional plugin tool ids there.
-- A custom profile's `base_profile_id` must be a preset (`isValidCustomBaseProfileId()`); stored legacy values pass `normalizeProfileId()` first; the base supplies only `access.rich_output` and the model fallback.
+- A custom profile's `base_profile_id` must be a preset (`isValidCustomBaseProfileId()`); the base supplies only `access.rich_output` and the model fallback.
 - A custom Agent is one current-configuration row (`run_profiles`) whose `version` increments on each edit; references are `custom:<id>@<version>` and any pin ≤ version resolves to the current configuration.
 - Sessions and automations pin the version on creation (`pinProfileIdForUser()`, `access.ts`); `assertPinnedProfileExecutionAccess()` rechecks owner/super or team sharing at execution.
 - `resolveProfileAsync()` throws for a missing custom Agent or version; it never falls back to Sprouty.
@@ -26,7 +26,9 @@
 - The rich-output block guide exists once, `RICH_OUTPUT_GUIDE` (`packages/utils/src/prompts.ts`), appended by `enrichSystemPrompt()`; never restate it in YAML.
 - Prompts never restate rules of dynamically assembled tools (those live in each tool's `description`); an internal prompt may name only `is_global: true` tools or tools the profile's `tools:` declares.
 - `name`/`description` may be a string or `{ zh, en }` (source locale `zh`); an unknown locale key or empty string fails profile loading; `system_prompt` is never localized.
-- Legacy ids map, never migrate (`normalizeProfileId()`): retired preset, team and eval ids → `sprouty`; `local-dev`/`local-pi` → `desktop`; never recreate YAML for them.
+- Stored profile ids are canonical (`sprouty`, `desktop`, `custom:<id>@<n>`); write `DEFAULT_PROFILE_ID`, never `team`.
+- `normalizeProfileId()` maps retired ids (retired presets, team and eval ids → `sprouty`; `local-dev`/`local-pi` → `desktop`) at request edges only: `pinProfileIdForUser()` and the custom-Agent base; readers take a stored id as it is.
+- Retiring another id means adding it to `normalizeProfileId()` and rewriting stored rows in a core migration; never recreate YAML for it.
 - External agents (MCP clients, CLIs) reach cloud capabilities through `/api/agent/*` or `/api/mcp`, never a dedicated profile.
 
 ## Keep in sync after a profile change

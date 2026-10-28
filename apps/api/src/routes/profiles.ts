@@ -88,8 +88,7 @@ function formatCustomProfile(
   if (ownProvider) {
     model = { provider: ownProvider, model: modelId };
   } else if (baseProfileMap) {
-    const baseId = normalizeProfileId(manifest.base_profile_id) ?? DEFAULT_PROFILE_ID;
-    const base = baseProfileMap.get(baseId) ?? baseProfileMap.get(DEFAULT_PROFILE_ID);
+    const base = baseProfileMap.get(manifest.base_profile_id) ?? baseProfileMap.get(DEFAULT_PROFILE_ID);
     if (base) {
       model = { provider: base.model.provider, model: base.model.model };
     }
@@ -668,9 +667,8 @@ const profiles = new Hono<AppEnv>()
   .use('/:id', requireSuper())
   .get('/:id', async (c) => {
     const id = c.req.param('id');
-    const normalizedId = normalizeProfileId(id) ?? id;
     try {
-      await assertCustomProfileAccess(getAuthUser(c), normalizedId);
+      await assertCustomProfileAccess(getAuthUser(c), id);
       const profile = await resolveProfileAsync(id);
       if (profile.access.level === 'hidden') return c.json({ error: `Profile not found: ${id}` }, 404);
       const db = getDb();
@@ -680,10 +678,10 @@ const profiles = new Hono<AppEnv>()
       const since7d = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
 
       const [total, last24h, last7d, recentCalls] = await Promise.all([
-        db.usage.getProfileStats(normalizedId),
-        db.usage.getProfileStats(normalizedId, { since: since24h }),
-        db.usage.getProfileStats(normalizedId, { since: since7d }),
-        db.usage.getRecentUsage(normalizedId, 20),
+        db.usage.getProfileStats(id),
+        db.usage.getProfileStats(id, { since: since24h }),
+        db.usage.getProfileStats(id, { since: since7d }),
+        db.usage.getRecentUsage(id, 20),
       ]);
 
       return c.json({

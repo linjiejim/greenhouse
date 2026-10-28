@@ -49,7 +49,7 @@ describe('extractPipelineAndReferences', () => {
 });
 
 describe('runAgentInSession transcript persistence', () => {
-  const usageContext = { profileId: 'team', userId: 'owner-1', caller: 'scheduled-task' };
+  const usageContext = { profileId: 'sprouty', userId: 'owner-1', caller: 'scheduled-task' };
 
   function createRunnerFixture(options: { tailContent?: string; appendOk?: boolean } = {}) {
     const getLatestMessage = vi.fn().mockResolvedValue({
@@ -194,7 +194,7 @@ describe('runAgentInSession transcript persistence', () => {
 
     expect(fixture.recordUsage).toHaveBeenCalledWith(
       expect.objectContaining({
-        profile_id: 'team',
+        profile_id: 'sprouty',
         caller: 'scheduled-task',
         session_id: 'session-1',
         user_id: 'owner-1',

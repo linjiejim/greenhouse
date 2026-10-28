@@ -211,7 +211,7 @@ describe('budget alerts', () => {
 describe('spend reads', () => {
   it('reads one month by member, service, client and agent client, flagging unpriced calls', async () => {
     await db.usage.record({
-      profile_id: 'team',
+      profile_id: 'sprouty',
       caller: 'chat',
       user_id: member.id,
       model: 'flash',
@@ -222,7 +222,7 @@ describe('spend reads', () => {
       service: 'llm',
     });
     await db.usage.record({
-      profile_id: 'team',
+      profile_id: 'sprouty',
       caller: 'chat',
       user_id: member.id,
       model: 'pro',
@@ -378,7 +378,7 @@ describe('admin price overrides', () => {
 
     await setModelPrice(2, 4); // an admin changes the price mid-call
     await settleAndRecordBudgetedUsage(db, lease, {
-      profile_id: 'team',
+      profile_id: 'sprouty',
       caller: 'chat',
       user_id: member.id,
       model: 'flash',
@@ -415,7 +415,7 @@ describe('admin price overrides', () => {
     // already spent, so it is charged anyway (no limit check on settlement).
     await setModelPrice(1, 2);
     await settleAndRecordBudgetedUsage(db, lease, {
-      profile_id: 'team',
+      profile_id: 'sprouty',
       caller: 'chat',
       user_id: member.id,
       model: 'flash',

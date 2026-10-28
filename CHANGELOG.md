@@ -57,6 +57,11 @@ Read [Upgrading to 4.0](docs/upgrading-to-4.0.md) before upgrading.
   `local-tool-request` event and `@greenhouse/types/agent-context` are removed.
 - Plugin frontends receive `--gh-*` theme variables only; the classic `--t-*` names and the
   classic web stylesheet `@greenhouse/ui/tokens/tokens.css` are removed.
+- Core migration `0003_canonical_profile_ids` rewrites stored retired profile ids (`team`,
+  `default`, the retired presets, `eval-judge` → `sprouty`; `local-dev`/`local-pi` → `desktop`)
+  and makes `sprouty` the column default. Readers take stored ids as they are; only request
+  edges (`/api/chat`, `/api/sessions`, `/api/agent`, automations, custom-Agent base) still map
+  the old ids.
 - `GET /api/sessions` caps every page at 200 and no longer accepts `include_eval`.
   `GET /api/feishu/login-available` (use `/api/auth/providers`), `GET /api/profiles/custom/:id/versions`,
   the custom Agent `change_log` field and the team activity feed's plain ISO `before` are removed. Automations

@@ -115,21 +115,18 @@ const profileCache = new Map<string, AgentProfile>();
 export const PRESET_PROFILE_IDS = ['sprouty'] as const;
 export const DEFAULT_PROFILE_ID = 'sprouty';
 
+// Retired ids an API caller may still send. Core migration 0003 rewrote the
+// stored ones with this same list; keep the two in step.
 const LEGACY_TEAM_PROFILE_IDS = new Set([
-  // Collapsed into the single `sprouty` preset (2026-08-01). quick/deep/K3
-  // differed only by model; `sprouty-workflows` only by model + a planner
-  // prompt (workflows themselves were retired in v1.4).
+  // Collapsed into the single `sprouty` preset (2026-08-01).
   'sprouty-quick',
   'sprouty-deep',
   'sprouty-k3',
   'sprouty-workflows',
   'workflow-planner',
   'sprouty-agents',
-  // Retired 2026-08-01; Missions themselves were retired in v1.4. Historical
-  // sessions keep this id; their `channel='mission'` makes them read-only.
   'sprouty-mission',
-  // Retired in v1.4 with the evaluation system; old eval sessions/automations
-  // still carry it.
+  // Retired in v1.4 with the evaluation system.
   'eval-judge',
   'team',
   'default',
@@ -148,10 +145,11 @@ const LEGACY_DESKTOP_PROFILE_IDS = new Set(['local-dev', 'local-pi']);
 export const CUSTOM_BASE_PROFILE_IDS = PRESET_PROFILE_IDS;
 
 /**
- * Map removed/legacy interactive profile IDs to their canonical replacement.
- * Stored rows (sessions, scheduled tasks, custom bases) still carry
- * `team` / `workflow-planner` / `sprouty-agents`; they resolve to their successors
- * rather than being migrated.
+ * Map a retired profile id a caller sent to its canonical replacement.
+ *
+ * Request edges only (pinProfileIdForUser, the custom-Agent base): external
+ * callers may still send `team` and friends. Stored ids are canonical since
+ * core migration 0003, so readers take a stored id as it is.
  */
 export function normalizeProfileId(profileId?: string | null): string | undefined {
   if (!profileId) return undefined;
@@ -196,9 +194,8 @@ export async function assertPinnedProfileExecutionAccess(
   profileId: string,
   surface = 'Agent execution',
 ): Promise<void> {
-  const normalized = normalizeProfileId(profileId) ?? profileId;
-  if (!normalized.startsWith('custom:')) return;
-  const reference = parseCustomProfileReference(normalized);
+  if (!profileId.startsWith('custom:')) return;
+  const reference = parseCustomProfileReference(profileId);
   // Each reason is the run's error message: an automation whose run profile
   // went away fails saying why, never falls back to another profile.
   if (!reference?.version) {
@@ -313,18 +310,18 @@ export function getDefaultProfile(): AgentProfile {
 
 /**
  * Resolve a system profile by ID, falling back to the default preset only when
- * omitted. Removed IDs normalize to Sprouty for stored-data compatibility.
- * Custom references must use resolveProfileAsync(); this function rejects them.
+ * omitted. A retired id is not found (callers map request input with
+ * normalizeProfileId first). Custom references must use resolveProfileAsync();
+ * this function rejects them.
  */
 export function resolveProfile(profileId?: string | null): AgentProfile {
-  const normalized = normalizeProfileId(profileId);
-  if (!normalized || normalized === DEFAULT_PROFILE_ID) {
+  if (!profileId || profileId === DEFAULT_PROFILE_ID) {
     return getDefaultProfile();
   }
-  if (normalized.startsWith('custom:')) {
-    throw new Error(`Custom profile requires async resolution: "${normalized}"`);
+  if (profileId.startsWith('custom:')) {
+    throw new Error(`Custom profile requires async resolution: "${profileId}"`);
   }
-  return loadProfile(normalized);
+  return loadProfile(profileId);
 }
 
 /**
@@ -335,16 +332,15 @@ export async function resolveProfileAsync(
   profileId?: string | null,
   database?: DatabaseProvider,
 ): Promise<AgentProfile> {
-  const normalized = normalizeProfileId(profileId);
-  if (!normalized || normalized === DEFAULT_PROFILE_ID) {
+  if (!profileId || profileId === DEFAULT_PROFILE_ID) {
     return getDefaultProfile();
   }
 
   // Custom profile: load from database
-  if (normalized.startsWith('custom:')) {
-    const reference = parseCustomProfileReference(normalized);
+  if (profileId.startsWith('custom:')) {
+    const reference = parseCustomProfileReference(profileId);
     if (!reference) {
-      throw new Error(`Invalid custom profile ID: "${normalized}"`);
+      throw new Error(`Invalid custom profile ID: "${profileId}"`);
     }
     // Reject malformed IDs before loading the full DB provider graph. Besides
     // avoiding needless work on bad requests, this keeps the pure validation
@@ -354,7 +350,7 @@ export async function resolveProfileAsync(
     if (!row) {
       // Never silently substitute another Agent: that changes identity, tools,
       // instructions and cost policy while presenting the missing Agent's id.
-      throw new Error(`Custom profile not found: "${normalized}"`);
+      throw new Error(`Custom profile not found: "${profileId}"`);
     }
     const versionNumber = reference.version ?? row.version;
     const version = await db.customProfiles.getVersion(reference.profileId, versionNumber);
@@ -368,9 +364,8 @@ export async function resolveProfileAsync(
     // every message with "No available providers".
     let baseProfile: AgentProfile;
     try {
-      const normalizedBase = normalizeProfileId(version.base_profile_id) ?? DEFAULT_PROFILE_ID;
-      baseProfile = isValidCustomBaseProfileId(normalizedBase)
-        ? loadProfile(normalizedBase)
+      baseProfile = isValidCustomBaseProfileId(version.base_profile_id)
+        ? loadProfile(version.base_profile_id)
         : loadProfile(DEFAULT_PROFILE_ID);
     } catch {
       baseProfile = getDefaultProfile();
@@ -405,7 +400,7 @@ export async function resolveProfileAsync(
     };
   }
 
-  return loadProfile(normalized);
+  return loadProfile(profileId);
 }
 
 /**

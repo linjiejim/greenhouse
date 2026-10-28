@@ -56,7 +56,7 @@ async function scheduledTask(
   return db.scheduledTasks.create({
     user_id: owner.id,
     name: 'Durable market briefing',
-    profile_id: 'team',
+    profile_id: 'sprouty',
     task_prompt: 'Prepare the durable market briefing from internal sources.',
     schedule: '0 * * * *',
     timezone: 'UTC',

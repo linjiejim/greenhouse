@@ -117,9 +117,9 @@ vi.mock('../../agent-runtime/tool-resolution.js', () => ({
 }));
 
 vi.mock('../../profiles/profile.js', () => ({
-  normalizeProfileId: (id: string | undefined) => id,
+  DEFAULT_PROFILE_ID: 'sprouty',
   resolveProfileAsync: vi.fn(async () => ({
-    id: 'team',
+    id: 'sprouty',
     name: 'Team',
     access: { level: 'internal', rich_output: true },
     model: { id: 'test-model' },
@@ -129,7 +129,7 @@ vi.mock('../../profiles/profile.js', () => ({
 }));
 
 vi.mock('../../profiles/access.js', () => ({
-  pinProfileIdForUser: vi.fn(async (_user: unknown, profileId: string | undefined) => profileId ?? 'team'),
+  pinProfileIdForUser: vi.fn(async (_user: unknown, profileId: string | undefined) => profileId ?? 'sprouty'),
   ProfileAccessError: class ProfileAccessError extends Error {
     status = 403 as const;
   },
@@ -172,7 +172,7 @@ beforeEach(() => {
     id: 'session-1',
     title: 'Existing title',
     status: 'active',
-    profile_id: 'team',
+    profile_id: 'sprouty',
     user_id: 'owner',
     app_id: null,
     channel: 'web',
@@ -233,7 +233,7 @@ function sessionOn(channel: string) {
     id: 'session-1',
     title: 'Existing title',
     status: 'active',
-    profile_id: 'team',
+    profile_id: 'sprouty',
     user_id: 'owner',
     app_id: null,
     channel,
