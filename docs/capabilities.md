@@ -185,8 +185,8 @@
 ## 已知限制
 
 - 发版流水线：
-  - CI 只在 `main`、`v1` 的推送和所有 PR 上跑。
-  - release-please 只跟 `v1` 分支。
+  - CI 在 `main`、`v1`、`v3` 的推送和所有 PR 上跑。
+  - release-please 跟随 `main` 的 3.x 发布线。
   - 发版工作流不会移动 `:latest`。部署 3.x 时请用 `GREENHOUSE_IMAGE` 钉住具体版本。
 - `/health` 不返回版本号。版本只在镜像的 `APP_VERSION` / `APP_REVISION` 环境变量和标签里。
 - MCP 服务端自报版本固定为 `0.1.0`。
@@ -194,4 +194,4 @@
 - 浏览器端「页面动作」（Agent 操作当前页面）只有扩展可用，核心页面没有注册。
 - 通过 `/api/agent` 的写入不进操作记录。
 - 连接器目录缓存在进程内存里，多进程部署时改动要重启才全部生效。连接器写入不发通知。
-- 截图（`docs/assets/screens/`）来自旧版本，导航、品牌和部分文案与 3.0 不一致。
+- 官网与 README 配图的采集版本、设备和复现方法见 [截图说明](assets/screens/README.md)。

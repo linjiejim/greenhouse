@@ -10,7 +10,7 @@
  *
  * Prerequisites: a dev stack on E2E_BASE_URL (default http://localhost:4400)
  * with the example dataset loaded (`pnpm seed`); ffmpeg (gif/mp4) and cwebp
- * (png → webp) on PATH — each is skipped with a warning when missing.
+ * (png → webp) on PATH — missing cwebp fails the tour; ffmpeg warns when missing.
  *
  *   node scripts/capture-screens.mjs            # light theme, all surfaces
  *   node scripts/capture-screens.mjs --no-video # skip the chat recording
@@ -20,7 +20,7 @@
 
 import { chromium } from '@playwright/test';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readdirSync, renameSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 const BASE = process.env.E2E_BASE_URL || 'http://localhost:4400';
@@ -41,6 +41,8 @@ const TABLES_QUESTION =
 mkdirSync(OUT, { recursive: true });
 
 const report = [];
+const captures = [];
+const captureRevision = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
 function log(msg) {
   console.log(msg);
 }
@@ -94,8 +96,16 @@ async function clickFirst(page, candidates) {
 
 async function snap(page, name, opts = {}) {
   await settle(page, opts.wait ?? 700);
+  await page.evaluate(() => document.fonts.ready);
   const file = resolve(OUT, `${name}.png`);
   await page.screenshot({ path: file, fullPage: false, ...(opts.clip ? { clip: opts.clip } : {}) });
+  captures.push({
+    file: `${name}.webp`,
+    surface: 'web',
+    revision: captureRevision,
+    route: new URL(page.url()).hash,
+    capturedAt: new Date().toISOString(),
+  });
   log(`  📸 ${name}`);
 }
 
@@ -539,8 +549,10 @@ await step('projects', async () => {
 });
 
 await step('tables', async () => {
+  if (!tables.tableId) tables = await seedTables(client, users);
   if (!tables.tableId) throw new Error('no demo table');
   await page.goto(`${BASE}/#/tables/${tables.baseId}/table/${tables.tableId}`);
+  await page.getByText('Acme Analytics', { exact: true }).first().waitFor({ timeout: 30000 });
   await snap(page, 'tables-grid', { wait: 1800 });
 });
 
@@ -577,9 +589,20 @@ await step('search-and-assistant', async () => {
   await page.waitForTimeout(400);
   await page.evaluate(() => document.activeElement instanceof HTMLElement && document.activeElement.blur());
   await page.mouse.move(700, 450);
-  await page.getByRole('button', { name: 'More', exact: true }).first().hover();
-  await snap(page, 'more-menu', { wait: 800 });
-  await page.mouse.move(720, 450);
+});
+
+await step('product-story', async () => {
+  for (const [route, name, expected] of [
+    ['settings/agent-connections/connect', 'agent-connect-wizard', /Codex/],
+    ['skillhub?tab=reports', 'report-templates', /Weekly report/i],
+    ['activity', 'activity-log', /Activity/i],
+    ['administration/services', 'services-pricing', /Services/i],
+    ['drive', 'files', /Files/i],
+  ]) {
+    await page.goto(`${BASE}/#/${route}`);
+    await page.getByText(expected).filter({ visible: true }).first().waitFor({ timeout: 30000 });
+    await snap(page, name, { wait: 1800 });
+  }
 });
 
 await step('settings', async () => {
@@ -680,6 +703,7 @@ await step('dark-theme', async () => {
   }
   await page.goto(`${BASE}/#/tables/${tables.baseId}/table/${tables.tableId}`);
   await page.reload();
+  await page.getByText('Acme Analytics', { exact: true }).first().waitFor({ timeout: 30000 });
   await snap(page, 'tables-grid-dark', { wait: 1800 });
   await page.goto(`${BASE}/#/home`);
   await page.reload();
@@ -702,8 +726,7 @@ await step('mobile', async () => {
   if (answeredSessionUrl) {
     await mp.goto(answeredSessionUrl);
     await settle(mp, 1500);
-    await mp.screenshot({ path: resolve(OUT, 'mobile-chat.png') });
-    log('  📸 mobile-chat');
+    await snap(mp, 'mobile-chat');
   }
   await mobile.close();
 });
@@ -776,14 +799,22 @@ await browser.close();
 
 // ─── WebP (keeps the repo light; PNGs are the intermediate) ──
 
+const convertedCaptures = [];
 await step('webp', async () => {
   if (spawnSync('cwebp', ['-version'], { stdio: 'ignore' }).status !== 0) {
-    log('  ⚠ cwebp not found — keeping PNGs (brew install webp)');
-    return;
+    throw new Error('cwebp is required to publish captures (brew install webp); PNGs retained');
   }
-  for (const f of readdirSync(OUT).filter((f) => f.endsWith('.png'))) {
-    const png = resolve(OUT, f);
-    execFileSync('cwebp', ['-quiet', '-q', '82', png, '-o', png.replace(/\.png$/, '.webp')]);
+  for (const capture of captures) {
+    const png = resolve(OUT, capture.file.replace(/\.webp$/, '.png'));
+    const webp = resolve(OUT, capture.file);
+    const temporary = `${webp}.tmp`;
+    try {
+      execFileSync('cwebp', ['-quiet', '-q', '82', png, '-o', temporary]);
+      renameSync(temporary, webp);
+    } finally {
+      rmSync(temporary, { force: true });
+    }
+    convertedCaptures.push(capture);
     rmSync(png);
   }
   log('  🗜 png → webp');
@@ -794,6 +825,27 @@ await step('webp', async () => {
 log('\n=== capture report ===');
 for (const r of report) log(`${r.ok ? '✓' : '✗'} ${r.name}${r.error ? ` — ${r.error}` : ''}`);
 const issues = [...new Set(diag.issues)];
+const manifestPath = resolve(OUT, 'capture-manifest.json');
+const previous = existsSync(manifestPath) ? JSON.parse(readFileSync(manifestPath, 'utf8')) : { captures: [] };
+const updatedNames = new Set(convertedCaptures.map((capture) => capture.file));
+writeFileSync(
+  manifestPath,
+  JSON.stringify(
+    {
+      revision: captureRevision,
+      dataset: 'data/examples + capture-screens API fixtures (fictional)',
+      captures: [
+        ...previous.captures
+          .filter((capture) => !updatedNames.has(capture.file))
+          .map((capture) => ({ revision: previous.revision, ...capture })),
+        ...convertedCaptures,
+      ],
+      lastRun: { steps: report, issues },
+    },
+    null,
+    2,
+  ) + '\n',
+);
 log(`\nconsole/API issues: ${issues.length}`);
 for (const i of issues) log(`  • ${i}`);
 const files = readdirSync(OUT).filter((f) => !f.startsWith('.'));
