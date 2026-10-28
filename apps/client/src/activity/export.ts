@@ -5,9 +5,10 @@
  */
 
 import { api, queryString } from '../api/client';
+import type { MyActivityQuery } from '../data/my-activity';
 import { shareTextFile } from '../lib/share-file';
 
-export async function exportMyActivity(query: { source?: string; from: string }): Promise<string | null> {
+export async function exportMyActivity(query: MyActivityQuery): Promise<string | null> {
   try {
     const res = await api(`/api/activity/export${queryString(query)}`);
     if (!res.ok) return `HTTP ${res.status}`;

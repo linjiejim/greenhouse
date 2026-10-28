@@ -26,6 +26,7 @@ import { activityLine, activityOpening, activityTitle } from '../../src/notifica
 import { useStationManifest } from '../../src/plugins/store';
 import { localize } from '../../src/shared/plugins';
 import { useOpenHref, useOpenObject } from '../../src/shell/open-object';
+import { useAuth } from '../../src/store/auth';
 import { usePrefs } from '../../src/store/prefs';
 import { makeStyles, space, useTheme } from '../../src/theme';
 import { alertError } from '../../src/ui/dialogs';
@@ -61,7 +62,8 @@ export default function MyActivity() {
   const [exporting, setExporting] = useState(false);
   const generation = useRef(0);
   // The window is fixed when the filter is chosen, so Load More pages the same window.
-  const query = useMemo(() => myActivityQuery(filter, Date.now()), [filter]);
+  const me = useAuth((s) => s.user?.id ?? null);
+  const query = useMemo(() => myActivityQuery(filter, Date.now(), me), [filter, me]);
 
   const load = useCallback(
     async (after: string | null) => {

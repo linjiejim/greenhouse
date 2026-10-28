@@ -1,8 +1,8 @@
 /**
  * My activity log (「我」 → 我的动态), pure (./my-activity.test.ts): the filters as the query
  * `GET /api/activity` and its CSV export take, and how a next page joins the list. The station
- * scopes a member's log to their own rows (it ignores `user_id` for members); the client never
- * asks for anyone else's.
+ * scopes a member's log to their own rows (it ignores `user_id` for members) but gives a super
+ * everyone's unless `user_id` names one, so the client always names the member signed in.
  */
 
 import type { ActivityItem } from '../shared/greenhouse-types';
@@ -30,11 +30,18 @@ export interface MyActivityPage {
   next_cursor: string | null;
 }
 
-/** The query for the list and the export alike (the same filters give the same rows). */
-export function myActivityQuery(filter: MyActivityFilter, now: number): { source?: string; from: string } {
+export type MyActivityQuery = {
+  source?: string;
+  from: string;
+  user_id?: string;
+};
+
+/** The query for the list and the export alike (the same filters give the same rows), always for `me`. */
+export function myActivityQuery(filter: MyActivityFilter, now: number, me: string | null): MyActivityQuery {
   return {
     ...(filter.source === 'all' ? {} : { source: filter.source }),
     from: new Date(now - filter.days * 86_400_000).toISOString(),
+    ...(me ? { user_id: me } : {}),
   };
 }
 

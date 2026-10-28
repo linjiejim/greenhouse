@@ -18,12 +18,15 @@ const item = (id: string): MyActivityItem => ({
 });
 
 describe('my activity', () => {
-  it('asks for the window and source the member chose, never another person', () => {
+  it('asks for the window and source the member chose, always for the member signed in', () => {
     const now = Date.parse('2026-10-29T10:00:00.000Z');
-    expect(myActivityQuery({ source: 'all', days: 30 }, now)).toEqual({ from: '2026-09-29T10:00:00.000Z' });
-    const agent = myActivityQuery({ source: 'agent', days: 7 }, now);
-    expect(agent).toEqual({ source: 'agent', from: '2026-10-22T10:00:00.000Z' });
-    expect(Object.keys(agent)).not.toContain('user_id');
+    expect(myActivityQuery({ source: 'all', days: 30 }, now, 'usr_me')).toEqual({
+      from: '2026-09-29T10:00:00.000Z',
+      user_id: 'usr_me',
+    });
+    const agent = myActivityQuery({ source: 'agent', days: 7 }, now, 'usr_me');
+    expect(agent).toEqual({ source: 'agent', from: '2026-10-22T10:00:00.000Z', user_id: 'usr_me' });
+    expect(myActivityQuery({ source: 'all', days: 7 }, now, null)).toEqual({ from: '2026-10-22T10:00:00.000Z' });
   });
 
   it('replaces the list on a first page and appends only new rows after', () => {
