@@ -8,10 +8,14 @@
 // loader (no require needed — the package isn't hoisted by pnpm).
 // `PackageJsonAndroidAndIosScriptsIfNotContainRun` restores the library
 // default, which setting `sourceSkips` would otherwise override.
+// `targets/` is hashed whole: the share extension and widget are Swift compiled into the binary,
+// and by default only their expo-target.config.js counts, so a Swift-only change would ship as an
+// OTA update the installed extension never runs.
 /** @type {import('@expo/fingerprint').Config} */
 module.exports = {
   sourceSkips: [
     'ExpoConfigVersions',
     'PackageJsonAndroidAndIosScriptsIfNotContainRun',
   ],
+  extraSources: [{ type: 'dir', filePath: 'targets', reasons: ['apple-targets'] }],
 };

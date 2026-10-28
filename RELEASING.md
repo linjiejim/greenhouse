@@ -120,7 +120,8 @@ versions inside platform application definitions are contracts, not product vers
 EXPO_TOKEN-gated. Its default profile is production and platform is iOS. A matching native
 fingerprint publishes OTA; a new fingerprint builds and explicitly submits iOS to TestFlight.
 Version fields are excluded from the native fingerprint, so version-only edits can still enter
-the OTA lane. Store review is manual. Android needs its first store upload/credentials and
+the OTA lane. The whole `apps/client/targets/` folder (share extension and widget Swift) is hashed,
+so a change there always builds. Store review is manual. Android needs its first store upload/credentials and
 push configuration before distribution claims are made.
 
 The EAS project, identifiers and update URL are shared with existing installations. Keep those
