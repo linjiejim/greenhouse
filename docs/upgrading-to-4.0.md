@@ -183,8 +183,6 @@ behind them mostly remain; use chat, an agent or the API, or wait for a later re
 | The agent-connection wizard (Settings › Agent access › Connect) | Point the MCP client at `<origin>/api/mcp`; OAuth discovery and the consent page (`/oauth-consent`) work as before. |
 | Adding personal connectors | Supers add team connectors in Admin › Team connectors; members connect them in Me › Connections. |
 | Creating model-gateway keys | `POST /api/agent-access/gateway/keys` remains; supers list and revoke keys in Admin. |
-| Knowledge share dialog | Ask Sprouty to share (`knowledge_mutation` share_doc). |
-| Project members panel | `GET/POST/PATCH/DELETE /api/projects/:id/members` remain. |
 | Tables field editing, recycle bin, data catalog page and audit dialog | Structure changes through chat (`tables_schema_plan` card); restore with `pnpm cli tables restore-base` / `restore-table`; agents use `data_catalog`. |
 | SDK 1 React plugin pages | Port to manifest pages ([below](#plugin-authors-sdk-1-to-sdk-2)). |
 

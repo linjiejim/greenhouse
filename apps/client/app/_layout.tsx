@@ -199,6 +199,8 @@ export default function RootLayout() {
                 <Stack.Screen name="move" options={sheetScreen([0.7, 1], { header: true })} />
                 <Stack.Screen name="doc-new" options={sheetScreen([1], { header: true })} />
                 <Stack.Screen name="task-form" options={sheetScreen([1], { header: true })} />
+                <Stack.Screen name="project-members" options={sheetScreen([0.6, 1], { header: true })} />
+                <Stack.Screen name="doc-share" options={sheetScreen([0.6, 1], { header: true })} />
                 <Stack.Screen name="sheets/stations" options={sheetScreen([0.6, 1], { header: true })} />
                 <Stack.Screen name="sheets/station-add" options={sheetScreen([0.5, 1], { header: true })} />
                 <Stack.Screen name="sheets/feedback" options={sheetScreen([0.7, 1], { header: true })} />

@@ -16,6 +16,7 @@ import { alertError, promptText } from '../ui/dialogs';
 import { flattenTasks, withTaskPatched } from '../data/tasks';
 import type { TaskStatus, ProjectTask } from '../shared/greenhouse-types';
 import { WIDE_MIN } from '../shell/wide-model';
+import { useMembersEntry } from './members-entry';
 export default function ProjectsPlace() {
   const { width } = useWindowDimensions();
   return width < WIDE_MIN ? <Phone /> : <ProjectsDesktop />;
@@ -30,6 +31,7 @@ function ProjectsDesktop() {
     [mine, setMine] = useState(false),
     [saving, setSaving] = useState(false);
   const [context, setContext] = useState<PlaceContextPoint | null>(null);
+  const members = useMembersEntry();
   const user = useAuth((s) => s.user);
   const projects = useResource(useCallback(() => listProjects(captureIdentity()), []));
   const id = given ?? projects.data?.[0]?.id;
@@ -86,6 +88,7 @@ function ProjectsDesktop() {
     void projects.refresh();
     router.setParams({ project: r.data.project.id });
   };
+  const shown = mine ? null : detail.data?.project;
   const item = (task: ProjectTask) => (
     <PlaceRow
       key={task.id}
@@ -152,6 +155,11 @@ function ProjectsDesktop() {
                 </button>
               ))}
             </div>
+            {shown ? (
+              <button className="gh-secondary-button" onClick={() => members.open(shown.id)}>
+                {t('projects.members.open')}
+              </button>
+            ) : null}
             <button
               className="gh-primary"
               onClick={() => router.push({ pathname: '/task-form', params: { project: id } })}
@@ -192,6 +200,7 @@ function ProjectsDesktop() {
           )}
         </div>
       </Place>
+      {members.dialog}
       <PlaceContext
         point={context}
         close={() => setContext(null)}

@@ -3,6 +3,7 @@
  * phone has one (offline reading), the server's version replaces it and is saved again
  * (src/store/knowledge.ts); a document that is gone or no longer readable (403 / 404) loses its
  * copy at once — only an unreachable station falls back to it (src/data/recent-docs.ts `docMiss`).
+ * The owner of a private document shares it from the toolbar (src/knowledge/share-entry.tsx).
  */
 
 import { bodyUnderTitle } from '../data/doc-body';
@@ -19,6 +20,8 @@ import { forgetDoc, rememberDoc, savedDoc } from '../store/knowledge';
 import { makeStyles, space, typo, useTheme } from '../theme';
 import { EmptyState, LoadingState } from '../ui/empty';
 import { SheetScreen } from '../ui/screen';
+import { canShareDoc } from './share-model';
+import { useShareEntry } from './share-entry';
 
 type Shown = Pick<KbDoc, 'id' | 'title' | 'content_markdown' | 'updated_at'>;
 
@@ -36,6 +39,9 @@ export function DocView({ id: given, slug }: { id: string | null; slug?: string 
   const [failed, setFailed] = useState(false);
   const [attempt, setAttempt] = useState(0);
   const [found, setFound] = useState<string | null>(null);
+  // only the station's answer says whose it is; a saved copy offers no sharing
+  const [shareable, setShareable] = useState(false);
+  const share = useShareEntry();
   const id = given ?? found;
 
   useEffect(() => {
@@ -73,10 +79,12 @@ export function DocView({ id: given, slug }: { id: string | null; slug?: string 
       answered = true;
       if (result.ok) {
         setDoc(result.data.doc);
+        setShareable(canShareDoc(result.data.doc));
         setOffline(false);
         void rememberDoc(result.data.doc);
         return;
       }
+      setShareable(false);
       const miss = docMiss(result.status);
       if (miss === 'gone') {
         // revoked or deleted: the copy goes and stops showing
@@ -117,7 +125,12 @@ export function DocView({ id: given, slug }: { id: string | null; slug?: string 
 
   return (
     <>
-      <SheetScreen title={doc?.title ?? ''} />
+      <SheetScreen
+        title={doc?.title ?? ''}
+        actions={
+          shareable && id != null ? [{ icon: 'users', label: t('knowledge.share.open'), onPress: () => share.open(id) }] : []
+        }
+      />
       <ScrollView style={styles.root} contentInsetAdjustmentBehavior="automatic" contentContainerStyle={styles.content}>
         {!doc ? (
           failed ? (
@@ -141,6 +154,7 @@ export function DocView({ id: given, slug }: { id: string | null; slug?: string 
           </>
         )}
       </ScrollView>
+      {share.dialog}
     </>
   );
 }

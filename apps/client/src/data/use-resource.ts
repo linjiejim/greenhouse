@@ -6,8 +6,9 @@ import { captureIdentity } from './identity';
 import { useAuth } from '../store/auth';
 import { useStations } from '../store/stations';
 
-export function useResource<T>(load: () => Promise<ApiResult<T>>) {
-  const focused = useIsFocused();
+/** `unfocused`: also read while the screen is covered (a browser dialog opened beside an inspector). */
+export function useResource<T>(load: () => Promise<ApiResult<T>>, opts?: { unfocused?: boolean }) {
+  const focused = useIsFocused() || !!opts?.unfocused;
   const station = useStations((s) => s.activeId);
   const member = useAuth((s) => s.user?.id);
   const [data, setData] = useState<T | null>(null);

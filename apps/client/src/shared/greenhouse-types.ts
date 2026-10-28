@@ -147,6 +147,13 @@ export interface KbDoc {
   access?: KbAccess;
 }
 
+/** `GET /api/knowledge/docs/:id/shares`: one person a private document is shared with. */
+export interface KbShare {
+  target: string;
+  name: string;
+  role: 'reader' | 'editor';
+}
+
 /** `GET /api/knowledge/search` hits. */
 export interface KbSearchHit {
   id: string;
@@ -213,6 +220,8 @@ export interface Project {
   priority: TaskPriority;
   owner_id: string;
   owner_nickname?: string | null;
+  /** Who made it; with the owner and owner-role members, may manage its members. */
+  created_by?: string | null;
   start_date: string | null;
   end_date: string | null;
   color: string | null;
