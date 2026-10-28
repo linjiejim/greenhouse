@@ -1,0 +1,128 @@
+/* Layout of the plugin pages with screens of their own (src/plugins/<id>/screen.web.tsx): a
+   readable column of cards and lists. Controls come from shell/client.css; rows reuse
+   .gh-resource-list. */
+.gh-app-page {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-width: 980px;
+  padding: 4px 20px 32px;
+}
+.gh-app-page > .gh-resource-list {
+  margin: 0;
+}
+.gh-app-section {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 8px 0 -8px;
+}
+.gh-app-section h2 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--gh-secondary);
+}
+/* a row whose main part opens it; the trailing actions stay separate targets */
+.gh-app-row-main {
+  display: flex;
+  flex: 1;
+  align-items: flex-start;
+  gap: 14px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.gh-app-row-main .gh-resource-body p {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.gh-app-row-error {
+  margin: 4px 0 0;
+}
+.gh-app-row-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+/* the cloud computer's state: a tile, the state words and its line, the action */
+.gh-app-hero {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 20px;
+}
+.gh-app-hero-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.gh-app-hero-text strong {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 16px;
+}
+.gh-app-hero-text p {
+  margin: 0;
+  color: var(--gh-secondary);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.gh-app-tile {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+  background: var(--gh-accent-wash);
+}
+.gh-app-facts {
+  margin: 0;
+}
+.gh-app-facts div {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--gh-line);
+  font-size: 14px;
+}
+.gh-app-facts div:last-child {
+  border-bottom: 0;
+}
+.gh-app-facts dt {
+  color: var(--gh-secondary);
+}
+.gh-app-facts dd {
+  margin: 0;
+  text-align: right;
+}
+.gh-app-facts dd small {
+  display: block;
+  color: var(--gh-secondary);
+  font-size: 12px;
+}
+.gh-form details > summary {
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--gh-secondary);
+}
+.gh-form details[open] > summary {
+  margin-bottom: 12px;
+}
+.gh-form .gh-hint a {
+  color: var(--gh-accent-text);
+  font-weight: 600;
+}

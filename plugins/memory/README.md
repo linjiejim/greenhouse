@@ -12,7 +12,7 @@ Personal long-term memory, pinned notes, lifecycle and periodic consolidation.
 | Owned tables | `memories` |
 | Tools | `memory` (builtin profile contribution; member permissions still apply) |
 | Routes | `/api/auth/me/memories` |
-| Client | A read-only list of the member's memories; changes go through Sprouty's `memory` tool. |
+| Client | The Memory page: memories grouped in use, resting and archived; edit, pin, archive or restore, and delete. New memories come only from Sprouty's `memory` tool. |
 
 The consolidation job belongs to this plugin.
 

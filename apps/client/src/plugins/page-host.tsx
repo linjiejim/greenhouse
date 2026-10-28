@@ -35,10 +35,10 @@ export default function PluginPageScreen({ detail = false }: { detail?: boolean 
     if (detail && id && entity && safeEndpoint(entity.endpoint))
       return <EntityDetail key={`${plugin}:${entity.id}:${id}`} entity={entity} id={id} />;
     if (entry.kind === 'native') {
+      const Owned = pluginScreens[entry.screen];
+      if (Owned) return <Owned key={entry.screen} title={title} />;
       const native = nativeScreens[entry.screen];
       if (native?.route) return <Redirect href={native.route as never} />;
-      const Custom = pluginScreens[entry.screen];
-      if (native && Custom) return <Custom key={entry.screen} title={title} />;
       if (native?.endpoint) return <ResourceScreen key={entry.screen} entry={native} title={title} />;
     }
     if (entry.kind === 'entity-list' && entity && safeEndpoint(entity.endpoint))

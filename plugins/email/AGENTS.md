@@ -16,5 +16,5 @@
 - Direct egress resolves public DNS and connects to that checked IP with original TLS SNI; configured proxy failures never fall back silently.
 - Keep import-time limits in the leaf limits module and forbid email_mutation in unattended contexts/MCP.
 - System notification mail uses the registered transport and bound recipient, never an unrestricted Agent send tool.
-- The client lists accounts read-only (native page `email`); account create/edit stays on `/api/email/accounts`.
+- The client's native page `email` adds, edits, tests and removes accounts through `/api/email/accounts`; no response carries the password.
 - Register reset tables/migrations and keep [schema](db-schema.md) current.

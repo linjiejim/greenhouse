@@ -12,7 +12,7 @@ other ids), then restart. Credentials alone do not enable it; disabling preserve
 | Owned tables | `email_accounts`; shared mailbox config is deployment env, not a row |
 | Tools | `email_query`, `email_mutation` (human draft confirmation, not MCP/unattended) |
 | Routes | `/api/email` |
-| Client | A read-only list of the member's accounts; accounts are added through `/api/email/accounts`. |
+| Client | The Email page: add a mailbox (provider presets, app password), edit it, test its connection and remove it; a saved password is never shown again. |
 
 Mailbox reads are live IMAP; there is no background sync job. Sending uses the server-stored
 draft and rechecks recipient/ownership limits. Automations can deliver results by email
