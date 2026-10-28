@@ -957,6 +957,7 @@ export const zh: Catalog = {
     own: '我的连接器',
     ownFooter: '只有你和你的 Agent 使用；Agent 用 me/<名称> 称呼它们。',
     ownFooterPhone: '只有你和你的 Agent 使用。请在浏览器里添加和编辑。',
+    ownNonePhone: '还没有。请在浏览器里添加；只有你和你的 Agent 使用。',
     ownIntro: '你自己的连接器：只有你和你的 Agent 使用的 MCP 服务器。保存后在它的那一行添加 Key 或登录。',
     addOwn: '添加连接器',
     addOwnTitle: '添加连接器',
