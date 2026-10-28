@@ -165,6 +165,8 @@ export function WideShell({ children }: { children: React.ReactNode }) {
             <View
               key="rail"
               testID="client-rail"
+              role="navigation"
+              aria-label={t('client.railNav')}
               style={{
                 width: RAIL_WIDTH,
                 backgroundColor: c.sidebarBackground,
@@ -243,6 +245,8 @@ export function WideShell({ children }: { children: React.ReactNode }) {
             <View
               key="secondary"
               testID="client-secondary"
+              role="navigation"
+              aria-label={[...places, ...(admin ? [admin] : [])].find((p) => p.id === active)?.label ?? t('nav.sidebar')}
               style={{
                 width: SECONDARY_WIDTH,
                 backgroundColor: c.groupedBackground,
@@ -263,7 +267,7 @@ export function WideShell({ children }: { children: React.ReactNode }) {
               )}
             </View>
           ) : null}
-          <View key="main" testID="client-main" style={{ flex: 1, minWidth: 0 }}>
+          <View key="main" testID="client-main" role="main" style={{ flex: 1, minWidth: 0 }}>
             {children}
           </View>
         </View>

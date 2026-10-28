@@ -86,7 +86,8 @@ function AdminSidebar() {
     .filter((g) => g.rows.length);
   return (
     <PlaceSidebar title={t('admin.title')} query={query} onQuery={setQuery}>
-      <nav data-place-list aria-label={t('admin.title')} data-testid="admin-sections">
+      {/* the shell's sidebar is already the Admin navigation landmark */}
+      <div data-place-list data-testid="admin-sections">
         {groups.map((g) => (
           <React.Fragment key={g.group}>
             <h3>{t(`admin.groups.${g.group}` as TranslationKey)}</h3>
@@ -102,7 +103,7 @@ function AdminSidebar() {
           </React.Fragment>
         ))}
         {!groups.length ? <PlaceEmpty /> : null}
-      </nav>
+      </div>
     </PlaceSidebar>
   );
 }

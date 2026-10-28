@@ -28,6 +28,8 @@ export function Segmented<T extends string>({
           key={o.value}
           accessibilityRole="tab"
           accessibilityState={{ selected: value === o.value }}
+          // the web reads aria-selected, not accessibilityState
+          aria-selected={value === o.value}
           onPress={() => onChange(o.value)}
           style={({ pressed }) => ({
             flex: 1,

@@ -140,11 +140,11 @@ export default function ProjectBoard({
             onMove(e.dataTransfer.getData('application/greenhouse-task'), status);
           }}
         >
-          <h3>
+          <h2>
             <span className="gh-status-dot" data-status={status} />
             {labels[status]}
             <span className="gh-column-count">{tasks.filter((task) => task.status === status).length}</span>
-          </h3>
+          </h2>
           {tasks
             .filter((task) => task.status === status)
             .map((task) => (

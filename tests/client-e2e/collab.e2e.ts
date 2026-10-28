@@ -115,7 +115,7 @@ test('document sharing: the owner shares a private document, changes access and 
 
   await dialog.getByRole('combobox', { name: '权限 · 王宁' }).selectOption('editor');
   await expect.poll(() => f.writes[1]?.body).toEqual({ user_ids: ['usr_wang'], role: 'editor' });
-  await dialog.getByRole('button', { name: '取消与王宁共享' }).click();
+  await dialog.getByRole('button', { name: '取消共享给王宁' }).click();
   await confirm(page, '取消共享');
   await expect(list).not.toContainText('王宁');
   expect(f.writes.at(-1)).toMatchObject({

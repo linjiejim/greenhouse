@@ -15,6 +15,8 @@ export function HomeHeader({ unread }: { unread: number }) {
       <Stack.Screen
         options={{
           title: '',
+          // no empty heading: the greeting is the page's title
+          headerTitle: () => null,
           headerBackVisible: false,
           headerTransparent: false,
           headerRight: () => (

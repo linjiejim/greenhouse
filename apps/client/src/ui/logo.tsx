@@ -83,7 +83,7 @@ export function GreenhouseMark({
   const seed = color ?? hex.seed;
   const still = !animate || motionFinished;
   return (
-    <View style={{ width: size, height: size }} accessible accessibilityLabel="Greenhouse">
+    <View style={{ width: size, height: size }} accessible accessibilityRole="image" accessibilityLabel="Greenhouse">
       {still ? (
         <Svg viewBox={VIEWBOX} width={size} height={size} accessible={false}>
           {/* both sides in one path: they share a winding, so their overlap stays solid */}

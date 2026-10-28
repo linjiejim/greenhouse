@@ -16,6 +16,7 @@ export function GreetingTitle({ label, assistantLabel }: { label: string; assist
       <Text
         style={{ ...typo.largeTitle, color: c.label, marginHorizontal: space.margin + space.xs }}
         accessibilityRole="header"
+        aria-level={1}
       >
         {label}
       </Text>

@@ -106,6 +106,9 @@ export const en = {
     secondary: 'Toggle sidebar',
 
     promote: 'Open in main area',
+    railNav: 'Places',
+    inspectorWidth: 'Inspector width',
+    moreActions: 'More actions',
   },
   common: {
     loading: 'Loading…',
@@ -330,6 +333,18 @@ export const en = {
       teamDoc: 'Team documents are open to every member; only your own documents are shared person by person.',
       ownerOnly: 'Only the document’s owner manages who it is shared with.',
       noPeople: 'This station doesn’t list members to share with.',
+    },
+    editor: {
+      body: 'Document',
+      bold: 'Bold',
+      italic: 'Italic',
+      bullets: 'Bulleted list',
+      numbered: 'Numbered list',
+      quote: 'Quote',
+      code: 'Code block',
+      link: 'Link',
+      undo: 'Undo',
+      redo: 'Redo',
     },
   },
   files: {

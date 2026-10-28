@@ -323,7 +323,7 @@ function PricesTab({ overview, changed }: { overview: MeteringOverview; changed:
               <th>{t('admin.metering.provider')}</th>
               <th>{t('admin.metering.status')}</th>
               <th>{t('admin.metering.price')}</th>
-              <th aria-label={t('admin.actions')} />
+              <th><span className="gh-sr-only">{t('admin.actions')}</span></th>
             </tr>
           </thead>
           <tbody>
@@ -356,7 +356,7 @@ function PricesTab({ overview, changed }: { overview: MeteringOverview; changed:
               <th>{t('admin.metering.model')}</th>
               <th>{t('admin.metering.status')}</th>
               <th>{t('admin.metering.price')}</th>
-              <th aria-label={t('admin.actions')} />
+              <th><span className="gh-sr-only">{t('admin.actions')}</span></th>
             </tr>
           </thead>
           <tbody>
@@ -543,7 +543,7 @@ function BudgetsTab({ overview, changed }: { overview: MeteringOverview; changed
         <th className="gh-number">{t('admin.metering.reserved')}</th>
         <th>{t('admin.metering.used')}</th>
         <th>{t('admin.metering.sourceCol')}</th>
-        <th aria-label={t('admin.actions')} />
+        <th><span className="gh-sr-only">{t('admin.actions')}</span></th>
       </tr>
     </thead>
   );
@@ -719,7 +719,7 @@ function GatewayTab() {
                 <th>{t('admin.metering.status')}</th>
                 <th className="gh-number">{t('admin.gateway.month')}</th>
                 <th>{t('admin.gateway.lastUsed')}</th>
-                <th aria-label={t('admin.actions')} />
+                <th><span className="gh-sr-only">{t('admin.actions')}</span></th>
               </tr>
             </thead>
             <tbody>

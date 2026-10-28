@@ -19,6 +19,52 @@ export const DIALOG_SIZES = {
   xl: { width: 960, height: 680 },
 } as const;
 export type DialogSize = keyof typeof DIALOG_SIZES;
+const TABBABLE = 'button:not(:disabled),input,textarea,select,a[href],[tabindex="0"]';
+export const tabbablesIn = (root: HTMLElement | null) =>
+  Array.from(root?.querySelectorAll<HTMLElement>(TABBABLE) ?? []).filter((node) => !node.closest('[inert]'));
+/** Keeps Tab and Shift+Tab inside a modal surface; returns whether it handled the key. */
+export function trapTabIn(root: HTMLElement | null, e: KeyboardEvent) {
+  if (e.key !== 'Tab' || !root) return false;
+  const nodes = tabbablesIn(root);
+  const first = nodes[0];
+  const last = nodes.at(-1);
+  const inside = root.contains(document.activeElement);
+  if (!first) {
+    e.preventDefault();
+    root.focus();
+  } else if (!inside) {
+    e.preventDefault();
+    (e.shiftKey ? last : first)?.focus();
+  } else if (e.shiftKey && (document.activeElement === first || document.activeElement === root)) {
+    e.preventDefault();
+    last?.focus();
+  } else if (!e.shiftKey && document.activeElement === last) {
+    e.preventDefault();
+    first.focus();
+  }
+  return true;
+}
+/**
+ * Names a dialog that was given no label after its first heading (the title its content draws),
+ * watching until one renders. Returns the cleanup.
+ */
+export function labelByHeading(root: HTMLElement | null) {
+  if (!root || root.hasAttribute('aria-label')) return () => {};
+  const find = () => {
+    const heading = root.querySelector<HTMLElement>('h1,h2,h3,[role="heading"],.gh-dialog-header > strong');
+    if (!heading) return false;
+    heading.id ||= `gh-dialog-title-${++nextTitle}`;
+    root.setAttribute('aria-labelledby', heading.id);
+    return true;
+  };
+  if (find()) return () => {};
+  const watch = new MutationObserver(() => {
+    if (find()) watch.disconnect();
+  });
+  watch.observe(root, { childList: true, subtree: true });
+  return () => watch.disconnect();
+}
+let nextTitle = 0;
 export function Overlay({
   children,
   onClose,
@@ -59,10 +105,8 @@ export function Overlay({
     layers.push(layer);
     const previous = document.activeElement as HTMLElement | null;
     const root = panel.current;
-    const tabbables = () =>
-      Array.from(
-        root?.querySelectorAll<HTMLElement>('button:not(:disabled),input,textarea,select,a[href],[tabindex="0"]') ?? [],
-      );
+    const tabbables = () => tabbablesIn(root);
+    const unlabel = role === 'dialog' ? labelByHeading(root) : () => {};
     (initialFocus === 'panel' ? root : (tabbables()[0] ?? root))?.focus();
     const key = (e: KeyboardEvent) => {
       if (layers.at(-1) !== layer) return;
@@ -71,21 +115,7 @@ export function Overlay({
         e.stopImmediatePropagation();
         close.current();
       }
-      if (e.key === 'Tab' && trapTab) {
-        const nodes = tabbables();
-        const first = nodes[0];
-        const last = nodes.at(-1);
-        if (!first) {
-          e.preventDefault();
-          root?.focus();
-        } else if (e.shiftKey && document.activeElement === first) {
-          e.preventDefault();
-          last?.focus();
-        } else if (!e.shiftKey && document.activeElement === last) {
-          e.preventDefault();
-          first.focus();
-        }
-      }
+      if (trapTab) trapTabIn(root, e);
       if (role === 'menu' && ['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(e.key)) {
         const nodes = tabbables();
         let i = nodes.indexOf(document.activeElement as HTMLElement);
@@ -106,6 +136,7 @@ export function Overlay({
       root.style.top = `${Math.max(8, Math.min(pointY, innerHeight - box.height - 8))}px`;
     }
     return () => {
+      unlabel();
       layers.splice(layers.indexOf(layer), 1);
       document.removeEventListener('keydown', key, true);
       if (previous?.isConnected) previous.focus();

@@ -217,7 +217,7 @@ export function Icon({
       {symbol}
     </View>
   ) : (
-    <View accessible={false} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={style}>
+    <View accessible={false} accessibilityElementsHidden aria-hidden importantForAccessibility="no-hide-descendants" style={style}>
       {symbol}
     </View>
   );
@@ -281,9 +281,15 @@ export function Touchable({
     'aria-selected': accessibilityState?.selected,
     'aria-disabled': !!disabled,
   };
+  // A passive one without a role reads as its content: the web forbids aria-label on a plain element.
   if (!onPress && !onLongPress)
     return (
-      <View {...accessibility} style={style}>
+      <View
+        {...accessibility}
+        accessibilityLabel={accessibilityRole ? accessibilityLabel : undefined}
+        aria-disabled={disabled || undefined}
+        style={style}
+      >
         {children}
       </View>
     );

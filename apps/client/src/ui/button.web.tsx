@@ -43,6 +43,9 @@ export function NativeButton({
       accessibilityRole="button"
       accessibilityLabel={label}
       accessibilityState={{ disabled: disabled || loading, selected }}
+      // the web reads these, not accessibilityState
+      aria-busy={loading || undefined}
+      {...(selected === undefined ? null : { 'aria-pressed': selected })}
       disabled={disabled || loading}
       onPress={onPress}
       onHoverIn={() => setHover(true)}

@@ -136,6 +136,7 @@
 - Take typo, weight, radius (with squircle) and HIT from src/theme.ts; never disable allowFontScaling.
 - Register icons as [SF Symbol, Material] pairs in ICONS (src/ui/core.tsx) and run `python3 scripts/android-icons.py` in apps/client; toolbar icons go through toolbarIcon().
 - Give every icon-only button an accessibilityLabel; Icon is hidden from VoiceOver unless it stands alone.
+- Accessible names come from en/zh i18n, never hard-coded English; `tests/client-e2e/a11y.e2e.ts` runs axe on representative pages and dialogs and fails on serious/critical findings, so fix the shared primitive in src/ui before widening its allowlist.
 - Declare presentation only in app/\_layout platform layouts with the src/ui/nav presets; screens declare their own title and actions; native back buttons stay system-owned.
 - Glass (src/ui/glass.tsx) is for the control layer only; content sits on solid system colors.
 - A failed user action shows alertError; toast is for success only; a failed load shows EmptyState with retry; login errors stay inline.

@@ -103,6 +103,9 @@ export const zh: Catalog = {
     secondary: '显示二级栏',
 
     promote: '在主区打开',
+    railNav: '导航栏',
+    inspectorWidth: '检视面板宽度',
+    moreActions: '更多操作',
   },
   common: {
     loading: '加载中…',
@@ -311,7 +314,7 @@ export const zh: Catalog = {
       roles: { reader: '可阅读', editor: '可编辑' },
       name: '姓名',
       remove: '取消共享',
-      removeLabel: '取消与 {name} 共享',
+      removeLabel: '取消共享给 {name}',
       removeTitle: '取消与 {name} 的共享？',
       removeHint: 'TA 将无法再打开这篇文档。',
       shared: '已共享给 {name}',
@@ -323,6 +326,18 @@ export const zh: Catalog = {
       teamDoc: '团队文档所有成员都能访问；只有「我的」文档可以单独共享给某人。',
       ownerOnly: '只有文档的所有者可以管理共享。',
       noPeople: '这个工作站没有提供可共享的成员名单。',
+    },
+    editor: {
+      body: '正文',
+      bold: '加粗',
+      italic: '斜体',
+      bullets: '无序列表',
+      numbered: '有序列表',
+      quote: '引用',
+      code: '代码块',
+      link: '链接',
+      undo: '撤销',
+      redo: '重做',
     },
   },
   files: {

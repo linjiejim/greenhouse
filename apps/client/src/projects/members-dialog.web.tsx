@@ -128,7 +128,7 @@ export function ProjectMembersDialog({ projectId, close }: { projectId: string; 
                       <tr>
                         <th>{t('projects.members.name')}</th>
                         <th>{t('projects.members.role')}</th>
-                        {m.manage ? <th aria-label={t('projects.members.remove')} /> : null}
+                        {m.manage ? <th><span className="gh-sr-only">{t('projects.members.remove')}</span></th> : null}
                       </tr>
                     </thead>
                     <tbody>

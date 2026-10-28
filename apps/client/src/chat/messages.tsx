@@ -19,7 +19,7 @@
 
 import React, { memo, useMemo } from 'react';
 import { ReplyAvatar, ReplyActions, replySummary, useMessageLayout } from './reply-controls';
-import { Share, Text, View } from 'react-native';
+import { Platform, Share, Text, View } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import { useT } from '../lib/i18n';
 import { Markdown, RichContext, type RichEnv } from '../markdown';
@@ -140,6 +140,7 @@ export const UserMessage = memo(function UserMessage({
             <View
               style={styles.mark}
               accessible
+              role={Platform.OS === 'web' ? 'img' : undefined}
               accessibilityLabel={t(mark === 'check' ? 'conversation.delivered' : 'conversation.queued')}
             >
               <Icon name={mark} size={12} weight="semibold" color={c.tertiaryLabel} />
