@@ -82,27 +82,6 @@ const SPECIAL_METAS: ToolMeta[] = [];
 /** Single source of truth for all tool metadata. */
 export const TOOL_DEFINITIONS: ToolMeta[] = [...TOOL_MODULES.map((m) => m.meta), ...SPECIAL_METAS];
 
-/**
- * Retired tool ids → their successors. Custom profiles persist tool id arrays in
- * the DB, so a retirement must keep old rows meaningful: resolveEffectiveTools
- * expands these before intersecting. External callers (proxy, MCP) must use
- * the live ids.
- *
- * Core retires none (a core migration rewrites stored ids instead). Optional
- * modules contribute their aliases only while enabled, like their tools.
- */
-const retiredAliases: Record<string, readonly string[]> = {};
-for (const aliases of fromExtensions('retiredToolAliases')) {
-  for (const [retired, successors] of Object.entries(aliases)) {
-    if (retired in retiredAliases || TOOL_DEFINITIONS.some((tool) => tool.id === retired))
-      throw new Error(`Retired tool alias "${retired}" collides with an existing tool or alias`);
-    if (!successors.length || successors.some((id) => !TOOL_DEFINITIONS.some((tool) => tool.id === id)))
-      throw new Error(`Retired tool alias "${retired}" must name live successor tools`);
-    retiredAliases[retired] = successors;
-  }
-}
-export const RETIRED_TOOL_ALIASES: Readonly<Record<string, readonly string[]>> = retiredAliases;
-
 // ─── Derived exposure sets (single source: each tool's `meta.surface`) ──────
 //
 // The proxy/MCP allowlists and the lazy-tool set are DERIVED from the catalog —

@@ -273,7 +273,7 @@ for full signatures rather than creating a second registry.
 | `discriminators` | Registers `shareResources`, `fileLinkTargets`, `folderScopes`, `auditApps`, `runKinds`, `artifactKinds`; writes validate active values, historical reads remain possible. |
 | `driveScopes` | Core Files/folders with plugin authorization, placement, node checks and occupancy; optional `cabinet: true` selects one legacy cabinet. |
 | `activity`, `recentChanges` | Write labels/risks, action/target shapes and the bounded team-activity merge. Host destructive-risk classification remains authoritative. |
-| `toolResults`, `retiredToolAliases` | Compact transcript/references/relevance and `legacyCalls` (retired names a model still writes in DSML markup); exact Runtime evidence remains intact. Stored profile aliases resolve only while their successors are active; the proxy and MCP accept live tool ids only. |
+| `toolResults` | Compact transcript/references/relevance and `legacyCalls` (retired names a model still writes in DSML markup); exact Runtime evidence remains intact. Retiring a tool id means rewriting the stored custom-Agent tool lists in a core migration; the proxy and MCP accept live tool ids only. |
 | `automationTools`, `hubContext`, `promptContext` | Explicit unattended grants, reachable MCP hints and stable context contributions. They never expand member permissions. |
 | `summarySources` | Aggregates for system summaries; avoid member names, message text and private titles. |
 | `routes`, `publicPaths`, `rateLimits`, `commands` | Guarded plugin HTTP routes, minimal callback/webhook auth exceptions, central admission and CLI commands. New routes use `/api/ext/<id>`; official packages retain legacy prefixes. |

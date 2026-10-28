@@ -11,7 +11,7 @@ import { describe, it, expect } from 'vitest';
 import type { DatabaseProvider } from '@greenhouse/db';
 import { normalizeAutomationOptInTools } from '@greenhouse/types/automation-tools';
 import { resolveEffectiveTools, buildLazyServerTools } from '../tool-resolution.js';
-import { BUILTIN_AGENT_TOOL_IDS, RETIRED_TOOL_ALIASES, getAllToolIds } from '../../tools/registry.js';
+import { BUILTIN_AGENT_TOOL_IDS, getAllToolIds } from '../../tools/registry.js';
 import type { AgentProfile } from '../../profiles/profile.js';
 
 const DECLARED_TOOLS = ['files_query', 'analyze_image'];
@@ -146,34 +146,33 @@ describe('stored ids of removed tools', () => {
 });
 
 /**
- * Retired tool ids must stay meaningful, because custom profiles persist their
- * `tools` array in the DB: a retirement that forgets the alias silently narrows
- * every Agent whose author had ticked the old name.
+ * Stored tool ids are live ids: core migrations 0001 and 0004 rewrote the
+ * retired ones in custom Agents, so the resolver no longer aliases anything.
+ * A stored id whose plugin is off stays dormant.
  */
-describe('RETIRED_TOOL_ALIASES expansion', () => {
-  // Core retires no tool ids; the aliases come from enabled plugins.
-  const alias = Object.entries(RETIRED_TOOL_ALIASES)[0];
-
-  it.skipIf(!alias)('expands a retired id to its successors when filtering a custom profile', async () => {
-    const [retired, successors] = alias!;
-    const result = await resolveEffectiveTools({
+describe('stored custom-Agent tool ids', () => {
+  const custom = (tools: string[]) =>
+    resolveEffectiveTools({
       userId: 'u-super',
       userRole: 'super',
-      profile: makeProfile({ id: 'custom:retired', tools: [retired] }),
-      profileId: 'custom:retired',
+      profile: makeProfile({ id: 'custom:stored', tools }),
+      profileId: 'custom:stored',
     });
 
-    // An Agent whose author ticked the old name still reaches the successors…
-    for (const id of successors) expect(result.effectiveTools).toContain(id);
-    // …and the retired id itself never reaches the model.
-    expect(result.effectiveTools).not.toContain(retired);
+  it('does not expand a retired id to a successor', async () => {
+    const result = await custom(['team_knowledge', 'project_manager', 'example_notes_legacy']);
+    for (const id of ['team_knowledge', 'project_manager', 'example_notes_legacy']) {
+      expect(getAllToolIds()).not.toContain(id);
+      expect(result.effectiveTools).not.toContain(id);
+    }
+    for (const id of ['knowledge_query', 'project_query', 'project_mutation', 'example_notes_query']) {
+      expect(result.effectiveTools).not.toContain(id);
+    }
   });
 
-  it('every alias target is a live tool id', () => {
-    const live = new Set(getAllToolIds());
-    for (const [retired, successors] of Object.entries(RETIRED_TOOL_ALIASES)) {
-      expect(live.has(retired), `${retired} should be retired, not registered`).toBe(false);
-      for (const s of successors) expect(live.has(s), `${retired} → ${s} must exist`).toBe(true);
-    }
+  it('keeps an unregistered (plugin off) tool id dormant', async () => {
+    const result = await custom(['files_query', 'off_plugin_query']);
+    expect(result.effectiveTools).toContain('files_query');
+    expect(result.effectiveTools).not.toContain('off_plugin_query');
   });
 });

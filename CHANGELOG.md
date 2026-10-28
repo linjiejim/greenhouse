@@ -62,6 +62,10 @@ Read [Upgrading to 4.0](docs/upgrading-to-4.0.md) before upgrading.
   and makes `sprouty` the column default. Readers take stored ids as they are; only request
   edges (`/api/chat`, `/api/sessions`, `/api/agent`, automations, custom-Agent base) still map
   the old ids.
+- Core migration `0004_retired_tool_aliases` rewrites retired plugin tool ids in custom Agents and
+  saved prompts (`team_knowledge`/`personal_knowledge` → `knowledge_query`, `project_manager` →
+  `project_query` + `project_mutation`, `example_notes_legacy` → `example_notes_query`), and the
+  `retiredToolAliases` plugin seam that expanded them at run time is removed.
 - `GET /api/sessions` caps every page at 200 and no longer accepts `include_eval`.
   `GET /api/feishu/login-available` (use `/api/auth/providers`), `GET /api/profiles/custom/:id/versions`,
   the custom Agent `change_log` field and the team activity feed's plain ISO `before` are removed. Automations
@@ -149,6 +153,8 @@ notify, readable-field projection and observation types. Remove `WidgetRecipe`,
 snapshot-locked; optional kernel `writable` metadata enforces declared SDK 2 writes.
 `resolveEntityPolicy` takes role policies only: the never-populated per-user capability and
 entity overrides are removed from the kernel and the platform snapshots.
+`defineExtension.retiredToolAliases` is removed: core migration `0004_retired_tool_aliases`
+rewrote the stored ids it expanded.
 
 ### Fixed
 

@@ -29,6 +29,13 @@
       "when": 1793211965097,
       "tag": "0003_canonical_profile_ids",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1793212081780,
+      "tag": "0004_retired_tool_aliases",
+      "breakpoints": true
     }
   ]
 }

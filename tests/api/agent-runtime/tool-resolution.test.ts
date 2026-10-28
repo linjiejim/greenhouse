@@ -66,26 +66,18 @@ describe('resolveEffectiveTools', () => {
     expect(effectiveTools).not.toContain('tables_query');
   });
 
-  it('expands retired tool ids saved in custom profiles to their successors', async () => {
-    // Custom profiles persist tool id arrays in the DB. A saved agent listing the
-    // retired project_manager must keep working through the successor pair
-    // instead of silently losing the domain.
-    const profile = makeProfile({
-      access: { level: 'internal', rich_output: false },
-      tools: ['project_manager'],
-    });
-
+  it('does not alias a retired tool id saved in a custom profile', async () => {
+    // Core migration 0004 rewrote project_manager to project_query + project_mutation;
+    // a stored retired id reaching the resolver grants nothing.
     const { effectiveTools } = await resolveEffectiveTools({
       userId: 'super-1',
       userRole: 'super',
-      profile,
+      profile: makeProfile({ access: { level: 'internal', rich_output: false }, tools: ['project_manager'] }),
       profileId: 'custom:legacy',
     });
 
     expect(effectiveTools.sort()).toEqual(
-      [...new Set(['project_query', 'project_mutation', ...BUILTIN_AGENT_TOOL_IDS])]
-        .filter((id) => getAllToolIds().includes(id))
-        .sort(),
+      [...BUILTIN_AGENT_TOOL_IDS].filter((id) => getAllToolIds().includes(id)).sort(),
     );
   });
 

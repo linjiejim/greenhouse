@@ -54,7 +54,6 @@ describe('extension seam', { timeout: 60_000 }, () => {
 
     // tools: catalog + derived proxy surface + feature ownership
     expect(m.registry.getAllToolIds()).toContain('example_notes_query');
-    expect(m.registry.RETIRED_TOOL_ALIASES.example_notes_legacy).toEqual(['example_notes_query']);
     expect(m.registry.READONLY_PROXY_ALLOWLIST).toContain('example_notes_query');
     // the write tool declares proxy:'write', so it lands in the governed-write set
     expect(m.registry.MUTATING_PROXY_ALLOWLIST).toContain('example_notes_mutation');

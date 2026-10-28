@@ -94,7 +94,6 @@ const definition = defineExtension({
 
   // A read tool and a governed write tool (see tool.ts: writes must declare `proxy: 'write'`).
   tools: [exampleNotesQueryTool, exampleNotesMutationTool],
-  retiredToolAliases: { example_notes_legacy: ['example_notes_query'] },
   routes: [{ path: '/api/ext/example', app: exampleRoutes, guards: [requireFeature('example')] }],
 
   // Its own MCP consent group, so a token can be granted `mcp:example` alone.

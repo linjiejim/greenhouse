@@ -131,7 +131,10 @@ describe('stored profile ids on a bridged 3.x install', () => {
 
       const expected = (prefix: string) =>
         Object.fromEntries(
-          [...RETIRED, ...CURRENT].map((id, i) => [`${prefix}${i}`, RETIRED.includes(id) ? normalizeProfileId(id) : id]),
+          [...RETIRED, ...CURRENT].map((id, i) => [
+            `${prefix}${i}`,
+            RETIRED.includes(id) ? normalizeProfileId(id) : id,
+          ]),
         );
       const conversations = await ids(url, 'conversations', 'profile_id');
       expect(Object.fromEntries(Object.entries(conversations).filter(([id]) => /^c\d+$/.test(id)))).toEqual(

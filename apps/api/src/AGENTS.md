@@ -156,6 +156,7 @@
 - `resolveUserTools` is the only "which tools may this member use" (flag-owned tools included), used by profile create/update/fork and `GET /api/tools`; `resolveEffectiveTools` only narrows.
 - `meta.builtin` tools (`BUILTIN_AGENT_TOOL_IDS`) join the profile filter, never the effective result (`agent-runtime/__tests__/builtin-tools.db.test.ts`); a builtin has no own permission, cost or outbound channel.
 - Forking a system Agent seeds the member's allow-set, a custom Agent its declared tools; prompts never list tools dynamically and YAML names only guaranteed tools.
+- Stored tool ids are live ids: retiring one means a core migration that rewrites `run_profiles.tools` (and `prompts.expected_tools`) to its successors; there is no run-time alias, and a stored id whose plugin is off stays dormant.
 - `/api/agent` (`routes/agent-tools.ts`, `agentBearerAuthMiddleware`): tools = effective ∩ proxy sets; writes need `MUTATING_PROXY_ALLOWLIST`, write scope and `confirm:true` per call (else 400), each audited.
 - `call_llm` is lazy and session-scoped (never proxy/MCP): one-shot, no tools, 2-minute timeout, logged as `usage_events kind='audit'`, never fed back into context.
 - Bad tool-argument JSON is repaired deterministically (`createToolCallRepair`, loose then strict pass, strict only if it parses); tool names are never repaired; repairs warn.

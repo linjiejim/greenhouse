@@ -214,7 +214,6 @@ export default defineExtension({
     },
   ],
   automationTools: [{ id: 'knowledge_mutation', labelKey: 'ext.knowledge.automationTool', tier: 'write', order: 60 }],
-  retiredToolAliases: { team_knowledge: ['knowledge_query'], personal_knowledge: ['knowledge_query'] },
   hubContext: [
     {
       group: 'knowledge',
