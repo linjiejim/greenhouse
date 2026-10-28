@@ -65,6 +65,20 @@ describe('vendored workspace code', () => {
     );
   });
 
+  it('src/shared/reports.ts is a verbatim copy of packages/types/src/reports.ts', () => {
+    expect(statementTexts(parse(`${MOBILE}/shared/reports.ts`))).toEqual(
+      statementTexts(parse('packages/types/src/reports.ts')),
+    );
+  });
+
+  it('the skill upload limits match plugins/skills/api/skills/bundle.ts', () => {
+    const canonical = parse('plugins/skills/api/skills/bundle.ts');
+    const copy = parse(`${MOBILE}/plugins/skills/bundle.ts`);
+    for (const name of ['MAX_FILES', 'MAX_BUNDLE_BYTES', 'MAX_PATH_LENGTH', 'SKILL_NAME_RE', 'PATH_SEGMENT_RE']) {
+      expect(declaration(copy, name), name).toBe(declaration(canonical, name));
+    }
+  });
+
   it('the connected-agent plant rule matches packages/types/src/plant-avatar.ts', () => {
     const canonical = parse('packages/types/src/plant-avatar.ts');
     const copy = parse(`${MOBILE}/ui/plant-avatar/plant-ids.ts`);

@@ -3,7 +3,7 @@ import React, { useCallback } from 'react';
 import { ScrollView } from 'react-native';
 import { get } from '../api/client';
 import { useResource } from '../data/use-resource';
-import { Row, rowPosition } from '../ui/list';
+import { Row, rowPosition, SectionFooter } from '../ui/list';
 import { Screen } from '../ui/screen';
 import { EmptyState, LoadingState } from '../ui/empty';
 import { useT } from '../lib/i18n';
@@ -56,6 +56,7 @@ export function ResourceScreen({ entry, title }: { entry: NativeScreenEntry; tit
             />
           ))
         )}
+        {entry.wideNote ? <SectionFooter text={t(entry.wideNote)} /> : null}
       </ScrollView>
     </>
   );
