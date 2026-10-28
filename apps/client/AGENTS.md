@@ -108,6 +108,7 @@
 - Expo Go cannot run the app; judge native UI in a dev client (`pnpm client:ios`, `pnpm client:android`) on a dedicated simulator and browser UI through the universal web export.
 - Releases follow the native fingerprint (`runtimeVersion.policy: fingerprint`): JS-only changes ship as OTA; native changes (new native modules, ICONS entries, app icon, fonts, entitlements, app.json) need a build.
 - Product versions in app.json/package.json follow release-please extra-files; change them only for an authorized release cut. Fingerprint excludes version fields; store build numbers remain separately incremented.
+- app.config.js ships the numeric part of the version (4.0.0-rc.2 → 4.0.0): stores refuse a prerelease suffix.
 - The mark is Haven (logos/README.md): src/ui/logo.tsx draws src/ui/brand.generated.ts, body in the palette's `mark`, seed in its own colour. The app icon (assets/icon.png, adaptive-icon.png on #235D4D), public/ site icons and brand.generated.ts are exports of the Haven geometry (logos/README.md); replace them together, never redraw them.
 - Mermaid ships as assets/web/mermaid.min.txt (copied from node_modules/mermaid/dist, version in MERMAID_VERSION) and is injected into the diagram WebView; there is no CDN fallback.
 - A dev client on a simulator opens Metro without the "Open in" prompt with `xcrun simctl launch <udid> app.greenhouse.mobile --initialUrl http://localhost:<port>`.
