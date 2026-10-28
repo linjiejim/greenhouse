@@ -145,7 +145,6 @@ function formatCustomProfile(
     ...(version
       ? {
           manifest_hash: version.manifest_hash,
-          change_log: version.change_log,
           purpose: version.purpose,
           audience: version.audience,
           risk_level: version.risk_level,
@@ -387,33 +386,6 @@ const profiles = new Hono<AppEnv>()
       }
       throw err;
     }
-  })
-  /**
-   * GET /api/profiles/custom/:id/versions — the current configuration as the
-   * only version (history is no longer stored; older pins run the current one).
-   */
-  .get('/custom/:id/versions', async (c) => {
-    const authUser = getAuthUser(c);
-    const id = toRowId(c.req.param('id'));
-    if (!id) return c.json({ error: 'Invalid profile ID' }, 400);
-    const row = await getDb().customProfiles.getById(id);
-    if (!row) return c.json({ error: 'Custom profile not found' }, 404);
-
-    const ownsAsset = authUser.role === 'super' || row.user_id === authUser.id;
-    if (!ownsAsset) {
-      try {
-        await assertCustomProfileAccess(authUser, `custom:${id}`);
-      } catch (err) {
-        if (err instanceof ProfileAccessError) return c.json({ error: err.message }, err.status);
-        throw err;
-      }
-    }
-    const versions = await getDb().customProfiles.listVersions(id);
-    return c.json({
-      profile_id: `custom:${id}`,
-      current_version: row.version,
-      versions,
-    });
   })
   /** PUT /api/profiles/custom/:id/sharing — switch team availability (super only) */
   .put('/custom/:id/sharing', async (c) => {

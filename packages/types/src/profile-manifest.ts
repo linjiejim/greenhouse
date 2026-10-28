@@ -87,8 +87,7 @@ export type SproutyFaceStyleId = (typeof SPROUTY_FACE_STYLE_IDS)[number];
  * accepted and readable — `color`, `accessories`, `leafStyle`, `faceStyle`,
  * the old editor's `eyeStyle` and the free `palette` hexes — and resolves to a
  * plant at render time (`legacyToPlant` / `legacyToMood`); nothing is
- * migrated. Writers store `plant` plus the nearest legacy `color`
- * (PLANT_LEGACY_COLOR). Plain strings: unknown ids are kept and render through
+ * migrated. Writers store `plant`. Plain strings: unknown ids are kept and render through
  * the resolver's fallbacks.
  */
 export const avatarConfigSchema = z.object({

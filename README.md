@@ -70,7 +70,7 @@ supply selected team documents.
 ## Clients
 
 There is one client, the universal client in `apps/client`, built with Expo for the browser,
-iOS and Android. The API serves its hosted web export at `/`; `/classic` redirects to `/`.
+iOS and Android. The API serves its hosted web export at `/`.
 
 | Client | What ships in this repository |
 |---|---|
@@ -80,10 +80,9 @@ iOS and Android. The API serves its hosted web export at `/`; `/classic` redirec
 | CLI | `pnpm cli`: users, database, diagnostics, profiles, sessions, plugins, chat and enabled plugin commands. |
 
 `GET /api/extensions` is an authenticated station manifest v2: visible plugins, navigation,
-pages, entities, fields and actions. It retains the v1 `extensions` and `entityKinds` fields for
-3.x clients. `/api/bootstrap` reports `mobile_api: 4`; the client accepts stations from level 3
-and uses legacy navigation where v2 discovery is unavailable. Server-made links target client
-routes (`packages/types/src/client-routes.ts`), and old classic `#/…` links are mapped to them.
+pages, entities, fields and actions. `/api/bootstrap` reports `mobile_api: 4`, and the client
+requires it: a 3.x station asks to be updated. Server-made links target client
+routes (`packages/types/src/client-routes.ts`).
 There is no browser extension.
 
 ## Quick start (Docker)

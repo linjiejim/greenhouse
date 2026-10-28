@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_TEXT_STEP, legacyTextStepOf, scaleText, TEXT_STEP_NAMES, TEXT_STEPS, textStepOf } from './type-scale';
+import { DEFAULT_TEXT_STEP, scaleText, TEXT_STEP_NAMES, TEXT_STEPS, textStepOf } from './type-scale';
 
 describe('in-app text size', () => {
   it('has seven steps around the standard size, two of them below 0.9', () => {
@@ -16,14 +16,6 @@ describe('in-app text size', () => {
     expect(textStepOf(1)).toBe(3);
     expect(textStepOf('1.1')).toBe(4);
     expect(textStepOf(1.35)).toBe(6);
-  });
-
-  it('keeps the size an older build saved as a five-step index', () => {
-    expect(legacyTextStepOf('0')).toBe(textStepOf(0.9));
-    expect(legacyTextStepOf('1')).toBe(DEFAULT_TEXT_STEP);
-    expect(legacyTextStepOf(4)).toBe(textStepOf(1.35));
-    expect(legacyTextStepOf('5')).toBe(DEFAULT_TEXT_STEP);
-    expect(legacyTextStepOf('1.1')).toBe(DEFAULT_TEXT_STEP);
   });
 
   it('falls back to the standard size for anything else', () => {

@@ -25,7 +25,6 @@ export default {
         kind: 'native',
         screen: 'memory',
         title: { en: 'Memory', zh: '记忆' },
-        fallback_url: '#/settings/memory',
       },
     ] satisfies PluginPage[],
   },

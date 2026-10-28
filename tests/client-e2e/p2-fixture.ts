@@ -97,7 +97,7 @@ export async function installStation(page: Page) {
       path = url.pathname,
       method = req.method();
     const json = (value: unknown) => route.fulfill({ json: value });
-    if (path === '/api/extensions') return json({ extensions: [], entityKinds: [] });
+    if (path === '/api/extensions') return json({ manifest_version: 2, core: { version: '4.0.0', client_api: 4 }, plugins: [] });
     if (path === '/api/profiles')
       return json({
         profiles: [

@@ -16,7 +16,7 @@ import { SettingsForm } from './settings-form.web';
 export default function PluginAdminSection() {
   const t = useT();
   const lang = usePrefs((s) => s.lang);
-  const { plugin, page, view } = useLocalSearchParams<{ plugin: string; page: string; view?: string }>();
+  const { plugin, page } = useLocalSearchParams<{ plugin: string; page: string }>();
   const state = useStationManifest((s) => s.data);
   const status = useStationManifest((s) => s.status);
   const entry =
@@ -33,7 +33,7 @@ export default function PluginAdminSection() {
       </AdminPage>
     );
   const Screen = entry?.kind === 'native' ? adminScreens[entry.screen]?.component : undefined;
-  if (Screen) return <Screen key={`${plugin}/${page}`} plugin={plugin} page={page} title={title} view={view} />;
+  if (Screen) return <Screen key={`${plugin}/${page}`} plugin={plugin} page={page} title={title} />;
   return (
     <AdminPage title={title}>
       <SectionState

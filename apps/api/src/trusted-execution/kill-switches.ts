@@ -3,7 +3,7 @@
  *
  * These are deliberately separate from per-user feature flags: operators can
  * stop a derived read model or automation loop without changing user grants.
- * Every switch defaults on for backward-compatible rollout, while any non-empty
+ * Every switch defaults on, while any non-empty
  * unrecognised value is treated as off (fail closed) and reported by the health
  * endpoint.
  */
@@ -16,7 +16,6 @@ export const TRUSTED_EXECUTION_SWITCH_ENV = {
   runtimeWorker: 'RUNTIME_WORKER_ENABLED',
   automationDriver: 'RUNTIME_AUTOMATION_DRIVER_ENABLED',
   notificationProjector: 'RUNTIME_NOTIFICATION_PROJECTOR_ENABLED',
-  taskCenter: 'TASK_CENTER_ENABLED',
   approvalInbox: 'RUNTIME_APPROVAL_INBOX_ENABLED',
 } as const;
 
@@ -25,7 +24,6 @@ export interface TrustedExecutionSwitches {
   runtimeWorker: boolean;
   automationDriver: boolean;
   notificationProjector: boolean;
-  taskCenter: boolean;
   approvalInbox: boolean;
   /** Environment variable names whose non-empty values were not recognised. */
   invalidEnv: string[];
@@ -36,7 +34,6 @@ export interface TrustedExecutionBootPlan {
   chatAdapter: boolean;
   automationDriver: boolean;
   notificationProjector: boolean;
-  taskCenter: boolean;
   approvalInbox: boolean;
 }
 
@@ -66,7 +63,6 @@ export function resolveTrustedExecutionSwitches(env: Environment = process.env):
     runtimeWorker: defaultOnSwitch(env, TRUSTED_EXECUTION_SWITCH_ENV.runtimeWorker, invalidEnv),
     automationDriver: defaultOnSwitch(env, TRUSTED_EXECUTION_SWITCH_ENV.automationDriver, invalidEnv),
     notificationProjector: defaultOnSwitch(env, TRUSTED_EXECUTION_SWITCH_ENV.notificationProjector, invalidEnv),
-    taskCenter: defaultOnSwitch(env, TRUSTED_EXECUTION_SWITCH_ENV.taskCenter, invalidEnv),
     approvalInbox: defaultOnSwitch(env, TRUSTED_EXECUTION_SWITCH_ENV.approvalInbox, invalidEnv),
     invalidEnv,
   };
@@ -79,8 +75,7 @@ export function trustedExecutionBootPlan(switches: TrustedExecutionSwitches): Tr
     chatAdapter: switches.chatAdapter,
     automationDriver: switches.runtimeWorker && switches.automationDriver,
     notificationProjector: switches.runtimeWorker && switches.notificationProjector,
-    taskCenter: switches.taskCenter,
-    approvalInbox: switches.taskCenter && switches.approvalInbox,
+    approvalInbox: switches.approvalInbox,
   };
 }
 
@@ -91,13 +86,9 @@ export function runtimeAdapterEnabled(
   return kind === 'chat' && switches.chatAdapter;
 }
 
-type GuardedSurface = 'task-center' | 'approval-inbox';
+type GuardedSurface = 'approval-inbox';
 
 const SURFACE_UNAVAILABLE = {
-  'task-center': {
-    error: 'Run details are unavailable in this environment',
-    code: 'task_center_disabled',
-  },
   'approval-inbox': {
     error: 'Approval Inbox is unavailable in this environment',
     code: 'approval_inbox_disabled',
@@ -131,7 +122,6 @@ export function trustedExecutionHealthView(switches: TrustedExecutionSwitches) {
       notification_delivery: effective.notificationProjector,
     },
     surfaces: {
-      task_center: effective.taskCenter,
       approval_inbox: effective.approvalInbox,
     },
     invalid_env: switches.invalidEnv,

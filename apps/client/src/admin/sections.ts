@@ -37,14 +37,6 @@ export interface PluginSection {
   title: LocalizedText;
   icon: IconName;
   href: string;
-  /** The classic `#/administration/<key>` this section replaces, when the plugin names one. */
-  legacyKey: string | null;
-}
-
-/** `#/administration/issues/requests` → `issues`. */
-export function legacyKeyOf(fallback: string | undefined): string | null {
-  const match = /^#\/administration\/([^/?#]+)/.exec(fallback ?? '');
-  return match ? match[1]! : null;
 }
 
 export function pluginSectionHref(plugin: string, page: string): string {
@@ -69,7 +61,6 @@ export function pluginSections(state: ManifestState, icons: Readonly<Record<stri
           title: page.title,
           icon,
           href: pluginSectionHref(plugin.id, page.id),
-          legacyKey: legacyKeyOf(page.fallback_url),
         },
       ];
     }),
@@ -89,9 +80,4 @@ export function activeSection(path: string): { core: CoreSectionId } | { plugin:
     }
   }
   return parts.length === 2 && isCoreSection(parts[1]) ? { core: parts[1] } : null;
-}
-
-/** An unknown `/admin/<key>` (a classic link): the plugin section that took that key over, if any. */
-export function sectionForLegacyKey(key: string, sections: readonly PluginSection[]): PluginSection | null {
-  return sections.find((section) => section.legacyKey === key) ?? null;
 }

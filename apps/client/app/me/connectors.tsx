@@ -3,7 +3,7 @@
  * as me (my key or my sign-in) are listed with my standing; tap one for connect / test /
  * disconnect. The ones that need nothing from me are listed as ready. Adding connectors (the
  * team's, or my own) happens on the web (D13). Hidden behind an EmptyState when my account has
- * no connectors (403) or the station predates them (404). In the browser, linked accounts (Feishu,
+ * no connectors (403). In the browser, linked accounts (Feishu,
  * WeCom) come first (src/connectors/provider-bindings.web.tsx).
  */
 

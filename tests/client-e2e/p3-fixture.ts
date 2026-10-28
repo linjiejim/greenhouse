@@ -12,8 +12,6 @@ export function officialManifest() {
   return {
     manifest_version: 2,
     core: { version: '4.0.0', client_api: 4 },
-    extensions: [],
-    entityKinds: [],
     plugins: ['knowledge', 'tables', 'projects'].map((id, i) => ({
       id,
       name: id,

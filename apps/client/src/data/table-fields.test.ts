@@ -26,12 +26,12 @@ const field = (n: number, type: string, over: Partial<TableField> = {}): TableFi
   archived_at: null,
   ...over,
 });
-const options = JSON.stringify({
+const options = {
   options: [
     { id: 'o1', label: 'Open' },
     { id: 'o2', label: 'Won', color: '#0a0' },
   ],
-});
+};
 const words = {
   yes: 'Yes',
   no: 'No',
@@ -69,7 +69,7 @@ describe('table fields', () => {
 
   it('reads select options and ignores broken config', () => {
     expect(selectOptions({ config: options }).map((o) => o.label)).toEqual(['Open', 'Won']);
-    expect(selectOptions({ config: '{nope' })).toEqual([]);
+    expect(selectOptions({ config: { options: 'nope' } })).toEqual([]);
   });
 
   it('reads select options sent as an object (tables v2)', () => {

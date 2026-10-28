@@ -84,14 +84,14 @@ MCP 始终额外提供 `team_context`、`data_catalog`、`tool_output_read`。
 
 | 客户端 | 界面与限制 |
 |---|---|
-| 通用客户端 Web | API 在 `/` 托管（`/classic` 跳到 `/`）。宽屏：rail（内置位置、「更多」插件入口、super 的 Admin）、次级栏、主区、检查器，⌘K，居中对话框与设置窗口；窄窗口用手机布局。 |
+| 通用客户端 Web | API 在 `/` 托管。宽屏：rail（内置位置、「更多」插件入口、super 的 Admin）、次级栏、主区、检查器，⌘K，居中对话框与设置窗口；窄窗口用手机布局。 |
 | iOS / Android | 原生 Expo，同一 API；对话、附件/离线待发、最近内容离线读、启用插件入口、通知、多站点；iOS 小组件/iPad。没有 Admin（只在浏览器与桌面端的宽窗口）。Android 原生适配存在，商店发布与推送仍需配置。 |
 | macOS | Tauri 2 打包通用客户端；Keychain、多站点、菜单/快捷键、通知与 Quick ask。支持本地未签名构建，正式签名/更新源需运维配置。 |
 | CLI | 用户、数据库迁移/基线、工具/Agent/会话、自检、插件 list/status/drop；知识导入/重索引、表格恢复由对应插件提供。 |
 
 站点 v2 清单按成员裁剪，页面有 `native`、`entity-list`、`entity-detail`、`settings-form`、`embed`
 五种；`parent: 'administration'` 的页面只发给 super，成为 Admin 分区。数据插件的 `user` 字段显示
-成员名。`mobile_api` 为 4，客户端最低要求 3，清单缺失时按内置规则显示入口；不认识的页面只在插件
+成员名。`mobile_api` 为 4，客户端也要求 4，3.x 工作站会提示先升级；不认识的页面只在插件
 声明了外部地址时提供浏览器打开。声明页面不扩大权限，管理设置写入仍是 super-only。
 
 内嵌 UI 使用主题/品牌 token、语言与成员上下文，以及十分钟窄令牌；只允许所属插件 API 与基础

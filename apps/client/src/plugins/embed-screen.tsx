@@ -11,8 +11,7 @@ import { useT } from '../lib/i18n';
 import { Screen } from '../ui/screen';
 import { WebFrame } from '../ui/web-frame';
 import { EmptyState } from '../ui/empty';
-import { useStartChat } from '../shell/open-object';
-import { mapLegacyLink } from '../shell/legacy-links';
+import { useOpenHref, useStartChat } from '../shell/open-object';
 import { embedMessage, embedUrl, normalizeNavigate } from './surface-model';
 import { EMBED_PROTOCOL, type PluginEmbedPage } from '../shared/plugins';
 export function EmbedScreen({ plugin, page, title }: { plugin: string; page: PluginEmbedPage; title: string }) {
@@ -23,7 +22,8 @@ export function EmbedScreen({ plugin, page, title }: { plugin: string; page: Plu
     router = useRouter(),
     params = useLocalSearchParams<{ route?: string }>(),
     t = useT(),
-    start = useStartChat();
+    start = useStartChat(),
+    openHref = useOpenHref();
   const [frameTitle, setFrameTitle] = useState(title),
     [outgoing, setOutgoing] = useState<Record<string, unknown> | null>(null),
     [error, setError] = useState('');
@@ -56,11 +56,11 @@ export function EmbedScreen({ plugin, page, title }: { plugin: string; page: Plu
         attempt = ++gen.current;
       const r = await post<{ token: string; expires_at: string }>('/api/ext-ui/token', { plugin });
       if (!alive.current || !current() || attempt !== gen.current) return;
-      if (!r.ok && r.status !== 404) {
+      if (!r.ok) {
         setError(r.message || t('places.pluginError'));
         return;
       }
-      credential.current = r.ok ? r.data : { token: '', expires_at: '' };
+      credential.current = r.data;
       setError('');
       setOutgoing(
         refresh
@@ -113,9 +113,9 @@ export function EmbedScreen({ plugin, page, title }: { plugin: string; page: Plu
                   start(m.text);
                 }
                 if (m.type === EMBED_PROTOCOL.navigate) {
-                  const normalized = normalizeNavigate(m.href, getApiBase());
-                  const href = normalized?.startsWith('#/') ? mapLegacyLink(normalized) : normalized;
-                  if (href && !href.startsWith('/classic/')) router.navigate(href as never);
+                  const href = normalizeNavigate(m.href, getApiBase());
+                  if (href?.startsWith('#/')) openHref(href);
+                  else if (href) router.navigate(href as never);
                 }
               },
             }}

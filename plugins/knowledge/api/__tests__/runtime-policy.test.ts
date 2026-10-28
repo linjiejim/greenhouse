@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { registerToolResultAdapters } from '@greenhouse/agent-core';
 import { knowledgeTranscript } from '../transcript.js';
-import { canonicalProxyToolId, executeProxyTool } from '../../../../apps/api/src/agent-runtime/tool-proxy.js';
+import { executeProxyTool } from '../../../../apps/api/src/agent-runtime/tool-proxy.js';
 import {
   resolveEffectiveTools,
   filterBrowserSessionToolIds,
@@ -13,12 +13,11 @@ import { scheduledToolBase } from '../../../../apps/api/src/scheduler/executor.j
 registerToolResultAdapters([knowledgeTranscript]);
 
 describe('knowledge runtime policy contributions', () => {
-  it('executes a legacy proxy read under its canonical id', async () => {
-    expect(canonicalProxyToolId('team_knowledge')).toBe('knowledge_query');
+  it('refuses a retired read name on the proxy', async () => {
     const registry = { knowledge_query: { execute: async (input: unknown) => input } };
-    expect(
-      await executeProxyTool(registry, 'search_team_knowledge', ['knowledge_query'], { query: 'nutrient' }),
-    ).toMatchObject({ action: 'search', query: 'nutrient' });
+    await expect(
+      executeProxyTool(registry, 'search_team_knowledge', ['knowledge_query'], { query: 'nutrient' }),
+    ).rejects.toMatchObject({ status: 403 });
   });
 
   it('keeps stored profile aliases meaningful while the plugin is enabled', async () => {

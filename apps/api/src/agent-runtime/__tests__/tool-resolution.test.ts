@@ -151,18 +151,22 @@ describe('stored ids of removed tools', () => {
  * every Agent whose author had ticked the old name.
  */
 describe('RETIRED_TOOL_ALIASES expansion', () => {
-  it('expands a retired id to its successor when filtering a custom profile', async () => {
+  // Core retires no tool ids; the aliases come from enabled plugins.
+  const alias = Object.entries(RETIRED_TOOL_ALIASES)[0];
+
+  it.skipIf(!alias)('expands a retired id to its successors when filtering a custom profile', async () => {
+    const [retired, successors] = alias!;
     const result = await resolveEffectiveTools({
       userId: 'u-super',
       userRole: 'super',
-      profile: makeProfile({ id: 'custom:retired', tools: ['session_history'] }),
+      profile: makeProfile({ id: 'custom:retired', tools: [retired] }),
       profileId: 'custom:retired',
     });
 
-    // An Agent whose author ticked the old names still reaches the successor…
-    expect(result.effectiveTools).toContain('session_query');
-    // …and the retired ids themselves never reach the model.
-    expect(result.effectiveTools).not.toContain('session_history');
+    // An Agent whose author ticked the old name still reaches the successors…
+    for (const id of successors) expect(result.effectiveTools).toContain(id);
+    // …and the retired id itself never reaches the model.
+    expect(result.effectiveTools).not.toContain(retired);
   });
 
   it('every alias target is a live tool id', () => {

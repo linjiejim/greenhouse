@@ -79,12 +79,7 @@ test.describe('signed out', () => {
     await expect(page.getByTestId('activate-unavailable')).toBeVisible();
   });
 
-  test('an old #/activate link lands on the new page without the token in the address', async ({ page }) => {
-    const account = invite();
-    await page.goto(`/#/activate?token=${account.token}`);
-    await expect(page).toHaveURL(`${WEB}/activate`);
-    await expect(page.getByTestId('activate-account')).toContainText(masked(account.email));
-    expect(page.url()).not.toContain(account.token);
+  test('the activation page, valid and spent, in both appearances', async ({ page }) => {
     await capture(page, 'activate', async () => {
       await page.goto(`/activate#token=${invite().token}`);
       await expect(page.getByTestId('activate-password')).toBeVisible();
@@ -308,8 +303,7 @@ test.describe('signed in', () => {
       await page.goto('/bindings?wecom=error&reason=already_bound');
       await expect(page.getByTestId('binding-result-error')).toBeVisible();
     });
-    // an old classic return lands on the same page
-    await page.goto('/#/settings/provider-bindings?feishu=ok');
+    await page.goto('/bindings?feishu=ok');
     await expect(page.getByTestId('binding-result-ok')).toBeVisible();
     await page.getByTestId('binding-open-connections').click();
     await expect(page).toHaveURL(/\/me\/connectors$/);

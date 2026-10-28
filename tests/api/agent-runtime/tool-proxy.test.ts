@@ -175,33 +175,12 @@ describe('executeProxyTool', () => {
     expect(out).toEqual({ echoed: 'nutrient' });
   });
 
-  it('maps legacy read endpoint IDs to the combined tool when the new tool is allowed', async () => {
-    const out = await executeProxyTool(registry, 'session_history', ['session_query'], { q: 'nutrient' });
-    expect(out).toEqual({ echoed: 'nutrient' });
-  });
-
-  it('maps retired session_history calls onto session_query with translated actions', async () => {
-    // session_history was proxy/MCP-exposed before its 2026-08-07 retirement, so
-    // external callers may still use the old name. Pin all three translations:
-    // get → messages, search-with-query → search, search-without-query → list(web).
-    const calls: unknown[] = [];
-    const sessionQuery = {
-      execute: async (input: unknown) => {
-        calls.push(input);
-        return { ok: true };
-      },
-    };
-    const reg = { session_query: sessionQuery } as Record<string, unknown>;
-    const allowed = ['session_query'];
-
-    await executeProxyTool(reg, 'session_history', allowed, { action: 'get', session_id: 's1' });
-    expect(calls[0]).toMatchObject({ action: 'messages', session_id: 's1' });
-
-    await executeProxyTool(reg, 'session_history', allowed, { action: 'search', query: 'roadmap' });
-    expect(calls[1]).toMatchObject({ action: 'search', query: 'roadmap' });
-
-    await executeProxyTool(reg, 'session_history', allowed, { action: 'search' });
-    expect(calls[2]).toMatchObject({ action: 'list', channel: 'web' });
+  it('refuses a retired tool name even when its successor is allowed', async () => {
+    await expect(
+      executeProxyTool(registry, 'session_history', ['session_query'], { q: 'nutrient' }),
+    ).rejects.toMatchObject({
+      status: 403,
+    });
   });
 
   it('requires confirm:true for a mutating tool (400 without it)', async () => {

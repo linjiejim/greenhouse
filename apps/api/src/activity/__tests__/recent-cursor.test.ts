@@ -16,7 +16,7 @@ describe('the team activity cursor', () => {
     expect(decodeRecentCursor(raw('2026-10-26T00:00:00.000000Z', 'k'.repeat(201)))).toBeNull();
   });
 
-  it('still accepts a plain ISO before (strictly older)', () => {
-    expect(decodeRecentCursor('2026-10-26T00:00:00.000Z')).toEqual({ at: '2026-10-26T00:00:00.000000Z', key: '' });
+  it('refuses a plain timestamp', () => {
+    expect(decodeRecentCursor('2026-10-26T00:00:00.000Z')).toBeNull();
   });
 });

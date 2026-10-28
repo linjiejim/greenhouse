@@ -1,11 +1,10 @@
-/** `/admin` and `/admin/<section>`: a core section, or a classic key a plugin section took over. */
+/** `/admin` and `/admin/<section>`: a core section. */
 import React from 'react';
-import { Redirect, useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams } from 'expo-router';
 import { useStationManifest } from '../plugins/store';
 import { useT } from '../lib/i18n';
 import { AdminPage, SectionState } from './kit.web';
-import { DEFAULT_SECTION, isCoreSection, sectionForLegacyKey, type CoreSectionId } from './sections';
-import { useAdminSections } from './layout.web';
+import { DEFAULT_SECTION, isCoreSection, type CoreSectionId } from './sections';
 import UsersSection from './users.web';
 import ServicesSection from './services.web';
 import UsageSection from './usage.web';
@@ -32,15 +31,12 @@ const SECTIONS: Record<CoreSectionId, React.ComponentType> = {
 
 export default function AdminSectionScreen() {
   const t = useT();
-  const { section = DEFAULT_SECTION, view } = useLocalSearchParams<{ section?: string; view?: string }>();
-  const plugins = useAdminSections();
+  const { section = DEFAULT_SECTION } = useLocalSearchParams<{ section?: string }>();
   const status = useStationManifest((s) => s.status);
   if (isCoreSection(section)) {
     const Section = SECTIONS[section];
     return <Section key={section} />;
   }
-  const taken = sectionForLegacyKey(section, plugins);
-  if (taken) return <Redirect href={(view ? `${taken.href}?view=${encodeURIComponent(view)}` : taken.href) as never} />;
   return (
     <AdminPage title={t('admin.title')}>
       <SectionState

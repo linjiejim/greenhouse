@@ -4,8 +4,9 @@
  * Objects open as native form sheets over what is on screen, stacked up to three deep (the
  * fourth replaces the top one; rules in ./object-ref.ts). A conversation is a full page: open
  * sheets are dismissed first, because a page pushed over a sheet would land inside the sheet's
- * own presentation. A link to a place (a tab, a table, My Agents) goes there the same way; other
- * station pages open in the in-app Safari view, other sites in Safari.
+ * own presentation. A link to a place (a tab, a table, My Agents) goes there the same way; a plugin
+ * record link opens the record the station manifest names (src/plugins/entity-links.ts), any other
+ * station address goes home; other sites open in Safari.
  *
  * A screen can name itself as the origin of what opens from it (`OpenOrigin`; the conversation
  * does): sheets then carry `from` and say where they came from above their title, so a stack of
@@ -14,9 +15,11 @@
 
 import { createContext, useCallback, useContext } from 'react';
 import { useNavigationContainerRef, useRouter } from 'expo-router';
-import { linkTarget, webUrl, type AppTarget } from '../lib/deep-links';
+import { linkTarget, type AppTarget } from '../lib/deep-links';
 import { openLink } from '../lib/links';
 import { getApiBase } from '../store/stations';
+import { pluginEntityLink } from '../plugins/entity-links';
+import { useStationManifest } from '../plugins/store';
 import { useTheme } from '../theme';
 import {
   openingOf,
@@ -108,9 +111,12 @@ export function openPlace(
     case 'agents':
       router.push('/me/agents');
       return;
-    case 'web':
-      void openLink(webUrl(getApiBase(), place.hash), accent);
+    case 'route': {
+      const record = pluginEntityLink(useStationManifest.getState().data, place.hash);
+      if (record) openObject(router, container, { kind: 'plugin-entity', ...record }, from);
+      else leavePresented(router, routes, () => router.navigate('/'));
       return;
+    }
     case 'page':
       leavePresented(router, routes, () => router.navigate(place.href as never));
       return;

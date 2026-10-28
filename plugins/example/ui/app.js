@@ -9,7 +9,7 @@ const bridge = connectGreenhouse({
     bridge.title('Example notes');
   },
 });
-document.getElementById('navigate').onclick = () => bridge.navigate('#/ext/example/example-note');
+document.getElementById('navigate').onclick = () => bridge.navigate('/p/example/example-note');
 document.getElementById('prompt').onclick = () => bridge.sendPrompt('Help me organize my notes');
 document.getElementById('refresh').onclick = async () => {
   try {

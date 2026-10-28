@@ -8,7 +8,7 @@ afterEach(() => {
   resetPlatformRuntimeForTests();
   _resetProvider();
 });
-it('keeps the v1 fields and v2 envelope when the station has no plugins', async () => {
+it('serves the v2 envelope when the station has no plugins', async () => {
   const db = await initDatabase({ type: 'pg', pgConnectionString: TEST_DATABASE_URL });
   try {
     initializePlatformRuntime(db, []);
@@ -17,9 +17,8 @@ it('keeps the v1 fields and v2 envelope when the station has no plugins', async 
       manifest_version: 2,
       core: { client_api: 4 },
       plugins: [],
-      extensions: [],
-      entityKinds: [],
     });
+    expect(await stationManifest(db, { id: user.id, role: 'team' }, [])).not.toHaveProperty('extensions');
   } finally {
     await db.close();
   }

@@ -12,8 +12,6 @@ import { objectId } from '../lib/object-id';
 
 export type SearchSectionKind = 'session' | 'automation' | 'kb_doc' | 'project' | 'file' | 'task' | 'other';
 
-/** A station hit, plus the fields newer stations send (automation hits; a conversation's last activity). */
-type StationHit = SearchGroup['items'][number] & { automationId?: string; updatedAt?: string };
 
 export interface SearchHitView {
   key: string;
@@ -28,18 +26,17 @@ export interface SearchSection {
   hits: SearchHitView[];
 }
 
-/** A hit's id (src/lib/object-id.ts); older stations send numbers. */
+/** A hit's id (src/lib/object-id.ts). */
 const positive = objectId;
 
 /**
  * `formatTime` turns a conversation's ISO `updatedAt` into the subtitle (the screen passes its
- * locale-aware formatter); without it, or from an older station, the station's subtitle is used.
+ * locale-aware formatter); without it the station's subtitle is used.
  */
 export function stationSections(groups: readonly SearchGroup[], formatTime?: (iso: string) => string): SearchSection[] {
   const out: SearchSection[] = [];
   for (const group of groups) {
-    const hits = group.items.flatMap((raw): SearchHitView[] => {
-      const item: StationHit = raw;
+    const hits = group.items.flatMap((item): SearchHitView[] => {
       if (item.sessionId) {
         const subtitle = item.updatedAt && formatTime ? formatTime(item.updatedAt) : (item.subtitle ?? undefined);
         return [{ key: `s-${item.sessionId}`, title: item.title, subtitle, ref: { kind: 'chat', sessionId: item.sessionId } }];

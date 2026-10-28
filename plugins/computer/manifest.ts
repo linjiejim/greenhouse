@@ -25,7 +25,6 @@ export default {
         kind: 'native',
         screen: 'computer',
         title: { en: 'Computer', zh: '云电脑' },
-        fallback_url: '#/settings/computer',
       },
       {
         // Administration › Cloud computers: the switch and every running computer
@@ -34,7 +33,6 @@ export default {
         screen: 'computer-admin',
         title: { en: 'Cloud computers', zh: '云电脑管理' },
         parent: 'administration',
-        fallback_url: '#/administration/services',
       },
     ] satisfies PluginPage[],
   },

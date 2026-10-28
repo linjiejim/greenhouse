@@ -51,8 +51,8 @@ export type SproutyFaceStyleId = (typeof SPROUTY_FACE_STYLE_IDS)[number];
  * (PLANT_TINTS); `mood` (resting eyes) is legacy — readable, no longer rendered
  * (a face follows state). Every legacy Sprouty key stays readable and resolves to a
  * plant at render time (`legacyToPlant` / `legacyToMood`); nothing is migrated.
- * Writers store `plant` plus the nearest legacy `color` (`withPlant`). Plain
- * strings: unknown ids are kept and render through the resolver's fallbacks.
+ * Writers store `plant` (`withPlant`). Plain strings: unknown ids are kept and render through
+ * the resolver's fallbacks.
  */
 export interface AvatarConfig {
   plant?: string;

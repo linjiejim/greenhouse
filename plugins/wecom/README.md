@@ -8,7 +8,7 @@ other ids), then restart. Credentials alone do not enable it; disabling preserve
 | Surface | Details |
 |---|---|
 | Settings | Delivery recipients derive from the bound member. |
-| Environment | `WECOM_CORP_ID`, `WECOM_AGENT_ID`, `WECOM_APP_SECRET`; `PUBLIC_BASE_URL` for the callback; optional `SKILLS_WECOM_WEBHOOK_URL` / `SYNC_WECOM_WEBHOOK_URL` for registered webhook uses. |
+| Environment | `WECOM_CORP_ID`, `WECOM_AGENT_ID`, `WECOM_APP_SECRET`; `PUBLIC_BASE_URL` for the callback; optional `SKILLS_WECOM_WEBHOOK_URL` for registered webhook uses. |
 | Owned tables | None; provider_connections and login_states are core tables |
 | Tools | None |
 | Routes | `/api/wecom` (binding and OAuth start/callback, mounted by the identity registry) |

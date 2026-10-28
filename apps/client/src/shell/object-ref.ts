@@ -136,13 +136,14 @@ export function openingOf(ref: ObjectRef): Opening {
   }
 }
 
-/** Where a link leads that is not one object: a tab, a place in a tab, or a web page. */
+/** Where a link leads that is not one object: a tab, a place in a tab, or a station address. */
 export type Place =
   | { kind: 'tab'; href: '/' | '/knowledge' | '/drive' | '/projects' | '/automations' }
   | { kind: 'drive'; shelf: FilesShelf; folderId: string | null }
   | { kind: 'tables'; baseId: string | null; tableId: string | null }
   | { kind: 'agents' }
-  | { kind: 'web'; hash: string }
+  /** A `#/…` address only the station manifest can name (a plugin record kind). */
+  | { kind: 'route'; hash: string }
   /** A plugin page of this client (`/p/<plugin>/<page>`). */
   | { kind: 'page'; href: string }
   | { kind: 'external'; url: string };
@@ -170,14 +171,12 @@ export function refOfTarget(target: AppTarget): { ref: ObjectRef } | { place: Pl
         : { place: { kind: 'tab', href: '/' } };
     case 'agent':
       return { place: { kind: 'agents' } };
-    case 'web': {
-      // a run in the Activity log opens as its sheet (src/lib/deep-links.ts notificationTarget)
-      const run = /^#\/activity\/(?:[a-z_]+\/)?([^/?#]+)$/.exec(target.hash);
-      if (run) return { ref: { kind: 'run', id: decodeURIComponent(run[1]!) } };
-      // the web's automations page is a place on the phone too
-      if (/^#\/automations(?:\?|$)/.test(target.hash)) return { place: { kind: 'tab', href: '/automations' } };
-      return { place: { kind: 'web', hash: target.hash } };
-    }
+    case 'run':
+      return { ref: { kind: 'run', id: target.id } };
+    case 'automations':
+      return { place: { kind: 'tab', href: '/automations' } };
+    case 'route':
+      return { place: { kind: 'route', hash: target.hash } };
     case 'page':
       return { place: { kind: 'page', href: target.href } };
     case 'external':

@@ -188,12 +188,9 @@ describe('delivery bodies', () => {
       else process.env.PUBLIC_BASE_URL = originalBaseUrl;
     });
 
-    // `#/chat/<id>` resolves to the chat route with the id as an ignored path
-    // segment, so it opens an empty new conversation. The router reads the
-    // session from the query string.
-    it('addresses the session by query string, the way the hash router reads it', () => {
+    it('links the conversation route with the session in the query', () => {
       process.env.PUBLIC_BASE_URL = 'https://greenhouse.example.com/';
-      const target = 'https://greenhouse.example.com/#/chat?session=session-1';
+      const target = 'https://greenhouse.example.com/chat?session=session-1';
 
       const email = buildTaskEmail(task(), outcome);
       expect(email.body_text).toContain(`打开会话：${target}`);

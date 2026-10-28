@@ -2,7 +2,7 @@
  * Feedback plugin › Issues & requests (an Admin section, manifest page `issues`): feature requests
  * members and their agents file (/api/admin/feature-requests: status, priority, admin note) and
  * frictions — where the tooling got in the way (/api/admin/frictions: triage, resolution note,
- * delete, scan the last 7 days). `?view=frictions` opens the second tab (classic links).
+ * delete, scan the last 7 days).
  */
 import React, { useCallback, useState } from 'react';
 import { useRouter } from 'expo-router';
@@ -56,9 +56,9 @@ const FRICTION_TONE: Record<FrictionStatus, Tone> = {
   archived: 'neutral',
 };
 
-function IssuesScreen({ title, view }: AdminScreenProps) {
+function IssuesScreen({ title }: AdminScreenProps) {
   const t = useT();
-  const [tab, setTab] = useState<'requests' | 'frictions'>(view === 'frictions' ? 'frictions' : 'requests');
+  const [tab, setTab] = useState<'requests' | 'frictions'>('requests');
   return (
     <AdminPage
       title={title}

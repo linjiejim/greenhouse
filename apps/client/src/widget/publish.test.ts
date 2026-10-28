@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { LEGACY_MANIFEST, parseManifest, type ManifestState } from '../plugins/manifest';
+import { PENDING_MANIFEST, parseManifest, type ManifestState } from '../plugins/manifest';
 
 const test = vi.hoisted(() => {
   function store<S>(initial: S) {
@@ -25,7 +25,7 @@ const test = vi.hoisted(() => {
   return {
     auth: store({ user: null as { id: string } | null }),
     stations: store({ activeId: 'station' }),
-    manifest: store({ data: { kind: 'legacy' } as ManifestState, status: 'idle' }),
+    manifest: store({ data: { kind: 'pending' } as ManifestState, status: 'idle' }),
     platform: { OS: 'ios' },
     foreground: null as null | ((state: string) => void),
     gantt: vi.fn(),
@@ -72,7 +72,7 @@ beforeEach(async () => {
   vi.useFakeTimers();
   test.auth.reset({ user: null });
   test.stations.reset({ activeId: 'station' });
-  test.manifest.reset({ data: LEGACY_MANIFEST, status: 'idle' });
+  test.manifest.reset({ data: PENDING_MANIFEST, status: 'idle' });
   test.platform.OS = 'ios';
   test.gantt.mockResolvedValue({ ok: false, status: 503 });
   await import('./publish');
@@ -94,9 +94,9 @@ describe('widget startup and foreground requests', () => {
     expect(test.gantt).not.toHaveBeenCalled();
   });
 
-  it.each([LEGACY_MANIFEST, manifest(true)])('refreshes once discovery permits native tasks: %j', (data) => {
+  it('refreshes once discovery permits native tasks', () => {
     test.auth.setState({ user: { id: 'member' } });
-    test.manifest.setState({ data, status: 'ready' });
+    test.manifest.setState({ data: manifest(true), status: 'ready' });
     expect(test.gantt).toHaveBeenCalledTimes(1);
     test.foreground?.('active');
     expect(test.gantt).toHaveBeenCalledTimes(1);
@@ -108,18 +108,17 @@ describe('widget startup and foreground requests', () => {
   it('never refreshes on web and still clears a disabled plugin’s saved tasks', () => {
     test.platform.OS = 'web';
     test.auth.setState({ user: { id: 'member' } });
-    test.manifest.setState({ data: LEGACY_MANIFEST, status: 'ready' });
-    test.foreground?.('active');
     test.manifest.setState({ data: manifest(true), status: 'ready' });
+    test.foreground?.('active');
     test.foreground?.('active');
     test.manifest.setState({ data: manifest(false), status: 'ready' });
     expect(test.removeOffline).toHaveBeenCalledWith('my-tasks');
     expect(test.gantt).not.toHaveBeenCalled();
   });
 
-  it('does not treat failed discovery as a legacy station', () => {
+  it('does not read tasks while discovery failed', () => {
     test.auth.setState({ user: { id: 'member' } });
-    test.manifest.setState({ data: LEGACY_MANIFEST, status: 'error' });
+    test.manifest.setState({ data: PENDING_MANIFEST, status: 'error' });
     test.foreground?.('active');
     expect(test.gantt).not.toHaveBeenCalled();
   });

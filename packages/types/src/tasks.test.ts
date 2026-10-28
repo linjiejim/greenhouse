@@ -1,12 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  applyTaskVariables,
-  isTaskVariable,
-  missingRequired,
-  parseExpectedTools,
-  parseTaskVariables,
-  placeholdersIn,
-} from './tasks.js';
+import { applyTaskVariables, isTaskVariable, missingRequired, parseTaskVariables, placeholdersIn } from './tasks.js';
 
 describe('placeholdersIn', () => {
   it('finds each placeholder once, in first-appearance order', () => {
@@ -46,23 +39,16 @@ describe('isTaskVariable', () => {
 });
 
 describe('parseTaskVariables', () => {
-  it('degrades to an empty list rather than throwing on bad JSON', () => {
+  it('degrades to an empty list rather than throwing on a malformed value', () => {
     // The column is model-authored upstream; a broken value must not make the
     // task unusable, only unparameterized.
-    expect(parseTaskVariables('not json')).toEqual([]);
-    expect(parseTaskVariables('{"not":"an array"}')).toEqual([]);
+    expect(parseTaskVariables('[{"key":"a","label":"A"}]')).toEqual([]);
+    expect(parseTaskVariables({ not: 'an array' })).toEqual([]);
     expect(parseTaskVariables(null)).toEqual([]);
   });
 
   it('drops malformed entries but keeps the good ones', () => {
-    expect(parseTaskVariables('[{"key":"a","label":"A"},{"key":"!"}]')).toEqual([{ key: 'a', label: 'A' }]);
-  });
-});
-
-describe('parseExpectedTools', () => {
-  it('keeps strings and ignores anything else', () => {
-    expect(parseExpectedTools('["crm_query",1,"",null,"export_data"]')).toEqual(['crm_query', 'export_data']);
-    expect(parseExpectedTools('nope')).toEqual([]);
+    expect(parseTaskVariables([{ key: 'a', label: 'A' }, { key: '!' }])).toEqual([{ key: 'a', label: 'A' }]);
   });
 });
 

@@ -3,8 +3,8 @@ registerToolResultAdapters([
   {
     toolId: 'fixture_query',
     legacyCalls: {
-      get_team_fixture: { dsml: (input) => ({ action: 'get', ...input }) },
-      search_team_fixture: { dsml: (input) => ({ action: 'search', ...input }) },
+      get_team_fixture: (input) => ({ action: 'get', ...input }),
+      search_team_fixture: (input) => ({ action: 'search', ...input }),
     },
   },
 ]);

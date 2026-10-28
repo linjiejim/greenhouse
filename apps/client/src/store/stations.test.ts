@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { MOBILE_API } from '../api/compat';
+import { CLIENT_API_LEVEL as MOBILE_API } from '../shared/plugins';
 
 vi.mock('zustand', () => ({ create: () => ({}) }));
 vi.mock('../config', () => ({ DEFAULT_API_BASE: '', IS_SINGLE_STATION: false, STATIONS: { defaults: [] } }));
@@ -29,13 +29,11 @@ describe('station preflight', () => {
   it('says why a Greenhouse on another API cannot be used, and refuses anything else', async () => {
     const fetch = vi
       .fn()
-      .mockResolvedValueOnce(json({ product_name: 'Old station', logo: null }))
-      .mockResolvedValueOnce(json({ api_version: 2, name: 'Greenhouse 2' }))
+      .mockResolvedValueOnce(json({ product_name: 'Old station', logo: null, mobile_api: 3 }))
       .mockResolvedValueOnce(new Response(null, { status: 404 }))
       .mockResolvedValueOnce(json({ hello: 'world' }));
     vi.stubGlobal('fetch', fetch);
-    expect(await probeStation('https://v1.example')).toEqual({ ok: false, mismatch: 'server_outdated' });
-    expect(await probeStation('https://v2.example')).toEqual({ ok: false, mismatch: 'unsupported' });
+    expect(await probeStation('https://v3.example')).toEqual({ ok: false, mismatch: 'server_outdated' });
     expect(await probeStation('https://nothing.example')).toEqual({ ok: false });
     expect(await probeStation('https://other.example')).toEqual({ ok: false });
   });

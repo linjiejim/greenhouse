@@ -392,12 +392,6 @@ export interface ConnectorConnectMessage {
   ok: boolean;
 }
 
-/**
- * The finish route of the classic web app, which 4.0 removed; nothing reads it any more. The public
- * OAuth callback returns browsers to the universal client (`CLIENT_ROUTES.connectorFinish`, ./client-routes.ts).
- */
-export const CONNECTOR_OAUTH_FINISH_HASH = '#/connectors/oauth-finish';
-
 // ─── The official connector catalog (`connectors/*.json`) ───
 
 /** The `_meta` key under which a catalog file keeps Greenhouse's own fields (reverse-DNS, per the Registry convention). */

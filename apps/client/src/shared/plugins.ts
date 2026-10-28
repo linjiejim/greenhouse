@@ -1,9 +1,8 @@
 /** VENDORED verbatim from packages/types/src/plugins.ts. Re-copy; do not edit. */
 /**
  * Station manifest — what one Greenhouse server (a "station") offers the signed-in
- * member, as data. Every client (the universal client on web, iOS, Android and
- * desktop, and installed 3.x apps) renders plugins from this list instead of
- * shipping a hard-coded navigation.
+ * member, as data. The universal client (web, iOS, Android and desktop) renders
+ * plugins from this list instead of shipping a hard-coded navigation.
  *
  * Served by `GET /api/extensions` (authenticated). The response is already cut to
  * the caller: a plugin, a nav entry, a page or an entity action the member cannot
@@ -11,7 +10,7 @@
  * still enforces every call.
  *
  * Compatibility rule: fields are only ever added. A client that meets a page
- * `kind` it does not know renders "open in browser" (`fallback_url`).
+ * `kind` it does not know says it cannot show that page.
  */
 
 /** A string in the source language, or a per-locale map (`en` / `zh`). */
@@ -43,10 +42,6 @@ export interface StationManifest {
     webhook?: boolean;
   }>;
   identityProviders?: Array<{ id: string; title: string; icon: string; login: boolean; bind: boolean }>;
-  /** Kept for 3.x clients: `{ id, name, description }` of every active plugin. */
-  extensions: Array<{ id: string; name: string; description: string | null }>;
-  /** Kept for 3.x clients: record-kind route templates. */
-  entityKinds: Array<{ kind: string; route: string }>;
 }
 
 export interface PluginManifestEntry {
@@ -94,8 +89,6 @@ interface PluginPageBase {
   requireRole?: 'super' | 'team';
   id: string;
   title: LocalizedText;
-  /** Legacy hash route for the same page (`#/knowledge`); old links and 3.x apps resolve the page through it. */
-  fallback_url?: string;
 }
 
 /** A screen compiled into the client (official plugins). `screen` is a client-known id. */
@@ -205,7 +198,7 @@ export interface PluginEntitySchema {
  *               `greenhouse:theme` { theme, tokens }      (theme switched)
  *               `greenhouse:token` { token, expires_at }  (answer to a refresh request)
  * page → host:  `greenhouse:ready`                         (page loaded; host replies with init)
- *               `greenhouse:navigate` { href }             (in-app hash route or entity URL)
+ *               `greenhouse:navigate` { href }             (client route or in-app object link)
  *               `greenhouse:title` { title }
  *               `greenhouse:sendPrompt` { text }           (fill the composer, never send)
  *               `greenhouse:token-refresh`

@@ -23,7 +23,7 @@ const { TEXT_STEPS } = await import('../theme/type-scale');
 
 describe('the account text size', () => {
   it('keeps the size picked while the account read was slow', async () => {
-    const loading = loadAccountTextSize('s');
+    const loading = loadAccountTextSize();
     chooseTextSize(4);
     answer({ ok: true, data: { fontScale: TEXT_STEPS[0] } });
     await loading;
@@ -31,7 +31,7 @@ describe('the account text size', () => {
   });
 
   it('applies the account size when nothing was picked meanwhile', async () => {
-    const loading = loadAccountTextSize('s');
+    const loading = loadAccountTextSize();
     answer({ ok: true, data: { fontScale: TEXT_STEPS[0] } });
     await loading;
     expect(prefs.step).toBe(0);

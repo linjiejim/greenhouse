@@ -29,9 +29,7 @@ import { formatBytes } from '../lib/format';
 import { useT } from '../lib/i18n';
 import { relativeTimeNow } from '../lib/time-words';
 import type { DriveFolder, TableBase } from '../shared/greenhouse-types';
-import { hasTables } from '../shell/modules';
 import { useOpenObject } from '../shell/open-object';
-import { useAuth } from '../store/auth';
 import { recentFiles, rememberFile } from '../store/offline';
 import { makeStyles, space, useTheme } from '../theme';
 import { alertError, promptText } from '../ui/dialogs';
@@ -61,9 +59,8 @@ export default function Drive() {
   const router = useRouter();
   const openObject = useOpenObject();
   const actions = useLibraryActions();
-  const user = useAuth((s) => s.user);
   const manifest = useStationManifest((s) => s.data);
-  const tablesOn = builtinVisible(manifest, 'tables', hasTables(user));
+  const tablesOn = builtinVisible(manifest, 'tables');
   const folderId = objectId(params.folder);
   // the page opens on 最近; a folder always belongs to a shelf
   const view: View =

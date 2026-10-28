@@ -38,7 +38,7 @@ it('trusts only its parent at the exact origin and follows init and theme change
   message({ type: EMBED_PROTOCOL.theme, theme: 'dark', tokens: { '--gh-accent': '#abcdef' } });
   expect(document.documentElement.dataset.theme).toBe('dark');
   expect(document.documentElement.style.getPropertyValue('--gh-accent')).toBe('#abcdef');
-  bridge.navigate('#/ext/example/note');
+  bridge.navigate('/p/example/example-note');
   bridge.sendPrompt('draft');
   expect(post).toHaveBeenCalledWith({ type: EMBED_PROTOCOL.sendPrompt, text: 'draft' }, window.location.origin);
 });

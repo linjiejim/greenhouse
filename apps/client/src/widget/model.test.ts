@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { MyTask } from '../data/tasks';
 import { buildSnapshot, isWidgetItemPath, myTasksRefreshAction, widgetLinkPath, widgetStationGate, widgetTasksAction } from './model';
-import { LEGACY_MANIFEST, parseManifest } from '../plugins/manifest';
+import { PENDING_MANIFEST, parseManifest } from '../plugins/manifest';
 
 const task = (n: number, due: string | null): MyTask =>
   ({
@@ -62,13 +62,13 @@ describe('the foreground refresh of my tasks for the widget', () => {
     plugins: projects ? [{ id: 'projects', nav: [], pages: [] }] : [],
   });
 
-  it('never requests widget tasks on web, including legacy stations', () => {
-    expect(widgetTasksAction('web', LEGACY_MANIFEST, true)).toBe('skip');
+  it('never requests widget tasks on web', () => {
+    expect(widgetTasksAction('web', PENDING_MANIFEST, true)).toBe('skip');
     expect(widgetTasksAction('web', manifest(true), true)).toBe('skip');
   });
 
-  it('waits for discovery on native instead of probing while the manifest defaults to legacy', () => {
-    expect(widgetTasksAction('ios', LEGACY_MANIFEST, false)).toBe('skip');
+  it('waits for discovery on native instead of probing while the manifest is pending', () => {
+    expect(widgetTasksAction('ios', PENDING_MANIFEST, false)).toBe('skip');
     expect(widgetTasksAction('android', manifest(true), false)).toBe('skip');
   });
 
@@ -76,8 +76,7 @@ describe('the foreground refresh of my tasks for the widget', () => {
     expect(widgetTasksAction(platform, manifest(false), true)).toBe('clear');
   });
 
-  it.each(['ios', 'android'])('refreshes native tasks for legacy and enabled Projects on %s', (platform) => {
-    expect(widgetTasksAction(platform, LEGACY_MANIFEST, true)).toBe('refresh');
+  it.each(['ios', 'android'])('refreshes native tasks for enabled Projects on %s', (platform) => {
     expect(widgetTasksAction(platform, manifest(true), true)).toBe('refresh');
   });
 

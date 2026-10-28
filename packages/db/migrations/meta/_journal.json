@@ -8,6 +8,13 @@
       "when": 1793095353200,
       "tag": "0000_v4_baseline",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1793178989270,
+      "tag": "0001_drop_legacy_data_shapes",
+      "breakpoints": true
     }
   ]
 }

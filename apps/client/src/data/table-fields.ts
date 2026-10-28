@@ -15,15 +15,10 @@ export interface SelectOption {
   color?: string;
 }
 
-/** A field's config: the API sends a JSON object (tables v2); older stations sent it as a JSON string. */
+/** A field's config object; anything else reads as empty. */
 export function fieldConfig(field: Pick<TableField, 'config'>): Record<string, unknown> {
-  if (!field.config) return {};
-  try {
-    const value: unknown = typeof field.config === 'string' ? JSON.parse(field.config) : field.config;
-    return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
-  } catch {
-    return {};
-  }
+  const value: unknown = field.config;
+  return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
 }
 
 export function selectOptions(field: Pick<TableField, 'config'>): SelectOption[] {

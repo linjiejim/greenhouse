@@ -1,7 +1,7 @@
 /**
  * A run as an object sheet (`/sheet/run?id=`, `GET /api/runtime/runs/:id`): what kind of run,
- * how it went, when, the tools it used, why it failed; its conversation opens as a page, and the
- * whole run log on the web. A run that is not mine answers 404 — "not available".
+ * how it went, when, the tools it used, why it failed; its conversation opens as a page. A run
+ * that is not mine answers 404 — "not available".
  */
 
 import React, { useCallback } from 'react';
@@ -10,13 +10,10 @@ import { useLocalSearchParams } from 'expo-router';
 import { get, seg } from '../../src/api/client';
 import { noAccess, notFound } from '../../src/data/access';
 import { useResource } from '../../src/data/use-resource';
-import { webUrl } from '../../src/lib/deep-links';
 import { useT } from '../../src/lib/i18n';
-import { openLink } from '../../src/lib/links';
 import { relativeTimeNow } from '../../src/lib/time-words';
 import { toolLabel } from '../../src/chat/messages';
 import { useOpenObject } from '../../src/shell/open-object';
-import { getApiBase } from '../../src/store/stations';
 import { makeStyles, space, typo, useTheme } from '../../src/theme';
 import { EmptyState, LoadingState } from '../../src/ui/empty';
 import { Badge, Row, Section, type BadgeTone } from '../../src/ui/list';
@@ -41,7 +38,7 @@ const TONE: Record<string, BadgeTone> = { succeeded: 'green', failed: 'red', run
 export default function RunSheet() {
   const { id = '' } = useLocalSearchParams<{ id?: string }>();
   const t = useT();
-  const { colors: c, hex } = useTheme();
+  const { colors: c } = useTheme();
   const styles = useStyles(c);
   const openObject = useOpenObject();
   const resource = useResource(useCallback(() => get<RunDetail>(`/api/runtime/runs/${seg(id)}`), [id]));
@@ -67,10 +64,7 @@ export default function RunSheet() {
   const { run } = detail;
   return (
     <ScrollView style={styles.root} contentInsetAdjustmentBehavior="automatic" contentContainerStyle={styles.content}>
-      <SheetScreen
-        title={t('runs.title')}
-        actions={[{ icon: 'open', label: t('runs.openWeb'), onPress: () => void openLink(webUrl(getApiBase(), `#/activity/${seg(run.kind)}/${seg(run.id)}`), hex.accent) }]}
-      />
+      <SheetScreen title={t('runs.title')} />
       <Section>
         <Row title={t('runs.kind')} value={run.kind} accessory="none" />
         <Row title={t('runs.status')} accessory={<Badge label={run.status} tone={TONE[run.status] ?? 'neutral'} />} />

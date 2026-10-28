@@ -25,7 +25,6 @@ export default {
         kind: 'native',
         screen: 'reports',
         title: { en: 'Reports', zh: '报告' },
-        fallback_url: '#/skillhub?tab=reports',
       },
     ] satisfies PluginPage[],
   },

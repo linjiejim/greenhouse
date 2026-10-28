@@ -20,7 +20,7 @@ export default {
       },
     ] satisfies PluginNavItem[],
     pages: [
-      { id: 'tables', kind: 'native', screen: 'tables', title: { en: 'Tables', zh: '表格' }, fallback_url: '#/tables' },
+      { id: 'tables', kind: 'native', screen: 'tables', title: { en: 'Tables', zh: '表格' } },
     ] satisfies PluginPage[],
   },
   dependsOn: [],

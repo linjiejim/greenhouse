@@ -122,16 +122,12 @@ export function AutomationEditor({
   };
   const leave = (field: keyof AutomationDraft) => touch(field, draft[field] !== start[field]);
 
-  // What the station offers: delivery from its manifest (a 3.x station has none, so an edit keeps
-  // the channels the automation already stores), grantable tools from the catalog and my tools.
-  const { channels, webhook } = useMemo(() => {
-    if (manifest.kind === 'v2') return notifyOptions(manifest.manifest.notificationTransports);
-    const stored = Object.keys(original?.notify ?? {}).filter((key) => key !== 'webhook');
-    return {
-      channels: stored.map((key) => ({ key, label: key })),
-      webhook: !!original?.notify && 'webhook' in original.notify,
-    };
-  }, [manifest, original]);
+  // What the station offers: delivery from its manifest (an edit sends only changed channels, so
+  // none while the manifest is pending), grantable tools from the catalog and my tools.
+  const { channels, webhook } = useMemo(
+    () => notifyOptions(manifest.kind === 'v2' ? manifest.manifest.notificationTransports : undefined),
+    [manifest],
+  );
   // `automationTools` rides beside the typed manifest (apps/api/src/routes/extensions.ts)
   const stationTools =
     manifest.kind === 'v2'

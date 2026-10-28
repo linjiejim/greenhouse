@@ -6,7 +6,6 @@ describe('parseObjectUrl — web hash routes', () => {
     ['#/knowledge/doc/12-q3-plan', { type: 'doc', id: '12' }],
     ['#/knowledge/doc/12', { type: 'doc', id: '12' }],
     ['/#/knowledge/doc/12-x', { type: 'doc', id: '12' }],
-    ['#/knowledge/folder/5', { type: 'folder', id: '5' }],
     ['#/files?file=7', { type: 'file', id: '7' }],
     ['#/files?shelf=personal&folder=3&file=7', { type: 'file', id: '7' }],
     ['#/files?folder=3', { type: 'folder', id: '3' }],
@@ -21,14 +20,6 @@ describe('parseObjectUrl — web hash routes', () => {
       { type: 'task', id: 'tsk_01JB2Y8Z9QW3E4R5T6Y7V8H9P1', projectId: 'prj_01JB2Y8Z9QW3E4R5T6Y7V8H9P0' },
     ],
     ['#/files?file=fil_01JB2Y8Z9QW3E4R5T6Y7V8H9P2', { type: 'file', id: 'fil_01JB2Y8Z9QW3E4R5T6Y7V8H9P2' }],
-    // The scope routes the address bar shows on a doc name it by slug.
-    ['#/knowledge/internal/general/api-style-guide', { type: 'doc', slug: 'api-style-guide' }],
-    ['#/knowledge/internal/general/api-style-guide/edit', { type: 'doc', slug: 'api-style-guide' }],
-    ['#/knowledge/internal/general/brand%2Fvoice', { type: 'doc', slug: 'brand/voice' }],
-    ['#/knowledge/internal/general/%E6%8C%87%E5%8D%97', { type: 'doc', slug: '指南' }],
-    ['#/knowledge/personal/my-notes', { type: 'doc', slug: 'my-notes' }],
-    ['#/knowledge/shared/their-notes', { type: 'doc', slug: 'their-notes' }],
-    ['#/knowledge/folder/5/legacy-slug', { type: 'doc', slug: 'legacy-slug' }],
     // A doc link with a slug and no id (models write these) names the doc by slug.
     ['#/knowledge/doc/incident-response-runbook', { type: 'doc', slug: 'incident-response-runbook' }],
     ['#/knowledge/doc/abc-slug', { type: 'doc', slug: 'abc-slug' }],
@@ -50,7 +41,9 @@ describe('parseObjectUrl — web hash routes', () => {
     '#/knowledge/personal',
     '#/knowledge/shared',
     '#/knowledge/new/personal',
-    '#/knowledge/folder/abc/slug',
+    '#/knowledge/folder/5',
+    '#/knowledge/internal/general/api-style-guide',
+    '#/knowledge/personal/my-notes',
     '#/projects/01',
     '#/projects/1.5',
     '#/projects/prj_short',
@@ -73,9 +66,7 @@ describe('parseObjectUrl — absolute URLs', () => {
   it('accepts the named origin only', () => {
     expect(parseObjectUrl('https://green.example.com/#/projects/4', { origins })).toEqual({ type: 'project', id: '4' });
     expect(parseObjectUrl('https://green.example.com#/projects/4', { origins })).toEqual({ type: 'project', id: '4' });
-    expect(
-      parseObjectUrl('https://green.example.com/#/knowledge/internal/general/api-style-guide', { origins }),
-    ).toEqual({
+    expect(parseObjectUrl('https://green.example.com/#/knowledge/doc/api-style-guide', { origins })).toEqual({
       type: 'doc',
       slug: 'api-style-guide',
     });

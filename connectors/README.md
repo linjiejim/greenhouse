@@ -42,12 +42,12 @@ plus Greenhouse's fields under its own `_meta` key, the way a downstream registr
 |---|---|---|
 | `none` | A public server: nothing is sent. | — |
 | `oauth` | Each member signs in with their own account (MCP authorization spec: OAuth 2.1 + PKCE). | `scope` (optional) |
-| `per_user` | Each member pastes their own key or token. | `header` **or** `query_param`, optional `prefix` (e.g. `"Bearer "`), `help` + `help_zh` (what to paste), `help_url` |
+| `key` | Each member pastes their own key or token. | `header` **or** `query_param`, optional `prefix` (e.g. `"Bearer "`), `help` + `help_zh` (what to paste), `help_url` |
 
 `zero_config` is `true` when members can connect without the administrator registering anything at
-the provider: always for `none` and `per_user`; for `oauth` only when the provider supports dynamic
+the provider: always for `none` and `key`; for `oauth` only when the provider supports dynamic
 client registration or client-id metadata documents. GitHub, for example, supports neither — its entry
-uses `per_user` with a personal access token instead.
+uses `key` with a personal access token instead.
 
 ### `read_only_tools`
 

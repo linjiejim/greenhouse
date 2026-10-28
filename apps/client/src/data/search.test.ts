@@ -29,10 +29,10 @@ describe('search results', () => {
     expect(sections[1]!.hits[0]).toMatchObject({ subtitle: 'Summarize yesterday', ref: { kind: 'automation', id: 'atm_01JB2Y8Z9QW3E4R5T6Y7V8H9P0' } });
   });
 
-  it('keeps an older station’s subtitle and drops a malformed automation id', () => {
+  it('keeps the subtitle without a formatter and drops a malformed automation id', () => {
     const sections = stationSections([
       { kind: 'session', hasMore: false, items: [{ title: 'Old', sessionId: 's3', subtitle: 'yesterday' }] },
-      { kind: 'automation', hasMore: false, items: [{ title: 'Bad', automationId: '../x' } as never] },
+      { kind: 'automation', hasMore: false, items: [{ title: 'Bad', automationId: '../x' }] },
     ]);
     expect(sections.map((s) => s.kind)).toEqual(['session']);
     expect(sections[0]!.hits[0]!.subtitle).toBe('yesterday');

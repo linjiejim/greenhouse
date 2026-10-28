@@ -12,7 +12,6 @@ import { nativeVisible, pluginHref } from '../plugins/navigation';
 import { pluginIcon } from '../plugins/icons';
 import { localize } from '../shared/plugins';
 import type { IconName } from '../ui/core';
-import { hasTables } from './modules';
 
 export interface PlaceEntry {
   id: string;
@@ -41,7 +40,7 @@ export function usePlaces(): {
       ? [{ id: 'knowledge', label: t('nav.knowledge'), icon: 'book' as const, href: '/knowledge' }]
       : []),
     { id: 'drive', label: t('nav.files'), icon: 'folder', href: '/drive' },
-    ...(nativeVisible(manifest, 'tables', hasTables(user))
+    ...(nativeVisible(manifest, 'tables')
       ? [{ id: 'tables', label: t('nav.tables'), icon: 'table' as const, href: '/drive?view=tables' }]
       : []),
     ...(nativeVisible(manifest, 'projects')

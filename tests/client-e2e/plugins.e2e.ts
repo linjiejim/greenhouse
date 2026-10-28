@@ -3,7 +3,7 @@ import { readFileSync, mkdirSync } from 'node:fs';
 import { installPlaces, officialManifest } from './p3-fixture';
 import { API_BASE } from '../../playwright.client.config';
 const endpoint = '/api/ext/crm/entities/company';
-async function pluginStation(page: Page, { token404 = false } = {}) {
+async function pluginStation(page: Page) {
   const base = await installPlaces(page),
     writes: { method: string; path: string; body: any }[] = [],
     queries: URLSearchParams[] = [],
@@ -84,7 +84,7 @@ async function pluginStation(page: Page, { token404 = false } = {}) {
         title: { zh: '客户设置' },
       },
       { id: 'embed', kind: 'embed', url: `${API_BASE}/ext/crm/ui/`, title: { zh: '客户工作台' } },
-      { id: 'future', kind: 'future-kind', title: 'Future', fallback_url: 'https://crm.example.com/app' },
+      { id: 'future', kind: 'future-kind', title: 'Future' },
     ],
   });
   let tokenCount = 0;
@@ -141,9 +141,7 @@ async function pluginStation(page: Page, { token404 = false } = {}) {
     }
     if (path === '/api/ext-ui/token') {
       tokenCount++;
-      return token404
-        ? route.fulfill({ status: 404, json: { error: 'older station' } })
-        : json({ token: `scoped-${tokenCount}`, expires_at: '2026-10-27T10:00:00Z' });
+      return json({ token: `scoped-${tokenCount}`, expires_at: '2026-10-27T10:00:00Z' });
     }
     return route.fallback();
   });
@@ -274,12 +272,10 @@ test('Plugins embed init, trusted origin, theme, token refresh, navigate and dra
   expect(f.station.calls).toHaveLength(0);
   await screenshot(page, 'embed-draft');
 });
-test('Plugins old token endpoint sends empty token and future page preserves fallback', async ({ page }) => {
-  await pluginStation(page, { token404: true });
-  await ready(page, '/p/crm/embed');
-  await expect(page.frameLocator('iframe').locator('#state')).toContainText('"token":""');
+test('Plugins future page asks for an app update', async ({ page }) => {
+  await pluginStation(page);
   await ready(page, '/p/crm/future');
-  await expect(page.getByText('此客户端不支持，在浏览器打开')).toBeVisible();
+  await expect(page.getByText('当前版本的 App 还不能显示此页面，请更新 App 后打开。')).toBeVisible();
   await screenshot(page, 'unknown-kind');
 });
 test('Plugins native navigation requires a declared nav entry, known screen ids render', async ({ page }) => {

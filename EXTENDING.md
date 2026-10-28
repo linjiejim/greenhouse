@@ -273,7 +273,7 @@ for full signatures rather than creating a second registry.
 | `discriminators` | Registers `shareResources`, `fileLinkTargets`, `folderScopes`, `auditApps`, `runKinds`, `artifactKinds`; writes validate active values, historical reads remain possible. |
 | `driveScopes` | Core Files/folders with plugin authorization, placement, node checks and occupancy; optional `cabinet: true` selects one legacy cabinet. |
 | `activity`, `recentChanges` | Write labels/risks, action/target shapes and the bounded team-activity merge. Host destructive-risk classification remains authoritative. |
-| `toolResults`, `retiredToolAliases` | Compact transcript/references/relevance and legacy call normalization; exact Runtime evidence remains intact. Stored profile aliases resolve only while their successors are active. |
+| `toolResults`, `retiredToolAliases` | Compact transcript/references/relevance and `legacyCalls` (retired names a model still writes in DSML markup); exact Runtime evidence remains intact. Stored profile aliases resolve only while their successors are active; the proxy and MCP accept live tool ids only. |
 | `automationTools`, `hubContext`, `promptContext` | Explicit unattended grants, reachable MCP hints and stable context contributions. They never expand member permissions. |
 | `summarySources` | Aggregates for system summaries; avoid member names, message text and private titles. |
 | `routes`, `publicPaths`, `rateLimits`, `commands` | Guarded plugin HTTP routes, minimal callback/webhook auth exceptions, central admission and CLI commands. New routes use `/api/ext/<id>`; official packages retain legacy prefixes. |
@@ -282,8 +282,7 @@ for full signatures rather than creating a second registry.
 ## Client surfaces and trusted embeds
 
 `manifest.surfaces` is pure data exposed by authenticated `/api/extensions` v2. The host filters
-plugins/nav/pages/entities/actions/fields/features/groups/kinds to the member, preserving the v1
-`extensions`/`entityKinds` fields for 3.x clients. `client_min` is the wire spelling; server
+plugins/nav/pages/entities/actions/fields/features/groups/kinds to the member. `client_min` is the wire spelling; server
 `CLIENT_API_LEVEL` and bootstrap `mobile_api` are 4. The universal client renders every surface;
 there is no plugin code in the client except the official native screens.
 
@@ -301,8 +300,7 @@ entries in the rail's More flyout, so keep `label` short (about ten Latin charac
 icon set and draw a generic app tile for unknown names. Labels and titles are `LocalizedText`
 (`{ en, zh }`). Role/feature requirements hide inaccessible surfaces. Pages open at
 `/p/<plugin>/<page>` (Admin sections at `/admin/p/<plugin>/<page>`). A kind the client does not
-know shows an unsupported-page notice, or opens `fallback_url` when it is an absolute http(s)
-URL; keep existing hash `fallback_url` values, which map old links to the new pages.
+know shows a notice asking the member to update the app.
 
 Declare `ui: './ui'` in the manifest. Assembly resolves paths inside the package.
 `/ext/<id>/ui/` serves `ui/dist` when present, otherwise source UI; disabled plugins return 404.
@@ -327,7 +325,8 @@ host.sendPrompt('Help me organize these notes'); // opens an editable draft, nev
 
 The bridge uses `greenhouse:init` (theme, tokens/brand, locale, basic member, route, token),
 `greenhouse:ready`, `greenhouse:theme`, `greenhouse:token-refresh` (request),
-`greenhouse:token` (renewal response), `greenhouse:title`, `greenhouse:navigate` and
+`greenhouse:token` (renewal response), `greenhouse:title`, `greenhouse:navigate` (a client route
+such as `/p/<plugin>/<page>`, or an object link such as `#/projects/<id>`) and
 `greenhouse:sendPrompt`. Both sides validate source window and exact origin. Themes update
 without replacing the frame. The helper keeps credentials in memory; refreshes deduplicate and
 time out after 15 seconds.

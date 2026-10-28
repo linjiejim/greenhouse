@@ -117,7 +117,6 @@ export {
   PLANT_TINTS,
   TEMPLATE_PLANT,
   COLOR_FAMILY,
-  PLANT_LEGACY_COLOR,
   IMPLICIT_POOL,
   CLIENT_PLANTS,
   isPlantId,
@@ -129,10 +128,8 @@ export {
   legacyToMood,
   resolvePlantAvatar,
   plantForClient,
-  MOOD_FACE_STYLE,
   withPlant,
   withTint,
-  withMood,
   plantAvatarConfig,
 } from './plant-avatar.js';
 

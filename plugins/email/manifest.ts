@@ -19,7 +19,6 @@ export default {
         kind: 'native',
         screen: 'email',
         title: { en: 'Email', zh: '邮件' },
-        fallback_url: '#/settings/email',
       },
     ] satisfies PluginPage[],
   },

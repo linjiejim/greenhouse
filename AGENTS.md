@@ -63,17 +63,17 @@
 - Observations carry ids/metadata, cannot veto and have isolated five-second deadlines; use bounded I/O and tolerate retries.
 - `onInstall` runs migration-locked after migrations; install/outbox consumers must be crash/retry idempotent.
 - Scheduled work uses host job claims (`runExtensionJob`); register transport/identity/channel/retention/pricing/search/catalog/entity/discriminator contributions.
-- Preserve official URLs, tool ids, MCP groups, legacy entity kinds and `fallback_url` values; aliases belong to plugins and cannot replace core routes.
+- Preserve official URLs, tool ids, MCP groups and entity kinds; aliases belong to plugins and cannot replace core routes.
 - Downstream changes stay in plugins, packs, deploy, config and fork workflows; generic improvements go upstream with an Example consumer.
 
 ## Clients, permissions and security
 
-- The API serves the hosted client from `public/app` at `/`; `/classic` redirects to `/`; API, plugin and OAuth paths never fall through to SPA HTML.
+- The API serves the hosted client from `public/app` at `/`; API, plugin and OAuth paths never fall through to SPA HTML.
 - `pnpm app:build` exports the isolated Expo app into `public/app` without developer/desktop station overrides.
 - Keep `apps/client` outside the root workspace with its own lockfile; Docker installs and exports it in a separate stage.
-- `/api/extensions` v2 is member-filtered and keeps the v1 `extensions`/`entityKinds` fields for 3.x clients; server client API is 4, the client's minimum is 3.
-- Server-made browser links use `@greenhouse/types/client-routes` with secrets in the fragment; old `#/…` links are mapped by `apps/client/src/shell/legacy-links.ts`.
-- Settings forms never weaken super-only settings APIs; unknown pages use validated fallbacks.
+- `/api/extensions` v2 is member-filtered; server and client API level are both 4 and a 3.x station gets an update notice.
+- Server-made browser links use `@greenhouse/types/client-routes` with secrets in the fragment; never emit `#/…` addresses to a browser.
+- Settings forms never weaken super-only settings APIs; an unknown page kind asks the member to update the app.
 - Regenerate shared themes with `pnpm tokens:build`; never hand-edit generated tokens.
 - Embeds receive ten-minute member/plugin credentials from `/api/ext-ui/token`, scoped to the plugin API and basic `GET /api/me`.
 - Validate bridge window and exact origin; never inject full login tokens, persist credentials or submit assistant drafts automatically.

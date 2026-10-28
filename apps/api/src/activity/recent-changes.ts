@@ -28,7 +28,7 @@ import { fromExtensions } from '../plugin-host/index.js';
  * pages its own rows on that order in SQL (aggregates and the one-row-per-edit
  * rule are applied before paging) and keeps reading past rows the viewer may
  * not see until it has enough or runs out, so a short page never hides older
- * items. A plain ISO timestamp is still accepted as `before` (older clients).
+ * items.
  */
 import type { ActivityCursor, DatabaseProvider } from '@greenhouse/db';
 import type { ActivityItem } from '@greenhouse/types/activity';
@@ -63,7 +63,7 @@ function isRealInstant(value: string): boolean {
 export function encodeRecentCursor(cursor: Cursor): string {
   return Buffer.from(JSON.stringify([cursor.at, cursor.key]), 'utf8').toString('base64url');
 }
-/** The cursor `next_before` encodes, a plain ISO timestamp (strictly older than it), or null when unreadable. */
+/** The cursor `next_before` encodes, or null when unreadable. */
 export function decodeRecentCursor(value: string | null | undefined): Cursor | null {
   if (!value) return null;
   try {
@@ -80,12 +80,9 @@ export function decodeRecentCursor(value: string | null | undefined): Cursor | n
       return { at: parsed[0], key: parsed[1] };
     }
   } catch {
-    // Not one of ours; try a plain timestamp below.
+    // not one of ours
   }
-  const ms = Date.parse(value);
-  if (!Number.isFinite(ms)) return null;
-  // Key '' sorts before every id, so only strictly older instants remain.
-  return { at: isRealInstant(value) ? value : new Date(ms).toISOString().replace('Z', '000Z'), key: '' };
+  return null;
 }
 async function fileChanges(db: DatabaseProvider, viewer: RecentViewer, window: RecentChangeWindow, need: number) {
   return scanRecentChanges(

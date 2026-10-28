@@ -27,8 +27,8 @@ import { clearHandoffs } from '../src/lib/handoff';
  * Auth gate: signed out on any route but /login, /activate and the stations sheet → everything
  * above the root is dismissed, then /login replaces it (the route is kept and opened after
  * sign-in); signed in on /login, or just activated on /activate → home. A station
- * that speaks another API (src/api/compat.ts) shows why — the server needs updating, or it is
- * not a server this app supports — with the way to another station, never a white screen.
+ * older than this app's API level (src/api/bootstrap.ts) shows why — the station needs updating —
+ * with the way to another station, never a white screen.
  *
  * `usePushBridge` runs the push side (src/push): registration, taps, banners, badge.
  */
@@ -36,8 +36,7 @@ import { clearHandoffs } from '../src/lib/handoff';
 import 'react-native-gesture-handler';
 import '../src/shell/client.css';
 import { ClientShell } from '../src/desktop/client-shell';
-import { mapLegacyLink } from '../src/shell/legacy-links';
-import { captureEntry, legacyConsent, takeActivated } from '../src/login/entry-links';
+import { captureEntry, takeActivated } from '../src/login/entry-links';
 
 import React, { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { Keyboard, Platform, View } from 'react-native';
@@ -78,9 +77,9 @@ const SIGNED_OUT_ROUTES = new Set(['login', 'sheets/stations', 'sheets/station-a
 
 const pathOf = (route: string) => route.split(/[?#]/, 1)[0]!;
 
-// Before routing: an old classic link (`#/…`, `/?oauth_authorize=1`) becomes its client route, an
-// entry route's secret fragment is held back (src/login/entry-links.ts), and the route is kept to
-// open after sign-in (or right away, when it is open to everyone and the router started elsewhere).
+// Before routing: an entry route's secret fragment is held back (src/login/entry-links.ts), and the
+// route is kept to open after sign-in (or right away, when it is open to everyone and the router
+// started elsewhere).
 let pendingRoute: string | null = null;
 // The router parsed the address before this module ran; it keeps the fragment as the `#` param.
 let fragmentToForget = false;
@@ -89,7 +88,7 @@ let opening: string | null = null;
 if (typeof window !== 'undefined') {
   const { pathname, search, hash } = window.location;
   const current = pathname + search + hash;
-  const visible = captureEntry(mapLegacyLink(hash) ?? legacyConsent(pathname, search) ?? current);
+  const visible = captureEntry(current);
   if (visible !== current) {
     window.history.replaceState(null, '', visible);
     fragmentToForget = hash !== '';
@@ -218,7 +217,7 @@ export default function RootLayout() {
                 <LoadingState />
               </View>
             ) : mismatch ? (
-              <MismatchScreen mismatch={mismatch} />
+              <MismatchScreen />
             ) : (
               <ClientShell>
                 <Stack

@@ -103,8 +103,8 @@ v3 曾把模型收进 Agent 身份：想更强的推理就选 deep、想百万�
 
 - `run_profiles` 一行就是 Agent 的完整当前配置（含 purpose、audience、risk、budget policy、backup owner）；
   `version` 是配置编辑计数，每次编辑 +1。3.0 起**不存历史版本、不记 change log**：`custom:<id>@<n>`
-  （n ≤ version，包括 1.x 留下的 pin）一律解析为**当前配置**；`getVersion` / `getCurrentVersion` /
-  `listVersions` 由当前行合成版本对象（`manifest_hash` 是当前配置的 SHA-256），`listVersions` 只返回一条。
+  （n ≤ version，包括 1.x 留下的 pin）一律解析为**当前配置**；`getVersion` / `getCurrentVersion`
+  由当前行合成版本对象（`manifest_hash` 是当前配置的 SHA-256）。没有版本列表接口。
 - **私有，除非团队可用**：Agent 默认只有 owner 能看、能用；`is_shared=true` 时所有内部用户都能选用。
   只有 super 能切换（`PUT /api/profiles/custom/:id/sharing`，Agents 页的开关）；owner 在 UI 里只看到一行
   「请联系管理员」的提示，create/update 带 `is_shared` 想改值会被 400 拒绝。可见性判断只有一处：
@@ -165,7 +165,7 @@ stateless Agent/MCP 不开放该文件工具。
   避免模型枚举别人的绑定。共享的 greenhouse@ 邮箱仅 super 可用，且只能发给发起人自己的
   账号邮箱或共享邮箱所在域（`SHARED_MAILBOX_ALLOWED_DOMAIN`）。
 - **无人值守禁用写工具**：`email_mutation` 声明 `surface.unattendedDenied`，启用后进入 `UNATTENDED_TOOL_DENYLIST`——没有人读那张卡，
-  两步确认就退化成一步发送。定时任务要送邮件走 scheduler 自己的 `notify_email` 通道。
+  两步确认就退化成一步发送。定时任务要送邮件走 scheduler 自己的 `notify.email` 通道。
 - 附件从当前会话的文件取（chat 面独有；stateless 的 proxy 无 session，会明确报错而不是静默跳过）。
 - **两个工具都不在 MCP 上**（2026-08-16 摘除）：`email_mutation` 的安全性全靠有人读那张草稿卡，
   而 MCP 调用方自填 `user_confirmed` 与 `confirm`，两步确认坍缩成一步；`email_query` 一并摘掉——

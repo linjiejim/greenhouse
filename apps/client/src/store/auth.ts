@@ -10,7 +10,7 @@
  * on `loading` (the screens, the realtime socket, loads) runs against the new station before its
  * own session is loaded.
  *
- * A station that speaks another API (`mismatch`, ../api/compat.ts) is not used: the root layout
+ * A station that speaks another API (`mismatch`, ../api/bootstrap.ts) is not used: the root layout
  * shows why (the server needs updating / it is not a server this app supports) with the way to
  * another station, never a white screen.
  *
@@ -25,7 +25,7 @@ import type { Bootstrap, Me } from '../shared/greenhouse-types';
 import { hydrateTokens, getCachedUser, getAccessToken } from '../api/token-storage';
 import { getApiBase, useStations } from './stations';
 import * as authApi from '../api/auth';
-import { apiMismatch, parseBootstrap, type ApiMismatch } from '../api/compat';
+import { apiMismatch, parseBootstrap, type ApiMismatch } from '../api/bootstrap';
 import { checkAborted, ConnectionTimeoutError, withConnectionDeadline } from '../api/connection-deadline';
 
 /**

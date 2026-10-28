@@ -4,7 +4,7 @@ import { linkTarget, notificationTarget, parseHashRoute, webUrl } from './deep-l
 const BASE = 'https://gh.example';
 
 describe('hash routes', () => {
-  it('opens documents and files natively, everything else on the web', () => {
+  it('opens documents and files natively, and leaves other addresses to the manifest', () => {
     expect(parseHashRoute('#/knowledge/doc/12-team-handbook')).toEqual({ kind: 'doc', id: '12' });
     expect(parseHashRoute('#/knowledge/doc/12')).toEqual({ kind: 'doc', id: '12' });
     expect(parseHashRoute('#/files?shelf=personal&folder=3&file=9')).toEqual({
@@ -14,8 +14,13 @@ describe('hash routes', () => {
       fileId: '9',
     });
     expect(parseHashRoute('#/files')).toEqual({ kind: 'files', shelf: 'team', folderId: null, fileId: null });
-    expect(parseHashRoute('#/activity/automation/rtr_1')).toEqual({ kind: 'web', hash: '#/activity/automation/rtr_1' });
-    expect(parseHashRoute('#/knowledge')).toEqual({ kind: 'web', hash: '#/knowledge' });
+    expect(parseHashRoute('#/automations')).toEqual({ kind: 'automations' });
+    expect(parseHashRoute('#/automations?tab=profiles')).toEqual({ kind: 'automations' });
+    expect(parseHashRoute('#/automationsx')).toEqual({ kind: 'route', hash: '#/automationsx' });
+    expect(parseHashRoute('#/crm/companies/42')).toEqual({ kind: 'route', hash: '#/crm/companies/42' });
+    // classic page routes name nothing
+    expect(parseHashRoute('#/activity/automation/rtr_1')).toEqual({ kind: 'route', hash: '#/activity/automation/rtr_1' });
+    expect(parseHashRoute('#/knowledge')).toEqual({ kind: 'route', hash: '#/knowledge' });
     expect(parseHashRoute('/files')).toBeNull();
   });
 
@@ -27,19 +32,13 @@ describe('hash routes', () => {
     expect(parseHashRoute('#/knowledge/doc/abc')).toEqual({ kind: 'doc', slug: 'abc' });
     expect(parseHashRoute('#/knowledge/doc/%E6%8C%87%E5%8D%97')).toEqual({ kind: 'doc', slug: '指南' });
     expect(parseHashRoute('#/knowledge/doc/01-plan')).toEqual({ kind: 'doc', slug: '01-plan' });
-    // the address-bar routes the web shows on a document
-    expect(parseHashRoute('#/knowledge/internal/general/api-style-guide')).toEqual({ kind: 'doc', slug: 'api-style-guide' });
-    expect(parseHashRoute('#/knowledge/internal/general/api-style-guide/edit')).toEqual({
-      kind: 'doc',
-      slug: 'api-style-guide',
-    });
-    expect(parseHashRoute('#/knowledge/personal/my-notes')).toEqual({ kind: 'doc', slug: 'my-notes' });
-    expect(parseHashRoute('#/knowledge/shared/their-notes')).toEqual({ kind: 'doc', slug: 'their-notes' });
-    expect(parseHashRoute('#/knowledge/folder/5/legacy-slug')).toEqual({ kind: 'doc', slug: 'legacy-slug' });
     expect(linkTarget(`${BASE}/#/knowledge/doc/runbook`, BASE)).toEqual({ kind: 'doc', slug: 'runbook' });
-    // lists, folders and broken encodings are not documents
+    // lists, folders, the classic address-bar routes and broken encodings are not documents
     for (const hash of [
       '#/knowledge/doc/',
+      '#/knowledge/internal/general/api-style-guide',
+      '#/knowledge/personal/my-notes',
+      '#/knowledge/folder/5/legacy-slug',
       '#/knowledge/internal/general',
       '#/knowledge/personal',
       '#/knowledge/folder/5',
@@ -47,7 +46,7 @@ describe('hash routes', () => {
       '#/knowledge/doc/a/b',
       '#/knowledge/doc/%E6%8C',
     ]) {
-      expect(parseHashRoute(hash)).toEqual({ kind: 'web', hash });
+      expect(parseHashRoute(hash)).toEqual({ kind: 'route', hash });
     }
   });
 
@@ -76,14 +75,13 @@ describe('C2 routes', () => {
     expect(parseHashRoute('#/projects')).toEqual({ kind: 'project', id: null, taskId: null });
     expect(parseHashRoute('#/projects/7')).toEqual({ kind: 'project', id: '7', taskId: null });
     expect(parseHashRoute('#/projects/7?task=12')).toEqual({ kind: 'project', id: '7', taskId: '12' });
-    expect(parseHashRoute('#/projects/x')).toEqual({ kind: 'web', hash: '#/projects/x' });
+    expect(parseHashRoute('#/projects/x')).toEqual({ kind: 'route', hash: '#/projects/x' });
     expect(parseHashRoute('#/tables')).toEqual({ kind: 'tables', baseId: null, tableId: null, recordId: null });
     expect(parseHashRoute('#/tables/3')).toEqual({ kind: 'tables', baseId: '3', tableId: null, recordId: null });
     expect(parseHashRoute('#/tables/3/table/9?record=41')).toEqual({ kind: 'tables', baseId: '3', tableId: '9', recordId: '41' });
-    expect(parseHashRoute('#/tables/3/dashboard/2')).toEqual({ kind: 'web', hash: '#/tables/3/dashboard/2' });
-    expect(parseHashRoute('#/tables/catalog')).toEqual({ kind: 'web', hash: '#/tables/catalog' });
+    expect(parseHashRoute('#/tables/3/dashboard/2')).toEqual({ kind: 'route', hash: '#/tables/3/dashboard/2' });
+    expect(parseHashRoute('#/tables/catalog')).toEqual({ kind: 'route', hash: '#/tables/catalog' });
     expect(parseHashRoute('#/chat?session=ses_9')).toEqual({ kind: 'chat', sessionId: 'ses_9' });
-    expect(parseHashRoute('#/settings/agent-connections/activity')).toEqual({ kind: 'agent' });
   });
 
   it('follows the monthly retro notice to its document', () => {
@@ -119,8 +117,8 @@ describe('links in content', () => {
     expect(linkTarget('/activate', BASE)).toBeNull();
   });
 
-  it('builds web addresses on the station', () => {
-    expect(webUrl(`${BASE}/`, '#/activity/x')).toBe(`${BASE}/#/activity/x`);
+  it('builds absolute addresses on the station', () => {
+    expect(webUrl(`${BASE}/`, '#/projects/7')).toBe(`${BASE}/#/projects/7`);
   });
 });
 
@@ -136,7 +134,7 @@ describe('notifications', () => {
     });
   });
 
-  it('opens a scheduled task’s conversation, or the run in the Activity log', () => {
+  it('opens a scheduled task’s conversation, or the run', () => {
     expect(notificationTarget({ run_id: 'rtr_1', payload: { session_id: 'ses_1' } }, BASE)).toEqual({
       kind: 'chat',
       sessionId: 'ses_1',
@@ -146,11 +144,11 @@ describe('notifications', () => {
       sessionId: null,
     });
     expect(notificationTarget({ run_id: 'rtr_1', payload: { runtime_kind: 'automation' } }, BASE)).toEqual({
-      kind: 'web',
-      hash: '#/activity/automation/rtr_1',
+      kind: 'run',
+      id: 'rtr_1',
     });
     expect(notificationTarget({ run_id: 'rtr_1', payload: { runtime_kind: 'agent_write' } }, BASE)).toEqual({ kind: 'agent' });
-    expect(notificationTarget({ run_id: 'rtr_2', payload: {} }, BASE)).toEqual({ kind: 'web', hash: '#/activity/rtr_2' });
+    expect(notificationTarget({ run_id: 'rtr_2', payload: {} }, BASE)).toEqual({ kind: 'run', id: 'rtr_2' });
     expect(notificationTarget({ run_id: null, payload: { href: 'https://evil.example' } }, BASE)).toBeNull();
   });
 });

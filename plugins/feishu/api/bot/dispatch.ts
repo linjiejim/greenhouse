@@ -58,7 +58,7 @@ function settingsUrl(): string {
 
 function sessionUrl(sessionId: string): string | null {
   const base = (process.env.PUBLIC_BASE_URL || '').replace(/\/$/, '');
-  return base ? `${base}/#/chat?session=${encodeURIComponent(sessionId)}` : null;
+  return base ? clientRouteUrl(base, CLIENT_ROUTES.conversation, { query: { session: sessionId } }) : null;
 }
 
 /** 回答上限——超过就截断并让用户去 Web 看全文（spec D10）。 */

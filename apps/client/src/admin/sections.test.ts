@@ -4,9 +4,7 @@ import {
   CORE_SECTIONS,
   activeSection,
   isCoreSection,
-  legacyKeyOf,
   pluginSections,
-  sectionForLegacyKey,
 } from './sections';
 
 const station = (pages: unknown[], id = 'feedback') =>
@@ -26,23 +24,20 @@ describe('Admin sections', () => {
         screen: 'feedback-issues',
         title: { en: 'Issues', zh: '问题与需求' },
         parent: 'administration',
-        fallback_url: '#/administration/issues/requests',
       },
       { id: 'future', kind: 'native', screen: 'unknown-screen', title: 'Future', parent: 'administration' },
       { id: 'settings', kind: 'settings-form', title: 'Settings', settings: ['a'], parent: 'administration' },
       { id: 'mine', kind: 'settings-form', title: 'Mine', settings: ['b'], parent: 'settings' },
     ]);
     const sections = pluginSections(state, { 'feedback-issues': 'form' });
-    expect(sections.map((s) => [s.page, s.icon, s.href, s.legacyKey])).toEqual([
-      ['issues', 'form', '/admin/p/feedback/issues', 'issues'],
-      ['settings', 'gear', '/admin/p/feedback/settings', null],
+    expect(sections.map((s) => [s.page, s.icon, s.href])).toEqual([
+      ['issues', 'form', '/admin/p/feedback/issues'],
+      ['settings', 'gear', '/admin/p/feedback/settings'],
     ]);
-    expect(sectionForLegacyKey('issues', sections)?.page).toBe('issues');
-    expect(sectionForLegacyKey('retro', sections)).toBeNull();
   });
 
-  it('has no plugin sections on a legacy station', () => {
-    expect(pluginSections({ kind: 'legacy' }, { x: 'form' })).toEqual([]);
+  it('has no plugin sections before the manifest arrives', () => {
+    expect(pluginSections({ kind: 'pending' }, { x: 'form' })).toEqual([]);
   });
 
   it('reads the active section from the path', () => {
@@ -53,12 +48,9 @@ describe('Admin sections', () => {
     expect(activeSection('/knowledge')).toBeNull();
   });
 
-  it('names core sections and classic keys', () => {
+  it('names core sections', () => {
     expect(CORE_SECTIONS.map((s) => s.id)).toContain('runtime-config');
     expect(isCoreSection('mcp-keys')).toBe(true);
     expect(isCoreSection('issues')).toBe(false);
-    expect(legacyKeyOf('#/administration/retro')).toBe('retro');
-    expect(legacyKeyOf('#/settings/computer')).toBeNull();
-    expect(legacyKeyOf(undefined)).toBeNull();
   });
 });

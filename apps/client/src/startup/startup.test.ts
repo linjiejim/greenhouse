@@ -32,7 +32,7 @@ const test = await vi.hoisted(async () => {
     motionListener: null as ((reduced: boolean) => void) | null,
     auth: {
       startupError: null as string | null,
-      mismatch: null as 'unsupported' | 'server_outdated' | null,
+      mismatch: null as 'server_outdated' | null,
       loading: true,
       user: { id: 'member-a' } as { id: string } | null,
       bootstrap: vi.fn(),

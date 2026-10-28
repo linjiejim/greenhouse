@@ -1,4 +1,4 @@
-/** Public sign-in discovery; API 3 stations predate the provider registry. */
+/** Public sign-in discovery (`GET /api/auth/providers`). */
 
 type Fetcher = (path: string) => Promise<{ ok: boolean; json: () => Promise<unknown> }>;
 
@@ -27,11 +27,6 @@ export async function discoverProviders(fetcher: Fetcher): Promise<PublicProvide
   });
 }
 
-export async function feishuLoginAvailable(mobileApi: number, fetcher: Fetcher): Promise<boolean> {
-  if (mobileApi >= 4) return (await discoverProviders(fetcher)).some((provider) => provider.id === 'feishu');
-  const response = await fetcher('/api/feishu/login-available');
-  if (!response.ok) return false;
-  const body = await response.json();
-  if (!body || typeof body !== 'object' || Array.isArray(body)) return false;
-  return 'available' in body && body.available === true;
+export async function feishuLoginAvailable(fetcher: Fetcher): Promise<boolean> {
+  return (await discoverProviders(fetcher)).some((provider) => provider.id === 'feishu');
 }

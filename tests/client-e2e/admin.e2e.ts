@@ -70,7 +70,6 @@ async function adminStation(page: Page, { role = 'super', feedback = true } = {}
           screen: 'feedback-issues',
           title: { en: 'Issues & requests', zh: '问题与需求' },
           parent: 'administration',
-          fallback_url: '#/administration/issues',
         },
       ],
     });
@@ -200,9 +199,6 @@ test('A plugin Admin section appears only when its plugin is in the manifest', a
   await sections.getByRole('button', { name: '问题与需求', exact: true }).click();
   await expect(page).toHaveURL(/\/admin\/p\/feedback\/issues/);
   await expect(page.getByTestId('admin-requests')).toContainText('表格支持按周汇总');
-  // a classic link to the section opens it too
-  await ready(page, '/admin/issues');
-  await expect(page).toHaveURL(/\/admin\/p\/feedback\/issues/);
 });
 
 test('Without the plugin in the manifest its Admin section is absent', async ({ page }) => {

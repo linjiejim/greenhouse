@@ -85,14 +85,13 @@ export const TOOL_DEFINITIONS: ToolMeta[] = [...TOOL_MODULES.map((m) => m.meta),
 /**
  * Retired tool ids → their successors. Custom profiles persist tool id arrays in
  * the DB, so a retirement must keep old rows meaningful: resolveEffectiveTools
- * expands these before intersecting. (Proxy-side call aliases for once-exposed
- * ids live in tool-proxy's normalizeLegacyToolCall — input shapes differ there.)
+ * expands these before intersecting. External callers (proxy, MCP) must use
+ * the live ids.
  *
- * Optional modules contribute their aliases only while enabled, like their tools.
+ * Core retires none (a core migration rewrites stored ids instead). Optional
+ * modules contribute their aliases only while enabled, like their tools.
  */
-const retiredAliases: Record<string, readonly string[]> = {
-  session_history: ['session_query'],
-};
+const retiredAliases: Record<string, readonly string[]> = {};
 for (const aliases of fromExtensions('retiredToolAliases')) {
   for (const [retired, successors] of Object.entries(aliases)) {
     if (retired in retiredAliases || TOOL_DEFINITIONS.some((tool) => tool.id === retired))

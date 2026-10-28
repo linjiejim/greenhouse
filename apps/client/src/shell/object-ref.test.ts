@@ -63,20 +63,9 @@ describe('openObject', () => {
       place: { kind: 'tables', baseId: '1', tableId: '2' },
     });
     expect(refOfTarget({ kind: 'chat', sessionId: 'abc' })).toEqual({ ref: { kind: 'chat', sessionId: 'abc' } });
-    expect(refOfTarget({ kind: 'web', hash: '#/x' })).toEqual({ place: { kind: 'web', hash: '#/x' } });
-    expect(refOfTarget({ kind: 'web', hash: '#/activity/automation/run_1' })).toEqual({
-      ref: { kind: 'run', id: 'run_1' },
-    });
-    expect(refOfTarget({ kind: 'web', hash: '#/activity/run_2' })).toEqual({ ref: { kind: 'run', id: 'run_2' } });
-    expect(refOfTarget({ kind: 'web', hash: '#/automations' })).toEqual({
-      place: { kind: 'tab', href: '/automations' },
-    });
-    expect(refOfTarget({ kind: 'web', hash: '#/automations?tab=profiles' })).toEqual({
-      place: { kind: 'tab', href: '/automations' },
-    });
-    expect(refOfTarget({ kind: 'web', hash: '#/automationsx' })).toEqual({
-      place: { kind: 'web', hash: '#/automationsx' },
-    });
+    expect(refOfTarget({ kind: 'route', hash: '#/x' })).toEqual({ place: { kind: 'route', hash: '#/x' } });
+    expect(refOfTarget({ kind: 'run', id: 'run_1' })).toEqual({ ref: { kind: 'run', id: 'run_1' } });
+    expect(refOfTarget({ kind: 'automations' })).toEqual({ place: { kind: 'tab', href: '/automations' } });
   });
 });
 

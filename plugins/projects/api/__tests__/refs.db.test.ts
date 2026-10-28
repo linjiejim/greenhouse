@@ -98,45 +98,6 @@ describe('POST /api/refs/resolve', () => {
     expect(titleOf(theirs.body, urls[1]!)).toBeNull();
   });
 
-  it('resolves the slug links the address bar shows, with the same rules', async () => {
-    const token = marker();
-    const { owner, stranger, app } = await people(token);
-    const doc = (slug: string, title: string, visibility: 'team' | 'private') =>
-      knowledgeServices(db).knowledgeBase.create({
-        doc_id: slug,
-        scope: 'shared',
-        title,
-        content: 'body',
-        visibility,
-        owner_user_id: owner.id,
-        status: 'published',
-        created_by: owner.id,
-        updated_by: owner.id,
-      });
-    const team = await doc(`${token}-api-style-guide`, `${token} API style guide`, 'team');
-    const secret = await doc(`${token}-salary`, `${token} salary`, 'private');
-    const urls = [
-      `http://green.test/#/knowledge/internal/general/${token}-api-style-guide`,
-      `#/knowledge/personal/${token}-salary`,
-      `#/knowledge/internal/general/${token}-nothing-here`,
-    ];
-
-    const mine = await resolve(app, owner.id, urls);
-    expect(mine.body.items[0]).toEqual({
-      url: urls[0],
-      type: 'doc',
-      id: String(team.id),
-      title: `${token} API style guide`,
-    });
-    expect(mine.body.items[1]).toMatchObject({ type: 'doc', id: String(secret.id), title: `${token} salary` });
-
-    // Forbidden and missing look the same: the slug from the link, no title, no id.
-    const theirs = await resolve(app, stranger.id, urls);
-    expect(titleOf(theirs.body, urls[0]!)).toBe(`${token} API style guide`);
-    expect(theirs.body.items[1]).toEqual({ url: urls[1], type: 'doc', id: `${token}-salary`, title: null });
-    expect(theirs.body.items[2]).toEqual({ url: urls[2], type: 'doc', id: `${token}-nothing-here`, title: null });
-  });
-
   it('resolves a doc link that names a slug and no id, with the same rules', async () => {
     const token = marker();
     const { owner, stranger, app } = await people(token);

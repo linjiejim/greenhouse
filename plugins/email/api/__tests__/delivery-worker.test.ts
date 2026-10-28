@@ -31,11 +31,10 @@ function notification(): NotificationRow {
     kind: 'runtime_completed',
     title: 'Daily report completed',
     body: 'All good',
-    // A 1.x payload: the numeric task id is still accepted.
     payload: {
       schema: 1,
       type: 'automation_result',
-      task_id: 42,
+      task_id: '42',
       task_name: 'Daily report',
       session_id: 'session-1',
       status: 'completed',
