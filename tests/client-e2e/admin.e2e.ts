@@ -116,9 +116,65 @@ async function adminStation(page: Page, { role = 'super', feedback = true } = {}
         ],
       });
     if (path.startsWith('/api/admin/feature-requests/')) return json({ request: {} });
+    if (path === '/api/admin/client-reports') return json(clientErrors(Number(url.searchParams.get('days'))));
     return route.fallback();
   });
   return { writes, users };
+}
+
+/** GET /api/admin/client-reports: two kinds of error in the last week, none further back. */
+function clientErrors(days: number) {
+  if (days !== 7) return { days, total: 0, groups: [] };
+  return {
+    days,
+    total: 14,
+    groups: [
+      {
+        fingerprint: 'a1b2c3d4e5f60718',
+        name: 'UncleanExit',
+        message: 'The app ended while in the foreground with no error caught (a native abort)',
+        fatal: true,
+        count: 3,
+        members: 2,
+        platforms: ['ios'],
+        versions: ['4.0.0'],
+        first_at: '2026-10-27T08:00:00Z',
+        last_at: '2026-10-28T09:30:00Z',
+        latest: {
+          source: 'unclean_exit',
+          stack: null,
+          route: '/doc-new',
+          platform: 'ios',
+          os_version: '26.1',
+          app_version: '4.0.0',
+          app_build: '41 ota 1a2b3c4d',
+          api_level: 4,
+        },
+      },
+      {
+        fingerprint: '0f1e2d3c4b5a6978',
+        name: 'TypeError',
+        message: "Cannot read property 'title' of undefined",
+        fatal: false,
+        count: 11,
+        members: 4,
+        platforms: ['web', 'android'],
+        versions: ['4.0.0', '3.9.2'],
+        first_at: '2026-10-22T08:00:00Z',
+        last_at: '2026-10-28T07:00:00Z',
+        latest: {
+          source: 'boundary',
+          stack: "TypeError: Cannot read property 'title' of undefined\n    at DocBlock (entry.js:2:300)",
+          route: '/library',
+          platform: 'web',
+          os_version: 'Chrome 141 · macOS',
+          app_version: '4.0.0',
+          app_build: null,
+          api_level: 4,
+        },
+      },
+    ],
+  };
 }
 
 async function ready(page: Page, path: string) {
@@ -189,6 +245,41 @@ test('Rail Admin opens the place; users list, role edit and the create dialog', 
   await page.keyboard.press('Meta+k');
   await expect(page.getByText('管理后台', { exact: true }).first()).toBeVisible();
   await page.keyboard.press('Escape');
+});
+
+test('Client errors lists the kinds of error and opens the latest report', async ({ page }) => {
+  await adminStation(page);
+  await ready(page, '/admin');
+  await page.getByTestId('admin-sections').getByRole('button', { name: '客户端错误', exact: true }).click();
+  await expect(page).toHaveURL(/\/admin\/client-errors$/);
+  const section = page.getByTestId('admin-client-errors');
+  await expect(section.getByText('错误种类')).toBeVisible();
+  const list = page.getByTestId('admin-client-errors-list');
+  await expect(list.locator('tbody tr')).toHaveCount(2);
+  const crash = list.locator('tr[data-open]', { hasText: 'UncleanExit' });
+  await expect(crash).toContainText('致命');
+  await expect(crash).toContainText('iOS');
+  const typeError = list.locator('tr[data-open]', { hasText: 'TypeError' });
+  await expect(typeError).toContainText('11');
+  await expect(typeError).toContainText('网页');
+  await expect(typeError).toContainText('4.0.0, 3.9.2');
+
+  // a row opens its latest report: where, which device and build, the stack
+  await typeError.click();
+  await expect(typeError).toHaveAttribute('aria-expanded', 'true');
+  await expect(list).toContainText('错误边界');
+  await expect(list).toContainText('/library');
+  await expect(list).toContainText('Chrome 141 · macOS');
+  await expect(page.getByTestId('admin-client-error-stack')).toContainText('at DocBlock');
+  await crash.click();
+  await expect(list).toContainText('App 意外退出');
+  await expect(list).toContainText('41 ota 1a2b3c4d');
+  await expect(list).toContainText('这份报告没有调用栈');
+  await page.screenshot({ path: '.work/crash/admin-client-errors.png' });
+
+  // a longer window with nothing in it
+  await page.getByRole('combobox', { name: '时间范围' }).selectOption('30');
+  await expect(section).toContainText('没有客户端错误');
 });
 
 test('A plugin Admin section appears only when its plugin is in the manifest', async ({ page }) => {

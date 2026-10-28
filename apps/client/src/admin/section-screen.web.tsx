@@ -15,6 +15,7 @@ import ConnectorsSection from './connectors.web';
 import ActivitySection from './activity.web';
 import TeamContextSection from './team-context.web';
 import BrandingSection from './branding.web';
+import ClientErrorsSection from './client-errors.web';
 
 const SECTIONS: Record<CoreSectionId, React.ComponentType> = {
   users: UsersSection,
@@ -27,6 +28,7 @@ const SECTIONS: Record<CoreSectionId, React.ComponentType> = {
   activity: ActivitySection,
   'team-context': TeamContextSection,
   branding: BrandingSection,
+  'client-errors': ClientErrorsSection,
 };
 
 export default function AdminSectionScreen() {
