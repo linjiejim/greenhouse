@@ -25,7 +25,7 @@
  */
 
 import { logger } from '@greenhouse/utils/logger';
-import { toRowId } from '@greenhouse/utils/id';
+import { isRowId } from '@greenhouse/utils/id';
 import { CLIENT_ROUTES, clientRouteUrl } from '@greenhouse/types/client-routes';
 import type { DatabaseProvider, ScheduledTaskRow } from '@greenhouse/db';
 import { flattenRichOutput, renderNotificationEmail } from '../notifications/render.js';
@@ -207,7 +207,7 @@ export function parseAutomationResultNotificationPayload(value: unknown): Automa
   if (
     payload.schema !== 1 ||
     payload.type !== 'automation_result' ||
-    toRowId(payload.task_id) === null ||
+    !isRowId(payload.task_id) ||
     typeof payload.task_name !== 'string' ||
     !payload.task_name.trim() ||
     typeof payload.session_id !== 'string' ||
@@ -227,8 +227,6 @@ export function parseAutomationResultNotificationPayload(value: unknown): Automa
   // so bad entries are dropped instead of rejecting the whole payload.
   return {
     ...(payload as AutomationResultNotificationPayload),
-    // Payloads written by 1.x carry the old numeric task id.
-    task_id: toRowId(payload.task_id)!,
     ...(writes.length ? { writes } : {}),
   };
 }

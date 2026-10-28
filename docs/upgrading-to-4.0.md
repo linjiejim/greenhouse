@@ -145,6 +145,7 @@ database.
 | Modules became plugins; Projects, Reports, Email, WeCom, Feishu, Computer and Retro are off by default. | Enable the ids you need (step 1). |
 | New core migration chain (`packages/db/migrations/0000_v4_baseline.sql`); fresh installs create only the 49 core tables. | Run `pnpm db:migrate` (or the Compose `migrate` service) before the API. |
 | 1.x and 2.x databases are refused; `migrate-from-1x` is removed. | 1.6 → 3.0.2 → 4.0; 2.x has no path. |
+| Core migration `0001_drop_legacy_data_shapes` rewrites rows 1.x wrote and 3.x carried (numeric automation task ids, flat `notify_*` and JSON-text `unattended_tools` in run snapshots, JSON-text outbox payloads and prompt lists, `session_history` in custom Agents' tools); 4.0 reads only the current shapes. | Run `pnpm db:migrate` before the API; unparseable JSON text becomes an empty list. |
 | SDK 1 plugins, in-tree overlays and plugin `web/` halves are refused by `plugins:sync`. | Port them to SDK 2 ([below](#plugin-authors-sdk-1-to-sdk-2)). |
 | A plugin without `sdk` or `core` refuses activation (3.x only warned). | Declare `sdk: 2` and a `core` range that includes 4.0. |
 | `GET /api/sessions` caps every page at 200 and ignores `include_eval`. | Page with `offset`/`page_meta`. |

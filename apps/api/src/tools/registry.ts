@@ -88,11 +88,10 @@ export const TOOL_DEFINITIONS: ToolMeta[] = [...TOOL_MODULES.map((m) => m.meta),
  * expands these before intersecting. External callers (proxy, MCP) must use
  * the live ids.
  *
- * Optional modules contribute their aliases only while enabled, like their tools.
+ * Core retires none (a core migration rewrites stored ids instead). Optional
+ * modules contribute their aliases only while enabled, like their tools.
  */
-const retiredAliases: Record<string, readonly string[]> = {
-  session_history: ['session_query'],
-};
+const retiredAliases: Record<string, readonly string[]> = {};
 for (const aliases of fromExtensions('retiredToolAliases')) {
   for (const [retired, successors] of Object.entries(aliases)) {
     if (retired in retiredAliases || TOOL_DEFINITIONS.some((tool) => tool.id === retired))

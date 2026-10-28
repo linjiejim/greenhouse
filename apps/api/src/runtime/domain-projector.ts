@@ -4,7 +4,6 @@ import { emitExtensionEvent } from '../plugin-host/events.js';
 import type { DatabaseProvider } from '@greenhouse/db';
 import type { RuntimeJsonValue } from '@greenhouse/types/runtime';
 import { reconcileReclaimedAutomationRun } from '../scheduler/runtime-driver.js';
-import { normalizeSnapshotTask } from '../scheduler/task-snapshot.js';
 import { notifyTaskResult } from '../scheduler/notify.js';
 import type { RuntimeEventEnvelope } from './worker.js';
 
@@ -31,7 +30,7 @@ function automationInput(run: Awaited<ReturnType<DatabaseProvider['runtime']['ge
     return null;
   }
   return {
-    task: normalizeSnapshotTask(parsed.task as Record<string, unknown>),
+    task: parsed.task as Parameters<typeof notifyTaskResult>[1],
     session_id: parsed.session_id,
     scheduled_for: parsed.scheduled_for,
   };

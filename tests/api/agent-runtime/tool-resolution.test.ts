@@ -68,11 +68,11 @@ describe('resolveEffectiveTools', () => {
 
   it('expands retired tool ids saved in custom profiles to their successors', async () => {
     // Custom profiles persist tool id arrays in the DB. A saved agent listing the
-    // retired project_manager / session_history must keep working
-    // through the successor pairs instead of silently losing the domain.
+    // retired project_manager must keep working through the successor pair
+    // instead of silently losing the domain.
     const profile = makeProfile({
       access: { level: 'internal', rich_output: false },
-      tools: ['project_manager', 'session_history'],
+      tools: ['project_manager'],
     });
 
     const { effectiveTools } = await resolveEffectiveTools({
@@ -83,7 +83,7 @@ describe('resolveEffectiveTools', () => {
     });
 
     expect(effectiveTools.sort()).toEqual(
-      [...new Set(['project_query', 'project_mutation', 'session_query', ...BUILTIN_AGENT_TOOL_IDS])]
+      [...new Set(['project_query', 'project_mutation', ...BUILTIN_AGENT_TOOL_IDS])]
         .filter((id) => getAllToolIds().includes(id))
         .sort(),
     );

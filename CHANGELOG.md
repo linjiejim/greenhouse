@@ -37,6 +37,9 @@ Read [Upgrading to 4.0](docs/upgrading-to-4.0.md) before upgrading.
   tables). Fresh installs no longer create plugin tables; each plugin creates its own when
   enabled. 3.x databases upgrade in place and the API refuses a 3.x database until
   `pnpm db:migrate` has bridged it. 1.x and 2.x databases are refused; `migrate-from-1x` is removed.
+  Core migration `0001_drop_legacy_data_shapes` rewrites data shapes 1.x wrote and 3.x carried
+  (numeric task ids, flat `notify_*` snapshots, JSON-text payloads and lists, `session_history` in
+  custom Agents), and the readers that tolerated them are gone.
 - Environment aliases `APP_BASE_URL`, `SYNC_WECOM_WEBHOOK_URL`, `PORT` (OAuth issuer) and
   `SILICONFLOW_API_KEY` (doctor) are ignored. The agent proxy and MCP refuse retired tool names
   (`session_history`, `team_knowledge`, …); connector catalog files use `"mode": "key"` instead of

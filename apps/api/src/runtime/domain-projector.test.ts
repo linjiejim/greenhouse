@@ -87,9 +87,8 @@ describe('Runtime durable domain projector', () => {
   });
 
   it('projects an Automation outcome and enqueues one deep-linked durable notification', async () => {
-    // A snapshot written by 1.x: numeric id and flat notify_* fields.
     const task = {
-      id: 42,
+      id: '42',
       user_id: 'owner',
       name: 'Daily report',
       profile_id: 'team',
@@ -98,9 +97,7 @@ describe('Runtime durable domain projector', () => {
       timezone: 'Asia/Hong_Kong',
       enabled: true,
       max_steps: 15,
-      notify_webhook: null,
-      notify_email: true,
-      notify_wecom: false,
+      notify: { webhook: null, email: true, wecom: false, feishu: false },
       last_run_at: null,
       last_status: null,
       next_run_at: null,
