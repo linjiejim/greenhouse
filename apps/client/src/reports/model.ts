@@ -137,8 +137,8 @@ export function settleReports(queue: readonly QueuedReport[], sent: readonly str
 /** What a send's answer means for the batch: gone (taken, or never takeable) or kept for later. */
 export function sendOutcome(status: number): 'settle' | 'keep' {
   if (status >= 200 && status < 300) return 'settle';
-  // a batch the station refuses as malformed would be refused forever
-  if (status === 400 || status === 413) return 'settle';
+  // refused as malformed, or from a member the station takes no reports from: refused forever
+  if (status === 400 || status === 403 || status === 413) return 'settle';
   return 'keep';
 }
 

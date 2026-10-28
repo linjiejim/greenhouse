@@ -134,10 +134,11 @@ describe('the report queue', () => {
     expect(settleReports(queue, batch.map((r) => r.id))).toHaveLength(queue.length - 20);
   });
 
-  it('keeps a batch the station did not take, unless it refused it as malformed', () => {
+  it('keeps a batch the station did not take, unless it will never take it', () => {
     expect(sendOutcome(202)).toBe('settle');
     expect(sendOutcome(400)).toBe('settle');
     expect(sendOutcome(413)).toBe('settle');
+    expect(sendOutcome(403)).toBe('settle');
     for (const status of [0, 401, 404, 429, 500, 503]) expect(sendOutcome(status)).toBe('keep');
   });
 
