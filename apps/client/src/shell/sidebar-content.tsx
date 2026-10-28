@@ -144,7 +144,7 @@ export function SidebarContent({ state, navigation }: DrawerContentComponentProp
               }}
             />
           ))}
-        {pluginNavigation(manifest, 'more').length ? <Text style={styles.note}>{t('client.apps')}</Text> : null}
+        {pluginNavigation(manifest, 'more').length ? <Text style={styles.section}>{t('client.apps')}</Text> : null}
         {pluginNavigation(manifest, 'more').map((item) => (
           <Place
             key={`${item.plugin.id}:${item.nav.id}`}
@@ -247,5 +247,13 @@ const useStyles = makeStyles((c) => ({
   label: { ...typo.body, color: c.label, flexShrink: 1 },
   labelCurrent: { fontWeight: weight.semibold, color: c.accentText },
   note: { ...typo.caption1, color: c.secondaryLabel },
+  // lines up with the place labels' left edge (row margin + padding)
+  section: {
+    ...typo.caption1,
+    color: c.secondaryLabel,
+    paddingHorizontal: space.sm + space.md,
+    paddingTop: space.md,
+    paddingBottom: space.xxs,
+  },
   footer: { paddingTop: space.sm },
 }));

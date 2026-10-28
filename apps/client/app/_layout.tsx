@@ -209,6 +209,9 @@ export default function RootLayout() {
                 <Stack.Screen name="peek/diagram" options={{ ...detailScreen(c), presentation: 'modal' }} />
                 <Stack.Screen name="table" options={{ ...detailScreen(c), presentation: 'modal' }} />
 
+                {/* ── administration: a link on a phone lands on the wide-window notice, with a way back ── */}
+                <Stack.Screen name="admin" options={detailScreen(c, { grouped: true })} />
+
                 {/* ── 「我」: a page sheet with its own stack ── */}
                 <Stack.Screen name="me" options={modalScreen()} />
               </Stack>
