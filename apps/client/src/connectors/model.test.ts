@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { CONNECTOR_APP_REDIRECT, connectorSections, needsConnection, parseConnectorReturn } from './model';
-import type { MyConnector } from '../api/connectors';
+import type { MyConnector, PersonalConnector } from '../api/connectors';
 
 const connector = (over: Partial<MyConnector>): MyConnector => ({
   id: 'mcc_1',
@@ -13,6 +13,18 @@ const connector = (over: Partial<MyConnector>): MyConnector => ({
   auth_kind: 'oauth',
   status: 'not_connected',
   ...over,
+});
+
+const personal = (over: Partial<MyConnector>): PersonalConnector => ({
+  ...connector(over),
+  url: 'https://desk.example.com/mcp',
+  transport: 'streamable_http',
+  auth_header: 'Authorization',
+  auth_query_param: null,
+  auth_value_prefix: 'Bearer ',
+  oauth_client: null,
+  oauth_scope: null,
+  tools: [],
 });
 
 describe('connector sign-in return', () => {
@@ -42,10 +54,11 @@ describe('connector lists', () => {
   it('splits what needs me from what is ready', () => {
     const sections = connectorSections({
       team: [connector({ id: 'a' }), connector({ id: 'b', auth_mode: 'none', auth_kind: null, status: 'not_needed' })],
-      personal: [connector({ id: 'c', scope: 'personal', auth_mode: 'per_member', auth_kind: 'key' })],
+      personal: [personal({ id: 'c', scope: 'personal', auth_mode: 'per_member', auth_kind: 'key' })],
     });
-    expect(sections.mine.map((c) => c.id)).toEqual(['a', 'c']);
+    expect(sections.mine.map((c) => c.id)).toEqual(['a']);
     expect(sections.ready.map((c) => c.id)).toEqual(['b']);
+    expect(sections.own.map((c) => c.id)).toEqual(['c']);
   });
 });
 
