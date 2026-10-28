@@ -24,3 +24,6 @@ apps/desktop/src-tauri/gen/
 
 # Generated standalone embed token data; freshness is checked against the renderer.
 packages/ui-tokens/src/tokens.generated.ts
+
+# release-please rewrites the desktop version with JSON.stringify layout on every release.
+apps/desktop/src-tauri/tauri.conf.json
