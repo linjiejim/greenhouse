@@ -50,6 +50,12 @@ export default function PluginPageScreen({ detail = false }: { detail?: boolean 
       );
     if (entry.kind === 'entity-detail' && entity && id && safeEndpoint(entity.endpoint))
       return <EntityDetail entity={entity} id={id} />;
+    // A detail page opened without a record (a bookmark, the rail) shows its entity's list instead.
+    const list =
+      entry.kind === 'entity-detail' && entity && !id
+        ? manifest.pages.find((p) => p.kind === 'entity-list' && p.entity === entity.id)
+        : undefined;
+    if (list) return <Redirect href={`/p/${encodeURIComponent(plugin)}/${encodeURIComponent(list.id)}` as never} />;
     if (entry.kind === 'settings-form')
       return <SettingsForm key={`${plugin}:${page}`} keys={entry.settings} title={title} />;
     if (entry.kind === 'embed')
