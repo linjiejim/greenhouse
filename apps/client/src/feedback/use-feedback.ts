@@ -4,7 +4,7 @@
  * member and goes back; failure keeps the words and says why.
  */
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Platform } from 'react-native';
 import { useRouter } from 'expo-router';
 import { sendFeedback } from '../api/feedback';
@@ -23,7 +23,12 @@ export function useFeedback() {
   const { version } = useSettings();
   const [message, setMessage] = useState('');
   const [saving, setSaving] = useState(false);
-  const canSave = !!message.trim() && !saving;
+  const [sent, setSent] = useState(false);
+  const canSave = !!message.trim() && !saving && !sent;
+  // close once the sent words cleared the discard guard (dirty turns off on the next render)
+  useEffect(() => {
+    if (sent) router.back();
+  }, [sent, router]);
   const save = async () => {
     if (!canSave) return;
     const current = captureIdentity();
@@ -43,7 +48,7 @@ export function useFeedback() {
     }
     notifySuccess();
     toast(t('feedback.thanks'), 'check');
-    router.back();
+    setSent(true);
   };
-  return { message, setMessage, saving, canSave, dirty: !!message.trim(), save };
+  return { message, setMessage, saving, canSave, dirty: !!message.trim() && !sent, save };
 }
