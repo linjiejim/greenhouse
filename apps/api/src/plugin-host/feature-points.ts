@@ -74,16 +74,6 @@ const CORE_FEATURE_POINTS: readonly FeaturePointDef[] = [
 export const FEATURE_POINTS: readonly FeaturePointDef[] = [...CORE_FEATURE_POINTS, ...fromExtensions('featurePoints')];
 
 /**
- * The feature flag that gates a platform application, if any.
- *
- * Derived from the registry so the HTTP layer never hard-codes app ids: an app
- * an extension brings is gated by its own flag on exactly the same path.
- */
-export function appFeatureFlag(appId: string): string | undefined {
-  return FEATURE_POINTS.find((point) => point.kind === 'app' && point.appId === appId)?.flag;
-}
-
-/**
  * Tool ids that are NOT individually assignable: they ride with a feature
  * point's main toggle (app or flag). They must stay out of the opt-in "Advanced
  * tools" bucket — a direct assignment for a feature-owned tool would bypass its flag.

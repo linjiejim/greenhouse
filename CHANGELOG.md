@@ -49,6 +49,8 @@ Read [Upgrading to 4.0](docs/upgrading-to-4.0.md) before upgrading.
 - `POST /api/chat` no longer continues a stored transcript without a new message: a session turn
   sends `messages` or `regenerate_assistant_message_id`, and a live reply is resumed through
   `GET /api/chat/runs/:sessionId/stream`.
+- `GET /api/platform/apps`, `GET /api/platform/me/permissions`, `GET /api/data-catalog` and
+  `GET /api/admin/operations/cost-value` are removed; the MCP `data_catalog` tool remains.
 - `GET /api/sessions` caps every page at 200 and no longer accepts `include_eval`.
   `GET /api/feishu/login-available` (use `/api/auth/providers`), `GET /api/profiles/custom/:id/versions`,
   the custom Agent `change_log` field and the team activity feed's plain ISO `before` are removed. Automations

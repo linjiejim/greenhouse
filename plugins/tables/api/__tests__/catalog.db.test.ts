@@ -1,5 +1,6 @@
 import { services as tableServices } from '../services.js';
 import {
+  fullGrantReach,
   webCatalog as readWebCatalog,
   mcpCatalog,
 } from '../../../../apps/api/src/hub-context/__tests__/catalog-fixture.js';
@@ -17,7 +18,6 @@ import { TEST_DATABASE_URL } from '@greenhouse/db/test-config';
 import { createInternalTestUser } from '../../../../tests/helpers/internal-user.js';
 import { moveToRestrictedRole, withoutCapability } from '../../../../tests/helpers/restricted-role.js';
 import { tablesManifest } from '../platform/manifest.js';
-import { memberMcpToolIds } from '../../../../apps/api/src/agent-runtime/mcp-tool-visibility.js';
 import {
   initializePlatformRuntime,
   resetPlatformRuntimeForTests,
@@ -129,7 +129,7 @@ describe('data catalog: Tables bases', () => {
       db,
       userId: member.id,
       role: 'team',
-      reachable: await memberMcpToolIds(member.id, 'team'),
+      reachable: await fullGrantReach(member),
       actor: humanActor(member),
     });
     expect(bundle.data_sources.tables).toBeGreaterThanOrEqual(52 + 1 + 1);

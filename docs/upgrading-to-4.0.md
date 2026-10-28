@@ -162,6 +162,7 @@ database.
 | Connector catalog files (`connectors/*.json`) name member keys `"mode": "key"` (was `per_user`). | Rename the mode in your own catalog files. |
 | `TASK_CENTER_ENABLED` is ignored: run details (`/api/runtime`) are always on, `/health` no longer reports `surfaces.task_center`, and the Approval Inbox depends only on `RUNTIME_APPROVAL_INBOX_ENABLED`. | Remove the variable; use `RUNTIME_APPROVAL_INBOX_ENABLED=0` to stop approvals. |
 | `POST /api/chat` with a `session_id` but neither `messages` nor `regenerate_assistant_message_id` (a continuation of the stored transcript) is refused with 400. | Send the new user message, regenerate with `regenerate_assistant_message_id`, or reattach to a live reply with `GET /api/chat/runs/:sessionId/stream`. |
+| `GET /api/platform/apps`, `GET /api/platform/me/permissions`, `GET /api/data-catalog` and `GET /api/admin/operations/cost-value` are removed; no client read them. | Agents read the data catalog with the MCP `data_catalog` tool; supers read usage and spend in Admin › Usage and Services & pricing (`/api/admin/metering`). |
 
 What now breaks: installed iOS/Android apps from the 3.x line must be updated before they can use
 a 4.0 station; 4.0 clients (web, iOS, Android and desktop) cannot reach a 3.x station and ask for
