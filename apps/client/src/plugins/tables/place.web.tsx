@@ -238,6 +238,7 @@ export default function TablesPlace() {
               loading={loading || schema.loading}
               error={error || schema.error?.message}
               retry={() => void schema.refresh()}
+              {...(viewQuery === '{}' ? { icon: 'table' as const, title: t('tables.recordsEmpty') } : {})}
             />
           ) : null}
         </div>

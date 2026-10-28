@@ -36,10 +36,14 @@ export function useResource<T>(load: () => Promise<ApiResult<T>>) {
   useEffect(() => {
     if (!focused || !member) return;
     void refresh();
-    return () => {
-      // eslint-disable-next-line react-hooks/exhaustive-deps -- invalidate every pending read on cleanup
-      generation.current++;
-    };
   }, [focused, refresh, station, member]);
+  // A new reader, station or member drops every pending read; losing focus does not, because on a
+  // wide screen the place stays in view behind the sheet that took focus and must still refresh.
+  useEffect(
+    () => () => {
+      generation.current++;
+    },
+    [refresh, station, member],
+  );
   return { data, error, loading, refresh, setData };
 }

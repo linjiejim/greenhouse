@@ -433,6 +433,8 @@ function AutomationsDesktop({ openEditor, saved }: { openEditor: (editor: Editor
                         loading={runs.loading}
                         error={runs.error?.message}
                         retry={() => void runs.refresh()}
+                        icon="clock"
+                        title={t('automations.noRuns')}
                       />
                     ) : null}
                   </section>
