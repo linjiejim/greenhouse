@@ -17,7 +17,8 @@ import { notifySuccess } from '../ui/haptics';
 import { toast } from '../ui/toast';
 import { feedbackContext, lastErrorLine } from './last-error';
 
-export function useFeedback() {
+/** `read` gives the field's own text at send time (a native field's last edit can reach JS after the tap). */
+export function useFeedback(read?: () => string | null | undefined) {
   const t = useT();
   const router = useRouter();
   const { version } = useSettings();
@@ -39,7 +40,12 @@ export function useFeedback() {
       stationUrl: getApiBase(),
       lastError: lastErrorLine(),
     });
-    const sent = await sendFeedback(message.trim().slice(0, 4000), context);
+    const words = (read?.() ?? message).trim();
+    if (!words) {
+      setSaving(false);
+      return;
+    }
+    const sent = await sendFeedback(words.slice(0, 4000), context);
     if (!current()) return;
     setSaving(false);
     if (!sent.ok) {

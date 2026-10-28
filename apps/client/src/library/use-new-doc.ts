@@ -2,6 +2,7 @@
  * A new knowledge document (app/doc-new.tsx, SwiftUI; ./doc-new.android.tsx, Material): its
  * title and text, saved into the folder it was made from (or the shelf's top), then opened as its
  * sheet over the shelf — after the keyboard is down and this sheet has closed (src/shell/close-then.ts).
+ * Native fields own their text and report edits late, so save reads them through `read` when given.
  */
 
 import { useEffect, useRef, useState } from 'react';
@@ -13,7 +14,13 @@ import { objectId } from '../lib/object-id';
 import { captureIdentity } from '../data/identity';
 import { closeThen, keyboardDown } from '../shell/close-then';
 
-export function useNewDoc() {
+/** Reads the fields' own text at save time (a native field's last edit can reach JS after the tap). */
+export interface NewDocFields {
+  title: () => string | null | undefined;
+  body: () => string | null | undefined;
+}
+
+export function useNewDoc(read?: NewDocFields) {
   const params = useLocalSearchParams<{ shelf?: string; folder?: string }>();
   const shelf = params.shelf === 'personal' ? 'personal' : 'team';
   const folderId = objectId(params.folder);
@@ -46,8 +53,10 @@ export function useNewDoc() {
     void keyboardDown();
     // no success toast: the document opening is the confirmation, and the toast's fade (a Reanimated
     // layout animation in its own window) would run during the sheet transitions
+    const docTitle = read?.title() ?? title;
+    const content = read?.body() ?? body;
     const doc = await actions.run(
-      () => createDoc({ title: title.trim().slice(0, 200), content: body, shelf, folderId }),
+      () => createDoc({ title: docTitle.trim().slice(0, 200), content, shelf, folderId }),
       t('library.failed'),
     );
     setSaving(false);
