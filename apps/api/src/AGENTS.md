@@ -275,6 +275,7 @@
 ## Hosting, embeds and client links
 
 - `hosting.ts` serves the universal client from `public/app`; `/api`, `/ext`, `/oauth`, `/.well-known` and `/health` never fall through to SPA HTML.
+- Hashed `/_expo` and `/assets` files are immutable, HTML is no-cache, and the `.br`/`.gz` copies `pnpm app:build` writes are served by Accept-Encoding.
 - Server-made browser links use `@greenhouse/types/client-routes`, with secrets in the fragment (`clientRouteUrl(..., { fragment })`).
 - `POST /api/ext-ui/token` binds member, `auth_version` and a member-visible plugin for ten minutes, rechecked per call; it reaches only `/api/ext/<id>/*` and basic `GET /api/me`, enforced before public bypass.
 - Plugin UIs mount at `/ext/<id>/ui/` before auth and SPA fallback (`ui/dist` preferred, disabled or missing → 404, fingerprinted files immutable).

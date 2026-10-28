@@ -1,7 +1,8 @@
 /** Export the isolated Expo workspace for same-origin API hosting. */
 import { spawnSync } from 'node:child_process';
-import { cpSync, rmSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
-import { resolve, join } from 'node:path';
+import { cpSync, rmSync, existsSync, readFileSync, writeFileSync, readdirSync } from 'node:fs';
+import { resolve, join, extname } from 'node:path';
+import { brotliCompressSync, gzipSync, constants } from 'node:zlib';
 const root = resolve(import.meta.dirname, '..');
 const mobile = join(root, 'apps/client');
 const output = join(mobile, 'dist-hosted');
@@ -26,3 +27,13 @@ if (!html.includes('rel="manifest"'))
       '<link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="apple-touch-icon" href="/apple-touch-icon.png"><link rel="manifest" href="/site.webmanifest"></head>',
     ),
   );
+// Brotli and gzip copies beside each text asset; apps/api/src/hosting.ts serves them by Accept-Encoding.
+const COMPRESS = new Set(['.js', '.css', '.txt', '.json', '.svg', '.ttf']);
+for (const entry of readdirSync(target, { recursive: true, withFileTypes: true })) {
+  if (!entry.isFile() || !COMPRESS.has(extname(entry.name))) continue;
+  const file = join(entry.parentPath, entry.name);
+  const body = readFileSync(file);
+  if (body.length < 1024) continue;
+  writeFileSync(file + '.br', brotliCompressSync(body, { params: { [constants.BROTLI_PARAM_SIZE_HINT]: body.length } }));
+  writeFileSync(file + '.gz', gzipSync(body, { level: 9 }));
+}

@@ -12,6 +12,12 @@ declare module '*.txt' {
 
 declare module '*.css';
 
+/** Per-icon lucide modules (src/ui/icon-map.ts) ship without their own declarations. */
+declare module 'lucide-react/dist/esm/icons/*' {
+  const icon: import('lucide-react').LucideIcon;
+  export default icon;
+}
+
 // Keep optional @expo/ui peer paths (and the native fingerprint) stable. Only this DOM API is used.
 declare module 'react-dom' {
   export function createPortal(

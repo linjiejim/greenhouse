@@ -23,19 +23,20 @@ import { putHandoff } from '../../lib/handoff';
 import { useT } from '../../lib/i18n';
 import { type HexPalette, makeStyles, radius, space, squircle, useTheme } from '../../theme';
 import { Icon, Spinner } from '../../ui/core';
-import { NUNITO_WEB_FONT_CSS } from '../../ui/brand-web-font.generated';
+import { loadMermaidFont } from './mermaid-font';
 import { richSegment } from '../rich';
 import { CodeBlock } from './code';
 
 export const MERMAID_VERSION = '11.17.2';
 
-let mermaidSource: Promise<string> | null = null;
+type MermaidLib = { source: string; font: string };
+let mermaidSource: Promise<MermaidLib> | null = null;
 
-/** The bundled Mermaid, read from the app's assets once per launch. */
-export function loadMermaid(): Promise<string> {
+/** The bundled Mermaid and the diagram font CSS, read once per launch. */
+export function loadMermaid(): Promise<MermaidLib> {
   mermaidSource ??= (async () => {
-    const [asset] = await Asset.loadAsync(mermaidAsset);
-    return readAssetText(asset!.localUri ?? asset!.uri);
+    const [[asset], font] = await Promise.all([Asset.loadAsync(mermaidAsset), loadMermaidFont()]);
+    return { source: await readAssetText(asset!.localUri ?? asset!.uri), font };
   })().catch((error: unknown) => {
     mermaidSource = null;
     throw error;
@@ -43,14 +44,18 @@ export function loadMermaid(): Promise<string> {
   return mermaidSource;
 }
 
-/** The bundled Mermaid, or null while it loads; `failed` when it cannot be read. */
-export function useMermaid(): { source: string | null; failed: boolean } {
-  const [state, setState] = useState<{ source: string | null; failed: boolean }>({ source: null, failed: false });
+/** The bundled Mermaid and font, or null while they load; `failed` when they cannot be read. */
+export function useMermaid(): { source: string | null; font: string; failed: boolean } {
+  const [state, setState] = useState<{ source: string | null; font: string; failed: boolean }>({
+    source: null,
+    font: '',
+    failed: false,
+  });
   useEffect(() => {
     let alive = true;
     loadMermaid().then(
-      (source) => alive && setState({ source, failed: false }),
-      () => alive && setState({ source: null, failed: true }),
+      (lib) => alive && setState({ ...lib, failed: false }),
+      () => alive && setState({ source: null, font: '', failed: true }),
     );
     return () => {
       alive = false;
@@ -65,8 +70,8 @@ const INLINE_MAX_H = 440;
 /** A JSON literal that's safe inside an inline <script> (no `</script>` break-out). */
 const js = (v: unknown) => JSON.stringify(v).replace(/</g, '\\u003c');
 
-/** The page that renders one diagram. `zoom`: the viewer (fit width, no height cap, pinch). */
-export function mermaidHtml(code: string, hex: HexPalette, isDark: boolean, zoom = false): string {
+/** The page that renders one diagram in `font` (useMermaid). `zoom`: the viewer (fit width, no height cap, pinch). */
+export function mermaidHtml(code: string, hex: HexPalette, isDark: boolean, font: string, zoom = false): string {
   const config = {
     startOnLoad: false,
     securityLevel: 'strict',
@@ -100,7 +105,7 @@ export function mermaidHtml(code: string, hex: HexPalette, isDark: boolean, zoom
   const maxH = zoom ? 0 : INLINE_MAX_H;
   return `<!doctype html><html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,${zoom ? 'maximum-scale=6,user-scalable=yes' : 'maximum-scale=1,user-scalable=no'}">
-<style>${NUNITO_WEB_FONT_CSS}
+<style>${font}
 html,body{margin:0;padding:0;background:transparent;-webkit-text-size-adjust:100%}
 #d{display:flex;justify-content:center;align-items:center;box-sizing:border-box;padding:${zoom ? 16 : 0}px${zoom ? ';min-height:80vh' : ''}}</style></head>
 <body><div id="d"></div><script>(function(){
@@ -132,8 +137,8 @@ function Mermaid({ code }: { code: string }) {
   const router = useRouter();
   const [state, setState] = useState<'loading' | 'ready' | 'failed'>('loading');
   const [height, setHeight] = useState(0);
-  const source = useMemo(() => ({ html: mermaidHtml(code, hex, isDark) }), [code, hex, isDark]);
   const lib = useMermaid();
+  const source = useMemo(() => ({ html: mermaidHtml(code, hex, isDark, lib.font) }), [code, hex, isDark, lib.font]);
 
   if (state === 'failed' || lib.failed) return <CodeBlock lang="mermaid" code={code} />;
 

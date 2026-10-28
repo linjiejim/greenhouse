@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { Suspense, lazy, useCallback, useEffect, useState } from 'react';
 import { bodyUnderTitle } from '../data/doc-body';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useWindowDimensions } from 'react-native';
@@ -22,10 +22,13 @@ import { rememberDoc, recentDocs } from '../store/knowledge';
 import type { RecentDoc } from '../data/recent-docs';
 import type { DriveFolder, KbDoc } from '../shared/greenhouse-types';
 import { alertError, promptText } from '../ui/dialogs';
-import DocumentEditor from './editor/document-editor';
 import { WIDE_MIN } from '../shell/wide-model';
 import { canShareDoc } from './share-model';
 import { useShareEntry } from './share-entry';
+
+// Tiptap and ProseMirror load only when a document is edited.
+const DocumentEditor = lazy(() => import('./editor/document-editor'));
+
 export default function KnowledgePlace() {
   const { width } = useWindowDimensions();
   return width < WIDE_MIN ? <Phone /> : <KnowledgeDesktop />;
@@ -238,60 +241,62 @@ function KnowledgeDesktop() {
                 </div>
                 <h1>{selected.title}</h1>
                 {editing ? (
-                  <DocumentEditor
-                    markdown={draft.markdown}
-                    json={draft.json}
-                    onChange={(markdown, json) => setDraft({ markdown, json })}
-                    labels={[
-                      'editor',
-                      'bold',
-                      'italic',
-                      'bullets',
-                      'numbered list',
-                      'quote',
-                      'code',
-                      t('nav.tables'),
-                      t('composer.photos'),
-                      'undo',
-                      'redo',
-                    ]}
-                    onLink={(previous) => promptText({ title: 'URL', defaultValue: previous || 'https://' })}
-                    onSearchDocs={async (query) => {
-                      const current = captureIdentity();
-                      const r = await get<{ docs: KbDoc[] }>('/api/knowledge/docs', {
-                        search: query,
-                        status: 'published',
-                        limit: 8,
-                      });
-                      return current() && r.ok ? r.data.docs : [];
-                    }}
-                    onUsers={async () => {
-                      const current = captureIdentity();
-                      const r = await get<{ users: { id: string; nickname: string; email?: string }[] }>(
-                        '/api/sessions/shareable-users',
-                      );
-                      return current() && r.ok ? r.data.users : [];
-                    }}
-                    onImage={async (file) => {
-                      const current = captureIdentity();
-                      const form = new FormData();
-                      form.append('file', file);
-                      try {
-                        const r = await toResult<{ url: string }>(
-                          await api('/api/upload', { method: 'POST', body: form }),
+                  <Suspense fallback={<PlaceEmpty loading />}>
+                    <DocumentEditor
+                      markdown={draft.markdown}
+                      json={draft.json}
+                      onChange={(markdown, json) => setDraft({ markdown, json })}
+                      labels={[
+                        'editor',
+                        'bold',
+                        'italic',
+                        'bullets',
+                        'numbered list',
+                        'quote',
+                        'code',
+                        t('nav.tables'),
+                        t('composer.photos'),
+                        'undo',
+                        'redo',
+                      ]}
+                      onLink={(previous) => promptText({ title: 'URL', defaultValue: previous || 'https://' })}
+                      onSearchDocs={async (query) => {
+                        const current = captureIdentity();
+                        const r = await get<{ docs: KbDoc[] }>('/api/knowledge/docs', {
+                          search: query,
+                          status: 'published',
+                          limit: 8,
+                        });
+                        return current() && r.ok ? r.data.docs : [];
+                      }}
+                      onUsers={async () => {
+                        const current = captureIdentity();
+                        const r = await get<{ users: { id: string; nickname: string; email?: string }[] }>(
+                          '/api/sessions/shareable-users',
                         );
-                        if (!current()) return null;
-                        if (!r.ok) {
-                          alertError(t('library.failed'), r.message);
+                        return current() && r.ok ? r.data.users : [];
+                      }}
+                      onImage={async (file) => {
+                        const current = captureIdentity();
+                        const form = new FormData();
+                        form.append('file', file);
+                        try {
+                          const r = await toResult<{ url: string }>(
+                            await api('/api/upload', { method: 'POST', body: form }),
+                          );
+                          if (!current()) return null;
+                          if (!r.ok) {
+                            alertError(t('library.failed'), r.message);
+                            return null;
+                          }
+                          return r.data.url;
+                        } catch {
+                          alertError(t('library.failed'));
                           return null;
                         }
-                        return r.data.url;
-                      } catch {
-                        alertError(t('library.failed'));
-                        return null;
-                      }
-                    }}
-                  />
+                      }}
+                    />
+                  </Suspense>
                 ) : (
                   <>
                     {selected.summary ? (
