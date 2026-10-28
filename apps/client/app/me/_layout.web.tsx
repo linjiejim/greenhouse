@@ -23,6 +23,7 @@ export default function SettingsLayout() {
     { label: t('places.settings'), href: '/me', icon: 'gear' },
     { label: t('client.account'), href: '/me/account', icon: 'person' },
     { label: t('client.agents'), href: '/me/agents', icon: 'sparkle' },
+    { label: t('myActivity.title'), href: '/me/activity', icon: 'runs' },
     { label: t('connectors.title'), href: '/me/connectors', icon: 'link' },
     { label: t('client.station'), href: '/me/stations', icon: 'server' },
   ];

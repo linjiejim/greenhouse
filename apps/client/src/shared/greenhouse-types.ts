@@ -414,11 +414,28 @@ export interface GatewayKey {
   month_calls: number;
 }
 
+/** A catalog model the gateway serves, and on which wires. */
+export interface GatewayModel {
+  id: string;
+  name: string;
+  openai: boolean;
+  anthropic: boolean;
+}
+
 /** `GET /api/agent-access/gateway`; never carries a key's secret. */
 export interface GatewayOverview {
   enabled: boolean;
   base_url: string | null;
+  /** Claude Code's ANTHROPIC_BASE_URL (`<origin>/api/gateway/anthropic`). */
+  anthropic_base_url?: string | null;
+  models?: GatewayModel[];
   keys: GatewayKey[];
+}
+
+/** `POST /api/agent-access/gateway/keys`: the only answer that carries the secret, shown once. */
+export interface GatewayKeyCreated {
+  key: GatewayKey;
+  secret: string;
 }
 
 // ─── assistant chat (/api/sessions, /api/chat) ──────────────────────

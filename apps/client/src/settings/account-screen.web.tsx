@@ -139,6 +139,7 @@ export default function Me() {
             </Button>
           ))}
           <FormNavRow label={t('me.agentActivity')} value="" onPress={() => router.push('/me/agents')} />
+          <FormNavRow label={t('myActivity.title')} value="" onPress={() => router.push('/me/activity')} />
           <FormNavRow label={t('connectors.title')} value="" onPress={() => router.push('/me/connectors')} />
         </Section>
 

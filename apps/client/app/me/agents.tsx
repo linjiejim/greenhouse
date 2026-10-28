@@ -1,16 +1,18 @@
 /**
- * My Agents (我的 Agent): this month's spend against my budget, the recent writes of the agents I
- * connected (tap one for its details), and my model-gateway keys — read-only; keys are created
- * and revoked on the web. Each part loads on its own and shows its own failure with a retry
- * (src/data/load-view.ts), so one failing neither hides nor blocks the others.
+ * My Agents (我的 Agent): how to connect one (→ connect), this month's spend against my budget,
+ * the recent writes of the agents I connected (tap one for its details), and my model-gateway keys
+ * (create, shown once, and revoke: src/agent/gateway-keys.tsx). Each part loads on its own and
+ * shows its own failure with a retry (src/data/load-view.ts), so one failing neither hides nor
+ * blocks the others.
  */
 
 import React, { useCallback } from 'react';
 import { RefreshControl, ScrollView, Text, View } from 'react-native';
-import { Stack } from 'expo-router';
+import { Stack, useRouter } from 'expo-router';
 import { useOpenObject } from '../../src/shell/open-object';
 import { AgentAvatar } from '../../src/ui/avatar';
 import { gatewayOverview, listAgentWrites, mySpend } from '../../src/api/agent';
+import { GatewayKeys } from '../../src/agent/gateway-keys';
 import { WRITE_TONE } from '../../src/agent/look';
 import { noAccess } from '../../src/data/access';
 import { loadView } from '../../src/data/load-view';
@@ -20,7 +22,7 @@ import { useT, type TranslationKey } from '../../src/lib/i18n';
 import { relativeTimeNow } from '../../src/lib/time-words';
 import { makeStyles, radius, space, squircle, typo, useTheme, weight } from '../../src/theme';
 import { EmptyState, LoadingState } from '../../src/ui/empty';
-import { Badge, Row, Section, SectionFooter, SectionHeader } from '../../src/ui/list';
+import { Badge, Row, Section, SectionHeader } from '../../src/ui/list';
 import { usePullRefresh } from '../../src/ui/refresh';
 import { Screen } from '../../src/ui/screen';
 
@@ -29,6 +31,7 @@ const SERVICES = new Set(['llm', 'vision', 'web_search', 'page_read', 'image_gen
 export default function MyAgents() {
   const t = useT();
   const openObject = useOpenObject();
+  const router = useRouter();
   const { colors: c } = useTheme();
   const styles = useStyles(c);
   const spend = useResource(useCallback(() => mySpend(), []));
@@ -62,6 +65,16 @@ export default function MyAgents() {
         contentContainerStyle={styles.content}
         refreshControl={<RefreshControl refreshing={pull.refreshing} onRefresh={pull.onRefresh} />}
       >
+        <Section>
+          <Row
+            title={t('agentConnect.title')}
+            subtitle={t('agentConnect.rowHint')}
+            icon="link"
+            accessory="chevron"
+            onPress={() => router.push('/me/connect')}
+          />
+        </Section>
+
         {/* ── this month ── */}
         {spend.data ? (
           <View style={styles.card}>
@@ -130,34 +143,7 @@ export default function MyAgents() {
 
         {/* ── gateway keys ── */}
         {gateway.data ? (
-          <>
-            <Section header={t('agent.keys')}>
-              {gateway.data.keys.length ? (
-                gateway.data.keys.map((key) => (
-                  <Row
-                    key={key.id}
-                    title={key.name}
-                    subtitle={[
-                      `${key.prefix}…`,
-                      key.last_used_at ? t('agent.lastUsed', { when: relativeTimeNow(key.last_used_at) }) : t('agent.neverUsed'),
-                      t('agent.keyMonth', { amount: formatUsd(key.month_spend_usd_micros), n: key.month_calls }),
-                    ].join('\n')}
-                    subtitleLines={3}
-                    icon="key"
-                    accessory={
-                      <Badge
-                        label={t(`agent.keyStatus.${key.status}`)}
-                        tone={key.status === 'active' ? 'green' : 'neutral'}
-                      />
-                    }
-                  />
-                ))
-              ) : (
-                <Row title={t('agent.keysEmpty')} icon="key" accessory="none" />
-              )}
-            </Section>
-            <SectionFooter text={gateway.data.enabled ? t('agent.keysHint') : t('agent.gatewayOff')} />
-          </>
+          <GatewayKeys gateway={gateway.data} onChanged={() => void gateway.refresh()} />
         ) : loadView(gateway) === 'failed' ? (
           <SectionFailed title={t('agent.keys')} onRetry={() => void gateway.refresh()} />
         ) : null}
