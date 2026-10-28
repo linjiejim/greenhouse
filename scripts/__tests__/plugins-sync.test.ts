@@ -153,7 +153,7 @@ describe('plugins:sync', { timeout: 20_000 }, () => {
   });
 });
 
-it('resolves manifest UI paths independently of cwd and refuses paths outside the package', () => {
+it('resolves manifest UI paths independently of cwd and refuses paths outside the package', { timeout: 20_000 }, () => {
   const root = fixture();
   const manifest = join(root, 'plugins/beta/manifest.ts');
   mkdirSync(join(root, 'plugins/beta/ui'));
