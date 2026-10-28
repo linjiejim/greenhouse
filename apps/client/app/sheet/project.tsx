@@ -1,7 +1,8 @@
 /**
  * One project as an object sheet (`/sheet/project?id=`): its status, owner, dates and progress,
  * then its tasks by status (open ones first; subtasks flattened under the tree order). A task
- * opens as a sheet stacked on this one. Tasks are made by asking Sprouty (a quiet row opens a new
+ * opens as a sheet stacked on this one, and so do its members (src/projects/members-entry.tsx;
+ * a dialog in the browser). Tasks are made by asking Sprouty (a quiet row opens a new
  * conversation drafted "在「<project>」里新建任务：") or, exactly, with + (app/task-form.tsx). A
  * project the member cannot read answers 404 — "not available", not an error with a retry.
  */
@@ -24,6 +25,7 @@ import { Badge, Row, Section, SectionHeader, rowPosition, type RowPosition } fro
 import { usePullRefresh } from '../../src/ui/refresh';
 import { SheetScreen } from '../../src/ui/screen';
 import { useOpenObject, useStartChat } from '../../src/shell/open-object';
+import { useMembersEntry } from '../../src/projects/members-entry';
 import { objectId } from '../../src/lib/object-id';
 
 type Item =
@@ -37,6 +39,7 @@ export default function ProjectSheet() {
   const openObject = useOpenObject();
   const startChat = useStartChat();
   const router = useRouter();
+  const members = useMembersEntry();
   const { colors: c } = useTheme();
   const styles = useStyles(c);
   const load = useCallback(() => getProject(id ?? '0'), [id]);
@@ -131,6 +134,7 @@ export default function ProjectSheet() {
                   label: t('projects.newTask'),
                   onPress: () => router.push({ pathname: '/task-form', params: { project: project.id } }),
                 },
+                { icon: 'users', label: t('projects.members.open'), onPress: () => members.open(project.id) },
               ]
             : []
         }
@@ -181,6 +185,7 @@ export default function ProjectSheet() {
         }
         contentContainerStyle={styles.content}
       />
+      {members.dialog}
     </>
   );
 }

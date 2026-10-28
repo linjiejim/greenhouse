@@ -11,6 +11,6 @@
 - `teamContextSources` preserves legacy document selections. Revalidate published/team visibility on every read. Core Markdown context remains available without the plugin. Optional source settings are registered only while active.
 - Drive owns files/folders. Register `kb` placement, synchronous/node authorization and folder occupancy through driveScopes; `cabinet: true` keeps the legacy Files cabinet when active. Core falls back to its independent `drive` scope when disabled.
 - Compact transcripts and citations are contributed through `toolResults`; never put full document bodies into persisted pipeline summaries. Exact Runtime evidence remains unchanged.
-- Sharing goes through `knowledge_mutation` share_doc/unshare_doc and the HTTP share routes; the client has no share dialog.
+- Sharing goes through `knowledge_mutation` share_doc/unshare_doc and the HTTP share routes; the client's share panel (apps/client/src/knowledge/use-doc-shares.ts) uses the routes.
 - `0001_adopt.sql` is the plugin baseline: guarded DDL that creates the tables on enable and adopts 3.x tables in place. Never edit an applied lane file. Register owned tables in resetTables and keep [schema](db-schema.md) current.
 - Test the disabled state, ACL parity, source selection and existing tree/export behavior.

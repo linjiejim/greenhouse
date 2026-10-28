@@ -6,9 +6,16 @@
  * `ApiResult`, never throws.
  */
 
-import type { Project, ProjectDetail, ProjectTask, TaskComment, TaskStatus } from '../shared/greenhouse-types';
+import type {
+  Project,
+  ProjectDetail,
+  ProjectMember,
+  ProjectTask,
+  TaskComment,
+  TaskStatus,
+} from '../shared/greenhouse-types';
 import { collectPages } from '../data/paging';
-import { get, patch, post, seg, type ApiResult } from './client';
+import { del, get, patch, post, seg, type ApiResult } from './client';
 
 const PAGE = 50;
 
@@ -52,3 +59,20 @@ export const listTaskComments = (taskId: string) =>
 
 export const addTaskComment = (taskId: string, content: string) =>
   post<{ comment: TaskComment }>(`/api/projects/tasks/${seg(String(taskId))}/comments`, { content });
+
+/**
+ * A project's members (`/api/projects/:id/members`). Anyone who reads the project reads them;
+ * adding, changing a role and removing take a manager (super, the owner, the maker or an
+ * owner-role member): others are refused, as is removing the owner or the maker (409).
+ */
+export const listMembers = (projectId: string) =>
+  get<{ members: ProjectMember[] }>(`/api/projects/${seg(String(projectId))}/members`);
+
+export const addMember = (projectId: string, userId: string, role: ProjectMember['role']) =>
+  post<{ member: ProjectMember }>(`/api/projects/${seg(String(projectId))}/members`, { user_id: userId, role });
+
+export const setMemberRole = (projectId: string, userId: string, role: ProjectMember['role']) =>
+  patch<{ member: ProjectMember }>(`/api/projects/${seg(String(projectId))}/members/${seg(userId)}`, { role });
+
+export const removeMember = (projectId: string, userId: string) =>
+  del<{ success: true }>(`/api/projects/${seg(String(projectId))}/members/${seg(userId)}`);

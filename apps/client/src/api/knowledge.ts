@@ -4,7 +4,7 @@
  * document by id. Every call answers an `ApiResult`, never throws.
  */
 
-import type { DriveFolder, KbDoc, KbSearchHit } from '../shared/greenhouse-types';
+import type { DriveFolder, KbDoc, KbSearchHit, KbShare } from '../shared/greenhouse-types';
 import { collectPages } from '../data/paging';
 import { del, get, post, put, seg, type ApiResult } from './client';
 
@@ -62,3 +62,23 @@ export const updateDoc = (id: string, change: { title?: string; folderId?: strin
 
 /** Archive a document (the owner's, or any team document). */
 export const deleteDoc = (id: string) => del<{ success: true }>(`/api/knowledge/docs/${seg(String(id))}`);
+
+/**
+ * Who a private document is shared with (`/api/knowledge/docs/:id/shares`); only its owner may
+ * read or change this (403 otherwise), and team documents take no grants (400). Sharing again
+ * with someone changes their role.
+ */
+export const listDocShares = (id: string) => get<{ shares: KbShare[] }>(`/api/knowledge/docs/${seg(String(id))}/shares`);
+
+export const shareDoc = (id: string, userIds: readonly string[], role: KbShare['role']) =>
+  post<{ success: true }>(`/api/knowledge/docs/${seg(String(id))}/shares`, { user_ids: userIds, role });
+
+export const unshareDoc = (id: string, target: string) =>
+  del<{ success: true }>(`/api/knowledge/docs/${seg(String(id))}/shares/${seg(target)}`);
+
+/**
+ * Active members one may share with, myself left out (`/api/sessions/shareable-users`). The
+ * station hides it (404) when conversation sharing is off.
+ */
+export const listShareableUsers = () =>
+  get<{ users: { id: string; nickname: string; email?: string }[] }>('/api/sessions/shareable-users');

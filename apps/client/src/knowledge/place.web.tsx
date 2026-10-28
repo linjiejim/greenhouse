@@ -24,6 +24,8 @@ import type { DriveFolder, KbDoc } from '../shared/greenhouse-types';
 import { alertError, promptText } from '../ui/dialogs';
 import DocumentEditor from './editor/document-editor';
 import { WIDE_MIN } from '../shell/wide-model';
+import { canShareDoc } from './share-model';
+import { useShareEntry } from './share-entry';
 export default function KnowledgePlace() {
   const { width } = useWindowDimensions();
   return width < WIDE_MIN ? <Phone /> : <KnowledgeDesktop />;
@@ -67,6 +69,7 @@ function KnowledgeDesktop() {
     [saving, setSaving] = useState(false);
   const [draft, setDraft] = useState({ markdown: '', json: '{}' });
   const selected = doc.data?.doc;
+  const share = useShareEntry();
   const authors = useResource(
     useCallback(() => get<{ users: { id: string; nickname: string }[] }>('/api/sessions/shareable-users'), []),
   );
@@ -199,9 +202,16 @@ function KnowledgeDesktop() {
                 </button>
               </>
             ) : (
-              <button className="gh-secondary-button" onClick={() => setEditing(true)}>
-                {t('places.edit')}
-              </button>
+              <>
+                {canShareDoc(selected) ? (
+                  <button className="gh-secondary-button" onClick={() => share.open(selected.id)}>
+                    {t('knowledge.share.open')}
+                  </button>
+                ) : null}
+                <button className="gh-secondary-button" onClick={() => setEditing(true)}>
+                  {t('places.edit')}
+                </button>
+              </>
             )
           ) : null
         }
@@ -300,6 +310,7 @@ function KnowledgeDesktop() {
           </article>
         </div>
       </Place>
+      {share.dialog}
     </>
   );
 }
