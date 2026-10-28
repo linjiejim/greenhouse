@@ -51,6 +51,10 @@ jobs:
   test:
     if: github.repository == 'linjiejim/greenhouse'
     runs-on: ubuntu-latest
+    # Every compiled plugin is enabled so their migration lanes and tests run; the core job
+    # below proves the core alone.
+    env:
+      GREENHOUSE_EXTENSIONS: all
     services:
       postgres:
         image: postgres:16-alpine
