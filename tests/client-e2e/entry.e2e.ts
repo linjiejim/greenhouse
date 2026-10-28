@@ -170,6 +170,11 @@ function authorizeUrl(clientId: string, challenge: string, state: string) {
 }
 
 test.describe('signed in', () => {
+  // A proxied route still fetching when a test ends must not fail the next one.
+  test.afterEach(async ({ page }) => {
+    await page.unrouteAll({ behavior: 'ignoreErrors' });
+  });
+
   test('MCP consent: the station sends the browser here; Allow grants only what stays ticked', async ({ page }) => {
     const clientId = await oauthClient(page);
     const { verifier, challenge } = pkce();
