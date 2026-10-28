@@ -33,7 +33,9 @@ database untouched.
    old dumps). Keep the backup until 4.0 has run in production for a while.
 2. Keep the previous image tag (or source revision), its `greenhouse.config.ts` and `.env`.
 3. Rehearse on a copy: restore the backup into a scratch database, run the 4.0 migration
-   against it and start 4.0 on it with the plugin list you intend to enable.
+   against it and start 4.0 on it with the plugin list you intend to enable. Start the copy with
+   `RUNTIME_AUTOMATION_DRIVER_ENABLED=false`: otherwise it catches up every automation that came
+   due since the backup, with real model calls and deliveries.
 
 The migration is forward-only. A code downgrade does not reverse it, and starting 3.x on a
 database that 4.0 has migrated is not supported. To roll back, stop 4.0, restore the
