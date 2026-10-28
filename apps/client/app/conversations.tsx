@@ -22,6 +22,7 @@ import { useResource } from '../src/data/use-resource';
 import { useT } from '../src/lib/i18n';
 import { relativeTimeNow } from '../src/lib/time-words';
 import type { ChatSession } from '../src/shared/greenhouse-types';
+import { closeThen } from '../src/shell/close-then';
 import { useOpenObject } from '../src/shell/open-object';
 import { useSessions } from '../src/store/sessions';
 import { makeStyles, space, typo, useTheme } from '../src/theme';
@@ -177,10 +178,8 @@ export default function Conversations() {
     {
       icon: 'compose',
       label: t('assistant.newChat'),
-      onPress: () => {
-        router.back();
-        setTimeout(() => router.push('/chat'), 0);
-      },
+      // the search keyboard down and this sheet gone before the chat comes in (src/shell/close-then.ts)
+      onPress: () => void closeThen(() => router.back(), () => router.push('/chat')),
     },
   ];
 

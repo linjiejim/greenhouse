@@ -21,6 +21,7 @@ import { getApiBase } from '../store/stations';
 import { pluginEntityLink } from '../plugins/entity-links';
 import { useStationManifest } from '../plugins/store';
 import { useTheme } from '../theme';
+import { closeThen } from './close-then';
 import {
   openingOf,
   refOfTarget,
@@ -48,12 +49,10 @@ function rootRoutes(container: ContainerRef): StackRoute[] {
   return [];
 }
 
-/** Close every sheet and page over the tabs, then run `then`. */
+/** Close every sheet and page over the tabs, then run `then` once they are gone (./close-then.ts). */
 function leavePresented(router: Router, routes: readonly StackRoute[], then: () => void): void {
-  if (routes.length > 1 && router.canDismiss()) {
-    router.dismissAll();
-    setTimeout(then, 0);
-  } else then();
+  if (routes.length > 1 && router.canDismiss()) void closeThen(() => router.dismissAll(), then);
+  else then();
 }
 
 /** The title of the screen things open from (a conversation); sheets show it as their origin. */

@@ -889,7 +889,6 @@ export const en = {
     create: 'Create',
     docTitle: 'Title',
     docBody: 'Text (Markdown)',
-    docCreated: 'Document created',
   },
   search: {
     placeholder: 'Conversations, documents, files, projects',

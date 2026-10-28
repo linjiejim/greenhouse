@@ -874,7 +874,6 @@ export const zh: Catalog = {
     create: '创建',
     docTitle: '标题',
     docBody: '正文（Markdown）',
-    docCreated: '文档已创建',
   },
   search: {
     placeholder: '对话、文档、文件、项目',
