@@ -33,6 +33,29 @@ export function entityColumns(entity: PluginEntitySchema, view?: EntityViewSchem
   });
 }
 /** `names`: member id → name (src/store/people.ts); an unknown member stays its id. */
+/**
+ * An instant from ISO or Postgres text ("2026-10-27 08:35:36.094111+00"); Hermes' Date.parse
+ * refuses the space, the microseconds and the bare "+00" offset that V8 accepts.
+ */
+export function parseInstant(text: string): number {
+  const pg = /^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}(?::\d{2})?)(?:\.(\d+))?\s*(Z|[+-]\d{2}(?::?\d{2})?)?$/i.exec(
+    text.trim(),
+  );
+  if (!pg) return Date.parse(text);
+  const [, day, clock, fraction, zone] = pg;
+  const offset = !zone
+    ? ''
+    : /^z$/i.test(zone)
+      ? 'Z'
+      : zone.length === 3
+        ? `${zone}:00`
+        : zone.includes(':')
+          ? zone
+          : `${zone.slice(0, 3)}:${zone.slice(3)}`;
+  return Date.parse(
+    `${day}T${clock.length === 5 ? `${clock}:00` : clock}${fraction ? `.${fraction.slice(0, 3).padEnd(3, '0')}` : ''}${offset}`,
+  );
+}
 export function fieldText(
   field: EntityFieldSchema,
   value: unknown,
@@ -46,7 +69,7 @@ export function fieldText(
     const day = field.kind === 'date' && /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(value));
     const time = day
       ? new Date(Number(day[1]), Number(day[2]) - 1, Number(day[3])).getTime()
-      : Date.parse(String(value));
+      : parseInstant(String(value));
     // medium date, minutes not seconds: "Oct 27, 2026, 9:54 AM" / "2026年10月27日 09:54"
     if (Number.isFinite(time))
       return new Intl.DateTimeFormat(

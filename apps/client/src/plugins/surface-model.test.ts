@@ -3,6 +3,7 @@ import {
   entityQuery,
   entityColumns,
   fieldText,
+  parseInstant,
   writableValues,
   embedMessage,
   embedUrl,
@@ -137,5 +138,15 @@ describe('declarative surfaces', () => {
     expect(normalizeNavigate('https://station.test/#/projects/3', 'https://station.test')).toBe('#/projects/3');
     expect(normalizeNavigate('https://evil.test/knowledge', 'https://station.test')).toBeNull();
     expect(safeEndpoint('/api/ext/crm/entities/company')).toBe(true);
+  });
+});
+
+describe('parseInstant', () => {
+  it('reads Postgres timestamp text the way an ISO string reads', () => {
+    expect(parseInstant('2026-10-27 08:35:36.094111+00')).toBe(Date.parse('2026-10-27T08:35:36.094Z'));
+    expect(parseInstant('2026-10-27 16:35:36+08:00')).toBe(Date.parse('2026-10-27T08:35:36Z'));
+    expect(parseInstant('2026-10-27T08:35:36.5+0530')).toBe(Date.parse('2026-10-27T03:05:36.500Z'));
+    expect(parseInstant('2026-10-27T08:35:36Z')).toBe(Date.parse('2026-10-27T08:35:36Z'));
+    expect(Number.isNaN(parseInstant('yesterday'))).toBe(true);
   });
 });
