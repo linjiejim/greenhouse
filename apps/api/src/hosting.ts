@@ -32,8 +32,10 @@ export function mountClientHosting(app: Hono<AppEnv>, publicDir: string) {
             ? 'no-cache'
             : 'public, max-age=3600',
       );
+      // pnpm app:build writes .br / .gz beside text assets; the client gets the one it accepts.
       return serveStatic({
         root,
+        precompressed: true,
         rewriteRequestPath: () => requestPath,
       })(c, next);
     }
