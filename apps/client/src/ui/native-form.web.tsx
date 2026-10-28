@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useContext } from 'react';
 import { ScrollView, Text, View, Pressable, type StyleProp, type ViewStyle } from 'react-native';
 import { space, typo, useTheme } from '../theme';
 import { Icon, type IconName } from './core';
+import { DialogFrameContext } from './dialog-frame';
 export function useLocaleEnv() {
   return undefined;
 }
@@ -15,6 +16,16 @@ export function NativeForm({
   background?: string;
 }) {
   const { hex: c } = useTheme();
+  if (useContext(DialogFrameContext))
+    // a desktop dialog's body: the shared .gh-form stack (20 inset, 16 between groups) on the panel
+    return (
+      <ScrollView
+        style={[{ flex: 1, backgroundColor: c.secondaryGroupedBackground }, style]}
+        keyboardShouldPersistTaps="handled"
+      >
+        <div className="gh-form">{children}</div>
+      </ScrollView>
+    );
   return (
     <ScrollView
       style={[{ flex: 1, backgroundColor: background ?? c.background }, style]}

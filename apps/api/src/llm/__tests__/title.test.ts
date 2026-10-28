@@ -10,7 +10,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { cleanTitle } from '../title.js';
+import { cleanTitle, titleLanguage } from '../title.js';
 
 describe('cleanTitle', () => {
   it('keeps a well-formed title', () => {
@@ -45,5 +45,30 @@ describe('cleanTitle', () => {
   it('rejects empty and single-character output', () => {
     expect(cleanTitle('   ')).toBe('');
     expect(cleanTitle('好')).toBe('');
+  });
+});
+
+describe('titleLanguage', () => {
+  it('follows the language of the first message, whatever the account says', () => {
+    expect(titleLanguage('Create an automation that waters the plants every Monday', 'zh')).toBe('en');
+    expect(titleLanguage('每周一提醒我给植物浇水', 'en')).toBe('zh');
+  });
+
+  it('reads a Chinese message with English terms as Chinese, and the reverse as English', () => {
+    expect(titleLanguage('我们 CRM 里一共有多少家客户？其中 S 级有几家？', 'en')).toBe('zh');
+    expect(titleLanguage('How do I say 你好 politely in French?', 'zh')).toBe('en');
+  });
+
+  it('ignores links and code when weighing the message', () => {
+    expect(titleLanguage('总结 https://example.com/some/long/english/path/about/things', 'en')).toBe('zh');
+    expect(titleLanguage('解释这段代码 ```const total = items.map((item) => item.price)```', 'en')).toBe('zh');
+  });
+
+  it('uses the account language when the message gives no clear signal', () => {
+    expect(titleLanguage('https://example.com/report.pdf', 'zh')).toBe('zh');
+    expect(titleLanguage('42?', 'en')).toBe('en');
+    expect(titleLanguage('CRM 客户', 'zh')).toBe('zh');
+    expect(titleLanguage('CRM 客户', 'en')).toBe('en');
+    expect(titleLanguage('👍', null)).toBe('en');
   });
 });

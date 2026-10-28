@@ -4,11 +4,13 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { KeyboardStickyView } from 'react-native-keyboard-controller';
 import { makeStyles, space, useTheme } from '../theme';
 
-const FooterSlot = createContext<React.Dispatch<React.SetStateAction<React.ReactNode>> | null>(null);
+type Footer = { node: React.ReactNode; bare: boolean } | null;
+
+const FooterSlot = createContext<React.Dispatch<React.SetStateAction<Footer>> | null>(null);
 
 /** Screen-owned footer: outside the scrolling form, above the keyboard and safe area. */
 export function SheetFrame({ children }: { children: React.ReactNode }) {
-  const [footer, setFooter] = useState<React.ReactNode>(null);
+  const [footer, setFooter] = useState<Footer>(null);
   const { colors: c } = useTheme();
   const styles = useStyles(c);
   const insets = useSafeAreaInsets();
@@ -16,9 +18,11 @@ export function SheetFrame({ children }: { children: React.ReactNode }) {
     <FooterSlot.Provider value={setFooter}>
       <View style={styles.frame}>
         <View style={styles.body}>{children}</View>
-        {footer ? (
+        {footer?.bare ? (
+          footer.node
+        ) : footer ? (
           <KeyboardStickyView>
-            <View style={[styles.footer, { paddingBottom: Math.max(space.margin, insets.bottom) }]}>{footer}</View>
+            <View style={[styles.footer, { paddingBottom: Math.max(space.margin, insets.bottom) }]}>{footer.node}</View>
           </KeyboardStickyView>
         ) : null}
       </View>
@@ -26,13 +30,14 @@ export function SheetFrame({ children }: { children: React.ReactNode }) {
   );
 }
 
-export function SheetActions({ children }: { children: React.ReactNode }) {
+/** `bare`: the actions draw their own bar (a web dialog's `.gh-dialog-footer`), not the sheet's padded band. */
+export function SheetActions({ children, bare = false }: { children: React.ReactNode; bare?: boolean }) {
   const setFooter = useContext(FooterSlot);
   useEffect(() => {
     if (!setFooter) return;
-    setFooter(children);
+    setFooter({ node: children, bare });
     return () => setFooter(null);
-  }, [children, setFooter]);
+  }, [children, bare, setFooter]);
   return setFooter ? null : <View>{children}</View>;
 }
 

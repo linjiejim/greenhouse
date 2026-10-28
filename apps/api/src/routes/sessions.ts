@@ -526,7 +526,12 @@ const sessions = new Hono<AppEnv>()
     if (!firstUser) return c.json({ error: 'No user message found' }, 400);
 
     try {
-      const title = await generateSessionTitle(firstUser.content, { userId: authUser.id, sessionId: id });
+      const owner = session.user_id ? await getDb().users.getById(session.user_id) : null;
+      const title = await generateSessionTitle(
+        firstUser.content,
+        { userId: authUser.id, sessionId: id },
+        owner?.locale,
+      );
       await getDb().sessions.updateTitle(id, title);
       return c.json({ title });
     } catch {

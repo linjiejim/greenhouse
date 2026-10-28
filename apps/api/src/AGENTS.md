@@ -278,4 +278,4 @@
 - Server-made browser links use `@greenhouse/types/client-routes`, with secrets in the fragment (`clientRouteUrl(..., { fragment })`).
 - `POST /api/ext-ui/token` binds member, `auth_version` and a member-visible plugin for ten minutes, rechecked per call; it reaches only `/api/ext/<id>/*` and basic `GET /api/me`, enforced before public bypass.
 - Plugin UIs mount at `/ext/<id>/ui/` before auth and SPA fallback (`ui/dist` preferred, disabled or missing → 404, fingerprinted files immutable).
-- Plugin UI CSP allows frame ancestors `'self' tauri://localhost` and omits X-Frame-Options; every other response keeps `DENY`.
+- Plugin UI CSP allows frame ancestors `'self' tauri://localhost` (outside production also the CORS allowed origins, for the Expo web dev server) and omits X-Frame-Options; every other response keeps `DENY`.

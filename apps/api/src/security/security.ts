@@ -102,6 +102,23 @@ function getAllowedCorsOrigins(): Set<string> {
   return new Set([...DEFAULT_CORS_ORIGINS, ...fromEnv]);
 }
 
+// A CSP source must be one token: a value with whitespace, `;`, `,` or quotes
+// would end or widen the directive, so it is left out.
+const CSP_ORIGIN = /^[a-z][a-z0-9+.-]*:\/\/[^\s;,'"]+$/i;
+
+/**
+ * Who may frame a host-mounted plugin UI: the API itself and the desktop shell.
+ * Outside production the CORS allowed origins may too, so the client's Expo web
+ * dev server (another port) can frame plugin pages; production never widens.
+ */
+export function pluginUiFrameAncestors(): string {
+  const ancestors = new Set(["'self'", 'tauri://localhost']);
+  if (process.env.NODE_ENV !== 'production') {
+    for (const origin of getAllowedCorsOrigins()) if (CSP_ORIGIN.test(origin)) ancestors.add(origin);
+  }
+  return [...ancestors].join(' ');
+}
+
 function isAllowedCorsOrigin(origin: string): boolean {
   if (!origin) return false;
   return getAllowedCorsOrigins().has(origin);
@@ -263,7 +280,7 @@ export async function securityHeadersMiddleware(c: Context, next: Next) {
   c.header(
     'Content-Security-Policy',
     pluginUi
-      ? "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; frame-ancestors 'self' tauri://localhost"
+      ? `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; frame-ancestors ${pluginUiFrameAncestors()}`
       : [
           "default-src 'self'",
           "script-src 'self' 'unsafe-inline' 'unsafe-eval'",

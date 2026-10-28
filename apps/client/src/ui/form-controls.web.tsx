@@ -1,10 +1,19 @@
-/** Browser form controls used by the five form views; behavior stays in their shared hooks. */
-import React, { Children, forwardRef, useImperativeHandle, useRef, useState } from 'react';
+/**
+ * Browser form controls used by the five form views; behavior stays in their shared hooks. In a
+ * desktop dialog (src/ui/dialog-frame.ts) they draw the shared Controls (src/shell/client.css):
+ * sections without cards, labels above selects and dates, switches; on a phone-width window the
+ * inset-grouped sheet look.
+ */
+import React, { Children, createContext, forwardRef, useContext, useId, useImperativeHandle, useRef, useState } from 'react';
 import { Text as RNText, View } from 'react-native';
 import { radius, space, typo, useTheme } from '../theme';
 import { NativeButton } from './button.web';
 import { NativeToggle } from './toggle.web';
 import { localDay } from '../data/tasks';
+import { DialogFrameContext } from './dialog-frame';
+
+/** Text in a desktop section's footer reads as a hint. */
+const HintText = createContext(false);
 type Modifier = { type: string; value?: any };
 type Props = { children?: React.ReactNode; modifiers?: Modifier[] };
 export const font = (value: any = {}): Modifier => ({ type: 'font', value });
@@ -19,6 +28,8 @@ export const accessibilityHidden = (_value = true): Modifier => ({ type: 'hidden
 export const accessibilityLabel = (value: string): Modifier => ({ type: 'label', value });
 export function Text({ children, modifiers = [] }: Props) {
   const { hex: c } = useTheme();
+  const hint = useContext(HintText);
+  if (hint && !modifiers.length) return <span className="gh-hint">{children}</span>;
   const color = modifiers.find((m) => m.type === 'color')?.value;
   const f = modifiers.find((m) => m.type === 'font')?.value;
   const role = f?.textStyle;
@@ -43,6 +54,15 @@ export function Section({
   header,
 }: Props & { title?: string; footer?: React.ReactNode; header?: React.ReactNode }) {
   const { hex: c } = useTheme();
+  if (useContext(DialogFrameContext))
+    return (
+      <fieldset className="gh-form-section">
+        {title ? <legend>{title}</legend> : null}
+        {header}
+        {children}
+        {footer ? <HintText.Provider value={true}>{footer}</HintText.Provider> : null}
+      </fieldset>
+    );
   return (
     <View style={{ gap: space.sm }}>
       {header}
@@ -168,7 +188,22 @@ export function Picker({
   children,
 }: Props & { label: string; selection: string; onSelectionChange: (v: string) => void }) {
   const { hex: c } = useTheme();
+  const id = useId();
   const options = Children.toArray(children).filter(React.isValidElement) as React.ReactElement<Props>[];
+  const choices = options.map((o, i) => (
+    <option key={i} value={o.props.modifiers?.find((m) => m.type === 'tag')?.value}>
+      {o.props.children as string}
+    </option>
+  ));
+  if (useContext(DialogFrameContext))
+    return (
+      <div className="gh-field">
+        <label htmlFor={id}>{label}</label>
+        <select id={id} value={selection} onChange={(e) => onSelectionChange(e.target.value)} className="gh-input">
+          {choices}
+        </select>
+      </div>
+    );
   return (
     <label
       style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: space.md, color: c.label }}
@@ -180,11 +215,7 @@ export function Picker({
         onChange={(e) => onSelectionChange(e.target.value)}
         className="gh-input"
       >
-        {options.map((o, i) => (
-          <option key={i} value={o.props.modifiers?.find((m) => m.type === 'tag')?.value}>
-            {o.props.children as string}
-          </option>
-        ))}
+        {choices}
       </select>
     </label>
   );
@@ -198,6 +229,20 @@ export function Toggle({
   isOn: boolean;
   onIsOnChange: (v: boolean) => void;
 }) {
+  if (useContext(DialogFrameContext))
+    return (
+      <label className="gh-check">
+        <input
+          type="checkbox"
+          role="switch"
+          className="gh-switch"
+          checked={isOn}
+          aria-checked={isOn}
+          onChange={(e) => onIsOnChange(e.target.checked)}
+        />
+        <span>{label}</span>
+      </label>
+    );
   return <NativeToggle label={label} value={isOn} onChange={onIsOnChange} />;
 }
 export function DatePicker({
@@ -211,19 +256,31 @@ export function DatePicker({
   onDateChange: (date: Date) => void;
 }) {
   const { hex: c } = useTheme();
+  const id = useId();
+  const input = (
+    <input
+      id={id}
+      type="date"
+      className="gh-input"
+      aria-label={title}
+      value={localDay(selection)}
+      onChange={(e) => {
+        const [y, m, d] = e.target.value.split('-').map(Number);
+        if (y && m && d) onDateChange(new Date(y, m - 1, d));
+      }}
+    />
+  );
+  if (useContext(DialogFrameContext))
+    return (
+      <div className="gh-field">
+        <label htmlFor={id}>{title}</label>
+        {input}
+      </div>
+    );
   return (
     <label style={{ display: 'flex', justifyContent: 'space-between', color: c.label }}>
       {title}
-      <input
-        type="date"
-        className="gh-input"
-        aria-label={title}
-        value={localDay(selection)}
-        onChange={(e) => {
-          const [y, m, d] = e.target.value.split('-').map(Number);
-          if (y && m && d) onDateChange(new Date(y, m - 1, d));
-        }}
-      />
+      {input}
     </label>
   );
 }
