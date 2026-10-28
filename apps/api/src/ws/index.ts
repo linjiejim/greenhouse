@@ -25,7 +25,6 @@ import { upgradeWebSocket } from '@hono/node-server';
 import { validateAccessToken } from '../auth/token.js';
 import { getDb, type UserRow } from '@greenhouse/db';
 import { connectionManager } from './connection-manager.js';
-import { nowIso } from '@greenhouse/utils/date';
 import { logger } from '@greenhouse/utils/logger';
 import { toErrorMessage } from '@greenhouse/utils/error';
 import type { ServerWsEvent, ClientWsEvent } from '@greenhouse/types/ws';
@@ -58,13 +57,12 @@ wsApp.get(
       userId: string;
       nickname: string;
       role: string;
-      connectedAt: string;
       tokenAuthVersion: number;
       tokenExp: number;
     } | null = null;
     // Set by onClose/onError: a socket that went away while onOpen awaited the
-    // account lookup must not be registered afterwards (it would linger in the
-    // presence list and count against the per-user cap).
+    // account lookup must not be registered afterwards (it would linger and
+    // count against the per-user cap).
     let gone = false;
 
     return {
@@ -93,7 +91,7 @@ wsApp.get(
         }
         role = user.role;
         const nickname = user.nickname || 'Unknown';
-        conn = { ws, userId, nickname, role, connectedAt: nowIso(), tokenAuthVersion, tokenExp };
+        conn = { ws, userId, nickname, role, tokenAuthVersion, tokenExp };
         connectionManager.add(conn);
 
         // Send connection confirmation
@@ -114,12 +112,6 @@ wsApp.get(
           send(ws, { type: 'notification:summary', unread });
         } catch {
           /* keep the socket useful when the notification projection is degraded */
-        }
-
-        // If super, push current online users snapshot
-        if (role === 'super') {
-          const onlineUsers = connectionManager.getOnlineUsers();
-          send(ws, { type: 'presence:snapshot', users: onlineUsers });
         }
       },
 

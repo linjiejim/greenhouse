@@ -1,15 +1,15 @@
 /**
- * WebSocket Connection Manager — tracks online users and routes messages.
+ * WebSocket Connection Manager — tracks connected users and routes messages.
  *
  * Maintains a Map<userId, Set<Connection>> to support multiple tabs/devices
- * per user. Provides helpers to send to individual users, broadcast to all,
- * or broadcast to super-admin users only (for presence events).
+ * per user. Sends to one user's connections, to everyone, or to every super but one (Runtime
+ * invalidations the owner already received).
  *
  * Singleton: import { connectionManager } from './connection-manager.js'
  */
 
 import type { WSContext } from 'hono/ws';
-import type { OnlineUser, ServerWsEvent } from '@greenhouse/types/ws';
+import type { ServerWsEvent } from '@greenhouse/types/ws';
 import { logger } from '@greenhouse/utils/logger';
 import { getDb } from '@greenhouse/db';
 
@@ -18,7 +18,6 @@ interface Connection {
   userId: string;
   nickname: string;
   role: string;
-  connectedAt: string;
   /** Credential generation captured by the access token. */
   tokenAuthVersion: number;
   /** Token expiry timestamp in seconds. */
@@ -39,7 +38,6 @@ export class ConnectionManager {
       set = new Set();
       this.connections.set(conn.userId, set);
     }
-    const isNewUser = set.size === 0;
     set.add(conn);
     logger.info(`[WS] + ${conn.nickname} (${conn.userId}) connected — ${set.size} session(s)`);
 
@@ -56,19 +54,6 @@ export class ConnectionManager {
         }
       }
     }
-
-    if (isNewUser) {
-      // Broadcast presence:join to all super users
-      this.broadcastToSuper({
-        type: 'presence:join',
-        user: {
-          userId: conn.userId,
-          nickname: conn.nickname,
-          role: conn.role,
-          connectedAt: conn.connectedAt,
-        },
-      });
-    }
   }
 
   /** Remove a WebSocket connection. */
@@ -79,8 +64,6 @@ export class ConnectionManager {
     if (set.size === 0) {
       this.connections.delete(conn.userId);
       logger.info(`[WS] - ${conn.nickname} (${conn.userId}) fully disconnected`);
-      // Broadcast presence:leave to all super users
-      this.broadcastToSuper({ type: 'presence:leave', userId: conn.userId });
     } else {
       logger.info(`[WS] - ${conn.nickname} (${conn.userId}) tab closed — ${set.size} remaining`);
     }
@@ -98,28 +81,6 @@ export class ConnectionManager {
       }
       this.remove(conn);
     }
-  }
-
-  /** Get deduplicated list of online users. */
-  getOnlineUsers(): OnlineUser[] {
-    const users: OnlineUser[] = [];
-    for (const [userId, set] of this.connections) {
-      const first = set.values().next().value;
-      if (first) {
-        users.push({
-          userId,
-          nickname: first.nickname,
-          role: first.role,
-          connectedAt: first.connectedAt,
-        });
-      }
-    }
-    return users;
-  }
-
-  /** Get count of online users (deduplicated). */
-  getOnlineCount(): number {
-    return this.connections.size;
   }
 
   /** Check if a specific user is online. */
@@ -150,22 +111,6 @@ export class ConnectionManager {
           conn.ws.send(data);
         } catch {
           /* ignore */
-        }
-      }
-    }
-  }
-
-  /** Broadcast an event to super-admin users only. */
-  broadcastToSuper(event: ServerWsEvent): void {
-    const data = JSON.stringify(event);
-    for (const set of this.connections.values()) {
-      for (const conn of set) {
-        if (conn.role === 'super') {
-          try {
-            conn.ws.send(data);
-          } catch {
-            /* ignore */
-          }
         }
       }
     }
@@ -208,7 +153,6 @@ export class ConnectionManager {
         continue;
       }
 
-      let roleChanged = false;
       for (const conn of [...set]) {
         if (conn.tokenAuthVersion !== user.auth_version) {
           logger.info(`[WS] Credentials revoked for ${conn.nickname} (${conn.userId}), closing`);
@@ -220,10 +164,7 @@ export class ConnectionManager {
           this.remove(conn);
           continue;
         }
-        if (conn.role !== user.role) {
-          conn.role = user.role;
-          roleChanged = true;
-        }
+        conn.role = user.role;
         if (conn.tokenExp < now) {
           logger.info(`[WS] Token expired for ${conn.nickname} (${conn.userId}), closing`);
           try {
@@ -239,9 +180,6 @@ export class ConnectionManager {
         } catch {
           /* ignore */
         }
-      }
-      if (roleChanged) {
-        this.broadcastToSuper({ type: 'presence:snapshot', users: this.getOnlineUsers() });
       }
     }
   }

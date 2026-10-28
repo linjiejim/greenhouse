@@ -60,7 +60,7 @@ export type { ExtensionEntityKindDef, CoreEntityKind, ExtensionEntityKind } from
 export { registerMcpResourceGroups, allMcpResourceGroups } from './mcp.js';
 
 // WebSocket message protocol
-export type { ServerWsEvent, ClientWsEvent, OnlineUser } from './ws.js';
+export type { ServerWsEvent, ClientWsEvent } from './ws.js';
 
 // Agent context types (frontend-specific but shared for type safety)
 export type {

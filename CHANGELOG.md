@@ -51,6 +51,7 @@ Read [Upgrading to 4.0](docs/upgrading-to-4.0.md) before upgrading.
   `GET /api/chat/runs/:sessionId/stream`.
 - `GET /api/platform/apps`, `GET /api/platform/me/permissions`, `GET /api/data-catalog` and
   `GET /api/admin/operations/cost-value` are removed; the MCP `data_catalog` tool remains.
+- `/api/ws` no longer sends supers online-presence events (`presence:*`).
 - `GET /api/sessions` caps every page at 200 and no longer accepts `include_eval`.
   `GET /api/feishu/login-available` (use `/api/auth/providers`), `GET /api/profiles/custom/:id/versions`,
   the custom Agent `change_log` field and the team activity feed's plain ISO `before` are removed. Automations
