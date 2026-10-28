@@ -149,6 +149,9 @@ const RATE_LIMITS: Record<string, RateLimitConfig> = {
   // Token refresh presents a long random secret, not a guessable password: every tab refreshes
   // on its own schedule, and a whole office may share one source IP.
   '/api/auth/refresh': { windowMs: 5 * 60_000, max: 60 },
+  // The sign-in page lists identity providers on every load; it mints no state, and an office
+  // behind one source IP must not lose its SSO buttons after ten page loads.
+  '/api/auth/providers': { windowMs: 60_000, max: 120 },
   '/api/auth': { windowMs: 5 * 60_000, max: 10 }, // 10 attempts per 5 min
   // Run control (probe/list/attach/stop) is cheap registry access, not LLM
   // spend — auto-resume retries and multi-tab attaches must not eat the chat
